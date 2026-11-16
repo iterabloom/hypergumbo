@@ -1,0 +1,28 @@
+- op: create  # 97b2
+  at: '2026-11-09T23:58:49Z'  # 97b2
+  by: agent  # 97b2
+  actor: jgstern_agent  # 97b2
+  clock: 1  # 97b2
+  nonce: 97b2  # 97b2
+  data:  # 97b2
+    kind: work_item  # 97b2
+    title: "scip-python backend: pass --environment so the indexer launches no pip or python of its own"  # 97b2
+    status: todo_hard  # 97b2
+    priority: 3  # 97b2
+    parent:  # 97b2
+    tags:  # 97b2
+    - scip  # 97b2
+    - security  # 97b2
+    isbefore: []  # 97b2
+    duplicate_of: []  # 97b2
+    not_duplicate_of: []  # 97b2
+    pr_ref:  # 97b2
+    description: "Goal: an enabled scip-python backend launches no program but scip-python itself.\n\nToday: hypergumbo runs `scip-python index` without `--environment`. scip-python 0.6.6 then chdirs into the analysed project and runs, each resolved on PATH: `pip3` (else `pip`) `list --format=json`; `python3` (else `python`) on a package-metadata script it writes under the system temp dir; `pip show -f` as a fallback. Consequences:\n- The runtime-cli-no-subprocess claim has to carve pip and python out of \"Anything else — curl, pip, rustup … is prohibited\" (docs/hypergumbo.claims.yaml).\n- A relative PATH entry (e.g. `.`) resolves those programs inside the analysed repository, which can enable this backend for itself through its own .hypergumbo.toml.\n- Network: pip without the `list` exemption from its weekly upgrade check (upstream 24.0) connects to the package index. Closed by PIP_DISABLE_PIP_VERSION_CHECK=1 in safety_zones.backend_index_scip_python (the PR that filed this item); passing --environment would make that guard unnecessary.\n\nProposed: build the package list in hypergumbo and pass `--environment <tmp json>`. Format (from the 0.6.6 bundle): a JSON array of {name, version, files}; scip-python reads it and runs neither pip nor python. The flag is marked \"(experimental)\". scip-python also has `environment-dump --output <path>`, useful as a reference for the expected contents.\n\nDecision to make first: WHICH Python environment to describe. scip-python today describes whatever pip3 is first on PATH (the project's venv when activated; hypergumbo's own venv otherwise). Options: hypergumbo's interpreter via importlib.metadata; an interpreter found in the project (.venv/, venv/); or an explicit user setting. Typing quality on third-party imports depends on this choice, so measure it (self-analysis receiver typing with each) before switching.\n\nDone when: an enabled scip-python run, traced with `strace -f -e trace=execve`, shows no pip or python launch; the claims and SECURITY.md wording drop the pip/python carve-out; the backend_index_scip_python docstring and allowlist row 9 say the same."  # 97b2
+    fields: {}  # 97b2
+- op: discuss  # 86bd
+  at: '2026-11-10T01:26:52Z'  # 86bd
+  by: agent  # 86bd
+  actor: jgstern_agent  # 86bd
+  clock: 2  # 86bd
+  nonce: 86bd  # 86bd
+  message: "The network half is closed by PR #2110: backend_index_scip_python sets PIP_DISABLE_PIP_VERSION_CHECK=1. Evidence: under strace, upstream pip 24.0's 'pip3 list --format=json' made 1 connect to a closed-port index launched bare and 0 through the wrapper. pip 26.2.2 (exempts list) and Debian's pip 24.0 (check off by default) made 0 either way. This item still covers the pip/python launches themselves."  # 86bd

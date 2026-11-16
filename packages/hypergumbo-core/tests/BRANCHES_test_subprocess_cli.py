@@ -42,7 +42,7 @@ class TestExtractCommandInfo:
     """Branch coverage for _extract_command_info function."""
 
     def test_python_without_m_flag(self) -> None:
-        """Test python command without -m flag (branch 103->112)."""
+        """Test python command without -m flag (regular-command path)."""
         executable, subcommand, is_python_m = _extract_command_info(
             '["python", "script.py", "arg1"]'
         )
@@ -51,7 +51,7 @@ class TestExtractCommandInfo:
         assert is_python_m is False
 
     def test_python_m_with_flag_argument(self) -> None:
-        """Test python -m where 4th arg starts with dash (branch 107->109)."""
+        """Test python -m where 4th arg starts with dash (no subcommand)."""
         executable, subcommand, is_python_m = _extract_command_info(
             '["python", "-m", "mypackage", "--verbose"]'
         )
@@ -96,7 +96,7 @@ class TestScanPythonFile:
     """Branch coverage for _scan_python_file function."""
 
     def test_literal_call_no_executable(self) -> None:
-        """Test literal subprocess call that yields no executable (branch 232->226)."""
+        """Test literal subprocess call that yields no executable (no call recorded)."""
         content = '''
 import subprocess
 subprocess.run([])  # Empty list, no executable
@@ -135,7 +135,7 @@ class TestCreateCallSymbol:
     """Branch coverage for _create_call_symbol function."""
 
     def test_call_with_no_executable(self) -> None:
-        """Test symbol creation when executable is None (branch 318->320)."""
+        """Test symbol creation when executable is None."""
         call = SubprocessCall(
             executable=None,
             subcommand=None,
@@ -149,7 +149,7 @@ class TestCreateCallSymbol:
         assert symbol.name == "subprocess"  # Fallback name
 
     def test_call_with_no_subcommand(self) -> None:
-        """Test symbol creation when subcommand is None (branch 320->322)."""
+        """Test symbol creation when subcommand is None."""
         call = SubprocessCall(
             executable="git",
             subcommand=None,
@@ -167,7 +167,7 @@ class TestHasCommandConcept:
     """Branch coverage for _has_command_concept function."""
 
     def test_symbol_without_command_concept(self) -> None:
-        """Test symbol that has meta but no command concept (branch 368->367)."""
+        """Test symbol that has meta but no command concept."""
         sym = make_symbol(
             "id1",
             "my_function",
@@ -190,7 +190,7 @@ class TestLinkSubprocess:
     """Branch coverage for link_subprocess function."""
 
     def test_call_with_no_subcommand_match(self, tmp_path: Path) -> None:
-        """Test subprocess call with subcommand that doesn't match (branch 392->384)."""
+        """Test subprocess call with subcommand that doesn't match any command."""
         # Create a file with subprocess call
         test_file = tmp_path / "caller.py"
         test_file.write_text('''
@@ -243,7 +243,7 @@ name = "myapp"
         assert len(result.edges) == 0
 
     def test_cli_symbol_without_command_concept(self, tmp_path: Path) -> None:
-        """Test with CLI symbol that lacks command concept (branch 368->367)."""
+        """Test with CLI symbol that lacks command concept."""
         test_file = tmp_path / "caller.py"
         test_file.write_text('''
 import subprocess

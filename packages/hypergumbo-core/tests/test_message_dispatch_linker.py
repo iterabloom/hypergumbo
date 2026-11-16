@@ -364,3 +364,24 @@ class TestSyntheticIdsCarryEachSiteHostLanguage:
         assert result.edges
         assert result.edges[0].src.split(":", 1)[0] == "typescript"
         assert result.edges[0].dst.split(":", 1)[0] == "typescript"
+
+
+def test_the_synthetic_ids_name_the_function_kind(tmp_path: Path) -> None:
+    """WI-lusoh (INV-kurup). The sender/handler ids were f-strings ending
+    ``:message_sender`` / ``:message_handler`` on ``kind="function"`` nodes,
+    which id-format:F3's round-trip flags. The role stays on
+    meta.framework_role, and the two nodes keep distinct ids."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sender = tmp_path / "src" / "s.ts"
+    sender.parent.mkdir(parents=True, exist_ok=True)
+    sender.write_text("ws.send(JSON.stringify({ type: 'offer' }));\n")
+    (tmp_path / "src" / "h.ts").write_text("case 'offer': handleOffer(); break;\n")
+    result = link_message_dispatch(
+        tmp_path, [_make_ts_sym("src/s.ts"), _make_ts_sym("src/h.ts")],
+    )
+    synth = [s for s in result.symbols if (s.meta or {}).get("framework_role")]
+    assert {s.meta["framework_role"] for s in synth} == {"message_sender", "message_handler"}
+    assert all(s.id.endswith(":offer:function") for s in synth)
+    assert len({s.id for s in synth}) == len(synth)
+    assert _check_id_roundtrip(synth) == []

@@ -36,3 +36,10 @@
   nonce: b2d1  # b2d1
   set:  # b2d1
     status: todo_soft  # b2d1
+- op: discuss  # 419b
+  at: '2026-11-01T22:22:31Z'  # 419b
+  by: agent  # 419b
+  actor: jgstern_agent  # 419b
+  clock: 4  # 419b
+  nonce: 419b  # 419b
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: CURRENT. P4 review 2026-11-01 at dev 9ae4abe13f: the item's own grep (`grep -rn project-local packages/*/src packages/*/tests --include=*.py`) finds 67 lines, including io_boundary.py 13, taint.py 11, verify_claims.py 4, cli.py 4, user_config.py 1, safety_zones.py 1 and js_ts.py 1 (now :1462). Tests carry more than the item lists: test_verify_claims 7, test_cli_verify_claims 4, test_io_primitives_overlay 3, test_io_boundary 3, test_taint 3 (now 3138/3382/4898). User-facing help has 0 hits (io-boundaries, verify-claims, survey, slice, catalog-inventory, config). The premise holds as written. MECHANISM: retired ADR-0061 tier word left in developer-facing docstrings/comments after the user-facing sweep (WI-lidof)."  # 419b

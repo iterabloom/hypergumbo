@@ -1,0 +1,21 @@
+- op: create  # 3471
+  at: '2026-11-02T00:02:05Z'  # 3471
+  by: agent  # 3471
+  actor: jgstern_agent  # 3471
+  clock: 1  # 3471
+  nonce: '3471'  # 3471
+  data:  # 3471
+    kind: work_item  # 3471
+    title: "pyffi attr-call, lua_ffi ffi.C and ruby_ffi attach_function regexes lack a left boundary (siblings of WI-tulol)"  # 3471
+    status: todo_hard  # 3471
+    priority: 3  # 3471
+    parent:  # 3471
+    tags:  # 3471
+    - cross_language_linkers  # 3471
+    - analysis_quality  # 3471
+    isbefore: []  # 3471
+    duplicate_of: []  # 3471
+    not_duplicate_of: []  # 3471
+    pr_ref:  # 3471
+    description: "FOUND 2026-11-01 by the tracker-hygiene sweep (the investigator for WI-tulol; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z). Re-checked at dev e362b4ba4f.\n\nWI-tulol covers lua_ffi._LIB_CALL_RE_TEMPLATE only. Three sibling regexes have the same missing left boundary and no item:\n1. pyffi.py:108 _ATTR_CALL_RE_TEMPLATE = r'{var}\\.(\\w+)\\s*\\(' (a verbatim copy of the lua template). With var=lib, re.findall on 'mylib.compress(1)' returns ['compress'].\n2. lua_ffi.py:70 _FFI_C_CALL_RE = r'ffi\\.C\\.(\\w+)\\s*\\('. On 'myffi.C.foo(1)' it returns ['foo'].\n3. ruby_ffi.py:73 _ATTACH_FUNCTION_RE opens with r\"attach_function\\s+\". On 'my_attach_function :foo, [], :int' it returns [('foo', '')].\n(Each result above is from a python3 run of the module's own compiled pattern.)\n\nFIX: add a left boundary, (?<![\\w.]) or \\b as fits each, to all four patterns in one PR with WI-tulol. Per the sweep-by-mechanism rule, grep the other linkers' call-regex templates for the same shape in the same PR. Corpus impact NOT MEASURED. Sweep family F-regex-boundary (WI-tulol, WI-sipok)."  # 3471
+    fields: {}  # 3471

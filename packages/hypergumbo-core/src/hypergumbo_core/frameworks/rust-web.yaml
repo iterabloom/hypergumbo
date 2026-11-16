@@ -138,7 +138,3 @@ patterns:
   # Actix background tasks
   - concept: task
     annotation: "^actix_rt::spawn$"
-
-linkers:
-  - http
-  - database_query

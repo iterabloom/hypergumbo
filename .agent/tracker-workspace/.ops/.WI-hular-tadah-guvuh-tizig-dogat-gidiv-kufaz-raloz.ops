@@ -27,3 +27,18 @@
   clock: 2  # fe60
   nonce: fe60  # fe60
   message: "CHECK 2026-10-05 (losod run, owner sequence \"check hular after losod/faful\"). ALREADY MET ON origin/dev, and NOT by WI-losod / WI-faful.\n\nRe-ran this item's own repro (the two fixtures from ~/hypergumbo_lab_notebook/gujoh_09242026/fx3/, copied to ~/hypergumbo_lab_notebook/decontend/run_10032026/losod/fx/hular_with_req and hular_with_direct) with hypergumbo verify-claims, claim host_secret -> network, --format json:\n- origin/dev tree (git archive of 222c1c3ded): both fixtures read urlopen ddg / confirmed.\n- stage-8b base c1dd831558: both ddg / confirmed.\n- losod branch (11a10f98b0..a9e3a869f4): both ddg / confirmed (unchanged).\nControl: the plain-call shape (return urlopen(url, data=secret.encode())) reads ddg / confirmed in all three trees.\n\nThe acceptance condition (\"both fixtures above read ddg / confirmed at urlopen\") is met. Mechanism: a53ff18377 (2026-09-26, WI-simiv), two days after this item was filed: the with header is recorded as context_manager_enter with ast_node_type set to the with_clause, so populate_def_use_for_cfg runs py_def_use's new with_clause handler on it (as-targets defined, value expressions used), and the clause is no longer uncovered code. Not the same statement-model gap as WI-losod/WI-faful, so nothing changed for it on the losod branch. Evidence files: losod/before.txt, losod/hular_odev.txt, losod/after.txt. Status left to the owner."  # fe60
+- op: update  # d303
+  at: '2026-10-20T23:40:25Z'  # d303
+  by: agent  # d303
+  actor: jgstern_agent  # d303
+  clock: 3  # d303
+  nonce: d303  # d303
+  set:  # d303
+    status: done  # d303
+- op: discuss  # 3b3e
+  at: '2026-10-20T23:40:25Z'  # 3b3e
+  by: agent  # 3b3e
+  actor: jgstern_agent  # 3b3e
+  clock: 4  # 3b3e
+  nonce: 3b3e  # 3b3e
+  message: "Closed 2026-10-20 on re-run evidence. Re-ran this item's own repro on dev 2760e4010b with the shipped CLI (hypergumbo verify-claims . --claims <host_secret -> network> --format json, fresh XDG_CACHE_HOME): hular_with_req (Request(url, headers={secret}); with urlopen(req) as resp) -> SECRET-NET violated, evidence urlopen ddg / confirmed; hular_with_direct (with urlopen(url, data=secret.encode()) as resp) -> violated, urlopen ddg / confirmed; plain-call control -> violated, urlopen ddg / confirmed. The acceptance condition ('both fixtures read ddg / confirmed at urlopen') holds. Fixed by a53ff18377 (WI-simiv: the with header is a context_manager_enter statement whose with_clause py_def_use handles), as the 2026-10-05 check found; the status change had been left open since then. Fixtures and JSON: ~/hypergumbo_lab_notebook/decontend/run_10032026/losod/fx/hular_*; re-run copies in the 2026-10-20 session scratchpad."  # 3b3e

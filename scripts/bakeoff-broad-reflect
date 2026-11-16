@@ -9,14 +9,15 @@ rather than feature usefulness.
 
 Two-phase pipeline:
   1. reflect (default) — generates per-repo prompt files with a fixed assessment
-     protocol plus stratified random questions from the 74-question pool
+     protocol plus stratified random questions from the main question pool
   2. aggregate — reads assessment YAML files, deduplicates and frequency-ranks
      findings, produces summary.yaml
 
-The 74 main questions are organized into 8 strata (roughly 10 each). Each run
-samples 1 question per stratum, guaranteeing every theme is represented while
-preserving variety across runs. 15 journal questions are organized into 3 strata
-(5 each); 1 is sampled per run from a randomly chosen stratum.
+The main questions (``STRATA``) are organized into themed strata of about 10
+each. Each run samples 1 question per stratum, guaranteeing every theme is
+represented while preserving variety across runs. The journal questions
+(``JOURNAL_STRATA``) are organized into 3 strata of 5; 1 is sampled per run
+from a randomly chosen stratum.
 
 Usage:
     ./scripts/bakeoff-broad-reflect                    # Generate prompts for latest session
@@ -54,7 +55,7 @@ LAB_NOTEBOOK_DIR = os.path.expanduser("~/hypergumbo_lab_notebook")
 # Stratified question pools
 # ---------------------------------------------------------------------------
 
-# 8 strata of main questions (~10 each). Each run samples 1 per stratum.
+# Themed strata of main questions (~10 each). Each run samples 1 per stratum.
 STRATA = {
     "missing_patterns": [
         "What patterns in the source code are we systematically missing?",
@@ -358,17 +359,16 @@ ARTIFACT_DESCRIPTIONS = {
 def _pool_repo_path(pool_path: str, repo_name: str) -> str:
     """Resolve a cohort repo name to its on-disk path.
 
-    WI-favav parity, extended by WI-havit: cohort SELECTION resolves nested pool
-    repos via ``pool_utils.resolve_repo_path`` (which descends one level into
-    collection subdirs, e.g. ``ALL_REPOS/whole_bunch_of_repos/<repo>``), so every
+    Cohort SELECTION resolves nested pool repos via
+    ``pool_utils.resolve_repo_path`` (which descends one level into collection
+    subdirs, e.g. ``ALL_REPOS/whole_bunch_of_repos/<repo>``), so every
     downstream consumer must use the SAME resolver. A bare
-    ``os.path.join(pool_path, repo_name)`` misses a repo living one level down.
-    In the run loop that surfaced as ``get_dir_size`` raising FileNotFoundError;
-    in the reflect scripts it is quieter and worse -- the agent is handed a source
-    path that does not exist.
+    ``os.path.join(pool_path, repo_name)`` misses a repo living one level down,
+    and here that fails quietly: the agent is handed a source path that does
+    not exist (history: WI-favav, WI-havit).
 
-    Falls back to the naive join so a genuinely-missing repo still errors where it
-    errored before, rather than passing ``None`` downstream.
+    Falls back to the naive join so a genuinely-missing repo still errors
+    downstream, rather than passing ``None`` on.
     """
     return (
         pool_utils.resolve_repo_path(pool_path, repo_name)

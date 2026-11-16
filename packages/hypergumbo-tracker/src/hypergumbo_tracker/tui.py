@@ -40,8 +40,10 @@ write/UI keybindings do not follow the gather-input modal pattern: z
 (repair_drift) pushes a ConfirmScreen, and S (capture_screenshot) opens the
 ADR-0020 screenshot+annotation overlay. Wide mode also exposes inline Mark
 Read / Mark Unread human read-state controls. Errors are shown
-via ``self.notify(str(e), severity="error")``. After each write, _load_items()
-refreshes the tables and _restore_selection() keeps the cursor stable.
+via ``self.notify(str(e), severity="error")``. After each write, and after
+every in-place rebuild (Mark Read / Mark Unread, status and tag toggles, the
+full-ID toggle, reorder), ``_rebuild_in_place()`` refreshes the tables and
+keeps the scroll offset, the cursor's item, and the cursor in view.
 
 Status visibility is toggled via the filter panel (open with ``f``): digit
 keys ``1``-``9`` (or clicking an entry) hide/show items by status or tag.  A
@@ -50,7 +52,8 @@ config-defined resolved status.
 
 Manual display reordering (``<``/``>``) lets users visually group related
 items without changing their priority.  The reorder is persisted to a
-``tui_preferences.json`` file alongside toggle state.
+``tui_preferences.json`` file alongside toggle state, kept per user under
+``$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`` (:func:`tui_preferences_path`).
 
 A background timer (every ``HTRAC_RELOAD_INTERVAL`` seconds, default 5)
 compares the ops-file mtime signature and, when another process has written,
@@ -76,6 +79,16 @@ discussion length changes, after which automatic detection applies again.
 Unread items hidden by the status/tag filters are still appended to the end
 of the list.
 
+The standard/wide table (``ItemTable``) keeps a multi-selection. Shift+click
+on a row adds or removes it, starting from the row that was highlighted; Space
+does the same for the highlighted row, for terminals that keep Shift+click for
+their own text selection and never report it to the app. Selected rows carry a
+check in the ``#`` column, the right panel shows a generic "(N items selected)"
+message, and Mark Read / Mark Unread apply to every selected item with one
+preferences save and one rebuild. Esc or a plain click clears the selection; a
+rebuild drops selected items that are no longer listed; tree view and compact
+tier have no multi-select and drop it.
+
 See ADR-0013 §TUI for the responsive design specification.
 """
 
@@ -87,13 +100,14 @@ import re
 import tempfile
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, ClassVar
+from typing import Any, Callable, ClassVar, Mapping
 
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.events import Click, MouseDown, MouseMove, MouseUp, Resize
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.strip import Strip
 from textual.widget import Widget
@@ -115,6 +129,7 @@ from textual.widgets.tree import TreeNode
 
 from rich.text import Text as RichText
 
+from hypergumbo_tracker import journal
 from hypergumbo_tracker.hotspot_markup import render_hotspots
 from hypergumbo_tracker.id_matching import build_item_id_pattern
 from hypergumbo_tracker.item_nav_render import NavModalContent, build_nav_modal_content
@@ -127,6 +142,7 @@ from hypergumbo_tracker.store import (
     HumanAuthorityError,
     ItemNotFoundError,
     LockedFieldError,
+    _find_git_dir,
 )
 from hypergumbo_tracker.trackerset import TierMovementError, TrackerSet
 
@@ -248,7 +264,7 @@ def _truncate_id(full_id: str, max_width: int) -> str:
     prefix = parts[0]
 
     if max_width <= 10:
-        # prefix + dash + 1 pair + ellipsis (len(parts) > 1 guaranteed by line 74)
+        # prefix + dash + 1 pair + ellipsis (len(parts) > 1 guaranteed above)
         candidate = f"{prefix}-{parts[1]}…"
         if len(candidate) <= max_width:
             return candidate
@@ -341,7 +357,8 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
     Tombstoned entries (WI-zonur) are suppressed; a single
     ``(not shown: N deleted messages)`` footer is appended when N > 0.
 
-    Prepends a ``[20+ msgs]`` badge when entry count >= 20 (D9).
+    Prepends a ``[20+ msgs]`` badge when 20 or more non-deleted entries
+    remain.
     """
     # Filter tombstones first so the "no recent activity" / 20+ / limit
     # logic operates on the user-visible set.
@@ -398,6 +415,9 @@ _TIER_INDICATOR = {
     Tier.STEALTH: "S",
 }
 
+# Prefix of the ``#`` cell of a row in the multi-selection.
+_SELECT_MARK = "\u2713"
+
 
 def _label(name: str) -> str:
     """Wrap a structural field label in Rich bold-reverse markup.
@@ -422,7 +442,7 @@ def _escape_user(text: str) -> str:
     these values into a string that is later passed to
     ``Static.update`` → ``Text.from_markup``.  Without escaping, the
     markup parser tries to interpret the user's brackets as style tags
-    and raises ``rich.errors.MarkupError`` (the WI-difij crash).
+    and raises ``rich.errors.MarkupError`` (WI-difij).
 
     Only ``[`` needs escaping — Rich treats unmatched ``]`` as literal.
     Backslashes do *not* need escaping for the markup parser; they pass
@@ -541,6 +561,54 @@ _MAX_TOGGLE_SESSIONS = 9
 _TUI_RELOAD_INTERVAL: float = float(os.environ.get("HTRAC_RELOAD_INTERVAL", "5.0"))
 
 
+_PREFS_FILENAME = "tui_preferences.json"
+
+
+def tui_preferences_path(
+    tracker_root: Path, *, environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Where THIS user's TUI preferences for THIS clone live (INV-rugid).
+
+    ``$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/tui_preferences.json``
+    (``~/.local/state`` when unset), ``<repo-id>`` being the key the ops journal
+    uses for the same clone, so one rule places all three per-clone stores and
+    only the root differs by who must own the data: the journal under the agent
+    home, the protected config under ``/etc``, this file under each user's home.
+
+    The file lives outside the checkout so ``git clean -xdf`` cannot remove it,
+    and per user because a single copy in the shared, group-writable checkout
+    would let one account's save replace another's preferences.
+    """
+    env = os.environ if environ is None else environ
+    state = env.get("XDG_STATE_HOME")
+    root = Path(state) if state else Path.home() / ".local" / "state"
+    git_dir = _find_git_dir(tracker_root.resolve())
+    toplevel = git_dir.parent if git_dir is not None else tracker_root.resolve()
+    return root / "hypergumbo-tracker" / journal._repo_id(toplevel) / _PREFS_FILENAME
+
+
+def load_tui_preferences_migrating(path: Path, legacy: Path) -> dict[str, Any]:
+    """Load from ``path``; on first use, carry an in-repo ``legacy`` file over.
+
+    When ``path`` is absent and ``legacy`` exists, its preferences are read and
+    written to ``path`` once, so an upgrade loses nothing and needs no step.
+    ``legacy`` is never modified or deleted.
+    """
+    if path.is_file() or not legacy.is_file():
+        return _load_tui_preferences(path)
+    prefs = _load_tui_preferences(legacy)
+    _save_tui_preferences(
+        path, set(prefs["hidden_statuses"]), list(prefs["display_order"]),
+        hidden_tags=set(prefs["hidden_tags"]),
+        toggle_sessions=list(prefs["toggle_sessions"]),
+        last_filters=prefs["last_filters"],
+        hide_tagged=bool(prefs["hide_tagged"]),
+        human_read_state=prefs["human_read_state"],
+        race_log_path=prefs["race_log_path"] or None,
+    )
+    return prefs
+
+
 def _load_tui_preferences(path: Path) -> dict[str, Any]:
     """Load TUI preferences from disk. Returns defaults on missing/corrupt file.
 
@@ -637,12 +705,8 @@ def _save_tui_preferences(
         path.parent.mkdir(parents=True, exist_ok=True)
         # Atomic write: temp-file + os.replace. Non-atomic write_text can
         # leave the file in a partial state when interrupted (kill, OOM)
-        # or racing against concurrent writes in the same dir (the
-        # two-user setup writes ops files alongside this file). A partial
-        # or empty file would corrupt all the v2 prefs — see the
-        # accompanying _move_selected fix where the v1-schema write used
-        # to drop human_read_state; even after that fix, an interrupted
-        # write here would still produce a degraded file.
+        # or racing against concurrent writes in the same dir. A partial
+        # or empty file would corrupt all the v2 prefs.
         #
         # Permission preservation: tempfile.mkstemp creates files with
         # mode 0600 by default. After os.replace, the destination inode
@@ -651,9 +715,8 @@ def _save_tui_preferences(
         # The tracker is designed to leverage OS user permissions
         # (some files are deliberately user-only, others are shared via
         # a project group), so the right behavior is to PRESERVE
-        # whatever mode the existing file has. For new files (no prior
-        # mode to preserve), fall through to the mkstemp default and
-        # let the project's perms-repair hook normalize on next git op.
+        # whatever mode the existing file has. A new file has no prior
+        # mode to preserve and keeps the mkstemp default.
         import stat as _stat
         try:
             preserve_mode = _stat.S_IMODE(path.stat().st_mode)
@@ -844,10 +907,11 @@ def _format_detail_lines(
     detail panel, but suppresses the inline discussion section (the activity
     panel handles it instead).
 
-    Per-field ``[locked]`` indicators replace the old summary line (D8).
+    Each locked field carries its own ``[locked]`` indicator.
     When *fields_schema* is provided, known fields render in schema
-    declaration order with descriptions; unknown fields go under ``Other`` (D7).
-    Discussion badge ``[20+ msgs]`` appears when entry count >= 20 (D9).
+    declaration order with descriptions; unknown fields go under ``Other``.
+    The inline discussion header carries a ``[20+ msgs]`` badge when 20 or
+    more non-deleted entries remain.
     """
     lines: list[str] = []
     if item.frozen:
@@ -914,7 +978,7 @@ def _format_detail_lines(
 
     # In wide mode, discussion is shown in the activity panel
     if tier != "wide" and item.discussion:
-        # WI-zonur: suppress tombstoned entries; surface the count via footer.
+        # Suppress tombstoned entries; surface the count via footer (WI-zonur).
         visible = [e for e in item.discussion if not e.is_tombstoned]
         hidden = len(item.discussion) - len(visible)
         count = len(visible)
@@ -1020,7 +1084,7 @@ class ConfirmScreen(ModalScreen[bool]):
     """Reusable confirmation dialog with Yes/No buttons.
 
     Returns True if confirmed, False if cancelled. Used by ``D``
-    (clear discussion) and potentially other destructive actions.
+    (clear discussion) and ``R`` (repair drift).
     """
 
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -1579,8 +1643,8 @@ class LockScreen(ModalScreen[dict[str, list[str]] | None]):
 class ItemNavModal(ModalScreen[None]):
     """Browser-style navigation modal for cross-referencing tracker items.
 
-    WI-sulij: clicking an item-ID hotspot in a Description or Activity
-    pane opens this modal on the target item. Back / Forward step
+    Clicking an item-ID hotspot in a Description or Activity pane
+    opens this modal on the target item (WI-sulij). Back / Forward step
     through the visited IDs (semantics in
     :class:`NavigationHistory`), a jump Input at the top accepts a
     typed ID for arbitrary navigation, and the rendered Description
@@ -2157,16 +2221,137 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 # ---------------------------------------------------------------------------
 
 
+class StableFooter(Footer):
+    """A footer that is rebuilt when what it shows changes, and only then.
+
+    Textual's ``Footer`` removes and re-creates all of its key widgets each
+    time the screen announces that the active bindings may have changed, and
+    the screen announces that on every focus change. With this app's 21 shown
+    keys that was four rebuilds during start-up (half of the start-up time)
+    and one or two more for each later focus change, nearly always into the
+    same 21 keys.
+
+    The footer's content is a function of the shown bindings: for each, the
+    binding itself (key, action, description, group), the key as displayed,
+    whether it is enabled, and its tooltip. :meth:`_shown` computes that
+    value and :meth:`compose` records it each time the footer is actually
+    built. :meth:`bindings_changed` then asks for a rebuild unless
+
+    * one is already on its way (it reads the bindings when it runs, so it
+      will show whatever this announcement is about), or
+    * the footer was last built from an equal value.
+
+    The record is made at BUILD time on purpose. Textual ignores an
+    announcement while the terminal window is unfocused, so recording at
+    announcement time would mark as shown something that never was, and the
+    next announcement would be skipped with a stale footer on screen.
+
+    ``bindings_changed`` restates the five lines of Textual 7.5's method (the
+    package pins ``textual~=7.5``) with the two skips added, and
+    ``_bindings_ready`` is Textual's own flag; ``test_tui_stable_footer.py``
+    fails if an upgrade changes how either behaves.
+    """
+
+    #: What the footer was last built from; ``None`` before the first build.
+    _built_from: tuple[Any, ...] | None = None
+    #: A rebuild has been asked for and has not read the bindings yet.
+    _rebuild_pending: bool = False
+
+    def _shown(self, screen: Any) -> tuple[Any, ...]:
+        """Everything :meth:`Footer.compose` reads from the active bindings."""
+        active = screen.active_bindings
+        shown: list[Any] = [
+            (binding, self.app.get_key_display(binding), enabled, tooltip)
+            for (_node, binding, enabled, tooltip) in active.values()
+            if binding.show
+        ]
+        if self.show_command_palette and self.app.ENABLE_COMMAND_PALETTE:
+            palette = active.get(self.app.COMMAND_PALETTE_BINDING)
+            if palette is not None:
+                _node, binding, enabled, _tooltip = palette
+                shown.append(
+                    ("palette", binding, self.app.get_key_display(binding), enabled)
+                )
+        return tuple(shown)
+
+    def compose(self) -> ComposeResult:
+        # From here on an announcement is compared with ``_built_from``.
+        # Until here a rebuild that has started (it first removes the old
+        # keys, and other messages run meanwhile) still counts as on its way.
+        self._rebuild_pending = False
+        if self._bindings_ready:
+            self._built_from = self._shown(self.screen)
+        yield from super().compose()
+
+    async def recompose(self) -> None:
+        try:
+            await super().recompose()
+        finally:
+            self._rebuild_pending = False
+
+    def bindings_changed(self, screen: Any) -> None:
+        self._bindings_ready = True
+        if not screen.app.app_focus:
+            return
+        if not (self.is_attached and screen is self.screen):
+            return
+        if self._rebuild_pending or self._shown(screen) == self._built_from:
+            return
+        self._rebuild_pending = self.call_after_refresh(self.recompose)
+
+
+class ItemTable(DataTable[Any]):
+    """The standard/wide item list: a DataTable that reports row clicks so
+    the app can keep a multi-selection.
+
+    A Shift+click on a row posts :class:`RowShiftClicked` and is consumed:
+    ``prevent_default`` stops DataTable's own click handler, which Textual
+    would otherwise run next in the MRO walk and which would move the cursor
+    as a plain click. Any other click on a row posts :class:`RowPlainClicked`
+    and then proceeds as usual (cursor move, selection message). Header and
+    out-of-range clicks post nothing.
+    """
+
+    class RowShiftClicked(Message):
+        """A row was clicked with Shift held."""
+
+        def __init__(self, row_index: int, item_id: str) -> None:
+            self.row_index = row_index
+            self.item_id = item_id
+            super().__init__()
+
+    class RowPlainClicked(Message):
+        """A row was clicked without Shift."""
+
+        def __init__(self, row_index: int, item_id: str) -> None:
+            self.row_index = row_index
+            self.item_id = item_id
+            super().__init__()
+
+    async def _on_click(self, event: Click) -> None:
+        row_index = event.style.meta.get("row")
+        if row_index is None or not 0 <= row_index < self.row_count:
+            return
+        item_id = str(self.ordered_rows[row_index].key.value)
+        if event.shift:
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.RowShiftClicked(row_index, item_id))
+            return
+        self.post_message(self.RowPlainClicked(row_index, item_id))
+
+
 class TrackerApp(App[None]):
     """Textual TUI for the hypergumbo tracker.
 
-    Three layout tiers are fully implemented:
+    Three layout tiers:
 
     - **compact** (40x16 - 59x19): Single DataTable (#item-table) with
       stacked detail view (Enter/Esc).
     - **standard** (60x20 - 120x38): Two-pane layout -- left panel holds
       a DataTable (#std-table) or Tree (#item-tree), right panel shows
-      detail for the highlighted item. Filter input (f) narrows items.
+      detail for the highlighted item. Filter panel (f) hides items by
+      status or tag.
     - **wide** (>120x38): Standard layout enhanced with extra DataTable
       columns (conflict, created, updated), longer proquint IDs, split
       right panel with activity log below detail, and filter status
@@ -2334,6 +2519,7 @@ class TrackerApp(App[None]):
         ("i", "toggle_full_ids", "Full IDs"),
         ("ctrl+c", "yank", "Copy"),
         ("ctrl+e", "toggle_edit_mode", "Edit-Mode"),
+        ("space", "toggle_select", "Select"),
         ("S", "capture_screenshot", "Screenshot"),
     ]
 
@@ -2349,8 +2535,8 @@ class TrackerApp(App[None]):
         (``platformdirs.user_downloads_path``).  When the TUI is run from
         a different user account than the one whose home directory hosts
         the tracker, that directory may not exist, causing a silent
-        ``FileNotFoundError`` and a "Failed to take screenshot" toast.
-        We fix this by ensuring the directory exists before delegating.
+        ``FileNotFoundError`` and a "Failed to take screenshot" toast,
+        so the directory is created before delegating.
         """
         if path is None:
             from platformdirs import user_downloads_path
@@ -2367,6 +2553,9 @@ class TrackerApp(App[None]):
         self._items: list[CompiledItem] = []
         self._in_detail = False
         self._selected_item_id: str | None = None
+        # Multi-selection on the std table (Shift+click / Space); empty
+        # means the ordinary single-item view.
+        self._multi_selected: set[str] = set()
         self._tree_mode: bool = False
         self._filter_active: bool = False
         self._filter_text: str = ""
@@ -2389,10 +2578,11 @@ class TrackerApp(App[None]):
         self._human_read_state: dict[str, dict[str, object]] = {}
         self._unread_override_ids: set[str] = set()
         self._last_ops_signature: float = 0.0
-        self._prefs_path = (
-            tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
+        self._prefs_path = tui_preferences_path(tracker_set._tracker_root)
+        self._legacy_prefs_path = (
+            tracker_set._tracker_root / "tracker-workspace" / _PREFS_FILENAME
         )
-        # WI-sulij item-nav hotspots: compile once at construction so
+        # Item-nav hotspots (WI-sulij): compile once at construction so
         # every _show_* render reuses the same pattern. Configs with no
         # kinds cannot have IDs to match, so disable hotspots entirely.
         try:
@@ -2419,7 +2609,7 @@ class TrackerApp(App[None]):
         # Standard/wide two-pane widgets
         with Horizontal(id="two-pane"):
             with Vertical(id="left-panel"):
-                yield DataTable(id="std-table", cursor_type="row")
+                yield ItemTable(id="std-table", cursor_type="row")
                 yield Tree("Items", id="item-tree")
             yield Rule(orientation="vertical", id="divider")
             with Vertical(id="right-panel"):
@@ -2457,11 +2647,13 @@ class TrackerApp(App[None]):
                 )
         yield Static("", id="chain-summary-bar")
         yield Static("", id="status-filter-bar")
-        yield Footer()
+        yield StableFooter()
 
     def on_mount(self) -> None:
         """Initialize layout on mount, loading persisted preferences."""
-        prefs = _load_tui_preferences(self._prefs_path)
+        prefs = load_tui_preferences_migrating(
+            self._prefs_path, self._legacy_prefs_path,
+        )
         self._hidden_statuses = set(prefs["hidden_statuses"])
         self._hidden_tags = set(prefs.get("hidden_tags", []))
         self._hide_tagged = bool(prefs.get("hide_tagged", False))
@@ -2507,8 +2699,7 @@ class TrackerApp(App[None]):
         if not self._items:
             self._load_items()
         elif old_tier != self._layout_tier:
-            self._reload_active_table()
-            self._restore_selection()
+            self._rebuild_in_place()
 
     # ------------------------------------------------------------------
     # Tier / layout management
@@ -2774,7 +2965,7 @@ class TrackerApp(App[None]):
             )
 
             row: list[str | RichText] = [
-                str(idx + 1),
+                self._row_num_label(idx, item.id),
                 tier_char,
                 str(item.priority),
                 truncated_id,
@@ -2848,8 +3039,14 @@ class TrackerApp(App[None]):
         else:
             self._populate_compact_table()
 
-    def _restore_selection(self) -> None:
-        """After tier change or reload, move cursor to _selected_item_id."""
+    def _restore_selection(self, fallback_row: int | None = None) -> None:
+        """After tier change or reload, move cursor to _selected_item_id.
+
+        When the selected item is no longer listed (Mark Read on an unread
+        row that a filter hides removes it), the cursor goes to
+        *fallback_row*, clamped to the new length, so it stays where the user
+        was instead of the row-0 that the rebuild left it on.
+        """
         if not self._selected_item_id:
             return
 
@@ -2862,6 +3059,8 @@ class TrackerApp(App[None]):
             if str(row_key.value) == self._selected_item_id:
                 table.move_cursor(row=idx)
                 return
+        if fallback_row is not None and table.row_count:
+            table.move_cursor(row=min(fallback_row, table.row_count - 1))
 
     # ------------------------------------------------------------------
     # Detail display
@@ -2876,10 +3075,10 @@ class TrackerApp(App[None]):
         and swallows the expected lookup failures (not-found,
         ambiguous prefix) plus transient filesystem races. That keeps
         the per-cursor-move hotspot-resolver path off the
-        ``.ops``-content read path that crashed the TUI 2026-04-26
-        when it raced an atomic rename mid-write.
+        ``.ops``-content read path, which can race an atomic rename
+        mid-write and crash the TUI.
 
-        Per WI-sulij constraint 2, a dead hotspot renders as plain text.
+        A dead hotspot renders as plain text (WI-sulij).
         """
         return self._tracker_set.exists(item_id)
 
@@ -3158,11 +3357,15 @@ class TrackerApp(App[None]):
                 style = ""
                 marker_char = ""
 
-            # Update row_num column with marker
-            if style:
+            # Update row_num column with marker (and the multi-select check)
+            check = _SELECT_MARK if rid in self._multi_selected else ""
+            num_style = style or ("bold" if check else "")
+            if num_style:
                 table.update_cell(
                     row_key, "row_num",
-                    RichText.from_markup(f"[{style}]{marker_char}{plain_num}[/]"),
+                    RichText.from_markup(
+                        f"[{num_style}]{check}{marker_char}{plain_num}[/]",
+                    ),
                 )
             else:
                 table.update_cell(row_key, "row_num", plain_num)
@@ -3242,7 +3445,11 @@ class TrackerApp(App[None]):
         if event.row_key is None:
             return
         item_id = str(event.row_key.value)
-        self._show_std_detail(item_id)
+        if self._multi_selected:
+            self._selected_item_id = item_id
+            self._show_multi_detail()
+        else:
+            self._show_std_detail(item_id)
         self._update_chain_highlight(item_id)
 
     def on_tree_node_highlighted(self, event: Tree.NodeHighlighted[Any]) -> None:
@@ -3275,7 +3482,11 @@ class TrackerApp(App[None]):
     # ------------------------------------------------------------------
 
     def action_back(self) -> None:
-        """Return from detail view to list view (compact), or dismiss filter."""
+        """Clear a multi-selection, else dismiss the filter, else return from
+        the compact detail view to the list."""
+        if self._multi_selected:
+            self._clear_multi_selection()
+            return
         if self._filter_active:
             self._dismiss_filter()
             return
@@ -3289,6 +3500,9 @@ class TrackerApp(App[None]):
         if self._layout_tier not in ("standard", "wide"):
             return
         self._tree_mode = not self._tree_mode
+        # The tree has no multi-select; drop it rather than act on rows the
+        # user can no longer see.
+        self._multi_selected.clear()
         self._apply_layout()
 
         # If switching to tree and we have a selection, the tree
@@ -3329,11 +3543,10 @@ class TrackerApp(App[None]):
     def action_toggle_full_ids(self) -> None:
         """Toggle between shortest-unique-prefix and full ID display."""
         self._show_full_ids = not self._show_full_ids
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def action_toggle_edit_mode(self) -> None:
-        """WI-zonur: Ctrl-E toggles the per-message edit-mode window.
+        """Ctrl-E toggles the per-message edit-mode window (WI-zonur).
 
         Human-authority only (the underlying `edit_mode_on/off` Store methods
         raise `HumanAuthorityError` when invoked by an agent uid). The TUI is
@@ -3352,7 +3565,7 @@ class TrackerApp(App[None]):
             self.notify(f"Edit-mode toggle failed: {exc}", severity="error")
         self._update_edit_mode_banner()
         # Tombstones may now be filtered/restored — pick that up.
-        self._reload_active_table()
+        self._rebuild_in_place()
 
     def _update_edit_mode_banner(self) -> None:
         """Refresh the edit-mode banner widget with current state.
@@ -3393,8 +3606,7 @@ class TrackerApp(App[None]):
         else:
             self._hidden_statuses.add(status)
         self._update_status_filter_bar()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _update_status_filter_bar(self) -> None:
         """Refresh the status filter bar text.
@@ -3471,8 +3683,7 @@ class TrackerApp(App[None]):
             self.notify("Could not save display order (permission denied)",
                         severity="warning")
         self._selected_item_id = item.id
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _ensure_custom_order(self, displayed: list[CompiledItem]) -> None:
         """Populate ``_custom_order`` from *displayed* items if incomplete.
@@ -3503,8 +3714,7 @@ class TrackerApp(App[None]):
         else:
             self._hidden_tags.add(tag)
         self._update_status_filter_bar()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _increment_toggle_count(self, key: str) -> None:
         """Bump toggle count for *key* in the current session."""
@@ -3523,8 +3733,7 @@ class TrackerApp(App[None]):
         self._hidden_tags.clear()
         self._hide_tagged = False
         self._update_status_filter_bar()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
         if self._filter_panel_visible:
             self._refresh_filter_panel()
 
@@ -3538,8 +3747,7 @@ class TrackerApp(App[None]):
         )
         self._hide_tagged = bool(self._last_filters.get("hide_tagged", False))
         self._update_status_filter_bar()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
         if self._filter_panel_visible:
             self._refresh_filter_panel()
 
@@ -3680,8 +3888,7 @@ class TrackerApp(App[None]):
             if key == "meta:tagged":
                 self._hide_tagged = not self._hide_tagged
                 self._update_status_filter_bar()
-                self._reload_active_table()
-                self._restore_selection()
+                self._rebuild_in_place()
             self._increment_toggle_count(key)
         if self._filter_panel_visible:
             self._refresh_filter_panel()
@@ -3891,8 +4098,8 @@ class TrackerApp(App[None]):
                 x = ann.cell_x * cell_w
                 y = ann.cell_y * cell_h + y_offset + cell_h * 0.75
                 text = sanitize_label_text(ann.text)
-                # Use cell_h as font size (matches SVG grid) instead
-                # of hardcoded 14px (WI-gikut fix)
+                # Use cell_h as font size (matches SVG grid) rather
+                # than a fixed size (WI-gikut)
                 font_size = cell_h * 0.8
                 elements.append(
                     f'<text x="{x:.1f}" y="{y:.1f}" '
@@ -3983,12 +4190,75 @@ class TrackerApp(App[None]):
         that internal scroll; scheduling the restore for after the next
         render pass lets the new virtual size settle first.
         """
-        saved_scroll = self._capture_active_scroll()
-        self._load_items()
         if select_id:
             self._selected_item_id = select_id
-        self._restore_selection()
-        self.call_after_refresh(self._restore_active_scroll, saved_scroll)
+        self._rebuild_in_place(reload_items=True)
+
+    def _rebuild_in_place(self, *, reload_items: bool = False) -> None:
+        """Rebuild the item list without moving the user's place in it.
+
+        Every rebuild that is not a new search — Mark Read / Mark Unread,
+        a status or tag toggle, the full-ID toggle, a reorder, a write, a
+        background reload — goes through here. ``_populate_table`` clears the
+        table and leaves the cursor on row 0, which scrolls the viewport to
+        the top, so a rebuild that skipped this would jump the list to the
+        top.
+
+        Captures the scroll offset and the cursor row, rebuilds (re-reading
+        items from the TrackerSet when *reload_items*), puts the cursor back
+        on the selected item (or, if that item is gone, on the same row
+        index), and restores the offset after the next refresh. If the cursor
+        was on screen before, it is kept on screen; if the user had scrolled
+        it out of view (mouse wheel), the offset alone is restored, so a
+        background reload never yanks the view back to the cursor.
+        """
+        saved_scroll = self._capture_active_scroll()
+        saved_row = self._capture_cursor_row()
+        cursor_was_visible = self._cursor_in_view()
+        if reload_items:
+            self._load_items()
+        else:
+            self._reload_active_table()
+        self._restore_selection(fallback_row=saved_row)
+        if self._multi_selected:
+            self._prune_multi_selection()
+        self.call_after_refresh(
+            self._restore_active_scroll, saved_scroll,
+            keep_cursor_visible=cursor_was_visible,
+        )
+
+    def _cursor_in_view(self) -> bool:
+        """True when the active table's cursor row is inside its viewport.
+
+        Every row is added at the default height of one line, so a row's
+        virtual y is its index and the viewport spans the content height
+        minus the fixed header.
+        """
+        table = self._active_table()
+        if table is None or not table.row_count:
+            return False
+        header = table.header_height if table.show_header else 0
+        top = table.scroll_y
+        bottom = top + table.scrollable_content_region.height - header
+        return top <= table.cursor_row < bottom
+
+    def _capture_cursor_row(self) -> int | None:
+        """Return the active table's cursor row, or ``None`` before mount."""
+        table = self._active_table()
+        return None if table is None else table.cursor_row
+
+    def _active_table(self) -> DataTable[Any] | None:
+        """Return the DataTable of the current tier, or ``None`` before mount
+        (no screen yet, so ``query_one`` raises), as in
+        ``_capture_active_scroll``."""
+        widget_id = (
+            "#std-table" if self._layout_tier in ("standard", "wide")
+            else "#item-table"
+        )
+        try:
+            return self.query_one(widget_id, DataTable)
+        except Exception:  # defensive pre-mount path: no screen yet
+            return None
 
     def _capture_active_scroll(self) -> tuple[str, float] | None:
         """Return ``(widget_id, scroll_y)`` for the currently-rendered item
@@ -4011,6 +4281,7 @@ class TrackerApp(App[None]):
 
     def _restore_active_scroll(
         self, saved: tuple[str, float] | None,
+        *, keep_cursor_visible: bool = False,
     ) -> None:
         """Restore a scroll offset previously captured via
         ``_capture_active_scroll``.
@@ -4021,6 +4292,13 @@ class TrackerApp(App[None]):
         Textual's ``scroll_to`` clamps the y offset to the table's
         scrollable bounds, so overflow is harmless. A broad ``Exception``
         catch mirrors ``_capture_active_scroll`` for the pre-mount case.
+
+        The offset is applied immediately. With *keep_cursor_visible* (the
+        cursor was on screen before the rebuild) the cursor is then scrolled
+        into view, which moves the viewport only when the rebuild put the
+        cursor outside it (rows above it were filtered away, so the restored
+        offset no longer shows it). When the list did not change under the
+        cursor, the offset stays exactly as it was.
         """
         if saved is None:
             return
@@ -4036,7 +4314,13 @@ class TrackerApp(App[None]):
                 table = self.query_one(widget_id)
             except Exception:  # noqa: S112  # nosec B112 — defensive pre-mount path; no logger available on unmounted App
                 continue
-            table.scroll_to(y=saved_y, animate=False)
+            table.scroll_to(y=saved_y, animate=False, immediate=True)
+            if (
+                keep_cursor_visible
+                and isinstance(table, DataTable)
+                and table.row_count
+            ):
+                table.move_cursor(row=table.cursor_row, scroll=True)
             return
 
     def _check_external_writes(self) -> None:
@@ -4060,7 +4344,7 @@ class TrackerApp(App[None]):
         """
         if len(self.screen_stack) > 1:
             return
-        # Refresh the WI-zonur edit-mode banner on every tick so the countdown
+        # Refresh the edit-mode banner (WI-zonur) on every tick so the countdown
         # ticks down smoothly even when no ops have changed.
         self._update_edit_mode_banner()
         try:
@@ -4077,42 +4361,141 @@ class TrackerApp(App[None]):
             return
 
     # ------------------------------------------------------------------
+    # Multi-selection (Shift+click / Space on the std table)
+    # ------------------------------------------------------------------
+
+    def _row_num_label(self, idx: int, item_id: str) -> str:
+        """The ``#`` cell text: the 1-based row number, with the
+        multi-select check in front when the row is selected."""
+        check = _SELECT_MARK if item_id in self._multi_selected else ""
+        return f"{check}{idx + 1}"
+
+    def on_item_table_row_shift_clicked(
+        self, message: ItemTable.RowShiftClicked,
+    ) -> None:
+        """Shift+click toggles the clicked row in the multi-selection.
+
+        Starting a selection takes the row that was highlighted before the
+        click as its first member, so highlight-then-Shift+click selects
+        both. The cursor follows the click.
+        """
+        anchor = self._selected_item_id
+        if not self._multi_selected and anchor and anchor != message.item_id:
+            self._multi_selected.add(anchor)
+        self._multi_selected ^= {message.item_id}
+        table = self.query_one("#std-table", DataTable)
+        self._selected_item_id = message.item_id
+        table.move_cursor(row=message.row_index)
+        self._refresh_selection_view()
+
+    def on_item_table_row_plain_clicked(
+        self, message: ItemTable.RowPlainClicked,
+    ) -> None:
+        """A plain click ends a multi-selection and shows the clicked item."""
+        if not self._multi_selected:
+            return
+        self._multi_selected.clear()
+        self._selected_item_id = message.item_id
+        self._refresh_selection_view()
+
+    def action_toggle_select(self) -> None:
+        """Space: add or remove the highlighted row in the multi-selection.
+
+        The keyboard route to the same selection, for terminals that keep
+        Shift+click for their own text selection and never report it.
+        Standard/wide table only; a no-op in compact tier and tree view.
+        """
+        if self._layout_tier not in ("standard", "wide") or self._tree_mode:
+            return
+        item = self._get_selected_item()
+        if item is None:
+            return  # pragma: no cover — an empty table has no cursor row
+        self._multi_selected ^= {item.id}
+        self._refresh_selection_view()
+
+    def _clear_multi_selection(self) -> None:
+        self._multi_selected.clear()
+        self._refresh_selection_view()
+
+    def _prune_multi_selection(self) -> None:
+        """Keep only selected items that are still rows of the std table, so
+        a batch action never reaches an item the user can no longer see,
+        and redraw the selection view."""
+        try:
+            table = self.query_one("#std-table", DataTable)
+        except NoMatches:  # pragma: no cover — race: compose not finished
+            return
+        listed = {str(rk.value) for rk in table.rows}
+        if self._layout_tier not in ("standard", "wide") or self._tree_mode:
+            listed = set()
+        self._multi_selected &= listed
+        self._refresh_selection_view()
+
+    def _refresh_selection_view(self) -> None:
+        """Redraw the check marks and the right panel for the current
+        selection state."""
+        item_id = self._selected_item_id
+        if item_id is None:
+            return  # pragma: no cover — a row is always highlighted here
+        self._update_chain_highlight(item_id)
+        if self._multi_selected:
+            self._show_multi_detail()
+        else:
+            self._show_std_detail(item_id)
+
+    def _show_multi_detail(self) -> None:
+        """Right panel for a multi-selection: a generic message, since the
+        detail view is per item."""
+        n = len(self._multi_selected)
+        noun = "item" if n == 1 else "items"
+        lines = [
+            f"[bold]({n} {noun} selected)[/bold]",
+            "",
+            "Mark Read / Mark Unread apply to every selected item.",
+            "Shift+click or Space adds or removes a row; "
+            "Esc or a plain click clears the selection.",
+        ]
+        if self._selected_item_id:
+            lines += [
+                "",
+                "[dim]Other keys act on the highlighted row: "
+                f"{self._selected_item_id}[/dim]",
+            ]
+        self.query_one("#std-detail-content", Static).update("\n".join(lines))
+        if self._layout_tier == "wide":
+            self.query_one("#activity-content", Static).update("")
+
+    # ------------------------------------------------------------------
     # Human read/unread state management
     # ------------------------------------------------------------------
 
     def _mark_human_read(self, item_id: str) -> None:
-        """Mark an item as read by the human.
-
-        Stores the override in ``_human_read_state`` keyed by discussion
-        length so auto-toggle can invalidate it when new entries arrive.
-        """
-        item = next((i for i in self._items if i.id == item_id), None)
-        if not item:
-            return  # pragma: no cover
-        self._human_read_state[item_id] = {
-            "read": True,
-            "discussion_len": len(item.discussion),
-        }
-        self._save_human_read_state()
-        self._reload_active_table()
-        self._restore_selection()
+        """Mark an item as read by the human."""
+        self._set_human_read([item_id], read=True)
 
     def _mark_human_unread(self, item_id: str) -> None:
-        """Mark an item as unread by the human.
+        """Mark an item as unread by the human."""
+        self._set_human_read([item_id], read=False)
 
-        Stores the override in ``_human_read_state`` keyed by discussion
-        length so auto-toggle can invalidate it when new entries arrive.
+    def _set_human_read(self, item_ids: list[str], *, read: bool) -> None:
+        """Set the human read state of every item in *item_ids* at once.
+
+        Stores each override in ``_human_read_state`` keyed by discussion
+        length so auto-toggle can invalidate it when new entries arrive,
+        then saves the preferences once and rebuilds the list once, however
+        many items there are (the batch Mark Read of a multi-selection).
         """
-        item = next((i for i in self._items if i.id == item_id), None)
-        if not item:
-            return  # pragma: no cover
-        self._human_read_state[item_id] = {
-            "read": False,
-            "discussion_len": len(item.discussion),
-        }
+        by_id = {i.id: i for i in self._items}
+        items = [by_id[i] for i in item_ids if i in by_id]
+        if not items:
+            return  # pragma: no cover — ids come from the listed rows
+        for item in items:
+            self._human_read_state[item.id] = {
+                "read": read,
+                "discussion_len": len(item.discussion),
+            }
         self._save_human_read_state()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _save_human_read_state(self) -> None:
         """Persist the human read state to the preferences file."""
@@ -4131,15 +4514,17 @@ class TrackerApp(App[None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses: chat Send, mark-read, mark-unread."""
-        if event.button.id == "mark-read":
+        if event.button.id in ("mark-read", "mark-unread"):
+            read = event.button.id == "mark-read"
+            if self._multi_selected:
+                targets = sorted(self._multi_selected)
+                self._set_human_read(targets, read=read)
+                state = "read" if read else "unread"
+                self.notify(f"Marked {len(targets)} item(s) {state}")
+                return
             item = self._get_selected_item()
             if item:
-                self._mark_human_read(item.id)
-            return
-        if event.button.id == "mark-unread":
-            item = self._get_selected_item()
-            if item:
-                self._mark_human_unread(item.id)
+                self._set_human_read([item.id], read=read)
             return
         if event.button.id != "chat-send":
             return

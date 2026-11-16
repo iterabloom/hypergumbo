@@ -1,17 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""docs-prose:F1 / G7 — the docs-vs-argparse gate.
+"""The docs-vs-argparse gate (docs-prose:F1 / G7).
 
-The structural fix for the INV-rotup CLI-help/README-drift umbrella. The
-docs-prose:F2 sweep corrected stale CLI documentation by hand (a removed
-ripgrep reference in ``--debug`` help, a README flag with the wrong
-subcommand scope, …); that drift could accumulate only because *nothing*
-diffed the documentation against the argparse parser. This gate is that
-missing diff. Four standing checks, all reading the live ``build_parser()``:
+CLI documentation drifts from the parser — help text promising a deleted code
+path, a README flag with the wrong subcommand scope — whenever nothing diffs
+the documentation against the argparse parser. This gate is that diff
+(history: INV-rotup, docs-prose:F2). Four standing checks, all reading the
+live ``build_parser()``:
 
 1. **Removed-feature denylist.** Names of features/flags that were removed
-   must never reappear in the ``--help --all`` output. This is the exact
-   class that produced INV-bugiz (``--debug`` help still promised
-   "ripgrep vs Python fallback decisions" for a code path that was deleted).
+   must never reappear in the ``--help --all`` output, e.g. ``--debug`` help
+   promising "ripgrep vs Python fallback decisions" for a code path that no
+   longer exists (INV-bugiz).
 
 2. **README invocation surface.** Every ``hypergumbo …`` example in a fenced
    README code block must reference only subcommands and flags that exist in
@@ -40,8 +39,8 @@ missing diff. Four standing checks, all reading the live ``build_parser()``:
    listed value must load through ``load_claims`` while an unlisted one is
    refused.
 
-Liveness floors (the G2 lesson — a silent zero-case run must be a loud red,
-not a vacuous green): ``test_readme_has_invocations`` guards check 2 against
+Liveness floors (a silent zero-case run must be a loud red, not a vacuous
+green): ``test_readme_has_invocations`` guards check 2 against
 an extraction that breaks to ``[]``, and ``test_removed_feature_absent_from_help``
 asserts the help text is substantive before searching it.
 """
@@ -64,9 +63,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 README = REPO_ROOT / "README.md"
 BASELINE = REPO_ROOT / ".ci" / "cli-flag-matrix.json"
 
-# Smallest README invocation count that proves the extractor is live. 22 are
-# parsed today; a floor of 10 survives routine doc edits while catching a
-# regex/fence break that would otherwise zero out the surface check.
+# Smallest README invocation count that proves the extractor is live. The
+# floor sits well below the README's actual count, so it survives routine doc
+# edits while catching a regex/fence break that would zero out the surface check.
 _MIN_README_INVOCATIONS = 10
 
 # Features/flags removed from the CLI. Their names must never reappear in help
@@ -119,17 +118,12 @@ def _main_injection_subcommands() -> set[str]:
     """The subcommand-name set ``main()`` keys its default-``sketch`` argv
     injection off of (cli.py).
 
-    THIS USED TO PARSE A LITERAL OUT OF ``main``'s SOURCE, because the set was
-    a hand-written one and could diverge from ``build_parser()`` — a
-    build_parser subcommand missing from the literal mis-injects ``sketch`` at
-    runtime. WI-talaz removed the divergence instead of continuing to police
-    it: ``main`` now derives the set from the parser, so the two cannot differ.
-
-    The gate is kept and re-aimed rather than deleted. It now asserts the
-    DERIVATION is still in place, because reintroducing a literal would restore
-    the original hazard silently — and that hazard is not hypothetical, it cost
-    a run: ``init-catalogs`` parsed correctly and was then rejected as "not a
-    valid subcommand" with a suggestion to run a different one."""
+    ``main`` derives the set from the parser, so the two cannot differ. This
+    asserts the DERIVATION is still in place: a hand-written literal can
+    diverge from ``build_parser()``, and a subcommand missing from it
+    mis-injects ``sketch`` at runtime — the subcommand parses correctly and is
+    then rejected as "not a valid subcommand" with a suggestion to run a
+    different one. (history: WI-talaz)"""
     src = inspect.getsource(cli.main)
     assert "subcommands = _registered_subcommands(parser)" in src, (
         "main() no longer derives its subcommand set from the parser — if a "
@@ -263,8 +257,7 @@ def test_readme_has_invocations() -> None:
 
 
 def test_main_injection_subcommands_match_parser() -> None:
-    """The hardcoded subcommand set main() uses for default-sketch injection
-    must equal build_parser()'s subcommands — otherwise the gate validates
+    """The subcommand set main() uses for default-sketch injection must equal build_parser()'s subcommands — otherwise the gate validates
     README examples against a rule the real CLI does not enforce."""
     parser_subs = set(_subcommands(cli.build_parser()))
     main_subs = _main_injection_subcommands()
@@ -338,8 +331,8 @@ def test_diff_matrix_reports_drift() -> None:
 def test_config_help_discloses_it_takes_no_substrate_input() -> None:
     """`config` shows the bundled per-language config (it reads no repo or
     behavior-map substrate), so it accepts neither a path nor ``--input``. Its
-    help must say so — INV-rotup pass-30 found ``config --input`` is rejected
-    with no hint in the help text (a flag-availability discoverability gap).
+    help must say so; otherwise ``config --input`` is rejected with no hint in
+    the help text (a flag-availability discoverability gap; INV-rotup).
     """
     config_parser = _subcommands(cli.build_parser())["config"]
     help_text = config_parser.format_help().lower()
@@ -350,10 +343,10 @@ def test_config_help_discloses_it_takes_no_substrate_input() -> None:
 # ─────────────── check 4: a registry-backed vocabulary in help ──────────────
 # ``verify-claims --help`` tells a claim author which ``boundary:`` values are
 # legal and promises that any other value fails with exit 2. The validator
-# checks against the io-boundary registry; until WI-jizil the help carried a
-# hand-written copy of that closed set, and each value the registry gained was
-# missing from it (command_launch, net_listen, then navigation_read). These
-# tests read the RENDERED help, so they pin what a user sees.
+# checks against the io-boundary registry, so the help derives its list from
+# the same registry — a hand-written copy goes stale each time the registry
+# gains a value (WI-jizil). These tests read the RENDERED help, so they pin
+# what a user sees.
 _BOUNDARY_HEADING = "Boundary values"
 
 
@@ -381,13 +374,12 @@ def _help_boundary_enumeration(help_text: str) -> set[str]:
 
 def test_verify_claims_help_lists_exactly_the_validators_boundaries() -> None:
     """The help's boundary list IS the set ``load_claims`` validates against:
-    nothing missing (the filed instance was ``navigation_read``), nothing
-    extra."""
+    nothing missing, nothing extra."""
     from hypergumbo_core.io_boundary import KNOWN_IO_BOUNDARIES
     from hypergumbo_core.io_boundary_types import all_io_boundary_names
 
     listed = _help_boundary_enumeration(_verify_claims_help())
-    assert "navigation_read" in listed  # the filed instance, named
+    assert "navigation_read" in listed  # one registry value, named explicitly
     assert listed == set(all_io_boundary_names()) == set(KNOWN_IO_BOUNDARIES), (
         f"only in help: {sorted(listed - set(KNOWN_IO_BOUNDARIES))}; "
         f"only in the validator's set: {sorted(set(KNOWN_IO_BOUNDARIES) - listed)}"

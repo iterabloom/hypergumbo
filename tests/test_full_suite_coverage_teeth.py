@@ -2,17 +2,13 @@
 """WI-kalub Step 3 + 1c-parity: static guards for full-suite coverage teeth and
 the per-PR scoped-gate no-data distinction -- on the LIVE pipelines.
 
-**These guards used to read the dormant files** (INV-hokin). The header said
-``covers: .woodpecker/full-suite.yml`` while every assertion read
-``.github/workflows/full-suite.yml`` and ``.github/workflows/ci.yml``. GitHub
-Actions is disabled under Woodpecker CI (the full-suite schedule was commented
-out on 2026-07-23), so the tests pinned files that run nowhere and would have
-stayed green had the live pipelines lost their teeth. They now read
-``.woodpecker/``.
+**These guards read ``.woodpecker/``, the live pipelines.** Per-PR and cron
+pipelines run on Woodpecker; ``.github/workflows/full-suite.yml`` and
+``ci.yml`` do not gate anything (the GHA full-suite schedule is commented
+out). A guard that read them would pin files that run nowhere and stay green
+if the live pipelines lost their teeth (history: INV-hokin).
 
-**Full-suite teeth (Step 3).** The GHA original scraped each package's coverage
-for a badge and only later gained a ``[ "${COV:-0}" = "100" ]`` assert per
-package job. The Woodpecker port has no scrape: its teeth are
+**Full-suite teeth (Step 3).** The Woodpecker full suite's teeth are
 ``--cov-fail-under=100`` on ONE pytest over every package's tests and sources,
 which fails the step under the runner's ``set -e``. The guard pins, for every
 Woodpecker step that runs the whole package suite (``packages/*/tests/``):
@@ -25,7 +21,7 @@ Woodpecker step that runs the whole package suite (``packages/*/tests/``):
 Which sources it measures is pinned by ``test_ci_package_lists.py``.
 
 **What the live teeth do NOT enforce, stated so nobody reads more into them.**
-The union run is not the GHA per-package run: a line covered only by ANOTHER
+The union run is not a per-package run: a line covered only by ANOTHER
 package's tests counts towards 100% here, so "tests live in the same package as
 the code they cover" (AGENTS.md) is enforced by no live CI, only by the local
 ``check-package-coverage`` (INV-hokin premise audit item 2; partly WI-kahar).

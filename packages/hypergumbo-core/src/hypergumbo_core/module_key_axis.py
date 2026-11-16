@@ -62,8 +62,10 @@ WI-kamin, WI-monul. They file as separate analyzer bugs because no document said
 what the field was for, so each mismatch read as a local defect. Two of them
 turned out to be ONE defect in two languages (INV-fofoj's java half IS
 INV-januj), which is the signature of a missing axis rather than of unrelated
-bugs. Over 65,187 external refs on a 21-repo, 10-language cold cohort, 7.8% of
-slots are not a single module identity.
+bugs. On a 22-repository cold cohort (2026-11-15), 52.0% of the module slots
+on the 138,506 edges that point at an external stand-in are not a single module
+identity: the ``external`` sentinel 46.5%, a disjunction 5.2% (a cpp/c
+``module-set-`` handle 4.3%, a java comma-joined set 0.8%), ``<unknown>`` 0.3%.
 
 The producer surface says the same thing in a different way: 54 ``ExternalRef``
 construction sites across 22 analyzers when this axis was declared (2026-09-01),
@@ -74,9 +76,9 @@ variously ``path_hint``, ``module_hint``, ``module_name``, ``mod``, ``hint``,
 
 SCOPE: THIS DECLARES, IT DOES NOT MIGRATE. Nothing here changes what any
 analyzer emits. ``external_symbol`` node ids embed the module slot
-(``rust:external:0-0:File::open``), so normalising the slot's CONTENT changes
-emitted ids and needs a stable_id scheme bump, which WI-talos DECISION 3 gates
-behind v9/v10 and two releases. That is ADR-0024 step 7 and is WI-marok.
+(``rust:external:0-0:File::open``), so changing what a producer writes into
+the slot changes emitted ids; that is the producer's change (ADR-0024 step 7),
+never this module's.
 """
 
 from __future__ import annotations
@@ -156,7 +158,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
             "would appear in a clean import statement -- NOT the in-scope "
             "alias, which is a property of the importing file. C and C++ "
             "header names (<string.h>) are namespaces in this sense, and so "
-            "are JS/TS relative paths: 2.7% of shipped refs, legitimate."
+            "are JS/TS relative paths."
         ),
         emission_sites=(
             EmissionSite(
@@ -164,13 +166,31 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=2604,
+                line=3334,
                 anchor="module_path=path_hint",
                 note=(
                     "The CORRECT shape, kept as the contrast case: the hint "
                     "is an import alias alone, and the ExternalRef is "
                     "withheld entirely when it is absent rather than being "
                     "filled with something else."
+                ),
+            ),
+            EmissionSite(
+                path=(
+                    "packages/hypergumbo-lang-mainstream/src/"
+                    "hypergumbo_lang_mainstream/bash.py"
+                ),
+                line=1578,
+                anchor='module_path="redirect"',
+                note=(
+                    "The SHELL'S OWN NAMESPACE for its redirection operators "
+                    "(the name slot holds '>', '>>', '<'), as python's "
+                    "`builtins` owns its built-ins. io_primitives/bash.yaml "
+                    "keys four rows on it and taint branches on the "
+                    "`redirect.` prefix. Classified as a sentinel by the "
+                    "2026-09-01 module-key audit, whose keep-trigger ('any "
+                    "catalogue row whose module is literally redirect') was "
+                    "true before the audit was written (WI-daruz)."
                 ),
             ),
         ),
@@ -196,7 +216,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=1136,
+                line=1138,
                 anchor="_module = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
@@ -237,7 +257,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=2533,
+                line=3239,
                 anchor="_module = _external_type or import_aliases.get(callee_name)",
                 note=(
                     "WAS the conflation in its purest form, and the single "
@@ -268,14 +288,17 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
             "from any of them, and since WI-bapuk PREPENDS the namespace a "
             "`std::`-qualified call names (or, for an unqualified call, a "
             "`using namespace` the file declares), because that is another "
-            "home the call could have come from. 6.2% of shipped refs. "
+            "home the call could have come from. "
             "Non-conformant as an "
             "IDENTITY while being the honest answer to the question: the "
             "analyzer genuinely does not know which. Already handled "
             "downstream by two deliberately different quantifiers -- "
             "_module_hint_candidates asks ANY (INV-funuf) and "
             "module_hint_disjuncts asks ALL (INV-zimud) -- which is why the "
-            "shape wants its own field rather than removal."
+            "shape wants its own field rather than removal. Since INV-jahuf "
+            "a set of two or more is written as a `module-set-` handle and "
+            "stored once in the map's `module_sets`; both quantifiers expand "
+            "it (module_sets.expand_module_slot)."
         ),
         emission_sites=(
             EmissionSite(
@@ -283,8 +306,8 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=2243,
-                anchor='module_hint = ",".join(_slots)',
+                line=2702,
+                anchor="module_hint = module_slot(_slots)",
                 note=(
                     "Every header the file can see (its own includes, quoted "
                     "and angled, and what in-repo headers include, "
@@ -303,25 +326,13 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
         axis=AXIS_UNCERTAINTY,
         description=(
             "A fixed marker standing for 'no module identity was recovered': "
-            "'external' (1.5% of refs) and bash's 'redirect' (0.1%, whose "
-            "name slot is '>' -- not a call at all). Non-conformant as an "
-            "identity, and load-bearing as an admission: io_boundary and "
-            "taint share _UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the "
-            "two cannot drift about what 'no module' looks like."
-        ),
-        emission_sites=(
-            EmissionSite(
-                path=(
-                    "packages/hypergumbo-lang-mainstream/src/"
-                    "hypergumbo_lang_mainstream/bash.py"
-                ),
-                line=1589,
-                anchor='module_path="redirect"',
-                note=(
-                    "A shell redirection is not a call; the name slot holds "
-                    "the operator ('>')."
-                ),
-            ),
+            "'external'. Non-conformant as an identity, and "
+            "load-bearing as an admission: io_boundary and taint share "
+            "_UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the two cannot "
+            "drift about what 'no module' looks like. bash's 'redirect' was "
+            "listed here and is NOT one (WI-daruz): io_primitives/bash.yaml "
+            "ships `module: redirect` rows that match it, so it is the "
+            "shell's own namespace -- see `namespace`."
         ),
     ),
     # ------------------------------------------------------------------
@@ -350,7 +361,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=7531,
+                line=7918,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
@@ -362,7 +373,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=1115,
+                line=1377,
                 anchor="JS_KNOWN_GLOBALS",
                 note=(
                     "The globals treated as addressable owners — 11 as of "

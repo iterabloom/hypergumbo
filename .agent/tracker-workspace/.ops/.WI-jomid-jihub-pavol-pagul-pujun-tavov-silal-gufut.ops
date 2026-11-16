@@ -1,0 +1,21 @@
+- op: create  # 9f8c
+  at: '2026-10-20T23:14:28Z'  # 9f8c
+  by: agent  # 9f8c
+  actor: jgstern_agent  # 9f8c
+  clock: 1  # 9f8c
+  nonce: 9f8c  # 9f8c
+  data:  # 9f8c
+    kind: work_item  # 9f8c
+    title: "README coverage badge: restore it (Woodpecker writes badges/coverage.json) or add a static one; owner deferred 2026-10-20"  # 9f8c
+    status: needs_human_review  # 9f8c
+    priority: 4  # 9f8c
+    parent:  # 9f8c
+    tags:  # 9f8c
+    - ci_infrastructure  # 9f8c
+    - docs  # 9f8c
+    isbefore: []  # 9f8c
+    duplicate_of: []  # 9f8c
+    not_duplicate_of: []  # 9f8c
+    pr_ref:  # 9f8c
+    description: "DEFERRED BY THE OWNER 2026-10-20 -- the decision below is theirs.\n\nWHAT HAPPENED TO THE OLD BADGE. #442 (2026-01-18) added a shields.io endpoint badge reading coverage.json from a `badges` branch, written by a CI step after each green full run. That step is still in .github/workflows/full-suite.yml (\"Update coverage badge and marker\"), but that workflow is workflow_dispatch-only since its schedule went off around 07-23. The full suite moved to .woodpecker/full-suite.yml, whose port dropped the badge step without listing it among the drops. 791a0fb30c (07-26) removed the dead Codeberg badge from README. The `badges` branch still exists on GitHub, frozen at 2026-06-28 (\"100%\"); its last-green-sha.txt is no longer read by smart-test (WI-kalub). No Woodpecker pipeline uses a secret today, so a CI step has no credential to push with.\n\nOPTION 1 (dynamic). A step in .woodpecker/full-suite.yml after test-all-packages, running on success or failure, writes the measured percentage (red \"failing\" on failure) to badges/coverage.json; README badge: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/iterabloom/hypergumbo/badges/coverage.json. NEEDS FROM THE OWNER: a push credential as a Woodpecker secret restricted to cron events -- narrowest is a repo deploy key with write, or a fine-grained token with Contents: write on this repo only.\n\nOPTION 2 (static). \"coverage 100% (enforced)\" linking to the full-suite config. No infra; cannot show a red run.\n\nEither way the badge tracks only the coverage step: on 2026-10-20 the full-suite cron was red on test-agent-infra (since fixed, #1781) while coverage stayed 100%."  # 9f8c
+    fields: {}  # 9f8c

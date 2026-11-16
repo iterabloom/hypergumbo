@@ -112,6 +112,3 @@ patterns:
   # Test case
   - concept: test
     base_class: "^(TestCase|IntegrationTestCase)$"
-
-linkers:
-  - http

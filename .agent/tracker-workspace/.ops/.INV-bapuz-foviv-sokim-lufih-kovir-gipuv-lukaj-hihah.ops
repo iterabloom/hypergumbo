@@ -23,3 +23,10 @@
     fields:  # 7f7a
       statement: "An import of a declared dependency is never stamped 'undeclared'; a name py_deps cannot map stays unstamped."  # 7f7a
       root_cause: "py_deps maps dist names to import names via installed metadata; an uninstalled dist yields no mapping, and DependencyManifest.directness_for returns 'undeclared' for any unmatched module once a pyproject produced entries (supply_chain.py ~180-208)."  # 7f7a
+- op: discuss  # 315f
+  at: '2026-11-01T10:56:10Z'  # 315f
+  by: agent  # 315f
+  actor: jgstern_agent  # 315f
+  clock: 2  # 315f
+  nonce: 315f  # 315f
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: fixture pyproject declaring requests+beautifulsoup4 (bs4 not installed), app imports both; hypergumbo survey: python:bs4 external_symbol meta.directness='undeclared', requests 'direct', and the same output's toml beautifulsoup4 dependency node says 'direct'. Code moved: the cited supply_chain ~180-208 is now classify_directness/directness_for at ~230-290; py_deps still inverts importlib.metadata.packages_distributions() of the running interpreter. MECHANISM: directness classifier treats 'no dist->import mapping' (dist not installed in hypergumbo's own env) as 'declared nowhere' and stamps undeclared. SHARES MECHANISM WITH: WI-hotut."  # 315f

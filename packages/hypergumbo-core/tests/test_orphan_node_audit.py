@@ -144,25 +144,17 @@ def use_calculator():
 # Baseline ratchet — orphan ceilings per kind
 # ---------------------------------------------------------------------------
 
-# Baselines from 2026-05-27 self-analysis triage (WI-hahor).
-# Each ceiling is the observed count + 10% headroom, rounded up.
-# Ratchet down as root causes are fixed.
+# Per-kind ceilings on self-analysis orphan counts. Each ceiling is an observed
+# count plus about 10% headroom, rounded up. Ratchet a ceiling down when a
+# root-cause fix lowers its count; never raise one to absorb a regression.
 #
-# dispatch:F4 (2026-06-25): adding function/variable to CONTAINABLE_KINDS rooted
-# top-level members at their file anchor (~8.8k new file->member contains edges),
-# de-orphaning them. Self-analysis dropped function orphans 93->14 and variable
-# orphans 130->0, so those ceilings ratchet down (240->30, 120->15).
-# WI-zajaz (2026-07-01): adding `field` to CONTAINABLE_KINDS rooted class-body
-# attributes at their class (1862 field orphans -> ~0), which had dominated the
-# ratio.
-# WI-logon (2026-07-01): `kind="file"` anchors are EXEMPT from the ratchet — the
-# file-anchor work (WI-dagif/WI-rajod) mints a kind="file" anchor per discovered
-# path, and the nodeless config/doc cohort is legitimately edgeless (a config
-# file with no code has an anchor and no edges), the same rationale by which the
-# module docstring already calls external_symbol boundary nodes legitimate. File
-# anchors are dropped from BOTH the per-kind ceilings and the ratio's
-# numerator+denominator (the ratio then measures the orphan rate among
-# *connectable* nodes), via _RATCHET_EXEMPT_KINDS below.
+# ``kind="file"`` anchors are EXEMPT from the ratchet: one is minted per
+# discovered path, and a config or doc file with no code has an anchor and no
+# edges — legitimately edgeless, for the same reason the module docstring gives
+# for external_symbol boundary nodes. File anchors are dropped from BOTH the
+# per-kind ceilings and the ratio's numerator and denominator (so the ratio
+# measures the orphan rate among *connectable* nodes), via
+# _RATCHET_EXEMPT_KINDS below. (history: WI-hahor, WI-zajaz, WI-logon)
 _RATCHET_EXEMPT_KINDS = frozenset({"file"})
 
 ORPHAN_CEILINGS: dict[str, int] = {

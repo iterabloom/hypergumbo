@@ -33,3 +33,18 @@
   clock: 3  # 8533
   nonce: '8533'  # 8533
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): stays deferred as-is — the trigger remains the first real use of tags describe/deprecate. The design is now pre-registered as option 1: a two-file split (committed tag_descriptions.yaml for editorial fields + gitignored tag_catalog.yaml cache). No further design work needed when the trigger fires; implement the registered split then."  # 8533
+- op: discuss  # 0cb7
+  at: '2026-11-01T10:55:50Z'  # 0cb7
+  by: agent  # 0cb7
+  actor: jgstern_agent  # 0cb7
+  clock: 4  # 0cb7
+  nonce: 0cb7  # 0cb7
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at 100b6fbb6e: tag_catalog.yaml is still gitignored and tag_descriptions.yaml does not exist, but the deferral trigger has fired: the catalog holds 9 editorial descriptions and 1 deprecation (for_deletion, 2026-06-08), set 2026-05-17..2026-09-25, including an owner-dictated post_release_focus description. Some predate the 2026-06-11 stays-deferred ruling. None of it exists in git. The registered option-1 split is now actionable. MECHANISM: project-wide editorial decisions stored in a gitignored cache file with no durable copy. SHARES MECHANISM WITH: INV-kimad."  # 0cb7
+- op: update  # 5f90
+  at: '2026-11-01T10:55:50Z'  # 5f90
+  by: agent  # 5f90
+  actor: jgstern_agent  # 5f90
+  clock: 5  # 5f90
+  nonce: 5f90  # 5f90
+  set:  # 5f90
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at 100b6fbb6e: tag_catalog.yaml is still gitignored and tag_descriptions.yaml does not exist, but the deferral trigger has fired: the catalog holds 9 editorial descriptions and 1 deprecation (for_deletion, 2026-06-08), set 2026-05-17..2026-09-25, including an owner-dictated post_release_focus description. Some predate the 2026-06-11 stays-deferred ruling. None of it exists in git. The registered option-1 split is now actionable. (Original text below; the review entry in the thread has the evidence.)\n\nWI-lifal added `tracker tags` with a catalog at `.agent/tracker/tag_catalog.yaml` containing two distinct concerns:\n\n- **Cache fields** (derivable from op log): tag set membership, `created_on`, `last_used`, count.\n- **Editorial fields** (only present when a human/agent explicitly sets them): `description`, `deprecated`, `in_favor_of`, `last_modified`.\n\nRight now the file is gitignored (sibling to `tui_preferences.json`) because (a) it's pure cache as long as nobody uses `tags describe` / `tags deprecate`, and (b) committing it would create merge-conflict churn on `last_used` timestamps every time any agent ran the subcommand.\n\nOnce someone actually uses the editorial verbs, that intent needs to persist project-wide — but the current file shape mixes per-user telemetry with project-wide editorial decisions in the same YAML. Two plausible designs:\n\n1. Split into two files: `tag_descriptions.yaml` (committed, editorial fields only) + `tag_catalog.yaml` (gitignored cache).\n2. Keep one file, but write a normalization layer that strips telemetry fields when persisting and recomputes them on read. Then commit the whole thing.\n\nDefer until the first time someone actually invokes `tags describe` or `tags deprecate`. Until then, the gitignored-cache state is correct and stable.\n\nSurfaced 2026-04-29 during release prep for hypergumbo 3.0.0 / tracker 0.5.0 — the catalog showed up as a release-blocking untracked file with all-empty editorial fields."  # 5f90

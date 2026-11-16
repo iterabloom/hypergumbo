@@ -74,9 +74,11 @@ patterns:
     decorator: "^make_executable_schema$"
 
   # ==================== GRAPHENE PATTERNS ====================
-  # Graphene resolver prefix (resolve_field_name)
+  # Graphene resolver: a `resolve_<field>` method on an ObjectType. Reads the
+  # method's parent_base_classes, which the python analyzer stamps (WI-sorop).
   - concept: graphql_resolver
-    name_pattern: "^resolve_"
+    method_name: "^resolve_\\w+$"
+    parent_base_class: "^(graphene\\.)?ObjectType$"
 
   # Graphene ObjectType
   - concept: graphql_schema
@@ -105,6 +107,3 @@ patterns:
   # Graphene relay
   - concept: graphql_schema
     base_class: "^(Node|Connection|ConnectionField)$"
-
-linkers:
-  - graphql_resolver

@@ -11,7 +11,8 @@ Uses the TreeSitterAnalyzer base class for orchestration:
 1. Uses tree-sitter-ini grammar from tree-sitter-language-pack
 2. extract_symbols_from_file: extracts sections and their settings
 3. Categorizes settings by domain (database, logging, etc.)
-4. Masks sensitive values (passwords, secrets, tokens)
+4. Masks sensitive values (passwords, secrets, tokens) with the shared
+   ``hypergumbo_core.analyze.config_secrets`` key test and constant mask
 
 Symbols Extracted
 -----------------
@@ -39,6 +40,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     make_doc_symbol_ids,
 )
+from hypergumbo_core.analyze.config_secrets import MASK, is_sensitive_key
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -71,13 +73,6 @@ def find_ini_files(repo_root: Path) -> list[Path]:
 
 
 
-# Keywords that indicate sensitive values
-SENSITIVE_KEYWORDS = {
-    "password", "passwd", "pwd", "secret", "token", "key", "api_key",
-    "apikey", "auth", "credential", "private", "encryption", "cert",
-    "certificate", "ssh_key", "access_key", "secret_key",
-}
-
 # Keywords that indicate configuration domains
 DOMAIN_KEYWORDS = {
     "database": {"db", "database", "mysql", "postgres", "sqlite", "mongo", "redis"},
@@ -100,19 +95,6 @@ def _categorize_section(section_name: str) -> str:
             if keyword in name_lower:
                 return domain
     return "general"
-
-
-def _is_sensitive_key(key_name: str) -> bool:
-    """Check if a key name indicates a sensitive value."""
-    name_lower = key_name.lower()
-    return any(keyword in name_lower for keyword in SENSITIVE_KEYWORDS)
-
-
-def _mask_value(value: str) -> str:
-    """Mask a sensitive value."""
-    if not value or len(value) <= 2:
-        return "***"
-    return value[0] + "*" * (len(value) - 2) + value[-1]
 
 
 def _extract_ini_symbols(
@@ -246,9 +228,9 @@ def _extract_setting(
         (current_section,) if current_section else (),
     )
 
-    # Check if value is sensitive
-    is_sensitive = _is_sensitive_key(key_name)
-    display_value = _mask_value(value) if is_sensitive else value
+    # The key/mask rules are shared with the other config analyzers (INV-puvoh).
+    is_sensitive = is_sensitive_key(key_name)
+    display_value = MASK if is_sensitive else value
 
     # Determine category from current section
     category = _categorize_section(current_section) if current_section else "general"

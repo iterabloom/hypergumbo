@@ -20,3 +20,10 @@
     pr_ref:  # dca0
     description: "Split from WI-kosar-sanoz-gojif-foruv-pupul-kusil-kavot-zidut on 2026-10-17 (PR #1702 fixed the five known members and gave each its own fixture). The general guard the item asked for is a parametrised harness over every registered analyzer with a minimal per-language two-file snippet (file A: callable F calling helperA; file B: callable F calling helperB) asserting that every calls/references edge whose src is F has src.path == dst.path. Needs ~60 language snippets; analyzers that fail it on first run are new members of the family and get their own INV. The regex-on-variable-name gate was evaluated and rejected (11 of 13 hits are legitimate callee lookups), so this harness is the enforced shape."  # dca0
     fields: {}  # dca0
+- op: discuss  # 4285
+  at: '2026-11-01T10:55:44Z'  # 4285
+  by: agent  # 4285
+  actor: jgstern_agent  # 4285
+  clock: 2  # 4285
+  nonce: '4285'  # 4285
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: CURRENT. Checked at dev 100b6fbb6e: no parametrised two-file same-name harness over registered analyzers exists; only PR #1702's per-analyzer fixtures (ac651f01d5). Spot check on a lua/perl/R/ruby fixture (F calls helperA in a.*, helperB in b.*): all 8 calls edges from F stay in their own file. The other ~56 analyzers are unchecked; the item stands as filed. MECHANISM: analyzers find the enclosing caller by name via the repo-wide resolver instead of by position; no cross-analyzer guard. SHARES MECHANISM WITH: WI-kosar."  # 4285

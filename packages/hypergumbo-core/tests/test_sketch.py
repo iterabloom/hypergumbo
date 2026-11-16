@@ -10,13 +10,16 @@ import pytest
 
 from hypergumbo_core.sketch import (
     generate_sketch,
+    QUOTED_TEXT_NOTICE,
     estimate_tokens,
     truncate_to_tokens,
     _collect_source_files,
     _format_source_files,
+    _MIN_LISTED_FILES,
     _format_additional_files,
     _format_language_stats,
     _run_analysis,
+    _entry_label,
     _format_entrypoints,
     _format_datamodels,
     _format_symbols,
@@ -43,23 +46,29 @@ from hypergumbo_core.sketch import (
 )
 from hypergumbo_core.ranking import compute_centrality, _is_test_path
 from hypergumbo_core.profile import detect_profile
+from hypergumbo_core.ranking import STATIC_TEST_REACH_BLIND_SPOT
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import Entrypoint, EntrypointKind
-from hypergumbo_core.datamodels import DataModel, DataModelKind
+from hypergumbo_core.datamodels import DataModel
 from hypergumbo_core.cli import cmd_sketch, _validate_require_sections
 
 
 def _has_sentence_transformers() -> bool:
-    """Check if sentence-transformers is already installed.
+    """Check if sentence-transformers is installed AND its weights are cached.
 
     Only checks via import - does NOT try to install because pip install
     during test collection causes OOM on small CI runners.
     CI can optionally install sentence-transformers in a separate step.
+
+    The cached weights are part of the precondition: analysis never
+    downloads a model (INV-gujus), so with the library but no weights these
+    tests would exercise the degraded path, not the one they are about.
     """
     try:
         import sentence_transformers
         del sentence_transformers  # Silence F841 (unused variable)
-        return True
+        from hypergumbo_core.cli import _embedding_models_cached
+        return _embedding_models_cached()
     except ImportError:
         return False
 
@@ -665,12 +674,9 @@ class TestGenerateSketch:
     def test_many_directories(self, tmp_path: Path) -> None:
         """Sketch handles projects with many directories.
 
-        Each directory holds a file. The Structure tree summarizes the
-        survey's file universe, cold or warm (INV-jumim), so a directory
-        with nothing in it is not part of that universe. This test made 15
-        EMPTY directories while a cold sketch still re-walked the working
-        tree, and a warm run of the same test would already have printed no
-        directories at all.
+        Each directory holds a file because the Structure tree summarizes
+        the survey's file universe, cold or warm (INV-jumim), and a
+        directory with nothing in it is not part of that universe.
         """
         for i in range(15):
             (tmp_path / f"dir_{i:02d}").mkdir()
@@ -693,23 +699,11 @@ class TestGenerateSketch:
         which ranks files by importance and collapses the rest — so these labels
         are structurally unreachable there, for real repositories always.
 
-        This fixture used to say ``print('hello')``, which reached the labelled
-        renderer only because Python emitted NO edge for a bare builtin call
-        (INV-foluz). Fixing that gave the one-line fixture an in-degree and
-        flipped it to the other renderer.
-
-        MEASURED ACROSS THAT FIX, five bodies, both arms — exactly one moved::
-
-            VERSION = '1.0'      map        -> map
-            x = 1                map        -> map
-            def f(): pass        map        -> map
-            print('hello')       LABELLED   -> map      <- the only change
-            (empty)              LABELLED   -> LABELLED
-
-        A comment-only body was then confirmed LABELLED in both arms before
-        being adopted here, rather than assumed: two earlier candidates
-        (``VERSION = '1.0'`` and ``x = 1``) look inert and are not — a
-        module-level assignment defines a symbol.
+        Bodies that look inert are not: ``VERSION = '1.0'``, ``x = 1`` and
+        ``def f(): pass`` each define a symbol, and ``print('hello')`` emits a
+        call edge for the builtin call (INV-foluz), so all of them take the
+        map-driven tree. A comment-only body (like an empty file) stays on the
+        labelled renderer.
         """
         (tmp_path / "lib").mkdir()
         (tmp_path / "test").mkdir()
@@ -1107,9 +1101,10 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_skips_blockquote_note_in_paragraph(self, tmp_path: Path) -> None:
         """INV-modor: a '> ' blockquote note (a callout/aside) that continues a
-        paragraph is skipped, not embedded raw with its markdown prefix. Before
-        the fix the '> ' prefix leaked into readme_description and the cut landed
-        mid-blockquote; skipping the aside leaves a clean, complete sentence."""
+        paragraph is skipped, not embedded raw with its markdown prefix.
+        Embedding it would leak the '> ' prefix into readme_description and
+        could cut mid-blockquote; skipping the aside leaves a clean, complete
+        sentence."""
         from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text(
@@ -1486,6 +1481,311 @@ class TestCollectSourceFiles:
         assert "test_core.py" not in names
 
 
+class TestSectionsHoldTheirBudgets:
+    """Key Symbols and the Additional Files listing are cut by what they
+    cost (WI-borap, WI-nurid).
+
+    Both were sized by a count: the budget divided by a constant number of
+    tokens per entry. A symbol with a signature and a docstring, or a long
+    path, costs several times the constant, so the section passed its
+    budget. The sketch's last step then drops whole sections from the end
+    until the text fits, and the section that passed its budget went with
+    them: killbill at 32k without source lost Key Symbols and Additional
+    Files entirely.
+    """
+
+    DOC = "Does one thing, and this sentence says at some length what that thing is."
+
+    def _symbols(self, files: int, per_file: int) -> tuple[list[Symbol], dict, dict]:
+        symbols = [
+            Symbol(id=f"f{f}:{i}", name=f"file{f}_function_{i}", kind="function",
+                   language="python", path=f"/fake/repo/pkg/module_{f:02d}.py",
+                   span=Span(i + 1, i + 2, 1, 2))
+            for f in range(files) for i in range(per_file)]
+        docstrings = {s.id: self.DOC for s in symbols}
+        signatures = {s.id: "(first: str, second: int = 0) -> dict[str, int]" for s in symbols}
+        return symbols, docstrings, signatures
+
+    def _key_symbols(self, max_tokens: int | None, out: list[Symbol] | None = None) -> str:
+        symbols, docstrings, signatures = self._symbols(files=12, per_file=4)
+        return _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=36,
+                               docstrings=docstrings, signatures=signatures,
+                               selected_symbols_out=out, max_tokens=max_tokens)
+
+    @staticmethod
+    def _blocks(section: str) -> str:
+        """The section up to its closing lines."""
+        return section.split("\n(... and ")[0]
+
+    def test_key_symbols_stops_at_its_budget(self) -> None:
+        unbounded = self._key_symbols(None)
+        bounded = self._key_symbols(600)
+        # Reach: the same symbols cost far more than the budget.
+        assert len(self._blocks(unbounded)) > 2 * 600 * 4
+        assert len(self._blocks(bounded)) <= 600 * 4
+        # ... and the budget is used, not merely respected.
+        assert len(self._blocks(bounded)) > 600 * 4 * 0.7
+
+    def test_files_cut_for_the_budget_are_counted_as_other_files(self) -> None:
+        section = self._key_symbols(600)
+        shown, more, other = TestACutListSaysWhoseEntriesItLeftOut._accounting(section)
+        assert 1 <= len(shown) < 12
+        assert all(shown[f] + more[f] == 4 for f in shown)
+        assert other == (4 * (12 - len(shown)), 12 - len(shown))
+
+    def test_the_first_file_is_shown_whatever_the_budget(self) -> None:
+        section = self._key_symbols(1)
+        shown, _more, other = TestACutListSaysWhoseEntriesItLeftOut._accounting(section)
+        assert len(shown) == 1 and other == (44, 11)
+
+    def test_the_statistic_holds_the_symbols_shown(self) -> None:
+        picked: list[Symbol] = []
+        section = self._key_symbols(600, picked)
+        shown, _more, _other = TestACutListSaysWhoseEntriesItLeftOut._accounting(section)
+        assert len(picked) == sum(shown.values())
+        assert all(f"`{s.name}(" in section for s in picked)
+
+    def test_a_block_cut_for_the_budget_leaves_no_trace(self) -> None:
+        """Two files define ``helper``. The second file's block would say
+        the name was shown once already; the block is cut, so nothing may
+        say that a second appearance was left out."""
+        doc = self.DOC * 3
+        symbols = [
+            Symbol(id=f"{file}:{name}", name=name, kind="function", language="python",
+                   path=f"/fake/repo/{file}", span=Span(line, line + 1, 1, 2))
+            for file, names in (("a.py", ["helper", "alpha"]), ("b.py", ["helper", "beta"]))
+            for line, name in enumerate(names, 1)]
+        docstrings = {s.id: doc for s in symbols}
+        whole = _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=4,
+                                docstrings=docstrings)
+        cut = _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=4,
+                              docstrings=docstrings, max_tokens=140)
+        assert "would have appeared multiple times" in whole  # reach
+        assert "### `b.py`" not in cut
+        assert "would have appeared multiple times" not in cut
+        assert "(... and 2 more symbols across 1 other file)" in cut
+
+    def _listing(self, tmp_path: Path, max_list_tokens: int | None) -> tuple[str, list[Path]]:
+        deep = "services/billing/src/main/resources/configuration/environments"
+        for i in range(30):
+            path = tmp_path / deep / f"settings-for-environment-{i:02d}.yaml"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"environment: {i}\n")
+        section, listed, _degree = _format_additional_files(
+            tmp_path, [], [], {}, max_files=30, rank_overviews=False,
+            max_list_tokens=max_list_tokens)
+        return section, listed
+
+    def test_the_additional_files_listing_stops_at_its_budget(self, tmp_path: Path) -> None:
+        """Thirty paths of about 27 tokens each: 12 tokens an entry, the old
+        estimate, undercounts them by more than half."""
+        whole, all_listed = self._listing(tmp_path, None)
+        section, listed = self._listing(tmp_path, 200)
+        assert len(all_listed) == 30 and len(whole) > 2 * 200 * 4  # reach
+        entries = [ln for ln in section.splitlines() if ln.startswith("- `")]
+        assert len(entries) == len(listed) < 30
+        assert sum(len(ln) + 1 for ln in entries) <= 200 * 4
+        assert section.splitlines()[-1] == f"- ... and {30 - len(listed)} more files"
+
+    def test_the_listing_statistic_covers_the_files_listed(self, tmp_path: Path) -> None:
+        """Two documents, each mentioning one called function. With room
+        for one entry the statistic counts that document's function only."""
+        symbols = [
+            Symbol(id=f"s:{name}", name=name, kind="function", language="python",
+                   path=str(tmp_path / "src" / "app.py"), span=Span(line, line + 1, 1, 2))
+            for line, name in enumerate(("parse_configuration", "run_the_server"), 1)]
+        in_degree = {"s:parse_configuration": 5, "s:run_the_server": 7}
+        (tmp_path / "a_first.md").write_text("Explains `parse_configuration` at length.\n")
+        (tmp_path / "b_second.md").write_text("Explains `run_the_server` at length.\n")
+
+        def degree(max_list_tokens: int | None) -> tuple[int, int]:
+            _section, listed, total = _format_additional_files(
+                tmp_path, [], symbols, in_degree, max_files=10, rank_overviews=False,
+                max_list_tokens=max_list_tokens)
+            return len(listed), total
+
+        assert degree(None) == (2, 12)
+        listed, total = degree(1)
+        assert listed == 1 and total in (5, 7)
+
+    def test_the_first_additional_file_is_listed_whatever_the_budget(
+            self, tmp_path: Path) -> None:
+        section, listed = self._listing(tmp_path, 1)
+        assert len(listed) == 1
+        assert section.splitlines()[-1] == "- ... and 29 more files"
+
+    def test_source_content_is_printed_when_no_file_fits_whole(self, tmp_path: Path) -> None:
+        """Forty source files of about 3,000 tokens and a budget of 3,000.
+        No file fits whole, so the top-ranked ones are cut to their shares.
+        The shares used to be spread over all forty files, the first fell
+        under the 500-token floor, the section was empty, and the sketch was
+        809 tokens of its 3,000.
+
+        A file's size is what matters here, not what is in it, so each is
+        four functions and 110 lines of comment, in paragraphs of five (an
+        excerpt is cut at a paragraph break): forty files of ninety
+        functions each took the pipeline 10 s to analyse (18 s in a loaded
+        run), for an assertion about a budget."""
+        for f in range(40):
+            notes = "".join(
+                f"# note {i} on module {f}: a line of commentary to give the file some size, "
+                f"and then a little more of it\n" + ("\n" if i % 5 == 4 else "")
+                for i in range(110))
+            body = "".join(
+                f"def module{f}_step_{i}(value: int) -> int:\n"
+                f"    return value + {i}\n\n\n" for i in range(4))
+            (tmp_path / f"module_{f:02d}.py").write_text(
+                f'"""Module {f}."""\n\n{notes}\n\n{body}')
+        sizes = [len(p.read_text()) // 4 for p in tmp_path.glob("module_*.py")]
+        assert len(sizes) == 40 and min(sizes) >= 2500  # reach: none fits its share
+        sketch = generate_sketch(tmp_path, max_tokens=3000, with_source=True)
+        assert "## Source Files Content" in sketch
+        content = sketch.split("## Source Files Content", 1)[1].split("\n## ", 1)[0]
+        assert content.count("START of module_") >= 1
+        assert "[...truncated...]" in content
+        assert len(content) // 4 >= 1000
+        assert len(sketch) // 4 <= 3000
+
+    def test_a_sketch_keeps_every_section_when_entries_are_costly(self, tmp_path: Path) -> None:
+        """End to end, without source content: functions with signatures
+        and docstrings, and deep configuration paths. Key Symbols gets most
+        of what is left of the budget; sized by a count it passed the
+        budget, and the last step dropped it and Additional Files."""
+        doc = "Does one thing, and this sentence says at some length what that thing is."
+        for f in range(25):
+            body = "".join(
+                f"def module{f}_function_{i}(first: str, second: int = 0) -> dict[str, int]:\n"
+                f'    """{doc}"""\n    return {{first: second}}\n\n\n'
+                for i in range(6))
+            (tmp_path / f"module_{f:02d}.py").write_text(f'"""Module {f}."""\n\n\n{body}')
+        deep = tmp_path / "deploy" / "environments" / "configuration" / "per-region-settings"
+        deep.mkdir(parents=True)
+        for i in range(40):
+            (deep / f"settings-for-region-{i:02d}.yaml").write_text(f"region: {i}\n")
+        (tmp_path / "README.md").write_text("# Demo\n\nA demo project.\n")
+
+        budget = 4000
+        sketch = generate_sketch(tmp_path, max_tokens=budget)
+        assert "## Key Symbols" in sketch
+        assert "## Additional Files" in sketch
+        assert "settings-for-region-" in sketch.split("## Additional Files")[1]
+        assert len(sketch) // 4 <= budget
+
+
+class TestSourceFilesListingIsSizedByItsEntries:
+    """The Source Files listing holds the share it is given (WI-borap).
+
+    The number of entries used to be the share divided by a constant 12
+    tokens, set when an entry was a bare path. An entry with its module
+    docstring costs about 32, so the section took 2.6 times its share where
+    files carry docstrings. The listing is now cut by what its entries
+    cost, in any language, and a cut listing ends by saying what it left
+    out.
+    """
+
+    @staticmethod
+    def _entries(section: str) -> list[str]:
+        return [ln for ln in section.splitlines()
+                if ln.startswith("- `")]
+
+    def test_the_same_share_shows_fewer_long_entries_than_short_ones(
+            self, tmp_path: Path) -> None:
+        files = [tmp_path / f"m{i:02d}.go" for i in range(30)]
+        described = {f.name: "Package doc: " + "what this file is for. " * 4 for f in files}
+        share = 300  # tokens
+
+        bare = self._entries(_format_source_files(tmp_path, files, max_files=None,
+                                                  max_tokens=share))
+        long = self._entries(_format_source_files(tmp_path, files, max_files=None,
+                                                  max_tokens=share, docstrings=described))
+
+        assert len(bare) == 30
+        assert _MIN_LISTED_FILES < len(long) < 30
+        # The entries shown fit the share; one more would not.
+        cost = len(long[0]) + 1
+        assert len(long) * cost <= share * 4 < (len(long) + 1) * cost
+
+    def test_a_share_too_small_for_one_entry_still_lists_a_few(self, tmp_path: Path) -> None:
+        files = [tmp_path / f"m{i:02d}.rs" for i in range(12)]
+        section = _format_source_files(tmp_path, files, max_files=None, max_tokens=1)
+        assert len(self._entries(section)) == _MIN_LISTED_FILES
+        assert section.splitlines()[-1] == "- ... and 7 more files: top level 7"
+
+    def test_the_listing_is_cut_in_rank_order(self, tmp_path: Path) -> None:
+        files = [tmp_path / f"m{i:02d}.py" for i in range(12)]
+        scores = {f.name: float(i) for i, f in enumerate(files)}
+        section = _format_source_files(tmp_path, files, max_files=None, max_tokens=1,
+                                       density_scores=scores)
+        assert self._entries(section) == [f"- `m{i:02d}.py`" for i in (11, 10, 9, 8, 7)]
+
+    def test_a_cut_listing_says_what_it_left_out(self, tmp_path: Path) -> None:
+        """How many files, how many of them tests, and where they are."""
+        rels = (["src/a.ts", "src/b.ts"]
+                + [f"tests/test_{i}.py" for i in range(4)]
+                + [f"pkg/m{i}.go" for i in range(3)]
+                + ["cmd/x.go", "cmd/y.go", "lib/z.rs", "build.rs"])
+        files = [tmp_path / rel for rel in rels]
+        section = _format_source_files(tmp_path, files, max_files=2)
+        assert self._entries(section) == ["- `src/a.ts`", "- `src/b.ts`"]
+        assert section.splitlines()[-1] == (
+            "- ... and 11 more files (4 of them tests): "
+            "`tests/` 4, `pkg/` 3, `cmd/` 2, 2 elsewhere")
+
+    def test_one_file_left_out_and_no_tests(self, tmp_path: Path) -> None:
+        files = [tmp_path / "a.py", tmp_path / "lib" / "b.py"]
+        section = _format_source_files(tmp_path, files, max_files=1)
+        assert section.splitlines()[-1] == "- ... and 1 more file: `lib/` 1"
+
+    def test_a_listing_that_fits_ends_with_its_last_file(self, tmp_path: Path) -> None:
+        """Control: the closing line appears only when something is left out."""
+        files = [tmp_path / "a.py", tmp_path / "b.py"]
+        section = _format_source_files(tmp_path, files, max_files=None, max_tokens=500)
+        assert section.splitlines()[-1] == "- `b.py`"
+
+    def test_the_in_degree_statistic_covers_the_files_listed_and_no_others(
+            self, tmp_path: Path) -> None:
+        """Every file's function is called once. A budget that lists every
+        file counts every call; one that cuts the listing counts fewer."""
+        text = "what this module is for, said at some length for the reader"
+        count = 40
+        for i in range(count):
+            nxt = (i + 1) % count
+            (tmp_path / f"mod_{i:02d}.py").write_text(
+                f'"""Module {i:02d}: {text}."""\n'
+                f"from mod_{nxt:02d} import f{nxt}\n\n\n"
+                f"def f{i}():\n    return f{nxt}()\n")
+
+        def listed_and_stat(budget: int) -> tuple[int, int]:
+            stats = SketchStats()
+            sketch = generate_sketch(tmp_path, max_tokens=budget, stats_out=stats)
+            section = sketch.split("## Source Files\n", 1)[1].split("\n## ", 1)[0]
+            return len(self._entries(section)), stats.source_files_in_degree
+
+        few, small = listed_and_stat(3000)
+        every, large = listed_and_stat(60000)
+        assert 0 < few < every == count
+        assert 0 < small < large
+
+    def test_a_sketch_keeps_source_files_within_its_share(self, tmp_path: Path) -> None:
+        """End to end: forty files with module docstrings. Without
+        ``--with-source`` the listing's share is a quarter of what is left
+        of the budget, so it is under a quarter of the budget. Sized at 12
+        tokens an entry it was about three times that."""
+        text = "what this module is for, said at some length for the reader"
+        for i in range(40):
+            (tmp_path / f"mod_{i:02d}.py").write_text(
+                f'"""Module {i:02d}: {text}."""\n\n\ndef f{i}():\n    return {i}\n')
+        budget = 3000
+        sketch = generate_sketch(tmp_path, max_tokens=budget)
+        section = sketch.split("## Source Files\n", 1)[1].split("\n## ", 1)[0]
+        entries = self._entries(section)
+        # Reach: entries carry their docstring, and the listing was cut.
+        assert entries and all(" — Module " in entry for entry in entries)
+        assert len(entries) < 40
+        assert "more files" in section
+        assert len(section) // 4 <= budget // 4
+
+
 class TestFormatSourceFiles:
     """Tests for source file formatting."""
 
@@ -1508,7 +1808,7 @@ class TestFormatSourceFiles:
         assert "file_0.py" in result
         assert "file_1.py" in result
         assert "file_2.py" in result
-        assert "... and 7 more files" in result
+        assert result.splitlines()[-1] == "- ... and 7 more files: top level 7"
 
     def test_empty_files_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty file list."""
@@ -1706,7 +2006,7 @@ class TestFormatAdditionalFiles:
             source_files=[source_file],
             symbols=[foo, bar],
             in_degree=in_degree,
-            semantic_top_n=0,  # Disable semantic ranking
+            rank_overviews=False,  # Only the other two lists
         )
 
         # doc_mentions should appear before doc_none due to symbol mentions
@@ -1745,7 +2045,7 @@ class TestFormatAdditionalFiles:
             symbols=[],
             in_degree={},
             max_files=3,
-            semantic_top_n=0,
+            rank_overviews=False,
         )
 
         assert "## Additional Files" in result
@@ -1902,126 +2202,70 @@ class TestFormatAdditionalFiles:
         )
         assert result == ""
 
-    @pytest.mark.skipif(
-        not _has_sentence_transformers(),
-        reason="sentence-transformers not available"
-    )
-    def test_semantic_ranking_with_empty_file(self, tmp_path: Path) -> None:
-        """Verifies semantic ranking handles empty files (returns None embedding).
-
-        This test is skipped on CI where sentence-transformers isn't installed,
-        but runs locally to verify the defensive code path works correctly.
-        The line is marked with pragma:no cover for CI coverage.
-        """
-        # Create an empty file - embedding will return None
-        # Use .md extension for DOCUMENTATION role (ADR-0004)
-        empty_file = tmp_path / "empty.md"
-        empty_file.write_text("")
-        # Create a file with content
-        content_file = tmp_path / "content.md"
-        content_file.write_text("This file has content for embedding")
-        # Create source file (excluded from additional files)
+    def test_an_empty_file_is_still_listed(self, tmp_path: Path) -> None:
+        """A file with no words has no wording score; its role and depth
+        still place it."""
+        (tmp_path / "empty.md").write_text("")
+        (tmp_path / "content.md").write_text("This file has content")
         src = tmp_path / "main.py"
         src.write_text("pass")
 
-        # Run with semantic ranking enabled - empty file should get 0.0 score
         result, _, _ = _format_additional_files(
-            tmp_path,
-            source_files=[src],
-            symbols=[],
-            in_degree={},
-            semantic_top_n=3,  # Enable semantic ranking
+            tmp_path, source_files=[src], symbols=[], in_degree={},
         )
 
-        # Both files should be in output
         assert "## Additional Files" in result
         assert "empty.md" in result
         assert "content.md" in result
 
-    def test_semantic_ranking_fallback_when_embedding_none(
-        self, tmp_path: Path
+    def test_the_overview_order_fills_every_other_slot(self, tmp_path: Path) -> None:
+        """With no README the README-link list is empty, so the first pick
+        is the overview order's: a root-level document, ahead of the deep
+        document the centrality list would have picked."""
+        from hypergumbo_core.sketch import _select_additional_files
+
+        for name in ("a", "b", "c", "d"):
+            deep = tmp_path / "conf" / "deep" / f"{name}.md"
+            deep.parent.mkdir(parents=True, exist_ok=True)
+            deep.write_text(f"{name}: value\n")  # distinct: identical files fold
+        guide = tmp_path / "zz-guide.md"
+        guide.write_text("How this project works, and who it is for.")
+
+        central = {"conf/deep/c.md": 1.0}
+        with_order, candidates, _, _ = _select_additional_files(
+            tmp_path, [], [], {}, max_files=1, cached_centrality_scores=central)
+        without, _, _, _ = _select_additional_files(
+            tmp_path, [], [], {}, max_files=1, rank_overviews=False,
+            cached_centrality_scores=central)
+
+        assert guide in candidates and len(candidates) == 5  # reach
+        assert with_order == [guide]
+        assert without == [tmp_path / "conf" / "deep" / "c.md"]
+
+    def test_selection_needs_no_embedding_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Tests semantic ranking path with mocked embedding returning None.
+        """Additional Files used to embed every candidate (WI-patof). The
+        selection must work, and be the same, with the embedding stack
+        present, absent or broken."""
+        from hypergumbo_core import sketch_embeddings
+        from hypergumbo_core.sketch import _select_additional_files
 
-        This ensures the embedding code path is covered on CI where
-        sentence-transformers isn't installed, by mocking the availability.
-        """
-        from unittest.mock import patch
+        (tmp_path / "README.md").write_text("# Project\n")
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "design.md").write_text("How it works.")
+        (tmp_path / "settings.yaml").write_text("a: 1\n")
+        plain = _select_additional_files(tmp_path, [], [], {})[0]
 
-        # Create files with recognized roles (ADR-0004)
-        (tmp_path / "readme.md").write_text("# Project documentation")
-        (tmp_path / "notes.md").write_text("# Some notes")
-        src = tmp_path / "main.py"
-        src.write_text("pass")
+        def refuse(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("an embedding model was requested")
 
-        # Mock _has_sentence_transformers to return True
-        # and batch_embed_files to return None for all files (simulating failure)
-        def mock_batch_embed(files, **kwargs):
-            return dict.fromkeys(files, None)
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True
-        ), patch(
-            "hypergumbo_core.sketch_embeddings.batch_embed_files",
-            side_effect=mock_batch_embed
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._get_cache_dir",
-            return_value=tmp_path / ".cache"
-        ):
-            result, _, _ = _format_additional_files(
-                tmp_path,
-                source_files=[src],
-                symbols=[],
-                in_degree={},
-                semantic_top_n=2,
-            )
-
-        # Files should still appear (with 0.0 score)
-        assert "## Additional Files" in result
-        assert "readme.md" in result
-        assert "notes.md" in result
-
-    def test_semantic_ranking_with_mock_embeddings(self, tmp_path: Path) -> None:
-        """Tests semantic ranking with mocked embeddings.
-
-        This ensures the full embedding code path is covered on CI.
-        """
-        from unittest.mock import patch, MagicMock
-
-        # Create files with recognized roles (ADR-0004)
-        (tmp_path / "readme.md").write_text("# Project documentation")
-        (tmp_path / "notes.md").write_text("# Some notes")
-        src = tmp_path / "main.py"
-        src.write_text("pass")
-
-        # Use a MagicMock for the embedding - we don't need actual numpy
-        fake_embedding = MagicMock()
-
-        def mock_batch_embed(files, **kwargs):
-            return dict.fromkeys(files, fake_embedding)
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True
-        ), patch(
-            "hypergumbo_core.sketch_embeddings.batch_embed_files",
-            side_effect=mock_batch_embed
-        ), patch(
-            "hypergumbo_core.sketch_embeddings.compute_5w1h_similarity", return_value=0.5
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._get_cache_dir",
-            return_value=tmp_path / ".cache"
-        ):
-            result, _, _ = _format_additional_files(
-                tmp_path,
-                source_files=[src],
-                symbols=[],
-                in_degree={},
-                semantic_top_n=2,
-            )
-
-        assert "## Additional Files" in result
+        monkeypatch.setattr(sketch_embeddings, "_load_embedding_model", refuse)
+        for available in (True, False):
+            monkeypatch.setattr(
+                sketch_embeddings, "_has_sentence_transformers", lambda a=available: a)
+            assert _select_additional_files(tmp_path, [], [], {})[0] == plain
+        assert len(plain) == 3  # reach: something was selected
 
     def test_uses_cached_centrality_scores(self, tmp_path: Path) -> None:
         """Uses pre-computed centrality scores from cached results."""
@@ -2044,7 +2288,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,  # Disable semantic ranking to use only centrality
+            rank_overviews=False,  # Only the other two lists
             cached_centrality_scores=cached_scores,
         )
 
@@ -2071,7 +2315,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,  # Disable semantic to focus on README links
+            rank_overviews=False,  # Disable semantic to focus on README links
         )
 
         # README should be first, linked file should be included
@@ -2094,7 +2338,7 @@ class TestFormatAdditionalFiles:
             symbols=[],
             in_degree={},
             max_files=3,
-            semantic_top_n=0,
+            rank_overviews=False,
         )
 
         # Should show "... and N more files"
@@ -2117,7 +2361,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,
+            rank_overviews=False,
             token_budget=600,  # Small budget
             include_content=True,
         )
@@ -2141,7 +2385,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,
+            rank_overviews=False,
             token_budget=800,
             include_content=True,
         )
@@ -2163,7 +2407,7 @@ class TestFormatAdditionalFiles:
             source_files=[src],
             symbols=[],
             in_degree={},
-            semantic_top_n=0,
+            rank_overviews=False,
             token_budget=100,  # Very small budget
             include_content=True,
         )
@@ -2178,9 +2422,8 @@ class TestFormatAdditionalFiles:
 
         ``read_text(errors="replace")`` only substitutes *invalid* encoding
         sequences; U+0000 is a valid code point, so a binary file's NULs pass
-        through verbatim. Before the fix a cold-cache ``sketch -t 4000`` emitted
-        12,792 NUL bytes into the rendered section. The file is now omitted with
-        an explanatory placeholder instead, at any token budget.
+        through verbatim, so such a file is omitted with an explanatory
+        placeholder instead, at any token budget.
         """
         text_file = tmp_path / "GUIDE.md"
         text_file.write_text("# Guide\n\nReal readable documentation content.\n")
@@ -3039,13 +3282,12 @@ class TestFormatEntrypoints:
 
 
 class TestEntrypointSectionBudget:
-    """INV-liraj follow-through: the Entry Points section stays inside its budget.
+    """The Entry Points section stays inside its budget (INV-liraj).
 
-    ``max_entries`` used to cap each display GROUP, so a repo with hundreds
-    of routes AND hundreds of library exports printed max_entries of each
-    (thc: 57 + 57 + more — 22.7k of a 31.7k-char sketch). It is now one
-    budget shared across groups: small groups are shown whole and the rest
-    is split evenly among the large ones.
+    ``max_entries`` is one budget shared across display groups rather than a
+    cap per group, so a repo with hundreds of routes AND hundreds of library
+    exports cannot print max_entries of each. Small groups are shown whole
+    and the rest is split evenly among the large ones.
     """
 
     @staticmethod
@@ -3101,8 +3343,8 @@ class TestRouteMarkerEntryLine:
     """A route marker's line names its handler instead of repeating itself.
 
     A route marker is named after the route ("GET /feed") and its entrypoint
-    label is "HTTP GET /feed", so the old line said the route twice and never
-    said what serves it.
+    label is "HTTP GET /feed", so a line built from those alone would say
+    the route twice and never say what serves it.
     """
 
     def _render(self, tmp_path: Path, meta: dict) -> str:
@@ -3132,6 +3374,542 @@ class TestRouteMarkerEntryLine:
         assert "- `GET /feed` — `lib/app_web/router.ex`" in out
 
 
+class TestARouteIsListedOnce:
+    """One line per route: the route, what serves it, where that is (WI-tukag).
+
+    A framework's route can leave two entry points, the route marker and the
+    function that serves it, and the section listed both: one route, two
+    lines, the second with a raw symbol id where the handler's name belongs.
+    The rule is about the two records of one route in any framework; the
+    cases below are Starlette (the handler is a symbol id on the marker), Go
+    (the linker's dispatch edge) and Express (a handler name).
+    """
+
+    @staticmethod
+    def _route(tmp_path: Path, sid: str, name: str, rel: str, *, rank: float = 0.9,
+               **meta: object) -> tuple[Symbol, Entrypoint]:
+        sym = Symbol(id=sid, name=name, kind="function", language="python",
+                     path=str(tmp_path / rel), span=Span(40, 40, 1, 9),
+                     meta={"framework_role": "route", **meta})
+        return sym, Entrypoint(symbol_id=sid, kind=EntrypointKind.HTTP_ROUTE,
+                               confidence=0.9, label=f"HTTP {name}", rank_score=rank)
+
+    @staticmethod
+    def _handler(tmp_path: Path, sid: str, name: str, rel: str, *, rank: float = 0.95,
+                 docstring: str | None = None,
+                 kind: EntrypointKind = EntrypointKind.HTTP_ROUTE,
+                 label: str = "HTTP route /api/items") -> tuple[Symbol, Entrypoint]:
+        sym = Symbol(id=sid, name=name, kind="function", language="python",
+                     path=str(tmp_path / rel), span=Span(10, 20, 1, 2), docstring=docstring)
+        return sym, Entrypoint(symbol_id=sid, kind=kind, confidence=0.95,
+                               label=label, rank_score=rank)
+
+    @staticmethod
+    def _dispatch(src: str, dst: str) -> Edge:
+        return Edge(id=f"e:{src}->{dst}", src=src, dst=dst, edge_type="dispatches_to",
+                    line=1, origin="test", origin_run_id="test")
+
+    @staticmethod
+    def _render(tmp_path: Path, entries: list[tuple[Symbol, Entrypoint]],
+                edges: list[Edge] | None = None, extra: list[Symbol] | None = None,
+                max_entries: int = 20) -> list[str]:
+        out = _format_entrypoints([e for _s, e in entries],
+                                  [s for s, _e in entries] + (extra or []),
+                                  tmp_path, max_entries=max_entries, edges=edges)
+        return [line for line in out.split("\n") if line.startswith("- ")]
+
+    HANDLER_ID = "python:pkg/serve.py:10-20:_api_add_item:function"
+
+    def test_the_filed_case(self, tmp_path: Path) -> None:
+        """The marker holds the handler's symbol id; both were entry points."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, self.HANDLER_ID, "_api_add_item", "pkg/serve.py",
+                          docstring="Create a new item."),
+            self._route(tmp_path, "m", "POST /api/items", "pkg/serve.py",
+                        handler_ref=self.HANDLER_ID),
+        ])
+        assert lines == [
+            "- `POST /api/items` → `_api_add_item` — `pkg/serve.py` — Create a new item."]
+
+    def test_a_handler_that_is_no_entry_point_is_still_named(self, tmp_path: Path) -> None:
+        """The id is the map's business; the line shows the name it stands for."""
+        handler, _ep = self._handler(tmp_path, self.HANDLER_ID, "_api_add_item",
+                                     "pkg/handlers.py")
+        lines = self._render(tmp_path, [
+            self._route(tmp_path, "m", "POST /api/items", "pkg/serve.py",
+                        handler_ref=self.HANDLER_ID)], extra=[handler])
+        assert lines == ["- `POST /api/items` → `_api_add_item` — `pkg/handlers.py`"]
+
+    def test_an_id_the_map_does_not_hold_shows_its_name(self, tmp_path: Path) -> None:
+        lines = self._render(tmp_path, [
+            self._route(tmp_path, "m", "POST /api/items", "pkg/serve.py",
+                        handler_ref="python:pkg/gone.py:1-2:removed_view:function")])
+        assert lines == ["- `POST /api/items` → `removed_view` — `pkg/serve.py`"]
+
+    def test_a_name_with_colons_in_it_is_not_taken_for_an_id(self, tmp_path: Path) -> None:
+        """Rust and C++ handlers are written ``api::users::list``."""
+        lines = self._render(tmp_path, [
+            self._route(tmp_path, "m", "GET /users", "src/routes.rs",
+                        handler_ref="api::users::list")])
+        assert lines == ["- `GET /users` → `api::users::list` — `src/routes.rs`"]
+
+    def test_a_route_paired_by_the_linkers_dispatch_edge(self, tmp_path: Path) -> None:
+        """Go: the marker names ``h.ServeHTTP``; the edge says which symbol."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, "h", "readHandler.ServeHTTP", "web/read.go",
+                          label="HTTP route /metrics", docstring="Serve the metrics."),
+            self._route(tmp_path, "m", "GET /metrics", "web/api.go",
+                        handler_name="h.ServeHTTP"),
+        ], edges=[self._dispatch("m", "h")])
+        assert lines == [
+            "- `GET /metrics` → `readHandler.ServeHTTP` — `web/read.go` — Serve the metrics."]
+
+    def test_a_handler_name_alone_pairs_nothing(self, tmp_path: Path) -> None:
+        """Express without a linker edge. A name is not an identity: two
+        functions may share it, so both entries keep their lines."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, "h", "listUsers", "handlers/users.js",
+                          label="HTTP route /users"),
+            self._route(tmp_path, "m", "GET /users", "routes.js", handler_ref="listUsers"),
+        ])
+        assert lines == ["- `listUsers` (HTTP route /users) — `handlers/users.js`",
+                         "- `GET /users` → `listUsers` — `routes.js`"]
+
+    def test_several_dispatch_targets_pair_nothing(self, tmp_path: Path) -> None:
+        """A middleware chain: the marker does not say which one serves it."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, "h", "serve", "web/h.go", label="HTTP route /x"),
+            self._handler(tmp_path, "g", "auth", "web/g.go", label="HTTP route /x"),
+            self._route(tmp_path, "m", "GET /x", "web/api.go"),
+        ], edges=[self._dispatch("m", "h"), self._dispatch("m", "g")])
+        assert len(lines) == 3
+        assert "- `GET /x` — `web/api.go`" in lines
+
+    def test_one_handler_serving_two_routes_is_named_on_both(self, tmp_path: Path) -> None:
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, self.HANDLER_ID, "items", "pkg/serve.py",
+                          docstring="List or create."),
+            self._route(tmp_path, "m1", "GET /api/items", "pkg/serve.py",
+                        handler_ref=self.HANDLER_ID),
+            self._route(tmp_path, "m2", "POST /api/items", "pkg/serve.py",
+                        handler_ref=self.HANDLER_ID),
+        ])
+        assert lines == [
+            "- `GET /api/items` → `items` — `pkg/serve.py` — List or create.",
+            "- `POST /api/items` → `items` — `pkg/serve.py` — List or create."]
+
+    def test_the_same_function_in_another_group_keeps_its_line(self, tmp_path: Path) -> None:
+        """Listed as a CLI command it says something the route line does not."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, self.HANDLER_ID, "serve", "pkg/serve.py",
+                          kind=EntrypointKind.CLI_COMMAND, label="Click command"),
+            self._route(tmp_path, "m", "GET /", "pkg/serve.py", handler_ref=self.HANDLER_ID),
+        ])
+        assert lines == ["- `serve` (Click command) — `pkg/serve.py`",
+                         "- `GET /` → `serve` — `pkg/serve.py`"]
+
+    def test_the_route_takes_the_better_of_the_two_ranks(self, tmp_path: Path) -> None:
+        """The handler ranked first and its line is the one dropped: the
+        route must not fall below the cut for it."""
+        entries = [
+            self._handler(tmp_path, self.HANDLER_ID, "top", "a.py", rank=0.99),
+            self._route(tmp_path, "m", "GET /top", "a.py", rank=0.10,
+                        handler_ref=self.HANDLER_ID),
+        ] + [self._route(tmp_path, f"r{i}", f"GET /r{i}", "b.py", rank=0.5) for i in range(6)]
+        lines = self._render(tmp_path, entries, max_entries=5)
+        assert lines[0] == "- `GET /top` → `top` — `a.py`"
+
+    def test_a_route_counts_once_toward_the_cut_and_the_rest(self, tmp_path: Path) -> None:
+        entries: list[tuple[Symbol, Entrypoint]] = []
+        for i in range(8):
+            hid = f"python:pkg/v.py:{i}-{i}:view{i}:function"
+            entries.append(self._handler(tmp_path, hid, f"view{i}", "pkg/v.py"))
+            entries.append(self._route(tmp_path, f"m{i}", f"GET /r{i}", "pkg/urls.py",
+                                       handler_ref=hid))
+        lines = self._render(tmp_path, entries, max_entries=5)
+        assert len(lines) == 6
+        assert all(" → `view" in line for line in lines[:5])
+        assert lines[5] == "- ... and 3 more (`hypergumbo routes` lists all)"
+
+    def test_only_a_dispatch_edge_says_what_serves_a_route(self, tmp_path: Path) -> None:
+        """A marker may call or reference other entries; that is not serving."""
+        edge = self._dispatch("m", "h")
+        edge.edge_type = "references"
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, "h", "helper", "web/h.go", label="HTTP route /x"),
+            self._route(tmp_path, "m", "GET /x", "web/api.go"),
+        ], edges=[edge])
+        assert lines == ["- `helper` (HTTP route /x) — `web/h.go`", "- `GET /x` — `web/api.go`"]
+
+    def test_the_markers_own_id_outranks_an_edge(self, tmp_path: Path) -> None:
+        """The producer resolved the handler while it parsed; the linker's
+        edge to something else does not replace that."""
+        lines = self._render(tmp_path, [
+            self._handler(tmp_path, self.HANDLER_ID, "view", "pkg/v.py"),
+            self._handler(tmp_path, "w", "wrapper", "pkg/w.py"),
+            self._route(tmp_path, "m", "GET /x", "pkg/urls.py", handler_ref=self.HANDLER_ID),
+        ], edges=[self._dispatch("m", "w")])
+        assert sorted(lines) == ["- `GET /x` → `view` — `pkg/v.py`",
+                                 "- `wrapper` (HTTP route /api/items) — `pkg/w.py`"]
+
+    def test_a_sketch_pairs_by_the_edges_of_its_map(
+            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """End to end on Go's net/http, where only the linker's edge says
+        which function serves ``/metrics``: the docstring on the route's line
+        is the handler's, found through that edge."""
+        import json
+
+        from hypergumbo_core.cli import main
+
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        repo = tmp_path / "app"
+        repo.mkdir()
+        (repo / "go.mod").write_text("module example.com/app\n\ngo 1.21\n")
+        (repo / "main.go").write_text(
+            "package main\n\nimport \"net/http\"\n\n"
+            "// serveMetrics writes the metrics page.\n"
+            "func serveMetrics(w http.ResponseWriter, r *http.Request) {\n"
+            "\tw.Write([]byte(\"ok\"))\n}\n\n"
+            "func main() {\n\tmux := http.NewServeMux()\n"
+            "\tmux.HandleFunc(\"/metrics\", serveMetrics)\n"
+            "\thttp.ListenAndServe(\":8080\", mux)\n}\n")
+        out = tmp_path / "out.json"
+        assert main(["survey", str(repo), "--out", str(out), "--no-handler-slices"]) == 0
+        sketch = generate_sketch(repo, max_tokens=4000,
+                                 cached_results=json.loads(out.read_text()))
+        routes = [line for line in sketch.split("\n") if "/metrics` →" in line]
+        assert routes == ["- `ANY /metrics` → `serveMetrics` — `main.go` — "
+                          "serveMetrics writes the metrics page."]
+
+    def test_a_marker_that_names_itself_pairs_nothing(self, tmp_path: Path) -> None:
+        lines = self._render(tmp_path, [
+            self._route(tmp_path, "python:a.py:1-1:GET /x:function", "GET /x", "a.py",
+                        handler_ref="python:a.py:1-1:GET /x:function")])
+        assert lines == ["- `GET /x` → `GET /x` — `a.py`"]
+
+
+class TestEntryPointLinesIdentifyTheirEntry:
+    """An Entry Points line says which entry it is, in any language.
+
+    A docstring replaces the path on the line (WI-kipod), which leaves the
+    entry unlocated. That is harmless for a unique name and not for a shared
+    one: every Go command has a ``main``, every Go package a ``New``, every
+    serverless function a ``handler``. The rule is about names shown twice,
+    never about a particular name or language.
+    """
+
+    @staticmethod
+    def _entry(tmp_path: Path, sid: str, name: str, rel: str, *,
+               language: str = "go", line: int = 1, docstring: str | None = None,
+               kind: EntrypointKind = EntrypointKind.CLI_MAIN,
+               label: str = "Go main()") -> tuple[Symbol, Entrypoint]:
+        sym = Symbol(id=sid, name=name, kind="function", language=language,
+                     path=str(tmp_path / rel), span=Span(line, line + 3, 1, 2),
+                     docstring=docstring)
+        return sym, Entrypoint(symbol_id=sid, kind=kind, confidence=0.9, label=label)
+
+    def _render(self, tmp_path: Path, *entries: tuple[Symbol, Entrypoint],
+                max_entries: int = 20) -> str:
+        return _format_entrypoints([e for _s, e in entries], [s for s, _e in entries],
+                                   tmp_path, max_entries=max_entries)
+
+    def test_go_commands_sharing_a_name_each_show_their_file(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "main", "cmd/server/main.go",
+                        docstring="Start the server."),
+            self._entry(tmp_path, "b", "main", "cmd/ctl/main.go",
+                        docstring="Run the control tool."))
+        assert "- `main` (Go main()) — `cmd/server/main.go` — Start the server." in out
+        assert "- `main` (Go main()) — `cmd/ctl/main.go` — Run the control tool." in out
+
+    def test_js_handlers_sharing_a_name_each_show_their_file(self, tmp_path: Path) -> None:
+        """One has a docstring and one has none: both are located."""
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "handler", "functions/signup/index.js",
+                        language="javascript", kind=EntrypointKind.HTTP_ROUTE,
+                        label="Lambda handler", docstring="Create an account."),
+            self._entry(tmp_path, "b", "handler", "functions/login/index.js",
+                        language="javascript", kind=EntrypointKind.HTTP_ROUTE,
+                        label="Lambda handler"))
+        assert ("- `handler` (Lambda handler) — `functions/signup/index.js` — "
+                "Create an account.") in out
+        assert "- `handler` (Lambda handler) — `functions/login/index.js`" in out
+
+    def test_a_name_shown_in_two_groups_is_shared(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "run", "src/bin/tool.rs", language="rust",
+                        label="Rust main()", docstring="Parse the arguments."),
+            self._entry(tmp_path, "b", "run", "src/lib.rs", language="rust",
+                        kind=EntrypointKind.LIBRARY_EXPORT, label="Library export: run",
+                        docstring="Run one job."))
+        assert "### CLI & Scripts" in out and "### Library API" in out
+        assert "- `run` (Rust main()) — `src/bin/tool.rs` — Parse the arguments." in out
+        assert "- `run` (Library export) — `src/lib.rs` — Run one job." in out
+
+    def test_two_entries_of_one_name_in_one_file_show_their_lines(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "handler", "api.ts", language="typescript",
+                        line=12, label="Handler", docstring="List the items."),
+            self._entry(tmp_path, "b", "handler", "api.ts", language="typescript",
+                        line=40, label="Handler"))
+        assert "- `handler` (Handler) — `api.ts:12` — List the items." in out
+        assert "- `handler` (Handler) — `api.ts:40`" in out
+
+    def test_an_entry_with_no_span_shows_its_path_alone(self, tmp_path: Path) -> None:
+        one, two = (self._entry(tmp_path, sid, "handler", "api.ts",
+                                language="typescript", label="Handler")
+                    for sid in ("a", "b"))
+        one[0].span = None
+        out = self._render(tmp_path, one, two)
+        assert "- `handler` (Handler) — `api.ts`\n" in out
+        assert "- `handler` (Handler) — `api.ts:1`" in out
+
+    def test_a_unique_name_with_a_docstring_shows_no_path(self, tmp_path: Path) -> None:
+        """Control: the path is added for a shared name only."""
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "main", "cmd/server/main.go",
+                        docstring="Start the server."),
+            self._entry(tmp_path, "b", "migrate", "cmd/ctl/main.go",
+                        docstring="Apply the migrations."))
+        assert "- `main` (Go main()) — Start the server." in out
+        assert "- `migrate` (Go main()) — Apply the migrations." in out
+        assert "main.go" not in out
+
+    def test_a_name_shared_only_with_an_entry_not_shown_is_unique(self, tmp_path: Path) -> None:
+        """The reader sees one ``main``: nothing to tell it apart from."""
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "main", "cmd/server/main.go",
+                        docstring="Start the server."),
+            self._entry(tmp_path, "b", "main", "cmd/ctl/main.go",
+                        docstring="Run the control tool."),
+            max_entries=1)
+        assert out.count("- `main`") == 1
+        assert "... and 1 more" in out
+        assert "main.go" not in out
+
+    def test_a_script_named_by_its_path_says_the_path_once(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "scripts/build.sh", "scripts/build.sh",
+                        language="shell", kind=EntrypointKind.SHELL_SCRIPT,
+                        label="Shell script (scripts/build.sh)"))
+        line = next(ln for ln in out.splitlines() if ln.startswith("- "))
+        assert line == "- `scripts/build.sh` (Shell script)"
+
+    def test_a_label_drops_the_path_the_line_shows(self, tmp_path: Path) -> None:
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "index.html", "ui/app/index.html",
+                        language="html", kind=EntrypointKind.HTML_ENTRY,
+                        label="HTML entry (ui/app/index.html)"))
+        assert "- `index.html` (HTML entry) — `ui/app/index.html`" in out
+
+    def test_a_label_keeps_the_path_the_line_does_not_show(self, tmp_path: Path) -> None:
+        """With a docstring and a unique name the label holds the only copy."""
+        out = self._render(
+            tmp_path,
+            self._entry(tmp_path, "a", "index.html", "ui/app/index.html",
+                        language="html", kind=EntrypointKind.HTML_ENTRY,
+                        label="HTML entry (ui/app/index.html)",
+                        docstring="The dashboard shell."))
+        assert ("- `index.html` (HTML entry (ui/app/index.html)) — "
+                "The dashboard shell.") in out
+
+    def test_a_label_that_is_only_the_repeat_is_kept(self) -> None:
+        """An empty label would print ``()``."""
+        assert _entry_label(": New", "New", "") == ": New"
+        assert _entry_label("Library export: New", "New", "") == "Library export"
+        assert _entry_label("React app bootstrap", "src/main.tsx", "src/main.tsx") == (
+            "React app bootstrap")
+
+
+class TestACutListSaysWhoseEntriesItLeftOut:
+    """A list cut by rank and then grouped by file says, under each file,
+    how many of that file's entries are not shown (WI-nurid).
+
+    A file heading followed by bullets reads as "this file's data models".
+    When the cut by rank fell inside the file, the heading showed part of
+    them and only the section's last line said anything was left out,
+    without saying where. The rule is about rank-then-group and holds for
+    any language's models and for Key Symbols alike.
+    """
+
+    @staticmethod
+    def _models(tmp_path: Path, language: str, spec: list[tuple[str, str, float]],
+                ) -> tuple[list[DataModel], list[Symbol]]:
+        """``spec`` rows are (file, name, rank)."""
+        symbols = [Symbol(id=f"{language}:{name}", name=name, kind="class",
+                          language=language, path=str(tmp_path / file),
+                          span=Span(1, 9, 1, 2))
+                   for file, name, _rank in spec]
+        models = [DataModel(symbol_id=f"{language}:{name}", confidence=0.9,
+                            label="struct", rank_score=rank)
+                  for _file, name, rank in spec]
+        return models, symbols
+
+    def test_a_python_file_whose_models_straddle_the_cut(self, tmp_path: Path) -> None:
+        models, symbols = self._models(tmp_path, "python", [
+            ("cfg.py", "A", 10), ("cfg.py", "B", 9), ("cfg.py", "C", 8),
+            ("cfg.py", "D", 7), ("cfg.py", "E", 6),
+            ("other.py", "F", 5), ("other.py", "G", 4)])
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=3)
+        assert out.splitlines()[2:] == [
+            "`cfg.py`:",
+            "  - `A` (struct)", "  - `B` (struct)", "  - `C` (struct)",
+            "  - ... and 2 more in this file",
+            "- ... and 2 more data models in 1 other file",
+        ]
+
+    def test_two_go_files_interleaved_by_rank(self, tmp_path: Path) -> None:
+        """Every model left out belongs to a file that is shown: each file
+        reports its own, and the section has nothing more to add."""
+        models, symbols = self._models(tmp_path, "go", [
+            ("types.go", "Alert", 10), ("config.go", "Config", 9),
+            ("types.go", "Silence", 8), ("config.go", "Route", 7),
+            ("types.go", "Matcher", 6)])
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=3)
+        assert out.splitlines()[2:] == [
+            "`types.go`:",
+            "  - `Alert` (struct)", "  - `Silence` (struct)",
+            "  - ... and 1 more in this file",
+            "`config.go`:",
+            "  - `Config` (struct)",
+            "  - ... and 1 more in this file",
+        ]
+
+    def test_models_left_out_of_files_not_shown_are_the_sections(self, tmp_path: Path) -> None:
+        models, symbols = self._models(tmp_path, "rust", [
+            ("a.rs", "A", 10), ("b.rs", "B", 9),
+            ("c.rs", "C", 8), ("c.rs", "D", 7), ("d.rs", "E", 6)])
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=2)
+        assert "more in this file" not in out
+        assert out.splitlines()[-1] == "- ... and 3 more data models in 2 other files"
+
+    def test_a_list_that_is_not_cut_says_nothing(self, tmp_path: Path) -> None:
+        """Control: the lines appear only when something was left out."""
+        models, symbols = self._models(tmp_path, "python", [
+            ("cfg.py", "A", 10), ("cfg.py", "B", 9), ("other.py", "C", 8)])
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=3)
+        assert out.count("  - `") == 3
+        assert "more" not in out
+
+    def test_a_model_with_no_symbol_is_counted_without_a_file(self, tmp_path: Path) -> None:
+        """It has no path, so the section does not claim to know its file."""
+        models, symbols = self._models(tmp_path, "python", [
+            ("cfg.py", "A", 10), ("other.py", "B", 5)])
+        models.append(DataModel(symbol_id="gone:X", confidence=0.9,
+                                label="struct", rank_score=1))
+        out = _format_datamodels(models, symbols, tmp_path, max_entries=1)
+        assert out.splitlines()[-1] == "- ... and 2 more data models"
+
+    @staticmethod
+    def _functions(spec: dict[str, int]) -> list[Symbol]:
+        return [Symbol(id=f"{file}:{i}", name=f"{file.split('.')[0]}_fn{i}",
+                       kind="function", language="python",
+                       path=f"/fake/repo/{file}", span=Span(i + 1, i + 2, 1, 2))
+                for file, count in spec.items() for i in range(count)]
+
+    @staticmethod
+    def _accounting(out: str) -> tuple[dict[str, int], dict[str, int], tuple[int, int]]:
+        """Per file heading: bullets shown and the "+N more" under it; and
+        the section's last line as (symbols, other files)."""
+        import re
+
+        shown: dict[str, int] = {}
+        more: dict[str, int] = {}
+        other = (0, 0)
+        current = ""
+        for line in out.splitlines():
+            if line.startswith("### `"):
+                current = line[5:-1]
+                shown[current], more[current] = 0, 0
+            elif line.startswith("- `") and current:
+                shown[current] += 1
+            elif line.startswith("  (... +"):
+                more[current] = int(line.split("+")[1].split(" ")[0])
+            elif line.startswith("(... and "):
+                found = re.fullmatch(
+                    r"\(\.\.\. and (\d+) more symbols across (\d+) other files?\)", line)
+                assert found, line
+                other = (int(found[1]), int(found[2]))
+        return shown, more, other
+
+    def test_key_symbols_of_a_shown_file_are_counted_under_it(self) -> None:
+        """Files of different sizes. Whatever the selection shows, each file
+        shown accounts for every one of its own symbols, and the last line
+        for the symbols of the files not shown and no others. The section
+        used to end "... and N more symbols across 0 other files" with all
+        N in files shown above."""
+        sizes = {"a.py": 12, "b.py": 9, "c.py": 7, "d.py": 4}
+        symbols = self._functions(sizes)
+        out = _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=9)
+        shown, more, other = self._accounting(out)
+        # Reach: more than one file is shown, and at least one hides symbols.
+        assert len(shown) >= 2 and any(more.values())
+        for file in shown:
+            assert shown[file] + more[file] == sizes[file], file
+        hidden_files = [f for f in sizes if f not in shown]
+        assert other == (sum(sizes[f] for f in hidden_files), len(hidden_files))
+        assert sum(shown.values()) + sum(more.values()) + other[0] == sum(sizes.values())
+
+    def test_a_function_shown_once_elsewhere_is_still_counted_in_its_file(self) -> None:
+        """A function whose name was already shown under another file is not
+        repeated, and is one of its own file's symbols not shown."""
+        symbols = [
+            Symbol(id=f"{file}:{name}", name=name, kind="function", language="python",
+                   path=f"/fake/repo/{file}", span=Span(line, line + 1, 1, 2))
+            for file, names in (("a.py", ["node_text", "parse"]),
+                                ("b.py", ["node_text", "emit"]))
+            for line, name in enumerate(names, 1)]
+        out = _format_symbols(symbols, [], Path("/fake/repo"), max_symbols=4)
+        body = out.split("The following symbols")[0]
+        shown, more, other = self._accounting(body)
+        assert body.count("- `node_text` (function)") == 1
+        assert shown == {"a.py": 2, "b.py": 1} and more == {"a.py": 0, "b.py": 1}
+        assert other == (0, 0)
+
+    def test_key_symbols_of_files_not_shown_are_the_sections(self) -> None:
+        """Three files, room for symbols of one: the other two files'
+        symbols, and only those, are "in other files"."""
+        symbols = self._functions({"a.py": 4, "b.py": 3, "c.py": 2})
+        edges = [Edge(id=f"e{i}", src="b.py:0", dst="a.py:0", edge_type="calls",
+                      line=1, confidence=0.9, origin="t", origin_run_id="t")
+                 for i in range(3)]
+        out = _format_symbols(symbols, edges, Path("/fake/repo"), max_symbols=1)
+        headings = [ln for ln in out.splitlines() if ln.startswith("### ")]
+        assert headings == ["### `a.py`"]
+        assert "  (... +3 more, highest: " in out
+        assert "(... and 5 more symbols across 2 other files)" in out
+
+    def test_the_best_hidden_symbol_is_given_on_the_stars_scale(self) -> None:
+        """One file, room for one symbol. The count line under it names the
+        best symbol NOT shown as a share of the repository's highest
+        centrality, the scale the star is defined on. It used to read
+        "top score: 1.03": no scale, and not said to be a hidden symbol's."""
+        import re
+
+        symbols = self._functions({"a.py": 3, "b.py": 1})
+        # a_fn0 is called four times, a_fn1 twice, a_fn2 never.
+        edges = [Edge(id=f"e{i}", src="b.py:0", dst=dst, edge_type="calls",
+                      line=1, confidence=0.9, origin="t", origin_run_id="t")
+                 for i, dst in enumerate(["a.py:0"] * 4 + ["a.py:1"] * 2)]
+        out = _format_symbols(symbols, edges, Path("/fake/repo"), max_symbols=1)
+        lines = out.splitlines()
+        shown = next(i for i, ln in enumerate(lines) if ln.startswith("- `a_fn0"))
+        assert "★" in lines[shown]
+        found = re.fullmatch(r"  \(\.\.\. \+2 more, highest: (\d+)% of max\)", lines[shown + 1])
+        assert found, lines[shown + 1]
+        assert 0 < int(found[1]) < 100
+        assert "top score" not in out
+
+
 class TestFormatDatamodels:
     """Tests for data model formatting."""
 
@@ -3142,8 +3920,7 @@ class TestFormatDatamodels:
                    path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
         ]
         datamodels = [
-            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
-                      confidence=0.95, label="model", framework="Django"),
+            DataModel(symbol_id="test:User", confidence=0.95, label="model", framework="Django"),
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
@@ -3160,14 +3937,16 @@ class TestFormatDatamodels:
             for i in range(10)
         ]
         datamodels = [
-            DataModel(symbol_id=f"test:Model{i}", kind=DataModelKind.PYDANTIC_MODEL,
-                      confidence=0.85, label="model", framework="Pydantic")
+            DataModel(symbol_id=f"test:Model{i}", confidence=0.85, label="model", framework="Pydantic")
             for i in range(10)
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path, max_entries=3)
 
-        assert "... and 7 more data models" in result
+        assert result.count("  - `Model") == 3
+        # All ten are in the one file shown: the seven are that file's.
+        assert "  - ... and 7 more in this file" in result
+        assert "more data models" not in result
 
     def test_empty_datamodels_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty data models."""
@@ -3177,14 +3956,35 @@ class TestFormatDatamodels:
     def test_missing_symbol_fallback(self, tmp_path: Path) -> None:
         """Falls back to symbol_id in Unknown group when symbol not found."""
         datamodels = [
-            DataModel(symbol_id="unknown:Model", kind=DataModelKind.DATACLASS,
-                      confidence=0.90, label="@dataclass", framework="Python"),
+            DataModel(symbol_id="unknown:Model", confidence=0.90, label="@dataclass", framework="Python"),
         ]
 
         result = _format_datamodels(datamodels, [], tmp_path)
 
         assert "Unknown:" in result
-        assert "  - `unknown:Model` (@dataclass)" in result
+        assert "  - `unknown:Model` (Python @dataclass)" in result
+
+    def test_concept_model_names_its_framework_once(self, tmp_path: Path) -> None:
+        """A concept-detected model renders 'django model', not 'django django model'.
+
+        Production path: the concept detector's DataModel straight into the
+        formatter, with and without a symbol to group it under (WI-kibat).
+        """
+        from hypergumbo_core.datamodels import detect_datamodels
+
+        sym = Symbol(id="test:Author", name="Author", kind="class",
+                     language="python", path=str(tmp_path / "models.py"),
+                     span=Span(1, 1, 1, 10),
+                     meta={"concepts": [{"concept": "model",
+                                         "framework": "django"}]})
+        datamodels = detect_datamodels([sym], [])
+
+        grouped = _format_datamodels(datamodels, [sym], tmp_path)
+        fallback = _format_datamodels(datamodels, [], tmp_path)
+
+        assert "  - `Author` (django model)" in grouped
+        assert "  - `test:Author` (django model)" in fallback
+        assert "django django" not in grouped + fallback
 
     def test_format_without_framework(self, tmp_path: Path) -> None:
         """Formats model without framework info under file group."""
@@ -3193,8 +3993,7 @@ class TestFormatDatamodels:
                    path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
         ]
         datamodels = [
-            DataModel(symbol_id="test:UserModel", kind=DataModelKind.DOMAIN_MODEL,
-                      confidence=0.70, label="Domain model", framework=""),
+            DataModel(symbol_id="test:UserModel", confidence=0.70, label="Domain model", framework=""),
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
@@ -3209,8 +4008,7 @@ class TestFormatDatamodels:
                    path=str(tmp_path / "src" / "models.py"), span=Span(1, 1, 1, 10)),
         ]
         datamodels = [
-            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
-                      confidence=0.95, label="model", framework="Django"),
+            DataModel(symbol_id="test:User", confidence=0.95, label="model", framework="Django"),
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
@@ -3230,12 +4028,9 @@ class TestFormatDatamodels:
                    path=str(tmp_path / "settings.py"), span=Span(1, 1, 1, 10)),
         ]
         datamodels = [
-            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
-                      confidence=0.95, label="model", framework="Django"),
-            DataModel(symbol_id="test:Post", kind=DataModelKind.ORM_MODEL,
-                      confidence=0.90, label="model", framework="Django"),
-            DataModel(symbol_id="test:Config", kind=DataModelKind.DATACLASS,
-                      confidence=0.85, label="@dataclass", framework="Python"),
+            DataModel(symbol_id="test:User", confidence=0.95, label="model", framework="Django"),
+            DataModel(symbol_id="test:Post", confidence=0.90, label="model", framework="Django"),
+            DataModel(symbol_id="test:Config", confidence=0.85, label="@dataclass", framework="Python"),
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
@@ -3305,8 +4100,10 @@ class TestFormatSymbols:
 
         result = _format_symbols(symbols, [], repo_root, max_symbols=5)
 
-        # New format: "(... and X more symbols across Y other files)"
-        assert "... and 15 more symbols" in result
+        # All twenty are in the one file shown, so the fifteen are that
+        # file's and none is "in another file" (WI-nurid).
+        assert "(... +15 more, highest: " in result
+        assert "other file" not in result
 
     def test_max_symbols_breaks_across_files(self) -> None:
         """Max symbols limit causes balanced selection across files."""
@@ -3330,8 +4127,12 @@ class TestFormatSymbols:
         # coverage phase picks 5 (one per file), then fills remaining 10
         result = _format_symbols(symbols, [], repo_root, max_symbols=15)
 
-        # Should show remaining count with new format
-        assert "... and 35 more symbols" in result
+        # Each file shown accounts for all ten of its symbols, and the last
+        # line for the files not shown (WI-nurid): 50 in all, none twice.
+        shown, more, other = TestACutListSaysWhoseEntriesItLeftOut._accounting(result)
+        assert len(shown) >= 2
+        assert all(shown[f] + more[f] == 10 for f in shown)
+        assert other == (10 * (5 - len(shown)), 5 - len(shown))
         # Should show symbols from multiple files (coverage-first policy)
         assert "file_0.py" in result
         assert "file_1.py" in result
@@ -3491,9 +4292,8 @@ class TestFormatSymbols:
         """Symbols on /db/migrate/ or /migrations/ paths are dampened (WI-lidum).
 
         Aligns sketch._format_symbols' dampener stack with rank_symbols.
-        Without noise dampening, a high-centrality migration class can
-        outrank a less-central first-party class — django's ModelState
-        produced this exact failure mode in the WI-lidum 6-repo audit.
+        Without noise dampening, a high-centrality migration class (e.g.
+        django's ModelState) can outrank a less-central first-party class.
         """
         repo_root = Path("/fake/repo")
         # High-raw-centrality migration class
@@ -3533,9 +4333,9 @@ class TestFormatSymbols:
     def test_generated_code_dampener_demotes_openapi_models(self) -> None:
         """Symbols flagged is_generated_file are dampened (WI-lidum).
 
-        kserve's V1beta1 OpenAPI model classes produced 42 of the top-100
-        sketch entries before this dampener was applied; this test pins
-        the fix.
+        Without it, generated OpenAPI model classes (e.g. kserve's
+        V1beta1* models) can crowd hand-written classes out of the top
+        entries.
         """
         repo_root = Path("/fake/repo")
         # High-raw-centrality generated class
@@ -3623,8 +4423,8 @@ class TestFormatSymbols:
         distinct files (uncapped at 6 each = 6). Without the parameter,
         A wins on raw in-degree; with the parameter, B wins.
 
-        This is the parameter that fixes the WI-lidum-cited 'createYAMLNode
-        called 46 times from 1 file' inflation pattern.
+        The cap stops a symbol called many times from one file (e.g.
+        createYAMLNode) from inflating its centrality (WI-lidum).
         """
         repo_root = Path("/fake/repo")
         long_span = Span(start_line=1, end_line=100, start_col=0, end_col=0)
@@ -3959,7 +4759,9 @@ class TestGenerateSketchWithBudget:
         """Medium budget includes source file listing."""
         (tmp_path / "main.py").write_text("def main():\n    pass\n")
 
-        sketch = generate_sketch(tmp_path, max_tokens=200)
+        # 250, not 200: the quoted-text line under the title costs about 40
+        # tokens, and at 200 the listing no longer fits beside it.
+        sketch = generate_sketch(tmp_path, max_tokens=250)
 
         assert "## Source Files" in sketch
 
@@ -3975,11 +4777,12 @@ class TestGenerateSketchWithBudget:
         """Very small budget truncates even the base sketch."""
         (tmp_path / "main.py").write_text("def main():\n    pass\n")
 
-        # Budget smaller than the base overview
+        # Budget smaller than the base overview, and smaller than the title
+        # plus the quoted-text line, which no budget removes.
         sketch = generate_sketch(tmp_path, max_tokens=10)
 
-        # Should be truncated
-        assert len(sketch) < 100
+        # Truncated to the title and that line
+        assert sketch.rstrip("\n") == f"# {tmp_path.name}\n\n{QUOTED_TEXT_NOTICE}"
 
     def test_symbols_section_with_many_files(self, tmp_path: Path) -> None:
         """Symbols section properly handles multiple files."""
@@ -4000,10 +4803,9 @@ class TestGenerateSketchWithBudget:
     def test_minimum_key_symbols_guarantee(self, tmp_path: Path) -> None:
         """Key Symbols section appears even with tight budget for large projects.
 
-        Issue: Some projects (qwix, marlin, guacamole-client) had 0 Key Symbols
-        at 1k budget because budget was exhausted before reaching symbols section.
-
-        The fix guarantees at least MIN_KEY_SYMBOLS (5) appear regardless of budget.
+        On a large project the earlier sections can exhaust a 1k budget before
+        the symbols section is reached, so at least MIN_KEY_SYMBOLS (5) appear
+        regardless of budget.
         """
         # Create a project that consumes budget with structure/config
         # but still has analyzable Python code
@@ -4023,8 +4825,8 @@ class TestGenerateSketchWithBudget:
         (tmp_path / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
         (tmp_path / "README.md").write_text("# Test Project\n\nA test project.\n")
 
-        # Even at 1k budget (which previously caused 0 Key Symbols),
-        # we should now get at least 5 symbols
+        # Even at 1k budget we should get at least MIN_KEY_SYMBOLS (5)
+        # symbols
         sketch = generate_sketch(tmp_path, max_tokens=1000)
 
         assert "## Key Symbols" in sketch, "Key Symbols section should always appear"
@@ -4453,10 +5255,10 @@ class TestExcludeTests:
     ) -> None:
         """exclude_tests shows correct counts for markdown-only repos.
 
-        Regression test for a bug where repos with non-source files (markdown,
-        JSON, YAML) showed "0 files" and "~0 LOC" when using -x flag because
-        _format_language_stats was recalculating totals from an empty
-        filtered_source_files list instead of using the profile's counts.
+        With -x, _format_language_stats takes totals from the profile's
+        counts, not from the filtered source-file list, which is empty for a
+        repo of non-source files (markdown, JSON, YAML) and would report
+        "0 files" and "~0 LOC".
         """
         from hypergumbo_core.profile import RepoProfile, LanguageStats
 
@@ -4958,7 +5760,6 @@ class TestCollectImportantFiles:
         )
         datamodel = DataModel(
             symbol_id="models:user:UserModel",
-            kind=DataModelKind.DOMAIN_MODEL,
             confidence=0.7,
             label="Domain model",
         )
@@ -5441,7 +6242,7 @@ license = "GPL-3.0"
     ) -> None:
         """WI-gojuz: license aggregation reports every distinct license present,
         including per-package LICENSE files in a monorepo — not just the first
-        root file (which collapsed a dual-licensed AGPL+MPL repo to AGPL alone).
+        root file, so a dual-licensed AGPL+MPL repo reports both.
         """
         from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
@@ -5696,7 +6497,7 @@ gem "puma"
 
         # Root manifest still present.
         assert "root-umbrella" in result
-        # Sub-package identity now surfaced, each with its path prefix.
+        # Sub-package identity is surfaced, each with its path prefix.
         assert "packages/core/pyproject.toml" in result
         assert "acme-core" in result
         assert "packages/web-app/package.json" in result
@@ -5759,6 +6560,8 @@ gem "puma"
         from hypergumbo_core.sketch import (
             _extract_config_info,
             ConfigExtractionMode,
+        )
+        from hypergumbo_core.sketch_embeddings import (
             ANSWER_PATTERNS,
             BIG_PICTURE_QUESTIONS,
         )
@@ -6644,10 +7447,11 @@ class TestAnalyzeTestFiles:
 class TestTestFrameworkDetectionDeterminism:
     """WI-vosag: the framework sample must not depend on set/walk order.
 
-    The original code built the glob list from a ``set`` (per-process str
-    hash order), walked pattern by pattern and detected frameworks from the
-    FIRST 20 test files of that order — so on one repo the Tests line named
-    vitest on one run and nothing on the next.
+    A glob list built from a ``set`` follows per-process str hash order, and
+    a sample of the first N test files in walk order can miss a framework
+    entirely, so the Tests line could name vitest on one run and nothing on
+    the next. The patterns are sorted and the sample is stratified by
+    (extension, top-level dir).
     """
 
     def test_find_files_receives_sorted_patterns(
@@ -6672,8 +7476,8 @@ class TestTestFrameworkDetectionDeterminism:
     ) -> None:
         """A lone vitest file after 30 framework-less files is still sampled.
 
-        The walk order is forced adversarial (the minority file last); the
-        old first-20 sample missed it, the stratified sample cannot.
+        The walk order is forced adversarial (the minority file last); a
+        first-20 sample would miss it, the stratified sample cannot.
         """
         import hypergumbo_core.sketch as sketch_mod
 
@@ -6956,14 +7760,21 @@ class TestFormatTestSummary:
         assert "pytest" not in result
 
     def test_coverage_stats_replaces_hint(self, tmp_path: Path) -> None:
-        """When coverage_stats provided, shows estimated coverage instead of hint."""
+        """When coverage_stats is provided, the count of functions reached
+        from tests replaces the hint, worded as what it is (WI-tigos)."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
         # Provide coverage stats: 5 out of 10 functions tested (50%)
         coverage_stats = (5, 10, 50.0)
         result = _format_test_summary(tmp_path, coverage_stats)
         assert result.startswith("## Tests\n")
-        assert "~50% estimated coverage" in result
-        assert "5/10 functions called by tests" in result
+        assert ("*5 of 10 functions (50%) are reached from tests in the static "
+                "call graph;") in result
+        # It is not called coverage, and it says which way it errs.
+        assert "estimated coverage" not in result
+        assert STATIC_TEST_REACH_BLIND_SPOT in result
+        assert "so more may be tested than counted" in result
+        assert result.rstrip().endswith(
+            "`hypergumbo test-coverage` lists the functions not reached.*")
         # Should NOT show the "Coverage requires execution" hint
         assert "Coverage requires execution" not in result
 
@@ -6972,25 +7783,45 @@ class TestFormatTestSummary:
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
         coverage_stats = (0, 10, 0.0)
         result = _format_test_summary(tmp_path, coverage_stats)
-        assert "~0% estimated coverage" in result
-        assert "0/10 functions called by tests" in result
+        assert "*0 of 10 functions (0%) are reached from tests" in result
 
     def test_shell_integration_count_with_coverage(self, tmp_path: Path) -> None:
         """Shell integration count appended to coverage line."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
         coverage_stats = (3, 10, 30.0)
         result = _format_test_summary(tmp_path, coverage_stats, shell_integration_count=5)
-        assert "~30% estimated coverage" in result
-        assert "3/10 functions called by tests" in result
-        assert "+ 5 shell integration scripts" in result
+        assert "*3 of 10 functions (30%) are reached from tests" in result
+        assert "counted (+ 5 shell integration scripts). `hypergumbo" in result
 
     def test_shell_integration_count_singular(self, tmp_path: Path) -> None:
         """Uses singular 'script' for count of 1."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
         coverage_stats = (3, 10, 30.0)
         result = _format_test_summary(tmp_path, coverage_stats, shell_integration_count=1)
-        assert "+ 1 shell integration script" in result
+        assert "counted (+ 1 shell integration script). `hypergumbo" in result
         assert "scripts" not in result
+
+    def test_the_sketch_and_test_coverage_share_one_wording(self) -> None:
+        """The clause naming what static analysis cannot see is one constant,
+        used by the sketch's line and by ``test-coverage``'s disclaimer."""
+        from hypergumbo_core import cli
+        from hypergumbo_core.ranking import static_test_reach_line
+
+        assert STATIC_TEST_REACH_BLIND_SPOT in static_test_reach_line(1, 2)
+        assert STATIC_TEST_REACH_BLIND_SPOT in cli._TEST_COVERAGE_RECALL_DISCLAIMER
+
+    def test_the_line_carries_no_rate_and_survives_an_empty_total(self) -> None:
+        """How much is missed differs by language and test style, so the
+        sentence states a direction and no number of its own."""
+        import re
+
+        from hypergumbo_core.ranking import static_test_reach_line
+
+        assert static_test_reach_line(0, 0).startswith("0 of 0 functions (0%)")
+        assert static_test_reach_line(2, 3).startswith("2 of 3 functions (67%)")  # rounded
+        line = static_test_reach_line(4764, 7542)
+        assert line.startswith("4764 of 7542 functions (63%) are reached from tests")
+        assert re.findall(r"\d+", line) == ["4764", "7542", "63"]
 
     def test_shell_integration_only_no_coverage(self, tmp_path: Path) -> None:
         """Shell integration tests shown when no call graph coverage available."""
@@ -7308,9 +8139,8 @@ class TestEstimateTestCoverage:
 
     def test_inv_gifoh_only_calls_edges_widen_reach(self) -> None:
         """INV-gifoh: non-`calls` edges (references, inherits, imports) do NOT
-        contribute to transitive reach. Pre-fix, sketch passed all edges to the
-        BFS which inflated coverage by ~34 points on self-analysis vs the
-        test-coverage subcommand.
+        contribute to transitive reach. Following them would inflate sketch
+        coverage above the test-coverage subcommand's figure.
         """
         test_sym = Symbol(
             id="t1", name="test_x", kind="function", language="python",
@@ -7366,10 +8196,9 @@ class TestEstimateTestCoverage:
     def test_inv_gifoh_sketch_and_cli_methodologies_agree(self) -> None:
         """INV-gifoh: `_estimate_test_coverage` (sketch) and the test-coverage
         subcommand's internal coverage calculation must produce the same
-        (tested, total, pct) on the same Symbol+Edge input. Previously they
-        diverged on hypergumbo's self-analysis (58.2% vs 92%) because sketch
-        included non-`calls` edges in transitive reach and missed concept-
-        tagged tests.
+        (tested, total, pct) on the same Symbol+Edge input. That requires both
+        to widen transitive reach over `calls` edges only and both to count
+        concept-tagged tests as tests.
         """
         # Fixture: one test (tests/), one prop-test in src/ (concept-tagged),
         # three production functions, one inherits edge (should NOT count),
@@ -7926,7 +8755,8 @@ class TestCachedResults:
 
     def test_frameworks_section_lists_each_framework_once(self, tmp_path: Path) -> None:
         """INV-vapov: a framework two ecosystems detect (hardhat: JS + Solidity;
-        ktor: Kotlin + Gradle) appeared twice in the sketch's Frameworks section."""
+        ktor: Kotlin + Gradle) is listed once in the sketch's Frameworks
+        section, not once per ecosystem."""
         (tmp_path / "package.json").write_text(
             '{"name": "x", "dependencies": {"hardhat": "^2.0.0", "ethers": "^6.0.0"}}'
         )
@@ -8096,16 +8926,16 @@ class TestRequireSections:
     def test_require_section_survives_base_overflow(self, tmp_path: Path) -> None:
         """Required sections render even when max_tokens <= base_tokens.
 
-        Per WI-nakam (UAT 2026-04-13 BUG-05): the previous early-return
-        at ``max_tokens <= base_tokens`` truncated the base sketch and
-        skipped all extended sections regardless of --require-section,
-        which is the exact case the flag exists to handle. This test
-        forces the early-return scenario (large README -> large base
-        sketch) and asserts Key Symbols still appears when required.
+        When ``max_tokens <= base_tokens`` the base sketch alone overflows
+        the budget, which is the exact case --require-section exists to
+        handle, so required sections must not be skipped along with the
+        other extended sections (WI-nakam). This test forces that scenario
+        (large README -> large base sketch) and asserts Key Symbols still
+        appears when required.
         """
         # Large README + config files produce a large base section that
-        # exceeds the 500-token budget. Without the fix, Key Symbols is
-        # dropped; with the fix it appears because it's required.
+        # exceeds the 500-token budget. On budget alone Key Symbols would
+        # be dropped; it appears because it's required.
         big_readme = "# Test project\n\n" + ("Lorem ipsum dolor sit amet. " * 200)
         (tmp_path / "README.md").write_text(big_readme)
         (tmp_path / "pyproject.toml").write_text(
@@ -8173,9 +9003,9 @@ class TestRequireSections:
     def test_markdown_content_headings_do_not_bleed(self, tmp_path: Path) -> None:
         """Markdown content rendered in Additional Files Content must not
         produce H1/H2 headings that compete with hypergumbo's structural
-        sections (WI-bilul / UAT BUG-06).
+        sections (WI-bilul).
 
-        The README has '## Installation', '## Usage', etc. After fix, the
+        The README has '## Installation', '## Usage', etc. The
         sketch must NOT contain any '## Installation' style line at the
         structural-H2 level — markdown content headings should be demoted
         so they are clearly subordinate to the tool's own H2 sections.
@@ -8194,8 +9024,8 @@ class TestRequireSections:
         sketch = generate_sketch(tmp_path, max_tokens=8000, with_source=True)
 
         # Bleeding headings would appear as standalone '## Installation' etc.
-        # at the start of a line. After the demote fix they should appear at
-        # ## level 4+ (e.g. '#### Installation').
+        # at the start of a line. Demoted, they should appear at
+        # level 4+ (e.g. '#### Installation').
         sketch_lines = set(sketch.split("\n"))
         for bleed_heading in (
             "## Installation",
@@ -8777,36 +9607,6 @@ class TestRepoFingerprint:
 
         assert cache_base == custom_cache / "hypergumbo"
 
-    def test_get_cache_dir_creates_directory(self, tmp_path: Path, monkeypatch) -> None:
-        """Cache directory is created under XDG cache location."""
-        from hypergumbo_core.sketch_embeddings import _get_cache_dir
-
-        # Use tmp_path as XDG_CACHE_HOME to avoid polluting real cache
-        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
-
-        cache_dir = _get_cache_dir(tmp_path / "my_repo")
-
-        # Cache dir should be created
-        assert cache_dir.exists()
-        assert cache_dir.is_dir()
-
-        # Should be under XDG cache location with embeddings subfolder
-        assert str(cache_dir).startswith(str(tmp_path / "xdg_cache" / "hypergumbo"))
-        assert cache_dir.name == "embeddings"
-
-    def test_get_cache_dir_stable_for_same_repo(self, tmp_path: Path, monkeypatch) -> None:
-        """Same repo always gets same cache directory."""
-        from hypergumbo_core.sketch_embeddings import _get_cache_dir
-
-        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
-        repo = tmp_path / "my_repo"
-        repo.mkdir()
-
-        cache_dir1 = _get_cache_dir(repo)
-        cache_dir2 = _get_cache_dir(repo)
-
-        assert cache_dir1 == cache_dir2
-
     def test_state_hash_changes_with_file_modifications(
         self, tmp_path: Path, monkeypatch
     ) -> None:
@@ -8818,14 +9618,11 @@ class TestRepoFingerprint:
         # Get initial state hash
         hash1 = _get_repo_state_hash(tmp_path)
 
-        # Modify an ANALYZED file. This used to modify test.txt, which
-        # worked only because the fingerprint derived its file set from
-        # `git status` and therefore counted every dirty file regardless of
-        # whether an analyzer would ever read it. `git status` was removed
-        # because it executes programs the target repo controls (see
-        # test_repo_fingerprint.TestNoCodeExecutionFromTargetRepo), and the
-        # file set is now the analyzer-input allowlist. A .txt change no
-        # longer invalidating is CORRECT — it cannot change any analysis
+        # Modify an ANALYZED file. The fingerprint's file set is the
+        # analyzer-input allowlist, not a `git status` dirty set (`git status`
+        # executes programs the target repo controls; see
+        # test_repo_fingerprint.TestNoCodeExecutionFromTargetRepo). A .txt
+        # change not invalidating is CORRECT — it cannot change any analysis
         # output — and is pinned as intended behaviour just below.
         (tmp_path / "mod.py").write_text("print('modified content')\n")
 
@@ -8896,7 +9693,7 @@ class TestRepoFingerprint:
 
         # Modify an ANALYZED file — see the note in
         # test_state_hash_changes_with_file_modifications for why this is a
-        # .py file now rather than test.txt.
+        # .py file rather than a .txt file.
         (tmp_path / "mod.py").write_text("print('modified')\n")
 
         # Results cache should be different directory
@@ -8911,8 +9708,8 @@ class TestRepoFingerprint:
     def test_results_cache_dir_per_resolved_backend_set(self, tmp_path: Path, monkeypatch) -> None:
         """WI-givib: a tree-sitter-only run and a two-arm run of ONE tree land in
         different cache dirs; the same set twice hits the same dir; the
-        tree-sitter-only dir is the unsuffixed state hash, so every cache
-        entry written before this change stays reachable."""
+        tree-sitter-only dir is the unsuffixed state hash, so existing
+        tree-sitter-only cache entries stay reachable."""
         import hypergumbo_core.backend_selection as selection
         from hypergumbo_core.sketch_embeddings import _get_results_cache_dir
 
@@ -8932,212 +9729,6 @@ class TestRepoFingerprint:
         assert len(state) == 16 and int(state, 16) >= 0  # the bare state hash
         assert two_arm.parent.name == f"{state}-rust_analyzer"
         assert tree_sitter_only.name == two_arm.name  # analyzer identity is code identity, unchanged
-
-
-class TestBatchEmbedFiles:
-    """Tests for batch embedding of files."""
-
-    def test_returns_empty_dict_for_empty_input(self, tmp_path: Path) -> None:
-        """Empty file list returns empty dict."""
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        result = batch_embed_files([])
-        assert result == {}
-
-    def test_returns_none_when_no_sentence_transformers(self, tmp_path: Path) -> None:
-        """Returns None for all files when sentence-transformers unavailable."""
-        from unittest.mock import patch
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        (tmp_path / "file1.py").write_text("print('hello')")
-        (tmp_path / "file2.py").write_text("print('world')")
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=False,
-        ):
-            result = batch_embed_files([
-                tmp_path / "file1.py",
-                tmp_path / "file2.py",
-            ])
-
-        assert len(result) == 2
-        assert result[tmp_path / "file1.py"] is None
-        assert result[tmp_path / "file2.py"] is None
-
-    def test_uses_cache_when_available(self, tmp_path: Path) -> None:
-        """Uses cached embeddings when available."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        # Create test file
-        test_file = tmp_path / "test.py"
-        test_file.write_text("print('hello')")
-
-        # Mock cache to return a cached embedding
-        fake_cached_embedding = MagicMock()
-        mock_model = MagicMock()
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_cached_embedding",
-            return_value=fake_cached_embedding,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ):
-            cache_dir = tmp_path / "cache"
-            cache_dir.mkdir()
-            result = batch_embed_files([test_file], cache_dir=cache_dir)
-
-        # Should get cached embedding
-        assert test_file in result
-        assert result[test_file] is fake_cached_embedding
-
-        # Model should not have been called (all files cached)
-        mock_model.encode.assert_not_called()
-
-    def test_batches_uncached_files(self, tmp_path: Path) -> None:
-        """Encodes uncached files in batches."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        # Create test files
-        files = []
-        for i in range(5):
-            f = tmp_path / f"file{i}.py"
-            f.write_text(f"# File {i}\nprint({i})")
-            files.append(f)
-
-        # Mock model to return correct-sized fake embeddings per batch
-        mock_model = MagicMock()
-
-        def mock_encode(texts, **kwargs):
-            # Return list of MagicMocks matching batch size
-            return [MagicMock() for _ in texts]
-
-        mock_model.encode.side_effect = mock_encode
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ):
-            result = batch_embed_files(files, batch_size=3)
-
-        # All files should have embeddings
-        assert len(result) == 5
-        for f in files:
-            assert result[f] is not None
-
-        # Model should have been called twice (3 + 2 files in batches of 3)
-        assert mock_model.encode.call_count == 2
-
-    def test_handles_unreadable_files(self, tmp_path: Path) -> None:
-        """Returns None for files that can't be read."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        # Create one good file and one that doesn't exist
-        good_file = tmp_path / "good.py"
-        good_file.write_text("print('hello')")
-        missing_file = tmp_path / "missing.py"
-
-        mock_model = MagicMock()
-        mock_model.encode.return_value = [MagicMock()]  # Single embedding for good file
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ):
-            result = batch_embed_files([good_file, missing_file])
-
-        # Good file should have embedding, missing file should be None
-        assert result[good_file] is not None
-        assert result[missing_file] is None
-
-    def test_calls_progress_callback(self, tmp_path: Path) -> None:
-        """Progress callback is called for each batch."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        # Create test files
-        files = []
-        for i in range(5):
-            f = tmp_path / f"file{i}.py"
-            f.write_text(f"# File {i}\nprint({i})")
-            files.append(f)
-
-        mock_model = MagicMock()
-
-        def mock_encode(texts, **kwargs):
-            return [MagicMock() for _ in texts]
-
-        mock_model.encode.side_effect = mock_encode
-
-        progress_calls = []
-
-        def track_progress(done, total):
-            progress_calls.append((done, total))
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ):
-            batch_embed_files(files, batch_size=2, progress_callback=track_progress)
-
-        # Should have 3 progress calls (2+2+1 files in batches of 2)
-        assert len(progress_calls) == 3
-        assert progress_calls[0] == (2, 5)
-        assert progress_calls[1] == (4, 5)
-        assert progress_calls[2] == (5, 5)
-
-    def test_saves_embeddings_to_cache(self, tmp_path: Path) -> None:
-        """Computed embeddings are saved to cache."""
-        from unittest.mock import patch, MagicMock
-        from hypergumbo_core.sketch_embeddings import batch_embed_files
-
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir()
-
-        test_file = tmp_path / "test.py"
-        test_file.write_text("print('hello')")
-
-        mock_model = MagicMock()
-        fake_embedding = MagicMock()
-        mock_model.encode.return_value = [fake_embedding]
-
-        save_calls = []
-
-        def mock_save(cache_dir, file_hash, embedding):
-            save_calls.append((cache_dir, file_hash, embedding))
-
-        with patch(
-            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
-            return_value=True,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
-            return_value=mock_model,
-        ), patch(
-            "hypergumbo_core.sketch_embeddings._save_cached_embedding",
-            side_effect=mock_save,
-        ):
-            batch_embed_files([test_file], cache_dir=cache_dir)
-
-        # Verify _save_cached_embedding was called with the embedding
-        assert len(save_calls) == 1
-        assert save_calls[0][0] == cache_dir
-        assert save_calls[0][2] is fake_embedding
 
 
 class TestEmbeddingModelSingleton:
@@ -9186,9 +9777,10 @@ class TestStModelOfflineFirst:
     SentenceTransformer's constructor contacts HF Hub on every invocation
     for a cache-freshness check. The wrapper here tries
     ``local_files_only=True`` first to suppress the network call when the
-    model is already cached, and falls back to a normal load only on
-    cache miss (typically the first install). After this fix,
-    ``hypergumbo .`` runs do not hit HF Hub on every invocation.
+    model is already cached. On a cache miss it raises
+    ``EmbeddingsUnavailable`` and never retries with the network
+    (INV-gujus): the weights are fetched by ``install-embeddings``, not by
+    analysis, so ``hypergumbo .`` runs never hit HF Hub.
     """
 
     def test_offline_load_succeeds_on_first_try(self) -> None:
@@ -9208,61 +9800,47 @@ class TestStModelOfflineFirst:
         assert st_cls.call_count == 1
         st_cls.assert_called_once_with("model-name", local_files_only=True)
 
-    def test_falls_back_to_network_on_cache_miss(self) -> None:
-        """When local-only load raises (model not cached), fall through
-        to the network-allowing path."""
+    def test_a_cache_miss_raises_without_a_network_attempt(self) -> None:
+        """INV-gujus: a local-only miss is the end. There is no second,
+        network-allowing construction, which would make the first sketch
+        download both models."""
         from unittest.mock import MagicMock
         from hypergumbo_core.sketch_embeddings import (
+            EmbeddingsUnavailable,
             _load_st_model_offline_first,
         )
 
-        sentinel = object()
-        # First call raises (cache miss), second call succeeds.
-        st_cls = MagicMock(side_effect=[OSError("not in cache"), sentinel])
-
-        result = _load_st_model_offline_first(st_cls, "model-name")
-        assert result is sentinel
-        assert st_cls.call_count == 2
-        # First call: local-only.
+        st_cls = MagicMock(side_effect=[OSError("not in cache"), object()])
+        with pytest.raises(EmbeddingsUnavailable):
+            _load_st_model_offline_first(st_cls, "model-name")
+        assert st_cls.call_count == 1
         assert st_cls.call_args_list[0].kwargs.get("local_files_only") is True
-        # Second call: no local_files_only kwarg → constructor allowed
-        # to hit the network.
-        assert "local_files_only" not in st_cls.call_args_list[1].kwargs
 
-    def test_passes_extra_kwargs_through_on_both_paths(self) -> None:
+    def test_passes_extra_kwargs_through(self) -> None:
         """truncate_dim and similar SentenceTransformer kwargs propagate
-        through the offline-first wrapper on both the cache-hit and
-        cache-miss paths.
-        """
+        through the offline-first wrapper with local_files_only."""
         from unittest.mock import MagicMock
         from hypergumbo_core.sketch_embeddings import (
             _load_st_model_offline_first,
         )
 
-        # Cache-hit path: extra kwargs go through with local_files_only.
         st_cls = MagicMock(return_value=object())
         _load_st_model_offline_first(st_cls, "m", truncate_dim=256)
         st_cls.assert_called_once_with("m", local_files_only=True, truncate_dim=256)
 
-        # Cache-miss path: extra kwargs go through on fallback too.
-        st_cls = MagicMock(side_effect=[ValueError("miss"), object()])
-        _load_st_model_offline_first(st_cls, "m", truncate_dim=256)
-        assert st_cls.call_args_list[1].args == ("m",)
-        assert st_cls.call_args_list[1].kwargs == {"truncate_dim": 256}
-
-    def test_cache_miss_via_value_error_falls_back(self) -> None:
+    def test_a_value_error_cache_miss_is_also_unavailable(self) -> None:
         """huggingface_hub raises ValueError variants in some cases too —
         the broader ``(OSError, ValueError)`` clause covers both."""
         from unittest.mock import MagicMock
         from hypergumbo_core.sketch_embeddings import (
+            EmbeddingsUnavailable,
             _load_st_model_offline_first,
         )
 
-        sentinel = object()
-        st_cls = MagicMock(side_effect=[ValueError("bad cache"), sentinel])
-        result = _load_st_model_offline_first(st_cls, "m")
-        assert result is sentinel
-        assert st_cls.call_count == 2
+        st_cls = MagicMock(side_effect=[ValueError("bad cache"), object()])
+        with pytest.raises(EmbeddingsUnavailable):
+            _load_st_model_offline_first(st_cls, "m")
+        assert st_cls.call_count == 1
 
     def test_cached_load_forces_hf_hub_offline(
         self, monkeypatch: pytest.MonkeyPatch
@@ -9303,14 +9881,13 @@ class TestStModelOfflineFirst:
         # background threads cannot reach the network either.
         assert os.environ.get("HF_HUB_OFFLINE") == "1"
 
-    def test_network_fallback_restores_prior_offline_state(
+    def test_a_cache_miss_restores_prior_offline_state(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """On cache miss the wrapper restores the prior HF_HUB_OFFLINE
-        value before the network-allowing fallback, so the one-time
-        first-install download (the only sanctioned runtime download) can
-        still reach HF Hub. Only the offline-first attempt forces offline
-        mode."""
+        value before raising, so the setting it forced for the cached
+        attempt does not leak into the caller. There is no network-allowing
+        fallback (INV-gujus)."""
         import os
         from hypergumbo_core.sketch_embeddings import (
             _load_st_model_offline_first,
@@ -9327,11 +9904,13 @@ class TestStModelOfflineFirst:
                 raise OSError("not cached")
             return object()
 
-        _load_st_model_offline_first(fake_st, "m")
+        from hypergumbo_core.sketch_embeddings import EmbeddingsUnavailable
 
-        # Offline attempt saw "1"; the download fallback saw the restored
-        # (absent) prior value so the network is reachable.
-        assert seen == ["1", None]
+        with pytest.raises(EmbeddingsUnavailable):
+            _load_st_model_offline_first(fake_st, "m")
+
+        # Only the offline attempt ran; no download was tried.
+        assert seen == ["1"]
         # Prior absent state is restored after the call.
         assert os.environ.get("HF_HUB_OFFLINE") is None
 
@@ -9342,10 +9921,9 @@ class TestHfOfflineBeforeImport:
     huggingface_hub reads its offline switch into a module constant
     (``huggingface_hub.constants.HF_HUB_OFFLINE``) at IMPORT time, NOT live
     from ``os.environ`` — so setting the env var after ``from
-    sentence_transformers import ...`` (as the earlier fix did) was too late
-    and the cached-model load still hit the network. The guard here sets the
-    env var before any HF import, gated on every embedding model already being
-    cached so the one-time first-install download is unaffected.
+    sentence_transformers import ...`` is too late and the cached-model load
+    still hits the network. The guard here sets the env var before any HF
+    import, unconditionally: analysis never downloads a model (INV-gujus).
     """
 
     @staticmethod
@@ -9390,21 +9968,20 @@ class TestHfOfflineBeforeImport:
         from hypergumbo_core.sketch_embeddings import (
             _ensure_hf_offline_for_cached_models,
             _EMBEDDING_MODEL,
-            _MODERNBERT_MODEL_NAME,
         )
 
         monkeypatch.setenv("HF_HOME", str(tmp_path))
         monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
-        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME])
+        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL])
 
         assert _ensure_hf_offline_for_cached_models() is True
         assert os.environ.get("HF_HUB_OFFLINE") == "1"
 
-    def test_ensure_offline_leaves_env_unset_when_any_missing(
+    def test_ensure_offline_forces_offline_even_when_a_model_is_missing(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """First-install / partial cache: do not force offline, so the
-        missing model can still download."""
+        """INV-gujus: analysis never downloads, so a partial cache is no
+        reason to leave the HF Hub reachable."""
         from hypergumbo_core.sketch_embeddings import (
             _ensure_hf_offline_for_cached_models,
             _EMBEDDING_MODEL,
@@ -9414,13 +9991,13 @@ class TestHfOfflineBeforeImport:
         monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
         self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL])  # only one of two
 
-        assert _ensure_hf_offline_for_cached_models() is False
-        assert os.environ.get("HF_HUB_OFFLINE") is None
+        assert _ensure_hf_offline_for_cached_models() is True
+        assert os.environ.get("HF_HUB_OFFLINE") == "1"
 
     def test_ensure_offline_respects_existing_env(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """An already-set HF_HUB_OFFLINE (user/CI) is honored without probing."""
+        """An HF_HUB_OFFLINE the user or CI set to an offline value is kept."""
         from hypergumbo_core.sketch_embeddings import (
             _ensure_hf_offline_for_cached_models,
         )
@@ -9429,6 +10006,62 @@ class TestHfOfflineBeforeImport:
         monkeypatch.setenv("HF_HUB_OFFLINE", "1")
         assert _ensure_hf_offline_for_cached_models() is True
         assert os.environ.get("HF_HUB_OFFLINE") == "1"
+
+    @pytest.mark.parametrize("value", ["0", "false", "no", "off", "False", "y"])
+    def test_ensure_offline_overrides_a_value_that_leaves_the_hub_online(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch, value: str,
+    ) -> None:
+        """huggingface_hub reads only 1/ON/YES/TRUE as offline, so honouring
+        HF_HUB_OFFLINE=0 would leave a plain sketch contacting the hub despite
+        runtime-cli-no-network; the guard replaces such a value with 1."""
+        from hypergumbo_core.sketch_embeddings import (
+            _ensure_hf_offline_for_cached_models,
+        )
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))
+        monkeypatch.setenv("HF_HUB_OFFLINE", value)
+        assert _ensure_hf_offline_for_cached_models() is True
+        assert os.environ.get("HF_HUB_OFFLINE") == "1"
+
+    @pytest.mark.parametrize("value", ["1", "TRUE", "yes", "On"])
+    def test_ensure_offline_keeps_a_value_that_already_means_offline(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch, value: str,
+    ) -> None:
+        from hypergumbo_core.sketch_embeddings import (
+            _ensure_hf_offline_for_cached_models,
+        )
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))
+        monkeypatch.setenv("HF_HUB_OFFLINE", value)
+        assert _ensure_hf_offline_for_cached_models() is True
+        assert os.environ.get("HF_HUB_OFFLINE") == value
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("huggingface_hub") is None,
+        reason="huggingface_hub not installed (embeddings extra absent)",
+    )
+    def test_subprocess_import_time_constant_true_when_user_set_zero(
+        self, tmp_path
+    ) -> None:
+        """The library's own constant, in a fresh interpreter started with
+        HF_HUB_OFFLINE=0: the guard must win, or the hub stays reachable."""
+        import subprocess
+        import sys
+
+        code = (
+            "from hypergumbo_core.sketch_embeddings import "
+            "_ensure_hf_offline_for_cached_models as f\n"
+            "forced = f()\n"
+            "import huggingface_hub.constants as hc\n"
+            "print(f'{forced}|{hc.HF_HUB_OFFLINE}')\n"
+        )
+        env = dict(os.environ, HF_HUB_OFFLINE="0", HF_HOME=str(tmp_path))
+        out = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip().endswith("True|True"), out.stdout
 
     @pytest.mark.skipif(
         importlib.util.find_spec("huggingface_hub") is None,
@@ -9443,16 +10076,15 @@ class TestHfOfflineBeforeImport:
 
         This must run in a subprocess: the pytest process already imported
         huggingface_hub (under the conftest's HF_HUB_OFFLINE=1), so its module
-        constant is frozen and the in-process value cannot exercise the fix.
+        constant is frozen and the in-process value cannot exercise the guard.
         """
         import subprocess
         import sys
         from hypergumbo_core.sketch_embeddings import (
             _EMBEDDING_MODEL,
-            _MODERNBERT_MODEL_NAME,
         )
 
-        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME])
+        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL])
         code = (
             "import os\n"
             "os.environ.pop('HF_HUB_OFFLINE', None)\n"
@@ -9475,11 +10107,11 @@ class TestHfOfflineBeforeImport:
         importlib.util.find_spec("huggingface_hub") is None,
         reason="huggingface_hub not installed (embeddings extra absent)",
     )
-    def test_subprocess_import_time_constant_false_when_uncached(
+    def test_subprocess_import_time_constant_true_even_when_uncached(
         self, tmp_path
     ) -> None:
-        """First-install path: nothing cached → guard does not force offline →
-        constants.HF_HUB_OFFLINE stays False so the download can proceed."""
+        """INV-gujus: nothing cached is not a reason to leave the HF Hub
+        reachable at import time either -- analysis never downloads."""
         import subprocess
         import sys
 
@@ -9499,7 +10131,7 @@ class TestHfOfflineBeforeImport:
             capture_output=True, text=True, env=env, timeout=120,
         )
         assert out.returncode == 0, out.stderr
-        assert out.stdout.strip().endswith("False|False"), out.stdout
+        assert out.stdout.strip().endswith("True|True"), out.stdout
 
 
 class TestConfigFilesNoLockFiles:
@@ -9547,7 +10179,7 @@ class TestConfigFilesNoLockFiles:
 class TestConfigExtractionFallbackWarning:
     """Embedding/hybrid modes must visibly degrade to heuristic when the
     embedding stack is unavailable, instead of silently producing
-    heuristic-mode output (UAT 2026-04-13 DQ-07).
+    heuristic-mode output (WI-fumap).
     """
 
     def _reset_warning_flag(self) -> None:
@@ -9700,9 +10332,9 @@ class TestConfigExtractionFallbackWarning:
 def test_language_stats_count_own_code_only(tmp_path: Path) -> None:
     """WI-kojul / ADR-0004 3a: the Overview counts tiers 1-2 only.
 
-    The 2026-10-14 self-sketch said "Python (62%), C (26%)" because of
-    305,712 lines of vendored, generated tree-sitter C. Vendored code is
-    still analysed; it just does not describe the project.
+    Counting vendored code (e.g. a vendored, generated tree-sitter C
+    parser) would let it dominate the language mix. Vendored code is still
+    analysed; it just does not describe the project.
     """
     from hypergumbo_core.profile import LanguageStats, RepoProfile
     from hypergumbo_core.sketch import _format_language_stats
@@ -9732,3 +10364,252 @@ def test_test_analysis_skips_vendored_tests(tmp_path: Path) -> None:
     (vend_tests / "test_lib.py").write_text("def test_b():\n    pass\n")
     analysis = _analyze_test_files(tmp_path)
     assert (analysis.test_files, analysis.test_loc) == (1, 2)
+
+
+class TestKeySymbolFileEligibility:
+    """Which files Key Symbols may draw from (WI-toloj).
+
+    The gate was "the top 20 files by score, plus every file holding an
+    entry point". Twenty did not grow with the budget, and the entry-point
+    clause had no bound, so a larger sketch filled with entry-point files.
+    """
+
+    @staticmethod
+    def _files(count: int, prefix: str, top_score: float) -> tuple[dict, dict, dict]:
+        """``count`` files of three symbols each, scores falling by file from
+        ``top_score`` to half of it."""
+        by_file: dict[str, list[Symbol]] = {}
+        centrality: dict[str, float] = {}
+        file_scores: dict[str, float] = {}
+        for i in range(count):
+            path = f"{prefix}{i:03d}.py"
+            score = top_score * (1 - i / (2 * count))
+            symbols = [
+                Symbol(id=f"{path}:f{j}", name=f"f{j}", kind="function", language="python",
+                       path=path, span=Span(1, 5, 0, 0))
+                for j in range(3)
+            ]
+            by_file[path] = symbols
+            for j, symbol in enumerate(symbols):
+                centrality[symbol.id] = score / (j + 1)
+            file_scores[path] = score
+        return by_file, centrality, file_scores
+
+    @staticmethod
+    def _selected_files(by_file, centrality, file_scores, max_symbols, entry_files=frozenset()):
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+
+        picked = _select_symbols_two_phase(
+            by_file=by_file, centrality=centrality, file_scores=file_scores,
+            max_symbols=max_symbols, entrypoint_files=set(entry_files),
+            language_proportional=False,
+        )
+        return {path for path, _symbol in picked}
+
+    @pytest.mark.parametrize(("max_symbols", "limit"), [
+        (5, 20), (16, 20), (60, 20), (61, 21), (103, 35), (315, 105)])
+    def test_the_file_limit_follows_the_symbol_budget(self, max_symbols: int, limit: int) -> None:
+        from hypergumbo_core.sketch import key_symbol_file_limit
+
+        assert key_symbol_file_limit(max_symbols) == limit
+
+    def test_a_file_ranked_past_twenty_is_shown_at_a_larger_budget(self) -> None:
+        by_file, centrality, file_scores = self._files(60, "src/m", 1.0)
+        thirtieth = "src/m029.py"
+        small = self._selected_files(by_file, centrality, file_scores, 16)
+        large = self._selected_files(by_file, centrality, file_scores, 120)
+        assert thirtieth not in small
+        assert thirtieth in large
+        # Reach: the small budget's gate was the binding one, not the budget.
+        assert small <= {f"src/m{i:03d}.py" for i in range(20)}
+
+    def test_entry_point_files_that_did_not_rank_are_bounded(self) -> None:
+        """200 scripts each holding an entry point, all scoring below 30
+        modules: the scripts get one place for every four ranked files."""
+        by_file, centrality, file_scores = self._files(30, "src/m", 1.0)
+        scripts, script_centrality, script_scores = self._files(200, "scripts/s", 0.1)
+        by_file.update(scripts)
+        centrality.update(script_centrality)
+        file_scores.update(script_scores)
+
+        picked = self._selected_files(
+            by_file, centrality, file_scores, max_symbols=400, entry_files=set(scripts))
+        ranked = {f"src/m{i:03d}.py" for i in range(30)} | {
+            f"scripts/s{i:03d}.py" for i in range(104)}  # limit 134: 30 modules, then scripts
+        entry_only = picked - ranked
+        assert len(picked & set(scripts)) < 200  # reach: not every script got in
+        assert entry_only == {f"scripts/s{i:03d}.py" for i in range(104, 104 + 134 // 4)}
+
+    def test_at_a_small_budget_five_entry_files_join_the_twenty(self) -> None:
+        by_file, centrality, file_scores = self._files(30, "src/m", 1.0)
+        scripts, script_centrality, script_scores = self._files(40, "scripts/s", 0.1)
+        by_file.update(scripts)
+        centrality.update(script_centrality)
+        file_scores.update(script_scores)
+        picked = self._selected_files(
+            by_file, centrality, file_scores, max_symbols=400, entry_files=set(scripts))
+        # max_symbols=400 lifts the budget so the GATE is what is tested; the
+        # gate here is the explicit small one.
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+
+        gated = {path for path, _s in _select_symbols_two_phase(
+            by_file=by_file, centrality=centrality, file_scores=file_scores,
+            max_symbols=400, entrypoint_files=set(scripts), max_files=20,
+            language_proportional=False)}
+        assert gated == {f"src/m{i:03d}.py" for i in range(20)} | {
+            f"scripts/s{i:03d}.py" for i in range(5)}
+        assert gated < picked
+
+    def test_an_entry_point_file_that_ranked_takes_no_extra_place(self) -> None:
+        by_file, centrality, file_scores = self._files(30, "src/m", 1.0)
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+
+        gated = {path for path, _s in _select_symbols_two_phase(
+            by_file=by_file, centrality=centrality, file_scores=file_scores,
+            max_symbols=400, entrypoint_files={"src/m000.py", "src/m001.py"},
+            max_files=20, language_proportional=False)}
+        assert gated == {f"src/m{i:03d}.py" for i in range(20)}
+
+    def test_equal_scores_are_gated_by_path(self) -> None:
+        by_file, centrality, file_scores = self._files(30, "src/m", 1.0)
+        for path in file_scores:
+            file_scores[path] = 1.0
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+
+        for order in (sorted(by_file), sorted(by_file, reverse=True)):
+            gated = {path for path, _s in _select_symbols_two_phase(
+                by_file={p: by_file[p] for p in order}, centrality=centrality,
+                file_scores={p: file_scores[p] for p in order},
+                max_symbols=400, entrypoint_files=set(), max_files=20,
+                language_proportional=False)}
+            assert gated == {f"src/m{i:03d}.py" for i in range(20)}
+
+
+class TestIdenticalAdditionalFiles:
+    """Files with the same bytes are listed and printed once (WI-lofas)."""
+
+    @staticmethod
+    def _repo(tmp_path: Path) -> Path:
+        (tmp_path / "packages" / "app").mkdir(parents=True)
+        (tmp_path / "packages" / "lib").mkdir(parents=True)
+        (tmp_path / "docs").mkdir()
+        readme = "# Project\n\nWhat it does and how it works.\n" * 4
+        (tmp_path / "README.md").write_text(readme)
+        (tmp_path / "packages" / "app" / "README.md").write_text(readme)
+        (tmp_path / "packages" / "lib" / "OVERVIEW.md").write_text(readme)
+        (tmp_path / "docs" / "guide.md").write_text("# Guide\n\nA different file.\n")
+        (tmp_path / "docs" / "guide-copy.md").write_text("# Guide\n\nA different file.\n\n")
+        return tmp_path
+
+    def test_copies_fold_into_the_shallowest_path(self, tmp_path: Path) -> None:
+        from hypergumbo_core.sketch import _group_identical_files
+
+        root = self._repo(tmp_path)
+        files = sorted(p for p in root.rglob("*.md"))
+        kept, copies = _group_identical_files(files, root)
+        assert copies == {root / "README.md": [
+            root / "packages" / "app" / "README.md", root / "packages" / "lib" / "OVERVIEW.md"]}
+        assert set(kept) == set(files) - set(copies[root / "README.md"])
+        assert [p for p in files if p in kept] == kept  # order preserved
+
+    def test_a_trailing_newline_makes_a_different_file(self, tmp_path: Path) -> None:
+        """Same bytes, nothing else: where the rule stops."""
+        from hypergumbo_core.sketch import _group_identical_files
+
+        root = self._repo(tmp_path)
+        pair = [root / "docs" / "guide.md", root / "docs" / "guide-copy.md"]
+        assert _group_identical_files(pair, root) == (pair, {})
+
+    def test_empty_and_unreadable_files_stand_alone(self, tmp_path: Path) -> None:
+        from hypergumbo_core.sketch import _group_identical_files
+
+        (tmp_path / "a.md").write_text("")
+        (tmp_path / "b.md").write_text("")
+        gone = tmp_path / "missing.md"
+        files = [tmp_path / "a.md", tmp_path / "b.md", gone]
+        assert _group_identical_files(files, tmp_path) == (files, {})
+
+    def test_at_one_depth_the_first_name_is_kept(self, tmp_path: Path) -> None:
+        from hypergumbo_core.sketch import _group_identical_files
+
+        (tmp_path / "b.md").write_text("same")
+        (tmp_path / "a.md").write_text("same")
+        kept, copies = _group_identical_files([tmp_path / "b.md", tmp_path / "a.md"], tmp_path)
+        assert kept == [tmp_path / "a.md"]
+        assert copies == {tmp_path / "a.md": [tmp_path / "b.md"]}
+
+    def test_the_listing_names_a_copy_beside_the_file_that_stands_for_it(
+        self, tmp_path: Path
+    ) -> None:
+        root = self._repo(tmp_path)
+        listing, selected, _ = _format_additional_files(
+            root, source_files=[], symbols=[], in_degree={})
+        assert ("- `README.md` (same content: `packages/app/README.md`, "
+                "`packages/lib/OVERVIEW.md`)") in listing
+        # Each copy is named once, beside its file, and is no entry of its own.
+        assert listing.count("packages/app/README.md") == 1
+        assert root / "packages" / "app" / "README.md" not in selected
+        assert "- `docs/guide.md`\n" in listing + "\n"
+        assert "- `docs/guide-copy.md`" in listing
+
+    def test_many_copies_are_counted_after_the_first_three(self, tmp_path: Path) -> None:
+        for i in range(6):
+            directory = tmp_path / f"example{i}"
+            directory.mkdir()
+            (directory / "config.yaml").write_text("shared: true\n")
+        (tmp_path / "config.yaml").write_text("shared: true\n")
+        listing, _selected, _ = _format_additional_files(
+            tmp_path, source_files=[], symbols=[], in_degree={})
+        assert ("- `config.yaml` (same content: `example0/config.yaml`, "
+                "`example1/config.yaml`, `example2/config.yaml` and 3 more)") in listing
+        assert "example3" not in listing
+
+    def test_the_content_is_printed_once_and_says_where_else_it_is(self, tmp_path: Path) -> None:
+        root = self._repo(tmp_path)
+        copies: dict[Path, list[Path]] = {}
+        _listing, selected, _ = _format_additional_files(
+            root, source_files=[], symbols=[], in_degree={}, copies=copies)
+        content, printed, _ = _format_additional_files(
+            root, source_files=[], symbols=[], in_degree={}, token_budget=5000,
+            include_content=True, section_title="Additional Files Content",
+            preselected_files=selected, copies=copies)
+        assert content.count("START of README.md") == 1
+        assert "START of packages/app/README.md" not in content
+        assert ("*The same content is at `packages/app/README.md`, "
+                "`packages/lib/OVERVIEW.md`.*") in content
+        assert content.index("The same content is at") < content.index("START of README.md")
+        assert root / "README.md" in printed
+
+    def test_a_truncated_file_still_says_where_else_it_is(self, tmp_path: Path) -> None:
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "small.md").write_text("# Small\n\nA short file printed whole.\n")
+        big = "# Big\n\n" + "A long line of documentation text. " * 400
+        (tmp_path / "zz-big.md").write_text(big)
+        (tmp_path / "pkg" / "zz-big.md").write_text(big)
+        copies: dict[Path, list[Path]] = {}
+        _listing, selected, _ = _format_additional_files(
+            tmp_path, source_files=[], symbols=[], in_degree={}, copies=copies)
+        content, _printed, _ = _format_additional_files(
+            tmp_path, source_files=[], symbols=[], in_degree={}, token_budget=1200,
+            include_content=True, preselected_files=selected, copies=copies)
+        assert "[...truncated...]" in content  # reach: the truncating branch
+        assert "*The same content is at `pkg/zz-big.md`.*" in content
+
+    def test_a_readme_link_to_a_copy_counts_for_the_file_that_stands_for_it(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_core.sketch import _select_additional_files
+
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "sub").mkdir()
+        (tmp_path / "README.md").write_text("# P\n\nSee [the guide](docs/sub/guide.md).\n")
+        (tmp_path / "docs" / "guide.md").write_text("# Guide\n\nText.\n")
+        (tmp_path / "docs" / "sub" / "guide.md").write_text("# Guide\n\nText.\n")
+        for name in ("a", "b", "c"):
+            (tmp_path / f"{name}.yaml").write_text(f"{name}: 1\n")
+        copies: dict[Path, list[Path]] = {}
+        selected, candidates, _, _ = _select_additional_files(
+            tmp_path, [], [], {}, max_files=2, rank_overviews=False, copies_out=copies)
+        assert selected == [tmp_path / "README.md", tmp_path / "docs" / "guide.md"]
+        assert tmp_path / "docs" / "sub" / "guide.md" not in candidates
+        assert copies == {tmp_path / "docs" / "guide.md": [tmp_path / "docs" / "sub" / "guide.md"]}

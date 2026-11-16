@@ -305,3 +305,65 @@ class TestCudaCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+def test_the_id_kind_slot_is_the_kind_not_the_execution_space(tmp_path):
+    """WI-lusoh (INV-kurup). The id's kind slot named the execution space
+    (``:global`` / ``:device`` / ``:host`` / ``:host_device``) while
+    ``Symbol.kind`` was ``function``: id-format:F3's round-trip flagged 2 of
+    every such symbol (whisper.cpp: 998). The space stays on meta."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    (tmp_path / "k.cu").write_text(
+        "__global__ void k(float* a) { a[0] = 1; }\n"
+        "__device__ float d(float x) { return x; }\n"
+        "__host__ __device__ float hd(float x) { return x; }\n"
+        "__host__ float h(float x) { return x; }\n"
+        "float plain(float x) { return x; }\n"
+    )
+    funcs = [s for s in analyze_cuda_files(tmp_path).symbols if s.kind == "function"]
+    assert {s.meta.get("cuda_execution_space") for s in funcs if s.meta} >= {
+        "global", "device", "host_device", "host",
+    }
+    assert all(s.id.endswith(f":{s.name}:function") for s in funcs)
+    assert _check_id_roundtrip(funcs) == []
+
+
+def test_unresolved_call_ends_at_a_stand_in(tmp_path) -> None:
+    """A callee no file of the run defines is the fleet's stand-in.
+
+    It was ``cuda:external:<name>:function``, four slots and so no id:
+    finalize rendered it with the path slot ``<unknown>``. A kernel launch of
+    an undefined kernel keeps its launch marker on the stand-in edge.
+    """
+    from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+    (tmp_path / "k.cu").write_text(
+        "__device__ float helper(float x) { return x * 2.0f; }\n"
+        "__global__ void kernel(float* out) { out[0] = helper(sqrtf(1.0f)); }\n"
+        "void launch(float* d) {\n"
+        "    kernel<<<1, 1>>>(d);\n"
+        "    elsewhere<<<1, 1>>>(d);\n"
+        "    cudaDeviceSynchronize();\n"
+        "}\n"
+    )
+    result = analyze_cuda_files(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    calls = {
+        (by_id[e.src].name, by_id[e.dst].name if e.dst in by_id else e.dst): e
+        for e in result.edges if e.edge_type == "calls"
+    }
+    assert set(calls) == {
+        ("kernel", "helper"),
+        ("kernel", "cuda:external:0-0:sqrtf:unresolved"),
+        ("launch", "kernel"),
+        ("launch", "cuda:external:0-0:elsewhere:unresolved"),
+        ("launch", "cuda:external:0-0:cudaDeviceSynchronize:unresolved"),
+    }
+    launched = calls[("launch", "cuda:external:0-0:elsewhere:unresolved")]
+    assert launched.meta["mechanism"] == "kernel_launch"
+    assert launched.meta["callee_name"] == "elsewhere"
+    assert calls[("launch", "kernel")].meta["mechanism"] == "kernel_launch"
+    plain = calls[("launch", "cuda:external:0-0:cudaDeviceSynchronize:unresolved")]
+    assert "mechanism" not in plain.meta and plain.is_resolved is False
+    assert non_id_edge_endpoints(result.symbols, result.edges) == []

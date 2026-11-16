@@ -251,6 +251,73 @@ def test_builtin_eval_exec_compile():
     """) == ["builtins.compile", "builtins.eval", "builtins.exec"]
 
 
+def test_descriptor_level_writes_are_sites():
+    """A write through a bare descriptor is this function's write even when
+    the ``os.open`` that made the descriptor sits in another function."""
+    assert _prims("""
+        import os
+        def flush(fd, data):
+            os.write(fd, data)
+            os.fsync(fd)
+            os.ftruncate(fd, 0)
+    """) == ["os.fsync", "os.ftruncate", "os.write"]
+
+
+def test_signal_by_pid_is_a_process_site():
+    """``os.kill`` is the process family: signal 0 probes, SIGTERM ends."""
+    sites = _scan("""
+        import os, signal
+        def stop(pid):
+            os.kill(pid, 0)
+            os.killpg(pid, signal.SIGTERM)
+    """)
+    assert [(s.primitive, s.family) for s in sites] == [
+        ("os.kill", "process"), ("os.killpg", "process")]
+
+
+def test_environment_writes_are_sites():
+    """Every spelling of an environment write is one site, under the method
+    Python calls for the subscript forms; a read is not a site."""
+    sites = _scan("""
+        import os
+        from os import environ
+        def go():
+            os.environ["A"] = "1"
+            environ["B"] = "2"
+            del os.environ["A"]
+            os.environ.pop("B", None)
+            os.environ.setdefault("C", "3")
+            os.putenv("D", "4")
+            os.chdir("/")
+            old = os.umask(0)
+            x = os.environ.get("A")
+            y = os.environ["C"]
+    """)
+    assert [(s.primitive, s.family, s.line) for s in sites] == [
+        ("os.environ.__setitem__", "env_write", 5),
+        ("os.environ.__setitem__", "env_write", 6),
+        ("os.environ.__delitem__", "env_write", 7),
+        ("os.environ.pop", "env_write", 8),
+        ("os.environ.setdefault", "env_write", 9),
+        ("os.putenv", "env_write", 10),
+        ("os.chdir", "env_write", 11),
+        ("os.umask", "env_write", 12),
+    ]
+
+
+def test_security_md_generator_names_every_family():
+    """SECURITY.md's generated prose lists the gate's families in order; a
+    family inventoried here and absent there would be checked but
+    undisclosed."""
+    path = REPO_ROOT / "scripts" / "generate-security-md"
+    loader = importlib.machinery.SourceFileLoader("generate_security_md", str(path))
+    spec = importlib.util.spec_from_loader("generate_security_md", loader)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["generate_security_md"] = mod
+    loader.exec_module(mod)
+    assert tuple(gate._FAMILY_ROWS) == mod.IO_FAMILIES
+
+
 def test_shadowed_builtin_is_still_conservatively_counted():
     """No scope analysis: a local ``def open`` does not hide the builtin.
     Documented over-approximation, reviewed in the allowlist."""

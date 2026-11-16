@@ -1,34 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-fokik: the path-slot chokepoint must anchor on the SPAN, not on slot count.
 
-WHAT THIS CLOSES. ``io_boundary._extract_module_hint`` took ``edge_dst.split(":")[1]``,
-which is correct only when the path slot is colon-FREE. ADR-0036 Ruling 1 makes ``path``
-the one colon-TOLERANT slot, so on ``rust:std::env:0-0:var:external_symbol`` it returned
-``std``. ``_module_matches("std::env", "std")`` is False, and ``_lookup_named_entry``
-treats a present-but-mismatched module as a REJECTION rather than a degrade — the
-finding is dropped silently. All nine of Rust's catalogued sink modules are
-colon-bearing, so this refused the entire Rust sink surface.
+WHY NOT LEFT-ANCHORED. ADR-0036 Ruling 1 makes ``path`` the one colon-TOLERANT slot,
+so ``edge_dst.split(":")[1]`` returns ``std`` for
+``rust:std::env:0-0:var:external_symbol``. ``_module_matches("std::env", "std")`` is
+False, and ``_lookup_named_entry`` treats a present-but-mismatched module as a
+REJECTION rather than a degrade — the finding is dropped silently. Every catalogued
+Rust sink module is colon-bearing, so a left-anchored parse refuses the entire Rust
+sink surface.
 
-WHY MIGRATING TO THE EXISTING CHOKEPOINT WAS NOT ENOUGH, which is the part the item did
-not have. ``symbol_path_slot`` was RIGHT-anchored (``parts[1:-3]``) on the grammar's
-promise that ``name`` is colon-free. Measured over three real maps
-(``scripts/measure-symbol-id-colon-conformance.py``; just, rage, hypergumbo itself):
+WHY NOT RIGHT-ANCHORED. ``parts[1:-3]`` relies on the grammar's promise that ``name``
+is colon-free, and DOUBLE-SPAN ids — ``rust:external:0-0:Stdio:0-0:null:external_symbol``,
+an emission defect rather than a parse one — break that promise. Right-anchoring them
+yields ``external:0-0:Stdio``, which is not in ``_UNRESOLVED_MODULE_PLACEHOLDERS``, so
+it takes the module-FILTER branch and silently rejects: the same fatal shape, arrived
+at from the other side. (Measure an id population with
+``scripts/measure-symbol-id-colon-conformance.py``.)
 
-    conformant                 352,254   both parses agree; migration is a no-op
-    path colon, LEFT wrong         740   rust ``std::env`` etc. — migration FIXES
-    name colon, RIGHT wrong        483   migration would have REGRESSED these
-    unparseable                    584   no ``\\d+-\\d+`` token at all
-
-The 483 are not the objc selectors the item predicted. They are DOUBLE-SPAN ids —
-``rust:external:0-0:Stdio:0-0:null:external_symbol`` — an emission defect, not a parse
-one. Right-anchoring them yields ``external:0-0:Stdio``, which is not in
-``_UNRESOLVED_MODULE_PLACEHOLDERS``, so it takes the module-FILTER branch and silently
-rejects. That is the same fatal shape the item was filed about, arrived at from the
-other side. Left-anchoring happens to yield the safe ``external``.
-
-SPAN-ANCHORING IS THE ONLY PARSE THAT IS RIGHT ON BOTH. It also makes this function
-agree with ``taint._extract_callee_name``, which has anchored on the span all along —
-the item names that disagreement between two parsers of the same string as "the tell".
+SPAN-ANCHORING IS THE ONLY PARSE THAT IS RIGHT ON BOTH. It also makes the path parse
+agree with the name parse (``ir.symbol_name_slot``), which anchors on the span the same
+way; two parsers of the same string disagreeing is the tell.
 
 FAILING SAFE IS THE DESIGN CHOICE, stated because a malformed id has no correct answer:
 for a double-span id there is no true path slot, and the two candidate answers are
@@ -53,7 +44,7 @@ class TestTheGrammarsColonTolerantPathSlot:
         ("go:net/http:0-0:Do:unresolved", "net/http"),
         # The ADR's own worked example.
         ("dart:dart:io:0-0:module:module", "dart:io"),
-        # Every Rust sink module is colon-bearing; this is the filed defect.
+        # Every Rust sink module is colon-bearing.
         ("rust:std::fs:0-0:write:external_symbol", "std::fs"),
         ("rust:std::env:0-0:var:external_symbol", "std::env"),
         ("rust:std::process::Command:0-0:new:external_symbol", "std::process::Command"),
@@ -76,18 +67,16 @@ class TestTheGrammarsColonTolerantPathSlot:
 
 
 class TestTheNameSlotHasTheSameDefectInTheOtherDirection:
-    """The path fix alone moves NOTHING, and the positive control is what proved it.
+    """Without a span-anchored NAME parse, the path fix alone moves NOTHING.
 
-    With the module hint corrected to ``std::fs``, tagging a
-    ``rust:std::fs:0-0:write:external_symbol`` edge still produced zero boundaries.
-    ``io_boundary._extract_callee_name`` takes "everything after the first three
-    fields", which assumes the path slot is colon-FREE — the mirror of the module-hint
-    bug, in the same file. It returned ``fs:0-0:write``, so the lookup missed before
-    the module hint could matter.
+    Taking "everything after the first three fields" as the name assumes the path
+    slot is colon-FREE — the mirror of the module-hint defect — and returns
+    ``fs:0-0:write`` for ``rust:std::fs:0-0:write:external_symbol``, so the lookup
+    misses before the module hint can matter and the edge tags no boundary.
 
-    ``taint._extract_callee_name`` has always anchored on the span and gets this right.
-    Two homes for one question, one of them wrong: the same shape WI-ribuz files for the
-    path slot. Both now route through :func:`ir.symbol_name_slot`.
+    Two homes for one question drift apart (the same shape WI-ribuz files for the
+    path slot), so ``io_boundary._extract_callee_name`` and
+    ``taint._extract_callee_name`` both route through :func:`ir.symbol_name_slot`.
     """
 
     @pytest.mark.parametrize(("symbol_id", "expected"), [
@@ -137,9 +126,9 @@ class TestTheNameSlotHasTheSameDefectInTheOtherDirection:
 
 
 class TestTheEndToEndBoundaryIsActuallyRecovered:
-    """THE closure evidence for INV-fokik: a Rust sink tags where it did not.
+    """Production's tagger tags a Rust sink (the closure evidence for INV-fokik).
 
-    The item's failure mode is a SILENT drop, so a passing unit test on the parser is
+    The failure mode is a SILENT drop, so a passing unit test on the parser is
     not enough — the assertion has to run production's tagger and see a primitive.
     """
 
@@ -169,7 +158,7 @@ class TestTheEndToEndBoundaryIsActuallyRecovered:
 class TestMalformedIdsFailSafe:
     """A double-span id has no true path slot, so it must degrade, not reject.
 
-    Measured at 483 occurrences across just + rage. ``external`` is in
+    ``external`` is in
     ``_UNRESOLVED_MODULE_PLACEHOLDERS``; ``external:0-0:Stdio`` is not, and a
     non-placeholder module hint is compared as a real module and rejects everything.
     """
@@ -201,11 +190,11 @@ class TestMalformedIdsFailSafe:
 
 
 class TestNoSpanTokenFallsBackRatherThanFailing:
-    """Ids whose span slot is not ``\\d+-\\d+`` must keep their current answer.
+    """Ids whose span slot is not ``\\d+-\\d+`` keep the right-anchored answer.
 
-    Measured at 584 across the same maps — ``just`` recipes carry a bare line number
-    (``just:examples/screenshot.just:6:build:recipe``). Right-anchoring already handles
-    those correctly, so span-anchoring keeps it as the fallback instead of returning "".
+    ``just`` recipes carry a bare line number
+    (``just:examples/screenshot.just:6:build:recipe``). Right-anchoring handles those
+    correctly, so span-anchoring keeps it as the fallback instead of returning "".
     """
 
     @pytest.mark.parametrize(("symbol_id", "expected"), [
@@ -223,8 +212,8 @@ class TestNoSpanTokenFallsBackRatherThanFailing:
 class TestFirstPartyPathsStillReturnNoHint:
     """``_extract_module_hint`` keeps its own contract: a file path is not a module.
 
-    This is the INV-sapit surface (PR #256) and is unrelated to the anchor, so it is
-    pinned here to prove the migration did not quietly drop it.
+    This is the INV-sapit surface and is independent of the anchor; it is pinned
+    here so a change to the anchor cannot quietly drop it.
     """
 
     @pytest.mark.parametrize("symbol_id", [
@@ -237,7 +226,7 @@ class TestFirstPartyPathsStillReturnNoHint:
     def test_relative_first_party_path_is_still_the_disclosed_gap(self) -> None:
         """DISCLOSED, not fixed: a relative first-party path still reads as a module.
 
-        Recorded on PR #256 with its own re-evaluation trigger. Pinned so a future
+        It has its own re-evaluation trigger (INV-sapit). Pinned so a future
         widening has to argue with an assertion rather than discover this silently.
         """
         assert _extract_module_hint("rust:src/main.rs:1-3:helper:function") == "src/main.rs"

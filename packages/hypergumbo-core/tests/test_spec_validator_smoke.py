@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Phase-0 smoke test for the spec_validator stub (ADR-0033, INV-sugat).
+"""Tests for the spec_validator stage (ADR-0033, INV-sugat).
 
-Phase 0 lands the validator-stage scaffolding with no check classes enabled.
-This test verifies that:
+The first block is the smoke-level floor every change must preserve:
 
-* ``validate_ir`` returns an empty violations list for arbitrary inputs.
+* ``validate_ir`` returns an empty violations list for empty inputs.
 * ``build_validation_report`` produces the expected shape (schema_version,
   empty violations, all-zero violations_by_class counters).
 * ``emit_stderr_summary`` is silent on empty input and prints one line
   per non-empty class otherwise.
 
-Phase-3 PRs (axis-conformance, writer-contract, cross-field coherence,
-verdict-enum completeness) will each grow this file with class-specific
-fixtures. The smoke-level assertions here remain as the floor that any
-future change has to preserve.
+The remaining sections pin each validator class with class-specific
+fixtures: axis-conformance, writer-contract, cross-field coherence,
+verdict-enum completeness and id-format. Most fixtures are lightweight
+``_FakeSym`` stand-ins, since the validator reads records by attribute
+(or dict key) rather than requiring real IR dataclasses.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def test_validate_ir_empty_inputs_returns_empty() -> None:
 def test_build_validation_report_empty_is_clean() -> None:
     """Empty violations produces all-zero counters + empty violations list.
 
-    Codifies the Phase-0 contract: a clean run writes a discoverable but
+    Codifies the contract that a clean run writes a discoverable but
     empty ``validation_report`` into the artifact. Downstream consumers
     (and CI gates) can rely on the section being present even when there's
     nothing to report.
@@ -59,14 +59,14 @@ def test_build_validation_report_empty_is_clean() -> None:
     # ADR-0035 §5: stats are None on a bare call (no symbols supplied);
     # the production finalize path always supplies them.
     assert report["stable_id_stats"] is None
+    assert report["name_slot_stats"] is None
 
 
 def test_build_validation_report_counts_by_class() -> None:
     """Non-empty violations get tallied per ``validator_class``.
 
-    Verifies the counter logic. Future Phase-3 work that emits real
-    violations relies on this counter shape for the stderr summary and
-    for CI gate readability.
+    Verifies the counter logic. The stderr summary and CI gates rely on
+    this counter shape.
     """
     violations = [
         ValidationViolation(
@@ -191,7 +191,7 @@ def test_emit_stderr_summary_uses_stderr_not_stdout(capsys) -> None:
 
 
 # ----------------------------------------------------------------------
-# Phase 3 PR1 — Axis-conformance validator class tests
+# Axis-conformance validator class tests
 # ----------------------------------------------------------------------
 
 
@@ -513,7 +513,7 @@ def test_axis_conformance_edge_origin_bad_element_flagged() -> None:
 
 
 # ----------------------------------------------------------------------
-# Phase 3 PR2 — Writer-contract validator class tests
+# Writer-contract validator class tests
 # ----------------------------------------------------------------------
 
 
@@ -548,15 +548,15 @@ def test_writer_contract_flags_default_config_fingerprint_on_dict_shaped_runs() 
     dict-or-attribute ``_read`` helper — bare ``getattr`` on a dict
     silently returns the default, never matches the sentinel, and the
     check no-ops in production while passing the object-shaped tests
-    above. This is the regression guard for the declared-fields:F1(a)
-    resurrection (INV-luhur). The dict-shaped run also exercises the
+    above (declared-fields:F1(a), INV-luhur). The dict-shaped run also
+    exercises the
     ``record_id`` (``example_id``) extraction, which must surface the
     offending run's ``execution_id`` rather than ``None``.
     """
     from hypergumbo_core.ir import _default_config_fingerprint
 
     default_fp = _default_config_fingerprint()
-    # dict-shaped, exactly as cli.py:7905 accumulates them.
+    # dict-shaped, exactly as cli.py accumulates them.
     runs = [
         {
             "execution_id": f"run:{i}",
@@ -622,12 +622,12 @@ def test_writer_contract_silent_with_no_runs() -> None:
 
 
 # ----------------------------------------------------------------------
-# Phase 6 PR2 — Writer-contract sub-pattern 1 helper tests
+# Writer-contract sub-pattern 1 helper tests
 # ----------------------------------------------------------------------
 
 
 def test_is_truthy_none_is_false() -> None:
-    """Phase 6 PR2: ``_is_truthy(record, field)`` returns False for None."""
+    """``_is_truthy(record, field)`` returns False for None."""
     from hypergumbo_core.spec_validator import _is_truthy
 
     obj = _FakeSym(field_a=None)
@@ -681,8 +681,8 @@ def test_is_truthy_reads_dict_shaped_record() -> None:
 
 
 def test_check_sub_pattern_1_never_populated_empty_table_is_no_op() -> None:
-    """The Phase 6 PR2 sub-pattern-1 table is empty (every documented
-    field is now wired). The helper must return [] when the table is
+    """The sub-pattern-1 table is currently empty (every documented
+    field is wired). The helper must return [] when the table is
     empty."""
     from hypergumbo_core.spec_validator import (
         _check_sub_pattern_1_never_populated,
@@ -692,7 +692,7 @@ def test_check_sub_pattern_1_never_populated_empty_table_is_no_op() -> None:
 
 
 # ----------------------------------------------------------------------
-# Phase 3 PR3 — Cross-field coherence validator class tests
+# Cross-field coherence validator class tests
 # ----------------------------------------------------------------------
 
 
@@ -701,9 +701,9 @@ def test_cross_field_class_b_coherent_passes() -> None:
     populated) passes the cross-field check.
 
     The fixture is fully stamped (stable_id / fingerprint /
-    discovery_language / non-empty origin): since the WI-kufib canary
-    relocation, an UNSTAMPED Class B stand-in is no longer "coherent" —
-    see the Class B stamping canary tests below.
+    discovery_language / display_label / non-empty origin) because an
+    UNSTAMPED Class B stand-in trips the Class B stamping canary — see the
+    canary tests below (WI-kufib).
     """
     from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
@@ -714,11 +714,12 @@ def test_cross_field_class_b_coherent_passes() -> None:
         language=None,
         discovery_language="python",
         protocol_origin="websocket",
-        # synthetic:F2: a coherent (fully-stamped) Class-B stand-in now also
-        # carries display_label (the affirmative half of the biconditional).
+        # A coherent (fully-stamped) Class-B stand-in also carries
+        # display_label (the affirmative half of the biconditional;
+        # synthetic:F2).
         display_label="websocket:class-b",
         origin=["websocket-linker"],
-        stable_id="sha256:" + "0" * 16,
+        stable_id="hgstableid15:" + "0" * 16,
         fingerprint="hgfp2:" + "0" * 16,
         qualified_name=None,
         dst_ref=None,
@@ -811,8 +812,9 @@ def test_cross_field_flags_class_a_with_display_label() -> None:
     from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
     # Deterministic non-exempt kind: sorted() avoids frozenset hash-order
-    # flakiness, and the exemptions (file/external_symbol, line ~839) must be
-    # excluded or the check correctly emits 0 for those kinds.
+    # flakiness, and the display_label check's exempt kinds
+    # (file/external_symbol, in spec_validator) must be excluded or the
+    # check correctly emits 0 for those kinds.
     a_kind = next(
         k for k in sorted(all_symbol_kind_names())
         if k not in ("file", "external_symbol")
@@ -925,8 +927,9 @@ def _res_edge(dst: str, *, is_resolved: bool) -> _FakeSym:
 
 
 def test_cross_field_flags_resolved_edge_to_external_placeholder() -> None:
-    """is_resolved=True pointing at an external_symbol placeholder is the WI-kukuk
-    contradiction (resolution names in-repo-ness, ADR-0037 ruling 1) — one error."""
+    """is_resolved=True pointing at an external_symbol placeholder is a
+    contradiction (resolution names in-repo-ness, ADR-0037 ruling 1) — one
+    error (WI-kukuk)."""
     node = _ext_node("python:os.path:0-0:join:external_symbol")
     edge = _res_edge("python:os.path:0-0:join:external_symbol", is_resolved=True)
     violations = validate_ir([node], [edge], [])
@@ -963,8 +966,8 @@ def test_cross_field_resolved_edge_dst_absent_not_fk_flagged() -> None:
 
 
 # ----------------------------------------------------------------------
-# validator:F2 — origin_run_id -> analysis_runs FK predicate
-# (WI-moriz keystone; regression guard for WI-mosil + synthetic:F1)
+# origin_run_id -> analysis_runs FK predicate
+# (validator:F2; WI-moriz, WI-mosil, synthetic:F1)
 # ----------------------------------------------------------------------
 _ORIGIN_FK_FIELDS = ("Symbol.origin_run_id", "Edge.origin_run_id")
 
@@ -999,8 +1002,8 @@ def test_origin_fk_passes_when_origin_matches_a_run() -> None:
 
 
 def test_origin_fk_flags_empty_origin_when_runs_exist() -> None:
-    """Empty origin_run_id with a run set present is the WI-mosil regression (a
-    node whose node->AnalysisRun provenance join is broken) — one error."""
+    """Empty origin_run_id with a run set present means the node's
+    node->AnalysisRun provenance join is broken — one error (WI-mosil)."""
     sym = _FakeSym(id="m.py:1-1:f:function", origin_run_id="")
     matched = _origin_fk(validate_ir([sym], [], [_run("run-1")]))
     assert len(matched) == 1
@@ -1048,8 +1051,8 @@ def test_origin_fk_flags_empty_edge_origin() -> None:
 
 
 # ----------------------------------------------------------------------
-# WI-mujor — dangling-endpoint referential-integrity predicate
-# (the dst-absent half deferred from the ADR-0037 is_resolved<->dst FK)
+# Dangling-endpoint referential-integrity predicate (WI-mujor)
+# (covers the dst-absent case the ADR-0037 is_resolved<->dst FK leaves out)
 # ----------------------------------------------------------------------
 _DANGLING_FIELDS = ("Edge.src", "Edge.dst")
 
@@ -1076,9 +1079,9 @@ def test_dangling_passes_when_both_endpoints_resolve() -> None:
 
 
 def test_dangling_flags_absent_src_when_runs_exist() -> None:
-    """A non-empty Edge.src naming no node is a dangling endpoint — the
-    WI-mujor regression (the 23 tier-filtered src-dangling edges) surfacing as
-    one error instead of passing the validator silently."""
+    """A non-empty Edge.src naming no node (e.g. a src dropped by tier
+    filtering) is a dangling endpoint — one error rather than a silent pass
+    (WI-mujor)."""
     b = _FakeSym(id="m.py:2-2:b:function", src=None, dst=None)
     edge = _FakeSym(id="e:1", src="m.py:9-9:gone:function", dst="m.py:2-2:b:function")
     matched = _dangling(validate_ir([b], [edge], [_run("run-1")]))
@@ -1118,7 +1121,7 @@ def test_dangling_ignores_empty_endpoint() -> None:
 
 
 # ----------------------------------------------------------------------
-# WI-vudul — fingerprint output-boundary format guard
+# Fingerprint output-boundary format guard (WI-vudul)
 # ----------------------------------------------------------------------
 _FP_FIELD = "Symbol.fingerprint"
 
@@ -1184,9 +1187,9 @@ def test_edge_id_format_accepts_the_content_digest() -> None:
 
 
 def test_edge_id_format_refuses_a_node_shaped_id() -> None:
-    """The deferred item asked for Symbol.id's five-slot grammar here; every
-    real edge id is a digest, so the node grammar would flag all of them. The
-    rule enforced is the one the factory actually produces."""
+    """Edge.id is held to the digest grammar the edge-id factory produces,
+    not Symbol.id's five-slot node grammar (which every real edge id would
+    fail), so a node-shaped edge id is flagged."""
     from hypergumbo_core.spec_validator import _check_edge_id_format
 
     class _E:
@@ -1219,7 +1222,7 @@ def test_edge_id_format_skips_an_absent_or_non_string_id() -> None:
 def test_wired_checks_manifest_present_in_report() -> None:
     """build_validation_report discloses the wired predicate set so a 0 class
     count reads as '0 instances of these named checks', not '0 defects of any
-    kind' — the structural answer to WI-moriz's false-all-clear complaint."""
+    kind' (WI-moriz)."""
     from hypergumbo_core.spec_validator import _VALIDATOR_CLASSES
 
     report = build_validation_report([])
@@ -1233,8 +1236,7 @@ def test_wired_checks_manifest_present_in_report() -> None:
 
 
 def test_wired_checks_manifest_matches_validate_ir() -> None:
-    """Structural drift guard (the WI-moriz root cause made un-reproducible):
-    the disclosed check set must equal the set of ``_check_*`` predicates
+    """Structural drift guard (WI-moriz): the disclosed check set must equal the set of ``_check_*`` predicates
     actually wired into ``validate_ir``. You cannot wire a new check without
     disclosing it, nor disclose one you did not wire — so the report can never
     silently imply a class is checked when it is not (or vice versa)."""
@@ -1297,7 +1299,7 @@ def test_no_harmful_magnet_check_empty_is_noop() -> None:
 
 
 # ----------------------------------------------------------------------
-# Phase 6 PR3 — INV-bazij stable_id collision umbrella check
+# stable_id collision umbrella check (INV-bazij)
 # ----------------------------------------------------------------------
 
 
@@ -1322,7 +1324,7 @@ def _make_sym_with_stable_id(idx: int, sid: str, name: str = "f") -> _FakeSym:
 def test_cross_field_stable_id_zero_collisions_pass() -> None:
     """All-distinct stable_ids → no corpus umbrella. The ~0 threshold
     (ADR-0035 §5) does not fire when there is genuinely no collision."""
-    syms = [_make_sym_with_stable_id(i, f"sha256:{i:016x}") for i in range(100)]
+    syms = [_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}") for i in range(100)]
     violations = validate_ir(syms, [], [])
     assert not any(
         v.validator_class == "cross_field"
@@ -1332,13 +1334,13 @@ def test_cross_field_stable_id_zero_collisions_pass() -> None:
 
 
 def test_cross_field_stable_id_any_collision_flags() -> None:
-    """ADR-0035 §5: the corpus threshold drops from 5% to ~0 — even a
-    single collision (well under the old 5% alarm line) now fires the
-    umbrella. v6's contract is collision-free BY DESIGN, not collision-rare.
+    """ADR-0035 §5: the corpus threshold is ~0 — even a single collision
+    (a low rate a percentage threshold would tolerate) fires the umbrella.
+    The stable_id contract is collision-free BY DESIGN, not collision-rare.
     """
-    # 100 distinct + one collision group of 2 == 2/101 ≈ 2% (was below 5%).
-    syms = [_make_sym_with_stable_id(i, f"sha256:{i + 1:016x}") for i in range(100)]
-    syms.append(_make_sym_with_stable_id(100, "sha256:0000000000000001", name="dup"))
+    # 100 distinct + one collision group of 2 == 2/101 ≈ 2%.
+    syms = [_make_sym_with_stable_id(i, f"hgstableid15:{i + 1:016x}") for i in range(100)]
+    syms.append(_make_sym_with_stable_id(100, "hgstableid15:0000000000000001", name="dup"))
     violations = validate_ir(syms, [], [])
     matched = [
         v for v in violations
@@ -1355,10 +1357,10 @@ def test_cross_field_stable_id_collisions_flags_rate_and_top_groups() -> None:
     syms: list[_FakeSym] = []
     # 10 distinct stable_ids + 5 colliding == 5/15 = 33.3% of all Symbols.
     for i in range(10):
-        syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
+        syms.append(_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}"))
     for i in range(5):
         syms.append(_make_sym_with_stable_id(
-            100 + i, "sha256:cccccccccccccccc", name=f"colliding_{i}",
+            100 + i, "hgstableid15:cccccccccccccccc", name=f"colliding_{i}",
         ))
     violations = validate_ir(syms, [], [])
     matched = [
@@ -1373,27 +1375,25 @@ def test_cross_field_stable_id_collisions_flags_rate_and_top_groups() -> None:
     assert v.severity == "warning"
     assert v.record_id is None
     assert "33.3%" in (v.observed or "")  # 5/15 over the all-Symbols denominator
-    assert "sha256:cccccccccccccccc" in (v.message or "")
+    assert "hgstableid15:cccccccccccccccc" in (v.message or "")
     assert "colliding_0" in (v.message or "")
 
 
 def test_cross_field_stable_id_collision_discloses_none_cohort() -> None:
-    """WI-niluv / ADR-0035 §5: the collision rate is computed over an
-    ALL-Symbols denominator (the None-stable_id cohort INCLUDED), and the
-    None cohort is disclosed in the same line, so a clean non-null rate can
-    never silently hide a large no-stable_id cohort (the 2026-06-01 false
-    all-clear shape: 178/757 reported while 136 None-cohort Symbols
-    vanished from the denominator).
+    """ADR-0035 §5: the collision rate is computed over an ALL-Symbols
+    denominator (the None-stable_id cohort INCLUDED), and the None cohort
+    is disclosed in the same line, so a clean non-null rate can never
+    silently hide a large no-stable_id cohort (WI-niluv).
     """
     syms: list[_FakeSym] = []
     # 10 distinct + 5 colliding + 3 None == 5 collided / 18 population = 27.8%.
     for i in range(10):
-        syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
+        syms.append(_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}"))
     for i in range(5):
         syms.append(_make_sym_with_stable_id(
-            100 + i, "sha256:cccccccccccccccc", name=f"colliding_{i}",
+            100 + i, "hgstableid15:cccccccccccccccc", name=f"colliding_{i}",
         ))
-    # 3 Symbols with stable_id=None — now COUNTED in the denominator.
+    # 3 Symbols with stable_id=None — COUNTED in the denominator.
     for i in range(3):
         syms.append(_FakeSym(
             id=f"python:test/fake.py:{200 + i}-{200 + i}:nosid{i}:function",
@@ -1411,10 +1411,11 @@ def test_cross_field_stable_id_collision_discloses_none_cohort() -> None:
     ]
     assert len(matched) == 1
     observed = matched[0].observed or ""
-    # Rate is now over the full population (5/18 = 27.8%), not 5/15 = 33.3%.
+    # Rate is over the full population (5/18 = 27.8%), not the non-null
+    # 5/15 = 33.3%.
     assert "5/18" in observed
     assert "27.8%" in observed
-    # None cohort disclosed in the same line; the old non-null wording is gone.
+    # None cohort disclosed in the same line; no non-null denominator scope.
     assert "none_cohort=3/18" in observed
     assert "stable_id=None" in observed
     assert "denominator_scope=non_null" not in observed
@@ -1452,15 +1453,15 @@ def test_per_file_stable_id_collision_flags_error() -> None:
     """Two Symbols in ONE file sharing a stable_id is a HARD error (ADR-0035
     §5 per-file uniqueness), one violation per colliding (path, id) group."""
     syms = [
-        _make_sym_pathed(1, "sha256:aaaaaaaaaaaaaaaa", "a.py", name="alpha"),
-        _make_sym_pathed(2, "sha256:aaaaaaaaaaaaaaaa", "a.py", name="beta"),
+        _make_sym_pathed(1, "hgstableid15:aaaaaaaaaaaaaaaa", "a.py", name="alpha"),
+        _make_sym_pathed(2, "hgstableid15:aaaaaaaaaaaaaaaa", "a.py", name="beta"),
     ]
     errors = _per_file_errors(validate_ir(syms, [], []))
     assert len(errors) == 1
     v = errors[0]
     assert v.severity == "error"
     assert "a.py" in (v.observed or "")
-    assert "sha256:aaaaaaaaaaaaaaaa" in (v.observed or "")
+    assert "hgstableid15:aaaaaaaaaaaaaaaa" in (v.observed or "")
     assert "alpha" in (v.observed or "") and "beta" in (v.observed or "")
 
 
@@ -1468,8 +1469,8 @@ def test_per_file_stable_id_same_id_distinct_files_no_error() -> None:
     """The SAME stable_id in DIFFERENT files is NOT a per-file error (the
     corpus umbrella still warns about it, but the hard check is per-file)."""
     syms = [
-        _make_sym_pathed(1, "sha256:bbbbbbbbbbbbbbbb", "a.py"),
-        _make_sym_pathed(1, "sha256:bbbbbbbbbbbbbbbb", "b.py"),
+        _make_sym_pathed(1, "hgstableid15:bbbbbbbbbbbbbbbb", "a.py"),
+        _make_sym_pathed(1, "hgstableid15:bbbbbbbbbbbbbbbb", "b.py"),
     ]
     violations = validate_ir(syms, [], [])
     assert _per_file_errors(violations) == []
@@ -1484,8 +1485,8 @@ def test_per_file_pathless_symbols_skipped() -> None:
     """Pathless symbols are out of scope for the per-file check (no file to
     be 'within'); the corpus umbrella covers them instead."""
     syms = [
-        _make_sym_with_stable_id(1, "sha256:cccccccccccccccc"),
-        _make_sym_with_stable_id(2, "sha256:cccccccccccccccc"),
+        _make_sym_with_stable_id(1, "hgstableid15:cccccccccccccccc"),
+        _make_sym_with_stable_id(2, "hgstableid15:cccccccccccccccc"),
     ]
     # _make_sym_with_stable_id sets no ``path`` attribute.
     assert _per_file_errors(validate_ir(syms, [], [])) == []
@@ -1497,12 +1498,12 @@ def test_compute_stable_id_stats_counts_population_and_collisions() -> None:
     fixture exercises all three branches: pathed, stable_id-but-no-path, None.
     """
     syms = [
-        _make_sym_pathed(1, "sha256:1111111111111111", "a.py"),
-        _make_sym_pathed(2, "sha256:2222222222222222", "a.py"),
-        # per-file collision in a.py (shares sha256:1111... with sym 1)
-        _make_sym_pathed(3, "sha256:1111111111111111", "a.py", name="dup"),
+        _make_sym_pathed(1, "hgstableid15:1111111111111111", "a.py"),
+        _make_sym_pathed(2, "hgstableid15:2222222222222222", "a.py"),
+        # per-file collision in a.py (shares hgstableid15:1111... with sym 1)
+        _make_sym_pathed(3, "hgstableid15:1111111111111111", "a.py", name="dup"),
         # stable_id but NO path — exercises the `if path` false branch.
-        _make_sym_with_stable_id(4, "sha256:4444444444444444"),
+        _make_sym_with_stable_id(4, "hgstableid15:4444444444444444"),
         # None cohort: no stable_id (and no path).
         _FakeSym(
             id="python:x.py:5-5:n:function", kind="function", language="python",
@@ -1515,7 +1516,7 @@ def test_compute_stable_id_stats_counts_population_and_collisions() -> None:
     assert stats["total_symbols"] == 5
     assert stats["non_null"] == 4
     assert stats["none_cohort"] == 1
-    assert stats["collision_groups"] == 1  # only sha256:1111... is shared
+    assert stats["collision_groups"] == 1  # only hgstableid15:1111... is shared
     assert stats["collided_symbols"] == 2
     assert stats["per_file_collision_groups"] == 1
     assert stats["none_cohort_pct"] == 20.0  # 1/5
@@ -1554,7 +1555,7 @@ def test_compute_stable_id_stats_discloses_floor_cohort_and_abstentions() -> Non
         # 1. a floor id (equals its recomputed floor key): floor_cohort
         sym(1, "function", "greet/1", "a.erl", "erlang", floor),
         # 2. a producer id on a floor-eligible kind: not floor
-        sym(2, "function", "main/0", "a.erl", "erlang", "sha256:aaaaaaaaaaaaaaaa"),
+        sym(2, "function", "main/0", "a.erl", "erlang", "hgstableid15:aaaaaaaaaaaaaaaa"),
         # 3. a factory-table kind whose table formula has the declaration shape:
         #    a decided key, not the floor
         sym(3, "class", "W", "w.ts", "typescript",
@@ -1582,8 +1583,8 @@ def test_per_file_collision_record_id_is_order_deterministic() -> None:
     symbol-iteration order — it is the lexicographically-smallest id in the
     group, not the first-encountered (which would leak ranked-vs-append order).
     """
-    a = _make_sym_pathed(1, "sha256:dddddddddddddddd", "a.py", name="alpha")
-    b = _make_sym_pathed(2, "sha256:dddddddddddddddd", "a.py", name="beta")
+    a = _make_sym_pathed(1, "hgstableid15:dddddddddddddddd", "a.py", name="alpha")
+    b = _make_sym_pathed(2, "hgstableid15:dddddddddddddddd", "a.py", name="beta")
     rid_ab = _per_file_errors(validate_ir([a, b], [], []))[0].record_id
     rid_ba = _per_file_errors(validate_ir([b, a], [], []))[0].record_id
     assert rid_ab == rid_ba
@@ -1596,10 +1597,10 @@ def test_corpus_umbrella_message_is_order_deterministic() -> None:
     """
     def build() -> list[_FakeSym]:
         return [
-            _make_sym_with_stable_id(1, "sha256:aaaaaaaaaaaaaaaa", name="a1"),
-            _make_sym_with_stable_id(2, "sha256:aaaaaaaaaaaaaaaa", name="a2"),
-            _make_sym_with_stable_id(3, "sha256:bbbbbbbbbbbbbbbb", name="b1"),
-            _make_sym_with_stable_id(4, "sha256:bbbbbbbbbbbbbbbb", name="b2"),
+            _make_sym_with_stable_id(1, "hgstableid15:aaaaaaaaaaaaaaaa", name="a1"),
+            _make_sym_with_stable_id(2, "hgstableid15:aaaaaaaaaaaaaaaa", name="a2"),
+            _make_sym_with_stable_id(3, "hgstableid15:bbbbbbbbbbbbbbbb", name="b1"),
+            _make_sym_with_stable_id(4, "hgstableid15:bbbbbbbbbbbbbbbb", name="b2"),
         ]
 
     def umbrella_msg(syms) -> str:
@@ -1613,15 +1614,15 @@ def test_corpus_umbrella_message_is_order_deterministic() -> None:
 
 
 # ----------------------------------------------------------------------
-# WI-falum — fingerprint degeneracy umbrella check
+# Fingerprint degeneracy umbrella check (WI-falum)
 # ----------------------------------------------------------------------
 #
 # The structural fingerprint hashes shape + identifiers + literals, so
 # symbols with DISTINCT names should virtually never share one value en
-# masse. When they do (76 TOML dependency nodes / 67 distinct package
-# names / ONE fingerprint — the WI-falum 6.0.0 regression), the producer
-# has lost content discrimination and the value is degenerate. Sibling
-# of the INV-bazij stable_id collision-rate umbrella above.
+# masse. When they do (e.g. many TOML dependency nodes with distinct
+# package names sharing ONE fingerprint), the producer has lost content
+# discrimination and the value is degenerate. Sibling of the INV-bazij
+# stable_id collision-rate umbrella above.
 
 
 def _make_sym_with_fingerprint(idx: int, fp: str | None, name: str) -> _FakeSym:
@@ -1635,7 +1636,7 @@ def _make_sym_with_fingerprint(idx: int, fp: str | None, name: str) -> _FakeSym:
         display_label=None,
         origin=[],
         qualified_name=None,
-        stable_id=f"sha256:{idx:016x}",
+        stable_id=f"hgstableid15:{idx:016x}",
         fingerprint=fp,
         name=name,
         dst_ref=None,
@@ -1666,16 +1667,15 @@ def test_cross_field_fingerprint_degeneracy_flags() -> None:
 
 
 def test_cross_field_fingerprint_degeneracy_discloses_none_cohort() -> None:
-    """WI-niluv (structural twin): the fingerprint-degeneracy umbrella must
-    likewise disclose how many Symbols carry fingerprint=None and are
-    excluded from the degeneracy scan, so the report's denominator is
-    explicit rather than silent (same disease as the stable_id collision
-    check: ``if fp is None: continue`` dropped the cohort with no tally)."""
+    """The fingerprint-degeneracy umbrella discloses how many Symbols carry
+    fingerprint=None and are excluded from the degeneracy scan, so the
+    report's denominator is explicit rather than silent — the same
+    disclosure the stable_id collision check makes (WI-niluv)."""
     syms = [
         _make_sym_with_fingerprint(i, "hgfp2:deaddeaddeaddead", f"pkg_{i}")
         for i in range(12)
     ]
-    # 4 Symbols with fingerprint=None — silently excluded from the scan today.
+    # 4 Symbols with fingerprint=None — excluded from the scan, but disclosed.
     for i in range(4):
         syms.append(_make_sym_with_fingerprint(100 + i, None, f"nofp_{i}"))
     violations = validate_ir(syms, [], [])
@@ -1766,11 +1766,10 @@ def test_cross_field_stable_id_empty_inputs_pass() -> None:
 
 def test_cross_field_stable_id_none_values_skipped() -> None:
     """Symbols whose stable_id is None do not contribute to the
-    collision count (they predate the universal stable_id stamping per
-    INV-hunup) — only populated ones are scored."""
+    collision count — only populated ones are scored (INV-hunup)."""
     syms = [
-        _make_sym_with_stable_id(0, "sha256:0000000000000000"),
-        _make_sym_with_stable_id(1, "sha256:1111111111111111"),
+        _make_sym_with_stable_id(0, "hgstableid15:0000000000000000"),
+        _make_sym_with_stable_id(1, "hgstableid15:1111111111111111"),
         # stable_id=None — must not crash the validator
         _FakeSym(
             id="python:test/fake.py:2-2:nosid:function",
@@ -1796,15 +1795,15 @@ def test_cross_field_stable_id_none_values_skipped() -> None:
 
 
 # ----------------------------------------------------------------------
-# Phase 3 PR4 — Verdict-enum completeness validator tests
+# Verdict-enum completeness validator tests
 # ----------------------------------------------------------------------
 
 
 def test_verdict_enum_validator_passes_with_inconclusive_documented() -> None:
     """The validator passes when every registered verdict dataclass's
-    docstring mentions the required ``inconclusive`` value. With
-    ClaimVerdict's docstring updated in Phase 3 PR4, this should be the
-    happy path on the live tree."""
+    docstring mentions the required ``inconclusive`` value. The live tree's
+    registered verdict dataclasses (e.g. ClaimVerdict) all document it, so
+    this is the happy path."""
     violations = validate_ir([], [], [])
     assert not any(v.validator_class == "verdict_enum" for v in violations)
 
@@ -1856,7 +1855,7 @@ def test_axis_conformance_qualified_name_unknown_language_is_skipped() -> None:
 
 
 # ----------------------------------------------------------------------
-# Phase 5 PR1 — ID-format validator tests (ADR-0034)
+# ID-format validator tests (ADR-0034)
 # ----------------------------------------------------------------------
 
 
@@ -1872,7 +1871,7 @@ def test_id_format_validator_passes_on_canonical_make_symbol_id_output() -> None
 
 
 def test_id_format_validator_flags_inv_sadiv_double_colon_pattern() -> None:
-    """The historical INV-sadiv path-prefix ``::``-separated shape is flagged."""
+    """The INV-sadiv path-prefix ``::``-separated shape is flagged."""
     from hypergumbo_core.spec_validator import _check_id_format
 
     sym = _FakeSym(id="packages/foo/bar.py::http_client::42")
@@ -1983,7 +1982,7 @@ def test_build_validation_report_counts_id_format_violations() -> None:
 
 
 # ----------------------------------------------------------------------
-# Phase 6 PR1 — Stable-ID-format sub-check tests (INV-hunup closure)
+# Stable-ID-format sub-check tests (INV-hunup)
 # ----------------------------------------------------------------------
 
 
@@ -1999,10 +1998,10 @@ def test_stable_id_format_validator_passes_on_canonical_short_sha256() -> None:
 
 
 def test_stable_id_format_validator_flags_raw_64_char_hex_without_prefix() -> None:
-    """A raw 64-char hexdigest (no ``sha256:`` prefix) is flagged.
+    """A raw 64-char hexdigest (no label) is flagged.
 
-    Pre-Phase-6 ``make_route_stable_id`` and the HTTP linker's call_site
-    factory emitted this shape; the validator catches the regression.
+    This is the shape a stable_id factory produces if it returns the full
+    hexdigest instead of the canonical ``<label><16hex>`` form.
     """
     from hypergumbo_core.spec_validator import _check_stable_id_format
 
@@ -2014,14 +2013,14 @@ def test_stable_id_format_validator_flags_raw_64_char_hex_without_prefix() -> No
     assert v.validator_class == "id_format"
     assert v.field_name == "Symbol.stable_id"
     assert "raw_hex_no_prefix" in v.message
-    assert v.expected == "sha256:<16hex>"
+    assert v.expected == "hgstableid15:<16hex> or hgscipid1:<16hex>"
 
 
 def test_stable_id_format_validator_flags_bare_name_no_prefix() -> None:
     """A colon-free bare name (e.g. ``dispatch``) is flagged.
 
-    Pre-Phase-6 ``event_sourcing`` and ``graphql_resolver`` linkers
-    emitted this shape.
+    This is the shape a linker produces if it uses a raw name as the
+    stable_id instead of hashing it.
     """
     from hypergumbo_core.spec_validator import _check_stable_id_format
 
@@ -2031,37 +2030,79 @@ def test_stable_id_format_validator_flags_bare_name_no_prefix() -> None:
     assert "bare_name_no_prefix" in violations[0].message
 
 
-def test_stable_id_format_validator_flags_sha256_wrong_length() -> None:
-    """``sha256:`` prefix with the wrong-length hex suffix is flagged."""
+def test_stable_id_format_validator_flags_label_wrong_length() -> None:
+    """A stable-id label with the wrong-length hex suffix is flagged."""
     from hypergumbo_core.spec_validator import _check_stable_id_format
 
     sym = _FakeSym(
         id="python:pkg/foo.py:1-1:bar:function",
-        stable_id="sha256:deadbeef",  # 8 chars, not 16
+        stable_id="hgstableid15:deadbeef",  # 8 chars, not 16
     )
     violations = _check_stable_id_format([sym])
     assert len(violations) == 1
-    assert "sha256_prefix_wrong_length" in violations[0].message
+    assert "stable_id_label_wrong_length" in violations[0].message
 
 
-def test_stable_id_format_validator_flags_sha256_non_hex_suffix() -> None:
-    """``sha256:`` prefix with a non-hex suffix is flagged."""
+def test_stable_id_format_validator_flags_label_non_hex_suffix() -> None:
+    """A stable-id label with a non-hex suffix is flagged."""
     from hypergumbo_core.spec_validator import _check_stable_id_format
 
     sym = _FakeSym(
         id="python:pkg/foo.py:1-1:bar:function",
-        stable_id="sha256:not-hex-chars-here",
+        stable_id="hgstableid15:not-hex-chars-here",
     )
     violations = _check_stable_id_format([sym])
     assert len(violations) == 1
-    assert "sha256_prefix_with_non_hex_suffix" in violations[0].message
+    assert "stable_id_label_with_non_hex_suffix" in violations[0].message
+
+
+def test_stable_id_format_validator_accepts_the_two_stable_id_labels() -> None:
+    """The tree-sitter label and the SCIP label pass; both are the labels
+    their scheme constants derive (ADR-0035 "Value labels")."""
+    from hypergumbo_core.schema import SCIP_STABLE_ID_PREFIX, STABLE_ID_PREFIX
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    syms = [
+        _FakeSym(id="python:a.py:1-1:f:function", stable_id=STABLE_ID_PREFIX + "0" * 16),
+        _FakeSym(id="rust:a.rs:1-1:f:function", stable_id=SCIP_STABLE_ID_PREFIX + "0" * 16),
+    ]
+    assert _check_stable_id_format(syms) == []
+
+
+def test_stable_id_format_validator_rejects_the_v14_sha256_label() -> None:
+    """``sha256:<16hex>`` -- every stable id through stableid-v14 -- fails,
+    and the violation says it is the superseded form."""
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:bar:function",
+        stable_id="sha256:0123456789abcdef",
+    )
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    assert "superseded_label" in violations[0].message
+    assert "'hgstableid15:'" in violations[0].message
+
+
+def test_stable_id_format_validator_rejects_a_shape_id_in_the_stable_id_field() -> None:
+    """A value carrying the shape-id label is a shape id, not a stable id."""
+    from hypergumbo_core.analyze.base import mint_shape_id
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:bar:function",
+        stable_id=mint_shape_id("function:FunctionDef()"),
+    )
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    assert "shape_id_label" in violations[0].message
 
 
 def test_stable_id_format_validator_flags_composite_form() -> None:
-    """A composite ``foo:bar``-style stable_id (no sha256: prefix) is flagged.
+    """A composite ``foo:bar``-style stable_id (no hgstableid15: prefix) is flagged.
 
-    Pre-Phase-6 ``database_query`` (1-colon) and ``message_queue``
-    (2-colon) linkers emitted this shape.
+    This is the shape a linker produces if it joins key parts with colons
+    instead of hashing them; the message reports the colon count.
     """
     from hypergumbo_core.spec_validator import _check_stable_id_format
 
@@ -2105,7 +2146,7 @@ def test_stable_id_format_violation_appears_in_validate_ir_report() -> None:
 
 
 def test_make_route_stable_id_emits_canonical_shape() -> None:
-    """Phase 6 PR1: ``make_route_stable_id`` returns ``sha256:<16hex>``."""
+    """``make_route_stable_id`` returns ``hgstableid15:<16hex>``."""
     from hypergumbo_core.analyze.base import make_route_stable_id
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
@@ -2114,7 +2155,7 @@ def test_make_route_stable_id_emits_canonical_shape() -> None:
 
 
 def test_make_entry_stable_id_emits_canonical_shape() -> None:
-    """Phase 6 PR1: ``make_entry_stable_id`` returns ``sha256:<16hex>``."""
+    """``make_entry_stable_id`` returns ``hgstableid15:<16hex>``."""
     from hypergumbo_core.analyze.base import make_entry_stable_id
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
@@ -2123,11 +2164,11 @@ def test_make_entry_stable_id_emits_canonical_shape() -> None:
 
 
 def test_make_protocol_stable_id_emits_canonical_shape() -> None:
-    """Phase 6 PR1: ``make_protocol_stable_id`` returns ``sha256:<16hex>``.
+    """``make_protocol_stable_id`` returns ``hgstableid15:<16hex>``.
 
-    Sanity check on the new factory the four linkers
+    Sanity check on the factory the four protocol linkers
     (database_query / message_queue / event_sourcing / graphql_resolver)
-    migrated to.
+    use.
     """
     from hypergumbo_core.analyze.base import make_protocol_stable_id
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
@@ -2137,15 +2178,13 @@ def test_make_protocol_stable_id_emits_canonical_shape() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Class B stamping canary (WI-kufib implementer caveat / META-niguz)
+# Class B stamping canary (WI-kufib / META-niguz)
 # ---------------------------------------------------------------------------
 #
-# Before schema 0.14.0, the 262 `language: None is not of type 'string'`
-# whole-document validation errors were the de-facto canary for the
-# under-stamped synthetic stand-in population. Relaxing the schema's
-# nullability (the WI-kufib fix) silences that signal, so the canary
-# moves here: a Class B stand-in (language=None, protocol_origin
-# populated) must carry the identity fields that SHOULD be non-null.
+# The output schema permits `language: null`, so whole-document schema
+# validation cannot detect under-stamped synthetic stand-ins. This canary
+# does: a Class B stand-in (language=None, protocol_origin populated)
+# must carry the identity fields that SHOULD be non-null.
 
 
 def _class_b_sym(**overrides):
@@ -2158,9 +2197,9 @@ def _class_b_sym(**overrides):
         "language": None,
         "discovery_language": "python",
         "protocol_origin": "websocket",
-        # synthetic:F2: display_label is part of the Class-B contract now, so a
-        # "Class-B sym" fixture is fully-stamped by default; the unstamped-canary
-        # test overrides this back to None explicitly.
+        # display_label is part of the Class-B contract (synthetic:F2), so a
+        # "Class-B sym" fixture carries it by default; the unstamped-canary
+        # test overrides it to None explicitly.
         "display_label": "websocket:class-b",
         "origin": [],
         "qualified_name": None,
@@ -2176,7 +2215,7 @@ def _class_b_sym(**overrides):
 def test_cross_field_class_b_unstamped_emits_canary() -> None:
     """An unstamped Class B stand-in emits one umbrella violation per
     missing identity field (stable_id, fingerprint, discovery_language,
-    origin, and — since synthetic:F2 — display_label)."""
+    origin, and display_label)."""
     sym = _class_b_sym(
         stable_id=None, fingerprint=None, discovery_language=None, origin=[],
         display_label=None,
@@ -2223,7 +2262,7 @@ def test_cross_field_class_b_canary_is_umbrella_not_per_record() -> None:
 def test_cross_field_class_b_fully_stamped_passes_canary() -> None:
     """A fully-stamped Class B stand-in emits no canary violations."""
     sym = _class_b_sym(
-        stable_id="sha256:" + "0" * 16,
+        stable_id="hgstableid15:" + "0" * 16,
         fingerprint="hgfp2:" + "0" * 16,
         discovery_language="python",
         origin=["websocket-linker"],
@@ -2267,10 +2306,10 @@ def test_cross_field_class_a_symbols_ignored_by_canary() -> None:
 
 
 def test_class_b_missing_display_label_is_flagged() -> None:
-    """META-huvuh validator half (synthetic:F2): a Class-B synthetic stand-in
-    (language=None, protocol_origin set) with display_label=None emits the
-    affirmative Symbol.display_label canary umbrella. The other Class-B fields
-    are stamped so ONLY the display_label gap is exercised."""
+    """A Class-B synthetic stand-in (language=None, protocol_origin set) with
+    display_label=None emits the affirmative Symbol.display_label canary
+    umbrella (META-huvuh, synthetic:F2). The other Class-B fields are stamped
+    so ONLY the display_label gap is exercised."""
     from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
     a_kind = next(iter(all_symbol_kind_names()))
@@ -2310,12 +2349,9 @@ def test_class_b_with_display_label_not_flagged() -> None:
 # These exercise ``_check_id_roundtrip``, which runs ONLY on ids that
 # already pass the shape-only ``_CANONICAL_ID_PATTERN`` (shape failures
 # are owned by ``_check_id_format``). It then parses the last-3 colon-free
-# tokens (span, name, kind) per ADR-0036 Ruling 1 and enforces: kind-slot
-# registry membership (advisory), kind-slot == Symbol.kind (advisory),
-# non-empty name-slot (advisory), and span start<=end (error). The advisory
-# checks land at ``warning`` until the Wave-2 id-changing folds (WI-pubiv
-# external_symbol kind-slot, WI-kugaj route/event role, audit-findings 0005
-# tsconfig) clear the known backlog, at which point they promote to error.
+# tokens (span, name, kind) per ADR-0036 Ruling 1 and enforces, all at
+# ``error`` severity: kind-slot registry membership, kind-slot ==
+# Symbol.kind, non-empty name-slot, and span start<=end (WI-popak).
 
 
 def test_id_roundtrip_passes_on_registered_matching_canonical_id() -> None:
@@ -2327,9 +2363,9 @@ def test_id_roundtrip_passes_on_registered_matching_canonical_id() -> None:
     assert _check_id_roundtrip([sym]) == []
 
 
-def test_id_roundtrip_flags_unregistered_kind_slot_warning() -> None:
+def test_id_roundtrip_flags_unregistered_kind_slot_error() -> None:
     """An id kind-slot that is not a registered symbol-kind is flagged at
-    advisory (warning) severity — the net value over the shape-only canonical
+    error severity (WI-popak) — the net value over the shape-only canonical
     pattern. kind-slot == Symbol.kind here, isolating membership from the
     mismatch check."""
     from hypergumbo_core.spec_validator import _check_id_roundtrip
@@ -2340,23 +2376,23 @@ def test_id_roundtrip_flags_unregistered_kind_slot_warning() -> None:
     violations = _check_id_roundtrip([sym])
     assert len(violations) == 1
     v = violations[0]
-    assert v.severity == "warning"
+    assert v.severity == "error"
     assert v.validator_class == "id_format"
     assert v.field_name == "Symbol.id"
     assert v.observed == "zzznotarealkind"
     assert "registered symbol-kind" in v.message
 
 
-def test_id_roundtrip_flags_kind_slot_mismatch_warning() -> None:
+def test_id_roundtrip_flags_kind_slot_mismatch_error() -> None:
     """The id kind-slot must equal Symbol.kind. A divergence (both kinds
-    registered) is flagged at advisory severity."""
+    registered) is flagged at error severity (WI-popak)."""
     from hypergumbo_core.spec_validator import _check_id_roundtrip
 
     sym = _FakeSym(id="python:pkg/foo.py:1-1:name:function", kind="method")
     violations = _check_id_roundtrip([sym])
     assert len(violations) == 1
     v = violations[0]
-    assert v.severity == "warning"
+    assert v.severity == "error"
     assert v.field_name == "Symbol.id"
     assert "does not match Symbol.kind" in v.message
 
@@ -2384,23 +2420,23 @@ def test_id_roundtrip_catches_tsconfig_divergence_invisible_to_axis_conformance(
     rt = _check_id_roundtrip([sym])
     assert any("does not match Symbol.kind" in v.message for v in rt)
     assert any("registered symbol-kind" in v.message for v in rt)
-    assert all(v.severity == "warning" for v in rt)
+    assert all(v.severity == "error" for v in rt)
 
 
-def test_id_roundtrip_flags_empty_name_slot_warning() -> None:
-    """An empty name-slot is flagged at advisory severity."""
+def test_id_roundtrip_flags_empty_name_slot_error() -> None:
+    """An empty name-slot is flagged at error severity (WI-popak)."""
     from hypergumbo_core.spec_validator import _check_id_roundtrip
 
     sym = _FakeSym(id="python:pkg/foo.py:1-1::function", kind="function")
     violations = _check_id_roundtrip([sym])
     assert len(violations) == 1
-    assert violations[0].severity == "warning"
+    assert violations[0].severity == "error"
     assert "name-slot" in violations[0].message
 
 
 def test_id_roundtrip_flags_span_start_after_end_error() -> None:
     """A span whose start exceeds its end is a malformation flagged at ERROR
-    severity (no known T1 backlog, unlike membership/mismatch)."""
+    severity."""
     from hypergumbo_core.spec_validator import _check_id_roundtrip
 
     sym = _FakeSym(id="python:pkg/foo.py:5-3:name:function", kind="function")
@@ -2468,8 +2504,8 @@ def test_id_roundtrip_wired_into_validate_ir() -> None:
 
 
 def test_confidence_range_flags_out_of_band_edge() -> None:
-    """WI-nurun step 4: an edge whose confidence is outside its evidence
-    pathway's derived band emits an advisory cross_field/info violation."""
+    """An edge whose confidence is outside its evidence pathway's derived
+    band emits an advisory cross_field/info violation (WI-nurun)."""
     from hypergumbo_core.ir import Edge
     # ast_import band is [0.30, 0.95]; 1.0 breaches the reserved ceiling.
     edge = Edge.create(
@@ -2542,11 +2578,11 @@ def test_confidence_range_mixed_origin_keeps_the_band() -> None:
 
 
 def test_confidence_range_skips_a_corroborated_edge() -> None:
-    """INV-pijij. The merge pass folds two producers' ``ast_call_direct`` /
-    ``scip`` edges into one at the CORROBORATION level (ADR-0057 s13): its
+    """The merge pass folds two producers' ``ast_call_direct`` / ``scip``
+    edges into one at the CORROBORATION level (ADR-0057 s13): its
     confidence is declared not to be either pathway's value, so the band of
-    the evidence_type it kept says nothing about it. A scip-enabled self-map
-    carried 109,622 such edges, every one reported out of band."""
+    the evidence_type it kept says nothing about it, and judging it would
+    report every corroborated edge out of band (INV-pijij)."""
     edge = _call_edge(0.95, ["python", "scip"])
     edge.confidence_source = "corroborated"
     assert _confidence_violations(edge) == []
@@ -2560,7 +2596,7 @@ def test_confidence_range_skips_a_corroborated_edge() -> None:
 
 def test_route_marker_single_home_flags_dual_carry() -> None:
     """A route marker (framework_role=='route') that ALSO carries a redundant
-    path-less concept=route is the INV-vokak dual-carry — one violation."""
+    path-less concept=route is a dual-carry — one violation (INV-vokak)."""
     from hypergumbo_core import spec_validator
 
     sym = _FakeSym(
@@ -2647,3 +2683,108 @@ def test_route_marker_single_home_wired_into_validate_ir() -> None:
         v for v in validate_ir([sym], [], []) if v.field_name == "meta.concepts"
     ]
     assert len(dual_carry) == 1
+
+
+# --- WI-dipim: ADR-0036 Ruling 3, the checks that flag no correct id ---------
+
+
+def _rt_sym(sym_id: str, kind: str, name: str):
+    from hypergumbo_core.ir import Span, Symbol
+
+    return Symbol(id=sym_id, name=name, kind=kind, language="python",
+                  path="a.py", span=Span(1, 1, 0, 0))
+
+
+def test_a_file_pseudo_symbol_is_exactly_the_file_triple() -> None:
+    """``file:file`` (name and kind) is the file pseudo-symbol, and its span
+    is ``1-1``. Neither half of the converse is a rule: a one-line ``def`` on
+    line 1 is ``1-1``, kind ``file`` also carries manifest entries with a role
+    (audit-findings 0005), and a C++ include target is named ``file``."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    good = [_rt_sym("python:a.py:1-1:file:file", "file", "file"),
+            _rt_sym("python:a.py:1-1:f:function", "function", "f"),
+            _rt_sym("json:package.json:5-5:build:file", "file", "build"),
+            _rt_sym("cpp:h.hpp:0-0:file:external_symbol", "external_symbol", "file")]
+    assert _check_id_roundtrip(good) == []
+    [v] = _check_id_roundtrip([_rt_sym("python:a.py:1-3:file:file", "file", "file")])
+    assert v.severity == "error" and "file pseudo-symbol" in v.message
+
+
+def test_an_unknown_path_slot_is_a_violation() -> None:
+    """``<unknown>`` is finalize's fallback when a dst names no path, so an
+    id carrying it is a producer defect; ``<external>``
+    and a C/C++ angle header (``cpp:<string>:0-0:header:...``) are legal."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    assert _check_id_roundtrip([
+        _rt_sym("cpp:<string>:0-0:header:external_symbol", "external_symbol", "header"),
+        _rt_sym("python:<external>:0-0:x:external_symbol", "external_symbol", "x"),
+    ]) == []
+    [v] = _check_id_roundtrip([
+        _rt_sym("cmake:<unknown>:0-0:LIB:external_symbol", "external_symbol", "LIB"),
+    ])
+    assert v.severity == "warning" and "<unknown>" in v.message
+
+
+# --- INV-movor: one file pseudo-symbol per path --------------------------------
+
+
+def _file_sym(lang: str, path: str, **extra):
+    return _FakeSym(id=f"{lang}:{path}:1-1:file:file", kind="file", path=path, **extra)
+
+
+def test_one_file_node_per_path_flags_two_language_slots_for_one_path() -> None:
+    """Two producers' file nodes for one path are one violation, naming both."""
+    from hypergumbo_core.spec_validator import _check_one_file_node_per_path
+
+    script = _file_sym("typescript", "src/App.vue")
+    own = _file_sym("vue", "src/App.vue")
+    violations = _check_one_file_node_per_path([script, own, _file_sym("vue", "src/Kid.vue")])
+    assert len(violations) == 1
+    (violation,) = violations
+    assert (violation.severity, violation.validator_class) == ("error", "cross_field")
+    assert violation.record_id == script.id
+    assert violation.observed == f"{script.id}, {own.id}"
+    assert "src/App.vue" in violation.message
+
+
+def test_one_file_node_per_path_counts_only_file_pseudo_symbols() -> None:
+    """A manifest entry of kind ``file`` and a function on line 1 are not
+    file pseudo-symbols; a pathless or idless record is skipped."""
+    from hypergumbo_core.spec_validator import _check_one_file_node_per_path
+
+    anchor = _file_sym("toml", "pyproject.toml")
+    assert _check_one_file_node_per_path([
+        anchor,
+        _FakeSym(id="toml:pyproject.toml:56-56:htrac:file", kind="file",
+                 path="pyproject.toml", meta={"entry_role": "script"}),
+        _FakeSym(id="python:a.py:1-1:file:function", kind="function", path="a.py"),
+        _FakeSym(id="python:a.py:1-1:file:file", kind="file", path="a.py"),
+        _FakeSym(id="python::1-1:file:file", kind="file", path=""),
+        _FakeSym(id=None, kind="file", path="a.py"),
+    ]) == []
+
+
+def test_one_file_node_per_path_flags_two_records_sharing_one_id() -> None:
+    """An analyzer's node and a synthesized one with the same id are two
+    records of one file: one violation, both ids listed."""
+    from hypergumbo_core.spec_validator import _check_one_file_node_per_path
+
+    first = _file_sym("typescript", "pkg/src/index.ts")
+    second = _file_sym("typescript", "pkg/src/index.ts")
+    (violation,) = _check_one_file_node_per_path([first, second])
+    assert violation.observed == f"{first.id}, {second.id}"
+
+
+def test_one_file_node_per_path_wired_into_validate_ir() -> None:
+    from hypergumbo_core.ir import Span, Symbol
+
+    nodes = [
+        Symbol(id=f"{lang}:src/App.vue:1-1:file:file", name="src/App.vue", kind="file",
+               language=lang, path="src/App.vue", span=Span(1, 1, 0, 0))
+        for lang in ("typescript", "vue")
+    ]
+    flagged = [v for v in validate_ir(nodes, [], []) if "file pseudo-symbols" in v.message]
+    assert len(flagged) == 1
+    assert [v for v in validate_ir(nodes[:1], [], []) if "file pseudo-symbols" in v.message] == []

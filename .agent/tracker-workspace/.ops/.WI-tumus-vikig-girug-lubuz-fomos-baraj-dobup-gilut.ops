@@ -19,3 +19,32 @@
     pr_ref:  # 7c7d
     description: "FOUND 2026-10-01 while working WI-nasil (branch jgstern-agent/fix/nasil). Three texts describe the producers of kind=\"export\" Symbols, and none matches the code (grep of kind\\s*=\\s*[\"']export[\"'] over packages/*/src, dev c05393f974: the only Symbol producers are bash.py and json_config.py; js_ts.py's kind=\"export\" is a UsageContext):\n\n1. analyze/base.py make_export_stable_id docstring: \"Bash function exports, Python __all__ entries, and JS named exports all use this shape.\" -- bash exports are VARIABLES, there is no Python __all__ producer, and JS named exports are not Symbols.\n2. analyze/base.py split_within_file_stable_id_collisions docstring lists \"repeated shell exports\" among within-file SITE collisions. After WI-nasil (one bash export Symbol per variable per file) bash exports no longer collide within a file. (ADR-0035's matching list was already corrected on the WI-nasil branch.)\n3. symbol_kinds.py SymbolKindSpec(\"export\", ...) description: \"Export declaration (JS / TS / TOML / Rust).\" -- the producers are bash and json_config (package.json exports). This description may feed generated docs (docs/concept-axes.md / docs/schema.json): regenerate after editing.\n\nWHY NOT FIXED ON THE WI-nasil BRANCH: base.py is imported by nearly every test, so even a docstring edit there makes smart-test's reverse slice select a near-full suite, which the concurrent run forbids. A ready patch for (1) and (2) is at ~/hypergumbo_lab_notebook/decontend/run_09302026/nasil/base_py_docstring_followup.patch. Docstring-only; base.py's line-pinned citations (signature_axis line=262 / line=300) sit ABOVE both edits, so they do not move."  # 7c7d
     fields: {}  # 7c7d
+- op: discuss  # f400
+  at: '2026-11-01T10:56:10Z'  # f400
+  by: agent  # f400
+  actor: jgstern_agent  # f400
+  clock: 2  # f400
+  nonce: f400  # f400
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: base.py:1608 make_export_stable_id still claims bash function exports, Python __all__ and JS named exports; base.py:2166 still lists 'repeated shell exports' as within-file collisions; symbol_kinds.py:362 still 'Export declaration (JS / TS / TOML / Rust)', mirrored in docs/concept-axes.md:153. find_emitted_symbol_kinds()['export'] = bash.py:1109, json_config.py:576/637 only. Bash fixture: 'export FOO' twice gives one export Symbol, 'export -f f' gives none. Patch file still exists. MECHANISM: docstrings/registry descriptions name kind=export producers that do not exist; no gate ties descriptions to the producer scan."  # f400
+- op: discuss  # 4eac
+  at: '2026-11-15T19:25:54Z'  # 4eac
+  by: agent  # 4eac
+  actor: jgstern_agent  # 4eac
+  clock: 3  # 4eac
+  nonce: 4eac  # 4eac
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. All three texts unchanged: base.py:1647-1648 (make_export_stable_id), base.py:2170 (split_within_file_stable_id_collisions), symbol_kinds.py:363-364; mirror at docs/concept-axes.md:153 (not in docs/schema.json). find_emitted_symbol_kinds()['export'] = bash.py:1107, json_config.py:573, json_config.py:634. Fixture: two `export FOO` lines give one bash export Symbol, `export -f f` gives none; package.json `exports` gives two json export Symbols; python `__all__`, ES named exports, rust `pub use`, toml give none. The notebook patch base_py_docstring_followup.patch no longer applies (`git apply --check` fails at hunk 2, base.py:1967 context). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-tumus.md. No status or priority change made by this review."  # 4eac
+- op: update  # 77a5
+  at: '2026-11-16T04:57:50Z'  # 77a5
+  by: agent  # 77a5
+  actor: jgstern_agent  # 77a5
+  clock: 4  # 77a5
+  nonce: 77a5  # 77a5
+  set:  # 77a5
+    status: done  # 77a5
+- op: discuss  # 221b
+  at: '2026-11-16T04:57:50Z'  # 221b
+  by: agent  # 221b
+  actor: jgstern_agent  # 221b
+  clock: 5  # 221b
+  nonce: 221b  # 221b
+  message: "Fixed in PR #2198. The three texts now say what the code emits: bash emits one export Symbol per exported VARIABLE per file and none for `export -f`; json_config emits one per package.json exports entry; js_ts's kind=export is a UsageContext. Re-checked by grep for kind=\"export\" over packages/*/src. docs/concept-axes.md regenerated. NOT done: no gate ties a kind's description to the producer scan, so the same drift can recur on another kind."  # 221b

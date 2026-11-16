@@ -116,5 +116,3 @@ patterns:
   - concept: update_control
     method_name: "^performUpdate$"
     symbol_kind: "^method$"
-
-linkers: []

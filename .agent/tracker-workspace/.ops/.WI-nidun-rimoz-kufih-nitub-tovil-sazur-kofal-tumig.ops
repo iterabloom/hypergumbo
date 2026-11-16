@@ -1,0 +1,21 @@
+- op: create  # af3d
+  at: '2026-11-16T19:00:05Z'  # af3d
+  by: agent  # af3d
+  actor: jgstern_agent  # af3d
+  clock: 1  # af3d
+  nonce: af3d  # af3d
+  data:  # af3d
+    kind: work_item  # af3d
+    title: "verify-claims: paths that still exit 1 without a violated claim (wrong-typed --input record fields, internal error, broken pipe) and inputs accepted that may be bad input (claims: [], a negative max_chains)"  # af3d
+    status: todo_hard  # af3d
+    priority: 3  # af3d
+    parent:  # af3d
+    tags:  # af3d
+    - verify_claims  # af3d
+    - pre_release_outputs  # af3d
+    isbefore: []  # af3d
+    duplicate_of: []  # af3d
+    not_duplicate_of: []  # af3d
+    pr_ref:  # af3d
+    description: "Left open by the verify-claims exit-code change of PR #2203 (0 confirmed, 1 violated, 2 bad input, 3 confirmed_with_caveats, 4 inconclusive). Each was seen while building that change on dev 425477b693 and was not changed by it.\n\nSTILL EXIT 1, THE CODE FOR violated, WITHOUT A VIOLATED CLAIM:\n1. A field of the wrong type inside a record of the --input map (an edge whose `src` is a number, a `meta` that is a string, a `language` that is a list) reaches main()'s internal-error net. The PR checks only that nodes / edges / entrypoints / request_ingress are lists of objects.\n2. A genuine internal error (`hypergumbo: internal error: ...`) and a broken pipe exit 1. OWNER QUESTION: should they get a code of their own, so that 1 always means a violated claim?\n3. `hypergumbo io-boundaries` with a missing --input exits 1, and other commands that take --input reach the internal-error net when it is a directory. The PR's map checks are in verify-claims only.\n\nACCEPTED TODAY, MAYBE BAD INPUT (OWNER QUESTION):\n4. `claims: []` prints \"No claims found in file.\" and exits 0.\n5. A claim with no constraint is an `inconclusive` verdict (exit 4) by design (ADR-0033), not bad input.\n6. A negative `max_chains` is accepted.\n7. A non-list `allowed_sanitizers` and a non-string claim `id` or `text` are accepted (`allowed_sanitizers` is never read: WI-biraf).\n\nNOT PROBED:\n8. Wrong-typed fields in I/O overlay files and function-summary files. Only an unknown key was tried (it exits 2).\n9. Which commands other than verify-claims load a taint catalogue: for them a malformed catalogue row moved from an internal error (1) to exit 2 with this PR; they were not listed.\n\nALREADY FILED, NOT REPEATED HERE: non-mapping rows under sources.<lang> / sinks.<lang> are skipped silently (WI-ditom).\n\nRepro for 1: write a map with `\"edges\": [{\"src\": 5, \"dst\": \"x\", \"type\": \"calls\"}]` and a valid nodes list; `hypergumbo verify-claims <repo> --claims <valid claims> --input <map>`; observe the exit code."  # af3d
+    fields: {}  # af3d

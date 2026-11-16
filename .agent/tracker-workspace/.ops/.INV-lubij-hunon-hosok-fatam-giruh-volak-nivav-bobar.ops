@@ -23,3 +23,25 @@
     fields:  # 85a2
       statement: "Identifier lookups never resolve to a route marker (WI-zugob); route markers are built by make_route_symbol."  # 85a2
       root_cause: "The JSX <Route> marker (js_ts.py ~4250-4262) is built by hand with handler_name = component name and kind-slot 'route' (fails id_roundtrip), and global_symbols[sym.name] is last-one-wins."  # 85a2
+- op: discuss  # 2c43
+  at: '2026-10-31T10:09:59Z'  # 2c43
+  by: agent  # 2c43
+  actor: jgstern_agent  # 2c43
+  clock: 2  # 2c43
+  nonce: 2c43  # 2c43
+  message: "2026-10-31 docstring audit re-reproduced this for the hand-built JSX <Route> marker (js_ts.py:4714, kind slot route; 2 id_format errors in survey validation). No new item filed."  # 2c43
+- op: update  # 45ba
+  at: '2026-11-16T04:57:55Z'  # 45ba
+  by: agent  # 45ba
+  actor: jgstern_agent  # 45ba
+  clock: 3  # 45ba
+  nonce: 45ba  # 45ba
+  set:  # 45ba
+    status: satisfied  # 45ba
+- op: discuss  # 2158
+  at: '2026-11-16T04:57:55Z'  # 2158
+  by: agent  # 2158
+  actor: jgstern_agent  # 2158
+  clock: 4  # 2158
+  nonce: '2158'  # 2158
+  message: "Satisfied by PR #2198. Re-ran the repro: with function Users() and <Route path=\"/users\" component={Users} /> in app.jsx, a Users() call and register(Users) in a file that imports nothing now resolve to the function at app.jsx:3, not to the marker. The marker is built by make_route_symbol (named GET /users, component in meta.handler_ref). unleash/frontend: references edges into a marker 350 -> 0, each landing on the component; id_format violations 201 -> 1; no stable id gone."  # 2158

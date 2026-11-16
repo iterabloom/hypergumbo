@@ -159,7 +159,7 @@ Then verify:
 hypergumbo verify-claims --claims security-claims.yaml
 ```
 
-Exit code 1 means violations were found. Use `--json` for CI pipelines.
+Exit code 1 means violations were found, 4 that a claim could not be checked (not a pass), 3 that every claim held but with caveats, and 2 that the claims file or input was bad. Use `--json` for CI pipelines.
 
 ---
 

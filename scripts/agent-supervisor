@@ -7,7 +7,7 @@ sessions (``hypergumbo-session-*``) and replaces a stuck one with a fresh
 CLI when the human's project-level intent says autonomous work is desired
 but the current session isn't making progress.
 
-Key design points (from the consolidated WI-razub design):
+Key design points:
 
 * **Signal layer**: the supervisor's load-bearing "is this session
   working?" signal is the tmux pane-byte delta over a rolling 15-minute
@@ -30,14 +30,14 @@ Key design points (from the consolidated WI-razub design):
   and if the session is still present after the timeout, hard-kills the
   tmux session and directly invokes the ``kill-transcript-sync.sh`` +
   ``rotate-on-session-end.sh`` shared scripts (which are already
-  idempotent / vendor-agnostic). Session-existence is the observable
-  the supervisor cares about — a CLI PID was not load-bearing and
-  cross-process PID tracking was unreliable in practice.
+  idempotent / vendor-agnostic). Session existence is the liveness
+  observable; the CLI's PID is not tracked, because PIDs recycle and
+  nothing records the CLI's PID across processes.
 
 * **Fresh-session spawn**: ``tmux new-session -d -s <new> -e
   HYPERGUMBO_RESPAWN=1 <cli>``, followed by a vendor-agnostic
   pane-readiness wait (``wait_for_pane_ready``) and a seed keystroke
-  injected via ``tmux send-keys`` (WI-batob follow-up). The
+  injected via ``tmux send-keys``. The
   ``SessionStart`` hook injects context but does NOT trigger the first
   model turn — a freshly spawned CLI sits idle at its prompt waiting
   for user input, so the supervisor provides that first turn
@@ -47,15 +47,23 @@ Key design points (from the consolidated WI-razub design):
   just kicks off the first turn so the hook-provided context is acted
   on.
 
-* **Rate limit**: a soft cap (default 8 spawns / rolling 24h). Over-cap
-  triggers a log entry and skips the spawn rather than aborting the
-  daemon — the throttle does not become a persistent failure mode.
+* **Rate limit**: a soft cap (``RATE_LIMIT_MAX_PER_24H``, default 24
+  spawns / rolling 24h). Over-cap triggers a log entry and skips the
+  spawn rather than aborting the daemon; if saturation persists for
+  ``RATE_LIMIT_SATURATION_KILL`` ticks, ``run`` exits cleanly.
 
-Vendor identity & keystroke table lives in ``VENDOR_TABLE`` below. WI-batob
-(docs) is the authoritative source; edit BOTH in the same PR. The
-placeholder keystrokes for Codex CLI / Cursor / Gemini CLI are marked
-``# FIXME WI-batob`` so the docs PR verifies them experimentally before
-the supervisor is rolled out in production.
+* **No-progress kill switch**: after
+  ``CONSECUTIVE_NO_PROGRESS_KILL_SWITCH`` consecutive replacements of
+  sessions that produced no output, the supervisor writes
+  ``supervisor.auto-paused`` and stops spawning until ``resume``
+  (history: WI-mujuk).
+
+Vendor identity & keystroke table lives in ``VENDOR_TABLE`` below. The
+"Vendor Parity for Respawn" table in AGENTS.md is the authoritative
+source; edit BOTH in the same PR. The placeholder keystrokes for Codex
+CLI / Cursor / Gemini CLI are marked ``# FIXME WI-batob``: each must be
+verified experimentally before the supervisor is rolled out for that
+vendor.
 
 Subcommands:
 
@@ -66,6 +74,9 @@ Subcommands:
                                  ages, intent value.
 * ``agent-supervisor stop``    — touch the stop sentinel; a running
                                  ``run`` loop exits on its next tick.
+* ``agent-supervisor resume``  — clear the no-progress auto-pause.
+* ``agent-supervisor debugging-reset-rate-limit``
+                               — zero the rolling 24h spawn counter.
 
 State directory: ``$HOME/hypergumbo_lab_notebook/agent-supervisor/``
 (override with ``AGENT_SUPERVISOR_STATE_DIR``).
@@ -74,8 +85,11 @@ File layout inside the state dir:
 
 * ``supervisor.lock`` — flock + pid-file for single-instance.
 * ``supervisor.stop-sentinel`` — presence ends the ``run`` loop.
+* ``supervisor.auto-paused`` — presence blocks every spawn until
+  ``resume``.
 * ``<session>.meta.json`` — written on spawn: session_id, vendor,
-  tmux session name, project_dir, start_utc.
+  tmux session name, project_dir, start_utc, and the chain state
+  (replaces, chain_length, consecutive_no_progress).
 * ``<session>.heartbeat`` — touched by per-turn hooks (WI-sipov); read
   by ``status`` only.
 * ``respawn_log.log`` — append-only audit of every spawn / replace.
@@ -104,13 +118,10 @@ GRACEFUL_EXIT_TIMEOUT_SEC = 30
 RATE_LIMIT_MAX_PER_24H = 24
 
 # When rate-limit saturation persists for this many consecutive poll ticks
-# (default ~20 minutes at 60s/tick), the supervisor shuts itself down instead
-# of logging "rate-limit reached" every minute forever. Observed during the
-# 2026-04-18→04-19 trial: after 8/24h was hit, the daemon emitted 145
-# identical log lines before the operator stopped it manually. Raising the
-# cap and auto-shutting-down on sustained saturation together replace
-# indefinite spam with a bounded log footprint and a clean terminal state.
-# The operator can re-run ``agent-supervisor run &`` whenever they want
+# (default ~20 minutes at 60s/tick), the supervisor shuts itself down.
+# Without this, a saturated daemon logs an identical "rate-limit reached"
+# line every tick indefinitely; shutting down bounds the log and leaves a
+# clean terminal state. The operator can re-run ``agent-supervisor run &`` whenever they want
 # (the 24h rolling window will have aged out spawns by then, or they can
 # clear it explicitly with ``debugging-reset-rate-limit``).
 RATE_LIMIT_SATURATION_KILL = 20
@@ -257,10 +268,8 @@ def tmux_session_exists(session: str, runner: Callable = run_subprocess) -> bool
     wrapping shell exits, and tmux auto-removes a single-pane session
     (``remain-on-exit`` is off by default). So ``has-session`` going
     from rc=0 to rc=1 is the observable signal for "CLI finished exiting."
-    This replaces cross-process PID tracking, which was fragile (PIDs
-    recycle) and was never actually populated in production because the
-    session-start hook that was supposed to fill ``cli_pid`` in meta.json
-    never ran — leaving every graceful-exit wait skipped.
+    PID tracking is not an alternative: PIDs recycle, and nothing records
+    the CLI's PID for the supervisor to read.
     """
     result = runner(["tmux", "has-session", "-t", session])
     return result.returncode == 0
@@ -349,7 +358,7 @@ def wait_for_session_gone(
 
     Resolves ``tmux_session_exists`` from the module namespace at CALL
     time so monkeypatching ``asv.tmux_session_exists`` in tests actually
-    takes effect (same pattern the previous PID-based helper used).
+    takes effect.
     """
     deadline = now_fn() + timeout_sec
     while now_fn() < deadline:

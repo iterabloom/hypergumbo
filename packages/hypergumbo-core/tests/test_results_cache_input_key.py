@@ -2,10 +2,10 @@
 """The results-cache key carries the user inputs the analysis reads.
 
 A cached survey is reused by ``sketch``, ``routes``, ``verify-claims`` and every
-other command that reads a behavior map. Before the key carried these inputs, a
-``frameworks.d`` file added, edited or broken after a survey was cached was
-never seen by any of those commands: the cache answered, and the file was
-never read. These tests pin the key against each input and pin the set of
+other command that reads a behavior map. If the key omitted these inputs, a
+``frameworks.d`` file added, edited or broken after a survey was cached would
+never be seen by any of those commands: the cache would answer, and the file
+would never be read. These tests pin the key against each input and pin the set of
 inputs against what a survey actually reads.
 """
 
@@ -60,7 +60,7 @@ def _state_segment(repo: Path) -> str:
 
 class TestNoUserInputsKeepsTheKey:
     def test_bare_state_hash_when_nothing_is_supplied(self, env) -> None:
-        """A user with no channel files and no config keeps the old key."""
+        """A user with no channel files and no config gets the bare state-hash key."""
         segment = _state_segment(env["repo"])
         assert len(segment) == 16 and int(segment, 16) >= 0
         assert analysis_channel_token() == ""
@@ -257,7 +257,7 @@ class TestCachedSurveyIsNotReusedAcrossAChannelChange:
     def test_breaking_a_channel_file_after_a_survey_misses_the_cache(
         self, env,
     ) -> None:
-        """The filed repro, at the cache layer: survey, then break the file."""
+        """At the cache layer: survey, then break the file; the cached survey must miss."""
         from hypergumbo_core.cli import _discover_input_file, main
 
         repo = env["repo"]

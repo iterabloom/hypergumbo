@@ -34,7 +34,6 @@
 # `--no-default-overlays`.
 
 language: haskell
-status: overlay
 provenance: community
 retrieved: 2026-09-02
 

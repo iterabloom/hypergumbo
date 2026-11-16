@@ -52,27 +52,19 @@ def get_commit_timeline(
     compared directly to the entry timestamps in the corpus (which
     are naive local times from ``datetime.now().isoformat()``).
     """
-    # WI-fodad, RESOLVED — and the resolution was NOT in this file.
-    #
-    # This walk once took 1,185,559 ms in CI against 27 ms on a dev box, which
-    # produced two wrong theories in a row (cold object-store I/O; runner
-    # contention) and two "fixes" that each made CI worse. The actual cause was
-    # the CI CHECKOUT, not the command: `woodpeckerci/plugin-git` defaults
-    # `partial: true` and clones with `--depth=1 --filter=tree:0`, so the repo
-    # held no tree objects. `git fetch --unshallow` restores commits but inherits
-    # the filter, so a pathspec walk lazily re-fetched ~26,000 trees from origin
-    # one at a time over HTTPS. The 44,000x was network round trips; the volume
-    # was a local SSD the whole time. `.woodpecker/*.yml` now pin
-    # `settings: {partial: false}`, and `prepare-git` fails the pipeline if a
-    # partial-clone filter is ever configured again.
-    #
-    # So the cap does not need to absorb a pathological environment any more,
-    # and it should not try to. The 1800 s cap that briefly lived here was worse
-    # than the 30 s one it replaced: it let the walk run to completion, which
-    # pushed the pytest step past the agent's task deadline and got the whole
-    # pipeline CANCELLED — trading a fast, legible red for an unattributable
-    # infrastructure error. A cap's only job is to stop a genuinely wedged git;
-    # 120 s is ~4,000x headroom over the real cost and still fails fast.
+    # The timeout's only job is to stop a genuinely wedged git; it must not try
+    # to absorb a pathological environment. On a complete clone this walk
+    # takes milliseconds. On a partial clone (`--filter=tree:0`, which
+    # `woodpeckerci/plugin-git`'s default `partial: true` produces, and which
+    # `git fetch --unshallow` inherits) the pathspec walk lazily re-fetches
+    # every tree from origin one at a time and can run for many minutes. The
+    # remedy for that is a complete checkout (`.woodpecker/*.yml` pin
+    # `settings: {partial: false}`; `prepare-git` rejects a partial-clone
+    # filter), not a bigger cap: a cap long enough to let such a walk finish
+    # pushes the test step past the CI task deadline, and a CANCELLED pipeline
+    # is an unattributable infrastructure error where a timeout is a fast,
+    # legible red. 120 s is ample headroom over the real cost and still fails
+    # fast (history: WI-fodad).
     result = subprocess.run(
         ["git", "log", "--pretty=format:%aI %H", "--reverse", "--",
          file_path],
@@ -80,12 +72,12 @@ def get_commit_timeline(
     )
     if result.returncode != 0:
         # Surface WHY. Returning a bare [] here is load-bearing for callers (a
-        # path with no history legitimately yields an empty timeline), but the
-        # silence made a CI failure undiagnosable: an empty timeline makes
+        # path with no history legitimately yields an empty timeline), but a
+        # silent [] makes a git failure undiagnosable: an empty timeline makes
         # `resolve_sha_at_timestamp` return "", every `not sha.startswith(...)`
         # assertion pass vacuously, and exactly one test fail — which reads as
         # "one flaky assertion" rather than "git failed". Keep the [], print the
-        # cause. (WI-fodad)
+        # cause. (history: WI-fodad)
         print(
             f"[get_commit_timeline] git log failed for {file_path!r} in "
             f"{repo_root!r}: rc={result.returncode} stderr={result.stderr.strip()!r}",

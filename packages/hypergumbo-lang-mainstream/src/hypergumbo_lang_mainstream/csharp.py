@@ -2,7 +2,10 @@
 """C# analysis pass using tree-sitter-c-sharp.
 
 This analyzer uses tree-sitter to parse C# files and extract:
-- Class declarations
+- Class declarations, and record declarations (``record``, ``record class``,
+  ``record struct``) as kind ``record`` through the same branch: bases,
+  attributes and members like a class's, so their members are not bare
+  names (WI-zukat)
 - Interface declarations
 - Struct declarations
 - Enum declarations
@@ -10,26 +13,39 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Constructor declarations
 - Property declarations, whose stable_id is the ADR-0035 producer formula
   (``make_typed_stable_id`` over the declared type and the namespace/type
-  chain; WI-tusad: they rode the backstop floor key). Methods, constructors,
+  chain), not the backstop floor key (WI-tusad). Methods, constructors,
   fields, enum members and the WI-binap members hash the FULL chain of block
-  namespaces and types (``_csharp_scope``: ``A.Inner.Go``, where they hashed
-  the emitted nearest-owner name ``Inner.Go``), and classes, interfaces,
-  structs and enums mint ``overload_arity.scoped_table_stable_id`` over it
-  (INV-fabih: two nested ``class Inner``, or two in sibling namespace blocks,
-  shared one bare-name table key, so deleting the first moved the second's
-  ids). A file-scoped namespace is single per file and not in the chain.
-- A class, struct or interface records its base list in
+  namespaces and types (``_csharp_scope``: ``A.Inner.Go``, not the emitted
+  nearest-owner name ``Inner.Go``), and classes, interfaces, structs and
+  enums mint ``overload_arity.scoped_table_stable_id`` over it, so two nested
+  ``class Inner``, or two in sibling namespace blocks, do not share one
+  bare-name table key and deleting the first does not move the second's ids
+  (INV-fabih). A file-scoped namespace is single per file and not in the
+  chain.
+- A class, record, struct or interface records its base list in
   ``meta["base_classes"]``; the inheritance linker turns it into ``extends``
-  / ``implements`` edges (WI-ruzid: interfaces recorded none, so
-  ``interface IChild : IBase`` produced no edge at all).
+  / ``implements`` edges; an interface records its bases too, so
+  ``interface IChild : IBase`` gets its edge (WI-ruzid).
   The emitted ``qualified_name`` carries every enclosing namespace, the
-  file-scoped one included (``A.B.C.Go``, ``N.M.K``; it kept the innermost
-  block namespace only).
+  file-scoped one included (``A.B.C.Go``, ``N.M.K``).
 - Indexers (``subscript``, named ``Type.this[]``), operators and conversion
   operators (``method``, ``Type.operator+`` / ``Type.operator int``),
   destructors (``method``, ``Type.~Type``) and events declared with
   ``add`` / ``remove`` accessors (``event``) (WI-binap)
 - Field declarations, one ``field`` symbol per declarator (WI-jusus)
+- The signature of a method, constructor, indexer and operator
+  (``_format_csharp_params``) writes each parameter's modifiers (``ref``,
+  ``out``, ``in``, ``this``, ``scoped``, ``readonly``), its type as written
+  whatever node kind spells it (a tuple, ``A::B``, ``delegate*<int, void>``,
+  ``scoped Span<int>``) and its name, a ``params`` array (which the grammar
+  puts in the parameter list, not in a ``parameter`` node) and ``__arglist``;
+  the method's return type is its ``returns`` field, whatever its kind. This
+  text is hashed into the typed stable_id (``normalize_csharp_signature``,
+  the types-first family's rule applied one type at a time, keeping the
+  modifiers and tuple types its FQN strip would lose), so ``F(ref int x)``
+  and ``F(int x)`` do not share an id. Before, only seven type node kinds
+  were written and the rest of the parameter, or the return type, was
+  dropped.
 - Enum members, each a ``field`` symbol named ``Enum.Member`` (WI-duguk)
 - Function call relationships (including chained field type resolution)
 - ``decorated_by`` edges from C# attributes
@@ -101,6 +117,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
     enclosing_declared_symbol,
@@ -115,8 +132,9 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
     SymbolsAt,
     symbols_at,
+    declares_async,
 )
-from hypergumbo_core.overload_arity import scoped_table_stable_id
+from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -176,10 +194,10 @@ def _extract_annotations(
                                 # Named argument detection. In tree-sitter-c-sharp
                                 # 0.23.5 (the pinned version), `Name = "Get"` is
                                 # a flat sequence of `identifier`, `=`, <value>
-                                # children directly under `attribute_argument` —
-                                # the older `assignment_expression` wrapper was
-                                # dropped. Detect by presence of the `=` token
-                                # as a direct child.
+                                # children directly under `attribute_argument`,
+                                # with no `assignment_expression` wrapper.
+                                # Detect by presence of the `=` token as a
+                                # direct child.
                                 if find_child_by_type(arg, "=") is not None:
                                     # Named argument: name = value
                                     name_node = find_child_by_type(
@@ -348,68 +366,54 @@ def _extract_csharp_signature(
     Returns:
         The signature string, or None if extraction fails.
     """
-    params_node = None
-    return_type = None
-
-    # Find parameter_list and return type
-    # The return type is a type node (predefined_type, generic_name, etc.)
-    # NOT a plain identifier (that's the method name)
-
-    # Collect identifiers before parameter_list to distinguish return type
-    # from method name.  In C# method_declaration children:
-    #   [modifiers] return_type method_name parameter_list block
-    # Custom return types (e.g. ServiceClient) are plain identifier nodes,
-    # so if there are 2+ identifiers before the parameter_list, the first
-    # is the return type.
-    pre_params_identifiers: list[str] = []
-
-    for child in node.children:
-        if child.type == "parameter_list":
-            params_node = child
-        # Return type is a type node, not identifier
-        elif child.type in _CSHARP_SIGNATURE_TYPE_NODES:
-            return_type = _extract_type_text(child, source)
-        # Track identifiers before parameter_list for custom return type detection
-        elif child.type == "identifier" and params_node is None:
-            pre_params_identifiers.append(node_text(child, source))
-
-    # If no type_node return type was found but there are 2+ identifiers
-    # before the parameter_list, the first identifier is the return type
-    if return_type is None and len(pre_params_identifiers) >= 2:
-        return_type = pre_params_identifiers[0]
-
+    params_node = node.child_by_field_name("parameters")
     if params_node is None:
-        return None  # pragma: no cover
+        return None  # pragma: no cover - a method and a constructor declare parameters
 
     signature = _format_csharp_params(params_node, source)
 
-    # Add return type for methods (not constructors), but omit void
-    if not is_constructor and return_type and return_type != "void":
-        signature += f" {return_type}"
+    # The declared return type, whatever node kind spells it (a tuple, an
+    # alias-qualified name and a function pointer included); ``void`` and a
+    # constructor's absent one are omitted.
+    returns = None if is_constructor else node.child_by_field_name("returns")
+    if returns is not None:
+        return_type = node_text(returns, source)
+        if return_type != "void":
+            signature += f" {return_type}"
 
     return signature
 
 
 def _format_csharp_params(params_node: "tree_sitter.Node", source: bytes) -> str:
-    """``(int x, Foo y)`` for a ``parameter_list`` or an indexer's
-    ``bracketed_parameter_list``: each parameter as ``type name``."""
+    """``(int x, ref Foo y)`` for a ``parameter_list`` or an indexer's
+    ``bracketed_parameter_list``: each parameter as its modifiers, its type
+    and its name, the type as written whatever node kind spells it.
+
+    A ``params`` array is not a ``parameter`` node: the grammar puts its
+    ``params`` token, its ``type`` and its ``name`` in the list itself, so it
+    is written from those. ``__arglist`` is a parameter with a name and no
+    type. A default value is not written.
+    """
     params: list[str] = []
     for child in params_node.children:
         if child.type == "parameter":
-            param_type = None
-            param_name = None
-            for subchild in child.children:
-                # Type nodes (not plain identifier for type - those are param names)
-                if subchild.type in _CSHARP_SIGNATURE_TYPE_NODES:
-                    param_type = _extract_type_text(subchild, source)
-                # For custom types, identifier IS the type if param_type not set
-                elif subchild.type == "identifier":
-                    if param_type is None:
-                        param_type = node_text(subchild, source)
-                    else:
-                        param_name = node_text(subchild, source)
-            if param_type and param_name:
-                params.append(f"{param_type} {param_name}")
+            type_node = child.child_by_field_name("type")
+            name_node = child.child_by_field_name("name")
+            if name_node is None:
+                continue  # pragma: no cover - the grammar names every parameter
+            words = [node_text(m, source) for m in child.children if m.type == "modifier"]
+            if type_node is not None:
+                words.append(node_text(type_node, source))
+            words.append(node_text(name_node, source))
+            params.append(" ".join(words))
+        elif child.type == "params":
+            array_type = params_node.child_by_field_name("type")
+            array_name = params_node.child_by_field_name("name")
+            if array_type is None or array_name is None:
+                continue  # pragma: no cover - the grammar requires both
+            params.append(
+                f"params {node_text(array_type, source)} {node_text(array_name, source)}"
+            )
     return f"({', '.join(params)})"
 
 
@@ -477,13 +481,110 @@ def _csharp_body_member(
     return kind, name, signature
 
 
+#: The parameter modifiers ``_format_csharp_params`` writes before a type.
+_CSHARP_PARAMETER_MODIFIERS: frozenset[str] = frozenset({
+    "this", "scoped", "ref", "out", "in", "readonly", "params",
+})
+
+
+def _closing_paren(text: str) -> int:
+    """Index of the ``)`` that closes the ``(`` opening ``text``, else -1."""
+    if not text.startswith("("):
+        return -1
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _is_csharp_tuple_type(text: str) -> bool:
+    """True when ``text`` is a tuple type, ``(int, string)``: it opens with a
+    parenthesis that closes at its end (a nullable or array tuple,
+    ``(int, int)?`` / ``(int, int)[]``, does not)."""
+    close = _closing_paren(text)
+    return close > 0 and close == len(text) - 1
+
+
+def _normalize_csharp_type(
+    text: str, type_params: list[str] | None, *, parameter: bool,
+) -> str:
+    """One parameter (``ref Foo x``) or return type (``Foo``), normalized.
+
+    The types-first family's rule (``normalize_signature_types_first``,
+    shared with Java, Dart and Groovy) is applied to the type itself. Two C#
+    forms are kept out of it, because its FQN strip, which keeps what follows
+    the last dot of a type's head, would lose them: a parameter's modifiers
+    (``ref System.Int32 x`` would hash as ``Int32``) are taken off first and
+    put back, and a tuple type is kept whole (``(int, System.String)`` would
+    hash as ``String)``), its element types being the arguments of a
+    ``ValueTuple``, which the family keeps as written in a generic.
+    """
+    from hypergumbo_core.analyze.base import (
+        normalize_generic_params,
+        normalize_signature_types_first,
+    )
+
+    modifiers: list[str] = []
+    if parameter:
+        # A modifier comes off only while a type and a name remain after it:
+        # ``scoped`` is a contextual keyword, so ``scoped x`` is a parameter of
+        # type ``scoped``.
+        head, _, rest = text.partition(" ")
+        while head in _CSHARP_PARAMETER_MODIFIERS and len(rest.split()) >= 2:
+            modifiers.append(head)
+            text = rest
+            head, _, rest = text.partition(" ")
+        words = text.rsplit(None, 1)
+        type_text = words[0]
+    else:
+        type_text = text
+    if _is_csharp_tuple_type(type_text):
+        written = normalize_generic_params(type_text, type_params or [])
+    else:
+        shared = normalize_signature_types_first(
+            f"({text})" if parameter else f"() {text}", type_params,
+            skip_void_return=False,
+        )
+        assert shared is not None  # the text opens with its own parameter list
+        written = shared[1:-1] if parameter else shared[2:]
+    return " ".join([*modifiers, written])
+
+
 def normalize_csharp_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a C# signature for typed stable_id (ADR-0014 §3)."""
-    from hypergumbo_core.analyze.base import normalize_signature_types_first
-    return normalize_signature_types_first(signature, type_params)
+    """Normalize a C# signature for typed stable_id (spec §6 typed tier).
+
+    ``(Type name, ...) Return`` becomes ``(Type,...)Return`` by the
+    types-first family's rule: names dropped, the head of a qualified type
+    stripped to its simple name, declared type parameters by position,
+    ``void`` omitted. Each parameter and the return type are normalized one
+    at a time (``_normalize_csharp_type``), which writes the same text as the
+    family's function does for the whole signature, and keeps the parameter
+    modifiers and tuple types that function's FQN strip would lose.
+    """
+    if not signature:
+        return None
+    close = _closing_paren(signature)
+    if close < 0:
+        return None
+    from hypergumbo_core.analyze.base import split_params_top_level
+
+    params = [
+        _normalize_csharp_type(p, type_params, parameter=True)
+        for p in split_params_top_level(signature[1:close]) if p
+    ]
+    normalized = f"({','.join(params)})"
+    returned = signature[close + 1:].strip()
+    if returned and returned.lower() != "void":
+        normalized += _normalize_csharp_type(returned, type_params, parameter=False)
+    return normalized
 
 
 _CSHARP_ASYNC_WRAPPER_TYPES = ("Task", "ValueTask", "IAsyncEnumerable")
@@ -613,7 +714,8 @@ FileAnalysis: TypeAlias = _BaseFileAnalysis
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up the tree to find the enclosing class/interface/struct name.
+    """Walk up the tree to find the nearest enclosing type's name (class,
+    interface, struct, enum or record: ``_CSHARP_TYPE_DECLS``).
 
     Args:
         node: The current node.
@@ -624,7 +726,7 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     """
     current = node.parent
     while current is not None:
-        if current.type in ("class_declaration", "interface_declaration", "struct_declaration"):
+        if current.type in _CSHARP_TYPE_DECLS:
             name_node = find_child_by_type(current, "identifier")
             if name_node:
                 return node_text(name_node, source)
@@ -662,10 +764,9 @@ def _get_csharp_enclosing_namespace(
 
     Handles both block-style ``namespace Foo.Bar { ... }`` and the C# 10
     file-scoped ``namespace Foo.Bar;``, which the grammar parses as an
-    earlier SIBLING of the declarations it covers, not their ancestor. It
-    returned the innermost block namespace only, and never a file-scoped
-    one, so ``qualified_name`` read ``B.C.Go`` for ``A.B.C.Go`` and ``K``
-    for ``N.M.K`` (WI-tusad scheme bump).
+    earlier SIBLING of the declarations it covers, not their ancestor. Both
+    are joined, so ``qualified_name`` reads ``A.B.C.Go`` (not ``B.C.Go``)
+    and ``N.M.K`` (not ``K``) (WI-tusad).
     """
     def name_of(n: "tree_sitter.Node") -> Optional[str]:
         # The name child can be an identifier or qualified_name
@@ -812,6 +913,10 @@ def _extract_base_list(node: "tree_sitter.Node", source: bytes) -> list[str]:
     for child in node.children:
         if child.type == "base_list":
             for base_child in child.children:
+                # A record's ``: Base(X)`` passes its primary constructor's
+                # arguments on: the type is the node's first child.
+                if base_child.type == "primary_constructor_base_type":
+                    base_child = base_child.children[0]
                 if base_child.type in ("identifier", "generic_name", "qualified_name"):
                     base_name = node_text(base_child, source)
                     # Strip generic parameters: List<int> -> List
@@ -884,8 +989,8 @@ def _extract_symbols_from_file(
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
     ``rel_path`` is the repo-relative path of ``file_path`` (computed by the
-    ``analyze()`` override, which holds ``repo_root``). It is the WI-bokab (v7)
-    file-identity input — folded into ``make_typed_stable_id``'s
+    ``analyze()`` override, which holds ``repo_root``). It is the
+    file-identity input (WI-bokab, v7) — folded into ``make_typed_stable_id``'s
     ``containing_stable_id`` slot so same-``(kind, name, qualified_name)`` methods
     and constructors in different files hash distinctly. ``file_path`` itself is
     ABSOLUTE here (it comes from ``find_csharp_files(repo_root)``), so it must NOT
@@ -900,7 +1005,7 @@ def _extract_symbols_from_file(
         return FileAnalysis()
     record_partial_parse(run, rel_path, tree)  # WI-bulaz
 
-    # WI-bokab (v7): file-identity anchor for this file's symbols. Built from the
+    # File-identity anchor for this file's symbols (WI-bokab, v7). Built from the
     # repo-relative ``rel_path`` (NOT the absolute ``file_path``) so it byte-matches
     # the file Symbol's own stable_id (``populate_kind_stable_ids`` computes the same
     # value from the normalized repo-relative path). Folded into
@@ -933,8 +1038,12 @@ def _extract_symbols_from_file(
         return None  # pragma: no cover - defensive
 
     for node in iter_tree(tree.root_node):
-        # Class declaration
-        if node.type == "class_declaration":
+        # Class or record declaration. A record (``record``, ``record class``,
+        # ``record struct``) is a type with a class's bases, attributes and
+        # members, emitted as kind "record", so its members are not bare and
+        # their calls do not bind to other classes (WI-zukat).
+        if node.type in ("class_declaration", "record_declaration"):
+            type_kind = "record" if node.type == "record_declaration" else "class"
             name = extract_name_from_declaration(node)
             if name:
                 start_line = node.start_point[0] + 1
@@ -961,9 +1070,9 @@ def _extract_symbols_from_file(
                     ))
                 cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
-                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "class"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, type_kind),
                     name=name,
-                    kind="class",
+                    kind=type_kind,
                     language="csharp",
                     path=str(file_path),
                     span=Span(
@@ -977,8 +1086,10 @@ def _extract_symbols_from_file(
                     meta=meta,
                     # INV-fabih: the table formula over the enclosing block
                     # namespaces and types (the backstop's value at top level).
-                    stable_id=scoped_table_stable_id(
-                        kind="class", lang="csharp", path=rel_path, name=name,
+                    # A record is no table kind, so it mints the ADR-0035
+                    # producer formula over the same chain, as Java's does.
+                    stable_id=(scoped_stable_id if type_kind == "record" else scoped_table_stable_id)(
+                        kind=type_kind, lang="csharp", path=rel_path, name=name,
                         scope=_csharp_scope(node, source),
                     ),
                     modifiers=class_modifiers,
@@ -1200,7 +1311,7 @@ def _extract_symbols_from_file(
                 signature = _extract_csharp_signature(node, source, is_constructor=False)
                 modifiers = _extract_modifiers(node)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_csharp_signature(signature)
                 # INV-fabih: the full namespace/type chain, not the nearest
                 # owner (``full_name``) two nested owners share.
@@ -1208,6 +1319,7 @@ def _extract_symbols_from_file(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=name, qualified_name=_csharp_member_chain(node, source, name),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
 
                 ns_name = _get_csharp_enclosing_namespace(node, source)
@@ -1255,7 +1367,7 @@ def _extract_symbols_from_file(
                 signature = _extract_csharp_signature(node, source, is_constructor=True)
                 modifiers = _extract_modifiers(node)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_csharp_signature(signature)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
@@ -1341,9 +1453,9 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-        # WI-binap: indexer / operator / conversion operator / destructor / event
-        # with accessors -- the member forms with a body that had no symbol, so
-        # their calls went to the class.
+        # Indexer / operator / conversion operator / destructor / event with
+        # accessors -- member forms with a body, given a symbol so their calls
+        # are not credited to the class (WI-binap).
         elif node.type in _CSHARP_BODY_MEMBER_DECLS:
             body_member = _csharp_body_member(node, source)
             if body_member is not None:
@@ -1484,7 +1596,7 @@ def _extract_symbols_from_file(
                                 analysis.class_field_types[enclosing] = {}
                             analysis.class_field_types[enclosing][field_name] = type_name
 
-    # INV-jahiv Phase 4 PR3: post-pass to populate docstrings on any
+    # Post-pass (INV-jahiv) to populate docstrings on any
     # symbols (e.g. class/interface/struct/enum/property) whose emit
     # site does not call extract_preceding_doc_comment inline. CSharp
     # overrides analyze() and bypasses the base run_pipeline path, so
@@ -1501,8 +1613,8 @@ def _enclosing_member(node: "tree_sitter.Node", decl_index: SymbolsAt) -> Option
     Keyed by the declaration's POSITION, not its name (INV-midag). The short
     name is shared by overloads, by two indexers (both ``this[]``), and by one
     method name in two classes of one file: livebook's ElixirKit.cs defines
-    ``Stop`` / ``Subscribe`` in both ``API`` and ``Release`` / ``Client``. The
-    name lookup returned whichever registered last.
+    ``Stop`` / ``Subscribe`` in both ``API`` and ``Release`` / ``Client``. A
+    name lookup would return whichever registered last.
     """
     return enclosing_declared_symbol(node, decl_index, _CSHARP_MEMBER_BODY_NODES)
 
@@ -1898,11 +2010,10 @@ def _extract_edges_from_file(
                         _get_enclosing_class(node, source),
                     )
                     if method_resolver is not None:
-                        amb_check = method_resolver.lookup(callee_name)
-                        if not amb_check.found and amb_check.candidates:
+                        if method_resolver.too_ambiguous(callee_name):
                             # 3+ method candidates: no BINDING (the guard is
-                            # right), but the call still happened (INV-bamij:
-                            # this used to be a bare ``continue``).
+                            # right), but the call still happened, so it is
+                            # emitted unresolved (INV-bamij).
                             edges.append(make_unresolved_edge(
                                 "csharp", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID,
@@ -1913,12 +2024,28 @@ def _extract_edges_from_file(
                                 ),
                             ))
                             continue
-                    # Check local symbols first
-                    if callee_name in local_symbols:
-                        callee = local_symbols[callee_name]
+                    # Check local symbols first. ``local_symbols`` holds every
+                    # method under its bare name too, last one in the file
+                    # winning, so prefer the scope's own ``Type.callee``; a bare
+                    # call's short-name hit on another type's method is the
+                    # INV-fahub magnet and goes to the guarded resolver path
+                    # below (WI-zukat: otherwise ``Helper()`` in a record would
+                    # bind to an ``Other.Helper`` declared after it).
+                    _local_scope = receiver_name or _get_enclosing_class(node, source)
+                    local_callee: Optional[Symbol] = (
+                        local_symbols.get(f"{_local_scope}.{callee_name}")
+                        if _local_scope else None
+                    )
+                    if local_callee is None and callee_name in local_symbols:
+                        _short = local_symbols[callee_name]
+                        if receiver_name or not defer_bare_method_call(
+                            _short.kind, _short.name, "suffix", _local_scope,
+                        ):
+                            local_callee = _short
+                    if local_callee is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
-                            dst=callee.id,
+                            dst=local_callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
@@ -1927,7 +2054,7 @@ def _extract_edges_from_file(
                             meta={"call_construct": "method"},
                         ))
                         _track_csharp_return_type(
-                            callee, node, source, var_types, local_symbols
+                            local_callee, node, source, var_types, local_symbols
                         )
                     # Check global symbols via resolver
                     else:
@@ -1991,8 +2118,8 @@ def _extract_edges_from_file(
                         else:
                             # INV-bamij (csharp): the resolver placed the
                             # name nowhere -- a framework call such as
-                            # ``File.ReadAllText`` -- and this used to emit
-                            # NOTHING, so every external call vanished.
+                            # ``File.ReadAllText`` -- and it is still emitted,
+                            # unresolved, so external calls do not vanish.
                             edges.append(make_unresolved_edge(
                                 "csharp", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID,
@@ -2000,6 +2127,12 @@ def _extract_edges_from_file(
                                 module_hint=_unresolved_module,
                                 call_construct=(
                                     "method" if receiver_name else None
+                                ),
+                                # A tie among methods is not guessed (WI-jomik):
+                                # it is deferred exactly as a weak pick is.
+                                enclosing_class=(
+                                    _get_enclosing_class(node, source)
+                                    if defer_unresolved_tie(lookup_result) else None
                                 ),
                             ))
 
@@ -2272,15 +2405,14 @@ def _extract_attribute_edges(
 def _stamp_shape_ids(
     analyzer: TreeSitterAnalyzer, analysis: "_BaseFileAnalysis",
 ) -> None:
-    """WI-lutob: fill ``shape_id`` from ``node_for_symbol`` for the C#
-    ``analyze()`` override.
+    """Fill ``shape_id`` from ``node_for_symbol`` for the C# ``analyze()``
+    override (WI-lutob).
 
     The base ``TreeSitterAnalyzer.analyze()`` auto-stamps ``shape_id`` (and
     docstrings) from ``analysis.node_for_symbol`` after extraction, but
     ``CSharpAnalyzer.analyze()`` reimplements the pipeline and never runs that
-    loop — so every body-bearing C# symbol shipped ``shape_id=None`` and the
-    structural-clone key (ADR-0014 §1) the spec marks done for C# silently did
-    not exist. This replays just the shape_id half over the C# analysis's
+    loop — without this every body-bearing C# symbol would have
+    ``shape_id=None`` and no structural-clone key (spec §6 shape_id). This replays just the shape_id half over the C# analysis's
     already-populated ``node_for_symbol`` (docstrings are handled in the C#
     extraction path). Never clobbers an existing value.
     """
@@ -2361,8 +2493,8 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             if max_files is not None and len(file_analyses) >= max_files:
                 break  # pragma: no cover
 
-            # WI-bokab (v7): compute the repo-relative path here (where repo_root
-            # is in scope) and thread it down. ``cs_file`` from
+            # Compute the repo-relative path here (where repo_root is in scope)
+            # and thread it down (WI-bokab, v7). ``cs_file`` from
             # find_csharp_files(repo_root) is ABSOLUTE; folding it would make
             # stable_ids location-dependent (the absolute-path regression trap).
             rel_path = str(cs_file.relative_to(repo_root))

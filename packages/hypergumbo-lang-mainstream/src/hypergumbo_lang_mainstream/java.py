@@ -15,12 +15,17 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
   interface constant, one per enum constant, and one per record component
   (a ``private final`` field, JLS 8.10.3; ``_java_field_symbol``)
 - stable_ids over the types AND methods enclosing a symbol
-  (``_java_hash_scope``; INV-fabih): a local class in two methods, and an
-  anonymous class's members in two methods, shared their emitted dotted
-  name, tied, and moved when the first method was deleted. Symbols outside a
-  method body keep their values. A ``record`` (no table kind) rode the
-  backstop floor key; it now mints the producer formula over that chain
-  (``_java_type_stable_id``)
+  (``_java_hash_scope``): a local class in two methods, or an anonymous
+  class's members in two methods, share one emitted dotted name, so hashing
+  the method chain too keeps their ids distinct and keeps them from moving
+  when the other method is deleted. Outside a method body the two chains are
+  equal. A ``record`` (no table kind) mints the producer formula over that
+  chain (``_java_type_stable_id``; INV-fabih)
+- A method's or constructor's typed stable_id hashes its signature text
+  (``_extract_java_signature``), which writes every parameter and return
+  type as its source text whatever the type's node kind; a type left out
+  there is one the id cannot see, so two overloads differing only in it
+  would tie. ``normalize_java_signature`` hashes ``T...`` as ``T[]``.
 - Method call relationships (edges)
 - Inheritance relationships: this analyzer emits ``extends`` / ``implements``
   edges for classes only. A record's ``implements`` and an interface's
@@ -50,9 +55,8 @@ Import edges (INV-gojit)
 Beyond the resolution dicts above, every ``import`` declaration also
 emits one ``imports`` edge (:func:`_extract_import_edges`) from the
 file node to a structured external ref — at parity with every other
-mainstream analyzer, which all surface imports as graph edges. Java was
-the lone holdout (``edge_types == [calls]``) on the emission-parity
-matrix's ``(java, edge_imports)`` cell until this was wired.
+mainstream analyzer, which all surface imports as graph edges (the
+emission-parity matrix's ``(java, edge_imports)`` cell).
 
 Structured external targets
 ---------------------------
@@ -116,8 +120,9 @@ How It Works
      registry, attach canonical ``dst_ref`` for cross-translation-unit
      edges
 4. Detect method calls, inheritance, and instantiation patterns. A
-   ``this.m()`` / bare ``m()`` call that does not resolve on the enclosing
-   class is emitted unresolved with an ``enclosing_class`` hint, and a
+   ``this.m()`` / bare ``m()`` call binds the enclosing class's own member,
+   which Java declares in the same file; one that the class does not declare
+   is emitted unresolved with an ``enclosing_class`` hint, and a
    typed-receiver or inherited-field call is emitted unresolved with a
    ``receiver_type_hint`` / ``inherited_field_receiver`` hint even when
    ``<Type>.<method>`` is a project symbol; the Tier-2
@@ -127,11 +132,22 @@ How It Works
    imports a different class of that simple name, or when a bare name would
    reach a nested type from another file (``_is_import_class_mismatch``;
    INV-finak, WI-bunul). Colliding base-class names resolve same-file, then
-   import, then first by id (``_resolve_base_class_java``).
-   A call or ``new`` in no method or constructor (a field initialiser, an
-   initialiser block) is anchored on the enclosing class / interface / enum /
-   record, else the file (``_get_enclosing_type_symbol``, INV-bamij); a method
-   reference there gets no such fallback and emits nothing. An unresolved call
+   import, then same-package (Java needs no import for a class of its own
+   package), then first by id (``_resolve_base_class_java``).
+   A class's OWN facts are found by its declaration's POSITION
+   (``_java_symbol_declared_by`` over the run-wide ``(path, line, col)``
+   index), never by its dotted name, which carries no package: the source of
+   its ``extends`` / ``implements`` edges, its ``meta["fields"]``, the start
+   of the inherited-field walk (parents and field tables keyed by symbol id),
+   the member a ``this.m()`` binds, and the ``enclosing_class_id`` stamped
+   beside the ``enclosing_class`` hint on an unresolved call, so the
+   ``inherited_calls`` linker starts its walk at exactly this class.
+   Keyed by name, ``a.Foo`` and ``b.Foo`` would share one entry and both
+   files' facts would go to whichever registered last (WI-gikuk).
+   A call, ``new`` or method reference (``Type::m``, ``Type::new``) in no
+   method or constructor (a field initialiser, an initialiser block) is
+   anchored on the enclosing class / interface / enum / record, else the file
+   (``_get_enclosing_type_symbol``, INV-bamij). An unresolved call
    with a receiver token is stamped ``call_construct="function"`` when the receiver
    provably names a TYPE (``Files.readAllBytes(p)``), else ``method``; a bare
    ``m(x)`` stays unstamped (``_java_call_construct``, WI-fuvaj). Receivers
@@ -160,9 +176,11 @@ Why This Design
 Population of ``is_exported`` follows Java's access-modifier rule: a type
 or member is considered exported only when its declaration carries the
 ``public`` keyword (package-private / protected / private items are not).
-Two exceptions: interface constants are implicitly public and are
-exported without the keyword, and an enum constant (which has no access
-modifier of its own) is exported when its enum is.
+Two exceptions: a direct member of an interface or annotation type (method,
+constant or nested type) is implicitly public and is exported without the
+keyword unless it is declared ``private`` (JLS 9.4-9.6), and an enum
+constant (which has no access modifier of its own) is exported when its enum
+is.
 """
 from __future__ import annotations
 
@@ -170,16 +188,17 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id,
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol,
+    make_pass_id,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
-from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -305,10 +324,10 @@ def _make_java_qualified_name(
     return sep.join(parts)
 
 
-#: The declarations that name a type a member can be qualified by. WI-pidos:
-#: ``record_declaration`` (Java 16) was missing, so a method, constructor or
-#: field whose only enclosing type was a record had no ancestors and emitted no
-#: symbol at all -- a file holding one record produced nothing.
+#: The declarations that name a type a member can be qualified by.
+#: ``record_declaration`` (Java 16) is one: a method, constructor or field whose
+#: only enclosing type is a record would otherwise have no ancestors and emit no
+#: symbol at all (WI-pidos).
 _JAVA_NAMED_TYPE_NODES: frozenset[str] = frozenset({
     "class_declaration", "interface_declaration", "enum_declaration",
     "record_declaration",
@@ -324,7 +343,7 @@ _JAVA_ANNOTATED_TYPE_DECLARATIONS: dict[str, str] = {
 
 #: Symbol kinds that name a type: what ``class_symbols`` is built from and
 #: what a type lookup may resolve to. Derived, so a type arm added above is a
-#: type everywhere (records were missing from all three filters).
+#: type everywhere.
 _JAVA_TYPE_SYMBOL_KINDS: frozenset[str] = (
     frozenset(_JAVA_ANNOTATED_TYPE_DECLARATIONS.values()) | {"enum"}
 )
@@ -373,72 +392,87 @@ def _extract_java_signature(
     - "(int a, int b) int" for regular methods
     - "(String message)" for void methods (no return type shown)
     - "(String name, int age)" for constructors (no return type)
+    - "(String fmt, Object... args) String" for a variable-arity parameter
+
+    Every type is written as its source text, whatever its node kind (the
+    grammar's ``_unannotated_type``: the primitive kinds, ``type_identifier``,
+    ``scoped_type_identifier``, ``generic_type``, ``array_type``). Dimensions
+    written after a parameter's name (``int x[]``) or after the parameter list
+    (``int f()[]``) are appended to the type they belong to. A parameter is
+    written with whatever names it (an ``identifier`` or ``_``). A varargs
+    parameter with an annotation before ``...`` (``String @A ... xs``), which
+    the grammar leaves as an ERROR node, is written as its source text. This
+    text is what ``normalize_java_signature`` hashes, so a type left out here
+    is a type the stable_id cannot see: two declarations differing only there
+    would share one id. A receiver parameter (``Outer this``) is left out on
+    purpose: it is not a formal parameter and not part of the method's
+    signature (JLS 8.4).
 
     Args:
-        node: The method_declaration or constructor_declaration node.
+        node: The method_declaration or constructor_declaration node (or the
+            record_declaration whose components a compact constructor takes).
         source: The source code bytes.
         is_constructor: True if this is a constructor (no return type).
 
     Returns:
         The signature string, or None if extraction fails.
     """
-    params_node = None
-    return_type = None
-
-    # Find formal_parameters and return type
-    for child in node.children:
-        if child.type == "formal_parameters":
-            params_node = child
-        # Return type appears before the identifier for methods
-        # Types we care about: void_type, type_identifier, generic_type, array_type, and primitives
-        elif child.type in ("void_type", "type_identifier", "generic_type", "array_type",
-                            "integral_type", "floating_point_type", "boolean_type"):
-            # Only capture if we haven't found params yet (return type comes before name)
-            if params_node is None:
-                return_type = _extract_type_text(child, source)
-
+    params_node = node.child_by_field_name("parameters")
     if params_node is None:
         return None  # pragma: no cover
 
     # Extract parameters
     params: list[str] = []
-    for child in params_node.children:
+    for child in params_node.named_children:
         if child.type == "formal_parameter":
-            param_type = None
-            param_name = None
-            for subchild in child.children:
-                if subchild.type in ("type_identifier", "generic_type", "array_type",
-                                      "integral_type", "floating_point_type", "boolean_type"):
-                    param_type = _extract_type_text(subchild, source)
-                elif subchild.type == "identifier":
-                    param_name = _node_text(subchild, source)
-                elif subchild.type == "dimensions":
-                    # Array notation after variable name: String[] args
-                    if param_type:
-                        param_type += _node_text(subchild, source)
-            if param_type and param_name:
-                params.append(f"{param_type} {param_name}")
+            type_node = child.child_by_field_name("type")
+            name_node = child.child_by_field_name("name")
+            if type_node is None or name_node is None:
+                continue  # pragma: no cover - the grammar requires both
+            param_type = _extract_type_text(type_node, source)
+            dims = child.child_by_field_name("dimensions")
+            if dims is not None:
+                # Array notation after the name: String args[]
+                param_type += _node_text(dims, source)
+            params.append(f"{param_type} {_node_text(name_node, source)}")
         elif child.type == "spread_parameter":
-            # Varargs: String... args
-            param_type = None
-            param_name = None
-            for subchild in child.children:
-                if subchild.type in ("type_identifier", "generic_type", "array_type"):
-                    param_type = _extract_type_text(subchild, source)
-                elif subchild.type == "variable_declarator":
-                    for vchild in subchild.children:
-                        if vchild.type == "identifier":
-                            param_name = _node_text(vchild, source)
-                elif subchild.type == "identifier":  # pragma: no cover
-                    param_name = _node_text(subchild, source)  # pragma: no cover
-            if param_type and param_name:
-                params.append(f"{param_type}... {param_name}")
+            # Varargs: String... args. The type is the one named child that
+            # is neither a modifier nor the declarator.
+            spread_type = next(
+                (c for c in child.named_children
+                 if c.type not in ("modifiers", "variable_declarator")),
+                None,
+            )
+            declarator = next(
+                (c for c in child.named_children if c.type == "variable_declarator"),
+                None,
+            )
+            spread_name = (
+                declarator.child_by_field_name("name") if declarator is not None else None
+            )
+            if spread_type is None or spread_name is None:
+                continue  # pragma: no cover - the grammar requires both
+            params.append(
+                f"{_extract_type_text(spread_type, source)}... "
+                f"{_node_text(spread_name, source)}"
+            )
+        elif child.type == "ERROR" and "..." in _node_text(child, source):
+            # tree-sitter-java cannot parse an annotation before a varargs
+            # marker (`String @Nullable ... keys`) and leaves an ERROR node;
+            # its source text is the parameter, written whitespace-collapsed.
+            params.append(" ".join(_node_text(child, source).split()))
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
 
     # Add return type for methods (not constructors), but omit void
-    if not is_constructor and return_type and return_type != "void":
+    type_node = None if is_constructor else node.child_by_field_name("type")
+    if type_node is not None and type_node.type != "void_type":
+        return_type = _extract_type_text(type_node, source)
+        dims = node.child_by_field_name("dimensions")
+        if dims is not None:
+            # Dimensions after the parameter list: int f()[]
+            return_type += _node_text(dims, source)
         signature += f" {return_type}"
 
     return signature
@@ -448,8 +482,21 @@ def normalize_java_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Java signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Java signature for typed stable_id (spec §6 typed tier).
+
+    A variable-arity parameter ``T... xs`` is written as ``T[] xs`` first:
+    its type IS ``T[]`` (JLS 8.4.1), so ``f(T... x)`` and ``f(T[] x)`` are one
+    signature (a class cannot declare both) and hash as one. The shared
+    types-first normalizer would instead erase the marker, hashing
+    ``log(Object... os)`` as ``(Object)``, the text of ``log(Object o)``: a
+    legal overload pair would tie. Outside a string inside a type
+    annotation (``@A("...")``, rewritten too: the hash stays deterministic),
+    ``...`` appears nowhere else in the text ``_extract_java_signature``
+    writes.
+    """
     from hypergumbo_core.analyze.base import normalize_signature_types_first
+    if signature:
+        signature = signature.replace("...", "[]")
     return normalize_signature_types_first(signature, type_params)
 
 
@@ -568,9 +615,8 @@ def _extract_param_types(
 
     A parameter whose type is spelled with its package (``javax.crypto.Cipher c``)
     binds that qualified name, which ``_qualify_receiver_type`` takes as its own
-    module, exactly as a declared LOCAL of the same spelling already did through
-    :func:`_declared_type_name` (WI-halin: the parameter arm matched only bare,
-    generic and array types, so the qualified spelling bound nothing).
+    module, exactly as a declared LOCAL of the same spelling does through
+    :func:`_declared_type_name` (WI-halin).
 
     Returns:
         Dict mapping parameter names to their type names, as the source spells
@@ -647,6 +693,29 @@ JAVA_METHOD_MODIFIERS = {
 }
 
 
+# JLS 9.4 / 9.5 / 9.6: a member of an interface or annotation type is
+# implicitly public unless it is declared ``private`` (Java 9 interface helpers).
+_JAVA_IMPLICITLY_PUBLIC_BODIES = ("interface_body", "annotation_type_body")
+
+
+def _java_is_exported(node: "tree_sitter.Node", modifiers: list[str]) -> bool:
+    """Whether a declaration is exported: ``public``, or an interface member.
+
+    Reading ``"public" in modifiers`` alone would mark every keyword-less
+    interface method package-private, so dead-code-maybe would treat an
+    interface's whole API as unexported (WI-fimim). Only a DIRECT member counts:
+    a method of a class nested in an interface keeps the class rule.
+    """
+    if "public" in modifiers:
+        return True
+    parent = node.parent
+    return (
+        parent is not None
+        and parent.type in _JAVA_IMPLICITLY_PUBLIC_BODIES
+        and "private" not in modifiers
+    )
+
+
 def _extract_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Extract all modifiers from a declaration (class, interface, enum, method).
 
@@ -713,12 +782,12 @@ class _ParsedFile:
     # Maps simple class name -> fully qualified name (from imports)
     imports: dict[str, str] | None = None
     # Maps local-name -> source-module (from ``import static X.local_name``).
-    # Powers WI-tihup ExternalRef on bare-call sites whose callable came
-    # in via static import. WI-hudud / WI-mafik.
+    # Powers the ExternalRef on bare-call sites whose callable came
+    # in via static import (WI-hudud).
     static_imports: dict[str, str] | None = None
     # Wildcard packages (``import java.util.*;`` → ``"java.util"``).
     # Insertion-ordered; consulted as a fallback when a bare class
-    # receiver is not in ``imports``. WI-tuhok / WI-mafik.
+    # receiver is not in ``imports`` (WI-tuhok).
     wildcard_imports: list[str] | None = None
 
 
@@ -767,8 +836,8 @@ def _extract_static_imports(
     Pattern: ``import static java.util.Collections.singletonList;`` →
     ``{"singletonList": "java.util.Collections"}``.
 
-    Powers the WI-tihup ExternalRef on bare-call sites whose callable
-    was brought into scope by a static import (the WI-mafik Java gap).
+    Powers the ExternalRef on bare-call sites whose callable was brought
+    into scope by a static import.
     """
     static_imports: dict[str, str] = {}
 
@@ -797,11 +866,11 @@ _IMPLICIT_IMPORT_PACKAGE = IMPLICIT_IMPORT_PACKAGE
 def _fully_qualified_type_reference(chain_text: str) -> "str | None":
     """``java.nio.file.Files`` -> itself; ``this.svc`` / ``a.b`` -> ``None``.
 
-    INV-hahak. A receiver written as a dotted chain is EITHER a field-access
-    expression (``this.svc``, ``config.client``) OR a fully-qualified type name
-    (``java.nio.file.Files``). Only the second names a module, and the second was
-    being flattened to its last component so a wildcard could then overwrite the
-    package the source had spelled out.
+    A receiver written as a dotted chain is EITHER a field-access expression
+    (``this.svc``, ``config.client``) OR a fully-qualified type name
+    (``java.nio.file.Files``). Only the second names a module, and it must not be
+    flattened to its last component, or a wildcard could overwrite the package
+    the source spelled out (INV-hahak).
 
     The discriminator is java's own package/type spelling convention: package
     components are lowercase and a type is capitalised. That inference is applied
@@ -829,21 +898,17 @@ def _wildcard_candidate_slot(
 ) -> str:
     """The module slot for a capitalised receiver resolved through wildcards.
 
-    INV-hahak. This used to be ``f"{wildcard_imports[0]}.{receiver_name}"`` — the
-    FIRST wildcard, unconditionally — which made a wildcard a blanket file-level
-    prefix rather than a candidate. :func:`_extract_wildcard_imports`' docstring
-    already described the intended behaviour ("the first wildcard whose package
-    the receiver could plausibly belong to"); the code never implemented it, and
-    nothing failed loudly because the file parses, the edge is still emitted, and
-    only the module slot is wrong. The loss surfaces as a catalogue miss.
+    Every wildcard is a CANDIDATE, not a blanket file-level prefix: taking only
+    the first wildcard would put the wrong package in the module slot, and since
+    the file still parses and the edge is still emitted, that error surfaces
+    only as a silent catalogue miss (INV-hahak).
 
     THE DOMINANT CASE IS ``java.lang`` AND IT IS NOT A HEURISTIC. JLS 7.3 makes
     ``java.lang.*`` implicitly imported, so ``System``, ``String``, ``Integer``,
     ``Math`` and ``Thread`` are in scope in every file having never been written.
-    A file carrying ANY wildcard mis-attributed all of them: measured on jedis,
-    170 external refs name a java.lang class under a non-java.lang package,
-    including ``System.currentTimeMillis`` x28 and ``System.nanoTime``, both
-    catalogued ``host_info_read`` and both lost.
+    Without the ``java.lang`` candidate, a file carrying ANY wildcard would
+    mis-attribute all of them -- ``System.currentTimeMillis`` and
+    ``System.nanoTime``, both catalogued ``host_info_read``, among them.
 
     ALSO SERVES THE FILE WITH NO WILDCARD AT ALL (INV-suril). With an empty
     ``wildcard_imports`` the loop below yields exactly one candidate,
@@ -852,8 +917,8 @@ def _wildcard_candidate_slot(
     a name in the closed :data:`_JAVA_LANG_TYPES` list on that path, so the
     single candidate is always one the source really does have in scope.
 
-    EMITS THE DISJUNCTION THE SITUATION ACTUALLY IS, reusing the comma-joined
-    slot contract cpp has used since INV-funuf — ``_module_hint_candidates``
+    EMITS THE DISJUNCTION THE SITUATION ACTUALLY IS, reusing cpp's comma-joined
+    slot contract (INV-funuf) — ``_module_hint_candidates``
     splits on commas and asks an ANY question over the disjuncts, and
     ``module_hint_disjuncts`` asks the ALL question for the coverage gate. A
     single-wildcard file still yields two disjuncts rather than one, which is
@@ -861,9 +926,9 @@ def _wildcard_candidate_slot(
 
     THE UNQUALIFIED CLASS NAME IS DELIBERATELY NOT A CANDIDATE. Offering bare
     ``Files`` would match any catalogue row whose module ends in ``.Files``, so a
-    project's own ``Files`` class would reach ``java.nio.file.Files`` — the
-    INV-dijor false-positive shape, imported into a fix meant to recover recall.
-    Every candidate here names a package that is genuinely in scope.
+    project's own ``Files`` class would reach ``java.nio.file.Files`` (the
+    INV-dijor false-positive shape). Every candidate here names a package that
+    is genuinely in scope.
     """
     seen: set[str] = set()
     parts: list[str] = []
@@ -880,8 +945,8 @@ def _declared_type_name(
 ) -> str | None:
     """The receiver-typing name a DECLARED type carries, or ``None``.
 
-    INV-vugon. ``List<String>`` names ``List``, ``Map.Entry<K, V>`` names
-    ``Map.Entry``, ``java.io.Writer`` names itself. ``var`` carries no type
+    ``List<String>`` names ``List``, ``Map.Entry<K, V>`` names
+    ``Map.Entry``, ``java.io.Writer`` names itself (INV-vugon). ``var`` carries no type
     (only an inference can bind it); a primitive or an array has no methods a
     catalogue row could be written against, so neither binds anything.
     """
@@ -906,20 +971,19 @@ def _declared_type_name(
 
 #: The public types of ``java.lang`` (JDK 17), which JLS 7.3 imports into every
 #: compilation unit. The closed list lives in :mod:`jvm_implicit_imports` since
-#: kotlin and scala read it too (WI-kilap); the rationale is there.
+#: kotlin and scala read it too; the rationale is there.
 _JAVA_LANG_TYPES: frozenset[str] = JAVA_LANG_TYPES
 
 
 # ---------------------------------------------------------------------------
-# WI-tusav: a READ's boundary is its RECEIVER'S ORIGIN.
+# A READ's boundary is its RECEIVER'S ORIGIN (WI-tusav).
 #
-# ``java.io.BufferedReader.readLine`` and ``java.util.Scanner.nextLine`` shipped
-# at a FIXED ``fs_read`` (the Scanner row's note said so outright: "When reading
-# from a file"), so the canonical stdin idiom reported a FILESYSTEM read.
-# INV-zumin class (b) rules that out for exactly this population: the boundary
-# is a property of the stream the receiver was built over, not of the method.
+# ``java.io.BufferedReader.readLine`` and ``java.util.Scanner.nextLine`` read
+# whatever stream the receiver was built over: a fixed ``fs_read`` would report
+# the canonical stdin idiom as a FILESYSTEM read. INV-zumin class (b) rules that
+# out: the boundary is a property of the stream, not of the method.
 #
-# THE SHAPE IS GO'S (WI-vutav), ONE CONSTRUCTOR DEEPER. Go resolves a receiver's
+# THE SHAPE IS GO'S, ONE CONSTRUCTOR DEEPER. Go resolves a receiver's
 # binding to a wrapper CALL and classifies that call's argument; java's wrapper
 # is a NESTED CONSTRUCTOR -- ``new BufferedReader(new InputStreamReader(System.in))``
 # -- so the walk unwraps a decorator CHAIN instead of taking one argument. The
@@ -930,15 +994,15 @@ _JAVA_LANG_TYPES: frozenset[str] = JAVA_LANG_TYPES
 #: Expressions that NAME a standard stream.
 #:
 #: ``System.in`` only. ``System.out`` / ``System.err`` are the WRITE direction:
-#: java.yaml rows them as attributes under ``logging`` (WI-runos, audit-findings
-#: 0021), and this set is the read direction.
+#: java.yaml rows them as attributes under ``logging`` (audit-findings 0021),
+#: and this set is the read direction.
 _JAVA_STD_STREAM_EXPRS: frozenset[str] = frozenset({
     "System.in", "java.lang.System.in",
 })
 
-#: WI-dorus: ``java.lang.System.out`` and ``.err`` are declared
-#: ``java.io.PrintStream``. The spellings and the type live in
-#: :mod:`jvm_implicit_imports`, shared with kotlin and scala (WI-rabum).
+#: ``java.lang.System.out`` and ``.err`` are declared ``java.io.PrintStream``
+#: (WI-dorus). The spellings and the type live in :mod:`jvm_implicit_imports`,
+#: shared with kotlin and scala.
 _JAVA_PRINT_STREAM = PRINT_STREAM_TYPE
 
 
@@ -952,11 +1016,11 @@ def _java_std_output_receiver(
 ) -> bool:
     """Whether a call's receiver is the process's own ``System.out`` / ``.err``.
 
-    WI-dorus. The field fixes the receiver's type, but the call was emitted with
-    the ``external`` module slot and counted as an untyped-receiver site in the
-    ``unknown_receiver_scope`` caveat. Worse, the cascade took the FIELD NAME
-    (``out``) as the receiver, so a local named ``out`` lent ``System.out`` its
-    own type. A bare ``System`` counts only when nothing in scope shadows it: a
+    The field fixes the receiver's type, so such a call is typed
+    ``java.io.PrintStream`` rather than left in the ``external`` module slot as
+    an untyped-receiver site, and the FIELD NAME (``out``) is never taken as the
+    receiver -- a local named ``out`` must not lend ``System.out`` its own type
+    (WI-dorus). A bare ``System`` counts only when nothing in scope shadows it: a
     local, a project class, or an import of some other ``System``; the
     fully-qualified spelling names java.lang's outright.
     """
@@ -1096,7 +1160,7 @@ def _java_last_binding(
     return best
 
 
-#: WI-kanor: the ``java.lang.Process`` accessors whose stream the CHILD fills.
+#: The ``java.lang.Process`` accessors whose stream the CHILD fills (WI-kanor).
 #: ``getOutputStream`` is absent: it is the write end (the child's stdin), and
 #: this resolver answers READS only.
 _JAVA_PROCESS_READ_STREAMS: frozenset[str] = frozenset({
@@ -1223,10 +1287,10 @@ def _java_stream_kind_of(
             current = _java_last_binding(current, source, text)
             continue
         if current.type == "method_invocation":
-            # WI-kanor: ``p.getInputStream()`` on a Process is the pipe the
-            # CHILD writes (ADR-0049 ruling 1: the read through it returns
-            # bytes the far side chose). Any other accessor -- a socket's
-            # ``getInputStream`` included -- abstains, as before.
+            # ``p.getInputStream()`` on a Process is the pipe the CHILD
+            # writes (ADR-0049 ruling 1: the read through it returns bytes
+            # the far side chose). Any other accessor -- a socket's
+            # ``getInputStream`` included -- abstains.
             accessor = current.child_by_field_name("name")
             owner = current.child_by_field_name("object")
             if (
@@ -1325,7 +1389,7 @@ def _qualify_receiver_type(
 
 
 def _inherited_field_module(
-    current_class: str,
+    current_class_id: str,
     field_name: str,
     class_parents: dict[str, str],
     class_fields: dict[str, dict[str, str]],
@@ -1334,18 +1398,25 @@ def _inherited_field_module(
     project_class_names: frozenset[str],
     depth_cap: int = 8,
 ) -> str | None:
-    """The qualified LIBRARY type of ``field_name`` declared in an ancestor of ``current_class``.
+    """The qualified LIBRARY type of ``field_name`` declared in an ancestor of a class.
 
-    INV-vugon. Walks ``class_parents`` (child name -> parent symbol name) up
-    to ``depth_cap`` with a cycle guard and returns the first ancestor's
-    declared type for the field, qualified through THAT ancestor's file
-    imports (``sym_file_imports`` keyed by the class symbol's id). ``None``
-    when no ancestor declares it, when the type is a project class (the
-    Tier-2 ``inherited_calls`` linker resolves those from
+    INV-vugon. Walks ``class_parents`` (child class symbol ID -> parent class
+    symbol ID) from ``current_class_id`` up to ``depth_cap`` with a cycle
+    guard and returns the first ancestor's declared type for the field
+    (``class_fields`` is keyed by class symbol ID too), qualified through THAT
+    ancestor's file imports (``sym_file_imports``, keyed by symbol id).
+    ``None`` when no ancestor declares it, when the type is a project class
+    (the Tier-2 ``inherited_calls`` linker resolves those from
     ``inherited_field_receiver``), or when the declaring file gives no path.
+
+    WI-gikuk: every key is a symbol ID, never the class's dotted name. That
+    name has no package, so ``a.Foo`` and ``b.Foo`` shared one chain entry
+    and one field table, and a field inherited from ``y.Base`` was typed from
+    ``x.Base``. ``class_symbols`` (by name) is read only to ask whether a
+    TYPE name is a project class.
     """
     seen: set[str] = set()
-    cls = current_class
+    cls = current_class_id
     for _ in range(depth_cap):
         parent = class_parents.get(cls)
         if parent is None or parent in seen:
@@ -1355,14 +1426,9 @@ def _inherited_field_module(
         if field_type is not None:
             if field_type in class_symbols or field_type in project_class_names:
                 return None
-            parent_sym = class_symbols.get(parent)
-            parent_imports = (
-                (sym_file_imports or {}).get(parent_sym.id, {})
-                if parent_sym is not None else {}
-            )
             return _qualify_receiver_type(
-                field_type, parent_imports, None, class_symbols,
-                project_class_names,
+                field_type, (sym_file_imports or {}).get(parent, {}), None,
+                class_symbols, project_class_names,
             )
         cls = parent
     return None
@@ -1426,13 +1492,11 @@ def _extract_import_edges(
 ) -> list[Edge]:
     """Emit one ``imports`` edge per Java ``import`` declaration (INV-gojit).
 
-    The Java analyzer long consumed import declarations only for name
-    resolution (:func:`_extract_imports` and siblings build simple-name → FQN
-    dicts) and never surfaced them as graph edges, leaving Java the sole
-    mainstream analyzer whose emission-parity ``edge_imports`` cell was a
-    strict-xfail hole. Each declaration now yields a file → external-ref
-    ``imports`` edge with a structured :class:`ExternalRef` (aligned with
-    ADR-0037's push to populate ``dst_ref``).
+    Name resolution consumes import declarations separately
+    (:func:`_extract_imports` and siblings build simple-name → FQN dicts);
+    this surfaces each declaration as a graph edge, as every mainstream
+    analyzer does: a file → external-ref ``imports`` edge with a structured
+    :class:`ExternalRef` (``dst_ref`` populated per ADR-0037).
 
     The module slot carries the **full import specifier** — a Java ``import``
     names a fully-qualified TYPE or static member, not a package, so the
@@ -1512,10 +1576,10 @@ def _java_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
 
     What a Java stable_id hashes. :func:`_get_class_ancestors` (the emitted
     name's chain) skips methods, so a local class ``Inner`` in methods ``a``
-    and ``b`` -- or an anonymous class's ``run`` in two methods -- shared
-    ``N.Inner`` with its members, tied, and deleting the first moved the
-    second's ids. For every symbol not inside a method body the two chains
-    are equal, so those ids keep their values.
+    and ``b`` -- or an anonymous class's ``run`` in two methods -- share
+    ``N.Inner`` with their members; hashing the method chain keeps them from
+    tying, and keeps deleting one method from moving the other's ids. For
+    every symbol not inside a method body the two chains are equal.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type in _JAVA_NAMED_TYPE_NODES:
@@ -1529,15 +1593,15 @@ def _java_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
 def _java_type_stable_id(
     kind: str, name: str, ancestors: list[str], hash_scope: list[str],
     file_path: Path, repo_root: Optional[Path],
-) -> Optional[str]:
+) -> Optional[StableId]:
     """A Java type's stable_id (INV-fabih; see :func:`_java_hash_scope`).
 
     A class, interface or enum outside any method body keeps the backstop's
     table value over its dotted name (None here: the backstop stamps it); one
     inside a method (a local type) mints that table formula over the method
-    chain too. A ``record`` is no table kind: it rode the backstop FLOOR key,
-    which two local records of one name share, so every record mints the
-    ADR-0035 producer formula over its full chain.
+    chain too. A ``record`` is no table kind, so the backstop would give it the
+    FLOOR key, which two local records of one name share; every record instead
+    mints the ADR-0035 producer formula over its full chain.
     """
     path = str(file_path.relative_to(repo_root)) if repo_root is not None else str(file_path)
     if kind == "record":
@@ -1800,21 +1864,21 @@ def _extract_symbols(
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
 
-    When ``repo_root`` is provided, the WI-bokab (v7) file-identity anchor is
-    folded into each method/constructor's typed stable_id ``containing_stable_id``
-    slot so two symbols sharing ``(kind, name, qualified_name)`` in DIFFERENT
-    files hash distinctly. The anchor MUST be derived from the repo-relative
+    When ``repo_root`` is provided, the file-identity anchor is folded into
+    each method/constructor's typed stable_id ``containing_stable_id`` slot so
+    two symbols sharing ``(kind, name, qualified_name)`` in DIFFERENT files hash
+    distinctly (WI-bokab). The anchor MUST be derived from the repo-relative
     path (``file_path`` here is the ABSOLUTE path yielded by
-    ``find_java_files`` — folding it would make the stable_id location-dependent,
-    a regression). When ``repo_root`` is ``None`` (the legacy single-file
+    ``find_java_files`` — folding it would make the stable_id
+    location-dependent). When ``repo_root`` is ``None`` (the single-file
     ``_analyze_java_file`` test helper, which has no repo_root in scope) the
-    anchor is empty and the fold is a no-op — identical to pre-WI-bokab
-    behavior, since ``make_typed_stable_id`` only folds a non-empty anchor.
+    anchor is empty and the fold is a no-op, since ``make_typed_stable_id``
+    only folds a non-empty anchor.
     """
     symbols: list[Symbol] = []
     package_name = _extract_java_package(tree.root_node, source)
 
-    # WI-bokab (v7): file-identity anchor for this file's symbols. Byte-matches
+    # File-identity anchor for this file's symbols (WI-bokab). Byte-matches
     # the file node's own stable_id (``populate_kind_stable_ids`` →
     # ``make_file_stable_id("java", <normalized repo-relative path>)``), so a
     # child symbol's anchor resolves to its declaring file. Computed once and
@@ -1829,8 +1893,6 @@ def _extract_symbols(
 
     for node in iter_tree(tree.root_node):
         # Class, interface and record declarations: one shape, three kinds.
-        # WI-pidos: records (Java 16) had no arm, so the type itself was never
-        # a symbol.
         if node.type in _JAVA_ANNOTATED_TYPE_DECLARATIONS:
             name = _get_class_name(node, source)
             if name:
@@ -1873,14 +1935,14 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
+                    is_exported=_java_is_exported(node, modifiers),
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
 
-                # WI-pidos: a record's components ARE its fields (each is a
-                # private final field; JLS 8.10.3), so they are emitted as the
-                # field declarations a class spells out would be.
+                # A record's components ARE its fields (each is a private
+                # final field; JLS 8.10.3), so they are emitted as the field
+                # declarations a class spells out would be (WI-pidos).
                 components = (
                     node.child_by_field_name("parameters")
                     if node.type == "record_declaration" else None
@@ -1929,18 +1991,15 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
+                    is_exported=_java_is_exported(node, modifiers),
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
 
-                # WI-duguk: the enum's CONSTANTS. Without them the enum is a
-                # container with nothing in it, so the containment linker roots
-                # nothing and `slice --reverse` from the enum returns the
-                # container alone. The gap was easy to miss because an enum's
-                # METHODS were already emitted (`Color.label`), so an enum
-                # carrying one method looked populated to any "does this
-                # container have a member" probe.
+                # The enum's CONSTANTS. Without them the enum is a container
+                # with nothing in it, so the containment linker roots nothing
+                # and `slice --reverse` from the enum returns the container
+                # alone (WI-duguk).
                 #
                 # Only DIRECT `enum_constant` children of the `enum_body` are
                 # read: the body's other child is `enum_body_declarations`,
@@ -1993,7 +2052,7 @@ def _extract_symbols(
                         # A constant is implicitly `public static final` and is
                         # as reachable as its enum; Java has no per-constant
                         # access modifier.
-                        is_exported="public" in modifiers,
+                        is_exported=_java_is_exported(node, modifiers),
                         qualified_name=const_qualified,
                         line_span=const_span.end_line - const_span.start_line + 1,
                     ))
@@ -2017,12 +2076,12 @@ def _extract_symbols(
                 # Extract all modifiers for the modifiers field
                 modifiers = _extract_modifiers(node, source)
 
-                # Build meta dict (declared above; WI-hokag: re-annotating it here
-                # was a no-redef, the same type bound twice)
+                # Build meta dict (annotated once, above; annotating it again
+                # here would be a mypy no-redef)
                 meta = None
 
                 # Extract all annotations for rich metadata
-                # Route detection is now handled by YAML patterns (ADR-3aaa v1.0.x)
+                # Route detection is handled by YAML patterns (ADR-3aaa v1.0.x)
                 decorators = _extract_annotations(node, source)
                 if decorators:
                     meta = {"decorators": decorators}
@@ -2059,7 +2118,7 @@ def _extract_symbols(
                         if inferred:
                             meta["inferred_return_type"] = inferred
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_java_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
@@ -2086,7 +2145,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
+                    is_exported=_java_is_exported(node, modifiers),
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "java"),
                 )
@@ -2119,7 +2178,7 @@ def _extract_symbols(
                 # Extract modifiers for constructors too
                 modifiers = _extract_modifiers(node, source)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_java_signature(signature)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
@@ -2145,14 +2204,14 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
+                    is_exported=_java_is_exported(node, modifiers),
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "java"),
                 )
                 symbols.append(symbol)
 
-        # Class / interface / enum FIELD declarations — WI-jusus (emission-parity
-        # F5). A field_declaration declares one or more fields (`int a, b;`);
+        # Class / interface / enum FIELD declarations (WI-jusus). A
+        # field_declaration declares one or more fields (`int a, b;`);
         # interface constants parse as a distinct `constant_declaration` node of
         # the same shape (implicitly public static final). Emit a kind="field"
         # Symbol per declarator, mirroring the method branch. Field annotations
@@ -2172,12 +2231,17 @@ def _extract_symbols(
                     name_node = declarator.child_by_field_name("name")
                     if name_node is None:
                         continue  # pragma: no cover - a declarator always names a field
+                    # `int a[], b;`: dimensions after a name belong to that
+                    # field's type alone (a is int[], b is int).
+                    dims = declarator.child_by_field_name("dimensions")
                     symbols.append(_java_field_symbol(
                         _node_text(name_node, source), declarator, ancestors,
-                        field_type, modifiers, decorators,
+                        field_type + _node_text(dims, source)
+                        if field_type is not None and dims is not None else field_type,
+                        modifiers, decorators,
                         # interface constants are implicitly public static final;
                         # class/enum fields export only with an explicit `public`.
-                        ("public" in modifiers) or node.type == "constant_declaration",
+                        _java_is_exported(node, modifiers),
                         package_name, file_stable_id, file_path, run,
                         hash_scope=_java_hash_scope(node, source),
                     ))
@@ -2187,46 +2251,29 @@ def _extract_symbols(
 
 def _get_enclosing_method(
     node: "tree_sitter.Node",
-    source: bytes,
-    global_symbols: dict[str, Symbol],
-    file_path: Path | None = None,
-    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+    file_path: Path,
+    symbol_by_position: dict[tuple[str, int, int], Symbol],
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing method/constructor.
+    """The method or constructor whose body contains ``node``, by POSITION.
 
-    Returns the Symbol for the enclosing method, or None if not inside a method.
-
-    Uses symbol_by_position (keyed by file path + start position) when available,
-    which correctly handles monorepos where multiple files define methods with
-    the same name. Falls back to global_symbols when symbol_by_position is unavailable.
+    Returns None outside any method. The innermost callable declaration node
+    is looked up in the run-wide position index
+    (:func:`_java_symbol_declared_by`), so two files, or two classes in one
+    file, that declare a same-named method each anchor their own calls
+    (WI-gikuk). There is no name fallback: the index holds every symbol the
+    run declares, and a name lookup could only pick some other class's twin.
     """
-    file_path_str = str(file_path) if file_path else None
     current = node.parent
     while current is not None:
         if current.type in _JAVA_CALLABLE_NODES:
-            # Position-based lookup handles duplicate names across files
-            if symbol_by_position and file_path_str:
-                pos_key = (file_path_str, current.start_point[0] + 1, current.start_point[1])
-                sym = symbol_by_position.get(pos_key)
-                if sym:
-                    return sym
-            # Fallback to name-based lookup
-            name = _get_method_name(current, source)
-            if name:
-                # Get class context
-                ancestors = _get_class_ancestors(current, source)
-                if ancestors:
-                    full_name = f"{'.'.join(ancestors)}.{name}"
-                    if full_name in global_symbols:
-                        return global_symbols[full_name]
-            return None  # pragma: no cover  # Found method but couldn't resolve it
+            return _java_symbol_declared_by(current, file_path, symbol_by_position)
         current = current.parent
     return None
 
 
-#: INV-bamij: type declarations whose BODY anchors a call that sits in no method
-#: or constructor (a static or instance field initialiser, a ``static {}`` or
-#: instance initialiser block, a lambda bound to a field).
+#: Type declarations whose BODY anchors a call that sits in no method or
+#: constructor (a static or instance field initialiser, a ``static {}`` or
+#: instance initialiser block, a lambda bound to a field; INV-bamij).
 _JAVA_TYPE_BODY_NODES: frozenset[str] = _JAVA_NAMED_TYPE_NODES
 
 
@@ -2237,23 +2284,48 @@ def _get_enclosing_type_symbol(
 ) -> Optional[Symbol]:
     """The class / interface / enum / record whose body holds ``node``.
 
-    INV-bamij. By position, keyed the way :func:`_get_enclosing_method` keys its
-    position index (file path, line, column); a type with no symbol is walked
-    past.
+    By position, keyed the way :func:`_get_enclosing_method` keys its position
+    index (file path, line, column); a type with no symbol is walked past
+    (INV-bamij).
     """
     if not symbol_by_position or file_path is None:
         return None
-    path = str(file_path)
     current = node.parent
     while current is not None:
         if current.type in _JAVA_TYPE_BODY_NODES:
-            sym = symbol_by_position.get(
-                (path, current.start_point[0] + 1, current.start_point[1]),
-            )
+            sym = _java_symbol_declared_by(current, file_path, symbol_by_position)
             if sym is not None:
                 return sym
         current = current.parent
     return None
+
+
+def _java_symbol_declared_by(
+    node: "tree_sitter.Node",
+    file_path: Path,
+    symbol_by_position: dict[tuple[str, int, int], Symbol],
+) -> Optional[Symbol]:
+    """The symbol whose declaration node is ``node``, by POSITION (WI-gikuk).
+
+    Java's run-wide twin of core ``symbol_declared_by``: the index is keyed
+    ``(path, start_line, start_col)`` across every file, the way
+    :func:`_get_enclosing_method` keys it, so one dict serves every file of
+    the run. A Java symbol's span starts at its declaration node (annotations
+    are inside the node's ``modifiers``), so the node's start IS the key.
+    """
+    return symbol_by_position.get(
+        (str(file_path), node.start_point[0] + 1, node.start_point[1]),
+    )
+
+
+def _java_position_index(
+    symbols: Iterable[Symbol],
+) -> dict[tuple[str, int, int], Symbol]:
+    """``(path, start_line, start_col) -> symbol`` over ``symbols``."""
+    return {
+        (s.path, s.span.start_line, s.span.start_col): s
+        for s in symbols if s.span is not None
+    }
 
 
 def _is_import_class_mismatch(
@@ -2343,7 +2415,13 @@ def _resolve_base_class_java(
     1. Same-file match: base class defined in the same file as the child
     2. Import match: child's file has ``import com.example.models.Model`` and a
        candidate's fully qualified name or file path matches
-    3. First by ID: deterministic fallback (sorted by symbol ID)
+    3. Same-package match (WI-gikuk): the candidate whose package-qualified
+       name is ``<child's package>.<base_name>``. Java needs no import for a
+       class of its own package, so ``package b; class Foo extends Base``
+       with ``a.Base`` and ``b.Base`` in the repo is ``b.Base``, whatever the
+       by-id pick would choose. After the import tier because a single-type
+       import shadows a same-package class.
+    4. First by ID: deterministic fallback (sorted by symbol ID)
 
     Args:
         base_name: The base class/interface name to resolve (e.g., 'Model')
@@ -2359,8 +2437,8 @@ def _resolve_base_class_java(
     if not candidates:
         return None
 
-    # WI-pivap: a base the file imports from a package no in-repo class lives
-    # in is external, however many in-repo namesakes there are.
+    # A base the file imports from a package no in-repo class lives in is
+    # external, however many in-repo namesakes there are (WI-pivap).
     if external_import_fqn(base_name, child_sym, class_by_name, sym_file_imports):
         return None
 
@@ -2397,7 +2475,17 @@ def _resolve_base_class_java(
                 if cand_no_ext.endswith(short_path):
                     return cand
 
-    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    # 3. Same-package match, by package-qualified name.
+    child_qn = child_sym.qualified_name or ""
+    child_package = (
+        child_qn[: -len(child_sym.name) - 1] if child_qn.endswith(f".{child_sym.name}") else ""
+    )
+    same_package_qn = f"{child_package}.{base_name}" if child_package else base_name
+    same_package = [c for c in candidates if c.qualified_name == same_package_qn]
+    if len(same_package) == 1:
+        return same_package[0]
+
+    # 4. Deterministic fallback: first by symbol ID (sorted for stability)
     candidates_sorted = sorted(candidates, key=lambda c: c.id)
     return candidates_sorted[0]
 
@@ -2412,13 +2500,13 @@ def _java_call_construct(
 ) -> Optional[str]:
     """``call_construct`` for a java call: ``function`` for a call on a TYPE.
 
-    WI-fuvaj (java half). Every call with a receiver token used to be stamped
-    ``method``, so ``Files.readAllBytes(p)`` and ``System.getenv(k)`` -- static
-    calls on a named class -- read as receiver calls. ``base.py`` defines
-    ``method`` as "a call on a receiver", ADR-0059 files a call on a named owner
-    as a function, and the ``unknown_receiver_scope`` caveat counts ``method``
-    edges as its DENOMINATOR ("N of M method call site(s)"), so every static
-    call inflated M and understated the untyped share. Go's twin was INV-tanom.
+    ``Files.readAllBytes(p)`` and ``System.getenv(k)`` -- static calls on a
+    named class -- are not receiver calls. ``base.py`` defines ``method`` as "a
+    call on a receiver", ADR-0059 files a call on a named owner as a function,
+    and the ``unknown_receiver_scope`` caveat counts ``method`` edges as its
+    DENOMINATOR ("N of M method call site(s)"), so a static call stamped
+    ``method`` would inflate M and understate the untyped share (WI-fuvaj; go's
+    twin is INV-tanom).
 
     A receiver names a type when the source says so and nothing in scope
     shadows it: a fully-qualified type path (``java.nio.file.Files.x()``), or
@@ -2467,6 +2555,7 @@ def _extract_edges(
     wildcard_imports: list[str] | None = None,
     method_return_type_registry: dict[str, str] | None = None,
     project_class_names: frozenset[str] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -2493,6 +2582,13 @@ def _extract_edges(
 
     ``project_class_names`` is the set of simple names of every project class
     (nested ones included); it is derived from ``class_symbols`` when absent.
+
+    ``file_symbols`` is every symbol THIS file declares and ``symbol_by_position``
+    every symbol of the run by ``(path, line, col)``; both are derived from the
+    name-keyed registries when absent. A class's own facts (the source of its
+    ``extends`` / ``implements`` edges, the start of its inherited-field walk,
+    the member a ``this.m()`` binds) come from these, by position and file,
+    never from ``class_symbols`` by its package-less name (WI-gikuk).
     """
     if imports is None:
         imports = {}
@@ -2504,24 +2600,39 @@ def _extract_edges(
         method_return_type_registry = {}
     if project_class_names is None:
         project_class_names = frozenset(k.rsplit(".", 1)[-1] for k in class_symbols)
+    if symbol_by_position is None or file_symbols is None:
+        # A direct call with name-keyed registries only (a test): index what
+        # they hold.
+        held = list(
+            {s.id: s for s in [*global_symbols.values(), *class_symbols.values()]}.values(),
+        )
+        if symbol_by_position is None:
+            symbol_by_position = _java_position_index(held)
+        if file_symbols is None:
+            file_symbols = [s for s in held if s.path == str(file_path)]
+    # This file's members by name, for a call on the enclosing class
+    # (``helper()`` / ``this.helper()``). Last declaration wins for an
+    # overload (WI-gikuk).
+    own_members: dict[str, Symbol] = {
+        s.name: s for s in file_symbols if s.kind in ("method", "constructor")
+    }
     edges: list[Edge] = []
-    # INV-bamij: a call in no method is anchored on its type, else the file.
+    # A call in no method is anchored on its type, else the file (INV-bamij).
     file_anchor = file_anchor_symbol("java", str(file_path), PASS_ID, run.execution_id)
     current_method: Optional[Symbol]
     _caller_path = str(file_path)
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
-    # INV-vugon: one scope per method being walked -- ``(end_byte, shadow)``
-    # where ``shadow`` records what each LOCAL binding in that method
-    # replaced (``None`` = nothing). A scope closes when the walk passes its
-    # end byte, and its locals are put back to what they shadowed. It is a
-    # STACK because a method can nest inside a method: an anonymous class
-    # body (``new FilenameFilter() { public boolean accept(..) {..} }``) is a
-    # method_declaration inside the enclosing method's span, and closing the
-    # enclosing scope there unbound ``protocol_directory`` for the rest of
-    # the method that declared it (measured on guacamole-client's
-    # LocalEnvironment.readProtocols). Fields and parameters are never
-    # recorded here and keep their file-wide binding.
+    # One scope per method being walked -- ``(end_byte, shadow)`` where
+    # ``shadow`` records what each LOCAL binding in that method replaced
+    # (``None`` = nothing). A scope closes when the walk passes its end
+    # byte, and its locals are put back to what they shadowed (INV-vugon).
+    # It is a STACK because a method can nest inside a method: an anonymous
+    # class body (``new FilenameFilter() { public boolean accept(..) {..} }``)
+    # is a method_declaration inside the enclosing method's span, and closing
+    # the enclosing scope there would unbind the enclosing method's locals
+    # for the rest of its body. Fields and parameters are never recorded
+    # here and keep their file-wide binding.
     scope_stack: list[tuple[int, dict[str, str | None], set[str]]] = []
     # Type parameters seen so far in the file (``<T>``): a bare ``T`` is not a
     # class in any package, so it must never be sent to the ``java.lang`` slot.
@@ -2558,9 +2669,9 @@ def _extract_edges(
         constant's covariant override (``Connection getConnectable()`` under
         ``abstract Connectable getConnectable()``) or an anonymous class's
         ``get()`` reached through a chained receiver can answer for the wrong
-        method -- both measured on guacamole-client, where ``String ksmConfig
-        = group.getAttributes().get(k)`` was retyped ``Future``. A declared
-        type is the one fact the source states outright.
+        method -- ``String ksmConfig = group.getAttributes().get(k)`` could be
+        retyped ``Future``. A declared type is the one fact the source states
+        outright.
         """
         name_node = declarator.child_by_field_name("name")
         if name_node is None:  # pragma: no cover - the grammar always names one
@@ -2594,8 +2705,8 @@ def _extract_edges(
     def _static_type_owner(obj: "tree_sitter.Node") -> str | None:
         """The registry owner when ``obj`` NAMES A TYPE -- a static call's receiver.
 
-        WI-halin. ``Cipher.getInstance(..)`` is called on a TYPE, so its owner
-        is the path the file establishes for that type, the same slot the
+        ``Cipher.getInstance(..)`` is called on a TYPE, so its owner is the
+        path the file establishes for that type (WI-halin), the same slot the
         unresolved emit writes for the call itself: a project class bare (the
         way Pass 1 keys its methods), a single-type import, an inline package
         path (``java.nio.file.Files``), or -- for a CAPITALISED name -- the
@@ -2625,12 +2736,12 @@ def _extract_edges(
     ) -> str | None:
         """What the ``method_invocation`` ``call`` returns, per the registry.
 
-        WI-gajuh read one link: ``inner(..).method()`` with ``inner`` called on
-        nothing, a typed variable or a project class. WI-halin reads the whole
-        chain, rooted at any receiver whose type the file establishes -- a
-        static type (``Cipher.getInstance(..)``, ``Runtime.getRuntime()
-        .exec(c)``), a constructor (``new Socket(h, p).getOutputStream()``) or
-        ``this`` -- and each link's answer becomes the next link's owner. The
+        Reads the whole chain, rooted at any receiver whose type the file
+        establishes -- nothing (``inner(..).method()``), a typed variable, a
+        project class or other static type (``Cipher.getInstance(..)``,
+        ``Runtime.getRuntime().exec(c)``), a constructor
+        (``new Socket(h, p).getOutputStream()``) or ``this`` -- and each
+        link's answer becomes the next link's owner (WI-gajuh, WI-halin). The
         walk is an explicit loop over the chain the parser already built, so a
         long builder chain costs one step per link and no recursion; the first
         link the registry does not know ends it with ``None``.
@@ -2669,100 +2780,82 @@ def _extract_edges(
         # Copy to avoid mutating the shared dict
         class_parents = dict(class_parents)
 
+    def _emit_base(
+        src_sym: Symbol, base_name: str, edge_type: str, evidence: str, line: int,
+    ) -> Symbol | None:
+        """Emit ``src_sym``'s ``extends`` / ``implements`` edge to ``base_name``.
+
+        The base is resolved through ``src_sym``'s OWN file (same file, then
+        its imports; :func:`_resolve_base_class_java`), or is an external
+        base its import names. Returns the in-repo base it bound, else None.
+        """
+        dst_sym = None
+        if class_by_name is not None and sym_file_imports is not None:
+            dst_sym = _resolve_base_class_java(
+                base_name, src_sym, class_by_name, sym_file_imports,
+            )
+        elif base_name in class_symbols:
+            dst_sym = class_symbols[base_name]
+        ext = _java_external_base(base_name, src_sym, class_by_name, sym_file_imports)
+        if ext is not None:
+            edges.append(external_base_edge(src_sym, ext, edge_type, line, PASS_ID, run))
+            return None
+        if dst_sym is None or dst_sym.id == src_sym.id:
+            return None
+        edges.append(Edge.create(
+            src=src_sym.id,
+            dst=dst_sym.id,
+            edge_type=edge_type,
+            line=line,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type=evidence,
+        ))
+        return dst_sym
+
     for node in iter_tree(tree.root_node):
         _close_scopes_before(node)
-        # Check for extends (superclass) in class declarations
+        # Check for extends (superclass) / implements in class declarations
         if node.type == "class_declaration":
-            name = _get_class_name(node, source)
-            if name:
-                ancestors = _get_class_ancestors(node, source)
-                current_class = ".".join(ancestors + [name]) if ancestors else name
-
-                # Check for extends (superclass)
+            # The edge's SOURCE is the class this declaration node declares,
+            # by position (WI-gikuk). ``class_symbols`` is keyed by the dotted
+            # name without a package, so ``a.Foo`` and ``b.Foo`` (or two
+            # methods' local ``class L``) share one entry there: both files'
+            # edges would start at whichever registered last, and the base
+            # resolver would read THAT class's file imports.
+            decl_sym = _java_symbol_declared_by(node, file_path, symbol_by_position)
+            if decl_sym is not None:
                 for child in node.children:
                     if child.type == "superclass":
                         # superclass contains "extends" keyword and type_identifier
                         for subchild in child.children:
                             if subchild.type == "type_identifier":
-                                parent_name = _node_text(subchild, source)
-                                if current_class in class_symbols:
-                                    src_sym = class_symbols[current_class]
-                                    # Use multi-value resolver when available
-                                    dst_sym = None
-                                    if class_by_name is not None and sym_file_imports is not None:
-                                        dst_sym = _resolve_base_class_java(
-                                            parent_name, src_sym,
-                                            class_by_name, sym_file_imports,
-                                        )
-                                    elif parent_name in class_symbols:
-                                        dst_sym = class_symbols[parent_name]
-                                    ext = _java_external_base(
-                                        parent_name, src_sym, class_by_name, sym_file_imports,
-                                    )
-                                    if ext is not None:
-                                        edges.append(external_base_edge(
-                                            src_sym, ext, "extends",
-                                            child.start_point[0] + 1, PASS_ID, run,
-                                        ))
-                                    elif dst_sym is not None and dst_sym.id != src_sym.id:
-                                        edge = Edge.create(
-                                            src=src_sym.id,
-                                            dst=dst_sym.id,
-                                            edge_type="extends",
-                                            line=child.start_point[0] + 1,
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                            evidence_type="ast_extends",
-                                        )
-                                        edges.append(edge)
-                                        # Record parent for inherited method resolution
-                                        class_parents[current_class] = dst_sym.name
-
-                    # Check for implements (interfaces)
-                    if child.type == "super_interfaces":
+                                dst_sym = _emit_base(
+                                    decl_sym, _node_text(subchild, source),
+                                    "extends", "ast_extends", child.start_point[0] + 1,
+                                )
+                                if dst_sym is not None:
+                                    # Record parent for inherited field resolution
+                                    class_parents[decl_sym.id] = dst_sym.id
+                    elif child.type == "super_interfaces":
                         # super_interfaces contains "implements" and type_list
                         for subchild in child.children:
-                            if subchild.type == "type_list":
-                                for type_node in subchild.children:
-                                    if type_node.type == "type_identifier":
-                                        iface_name = _node_text(type_node, source)
-                                        if current_class in class_symbols:
-                                            src_sym = class_symbols[current_class]
-                                            # Use multi-value resolver when available
-                                            dst_sym = None
-                                            if class_by_name is not None and sym_file_imports is not None:
-                                                dst_sym = _resolve_base_class_java(
-                                                    iface_name, src_sym,
-                                                    class_by_name, sym_file_imports,
-                                                )
-                                            elif iface_name in class_symbols:
-                                                dst_sym = class_symbols[iface_name]
-                                            ext = _java_external_base(
-                                                iface_name, src_sym, class_by_name, sym_file_imports,
-                                            )
-                                            if ext is not None:
-                                                edges.append(external_base_edge(
-                                                    src_sym, ext, "implements",
-                                                    type_node.start_point[0] + 1, PASS_ID, run,
-                                                ))
-                                            elif dst_sym is not None and dst_sym.id != src_sym.id:
-                                                edge = Edge.create(
-                                                    src=src_sym.id,
-                                                    dst=dst_sym.id,
-                                                    edge_type="implements",
-                                                    line=type_node.start_point[0] + 1,
-                                                    origin=PASS_ID,
-                                                    origin_run_id=run.execution_id,
-                                                    evidence_type="ast_implements",
-                                                )
-                                                edges.append(edge)
+                            if subchild.type != "type_list":
+                                continue
+                            for type_node in subchild.children:
+                                if type_node.type == "type_identifier":
+                                    _emit_base(
+                                        decl_sym, _node_text(type_node, source),
+                                        "implements", "ast_implements",
+                                        type_node.start_point[0] + 1,
+                                    )
 
         # Method/constructor declarations - extract parameter types for type inference
         elif node.type in _JAVA_CALLABLE_NODES:
-            # INV-vugon: open this method's local scope. Before scoping,
-            # ``File f = new File(p)`` in one method left ``f`` bound to
-            # ``File`` for every later method in the file, so a sibling's use
-            # of the ``Socket f`` FIELD was typed ``java.io.File``.
+            # Open this method's local scope. Without it, ``File f = new
+            # File(p)`` in one method would leave ``f`` bound to ``File`` for
+            # every later method in the file, typing a sibling's use of a
+            # ``Socket f`` FIELD as ``java.io.File`` (INV-vugon).
             scope_stack.append((node.end_byte, {}, set()))
             param_types = _extract_param_types(node, source)
             # Add parameter types to var_types for method call resolution
@@ -2773,10 +2866,9 @@ def _extract_edges(
 
         # Class field declarations — track field types for method call resolution
         # Java: private Repository repo; → var_types["repo"] = "Repository"
-        # INV-vugon: read through ``_declared_type_name`` so a generic
+        # Read through ``_declared_type_name`` so a generic
         # (``Map<String, String> attrs``) or inline-qualified
-        # (``java.io.File f``) field binds its base type too; only a bare
-        # ``type_identifier`` child was read before.
+        # (``java.io.File f``) field binds its base type too (INV-vugon).
         elif node.type == "field_declaration":
             declared = _declared_type_name(node.child_by_field_name("type"), source)
             if declared is not None:
@@ -2786,7 +2878,7 @@ def _extract_edges(
 
         # A record's components are its fields:
         # ``record Connector(CountDownLatch latch, JChannel ch)`` binds ``latch``
-        # file-wide the way a field declaration does (keycloak: 75 files).
+        # file-wide the way a field declaration does.
         elif node.type == "record_declaration":
             components = node.child_by_field_name("parameters")
             for component in (components.children if components is not None else []):
@@ -2799,15 +2891,13 @@ def _extract_edges(
                 if declared is not None and name_node is not None:
                     _bind(_node_text(name_node, source), declared, local=False)
 
-        # INV-vugon: a DECLARED local type is a receiver-typing source. The
-        # analyzer typed a local only from its INITIALIZER (``new T()``, or a
-        # resolved in-repo method's return type) and never read the
-        # declaration one token to the left, so ``OutputStream o =
-        # sock.getOutputStream(); o.write(b)`` glued the VARIABLE NAME into
-        # the callee (``java:external:0-0:o.write``). On guacamole-client that
-        # was 315 typed bindings out of ~2,180. The declaration is bound first
-        # (pre-order), so a constructor initializer visited afterwards still
-        # narrows it to the concrete type.
+        # A DECLARED local type is a receiver-typing source (INV-vugon). The
+        # INITIALIZER alone (``new T()``, or a resolved in-repo method's
+        # return type) often types nothing, so ``OutputStream o =
+        # sock.getOutputStream(); o.write(b)`` is typed from the declaration
+        # one token to the left. The declaration is bound first (pre-order),
+        # so a constructor initializer visited afterwards still narrows it to
+        # the concrete type.
         elif node.type == "local_variable_declaration":
             declared = _declared_type_name(node.child_by_field_name("type"), source)
             if declared is not None:
@@ -2831,8 +2921,6 @@ def _extract_edges(
 
         # ``for (File f : files)``, and ``try (LDAPQuery q = make())`` -- a
         # try-with-resources ``resource`` carries the same type/name fields.
-        # (keycloak declares every LDAPQuery and RandomAccessFile this way;
-        # the old arm typed them only by a leak from another method.)
         elif node.type in ("enhanced_for_statement", "resource"):
             declared = _declared_type_name(node.child_by_field_name("type"), source)
             name_node = node.child_by_field_name("name")
@@ -2866,7 +2954,7 @@ def _extract_edges(
         # Method invocations — use tree-sitter field names for reliable extraction
         elif node.type == "method_invocation":
             current_method = (
-                _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+                _get_enclosing_method(node, file_path, symbol_by_position)
                 or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
                 or file_anchor
             )
@@ -2891,12 +2979,13 @@ def _extract_edges(
                         # and use it for type-inference lookup
                         fa_field = object_node.child_by_field_name("field")
                         fa_obj = object_node.child_by_field_name("object")
-                        # INV-hahak, second half: a chain that spells a PACKAGE
-                        # PATH is a fully-qualified type reference, not a
-                        # receiver expression, and the source states it outright.
-                        # Keeping only ``Files`` from ``java.nio.file.Files`` let
-                        # the wildcard fallback below re-attribute a call whose
-                        # own package was written at the call site.
+                        # A chain that spells a PACKAGE PATH is a
+                        # fully-qualified type reference, not a receiver
+                        # expression, and the source states it outright.
+                        # Keeping only ``Files`` from ``java.nio.file.Files``
+                        # would let the wildcard fallback below re-attribute a
+                        # call whose own package is written at the call site
+                        # (INV-hahak).
                         fq_type = _fully_qualified_type_reference(
                             _node_text(object_node, source),
                         )
@@ -2904,9 +2993,9 @@ def _extract_edges(
                             explicit_fq_module = fq_type
                         if fa_field:
                             receiver_name = _node_text(fa_field, source)
-                        # WI-dorus: ``System.out.println(x)`` is a call on a
-                        # PrintStream INSTANCE, not on a type named by a path,
-                        # and its receiver is not a variable named ``out``.
+                        # ``System.out.println(x)`` is a call on a PrintStream
+                        # INSTANCE, not on a type named by a path, and its
+                        # receiver is not a variable named ``out`` (WI-dorus).
                         if _java_std_output_receiver(
                             object_node, source, var_types, imports,
                             class_symbols, project_class_names,
@@ -2928,14 +3017,14 @@ def _extract_edges(
                     current_class = ".".join(ancestors) if ancestors else None
                     edge_added = False
                     resolved_sym: Symbol | None = None
-                    # WI-sivuk (PR-4 of INV-nilud): hints captured when the
-                    # Site-2 (typed-receiver) or Site-3 (inherited-field-
-                    # receiver) paths are entered. When the call ultimately
-                    # falls through to the final unresolved emit, these are
-                    # threaded into ``make_unresolved_edge`` so the Tier-2
-                    # ``inherited_calls`` linker (PR-5) can resolve typed-
-                    # receiver and inherited-field calls. ``None`` whenever
-                    # the call didn't enter that path.
+                    # Hints captured when the Site-2 (typed-receiver) or
+                    # Site-3 (inherited-field-receiver) paths are entered.
+                    # When the call ultimately falls through to the final
+                    # unresolved emit, these are threaded into
+                    # ``make_unresolved_edge`` so the Tier-2
+                    # ``inherited_calls`` linker can resolve typed-receiver
+                    # and inherited-field calls. ``None`` whenever the call
+                    # didn't enter that path (WI-sivuk).
                     pr4_receiver_type_hint: str | None = None
                     pr4_inherited_field_receiver: str | None = None
                     pr4_enclosing_class_hint: str | None = None
@@ -2944,11 +3033,11 @@ def _extract_edges(
                         # look the receiver up BY NAME are skipped for it.
                         pr4_receiver_type_hint = _JAVA_PRINT_STREAM
 
-                    # WI-gajuh: a CHAINED receiver -- ``s.getOutputStream()
-                    # .write(b)`` -- has no name to look up, but the inner
-                    # call has an owner and a method, and the registry says
-                    # what that returns. ADR-0006's "Chained" column for
-                    # Java. Only the final unresolved emit reads this hint
+                    # A CHAINED receiver -- ``s.getOutputStream().write(b)``
+                    # -- has no name to look up, but the inner call has an
+                    # owner and a method, and the registry says what that
+                    # returns (WI-gajuh; ADR-0006's "Chained" column for
+                    # Java). Only the final unresolved emit reads this hint
                     # (``receiver_name`` stays ``None`` for the cases below).
                     if (
                         object_node is not None
@@ -2958,9 +3047,10 @@ def _extract_edges(
                         pr4_receiver_type_hint = _call_return_type(
                             object_node, current_class,
                         )
-                    # WI-halin: a CONSTRUCTOR receiver --
+                    # A CONSTRUCTOR receiver --
                     # ``new FileOutputStream(p).write(b)`` -- is the one
-                    # expression whose type the source writes outright.
+                    # expression whose type the source writes outright
+                    # (WI-halin).
                     elif (
                         object_node is not None
                         and object_node.type == "object_creation_expression"
@@ -2970,73 +3060,67 @@ def _extract_edges(
                         )
 
                     # Case 1: this.method() or method() - resolve in current class.
-                    # WI-halin: ONLY those (and ``super.m()``, whose handling is
-                    # unchanged). A receiver EXPRESSION -- a constructor, a
-                    # chained call, a cast, a literal -- also leaves
-                    # ``receiver_name`` at ``None``, and reading that as an
-                    # implicit ``this`` bound ``new FileOutputStream(p).write(b)``
-                    # to the ENCLOSING class's own ``write`` as a resolved call,
-                    # so the sink edge was never emitted at all.
+                    # ONLY those (and ``super.m()``). A receiver EXPRESSION --
+                    # a constructor, a chained call, a cast, a literal -- also
+                    # leaves ``receiver_name`` at ``None``, but reading that as
+                    # an implicit ``this`` would bind
+                    # ``new FileOutputStream(p).write(b)`` to the ENCLOSING
+                    # class's own ``write`` as a resolved call, and the sink
+                    # edge would never be emitted (WI-halin).
                     if object_node is None or object_node.type in ("this", "super"):
                         if current_class:
-                            candidate = f"{current_class}.{method_name}"
-                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                            if lookup_result.found:
-                                # INV-zatug: the base was a hardcoded 0.95, so a
-                                # fully-resolved call published 0.95 — above the
-                                # ast_call_direct ceiling of 0.85. ADR-0039
-                                # ruling 6: the resolver's grade interpolates in
-                                # the pathway band instead.
+                            # The enclosing class's OWN member, which Java
+                            # declares in this file (WI-gikuk). A run-wide
+                            # name-keyed table holds one ``Foo.helper`` for
+                            # ``a.Foo`` and ``b.Foo`` both, so it could bind
+                            # b's ``helper()`` to a's; and where this class
+                            # declares no ``helper`` another file's namesake
+                            # is not its inherited one either (the linker
+                            # walks for that).
+                            own_member = own_members.get(f"{current_class}.{method_name}")
+                            if own_member is not None:
+                                # The resolver's grade, not a fixed
+                                # confidence: it interpolates in the
+                                # ast_call_direct pathway band, whose ceiling
+                                # is 0.85 (ADR-0039 ruling 6; INV-zatug).
                                 edge = Edge.create(
                                     src=current_method.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=own_member.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    resolution_score=lookup_result.confidence,
+                                    resolution_score=NameResolver.CONFIDENCE_EXACT,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
                                 )
                                 edges.append(edge)
                                 edge_added = True
-                                resolved_sym = lookup_result.symbol
+                                resolved_sym = own_member
                             else:
-                                # WI-dukog (PR-3 of INV-nilud): the
-                                # extends-chain walk that used to live
-                                # here has been lifted into the Tier-2
-                                # ``inherited_calls`` linker
+                                # The extends-chain walk belongs to the
+                                # Tier-2 ``inherited_calls`` linker
                                 # (``_walk_single_then_interfaces``,
-                                # priority=18). The analyzer hands off
-                                # by stashing the ``enclosing_class``
-                                # hint for the final unresolved emit
-                                # below; the linker walks the extends
+                                # priority=18), which walks the extends
                                 # + implements chain and emits
                                 # ``ast_call_inherited`` at confidence
-                                # 0.90.
+                                # 0.90 (WI-dukog). The analyzer hands off
+                                # by stashing the ``enclosing_class``
+                                # hint for the final unresolved emit
+                                # below.
                                 #
                                 # ``resolved_sym`` is intentionally
-                                # left None: the return-type-inference
-                                # cascade further below depends on
-                                # ``resolved_sym`` being set during
-                                # the original (analyzer-local) walk
-                                # and so no longer fires for inherited
-                                # matches. Spring-petclinic / spring-
-                                # boot bakeoff will quantify any
-                                # downstream ``ast_call_type_inferred``
-                                # shift.
+                                # left None, so the return-type-inference
+                                # cascade further below does not fire
+                                # for inherited matches.
                                 #
-                                # WI-sivuk (PR-4 of INV-nilud): the
-                                # original PR-3 emitted a second
-                                # unresolved edge here, but that
-                                # double-counted every bare/``this``
-                                # inherited-call site (the final
-                                # unresolved emit below already fires
-                                # for the same site, and is the only
+                                # No edge is emitted here: the final
+                                # unresolved emit below fires for the
+                                # same site, so a second edge would
+                                # double-count it, and that emit is the
                                 # one wired up to ``static_imports`` /
                                 # ``wildcard_imports`` for proper
-                                # ``module_hint`` and ``dst_ref``).
-                                # The hint is now threaded through to
-                                # that single emit.
+                                # ``module_hint`` and ``dst_ref``
+                                # (WI-sivuk).
                                 pr4_enclosing_class_hint = current_class
 
                     # Case 2: ClassName.method() - static call
@@ -3046,12 +3130,12 @@ def _extract_edges(
                     ):
                         candidate = f"{receiver_name}.{method_name}"
                         lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                        # WI-fuhaj: consult file imports. Without this guard,
+                        # Consult file imports (WI-fuhaj). Without this guard,
                         # a static call like ``Logger.info(...)`` would resolve
                         # to a local class named ``Logger`` even when the file
                         # actually imports ``org.slf4j.Logger`` — the same
-                        # short-name collision class that INV-finak fixed for
-                        # instantiations and Case 3 type-inferred calls.
+                        # short-name collision guarded for instantiations and
+                        # Case 3 type-inferred calls (INV-finak).
                         if lookup_result.found and not _is_import_class_mismatch(
                             receiver_name, lookup_result.symbol, imports,
                             caller_file=str(file_path),
@@ -3071,14 +3155,12 @@ def _extract_edges(
                             resolved_sym = lookup_result.symbol
 
                     # Case 3: variable.method() — Site 2 typed receiver.
-                    # WI-puvil (PR-5 of INV-nilud): the analyzer-side
-                    # edge emission (``<TypeName>.<method>`` direct
-                    # lookup + fallback-to-type symbol) has been lifted
-                    # into the Tier-2 ``inherited_calls`` linker
-                    # (``_resolve_site2``, priority=18). The analyzer
-                    # now only stashes the inferred type as the
-                    # ``receiver_type_hint`` and lets the final
-                    # unresolved emit thread it through.
+                    # Edge emission (``<TypeName>.<method>`` direct lookup
+                    # + fallback-to-type symbol) belongs to the Tier-2
+                    # ``inherited_calls`` linker (``_resolve_site2``,
+                    # priority=18; WI-puvil). The analyzer only stashes
+                    # the inferred type as the ``receiver_type_hint`` and
+                    # lets the final unresolved emit thread it through.
                     #
                     # We still run a side-effect-only resolver lookup
                     # here to populate ``resolved_sym``, which the
@@ -3113,10 +3195,9 @@ def _extract_edges(
                             resolved_sym = lookup_result.symbol
 
                     # Case 3.5: inherited field.method() — Site 3.
-                    # WI-puvil (PR-5): the parent-chain field walk
-                    # (formerly ~40 LOC here) has been lifted into the
-                    # linker's ``_walk_parents_for_field`` helper. The
-                    # analyzer now stashes the receiver name and the
+                    # The parent-chain field walk belongs to the linker's
+                    # ``_walk_parents_for_field`` helper (WI-puvil). The
+                    # analyzer stashes the receiver name and the
                     # enclosing class so the linker can walk the
                     # ``extends`` edges emitted by ``inheritance.py``
                     # and consult each parent's ``meta["fields"]``.
@@ -3131,21 +3212,27 @@ def _extract_edges(
                     ):
                         pr4_inherited_field_receiver = receiver_name
                         pr4_enclosing_class_hint = current_class
-                        # INV-vugon: a field DECLARED in an ancestor is a
-                        # declared type too (``protected RealmModel realm`` in
-                        # AbstractTokenExchangeProvider, used by every
-                        # subclass). The linker resolves a PROJECT-class field
-                        # type from ``inherited_field_receiver``; what nothing
-                        # carried was a LIBRARY type's module, so
+                        # A field DECLARED in an ancestor is a declared type
+                        # too (INV-vugon). The linker resolves a PROJECT-class
+                        # field type from ``inherited_field_receiver``; this
+                        # carries a LIBRARY type's module, so
                         # ``conn.commit()`` on an inherited
-                        # ``java.sql.Connection`` field named the variable.
+                        # ``java.sql.Connection`` field gets that module slot.
                         # Qualified through the DECLARING (parent) file's
                         # imports, never this file's; a project-class type is
-                        # left to the linker's own walk, unchanged.
-                        inherited_module = _inherited_field_module(
-                            current_class, receiver_name, class_parents,
-                            class_fields, class_symbols, sym_file_imports,
-                            project_class_names,
+                        # left to the linker's own walk. The walk starts at
+                        # the enclosing class found by POSITION (its chain is
+                        # keyed by symbol id; WI-gikuk).
+                        enclosing_type = _get_enclosing_type_symbol(
+                            node, file_path, symbol_by_position,
+                        )
+                        inherited_module = (
+                            _inherited_field_module(
+                                enclosing_type.id, receiver_name, class_parents,
+                                class_fields, class_symbols, sym_file_imports,
+                                project_class_names,
+                            )
+                            if enclosing_type is not None else None
                         )
                         if inherited_module is not None:
                             pr4_receiver_type_hint = inherited_module
@@ -3154,12 +3241,12 @@ def _extract_edges(
                     # a return type and the call is in a variable assignment,
                     # track the variable's type from that return type.
                     #
-                    # WI-gajuh: read through the registry, whose value was
-                    # qualified through the DECLARING file's imports, so
+                    # Read through the registry, whose value is qualified
+                    # through the DECLARING file's imports, so
                     # ``var w = F.makeWriter()`` in a file that never imports
-                    # ``FileWriter`` still binds ``java.io.FileWriter``. The
-                    # registry is the ONE home for a return type -- the
-                    # signature parse that used to live here read the same
+                    # ``FileWriter`` still binds ``java.io.FileWriter``
+                    # (WI-gajuh). The registry is the ONE home for a return
+                    # type -- parsing the signature here would read the same
                     # fact through the caller's imports, the wrong file's
                     # answer for a library type -- so a method the registry
                     # does not know (``Object``, or a type its own file gives
@@ -3170,13 +3257,13 @@ def _extract_edges(
                             parent_node = node.parent
                             if parent_node and parent_node.type == "variable_declarator":
                                 _bind_declarator(parent_node, ret_name, exact=False)
-                    # WI-gajuh, the WI-lalot interface: a method that is not a
-                    # project symbol can only be typed from a LIBRARY row --
-                    # ``java.net.Socket.getOutputStream`` ->
-                    # ``java.io.OutputStream``. WI-halin: read through the same
-                    # chain walk the chained receiver uses, so ``var c =
+                    # A method that is not a project symbol can only be typed
+                    # from a LIBRARY row -- ``java.net.Socket.getOutputStream``
+                    # -> ``java.io.OutputStream`` (WI-gajuh). Read through the
+                    # same chain walk the chained receiver uses, so ``var c =
                     # Cipher.getInstance(..)`` (a static owner) binds as well as
-                    # ``var o = s.getOutputStream()`` (a typed variable) did.
+                    # ``var o = s.getOutputStream()`` (a typed variable;
+                    # WI-halin).
                     elif resolved_sym is None and method_return_type_registry:
                         parent_node = node.parent
                         if (
@@ -3227,38 +3314,25 @@ def _extract_edges(
 
                     # Emit unresolved external edge when no resolution strategy succeeded
                     if not edge_added:
-                        # WI-nakut (java half): THE NAME SLOT NAMES THE CALLEE.
-                        # This used to glue the receiver IDENTIFIER on when one
-                        # was available -- ``u.mkdirs`` rather than ``mkdirs``,
-                        # ``out.println`` rather than ``println`` -- so every
-                        # consumer that asks a catalogue about a name got a
-                        # string no catalogue has ever keyed. ADR-0050/0051 rule
-                        # a receiver VARIABLE out of the MODULE slot; this is the
+                        # THE NAME SLOT NAMES THE CALLEE: ``mkdirs``, never
+                        # ``u.mkdirs``; ``println``, never ``out.println``
+                        # (WI-nakut). A receiver-prefixed name is a string no
+                        # catalogue has ever keyed. ADR-0050/0051 rule a
+                        # receiver VARIABLE out of the MODULE slot; this is the
                         # same category error one slot over, and the receiver's
                         # own evidence already has homes that are not the name:
                         # ``receiver_type_hint``, ``inherited_field_receiver``,
                         # ``enclosing_class``.
                         #
-                        # PARITY, MEASURED. One fixture per language, same
-                        # construct (an untypable local receiver calling a
-                        # catalogued method), through the shipped survey
-                        # 2026-09-07: go ``Write``, kotlin ``write``, python
-                        # ``sendall``, rust ``write_all``, scala ``write`` --
-                        # and java ``u.write``. java was also inconsistent with
-                        # ITSELF: the static-import and typed-receiver branches
-                        # below already shortened, the explicit-FQ and
-                        # ``java.lang`` branches kept the prefix and left
-                        # ``strip_redundant_module_qualifier`` to remove it
-                        # downstream, and the placeholder case kept it with
-                        # nothing anywhere able to remove it. The slot's content
-                        # was a function of WHICH BRANCH FIRED.
+                        # Every branch below emits the same short name, so the
+                        # slot's content never depends on WHICH BRANCH FIRED,
+                        # and it matches what go, kotlin, python, rust and
+                        # scala emit for the same construct.
                         #
-                        # NO VERDICT CAN MOVE, and the guard is one this file
-                        # already argues at length rather than a new claim.
-                        # ``receiver_name`` is assigned only inside
-                        # ``if object_node is not None``, so every edge this
-                        # shortens carries ``call_construct="method"`` -- or,
-                        # since WI-fuvaj, ``"function"`` for a call on a TYPE,
+                        # NO VERDICT CAN MOVE. ``receiver_name`` is assigned
+                        # only inside ``if object_node is not None``, so every
+                        # edge this shortens carries ``call_construct="method"``
+                        # -- or ``"function"`` for a call on a TYPE (WI-fuvaj),
                         # and every such edge has a NAMED module slot (the
                         # import, the java.lang slot or the written FQ path),
                         # so it is matched through the module filter and never
@@ -3273,27 +3347,19 @@ def _extract_edges(
                         # directions are pinned as refutation cells in
                         # ``test_java_unresolved_callee_name.py``.
                         #
-                        # WHAT IT BUYS (2026-09-07, three repositories): edges
-                        # whose short name IS a catalogued method-kind row, and
-                        # so become attributable to a boundary by the
-                        # boundary-scoped ``untyped_receiver`` caveat --
-                        # sherpa-onnx 10/4 names/3 boundaries, jenkins 974/43/9
-                        # over 650 already matching, cassandra 4,708/53/10 over
-                        # 4,953. It also corrects a quieter falsehood: the
-                        # UNSCOPED caveat prints a distinct-method COUNT, and the
-                        # prefixed spellings inflated it 29% / 102% / 176% --
-                        # cassandra reported 22,584 distinct methods where there
-                        # are 8,191, ``get`` alone printed as 427 "methods".
+                        # WHAT IT BUYS: an edge whose short name IS a
+                        # catalogued method-kind row becomes attributable to a
+                        # boundary by the boundary-scoped ``untyped_receiver``
+                        # caveat, and the UNSCOPED caveat's distinct-method
+                        # COUNT is not inflated by one entry per receiver
+                        # spelling (``a.get``, ``b.get``, ...).
                         #
-                        # NO CAPITALISATION EXEMPTION, AND THAT IS MEASURED. One
-                        # was considered on the theory that a Capitalised
-                        # receiver names a TYPE rather than a variable, and the
-                        # data refutes it: jenkins' capitalised bucket is
-                        # SCREAMING_CASE static FIELDS -- ``ALL.getName``,
+                        # NO CAPITALISATION EXEMPTION. A Capitalised receiver
+                        # does not reliably name a TYPE: it is often a
+                        # SCREAMING_CASE static FIELD -- ``ALL.getName``,
                         # ``CONFIG.getName``, ``BAD_FILTERS.get``,
-                        # ``DESCRIPTOR.get``, ``INSTANCE.add`` -- receiver
-                        # variables by every criterion that matters, and the
-                        # exemption would have discarded 51% of the win there.
+                        # ``DESCRIPTOR.get``, ``INSTANCE.add`` -- a receiver
+                        # variable by every criterion that matters.
                         unresolved_name = method_name
                         # WI-hudud: bare call (no receiver) whose name was
                         # brought into scope by ``import static X.method``.
@@ -3301,16 +3367,15 @@ def _extract_edges(
                         # an unresolved edge with structured dst_ref so
                         # consumers can match on (module_path, name).
                         ext_ref: ExternalRef | None = None
-                        # INV-fibis disclosure parity: a call WITH A RECEIVER is
-                        # a method call whether or not the receiver's type
-                        # resolved, and this stamp is what
+                        # Disclosure parity: a call WITH A RECEIVER is a method
+                        # call whether or not the receiver's type resolved,
+                        # and this stamp is what
                         # ``verify_claims.untyped_receiver_sites`` selects on.
-                        # Setting it only in the typed branch below made the
-                        # key mean "a method call whose receiver I typed", so
-                        # java reached a clean boundary verdict over 139
-                        # catalogued method sinks and disclosed nothing.
-                        # python and go already stamp it unconditionally; this
-                        # is parity with them, not a new convention.
+                        # Setting it only in the typed branch below would make
+                        # the key mean "a method call whose receiver I typed",
+                        # and a clean boundary verdict would disclose nothing
+                        # about the untyped sites. python and go stamp it
+                        # unconditionally too (INV-fibis).
                         #
                         # IT COSTS NOTHING ON THE RECALL SIDE, and
                         # ``gate_named_entry`` is where you can see why: with
@@ -3319,15 +3384,16 @@ def _extract_edges(
                         # with the stamp, and through the ``non_method`` filter
                         # without it. What the stamp buys is that the verdict
                         # can SAY SO.
-                        # INV-pirot: A RECEIVER THE ANALYZER CANNOT NAME IS
-                        # STILL A RECEIVER. ``receiver_name`` answers a
+                        # A RECEIVER THE ANALYZER CANNOT NAME IS STILL A
+                        # RECEIVER (INV-pirot). ``receiver_name`` answers a
                         # different question -- "what identifier can I look
                         # this receiver's type up under" -- and it is ``None``
                         # for every receiver EXPRESSION: ``new File(x).mkdirs()``,
                         # ``get().mkdirs()``, ``((File) o).mkdirs()``,
-                        # ``f.getParentFile().mkdirs()``. Deriving the construct
-                        # from it asked one variable two questions (LIVE.md
-                        # rule 7), and the four shapes above reached the
+                        # ``f.getParentFile().mkdirs()``. The construct is
+                        # therefore derived from ``object_node``, not from
+                        # ``receiver_name``: one variable, one question (LIVE.md
+                        # rule 7). Otherwise those four shapes would reach the
                         # unresolved emit with a BARE short callee name and no
                         # stamp.
                         #
@@ -3336,15 +3402,13 @@ def _extract_edges(
                         # an unresolved bare-name sanitizer match ONLY on
                         # ``call_construct == "method"``; without the key the
                         # edge reaches the permit branch and registers a
-                        # PHANTOM BARRIER, and since PR #214 a barrier earns
-                        # ``sanitized``, which DROPS the flow from the claim's
-                        # violation set. The missing stamp deletes findings.
+                        # PHANTOM BARRIER, and a barrier earns ``sanitized``,
+                        # which DROPS the flow from the claim's violation set.
+                        # A missing stamp deletes findings.
                         #
-                        # ``this`` IS INCLUDED, and the reasoning that once
-                        # excluded it was wrong on its own terms. It read: the
-                        # receiver type IS known (the enclosing class), so there
-                        # is no want of receiver evidence. But an edge only
-                        # reaches this emit BECAUSE the call did not resolve --
+                        # ``this`` IS INCLUDED. The receiver object is known
+                        # (the enclosing class), but an edge only reaches this
+                        # emit BECAUSE the call did not resolve --
                         # and a ``this.m()`` that does not resolve is one whose
                         # ``m`` is NOT on the enclosing class. The analyzer
                         # knows which object; it does not know which type
@@ -3356,30 +3420,20 @@ def _extract_edges(
                         # statement is "not established HERE", not "external".
                         # The linker reads ``enclosing_class`` and
                         # ``inherited_field_receiver``, never this key, so the
-                        # stamp does not disturb that recovery.) Measured harm,
-                        # with a control in the same run:
-                        # ``this.doFinal(plain)`` registered the shipped
+                        # stamp does not disturb that recovery.) Unstamped,
+                        # ``this.doFinal(plain)`` would register the catalogued
                         # ``javax.crypto.Cipher.doFinal`` as a barrier on its
-                        # caller, and since PR #214 a barrier earns
-                        # ``sanitized``, which DROPS the flow from the claim's
-                        # violation set.
+                        # caller. python, go, objc, rust, scala and swift stamp
+                        # an explicit ``this`` / ``self`` receiver too.
                         #
-                        # PARITY, NOT A NEW CONVENTION. Measured 2026-08-25 over
-                        # every language with a disclosure-parity fixture:
-                        # python, go, objc, rust, scala and swift all stamp an
-                        # explicit ``this`` / ``self`` receiver. java was the
-                        # only one that did not.
-                        #
-                        # THE RECALL COST IS ZERO HERE, measured rather than
-                        # assumed. ``gate_named_entry`` returns ``None``
-                        # immediately for ``call_construct == "method"``, so the
-                        # stamp can only refuse a FUNCTION-kind catalogue hit --
-                        # and when this was measured ``io_primitives/java.yaml``
-                        # declared no function-kind entry at all. (Since
-                        # INV-zikab step 6 its statics are function-kind, and
-                        # since WI-fuvaj a call on a type is stamped
-                        # ``function``; a ``this.`` receiver is not a type, so
-                        # it still stamps ``method``.)
+                        # THE RECALL COST IS NIL. ``gate_named_entry`` returns
+                        # ``None`` immediately for ``call_construct ==
+                        # "method"``, so the stamp can only refuse a
+                        # FUNCTION-kind catalogue hit; java.yaml's
+                        # function-kind entries are its statics, and a call on
+                        # a type is stamped ``function`` (WI-fuvaj), while a
+                        # ``this.`` receiver is not a type and stamps
+                        # ``method``.
                         #
                         # AN IMPLICIT ``this`` -- a bare ``m(p)`` with no
                         # receiver token -- STAYS UNSTAMPED, and that is not the
@@ -3390,14 +3444,15 @@ def _extract_edges(
                         # the leak the concept audits exist to prevent. java has
                         # no free functions, so that shape IS a live
                         # phantom-barrier surface; it needs a signal of its own,
-                        # not this one, and is filed on its own terms.
+                        # not this one.
                         pr4_call_construct = _java_call_construct(
                             object_node, receiver_name, explicit_fq_module,
                             var_types, imports, type_params,
                         )
-                        # WI-halin: a static import names a BARE call (and,
-                        # as before, ``this.m()``), never a call on a receiver
-                        # expression such as ``make().assertEquals(x)``.
+                        # A static import names a BARE call (and
+                        # ``this.m()``), never a call on a receiver
+                        # expression such as ``make().assertEquals(x)``
+                        # (WI-halin).
                         if (
                             (object_node is None or object_node.type == "this")
                             and static_imports is not None
@@ -3409,9 +3464,9 @@ def _extract_edges(
                                 name=method_name,
                             )
                             module = static_imports[method_name]
-                            # ``unresolved_name`` is already ``method_name``
-                            # (WI-nakut): the name slot names the callee in
-                            # EVERY branch, so this branch no longer restates it.
+                            # ``unresolved_name`` is already ``method_name``:
+                            # the name slot names the callee in EVERY branch
+                            # (WI-nakut).
                         else:
                             # Use import path as module hint when available
                             module = (
@@ -3419,7 +3474,7 @@ def _extract_edges(
                                 if receiver_name
                                 else "external"
                             )
-                            # WI-tihup: populate dst_ref when the receiver
+                            # Populate dst_ref when the receiver
                             # was imported (e.g. ``Arrays.asList`` after
                             # ``import java.util.Arrays;``). The module
                             # path is the receiver's fully qualified import
@@ -3434,34 +3489,28 @@ def _extract_edges(
                                     module_path=imports[receiver_name],
                                     name=method_name,
                                 )
-                            # INV-linub: a typed LOCAL receiver
-                            # (``File f = new File(p); f.createNewFile()``).
-                            # The type is already inferred into ``var_types``
-                            # and threaded out as ``receiver_type_hint``, but
-                            # its only consumers were the Tier-2
+                            # A typed LOCAL receiver
+                            # (``File f = new File(p); f.createNewFile()``;
+                            # INV-linub). The type is already inferred into
+                            # ``var_types`` and threaded out as
+                            # ``receiver_type_hint`` for the Tier-2
                             # ``inherited_calls`` / ``receiver_type_dispatch``
-                            # linkers, which resolve PROJECT-INTERNAL symbols.
-                            # Nothing carried it to the external surface, so
-                            # the dst named the VARIABLE
-                            # (``java:external:0-0:f.createNewFile:unresolved``)
-                            # and every catalogue consumer saw a bare method on
-                            # an unknown receiver.
+                            # linkers, which resolve PROJECT-INTERNAL symbols;
+                            # this branch carries it to the external surface
+                            # as the module slot.
                             #
-                            # That is fatal rather than lossy for taint:
+                            # Without it taint would match nothing:
                             # ``io_boundary.gate_named_entry`` opens with
                             # ``if call_construct == "method": return None``,
                             # so with no module hint a method call matches
                             # NOTHING — not a method-kind entry, not even a
-                            # function-kind one. Measured 2026-08-06 across
-                            # nine languages: java emitted for both the
-                            # two-step and chained shapes and matched on
-                            # neither, and 67 of its 69 catalogued sinks are
-                            # method-kind. Emitting the edge was never the
-                            # missing piece; naming the receiver's TYPE is.
+                            # function-kind one — and most of java's
+                            # catalogued sinks are method-kind. Emitting the
+                            # edge is not enough; naming the receiver's TYPE
+                            # is what lets it match.
                             #
-                            # Gated on the type being in ``imports`` so the
-                            # module slot only ever carries a path the file
-                            # actually declares. An unqualifiable type is left
+                            # The module slot only ever carries a path the file
+                            # actually establishes. An unqualifiable type is left
                             # alone rather than written in bare — a simple name
                             # in the module slot asserts a module that does not
                             # exist and can collide with a catalogued entry of
@@ -3471,30 +3520,28 @@ def _extract_edges(
                             #
                             # ``call_construct="method"`` is NOT decoration and
                             # must not be dropped. The callee is the SHORT NAME
-                            # ``doFinal`` -- unconditionally since WI-nakut, and
-                            # only in this branch before it -- and
+                            # ``doFinal`` (WI-nakut), and
                             # ``_register_sanitizer_callers`` matches sanitizers
                             # on the SHORT NAME while never consulting the module
-                            # hint. Without this flag the short name alone made
-                            # ``com.example.Widget.doFinal`` bind the catalogued
-                            # ``javax.crypto.Cipher.doFinal`` — a PHANTOM BARRIER,
-                            # which earns `sanitized` and DELETES a real flow
-                            # (#214). Measured, not feared: the barrier really did
-                            # register before this flag was added. The flag costs
+                            # hint. Without this flag the short name alone would
+                            # make ``com.example.Widget.doFinal`` bind the
+                            # catalogued ``javax.crypto.Cipher.doFinal`` — a
+                            # PHANTOM BARRIER, which earns `sanitized` and
+                            # DELETES a real flow. The flag costs
                             # nothing on the sink side because
                             # ``_lookup_named_entry`` returns from its
                             # module-filter branch before ``gate_named_entry``
                             # ever sees it.
                             #
-                            # INV-vugon widened "in ``imports``" to every path
-                            # the file establishes (:func:`_qualify_receiver_type`):
+                            # "A path the file establishes" is
+                            # :func:`_qualify_receiver_type`'s set: an import,
                             # an inline ``java.sql.Connection``, a nested
                             # ``Map.Entry`` on an imported outer, and the JLS
                             # 7.3 ``java.lang`` implicit import that
                             # ``Runtime rt = Runtime.getRuntime(); rt.exec(cmd)``
-                            # -- a catalogued subprocess sink -- needs. A
-                            # ``receiver_name`` of ``None`` is the CHAINED
-                            # receiver WI-gajuh types from the registry.
+                            # -- a catalogued subprocess sink -- needs
+                            # (INV-vugon). A ``receiver_name`` of ``None`` is
+                            # the CHAINED receiver typed from the registry.
                             elif (
                                 receiver_name != "this"
                                 and pr4_receiver_type_hint
@@ -3509,34 +3556,19 @@ def _extract_edges(
                             ):
                                 module = typed_module
                                 # ``unresolved_name`` is already ``method_name``
-                                # (WI-nakut) and this branch's own restatement is
-                                # gone with it, for the same reason the
-                                # ``call_construct`` one below went: one fact,
-                                # one home.
-                                # ``call_construct="method"`` is set once, above,
-                                # for every receiver-bearing call; this branch's
-                                # own assignment was removed as a second home for
-                                # one fact. The reasoning above about the PHANTOM
-                                # BARRIER still applies and is why it must not be
-                                # dropped from EITHER place.
+                                # (WI-nakut) and ``call_construct`` is set once,
+                                # above, for every receiver-bearing call: one
+                                # fact, one home. The reasoning above about the
+                                # PHANTOM BARRIER is why the stamp must not be
+                                # dropped.
                                 ext_ref = ExternalRef(
                                     lang="java",
                                     module_path=module,
                                     name=method_name,
                                 )
-                            # WI-tuhok: when the receiver looks like a
-                            # class (capitalised first letter) but isn't
-                            # in the explicit imports, fall back to the
-                            # first wildcard-imported package. Without
-                            # this, ``import java.util.*;`` +
-                            # ``Arrays.asList(...)`` emitted
-                            # ``java:external:0-0:Arrays.asList:unresolved``
-                            # (the WI-mafik audit gap). Capitalisation gate
-                            # discriminates classes (Arrays) from locals
-                            # (localVar), keeping FPs low. The fully
-                            # qualified module path is
-                            # ``{wildcard_package}.{receiver_name}`` —
-                            # matching the explicit-import shape.
+                            # A receiver that spells its own package
+                            # (``java.nio.file.Files.readAllBytes(p)``) names
+                            # its module outright (INV-hahak).
                             elif explicit_fq_module is not None:
                                 module = explicit_fq_module
                                 ext_ref = ExternalRef(
@@ -3544,52 +3576,42 @@ def _extract_edges(
                                     module_path=explicit_fq_module,
                                     name=method_name,
                                 )
-                            # INV-suril: the SAME JLS 7.3 rule, in the file
-                            # that carries no wildcard at all. INV-hahak fixed
-                            # java.lang for a wildcard-bearing file because the
-                            # slot is built here and this branch was gated on
-                            # ``wildcard_imports`` being non-empty. A file with
-                            # only single-type imports -- the style every java
-                            # linter enforces -- took no branch, so a static
-                            # call on an implicitly imported class kept the
-                            # ``external`` placeholder AND (as java's name slot
-                            # then did) its ``System.`` prefix, and
-                            # ``strip_redundant_module_qualifier`` could not fire
-                            # either: it compares the name's head against the
-                            # module slot, and a placeholder matches nothing.
-                            # THE PREFIX HALF IS HISTORY SINCE WI-nakut -- the
-                            # name slot now carries ``currentTimeMillis`` alone,
-                            # so this branch's module is matched on the FIRST
-                            # catalogue pass rather than through that retry, and
-                            # the placeholder half above is the whole of what
-                            # this branch still fixes.
-                            # Measured on cassandra (6,090 files): 459
-                            # edges lost this way -- currentTimeMillis x285,
-                            # nanoTime x123, getProperty x29, getenv x16,
-                            # getProperties x6 -- against 446 java calls that
-                            # classify in the entire repository. Three of the
-                            # five are ``env_read``, so the loss reaches the
-                            # taint SOURCE side and not only the io map.
+                            # A capitalised receiver that is not explicitly
+                            # imported: ``import java.util.*;`` +
+                            # ``Arrays.asList(...)`` gets the wildcard /
+                            # ``java.lang`` disjunction
+                            # (:func:`_wildcard_candidate_slot`; WI-tuhok,
+                            # INV-hahak). The capitalisation gate separates
+                            # classes (``Arrays``) from locals (``localVar``).
                             #
-                            # THE CLOSED JLS LIST IS WHAT MAKES IT SAFE. Only a
-                            # name in :data:`_JAVA_LANG_TYPES` takes the new
-                            # disjunct, so an unqualifiable ``Helper.doThing()``
-                            # still gets NO module rather than a guessed one
-                            # (INV-fazim). The wildcard path is left exactly as
-                            # it was: widening its guard would be an unmeasured
-                            # behaviour change riding along with a recall fix.
+                            # The SAME JLS 7.3 rule applies in a file that
+                            # carries no wildcard at all (INV-suril): a file
+                            # with only single-type imports -- the style every
+                            # java linter enforces -- still has ``java.lang`` in
+                            # scope, so a static call on an implicitly imported
+                            # class (``System.currentTimeMillis()``,
+                            # ``System.getenv(k)``) gets the ``java.lang`` slot
+                            # rather than the ``external`` placeholder, which
+                            # matches no catalogue row. Several of those calls
+                            # are ``env_read``, so this reaches the taint SOURCE
+                            # side and not only the io map.
                             #
-                            # NO PROJECT-CLASS GUARD HERE, AND THAT IS MEASURED
-                            # RATHER THAN ASSUMED. One was written and removed:
-                            # a repo defining its own ``System`` never reaches
-                            # this branch at all, because ``class_resolver``
-                            # claims the name first and emits a RESOLVED edge --
-                            # verified on two fixtures, the class in the calling
-                            # package and in a different one. So the guard was
-                            # unreachable. It would also have been wrong in the
-                            # second case if it ever did run: ``app.P`` calling
-                            # ``System.currentTimeMillis()`` without importing
-                            # ``other.System`` means java.lang's, by JLS 6.5.
+                            # THE CLOSED JLS LIST IS WHAT MAKES IT SAFE. Without
+                            # a wildcard, only a name in :data:`_JAVA_LANG_TYPES`
+                            # takes this branch, so an unqualifiable
+                            # ``Helper.doThing()`` still gets NO module rather
+                            # than a guessed one (INV-fazim).
+                            #
+                            # NO PROJECT-CLASS GUARD HERE, because none is
+                            # needed: a repo defining its own ``System`` never
+                            # reaches this branch at all, because
+                            # ``class_resolver`` claims the name first and emits
+                            # a RESOLVED edge, whether the class is in the
+                            # calling package or a different one. A guard would
+                            # also be wrong in the second case: ``app.P``
+                            # calling ``System.currentTimeMillis()`` without
+                            # importing ``other.System`` means java.lang's, by
+                            # JLS 6.5.
                             elif (
                                 receiver_name
                                 and receiver_name != "this"
@@ -3623,15 +3645,25 @@ def _extract_edges(
                             ),
                             call_construct=pr4_call_construct,
                         )
-                        # WI-tusav: stamp the receiver's ORIGIN on the read, so
-                        # java.yaml's dual fs_read/ipc_recv rows can be narrowed.
-                        # Set on the edge rather than threaded through
-                        # ``make_unresolved_edge`` because that helper is shared
-                        # by every analyzer -- the same place c.py and go.py put
-                        # theirs.
-                        # WI-halin: a CONSTRUCTOR receiver is now typed too, which
-                        # selects the same dual rows, so its origin is read from
-                        # the constructor itself.
+                        # The enclosing class's id, found by position, beside
+                        # its package-less name, so the inherited_calls linker
+                        # starts at exactly this class rather than at every
+                        # ``Foo`` (WI-gikuk, WI-supat).
+                        if pr4_enclosing_class_hint is not None:
+                            _enclosing_type = _get_enclosing_type_symbol(
+                                node, file_path, symbol_by_position,
+                            )
+                            if _enclosing_type is not None and _unresolved_edge.meta is not None:
+                                _unresolved_edge.meta["enclosing_class_id"] = _enclosing_type.id
+                        # Stamp the receiver's ORIGIN on the read, so
+                        # java.yaml's dual fs_read/ipc_recv rows can be narrowed
+                        # (WI-tusav). Set on the edge rather than threaded
+                        # through ``make_unresolved_edge`` because that helper
+                        # is shared by every analyzer -- the same place c.py
+                        # and go.py put theirs.
+                        # A CONSTRUCTOR receiver is typed too, which selects the
+                        # same dual rows, so its origin is read from the
+                        # constructor itself (WI-halin).
                         if (
                             method_name in _JAVA_STREAM_READ_METHODS
                             and object_node is not None
@@ -3646,18 +3678,18 @@ def _extract_edges(
                             if _target_kind is not None:
                                 # Rebuilt rather than indexed: ``Edge.meta`` is
                                 # Optional, and `meta[k] = v` on it is the
-                                # ratchet's `index` code (go.py:5479 carries
-                                # exactly that error today). `or {}` narrows
+                                # ratchet's `index` code. `or {}` narrows
                                 # without adding an unreachable branch the 100%
                                 # gate would then have to cover.
                                 _unresolved_edge.meta = {
                                     **(_unresolved_edge.meta or {}),
                                     "io_target_kind": _target_kind,
                                 }
-                        # WI-dorus: the WRITE twin -- a PrintStream method on
+                        # The WRITE twin -- a PrintStream method on
                         # System.out / System.err writes the process's own
                         # standard stream, which is what java.yaml's
-                        # ``requires_target_kind: std_stream`` rows wait for.
+                        # ``requires_target_kind: std_stream`` rows wait for
+                        # (WI-dorus).
                         if stdio_receiver:
                             _unresolved_edge.meta = {
                                 **(_unresolved_edge.meta or {}),
@@ -3668,7 +3700,7 @@ def _extract_edges(
         # Object creation: new ClassName()
         elif node.type == "object_creation_expression":
             current_method = (
-                _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+                _get_enclosing_method(node, file_path, symbol_by_position)
                 or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
                 or file_anchor
             )
@@ -3706,10 +3738,9 @@ def _extract_edges(
             # Check if this new expression is part of a variable assignment
             # Java variable declarations: Type varName = new Type();
             # The declaration (visited first) bound the declared type;
-            # the constructor narrows it to the concrete one. WI-halin: the
-            # type is read as written, so ``var f = new java.io.FileOutputStream(p)``
-            # and ``var xs = new ArrayList<String>()`` bind too (only a bare
-            # ``type_identifier`` did).
+            # the constructor narrows it to the concrete one. The type is read
+            # as written, so ``var f = new java.io.FileOutputStream(p)`` and
+            # ``var xs = new ArrayList<String>()`` bind too (WI-halin).
             created_type = _java_created_type_name(node, source)
             parent = node.parent
             if (
@@ -3724,71 +3755,91 @@ def _extract_edges(
         # referenced method.  Constructor references (::new) create
         # "instantiates" edges instead.
         elif node.type == "method_reference":
-            current_method = _get_enclosing_method(
-                node, source, global_symbols, file_path, symbol_by_position,
+            # A reference in no method (a field initializer,
+            # ``static Supplier<Integer> F = M::run;``) is anchored on its
+            # type, else the file, as a method_invocation there is (META-mino).
+            current_method = (
+                _get_enclosing_method(node, file_path, symbol_by_position)
+                or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
+                or file_anchor
             )
-            if current_method:
-                children = [c for c in node.children if c.is_named]
-                if len(children) >= 2:
-                    class_node = children[0]
-                    method_node = children[1]
-                    class_name = _node_text(class_node, source)
-                    method_name = _node_text(method_node, source)
-                elif len(children) == 1:
-                    # Only class part, method is anonymous (::new)
-                    class_name = _node_text(children[0], source)
-                    method_name = "new"
-                else:  # pragma: no cover
-                    class_name = None
-                    method_name = None
+            children = [c for c in node.children if c.is_named]
+            if len(children) >= 2:
+                class_node = children[0]
+                method_node = children[1]
+                class_name = _node_text(class_node, source)
+                method_name = _node_text(method_node, source)
+            elif len(children) == 1:
+                # Only class part, method is anonymous (::new)
+                class_name = _node_text(children[0], source)
+                method_name = "new"
+            else:  # pragma: no cover
+                class_name = None
+                method_name = None
 
-                if class_name and method_name == "new":
-                    # Constructor reference: try to resolve the class
-                    lookup_result = class_resolver.lookup(class_name, caller_path=_caller_path)
-                    if (
-                        lookup_result.found
-                        and lookup_result.symbol is not None
-                        # INV-finak: skip if import points elsewhere
-                        and not _is_import_class_mismatch(
-                            class_name, lookup_result.symbol, imports,
-                            caller_file=str(file_path),
-                        )
-                    ):
-                        edge = Edge.create(
-                            src=current_method.id,
-                            dst=lookup_result.symbol.id,
-                            edge_type="instantiates",
-                            line=node.start_point[0] + 1,
-                            resolution_score=lookup_result.confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="constructor_reference",
-                        )
-                        edges.append(edge)
+            if class_name and method_name == "new":
+                # Constructor reference: try to resolve the class
+                lookup_result = class_resolver.lookup(class_name, caller_path=_caller_path)
+                if (
+                    lookup_result.found
+                    and lookup_result.symbol is not None
+                    # INV-finak: skip if import points elsewhere
+                    and not _is_import_class_mismatch(
+                        class_name, lookup_result.symbol, imports,
+                        caller_file=str(file_path),
+                    )
+                ):
+                    edge = Edge.create(
+                        src=current_method.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="instantiates",
+                        line=node.start_point[0] + 1,
+                        resolution_score=lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="constructor_reference",
+                    )
+                    edges.append(edge)
 
-                elif class_name and method_name:
-                    # Method reference: resolve ClassName.methodName
-                    # Try this::method → look up method in current class
-                    target_name = None
-                    if class_name == "this":
-                        # Resolve in current class scope
-                        target_name = method_name
-                    else:
-                        target_name = f"{class_name}.{method_name}"
+            elif class_name and method_name:
+                # Method reference: resolve ClassName.methodName
+                # Try this::method → look up method in current class
+                if class_name == "this":
+                    # ``this::m`` is THIS class's ``m``: qualify it by the
+                    # enclosing type first, since the bare name alone can
+                    # bind another class's same-named private method. An
+                    # inherited ``m`` misses the qualified name and falls
+                    # back to the bare one. The qualified name is looked up
+                    # among THIS file's members, since ``Foo.m`` run-wide is
+                    # any package's ``Foo`` (WI-gikuk).
+                    owner = (
+                        current_method.name
+                        if current_method.kind in _JAVA_TYPE_SYMBOL_KINDS
+                        else current_method.name.rpartition(".")[0]
+                    )
+                    own_ref = own_members.get(f"{owner}.{method_name}") if owner else None
+                    lookup_result = (
+                        LookupResult(symbol=own_ref, confidence=NameResolver.CONFIDENCE_EXACT)
+                        if own_ref is not None
+                        else resolver.lookup(method_name, caller_path=_caller_path)
+                    )
+                else:
+                    lookup_result = resolver.lookup(
+                        f"{class_name}.{method_name}", caller_path=_caller_path,
+                    )
 
-                    lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
-                        edge = Edge.create(
-                            src=current_method.id,
-                            dst=lookup_result.symbol.id,
-                            edge_type="references",
-                            line=node.start_point[0] + 1,
-                            resolution_score=lookup_result.confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="method_reference",
-                        )
-                        edges.append(edge)
+                if lookup_result.found and lookup_result.symbol is not None:
+                    edge = Edge.create(
+                        src=current_method.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1,
+                        resolution_score=lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="method_reference",
+                    )
+                    edges.append(edge)
 
     return edges
 
@@ -3900,7 +3951,7 @@ def _analyze_java_file(
     file_path: Path,
     run: AnalysisRun,
 ) -> tuple[list[Symbol], list[Edge], bool]:
-    """Analyze a single Java file (legacy single-pass, used for testing).
+    """Analyze a single Java file (single-pass, used for testing).
 
     Returns (symbols, edges, success).
     """
@@ -3926,7 +3977,11 @@ def _analyze_java_file(
         if sym.kind in _JAVA_TYPE_SYMBOL_KINDS:
             class_symbols[sym.name] = sym
 
-    edges = _extract_edges(tree, source, file_path, run, global_symbols, class_symbols)
+    edges = _extract_edges(
+        tree, source, file_path, run, global_symbols, class_symbols,
+        symbol_by_position=_java_position_index(symbols),
+        file_symbols=symbols,
+    )
     return symbols, edges, True
 
 
@@ -3939,7 +3994,8 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     2. Detect calls/inheritance and resolve against global symbol registry
 
     Returns a JavaAnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-java is not available, returns empty result (silently skipped).
+    If tree-sitter-java is not available, emits a ``UserWarning`` and returns
+    a result with ``skipped=True``.
     """
     return _java_analyzer.analyze(repo_root)
 
@@ -4020,15 +4076,13 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # Multi-value method lookup for AMB-METHOD ambiguity guard
     global_methods: dict[str, list[Symbol]] = {}
 
-    # Position-based lookup for enclosing method resolution in monorepos
-    symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
+    # Position-based lookup for enclosing method and type resolution in
+    # monorepos (WI-gikuk): an enclosing symbol is found by where it is
+    # declared, never by its name.
+    symbol_by_position = _java_position_index(all_symbols)
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
-        # A symbol without a span has no position to index; consumers fall
-        # back to name-based lookup in global_symbols.
-        if sym.span is not None:
-            symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind in _JAVA_TYPE_SYMBOL_KINDS:
             class_symbols[sym.name] = sym
             if sym.name not in class_by_name:
@@ -4041,13 +4095,15 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # Build per-symbol file imports for extends/implements disambiguation
     # Maps symbol ID -> file-level imports (simple_name -> fqn)
     #
-    # Uses a path-to-symbol-IDs index for O(n+m) instead of O(n*m).
-    # The old nested loop iterated all 76K symbols for each of 5.6K files
-    # (434M iterations, 400s on kafka).  This version: two linear passes.
+    # Uses a path-to-symbol-IDs index: two linear passes, O(n+m), rather
+    # than scanning every symbol for every file, O(n*m), which takes minutes
+    # on a large repo.
     sym_file_imports: dict[str, dict[str, str]] = {}
     syms_by_path: dict[str, list[str]] = {}
+    file_symbols_by_path: dict[str, list[Symbol]] = {}
     for sym in all_symbols:
         syms_by_path.setdefault(sym.path, []).append(sym.id)
+        file_symbols_by_path.setdefault(sym.path, []).append(sym)
     _symbols_by_path = symbols_by_path_index(all_symbols)
     for pf in parsed_files:
         file_imports = pf.imports or {}
@@ -4055,95 +4111,76 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             for sym_id in syms_by_path.get(str(pf.path), []):
                 sym_file_imports[sym_id] = file_imports
 
-    # Build global class inheritance map for inherited method resolution.
-    # Maps child class name -> parent class name (resolved to symbol name).
-    global_class_parents: dict[str, str] = {}
+    # Build global class inheritance map for inherited field resolution.
+    # Maps child class symbol ID -> parent class symbol ID.
     # Build global class field types for inherited field resolution.
-    # Maps class_name -> {field_name: type_name}
+    # Maps class symbol ID -> {field_name: type_name}
+    #
+    # Both are keyed by the class SYMBOL, found by its declaration's position
+    # (WI-gikuk). Keyed by the dotted class name, which has no package, two
+    # same-named classes in two packages would merge their field tables and
+    # keep one parent between them (last file wins).
+    global_class_parents: dict[str, str] = {}
     global_class_fields: dict[str, dict[str, str]] = {}
     for pf in parsed_files:
         for node in iter_tree(pf.tree.root_node):
             if node.type == "class_declaration":
-                name = _get_class_name(node, pf.source)
-                if not name:  # pragma: no cover
+                src_sym = _java_symbol_declared_by(node, pf.path, symbol_by_position)
+                if src_sym is None:  # pragma: no cover - Pass 1 emits every class
                     continue
-                ancestors = _get_class_ancestors(node, pf.source)
-                current = ".".join(ancestors + [name]) if ancestors else name
                 for child in node.children:
                     if child.type == "superclass":
                         for subchild in child.children:
                             if subchild.type == "type_identifier":
-                                parent_name = _node_text(subchild, pf.source)
-                                # Resolve parent to its symbol name
-                                dst_sym = None
-                                src_sym = class_symbols.get(current)
-                                if (
-                                    src_sym is not None
-                                    and class_by_name is not None
-                                    and sym_file_imports is not None
-                                ):
-                                    dst_sym = _resolve_base_class_java(
-                                        parent_name, src_sym,
-                                        class_by_name, sym_file_imports,
-                                    )
-                                if (
-                                    dst_sym is None
-                                    and parent_name in class_symbols
-                                    and not (src_sym is not None and _java_external_base(
-                                        parent_name, src_sym, class_by_name, sym_file_imports,
-                                    ))
-                                ):  # pragma: no cover
-                                    dst_sym = class_symbols[parent_name]
+                                # Resolve the parent through the child's file
+                                dst_sym = _resolve_base_class_java(
+                                    _node_text(subchild, pf.source), src_sym,
+                                    class_by_name, sym_file_imports,
+                                )
                                 if dst_sym is not None:
-                                    global_class_parents[current] = dst_sym.name
+                                    global_class_parents[src_sym.id] = dst_sym.id
                                 break
-            # Collect field declarations per class. INV-vugon: through
+            # Collect field declarations per class, through
             # ``_declared_type_name``, so a generic or inline-qualified field
             # registers its base type for the inherited-field walk, the same
-            # reading ``_extract_edges`` gives the file's own fields.
+            # reading ``_extract_edges`` gives the file's own fields (INV-vugon).
             elif node.type == "field_declaration":
-                cls_ancestors = _get_class_ancestors(node, pf.source)
+                owner_sym = _get_enclosing_type_symbol(node, pf.path, symbol_by_position)
                 declared_field_type = _declared_type_name(
                     node.child_by_field_name("type"), pf.source,
                 )
-                if cls_ancestors and declared_field_type is not None:
-                    cls_name = ".".join(cls_ancestors)
+                if owner_sym is not None and declared_field_type is not None:
                     for child in node.children:
                         if child.type != "variable_declarator":
                             continue
                         vc = child.child_by_field_name("name")
                         if vc is None:  # pragma: no cover - the grammar always names one
                             continue
-                        global_class_fields.setdefault(cls_name, {})[
+                        global_class_fields.setdefault(owner_sym.id, {})[
                             _node_text(vc, pf.source)
                         ] = declared_field_type
 
-    # WI-puvil (PR-5 of INV-nilud): attach the global_class_fields data
-    # to each class symbol's ``meta["fields"]`` so the Tier-2
-    # ``inherited_calls`` linker can walk parents and resolve
-    # ``field.method()`` Site-3 calls without re-parsing the AST. This is
-    # the single source of truth for "what fields does this class have?"
-    # — the in-analyzer Case-3.5 walk (java.py:1555-1594) is replaced by
-    # the linker's ``_walk_parents_for_field`` helper that reads this
-    # meta off the parent class symbols it finds via the ``extends``
-    # edges emitted by ``inheritance.py``.
-    for cls_name, fields_dict in global_class_fields.items():
-        cls_sym = class_symbols.get(cls_name)
-        if cls_sym is None:  # pragma: no cover
+    # Attach the global_class_fields data to each class symbol's
+    # ``meta["fields"]`` so the Tier-2 ``inherited_calls`` linker can walk
+    # parents and resolve ``field.method()`` Site-3 calls without re-parsing
+    # the AST. This is the single source of truth for "what fields does this
+    # class have?": the linker's ``_walk_parents_for_field`` helper reads
+    # this meta off the parent class symbols it finds via the ``extends``
+    # edges emitted by ``inheritance.py`` (WI-puvil).
+    type_by_id = {s.id: s for s in all_symbols if s.kind in _JAVA_TYPE_SYMBOL_KINDS}
+    for cls_id, fields_dict in global_class_fields.items():
+        cls_sym = type_by_id.get(cls_id)
+        if cls_sym is None:  # pragma: no cover - keyed by a type symbol's id
             continue
         if cls_sym.meta is None:
             cls_sym.meta = {}
         cls_sym.meta["fields"] = dict(fields_dict)
 
-    # WI-gajuh: the method return-type registry (WI-kuroj) is the ONE
-    # interface Pass 2 reads a return type through. It was built here and
-    # never passed to ``_extract_edges`` -- write-only, the defect WI-doluf
-    # found in Go -- while a comment beside it cited an inline arm that
-    # "handles the active use case"; that arm read the signature and bound
-    # the type only when it named a PROJECT class, so ``var w =
-    # F.makeWriter(); w.write()`` across files was ``java:external:0-0:w.write``.
+    # The method return-type registry is the ONE interface Pass 2 reads a
+    # return type through (WI-gajuh), so ``var w = F.makeWriter(); w.write()``
+    # types ``w`` across files even when the type is a library class.
     #
-    # THE CONTRACT, which WI-lalot's library-signature loader will feed with
+    # THE CONTRACT, which the library-signature loader below feeds with
     # the same shape: key ``<Owner>.<method>`` -- a project class bare, the
     # way Pass 1 names its methods (``F.makeWriter``); a library owner by its
     # qualified path (``java.net.Socket.getOutputStream``). Value: the
@@ -4177,7 +4214,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             ret_text = qualified
         method_return_type_registry.setdefault(sym.name, ret_text)
 
-    # WI-lalot: the library rows. They ship ALREADY fully qualified and so
+    # The library rows (WI-lalot). They ship ALREADY fully qualified and so
     # deliberately bypass the `_qualify_receiver_type` step above, which resolves
     # an analysed return type against its DECLARING FILE's imports -- a catalogue
     # row has no declaring file. Merged after the analysed rows, so an in-repo
@@ -4210,12 +4247,13 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             wildcard_imports=pf.wildcard_imports or [],
             method_return_type_registry=method_return_type_registry,
             project_class_names=project_class_names,
+            file_symbols=file_symbols_by_path.get(str(pf.path), []),
         )
-        # WI-lozug: emit module_attr_ref edges for field_access nodes
-        # whose base resolves to an imported class or to ``System``
-        # (an implicit java.lang import).  Pairs with the
+        # Emit module_attr_ref edges for field_access nodes whose base
+        # resolves to an imported class or to ``System`` (an implicit
+        # java.lang import; WI-lozug).  Pairs with the
         # ``attributes:`` entries in io_primitives/java.yaml
-        # (System.out, System.err under logging since WI-runos;
+        # (System.out, System.err under logging;
         # System.in under ipc_recv).
         #
         # Deliberate deviation from Go/JS: the callee-skip logic is
@@ -4257,12 +4295,12 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             run_id=run.execution_id,
             call_node_kinds=("__never_match_java__",),
             call_function_field_names=("__unused__",),
-            # INV-hopib: record the call a stream is handed to, or whose
-            # receiver it is (``System.out.println(x)``: the field_access is
-            # the method_invocation's ``object``).
+            # Record the call a stream is handed to, or whose receiver it is
+            # (``System.out.println(x)``: the field_access is the
+            # method_invocation's ``object``; INV-hopib).
             carrier_call_kinds=("method_invocation", "object_creation_expression"),
             carrier_receiver_fields=("object",),
-            # INV-fafol: anchor each read to the callable that performs it.
+            # Anchor each read to the callable that performs it (INV-fafol).
             enclosing_symbols=symbols_for_path(
                 _symbols_by_path, str(pf.path),
                 str(pf.path.relative_to(repo_root))
@@ -4274,8 +4312,9 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
         if _java_df is not None:
             edges = _annotate_dataflow(edges, pf.tree, pf.source, _java_df)
         all_edges.extend(edges)
-        # INV-gojit: surface import declarations as `imports` edges (kept out
-        # of the dataflow pass above — imports carry no read/write access mode).
+        # Surface import declarations as `imports` edges (kept out of the
+        # dataflow pass above — imports carry no read/write access mode;
+        # INV-gojit).
         all_edges.extend(
             _extract_import_edges(pf.tree, pf.source, pf.path, run)
         )

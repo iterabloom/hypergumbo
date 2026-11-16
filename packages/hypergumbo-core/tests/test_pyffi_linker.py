@@ -1660,22 +1660,20 @@ class TestInvZuhubPyFFIFallback:
 
 
 class TestPyFFILinkerTestFileExclusion:
-    """WI-razib / INV-kodan: the linker must not mint FFI edges out of test code.
+    """The linker must not mint FFI edges out of test code.
 
-    On the self-corpus every one of the 10 ``C_stdlib`` FFI ``calls`` edges the
-    pass emitted originated from ``test_pyffi_linker.py`` — this file — because
-    production hypergumbo code uses no ctypes/cffi at all. So the pass's entire
-    observable output was its own fixtures: phantom edges in the graph, and (per
-    INV-kodan) 4.6s of CPU per analysis validating nothing but itself.
+    FFI fixtures in test files (this one included) would otherwise become
+    phantom edges in the graph; in a repo whose production code uses no
+    ctypes/cffi, they would be the pass's entire output.
 
-    The fix is the linker convention the shared ``paths.is_test_file`` chokepoint
-    already serves for ~22 sibling linkers. Note that pyffi could NOT adopt
-    ``discovery.find_non_test_files`` like most of them: it never walks the repo,
-    it consumes in-memory symbol lists, so the gate belongs on the symbol path.
+    The gate is the shared ``paths.is_test_file`` chokepoint sibling linkers
+    use. pyffi cannot use ``discovery.find_non_test_files`` as most of them
+    do: it never walks the repo, it consumes in-memory symbol lists, so the
+    gate belongs on the symbol path. (history: WI-razib, INV-kodan)
     """
 
     def test_ctypes_call_from_a_test_file_emits_no_edge(self, tmp_path: Path) -> None:
-        """The filed defect: a ctypes call inside a test file must not link."""
+        """A ctypes call inside a test file must not link."""
         from hypergumbo_core.linkers.pyffi import link_pyffi
 
         tests_dir = tmp_path / "tests"
@@ -1711,9 +1709,7 @@ class TestPyFFILinkerTestFileExclusion:
 
         Without this, gating too broadly — or a tmp_path that itself reads as a
         test directory — would satisfy the guard while silently deleting the
-        linker's real output. Same shape as the fixture-suppression trap where a
-        byte-identical file yields 4 markers at an ordinary path and 0 under
-        ``tests/``.
+        linker's real output.
         """
         from hypergumbo_core.linkers.pyffi import link_pyffi
 
@@ -1747,8 +1743,8 @@ class TestPyFFILinkerTestFileExclusion:
 
         Phase 2 never sees a path — it walks existing ``edges`` and keys on
         ``edge.dst`` — so the gate matches ``edge.src`` against the ids of the
-        Python symbols that live in test files. Gating only Phase 1 would have
-        left the same defect open on the PyO3 half and forced a disclosed gap.
+        Python symbols that live in test files. Gating only Phase 1 would
+        still mint PyO3 edges from test code.
         """
         from hypergumbo_core.linkers.pyffi import link_pyffi
 

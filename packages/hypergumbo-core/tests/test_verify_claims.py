@@ -131,8 +131,8 @@ class TestLoadExtraCatalogPaths:
         assert sources == []
         assert sinks == []
         assert sanitizers == []
-        # INV-fotav added this slot; an unasserted tuple element is a slot
-        # nobody notices going wrong.
+        # The fourth slot (io_primitives, INV-fotav) is asserted too: an
+        # unasserted tuple element is a slot nobody notices going wrong.
         assert io_prims == []
 
     def test_relative_paths_resolve_against_claims_directory(
@@ -241,9 +241,9 @@ class TestVerifyClaim:
         assert verdict.evidence_count == 10
 
     def test_no_constraint_returns_inconclusive(self) -> None:
-        """ADR-0033 Phase 3 PR4 / WI-rolol sub-task A: a claim with no
-        machine-checkable constraint returns ``inconclusive`` rather
-        than silently falling through to ``confirmed`` (INV-bitig P0).
+        """A claim with no machine-checkable constraint returns
+        ``inconclusive`` rather than silently falling through to
+        ``confirmed`` (WI-rolol, INV-bitig).
         """
         bmap = _make_boundary_map(fs_read=5)
         claim = Claim(
@@ -256,10 +256,9 @@ class TestVerifyClaim:
         assert "No machine-checkable" in verdict.details
 
     def test_must_not_exist_empty_map_is_inconclusive(self) -> None:
-        """INV-bitig P0: an empty boundary map (no I/O edges at all) means the
-        analysis saw nothing — a must_not_exist claim is INCONCLUSIVE, not a
-        silent ``confirmed``. (Was test_must_not_exist_no_boundary_data, which
-        codified the bug as expected behavior; flipped when WI-kajil landed.)
+        """An empty boundary map (no I/O edges at all) means the analysis saw
+        nothing — a must_not_exist claim is INCONCLUSIVE, not a silent
+        ``confirmed`` (INV-bitig, WI-kajil).
         """
         bmap = BoundaryMap()  # empty: total_io_edges == 0
         claim = Claim(
@@ -480,9 +479,8 @@ class TestVerifyTaintClaim:
         assert verdict.verdict == "confirmed"
 
     def test_no_taint_flow_constraint_returns_inconclusive(self) -> None:
-        """ADR-0033 Phase 3 PR4 / WI-rolol sub-task A: a claim without a
-        taint_flow constraint returns ``inconclusive`` rather than
-        silently falling through to ``confirmed``.
+        """A claim without a taint_flow constraint returns ``inconclusive``
+        rather than silently falling through to ``confirmed`` (WI-rolol).
         """
         claim = Claim(id="X", text="X")
         verdict = verify_taint_claim(claim, [])
@@ -536,14 +534,14 @@ def _flow(
 
 
 class TestConfidenceReachesTheConsumer:
-    """INV-karud (c): the adjudication a verdict rests on must be readable.
+    """The adjudication a verdict rests on must be readable (INV-karud (c)).
 
-    ``verify_taint_claim`` hardcoded the string ``approximate`` into every
-    violated verdict's ``details``, and ``_flow_evidence_dict`` dropped
-    ``confidence`` / ``analysis_method`` entirely. So the ADR-0017 §3a walk
-    could adjudicate a flow by data dependence and the record would still say
-    "approximate" — the label was produced and then discarded, which is the
-    same provenance discontinuity the walk itself was built to close.
+    A violated verdict's ``details`` states the confidence of the flows it
+    counts, ``analysis_methods`` gives the per-method split, and each evidence
+    row carries ``confidence`` / ``analysis_method``. Without them the
+    ADR-0017 §3a walk could adjudicate a flow by data dependence while the
+    record still said "approximate" — the label produced and then discarded,
+    the same provenance discontinuity the walk exists to close.
 
     The aggregation policy is STATED, not left to ``max()``: a verdict is a
     disjunction over its flows and they can be adjudicated differently, so the
@@ -563,7 +561,7 @@ class TestConfidenceReachesTheConsumer:
         )
 
     def test_uniform_approximate_stays_terse(self) -> None:
-        """The common case reads exactly as it did — no count noise."""
+        """The common case stays terse — no count noise."""
         verdict = verify_taint_claim(
             self._claim(), [_flow(source_symbol="s", sink_symbol="d")],
         )
@@ -572,8 +570,8 @@ class TestConfidenceReachesTheConsumer:
     def test_uniform_precise_says_precise(self) -> None:
         """A verdict resting entirely on DDG-adjudicated flows says so.
 
-        This is the assertion the hardcoded literal made impossible: before,
-        a fully data-dependence-confirmed verdict still printed "approximate".
+        A hardcoded "approximate" literal would fail this: a fully
+        data-dependence-confirmed verdict must not print "approximate".
         """
         verdict = verify_taint_claim(
             self._claim(),
@@ -658,12 +656,10 @@ class TestConfidenceReachesTheConsumer:
 class TestSanitizedFlowsAreDisclosed:
     """A sanitized flow is counted and reported, not pruned into silence.
 
-    ``TaintFlowFinding.sanitized`` was written ``False`` at both and only
-    construction sites, so ``and not f.sanitized`` here was a tautology and the
-    ``confirmed_safe`` branch of the ``verdict`` property was unreachable in
-    production. The propagators now emit sanitized flows labelled (owner ruling
-    2026-08-03), which makes the filter real — and what a filter removes has to
-    be counted, or the confirmed verdict reads identically whether the code is
+    The propagators emit sanitized flows labelled (``sanitized=True``) rather
+    than pruning them, and ``verify_taint_claim`` filters them out of the
+    violation count with ``not f.sanitized``. What a filter removes has to be
+    counted, or the confirmed verdict reads identically whether the code is
     safe by construction or safe because of one ``encrypt()`` call.
     """
 
@@ -691,30 +687,28 @@ class TestSanitizedFlowsAreDisclosed:
     def test_confirmed_verdict_says_what_is_holding_it(self) -> None:
         """...and the reader learns a sanitizer is why it reads clean.
 
-        This is the case the silent prune served worst: the claim looked safe
-        by construction when it was really safe by one function call.
+        This is the case a silent prune would serve worst: the claim would look
+        safe by construction when it is really safe by one function call.
         """
         verdict = verify_taint_claim(self._claim(), [self._sanitized()])
         assert verdict.sanitized_flows == 1
         assert "pass through a sanitizer on every route" in verdict.details
 
     def test_a_repo_supplied_sanitizer_is_named_and_marked(self) -> None:
-        """INV-pojib — the verdict must say WHOSE sanitizer made it clean.
+        """The verdict must say WHOSE sanitizer made it clean (INV-pojib).
 
-        MEASURED at dev adfaaeebf2 on the shipped CLI. An 11-line fixture whose
+        A repo-supplied sanitizer entry can flip a verdict. A fixture whose
         only statements are ``secret = os.environ["API_KEY"]``,
         ``safe = launder(secret)`` and ``os.remove(safe)`` — where ``launder``
-        returns its argument unchanged — went from ``violated`` rc 1 to
-        ``confirmed`` rc 0 when handed an 8-line sanitizer file asserting that
-        ``h.launder`` transforms host_secret to ciphertext. The same lie shipped
-        INSIDE the tree via the claims file's ``extra_catalogs:`` block gives the
-        same rc 0 with no flag passed by whoever runs the tool.
+        returns its argument unchanged — is ``violated`` until a sanitizer
+        file asserts that ``h.launder`` transforms host_secret to ciphertext;
+        the same assertion can ship INSIDE the tree via the claims file's
+        ``extra_catalogs:`` block, with no flag passed by whoever runs the tool.
 
-        INV-zosun's disclosure names the INPUT ("computed against USER-SUPPLIED
-        catalogue input"). It never links that input to the EFFECT: the clause
-        was built from the sanitized-flow COUNT alone, so a lying repo-supplied
-        entry and a legitimate built-in ``Fernet.encrypt`` produced BYTE-IDENTICAL
-        verdict text, and rc was 0 either way.
+        Naming the user-supplied INPUT (INV-zosun) is not enough; the verdict
+        text must link that input to the EFFECT. A clause built from the
+        sanitized-flow COUNT alone gives a lying repo-supplied entry and a
+        legitimate built-in ``Fernet.encrypt`` byte-identical verdict text.
 
         This is not a lab case. hypergumbo's own self-proof declares its
         zone-barrier sanitizer through ``extra_catalogs:``, and that sanitizer is
@@ -726,12 +720,10 @@ class TestSanitizedFlowsAreDisclosed:
         f.sanitized_by = ("h.launder",)
         f.sanitized_by_user_supplied = ("h.launder",)
         verdict = verify_taint_claim(self._claim(), [f])
-        # CONFIRMING, not the literal "confirmed". This assertion used to read
-        # `== "confirmed"`, which was right for remedy (a1) — it deliberately
-        # changed only the prose — and became wrong the moment (b)/(c) made the
-        # VALUE carry the same fact. What this test is about is that the flow
-        # is not counted against the claim; which confirming value it lands on
-        # is `TestARepoSuppliedSanitizerReachesTheExitCode`'s business.
+        # CONFIRMING, not the literal "confirmed": the verdict VALUE also
+        # records the repo-supplied dependency. What this test is about is that
+        # the flow is not counted against the claim; which confirming value it
+        # lands on is `TestARepoSuppliedSanitizerReachesTheExitCode`'s business.
         assert verdict.verdict in CONFIRMING_VERDICTS
         assert "h.launder" in verdict.details, (
             f"the sanitizer holding the verdict up must be NAMED, or the reader "
@@ -748,8 +740,8 @@ class TestSanitizedFlowsAreDisclosed:
     ) -> None:
         """THE DISCRIMINATOR. If every sanitized verdict said "project-local",
         the marking would carry no information and a reader would learn to
-        discount it — which is the failure mode this fix exists to correct, not
-        a milder version of it.
+        discount it — which is the failure mode this marking exists to correct,
+        not a milder version of it.
         """
         f = _flow(source_symbol="s", sink_symbol="d")
         f.sanitized = True
@@ -764,19 +756,14 @@ class TestSanitizedFlowsAreDisclosed:
     def test_several_candidate_sanitizers_are_not_reported_as_one(self) -> None:
         """THE BARRIER RECORDS WHAT COULD HAVE FIRED, NOT WHAT DID.
 
-        All four shipped ``*.encrypt`` sanitizers match a bare ``encrypt``
-        callee, so a fixture calling ``Fernet.encrypt`` has four candidates. The
-        first version of this attribution named ONE of them — and named the
-        wrong one, printing ``ChaCha20Poly1305.encrypt`` for a Fernet call,
-        because the registry kept a single slot per (caller, label) and the last
-        short-name match overwrote the rest.
-
-        That was caught by running the live discriminator AFTER the unit tests
-        were already green, which is why this test exists: naming a sanitizer
-        the analysis cannot single out is a new way of stating something it
-        never established, and it is worse than the unattributed clause it
-        replaced — a reader who checks the named function against the source
-        will not find it.
+        Several shipped ``*.encrypt`` sanitizers match a bare ``encrypt``
+        callee, so a fixture calling ``Fernet.encrypt`` has several candidates.
+        Naming just one of them states something the analysis never
+        established, and can name the wrong one (``ChaCha20Poly1305.encrypt``
+        for a Fernet call) — worse than an unattributed clause, because a
+        reader who checks the named function against the source will not find
+        it. With several candidates the wording says "one of" and lists them
+        all.
         """
         f = _flow(source_symbol="s", sink_symbol="d")
         f.sanitized = True
@@ -851,15 +838,14 @@ class TestSanitizedFlowsAreDisclosed:
 
 
 class TestViolatedPathDisclosure:
-    """WI-bifob's contract, on the path that never implemented it.
+    """WI-bifob's disclosure contract, on the VIOLATED path.
 
-    The item's own stated contract is that exclusions are disclosed "on the
-    CONFIRMED path as well as the violated one". Only the confirmed path did
-    it: on the violated path ``excluded_flows`` was attached to the dataclass
-    and never rendered, and ``cli.py`` prints ``details`` alone — so a
-    text-mode reader of a violated claim never learned that flows had been set
-    aside by a policy they did not choose. ``flow_origins`` (WI-vazal) reached
-    no text surface at all, on either path.
+    Exclusions are disclosed "on the CONFIRMED path as well as the violated
+    one". ``cli.py`` prints ``details`` alone in text mode, so on a violated
+    verdict ``excluded_flows`` and ``flow_origins`` (WI-vazal) must be rendered
+    into ``details`` too — a dataclass field alone would leave a text-mode
+    reader of a violated claim unaware that flows were set aside by a policy
+    they did not choose.
     """
 
     def _claim(self) -> Claim:
@@ -890,9 +876,9 @@ class TestViolatedPathDisclosure:
     def test_violated_verdict_reports_flow_origins_in_text(self) -> None:
         """The WI-vazal breakdown reaches the only surface text mode prints.
 
-        Measured need, not a hypothetical: all 140 flows on pretix's largest
-        violated claim are database-read-to-database-write, which changes what
-        a reader does about it — and no text consumer could see that.
+        On an ORM-backed app a violated claim's flows can be entirely
+        database-read-to-database-write, which changes what a reader does about
+        it — so a text consumer must be able to see the split.
         """
         f1 = _flow(source_symbol="s1", sink_symbol="d1")
         f1.source_boundary = "db_read"
@@ -911,9 +897,9 @@ class TestViolatedPathDisclosure:
     def test_benchmark_source_is_not_called_a_test(self) -> None:
         """Owner ruling: keep ``is_test_file`` broad, disclose which rule fired.
 
-        Before the split this reported ``test_sourced``, which is a false
-        statement about a ``benches/`` path — the reader would go looking for a
-        test that does not exist.
+        Reporting ``test_sourced`` here would be a false statement about a
+        ``benches/`` path — the reader would go looking for a test that does
+        not exist.
         """
         findings = [
             _flow(source_symbol="python:src/app.py:1-2:f:function",
@@ -949,11 +935,12 @@ class TestViolatedPathDisclosure:
         assert verdict.evidence_count == 1
 
     def test_split_does_not_change_which_flows_are_excluded(self) -> None:
-        """Non-destructiveness: the same paths are excluded, only named better.
+        """Non-destructiveness: the per-reason buckets exclude exactly the
+        paths ``is_test_file`` does.
 
         ``classify_test_file`` IS ``is_test_file`` (the boolean is defined as
         "reason is not None"), so the population cannot move. Asserted rather
-        than assumed, because "we only changed the label" is exactly the claim
+        than assumed, because "only the label differs" is exactly the claim
         that turns out to be false.
         """
         paths = [
@@ -973,11 +960,11 @@ class TestViolatedPathDisclosure:
 
 
 class TestViolatedFlowEvidence:
-    """WI-kikis: a violated taint claim must surface per-flow drill-down
-    evidence (symbol IDs + call-graph path) and deduplicate identical-looking
-    rows, instead of collapsing every flow to a bare ``primitive -> primitive``
-    pair (which, at high counts, rendered as verbatim duplicates hiding 99%+
-    of the evidence)."""
+    """A violated taint claim surfaces per-flow drill-down evidence (symbol
+    IDs + call-graph path) and deduplicates identical rows, rather than
+    collapsing every flow to a bare ``primitive -> primitive`` pair, which at
+    high counts renders as verbatim duplicates that hide the evidence
+    (WI-kikis)."""
 
     def _claim(self) -> Claim:
         return Claim(
@@ -999,7 +986,8 @@ class TestViolatedFlowEvidence:
 
     def test_identical_primitive_rows_distinguished_by_symbol(self) -> None:
         # Same primitive names, DIFFERENT symbols: these are distinct flows that
-        # previously rendered as verbatim duplicates ("cmd_run -> replace" x N).
+        # a primitive-only row would render as verbatim duplicates
+        # ("cmd_run -> replace" x N).
         findings = [
             _flow(source_symbol=f"s{i}", sink_symbol=f"d{i}") for i in range(3)
         ]
@@ -1057,10 +1045,10 @@ class TestViolatedFlowEvidence:
                 "walk_verdict": "",
                 "walk_blocked_by": "",
                 # INV-muhij Finding A: what the WHOLE GROUP reported, beside
-                # the representative's scalar. A collapsed row inherited
-                # ``grp[0]``'s marker and nothing recorded the rest, so a rule
-                # deciding whether such a row may carry a verdict alone was
-                # reading a fact true of about one member in three. Singletons
+                # the representative's scalar. On a collapsed row the scalar is
+                # ``grp[0]``'s marker alone, so a rule deciding whether such a
+                # row may carry a verdict must read the whole group's values,
+                # not one member's. Singletons
                 # here because this fixture is one uncollapsed finding, and
                 # ``[""]`` rather than ``[]`` because an empty marker is a
                 # VALUE (the walk ran) — dropping it would make a mixed group
@@ -1411,7 +1399,7 @@ _JS_CALL = {
 #: ``:function``, so the INV-fibis uncatalogued-module check skips them whatever is
 #: passed — which means passing the real thing costs nothing and makes each
 #: ``complete is True`` below a live guard against that check OVER-firing. ``{}``
-#: would have disabled it and turned those assertions into tautologies.
+#: would disable it and turn those assertions into tautologies.
 _REAL_CATALOGS = {
     "python": load_catalog("python"),
     "javascript": load_catalog("javascript"),
@@ -1423,8 +1411,9 @@ class TestComputeBoundaryCoverage:
     trustworthy enough to CONFIRM a zero-chain boundary claim. A clean verdict
     is only meaningful if the analysis could actually have seen the I/O.
 
-    Covers the first two blind spots. The third — calls into a module the catalog
-    cannot adjudicate (INV-fibis) — lives in
+    Covers no call edges at all, a supported language with no call edges, and
+    a call-emitting language with no catalogue (INV-dabov). Calls into a
+    module the catalog cannot adjudicate (INV-fibis) are covered in
     ``test_verify_claims_uncatalogued_module_coverage.py``."""
 
     def test_no_call_edges_is_incomplete(self) -> None:
@@ -1461,25 +1450,23 @@ class TestComputeBoundaryCoverage:
     def test_a_call_emitting_language_with_no_catalogue_is_incomplete(
         self,
     ) -> None:
-        """INV-dabov: the third blind spot, and the one that failed OPEN.
+        """A language that makes calls but has no catalogue fails OPEN
+        unless caught here (INV-dabov).
 
         A language with no ``io_primitives/*.yaml`` never reaches
         ``supported_languages`` — ``cmd_verify_claims`` builds its catalogs
         dict under ``if catalog.primitives:``, so an empty catalogue is
         dropped and the language is invisible to the ``blind`` check above.
         It is equally invisible to ``_adjudicate_external_modules``, whose
-        ``catalog is None`` skip fires for the same reason. So the analysis
-        sees the calls, can classify none of them, and says ``confirmed``.
-
-        Reproduced on the shipped CLI with a 7-line Ruby fixture doing
-        ``Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}")``: the
-        ``net_send`` claim returned **confirmed, rc 0**, with no disclosure of
-        any kind — and the analyzer is not blind, it emits the call edge.
+        ``catalog is None`` skip fires for the same reason. Without this rule
+        the analysis sees the calls, classifies none of them, and says
+        ``confirmed`` with no disclosure — e.g. a ``net_send`` claim on a Ruby
+        fixture doing ``Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}")``,
+        even though the analyzer is not blind and emits the call edge.
 
         The rule is CALL-SCOPED, not repo-scoped, and that distinction is
-        load-bearing: measured across six repos, a repo-scoped rule would name
-        up to 16 languages including ``markdown``, ``gitignore`` and ``yaml``,
-        while the call-scoped one names between one and three real ones.
+        load-bearing: a repo-scoped rule would also name languages such as
+        ``markdown``, ``gitignore`` and ``yaml`` that make no calls at all.
         ``test_unsupported_language_without_calls_does_not_block`` is the
         guard for that half and must keep passing.
         """
@@ -1573,9 +1560,9 @@ class TestVerifyClaimCoverage:
 class TestFlowEvidenceCarriesMatchProvenance:
     """The evidence row must let a reader confirm the match by lookup.
 
-    WI-joruv: adding the fields to TaintFlowFinding is not enough — the
-    evidence dict is the boundary where they would otherwise be dropped,
-    and the dict is what a consumer actually reads.
+    Carrying the fields on TaintFlowFinding is not enough — the evidence
+    dict is the boundary where they would otherwise be dropped, and the dict
+    is what a consumer actually reads (WI-joruv).
     """
 
     def _finding(self) -> "TaintFlowFinding":
@@ -1617,10 +1604,10 @@ class TestFlowEvidenceCarriesMatchProvenance:
 # ---------------------------------------------------------------------------
 # WI-bifob — production is the default scope, exclusions are DISCLOSED
 #
-# A claim verdict is a DISJUNCTION over its flows, so one test-sourced flow
-# held a whole claim at `violated` and no precision work elsewhere could move
-# it. Measured on the 9-repo cohort, 2 of 18 violated claims rested entirely
-# on a single test-sourced flow each.
+# A claim verdict is a DISJUNCTION over its flows, so a single test-sourced
+# flow would hold a whole claim at `violated` where no precision work
+# elsewhere could move it. Non-production sources are therefore excluded by
+# default, and every exclusion is reported on the verdict.
 # ---------------------------------------------------------------------------
 
 
@@ -1671,8 +1658,8 @@ class TestSymbolPathSlot:
         """`dart:io` in the path slot must survive.
 
         A naive parts[1] parse returns "dart" here and silently mis-classifies
-        the file. ir._extract_path_slot has exactly that bug; this must not
-        become a third copy of it.
+        the file; ``_symbol_path_slot`` delegates to the right-anchored
+        ``ir.symbol_path_slot`` rather than keeping its own copy.
         """
         assert _symbol_path_slot("dart:dart:io:0-0:module:module") == "dart:io"
 
@@ -1718,12 +1705,10 @@ class TestNonProductionExclusion:
     """The default excludes; the disclosure is not optional."""
 
     def test_sole_test_sourced_flow_flips_verdict_to_confirmed(self) -> None:
-        """The measured cohort case, reproduced.
+        """A claim whose only evidence is test-sourced reads confirmed.
 
-        pretix/host-secret-no-network and alertmanager/untrusted-input-no-
-        network each had exactly ONE evidence row, both test-sourced. Under
-        the old default a conftest.py reading an env var held the whole claim
-        at `violated`.
+        A conftest.py reading an env var must not hold a whole claim at
+        `violated` by default; the excluded flow is counted instead.
         """
         verdict = verify_taint_claim(
             _network_claim(), [_finding_from("src/tests/e2e/conftest.py")]
@@ -1756,9 +1741,9 @@ class TestNonProductionExclusion:
     def test_mixed_keeps_violated_and_still_discloses(self) -> None:
         """A claim that survives on production evidence still reports the rest.
 
-        This is the common shape on the cohort — the excluded rows are volume,
-        not verdict-changing — and reporting only on the confirmed path would
-        hide the majority of what was set aside.
+        In this shape the excluded rows are volume, not verdict-changing, and
+        reporting only on the confirmed path would hide everything that was set
+        aside.
         """
         verdict = verify_taint_claim(
             _network_claim(),
@@ -1798,11 +1783,10 @@ class TestNonProductionExclusion:
 # WI-vazal — report WHICH boundary a flow entered through, without relabelling
 #
 # AUTO_SOURCE_LABEL_MAP collapses net_recv, ipc_recv and db_read into the one
-# label `untrusted_input`. On an ORM-backed app the db_read arm dominates: 93
-# of the 100 displayed rows on pretix's largest violated claim are
-# database-read to database-write. The owner ruling was to keep the flows and
-# make them SEPARABLE, not to relabel them — relabelling would silently change
-# what every already-published `untrusted_input` claim means.
+# label `untrusted_input`. On an ORM-backed app the db_read arm can dominate
+# a violated claim's flows. The flows are kept and made SEPARABLE rather than
+# relabelled — relabelling would silently change what every already-published
+# `untrusted_input` claim means.
 # ---------------------------------------------------------------------------
 
 
@@ -1831,8 +1815,8 @@ class TestFlowOrigins:
         """The whole point: no flow is relabelled, so no claim changes meaning.
 
         A `db_read`-sourced flow must still match a claim written against
-        `untrusted_input`. If this ever fails, the change has become the
-        relabelling option the owner declined.
+        `untrusted_input`. If this ever fails, the breakdown has turned into a
+        relabelling.
         """
         findings = [_finding_with_boundary("db_read")]
         assert findings[0].taint_label == "untrusted_input"
@@ -1893,12 +1877,12 @@ class TestFlowOrigins:
 
 
 class TestExtraCatalogsIoPrimitives:
-    """INV-fotav: ``extra_catalogs:`` grew a fourth key for boundary overlays.
+    """``extra_catalogs:`` has a fourth key, ``io_primitives``, for boundary
+    overlays (INV-fotav).
 
     It is read through the SAME loader as the three taint keys rather than a
-    second one, because ``extra_catalogs:`` is already the one place a claims
-    file declares project-local knowledge — the boundary arm was simply never
-    given a key in it.
+    second one, because ``extra_catalogs:`` is the one place a claims file
+    declares project-local knowledge.
     """
 
     def test_io_primitives_paths_resolve_against_the_claims_directory(
@@ -1932,32 +1916,25 @@ class TestExtraCatalogsIoPrimitives:
 
 
 class TestARepoSuppliedSanitizerReachesTheExitCode:
-    """INV-pojib (b)/(c) — the verdict VALUE, not only the prose, must record
-    that a repo-supplied entry is what made the claim read clean.
+    """The verdict VALUE, not only the prose, must record that a repo-supplied
+    entry is what made the claim read clean (INV-pojib (b)/(c)).
 
-    Remedy (a1) landed at dev 1ec23deb31 and closed the "verdict text cannot
-    distinguish the two" half: the details string now says
-    ``(via h.launder (project-local))``. It deliberately did NOT touch the
-    verdict value or the exit code, and that residual is what this class pins.
+    The details string names the sanitizer and marks it ``user-supplied``,
+    but prose alone is not enough. With the fixture
+    ``os.remove(launder(os.environ["API_KEY"]))`` (``launder`` returning its
+    argument), a sanitizer entry for ``launder`` declared via
+    ``extra_catalogs:`` turns ``violated`` into a clean verdict. Were that a
+    plain ``confirmed`` (rc 0), its exit code would be identical to that of a
+    verdict the analysis earned unaided. A CI gate reads the exit code;
+    nothing reads the sentence. So the verdict is ``confirmed_with_caveats``
+    (rc 3), legible to the machine the artifact exists to convince and not
+    only to a human re-reading stdout.
 
-    WHY PROSE WAS NOT ENOUGH, measured on the shipped CLI at dev 1ec23deb31
-    with the fixture from the item's own repro (``os.remove(launder(
-    os.environ["API_KEY"]))``, ``launder`` returning its argument):
-
-        baseline, no sanitizer file            -> rc 1  violated
-        + 8-line lie via extra_catalogs:       -> rc 0  confirmed
-
-    rc 0 in the second case is byte-identical to the exit code of a verdict the
-    analysis earned unaided. A CI gate reads the exit code; nothing reads the
-    sentence. So the attribution was legible to a human re-reading stdout and
-    invisible to the machine the artifact exists to convince.
-
-    ADR-0016 §4 already specifies the fourth verdict this uses ("Confirmed with
+    That fourth verdict is the one ADR-0016 §4 specifies ("Confirmed with
     caveats: consistent, but opaque boundaries exist that could not be
-    verified"). Implementing it here is finishing declared work, and the
-    user-supplied-sanitizer case is its second and stronger consumer: an
-    unverifiable ASSERTION by the analysed party, rather than an unverifiable
-    boundary.
+    verified"); the user-supplied-sanitizer case is a second and stronger
+    consumer of it: an unverifiable ASSERTION by the analysed party, rather
+    than an unverifiable boundary.
     """
 
     def _claim(self) -> Claim:
@@ -1984,7 +1961,7 @@ class TestARepoSuppliedSanitizerReachesTheExitCode:
         return f
 
     def test_verdict_value_records_the_repo_supplied_dependency(self) -> None:
-        """The half (a1) left open: the VALUE, which is what a consumer reads."""
+        """The VALUE, which is what a consumer reads, records the dependency."""
         verdict = verify_taint_claim(self._claim(), [self._repo_supplied()])
         assert verdict.verdict == "confirmed_with_caveats", (
             f"a claim held up by an entry the analysed repository supplied is "
@@ -1995,10 +1972,10 @@ class TestARepoSuppliedSanitizerReachesTheExitCode:
         """THE DISCRIMINATOR, and the reason this is worth shipping at all.
 
         A caveat raised on every sanitized verdict would carry no information
-        and a reader would learn to discount it — the same argument that made
-        remedy (a2) (a run-level "a project-local catalogue was in effect"
-        caveat) the wrong shape. If this test ever goes green by accident, the
-        feature has degraded into noise.
+        and a reader would learn to discount it — the same argument that makes
+        a run-level "a project-local catalogue was in effect" caveat the wrong
+        shape. If a built-in sanitizer ever raises a caveat, the feature has
+        degraded into noise.
         """
         verdict = verify_taint_claim(self._claim(), [self._built_in()])
         assert verdict.verdict == "confirmed"
@@ -2014,8 +1991,7 @@ class TestARepoSuppliedSanitizerReachesTheExitCode:
 
     def test_caveat_rides_the_json_envelope(self) -> None:
         """``to_dict`` is the machine surface; a field that stops at the
-        dataclass is half shipped. A pre-existing property test caught exactly
-        this omission on the (a1) fields.
+        dataclass is half shipped.
         """
         d = verify_taint_claim(self._claim(), [self._repo_supplied()]).to_dict()
         assert d["verdict"] == "confirmed_with_caveats"
@@ -2059,11 +2035,11 @@ class TestARepoSuppliedSanitizerReachesTheExitCode:
 
     def test_blindness_still_dominates_a_caveated_verdict(self) -> None:
         """A caveated verdict is still a CONFIRMING one, so the coverage gate
-        must reach it. If ``_require_coverage_to_confirm`` kept testing
-        ``!= "confirmed"``, adding this fourth value would have punched a hole
-        straight through the honesty gate INV-javam/INV-bitig exist to hold —
-        a blind analysis would report ``confirmed_with_caveats`` instead of
-        ``inconclusive``.
+        must reach it. If ``_require_coverage_to_confirm`` tested
+        ``!= "confirmed"`` rather than membership in ``CONFIRMING_VERDICTS``,
+        this fourth value would punch a hole straight through the honesty gate
+        INV-javam/INV-bitig exist to hold — a blind analysis would report
+        ``confirmed_with_caveats`` instead of ``inconclusive``.
         """
         from hypergumbo_core.verify_claims import _require_coverage_to_confirm
         caveated = verify_taint_claim(self._claim(), [self._repo_supplied()])
@@ -2072,12 +2048,11 @@ class TestARepoSuppliedSanitizerReachesTheExitCode:
 
 
 class TestAnOpaqueLaunchQualifiesRatherThanBlinds:
-    """ADR-0016 §4's ORIGINAL specified consumer of the fourth verdict, built
-    at last: "consistent, but opaque boundaries exist that could not be
-    verified". Owner-authorized 2026-08-13.
+    """ADR-0016 §4's specified consumer of the fourth verdict: "consistent,
+    but opaque boundaries exist that could not be verified".
 
-    WHAT ``inconclusive`` WAS LUMPING TOGETHER. Two very different epistemic
-    states arrived at the same verdict:
+    WHAT ``inconclusive`` ALONE WOULD LUMP TOGETHER. Two very different
+    epistemic states:
 
       * "a whole language here has no catalogue — I am blind"
       * "I examined every call and understood them all; three of them hand
@@ -2085,17 +2060,17 @@ class TestAnOpaqueLaunchQualifiesRatherThanBlinds:
         see inside a launched process"
 
     The auditor distinction is exact: a DISCLAIMER ("could not form a view")
-    versus a QUALIFIED OPINION ("correct, except these named items"). The tool
-    issued disclaimers where a qualified opinion was warranted — and because
-    hypergumbo launches git BY DESIGN, ``confirmed`` was permanently
-    unreachable for its own self-proof, making the artifact one that can never
-    say anything at all.
+    versus a QUALIFIED OPINION ("correct, except these named items"). Issuing
+    a disclaimer where a qualified opinion is warranted would leave
+    ``confirmed`` permanently unreachable for hypergumbo's own self-proof,
+    because hypergumbo launches git BY DESIGN — an artifact that can never say
+    anything at all.
 
-    THE DIRECTION IS TOWARDS CONFIRMING, which is why this needed authorization
-    and why the launch list must be COMPLETE for it to be sound. That surface
-    is what the INV-motos (constructors counted), INV-gahuz (opacity gated),
-    INV-larol + INV-virat (producer stamps unstrippable) and INV-zumin
-    (row-order masking) work hardened; this rests on all of it.
+    THE DIRECTION IS TOWARDS CONFIRMING, which is why the launch list must be
+    COMPLETE for this to be sound. It rests on constructors being counted
+    (INV-motos), opacity being gated (INV-gahuz), producer stamps being
+    unstrippable (INV-larol, INV-virat) and row-order masking being prevented
+    (INV-zumin).
 
     AND IT QUALIFIES ONLY WHEN NOTHING ELSE BLOCKS. An opaque launch beside a
     genuinely uncatalogued module is still blindness — the reader cannot tell
@@ -2143,9 +2118,9 @@ class TestAnOpaqueLaunchQualifiesRatherThanBlinds:
 
     def test_blindness_still_blinds(self) -> None:
         """THE DISCRIMINATOR. Coverage that is incomplete for any reason OTHER
-        than opacity must stay ``inconclusive``. If this ever goes green the
-        feature has become a caveat on everything, which is the failure mode
-        remedy (a2) was rejected for on INV-pojib.
+        than opacity must stay ``inconclusive``. If it ever qualifies, the
+        feature has become a caveat on everything, which carries no
+        information (the same reason INV-pojib rejects a run-level caveat).
         """
         cov = BoundaryCoverage(
             complete=False,
@@ -2231,9 +2206,9 @@ class TestOpacityIsDetectedAsSoleBlocker:
 
 
 class TestTheTaintArmQualifiesOnOpacityToo:
-    """PARITY over the two claim kinds. The self-proof's 18 claims are ALL
-    taint claims, so a fix that reached only boundary claims would leave the
-    artifact this was authorized for exactly where it was.
+    """PARITY over the two claim kinds. The self-proof's claims are ALL taint
+    claims, so qualification that reached only boundary claims would never
+    apply to the artifact it exists for.
 
     The taint arm reaches the gate through a different path — ``cmd_verify_
     claims`` flattens coverage into a ``blind_reason`` STRING and hands it to
@@ -2318,8 +2293,7 @@ class TestTheTaintArmQualifiesOnOpacityToo:
 
 
 class TestACaveatKindIsNotRecordedTwice:
-    """The append that closed one instance of the one-slot class opened a
-    duplicate-record instance of its own.
+    """Each caveat kind is recorded at most once per verdict.
 
     ``verify_claims`` runs TWO stages over the same verdict: ``verify_claim``
     (where a boundary claim may already attach ``opaque_boundary``) and then
@@ -2328,12 +2302,12 @@ class TestACaveatKindIsNotRecordedTwice:
     ``has_taint_claims``, so ``blind_reason`` is populated and applied to EVERY
     verdict — including the boundary one that already carries the caveat.
 
-    Measured before the fix: ``['opaque_boundary', 'opaque_boundary']`` on the
-    boundary verdict. Not cosmetic — ``caveats`` is the machine surface a
+    A plain append would record ``['opaque_boundary', 'opaque_boundary']`` on
+    the boundary verdict. Not cosmetic — ``caveats`` is the machine surface a
     consumer branches on and counts, and a doubled entry says a claim rests on
-    twice as many unverifiable doors as it does. The lesson is the mirror of
-    INV-virat's: switching from ASSIGN to APPEND fixes last-writer-wins and
-    introduces duplicate-accumulation unless the append is idempotent per kind.
+    twice as many unverifiable doors as it does. APPEND rather than ASSIGN
+    avoids last-writer-wins (INV-virat) but accumulates duplicates unless the
+    append is idempotent per kind.
     """
 
     def _both_kinds_of_claim(self):
@@ -2469,45 +2443,37 @@ class TestExtraCatalogsIsValidated:
     """A declaration that is not understood must be REPORTED, not discarded
     (INV-sisod).
 
-    WHAT WAS BROKEN, on the shipped CLI, one 2-file repository, one claim, one
-    catalogue file, the ONLY difference being the key name:
+    Unvalidated, a misnamed or mis-shaped sub-key — ``taint_sources:`` for
+    ``sources:``, a bare string where a path list belongs, a ``{path: ...}``
+    mapping where a path string belongs — silently drops the declared
+    catalogue, and a claim it would have violated reads clean with no warning.
+    A declared catalogue path that does not exist already fails
+    (``Error: Taint catalog path not found``, rc 2); a declaration must
+    equally be checked for being UNDERSTOOD, not only for EXISTING.
 
-        extra_catalogs: {sources: [cat/sources.yaml]}         -> violated,  rc 1
-        extra_catalogs: {taint_sources: [cat/sources.yaml]}   -> confirmed,  rc 3
-        extra_catalogs: {sources: cat/sources.yaml}           -> confirmed,  rc 3
-        extra_catalogs: {sources: [{path: cat/sources.yaml}]} -> confirmed,  rc 3
-
-    No warning in any of the three. The CONTROL is what makes it sharp: the same
-    file under the CORRECT key with a path that does not exist DOES fail
-    (``Error: Taint catalog path not found``, rc 2). hypergumbo checked that a
-    declared catalogue EXISTS and never checked that a declaration was
-    UNDERSTOOD.
-
-    WHY THE TYPO IS PREDICTABLE. ``verify-claims --help`` says "A top-level
-    ``extra_catalogs:`` key may declare project-local taint catalogs (see
-    --taint-sources/--taint-sinks/--taint-sanitizers)" — it names the FLAGS and
-    never the sub-keys — and promises four lines later that "an unknown field
-    name ... produces a clear error and exit code 2 (not a silent pass)".
+    WHY THE TYPO IS PREDICTABLE. The ``--taint-sources`` / ``--taint-sinks`` /
+    ``--taint-sanitizers`` flag names invite ``taint_sources:``, and
+    ``verify-claims --help`` promises that "an unknown field name ... produces
+    a clear error and exit code 2 (not a silent pass)".
 
     THE FAIL-OPEN DIRECTION IS SOURCES AND SINKS. Dropping declared SANITIZERS
     yields more violations, which is safe; dropping declared SOURCES or SINKS
     yields fewer, and a claim the repository's own catalogue would have violated
     comes back clean.
 
-    VALIDATED HERE RATHER THAN IN :func:`load_extra_catalog_paths`, whose
-    docstring already delegated ("the CLI layer decides whether to fail hard;
-    parsing is lenient") to a decision nobody had built. This is where the other
-    four allowlists run, it runs FIRST on the same path (``cli.py`` calls
-    ``load_claims`` at 6007 and ``load_extra_catalog_paths`` at 6201), and the
-    lenient-parse tests above keep passing unchanged — which is the signal that
-    this is the right layer.
+    VALIDATED IN :func:`load_claims` RATHER THAN IN
+    :func:`load_extra_catalog_paths`, which stays lenient. ``load_claims`` is
+    where the other four allowlists run, ``cli.py`` calls it before
+    ``load_extra_catalog_paths`` on the same path, and the lenient-parse tests
+    above keep passing unchanged — which is the signal that this is the right
+    layer.
     """
 
     def test_an_unknown_sub_key_is_rejected_with_a_hint(
         self, tmp_path: Path,
     ) -> None:
-        """The measured case, and the hint matters: ``taint_sources`` is what
-        the help text's flag names lead a reader to write."""
+        """The hint matters: ``taint_sources`` is what the help text's flag
+        names lead a reader to write."""
         path = tmp_path / "claims.yaml"
         path.write_text(
             "claims: []\n"

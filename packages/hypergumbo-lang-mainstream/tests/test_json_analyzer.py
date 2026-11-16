@@ -157,7 +157,9 @@ def test_bin_creates_defines_target_edge(tmp_path):
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(target_edges) >= 1
-    assert target_edges[0].dst == "bin/cli.js"
+    assert target_edges[0].meta["target_path"] == "bin/cli.js"
+    # WI-bufar-pokam: the dst is the target file's node id; the path rides in meta.
+    assert target_edges[0].dst == "javascript:bin/cli.js:1-1:file:file"
 
 
 def test_bin_string_creates_defines_target_edge(tmp_path):
@@ -172,7 +174,7 @@ def test_bin_string_creates_defines_target_edge(tmp_path):
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(target_edges) >= 1
-    assert target_edges[0].dst == "src/main.js"
+    assert target_edges[0].meta["target_path"] == "src/main.js"
 
 
 def test_analyze_package_json_dependency_edges(tmp_path):
@@ -395,7 +397,7 @@ def test_package_json_main_creates_defines_target_edge(tmp_path):
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(target_edges) >= 1
-    main_edge = next((e for e in target_edges if e.dst == "src/main.js"), None)
+    main_edge = next((e for e in target_edges if e.meta["target_path"] == "src/main.js"), None)
     assert main_edge is not None
 
     # Should also create a main_entry symbol
@@ -416,7 +418,7 @@ def test_package_json_main_no_name_uses_default(tmp_path):
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(target_edges) >= 1
-    assert target_edges[0].dst == "index.js"
+    assert target_edges[0].meta["target_path"] == "index.js"
 
 
 def test_package_json_main_missing_no_edge(tmp_path):
@@ -485,7 +487,7 @@ def test_package_json_exports_string_creates_defines_target_edge(tmp_path):
     assert export_syms[0].meta["path"] == "./src/index.js"
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
-    assert any(e.dst == "src/index.js" for e in target_edges)
+    assert any(e.meta["target_path"] == "src/index.js" for e in target_edges)
 
 
 def test_package_json_exports_conditional_resolves_best_path(tmp_path):
@@ -542,7 +544,7 @@ def test_package_json_exports_conditional_unknown_conditions(tmp_path):
 
 
 def test_package_json_exports_missing_no_export_syms(tmp_path):
-    """package.json without "exports" should not create export_entry symbols."""
+    """package.json without "exports" should not create export symbols."""
     pkg_file = tmp_path / "package.json"
     pkg_file.write_text("""{
   "name": "my-app",
@@ -560,3 +562,64 @@ def test_is_json_tree_sitter_available():
     from hypergumbo_lang_mainstream.json_config import is_json_tree_sitter_available
 
     assert is_json_tree_sitter_available() is True
+
+
+def _every_json_producer(tmp_path):
+    """One tree that reaches every symbol-producing section of the JSON
+    analyzer: package.json (dependencies, scripts, bin, main, exports in the
+    object and conditional forms), a second package.json whose exports and bin
+    are plain strings, composer.json and tsconfig.json."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "index.js").write_text("export default 1;\n")
+    (tmp_path / "src" / "util.js").write_text("export default 2;\n")
+    (tmp_path / "package.json").write_text("""{
+  "name": "my-lib",
+  "version": "1.0.0",
+  "main": "./src/index.js",
+  "bin": {"my-cli": "./src/index.js"},
+  "scripts": {"build": "node ./src/index.js"},
+  "dependencies": {"left-pad": "^1.0.0"},
+  "devDependencies": {"jest": "^29.0.0"},
+  "exports": {
+    ".": "./src/index.js",
+    "./util": {"import": "./src/util.js", "require": "./src/util.js"}
+  }
+}
+""")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "index.js").write_text("export default 3;\n")
+    (tmp_path / "sub" / "package.json").write_text("""{
+  "name": "sub-lib",
+  "bin": "./index.js",
+  "exports": "./index.js"
+}
+""")
+    (tmp_path / "composer.json").write_text("""{
+  "name": "acme/thing",
+  "require": {"monolog/monolog": "^2.0"}
+}
+""")
+    (tmp_path / "tsconfig.json").write_text("""{
+  "compilerOptions": {"paths": {"@/*": ["./src/*"]}}
+}
+""")
+    return analyze_json_files(tmp_path)
+
+
+def test_the_id_fixture_reaches_both_export_forms_and_the_other_kinds(tmp_path):
+    result = _every_json_producer(tmp_path)
+    kinds = {s.kind for s in result.symbols}
+    assert {"export", "bin", "file", "package", "dependency"} <= kinds, kinds
+    exports = sorted((s.path, s.name) for s in result.symbols if s.kind == "export")
+    assert exports == [
+        ("package.json", "."), ("package.json", "./util"), ("sub/package.json", "."),
+    ], exports
+
+
+def test_every_json_node_id_names_its_symbols_own_kind(tmp_path):
+    """ADR-0036 Ruling 2. The two `exports` sites wrote the role word
+    ``export_entry`` into the kind slot of a ``kind="export"`` Symbol: an id
+    naming a kind that is not registered, and two validator errors per id."""
+    result = _every_json_producer(tmp_path)
+    wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+    assert wrong == []

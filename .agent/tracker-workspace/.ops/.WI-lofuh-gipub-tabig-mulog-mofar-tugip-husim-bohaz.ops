@@ -19,3 +19,18 @@
     pr_ref:  # f619
     description: "Package coverage-directed selection as a git hook -- the framing the idea\nstarted from -- so selection happens at commit time rather than only when\nsmart-test is invoked.\n\nGOVERNANCE: .githooks/** requires human approval. This must be a SEPARATE PR\nfrom any smart-test work and must not be bundled. Per AGENTS.md: set the item\nto needs_human_review, post the proposed change for approval, and only then\nrun auto-pr.\n\nDEFERRED DELIBERATELY. The machinery (block hashing, incremental index, git\nbaseline) is now in scripts/smart-test and hypergumbo_core, which are not\ngovernance files. A hook adds no capability -- it changes only WHEN selection\nruns -- so it earns nothing until the selector itself is trusted (Phase 2+)."  # f619
     fields: {}  # f619
+- op: discuss  # 2cb6
+  at: '2026-11-01T22:22:31Z'  # 2cb6
+  by: agent  # 2cb6
+  actor: jgstern_agent  # 2cb6
+  clock: 2  # 2cb6
+  nonce: 2cb6  # 2cb6
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/tool1/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at dev 9ae4abe13f. The stated gate 'until the selector itself is trusted (Phase 2+)' has been met in form: Phase 2 union is default-on (scripts/smart-test:136 SELECT_UNION=true, 87fd5329a7 2026-08-17) and Phase 3 narrowing is opt-in --narrow (1ee9984304, WI-bolot done). WI-bolot's closure recorded that the cycle-time premise behind both phases was wrong. No .githooks file invokes smart-test or coverage-select. The item stays a governance-gated nicety; what is out of date is its deferral reason. MECHANISM: deferral condition was keyed to a selector phase (Phase 2+) that has since shipped, while the item's own argument (a hook changes only when selection runs) still holds."  # 2cb6
+- op: update  # 33db
+  at: '2026-11-01T22:22:32Z'  # 33db
+  by: agent  # 33db
+  actor: jgstern_agent  # 33db
+  clock: 3  # 33db
+  nonce: 33db  # 33db
+  set:  # 33db
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 9ae4abe13f. The stated gate 'until the selector itself is trusted (Phase 2+)' has been met in form: Phase 2 union is default-on (scripts/smart-test:136 SELECT_UNION=true, 87fd5329a7 2026-08-17) and Phase 3 narrowing is opt-in --narrow (1ee9984304, WI-bolot done). WI-bolot's closure recorded that the cycle-time premise behind both phases was wrong. No .githooks file invokes smart-test or coverage-select. The item stays a governance-gated nicety; what is out of date is its deferral reason. (Original text below; the review entry in the thread has the evidence.)\n\nPackage coverage-directed selection as a git hook -- the framing the idea\nstarted from -- so selection happens at commit time rather than only when\nsmart-test is invoked.\n\nGOVERNANCE: .githooks/** requires human approval. This must be a SEPARATE PR\nfrom any smart-test work and must not be bundled. Per AGENTS.md: set the item\nto needs_human_review, post the proposed change for approval, and only then\nrun auto-pr.\n\nDEFERRED DELIBERATELY. The machinery (block hashing, incremental index, git\nbaseline) is now in scripts/smart-test and hypergumbo_core, which are not\ngovernance files. A hook adds no capability -- it changes only WHEN selection\nruns -- so it earns nothing until the selector itself is trusted (Phase 2+)."  # 33db

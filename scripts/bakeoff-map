@@ -13,14 +13,14 @@ directory (fast, no extraction) unless `--zip-deep` is passed, in which
 case each zip is unpacked one-at-a-time to a temp dir that is cleaned up
 even on exception.
 
-Three session formats are recognized (the chronicle spans three months
-and the pipeline evolved):
+Three session formats are recognized, because the on-disk layout differs
+by era:
 
-  PHASE12 (Jan 5-23, 2026):  pre-state.json era. Flat `out/<repo>/`.
-  Early BROAD/DEEP (late Jan-late Feb): partial state.json; inconsistent
-    cohort/iter nesting.
-  Modern BROAD/DEEP (late Feb+): full state.json, cohort-NNN/iter-NNN,
-    diag/, reflect/.
+  PHASE12 (`phase12-*` names): no state.json. Flat `out/<repo>/`.
+  Early BROAD/DEEP (dated before ERA_MODERN_START): partial state.json;
+    inconsistent cohort/iter nesting.
+  Modern BROAD/DEEP (dated on/after ERA_MODERN_START): full state.json,
+    cohort-NNN/iter-NNN, diag/, reflect/.
 
 `deprecated/` is explicitly excluded from all walks and counters.
 

@@ -1,48 +1,34 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-sigog: a typed Scala receiver's EXTERNAL type must reach the module slot.
+"""A typed Scala receiver's EXTERNAL type reaches the module slot (WI-sigog).
 
-THE GAP IS A DISCARD, NOT A MISSING INFERENCE — the same shape PR #227 fixed for
-java, one language over. ``scala.py``'s external method-call branch already
-computes the receiver's type (``var_types``, fed by parameter annotations,
-``val x = new Foo()`` and ``val x: Foo = f()``) and already stamps it as
-``meta["receiver_type_hint"]`` for the Tier-2 ``inherited_calls`` linker. It then
-emitted ``dst=f"scala:external:0-0:{callee}:unresolved"`` — a HARDCODED module
-segment — so the type never reached the slot ``_lookup_named_entry`` /
-``gate_named_entry`` actually read, and every method-kind row in the scala
-catalogue (which merges java's) was unreachable through it.
+``scala.py``'s external method-call branch computes the receiver's type
+(``var_types``, fed by parameter annotations, ``val x = new Foo()`` and
+``val x: Foo = f()``) and stamps it as ``meta["receiver_type_hint"]`` for the
+Tier-2 ``inherited_calls`` linker. It must ALSO write the qualified type into
+the module segment of ``dst``: a hardcoded ``external`` there discards the type
+before the slot ``_lookup_named_entry`` / ``gate_named_entry`` read, and leaves
+every method-kind row in the scala catalogue (which merges java's) unreachable
+through scala's own edges. These fixtures let the analyzer INFER the type; a
+fixture that writes the receiver type into the edge itself cannot tell a filled
+slot from a constant one.
 
-MEASURED BEFORE THE FIX, two independent repositories
-(``~/hypergumbo_lab_notebook/t0_sizing_09092026/fasoz/``):
-
-    repo   scala external method-call edges   typed   sentinel
-    sbt                              10,985       0     10,985
-    lila                             29,985       0     29,985
-    TOTAL                            40,970       0     40,970   0.0%
-
-Zero out of 40,970, and 0 of 164 method-kind catalogue rows reached through
-scala's own edges. The emission half worked; the receiver-evidence half was
-absent. INV-linub's recorded "java, scala, swift — emit and match in BOTH forms
-OK" rested on WI-nasuf's 2026-08-05 FIXTURE, which wrote the receiver type
-explicitly and so could not see that the slot was a constant.
-
-``call_construct="method"`` MUST SURVIVE THIS CHANGE and is asserted below.
-Filling the module slot is exactly what makes ``_register_sanitizer_callers``
-reachable for scala for the first time — its own docstring notes the ``external``
-placeholder "still yields no module, and is still refused" — and a registered
-barrier earns ``sanitized``, which DROPS a real flow (#214). The flag is what
-stops a first-party ``doFinal`` from binding the catalogued
-``javax.crypto.Cipher.doFinal``; it was already stamped on this branch before
-this change and must not be dropped.
+``call_construct="method"`` must survive the slot being filled, and is asserted
+below. A filled module slot is what makes ``_register_sanitizer_callers``
+reachable for scala — its own docstring notes the ``external`` placeholder
+"still yields no module, and is still refused" — and a registered barrier earns
+``sanitized``, which DROPS a real flow (#214). The flag is what stops a
+first-party ``doFinal`` from binding the catalogued
+``javax.crypto.Cipher.doFinal``.
 
 WILDCARD IMPORTS ARE DELIBERATELY OUT OF SCOPE, not silently omitted.
 ``import java.io._`` parses to a ``namespace_wildcard`` node that
-``_extract_import_hints`` does not record as a type hint, so shape F below stays
-``external``. Java handles the analogous case by writing the comma-joined
+``_extract_import_hints`` does not record as a type hint, so a receiver whose
+type only a wildcard import brings in stays ``external`` (no fixture here pins
+that shape). Java handles the analogous case by writing the comma-joined
 disjunction of wildcard packages into the slot, which is not free here: an
-UNENUMERATED disjunct withholds every verdict under INV-zimud's ALL-gate. It is
-also rare in the measured corpus — 199/4,314 import lines in sbt (4.6%) and
-5/6,674 in lila (0.07%) — so the explicit-import path carries essentially the
-whole population. Recorded on WI-sigog as a residual rather than folded in.
+UNENUMERATED disjunct withholds every verdict under INV-zimud's ALL-gate. The
+shape is uncommon in Scala imports, so the explicit-import path carries nearly
+all of the population.
 """
 
 from __future__ import annotations
@@ -143,7 +129,7 @@ def _boundaries(tmp_path: Path) -> dict[int, str | None]:
 
 
 class TestTypedReceiverReachesTheCatalogue:
-    """L3 → L4: the type the analyzer already inferred must reach the gate.
+    """L3 → L4: the type the analyzer infers must reach the gate.
 
     ``java.io.File.createNewFile`` and ``java.io.File.delete`` are both
     ``fs_write`` method-kind rows in ``java.yaml``, which ``scala.yaml`` merges
@@ -185,11 +171,11 @@ class TestTheSanitizerGuardSurvives:
     """#214 / INV-finoh: filling the slot opens the sanitizer channel.
 
     ``_register_sanitizer_callers`` refuses an unresolved call unless it carries
-    receiver evidence, and reads that evidence from the MODULE slot. Before this
-    change scala reached that permit branch never; after it, on every typed
-    receiver. ``call_construct="method"`` is the guard that keeps a first-party
-    short name from binding a catalogued barrier, and dropping it would convert
-    this recall fix into a silent flow-DELETING regression.
+    receiver evidence, and reads that evidence from the MODULE slot, so scala
+    reaches that permit branch on every typed receiver.
+    ``call_construct="method"`` is the guard that keeps a first-party short
+    name from binding a catalogued barrier; without it, filling the slot would
+    silently DELETE real flows.
     """
 
     def test_call_construct_is_still_stamped(self, tmp_path: Path) -> None:
@@ -206,10 +192,9 @@ class TestTheSanitizerGuardSurvives:
     def test_evidence_type_and_confidence_are_unchanged(
         self, tmp_path: Path,
     ) -> None:
-        """INV-fahub set this branch to ``ast_call`` (→ 0.40) deliberately, as
-        bias-to-unresolved. This change fills a slot; it does not re-price the
-        edge, and bundling a 0.40 → 0.50 move into a recall fix would make the
-        A/B unattributable."""
+        """This branch is ``ast_call`` (→ 0.40) deliberately, as
+        bias-to-unresolved (INV-fahub). Filling the module slot does not
+        re-price the edge."""
         edge = _method_edges(tmp_path)[LINE_ANNOTATED_VAL]
         assert edge.evidence_type == "ast_call"
         assert abs(edge.confidence - 0.40) < 1e-9, edge.confidence
@@ -249,10 +234,10 @@ class TestTheSentinelIsKeptWhereNoPathIsEstablished:
 
 # A receiver that is an EXPRESSION rather than a name. The `field_expression`
 # then contributes exactly ONE identifier -- the method -- because the receiver
-# spent no identifier of its own. INV-pirot routes these into the same
-# unresolved-method branch (they must not fall through to the bare short-name
-# binds), so they reach the module slot this change fills; with no receiver NAME
-# there is no `var_types` entry, hence no type and no path.
+# spent no identifier of its own. These go to the same unresolved-method branch
+# (they must not fall through to the bare short-name binds; INV-pirot), so they
+# reach the module slot. With no receiver NAME there is no `var_types` entry:
+# only an expression that states its own type (`new File(p)`) is typed.
 _NAMELESS_SOURCE = '''\
 import java.io.File
 
@@ -266,19 +251,17 @@ object Nameless {
 
 
 class TestNamelessReceiverKeepsTheSentinel:
-    """The complex-receiver shape, pinned because this change made `scala.py` a
-    CHANGED source file and CI enforces 100% on the whole of one.
+    """The complex-receiver shape: a receiver that is an expression, not a name.
 
     The branch was ``# pragma: no cover`` as "defensive" until 2026-08-25, when
     it was recognised as the production path for every complex-receiver call in
-    Scala. It had no test in THIS package, and CI tests packages in isolation,
-    so the gap was invisible until a local edit put the file in scope.
+    Scala; it is covered from THIS package because CI tests packages in
+    isolation.
 
-    Behaviourally it was also the control for that fix: a nameless receiver is
-    real but unnamed, so ``var_types`` holds nothing for it. WI-gokop now types
-    a nameless receiver EXPRESSION when it states its type -- ``new File(p)`` is
-    unambiguously a ``java.io.File`` -- so that case moved from the sentinel to
-    the slot. ``fetch()``, whose return type nothing declares, is still the
+    A nameless receiver is real but unnamed, so ``var_types`` holds nothing
+    for it. A receiver EXPRESSION that states its type is typed from it --
+    ``new File(p)`` is unambiguously a ``java.io.File`` (WI-gokop) -- and
+    reaches the slot. ``fetch()``, whose return type nothing declares, is the
     control: it keeps the sentinel rather than guess.
     """
 

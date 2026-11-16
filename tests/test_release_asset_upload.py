@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The release workflow attaches every asset, or fails saying which are missing.
 
-``v7.0.0`` (HTTP 400) and ``v9.1.0`` (HTTP 404) were each left as a public
-GitHub Release missing a file, because one transient error from GitHub's
-upload host aborted a single ``gh release create <tag> <assets...>`` after
-the Release was already created, and nothing checked the result (WI-hasol).
-The same ``v9.1.0`` run also showed the SBOM inventoried the build
-environment (``twine``, ``cyclonedx-bom``; no hypergumbo package) because
-nothing had installed the built wheels before ``cyclonedx-py environment``.
+Attaching assets on a single ``gh release create <tag> <assets...>`` is
+fragile: one transient error from GitHub's upload host aborts it after the
+Release already exists, leaving a public Release missing files, and unless
+the result is checked nobody notices (history: WI-hasol). Likewise,
+``cyclonedx-py environment`` inventories whatever environment it is pointed
+at, so unless the built wheels are installed into it first the SBOM lists the
+build tooling (``twine``, ``cyclonedx-bom``) and no hypergumbo package.
 
-These pins hold the shape of the fix in ``.github/workflows/release.yml``:
+These pins hold the required shape of ``.github/workflows/release.yml``:
 the Release is created with no assets and only if absent, each asset is
 uploaded on its own with ``--clobber`` inside a retry loop, the attached set
 is verified by name, the SBOM is built from the wheels installed into a

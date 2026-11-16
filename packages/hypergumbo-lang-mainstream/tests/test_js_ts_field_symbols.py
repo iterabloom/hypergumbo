@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-jusus (emission-parity F5, slice 1): JS/TS class-field symbols.
+"""JS/TS class-field symbols (WI-jusus, emission-parity F5).
 
-Before this slice the JS/TS analyzer emitted ZERO ``variable``/``field``
-symbols, so class fields (``public_field_definition`` in TS,
-``field_definition`` in JS) had no anchor and field-level decorators
-(lit's ``@property``/``@state`` reactive-property decorators) had nothing
-to attach a ``decorated_by`` edge to. These tests lock the field-symbol
-emission and the field-decorator edge wiring.
+Class fields (``public_field_definition`` in TS, ``field_definition`` in JS)
+emit ``field`` symbols. Without them a field has no anchor, and field-level
+decorators (lit's ``@property``/``@state`` reactive-property decorators) have
+nothing to attach a ``decorated_by`` edge to. These tests lock the
+field-symbol emission and the field-decorator edge wiring.
 """
 
 from pathlib import Path
@@ -118,8 +117,8 @@ export class Counter {
 class TestFieldDecoratorEdges:
     def test_lit_field_decorators_emit_decorated_by_edges(self, tmp_path: Path) -> None:
         # @property / @state are imported from lit (not defined in-file), so the
-        # decorated_by edge resolves UNRESOLVED — but it must now exist, anchored
-        # on the field symbol (previously there was no field symbol to anchor).
+        # decorated_by edge resolves UNRESOLVED — but it must exist, anchored on
+        # the field symbol.
         _write(tmp_path, "el.ts", """
 import { LitElement } from 'lit';
 import { property, state } from 'lit/decorators.js';

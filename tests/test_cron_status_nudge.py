@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-lapof: a red cron step reaches a reader at session start.
+"""A red cron step reaches a reader at session start (history: WI-lapof).
 
-The self-claims gate sat red for four days in September (INV-fugus) because
-nothing put a cron verdict in front of the agent. It happened again on
-2026-09-23, when full-suite went red at d31439e6 and was noticed only because a
-premise check happened to run ``ci-debug cron-status``. These tests pin the
-nudge that closes that gap: it names each failing step, where it first went red,
-and stays silent in every case where speaking would be noise or a guess.
+Unless something puts a cron verdict in front of the agent, a red cron step
+can sit unnoticed across days of sessions that merge past it (history:
+INV-fugus). These tests pin the nudge that closes that gap: it names each
+failing step, where it first went red, and stays silent in every case where
+speaking would be noise or a guess.
 """
 from __future__ import annotations
 
@@ -34,7 +33,7 @@ def _load() -> ModuleType:
 
 nudge = _load()
 
-# The real output of `ci-debug cron-status` on 2026-09-24 (URLs trimmed).
+# Real `ci-debug cron-status` output captured from the live CI (URLs trimmed).
 RED = """Most recent cron verdict per workflow (walking origin/dev, up to 40 commits):
 
   FAIL ci/woodpecker/cron/full-suite: failure
@@ -203,8 +202,8 @@ class TestTheEntryPoint:
 
 def test_session_start_invokes_the_nudge_in_every_mode_branch() -> None:
     """A nudge wired into one mode-state silently does not apply to the mode
-    you happen to be in. The reason WI-lapap's reader lives at session start,
-    and not only at stop, applies unchanged."""
+    you happen to be in, so session start must call it from every mode
+    branch, exactly as often as the concept-audit cadence nudge."""
     text = SESSION_START_LOGIC.read_text(encoding="utf-8")
 
     def calls(name: str) -> int:

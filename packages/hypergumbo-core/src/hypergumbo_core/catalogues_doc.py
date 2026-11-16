@@ -43,7 +43,6 @@ _PKG_ROOT = Path(__file__).parent
 HOW_TO_ADD: dict[str, str] = {
     "io_primitives": (
         "language: python\n"
-        "status: overlay\n"
         "retrieved: 2026-09-30        # when you last checked the library\n"
         "net_send:\n"
         "  - module: inhouse_http\n"
@@ -156,13 +155,17 @@ A row makes a verdict *cleaner* when it can move it toward `confirmed`: a
 sanitizer, a summary that ends a taint branch, a `module_completeness` grant,
 an I/O row that makes a call count as examined, a library signature that
 types a receiver. A source, a sink, a framework pattern or an I/O detection
-only ever adds.
+only ever adds. A `module_completeness` grant names an owner path and vouches
+for that path and for the types defined at it, never for a child module or
+package: audit a module's classes before granting it (ADR-0016 §7).
 
 **What a community row may not do, exactly.** A community I/O row never makes
-a call count as examined, and its `module_completeness` grants are withheld; a
+a call count as examined, and its `module_completeness` grants and
+`stdlib_other` entries (calls it says are not I/O) are withheld; a
 community taint sanitizer is not a barrier (the flow is reported and names it,
 `withheld_community_sanitizer`); a community terminating summary never closes
-a taint branch (`withheld_community_summary`). Community `frameworks`,
+a taint branch (`withheld_community_summary`); a community sink's
+`trust_level: trusted` is withheld (`withheld_community_trust`). Community `frameworks`,
 `dataflow_patterns` and `library_signatures` rows are disclosed rather than
 withheld: measured with every one of them removed, they made no verdict
 cleaner, only added structure and flows (ADR-0061 ruling 2).

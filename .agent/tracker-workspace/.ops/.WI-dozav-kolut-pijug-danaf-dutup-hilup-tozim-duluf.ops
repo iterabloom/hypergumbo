@@ -1,0 +1,21 @@
+- op: create  # 9ed4
+  at: '2026-10-29T01:54:29Z'  # 9ed4
+  by: agent  # 9ed4
+  actor: jgstern_agent  # 9ed4
+  clock: 1  # 9ed4
+  nonce: 9ed4  # 9ed4
+  data:  # 9ed4
+    kind: work_item  # 9ed4
+    title: "eight framework usage rules name a UsageContext kind no analyzer emits (cowboy ^function$ x4, qt ^macro$ x2 and ^method$, servant ^type$), so they match nothing"  # 9ed4
+    status: todo_hard  # 9ed4
+    priority: 3  # 9ed4
+    parent:  # 9ed4
+    tags:  # 9ed4
+    - frameworks  # 9ed4
+    - kosup_sweep  # 9ed4
+    isbefore: []  # 9ed4
+    duplicate_of: []  # 9ed4
+    not_duplicate_of: []  # 9ed4
+    pr_ref:  # 9ed4
+    description: "Found doing WI-daruz (2026-10-28). Producers emit exactly three UsageContext kinds -- call, export, library_export (AST scan of every UsageContext(...)/UsageContext.create(...) in packages/*/src; test_usage_context_kinds pins it). Eight framework usage rules name a kind no producer emits, so they match nothing:\n- cowboy.yaml (erlang): 4 rules with usage.kind ^function$ (handler init / handle|info|terminate, rest_callback, websocket_callback);\n- qt.yaml (cpp): 2 rules with ^macro$ (Q_OBJECT -> qt_class, Q_PROPERTY -> property) and 1 with ^method$ (event handlers);\n- servant.yaml (haskell): 1 rule with ^type$ (Get|Post|... route combinators).\nThe rule shapes look like they meant a SYMBOL kind (symbol_kind:) or a usage the analyzer would need to emit (Q_OBJECT as a macro usage). Per rule: rewrite to a key the matcher reads and verify on a fixture, or have the analyzer emit the usage, or delete with a note. test_usage_context_kinds::test_framework_usage_rules_name_a_produced_kind pins these eight as a shrink-only known-dead list naming this item."  # 9ed4
+    fields: {}  # 9ed4

@@ -1,0 +1,62 @@
+- op: create  # acf1
+  at: '2026-10-26T19:32:12Z'  # acf1
+  by: agent  # acf1
+  actor: jgstern_agent  # acf1
+  clock: 1  # acf1
+  nonce: acf1  # acf1
+  data:  # acf1
+    kind: work_item  # acf1
+    title: "a Unix-socket listener (asyncio.start_unix_server, go net.ListenUnix) is net_listen: the vocabulary has no ipc-side listen value -- needs an owner ruling (ipc_listen, or net_listen means any listener)"  # acf1
+    status: todo_hard  # acf1
+    priority: 4  # acf1
+    parent:  # acf1
+    tags:  # acf1
+    - io_boundary  # acf1
+    - adr_0050  # acf1
+    - needs_ruling  # acf1
+    isbefore: []  # acf1
+    duplicate_of: []  # acf1
+    not_duplicate_of: []  # acf1
+    pr_ref:  # acf1
+    description: "Split out of WI-rutup 2026-10-26. python.yaml rows asyncio.start_unix_server (and loop.create_unix_server) under net_listen, and go net.ListenUnix (go.yaml ~:376, kept to the C connect() precedent by WI-potog), name a Unix-socket LISTENER: under ADR-0050 section 1's medium axiom the medium is local IPC, not the network, but the vocabulary has no ipc-side deferred-crossing value -- net_listen is the only listen boundary (deferred_crossing axis: net_listen, db_compose). A row edit cannot fix it; it needs a vocabulary ruling: (a) add an ipc_listen deferred-crossing value (registry + ADR-0050 section 2 table + catalogue rows + the disclosure clauses net_listen carries), or (b) rule that net_listen names \"a listener\" regardless of medium and say so in its definition. Owner decision; nothing to implement until then."  # acf1
+    fields: {}  # acf1
+- op: discuss  # 0e10
+  at: '2026-10-26T23:31:52Z'  # 0e10
+  by: agent  # 0e10
+  actor: jgstern_agent  # 0e10
+  clock: 2  # 0e10
+  nonce: '0e10'  # 0e10
+  message: "OWNER RULING 2026-10-26 (chat): option (a) -- add an ipc_listen deferred-crossing value. Scope: registry value; ADR-0050 section 2 table row; its own disclosure clauses worded for a local listener; re-label python asyncio.start_unix_server / loop.create_unix_server and go net.ListenUnix from net_listen to ipc_listen; regenerate docs/schema.json and docs/concept-axes.md. Before editing: enumerate consumers that branch on net_listen and report what output moves. Queued after INV-kutub, WI-sufon, WI-punod."  # 0e10
+- op: update  # 8b12
+  at: '2026-10-26T23:31:52Z'  # 8b12
+  by: agent  # 8b12
+  actor: jgstern_agent  # 8b12
+  clock: 3  # 8b12
+  nonce: 8b12  # 8b12
+  set:  # 8b12
+    status: todo_soft  # 8b12
+- op: update  # 2949
+  at: '2026-10-26T23:32:06Z'  # 2949
+  by: agent  # 2949
+  actor: jgstern_agent  # 2949
+  clock: 4  # 2949
+  nonce: '2949'  # 2949
+  set:  # 2949
+    status: todo_hard  # 2949
+  remove:  # 2949
+    tags: [needs_ruling]  # 2949
+- op: update  # 7272
+  at: '2026-10-27T07:26:24Z'  # 7272
+  by: agent  # 7272
+  actor: jgstern_agent  # 7272
+  clock: 5  # 7272
+  nonce: '7272'  # 7272
+  set:  # 7272
+    status: done  # 7272
+- op: discuss  # 5e6f
+  at: '2026-10-27T07:26:24Z'  # 5e6f
+  by: agent  # 5e6f
+  actor: jgstern_agent  # 5e6f
+  clock: 6  # 5e6f
+  nonce: 5e6f  # 5e6f
+  message: "Done in PR #1895 (merged as 9963c67dbf), per the owner's 2026-10-26 ruling (option a). New deferred-crossing value ipc_listen, net_listen's local-IPC twin: catalog-declarable, inbound, declared last (first-declared-wins untouched); mints no taint; disclosed in its own ipc_listen_edges (io-boundaries schema 2.4 -> 2.5, both envelope paths); shadows ipc_recv. Rows: go net.ListenUnix (moved) + net.ListenUnixgram (new, ListenUDP's twin); python asyncio.start_unix_server (moved) + serve_forever/handle_request on socketserver's six Unix server classes (new; admitted to the catalogue scope gate as CPython stdlib beside socketserver.TCPServer). Stay net_listen: medium-undecidable calls (socket.bind, socket.create_server, go net.Listen/ListenPacket, syscall/x-sys Socket/Bind/Listen). Not rowed: loop.create_unix_server (untyped receiver, a row could never match). ADR-0050 §2/§3, spec §9/§11, concept-axes.md updated.\nBehavioural evidence, the item's own repro re-run on merged dev 9963c67dbf (`hypergumbo io-boundaries --format json`, scratchpad r_gaziv/): go -> ipc_listen {net.ListenUnix, net.ListenUnixgram}, net_listen {net.ListenTCP}, ipc_listen_edges 2 / net_listen_edges 1, schema 2.5; python -> ipc_listen {asyncio.start_unix_server, socketserver.UnixStreamServer.serve_forever, socketserver.UnixDatagramServer.handle_request}, net_listen {asyncio.start_server, socketserver.TCPServer.serve_forever} (on dev before: ListenUnix and start_unix_server were net_listen, no ipc_listen_edges key). Production-path test test_unix_listener_is_ipc_listen.py (run_behavior_map + io-boundaries). Measured dev vs branch: gvisor-tap-vsock ipc_listen 0->2, net_listen 36->35, external_potential 45428->45427, total_io_edges 2019 unchanged; spire ipc_listen 0->1, net_listen 21->20. Suite 28932 passed, 100% coverage on changed files."  # 5e6f

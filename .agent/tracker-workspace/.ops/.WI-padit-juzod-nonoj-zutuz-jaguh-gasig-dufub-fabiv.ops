@@ -1,0 +1,21 @@
+- op: create  # a5c9
+  at: '2026-10-31T10:08:53Z'  # a5c9
+  by: agent  # a5c9
+  actor: jgstern_agent  # a5c9
+  clock: 1  # a5c9
+  nonce: a5c9  # a5c9
+  data:  # a5c9
+    kind: work_item  # a5c9
+    title: "ruby_ffi: an attach_function edge is sourced from the file's first Ruby symbol even when that symbol does not contain the line"  # a5c9
+    status: todo_hard  # a5c9
+    priority: 3  # a5c9
+    parent:  # a5c9
+    tags:  # a5c9
+    - docstring_audit  # a5c9
+    - analysis_quality  # a5c9
+    isbefore: []  # a5c9
+    duplicate_of: []  # a5c9
+    not_duplicate_of: []  # a5c9
+    pr_ref:  # a5c9
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. ruby_ffi.py:214-225 seeds src_sym with the first same-path symbol unconditionally. def helper (1-2) then module Foo (4-7) with attach_function :zmq_init on 6 gives helper -> zmq_init. WI-judov's fix shape (share Phase 1's span search) would inherit this. v10."  # a5c9
+    fields: {}  # a5c9

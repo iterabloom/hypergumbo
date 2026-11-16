@@ -1,0 +1,59 @@
+- op: create  # b804
+  at: '2026-10-26T11:06:38Z'  # b804
+  by: agent  # b804
+  actor: jgstern_agent  # b804
+  clock: 1  # b804
+  nonce: b804  # b804
+  data:  # b804
+    kind: work_item  # b804
+    title: "rust: a brace-list or aliased use (use a::{b, c}; use a::b as c;) emits no imports edge at all"  # b804
+    status: todo_hard  # b804
+    priority: 3  # b804
+    parent:  # b804
+    tags:  # b804
+    - call_graph  # b804
+    - rust  # b804
+    isbefore: []  # b804
+    duplicate_of: []  # b804
+    not_duplicate_of: []  # b804
+    pr_ref:  # b804
+    description: "Found 2026-10-26 while fixing WI-rilof, on dev e22b97d62c through the production CLI. rust.py's use_declaration branch picks the imported path from the first child of type scoped_identifier / identifier / use_wildcard / use_list. A brace list (`use crate::error::{AardvarkError, AardvarkResult};`, tree-sitter type scoped_use_list) and an alias (`use foo::bar as baz;`, use_as_clause) match none of them, so the declaration emits NO imports edge at all. Measured: aardvark-dns src/commands/run.rs line 2 (`use crate::error::{...}`) has no imports edge while lines 3-5 do. Brace lists are among the most common use forms, so a file's import set is silently incomplete (dependency-linker requirement counts, file-level import graphs, and after WI-rilof the first-party file edges). Fix: handle scoped_use_list (prefix path + each list element, recursing into nested lists) and use_as_clause (the path before `as`), through the same in-tree resolution WI-rilof added. Measure the added edge count on firecracker first. Test: list, nested list, alias, `self` inside a list (`use a::{self, b}`)."  # b804
+    fields: {}  # b804
+- op: discuss  # 92ab
+  at: '2026-10-27T09:00:07Z'  # 92ab
+  by: agent  # 92ab
+  actor: jgstern_agent  # 92ab
+  clock: 2  # 92ab
+  nonce: 92ab  # 92ab
+  message: "2026-10-27, from the INV-nuzas re-check (production `hypergumbo survey`, dev 8c61dbe07c): the CALL through an aliased use also misses, not only the imports edge. Single crate: `use crate::m::helper as h3; h3()` and `use crate::m::{third as t4}; t4()` call an external_symbol `helper` / `third` (path <external>), while `use crate::m::{other}; other()` resolves to the real function. Cargo workspace: `use crate_b::{Thing, helper as h2}; h2()` calls `rust:crate_b:0-0:helper:external_symbol` (tier 3), a consumer-reached workspace-prefixed phantom, so this item is now also an INV-nuzas counterexample (made a blocker of it). `Thing::new()` from the same brace list resolves. The fix's tests should include the call through the alias, in one crate and across workspace members."  # 92ab
+- op: update  # baf7
+  at: '2026-10-27T09:00:08Z'  # baf7
+  by: agent  # baf7
+  actor: jgstern_agent  # baf7
+  clock: 3  # baf7
+  nonce: baf7  # baf7
+  set: {}  # baf7
+  add:  # baf7
+    isbefore: [INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap]  # baf7
+- op: update  # 265e
+  at: '2026-10-30T18:36:53Z'  # 265e
+  by: agent  # 265e
+  actor: jgstern_agent  # 265e
+  clock: 4  # 265e
+  nonce: 265e  # 265e
+  set:  # 265e
+    status: done  # 265e
+- op: discuss  # 719c
+  at: '2026-10-30T18:36:53Z'  # 719c
+  by: agent  # 719c
+  actor: jgstern_agent  # 719c
+  clock: 5  # 719c
+  nonce: 719c  # 719c
+  message: "Done in PR #1961 (892d4912cb). Root cause: rust.py's use_declaration branch read only a single path child, so a scoped_use_list / use_as_clause emitted no imports edge (and a top-level use {...} emitted one whose module slot was the whole brace text); an aliased call looked up a symbol named by the alias. Fix: the use-tree walker expands every bound path, each resolved as a single path is; an aliased call resolves the alias's PATH (_rust_function_in_module). The change exposed profile.py's Rust import-evidence gap (no :: separator, actix-web vs actix_web), fixed in the same PR. CLOSURE EVIDENCE, the filed fixture (INV-nuzas cargo) through production hypergumbo survey on merged dev: crate-a/src/lib.rs:3  now has an imports edge to crate-b/src/lib.rs (had none); line 8  calls rust:crate-b/src/lib.rs helper (was rust:crate_b:0-0:helper stand-in); 0 workspace-prefixed external_symbol nodes. Controls ctl_rs / ctl_rs2: their crate::m alias calls now resolve to src/m/mod.rs (were stand-ins), nothing lost. Corpus A/B: 5 repos, imports +5,385 / -60 (brace-text stand-ins), zellij 17 alias calls corrected, every call edge read."  # 719c
+- op: discuss  # e8cd
+  at: '2026-10-30T18:37:25Z'  # e8cd
+  by: agent  # e8cd
+  actor: jgstern_agent  # e8cd
+  clock: 6  # e8cd
+  nonce: e8cd  # e8cd
+  message: "CORRECTION to the closure note above: its evidence sentence was truncated by shell quoting (backticks in the argument ran as a command). The evidence, restated exactly. The filed fixture (INV-nuzas cargo, ~/hypergumbo_lab_notebook/nuzas_10292026/fixtures/cargo) through production hypergumbo survey on merged dev 892d4912cb: crate-a/src/lib.rs line 3 is use crate_b::{Thing, helper as h2}; -- it imports crate-b/src/lib.rs, recorded on the one deduplicated imports edge to that file, whose meta call_lines is [1, 3] (line 1's use crate_b::helper names the same file; before this change line 3 contributed nothing). Line 8, h2(), calls rust:crate-b/src/lib.rs:2-2:helper:function (was the rust:crate_b:0-0:helper stand-in). 0 workspace-prefixed external_symbol nodes in the fixture. Controls ctl_rs / ctl_rs2: their crate::m alias calls resolve to src/m/mod.rs (were stand-ins); nothing lost. Corpus A/B on 5 repos: imports +5,385, -60 (every one a brace-text stand-in); zellij's 17 aliased calls corrected, every one read."  # e8cd

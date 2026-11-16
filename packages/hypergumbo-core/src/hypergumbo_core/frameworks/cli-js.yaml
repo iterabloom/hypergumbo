@@ -90,5 +90,3 @@ patterns:
   # Gluegun toolbox
   - concept: command
     decorator: "^toolbox\\.(print|prompt|filesystem)$"
-
-linkers: []

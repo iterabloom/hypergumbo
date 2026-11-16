@@ -195,7 +195,7 @@ My Test
         )
         assert call_edge is not None
         assert call_edge.edge_type == "calls"
-        assert "My Test" in call_edge.src or "test_case" in call_edge.src
+        assert re.search(r":My Test:test$", call_edge.src), call_edge.src
 
     def test_unresolved_keyword_has_low_confidence(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", """
@@ -266,9 +266,9 @@ My Test Keyword
         # node.id and stable_id are minted together by make_doc_symbol_ids
         # (INV-dulah). node.id is the canonical ADR-0036
         # "{lang}:{path}:{start}-{end}:{name}:{kind}" — the span slot carries a
-        # real range (which still locks the same-name-sibling collision fix) and
-        # the kind is last. It was previously kind-third/name-last, which put the
-        # kind word where the span belongs and so did not parse at all.
+        # real range (so same-name siblings get distinct ids) and the kind is
+        # last. A kind-third/name-last layout puts the kind word where the span
+        # belongs and does not parse at all.
         assert "robot:" in keyword.id
         assert "test.robot" in keyword.id
         assert re.match(
@@ -276,12 +276,12 @@ My Test Keyword
         ), keyword.id
         # stable_id is the canonical sha256 form, distinct from the raw id.
         assert keyword.stable_id != keyword.id
-        assert re.match(r"^sha256:[0-9a-f]{16}$", keyword.stable_id)
+        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", keyword.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         # Reuse the complete-file fixture, which yields one symbol of every kind
         # (library, resource, variable x2, keyword x2, test) so the assertion is
-        # exercised across all five migrated Symbol(...) construction sites.
+        # exercised across all five Symbol(...) construction sites.
         make_robot_file(tmp_path, "complete.robot", """
 *** Settings ***
 Library    SeleniumLibrary
@@ -313,12 +313,48 @@ Valid Login
         result = analyze_robot(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1  # non-vacuous
-        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert canonical.match(symbol.stable_id), (
                 f"{symbol.kind} {symbol.name!r} has non-canonical "
                 f"stable_id={symbol.stable_id!r}"
             )
+
+    def test_every_id_names_the_symbols_own_kind(self, tmp_path: Path) -> None:
+        """ADR-0036 Ruling 2: the id's kind word IS ``Symbol.kind``, for every
+        kind robot emits, and the stable id hashes that same word.
+
+        A test case was minted with the role word ``test_case`` on a
+        ``kind="test"`` Symbol, and ``make_doc_symbol_ids`` feeds one word to
+        both ids, so the stable id hashed the role word too.
+        """
+        from hypergumbo_core.analyze.base import make_doc_stable_id
+
+        make_robot_file(tmp_path, "suite.robot", """
+*** Settings ***
+Library    SeleniumLibrary
+Resource   common.resource
+
+*** Variables ***
+${BASE_URL}    https://example.com
+
+*** Test Cases ***
+Valid Login
+    Open Login Page
+
+*** Keywords ***
+Open Login Page
+    No Operation
+""")
+        result = analyze_robot(tmp_path)
+        kinds = {s.kind for s in result.symbols}
+        assert kinds == {"library", "resource", "variable", "test", "keyword"}, kinds
+        for symbol in result.symbols:
+            _head, _span, id_name, id_kind = symbol.id.rsplit(":", 3)
+            assert id_kind == symbol.kind, symbol.id
+            assert symbol.stable_id == make_doc_stable_id(
+                "robot", symbol.path, symbol.kind, id_name, 0, 0,
+            ), (symbol.kind, symbol.name)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", """
@@ -376,7 +412,7 @@ ${EMPTY_VAR}
         assert variable is None
 
     def test_cross_file_keyword_call(self, tmp_path: Path) -> None:
-        """Test that cross-file keyword calls are marked as unresolved."""
+        """Test that a call to a keyword defined in another file makes an edge."""
         make_robot_file(tmp_path, "lib/common.robot", """
 *** Keywords ***
 Common Setup
@@ -388,9 +424,8 @@ Login Test
     Common Setup
 """)
         result = analyze_robot(tmp_path)
-        # Since we don't do cross-file resolution, this should be unresolved
-        # Actually we DO do registry lookup, but it depends on processing order
-        # The test verifies edges are created
+        # Pass 1 registers every file's keywords before Pass 2 resolves calls,
+        # so the cross-file call resolves; the test checks the edge exists.
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 

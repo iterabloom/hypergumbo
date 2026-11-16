@@ -120,8 +120,8 @@ DEPENDS = "zlib openssl"
         dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(dep_edges) >= 2
         deps = {e.dst for e in dep_edges}
-        assert "bitbake:package:zlib" in deps
-        assert "bitbake:package:openssl" in deps
+        assert "bitbake:package:0-0:zlib:unresolved" in deps
+        assert "bitbake:package:0-0:openssl:unresolved" in deps
 
     def test_ignores_unimportant_variables(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", """
@@ -231,7 +231,10 @@ SUMMARY = "Test"
         result = analyze_bitbake(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        assert var.id == var.stable_id
+        # WI-banod (stable_id scheme v10): the stable_id is a hash, not the
+        # node id it used to copy; the id stays the location key.
+        assert var.stable_id.startswith("hgstableid15:") and len(var.stable_id) == 29
+        assert var.id != var.stable_id
         assert "bitbake:" in var.id
         assert "test.bb" in var.id
 
@@ -318,7 +321,7 @@ DEPENDS = "${PN}-native zlib"
         # Should extract zlib but skip ${PN}-native
         dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         deps = {e.dst for e in dep_edges}
-        assert "bitbake:package:zlib" in deps
+        assert "bitbake:package:0-0:zlib:unresolved" in deps
         # Variable refs should be filtered out
         assert not any("${" in d for d in deps)
 
@@ -362,3 +365,127 @@ addtask do_mytask after do_configure before do_compile
         assert addtask is not None
         assert addtask.name == "do_mytask"
         assert "addtask" in addtask.signature
+
+
+_RECIPE = '''\
+DEPENDS = "a"
+DEPENDS += "b"
+
+do_compile() {
+    oe_runmake
+}
+
+python do_patchit() {
+    bb.note("patching")
+}
+
+do_twice() {
+    :
+}
+
+python do_twice() {
+    pass
+}
+
+addtask patchit after do_compile
+'''
+
+
+class TestSymbolIdsRoundTrip:
+    """A BitBake node id names its symbol's own kind and its own lines
+    (ADR-0036 Rulings 2 and 3). The id used to be ``bitbake:<path>:0-0:<name>:<word>``:
+    keyed by name alone, with ``python_task`` in the kind slot to keep a python
+    task apart from a shell task. So a python task's id named a kind no symbol
+    has, and two assignments to one variable shared one id."""
+
+    def _symbols(self, tmp_path: Path) -> list:
+        make_bitbake_file(tmp_path, "recipes/bar.bb", _RECIPE)
+        return analyze_bitbake(tmp_path).symbols
+
+    def test_the_fixture_reaches_every_declaration_form(self, tmp_path: Path) -> None:
+        syms = self._symbols(tmp_path)
+        got = sorted((s.kind, s.name, s.meta.get("task_implementation", "")) for s in syms)
+        assert got == [
+            ("addtask", "patchit", ""),
+            ("task", "do_compile", ""),
+            ("task", "do_patchit", "python"),
+            ("task", "do_twice", ""),
+            ("task", "do_twice", "python"),
+            ("variable", "DEPENDS", ""),
+            ("variable", "DEPENDS", ""),
+        ], got
+
+    def test_the_kind_slot_is_the_symbols_kind(self, tmp_path: Path) -> None:
+        for sym in self._symbols(tmp_path):
+            assert sym.id.rsplit(":", 1)[1] == sym.kind, sym.id
+
+    def test_the_span_slot_is_the_symbols_span(self, tmp_path: Path) -> None:
+        for sym in self._symbols(tmp_path):
+            span_slot = sym.id.rsplit(":", 3)[1]
+            assert span_slot == f"{sym.span.start_line}-{sym.span.end_line}", sym.id
+
+    def test_no_two_symbols_share_an_id(self, tmp_path: Path) -> None:
+        """Two assignments to DEPENDS, and a shell and a python task of one
+        name, are four symbols with four ids."""
+        ids = [s.id for s in self._symbols(tmp_path)]
+        assert len(ids) == len(set(ids)), sorted(ids)
+
+
+class TestEdgeEndpoints:
+    """``inherits`` and ``depends_on`` edges join file nodes or end at a stand-in.
+
+    Both ends were hand-built strings (``bitbake:<path>``,
+    ``bitbake:class:<cls>``, ``bitbake:package:<pkg>``) that named no node:
+    finalize folded every recipe into one ``<unknown>`` source and every
+    package into one ``<unknown>`` target, so three dependencies became one.
+    """
+
+    def _edges(self, tmp_path: Path) -> list[tuple[str, str, str, bool]]:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        result = analyze_bitbake(tmp_path)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        return sorted(
+            (e.edge_type, e.src, e.dst, e.is_resolved) for e in result.edges
+        )
+
+    def test_names_resolve_to_the_runs_own_files(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        make_bitbake_file(tmp_path, "recipes/app_1.0.bb", (
+            'inherit cmake mylocal\nDEPENDS = "zlib openssl plain"\n'
+        ))
+        make_bitbake_file(tmp_path, "recipes/zlib_1.3.bb", 'SUMMARY = "zlib"\n')
+        make_bitbake_file(tmp_path, "recipes/plain.bb", 'SUMMARY = "plain"\n')
+        make_bitbake_file(tmp_path, "classes/mylocal.bbclass", "do_x() {\n    :\n}\n")
+
+        app = make_file_id("bitbake", "recipes/app_1.0.bb")
+        assert self._edges(tmp_path) == sorted([
+            ("inherits", app, "bitbake:class:0-0:cmake:unresolved", False),
+            ("inherits", app, make_file_id("bitbake", "classes/mylocal.bbclass"), True),
+            ("depends_on", app, make_file_id("bitbake", "recipes/zlib_1.3.bb"), True),
+            ("depends_on", app, "bitbake:package:0-0:openssl:unresolved", False),
+            ("depends_on", app, make_file_id("bitbake", "recipes/plain.bb"), True),
+        ])
+
+    def test_two_versions_of_a_recipe_are_not_guessed_between(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        make_bitbake_file(tmp_path, "app.bb", 'DEPENDS = "zlib"\n')
+        make_bitbake_file(tmp_path, "zlib_1.2.bb", 'SUMMARY = "old"\n')
+        make_bitbake_file(tmp_path, "zlib_1.3.bb", 'SUMMARY = "new"\n')
+        assert self._edges(tmp_path) == [(
+            "depends_on", make_file_id("bitbake", "app.bb"),
+            "bitbake:package:0-0:zlib:unresolved", False,
+        )]
+
+    def test_a_run_does_not_see_an_earlier_runs_files(self, tmp_path: Path) -> None:
+        """The file index is per run: a recipe read by an earlier ``analyze()``
+        in this process is no target for a later one."""
+        first, second = tmp_path / "first", tmp_path / "second"
+        make_bitbake_file(first, "zlib.bb", 'SUMMARY = "zlib"\n')
+        make_bitbake_file(second, "app.bb", 'DEPENDS = "zlib"\n')
+        analyze_bitbake(first)
+        assert [e[2] for e in self._edges(second)] == [
+            "bitbake:package:0-0:zlib:unresolved",
+        ]

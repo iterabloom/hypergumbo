@@ -6,60 +6,67 @@ for semantic operations in sketch generation. It's separated from
 sketch.py to allow coverage to be measured independently when the heavy
 dependencies (sentence-transformers, torch) aren't available.
 
-The main entry points are:
-- extract_readme_description_embedding(): Extract project description from README
-- embed_file_for_semantic_ranking(): Embed a single file for downstream ranking
-- batch_embed_files(): Batch embed files with caching
-- compute_5w1h_similarity(): Score a file against the 5W1H rubric
+The main entry point is ``extract_readme_description_embedding()``: extract
+the project description from the README. ``sketch.py``'s config discovery
+and extraction load the same model through ``_load_embedding_model``.
 
-Two models back these. ``microsoft/unixcoder-base`` (``_load_embedding_model``)
-serves README description extraction, and ``sketch.py``'s config discovery
-and extraction import ``_load_embedding_model`` and ``NEGATIVE_PATTERNS``
-from here directly. ``nomic-ai/modernbert-embed-base``
-(``_load_modernbert_model``) serves the Additional Files semantic ranking:
-``embed_file_for_semantic_ranking``, ``batch_embed_files`` and the 5W1H
-probe embeddings. Once both models are in the HF cache, loading either one
-sets ``HF_HUB_OFFLINE=1`` for the whole process
-(``_ensure_hf_offline_for_cached_models``, INV-dasig).
+The install path has its own entry point: ``fetch_embedding_models()``
+downloads every model in ``EMBEDDING_MODELS`` that is not yet cached,
+lifting ``HF_HUB_OFFLINE`` while it runs. ``cli.py`` calls it, in a fresh
+interpreter, only for ``install-embeddings`` and ``add-extras``; it is the
+one place a model is fetched. Analysis loads from the cache only.
+
+One model backs these: ``microsoft/unixcoder-base``
+(``_load_embedding_model``) serves README description extraction, and
+``sketch.py``'s config discovery and extraction import
+``_load_embedding_model`` and ``NEGATIVE_PATTERNS`` from here directly.
+A second model, ModernBERT, ranked the sketch's Additional Files until
+measurement 0033 found the ranking slow, unrepeatable and no better than
+file role and depth; that code and its per-file embedding cache are gone,
+and the ranking is ``overview_rank``. Before every sentence_transformers
+import (in ``_has_sentence_transformers`` and in the loader),
+``_ensure_hf_offline_for_cached_models`` sets ``HF_HUB_OFFLINE=1`` for the
+whole process unless the variable already holds a value huggingface_hub reads
+as offline; ``0`` or ``false`` is overridden. It does this whether or not the
+models are cached, despite its name (INV-dasig, INV-gujus).
 
 The module also hosts the per-repo XDG cache layout under
 ``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
-``_get_xdg_cache_base``): the content-hash-keyed embedding cache
-(``_get_cache_dir``) and the analysis-results cache (``_get_results_cache_dir``),
-keyed by repo state hash, resolved opt-in backend set, trace_deps token,
+``_get_xdg_cache_base``): the analysis-results cache
+(``_get_results_cache_dir``), keyed by repo state hash, resolved opt-in
+backend set, trace_deps token,
 digests of the analysis-stage user catalogue channels and the config tiers,
-and analyzer identity. ``cli.py`` and ``sketch.py`` import the results-cache
-helpers from here; they have nothing to do with embeddings.
+a digest of the run's ``--exclude`` patterns, and analyzer identity.
+``cli.py`` and ``sketch.py`` import the results-cache helpers from here;
+they have nothing to do with embeddings.
 
 Degradation contract — TWO failure modes, not one
 -------------------------------------------------
-"sentence-transformers is unavailable" means two independent things, and
-conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
-(INV-rupid):
+"sentence-transformers is unavailable" means two independent things. A
+caller that handles only the first lets the second escape to the CLI top
+level, so ``hypergumbo .`` exits 1 without writing a sketch (INV-rupid):
 
 1. **The library is not importable.** ``_has_sentence_transformers()``
    answers this, and only this — it catches ``ImportError`` and nothing
-   else. The three embedding entry points check it first;
-   ``compute_5w1h_similarity`` needs only numpy and reaches the guard
-   only through ``_get_additional_files_probe_embeddings`` when the
-   precomputed probes are missing.
-2. **The library imports but the model WEIGHTS are not on disk** and
-   cannot be downloaded (no network, ``HF_HUB_OFFLINE``, a cache miss on
-   a machine that has never fetched them). ``_has_sentence_transformers()``
-   returns True in this case. The load itself raises, so
+   else. ``extract_readme_description_embedding`` checks it first.
+2. **The library imports but the model WEIGHTS are not on disk** (a
+   machine that has never run ``hypergumbo install-embeddings``, or a
+   cleared cache). Analysis never downloads them.
+   ``_has_sentence_transformers()`` returns True in this case. The load
+   itself raises, so
    ``_load_st_model_offline_first`` converts that into
    :class:`EmbeddingsUnavailable`.
 
-Callers must handle BOTH. The three embedding entry points already do: each
-catches :class:`EmbeddingsUnavailable` and degrades to the same result its
-import-guard branch returns (``compute_5w1h_similarity`` inherits this
-through its probe loader), and :func:`_warn_embeddings_unavailable`
-warns once per process rather than per file. Consumers outside this module
+Callers must handle BOTH. ``extract_readme_description_embedding`` does: it
+catches :class:`EmbeddingsUnavailable` and degrades to the result its
+import-guard branch returns, and :func:`_warn_embeddings_unavailable`
+warns once per process rather than per call. Consumers outside this module
 (see ``sketch.py``) degrade to their heuristic path.
 
 The probe is deliberately NOT strengthened to demand weights: a first
-install legitimately has the library and no weights, and downloading them
-then is the sanctioned path. The guard answers "can I import"; the loader
+install legitimately has the library and no weights, and the remedy,
+``hypergumbo install-embeddings``, is named by the loader's error and the
+one-time warning. The guard answers "can I import"; the loader
 answers "can I load".
 """
 
@@ -86,7 +93,6 @@ _IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
 from ._hf_noise import suppress_hf_noise as _suppress_hf_noise  # noqa: E402
 from .safety_zones import (  # noqa: E402
     cache_mkdir,
-    cache_save_npy,
     repo_inspect_git,
 )
 
@@ -137,18 +143,16 @@ def _restore_no_proxy(old_values: tuple[str | None, str | None]) -> None:
 class EmbeddingsUnavailable(RuntimeError):
     """The embedding model could not be loaded, so semantic work must degrade.
 
-    Raised by :func:`_load_st_model_offline_first` when neither the local HF
-    cache nor a download can supply the weights — the offline / air-gapped /
-    egress-blocked case. It exists so that consumers can tell "the enhancement
-    is unavailable" apart from a genuine bug, and answer with the SAME empty
-    value their ``_has_sentence_transformers()`` guard already returns.
+    Raised by :func:`_load_st_model_offline_first` when the local HF cache
+    does not hold the weights — analysis never downloads them, so this is the
+    case for a machine that has not run ``hypergumbo install-embeddings``. It
+    exists so that consumers can tell "the enhancement is unavailable" apart
+    from a genuine bug, and answer with the SAME empty value their
+    ``_has_sentence_transformers()`` guard already returns.
 
-    INV-rupid: before this existed, the network-allowing fallback constructor
-    was unwrapped, so its ``OSError`` propagated through six unguarded load
-    sites to the CLI top level. ``hypergumbo .`` then exited 1 with a
-    huggingface.co connection error and wrote a zero-byte sketch, while
-    ``hypergumbo survey`` on the same tree exited 0 — the default command was
-    the only casualty, which is the worst place for one in a LOCAL-FIRST tool.
+    An untyped ``OSError`` from the loader would instead reach the CLI top
+    level and fail the default ``hypergumbo .`` command with no sketch written,
+    for an enhancement that is optional in a local-first tool (INV-rupid).
 
     The originating exception is always attached as ``__cause__``; callers that
     report to the user should surface it rather than inventing a message.
@@ -175,8 +179,8 @@ def _warn_embeddings_unavailable(exc: BaseException) -> None:
         f"enhancement. Cause: {exc}. The sketch is complete but omits "
         "semantic config discovery and README description extraction. "
         "To enable it, run 'hypergumbo install-embeddings' on a machine with "
-        "network access; the weights are then cached under $HF_HOME and no "
-        "further network access is needed.",
+        "network access: it downloads the model weights into $HF_HOME. "
+        "Analysis never downloads them itself (runtime-cli-no-network).",
         UserWarning,
         stacklevel=2,
     )
@@ -207,9 +211,9 @@ def _load_embedding_model():
     if _cached_embedding_model is not None:
         return _cached_embedding_model
 
-    # INV-dasig: force HF offline (when models are cached) BEFORE importing
-    # sentence_transformers, which imports huggingface_hub and freezes its
-    # offline constant at import time.
+    # Force HF offline BEFORE importing sentence_transformers, which imports
+    # huggingface_hub and freezes its offline constant at import time
+    # (INV-dasig).
     _ensure_hf_offline_for_cached_models()
 
     # Suppress warnings BEFORE importing to catch all submodule loggers
@@ -246,13 +250,17 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
     no HF_TOKEN is set. For ``hypergumbo .`` runs that's noise on every
     invocation.
 
-    Strategy: try the constructor with ``local_files_only=True`` first
-    (which suppresses the freshness check entirely). If the model isn't
-    cached yet (typically the first install after ``hypergumbo
-    install-embeddings``), HuggingFace Hub raises ``LocalEntryNotFoundError``
-    (a subclass of ``OSError``) — fall back to a normal load that allows
-    the download. After the first successful load, all subsequent calls
-    take the offline path with no network.
+    Strategy: the constructor with ``local_files_only=True`` (which
+    suppresses the freshness check entirely), and ONLY that. If the model is
+    not cached, HuggingFace Hub raises ``LocalEntryNotFoundError`` (a subclass
+    of ``OSError``) and the enhancement is unavailable: this raises
+    :class:`EmbeddingsUnavailable` naming ``hypergumbo install-embeddings``,
+    which is where the weights are fetched (:func:`fetch_embedding_models`).
+
+    There is deliberately no network-allowed fallback: ``runtime-cli-no-network``
+    says analysis never downloads, and a retry without ``local_files_only``
+    would fetch both models from huggingface.co on the first ``sketch`` after
+    the library is installed (INV-gujus).
 
     Catching the broader ``(OSError, ValueError)`` covers all the
     documented "no local entry" exception variants without forcing a
@@ -264,40 +272,30 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
     (model card / commits / discussions), the xet daemon's cache-freshness
     ping, and the ``transformers`` safetensors auto-conversion *background
     thread* fired during ``encode()`` all still reach ``huggingface.co``
-    otherwise — so a plain ``hypergumbo run`` / sketch leaks outbound
+    otherwise — so a plain ``hypergumbo run`` / sketch would leak outbound
     network on every invocation, violating the ``runtime-cli-no-network``
     claim (INV-dasig). ``HF_HUB_OFFLINE=1`` is the only switch that
     hard-disables every HF Hub sub-API, so we set it before the cached
-    load and (on success) leave it set for the rest of the process. The
-    network-allowing fallback restores the caller's prior setting so the
-    one-time first-install download — the only sanctioned runtime fetch —
-    still works.
+    load and (on success) leave it set for the rest of the process. On a
+    miss the caller's prior setting is restored before raising.
     """
     prior_offline = os.environ.get("HF_HUB_OFFLINE")
     os.environ["HF_HUB_OFFLINE"] = "1"
     try:
         model = st_cls(model_name, local_files_only=True, **kwargs)
-    except (OSError, ValueError):
-        # Model not cached (first use after install-embeddings): restore the
-        # caller's prior offline state so the download can reach the network.
+    except (OSError, ValueError) as exc:
         if prior_offline is None:
             os.environ.pop("HF_HUB_OFFLINE", None)
         else:
             os.environ["HF_HUB_OFFLINE"] = prior_offline
-        try:
-            return st_cls(model_name, **kwargs)
-        except (OSError, ValueError) as exc:
-            # INV-rupid: BOTH sources are exhausted — not cached, and the
-            # download could not happen (offline, air-gapped, egress-blocked,
-            # or HF_HUB_OFFLINE=1 set by the caller). This is the enhancement
-            # being unavailable, NOT a bug, so it must not reach the CLI's
-            # internal-error handler. Raising a typed error rather than
-            # returning None keeps the two failure modes distinguishable and
-            # preserves the original for the operator via __cause__.
-            raise EmbeddingsUnavailable(
-                f"could not load embedding model {model_name!r}: "
-                "not in the local cache and not downloadable"
-            ) from exc
+        # The enhancement being unavailable is NOT a bug, so it must not
+        # reach the CLI's internal-error handler. A typed error rather than
+        # None keeps the failure distinguishable and preserves the original
+        # for the operator via __cause__ (INV-rupid).
+        raise EmbeddingsUnavailable(
+            f"embedding model {model_name!r} is not in the local cache; "
+            "run 'hypergumbo install-embeddings' to download it"
+        ) from exc
     # Cached-load success: keep HF_HUB_OFFLINE=1 set so encode()-time HF
     # background threads stay offline too.
     return model
@@ -309,9 +307,8 @@ def _hf_model_is_cached(model_name: str) -> bool:
     Checks the standard hub layout
     ``$HF_HOME/hub/models--<org>--<name>/snapshots/<rev>/`` for a non-empty
     revision directory, WITHOUT importing huggingface_hub or touching the
-    network. Used to decide whether it is safe to force offline mode before
-    the (offline-constant-freezing) huggingface_hub import — see
-    ``_ensure_hf_offline_for_cached_models``.
+    network. Used by :func:`fetch_embedding_models` to skip models that are
+    already downloaded.
     """
     hf_home = os.environ.get("HF_HOME") or os.path.join(
         os.path.expanduser("~"), ".cache", "huggingface",
@@ -328,39 +325,42 @@ def _hf_model_is_cached(model_name: str) -> bool:
     return False
 
 
+#: The values huggingface_hub reads as true (``constants.ENV_VARS_TRUE_VALUES``,
+#: matched upper-cased). Copied, not imported: importing huggingface_hub here
+#: would freeze its offline switch before this module could set it.
+_HF_TRUE_VALUES = frozenset({"1", "ON", "YES", "TRUE"})
+
+
 def _ensure_hf_offline_for_cached_models() -> bool:
-    """Set ``HF_HUB_OFFLINE=1`` BEFORE the first huggingface_hub import when
-    every embedding model is already cached (INV-dasig).
+    """Set ``HF_HUB_OFFLINE=1`` BEFORE the first huggingface_hub import (INV-dasig).
 
     huggingface_hub freezes its offline switch into the module constant
     ``huggingface_hub.constants.HF_HUB_OFFLINE`` at IMPORT time and does not
     re-read ``os.environ`` afterward — so setting the env var inside the model
     loader (after ``from sentence_transformers import ...``) is too late and
-    the cached load still reaches the network (the original INV-dasig leak,
-    plus the encode()-time safetensors auto-conversion background thread). This
-    helper therefore runs at the top of every function that imports
-    sentence_transformers, BEFORE the import.
+    the cached load still reaches the network, as does the encode()-time
+    safetensors auto-conversion background thread. This helper therefore runs
+    at the top of every function that imports sentence_transformers to load a
+    model, BEFORE the import. (cli's install-path availability checks import
+    the library and load nothing.)
 
-    Gating is all-or-nothing across the embedding models: the offline constant
-    is process-global once frozen, so forcing offline while a model is still
-    missing would deadlock that model's one-time download. When any model is
-    absent we leave offline off so first-install downloads proceed; once all
-    models are cached every subsequent load is fully offline. (The narrow,
-    transient partial-cache window therefore still permits HF metadata
-    traffic — documented in docs/hypergumbo-spec.md.) An already-set
-    ``HF_HUB_OFFLINE`` (user / CI / test) is honored as-is.
+    Offline is forced unconditionally, whether or not every model is cached:
+    analysis never downloads (the weights come from ``install-embeddings``,
+    :func:`fetch_embedding_models`), so there is no download to protect, and
+    leaving it off while a model is missing would open the hub to metadata
+    traffic (INV-gujus).
 
-    Returns True if offline mode is in effect (set here or already set).
+    A value the user already set is kept only when huggingface_hub reads it as
+    offline (:data:`_HF_TRUE_VALUES`, compared upper-cased as the library
+    does). Anything else -- ``0``, ``false``, ``no`` -- is replaced with ``1``,
+    because honouring it leaves the hub reachable: a plain ``sketch`` connects
+    to the configured endpoint even with the models loaded from cache.
+
+    Returns True: offline mode is in effect (set here or already set).
     """
-    if os.environ.get("HF_HUB_OFFLINE"):
-        return True
-    if all(
-        _hf_model_is_cached(name)
-        for name in (_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME)
-    ):
+    if os.environ.get("HF_HUB_OFFLINE", "").upper() not in _HF_TRUE_VALUES:
         os.environ["HF_HUB_OFFLINE"] = "1"
-        return True
-    return False
+    return True
 
 
 # Probe patterns for embedding-based config extraction
@@ -435,7 +435,7 @@ ANSWER_PATTERNS = [
 ]
 
 # Open-ended questions for big-picture/architectural context
-# NOTE: License questions removed - ANSWER_PATTERNS already captures compact
+# NOTE: No license questions here - ANSWER_PATTERNS already captures compact
 # license declarations (e.g., 'license = "MIT"') without matching verbose
 # LICENSE file boilerplate.
 BIG_PICTURE_QUESTIONS = [
@@ -627,8 +627,8 @@ NEGATIVE_PATTERNS = [
 
 def _has_sentence_transformers() -> bool:
     """Check if sentence-transformers is available."""
-    # INV-dasig: force HF offline (when cached) before this import freezes the
-    # huggingface_hub offline constant — this is often the process's first one.
+    # Force HF offline before this import freezes the huggingface_hub offline
+    # constant — this is often the process's first one (INV-dasig).
     _ensure_hf_offline_for_cached_models()
     try:
         from sentence_transformers import SentenceTransformer  # noqa: F401
@@ -707,64 +707,76 @@ README_DESCRIPTION_PROBES = [
     "Use (Project Name) to (primary job) in (context)—for example, (example use case).",
 ]
 
-# Cache for probe embeddings (decoded from pre-computed base64)
-_README_PROBE_EMBEDDINGS: "np.ndarray | None" = None
-_ANSWER_PROBE_EMBEDDINGS: "np.ndarray | None" = None
-_BIGPIC_PROBE_EMBEDDINGS: "np.ndarray | None" = None
+#: The probe sets whose embeddings ship in ``_embedding_data``: name ->
+#: (the probe texts, the attribute that holds their base64 array). The texts
+#: live here and nowhere else; ``scripts/compute_probe_embeddings.py`` reads
+#: this table.
+PROBE_SETS: dict[str, tuple[list[str], str]] = {
+    "readme": (README_DESCRIPTION_PROBES, "README_PROBES_B64"),
+    "answer": (ANSWER_PATTERNS, "ANSWER_PROBES_B64"),
+    "bigpic": (BIG_PICTURE_QUESTIONS, "BIGPIC_PROBES_B64"),
+    "negative": (NEGATIVE_PATTERNS, "NEGATIVE_PROBES_B64"),
+}
+
+# Decoded shipped arrays, kept for the life of the process (None: the shipped
+# array is not of today's texts and model).
+_SHIPPED_PROBES: "dict[str, np.ndarray | None]" = {}
 
 
-def _get_readme_probe_embeddings() -> "np.ndarray":
-    """Get pre-computed probe embeddings for README description extraction.
+def probe_digest(model_name: str, probes: Sequence[str]) -> str:
+    """Identify what a shipped array was computed from: the model's name and
+    the probe texts, in order."""
+    import hashlib
 
-    Uses base64-encoded float16 embeddings from _embedding_data.py,
-    avoiding the ~2-3s startup cost of computing embeddings at runtime.
+    digest = hashlib.sha256(model_name.encode("utf-8"))
+    for probe in probes:
+        digest.update(b"\x00")
+        digest.update(probe.encode("utf-8"))
+    return digest.hexdigest()
 
-    Returns:
-        Normalized probe embeddings array of shape (19, 768).
+
+def _shipped_probe_embeddings(name: str) -> "np.ndarray | None":
+    """The shipped array of a probe set, or ``None`` when it does not belong
+    to today's texts and model.
+
+    ``_embedding_data.PROBE_DIGESTS`` records, per array, the digest of the
+    model name and probe texts it was computed from. A probe list edited
+    without re-running ``scripts/compute_probe_embeddings.py``, a changed
+    ``_EMBEDDING_MODEL``, or a data file from before the digests existed gives
+    ``None``, and the caller encodes the probes with the model.
     """
-    global _README_PROBE_EMBEDDINGS
+    if name not in _SHIPPED_PROBES:
+        from . import _embedding_data as data
 
-    if _README_PROBE_EMBEDDINGS is None:
-        from ._embedding_data import README_PROBES_B64
-        _README_PROBE_EMBEDDINGS = _decode_probe_embeddings(
-            README_PROBES_B64, len(README_DESCRIPTION_PROBES)
+        probes, attr = PROBE_SETS[name]
+        recorded = getattr(data, "PROBE_DIGESTS", {}).get(name)
+        fresh = recorded == probe_digest(_EMBEDDING_MODEL, probes)
+        _SHIPPED_PROBES[name] = (
+            _decode_probe_embeddings(getattr(data, attr), len(probes)) if fresh else None
         )
+    return _SHIPPED_PROBES[name]
 
-    return _README_PROBE_EMBEDDINGS
 
+def probe_embeddings(name: str, model: Any, dim: int) -> "np.ndarray":
+    """Unit-length embeddings of a probe set, one row per probe, ``dim`` wide.
 
-def _get_answer_probe_embeddings() -> "np.ndarray":
-    """Get pre-computed probe embeddings for config answer patterns.
-
-    Returns:
-        Normalized probe embeddings array of shape (41, 768).
+    The probe texts never change between calls, so their embeddings are
+    computed once by ``scripts/compute_probe_embeddings.py`` and shipped.
+    ``dim`` is the width of what ``model`` just produced for the caller's own
+    texts: the shipped rows are used when they are of today's texts and model
+    (:func:`_shipped_probe_embeddings`) and of that width. Anything else, a
+    stale array or a model that is not the shipped one, has the model encode
+    the probes here, which costs time (180 texts for the config extraction)
+    and gives the same kind of answer.
     """
-    global _ANSWER_PROBE_EMBEDDINGS
+    shipped = _shipped_probe_embeddings(name)
+    if shipped is not None and shipped.shape[1] == dim:
+        return shipped
+    import numpy as np
 
-    if _ANSWER_PROBE_EMBEDDINGS is None:
-        from ._embedding_data import ANSWER_PROBES_B64
-        _ANSWER_PROBE_EMBEDDINGS = _decode_probe_embeddings(
-            ANSWER_PROBES_B64, len(ANSWER_PATTERNS)
-        )
-
-    return _ANSWER_PROBE_EMBEDDINGS
-
-
-def _get_bigpic_probe_embeddings() -> "np.ndarray":
-    """Get pre-computed probe embeddings for big picture questions.
-
-    Returns:
-        Normalized probe embeddings array of shape (127, 768).
-    """
-    global _BIGPIC_PROBE_EMBEDDINGS
-
-    if _BIGPIC_PROBE_EMBEDDINGS is None:
-        from ._embedding_data import BIGPIC_PROBES_B64
-        _BIGPIC_PROBE_EMBEDDINGS = _decode_probe_embeddings(
-            BIGPIC_PROBES_B64, len(BIG_PICTURE_QUESTIONS)
-        )
-
-    return _BIGPIC_PROBE_EMBEDDINGS
+    live = model.encode(PROBE_SETS[name][0], convert_to_numpy=True)
+    norms = np.linalg.norm(live, axis=1, keepdims=True)
+    return live / (norms + 1e-8)
 
 
 def _is_readme_line_filterable(line: str) -> bool:
@@ -898,6 +910,42 @@ class ReadmeExtractionDebug:
         )
 
 
+def _readme_candidate_lines(content: str, max_lines: int = 80) -> list[tuple[int, str]]:
+    """The README lines the embedding scorer may choose from, as
+    ``(line index, text)``.
+
+    Callouts are blanked and a leading blockquote unquoted first, by the rule
+    the heuristic extractor shares (:mod:`hypergumbo_core.readme_prose`), so
+    the two extractors cannot disagree about which lines are candidates.
+    Then fenced code, badges, images and blank lines are dropped. Kept apart
+    from the scorer so it runs, and is tested, without numpy or a model.
+    """
+    from .readme_prose import description_lines
+
+    lines = description_lines(content.split("\n"))[:max_lines]
+
+    in_code_block = False
+    filtered_lines: list[tuple[int, str]] = []
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+
+        # Track fenced code blocks
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+
+        # Skip lines inside code blocks
+        if in_code_block:
+            continue
+
+        # Skip filterable lines (badges, empty, pure images)
+        if _is_readme_line_filterable(line):
+            continue
+
+        filtered_lines.append((idx, stripped))
+    return filtered_lines
+
+
 def extract_readme_description_embedding(
     readme_path: Path,
     max_lines: int = 80,
@@ -955,29 +1003,7 @@ def extract_readme_description_embedding(
             )
         return None
 
-    lines = content.split("\n")[:max_lines]
-
-    # Track code block state for filtering
-    in_code_block = False
-    filtered_lines: list[tuple[int, str]] = []  # (original_idx, line)
-
-    for idx, line in enumerate(lines):
-        stripped = line.strip()
-
-        # Track fenced code blocks
-        if stripped.startswith("```"):
-            in_code_block = not in_code_block
-            continue
-
-        # Skip lines inside code blocks
-        if in_code_block:
-            continue
-
-        # Skip filterable lines (badges, empty, pure images)
-        if _is_readme_line_filterable(line):
-            continue
-
-        filtered_lines.append((idx, stripped))
+    filtered_lines = _readme_candidate_lines(content, max_lines)
 
     if not filtered_lines:
         if debug:
@@ -1029,10 +1055,9 @@ def extract_readme_description_embedding(
             )
         return None
 
-    # Load model and get pre-computed probe embeddings. INV-rupid: an
-    # unavailable model answers with the SAME shape the
-    # _has_sentence_transformers() guard above returns, so there is exactly one
-    # definition of "no description could be extracted".
+    # Load the model. An unavailable model answers with the SAME shape the _has_sentence_transformers() guard above
+    # returns, so there is exactly one definition of "no description could be
+    # extracted" (INV-rupid).
     try:
         model = _load_embedding_model()
     except EmbeddingsUnavailable as exc:
@@ -1044,16 +1069,16 @@ def extract_readme_description_embedding(
                 lines_processed=len(filtered_lines),
             )
         return None
-    probe_embeddings = _get_readme_probe_embeddings()
 
     # Embed all filtered lines
     line_texts = [line for _, line in filtered_lines]
     line_embeddings = model.encode(line_texts, convert_to_numpy=True)
     line_norms = np.linalg.norm(line_embeddings, axis=1, keepdims=True)
     normalized_lines = line_embeddings / (line_norms + 1e-8)
+    readme_probes = probe_embeddings("readme", model, normalized_lines.shape[1])
 
     # Compute pairwise cosine similarities: (num_lines, num_probes)
-    similarities = np.dot(normalized_lines, probe_embeddings.T)
+    similarities = np.dot(normalized_lines, readme_probes.T)
 
     # Score each line as mean of top-k similarities with probes
     top_k = min(top_k_probes, len(README_DESCRIPTION_PROBES))
@@ -1212,165 +1237,8 @@ def extract_readme_description_embedding(
 
 
 # ==============================================================================
-# Additional Files Semantic Ranking (5W1H probes)
+# Per-repo cache layout (nothing to do with embeddings; see the module docstring)
 # ==============================================================================
-
-# 5W1H probes for semantic ranking of Additional Files
-# These help surface documentation and explanatory files at the top
-#
-# WARNING: Changes require regenerating embeddings! Run:
-#     python scripts/compute_probe_embeddings.py
-ADDITIONAL_FILES_PROBES = [
-    # Who this thing is for
-    (
-        "Who this thing is for This project is for people who want a clear, "
-        "dependable tool that does one job well, and stays out of the way while "
-        "you get on with your work. If you're the kind of person who reads a "
-        "README before installing anything, you'll feel at home here. If you're "
-        "the kind of person who doesn't, that's fine too: the defaults are "
-        "designed to be sensible, the setup aims to be painless, and the 'happy "
-        "path' should take you from zero to useful without a scavenger hunt "
-        "through configuration files. It's for builders: developers wiring this "
-        "into an app, scripting it into a workflow, or integrating it into CI. "
-        "It's for maintainers who care about predictable behavior, stable "
-        "interfaces, and changes that are explained rather than hand-waved. It's "
-        "for curious tinkerers who like to poke at source code, file issues, "
-        "propose improvements, or just understand how things work under the hood. "
-        "It's also for teams. If you need something that can be documented, "
-        "reviewed, tested, and shared without a private onboarding ritual, you're "
-        "in the right place. And if you're new to the ecosystem, don't worry: the "
-        "docs assume intelligence, not prior knowledge. You'll find examples, "
-        "explanations, and reference material aimed at helping you succeed whether "
-        "you're experimenting on a weekend or shipping on a deadline. If you want "
-        "a tool that respects your time, welcomes contributions, and tries hard to "
-        "be boring in production (in the best way), this thing is for you."
-    ),
-    # What this thing does
-    (
-        "This project exists to do one thing well: it does what it says it does - "
-        "and then gets out of your way. At its core, it's a small, focused tool "
-        "that takes an input (whatever 'input' means in your environment), applies "
-        "a clear set of rules, and produces an output you can rely on. You can "
-        "think of it as a dependable middle layer: it translates intent into "
-        "action, turns repetitive steps into a single command, and makes the "
-        "common case fast while keeping the uncommon case possible. The 'thing' "
-        "here is intentionally general because the shape of your problem might be "
-        "different from someone else's. Sometimes that means transforming data, "
-        "sometimes orchestrating a workflow, sometimes smoothing over rough edges "
-        "between systems that don't naturally fit together. In every case, the "
-        "goal is the same: reduce friction, increase consistency, and provide a "
-        "simple interface that feels obvious after you've used it once. It's "
-        "designed to be practical rather than precious. You should be able to drop "
-        "it into an existing setup, configure only what you need, and extend it "
-        "when your requirements grow. If you're skimming this documentation, the "
-        "takeaway is simple: this tool helps you get from 'I want this done' to "
-        "'it's done' with fewer moving parts, fewer surprises, and more control "
-        "over the details that matter to you."
-    ),
-    # When to use this
-    (
-        "Use this component when you want a small, dependable 'building block' "
-        "that does one job well and fits cleanly into a larger system. It's a "
-        "good choice in situations where you value clarity over cleverness: you "
-        "need behavior that's easy to understand, easy to test, and unlikely to "
-        "surprise future readers of your code. If you're looking for something "
-        "that can be adopted incrementally - dropped into an existing project "
-        "without forcing a redesign - this is an appropriate place to start. This "
-        "tool shines when the surrounding requirements are stable or at least "
-        "well-bounded. If you can describe the problem in a few sentences and "
-        "you'd prefer a straightforward configuration or API surface, you'll "
-        "likely find it productive. It's also well-suited for teams: conventions "
-        "are explicit, defaults are sensible, and common workflows are documented "
-        "so new contributors can get traction quickly. In other words, reach for "
-        "it when you want to move fast without creating long-term ambiguity. Avoid "
-        "using it when you need heavy customization, unusual edge-case behavior, "
-        "or an experimental approach that's still changing week to week. In those "
-        "cases, you may be better served by a lower-level primitive or a more "
-        "flexible framework. But for most day-to-day tasks - reliable integration, "
-        "repeatable outcomes, and maintainable code - this is a solid, practical "
-        "option."
-    ),
-    # Where this comes from
-    (
-        "Where this thing comes from Every project has an origin story, even if "
-        "it starts out as a single line on a sticky note or a half-remembered idea "
-        "from a late-night debugging session. This section is the place where we "
-        "trace the roots of 'this thing': not as a dramatic tale of destiny, but "
-        "as a practical account of why it exists, what problems it was meant to "
-        "address, and how its earliest assumptions shaped what you're holding "
-        "today. Sometimes a tool appears because a gap kept showing up in real "
-        "work - an awkward workflow, a recurring edge case, a missing layer of "
-        "glue between two systems that otherwise behave nicely. Sometimes it's "
-        "born from curiosity: a desire to see if an approach could be made "
-        "simpler, faster, more transparent, or just easier to reuse. And sometimes "
-        "the origin is less tidy: a pile of scripts that slowly grew legs, "
-        "accumulated tests, acquired a name, and eventually demanded to be treated "
-        "like a real project. In open source, provenance matters. Knowing where "
-        "something comes from helps you understand its defaults, its trade-offs, "
-        "and the kind of contributions that fit its trajectory. It can explain why "
-        "certain features are emphasized, why certain decisions are conservative "
-        "or bold, and why the project's language and structure look the way they "
-        "do. Think of this as the context layer: a map of the initial constraints, "
-        "the early use cases, and the motivations that continue to echo through "
-        "the codebase. If you're new here, this is your orientation. If you've "
-        "been around for a while, it's a reminder of the thread that ties today's "
-        "implementation to yesterday's need."
-    ),
-    # Why this was built
-    (
-        "Why this thing was built - because a gap showed up, and it kept showing "
-        "up. We had a workflow that looked fine on paper: a few scripts here, a "
-        "manual checklist there, a half-dozen conventions that lived in someone's "
-        "head. It worked until it didn't. Every new contributor had to rediscover "
-        "the same sharp edges. Every deployment carried a small, unnecessary "
-        "gamble. Every integration required a bespoke fix, and every 'temporary' "
-        "workaround became permanent infrastructure. The cost wasn't dramatic in "
-        "any single moment; it was the slow accumulation of friction: time lost to "
-        "repetition, confidence lost to ambiguity, and opportunities lost because "
-        "change felt risky. So this project exists to make the common path the "
-        "easy path. It aims to turn tribal knowledge into documented behavior, and "
-        "scattered one-off solutions into something coherent and reusable. It is "
-        "intentionally general: useful in small prototypes and large systems, in "
-        "local development and automated pipelines, in hobby projects and "
-        "production services. You should be able to pick it up with minimal "
-        "context, apply it to your own constraints, and extend it without "
-        "rewriting the world. In short, it was built to reduce surprise. To "
-        "replace 'hope it works' with 'we know why it works.' To offer a solid "
-        "default, a clear surface area, and an approach that scales with your "
-        "needs rather than fighting them."
-    ),
-    # How this works
-    (
-        "How this thing works is deliberately simple at the surface, and carefully "
-        "engineered underneath. You point it at some input, you tell it what you "
-        "want, and it produces an output you can inspect, reuse, or wire into "
-        "something larger. There are no secret handshakes: the core behavior is "
-        "exposed through a small set of commands and a predictable configuration "
-        "layer, so you can get started quickly and still have room to grow into "
-        "the deeper features. Conceptually, the system is a pipeline. Data enters "
-        "through an adapter that normalizes formats, validates assumptions, and "
-        "attaches a bit of metadata so later stages can make good decisions. From "
-        "there, a runtime coordinates the actual work: it resolves dependencies, "
-        "schedules tasks in the right order, and applies the selected options in a "
-        "consistent way. Each step emits clear signals - logs, exit codes, and "
-        "structured output - so you can debug problems without guessing. The "
-        "important part is that every piece is replaceable. If you don't like the "
-        "default parser, swap it. If you need different output, add a formatter. "
-        "If your environment is unusual, provide your own transport or storage "
-        "backend. Extensions follow the same rules as built-ins: small interfaces, "
-        "stable contracts, and failure modes that are explicit rather than "
-        "surprising. In short: it takes your intent, turns it into a plan, "
-        "executes that plan reliably, and leaves an audit trail you can trust."
-    ),
-]
-
-# ModernBERT model for Additional Files embedding
-_MODERNBERT_MODEL_NAME = "nomic-ai/modernbert-embed-base"
-_MODERNBERT_TRUNCATE_DIM = 256
-
-# Cache for 5W1H probe embeddings (ModernBERT)
-_ADDITIONAL_FILES_PROBE_EMBEDDINGS: "np.ndarray | None" = None
-
 
 def _find_git_executable() -> str:
     """Find the full path to git executable.
@@ -1397,7 +1265,7 @@ def _run_git_command(
     """
     git_path = _find_git_executable()
     try:
-        # WI-fasuv: repo_inspection zone.
+        # repo_inspection safety zone (WI-fasuv).
         result = repo_inspect_git(
             [git_path, *args],
             cwd=cwd,
@@ -1466,13 +1334,10 @@ def _get_repo_state_hash(repo_root: Path) -> str:
     content-hash semantics — content change → hash change, mtime-only
     change → hash stable.
 
-    INV-magul: this used to use path:size:mtime, which picked up tracker
-    ``.ops`` mtime jitter and polluted the cache between unrelated
-    analysis runs. Migrating to ``compute_repo_fingerprint`` fixes that
-    as a side effect (content hashing ignores mtime). Existing cache
-    entries become unreachable on the algorithm switch — a one-time
-    miss the cache layer absorbs naturally; the next run repopulates
-    under the new key. See INV-tofur and ``docs/hypergumbo-spec.md:378-384``.
+    Content hashing is what keeps the key stable across mtime-only churn
+    such as tracker ``.ops`` files being touched between unrelated
+    analysis runs (INV-magul; see INV-tofur and ``repo_fingerprint`` in
+    ``docs/hypergumbo-spec.md``).
     """
     from .repo_fingerprint import compute_repo_fingerprint
     return compute_repo_fingerprint(repo_root)[:16]
@@ -1496,30 +1361,6 @@ def _get_xdg_cache_base() -> Path:
     return base / "hypergumbo"
 
 
-def _get_cache_dir(repo_root: Path) -> Path:
-    """Get or create the embedding cache directory for a repository.
-
-    Cache structure:
-        ~/.cache/hypergumbo/<fingerprint>/embeddings/
-
-    Embeddings are shared across all repo states since they're keyed by
-    file content hash. Only the results are state-specific.
-
-    Args:
-        repo_root: Repository root path.
-
-    Returns:
-        Path to the embeddings cache directory.
-    """
-    fingerprint = _get_repo_fingerprint(repo_root)
-    cache_base = _get_xdg_cache_base()
-    cache_dir = cache_base / fingerprint / "embeddings"
-
-    # Create the full path including parent directories
-    cache_mkdir(cache_dir, parents=True, exist_ok=True)
-    return cache_dir
-
-
 def _get_results_cache_dir(
     repo_root: Path, *, extra_excludes: "Sequence[str] | None" = None,
 ) -> Path:
@@ -1528,17 +1369,17 @@ def _get_results_cache_dir(
     Cache structure (WI-panih):
         ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>[-<backends>]/<analyzer_identity>/
 
-    The third segment is the repo state hash, suffixed (WI-givib) with the
-    RESOLVED opt-in backend set when it is non-empty — ``-rust_analyzer``
-    for a two-arm run — because which backends were ENABLED is run
-    configuration the analyzer identity (code identity) cannot see: a
-    tree-sitter-only run and a two-arm run of one tree used to share a
-    dir and return each other's artifact. The suffix is added only when a
+    The third segment is the repo state hash, suffixed with the RESOLVED
+    opt-in backend set when it is non-empty — ``-rust_analyzer`` for a
+    two-arm run — because which backends were ENABLED is run configuration
+    the analyzer identity (code identity) cannot see: without the suffix a
+    tree-sitter-only run and a two-arm run of one tree would share a dir and
+    return each other's artifact (WI-givib). The suffix is added only when a
     backend will actually run (opt-in chain AND binary installed —
-    ``backend_selection.resolved_backend_set``), so every entry written
-    before this change is still reachable, and a read command finds a
-    two-arm artifact only under the same resolved set (the environment
-    variable or the per-repository trust grant, not a one-off flag).
+    ``backend_selection.resolved_backend_set``), so a run with no backend
+    keeps the plain key, and a read command finds a two-arm artifact only
+    under the same resolved set (the environment variable or the
+    per-repository trust grant, not a one-off flag).
     The same segment is suffixed ``-deps-all`` / ``-deps-<hash>`` when
     installed dependency source is traced (``--trace-deps`` or the
     ``trace_deps`` config key; ``discovery.resolve_trace_deps``), so a traced
@@ -1549,15 +1390,15 @@ def _get_results_cache_dir(
     ``catalogue_home.analysis_channel_token``) and ``-cfg-<hash>`` with a
     digest of ``config.toml`` and ``.hypergumbo.toml``
     (``user_config.config_cache_token``). Neither is repository source the
-    state hash sees, and without them a cached survey kept answering after a
-    channel file was added, edited or broken — the broken file never read, so
-    never reported. Each suffix is absent when its files are, so a user with
-    no channel files and no config keeps every existing entry's key. It is
+    state hash sees, and without them a cached survey would keep answering
+    after a channel file was added, edited or broken — the broken file never
+    read, so never reported. Each suffix is absent when its files are, so a
+    user with no channel files and no config keeps the plain key. It is
     suffixed ``-ex-<hash>`` with a digest of the ``-e`` / ``--exclude``
-    patterns the run was given (``discovery.exclude_cache_token``; WI-tisuj):
-    a survey that skipped ``lib/`` used to REPLACE the plain survey in the one
-    directory, and a read command, which takes no ``--exclude``, then
-    answered from it. Read commands look under the plain key only.
+    patterns the run was given (``discovery.exclude_cache_token``): without
+    it a survey that skipped ``lib/`` would REPLACE the plain survey in the
+    one directory, and a read command, which takes no ``--exclude``, would
+    answer from it (WI-tisuj). Read commands look under the plain key only.
 
     The fourth segment (``<analyzer_identity>``) keys on the analyzer
     surface that produces the cached output — ``__version__`` plus a
@@ -1615,382 +1456,31 @@ def _get_results_cache_dir(
     return cache_dir
 
 
-def _compute_file_hash(file_path: Path) -> str:
-    """Compute hash of file content for cache invalidation.
+#: Every model a runtime command loads, in the order install fetches them.
+EMBEDDING_MODELS: tuple[str, ...] = (_EMBEDDING_MODEL,)
 
-    Args:
-        file_path: Path to the file.
 
-    Returns:
-        Short SHA256 hash of file content, or empty string on error.
+def fetch_embedding_models(st_cls: "Callable[..., object] | None" = None) -> None:
+    """Download every model in :data:`EMBEDDING_MODELS` that is not cached.
+
+    THE ONE PLACE A MODEL IS FETCHED (INV-gujus). Called only from the install
+    path -- ``install-embeddings`` and ``add-extras``, in a fresh interpreter
+    so a library pip just installed imports cleanly -- never from analysis,
+    whose loader (:func:`_load_st_model_offline_first`) is cache-only. Lifts
+    ``HF_HUB_OFFLINE`` for the duration, since the caller asked for a download.
     """
-    import hashlib
-
+    # Lifted BEFORE the import: huggingface_hub freezes the switch then.
+    prior_offline = os.environ.pop("HF_HUB_OFFLINE", None)
+    load: Callable[..., object]
+    if st_cls is not None:
+        load = st_cls
+    else:  # pragma: no cover - the real library; tests inject it
+        from sentence_transformers import SentenceTransformer
+        load = SentenceTransformer
     try:
-        content = file_path.read_bytes()
-        return hashlib.sha256(content).hexdigest()[:16]
-    except OSError:
-        return ""
-
-
-def _load_cached_embedding(cache_dir: Path, file_hash: str) -> "np.ndarray | None":
-    """Load embedding from cache if it exists.
-
-    Args:
-        cache_dir: Path to cache directory.
-        file_hash: Content hash of the file.
-
-    Returns:
-        Cached embedding array, or None if not cached.
-    """
-    if not file_hash:
-        return None
-
-    cache_file = cache_dir / f"embed_{file_hash}.npy"
-    if cache_file.exists():
-        try:
-            import numpy as np
-            return np.load(cache_file)
-        except Exception:
-            return None
-    return None
-
-
-def _save_cached_embedding(
-    cache_dir: Path, file_hash: str, embedding: "np.ndarray"
-) -> None:
-    """Save embedding to cache.
-
-    Args:
-        cache_dir: Path to cache directory.
-        file_hash: Content hash of the file.
-        embedding: Embedding array to cache.
-    """
-    if not file_hash:
-        return
-
-    cache_file = cache_dir / f"embed_{file_hash}.npy"
-    try:
-        cache_save_npy(cache_file, embedding)
-    except Exception:
-        pass  # Silently fail if caching doesn't work
-
-
-def _extract_file_samples(
-    file_path: Path,
-    num_samples: int = 3,
-    sample_size: int = 400,
-) -> str:
-    """Extract random non-overlapping substrings from first third of file.
-
-    Used to create a representative sample of file content for embedding.
-    Strips HTML tags but keeps text content.
-
-    Args:
-        file_path: Path to the file.
-        num_samples: Number of samples to extract.
-        sample_size: Character count per sample.
-
-    Returns:
-        Ellipsis-concatenated string of samples, de-HTMLified.
-    """
-    import random
-    import re
-    import zlib
-
-    try:
-        content = file_path.read_text(encoding='utf-8', errors='replace')
-    except OSError:
-        return ""
-
-    if not content:
-        return ""
-
-    # Use first third of file (most likely to contain description/overview)
-    first_third_len = len(content) // 3
-    if first_third_len < 100:
-        first_third = content  # File is very small, use all of it
-    else:
-        first_third = content[:first_third_len]
-
-    # De-HTMLify: remove HTML tags but keep content
-    first_third = re.sub(r'<[^>]+>', ' ', first_third)
-    # Collapse whitespace
-    first_third = ' '.join(first_third.split())
-
-    total_needed = sample_size * num_samples
-    if len(first_third) <= total_needed:
-        return first_third
-
-    # Extract non-overlapping samples with deterministic seeding. The seed is
-    # a STABLE digest of the path: ``hash(str)`` is salted per process
-    # (PYTHONHASHSEED), so it picked different windows — and so different
-    # embedding rankings — on every run (WI-vosag analogue).
-    seed = zlib.crc32(str(file_path).encode("utf-8"))
-    rng = random.Random(seed)  # noqa: S311 # nosec B311
-
-    samples: list[str] = []
-    available_start = 0
-
-    for _ in range(num_samples):
-        # Calculate max start position leaving room for remaining samples
-        remaining_samples = num_samples - len(samples) - 1
-        max_start = len(first_third) - sample_size - (sample_size * remaining_samples)
-
-        if available_start >= max_start:
-            break
-
-        start = rng.randint(available_start, max_start)
-        samples.append(first_third[start:start + sample_size])
-        available_start = start + sample_size
-
-    return " ... ".join(samples)
-
-
-def _load_modernbert_model():
-    """Load ModernBERT model with truncation dimension.
-
-    Returns:
-        SentenceTransformer model configured for 256-dim output.
-
-    Note:
-        Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
-        notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
-    """
-    # INV-dasig: force HF offline (when models are cached) BEFORE importing
-    # sentence_transformers, which freezes huggingface_hub's offline constant.
-    _ensure_hf_offline_for_cached_models()
-
-    # Suppress warnings BEFORE importing to catch all submodule loggers
-    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-    logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
-
-    from sentence_transformers import SentenceTransformer
-    import sys
-    import io
-
-    # Work around httpx bug with IPv6 CIDR in NO_PROXY
-    old_no_proxy = _sanitize_no_proxy_for_httpx()
-
-    # Capture any stdout during model loading (library prints to stdout)
-    old_stdout = sys.stdout
-    sys.stdout = io.StringIO()
-    try:
-        model = _load_st_model_offline_first(
-            SentenceTransformer,
-            _MODERNBERT_MODEL_NAME,
-            truncate_dim=_MODERNBERT_TRUNCATE_DIM,
-        )
+        for name in EMBEDDING_MODELS:
+            if not _hf_model_is_cached(name):
+                load(name)
     finally:
-        sys.stdout = old_stdout
-        _restore_no_proxy(old_no_proxy)
-    return model
-
-
-def _get_additional_files_probe_embeddings() -> "np.ndarray":
-    """Get probe embeddings for 5W1H Additional Files ranking.
-
-    Uses pre-computed embeddings from _embedding_data.py if available,
-    otherwise computes them at runtime.
-
-    Returns:
-        Normalized probe embeddings array of shape (6, 256).
-    """
-    global _ADDITIONAL_FILES_PROBE_EMBEDDINGS
-
-    if _ADDITIONAL_FILES_PROBE_EMBEDDINGS is None:
-        try:
-            # Try to load pre-computed embeddings
-            from ._embedding_data import ADDITIONAL_FILES_PROBES_B64
-            import base64
-            import numpy as np
-
-            raw = base64.b64decode(ADDITIONAL_FILES_PROBES_B64)
-            arr = np.frombuffer(raw, dtype=np.float16).reshape(
-                len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM
-            )
-            _ADDITIONAL_FILES_PROBE_EMBEDDINGS = arr.astype(np.float32)
-        except (ImportError, AttributeError):
-            # Pre-computed embeddings not available, compute at runtime
-            if not _has_sentence_transformers():
-                import numpy as np
-                return np.zeros((len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM))
-
-            import numpy as np
-            try:
-                model = _load_modernbert_model()
-            except EmbeddingsUnavailable as exc:
-                # INV-rupid: same answer as the guard three lines above.
-                _warn_embeddings_unavailable(exc)
-                return np.zeros(
-                    (len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM)
-                )
-            _ADDITIONAL_FILES_PROBE_EMBEDDINGS = model.encode(
-                ADDITIONAL_FILES_PROBES, convert_to_numpy=True
-            )
-
-    return _ADDITIONAL_FILES_PROBE_EMBEDDINGS
-
-
-def embed_file_for_semantic_ranking(
-    file_path: Path,
-    cache_dir: Path | None = None,
-) -> "np.ndarray | None":
-    """Embed a file using ModernBERT for semantic ranking.
-
-    Uses 3 random non-overlapping 400-char substrings from first third,
-    de-HTMLified and ellipsis-concatenated.
-
-    Args:
-        file_path: Path to the file.
-        cache_dir: Optional cache directory for embeddings.
-
-    Returns:
-        256-dimensional embedding vector, or None if unavailable.
-    """
-    if not _has_sentence_transformers():
-        return None
-
-    # Check cache first
-    file_hash = _compute_file_hash(file_path)
-    if cache_dir and file_hash:
-        cached = _load_cached_embedding(cache_dir, file_hash)
-        if cached is not None:
-            return cached
-
-    # Extract samples
-    sample_text = _extract_file_samples(file_path)
-    if not sample_text:
-        return None
-
-    # Load model and embed
-    try:
-        model = _load_modernbert_model()
-    except EmbeddingsUnavailable as exc:
-        _warn_embeddings_unavailable(exc)  # INV-rupid: as the guard returns.
-        return None
-    embedding = model.encode(sample_text, convert_to_numpy=True)
-
-    # Cache result
-    if cache_dir and file_hash:
-        _save_cached_embedding(cache_dir, file_hash, embedding)
-
-    return embedding
-
-
-def batch_embed_files(
-    file_paths: list[Path],
-    cache_dir: Path | None = None,
-    batch_size: int = 64,
-    progress_callback: Callable[..., Any] | None = None,
-) -> dict[Path, "np.ndarray | None"]:
-    """Batch embed multiple files efficiently.
-
-    This is ~5-10x faster than calling embed_file_for_semantic_ranking()
-    repeatedly because SentenceTransformers is optimized for batch encoding.
-
-    Args:
-        file_paths: List of file paths to embed.
-        cache_dir: Optional cache directory for embeddings.
-        batch_size: Number of files to encode per batch (default 64).
-        progress_callback: Optional callback(current, total) for progress.
-
-    Returns:
-        Dict mapping file paths to embeddings (or None for unreadable files).
-    """
-    if not _has_sentence_transformers():
-        return dict.fromkeys(file_paths, None)
-
-    results: dict[Path, "np.ndarray | None"] = {}
-    uncached: list[tuple[Path, str, str]] = []  # (path, hash, sample)
-
-    # Phase 1: Check cache, extract samples for uncached files
-    for f in file_paths:
-        file_hash = _compute_file_hash(f)
-
-        # Check cache first
-        if cache_dir and file_hash:
-            cached = _load_cached_embedding(cache_dir, file_hash)
-            if cached is not None:
-                results[f] = cached
-                continue
-
-        # Extract sample for uncached file
-        sample = _extract_file_samples(f)
-        if sample:
-            uncached.append((f, file_hash, sample))
-        else:
-            results[f] = None
-
-    # Phase 2: Batch encode uncached files
-    if uncached:
-        try:
-            model = _load_modernbert_model()
-        except EmbeddingsUnavailable as exc:
-            # INV-rupid: cached hits found in phase 1 are REAL and are kept —
-            # degrading must not discard work already done. Only the paths this
-            # phase would have encoded become None, which is what the guard at
-            # the top of the function returns for every path.
-            _warn_embeddings_unavailable(exc)
-            for path, _hash, _sample in uncached:
-                results[path] = None
-            return results
-        total_uncached = len(uncached)
-
-        for i in range(0, total_uncached, batch_size):
-            batch = uncached[i:i + batch_size]
-            texts = [sample for _, _, sample in batch]
-
-            # Batch encode
-            embeddings = model.encode(texts, convert_to_numpy=True)
-
-            # Store results and cache
-            for (f, file_hash, _), emb in zip(batch, embeddings, strict=True):
-                results[f] = emb
-                if cache_dir and file_hash:
-                    _save_cached_embedding(cache_dir, file_hash, emb)
-
-            # Report progress
-            if progress_callback:
-                done = min(i + batch_size, total_uncached)
-                progress_callback(done, total_uncached)
-
-    return results
-
-
-def compute_5w1h_similarity(
-    file_embedding: "np.ndarray",
-    probe_embeddings: "np.ndarray | None" = None,
-) -> float:
-    """Compute aggregate cosine similarity to 5W1H probes.
-
-    Args:
-        file_embedding: 256-dim embedding of file content.
-        probe_embeddings: Pre-computed probe embeddings (optional).
-
-    Returns:
-        Aggregate similarity score (mean of cosine similarities).
-    """
-    import numpy as np
-
-    if probe_embeddings is None:
-        probe_embeddings = _get_additional_files_probe_embeddings()
-
-    if probe_embeddings is None or len(probe_embeddings) == 0:
-        return 0.0
-
-    # Normalize embeddings
-    file_norm = np.linalg.norm(file_embedding)
-    if file_norm < 1e-8:
-        return 0.0
-    file_normalized = file_embedding / file_norm
-
-    probe_norms = np.linalg.norm(probe_embeddings, axis=1, keepdims=True)
-    probe_norms = np.maximum(probe_norms, 1e-8)  # Avoid division by zero
-    probe_normalized = probe_embeddings / probe_norms
-
-    # Compute cosine similarities
-    similarities = np.dot(probe_normalized, file_normalized)
-
-    # Return mean similarity
-    return float(np.mean(similarities))
+        if prior_offline is not None:
+            os.environ["HF_HUB_OFFLINE"] = prior_offline

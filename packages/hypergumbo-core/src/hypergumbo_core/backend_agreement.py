@@ -72,6 +72,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
+from .ir import CONFIDENCE_SOURCE_CORROBORATED
+
 #: How many distinct disagreement shapes to keep per attribute.
 EXAMPLE_LIMIT = 8
 
@@ -296,7 +298,7 @@ def measure_backend_agreement(artifact: Mapping[str, Any]) -> List[LanguageAgree
                 row_e.both += 1
             else:
                 row_e.only[producers[0]] += 1
-            if edge.get("confidence_source") == "corroborated":
+            if edge.get("confidence_source") == CONFIDENCE_SOURCE_CORROBORATED:
                 report.corroborated_edges += 1
             if (edge.get("meta") or {}).get("superseded_by"):
                 report.superseded_edges += 1

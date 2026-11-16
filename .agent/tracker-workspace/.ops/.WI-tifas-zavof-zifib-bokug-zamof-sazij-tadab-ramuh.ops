@@ -1,0 +1,21 @@
+- op: create  # 84fd
+  at: '2026-10-25T11:05:20Z'  # 84fd
+  by: agent  # 84fd
+  actor: jgstern_agent  # 84fd
+  clock: 1  # 84fd
+  nonce: 84fd  # 84fd
+  data:  # 84fd
+    kind: work_item  # 84fd
+    title: "react_component: the transitive React.Component base walk never runs in production (_build_component_map is called without edges)"  # 84fd
+    status: todo_hard  # 84fd
+    priority: 3  # 84fd
+    parent:  # 84fd
+    tags:  # 84fd
+    - docstring_audit  # 84fd
+    - analysis_quality  # 84fd
+    isbefore: []  # 84fd
+    duplicate_of: []  # 84fd
+    not_duplicate_of: []  # 84fd
+    pr_ref:  # 84fd
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- react_component.py: (two parts). (1) The transitive React.Component walk is dead in production -- evidence: L245 `component_map = _build_component_map(js_ts_symbols)` passes no `edges`, L129-130 `edges = edges or []; inheritance_index = build_inheritance_index(edges)`, and the wrapper L382 does not pass `ctx.edges`. Repro (scratchpad/verify/tmp/v08md/rc.py): `child` extends in-tree `base` extends `React.Component`; `_build_component_map([base, child], [extends-edge])` gives `['base', 'child']`, but the production call shape `_build_component_map([base, child])` gives `['base']`. (2) Same-file preference never fires on repo-relative paths -- evidence: L271-273 pass `str(file_path)`, which is `repo_root / sym.path`, so absolute, and L171 compares it with `c.path`. Analyzer paths are relativized before linkers run (cli.py:12822 `_relativize_ir_paths` precedes `run_all_linkers` at cli.py:12954). Repro: a.tsx `Button`, plus z.tsx with its own `Button` and `Page` rendering `<Button/>`, produces `typescript:z.tsx:2-2:Page:function -> typescript:a.tsx:1-1:Button:function 0.5 {'ref_construct': 'jsx', 'disambiguation_fallback': True}`. That edge goes to the wrong file's Button instead of being recognised as local. If the preference did fire, the L278-283 guard would drop the edge anyway, so the same-file branch has no reachable effect in either case.\n\nWI-vigih (done) claims this walk for react_component; the production call site passes no edges.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 84fd
+    fields: {}  # 84fd

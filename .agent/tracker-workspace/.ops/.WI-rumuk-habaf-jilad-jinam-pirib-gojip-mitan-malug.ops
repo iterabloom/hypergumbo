@@ -1,0 +1,21 @@
+- op: create  # ef42
+  at: '2026-10-25T11:04:49Z'  # ef42
+  by: agent  # ef42
+  actor: jgstern_agent  # ef42
+  clock: 1  # ef42
+  nonce: ef42  # ef42
+  data:  # ef42
+    kind: work_item  # ef42
+    title: "add-extras prints 'All extras installed.' after a failed install; remove-extras help omits grammars; the symbols epilog describes a sort the code does not use"  # ef42
+    status: todo_hard  # ef42
+    priority: 3  # ef42
+    parent:  # ef42
+    tags:  # ef42
+    - docstring_audit  # ef42
+    - analysis_quality  # ef42
+    isbefore: []  # ef42
+    duplicate_of: []  # ef42
+    not_duplicate_of: []  # ef42
+    pr_ref:  # ef42
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- cli.py: cmd_add_extras prints \"All extras installed.\" even when an install failed -- evidence: cli.py:5149-5150 `elif not install(quiet=args.quiet): exit_code = 1`, then 5154-5156 `if not args.quiet: print(\"=== Summary ===\"); print(\"All extras installed. Run 'hypergumbo remove-extras' to uninstall.\")` with no check of exit_code, then `return exit_code`.\n- cli.py: help text drift (remove-extras help and symbols epilog) -- evidence: cli.py:11172 `help=\"Uninstall optional extras (gitleaks, embeddings, rust-analyzer)\"`, but the row table at 3930-3935 starts with `(\"grammars\", ..., cli_mod._uninstall_grammars)`, and the same parser's `--skip` help (11179-11180) lists \"(grammars,gitleaks,embeddings,rust-analyzer)\". The symbols epilog (11371) says \"Sorted by file connectivity (hottest files first), then filename, then degree.\", but cmd_symbols sorts at 5375-5376 `# Sort by canonical rank_symbols() position` / `symbol_rows.sort(key=lambda r: (rank_by_id.get(r[6], len(nodes)), r[0]))`.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # ef42
+    fields: {}  # ef42

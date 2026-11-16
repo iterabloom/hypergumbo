@@ -246,7 +246,7 @@ function main(): void {
         assert edge.confidence == 0.6
         # WI-bagon: dst must be a well-formed 5-part id with
         # language='hack' in the language slot, not a 2-part
-        # 'unresolved:{name}' (which produced language='unresolved'
+        # 'unresolved:{name}' (which produces language='unresolved'
         # boundary nodes via ir._parse_dangling_id fallthrough).
         parts = edge.dst.split(":")
         assert len(parts) == 5, (
@@ -288,7 +288,7 @@ function myFunc(): void {}
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("hack:test.hack:")
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh
@@ -386,7 +386,7 @@ class Test {
 
 
 class TestHackCyclomaticComplexity:
-    """INV-loguk slice C: callable Hack symbols (function + method) carry
+    """INV-loguk: callable Hack symbols (function + method) carry
     non-null CC + LOC. Real-grammar verification (if/for/foreach/while/do/
     switch_case/switch_default/catch/ternary + &&/||/??). An if/else-if/else
     chain is one flat if_statement in this grammar, so it counts once."""
@@ -464,3 +464,119 @@ def test_analyzer_reads_php_files_with_hh_header(tmp_path: Path) -> None:
     result = analyze_hack(tmp_path)
     names = {(s.name, s.path) for s in result.symbols if s.kind == "function"}
     assert names == {("foo", "src/a.php"), ("bar", "src/b.hack")}
+
+
+class TestHackCallerByPosition:
+    """WI-jusah (WI-kosar family): a call's CALLER is the method whose
+    declaration contains it, found by POSITION (``enclosing_declared_symbol``),
+    and a callee binds THIS file's definition before the run-wide registry.
+
+    Looking the caller up as ``symbol_registry.get("ns\\Class::method")`` in
+    the run-wide table (one symbol per name, last wins) would make two copies
+    of one class (a vendored or versioned tree) send one copy's calls out of
+    the other's method.
+    """
+
+    def test_duplicate_class_in_two_files_keeps_its_calls(self, tmp_path: Path) -> None:
+        # v2 is padded so each copy's call sits on a line the other copy's
+        # ``run`` does not span; each calls a function only its own file has.
+        for sub, pad, fn in (("v1", "", "alpha"), ("v2", "\n\n\n\n\n\n", "beta")):
+            make_hack_file(tmp_path, f"{sub}/svc.hack", (
+                "<?hh\nnamespace App;\n" + pad + "\n"
+                "class Svc {\n"
+                "  public function run(): void {\n"
+                f"    {fn}();\n"
+                "    $this->run();\n"
+                "  }\n"
+                "}\n\n"
+                f"function {fn}(): void {{}}\n"
+            ))
+        result = analyze_hack(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        # Reach: each copy's function call and its ``$this->run()``.
+        assert sorted(e.line for e in calls) == [6, 7, 12, 13]
+        for e in calls:
+            file_of_line = "v1/svc.hack" if e.line < 10 else "v2/svc.hack"
+            src, dst = by_id[e.src], by_id[e.dst]
+            assert src.path == dst.path == file_of_line, (e.line, e.src, e.dst)
+            assert src.span.start_line <= e.line <= src.span.end_line
+
+
+class TestHackCallEndpoints:
+    """Every end of a ``calls`` edge is a node's id or a stand-in.
+
+    A call in a standalone function used to start at ``hack:<path>:file``, a
+    string no node carries, so finalize folded a file's calls into one
+    ``<unknown>`` placeholder and the function that made the call had none.
+    """
+
+    def _calls(self, tmp_path: Path, code: str):
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (tmp_path / "a.hack").write_text(code)
+        result = analyze_hack(tmp_path)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        by_id = {s.id: s for s in result.symbols}
+        return by_id, [e for e in result.edges if e.edge_type == "calls"]
+
+    def test_call_in_a_standalone_function_starts_at_the_function(self, tmp_path: Path) -> None:
+        by_id, calls = self._calls(tmp_path, (
+            "<?hh\n"
+            "function helper(): int {\n  return 1;\n}\n"
+            "function main(): void {\n  helper();\n}\n"
+        ))
+        (edge,) = calls
+        assert (by_id[edge.src].name, by_id[edge.dst].name) == ("main", "helper")
+        assert by_id[edge.src].kind == "function"
+
+    def test_top_level_call_starts_at_the_file_node(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        by_id, calls = self._calls(tmp_path, (
+            "<?hh\nfunction setup(): void {}\nsetup();\n"
+        ))
+        (edge,) = calls
+        assert edge.src == make_file_id("hack", "a.hack")
+        assert by_id[edge.dst].name == "setup"
+
+    def test_unresolved_callees_are_stand_ins(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        _, calls = self._calls(tmp_path, (
+            "<?hh\n"
+            "function main(): void {\n  missing_fn();\n  Other::stat();\n}\n"
+        ))
+        assert [(e.dst, e.dst_ref, e.is_resolved) for e in calls] == [
+            ("hack:unresolved:0-0:missing_fn:unresolved", None, False),
+            # ``::`` in the name slot would be no id: the owner is the path slot.
+            (
+                "hack:Other:0-0:stat:unresolved",
+                ExternalRef(lang="hack", module_path="Other", name="stat"),
+                False,
+            ),
+        ]
+
+
+def test_every_hack_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. The id
+    of a top-level function said ``fn``; the class, method and namespace sites
+    already agreed."""
+    make_hack_file(tmp_path, "app.hack", """<?hh
+namespace App;
+
+function helper(int $x): int {
+  return $x + 1;
+}
+
+class Greeter {
+  public function greet(string $name): string {
+    return "hi " . $name;
+  }
+}
+""")
+    result = analyze_hack(tmp_path)
+    kinds = sorted(s.kind for s in result.symbols)
+    assert kinds == ["class", "function", "method", "namespace"], kinds
+    wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+    assert wrong == []

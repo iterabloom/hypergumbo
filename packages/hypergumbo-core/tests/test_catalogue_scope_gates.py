@@ -4,44 +4,36 @@
 WHY THIS FILE EXISTS. ADR-0016 §27 scopes the shipped ``io_primitives``
 catalogues to a language's standard library, and ADR-0047 ruling 1 KEEPS that
 rule for the catalogues while permitting unvouched community rows to ship
-*alongside* them as disclosed overlays. Until this file, the rule was enforced
-for **6 of 14 languages**, and ADR-0047 names that asymmetry as the mechanical
-cause of the drift it exists to correct: the eight languages with no gate
-(go, elixir, erlang, haskell, swift, objc, c, cpp) are exactly the ones where
-third-party rows accumulated — 155 in elixir, 68 in haskell, 38 in swift, 33 in
-go. A gate for one more language would have repeated the mistake at a smaller
-scale, so the rule is asserted **once, over every catalogue the tree ships**.
+*alongside* them as disclosed overlays. ADR-0047 names per-language gating as
+the mechanical cause of the drift it corrects: a language with no gate is
+exactly where third-party rows accumulate. So the rule is asserted **once,
+over every catalogue the tree ships**, rather than one language at a time.
 
-THE TABLE IS THE CURATED LIST, AND THAT IS THE POINT. WI-surun records the
-mechanical obstacle to this work: ``IoBoundaryCatalog.is_stdlib_module`` cannot
-select the rows to cull, because only ``python.yaml`` declares
-``stdlib_modules`` — the predicate returns 100% third-party for elixir, haskell,
-swift and go, which is RECOGNITION rather than provenance (the INV-buzab
-distinction) and here yields a number that is not imprecise but meaningless. The
-selection therefore rests on a hand-curated classification which, before this
-file, existed nowhere in the repository except as prose in a tracker item. That
-is precisely the shape that lets the next stdlib climb re-create the drift
-silently, so the curated list and the gate that enforces it are ONE ARTIFACT
-here rather than two that can disagree.
+THE TABLE IS THE CURATED LIST, AND THAT IS THE POINT.
+``IoBoundaryCatalog.is_stdlib_module`` cannot select the out-of-scope rows:
+only ``python.yaml`` declares ``stdlib_modules``, so for every other language
+the predicate calls every module third-party. That is RECOGNITION rather than
+provenance (the INV-buzab distinction), and here it yields a number that is
+not imprecise but meaningless. The selection therefore rests on a
+hand-curated classification, and a classification kept apart from the gate
+that enforces it lets the drift return silently -- so the curated list and the
+gate are ONE ARTIFACT here rather than two that can disagree.
 
-AN ALLOWLIST, NOT A DENYLIST — the direction matters. Three of the six original
-gates (java, kotlin, scala) loop over every primitive and assert a namespace
-prefix; the other three (python, javascript, rust) name specific third-party
-modules and assert their absence. Only the first shape is an invariant: a
-denylist is a hardcoded inventory that a NEW third-party module sails straight
-through, which is how ``golang.org/x/sys/execabs`` and ``grpc`` landed in a
-catalogue whose header asserted stdlib-only. An allowlist fails closed — an
-unrecognised module is a failure until a human classifies it — and it decays in
-the safe direction, because a legitimate new stdlib module requires a
-deliberate, reviewed edit to this table rather than silence.
+AN ALLOWLIST, NOT A DENYLIST — the direction matters. A gate that loops over
+every primitive and asserts it is admitted is an invariant; a gate that names
+specific third-party modules and asserts their absence is a hardcoded
+inventory that a NEW third-party module sails straight through. An allowlist
+fails closed — an unrecognised module is a failure until a human classifies it
+— and it decays in the safe direction, because a legitimate new stdlib module
+requires a deliberate, reviewed edit to this table rather than silence.
 
 THE LANGUAGE LIST IS DERIVED FROM THE SHIPPED TREE, not restated. A gate whose
 own language list is hardcoded can be evaded by adding a catalogue and not
-adding it to the list — which is live today: ``CATALOG_LANGUAGES`` in
-``test_io_boundary.py`` names 14 languages and the tree ships 15, so
-``bash.yaml`` sits outside both that tuple and the WI-sugav subprocess drift
-guard it feeds. Here the parametrisation walks ``io_primitives/*.yaml``, so a
-new catalogue is gated the moment it lands.
+adding it to the list: ``CATALOG_LANGUAGES`` in ``test_io_boundary.py`` names
+14 languages while the tree ships 15, so ``bash.yaml`` sits outside both that
+tuple and the WI-sugav subprocess drift guard it feeds. Here the
+parametrisation walks ``io_primitives/*.yaml``, so a new catalogue is gated the
+moment it lands.
 """
 
 from __future__ import annotations
@@ -121,20 +113,20 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
         modules=frozenset({
             "dirent", "spawn", "stdio", "stdlib", "sys/socket", "sys/stat",
             "sys/time", "sys/times", "sys/wait", "time", "unistd",
-            # 2026-09-08 WI-dozul. <netdb.h> is POSIX.1-2008 (and its
-            # getaddrinfo/getnameinfo pair is RFC 3493), sitting beside
-            # <sys/socket.h> which is already on this line. It carries the
+            # <netdb.h> is POSIX.1-2008 (and its getaddrinfo/getnameinfo
+            # pair is RFC 3493), sitting beside <sys/socket.h> which is
+            # already on this line. It carries the
             # resolver surface, so admitting it is the same decision that
-            # admitted the socket API rather than a new one.
+            # admitted the socket API rather than a new one. (WI-dozul)
             "netdb",
-            # 2026-09-29 WI-bulub. <fcntl.h> is POSIX.1 and declares open /
-            # openat / creat, whose descriptors <unistd.h>'s read/write (on
-            # this line) consume -- the other half of the same file API.
+            # <fcntl.h> is POSIX.1 and declares open / openat / creat, whose
+            # descriptors <unistd.h>'s read/write (on this line) consume --
+            # the other half of the same file API. (WI-bulub)
             "fcntl",
-            # 2026-09-30 WI-hasul: the no-I/O headers module_completeness
-            # grants. C11 (errno, stdint, stdbool, stddef, stdarg, limits,
-            # float, inttypes, ctype, math), POSIX (sys/types, strings,
-            # libgen), and two that ship with the C library on every Linux
+            # The no-I/O headers module_completeness grants (WI-hasul). C11
+            # (errno, stdint, stdbool, stddef, stdarg, limits, float,
+            # inttypes, ctype, math), POSIX (sys/types, strings, libgen),
+            # and two that ship with the C library on every Linux
             # system rather than through a package manager: glibc's
             # <sys/param.h> and the kernel UAPI <linux/limits.h> -- the
             # "platform" half of ADR-0061's built-in line.
@@ -204,33 +196,35 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "`google.golang.org/grpc`."
         ),
         modules=frozenset({
-            # WI-mujod: `path/filepath` is spelled as its import path, which is
-            # what the go analyzer stamps; the row was `filepath` before.
+            # `path/filepath` is spelled as its import path, which is what the
+            # go analyzer stamps (WI-mujod).
             "bufio", "crypto/tls", "path/filepath", "fmt", "io", "io/ioutil",
             "log", "log/slog", "net", "net/http", "net/smtp", "os",
             "os/exec", "runtime", "syscall", "testing", "time",
-            # 2026-09-08 WI-dozul: the receiver-qualified rows for net's own
-            # Resolver type, listed in full like their siblings below.
+            # The receiver-qualified rows for net's own Resolver type, listed
+            # in full like their siblings below (WI-dozul).
             "net.Resolver",
             # Receiver-qualified method rows are listed in full rather than
             # derived by stripping a trailing capitalised segment. A rule
             # would silently admit `grpc.ClientConn`; an enumeration makes
             # every stdlib TYPE a reviewed entry too.
             "crypto/tls.Conn", "log/slog.Logger", "net.Conn", "net.Listener",
+            # The Unix-domain connection and listener types (WI-kalol).
+            "net.UnixConn", "net.UnixListener",
             "net/http.Client", "net/http.RoundTripper", "net/http.Transport",
             "net/smtp.Client",
             "os/exec.Cmd", "testing.B", "testing.T",
-            # WI-vutav: the two bufio handle TYPES, so the READ one binding
-            # after `bufio.NewReader`/`NewScanner` has a row to reach. Both
-            # are stdlib (package bufio); the constructors were already in.
+            # The two bufio handle TYPES, so the READ one binding after
+            # `bufio.NewReader`/`NewScanner` has a row to reach. Both are
+            # stdlib (package bufio). (WI-vutav)
             "bufio.Reader", "bufio.Scanner",
-            # WI-nunab: the WRITE-side handle types, so a write through the
-            # handle's own method (`f.Write(b)`, `w.WriteString(s)`) has a
-            # row. Both stdlib: package os's File, package bufio's Writer.
+            # The WRITE-side handle types, so a write through the handle's own
+            # method (`f.Write(b)`, `w.WriteString(s)`) has a row. Both
+            # stdlib: package os's File, package bufio's Writer. (WI-nunab)
             "bufio.Writer", "os.File",
-            # 2026-09-29 WI-nopam (ADR-0061: the built-in line is drawn for
-            # every family). The Go packages the TAINT and SUMMARY catalogues
-            # name: crypto/aes, crypto/cipher and crypto/rand are the stdlib's
+            # The Go packages the TAINT and SUMMARY catalogues name, since
+            # ADR-0061 draws the built-in line for every family (WI-nopam):
+            # crypto/aes, crypto/cipher and crypto/rand are the stdlib's
             # cipher and randomness packages, and net/http/fcgi is net/http's
             # FastCGI server. All ship with the Go toolchain.
             "crypto/aes", "crypto/cipher", "crypto/rand", "net/http/fcgi",
@@ -294,12 +288,13 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "https", "indexedDB", "localStorage", "navigator", "net",
             "net.Socket", "os", "path", "performance", "process",
             "sessionStorage", "window",
-            # 2026-09-08 WI-dozul. `dns` is a Node CORE module -- the same
-            # tier as `net`, `dgram` and `http` already on this line -- with
+            # `dns` is a Node CORE module -- the same tier as `net`, `dgram`
+            # and `http` already on this line -- with
             # `dns/promises` and the `dns.Resolver` class as its two other
             # spellings of the same surface. Nothing here comes through npm.
+            # (WI-dozul)
             "dns", "dns.promises", "dns.Resolver",
-            # 2026-09-29 WI-nopam (ADR-0061). Node core modules the catalogue's
+            # ADR-0061 / WI-nopam: Node core modules the catalogue's
             # module_completeness grants name (`url`, `zlib`, `crypto` and the
             # promise spellings of `fs`, `stream` and `timers`), the ECMAScript
             # globals the function summaries name (JSON, String, Array,
@@ -353,7 +348,16 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "socket (module level), ssl, sysconfig, traceback, unittest, "
             "xml.dom and their rowed classes -- every one a CPython stdlib "
             "module (sys.stdlib_module_names on 3.12), rowed from the python "
-            "probe over the 08-24 scope audit's working set."
+            "probe over the 08-24 scope audit's working set. ADDED "
+            "2026-10-27 (WI-gaziv): socketserver's six Unix server classes "
+            "(UnixStreamServer, UnixDatagramServer and their Threading / "
+            "Forking variants), rowed ipc_listen beside the admitted "
+            "socketserver.TCPServer -- all defined in CPython's "
+            "Lib/socketserver.py (the Forking pair from 3.12). ADDED "
+            "2026-11-12 (WI-kamav): ast, tokenize and uuid -- CPython stdlib "
+            "modules (sys.stdlib_module_names on 3.12) whose `-m` entry points "
+            "(and tokenize.open) are rowed so their completeness grants "
+            "enumerate every I/O callable."
         ),
         modules=frozenset({
             "cProfile", "cProfile.Profile", "codecs", "ctypes", "ctypes.cdll",
@@ -376,14 +380,19 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "multiprocessing.Pipe", "multiprocessing.Queue", "os",
             "os.environ", "os.path", "pathlib.Path", "pickle", "platform",
             "posixpath", "pwd", "shelve", "shlex", "shutil", "smtplib.SMTP",
-            "socket.socket", "socketserver.TCPServer", "sqlite3",
+            "socket.socket", "socketserver.TCPServer",
+            "socketserver.UnixStreamServer", "socketserver.UnixDatagramServer",
+            "socketserver.ThreadingUnixStreamServer",
+            "socketserver.ThreadingUnixDatagramServer",
+            "socketserver.ForkingUnixStreamServer",
+            "socketserver.ForkingUnixDatagramServer", "sqlite3",
             "sqlite3.Connection", "sqlite3.Cursor", "subprocess", "sys",
             "sys.stderr", "sys.stdin", "sys.stdout", "tarfile", "tempfile",
             "time", "typing", "urllib.request", "warnings",
             "xml.etree.ElementTree", "xmlrpc.server.SimpleXMLRPCServer",
-            "zipfile",
-            # WI-jabus: the CLASS-QUALIFIED receivers the self-claims gate
-            # needed. Each is a CPython class whose MODULE is already admitted
+            "zipfile", "ast", "tokenize", "uuid",
+            # The CLASS-QUALIFIED receivers the self-claims gate reaches
+            # (WI-jabus). Each is a CPython class whose MODULE is already admitted
             # two lines above, and each is listed separately for the same
             # reason `pathlib.Path` and `ssl.SSLContext` are: this set is an
             # enumeration, not a prefix rule, because `module_io_is_enumerated`
@@ -391,20 +400,21 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # disagree with the predicate it exists to police.
             "subprocess.Popen", "tarfile.TarFile", "typing.TextIO",
             "zipfile.ZipFile",
-            # WI-kozaj: the csv write surface. `csv.DictWriter` is a class in
+            # The csv write surface (WI-kozaj). `csv.DictWriter` is a class in
             # CPython's Lib/csv.py; `_csv.Writer` is the C type csv.writer()
             # returns (Modules/_csv.c), `_csv` being in sys.stdlib_module_names.
             "csv.DictWriter", "_csv.Writer",
-            # WI-dibit: the class `urllib.request.build_opener()` returns
+            # The class `urllib.request.build_opener()` returns
             # (CPython's Lib/urllib/request.py); its module is admitted above.
+            # (WI-dibit)
             "urllib.request.OpenerDirector",
-            # WI-kanor: `os._wrap_close` is the class os.popen() returns,
-            # defined in CPython's Lib/os.py.
+            # `os._wrap_close` is the class os.popen() returns, defined in
+            # CPython's Lib/os.py (WI-kanor).
             "os._wrap_close",
-            # WI-tumol: the class urlopen() / OpenerDirector.open() /
+            # The class urlopen() / OpenerDirector.open() /
             # HTTPConnection.getresponse() return for http(s) (CPython's
             # Lib/http/client.py); its module's connection classes are
-            # admitted above.
+            # admitted above. (WI-tumol)
             "http.client.HTTPResponse",
         }),
     ),
@@ -417,7 +427,7 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "the catalogues accept."
         ),
         prefixes=("std::",),
-        # 2026-09-29 WI-nopam (ADR-0061). `Vec` and `String` are std types the
+        # ADR-0061 / WI-nopam: `Vec` and `String` are std types the
         # PRELUDE brings into scope under their bare names, which is how the
         # function summaries spell them (`Vec::push`, `String::from`).
         modules=frozenset({"Vec", "String"}),
@@ -456,7 +466,7 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "NSManagedObjectContext", "NWConnection", "NWListener",
             "NotificationCenter", "Process", "ProcessInfo", "Swift",
             "URLRequest", "URLSession", "os",
-            # 2026-09-29 WI-nopam (ADR-0061). The Foundation types the library
+            # ADR-0061 / WI-nopam: the Foundation types the library
             # signatures return: URL, Data, Pipe and URLSession's four task
             # types, all part of the same OS-shipped framework as URLSession.
             "URL", "Data", "Pipe", "URLSessionDataTask",
@@ -470,7 +480,7 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
 def _out_of_scope(language: str) -> list[str]:
     """Modules the shipped catalogue carries that the curated line excludes.
 
-    ``include_defaults=False`` is the whole point of the assertion: after
+    ``include_defaults=False`` is the whole point of the assertion: under
     ADR-0047 the third-party rows still LOAD, from a disclosed community
     overlay, so a gate that included them would pass while measuring nothing.
     What is being asserted is narrower and is the thing ADR-0016 §27 actually
@@ -508,7 +518,7 @@ def test_every_shipped_catalogue_has_a_scope_entry(language: str) -> None:
 
     Parametrised over the SHIPPED TREE rather than a hardcoded language list,
     so adding ``ruby.yaml`` without adding a scope entry fails here instead of
-    silently joining the ungated eight.
+    silently shipping ungated.
     """
     assert language in CATALOGUE_SCOPE, (
         f"{language}.yaml ships with no entry in CATALOGUE_SCOPE. Every "
@@ -591,7 +601,8 @@ SHORT_SPELLINGS: dict[str, dict[str, str]] = {
     "go": {
         "exec": "os/exec", "http": "net/http",
         "Listener": "net.Listener", "Cmd": "os/exec.Cmd",
-        # WI-vinuh: library_signatures/go.yaml's slog.New / Default / With rows.
+        "UnixListener": "net.UnixListener",
+        # library_signatures/go.yaml's slog.New / Default / With rows (WI-vinuh).
         "slog": "log/slog",
     },
     # Java code names a class by its simple name once imported.
@@ -631,6 +642,11 @@ BUILTIN_FRAMEWORK_FILES: dict[str, str] = {
     "jakarta.* and javax.* as what the Java platform IS.",
     "jakarta-cdi.yaml": "Jakarta CDI annotations, jakarta.* / javax.* only; "
     "admitted by the same java line as jax-rs.",
+    "go-net-http.yaml": "The Go standard library's http.Handler interface "
+    "(ServeHTTP); net/http is on the go line above.",
+    "python-http-server.yaml": "The Python standard library's http.server "
+    "handler base classes (BaseHTTPRequestHandler and its stdlib subclasses); "
+    "http.server is on the python line above.",
 }
 
 
@@ -682,8 +698,8 @@ def _admitted(language: str, name: str, qualified: bool) -> bool:
                 return True
             # CPython answers this one itself: the interpreter's own list of
             # its standard-library top-level modules, widened to every
-            # SUPPORTED interpreter (WI-jojuz). The running one alone made the
-            # verdict depend on which Python ran the test.
+            # SUPPORTED interpreter (WI-jojuz). The running one alone would
+            # make the verdict depend on which Python runs the test.
             top = spelling.split(".")[0]
             if language == "python" and (
                 top in sys.stdlib_module_names
@@ -837,10 +853,10 @@ def _simulated_stdlib(version: tuple[int, int]) -> frozenset[str]:
 def test_the_builtin_verdict_does_not_depend_on_the_interpreter(
     version: tuple[int, int], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """WI-jojuz: the standard-library line is the one hypergumbo SUPPORTS, not
-    the one the test happens to run under. Judged by the running interpreter
-    alone, python.yaml's ``tomllib`` row (stdlib since 3.11) failed the nightly
-    3.10 leg, and a module removed in 3.12/3.13 would fail the later legs."""
+    """The standard-library line is the one hypergumbo SUPPORTS, not the one
+    the test happens to run under. Judged by the running interpreter alone,
+    python.yaml's ``tomllib`` row (stdlib since 3.11) would fail a 3.10 run,
+    and a module removed in 3.12/3.13 would fail the later ones. (WI-jojuz)"""
     monkeypatch.setattr(sys, "stdlib_module_names", _simulated_stdlib(version))
     strays = sorted({
         f"{path.name}: {lang}: {name}"

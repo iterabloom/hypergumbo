@@ -33,3 +33,25 @@
   clock: 3  # 4eb9
   nonce: 4eb9  # 4eb9
   message: "Update 2026-09-24: INV-midag stage 2 (rust) moved the harness's calls/in-repo row from 93/18/7 to 93/19/7, because 3 calls in aardvark-dns's From impls were re-anchored. The live-vs-harness comparison this row asks for must be re-taken against the new harness numbers."  # 4eb9
+- op: discuss  # f63e
+  at: '2026-10-30T21:49:47Z'  # f63e
+  by: agent  # f63e
+  actor: jgstern_agent  # f63e
+  clock: 4  # f63e
+  nonce: f63e  # f63e
+  message: "Decided by WI-borib's sweep (2026-10-30, pinned a17367f254, rust-analyzer 1.94.0; ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/vosop/FINDINGS.md). Live 92/17/8 vs harness 93/19/7 on calls/in-repo, every edge read:\n(a) STAGE: the survey dedups with remove_self_loops=True (cli.py:13177), the harness without it -- 3 tree-sitter self-loops (error.rs:105, :109, test.rs:37) count rust-only in the harness only. Remedy: the harness runs the flag (93/16/7).\n(b) DEFECT, not a stage: serve.rs:287 parse_configs binds config/mod.rs under walk order and the test helper src/test/test.rs under the survey's sorted FileIndex order -- filed WI-lirik. 93-1 / 16+1 / 7+1 = 92/17/8.\ncalls/external +11 and imports 0/16/0, 0/111/0 live-only: the survey's FILE nodes (module-level calls and every use's src); the harness makes none -- stated in 0019's Reading as the scope of its edge rows. references now agree (270/270); the committed 0019 still said 269 because its guard never checked edge rows -- the guard now does."  # f63e
+- op: update  # 35bb
+  at: '2026-10-30T22:01:26Z'  # 35bb
+  by: agent  # 35bb
+  actor: jgstern_agent  # 35bb
+  clock: 5  # 35bb
+  nonce: 35bb  # 35bb
+  set:  # 35bb
+    status: done  # 35bb
+- op: discuss  # e3b8
+  at: '2026-10-30T22:01:27Z'  # e3b8
+  by: agent  # e3b8
+  actor: jgstern_agent  # e3b8
+  clock: 6  # e3b8
+  nonce: e3b8  # e3b8
+  message: "Fixed in PR #1970 (e7fbd56d75). Acceptance (1) every differing row's stage named, re-measured live at rust-analyzer 1.94.0 on a copy of the recorded crate: calls/in-repo 93/19/7 -> 92/17/8 is the survey's remove_self_loops dedup (3 false self-bindings) plus an order-dependent Rust binding at serve.rs:287 (a defect, filed WI-lirik); calls/external +11 and every imports row are the survey's file nodes. (2) the harness now runs the self-loop dedup (93/16/7) and 0019's Reading states that the file-node and file-order stages bound its edge rows. Re-run on merged dev: test_recorded_fixtures.py 20 passed; 0019 reads calls/in-repo 93/16/7, references 270; the table guard now checks every pairing and edge row (mutation-checked both)."  # e3b8

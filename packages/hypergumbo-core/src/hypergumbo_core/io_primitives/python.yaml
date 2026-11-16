@@ -161,7 +161,7 @@ ambiguous_names:
   - exception     # logging.exception vs same
   - log           # logging.log vs math.log, any local log()
   - warn          # warnings.warn vs any local warn()
-  - wait          # os.wait vs Popen.wait, Event.wait, Condition.wait
+  - wait          # Popen.wait vs Event.wait, Condition.wait (os.wait unrowed since WI-lanos)
   - kill          # os.kill vs Popen.kill, Process.kill
   - parse         # xml.etree.ElementTree.parse vs argparse-ish local parse()
   - version       # importlib.metadata.version vs any local version()
@@ -233,6 +233,15 @@ fs_read:
   - module: doctest
     functions: [testfile]
     notes: "Opens the named file; DocFileTest/DocFileSuite build cases over the same open."
+  - module: tokenize
+    functions: [open]
+    notes: "tokenize.open(path) opens the path read-only ('rb', then decodes by the detected encoding)."
+  - module: tarfile
+    functions: [is_tarfile]
+    notes: "Given a path (not a file object) it opens the file to read the header."
+  - module: zipfile
+    functions: [is_zipfile]
+    notes: "Given a path (not a file object) it opens the file to read the end-of-archive record."
   - module: codecs
     functions: [open]
     notes: "codecs.open(path, mode) opens a path, builtins.open's shape: fs_read AND fs_write, settled by io_mode (python's producer knows codecs.open's mode sits at positional 1 like open)."
@@ -710,6 +719,18 @@ net_recv:
     methods: [retrbinary, retrlines]
   - module: asyncio.StreamReader
     methods: [read, readline, readexactly, readuntil]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: >-
+      WI-foloh. One StreamReader class is fed by a TCP socket
+      (asyncio.open_connection), an AF_UNIX socket (open_unix_connection,
+      streams.py) or a child's pipe (asyncio.create_subprocess_*,
+      asyncio/subprocess.py): read() drains whatever transport set_transport
+      attached, so the medium is a fact of the call that MADE the reader
+      (ADR-0050 §1). py.py stamps it at that binding (WI-himim: net_stream /
+      pipe); a pipe stamp selects the ipc_recv twin, and an unstamped reader
+      -- an annotated parameter -- abstains to this row, today's answer. The
+      net.Conn Read shape in go.yaml (WI-kalol).
   - module: http.client.HTTPResponse
     methods: [read, read1, readinto, readinto1, readline, readlines, peek, getheader, getheaders, info, geturl, getcode, begin]
     notes: >-
@@ -746,11 +767,46 @@ net_listen:
   - module: xmlrpc.server.SimpleXMLRPCServer
     methods: [serve_forever, handle_request]
   - module: asyncio
-    functions: [start_server, start_unix_server]
+    functions: [start_server]
     notes: >-
       SETUP. Returns a Server object; the bytes arrive at the client-connected
       callback, and asyncio.StreamReader.read* -- still net_recv -- is where a
-      program reads them.
+      program reads them. start_unix_server is ipc_listen (below).
+
+# WI-gaziv (owner ruling 2026-10-26, ADR-0050 section 1's medium axiom): a
+# Unix-domain socket server is LOCAL IPC, not network ingress. ipc_listen is
+# net_listen's local-IPC twin -- disclosed, never minted, shadowing ipc_recv.
+# A call that may bind either medium (socket.socket.bind, socket.create_server
+# with a family argument) stays net_listen.
+ipc_listen:
+  - module: asyncio
+    functions: [start_unix_server]
+    notes: >-
+      SETUP. Returns a Server object listening on a Unix socket path; the bytes
+      arrive at the client-connected callback. asyncio.StreamReader.read* is
+      rowed net_recv because TCP and Unix streams share it (WI-muful).
+      loop.create_unix_server has no row: its receiver is the loop
+      get_running_loop() returns, which the analyzer leaves untyped, so a row
+      could never match (asyncio's loop.create_server has none for the same
+      reason).
+  - module: socketserver.UnixStreamServer
+    methods: [serve_forever, handle_request]
+    notes: >-
+      LAUNCH, socketserver.TCPServer's Unix twin (net_listen). Blocks and
+      serves; the request reaches the handler class the server was constructed
+      with.
+  - module: socketserver.UnixDatagramServer
+    methods: [serve_forever, handle_request]
+  - module: socketserver.ThreadingUnixStreamServer
+    methods: [serve_forever, handle_request]
+  - module: socketserver.ThreadingUnixDatagramServer
+    methods: [serve_forever, handle_request]
+  - module: socketserver.ForkingUnixStreamServer
+    methods: [serve_forever, handle_request]
+    notes: "Python 3.12+."
+  - module: socketserver.ForkingUnixDatagramServer
+    methods: [serve_forever, handle_request]
+    notes: "Python 3.12+."
 
 ipc_send:
   # ---------------------------------------------------------------
@@ -895,6 +951,33 @@ logging:
   - module: base64
     functions: [main]
     notes: "The python -m base64 entry point; opens files and writes stdout. The survey probe's catch."
+  - module: tokenize
+    functions: [main]
+    notes: "The python -m tokenize entry point; opens the named file (or reads stdin) and writes tokens to stdout, errors to stderr."
+  - module: ast
+    functions: [main]
+    notes: "The python -m ast entry point; reads the named file (or stdin) and prints the dump to stdout."
+  - module: uuid
+    functions: [main]
+    notes: "The python -m uuid entry point; prints a generated UUID to stdout."
+  - module: gzip
+    functions: [main]
+    notes: "The python -m gzip entry point; compresses or decompresses the named files (or stdin to stdout), writing the output files."
+  - module: tarfile
+    functions: [main]
+    notes: "The python -m tarfile entry point; lists, tests, creates or extracts archives on the filesystem and prints to stdout/stderr."
+  - module: zipfile
+    functions: [main]
+    notes: "The python -m zipfile entry point; lists, tests, creates or extracts archives on the filesystem and prints to stdout/stderr."
+  - module: cProfile
+    functions: [main]
+    notes: "The python -m cProfile entry point; runs the named script or module in-process and prints (or writes with -o) the profile."
+  - module: ctypes.util
+    functions: [test]
+    notes: "A self-test that prints find_library results to stdout."
+  - module: doctest
+    functions: [debug_script]
+    notes: "Runs pdb over the script: the debugger reads commands from stdin and prints to stdout."
   - module: xml.etree.ElementTree
     functions: [dump]
   # WI-tolif: stdio writes are terminal output / log destinations, not
@@ -907,6 +990,11 @@ logging:
     notes: "Terminal / log output; redirectable to file or pipe but not by itself an IPC channel"
 
 ipc_recv:
+  - module: asyncio.StreamReader
+    methods: [read, readline, readexactly, readuntil]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: "WI-foloh: the ipc_recv twin of the net_recv StreamReader row (see it); selected by a `pipe` stamp -- a reader from open_unix_connection or a subprocess's stdout / stderr."
   - module: typing.TextIO
     methods: [read, readline, readlines]
     boundary_ruling: call_site_undecidable
@@ -953,11 +1041,9 @@ ipc_recv:
       The siblings that return only an exit status or a HANDLE stay
       launch-only: a status is not the child's message, and a handle is a
       crossing that has not happened yet (the ADR-0049 deferred shape).
-      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
-      `os.wait`.
-  - module: os
-    functions: [wait, waitpid, wait3, wait4, waitid]
-    notes: "Reaping a child collects its exit status - data received from another process."
+      Follows rust.yaml's `Child.wait_with_output`. (Its own precedent,
+      python.yaml's `os.wait`, is no longer rowed: a bare exit status is
+      not the child's message -- WI-lanos, ADR-0049 §Ruling 4.)
   - module: shlex
     functions: [shlex]
     notes: "shlex(instream=None) defaults to READING sys.stdin - the survey probe's catch."
@@ -989,8 +1075,8 @@ ipc_recv:
       through it returns bytes the CHILD chose (ADR-0049 ruling 1) -- the
       crossing the launch row cannot carry, because the launch returns a
       handle. close() waits for the child and returns its exit status, which
-      is os.waitpid; os.wait / os.waitpid are rowed here ("Reaping a child
-      collects its exit status"). Iterating the object (`for line in f:`) is
+      is os.waitpid -- not rowed: a bare exit status is not the child's
+      message (WI-lanos, ADR-0049 §Ruling 4). Iterating the object (`for line in f:`) is
       no call and is not reached.
 
 subprocess:
@@ -1013,9 +1099,9 @@ subprocess:
   - module: subprocess.Popen
     methods: [wait, poll, terminate, kill, send_signal]
     notes: >-
-      WI-jabus. LAUNCH-ONLY: wait / poll return the exit status (python rows
-      Popen.wait here and os.wait under ipc_recv -- two answers for one reap,
-      recorded rather than reconciled), terminate / kill / send_signal return
+      WI-jabus. LAUNCH-ONLY: wait / poll return the exit status, which mints
+      nothing -- the answer os.wait now gives too (WI-lanos reconciled the two
+      answers for one reap that this note used to record), terminate / kill / send_signal return
       nothing. `communicate` returns the child's OUTPUT and is rowed above and
       under ipc_recv. `subprocess.run` stays launch-only for a reason that does
       NOT transfer to communicate: its CompletedProcess carries the child's
@@ -1084,8 +1170,9 @@ subprocess:
       The siblings that return only an exit status or a HANDLE stay
       launch-only: a status is not the child's message, and a handle is a
       crossing that has not happened yet (the ADR-0049 deferred shape).
-      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
-      `os.wait`.
+      Follows rust.yaml's `Child.wait_with_output`. (Its own precedent,
+      python.yaml's `os.wait`, is no longer rowed: a bare exit status is
+      not the child's message -- WI-lanos, ADR-0049 §Ruling 4.)
   - module: os
     functions: [system, popen, execl, execle, execlp, execlpe, execv, execve, execvp, execvpe, spawnl, spawnle, spawnlp, spawnlpe, spawnv, spawnve, spawnvp, spawnvpe]
   - module: os
@@ -1094,20 +1181,37 @@ subprocess:
 
 env_read:
   - module: urllib.request
-    functions: [getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment, ProxyHandler, build_opener, URLopener, FancyURLopener]
+    functions: [getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment]
     notes: >-
-      WI-bakik. Each reads the *_proxy / no_proxy environment variables:
-      getproxies* directly, proxy_bypass* for no_proxy, ProxyHandler() when
-      `proxies` is None (the default), build_opener() because it always adds a
-      default ProxyHandler, and the deprecated URLopener / FancyURLopener in
-      __init__. A ProxyHandler given an explicit mapping reads nothing; the row
-      cannot see the argument and over-approximates that one call shape.
+      WI-bakik. Each reads the *_proxy / no_proxy environment variables and
+      RETURNS what it read: getproxies* the proxy mapping, proxy_bypass* a
+      bool computed from no_proxy. So each mints host_secret at its result.
+  - module: urllib.request
+    functions: [ProxyHandler, build_opener, URLopener, FancyURLopener]
+    returns_handle: true
+    notes: >-
+      WI-bakik / WI-patit. Each reads the *_proxy variables at the call --
+      ProxyHandler() when `proxies` is None (the default), build_opener()
+      because it always adds a default ProxyHandler, the deprecated URLopener /
+      FancyURLopener in __init__ -- and returns a HANDLE that holds the
+      configuration, not the data (ADR-0049 Ruling 4). Owner ruling 2026-10-04, re-confirmed 2026-10-20:
+      a handle constructor's own configuration read is not data sent through
+      the handle, so `build_opener().open(url)` stays clean exactly as
+      `urlopen(url)` (which does the same read) is; `returns_handle` keeps the
+      read classified here and taints no returned value. A ProxyHandler given
+      an explicit mapping reads nothing; the row cannot see the argument and
+      over-approximates that one call shape.
   - module: sysconfig
     functions: [get_platform]
     notes: "2026-09-06 WI-dupok: reads os.environ (MACOSX_DEPLOYMENT_TARGET and friends)."
   - module: xml.dom
     functions: [getDOMImplementation]
-    notes: "2026-09-06 WI-dupok: consults os.environ (PYTHON_DOM) to pick an implementation."
+    returns_handle: true
+    notes: >-
+      2026-09-06 WI-dupok: consults os.environ (PYTHON_DOM) to pick an
+      implementation. WI-patit: it returns that implementation OBJECT
+      (Lib/xml/dom/domreg.py), never the variable's value, so it is a handle
+      constructor under ADR-0049 Ruling 4 and taints no returned value.
   - module: os.environ
     functions: [get, keys, items, values, copy]
     notes: "INV-ponad slot family: a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach. The mutation half sits under env_write. `functions:`, NOT `methods:` - the analyzer emits these attribute-chain calls with NO method construct (call_construct=None on every one in the self-survey), and a methods: kind starves the method-starvation gate exactly as tokenizers.Tokenizer did (its own row carries the same lesson)."
@@ -1117,12 +1221,19 @@ env_read:
     functions: [expandvars]
   - module: argparse.ArgumentParser
     methods: [parse_args, parse_known_args]
-    notes: "Reads sys.argv, consistent with the sys attribute row in this section."
+    simultaneous: true
+    notes: "Reads sys.argv, consistent with the sys attribute row in this section (WI-zidam: simultaneous with its command_line_read twin)."
   - module: os
     functions: [getenv, get_exec_path]
     attributes: [environ]
   - module: sys
     attributes: [argv]
+    simultaneous: true
+    notes: >-
+      WI-zidam (owner ruling 2026-10-22): the command line is chosen by the
+      launcher, as stdin is, so it is untrusted_input (command_line_read) as
+      well as host_secret (env_read: an argument may carry a credential).
+      Declared under both, `simultaneous`.
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
@@ -1623,7 +1734,9 @@ module_completeness:
   - module: ast
     completeness: complete
     retrieved: "2026-08-15"
-    notes: Parses source STRINGS; ast.parse never opens a path.
+    notes: >-
+      Parses source STRINGS; ast.parse never opens a path. main (the -m entry)
+      rowed under logging.
   - module: re
     completeness: complete
     retrieved: "2026-08-15"
@@ -1664,6 +1777,17 @@ module_completeness:
       Undeclared, the first call into any of them (the tracker's
       fromisoformat) made datetime.date unclassifiable and withheld every
       self-claim verdict, as date.today() had (INV-fugus).
+  - module: datetime.timezone
+    completeness: complete
+    retrieved: "2026-11-03"
+    notes: >-
+      INV-hotib. A fixed-offset tzinfo: timezone.utc and timezone(delta)
+      hold an offset in memory; utcoffset / tzname / dst return it. The
+      clock read beside it, datetime.now(timezone.utc), is datetime.datetime's
+      row, not this module's. Undeclared, the from-imported chain
+      (`from datetime import timezone; timezone.utc` in ir.py and schema.py)
+      made datetime.timezone unclassifiable and withheld every self-claim
+      verdict, the fifth instance of the WI-jabus shape after INV-konad.
   - module: hashlib
     completeness: complete
     retrieved: "2026-08-15"
@@ -1792,7 +1916,7 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      Full I/O surface rowed above (fs/env/ipc/subprocess). The unrowed remainder is constants (O_*), pure helpers (fsencode), and inert process-state reads (getpid, cpu_count) kept out of env_read so they do not auto-derive false host_secret taint sources; urandom keeps its hand-written shipped taint source instead of a row twin that displaces it.
+      Full I/O surface rowed above (fs/env/ipc/subprocess). The unrowed remainder is constants (O_*), pure helpers (fsencode), inert process-state reads (getpid, cpu_count) kept out of env_read so they do not auto-derive false host_secret taint sources, and the reaping calls (wait, waitpid, wait3, wait4, waitid), which return only an exit status and mint nothing (WI-lanos, 2026-10-23: ADR-0049 §Ruling 4); urandom keeps its hand-written shipped taint source instead of a row twin that displaces it.
   - module: os.environ
     completeness: complete
     retrieved: "2026-08-15"
@@ -1878,6 +2002,14 @@ module_completeness:
     retrieved: "2026-08-15"
     notes: >-
       main (the -m entry) rowed; the codec functions are pure transcoding.
+  - module: tokenize
+    completeness: complete
+    retrieved: "2026-11-12"
+    notes: >-
+      open rowed under fs_read and main (the -m entry) under logging; generate_tokens,
+      tokenize and detect_encoding read only the readline callable the caller
+      passes, and untokenize is pure. The survey probe's other hit (tokenize.tokenize,
+      open() in a docstring example) is not a call.
   - module: shlex
     completeness: complete
     retrieved: "2026-08-15"
@@ -2432,3 +2564,50 @@ module_completeness:
     completeness: complete
     retrieved: "2026-09-06"
     notes: "Constructor rowed subprocess (starts the workers); map / apply / imap dispatch over the rowed multiprocessing.Queue / Pipe."
+  # 2026-11-14 - the pure path classes. pathlib documents them as "purely
+  # computational operations without I/O", and the probe agrees: on CPython
+  # 3.12 the 32 members of PurePath (22 public, the operators and __fspath__ /
+  # __bytes__ beside them) reach no file, environment or process call. The
+  # one os read is os.name, a constant, in __new__ (which flavour the bare
+  # PurePath is). PurePosixPath and PureWindowsPath add no method: each only
+  # binds the flavour module (posixpath / ntpath) whose join / split /
+  # splitroot / normcase do the string work. The filesystem surface is
+  # pathlib.Path's, at its own slot above; matching is exact, so these three
+  # entries vouch for nothing there.
+  - module: pathlib.PurePath
+    completeness: complete
+    retrieved: "2026-11-14"
+    notes: "Path arithmetic only (parts, parent, with_suffix, relative_to, match, as_posix, as_uri); no filesystem call. The fs methods are pathlib.Path's."
+  - module: pathlib.PurePosixPath
+    completeness: complete
+    retrieved: "2026-11-14"
+    notes: "PurePath with the posixpath flavour; adds no method."
+  - module: pathlib.PureWindowsPath
+    completeness: complete
+    retrieved: "2026-11-14"
+    notes: "PurePath with the ntpath flavour; adds no method. is_reserved compares names against a fixed list."
+  # 2026-11-14 - types. The module is 333 lines on CPython 3.12 and imports
+  # sys, functools, typing and _collections_abc only; the probe finds no
+  # file, environment, network or process call in it. Its 32 public names are
+  # the interpreter's own object types (FunctionType, ModuleType,
+  # MappingProxyType, SimpleNamespace, GenericAlias, ...) and five helpers
+  # that build or inspect classes in memory (new_class, prepare_class,
+  # resolve_bases, get_original_bases, coroutine).
+  - module: types
+    completeness: complete
+    retrieved: "2026-11-14"
+    notes: "The interpreter's object types and in-memory class helpers; no I/O surface. ModuleType builds a module object and imports nothing."
+
+# WI-zidam (owner rulings 2026-10-22 and 2026-10-28): the COMMAND LINE.
+# The launcher chose it, as it chose stdin, so it mints untrusted_input. An
+# argument may also carry a credential, so each row here is simultaneous with
+# its env_read row (host_secret), which by declaration order stays the scalar
+# io_boundary. verify-claims sets these flows aside and counts them unless a
+# claim says `include_command_line: true` (ADR-0050).
+command_line_read:
+  - module: sys
+    attributes: [argv]
+    simultaneous: true
+  - module: argparse.ArgumentParser
+    methods: [parse_args, parse_known_args]
+    simultaneous: true

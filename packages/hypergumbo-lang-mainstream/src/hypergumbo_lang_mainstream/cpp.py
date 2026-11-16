@@ -29,12 +29,26 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Namespace aliases (used as resolution path hints, ADR-0007)
 - Function call relationships
 - Include directives
-- Object instantiation (new expressions, stack construction, and compound literals)
-- Dispatch table edges (function pointers in static array initializers),
+- Object instantiation (new expressions, ``std::make_unique<T>`` /
+  ``make_shared<T>``, stack construction, and compound literals). Each lands
+  on the class, or on the constructor its argument count chooses; a stack or
+  brace construction the count chooses for also gets an edge to that
+  constructor at the same line, so a walk reaches it and not every one
+  (``construction``), and several taking the count land on the class
+- Dispatch table edges (function pointers in array initializers, static or
+  not, at file scope or inside a function),
   plus ``references`` edges carrying ``meta.ref_construct='dispatch_table'``
   for the USE of a dispatch table inside a lookup function, which completes
   the chain from caller through lookup to dispatched target
 - Function-pointer references (address-of expressions like `&func` or `&Class::method`)
+- Bare-value function references: a function named as a value -- a pointer
+  initialiser (``int (*q)(void) = f1;``, at file scope too), an assignment,
+  a return operand, a designated or positional aggregate element outside an
+  array table -- gives a ``references`` edge with
+  ``evidence_type="function_reference"``. A bare name that a parameter,
+  template parameter, local, range-for variable, enumerator or file-scope
+  variable declares (``c_family_declares_local``), or that reads as a class
+  member (``_cpp_bare_value_is_a_member``), gets none
 - Module attribute references for iostream IO (`std::cout`/`std::cerr`/`std::cin` and namespace-alias attribute reads; feeds io-boundaries)
 
 Call-edge details:
@@ -45,18 +59,33 @@ Call-edge details:
   analyzer cannot honestly name (``PFX(f)(args)``, the export-macro class
   misparse ``class API X : public MoveOnly<X, Y> {..}``) is drawn from the
   enclosing context -- an outer function, or the file anchor -- and carries
-  ``meta["src_stands_in_for"] = "unnamed_definition"`` (WI-tikop); before,
-  it was not emitted. The enclosing definition is found by its
+  ``meta["src_stands_in_for"] = "unnamed_definition"`` (WI-tikop). The
+  enclosing definition is found by its
   POSITION (``symbols_at`` / ``symbol_declared_by`` over ``file_symbols()``),
   never its short name: the name-keyed view keeps one symbol per name, so of
   ``P::run``/``Q::run`` or two overloads every call, ``new``, dispatch-table
-  use and ``std::cout`` read was drawn from the last (WI-saduj).
+  use and ``std::cout`` read would be drawn from the last (WI-saduj).
 - **Definition names**: found at any declarator depth by the shared
   ``c_family_declarator`` walk (``hypergumbo_core.analyze.c_family``) (``char **f()``, ``int *&f()``, a function
   returning a function pointer), and for every leaf tree-sitter-cpp gives a
   definition: qualified and plain identifiers, an explicit specialisation
   (``template <> void f<int>(int)``, named ``f``), ``operator==``, a
-  destructor and a conversion operator (WI-saduj).
+  destructor and a conversion operator (WI-saduj). A definition in a class
+  body -- directly, as a member template, or in a ``#if`` block of the body
+  (``_cpp_in_class_body``) -- is a ``method`` named ``C::name``: the
+  constructor ``C() {}`` is ``C::C`` as an out-of-class ``C::C() {}`` is, and
+  ``template <class T> void f(T) {}`` is ``C::f`` (WI-rugin). A ``friend``
+  defined there is a free function.
+- **Qualified class names** (INV-tohuj): a class, struct or enum DEFINED under
+  a qualified name -- the pimpl idiom's ``class OnlineStream::Impl { .. }`` --
+  is named as declared, template arguments dropped (``_cpp_type_name``), with
+  its fields and enumerators; its members are ``OnlineStream::Impl::m``, the
+  name an out-of-line ``void OnlineStream::Impl::m() {}`` already has, and a
+  bare call in its body binds its own member. A union owns its members
+  (``U::U``, ``U::um``). An explicit receiver whose declared type names a
+  class nested in the caller's class (``unique_ptr<Impl> impl_`` in
+  ``OnlineStream``) is that nested class (``_cpp_nested_class``), so the
+  pimpl forward ``impl_->Run()`` reaches ``OnlineStream::Impl::Run``.
 - **Member calls**: ``this->a->b()`` is resolved through class field types
   (``_resolve_cpp_field_chain``). A member call whose method name is in
   ``_CPP_STL_METHODS`` (``v.clear()``) is not resolved against project
@@ -76,8 +105,8 @@ Call-edge details:
   ``receiver_type_hint`` the inherited_calls linker walks. An untyped one
   never takes the enclosing class as its hint, a same-file short-name hit or
   an ``enclosing_class`` stamp: those are implicit-``this`` evidence, and the
-  pimpl idiom (``X::Generate`` forwarding to ``impl_->Generate``) turned them
-  into a false SELF-call -- 990 sites on sherpa-onnx.
+  pimpl idiom (``X::Generate`` forwarding to ``impl_->Generate``) turns them
+  into a false SELF-call.
 - **Included-header primitives**: a free, unqualified call whose resolved
   target is defined in another file is not bound when the I/O catalogue says
   one of the file's system ``#include`` headers declares that name
@@ -92,18 +121,22 @@ Call-edge details:
   (``transitive_in_repo=False``) -- prefixed with ``std``
   when the call names ``std::`` or the file has ``using namespace std``
   (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
+  A set of two or more is written as a ``module-set-`` handle and stored
+  once in the map's ``module_sets`` (``hypergumbo_core.module_sets``,
+  INV-jahuf); io_boundary expands it back, so the two quantifiers read the
+  same list.
   Member calls carry ``call_construct="method"``.
 - **Scope** (INV-fabih): every stable_id's qualified-name slot holds the
   enclosing namespaces and classes the name does not already spell
-  (``_cpp_scope_slot``); it was empty, so two nested ``class Inner`` (or
-  two in sibling namespaces, or two namespace-level ``run``) and their
-  members tied. Top-level declarations and members of top-level classes
-  keep their values.
+  (``_cpp_scope_slot``), so two nested ``class Inner`` (or two in sibling
+  namespaces, or two namespace-level ``run``) and their members do not tie.
+  Top-level declarations and members of top-level classes hash an empty
+  slot.
 - **Overloads** (WI-hilum): every definition records its parameters in
   ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), and its
   stable_id hashes them (``node_declared_arity_stable_id``, WI-tusad; they sit
-  under the declarator, so ``compute_stable_id`` tied ``run()`` / ``run(int)``
-  on ``param_count 0``), with a
+  under the declarator, where ``compute_stable_id`` alone does not find them
+  and would tie ``run()`` / ``run(int)`` on ``param_count 0``), with a
   default written only on a separate prototype merged in at registration
   (``_merge_prototype_defaults``). The callee the name gives is then
   re-chosen among its same-named definitions by the call's argument count
@@ -111,7 +144,19 @@ Call-edge details:
   none there can take the call. Several that can is an ambiguous record
   (``meta.resolution_quality="ambiguous"``, confidence scaled by ``1/sqrt(N)``),
   except ``#if`` alternatives with one signature; none that can keeps the
-  name's pick. A call on an explicit receiver other than ``this`` is not
+  name's pick. The overload set includes member templates and constructors,
+  which are members of their class (WI-rugin), so ``Init()`` in a constructor
+  binds the zero-parameter ``Init``, not ``template <class M> Init(M*)``
+  (WI-jidot). Among candidates the count cannot separate, exactly one
+  non-template beside function templates is the pick, after C++'s own
+  tie-breaker for an equally good non-template and template
+  (``_prefer_non_template``); the record stays ambiguous, because argument
+  types are not read and a ``Manager*`` argument makes only the template
+  viable. An ambiguous constructor choice draws no edge to one constructor,
+  so the construction reaches all of them. A ``new`` that lands on a
+  constructor is re-chosen the same way
+  by its argument count (``new T`` and ``new T[n]`` pass none, ``new T{a, b}``
+  two). A call on an explicit receiver other than ``this`` is not
   re-chosen: with no receiver type the overload set is a guess, and in the
   pimpl idiom its arity match is the caller itself.
 - **Callbacks**: a bare identifier argument that resolves to a function
@@ -149,21 +194,24 @@ Why This Design
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.module_sets import module_slot
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id,
+    AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, OverloadChoice, choose_overload, declared_arity,
     declared_arity_stable_id, nested_member_qualified_name,
-    node_declared_arity_stable_id,
+    nested_qualified_name, node_declared_arity_stable_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.c_family import (
-    c_family_declarator, c_family_parameter_list, c_family_parameters,
+    c_family_array_declarator, c_family_declarator, c_family_declares_local,
+    c_family_file_scope_variables, c_family_is_value_operand, c_family_parameter_list, c_family_parameters,
     c_family_scope_chain,
 )
 from hypergumbo_core.analyze.edge_source import mark_stand_in
@@ -175,6 +223,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    defer_unresolved_tie,
     emit_module_attribute_refs,
     find_child_by_type as _find_child_by_type,
     iter_tree,
@@ -305,18 +354,82 @@ def _cpp_has_pure_virtual(type_node: "tree_sitter.Node", source: bytes) -> bool:
 def _cpp_scope_slot(node: "tree_sitter.Node", source: bytes, name: str) -> str:
     """The qualified-name slot a C++ stable_id hashes (INV-fabih).
 
-    Every cpp producer hashed an EMPTY qualified name beside a name that
-    spells at most the nearest class (``Inner::go``, ``Inner``), so two
-    nested ``class Inner`` in ``A`` and ``B`` -- or two in namespaces ``a``
-    and ``b``, or two ``run`` in two namespaces -- tied, and deleting the
-    first moved the second's id. This is
-    ``overload_arity.nested_member_qualified_name`` over the enclosing
-    namespaces and classes (``c_family_scope_chain``), which drops the
-    trailing ones ``name`` already spells: ``""`` for a top-level declaration and a member of a
-    top-level class (their ids do not move), ``A/Inner::go`` for a member of
-    a nested one.
+    A cpp name spells at most the nearest class (``Inner::go``, ``Inner``),
+    so with an empty qualified name two nested ``class Inner`` in ``A`` and
+    ``B`` -- or two in namespaces ``a`` and ``b``, or two ``run`` in two
+    namespaces -- would tie, and deleting the first would move the second's
+    id. This is ``overload_arity.nested_member_qualified_name`` over the
+    enclosing namespaces and classes (``c_family_scope_chain``), which drops
+    the trailing ones ``name`` already spells: ``""`` for a top-level
+    declaration and a member of a top-level class, ``A/Inner::go`` for a
+    member of a nested one.
     """
-    return nested_member_qualified_name(c_family_scope_chain(node, source), name, "::")
+    return nested_member_qualified_name(_cpp_scope_chain(node, source), name, "::")
+
+
+#: Specifiers that are classes for member ownership: a union's constructor
+#: and member functions are its members as a class's are.
+_CPP_CLASS_SPECIFIERS = frozenset({
+    "class_specifier", "struct_specifier", "union_specifier",
+})
+#: The body that makes a specifier a DEFINITION, per specifier type.
+_CPP_TYPE_BODIES = frozenset({"field_declaration_list", "enumerator_list"})
+
+
+def _cpp_strip_template_args(text: str) -> str:
+    """``A<T>::B`` -> ``A::B``: template arguments (nested ones too),
+    whitespace and a leading global ``::`` dropped."""
+    previous = None
+    while previous != text:
+        previous, text = text, re.sub(r"<[^<>]*>", "", text)
+    return "".join(text.split()).lstrip(":")
+
+
+def _cpp_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name a class / struct / union / enum specifier declares, or None.
+
+    A plain ``type_identifier`` is the name as written. A DEFINITION may name
+    its type with a ``qualified_identifier`` instead -- the out-of-line
+    definition of a nested type, ``class OnlineStream::Impl { .. }`` (the
+    pimpl idiom), ``enum class E::Color { .. }`` -- and is then named as
+    declared, template arguments dropped (``template <class T> struct
+    A<T>::B`` is ``A::B``) (INV-tohuj). A qualified name with no body
+    (``friend class A::B;``) declares nothing and gives None.
+    """
+    name_node = _find_child_by_type(node, "type_identifier")
+    if name_node is not None:
+        return _node_text(name_node, source)
+    qualified = _find_child_by_type(node, "qualified_identifier")
+    if qualified is None or not any(c.type in _CPP_TYPE_BODIES for c in node.children):
+        return None
+    return _cpp_strip_template_args(_node_text(qualified, source))
+
+
+def _cpp_scope_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """``c_family_scope_chain`` for C++, with each enclosing class declared
+    under a qualified name contributing every part of it (``A::B`` is ``A``,
+    ``B``), so a member of ``class A::B`` has the chain an in-body member of
+    a nested ``B`` in ``A`` has. Every other scope is read as
+    ``c_family_scope_chain`` reads it."""
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in _CPP_CLASS_SPECIFIERS:
+            name = _cpp_type_name(current, source)
+            if name is not None:
+                chain.extend(reversed(name.split("::")))
+        elif current.type == "namespace_definition":
+            ns = next(
+                (c for c in current.children if c.type in (
+                    "namespace_identifier", "nested_namespace_specifier", "identifier",
+                )),
+                None,
+            )
+            if ns is not None:
+                chain.append(_node_text(ns, source))
+        current = current.parent
+    chain.reverse()
+    return chain
 
 
 def _emit_cpp_pure_virtual(
@@ -339,8 +452,8 @@ def _emit_cpp_pure_virtual(
     Its parameters go to ``meta["parameters"]`` like a definition's, and its
     stable_id is the ADR-0035 producer formula over them
     (``declared_arity_stable_id``, WI-tusad): ``virtual int find(int) = 0`` and
-    ``find(int, int)`` in one class used to tie on the backstop floor key and
-    both go null. ``abstract,virtual`` is its decorator string, so it never
+    ``find(int, int)`` in one class would otherwise tie on the backstop floor
+    key and both go null. ``abstract,virtual`` is its decorator string, so it never
     ties with an out-of-line definition of the same pure virtual in the file.
     """
     start_line = field_decl.start_point[0] + 1
@@ -403,10 +516,16 @@ def _extract_base_classes_cpp(node: "tree_sitter.Node", source: bytes) -> list[s
             # Simple base class name
             base_classes.append(_node_text(child, source))
         elif child.type == "qualified_identifier":
-            # Qualified name like std::runtime_error
-            base_classes.append(_node_text(child, source))
+            # Qualified name like std::runtime_error. A name split across lines
+            # (`ns::Engine::\n    Endpoint::Info`) keeps its whitespace in the
+            # node text, which would reach an id's module slot (INV-kurup); the
+            # whitespace around `::` is not part of the name.
+            base_classes.append(_QUALIFIER_SPACE.sub("::", _node_text(child, source)))
 
     return base_classes
+
+
+_QUALIFIER_SPACE = re.compile(r"\s*::\s*")
 
 
 def _extract_field_types_cpp(
@@ -484,14 +603,24 @@ def _extract_field_types_cpp(
 
 
 def _cpp_call_arity(call_node: "tree_sitter.Node") -> Optional[int]:
-    """How many arguments a call passes; None when it cannot be counted.
+    """How many arguments a call or a ``new`` passes; None when it cannot be
+    counted.
 
     A pack expansion (``f(args...)``) passes an unknown number. A comment
-    between arguments is a named node and is not an argument.
+    between arguments is a named node and is not an argument. ``new T`` and
+    ``new T[n]`` have no argument list and default-construct: none; the
+    braces of ``new T{a, b}`` count as ``new T(a, b)`` does.
     """
     args = call_node.child_by_field_name("arguments")
     if args is None:
+        if call_node.type == "new_expression":
+            return 0
         return None  # pragma: no cover - every call_expression has an argument_list
+    return _cpp_argument_count(args)
+
+
+def _cpp_argument_count(args: "tree_sitter.Node") -> Optional[int]:
+    """The arguments an ``argument_list`` / ``initializer_list`` passes."""
     count = 0
     for child in args.named_children:
         if child.type == "comment":
@@ -500,6 +629,53 @@ def _cpp_call_arity(call_node: "tree_sitter.Node") -> Optional[int]:
             return None
         count += 1
     return count
+
+
+def _cpp_declarator_arity(declarator: "tree_sitter.Node") -> Optional[int]:
+    """The arguments a declarator constructs its object with, or None when it
+    constructs nothing by itself: ``C x;`` passes none, ``C x(1)`` and
+    ``C x{1}`` one. A pointer, reference, array or ``= expr`` declarator is
+    not counted (``C x = C(1)`` is the call's construction)."""
+    if declarator.type == "identifier":
+        return 0
+    if declarator.type != "init_declarator":
+        return None
+    inner = declarator.child_by_field_name("declarator")
+    value = declarator.child_by_field_name("value")
+    if (
+        inner is None or inner.type != "identifier" or value is None
+        or value.type not in ("argument_list", "initializer_list")
+    ):
+        return None
+    return _cpp_argument_count(value)
+
+
+#: The standard factories that construct their template argument with the
+#: call's arguments: ``std::make_unique<T>(a, b)`` constructs a ``T(a, b)``.
+_CPP_MAKE_FUNCTIONS = frozenset({"make_unique", "make_shared"})
+
+
+def _cpp_made_type(call: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """``T`` for ``std::make_unique<T>(..)`` / ``make_shared<T>(..)``, its
+    template arguments dropped; None for any other call."""
+    function = call.child_by_field_name("function")
+    if function is not None and function.type == "qualified_identifier":
+        scope = function.child_by_field_name("scope")
+        if scope is None or _node_text(scope, source) != "std":
+            return None
+        function = function.child_by_field_name("name")
+    if function is None or function.type != "template_function":
+        return None
+    name = function.child_by_field_name("name")
+    if name is None or _node_text(name, source) not in _CPP_MAKE_FUNCTIONS:
+        return None
+    arguments = function.child_by_field_name("arguments")
+    made = next(
+        (c for c in arguments.named_children if c.type == "type_descriptor"), None,
+    ) if arguments is not None else None
+    if made is None:
+        return None
+    return _cpp_strip_template_args(_node_text(made, source))
 
 
 #: Where a function prototype can stand: file and namespace scope, a class
@@ -530,6 +706,50 @@ def _alternatives_of_one_function(candidates: tuple[Symbol, ...]) -> bool:
             return False  # an unknown signature is not known to be identical
         shapes.add((c.path, tuple(e.get("type") for e in entries)))
     return len(shapes) == 1
+
+
+def _cpp_is_function_template(node: "tree_sitter.Node") -> bool:
+    """Whether a ``function_definition`` defines a function TEMPLATE.
+
+    Each ``template <..>`` directly above the definition introduces template
+    parameters; those a templated class in the declarator's qualifier
+    accounts for (``template <class T> void A<T>::h()``: one, for ``A<T>``)
+    belong to the class, and a member of a class template is an ordinary
+    function. One more than the qualifier spends makes the definition a
+    template (``template <class T> template <class U> void A<T>::k(U)``,
+    ``template <class U> void f(U)``, the explicit specialisation
+    ``template <> void f<int>(int)``)."""
+    introduced = 0
+    parent = node.parent
+    while parent is not None and parent.type == "template_declaration":
+        introduced += 1
+        parent = parent.parent
+    if introduced == 0:
+        return False
+    name = c_family_declarator(node).name
+    spent = sum(
+        1 for n in iter_tree(name) if n.type == "template_type"
+    ) if name is not None and name.type == "qualified_identifier" else 0
+    return introduced > spent
+
+
+def _prefer_non_template(
+    choice: OverloadChoice, template_ids: "frozenset[str] | set[str]",
+) -> OverloadChoice:
+    """C++ [over.match.best]: of a non-template and a function template
+    specialisation equally good for a call, the non-template is chosen.
+    Types unread, the analyzer cannot know the two are equally good (a
+    ``Manager*`` argument makes only the template viable), so the rule only
+    names the PICK: exactly one non-template among several admitted
+    candidates, some of them templates, is the edge's target, and the record
+    stays ambiguous with every admitted candidate, its confidence unchanged.
+    Two or more non-templates: the choice as it was."""
+    if not choice.ambiguous:
+        return choice
+    plain = [c for c in choice.admitted if c.id not in template_ids]
+    if len(plain) == 1 and len(plain) < len(choice.admitted):
+        return OverloadChoice(plain[0], choice.confidence, True, choice.admitted)
+    return choice
 
 
 def _record_cpp_prototype(
@@ -623,12 +843,22 @@ def _cpp_operator_cast_name(node: "tree_sitter.Node", source: bytes) -> str:
     return " ".join(source[node.start_byte:end].decode("utf-8", errors="replace").split())
 
 
+#: What may stand between a member definition and its class body: a member
+#: template's ``template <..>`` and a ``#if`` / ``#ifdef`` / ``#else`` block of
+#: the body (sherpa-onnx's ``#if __ANDROID_API__ >= 9`` constructors).
+_CPP_MEMBER_WRAPPERS = frozenset({
+    "template_declaration", "preproc_if", "preproc_ifdef", "preproc_else",
+    "preproc_elif", "preproc_elifdef",
+})
+
+
 def _cpp_in_class_body(node: "tree_sitter.Node") -> bool:
     """Whether a ``function_definition`` is a member defined in a class body
-    (directly, or as a member template). A ``friend`` definition is not: its
-    parent is the ``friend_declaration``, and it defines a free function."""
+    (directly, as a member template, or inside a preprocessor block of the
+    body). A ``friend`` definition is not: its parent is the
+    ``friend_declaration``, and it defines a free function."""
     parent = node.parent
-    if parent is not None and parent.type == "template_declaration":
+    while parent is not None and parent.type in _CPP_MEMBER_WRAPPERS:
         parent = parent.parent
     return parent is not None and parent.type == "field_declaration_list"
 
@@ -639,17 +869,27 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     Returns (name, kind) tuple where kind is 'function' or 'method'. The name
     is found at any declarator depth by ``c_family_declarator`` (WI-saduj):
     ``char **f()``, ``int *&f()`` and a function returning a function pointer
-    each got no symbol when only one wrapper level was descended. The leaf
+    each nest the name more than one wrapper level deep. The leaf
     decides the name and kind:
 
     - ``qualified_identifier`` (``A::run``, ``A::operator bool``): method.
-    - ``identifier``: function; ``field_identifier`` (an in-class method): method.
+    - ``field_identifier`` (an in-class method): method.
+    - ``identifier``: a method when defined in a class body, else a function.
+      tree-sitter-cpp gives a plain ``identifier`` to the two member shapes
+      that have no ``field_identifier``: an in-class constructor (``C() {}``,
+      ``C(const C&) = default;``, ``template <class T> C(T) {}``) and an
+      in-class member template (``template <class T> void f(T) {}``). Read as
+      free functions they were ``function C`` / ``function f`` beside the
+      method ``C::C`` an out-of-class constructor is (WI-rugin).
     - ``template_function`` (an explicit specialisation ``template <> void
       f<int>(int)``): the template's name, ``f``, so it sits beside the primary
       template the way an overload sits beside its siblings.
     - ``operator_name``, ``destructor_name``, ``operator_cast``: a method when
       defined in a class body, else a function (a free or ``friend``
       ``operator==``).
+
+    "In a class body" is ``_cpp_in_class_body``: a ``friend`` defined there is
+    not, and stays a function.
     """
     shape = c_family_declarator(node)
     leaf = shape.name
@@ -672,11 +912,11 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
             prefix = source[leaf.start_byte:cast.start_byte].decode("utf-8", errors="replace")
             return (prefix + _cpp_operator_cast_name(cast, source), "method")
         return (_node_text(leaf, source), "method")
-    if leaf.type == "identifier":
-        return (_node_text(leaf, source), "function")
     if leaf.type == "field_identifier":
         return (_node_text(leaf, source), "method")
-    if leaf.type == "template_function":
+    if leaf.type == "identifier":
+        name = _node_text(leaf, source)
+    elif leaf.type == "template_function":
         name = _node_text(leaf, source).split("<", 1)[0].strip()
     elif leaf.type == "operator_cast":
         name = _cpp_operator_cast_name(leaf, source)
@@ -978,7 +1218,7 @@ def _extract_symbols_from_tree(
     """
     analysis = FileAnalysis()
 
-    # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path`` is
+    # File-identity anchor for this file's symbols (WI-bokab, v7). ``rel_path`` is
     # the repo-relative path (the base class computes it via
     # ``source_file.relative_to(repo_root)`` and the extract override threads it
     # here). Folded into compute_stable_id's containing slot so same-name
@@ -1002,9 +1242,9 @@ def _extract_symbols_from_tree(
 
         # Class declaration
         if node.type == "class_specifier":
-            name_node = _find_child_by_type(node, "type_identifier")
-            if name_node:
-                name = _node_text(name_node, source)
+            class_name = _cpp_type_name(node, source)
+            if class_name is not None:
+                name = class_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -1013,9 +1253,8 @@ def _extract_symbols_from_tree(
                 meta = _cpp_type_meta(base_classes, node, source)
 
                 # A cpp class declaring a pure virtual IS abstract. Recorded in
-                # modifiers, where the shared type-family predicate reads it —
-                # audit 0018 measured cpp emitting an empty modifier list on
-                # every symbol, so abstract bases read as concrete.
+                # modifiers, where the shared type-family predicate reads it;
+                # without it abstract bases read as concrete (audit 0018).
                 class_modifiers = (
                     ["abstract"] if _cpp_has_pure_virtual(node, source) else []
                 )
@@ -1026,7 +1265,7 @@ def _extract_symbols_from_tree(
                     # WI-pivap: the namespace-qualified name lets the core
                     # inheritance linker check a qualified base's qualifier
                     # (``std::exception`` is not ``mylib::exception``).
-                    qualified_name="::".join([*c_family_scope_chain(node, source), name]),
+                    qualified_name="::".join([*_cpp_scope_chain(node, source), name]),
                     modifiers=class_modifiers,
                     language="cpp",
                     path=str(file_path),
@@ -1065,9 +1304,9 @@ def _extract_symbols_from_tree(
         # forward declarations like ``struct Foo;``)
         elif node.type == "struct_specifier":
             has_body = any(c.type == "field_declaration_list" for c in node.children)
-            name_node = _find_child_by_type(node, "type_identifier") if has_body else None
-            if name_node:
-                name = _node_text(name_node, source)
+            struct_name = _cpp_type_name(node, source) if has_body else None
+            if struct_name is not None:
+                name = struct_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -1079,7 +1318,7 @@ def _extract_symbols_from_tree(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "struct"),
                     name=name,
                     kind="struct",
-                    qualified_name="::".join([*c_family_scope_chain(node, source), name]),
+                    qualified_name="::".join([*_cpp_scope_chain(node, source), name]),
                     language="cpp",
                     path=str(file_path),
                     span=Span(
@@ -1118,8 +1357,16 @@ def _extract_symbols_from_tree(
         elif node.type == "enum_specifier":
             has_body = any(c.type == "enumerator_list" for c in node.children)
             name_node = _find_child_by_type(node, "type_identifier") if has_body else None
-            if name_node:
-                name = _node_text(name_node, source)
+            # WI-pusan: `enum : uint16_t { ... }` has no name, and tree-sitter
+            # fills the slot with a zero-width MISSING type_identifier. Read as
+            # a name it would yield a nameless enum id and owner-less `::kA`
+            # fields.
+            enum_name = (
+                None if name_node is not None and name_node.is_missing
+                else _cpp_type_name(node, source) if has_body else None
+            )
+            if enum_name:
+                name = enum_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -1254,7 +1501,7 @@ def _extract_symbols_from_tree(
                     ),
                     # WI-tusad: arity from meta["parameters"] (the declarator's
                     # list compute_stable_id never finds), so run() / run(int)
-                    # stop tying on param_count 0.
+                    # do not tie on param_count 0.
                     stable_id=node_declared_arity_stable_id(
                         _analyzer, node, kind=kind, name=name, meta=fn_meta,
                         file_stable_id=file_stable_id,
@@ -1395,47 +1642,80 @@ def _try_instantiation_edge(
     resolver: NameResolver,
     edges: list[Edge],
     run: AnalysisRun,
-) -> None:
+    choose: Callable[[Symbol, "tree_sitter.Node"], Optional[OverloadChoice]],
+) -> Optional[Symbol]:
     """Emit an instantiates edge if type_name resolves to a known symbol.
 
     Checks local symbols first (an exact match: the pathway base), then
     falls back to the NameResolver, whose grade interpolates in the pathway
     band (ADR-0039 ruling 6).
+
+    A constructor shares its class's short name, so the name can pick one
+    of the class's constructors -- the last one defined, whatever its
+    parameters. ``choose`` (the edge pass's ``overload_choice``) re-chooses
+    it among the class's constructors by the argument count of the ``new``,
+    as a call's callee is (WI-jidot); a class it picks is left alone. When
+    several constructors take the count, the edge lands on their class, so
+    the walk reaches all of them; an ambiguous record on the name's pick is
+    kept only when the class has no symbol.
+    Returns the symbol the edge lands on, None when it draws none.
     """
+    score: Optional[float] = None
     if type_name in local_symbols:
         target = local_symbols[type_name]
-        edges.append(Edge.create(
-            src=current_function.id,
-            dst=target.id,
-            edge_type="instantiates",
-            line=node.start_point[0] + 1,
-            evidence_type=evidence_type,
-            origin=PASS_ID,
-            origin_run_id=run.execution_id,
-        ))
     else:
         lookup_result = resolver.lookup(type_name)
-        if lookup_result.found and lookup_result.symbol is not None:
-            edges.append(Edge.create(
-                src=current_function.id,
-                dst=lookup_result.symbol.id,
-                edge_type="instantiates",
-                line=node.start_point[0] + 1,
-                evidence_type=evidence_type,
-                resolution_score=lookup_result.confidence,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-            ))
+        if not lookup_result.found or lookup_result.symbol is None:
+            return None
+        target, score = lookup_result.symbol, lookup_result.confidence
+    meta: Optional[dict[str, Any]] = None
+    choice = choose(target, node)
+    if choice is not None and choice.symbol is not None:
+        target = choice.symbol
+        if choice.ambiguous:
+            # Several constructors take the argument count: the construction
+            # is of the CLASS, certainly, and of one of them, unknown which.
+            # Landing on the class lets the walk reach every one of them
+            # (construction.py) instead of a guessed one.
+            owner = target.name.rsplit("::", 1)[0]
+            cls = local_symbols.get(owner)
+            if cls is None or cls.kind not in ("class", "struct"):
+                # The short-name key may hold a constructor, not the class.
+                found = resolver.lookup(owner)
+                cls = found.symbol if found.found else None
+            if cls is not None and cls.kind in ("class", "struct"):
+                target = cls
+            else:
+                meta = {"resolution_quality": "ambiguous"}
+                score = (1.0 if score is None else score) * choice.confidence
+    edges.append(Edge.create(
+        src=current_function.id,
+        dst=target.id,
+        edge_type="instantiates",
+        line=node.start_point[0] + 1,
+        evidence_type=evidence_type,
+        resolution_score=score,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        meta=meta,
+    ))
+    return target
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> str | None:
-    """Walk up the AST to find the enclosing class/struct name."""
+    """Walk up the AST to find the enclosing class / struct / union name.
+
+    A class declared under a qualified name (``class OnlineStream::Impl``) is
+    named as declared (``_cpp_type_name``), so its members are
+    ``OnlineStream::Impl::m`` -- the name an out-of-line definition of the
+    same member already has -- and a union owns its members (INV-tohuj).
+    """
     parent = node.parent
     while parent is not None:
-        if parent.type in ("class_specifier", "struct_specifier"):
-            name_node = _find_child_by_type(parent, "type_identifier")
-            if name_node:
-                return _node_text(name_node, source)
+        if parent.type in _CPP_CLASS_SPECIFIERS:
+            name = _cpp_type_name(parent, source)
+            if name is not None:
+                return name
         parent = parent.parent
     return None
 
@@ -1492,11 +1772,10 @@ def _resolve_cpp_field_chain(
 
 #: Namespaces whose qualified calls name a MODULE the catalogue keys on.
 #:
-#: WI-bapuk. cpp.yaml rows std::cout / std::cerr / std::cin under ``module: std``
-#: and the ATTRIBUTE path already emits ``std``; the CALL path discarded the
-#: namespace and used the file's #include list alone, so ``std::getline(...)``
-#: arrived as ``iostream,fstream,string`` and no ``std`` row could ever match.
-#: Keyed here rather than derived because an arbitrary namespace is a PROJECT's,
+#: cpp.yaml rows std::cout / std::cerr / std::cin under ``module: std``, and
+#: the ATTRIBUTE path emits ``std``; the CALL path adds the namespace to the
+#: file's #include list, since from the list alone (``iostream,fstream,string``
+#: for ``std::getline(...)``) no ``std`` row could match. (WI-bapuk) Keyed here rather than derived because an arbitrary namespace is a PROJECT's,
 #: and writing it into the module slot would be a present-but-wrong hint -- the
 #: INV-kotob shape, worse than untyped.
 _CPP_CATALOGUE_NAMESPACES: frozenset[str] = frozenset({"std"})
@@ -1669,8 +1948,38 @@ def _cpp_owner_class(
     if enclosing is not None:
         return enclosing
     if function is not None and function.kind == "method" and "::" in function.name:
-        return function.name.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+        # The whole qualifier: ``OnlineStream::Impl`` for
+        # ``OnlineStream::Impl::Out``; ``_cpp_class_key`` reads it against the
+        # classes the run knows, longest suffix first (``ns::Tts`` -> ``Tts``).
+        return function.name.rsplit("::", 1)[0]
     return None
+
+
+def _cpp_class_key(owner: str, known: Any) -> Optional[str]:
+    """The longest ``::``-suffix of ``owner`` that ``known`` holds, or None:
+    ``ns::Tts`` is the class ``Tts`` when no class is named ``ns::Tts``."""
+    parts = owner.split("::")
+    for start in range(len(parts)):
+        key = "::".join(parts[start:])
+        if key in known:
+            return key
+    return None
+
+
+def _cpp_nested_class(
+    type_name: str, owner: Optional[str], global_symbols: dict[str, Symbol],
+) -> str:
+    """``type_name`` as C++ looks it up from a member of ``owner``: a class
+    nested in the owner (or an owner of the owner) first, then the name as
+    written. ``unique_ptr<Impl> impl_`` in ``OnlineStream`` is
+    ``OnlineStream::Impl`` when the run defines that class (INV-tohuj)."""
+    if owner:
+        parts = owner.split("::")
+        for end in range(len(parts), 0, -1):
+            nested = global_symbols.get("::".join([*parts[:end], type_name]))
+            if nested is not None and nested.kind in ("class", "struct"):
+                return nested.name
+    return type_name
 
 
 def _cpp_receiver_class(
@@ -1695,7 +2004,8 @@ def _cpp_receiver_class(
     declared = _cpp_declared_type_node(call, source, name, parameters=True)
     if declared is not None:
         return _cpp_class_of_type(declared, source, arrow=arrow)
-    return field_types.get(owner_class, {}).get(name) if owner_class else None
+    key = _cpp_class_key(owner_class, field_types) if owner_class else None
+    return field_types[key].get(name) if key is not None else None
 
 
 def _cpp_stream_target_kind(
@@ -1704,8 +2014,8 @@ def _cpp_stream_target_kind(
     """``io_target_kind`` for a C++ stream read, or None to stay silent.
 
     Returns None for everything not provable -- a parameter, a field, a stream
-    from a function this file does not declare. An unstamped edge classifies
-    exactly as it did before this existed, falling to the first-declared row.
+    from a function this file does not declare. An unstamped edge falls to
+    the catalogue's first-declared row.
     """
     index = _CPP_STREAM_ARG_INDEX.get(_cpp_short_type(callee))
     if index is None:
@@ -1726,6 +2036,100 @@ def _cpp_stream_target_kind(
     return _cpp_declared_type_kind(call_node, source, bare)
 
 
+def _cpp_bare_value_is_a_member(
+    node: "tree_sitter.Node",
+    target: Symbol,
+    current_function: Symbol,
+    file_path: str,
+) -> bool:
+    """Whether a BARE value identifier is (likely) a class member, not ``target``.
+
+    C++ spells a member function as a value ``&C::m``, so a bare name never
+    names one; in a member function a bare value is usually a DATA member of
+    that name. Neither side always says so: a class declared with an export
+    macro (``class APT_PUBLIC pkgCache::RlsFileIterator { ... }``) parses with
+    no class at all, its inline members come out as free ``function`` symbols
+    (INV-tohuj's family), and apt's ``return Origin;`` (a data member) would
+    bind one. So:
+
+    - in code tree-sitter misread (:func:`_cpp_in_a_misread_region`) a bare
+      value is never taken -- apt's export-macro classes put data members and
+      accessors side by side in such regions, same file or not;
+    - in MEMBER context -- a method, a ``X::f`` definition, code inside a
+      class body -- only a function of this same file is taken: x265's
+      ``CUData::initialize`` storing its file's ``bcast64`` is kept, a data
+      member that shares a name with another file's function is not. The cost
+      is a member storing another file's free function: x265's
+      ``hpelcomp = sad;`` (a template in pixel.cpp) is not linked.
+    """
+    if _cpp_in_a_misread_region(node):
+        return True
+    member_context = current_function.kind == "method" or "::" in current_function.name
+    current = node.parent
+    while current is not None and not member_context:
+        member_context = current.type in (
+            "class_specifier", "struct_specifier", "field_declaration_list",
+        )
+        current = current.parent
+    return member_context and target.path != file_path
+
+
+#: Block parents that mean a file-scope ``{ ... }`` -- a class body tree-sitter
+#: could not read as one (C++ has no file-scope blocks).
+_CPP_FILE_SCOPE_PARENTS: frozenset[str] = frozenset({
+    "translation_unit", "preproc_ifdef", "preproc_if", "preproc_else",
+    "preproc_elif", "preproc_elifdef",
+})
+
+
+def _cpp_in_a_misread_region(node: "tree_sitter.Node") -> bool:
+    """Whether ``node`` sits in code tree-sitter could not read as written,
+    where a bare name is as likely a member as anything (apt's export-macro
+    classes, ``class APT_PUBLIC X { ... }``): an ERROR; a function definition
+    inside another (C++ has no nested functions); an access label
+    (``public:``) read as a statement label; or a block at file scope. An
+    ERROR beyond the enclosing definition is not evidence: that definition
+    parsed."""
+    definitions = 0
+    current = node.parent
+    while current is not None:
+        # An ERROR counts only where no well-formed definition stands between
+        # it and ``node``: x265 files carry a file-level ERROR (macros around
+        # a namespace) over functions that parsed cleanly beneath it.
+        if current.type == "ERROR" and definitions == 0:
+            return True
+        if current.type == "function_definition":
+            definitions += 1
+            if definitions > 1:
+                return True
+        if current.type == "labeled_statement":
+            label = current.child_by_field_name("label")
+            if label is not None and label.text in (b"public", b"protected", b"private"):
+                return True
+        if (
+            current.type == "compound_statement"
+            and current.parent is not None
+            and current.parent.type in _CPP_FILE_SCOPE_PARENTS
+        ):
+            return True
+        current = current.parent
+    return False
+
+
+def _cpp_in_array_table(node: "tree_sitter.Node") -> bool:
+    """Whether ``node`` is an element of an ARRAY initialiser -- the
+    dispatch-table pass's, which links it from the table (META-mino)."""
+    current = node.parent
+    while current is not None and current.type in ("initializer_list", "initializer_pair"):
+        current = current.parent
+    if node.parent is None or node.parent.type not in ("initializer_list", "initializer_pair"):
+        return False
+    if current is None or current.type != "init_declarator":
+        return False
+    declarator = current.child_by_field_name("declarator")
+    return declarator is not None and c_family_array_declarator(declarator) is not None
+
+
 def _extract_edges_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1741,6 +2145,8 @@ def _extract_edges_from_tree(
     file_symbols: list[Symbol],
     callables_by_name: dict[str, list[Symbol]],
     include_closure: IncludeClosure | None = None,
+    table_symbols: list[Symbol] | None = None,
+    template_ids: "frozenset[str] | set[str]" = frozenset(),
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -1752,8 +2158,9 @@ def _extract_edges_from_tree(
         file_symbols: Every symbol of this file (``file_symbols()``). The
             definition an edge is drawn from is found in it by POSITION
             (INV-midag, WI-saduj); ``local_symbols`` keeps one symbol per name,
-            so of ``P::run``/``Q::run`` or two overloads it drew every edge
-            from the last. Required, so no caller can fall back to that view.
+            so of ``P::run``/``Q::run`` or two overloads it would draw every
+            edge from the last. Required, so no caller can fall back to that
+            view.
         callables_by_name: Every callable definition of the run by name
             (``CppAnalyzer._callables_by_name``), the overload set a call's
             name-picked callee is re-chosen from by arity (WI-hilum). Required;
@@ -1762,6 +2169,9 @@ def _extract_edges_from_tree(
         include_closure: The run's include graph
             (``CppAnalyzer._include_closure``). Without one the file's own
             directory stands in for the repository.
+        template_ids: The ids of the run's function templates
+            (``CppAnalyzer._template_ids``), for the non-template tie-breaker
+            (``_prefer_non_template``).
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
@@ -1776,18 +2186,19 @@ def _extract_edges_from_tree(
     # instead of being dropped.
     file_anchor = file_anchor_symbol("cpp", str(file_path), PASS_ID, run.execution_id)
 
-    # WI-rupik / WI-mafik: the headers this file can see, so the
-    # unresolved-call emit path can attribute calls to them. Without this,
+    # The headers this file can see, so the unresolved-call emit path can
+    # attribute calls to them (WI-rupik / WI-mafik). Without this,
     # ``std::printf(...)`` after ``#include <cstdio>`` produces a dst with no
     # header context.
     #
-    # INV-zikul: EVERY header the file can see, not its own angle includes.
+    # EVERY header the file can see, not its own angle includes (INV-zikul).
     # The coverage gate reads the slot as the complete list of a call's
     # possible homes (INV-zimud), so a header left out is a false all-clear:
-    # ``<cstdint>`` + ``"util.h"`` (which includes ``<cstdio>``) stamped
-    # ``fopen(p, "w")`` as ``cstdint``, the module filter refused the stdio
-    # row, cstdint is granted, and NO-FSWRITE read CONFIRMED. Same mechanism
-    # as c.py; see ``include_closure`` for what an unfound header contributes.
+    # a file including ``<cstdint>`` and ``"util.h"`` (which includes
+    # ``<cstdio>``) must carry ``cstdio`` too, or ``fopen(p, "w")`` reads as
+    # ``cstdint``'s, the module filter refuses the stdio row, and the gate
+    # passes. Same mechanism as c.py; see ``include_closure`` for what an
+    # unfound header contributes.
     if include_closure is None:
         include_closure = IncludeClosure(file_path.parent)
     visible_headers = include_closure.stamp(file_path, source, transitive_in_repo=False)
@@ -1835,14 +2246,41 @@ def _extract_edges_from_tree(
         if len(group) < 2:
             return None
         same_file = [s for s in group if s.path == pick.path]
-        choice = choose_overload(
+        choice = _prefer_non_template(choose_overload(
             [same_file, group], _cpp_call_arity(call), preferred=pick,
-        )
+        ), template_ids)
         if choice.symbol is None:
             return None
         if choice.ambiguous and _alternatives_of_one_function(choice.admitted):
             return OverloadChoice(choice.symbol, 1.0, False, choice.admitted)
         return choice
+
+    def construct(
+        caller: Symbol, cls: Symbol, arity: Optional[int],
+        node: "tree_sitter.Node", evidence_type: str,
+    ) -> None:
+        """A construction of ``cls`` passing ``arity`` arguments also gets an
+        ``instantiates`` edge to the ONE constructor that count admits, at the
+        same line, so it reaches that constructor rather than every one
+        (``construction._CHOSEN_INITIALIZER_LANGUAGES``). None or several
+        admitting it: no edge, and the construction reaches them all."""
+        if cls.kind not in ("class", "struct") or arity is None:
+            return
+        short = cls.name.rsplit("::", 1)[-1]
+        choice = _prefer_non_template(choose_overload(
+            [callables_by_name.get(f"{cls.name}::{short}", [])], arity,
+        ), template_ids)
+        if choice.symbol is None or choice.ambiguous:
+            return
+        edges.append(Edge.create(
+            src=caller.id,
+            dst=choice.symbol.id,
+            edge_type="instantiates",
+            line=node.start_point[0] + 1,
+            evidence_type=evidence_type,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the function name being called from a call_expression.
@@ -1902,6 +2340,9 @@ def _extract_edges_from_tree(
     stack: list[tuple["tree_sitter.Node", Optional[Symbol], bool]] = [
         (tree.root_node, file_anchor, False)
     ]
+    # META-mino: the file's file-scope variables, computed on the first value
+    # reference (a variable shadows a same-named function elsewhere).
+    file_scope_vars: Optional[frozenset[str]] = None
 
     while stack:
         node, current_function, stands_in = stack.pop()
@@ -1922,7 +2363,7 @@ def _extract_edges_from_tree(
                 # has no symbol and no honest name. Its edges are drawn from
                 # the enclosing context -- an outer function, or the file
                 # anchor -- and marked as standing in, rather than dropped
-                # (which said there was no call) or named after the macro.
+                # (which would say there is no call) or named after the macro.
                 new_stands_in = True
 
         # Include directive
@@ -1961,10 +2402,24 @@ def _extract_edges_from_tree(
         # Function call
         elif node.type == "call_expression":
             # INV-kaduh — see the identical anchor in c.py. C++ inherits the C
-            # catalogue (``_CATALOG_PARENTS['cpp'] = 'c'``) and so inherited
-            # the missing producer; ``mode_argument_for`` walks the same parent
-            # link rather than growing a second ``cpp`` table to drift.
+            # catalogue (``_CATALOG_PARENTS['cpp'] = 'c'``), so
+            # ``mode_argument_for`` walks the same parent link rather than
+            # growing a second ``cpp`` table to drift.
             _edges_before_call = len(edges)
+            _made = _cpp_made_type(node, source) if current_function is not None else None
+            if _made is not None and current_function is not None:
+                # ``std::make_unique<T>(a, b)`` constructs ``T(a, b)``: a
+                # construction of ``T`` (as ``new T(a, b)`` is), besides the
+                # call of the factory itself.
+                _made_target = _try_instantiation_edge(
+                    _made, current_function, node, "ast_new",
+                    local_symbols, resolver, edges, run, overload_choice,
+                )
+                if _made_target is not None:
+                    construct(
+                        current_function, _made_target, _cpp_call_arity(node),
+                        node, "ast_new",
+                    )
             if current_function is not None and not (
                 current_function is file_anchor and c_family_is_not_a_call(node)
             ):
@@ -2014,14 +2469,20 @@ def _extract_edges_from_tree(
                         # project class that does not declare it, an
                         # unresolved edge the inherited_calls linker walks
                         # the bases from (receiver_type_hint).
+                        _owner = (
+                            _cpp_owner_class(node, source, current_function)
+                            if explicit else None
+                        )
                         _receiver_class = (
                             _cpp_receiver_class(
-                                node, source,
-                                _cpp_owner_class(node, source, current_function),
-                                field_type_registry or {},
+                                node, source, _owner, field_type_registry or {},
                             )
                             if explicit else None
                         )
+                        if _receiver_class:
+                            _receiver_class = _cpp_nested_class(
+                                _receiver_class, _owner, global_symbols,
+                            )
                         _member = (
                             global_symbols.get(f"{_receiver_class}::{short_name}")
                             if _receiver_class else None
@@ -2129,13 +2590,11 @@ def _extract_edges_from_tree(
                         # INV-nizom: the ONE fact that separates a real POSIX
                         # ``wait()`` from ``std::future::wait()`` once the
                         # receiver type is unknown. ``is_member_call`` is
-                        # already computed above (it has to be, to suppress the
-                        # STL fallback) and was being discarded, so
+                        # already computed above (to suppress the STL
+                        # fallback) and is carried onto the edge here, so
                         # ``gate_named_entry``'s ``call_construct == "method"``
-                        # refusal — the whole of io-boundary:F3's precision half
-                        # — was unreachable for C++: 1 of 34,983 call edges on
-                        # whisper.cpp carried the value, from a two-level
-                        # ``this->field->method()`` chain.
+                        # refusal — the whole of io-boundary:F3's precision
+                        # half — is reachable for C++.
                         #
                         # ``None``, not ``"function"``, for the negative case.
                         # The gate falls through on any value that is not
@@ -2155,11 +2614,11 @@ def _extract_edges_from_tree(
                                 _arity_factor = _choice.confidence
                                 if _choice.ambiguous:
                                     _arity_meta["resolution_quality"] = "ambiguous"
-                        _defer = _sym is not None and defer_bare_method_call(
+                        _defer = (_sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, _enclosing_type,
                             separator="::",
-                        )
+                        )) or defer_unresolved_tie(lookup_result)
                         # WI-rimon, C's twin (io_boundary's
                         # declared_by_an_included_header): a FREE call whose
                         # declaring header this file includes is the declared
@@ -2195,10 +2654,12 @@ def _extract_edges_from_tree(
                             # header context. The semantics is "this call
                             # could be from any of the included headers";
                             # downstream consumers may split the module_hint
-                            # on commas if they need per-header resolution.
-                            # WI-bapuk: the namespace the call NAMES is a
-                            # module home, and discarding it made every
-                            # `std::` row unreachable. ADDED to the
+                            # on commas if they need per-header resolution,
+                            # after expanding a module-set handle
+                            # (module_sets.expand_module_slot, INV-jahuf).
+                            # The namespace the call NAMES is a module home,
+                            # and without it every `std::` row is unreachable
+                            # (WI-bapuk). ADDED to the
                             # disjunction, never replacing it: classification
                             # asks whether ANY disjunct names a primitive, so
                             # adding one can only add matches, whereas
@@ -2223,15 +2684,10 @@ def _extract_edges_from_tree(
                             # `std` there asserts a module the catalogue keys
                             # nothing under -- cpp.yaml files chrono under
                             # `std::chrono::system_clock`, not `std` -- so the
-                            # fallback switched off and the classification was
-                            # DELETED. Measured on modsecurity: two
-                            # `std::chrono::system_clock::now()` chains in
-                            # collection_data.cc (no system includes) went
-                            # host_info_read -> nothing. Caught by diffing the
-                            # A/B BOTH WAYS on a module-stable key; the naive
-                            # diff hid it as 112 added / 102 removed, because
-                            # changing the module slot changes every dst string
-                            # and so the diff key itself moved.
+                            # fallback would switch off and the classification
+                            # be DELETED: `std::chrono::system_clock::now()` in
+                            # a file with no system includes would lose its
+                            # host_info_read.
                             _slots = (
                                 _slots + list(visible_headers)
                                 if visible_headers else []
@@ -2240,7 +2696,10 @@ def _extract_edges_from_tree(
                                 node, source, callee_name,
                             )
                             if _slots:
-                                module_hint = ",".join(_slots)
+                                # Two or more homes are stored once and named
+                                # by a handle, so a long list is not repeated
+                                # in every id, label and dst (INV-jahuf).
+                                module_hint = module_slot(_slots)
                                 ext_ref = ExternalRef(
                                     lang="cpp",
                                     module_path=module_hint,
@@ -2326,14 +2785,19 @@ def _extract_edges_from_tree(
                     # 'new_expression' (absent from the evidence-type catalog —
                     # an axis_conformance leak). Stack-construction paths keep
                     # their own registered 'stack_construction' pathway.
-                    _try_instantiation_edge(
+                    _new_target = _try_instantiation_edge(
                         type_name, current_function, node, "ast_new",
-                        local_symbols, resolver, edges, run,
+                        local_symbols, resolver, edges, run, overload_choice,
                     )
+                    if _new_target is not None:
+                        construct(
+                            current_function, _new_target, _cpp_call_arity(node),
+                            node, "ast_new",
+                        )
 
         # Stack object construction: Widget w; / Widget w(args); / Widget w{};
         elif node.type == "declaration":
-            # Function scope only (INV-bamij left this arm where it was): at file
+            # Function scope only, unlike the call arm (INV-bamij): at file
             # scope a declaration is as often ``extern Widget w;`` or a member
             # prototype ``static Widget Create();`` as a construction.
             if current_function is not None and current_function is not file_anchor:
@@ -2365,6 +2829,12 @@ def _extract_edges_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
+                        for _declarator in node.children_by_field_name("declarator"):
+                            construct(
+                                current_function, target,
+                                _cpp_declarator_arity(_declarator),
+                                node, "stack_construction",
+                            )
 
         # Compound literal expression: Widget{42} as expression
         elif node.type == "compound_literal_expression":
@@ -2385,6 +2855,12 @@ def _extract_edges_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
+                        _literal = node.child_by_field_name("value")
+                        construct(
+                            current_function, target,
+                            _cpp_argument_count(_literal) if _literal is not None else None,
+                            node, "stack_construction",
+                        )
 
         # Explicit function pointer: &process or &Class::method
         elif node.type == "pointer_expression":
@@ -2423,6 +2899,55 @@ def _extract_edges_from_tree(
                                 origin_run_id=run.execution_id,
                             ))
 
+        # META-mino: a function named as a VALUE -- a pointer initialiser
+        # (``int (*f)(void) = g;``, at file scope too), an assignment, a return
+        # operand, a designated or positional aggregate element
+        # (``{ .run = g }``). An array table's elements are the dispatch-table
+        # pass's (below); a call argument is the function_pointer_arg arm's.
+        elif (
+            node.type in ("identifier", "qualified_identifier")
+            and c_family_is_value_operand(node)
+            and not _cpp_in_array_table(node)
+        ):
+            ref_name = _node_text(node, source)
+            target = local_symbols.get(ref_name)
+            if target is None:
+                lk = resolver.lookup(ref_name, caller_path=_caller_path)
+                if lk.found and lk.symbol is not None:
+                    target = lk.symbol
+            # A BARE name as a value names a free function; a member is
+            # spelled ``&C::m`` (or ``C::m`` for a static). The suffix
+            # lookup bound ``dst += size`` to ``PicList::size`` (x265).
+            kinds = ("function",) if node.type == "identifier" else ("function", "method")
+            # The lookup is the cheap filter: only a name that IS some
+            # function pays for the scope checks.
+            if (
+                current_function is not None
+                and target is not None
+                and target.kind in kinds
+                and target.id != current_function.id
+            ):
+                if file_scope_vars is None:
+                    file_scope_vars = c_family_file_scope_variables(tree.root_node, source)
+                if not (
+                    node.type == "identifier"
+                    and (
+                        c_family_declares_local(node, ref_name, source, file_scope_vars)
+                        or _cpp_bare_value_is_a_member(
+                            node, target, current_function, str(file_path),
+                        )
+                    )
+                ):
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=target.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1,
+                        evidence_type="function_reference",
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+
         if stands_in and current_function is not None:
             mark_stand_in(edges, edges_before_node, current_function.id)
 
@@ -2440,19 +2965,52 @@ def _extract_edges_from_tree(
     # to the dispatch table variable, creating `references` edges carrying
     # meta.ref_construct='dispatch_table'.
     dispatch_tables: dict[str, str] = {}  # variable name -> symbol ID
+    emitted_tables: set[str] = set()
+
+    def _table_symbol(declaration: "tree_sitter.Node", name: str, table_id: str) -> None:
+        """Emit the table variable once it holds a function (WI-dirij's C++
+        twin): every ``dispatches_to`` edge starts at its id, and without the
+        symbol the src names no node and finalize drops every edge."""
+        if table_symbols is None or table_id in emitted_tables:
+            return
+        emitted_tables.add(table_id)
+        line = declaration.start_point[0] + 1
+        table_symbols.append(Symbol(
+            id=table_id,
+            name=name,
+            kind="variable",
+            language="cpp",
+            path=str(file_path),
+            span=Span(
+                start_line=line, end_line=line,
+                start_col=declaration.start_point[1], end_col=declaration.end_point[1],
+            ),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            stable_id=_analyzer.compute_stable_id(
+                declaration, kind="variable", name=name,
+                qualified_name=nested_qualified_name(
+                    c_family_scope_chain(declaration, source, functions=True), name,
+                ),
+                file_stable_id=_analyzer._file_anchor(rel_path),
+            ),
+        ))
+
     for dt_node in iter_tree(tree.root_node):
         if dt_node.type != "init_declarator":
             continue
-        # Must be at file scope (inside a declaration, not inside a function body)
+        # Must sit in a declaration (at file scope or inside a function body)
         if not dt_node.parent or dt_node.parent.type != "declaration":
             continue  # pragma: no cover - defensive
         array_decl = None
         init_list = None
         for child in dt_node.children:
-            if child.type == "array_declarator":
-                array_decl = child
-            elif child.type == "initializer_list":
+            if child.type == "initializer_list":
                 init_list = child
+            elif array_decl is None:
+                # Through the wrappers an array of function POINTERS adds
+                # (``int (*t[])(void)``), as C's pass does (WI-dirij).
+                array_decl = c_family_array_declarator(child)
         if array_decl is None or init_list is None:
             continue
 
@@ -2486,6 +3044,7 @@ def _extract_edges_from_tree(
             if lookup_result.symbol.kind != "function":
                 continue  # pragma: no cover - type names parse as type_identifier
             seen_funcs.add(ident_name)
+            _table_symbol(dt_node, array_name, array_src_id)
             edges.append(Edge.create(
                 src=array_src_id,
                 dst=lookup_result.symbol.id,
@@ -2522,10 +3081,10 @@ def _extract_edges_from_tree(
                 name = _node_text(inner, source)
                 if name in dispatch_tables and name not in seen_tables:
                     seen_tables.add(name)
-                    # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
-                    # Same as c.py — function references a dispatch-
-                    # table data symbol. Canonical 'references' +
-                    # meta['ref_construct']='dispatch_table'.
+                    # Same as c.py — a function referencing a dispatch-
+                    # table data symbol is a canonical 'references' edge +
+                    # meta['ref_construct']='dispatch_table'
+                    # (ADR-0023 §6, audit-findings 0001; WI-vasik-jofiv).
                     edges.append(Edge.create(
                         src=func_sym.id,
                         dst=dispatch_tables[name],
@@ -2537,15 +3096,15 @@ def _extract_edges_from_tree(
                         meta={"ref_construct": "dispatch_table"},
                     ))
 
-    # WI-zojid: emit module_attr_ref edges for scoped attribute reads on
+    # Emit module_attr_ref edges (WI-zojid) for scoped attribute reads on
     # ``std::``-prefixed iostream symbols (``std::cout`` / ``std::cerr`` /
     # ``std::cin``) and any other namespace alias the analyser tracks.
     # Pairs with ``attributes:`` entries in io_primitives/cpp.yaml; without
     # this wire-up the iostream IO would never reach
-    # ``hypergumbo io-boundaries`` on tree-sitter parses.  Cross-language
-    # helper added by WI-vipur (originally for Rust's ``scoped_identifier``);
-    # C++'s ``qualified_identifier`` has the same left-recursive ``scope``
-    # / ``name`` shape so the same helper applies with ``scoped_path=True``.
+    # ``hypergumbo io-boundaries`` on tree-sitter parses.  The cross-language
+    # helper (WI-vipur) also serves Rust's ``scoped_identifier``; C++'s
+    # ``qualified_identifier`` has the same left-recursive ``scope`` / ``name``
+    # shape so the same helper applies with ``scoped_path=True``.
     # ``std`` is injected as an implicit import — the C++ standard library
     # is in scope without an explicit ``using`` declaration.  Namespace
     # aliases declared with ``namespace fs = std::filesystem;`` are merged
@@ -2577,52 +3136,39 @@ def _extract_edges_from_tree(
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
-        # INV-pusin, the C++ half of the same defect: `using std::string;`
-        # is an import and `std::string f(int)` is a type, and the walk
-        # emitted both as attribute reads. A declaration's type sits
-        # DIRECTLY under the declaring node here (no `scoped_type_identifier`
-        # wrapper as in rust), so the declaration kinds themselves are the
-        # skip context -- a genuine read resolves to `binary_expression` /
-        # `init_declarator` instead and is unaffected.
-        # INV-sibij: `using S = std::string;` is a TYPE ALIAS and its scoped
-        # path sits under `type_descriptor`, which this tuple did not carry —
-        # so INV-pusin's statement held for cpp's `using_declaration` and
-        # failed for its alias. `type_descriptor` was NOT appended when the
-        # defect was filed, because in the cpp grammar it also covers casts
-        # and template arguments and "whether every member of that population
-        # is genuinely a type annotation" was not established. It is now,
-        # by parsing each form and calling the production `_scoped_context_kind`
-        # (docs + instrument: ~/hypergumbo_lab_notebook/sibij_cpp_08272026):
+        # Contexts where a scoped path NAMES A TYPE and reads no value, so it
+        # is not an attribute read (INV-pusin, INV-sibij): `using std::string;`
+        # is an import and `std::string f(int)` is a type. A declaration's type
+        # sits DIRECTLY under the declaring node here (no
+        # `scoped_type_identifier` wrapper as in rust), so the declaration
+        # kinds themselves are the skip context -- a genuine read resolves to
+        # `binary_expression` / `init_declarator` instead and is unaffected.
+        # In the cpp grammar `type_descriptor` also covers casts and template
+        # arguments; each form, checked against the production
+        # `_scoped_context_kind`, NAMES a type and reads no value:
         #
         #   using S = std::string;              type_descriptor   type alias
         #   static_cast<std::string>(y)         type_descriptor   cast
         #   std::vector<std::string> v;         type_descriptor   template arg
         #
-        # All three NAME a type and read no value. Template arguments are by
-        # far the largest member (rocksdb 2359 vs 126 aliases), so that is
-        # where the population actually is.
+        # `base_class_clause` too: `class A : public std::exception {}` NAMES
+        # a type.
         #
-        # `call_expression` is the OTHER context measured as leaking and is
-        # deliberately NOT added: it is where genuine calls live, an I/O call
-        # (`std::ofstream("f")`) is one, and suppressing it would be the silent
-        # recall loss this item warns about. Likewise `binary_expression`
-        # (`std::cout << 1`) and `init_declarator` (`std::string::npos`) are
-        # VALUE reads and keep emitting — pinned by positive controls in
-        # test_base.py, because removing withholding is the false-all-clear
-        # direction.
-        # A CLOSURE CAN SATISFY THE REPRO AND NOT THE STATEMENT, so twelve
-        # further forms were enumerated past the filed one. `base_class_clause`
-        # was the second leak found: `class A : public std::exception {}` NAMES
-        # a type. `for_range_loop` is the third and is deliberately ABSENT --
-        # that context covers BOTH halves of the loop:
+        # `call_expression` is deliberately NOT skipped: it is where genuine
+        # calls live, an I/O call (`std::ofstream("f")`) is one, and
+        # suppressing it would be a silent recall loss. Likewise
+        # `binary_expression` (`std::cout << 1`) and `init_declarator`
+        # (`std::string::npos`) are VALUE reads and keep emitting — pinned by
+        # positive controls in test_base.py, because removing withholding is
+        # the false-all-clear direction. `for_range_loop` is deliberately
+        # ABSENT too -- that context covers BOTH halves of the loop:
         #     for (std::string x : v)   -> std::string  TYPE
         #     for (auto& l : std::cin)  -> std::cin     VALUE, a real stream
         # so skipping it would suppress a genuine read, the same hazard as
         # `std::cout << 1`. Separating the loop variable's TYPE from the RANGE
         # EXPRESSION needs FIELD-level granularity, which this parameter does
         # not have -- it matches ancestor KIND only. The residual over-
-        # withholds, which is the safe direction, and is recorded rather than
-        # forced.
+        # withholds, which is the safe direction.
         skip_context_kinds=(
             "using_declaration", "function_definition", "declaration",
             "parameter_declaration", "field_declaration", "type_descriptor",
@@ -2631,7 +3177,7 @@ def _extract_edges_from_tree(
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
         # The full list, not the name-keyed view: a read in an overload the
-        # view lost fell to the file anchor (WI-saduj).
+        # view drops would fall to the file anchor (WI-saduj).
         enclosing_symbols=file_symbols,
     )
 
@@ -2679,8 +3225,12 @@ class CppAnalyzer(TreeSitterAnalyzer):
     #: Pass 2 sees an overload set where ``global_symbols`` keeps one per name.
     _prototypes: Optional[dict[str, list[list[dict[str, Any]]]]] = None
     _callables_by_name: Optional[dict[str, list[Symbol]]] = None
+    #: The run's function templates by symbol id (``_prefer_non_template``).
+    _template_ids: Optional[set[str]] = None
     #: INV-zikul: the run's include graph, live only inside ``analyze()``.
     _include_closure: Optional[IncludeClosure] = None
+    #: Dispatch-table variables the edge pass emits, added in ``post_process``.
+    _table_symbols: Optional[list[Symbol]] = None
 
     def analyze(
         self, repo_root: Path, max_files: Optional[int] = None,
@@ -2688,13 +3238,27 @@ class CppAnalyzer(TreeSitterAnalyzer):
         """Run the base two-pass analysis with fresh overload indexes."""
         self._prototypes = {}
         self._callables_by_name = {}
+        self._template_ids = set()
         self._include_closure = IncludeClosure(repo_root)
+        self._table_symbols = []
         try:
             return super().analyze(repo_root, max_files)
         finally:
             self._prototypes = None
             self._callables_by_name = None
+            self._template_ids = None
             self._include_closure = None
+            self._table_symbols = None
+
+    def post_process(
+        self,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        usage_contexts: list[UsageContext],
+        run: AnalysisRun,
+    ) -> tuple[list[Symbol], list[Edge], list[UsageContext]]:
+        """Add the dispatch-table variables the edge pass emitted (WI-dirij)."""
+        return symbols + list(self._table_symbols or ()), edges, usage_contexts
 
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
         """Yield C++ files (headers before sources for declaration ordering)."""
@@ -2708,9 +3272,16 @@ class CppAnalyzer(TreeSitterAnalyzer):
         rel_path: str,
         run: AnalysisRun,
     ) -> FileAnalysis:
-        return _extract_symbols_from_tree(
+        analysis = _extract_symbols_from_tree(
             tree, source, file_path, rel_path, run, prototypes=self._prototypes,
         )
+        if self._template_ids is not None:
+            self._template_ids.update(
+                sid for sid, node in analysis.node_for_symbol.items()
+                if node.type == "function_definition"
+                and _cpp_is_function_template(node)
+            )
+        return analysis
 
     def register_symbol(
         self,
@@ -2721,8 +3292,8 @@ class CppAnalyzer(TreeSitterAnalyzer):
 
         Does NOT register short names — the ``NameResolver`` suffix index
         handles ``"compute"`` → ``"MyClass::compute"`` lookups. Registering
-        short names caused false exact matches when multiple types share a
-        method name.
+        short names would cause false exact matches when multiple types share
+        a method name.
 
         WI-jusus chokepoint: field/variable data anchors are kept OUT of the
         call-resolution registry. A member field / global variable is never a
@@ -2770,7 +3341,9 @@ class CppAnalyzer(TreeSitterAnalyzer):
             field_type_registry=getattr(self, "_field_type_registry", None),
             file_symbols=self.file_symbols(local_symbols),
             callables_by_name=self._callables_by_name or {},
+            template_ids=self._template_ids or frozenset(),
             include_closure=self._include_closure,
+            table_symbols=self._table_symbols,
         )
 
     def get_import_aliases(

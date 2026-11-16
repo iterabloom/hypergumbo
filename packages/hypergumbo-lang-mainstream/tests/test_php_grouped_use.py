@@ -1,26 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A PHP grouped ``use`` registers its aliases (INV-nuvug).
 
-``use Foo\\{Bar, Baz};`` (PHP 7.0+) registered NOTHING, so a call through
-``Bar`` landed in the ``external`` module slot and matched no catalogue row,
-while the single-import form of the identical call resolved. Two separate
-reasons, and both had to be fixed:
+``use Foo\\{Bar, Baz};`` (PHP 7.0+) must register ``Bar`` and ``Baz`` exactly
+as the single-import form does; otherwise a call through ``Bar`` lands in the
+``external`` module slot and matches no catalogue row. Two grammar facts
+``_extract_use_aliases`` has to handle:
 
-1. ``_extract_use_aliases`` scanned the DIRECT children of
-   ``namespace_use_declaration`` for ``namespace_use_clause``. tree-sitter puts
-   a grouped use's clauses one level down, in a ``namespace_use_group``, and
-   the shared prefix (``Foo``) on the declaration as a ``namespace_name``.
-2. It required a ``qualified_name`` child, and a grouped clause's child is a
-   bare ``name`` (``Bar``) or a qualified tail (``Sub\\Bar``), relative to the
-   prefix.
+1. tree-sitter puts a grouped use's ``namespace_use_clause`` nodes one level
+   down, in a ``namespace_use_group``, not as DIRECT children of
+   ``namespace_use_declaration``; the shared prefix (``Foo``) sits on the
+   declaration as a ``namespace_name``.
+2. A grouped clause's child is a bare ``name`` (``Bar``) or a qualified tail
+   (``Sub\\Bar``), relative to the prefix, not a ``qualified_name``.
 
 Same failure shape as INV-zuvib in rust.py: a direct-children lookup against a
-grammar that wraps the grouped form in an extra node, degrading to NO alias
+grammar that wraps the grouped form in an extra node degrades to NO alias
 rather than a wrong one.
 
-Measured before the fix: 0 grouped uses among 5,323 namespace imports in the
-local PHP corpus (koel, grpc, rabbitmq), so this is a correctness fix with no
-corpus-level effect there; it is not claimed as recall.
+Grouped uses are rare in real PHP code, so this is a correctness rule rather
+than a recall gain.
 """
 
 from __future__ import annotations
@@ -69,7 +67,7 @@ def test_a_grouped_use_registers_every_leaf(text: str, expected: dict[str, str])
     pytest.param("<?php use Foo;", {}, id="bare-global-name-unchanged"),
 ])
 def test_the_ungrouped_forms_are_unchanged(text: str, expected: dict[str, str]) -> None:
-    """Control: the forms that already worked, including the one that
+    """Control: the single-import forms, including the one that
     deliberately registers nothing (a bare global name maps to itself)."""
     assert _aliases(text) == expected
 
@@ -77,8 +75,7 @@ def test_the_ungrouped_forms_are_unchanged(text: str, expected: dict[str, str]) 
 def test_a_call_through_a_grouped_import_names_its_module(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The filed repro, on the shipped command: both forms now reach the
-    same module slot."""
+    """On the shipped command: both forms reach the same module slot."""
     from hypergumbo_core.cli import main
 
     repo = tmp_path / "repo"

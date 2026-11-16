@@ -54,3 +54,18 @@
   clock: 5  # a9ca
   nonce: a9ca  # a9ca
   message: "STATEMENT REWRITTEN 2026-09-23 (INV-zikab step 7) to follow ADR-0059, as the ratified order required. The old statement defined IoPrimitive.kind as 'the construct of the DEFINITION' (R1), which the panel rejected. The item stays VIOLATED: route 1 of method_starved_modules still joins call_construct to kind by bare membership, a proxy whose looseness is now stated in its docstring (one method-stamped edge satisfies a whole module; Process.exitValue shields scala.sys.process.Process). The second join site (the INV-nizom arm) was narrowed in PR #1159."  # a9ca
+- op: update  # 29f3
+  at: '2026-10-25T23:58:46Z'  # 29f3
+  by: agent  # 29f3
+  actor: jgstern_agent  # 29f3
+  clock: 6  # 29f3
+  nonce: 29f3  # 29f3
+  set:  # 29f3
+    status: satisfied  # 29f3
+- op: discuss  # c3a5
+  at: '2026-10-25T23:58:46Z'  # c3a5
+  by: agent  # c3a5
+  actor: jgstern_agent  # c3a5
+  clock: 7  # c3a5
+  nonce: c3a5  # c3a5
+  message: "SATISFIED 2026-10-25 by PR #1387 (WI-dapap, c8754df23d). method_starved_modules route 1 (verify_claims.py:4901) no longer tests call_construct for membership in the IoPrimitive.kind set; it translates through the declared crosswalk call_constructs.reached_row_kind (CALL_CONSTRUCT_VALUES, 10 values, each declaring its ADR-0059 row kind); undeclared values raise in make_unresolved_edge (probe: macro_body -> ValueError). BEHAVIORAL EVIDENCE, production CLI on the WI-zohuk fixture (new WebSocket; ws.onmessage = fn; sink.write), claim subprocess must_not_exist: current code -> confirmed_with_caveats (only unknown_receiver_scope); the same cli.main with reached_row_kind patched to identity (the old join) -> inconclusive, 'WebSocket ... structurally invisible'. In-process, into mixed std::fs::File with an uncatalogued name: remote/application/pipe/local/monadic_action/assignment now give [], where the old join starved the module; constructor/attribute/macro_body still starve. THE FILED DirBuilder REPRO, re-run, gives the same output as filed, which is now CORRECT by declaration (DirBuilder is method-only; remote/application reach function rows; macro_body is undeclared and no longer emitted) -- so it is NOT cited as evidence of change. Second join J2 (io_boundary.py:4686) was narrowed by PR #1159 and filters via called_on_a_named_owner; J3 (gate_named_entry :738) compares to the literal 'method' only; no other call_construct x kind membership test exists in packages/*/src. Correction: the 'incidence zero' analysis was overstated -- WI-dapap found assignment/protocol/macro_body did reach route 1 and assignment changed a verdict."  # c3a5

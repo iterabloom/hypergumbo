@@ -1,0 +1,22 @@
+- op: create  # d9d8
+  at: '2026-10-30T21:45:47Z'  # d9d8
+  by: agent  # d9d8
+  actor: jgstern_agent  # d9d8
+  clock: 1  # d9d8
+  nonce: d9d8  # d9d8
+  data:  # d9d8
+    kind: work_item  # d9d8
+    title: "dead-code and test-coverage walk different edge sets: an override reached by dispatches_to is test-only to one and untested to the other (12 on 3 of 5 repos)"  # d9d8
+    status: todo_hard  # d9d8
+    priority: 3  # d9d8
+    parent:  # d9d8
+    tags:  # d9d8
+    - concept_audit  # d9d8
+    - consumer_agreement  # d9d8
+    - test_detection  # d9d8
+    isbefore: []  # d9d8
+    duplicate_of: []  # d9d8
+    not_duplicate_of: []  # d9d8
+    pr_ref:  # d9d8
+    description: "From WI-borib (docs/audits/0026). Verdict SINGLE-SOURCE the walk's edge set, and PIN the contradiction.\n\nFACT: is function F reached by tests. dead-code-maybe's test_only reachability walks calls, instantiates, dispatches_to, wraps plus initializer hops and anchors; test-coverage (compute_transitive_test_coverage) and sketch walk calls only plus anchors; the ratchet is one hop over calls/instantiates.\n\nMEASURED (default surveys, a17367f254, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/M/p1/, p1_cross.py): functions dead-code calls test_only that test-coverage gives test_count 0 -- mitmproxy 4, knex 4, ripgrep 4, logrus 0, jedis 0; the reverse (dead-code unreachable, coverage tested) 0 everywhere. Every instance read: reached only by dispatches_to (base or trait method -> override), e.g. ripgrep crates/pcre2/src/matcher.rs RegexMatcher.capture_count <- Matcher.capture_count; knex lib/dialects/mssql/index.js Client_MSSQL.validateConnection <- Client.validateConnection; mitmproxy mitmproxy/http.py Headers._kconv <- _MultiDict._kconv. Agent A's synthetic map adds two causes not seen on these five: concept-tagged tests (test-coverage counts them, dead-code does not) and protocol_origin route markers (test-coverage targets, dead-code excludes).\n\nThe existing pin (test_anchored_code_reachability.py) uses calls edges only, so it exercises none of the three causes. WI-jufih (done) disclosed the disagreement; it did not remove it.\n\nACCEPTANCE: one helper names the reachability edge set both views walk; a property test keyed on the contradiction (no id is dead-code test_only AND test-coverage test_count 0), with a reach control that fires on a constructed dispatches_to case -- the classified_yet_starved shape."  # d9d8
+    fields: {}  # d9d8

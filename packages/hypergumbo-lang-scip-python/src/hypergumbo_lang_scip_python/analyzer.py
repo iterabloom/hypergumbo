@@ -27,20 +27,20 @@ routine silence, hid it).
 """
 from __future__ import annotations
 
-import tempfile
 import warnings
 from pathlib import Path
 from typing import Callable, Optional
 
 from google.protobuf.message import DecodeError
 
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, run_recording_log
 from hypergumbo_core.analyze.registry import (
     SPAN_ROLE_TOKEN,
     MergeAnchor,
     as_emitted,
     register_analyzer,
 )
+from hypergumbo_core.install_steps import scip_python_install_steps
 from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, Edge, Symbol
 from hypergumbo_core.pass_silence import (
     BACKEND_DISABLED,
@@ -49,6 +49,7 @@ from hypergumbo_core.pass_silence import (
     UNREPORTED,
     silence_reason_for_candidates,
 )
+from hypergumbo_core.safety_zones import tmp_artifact_dir
 
 from hypergumbo_lang_scip_python.gate import should_use_scip_python_backend
 from hypergumbo_lang_scip_python.invoke import (
@@ -106,11 +107,18 @@ def analyze_python_with_scip_impl(
     do_translate = translate if translate is not None else translate_scip_python_to_hg
     emit = log if log is not None else _emit_user_warning
     try:
-        with tempfile.TemporaryDirectory(prefix="hypergumbo-scip-python-") as scratch:
+        # INV-tusos: the scratch dir is the ``tmp_artifact`` zone's, not a raw
+        # ``tempfile.TemporaryDirectory`` outside every zone.
+        with tmp_artifact_dir(prefix="hypergumbo-scip-python-") as scratch:
             scip_bytes = do_invoke(repo_root, cwd=Path(scratch), project_name=repo_root.name or "project")
-        symbols, edges = do_translate(scip_bytes, run_id=run.execution_id)
+        symbols, edges = do_translate(
+            scip_bytes, run_id=run.execution_id, log=run_recording_log(run, emit),
+        )
     except (ScipPythonError, DecodeError) as exc:
-        emit(f"scip-python backend did not run on {repo_root}: {exc}")
+        # A backend switched on by config never meets the CLI's exit-2 gate,
+        # so this warning is where that user learns how to install it.
+        steps = f"\n\n{scip_python_install_steps()}" if isinstance(exc, ScipPythonNotInstalled) else ""
+        emit(f"scip-python backend did not run on {repo_root}: {exc}{steps}")
         return AnalysisResult(
             skipped=True,
             skip_reason=f"scip-python backend: {exc}",

@@ -132,13 +132,20 @@ per-family audit is an audit-findings document at
 [audit-findings 0001](../audits/0001-dispatch-publish-family.md),
 [audit-findings 0002](../audits/0002-ipc-family.md)).
 
-> **Refactor trigger.** If future axis declarations
-> (post-`Edge.edge_type`) reveal that the verdict scheme genuinely
-> varies per axis — i.e., a different host dataclass needs a
-> different trichotomy or a four-way split — lift this sub-section
-> into a separate `docs/family-audit-methodology.md` at that point.
-> Don't speculatively split now; the trichotomy is empirically
-> general across `Edge.edge_type`'s three audited families.
+> **Refactor trigger — fired, and resolved without the standalone
+> file (WI-daruz, 2026-10-28).** The trigger was: if a different host
+> dataclass needs a different trichotomy or a four-way split, lift
+> this sub-section into `docs/family-audit-methodology.md`. It fired
+> once on pass-silence (ADR-0054: RE-HOST / KEEP GATED) and again on
+> the io-boundary axis (host `IoPrimitive`), which needed two verdict
+> schemes of its own, `kind: io_boundary_membership` (audit-findings
+> 0021) and `kind: io_boundary_row_candidates` (0022). Each landed as a
+> declared `kind:` block format in
+> [`docs/audits/README.md`](../audits/README.md) §"sibling formats",
+> and that section IS the lift: a non-trichotomy scheme is declared
+> where its block format is, one per kind. **New trigger:** when two
+> `kind:`s need the SAME non-trichotomy scheme, it has become a
+> methodology rather than a format — write the standalone file then.
 
 ### Fold-residue discipline
 
@@ -257,6 +264,6 @@ Define each axis in a YAML or TOML file; generate the registry module, the linte
 
 - ADR-0023 — Edge Type Names the Relationship, Not the Endpoints (the originating instance and worked example).
 - ADR-0015 — Dataflow Access Modes on Edges (retroactive axis-shaped, see open question 1).
-- ADR-0014 — Generalized Symbol Identity (`stable_id` / `shape_id`) — not an axis itself, but a parallel example of typed multi-value identity.
+- ADR-0035 and `docs/hypergumbo-spec.md` §6 "Identity field semantics" — symbol identity (`stable_id` / `shape_id`; the rules of the retired ADR-0014) — not an axis itself, but a parallel example of typed multi-value identity.
 - The Fundamental Concept Audit playbook at `.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md` — Step 6 *Document* outcome cites this ADR as the canonical artifact shape; Step 5 *Adjacent concept sweep* cites this ADR's declaration workflow as the recipe for treating a sweep finding.
 - Tracker items: `WI-bofub-tudik-vajig-hadib-jodin-gosig-raniz-rudoj` (concept-axes registry doc, done), `WI-tavas-voror-rakiv-litog-gatad-zonoz-holah-tugil` (triage 45 emitted edge_type values absent from registry), `WI-juvaf-pubib-kiguh-kubat-jagiv-sigad-jikav-gumag` (trigger bake-ins for the generative question), `WI-mivir-motom-mopun-hukod-bobuv-mabob-tinil-zidin` (`docs/blind-spots.md` catalog of question-shapes).

@@ -25,10 +25,14 @@ receivers typed.
 ## Enabling it
 
 ```
-npm install -g @sourcegraph/scip-python@0.6.6     # the producer (node + npm)
-pipx install 'hypergumbo[scip-python]'            # this wrapper
-hypergumbo survey . --backend scip-python         # one run
+npm install -g --prefix "$HOME/.local" @sourcegraph/scip-python@0.6.6   # the producer (Node 16+), into ~/.local/bin
+pipx install 'hypergumbo[scip-python]'                                   # this wrapper
+hypergumbo survey . --backend scip-python                                # one run
 ```
+
+hypergumbo finds `scip-python` on `PATH` only. A run that cannot find it
+prints the install steps for that machine, including Node.js and the `PATH`
+lines when those are missing.
 
 Durably, as a preference in either ADR-0045 config tier (allowed because the
 backend executes nothing):

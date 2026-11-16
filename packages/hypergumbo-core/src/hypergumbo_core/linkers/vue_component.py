@@ -17,9 +17,10 @@ How It Works
    (edges with an empty path, the unresolved-tag form, are skipped)
 2. For each, resolve the import path (relative, subdirectory, @ alias)
    to an actual .vue file on disk
-3. Get or create a canonical `kind="file"` symbol (`make_file_id` shape,
-   `meta['component_framework'] = "vue"`) for the target and source
-   .vue files, reusing one already in the graph when present (INV-bahov)
+3. Take the `kind="file"` symbol the target's PATH already has, whatever
+   language slot its producer gave it (INV-movor: one file node per path);
+   only when the path has none, mint one (`make_file_id` shape, INV-bahov)
+   in the target's own language, with `meta['component_framework']`
 4. Create a resolved `imports` edge from the original src (the source
    file id) to the target file symbol; the producer's dangling edge is
    left in place
@@ -48,7 +49,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..analyze.base import make_file_id, make_file_stable_id
+from ..analyze.file_records import is_file_pseudo_symbol
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
+from ..taxonomy import get_language
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -178,17 +181,25 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
     # within this run. Keyed on rel_path.
     file_symbol_cache: dict[str, Symbol] = {}
 
-    # INV-bahov: cross-producer canonical-id lookup. When the orchestrator's
-    # file-symbol synthesizer or the Vue analyzer has already emitted a
-    # canonical kind="file" Symbol for a given path, this linker must reuse
-    # that Symbol rather than minting a parallel shadow node. Sibling of the
-    # INV-ronuf (websocket, WI-hifol) and INV-movor (js_module) fixes.
-    existing_file_symbol_by_canonical_id: dict[str, Symbol] = {}
+    # One file node per path (INV-movor): the target of a component import is
+    # the file node its path ALREADY has, whichever producer minted it and
+    # whatever language slot it carries. A Vue component with a `<script>` has
+    # the JavaScript analyzer's node; one whose template uses components has
+    # the orchestrator's `vue:` node. Looking the path up under a `vue:` id
+    # alone minted a second node beside the first, and a `vue:` node for a
+    # `.svelte` file when the edge came from the Svelte analyzer. When a path
+    # has several (the orchestrator unifies them after the linkers), the one
+    # in the file's own language is taken, which is the one that survives.
+    existing_file_symbol_by_path: dict[str, Symbol] = {}
     for sym in ctx.symbols:
-        if sym.kind == "file" and sym.language == "vue":
-            existing_file_symbol_by_canonical_id[
-                make_file_id("vue", sym.path)
-            ] = sym
+        if not is_file_pseudo_symbol(sym):
+            continue
+        known = existing_file_symbol_by_path.get(sym.path)
+        if known is None or (
+            known.language != sym.language
+            and sym.language == get_language(Path(sym.path))
+        ):
+            existing_file_symbol_by_path[sym.path] = sym
 
     # Collect all .vue file paths involved (for creating file symbols)
     vue_file_paths: set[str] = set()
@@ -196,37 +207,36 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
         if sym.language == "vue" and sym.path.endswith(".vue"):
             vue_file_paths.add(sym.path)
 
-    def get_or_create_file_symbol(rel_path: str) -> Symbol:
-        """Get or create a canonical-shape file Symbol for a .vue file.
+    def get_or_create_file_symbol(rel_path: str, fallback_lang: str) -> Symbol:
+        """The file Symbol of ``rel_path``: the one it has, else a new one.
 
-        INV-bahov: emits the canonical ``make_file_id`` shape
-        (``vue:{path}:1-1:file:file``) rather than the legacy
-        ``:component_file:1:{name}`` literal so id-equality dedup works
-        cross-producer against the orchestrator's file-symbol synthesizer
-        and against the Vue analyzer. When a canonical Symbol already
-        exists in ``ctx.symbols`` for this path, reuse it.
+        A minted node has the canonical ``make_file_id`` shape (INV-bahov) and
+        the TARGET's own language (``taxonomy.get_language``), never this
+        linker's: a component imported from a ``.svelte`` file is a ``svelte``
+        file. ``fallback_lang`` is the importing file's language, for a
+        component format the taxonomy does not list (``.astro``): the
+        analyzers record only same-format component imports.
         """
         if rel_path in file_symbol_cache:
             return file_symbol_cache[rel_path]
 
-        sym_id = make_file_id("vue", rel_path)
-        existing = existing_file_symbol_by_canonical_id.get(sym_id)
+        existing = existing_file_symbol_by_path.get(rel_path)
         if existing is not None:
             file_symbol_cache[rel_path] = existing
             return existing
 
-        name = Path(rel_path).stem
+        lang = get_language(Path(rel_path)) or fallback_lang
         sym = Symbol(
-            id=sym_id,
-            stable_id=make_file_stable_id("vue", rel_path),
-            name=name,
+            id=make_file_id(lang, rel_path),
+            stable_id=make_file_stable_id(lang, rel_path),
+            name=Path(rel_path).stem,
             kind="file",
-            language="vue",
+            language=lang,
             path=rel_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            meta={"component_framework": "vue"},
+            meta={"component_framework": lang},
         )
         file_symbol_cache[rel_path] = sym
         new_symbols.append(sym)
@@ -267,12 +277,21 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
         except ValueError:  # pragma: no cover — resolved is always under repo_root
             continue  # pragma: no cover
 
+        # The importing file's language is the id's language slot
+        # (``vue:src/App.vue:1-1:file:file``).
+        src_lang = edge.src.partition(":")[0]
+
         # Get or create the canonical file symbol for the target
-        target_file_sym = get_or_create_file_symbol(rel_resolved)
+        target_file_sym = get_or_create_file_symbol(rel_resolved, src_lang)
+
+        # The analyzer resolves a relative import itself and ends its edge on
+        # this node already; a second edge would only restate it.
+        if target_file_sym.id == edge.dst:
+            continue
 
         # Also get or create the canonical file symbol for the source .vue file
         if src_path.endswith(".vue"):
-            get_or_create_file_symbol(src_path)
+            get_or_create_file_symbol(src_path, src_lang)
 
         # Create resolved edge
         resolved_edge = Edge.create(

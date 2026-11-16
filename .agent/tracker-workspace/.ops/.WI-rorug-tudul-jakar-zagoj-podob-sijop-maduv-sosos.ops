@@ -1,0 +1,21 @@
+- op: create  # 7777
+  at: '2026-11-03T11:30:27Z'  # 7777
+  by: agent  # 7777
+  actor: jgstern_agent  # 7777
+  clock: 1  # 7777
+  nonce: '7777'  # 7777
+  data:  # 7777
+    kind: work_item  # 7777
+    title: "Route entrypoints are deduplicated by LABEL alone, repo-wide: distinct handlers sharing 'HTTP METHOD path' (or an unresolved path) collapse to one entrypoint and one request_ingress entry"  # 7777
+    status: todo_hard  # 7777
+    priority: 3  # 7777
+    parent:  # 7777
+    tags:  # 7777
+    - analysis_quality  # 7777
+    - entrypoints  # 7777
+    isbefore: []  # 7777
+    duplicate_of: []  # 7777
+    not_duplicate_of: []  # 7777
+    pr_ref:  # 7777
+    description: "PROBLEM. entrypoints.detect_entrypoint_candidates dedups route entrypoints by LABEL ALONE (\"Route-label deduplication ... In prometheus, POST /-/quit appears 14x\"): every HTTP_ROUTE-family entry whose label starts with \"HTTP \" is grouped by the label string across the WHOLE repo and only the most prominent entry per label survives. The label is \"HTTP <METHOD> <path>\", so two different handlers in two different files (or two registrations in one file) with the same method and path are one entrypoint, and a handler whose path did not resolve (\"<binop>\", \"<complex>\", a constant name) shares its label with every other such handler. Since WI-vumig the same list feeds `request_ingress`, the completeness list verify-claims' unseeded-ingress disclosure reads, so the collapsed handlers are never named there either.\n\nMEASURED (2026-11-03, mlflow branch survey, lab vumig_11032026/diag_label_dedup.py + .txt): 401 route symbols (69 handlers with a `route` concept + 332 route markers), 302 survive to request_ingress; of the 99 collapsed, 47 are a marker paired with its own materialized_from handler (one ingress, one entry: correct), and 52 are DISTINCT code: 23 markers whose label peer is code in another file (tests/models/test_cli.py `GET /` vs the gateway index; MlflowRouter.tsx `GET /`), 19 marker-vs-marker in the same file with the same label (tests/projects/utils.py `GET /Dockerfile` at lines 62 and 63; mlflow/models/model.py `GET /model` at 894 and 1144), 10 handlers whose peer is other code, among them FOUR PRODUCTION gateway handlers in mlflow/gateway/app.py (get_endpoint_v3, get_route_v3, _legacy_get_route, get_limits) all labelled \"HTTP GET <binop>\" and collapsed onto get_endpoint. 6 of the 52 are on non-test paths.\n\nFIX CANDIDATES. The dedup's purpose (one entry per ROUTE, not one per symbol that mentions it) is right for the ranked overview; its key is wrong. (1) Key the dedup on the route's identity, not its label: (method, path, FILE) at least, and never merge two symbols whose paths both failed to resolve (\"<binop>\", \"<complex>\", a bare constant name are not the same route). (2) Collapse a marker onto its handler explicitly (materialized_from id / dispatches_to target / same span), which is the case the dedup was written for, and leave distinct handlers alone. (3) For request_ingress specifically, build the list from the per-symbol-deduped candidates and apply only (2). Pin with a fixture: two handlers in two files with the same path -> two entrypoints and two request_ingress entries; a marker + its handler -> one. A/B: mlflow (expect +52 request_ingress, +6 production in the disclosure; entrypoints change by the same distinct routes under the cap), prometheus (the dedup's own motivating case: POST /-/quit must stay one if the 14 are one handler, and not if they are not), flask-restful control.\n\nNOT ASSERTED: that the ranked `entrypoints` list should list duplicates (it should not); the right key for the overview (a per-route merge) vs the completeness list (per handler) may differ."  # 7777
+    fields: {}  # 7777

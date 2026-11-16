@@ -5,7 +5,7 @@
 - Date: 2026-05-31
 - Supersedes: —
 - Superseded by: —
-- Related: ADR-0014 (Generalized Symbol Identity — `fingerprint` / `stable_id` / `shape_id` governance; this ADR does NOT change identity-field shapes), ADR-0024 (Axis Declaration Template — promotion math for typed-sibling fields), ADR-0027 (Symbol.kind axis — sibling axis reshape this ADR mirrors), ADR-0031 (Symbol.language reshape — same shape applied to a different field; this ADR ships in the combined 0.12.0 release), ADR-0033 (Spec-vs-Data Validator Stage — defers runtime axis-enforcement on the new fields to that ADR's Phase 3 PR1); tracker items INV-kovob (canonical_name format dual-mode — actually three-mode per this analysis), INV-fogum (TOML fingerprints without `hgfp1:` prefix — auto-closed when producer-side Format 1 is removed), INV-kurup (META: identifier-bearing fields emit non-canonical formats; this ADR resolves the canonical_name and fingerprint expressions); lab-notebook source: `~/hypergumbo_lab_notebook/canonical-name-fingerprint-desire-paths-05312026.md`.
+- Related: ADR-0035 and `docs/hypergumbo-spec.md` §6 "Identity field semantics" (`fingerprint` / `stable_id` / `shape_id` governance, where the rules of ADR-0014 now live; this ADR does NOT change identity-field shapes), ADR-0024 (Axis Declaration Template — promotion math for typed-sibling fields), ADR-0027 (Symbol.kind axis — sibling axis reshape this ADR mirrors), ADR-0031 (Symbol.language reshape — same shape applied to a different field; this ADR ships in the combined 0.12.0 release), ADR-0033 (Spec-vs-Data Validator Stage — defers runtime axis-enforcement on the new fields to that ADR's Phase 3 PR1); tracker items INV-kovob (canonical_name format dual-mode — actually three-mode per this analysis), INV-fogum (TOML fingerprints without `hgfp1:` prefix — auto-closed when producer-side Format 1 is removed), INV-kurup (META: identifier-bearing fields emit non-canonical formats; this ADR resolves the canonical_name and fingerprint expressions); lab-notebook source: `~/hypergumbo_lab_notebook/canonical-name-fingerprint-desire-paths-05312026.md`.
 
 ## Context
 
@@ -26,7 +26,7 @@ Three distinct semantics. One field name. No documentation of which fits when.
 - **Format 1 — producer-side raw-bytes hash.** Used by config analyzers (cmake / css / json_config / toml_config / sql / xml_config) and one linker (wasm_bindgen). Algorithm: `hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16]`. Output: 16-char hex, no scheme prefix. Hashes raw bytes including comments and whitespace.
 - **Format 2 — centralized structural hash via WI-fanun.** Computed by `stamp_symbol_fingerprints` in `packages/hypergumbo-core/src/hypergumbo_core/fingerprint.py`. Walks the Symbol's source span via tree-sitter, builds a structural hash (node types + identifier text + literal values), filters comment nodes, tags with `hgfp1:` prefix. Output: 70-char `hgfp1:<64-char-sha256>`. The post-pass skips Symbols that already carry a non-None fingerprint, so Format 1 "wins" by precedence for producers that emit it; Format 2 fills in everywhere else.
 
-> **Scheme-drift note (concept-audit 2026-07-15).** The retained Format 2 hash shipped as **`hgfp2:<16-hex>`** (`fingerprint.py::_SCHEME_PREFIX` (`"hgfp2:"`); spec §"symbol_fingerprint_scheme"), *not* the `hgfp1:` / 70-char / 64-char-sha256 form this ADR describes — the scheme prefix was bumped `hgfp1:`→`hgfp2:` and the digest truncated to 16 hex after this ADR shipped. The `hgfp1:` and 64-char references throughout the rest of this ADR are historical (the ADR-era plan); the current scheme's source of truth is `fingerprint.py` + the spec, not this document. (This ADR does not govern the fingerprint *shape* — see the Related list's ADR-0014 note.)
+> **Scheme-drift note (concept-audit 2026-07-15).** The retained Format 2 hash shipped as **`hgfp2:<16-hex>`** (`fingerprint.py::_SCHEME_PREFIX` (`"hgfp2:"`); spec §"symbol_fingerprint_scheme"), *not* the `hgfp1:` / 70-char / 64-char-sha256 form this ADR describes — the scheme prefix was bumped `hgfp1:`→`hgfp2:` and the digest truncated to 16 hex after this ADR shipped. The `hgfp1:` and 64-char references throughout the rest of this ADR are historical (the ADR-era plan); the current scheme's source of truth is `fingerprint.py` + the spec, not this document. (This ADR does not govern the fingerprint *shape* — see the Related list's identity-fields note.)
 
 INV-fogum tracks the format gap specifically: TOML dependency nodes carry Format 1 (no `hgfp1:` prefix), 99 nodes at runtime.
 
@@ -83,19 +83,21 @@ The `qualified-name` axis is lightweight per ADR-0024 §4. The "catalog" is a pe
 
 | Language | Separator | Example |
 |---|---|---|
-| Python | `.` | `hypergumbo_core.cli.run_behavior_map` |
+| Python | `.` | `OrderSerializer.Meta.validate` |
 | Go | `.` | `main.HelloService.BidiHello` |
-| Rust | `::` | `hypergumbo_core::cli::run_behavior_map` |
+| Rust | `::` | `api::HelloService::bidi_hello` |
 | Java | `.` | `com.example.HelloService.BidiHello` |
 | C# | `.` | `Example.HelloService.BidiHello` |
-| TypeScript | `.` | `module.HelloService.bidiHello` |
-| JavaScript | `.` | `module.HelloService.bidiHello` |
+| TypeScript | `.` | `Api.HelloService.bidiHello` |
+| JavaScript | `.` | `HelloService.bidiHello` |
 | Kotlin | `.` | `com.example.HelloService.bidiHello` |
 | Swift | `.` | `Example.HelloService.bidiHello` |
 | Ruby | `::` | `Example::HelloService::BidiHello` |
 | PHP | `\` | `Example\HelloService::bidiHello` |
 | C++ | `::` | `Example::HelloService::BidiHello` |
 | Elixir | `.` | `Example.HelloService.bidi_hello` |
+
+Every prefix in a value is a scope written in the source text: a package or namespace the file declares, an inline `mod`, an enclosing class or function. A Python nested class is `OrderSerializer.Meta` and its method `OrderSerializer.Meta.validate`; a function-local class is `outer.Local`. No analyzer derives a prefix from the file's path. A module name inferred from the directory layout is not in this field: the module has its own axis (ADR-0051) and the file its own anchor (ADR-0035 §4).
 
 When ADR-0033's Phase 3 PR1 (axis-conformance validator) lands, the validator checks `Symbol.qualified_name` matches the per-language separator policy. Mismatch is an axis-conformance violation.
 
@@ -185,7 +187,7 @@ Fingerprint *values* change for Format-1-producing Symbols when Phase 2 PR2 land
 
 ## References
 
-- ADR-0014 (Generalized Symbol Identity): the stable_id factories that are NOT affected by this ADR's changes. Identity fields stay stable across the migration.
+- ADR-0035 and `docs/hypergumbo-spec.md` §6 (where the rules of ADR-0014, Generalized Symbol Identity, now live): the stable_id factories that are NOT affected by this ADR's changes. Identity fields stay stable across the migration.
 - ADR-0024 (Axis Declaration Template): the four-part template this ADR instantiates for both `display_label` (free-text, no catalog) and `qualified_name` (lightweight axis, per-language separator catalog).
 - ADR-0027 (Symbol.kind = source-language syntactic construct): sibling-axis ADR on Symbol. ADR-0027 + ADR-0031 + ADR-0032 together resolve three Symbol axis decisions in coordinated fashion.
 - ADR-0031 (Symbol.language reshape): the parallel ADR that ships in the same combined 0.12.0 release. Same shape, different field.

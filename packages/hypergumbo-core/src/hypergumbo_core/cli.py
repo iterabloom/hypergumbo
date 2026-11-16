@@ -83,7 +83,9 @@ this order:
    (``rank_symbols``), which fixes the output node order.
 8. ``finalize()`` is the single pre-serialization reconcile point
    (ADR-0043 §6): it runs once the node and edge set is final. Metrics,
-   entrypoints and ``supply_chain_summary`` are added to the map after it.
+   entrypoints, ``request_ingress`` (every request handler, taken before the
+   entrypoint rank floor and cap; read by verify-claims' unseeded-ingress
+   disclosure) and ``supply_chain_summary`` are added to the map after it.
 9. **Side outputs**: budget-tier files (``--budgets``), per-handler forward
    slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``,
    which also indexes each slice in the map's ``features`` array),
@@ -136,8 +138,9 @@ any is ``confirmed_with_caveats`` and none of the above.
 ``dead-code-maybe`` is implemented here too (``cmd_dead_code_maybe`` and its
 helpers ``production_callables``, ``_bfs_reachable`` and
 ``_compute_cross_language_hits``): production callables minus a BFS over
-``_REACHABILITY_EDGE_TYPES`` edges plus a class-to-initializer hop for each
-constructed class, from the ``--seeds`` set (plus ``view_func``
+``_REACHABILITY_EDGE_TYPES`` edges plus two walk-only hops (class to
+initializer for each constructed class, and container to the code anchored
+on it, ``anchor_execution_edges``), from the ``--seeds`` set (plus ``view_func``
 dispatch handlers), after which three false-positive demoters drop symbols in
 generated files, methods reached by inheritance dispatch, and candidates
 whose name appears in at least ``--cross-lang-threshold`` other-language
@@ -156,8 +159,10 @@ Why This Design
   ``io-boundaries`` and ``verify-claims`` rebuild edges through a six-field
   facade (``_rehydrate_io_boundary_edges``) that keeps ``is_resolved`` and
   ``dst_ref`` for the boundary classifier. ``dead-code-maybe`` builds its
-  entrypoint-detection Symbols by hand from seven
-  fields (dropping ``supply_chain_tier`` and ``modifiers``), and only its
+  entrypoint-detection Symbols by hand from nine
+  fields (keeping ``discovery_language``, which entrypoint ranking reads
+  through ``host_language``, and dropping the rest, ``supply_chain_tier``
+  and ``modifiers`` among them), and only its
   edges go through ``Edge.from_dict``. ``sketch`` is the exception to the
   reload: the CLI reads a survey only with ``--input``; otherwise
   ``sketch.py`` finds the cached survey itself and runs a survey only on a
@@ -208,8 +213,9 @@ from .analyze.base import (
     widen_route_stable_ids,
 )
 from .axis_meta_keys import call_family_edge_types
-# INV-rolok / WI-satal: the construction pairs every walk reads. The old
-# private name stays importable for the dead-code tests that pin it.
+# The construction pairs every walk reads (INV-rolok, WI-satal).
+# ``initializer_hops`` is also bound as ``_construction_initializer_edges``,
+# the name the dead-code tests import.
 from .construction import construction_calls
 from .construction import initializer_hops as _construction_initializer_edges
 from .survey_io import (
@@ -220,14 +226,17 @@ from .survey_io import (
 )
 from .yaml_catalogs import CatalogueError
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
-# ADR-0043 §6: finalize() is the single pre-serialization reconcile point. _relativize_ir_paths
-# lives there now (finalize sub-step 1 owns it); re-exported here for the Phase B call below
-# and for tests/test_cli_relativize_paths.py (which imports it from cli).
+# finalize() is the single pre-serialization reconcile point (ADR-0043 §6).
+# _relativize_ir_paths belongs to finalize sub-step 1; it is re-exported here for
+# the Phase B call below and for tests/test_cli_relativize_paths.py (which imports
+# it from cli).
 from .finalize import FinalizeContext, _relativize_ir_paths, finalize
 from .linkers.registry import LinkerContext, run_all_linkers
 from .pass_metadata import build_pass_metadata
 from .pass_clock import PassClock
+from .pass_silence import silence_reason_for_candidates
 from .safety_zones import (
+    SafetyZoneViolation,
     cache_mkdir,
     cache_rename,
     cache_rmtree,
@@ -303,7 +312,10 @@ import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linke
 import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  # noqa: F401
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
-from .entrypoints import EntrypointKind, detect_entrypoints
+from .entrypoints import (
+    EntrypointKind, apply_rank_floor_and_cap, detect_entrypoint_candidates,
+    detect_entrypoints, request_ingress_entries,
+)
 from .routes import is_route, method_token, protocol_method_token, route_of
 # INV-nosoz: one registry-backed answer to "is this an inheritance edge?"
 from .edge_types import is_inheritance_edge_record
@@ -321,6 +333,7 @@ from .schema import (
     new_behavior_map,
     DEAD_CODE_MAYBE_SCHEMA_VERSION,
     READ_VIEW_SCHEMA_VERSION,
+    identity_digest,
 )
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import (
@@ -329,19 +342,21 @@ from .slice import (
 )
 from .selection.filters import is_excluded_kind
 from .limits import Limits
+from .tier_filter import apply_tier_filter
 from .supply_chain import (
     DERIVED_PATH_PATTERNS,
     FileClassification,
-    _normalize_pep503,
     classify_file,
     collect_first_party_package_names,
-    collect_workspace_package_names,
+    collect_in_tree_packages,
+    declaration_ecosystem,
     detect_package_roots,
     format_vendored_disclosure,
     vendored_analysed_summary,
 )
 from .ranking import (
-    rank_symbols, _is_test_path, compute_transitive_test_coverage,
+    STATIC_TEST_REACH_BLIND_SPOT,
+    rank_symbols, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
 )
 from .paths import is_test_node as _is_test_node
@@ -570,6 +585,15 @@ class GroupedSubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
         return f"{indent}{padded_invocation}{help_text}\n"
 
 
+#: The heading ``--help --all`` prints over each group of subcommands. A
+#: subcommand's group must be one of these keys (test_cli_docs_prose_gate).
+HELP_GROUP_LABELS = {
+    "core": "CORE ANALYSIS COMMANDS",
+    "extras": "INSTALLATION & MAINTENANCE COMMANDS",
+    "trust": "TRUST, CACHE & CATALOGUE COMMANDS",
+}
+
+
 def _set_subparser_group(
     subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
     name: str,
@@ -632,6 +656,37 @@ def _get_subparsers_by_group(
         prev_group = group
 
     return result
+
+
+#: A run whose graph has fewer symbols and edges than this forces no garbage
+#: collection. See :func:`_collect_if_large`.
+_FORCED_GC_MIN_GRAPH = 500_000
+
+
+def _collect_if_large(graph_size: int) -> None:
+    """Force a full garbage collection, on a large graph only.
+
+    ``run_survey`` forces a collection after writing each budget tier and
+    once before the final write, to hand memory back early on very large
+    repositories. A full collection walks every tracked object in the
+    PROCESS, so what it costs depends on the process and not on the run.
+
+    MEASURED (2026-11-14, six repositories, 1,048 to 117,488 symbols; the
+    largest has 394,052 symbols and edges and takes 12 minutes): every one of
+    the four collections of every run freed 0 MB and found at most 472
+    objects, because the symbol and edge lists are released by reference
+    counting the moment they are deleted. Each cost 0.17 to 0.34 s on the
+    five smaller repositories and 1.4 to 1.6 s on the largest; inside a test
+    worker with a large heap, 0.36 s, which was 30% of the test time of the
+    forty slowest test files.
+
+    So below ``_FORCED_GC_MIN_GRAPH`` symbols and edges nothing is forced.
+    The threshold sits above the largest graph measured: no benefit was seen
+    up to there, and nothing larger was measured, so a larger run behaves as
+    it did before.
+    """
+    if graph_size >= _FORCED_GC_MIN_GRAPH:
+        gc.collect()
 
 
 def _log_memory(label: str) -> None:  # pragma: no cover
@@ -749,11 +804,12 @@ def _get_or_run_analysis(
     if cached_path is not None:
         return cached_path, True, []
 
-    # INV-jibof: a positional path that is not a directory (with no --input and
-    # no cached results) is not a repository to analyze — running analysis on a
-    # non-directory silently yields empty output and a "No X found" with rc=0.
-    # Fail loudly with guidance instead. (A behavior-map file belongs on
+    # A positional path that is not a directory (with no --input and no cached
+    # results) is not a repository to analyze — running analysis on a
+    # non-directory would silently yield empty output and a "No X found" with
+    # rc=0. Fail loudly with guidance instead. (A behavior-map file belongs on
     # --input; the SubstrateError is caught by main()'s dispatch → rc=2.)
+    # (INV-jibof)
     if not repo_root.is_dir():
         raise SubstrateError(
             f"{repo_root}: not a directory. Pass a repository directory, or "
@@ -766,8 +822,8 @@ def _get_or_run_analysis(
         file=sys.stderr,
     )
 
-    # WI-bikod: the implicit path is the ONE place ten commands share, so the
-    # opt-out is applied here rather than at ten call sites. Passing the flags
+    # The implicit path is the ONE place ten commands share, so the --minimal
+    # opt-out is applied here rather than at ten call sites (WI-bikod). Passing the flags
     # only when `minimal` keeps the default kwargs absent, which is what
     # test_without_minimal_the_defaults_are_untouched pins.
     side_output_opts: dict[str, Any] = {}
@@ -784,18 +840,15 @@ def _get_or_run_analysis(
         **side_output_opts,
     )
 
-    # INV-somup: use the map path run_survey ACTUALLY wrote (out_path is
-    # appended to generated_files at the write site) rather than re-deriving it
-    # via _discover_input_file. That helper recomputes the ``<state_hash>``
+    # Use the map path run_survey ACTUALLY wrote (out_path is appended to
+    # generated_files at the write site) rather than re-deriving it via
+    # _discover_input_file. That helper recomputes the ``<state_hash>``
     # cache-dir segment from live git-dirty content (compute_repo_fingerprint);
     # if the repo's dirty content changes during the multi-second analysis
-    # (concurrent tracker .ops / .ci writes in the self-analysis + smart-test
-    # scenario), the recomputed segment drifts from the write-time value and the
-    # freshly written map becomes undiscoverable — the caller then reported
-    # "Input file not found: None" and smart-test fell back to a full-suite
-    # manifest. Select the main map BY NAME so a budget side-output
-    # (survey.<tier>.json) or a handler-slice file is never returned
-    # in its place.
+    # (e.g. concurrent writes to tracked files), the recomputed segment drifts
+    # from the write-time value and the freshly written map is not found.
+    # Select the main map BY NAME so a budget side-output (survey.<tier>.json)
+    # or a handler-slice file is never returned in its place. (INV-somup)
     new_path = next(
         (p for p in generated_files if p.name == CANONICAL_SURVEY_FILENAME),
         None,
@@ -921,11 +974,10 @@ def _get_or_generate_comparison_sketch(
     """Return the representativeness :class:`SketchStats` for a comparison-budget
     sketch, reusing the on-disk cache when present (WI-ribag).
 
-    The 4x/16x comparison sketches feed the representativeness table but were
-    regenerated on every ``sketch`` invocation despite being ``cache_write``-ten
-    to the per-(repo, state, analyzer-identity) cache dir — the dominant
-    warm-sketch cost (~83% of wall-clock on the self-corpus) and a textbook
-    INV-papuj cache-read miss. When both the cached sketch text and its
+    The 4x/16x comparison sketches feed the representativeness table and are
+    ``cache_write``-ten to the per-(repo, state, analyzer-identity) cache dir;
+    generating them is the dominant cost of a warm ``sketch``, so they are read
+    back rather than regenerated (INV-papuj). When both the cached sketch text and its
     serialized stats sidecar are present for the current state, they are read
     back and the expensive ``generate_sketch`` call is skipped; otherwise the
     sketch is generated and BOTH artifacts are cached so the next warm run hits.
@@ -1022,10 +1074,10 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
         return 1
 
-    # WI-zujum: a single-file argument crashes downstream in
+    # A single-file argument crashes downstream in
     # _format_structure_tree_fallback (Path.iterdir() raises
     # NotADirectoryError). Reject early with a hint pointing at the
-    # likely intent — analyse the parent directory.
+    # likely intent — analyse the parent directory. (WI-zujum)
     if not repo_root.is_dir():
         parent = repo_root.parent
         print(
@@ -1036,9 +1088,9 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # WI-furop (INV-fabov): reject unknown --require-section names before any
-    # analysis, so a typo / wrong case errors loudly instead of silently
-    # buying no budget guarantee.
+    # Reject unknown --require-section names before any analysis, so a typo /
+    # wrong case errors loudly instead of silently buying no budget guarantee
+    # (WI-furop, INV-fabov).
     rc = _validate_require_sections(getattr(args, "require_sections", []))
     if rc is not None:
         return rc
@@ -1061,7 +1113,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         )
 
     # Default to 8000 tokens when -t not specified (unified behavior)
-    max_tokens = args.tokens if args.tokens else 8000
+    max_tokens = args.tokens if args.tokens else DEFAULT_SKETCH_TOKENS
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
@@ -1192,15 +1244,23 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     )
 
     # Secret scanning (opt-out with --no-secret-scan).
-    # WI-julir: use scan_content_cached so warm sketch runs reuse a prior
-    # gitleaks result keyed on the sketch content hash. The per-state
+    # scan_content_cached lets warm sketch runs reuse a prior gitleaks result
+    # keyed on the sketch content hash (WI-julir). The per-state
     # cache_dir already lives under the per-repo-state directory, so any
     # source-file change rotates the directory and invalidates the cache.
     no_secret_scan = getattr(args, "no_secret_scan", False)
     if not no_secret_scan:
         if is_gitleaks_available():
             findings = scan_content_cached(sketch, cache_dir)
-            if findings:
+            if findings is None:
+                # gitleaks is there but did not run, timed out, or wrote
+                # nothing readable. Saying "complete" here would be the lie.
+                print(
+                    "\u26a0\ufe0f  Secret scan did not run (gitleaks failed or "
+                    "timed out): this sketch was NOT checked for secrets.",
+                    file=sys.stderr,
+                )
+            elif findings:
                 print(format_secret_warning(findings), file=sys.stderr)
             else:
                 # Always remind that this is best-effort
@@ -1213,40 +1273,42 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
     print(sketch)
 
-    # WI-jupar: one-shot drain of the legacy
-    # /tmp/hypergumbo_sketch_compare/ directory. Prior releases wrote
-    # the comparison sketches there with no cleanup and shared-across-
-    # repos filenames; the path is unambiguously ours so it's safe to
-    # remove on first run, releasing the accumulated backlog.
+    # Remove the legacy /tmp/hypergumbo_sketch_compare/ directory, where
+    # older releases left comparison sketches (uncleaned, with filenames
+    # shared across repos). The path is unambiguously ours, so it is safe
+    # to remove. (WI-jupar)
     import tempfile as _tempfile
     _legacy_compare_dir = (
         Path(_tempfile.gettempdir()) / "hypergumbo_sketch_compare"
     )
-    if _legacy_compare_dir.exists():
-        # INV-zudak: routed through the wrapper so the write is attributed to
-        # the tmp_artifact zone instead of surfacing as a raw host_fs flow.
-        # The bare call carried ``ignore_errors=True``; the wrapper takes no
-        # such argument, so the fail-open intent is preserved explicitly here
-        # rather than silently dropped. This is an opportunistic one-shot
-        # drain of a previous release's leftovers — a stale directory owned by
-        # another user, or a permission error, must not abort ``sketch``.
-        try:
+    # Routed through the wrapper so the write is attributed to the
+    # tmp_artifact zone instead of surfacing as a raw host_fs flow
+    # (INV-zudak). The wrapper has no ``ignore_errors`` option, so the
+    # try/except below makes the removal fail-open: it is opportunistic
+    # cleanup, and a stale directory owned by another user, a permission
+    # error, or a path the zone guard refuses (a symlink out of the temp
+    # dir: SafetyZoneViolation, not an OSError) must not abort ``sketch``.
+    # The ``exists()`` is inside the guard too: before Python 3.12 it
+    # raises on another user's protected symlink.
+    try:
+        if _legacy_compare_dir.exists():
             tmp_artifact_rmtree(_legacy_compare_dir)
-        except OSError:  # pragma: no cover - defensive; needs a hostile /tmp
-            pass
+    except (OSError, SafetyZoneViolation):
+        pass
 
     # Generate 4x and 16x budget sketches for comparison table
     # Using 4x/16x (instead of 2x) reveals when large files start fitting.
-    # WI-fufop: --no-comparison-sketches opts out (batch/scripted single-budget
-    # runs don't want the 3x generation cost or the representativeness table).
+    # --no-comparison-sketches opts out (batch/scripted single-budget runs
+    # don't want the 3x generation cost or the representativeness table;
+    # WI-fufop).
     no_comparison_sketches = getattr(args, "no_comparison_sketches", False)
     if max_tokens and stats is not None and not no_comparison_sketches:
         budget_4x = max_tokens * 4
         budget_16x = max_tokens * 16
 
-        # WI-ribag: read each comparison sketch's stats from cache when fresh
-        # instead of regenerating the (expensive) 4x/16x sketches on every
-        # invocation — the dominant warm-sketch cost. The helper caches both
+        # Read each comparison sketch's stats from cache when fresh rather
+        # than regenerating the (expensive) 4x/16x sketches — the dominant
+        # warm-sketch cost (WI-ribag). The helper caches both
         # the sketch text and a stats sidecar; gen_kwargs are the
         # generate_sketch params that do NOT key the cache filename
         # (exclude_tests/with_source are passed separately because they do).
@@ -1275,7 +1337,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
         display_representativeness_table(stats, stats_4x, stats_16x)
 
-        # WI-jupar: comparison sketches live in cache_dir alongside the main
+        # Comparison sketches live in cache_dir alongside the main
         # sketch (per-(repo, state, analyzer-identity)). The helper above wrote
         # them on a miss; on a hit they were already present. Point the user at
         # the cached paths either way.
@@ -1323,10 +1385,9 @@ def cmd_sketch(args: argparse.Namespace) -> int:
                 artifacts.append(sketch_cache_path)
 
             # Check for embeddings directory
-            # WI-panih: cache_dir is
+            # cache_dir is
             # `<fingerprint>/results/<state_hash>/<analyzer_identity>`,
-            # so the walk back to `<fingerprint>` is three parents
-            # (was two before the analyzer-identity segment landed).
+            # so the walk back to `<fingerprint>` is three parents (WI-panih).
             fingerprint_dir = cache_dir.parent.parent.parent
             embed_dir = fingerprint_dir / "embeddings"
             if embed_dir.exists() and any(embed_dir.iterdir()):  # pragma: no cover
@@ -1361,8 +1422,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     # The positional argument for `survey`/`run` is called `path` in the parser.
     repo_root = Path(args.path).resolve()
 
-    # WI-zujum: same single-file guard as cmd_sketch — analysing a single
-    # file is not a supported mode and crashes deeper in the pipeline.
+    # Same single-file guard as cmd_sketch — analysing a single file is not
+    # a supported mode and crashes deeper in the pipeline (WI-zujum).
     if not repo_root.exists():
         print(f"Error: path does not exist: {repo_root}", file=sys.stderr)
         return 1
@@ -1433,11 +1494,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         getattr(args, "command", None) or "survey", artifacts=generated_files
     )
 
-    # INV-padum: surface cache footprint after every run. The cache just
+    # Surface the cache footprint after every run (INV-padum). The cache just
     # grew (a new state-hash entry was written), so this is when the user
     # is most likely to be in a position to act on the honk.
     #
-    # WI-sidin: and reclaim BEFORE reporting. This is the moment the cache
+    # Reclaim BEFORE reporting (WI-sidin). This is the moment the cache
     # grew, so it is the moment to bound it; running the honk first would
     # describe a size that no longer exists by the time the user reads it.
     # Eviction never touches the entry this run just wrote — it is both the
@@ -1669,9 +1730,9 @@ def _handle_files_mode(
 
 
 def _warn_in_progress_catalogs(languages: Iterable[str]) -> List[str]:
-    """WI-najil: warn (to stderr, once per language) that an io_primitives
-    catalog marked ``status: in_progress`` may yield incomplete io-boundary
-    results — so a zero-match outcome is not silently read as "no I/O here".
+    """Warn (to stderr, once per language) that an io_primitives catalog
+    marked ``status: in_progress`` may yield incomplete io-boundary results —
+    so a zero-match outcome is not silently read as "no I/O here" (WI-najil).
 
     Returns the warned languages (for testability). Shared by the three
     catalog consumers so the disclosure fires uniformly: ``io-boundaries``,
@@ -1690,9 +1751,9 @@ def _warn_in_progress_catalogs(languages: Iterable[str]) -> List[str]:
 
 
 def _warn_overlay_only_catalogs(catalogs: Mapping[str, Any]) -> List[str]:
-    """WI-guhuv: say when a language's ONLY I/O rows are the user's overlay.
+    """Say when a language's ONLY I/O rows are the user's overlay (WI-guhuv).
 
-    A language with no shipped catalogue now takes its project-local overlay
+    A language with no shipped catalogue takes its project-local overlay
     rows, which classify its calls. What they cannot do is stand for the
     language's stdlib: they cite no provenance and date no module the user did
     not date, so a call they do not name stays unclassified and withholds a
@@ -1719,18 +1780,17 @@ def _warn_overlay_only_catalogs(catalogs: Mapping[str, Any]) -> List[str]:
 def _warn_default_overlays(
     languages: Iterable[str], *, offer_remedies: bool = True,
 ) -> List[str]:
-    """ADR-0047 ruling 6: say LOUDLY that unvouched rows were loaded.
+    """Say LOUDLY that unvouched rows were loaded (ADR-0047 ruling 6).
 
-    The owner's ruling that admits these rows is CONDITIONAL — hypergumbo may
-    ship third-party rows it does not vouch for, loaded by default, *provided
-    a run that loads them says so in default human output*. A JSON field alone
-    was explicitly ruled insufficient, so this stderr notice is the thing the
-    permission rests on, not a convenience.
+    The ruling that admits these rows is CONDITIONAL — hypergumbo may ship
+    third-party rows it does not vouch for, loaded by default, *provided a run
+    that loads them says so in default human output*. A JSON field alone does
+    not satisfy it, so this stderr notice is the thing the permission rests
+    on, not a convenience.
 
     Shaped after :func:`_warn_in_progress_catalogs` and wired at the same three
     call sites, so the disclosure fires uniformly across ``io-boundaries``,
-    ``verify-claims`` and ``slice --io-boundary`` rather than in whichever one
-    was edited last.
+    ``verify-claims`` and ``slice --io-boundary``.
 
     Names the FILE and its ``retrieved`` DATE because that is what makes the
     claim checkable rather than merely asserted: a reader can look at the rows
@@ -1771,20 +1831,19 @@ def _rehydrate_io_boundary_edges(raw_edges: list) -> list:
     classification, preserving ``is_resolved`` + ``dst_ref`` (WI-kumol).
 
     ``compute_boundary_map`` reads ``edge.is_resolved`` (the ADR-0028 receiver
-    gate in classification; ``_compute_external_potential``'s F3 Filter 1 no
-    longer reads it, INV-toguh) and ``edge.dst_ref`` (the WI-tihup
-    structured external-target lookup). Both CLI commands that load a *persisted*
-    behavior_map — ``io-boundaries`` and ``verify-claims`` — must reconstruct
-    these from the serialized edge dict. The earlier 4-field facade dropped
-    them, so ``getattr`` fell back to ``is_resolved=True`` / ``dst_ref=None``:
-    the receiver gate never fired on the CLI path and every unresolved bare-name
-    method match (duck-typed ``x.read()`` on an unknown receiver) was
-    (mis)classified into ``external_potential`` — re-inflating exactly the noise
-    ``io-boundary:F3`` (INV-tapat/INV-maluk) suppresses in-process (~26k spurious
-    chains on self-analysis). ``is_resolved`` defaults to True and ``dst_ref`` to
-    None so a pre-ADR-0028 / pre-WI-tihup legacy map (lacking the keys)
-    classifies exactly as it did before. (The ``slice --io-boundary`` path is
-    unaffected — it operates on real ``Edge`` objects, not this facade.)
+    gate in classification; ``_compute_external_potential`` does not read it,
+    INV-toguh) and ``edge.dst_ref`` (the structured external-target lookup,
+    WI-tihup). Both CLI commands that load a *persisted* behavior_map —
+    ``io-boundaries`` and ``verify-claims`` — must reconstruct these from the
+    serialized edge dict. Without them ``getattr`` would fall back to
+    ``is_resolved=True`` / ``dst_ref=None``: the receiver gate would never fire
+    on the CLI path and every unresolved bare-name method match (duck-typed
+    ``x.read()`` on an unknown receiver) would be misclassified into
+    ``external_potential`` — the noise ``io-boundary:F3`` (INV-tapat/INV-maluk)
+    suppresses in-process. ``is_resolved`` defaults to True and ``dst_ref`` to
+    None so an older map lacking the keys classifies as the classifier always
+    has for such edges. (The ``slice --io-boundary`` path does not use this
+    facade — it operates on real ``Edge`` objects.)
     """
     from dataclasses import dataclass as _dc
 
@@ -1819,13 +1878,15 @@ def _apply_io_boundary_filter(
     Per the io-boundary REFRAME (WI-fakuv / WI-puvun), io-boundary is not a
     persisted field — ``compute_boundary_map`` derives it on demand and stamps
     ``meta['io_boundary']`` onto the slice's edges *in memory*. We keep only the
-    edges whose stamp equals ``category``, plus their endpoint nodes and the
-    slice's entry nodes, and return the count of kept edges. This is the
-    slice-scoped, on-demand twin of ``hypergumbo io-boundaries``.
+    edges that reach ``category`` -- by :func:`io_boundary.boundaries_of`, the
+    same reading ``io-boundaries`` makes, so a call true for two boundaries is
+    kept for both (WI-votat) -- plus their endpoint nodes and the slice's entry
+    nodes, and return the count of kept edges. This is the slice-scoped,
+    on-demand twin of ``hypergumbo io-boundaries``.
     """
-    from .io_boundary import compute_boundary_map, load_catalog
+    from .io_boundary import boundaries_of, compute_boundary_map, load_catalog
 
-    # WI-najil: same in_progress-catalog disclosure as io-boundaries/verify-claims.
+    # Same in_progress-catalog disclosure as io-boundaries/verify-claims (WI-najil).
     _warn_in_progress_catalogs({n.language for n in nodes if n.language})
     _warn_default_overlays({n.language for n in nodes if n.language},
                            offer_remedies=False)
@@ -1842,7 +1903,7 @@ def _apply_io_boundary_filter(
     # Stamps meta['io_boundary'] on slice_edges in place (consumer-time).
     compute_boundary_map(slice_edges, catalogs)
     kept_edge_ids = {
-        e.id for e in slice_edges if (e.meta or {}).get("io_boundary") == category
+        e.id for e in slice_edges if category in boundaries_of(e.meta)
     }
     keep_nodes = set(result.entry_nodes)
     for edge in slice_edges:
@@ -1866,8 +1927,7 @@ def add_schema_envelope(
     carries its own: a substrate echo, a wire constant, or a placeholder), so
     the caller passes the value that view emits; this helper does not unify them
     (that is a separate, breaking version-policy change — WI-bobog). Key order
-    is ``schema_version``, ``view``, then payload keys — byte-identical to the
-    inline idiom it replaces.
+    is ``schema_version``, ``view``, then payload keys.
 
     (The ``io-boundaries`` view is deliberately NOT wrapped here: its frozen
     wire contract omits ``view`` and carries its own ``IO_BOUNDARIES_SCHEMA_VERSION``.)
@@ -1881,10 +1941,9 @@ def _read_view_wants_json(args: argparse.Namespace) -> bool:
     Unifies the two flag spellings a JSON-capable read view may carry
     (WI-kitud): the canonical ``--format json`` shared with the other read
     views (``cache-status`` / ``catalog`` / ``config`` / ``dead-code-maybe`` /
-    ``routes`` / ``test-coverage``) and the pre-existing ``--json`` boolean,
-    kept as a back-compat alias on ``io-boundaries`` / ``verify-claims``.
-    Either selects JSON; ``--json`` wins when both are present (it has always
-    meant JSON). ``getattr`` defaults keep this safe for the many in-process
+    ``routes`` / ``test-coverage``) and the ``--json`` boolean, a back-compat
+    alias on ``io-boundaries`` / ``verify-claims``.
+    Either selects JSON; ``--json`` wins when both are present. ``getattr`` defaults keep this safe for the many in-process
     tests that build a bare ``FakeArgs`` without a ``format`` attribute.
     """
     return (
@@ -2010,8 +2069,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
         # Main functions are canonical application roots and should be
         # preferred over route handlers that may have more edges but
-        # lead to dead ends (e.g., V1DeprecationRouter.deprecationHandler
-        # in alertmanager had 7 route-node edges but 0 useful call edges).
+        # lead to dead ends (route-node edges rather than useful call edges).
         _MAIN_KINDS = frozenset({
             EntrypointKind.MAIN_FUNCTION,
             EntrypointKind.MAIN_GUARD,  # WI-tuvun: a guard-only __main__.py is a root too
@@ -2045,10 +2103,9 @@ def cmd_slice(args: argparse.Namespace) -> int:
         if out_edges > 0:
             print(f"  (selected for connectivity: {out_edges} outgoing edges)")
 
-    # Generate output path with entry name when --out is omitted (INV-fapid:
-    # keyed on the None default sentinel, NOT the literal "slice.json" string —
-    # an explicit `--out slice.json` was previously indistinguishable from the
-    # default and got silently overridden by this auto-detection).
+    # Generate output path with entry name when --out is omitted. Keyed on
+    # the None default sentinel, NOT the literal "slice.json" string, so an
+    # explicit `--out slice.json` is honoured rather than overridden (INV-fapid).
     if out_path_arg is None:
         # Extract short name from entry (e.g., "main" from "python:src/main.py:1-5:main:function")
         entry_parts = entry.split(":")
@@ -2241,8 +2298,8 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"  modules: {len(feature_dict.get('modules', {}))}")
     if result.limits_hit:
         print(f"  limits hit: {', '.join(result.limits_hit)}")
-        # WI-mibuj: the flag alone hides how much the limit cost; print the
-        # frontier it stopped (a lower bound -- see slice._limits_detail).
+        # The flag alone hides how much the limit cost; print the frontier
+        # it stopped (a lower bound -- see slice._limits_detail; WI-mibuj).
         for limit, counts in result.limits_detail.items():
             line = (
                 f"    {limit} (cap {counts['cap']}): "
@@ -2267,16 +2324,16 @@ def cmd_search(args: argparse.Namespace) -> int:
     """Search for symbols by name pattern."""
     repo_root = Path(args.path).resolve()
 
-    # WI-kopon: reject an empty / whitespace-only pattern (e.g. a shell-eaten
-    # arg like an unquoted `|`) up front. An empty pattern is a substring of
-    # every name, so it would silently match all symbols — a degenerate input
-    # that should fail fast (exit 2) per the cli-input validation umbrella.
+    # Reject an empty / whitespace-only pattern (e.g. a shell-eaten arg like
+    # an unquoted `|`) up front. An empty pattern is a substring of every
+    # name, so it would silently match all symbols — a degenerate input that
+    # fails fast (exit 2) like other invalid CLI input (WI-kopon).
     if not args.pattern.strip():
         print("Error: search pattern cannot be empty.", file=sys.stderr)
         return 2
 
-    # WI-runos: --language / --kind are case-insensitive, uniform with the
-    # documented case-insensitive positional pattern. Fold to the registry's
+    # --language / --kind are case-insensitive, uniform with the documented
+    # case-insensitive positional pattern (WI-runos). Fold to the registry's
     # canonical lowercase before validation + comparison so `--language PYTHON`
     # matches `python` instead of rejecting as "not a known language".
     if args.language:
@@ -2284,11 +2341,11 @@ def cmd_search(args: argparse.Namespace) -> int:
     if args.kind:
         args.kind = args.kind.lower()
 
-    # WI-furop (INV-fabov): reject invalid --language / --kind filter values
-    # up front -- before the (potentially auto-running) analysis -- so a typo
+    # Reject invalid --language / --kind filter values up front -- before
+    # the (potentially auto-running) analysis -- so a typo
     # or non-language/non-kind errors loudly (exit 2) instead of silently
     # returning "No symbols found" (exit 0), which is indistinguishable from a
-    # real empty result.
+    # real empty result (WI-furop, INV-fabov).
     if args.language:
         from .catalog import all_known_languages
         rc = _reject_unknown_choice(
@@ -2341,9 +2398,8 @@ def cmd_search(args: argparse.Namespace) -> int:
                 continue
             matches.append(node)
 
-    # Apply limit. INV-toniv: report the TOTAL match count, not the
-    # post-truncation count (the header was reading len(matches) AFTER the
-    # slice, so it always showed min(total, limit) and hid the real total).
+    # Apply limit. The header reports the TOTAL match count, taken before
+    # truncation, so it does not show min(total, limit) (INV-toniv).
     # The argparse type factory rejects limit < 1; the bool() guard keeps a
     # caller-supplied None/0 (e.g. tests) meaning "no limit".
     total = len(matches)
@@ -2395,7 +2451,7 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 # Endpoint-shaped node kinds that aren't HTTP routes but live in the same
 # "entrypoint to the codebase" mental space. Used by ``cmd_routes`` to hint
 # at related kinds when the routes list is empty — without this, a repo with
-# 28 websocket_endpoint and 63 mq_subscriber nodes would print "No API routes
+# only websocket_endpoint or mq_subscriber nodes would print "No API routes
 # found" with no signal that any endpoints were detected at all. WI-tidip.
 _RELATED_ENDPOINT_KINDS: tuple[str, ...] = (
     "websocket_endpoint",
@@ -2420,13 +2476,13 @@ def _count_related_endpoint_kinds(
     matches. Returns an empty list when no related nodes are present so
     callers can leave the existing single-line message unchanged.
 
-    Post-fold lookup (ADR-0027 Phase 3 / audit-findings 0013): Cluster D
-    framework-role values (``mq_publisher``, ``websocket_endpoint``,
-    ``event_publisher``, ``event_subscriber``, ``http_client``) now ride
-    on ``kind="function"`` + ``meta["framework_role"]=<value>``. The
+    Framework-role values (``mq_publisher``, ``websocket_endpoint``,
+    ``event_publisher``, ``event_subscriber``, ``http_client``) ride
+    on ``kind="function"`` + ``meta["framework_role"]=<value>`` (ADR-0027;
+    audit-findings 0013). The
     matching here checks ``meta.framework_role`` first, falling back to
-    ``kind`` so legacy unfolded values (``graphql_resolver``,
-    ``db_query``, ``subprocess_call``) still match.
+    ``kind`` so values that remain kinds (``graphql_resolver``,
+    ``db_query``, ``subprocess_call``) also match.
     """
     counts: dict[str, int] = dict.fromkeys(_RELATED_ENDPOINT_KINDS, 0)
     for node in nodes:
@@ -2493,14 +2549,13 @@ def cmd_routes(args: argparse.Namespace) -> int:
     behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
 
-    from .paths import is_test_file
 
     # Find route handlers - symbols with route concepts in meta.concepts
     # OR symbols carrying meta.framework_role == "route" (analyzers emit
     # route markers directly; the kind is "function" per the ADR-0027 fold).
-    # WI-godos: tests excluded by default; --include-tests opts in.
-    # The legacy --exclude-tests flag is preserved as a no-op alias for
-    # backward compatibility with existing scripts.
+    # Tests are excluded by default; --include-tests opts in (WI-godos).
+    # The --exclude-tests flag is kept as a no-op alias for backward
+    # compatibility with existing scripts.
     exclude_tests = not getattr(args, "include_tests", False)
     routes: list[dict[str, Any]] = []
     for node in nodes:
@@ -2522,10 +2577,9 @@ def cmd_routes(args: argparse.Namespace) -> int:
             # Apply language filter
             if args.language and node.get("language") != args.language:
                 continue
-            # Exclude routes from test files when -x/--exclude-tests is set.
-            # Django bakeoff showed 73% of route source files were from test
-            # directories — use this flag to filter them out.
-            if exclude_tests and is_test_file(node.get("path", "")):
+            # Exclude routes from test files unless --include-tests is set:
+            # test directories can hold most of a repo's route registrations.
+            if exclude_tests and _is_test_node(node.get("path", ""), node.get("meta")):
                 continue
             routes.append(node)
 
@@ -2562,7 +2616,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         deduped_routes.append(node)
     routes = deduped_routes
 
-    # INV-jutuj: JSON output (parity with test-coverage / dead-code-maybe).
+    # JSON output (parity with test-coverage / dead-code-maybe; INV-jutuj).
     # Handles empty and non-empty uniformly; the run summary goes to stderr so
     # stdout stays pure JSON.
     if getattr(args, "format", "text") == "json":
@@ -2613,10 +2667,10 @@ def cmd_routes(args: argparse.Namespace) -> int:
     print(f"Found {total_routes} API route(s):\n")
 
     def _route_sort_key(route: Mapping[str, Any]) -> tuple[Any, str, Any]:
-        # WI-jajas: stable within-file order. Sort by (start_line, method,
-        # route_path) so the same logical routes render identically across
-        # full vs compact behavior maps (compact reorders nodes by
-        # centrality, which previously leaked into the routes display).
+        # Stable within-file order. Sort by (start_line, method, route_path)
+        # so the same logical routes render identically across full vs
+        # compact behavior maps (compact reorders nodes by centrality, which
+        # must not leak into the routes display; WI-jajas).
         span = route.get("span") or {}
         meta = route.get("meta", {}) or {}
         method = (meta.get("http_method") or protocol_method_token(meta.get("route_protocol")) or "") if meta.get("framework_role") == "route" else ""
@@ -2733,9 +2787,9 @@ def _estimate_tokens(text: str) -> int:
     return _shared_estimate_tokens(text)
 
 
-# INV-rarol: explain sections partition by edge TYPE, not just direction, so a
-# section's label matches the edge semantics of its entries (a "Called by"
-# count must mean callers, not callers+containers+instantiators summed). Maps
+# Explain sections partition by edge TYPE, not just direction, so a section's
+# label matches the edge semantics of its entries (a "Called by" count must
+# mean callers, not callers+containers+instantiators summed; INV-rarol). Maps
 # edge_type -> (incoming label, outgoing label). Unmapped types fall back to a
 # direction-qualified canonical-name label.
 _EXPLAIN_EDGE_LABELS: Dict[str, tuple[str, str]] = {
@@ -2763,8 +2817,7 @@ def _explain_edge_labels(etype: str) -> tuple[str, str]:
     falls back to a direction-qualified canonical-name label (legitimate but
     unstyled); a type registered nowhere is flagged ``unrecognized`` so a
     renamed/old-substrate edge type is not silently presented as a valid
-    relationship (the pre-WI-dazob behavior printed ``Incoming '<type>'`` for
-    both cases, giving no signal that the type was unknown).
+    relationship.
     """
     labels = _EXPLAIN_EDGE_LABELS.get(etype)
     if labels is not None:
@@ -2807,10 +2860,10 @@ def _render_explain_edge_sections(
         inc_label, out_label = _explain_edge_labels(etype)
         label = inc_label if direction == "in" else out_label
         print(f"  {label} ({len(group)}):")
-        # WI-dazob: for a registered-but-unstyled edge type, surface the
-        # registry description so its meaning is not left implicit behind a
-        # bare quoted type name (F80.A1: EdgeTypeSpec.description exists but was
-        # never rendered). Friendly-labelled and unrecognized types are skipped.
+        # For a registered-but-unstyled edge type, surface the registry
+        # description (EdgeTypeSpec.description) so its meaning is not left
+        # implicit behind a bare quoted type name (WI-dazob).
+        # Friendly-labelled and unrecognized types are skipped.
         if etype not in _EXPLAIN_EDGE_LABELS:
             from .edge_types import find_edge_type
 
@@ -2830,7 +2883,7 @@ def _print_edge_provenance(
     """Print derivation chain details for an edge (--provenance mode)."""
     derived_from = edge_dict.get("derived_from")
     if derived_from == []:
-        # INV-rukor: an EMPTY list is a linker's positive statement that it
+        # An EMPTY list is a linker's positive statement (INV-rukor) that it
         # read no existing graph record — a file-scan pass that minted both
         # ends. ``None`` below is the absence of any statement; folding the two
         # would tell the reader an analyzer made this edge.
@@ -2840,32 +2893,30 @@ def _print_edge_provenance(
         )
         return
     if not derived_from:
-        # INV-rarol: --provenance must have a VISIBLE effect even on edges with
-        # no derivation chain (previously this returned silently, making
-        # `explain --provenance` byte-identical to the no-flag form for the
-        # analyzer-produced edges that dominate most symbols). derived_from is
-        # recorded only on linker-inferred edges; say so. Extending it to every
-        # edge is the deferred structural half (declared-fields:F5).
+        # --provenance must have a VISIBLE effect even on edges with no
+        # derivation chain; otherwise `explain --provenance` would match the
+        # no-flag form for the analyzer-produced edges that dominate most
+        # symbols (INV-rarol). derived_from is recorded only on
+        # linker-inferred edges; say so. Extending it to every edge is
+        # deferred (declared-fields:F5).
         print("      (no derivation chain — analyzer-produced edge)")
         return
-    # WI-latup: an endpoints-only value is not a derivation chain. Measured on
-    # this repository, 44,813 of the 45,204 edges carrying ``derived_from``
-    # (99.1%) hold EXACTLY the edge's own ``[src, dst]`` — 44,104 of them from
-    # containment-linker — and only 391 name anything the linker consumed
-    # beyond its own endpoints. Printing those as "Derived from: <src>, <dst>"
-    # read as a recorded derivation while edges carrying nothing got the honest
-    # "(no derivation chain)", so the DISPLAY WAS INVERTED: the uninformative
-    # rows looked documented. Restating the endpoints tells a reader nothing the
-    # edge did not already give them.
+    # An endpoints-only value is not a derivation chain (WI-latup). Most
+    # edges carrying ``derived_from`` (containment-linker's above all) hold
+    # EXACTLY the edge's own ``[src, dst]``. Printing those as "Derived from:
+    # <src>, <dst>" would read as a recorded derivation while edges carrying
+    # nothing get the honest "(no derivation chain)" — the uninformative rows
+    # would look documented. Restating the endpoints tells a reader nothing
+    # the edge did not already give them.
     #
     # Kept DISTINCT from the no-value case above rather than folded into it: a
     # linker did run here and did record something, and collapsing the two would
-    # hide that. A subset of the endpoints (inheritance.py:350 passes a
+    # hide that. A subset of the endpoints (the inheritance linker passes a
     # one-element list holding the edge's own source) carries no more than the
     # pair, so the test is ``issubset``, not equality.
     #
-    # Since INV-rukor's guard (test_edge_derived_from.py) every linker site whose
-    # value restates only its endpoints DECLARES why in the source — honest
+    # Every linker site whose value restates only its endpoints DECLARES why
+    # in the source (enforced by test_edge_derived_from.py, INV-rukor) — honest
     # (a containment edge is decided by parent and child alone), or a known
     # gap marked ``incomplete``. The reader still sees only the value, so the
     # message says what was recorded, not that nothing else existed.
@@ -2906,7 +2957,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
-    # WI-dazob: field-presence guard. A substrate emitted by a different schema
+    # Field-presence guard (WI-dazob). A substrate emitted by a different schema
     # version may legitimately lack consumer fields (supply_chain, origin,
     # docstring) that this renderer reads — which otherwise looks identical to a
     # symbol for which the field is genuinely inapplicable. Signal the schema
@@ -2940,13 +2991,13 @@ def cmd_explain(args: argparse.Namespace) -> int:
     with_source = getattr(args, "with_source", False)
     token_budget = getattr(args, "tokens", None)
     show_provenance = getattr(args, "provenance", False)
-    # WI-nanut: disambiguation / bounding flags (parity with `symbols`).
+    # Disambiguation / bounding flags (parity with `symbols`; WI-nanut).
     language_filter = getattr(args, "language", None)
     file_filter = getattr(args, "file", None)
     first_only = getattr(args, "first", False)
     section_limit = getattr(args, "limit", None)
 
-    # WI-nanut: restrict the *matching* pool (not the graph) by language/file so
+    # Restrict the *matching* pool (not the graph) by language/file so
     # a spec that would be ambiguous across the whole map can be pinned to one
     # symbol. The full `nodes`/`nodes_by_id`/`in_degree` still back the
     # caller/callee display — filtering the match pool, like find_entry_nodes.
@@ -2978,8 +3029,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
     if not matches:
         matches = [n for n in match_pool if n.get("name") == spec]
     if not matches:
-        # Case-insensitive name match (original behavior; NOT present in slice's
-        # find_entry_nodes — kept here deliberately, WI-dazob landmine #2).
+        # Case-insensitive name match (NOT present in slice's find_entry_nodes;
+        # kept here deliberately, WI-dazob).
         pattern = spec.lower()
         matches = [n for n in match_pool if n.get("name", "").lower() == pattern]
     if not matches:
@@ -2990,16 +3041,14 @@ def cmd_explain(args: argparse.Namespace) -> int:
         print(f"Error: No symbol found matching '{args.symbol}'", file=sys.stderr)
         return 1
 
-    # INV-nogof: enforce the SAME ambiguity policy as `slice` — a name-based
-    # spec resolving to symbols in >1 file is ambiguous. `--first` is the opt-in
-    # escape that picks the top match; `--language`/`--file` (applied above)
-    # narrow the pool so the spec resolves unambiguously.
+    # Enforce the SAME ambiguity policy as `slice` — a name-based spec
+    # resolving to symbols in >1 file is ambiguous (INV-nogof). `--first` is
+    # the opt-in escape that picks the top match; `--language`/`--file`
+    # (applied above) narrow the pool so the spec resolves unambiguously.
     #
-    # WI-kutam: this comment used to end "The error message already names those
-    # flags (AmbiguousEntryError -> 'filter with --language')", and that is no
-    # longer unconditionally true — the shared error now offers `--language`
-    # ONLY when the language axis actually splits the candidates, because
-    # suggesting it to an all-python ambiguity sent the user round a loop. It
+    # The shared AmbiguousEntryError offers `--language` ONLY when the
+    # language axis actually splits the candidates, because suggesting it to
+    # an all-python ambiguity sends the user round a loop (WI-kutam). It
     # does not offer `--file` either, and deliberately: THIS command has that
     # flag and `slice` does not, so naming it in a message the two SHARE would
     # be inapplicable advice one command over. The full node ID is the remedy
@@ -3013,7 +3062,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # WI-nanut: --limit caps how many sections print for a non-ambiguous
+    # --limit caps how many sections print for a non-ambiguous
     # multi-match (same-file duplicate definitions); None shows all.
     display_matches = matches if section_limit is None else matches[:section_limit]
 
@@ -3035,8 +3084,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
         print(f"  Location: {path}:{start_line}-{end_line}")
         print(f"  Language: {lang}")
 
-        # WI-kipod: surface the captured docstring (the human-written
-        # intent) so `explain` reports what a symbol is for, not only its
+        # Surface the captured docstring (the human-written intent) so
+        # `explain` reports what a symbol is for (WI-kipod), not only its
         # location, metrics, and call graph. Absent for symbols the
         # analyzer captured no doc comment for.
         docstring = node.get("docstring")
@@ -3077,11 +3126,11 @@ def cmd_explain(args: argparse.Namespace) -> int:
         sources_shown: set[str] = set()
         tokens_used = 0
 
-        # WI-dubum: defer all source dumps until after the call-graph
+        # Defer all source dumps until after the call-graph
         # summaries print so 'Called by' / 'Calls' appear at the top of
         # the output rather than after hundreds of source lines. The
         # queried-symbol source is precomputed here and printed below
-        # the two summaries.
+        # the two summaries. (WI-dubum)
         queried_symbol_source: Optional[str] = None
         queried_symbol_source_tokens = 0
         if with_source:
@@ -3109,7 +3158,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     else _extract_path_from_symbol_id(src_id)
                 )
                 # Skip test files if --exclude-tests
-                if exclude_tests and _is_test_path(src_path):
+                if exclude_tests and _is_test_node(src_path, src_node.get("meta") if src_node else None):
                     continue
                 src_line = edge.get("line", 0)
                 src_in_degree = in_degree.get(src_id, 0)
@@ -3134,7 +3183,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     else _extract_path_from_symbol_id(dst_id)
                 )
                 # Skip test files if --exclude-tests
-                if exclude_tests and _is_test_path(dst_path):
+                if exclude_tests and _is_test_node(dst_path, dst_node.get("meta") if dst_node else None):
                     continue
                 edge_line = edge.get("line", 0)
                 dst_in_degree = in_degree.get(dst_id, 0)
@@ -3242,9 +3291,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
                         items_to_show.discard(item[1])
                         current_total -= item[8]
 
-        # WI-dubum: print both summaries before any source dumps so the
-        # call-graph signal isn't buried beneath hundreds of lines of
-        # source code.
+        # Print both summaries before any source dumps so the call-graph
+        # signal isn't buried beneath hundreds of lines of source code.
         # Display incoming/outgoing summaries, partitioned by edge type so each
         # section label matches its entries' relationship (INV-rarol).
         print()
@@ -3407,7 +3455,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
             print(f"  - {p.id}: {p.description}{status}")
         print()
 
-    # Show all passes (default behavior now)
+    # Show all passes
     print("Available Passes:")
     for p in catalog.passes:
         avail = is_available(p)
@@ -3542,19 +3590,16 @@ def _strip_backend_flag(
 def _apply_backend_choice(choice: str) -> None:
     """Resolve ``--backend <choice>`` and record it for the backend gate.
 
-    ADR-0045 ruling 4. Two things this function is careful about, both of
-    which the code it replaced got wrong:
+    ADR-0045 ruling 4. Two things this function is careful about:
 
-    * **The negative arm exists.** Previously only ``rust-analyzer`` was
-      handled and ``tree-sitter`` fell through as a silent no-op, so the
-      opt-out the tool advertises in its own warning ("Disable per run:
-      --backend tree-sitter") could not turn off a backend that
-      ``HYPERGUMBO_RUST_ANALYZER=1`` had turned on. For this backend that is a
-      security failure, not an ergonomic one: indexing executes the analysed
+    * **The negative arm exists.** ``tree-sitter`` writes an explicit OFF, so
+      the opt-out the tool advertises in its own warning ("Disable per run:
+      --backend tree-sitter") turns off a backend that
+      ``HYPERGUMBO_RUST_ANALYZER=1`` turned on. For this backend that is a
+      security property, not an ergonomic one: indexing executes the analysed
       repository's ``build.rs`` and proc macros as the invoking user, so a
-      user who exported the variable -- the only durable opt-in hypergumbo
-      offers today -- and then deliberately opted out for one untrusted repo
-      executed its build scripts anyway.
+      user who exported the variable and then deliberately opted out for one
+      untrusted repo must not execute its build scripts anyway.
 
     * **The environment variable is a TRANSPORT, not a second decision.**
       The gate runs deep inside the analyzer registry, so the resolved answer
@@ -3573,9 +3618,9 @@ def _apply_backend_choice(choice: str) -> None:
         os.environ[RUST_ANALYZER_ENV_VAR] = "1"
     elif decision is False:
         os.environ[RUST_ANALYZER_ENV_VAR] = "0"
-    # WI-nanom: the same flag resolves the scip-python backend through its own
+    # The same flag resolves the scip-python backend through its own
     # vocabulary; `tree-sitter` is an explicit OFF for both, `rust-analyzer`
-    # says nothing about this one (None → untouched).
+    # says nothing about this one (None → untouched). (WI-nanom)
     from .backend_selection import SCIP_PYTHON_ENV_VAR, resolve_scip_python_optin
 
     py_decision = resolve_scip_python_optin(flag_choice=choice, environ={})
@@ -3609,21 +3654,19 @@ def _ensure_scip_python_integration_or_exit() -> None:
 
 def _ensure_scip_python_binary_or_exit() -> None:
     """Exit 2 when the ``scip-python`` binary is missing or does not answer ``--version``."""
-    from .scip_python_install import (
-        SCIP_PYTHON_NPM_PACKAGE,
-        SCIP_PYTHON_PINNED_VERSION,
-        is_scip_python_available,
-    )
+    from .install_steps import scip_python_install_steps
+    from .scip_python_install import is_scip_python_available
 
     if is_scip_python_available():
         return
     print(
-        "hypergumbo: error: --backend scip-python requested but the "
-        "'scip-python' binary is not on PATH or does not run.\n"
+        "hypergumbo: error: --backend scip-python needs the 'scip-python' "
+        "binary.\n"
         "\n"
-        f"Install it with: npm install -g {SCIP_PYTHON_NPM_PACKAGE}@{SCIP_PYTHON_PINNED_VERSION}\n"
-        "(node and npm are required; scip-python bundles pyright and "
-        "executes nothing from the analysed repository).",
+        f"{scip_python_install_steps()}\n"
+        "\n"
+        "(scip-python bundles pyright and executes nothing from the "
+        "analysed repository.)",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -3632,11 +3675,10 @@ def _ensure_scip_python_binary_or_exit() -> None:
 def _ensure_rust_analyzer_integration_or_exit() -> None:
     """Exit with a clear error when the SCIP integration package is missing.
 
-    WI-jinoh / BUG-06: in the published v4.1.0 ``hypergumbo`` distribution,
-    ``hypergumbo-lang-rust-analyzer`` is not in ``Requires-Dist`` and is
-    not on PyPI, so ``--backend rust-analyzer`` silently no-ops. This
-    helper is the single choke point that turns the silent fall-through
-    into a non-zero exit with a message naming the missing package.
+    ``hypergumbo-lang-rust-analyzer`` is an optional extra, and without it
+    ``--backend rust-analyzer`` would silently no-op. This helper is the
+    single choke point that turns that silent fall-through into a non-zero
+    exit with a message naming the missing package. (WI-jinoh / BUG-06)
     """
     from .rust_analyzer_install import is_rust_analyzer_integration_installed
 
@@ -3673,21 +3715,19 @@ def _ensure_rust_analyzer_binary_or_exit() -> None:
     installed. The integration-package check passes, the existence
     check passes \u2014 only an actual ``--version`` smoke test surfaces
     the brokenness. Without this gate, ``--backend rust-analyzer``
-    silently degraded to tree-sitter and the user thought they got
-    SCIP analysis when they didn't.
+    would silently degrade to tree-sitter and the user would think they
+    got SCIP analysis when they didn't.
     """
+    from .install_steps import rust_analyzer_install_steps
     from .rust_analyzer_install import is_rust_analyzer_available
 
     if is_rust_analyzer_available():
         return
     print(
-        "hypergumbo: error: --backend rust-analyzer requested but the "
-        "rust-analyzer binary is not functional on PATH.\n"
+        "hypergumbo: error: --backend rust-analyzer needs the "
+        "'rust-analyzer' binary.\n"
         "\n"
-        "A binary path resolves but invoking it with --version fails. "
-        "The most common cause is a rustup proxy whose component is "
-        "not installed: run 'rustup component add rust-analyzer', or "
-        "'hypergumbo install-rust-analyzer'.",
+        f"{rust_analyzer_install_steps()}",
         file=sys.stderr,
     )
     sys.exit(2)
@@ -3838,11 +3878,11 @@ def cmd_trust_catalogues(args: argparse.Namespace) -> int:
 def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
     """Install rust-analyzer (WI-dotud) or report availability via ``--check``.
 
-    WI-jinoh / BUG-06: ``--check`` reports the status of *both* the rustup
-    binary and the ``hypergumbo-lang-rust-analyzer`` Python integration
-    package, and the bare ``install-rust-analyzer`` invocation refuses
-    to install the binary when the integration package is missing \u2014
-    installing the binary alone leaves the SCIP backend a silent no-op.
+    ``--check`` reports the status of *both* the rustup binary and the
+    ``hypergumbo-lang-rust-analyzer`` Python integration package, and the
+    bare ``install-rust-analyzer`` invocation refuses to install the binary
+    when the integration package is missing \u2014 installing the binary
+    alone leaves the SCIP backend a silent no-op. (WI-jinoh / BUG-06)
     """
     from .rust_analyzer_install import (
         install_rust_analyzer,
@@ -3865,7 +3905,9 @@ def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
             f"{'installed' if integration_installed else 'not installed'}",
         )
         if not available:
-            print("\nRun 'hypergumbo install-rust-analyzer' to install.")
+            from .install_steps import rust_analyzer_install_steps
+
+            print(f"\n{rust_analyzer_install_steps()}")
         if not integration_installed:
             print(
                 "\nThe SCIP backend also requires the "
@@ -3906,12 +3948,11 @@ def cmd_uninstall_rust_analyzer(args: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
-# WI-josif consolidation: add-extras / remove-extras umbrella over the four
-# per-component paths (grammars, gitleaks, embeddings, rust-analyzer). Each
-# row is (component_name, is_available, install_fn, uninstall_fn). The table
-# is the single source of truth — adding a fifth component is a one-line
-# change in `_extras_components`. WI-huham's separate install-extras /
-# uninstall-extras umbrella was hard-removed in favor of this single table.
+# add-extras / remove-extras umbrella over the four per-component paths
+# (grammars, gitleaks, embeddings, rust-analyzer; WI-josif). Each row is
+# (component_name, is_available, install_fn, uninstall_fn). The table is the
+# single source of truth — adding a fifth component is a one-line change in
+# `_extras_components`.
 def _extras_components() -> list[tuple[str, Callable[..., Any], Callable[..., Any], Callable[..., Any]]]:
     """Return the rows the add-extras / remove-extras umbrella iterates over.
 
@@ -3940,7 +3981,7 @@ def _extras_components() -> list[tuple[str, Callable[..., Any], Callable[..., An
         ),
         (
             "embeddings",
-            cli_mod._is_embeddings_available,
+            cli_mod._embeddings_ready,
             cli_mod._install_embeddings_impl,
             cli_mod._uninstall_embeddings_impl,
         ),
@@ -3970,9 +4011,8 @@ def _is_grammars_available() -> bool:
 def _install_grammars(quiet: bool = False) -> bool:
     """Build all hypergumbo grammars; return True iff every grammar built.
 
-    Preserves the per-grammar failure warning that the pre-consolidation
-    ``cmd_add_extras`` printed inline — failures still go to stderr even
-    in ``--quiet`` mode so partial-build state is observable.
+    Per-grammar failure warnings go to stderr even in ``--quiet`` mode so
+    partial-build state is observable.
     """
     results = build_all_grammars(quiet=quiet)
     failed = [name for name, ok in results.items() if not ok]
@@ -4060,23 +4100,68 @@ def _install_rust_analyzer_with_bug06_gate(quiet: bool = False) -> bool:
     return install_rust_analyzer(quiet=quiet)
 
 
+def _embedding_models_cached() -> bool:
+    """Whether every model analysis loads is already in the local HF cache."""
+    from .sketch_embeddings import EMBEDDING_MODELS, _hf_model_is_cached
+
+    return all(_hf_model_is_cached(name) for name in EMBEDDING_MODELS)
+
+
+def _fetch_embedding_models(quiet: bool) -> bool:
+    """Download the embedding model weights; the install path's job (INV-gujus).
+
+    Analysis never downloads a model (its loader is cache-only), so installing
+    the library is not enough: without the weights every sketch degrades. Run
+    in a fresh interpreter, because the library pip just installed may not be
+    importable in this one. Returns False, with the reason on stderr, when the
+    download fails.
+    """
+    import subprocess  # nosec B404 — the model download, install path only
+
+    from .sketch_embeddings import fetch_embedding_models
+
+    if _embedding_models_cached():
+        return True
+    if not quiet:
+        print("Downloading the embedding model weights...")
+    # The child imports the function by the name this one carries, so the
+    # call is a real reference here (the test-only-reachability gate reads
+    # it) and a rename cannot leave a stale string behind. Importing
+    # sketch_embeddings in this interpreter is safe: it loads
+    # sentence_transformers lazily, inside the function.
+    cmd = [sys.executable, "-c",
+           f"from {fetch_embedding_models.__module__} import "
+           f"{fetch_embedding_models.__name__}; "
+           f"{fetch_embedding_models.__name__}()"]
+    try:
+        result = subprocess.run(cmd, check=False, timeout=3600.0)  # noqa: S603 # nosec B603
+    except (subprocess.SubprocessError, OSError) as exc:
+        print(f"Error downloading the embedding models: {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:
+        print("Error: the embedding model download failed; re-run "
+              "'hypergumbo install-embeddings' with network access.", file=sys.stderr)
+        return False
+    return True
+
+
 def _install_embeddings_impl(quiet: bool = False) -> bool:
     """Thin adapter calling the embeddings installer like the others.
 
     The embeddings installer is inline in cmd_install_embeddings; this
     wrapper exposes the same (quiet=...) -> bool surface so the
-    extras table can treat all three components uniformly.
+    extras table can treat every component uniformly.
     """
     # The real install_embeddings function is defined in this file;
     # this adapter is here so _extras_components can reference it via
-    # module lookup and keep the table declarative.
+    # module lookup and keep the table declarative. It installs what
+    # install-embeddings installs: EMBEDDINGS_REQUIREMENT and nothing else.
     import subprocess  # nosec B404 — pip install
     import sys
 
     if not quiet:
         print("Installing embedding dependencies...")
-    cmd = [sys.executable, "-m", "pip", "install",
-           "sentence-transformers", "onnxruntime"]
+    cmd = [sys.executable, "-m", "pip", "install", EMBEDDINGS_REQUIREMENT]
     try:
         result = subprocess.run(  # nosec B603  # noqa: S603
             cmd, capture_output=True, timeout=600.0,
@@ -4094,6 +4179,8 @@ def _install_embeddings_impl(quiet: bool = False) -> bool:
             file=sys.stderr,
         )
         return False
+    if not _fetch_embedding_models(quiet):
+        return False
     if not quiet:
         print("  Done!")
     return True
@@ -4106,8 +4193,10 @@ def _uninstall_embeddings_impl(quiet: bool = False) -> bool:
 
     if not quiet:
         print("Removing embedding dependencies...")
-    cmd = [sys.executable, "-m", "pip", "uninstall", "-y",
-           "sentence-transformers", "onnxruntime"]
+    # sentence-transformers only, as uninstall-embeddings: onnxruntime is
+    # not this row's to remove (hypergumbo-core never imports it;
+    # hypergumbo-tracker's dedup extra does).
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "sentence-transformers"]
     try:
         result = subprocess.run(  # nosec B603  # noqa: S603
             cmd, capture_output=True, timeout=300.0,
@@ -4160,7 +4249,7 @@ _DEFAULT_HONK_GB = 1.0
 
 
 def _get_honk_threshold_bytes() -> float | None:
-    """INV-padum lifecycle policy: cache honk-threshold in bytes.
+    """Cache honk-threshold in bytes (INV-padum lifecycle policy).
 
     Reads ``HYPERGUMBO_CACHE_HONK_GB``. Default 1.0 GiB.
 
@@ -4202,10 +4291,9 @@ _SOFT_DELETE_SURVEYS_DIR = "soft-deleted-surveys"
 _SOFT_DELETE_SKETCHES_DIR = "soft-deleted-sketches"
 _ARCHIVE_PARTIAL_SUFFIX = ".partial"
 
-# The one heavy artifact in a cache entry. MEASURED across the six largest
-# entries on a real cache: survey.json is 1,259.9 MB of 1,264 MB — 99.6%.
-# Everything else in the entry (sketch markdown, the 4k/16k/64k tier previews,
-# per-route handler slices) totals 0.4%, about 3.5 MB against 210 MB. That
+# The one heavy artifact in a cache entry: survey.json is nearly all of an
+# entry's bytes. Everything else in the entry (sketch markdown, the
+# 4k/16k/64k tier previews, per-route handler slices) is a sliver. That
 # asymmetry is why soft-deleted surveys and soft-deleted sketches are separate
 # folders with separate caps: keeping every sketch ever evicted costs almost
 # nothing, while keeping every survey is the whole disk problem again.
@@ -4245,7 +4333,7 @@ def _env_gb_to_bytes(var: str, default_gb: float) -> float | None:
 
 
 def _get_cache_max_bytes() -> float | None:
-    """WI-sidin live-cache cap. ``HYPERGUMBO_CACHE_MAX_GB``, default 5.0 GiB.
+    """Live-cache cap (WI-sidin). ``HYPERGUMBO_CACHE_MAX_GB``, default 5.0 GiB.
 
     DELIBERATELY A SEPARATE KNOB FROM ``HYPERGUMBO_CACHE_HONK_GB``, which is the
     *notice* threshold. The two say different things and reading either as the
@@ -4335,13 +4423,11 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> bool:
     WHY SOFT DELETE RATHER THAN ``rm``. The cache lives under the user's
     ``$HOME``, and an automatic irreversible delete there is a different kind
     of act from bounding a cache. Compression makes reversibility nearly free:
-    measured on a real 210.9 MB entry, deflate level 6 produced 12.7 MB in
-    1.0s — **6% of the original, 16x**. Paying 6% to make every eviction
-    undoable is an obviously good trade, and 1s sits inside a run that already
-    took minutes.
+    deflate level 6 shrinks a JSON-heavy entry to a small fraction of its size
+    in seconds, a cost that sits inside a run that already took minutes.
 
-    WHY TWO FOLDERS. ``survey.json`` is 99.6% of an entry; everything else —
-    sketch markdown, tier previews, handler slices — is 0.4%. Splitting them
+    WHY TWO FOLDERS. ``survey.json`` is nearly all of an entry; everything
+    else — sketch markdown, tier previews, handler slices — is a sliver. Splitting them
     lets sketches, which are cheap and human-readable, be retained far longer
     than the surveys that are the actual disk problem.
 
@@ -4414,7 +4500,7 @@ def _prune_soft_deleted(cache_dir: Path, *, dry_run: bool = False) -> int:
     """Bound each soft-delete folder, oldest archive first. Returns bytes freed.
 
     THIS IS THE HARD DELETE, and it is the reason soft-delete is a real policy
-    rather than a way of deferring the disk problem by 16x. An archive that is
+    rather than a way of deferring the disk problem. An archive that is
     never removed is still growth. What soft-delete buys is a window in which an
     eviction can be undone, not immortality — so each folder has its own cap and
     the oldest archives leave first.
@@ -4476,18 +4562,17 @@ def _maybe_evict_cache(
     dry_run: bool = False,
     quiet: bool = False,
 ) -> int:
-    """WI-sidin: bound the cache by soft-deleting least-recently-used entries.
+    """Bound the cache by soft-deleting least-recently-used entries (WI-sidin).
 
     Returns the number of bytes reclaimed from the LIVE cache (or that would
     be, under ``dry_run``). Evicted entries are not destroyed — they are zipped
     into ``soft-deleted-surveys/`` and ``soft-deleted-sketches/``, which are
     themselves bounded by :func:`_prune_soft_deleted`.
 
-    Measured motivation: 5.3 GB in 27 entries for one repo in a single day,
-    5.9 GB / 40 entries a few hours later. The state hash is whole-tree, so an
-    actively-edited repo misses on nearly every run and mints another ~200 MB
-    entry; nothing ever removed one, and the 1.0 GB notice had been firing
-    unheeded throughout.
+    Why it exists: the state hash is whole-tree, so an actively-edited repo
+    misses on nearly every run and mints another entry of hundreds of MB.
+    Without eviction nothing removes them, and the size notice alone does not
+    bound the cache.
 
     THREE THINGS IT REFUSES TO DO, each because the cache lives in the user's
     home directory:
@@ -4665,8 +4750,8 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
     subdirectory with size, state-entry count, and last-used time so
     the user can identify which repo is consuming the cache.
 
-    INV-padum lifecycle policy: at the end of the report, emit the
-    honk-threshold warning if total cache size exceeds the configured
+    At the end of the report, emit the honk-threshold warning (INV-padum
+    lifecycle policy) if total cache size exceeds the configured
     threshold. The warning goes to stderr so it stands out from the
     routine stdout report and pipes / redirects cleanly.
     """
@@ -4767,7 +4852,7 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
                     f"(last used: {age_label})"
                 )
 
-    # WI-sidin: PREVIEW ONLY. cache-status is a report, and a report must not
+    # PREVIEW ONLY (WI-sidin). cache-status is a report, and a report must not
     # mutate what it reports on — a user running it to decide whether to prune
     # would otherwise find the decision already taken. dry_run shows the set the
     # next real run would reclaim.
@@ -4836,12 +4921,14 @@ def cmd_cache_clear(args: argparse.Namespace) -> int:
     # Delete entries
     deleted_count = 0
     for entry in entries:
+        # A refusal (an entry that is a symlink out of the cache) is skipped
+        # like an OSError; it is a RuntimeError, so it needs naming.
         try:
             cache_rmtree(entry, zone_root=cache_dir)
             deleted_count += 1
-        except (OSError, PermissionError) as e:  # pragma: no cover
-            if not args.quiet:  # pragma: no cover
-                print(f"Warning: Could not delete {entry}: {e}")  # pragma: no cover
+        except (OSError, SafetyZoneViolation) as e:
+            if not args.quiet:
+                print(f"Warning: Could not delete {entry}: {e}")
 
     if not args.quiet:
         print(f"Deleted {deleted_count} entries ({_format_size(total_size)})")
@@ -4867,10 +4954,9 @@ def _cache_clear_repo(
     # ``--repo`` names a cache SUBDIRECTORY, never a filesystem path. Refuse
     # anything path-shaped before it reaches ``cache_dir / repo``, because
     # that join silently discards ``cache_dir`` when ``repo`` is absolute and
-    # ``..`` traverses out of it — and the only check downstream was
-    # ``is_dir()``, which tests existence rather than containment. Measured:
-    # ``cache-clear --repo /path/to/work`` recursively deleted that directory
-    # and reported it as a routine eviction.
+    # ``..`` traverses out of it — and ``is_dir()`` tests existence rather
+    # than containment, so ``cache-clear --repo /path/to/work`` would
+    # recursively delete that directory and report it as a routine eviction.
     #
     # This is the usable-error boundary; ``cache_rmtree``'s safety-zone check
     # is the backstop that catches any future caller bypassing this one.
@@ -4939,9 +5025,9 @@ def _cache_clear_repo(
         try:
             cache_rmtree(d, zone_root=cache_dir)
             deleted += 1
-        except (OSError, PermissionError) as e:  # pragma: no cover
-            if not args.quiet:  # pragma: no cover
-                print(  # pragma: no cover
+        except (OSError, SafetyZoneViolation) as e:
+            if not args.quiet:
+                print(
                     f"Warning: Could not delete {d}: {e}", file=sys.stderr
                 )
 
@@ -4998,6 +5084,20 @@ def _get_embeddings_version() -> str:
         return "unknown"  # pragma: no cover
 
 
+def _embeddings_ready() -> bool:
+    """The add-extras row's "installed": what ``install-embeddings --check`` passes on.
+
+    Importable, at ``EMBEDDINGS_REQUIREMENT``, and the model weights fetched.
+    Importable alone would let add-extras skip an older (e.g. 5.2.2) install
+    the requirement exists to move off (PYSEC-2026-4164). Like the rust-analyzer row's
+    predicate, this asks for readiness, so ``remove-extras`` skips an install
+    this says is not ready.
+    """
+    return (_is_embeddings_available()
+            and _embeddings_version_ok(_get_embeddings_version())
+            and _embedding_models_cached())
+
+
 def cmd_install_embeddings(args: argparse.Namespace) -> int:
     """Install embedding dependencies (sentence-transformers).
 
@@ -5013,14 +5113,19 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
     current = available and _embeddings_version_ok(version)
 
     if args.check:
-        symbol = "\u2713" if current else "\u2717"
+        # INV-gujus: analysis never downloads a model, so the library without
+        # its weights is not a working install and --check must say so.
+        weights = current and _embedding_models_cached()
+        symbol = "\u2713" if weights else "\u2717"
         status = "installed" if available else "not installed"
         print(f"embeddings: {symbol} {status}")
         if available:
             print(f"  sentence-transformers {version}")
-        if not current:
-            if available:
+        if not weights:
+            if available and not current:
                 print(f"  older than the required {EMBEDDINGS_REQUIREMENT}")
+            elif current:
+                print("  the model weights have not been downloaded")
             print("\nRun 'hypergumbo install-embeddings' to install.")
             return 1
         return 0
@@ -5028,7 +5133,9 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
     if current:
         if not args.quiet:
             print(f"Embeddings already installed (sentence-transformers {version})")
-        return 0
+        # INV-gujus: the library alone is not enough -- analysis never
+        # downloads a model, so make sure the weights are here too.
+        return 0 if _fetch_embedding_models(args.quiet) else 1
     if available and not args.quiet:
         print(f"sentence-transformers {version} is older than the required "
               f"{EMBEDDINGS_REQUIREMENT}; upgrading.")
@@ -5049,6 +5156,8 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
             return 1
     except (subprocess.SubprocessError, OSError) as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 1
+    if not _fetch_embedding_models(args.quiet):
         return 1
 
     if not args.quiet:
@@ -5208,10 +5317,10 @@ _SYMBOLS_MAX_COL_WIDTH = 1000
 # Rich's per-column padding (default (0, 1) => 2 chars * 6 columns) plus a
 # small safety margin, added to the DATA-DRIVEN content widths of the four
 # inner columns (Kind / In / Out / Deg) to force the console wide enough that
-# none is squeezed. A fixed overhead instead (the old approach) under-budgeted
-# the numeric columns once In/Deg hit 4 digits, so Rich proportionally squeezed
-# Deg into "10…" — destroying the rank the `symbols` command exists to surface
-# (INV-ripoh; the pass-31 face extended the same truncation to the In column).
+# none is squeezed. A fixed overhead would under-budget the numeric columns
+# once In/Deg reach 4 digits, and Rich would proportionally squeeze them into
+# "10…" — destroying the rank the `symbols` command exists to surface
+# (INV-ripoh).
 _SYMBOLS_COLUMN_PADDING = 14
 
 
@@ -5280,6 +5389,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # Build node ID set and ID->path mapping for filtering
     node_ids = {n["id"] for n in nodes}
     node_paths: dict[str, str] = {n["id"]: n.get("path", "") for n in nodes}
+    node_meta: dict[str, Any] = {n["id"]: n.get("meta") for n in nodes}
 
     # Check exclude_tests flag before computing degrees
     exclude_tests = getattr(args, "exclude_tests", False)
@@ -5311,21 +5421,21 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         dst = edge.get("dst", "")
 
         # Filter low-confidence edges to prevent method name collision
-        # artifacts (DirLocker.Lock 255 false in-degree, etc.)
+        # artifacts (inflated in-degree on common method names)
         if edge.get("confidence", 1.0) < _MIN_EDGE_CONFIDENCE:
             continue
 
         # If excluding tests, skip edges involving test files.
         # Inheritance edges are always preserved because they reflect
         # architectural importance of the target (base class / interface /
-        # mixin), regardless of where the source lives. INV-nosoz: the family
-        # comes from the registry — this read ``("extends", "implements")``
-        # and so dropped Solidity ``inherits`` and Ruby mixin edges.
+        # mixin), regardless of where the source lives. The family comes
+        # from the registry, so Solidity ``inherits`` and Ruby mixin edges
+        # count too, not only ``extends`` / ``implements`` (INV-nosoz).
         if exclude_tests:
             if not is_inheritance_edge_record(edge):
                 src_path = node_paths.get(src, _extract_path_from_symbol_id(src))
                 dst_path = node_paths.get(dst, _extract_path_from_symbol_id(dst))
-                if _is_test_path(src_path) or _is_test_path(dst_path):
+                if _is_test_node(src_path, node_meta.get(src)) or _is_test_node(dst_path, node_meta.get(dst)):
                     continue
 
         if src in node_ids:
@@ -5347,17 +5457,16 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         outd = out_degree.get(node_id, 0)
         degree = ind + outd
 
-        # Apply filters. WI-jukav slice 2: dual-shape predicate
-        # forward-compat with ADR-0027 §"Phase 3" Wave 5 framework_role
-        # fold — synthetic post-fold nodes (kind=function|method +
-        # meta.framework_role=<excluded role>) are excluded the same as
-        # their pre-fold legacy-kind counterparts.
+        # Apply filters. Dual-shape predicate: a node whose excluded role is
+        # carried as meta.framework_role (kind=function|method, the ADR-0027
+        # §"Phase 3" framework_role fold) is excluded the same as one whose
+        # kind is that role (WI-jukav).
         #
-        # WI-sufuh: the default silent kind-exclusion (file / variable / CSS
+        # The default silent kind-exclusion (file / variable / CSS
         # kinds / npm packages — low-value for a connectivity table) must NOT
         # override an EXPLICIT `--kind file` / `--kind variable`. Suppress the
         # pre-filter only when the user did not ask for this exact kind; the
-        # `--kind` mismatch filter below still hides everything else.
+        # `--kind` mismatch filter below still hides everything else (WI-sufuh).
         if is_excluded_kind(kind, node.get("meta"), language=lang or None) and not (
             args.kind and kind == args.kind
         ):
@@ -5366,7 +5475,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
             continue
         if args.language and lang != args.language:
             continue
-        if exclude_tests and _is_test_path(path):
+        if exclude_tests and _is_test_node(path, node.get("meta")):
             continue
 
         symbol_rows.append((name, kind, ind, outd, degree, path, node_id))
@@ -5488,8 +5597,8 @@ def cmd_compact(args: argparse.Namespace) -> int:
     This is useful for post-processing large behavior maps into LLM-friendly
     formats without re-running the full analysis.
     """
-    # WI-vusaf: cross-flag numeric coherence (single-flag ranges are enforced
-    # by the argparse type= validators). max < min is a configuration error.
+    # Cross-flag numeric coherence (single-flag ranges are enforced by the
+    # argparse type= validators). max < min is a configuration error (WI-vusaf).
     if args.max_symbols < args.min_symbols:
         print(
             f"Error: --max-symbols ({args.max_symbols}) must be >= "
@@ -5518,22 +5627,22 @@ def cmd_compact(args: argparse.Namespace) -> int:
         target_coverage=args.coverage,
         max_symbols=args.max_symbols,
         min_symbols=args.min_symbols,
-        # WI-kolal + D12: the compact default is a GLOBAL centrality-ranked
-        # prefix. language_proportional floors would (a) break --max-symbols
-        # containment monotonicity via non-monotonic remainder redistribution
-        # and (b) diverge from "centrality-ranked" (a global ordering).
+        # The symbol budget is filled from one GLOBAL ranking, not
+        # per-language floors (WI-kolal, D12). language_proportional floors
+        # would (a) break --max-symbols containment monotonicity via
+        # non-monotonic remainder redistribution and (b) diverge from a
+        # global ordering.
         language_proportional=False,
     )
 
-    # WI-zulij: connectivity-aware "connected core" is the DEFAULT;
-    # --no-connectivity opts into centrality-ranked selection. This reverses the
-    # 2026-06-10 D12 reading ("centrality-ranked everywhere") for compact only,
-    # on measured grounds: compact's output is consumed as a GRAPH (its one
-    # in-tree diagnostic, hypergumbo_diag.analyze_compact, scores it on connected
-    # components), and centrality-ranked crops were shipping 42% isolated nodes
-    # at a 25-symbol budget against 8.5% for connectivity, with fragmentation
-    # WORSENING as the budget grew. sketch keeps centrality-ranked — it is a
-    # reading surface, not a graph.
+    # Connectivity-aware "connected core" is the DEFAULT for compact;
+    # --no-connectivity opts into centrality-ranked selection (WI-zulij;
+    # compact departs from D12's centrality-ranked default here). Compact's
+    # output is consumed as a GRAPH (its in-tree diagnostic,
+    # hypergumbo_diag.analyze_compact, scores it on connected components), and
+    # centrality-ranked crops leave far more isolated nodes, more so as the
+    # budget grows. sketch keeps
+    # centrality-ranked — it is a reading surface, not a graph.
     connectivity_aware = getattr(args, "connectivity", True)
 
     # Generate compact behavior map
@@ -5580,9 +5689,10 @@ def _higher_fidelity_backends_available(
 ) -> dict[str, str]:
     """Languages present here for which a higher-fidelity analyzer is INSTALLED.
 
-    WI-lagod: a rust repository analysed with rust-analyzer installed but not
-    enabled produced a verdict indistinguishable from one on a machine where no
-    such backend exists, and a reader would act differently on those two. This
+    Without this, a rust repository analysed with rust-analyzer installed but
+    not enabled would produce a verdict indistinguishable from one on a machine
+    where no such backend exists, and a reader would act differently on those
+    two (WI-lagod). This
     is the "what could have run" half; ``analysis_fidelity`` is the "what ran"
     half, and ``compute_boundary_coverage`` subtracts the second from the first
     so a run that USED the backend is not told to enable it.
@@ -5606,8 +5716,8 @@ def _resolve_io_overlays(
 ) -> "list[Path]":
     """The I/O primitive overlay paths beyond the shipped ones, ASCENDING precedence.
 
-    INV-fotav. Mirrors the taint arm's layering (INV-hukug) rather than
-    inventing a second rule: claims-file ``extra_catalogs: io_primitives:``
+    Mirrors the taint arm's layering (INV-hukug) rather than inventing a
+    second rule (INV-fotav): claims-file ``extra_catalogs: io_primitives:``
     entries sit BELOW CLI ``--io-primitives`` flags, and ``load_catalog``
     treats a later path as the winner on qualified-name collision, so the
     concatenation order below IS the precedence order.
@@ -5615,9 +5725,7 @@ def _resolve_io_overlays(
     ADR-0047 ruling 3 adds the user's ``io_primitives.d/`` BENEATH EVERYTHING
     (WI-talaz). It is scanned, not named, which makes it the least specific
     statement of intent a user can make, so an explicitly-named path in
-    ``config.toml`` wins over a file dropped in the directory. Until this was
-    wired the directory was read by nothing, while the ruling-6 disclosure had
-    been telling users to edit it on every run that loaded a community overlay.
+    ``config.toml`` wins over a file dropped in the directory.
 
     ADR-0045 ruling 4 adds the two config tiers BENEATH the claims file, in
     the order the ruling fixes — user config, then project config, then the
@@ -5657,8 +5765,8 @@ def _resolve_io_overlay_layers(
     ``omitted`` is every overlay ``--no-default-overlays`` removed (empty
     without the flag), with its origin. A report on the run needs both halves
     (INV-dozav): describing the loaded files from the RAW flag and claims-file
-    lists named a file the run never read as user-supplied input with a
-    withheld grant, while stderr said it had been omitted.
+    lists would name a file the run never read as user-supplied input with a
+    withheld grant, while stderr says it was omitted.
     """
     out: "list[tuple[Path, str]]" = [
         (p, "user_channel") for p in user_overlay_paths()
@@ -5799,8 +5907,13 @@ def _loaded_catalogue_files(
     *,
     include_default_overlays: bool,
     taint_paths: "Optional[Mapping[str, Sequence[Path]]]",
+    cli_named: "Sequence[Path]" = (),
 ) -> "list[Any]":
     """Every catalogue file a verify-claims run read, for ADR-0061 ruling 5.
+
+    ``cli_named`` are the paths the command-line flags named (a directory
+    stands for its YAML files); each file among them is marked ``named``, so
+    it is ``yours`` even inside the repository (ruling 1, WI-dagun).
 
     The I/O catalogue each language loaded (and its parent), the shipped
     community defaults unless omitted (``include_default_overlays=False`` also
@@ -5831,7 +5944,16 @@ def _loaded_catalogue_files(
         _declares_community_file,
         _resolve_catalog_paths,
     )
-    from .verify_claims import LoadedCatalogueFile as F
+    from .verify_claims import LoadedCatalogueFile
+
+    named = {p.resolve() for p in _resolve_catalog_paths(
+        [p for p in cli_named if p.exists()])}
+
+    def F(family: str, path: Path, shipped: bool, stage: str = "verify") -> Any:
+        return LoadedCatalogueFile(
+            family, path, shipped, stage,
+            named=not shipped and Path(path).resolve() in named,
+        )
 
     files: "list[Any]" = []
     for lang in sorted(set(languages)):
@@ -5849,14 +5971,14 @@ def _loaded_catalogue_files(
         ):
             files += [F(family, p, True) for p in sorted(directory.glob("*.yaml"))
                       if include_default_overlays
-                      or not _declares_community_file(p)]
+                      or not _declares_community_file(p, shipped=True)]
         shipped_summaries = sorted(get_summaries_dir().glob("*.yaml"))
         files += [F("function_summaries", p, True) for p in (
             shipped_summaries if include_default_overlays
             else split_community_summary_files(shipped_summaries)[0])]
         for family, paths in taint_paths.items():
-            # WI-mimap: the operator's taint channel for this family. Like the
-            # shipped files, a community file -- whatever named it -- is
+            # The operator's taint channel for this family (WI-mimap). Like
+            # the shipped files, a community file -- whatever named it -- is
             # listed only when the run loaded it (ADR-0061 ruling 3).
             files += [F(family, p, False)
                       for p in [*_resolve_catalog_paths(list(paths)),
@@ -5991,11 +6113,11 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     ``subprocess``, ``env_read``, ``host_info_read``, ``env_write``,
     ``ipc_send``, ``ipc_recv``, ``browser_storage_write``,
     ``browser_storage_read``, ``db_read``, ``db_write``, ``process_send``,
-    ``logging``, ``navigation_read``. ``env_read`` is a CONFIGURATION read (environment
-    variables, system properties, argv) and ``host_info_read`` is a host
+    ``logging``, ``navigation_read``, ``command_line_read``. ``env_read`` is a
+    CONFIGURATION read (environment variables, system properties, argv) and ``host_info_read`` is a host
     DESCRIPTION read (``runtime.GOOS``, ``os.uname``, ``navigator.platform``,
-    ``pwd.getpwnam``); they were one boundary until INV-tutar, and the split
-    exists because each derives a different taint label. Attribute-style primitives
+    ``pwd.getpwnam``); they are separate boundaries because each derives a
+    different taint label (INV-tutar). Attribute-style primitives
     (``os.environ``, ``sys.argv``) are included via ``module_attr_ref``
     edges. Loads a cached behavior map or auto-runs analysis if needed.
     """
@@ -6017,8 +6139,8 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     behavior_map = load_substrate(input_path)
     raw_edges = behavior_map.get("edges", [])
 
-    # Build lightweight edge objects for the tagging pass. WI-kumol: carry
-    # is_resolved + dst_ref so the ADR-0028 receiver gate / WI-tihup lookup fire.
+    # Build lightweight edge objects for the tagging pass. Carry is_resolved +
+    # dst_ref so the ADR-0028 receiver gate / dst_ref lookup fire (WI-kumol).
     edges = _rehydrate_io_boundary_edges(raw_edges)
 
     # Detect languages in the graph
@@ -6034,17 +6156,17 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         if lang:
             languages.add(lang)
 
-    # WI-najil: disclose in_progress catalogs so a zero-match result for
-    # such a language is not read as a genuine "no I/O in this code".
+    # Disclose in_progress catalogs so a zero-match result for such a
+    # language is not read as a genuine "no I/O in this code" (WI-najil).
     _warn_in_progress_catalogs(languages)
     if not getattr(args, "no_default_overlays", False):
         _warn_default_overlays(languages)
 
     # Load catalogs for detected languages
-    # INV-javam: track unsupported languages (no catalog) separately from
+    # Track unsupported languages (no catalog) separately from
     # supported-but-zero-matches languages. The former must be surfaced
     # to callers so "zero I/O detected" isn't silently indistinguishable
-    # from "language has no catalog at all".
+    # from "language has no catalog at all" (INV-javam).
     io_overlays = _resolve_io_overlays(args, repo_root=repo_root)
     _disclose_io_overlays(io_overlays)
 
@@ -6099,9 +6221,9 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # Apply boundary/primitive/exclude-tests filters
     boundary_filter = getattr(args, "boundary", None)
     primitive_filter = getattr(args, "primitive", None)
-    # WI-sifif: production-only is the default. Tests can opt-in to the
-    # historical "show everything" behavior by overriding exclude_tests=False;
-    # CLI users do the same via --include-tests.
+    # Production-only is the default (WI-sifif). Tests can opt in to showing
+    # everything by overriding exclude_tests=False; CLI users do the same via
+    # --include-tests.
     exclude_tests = getattr(args, "exclude_tests", True)
 
     from .io_boundary import (
@@ -6110,8 +6232,8 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         compute_leaf_rollups,
     )
 
-    # WI-rubir: when the filter path rebuilds BoundaryMapEntry it must
-    # also recompute the WI-darad leaf-caller roll-ups for the surviving
+    # When the filter path rebuilds BoundaryMapEntry it must also recompute
+    # the leaf-caller roll-ups (WI-rubir, WI-darad) for the surviving
     # chain subset; otherwise leaf_callers / entry_points_per_leaf are
     # silently dropped (they default to empty on the dataclass), and
     # because exclude_tests=True is the default, every normal CLI
@@ -6130,8 +6252,8 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             return _is_test_node(src_node.get("path", ""), src_node.get("meta"))
         return False
 
-    # WI-pogar / ADR-0016 §7: the calls whose I/O is UNKNOWN because their
-    # source was not analysed. Taken from the UNFILTERED bucket on purpose --
+    # The calls whose I/O is UNKNOWN because their source was not analysed
+    # (WI-pogar, ADR-0016 §7). Taken from the UNFILTERED bucket on purpose --
     # ``--boundary net_send`` asks about network sends, and an untraced call
     # may be one, so the disclosure must not vanish with the bucket it lives
     # in. Only the test filter applies: a test's untraced call is not a
@@ -6189,10 +6311,11 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                 untraced_modules,
             )
 
-            # INV-pubom (amended, WI-huhit/WI-foduh): total_io_edges is the
-            # real/verified surface (excl external_potential AND command_launch,
-            # WI-javoh); both are disclosed separately — same split as
-            # BoundaryMap.to_dict so the filtered and unfiltered JSON paths agree.
+            # total_io_edges is the real/verified surface (excl
+            # external_potential AND command_launch); both are disclosed
+            # separately — same split as BoundaryMap.to_dict so the filtered
+            # and unfiltered JSON paths agree (INV-pubom, WI-huhit, WI-foduh,
+            # WI-javoh).
             filtered_total = sum(
                 len(e.chains)
                 for k, e in filtered_entries.items()
@@ -6200,11 +6323,11 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             )
             # ADR-0049. THIS PATH REBUILDS THE ENVELOPE BY HAND, so a new
             # disclosed-only bucket has to be added in BOTH homes or the two
-            # JSON paths disagree — the INV-pubom drift, caught here by the
-            # envelope key-lock test rather than in the field. The count itself
+            # JSON paths disagree (INV-pubom); the envelope key-lock test
+            # catches that drift. The count itself
             # comes from the one helper ``BoundaryMap`` uses (WI-fasap).
             output = {
-                # PR-B: pin the io-boundaries envelope schema_version on
+                # Pin the io-boundaries envelope schema_version on
                 # the filtered path too; the unfiltered path inherits it
                 # from ``BoundaryMap.to_dict``.
                 "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
@@ -6217,8 +6340,10 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                     filtered_entries, "net_listen"),
                 "db_compose_edges": disclosed_chain_count(
                     filtered_entries, "db_compose"),
-                # WI-pogar: from ``untraced_chains``, not ``filtered_entries``
-                # -- see where that list is built.
+                "ipc_listen_edges": disclosed_chain_count(
+                    filtered_entries, "ipc_listen"),
+                # From ``untraced_chains``, not ``filtered_entries`` -- see
+                # where that list is built (WI-pogar).
                 "untraced_modules": untraced_modules(untraced_chains),
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())
@@ -6226,15 +6351,15 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             }
         else:
             output = bmap.to_dict()
-        # INV-javam: expose unsupported-language signal to programmatic
-        # consumers. Empty list when every detected language has a catalog.
+        # Expose the unsupported-language signal to programmatic consumers
+        # (INV-javam). Empty list when every detected language has a catalog.
         output["unsupported_languages"] = unsupported_languages
         print(json.dumps(output, indent=2, sort_keys=True))
         return 0
 
-    # WI-mibag: text-output suppression of the `external_potential`
-    # bucket. The bucket can dominate on large repos (kafka had 76K
-    # chains of 76K total) and drown out the per-primitive signal —
+    # Text-output suppression of the `external_potential` bucket (WI-mibag).
+    # The bucket can dominate on large repos (nearly every chain) and drown
+    # out the per-primitive signal —
     # but it remains useful, so JSON callers still get everything and
     # users can opt back in via `--show-external-potential` or by
     # targeting the bucket with `--boundary external_potential`.
@@ -6248,8 +6373,8 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         }
 
     if not display_entries and untraced_chains:
-        # WI-pogar: "No I/O boundary calls detected." over a call whose source
-        # was never read is the "no I/O" ADR-0016 §7 forbids. Say what is true:
+        # "No I/O boundary calls detected." over a call whose source was never
+        # read is the "no I/O" ADR-0016 §7 forbids (WI-pogar). Say what is true:
         # nothing was CLASSIFIED, and the disclosure below says what is unknown.
         print("No classified I/O boundary calls detected.")
     elif getattr(args, "by_file", False):
@@ -6282,10 +6407,9 @@ def _print_untraced_disclosure(
 
     ADR-0016 §7: installed dependency source is not parsed by default, so a
     chain into it stops at a boundary stub, and the absence of a chain there is
-    not the absence of I/O. These calls are the ``external_potential`` bucket;
-    this replaced a one-line note that called them "unclassified calls into
-    named external modules" and printed under "No I/O boundary calls detected."
-    -- accurate about the bucket, silent about what it means.
+    not the absence of I/O. These calls are the ``external_potential`` bucket,
+    and this notice says what that bucket means rather than only that it
+    holds unclassified calls into named external modules.
 
     Modules are grouped by the ``dst_ecosystem`` stamp so a dependency (the
     ``--trace-deps`` / overlay errand) is not confused with a runtime module
@@ -6331,8 +6455,8 @@ def _print_untraced_disclosure(
 def _print_unsupported_languages_notice(
     unsupported_languages: list[str],
 ) -> None:
-    """INV-javam: emit an explicit notice when the repo contains languages
-    with no I/O primitive catalog.
+    """Emit an explicit notice when the repo contains languages with no I/O
+    primitive catalog (INV-javam).
 
     Without this, the human-readable output for an unsupported language
     is indistinguishable from a genuinely I/O-free codebase — and
@@ -6413,9 +6537,10 @@ def _print_io_boundaries_by_type(
         print("No I/O boundary calls detected.")
         return
 
-    # WI-huhit/WI-foduh: the headline canonical count is the REAL/verified I/O
-    # surface (excl external_potential), matching JSON total_io_edges regardless
-    # of --show-external-potential; external_potential is disclosed separately.
+    # The headline canonical count is the REAL/verified I/O surface (excl
+    # external_potential), matching JSON total_io_edges regardless of
+    # --show-external-potential; external_potential is disclosed separately
+    # (WI-huhit, WI-foduh).
     total = sum(
         len(e.chains) for k, e in entries.items() if k != "external_potential"
     )
@@ -6447,8 +6572,8 @@ def _print_io_boundaries_by_type(
         for prim in sorted(prim_counts.keys()):
             count = prim_counts[prim]
             risk_flag = " *** HIGH RISK ***" if is_high_risk(prim) else ""
-            # WI-vumos: tier tag describes the boundary destination, not
-            # the caller. Render it on the primitive header line so the
+            # The tier tag describes the boundary destination, not the
+            # caller (WI-vumos). Render it on the primitive header line so the
             # referent is unambiguous. All chains hitting the same
             # primitive share the same dst, so we read tier from any one
             # of them.
@@ -6459,8 +6584,8 @@ def _print_io_boundaries_by_type(
                         f"  [tier-{chain.dst_tier} {chain.dst_tier_name}]"
                     )
                     break
-            # WI-pogar: an unclassified call into dependency source that was
-            # not analysed -- its I/O is unknown, not absent (ADR-0016 §7).
+            # An unclassified call into dependency source that was not
+            # analysed -- its I/O is unknown, not absent (ADR-0016 §7, WI-pogar).
             if any(
                 c.boundary == "external_potential"
                 and c.dst_ecosystem == "third_party"
@@ -6470,7 +6595,7 @@ def _print_io_boundaries_by_type(
             print(f"    {prim} ({count}){risk_flag}{prim_tier_tag}")
             for chain in chains_by_prim[prim]:
                 caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
-                # Plan C, PR C: external_potential chains for in_progress
+                # external_potential chains for in_progress
                 # source languages flag the absence-of-catalog-hit as
                 # unreliable so the user knows the language's stdlib is
                 # not yet provenance-validated. The unreliable flag stays
@@ -6517,8 +6642,8 @@ def _print_io_boundaries_by_file(
             display_path = _relativize(raw_path, repo_root) if raw_path else "unknown"
             chains_by_file[display_path].append(chain)
 
-    # WI-huhit/WI-foduh: canonical count excludes external_potential (matches
-    # JSON total_io_edges); external_potential disclosed separately.
+    # Canonical count excludes external_potential (matches JSON
+    # total_io_edges); external_potential disclosed separately (WI-huhit, WI-foduh).
     total = sum(
         len(e.chains) for k, e in entries.items() if k != "external_potential"
     )
@@ -6564,21 +6689,23 @@ def _build_ddg_for_verify_claims(
     set[str],
     dict[str, frozenset[str]],
     dict[str, list["ReturnStatement"]],
+    dict[str, list[tuple[int, tuple[Optional[str], ...]]]],
+    dict[str, tuple[str, ...]],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
     Thin adapter over :func:`hypergumbo_core.ddg_build.build_repo_ddg`; the
     walk/parse/solve pipeline itself lives there, because this module is
     scoped to argument parsing and command dispatch. Kept as a named
-    function so ``cmd_verify_claims`` reads the same as before and so the
+    function so ``cmd_verify_claims`` reads as one call and so the
     force-import of the def/use extractors has one home.
 
     Why the force-imports: ``register_def_use_extractor`` and
     ``register_ddg_language`` fire on first import of the language module,
     and nothing else in the verify-claims path imports them. Without this,
     every language silently produces CFGs with empty defines/uses and
-    therefore zero DDG edges — which is exactly how the Rust and
-    TypeScript extractors came to have no production caller at all.
+    therefore zero DDG edges, and an extractor is left with no production
+    caller.
 
     ``candidate_languages`` is the set the caller cares about (normally the
     languages the taint catalog covers for this repo); it is intersected
@@ -6595,8 +6722,9 @@ def _build_ddg_for_verify_claims(
     It is filled with or without DDG edges, so a repository whose functions
     define nothing still gets it on the structural arm.
 
-    Returns ``([], set(), {}, {}, set(), {}, {})`` if tree-sitter isn't
-    available — the caller falls back to the structural pass in that case.
+    Returns ``([], set(), {}, {}, set(), {}, {}, {}, {})`` if the def/use
+    extractors cannot be registered (tree-sitter unavailable) — the caller
+    falls back to the structural pass in that case.
     """
     from .dataflow_scope import ensure_def_use_extractors_registered
     from .ddg_build import (
@@ -6606,10 +6734,8 @@ def _build_ddg_for_verify_claims(
     )
 
     # Registration is an import side effect, so a def/use module nobody imports
-    # registers nothing and its language is skipped by build_repo_ddg — which
-    # is one of the two independent reasons the Rust and TypeScript extractors
-    # had no production caller for months while both shipped with tests at 100%
-    # coverage. The import list is a second home for a fact the filesystem
+    # registers nothing and its language is skipped by build_repo_ddg, even
+    # when the extractor itself is fully tested. The import list is a second home for a fact the filesystem
     # already holds; test_ddg_language_wiring.py fails when the two disagree, so
     # a new extractor cannot be added and silently left unimported. It lives in
     # ``dataflow_scope`` because the coverage table needs the same registries
@@ -6621,7 +6747,7 @@ def _build_ddg_for_verify_claims(
         # The fail-closed default lives at the point of USE (a function absent
         # from the set only qualifies because it was checked and covered), not
         # here, where the whole analysis is absent rather than incomplete.
-        return [], set(), {}, {}, set(), {}, {}
+        return [], set(), {}, {}, set(), {}, {}, {}, {}
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -6642,6 +6768,8 @@ def _build_ddg_for_verify_claims(
         result.forfeit_refutation,
         result.unaccounted_names,
         result.return_spans,
+        result.stmt_targets,
+        result.params,
     )
 
 
@@ -6650,20 +6778,15 @@ def _census_languages(
 ) -> set[str]:
     """Which languages this repo contains, as the TAINT arm counts them.
 
-    INV-sarum. ``_taint_blind_reason`` runs two checks that must agree about
-    what "present" means: this census (over NODES) decides which languages are
+    ``_taint_blind_reason`` runs two checks that must agree about what
+    "present" means: this census (over NODES) decides which languages are
     SUPPORTED, and ``compute_boundary_coverage`` then asks whether each of them
-    produced call edges — over a PRODUCTION-SCOPED edge list. The 08-13 fix
-    (``adfaaeebf2``) scoped the edges for both checks and left this census
-    unscoped, so a language present only as test fixtures was counted present
-    while its edges were deliberately excluded. The pair then read as analyzer
-    blindness: "supported language(s) ... were analyzed but produced no call
-    edges". Measured on a 152,154-edge self-survey that was elixir, go, java,
-    rust and swift — every tracked file of each under a test or fixture
-    directory.
-
-    INV-motos' shape for the third time in this one function: sharing the
-    predicate is not enough when the callers run it over different populations.
+    produced call edges — over a PRODUCTION-SCOPED edge list. So the census is
+    production-scoped too: unscoped, it would count a language present only as
+    test fixtures while that language's edges are deliberately excluded, and
+    the pair would read as analyzer blindness ("supported language(s) ... were
+    analyzed but produced no call edges"). Sharing the predicate is not enough
+    when the callers run it over different populations (INV-sarum, INV-motos).
 
     WHY PRODUCTION-SCOPED and not the other direction: ``SECURITY.md``'s scope
     statement (WI-kozos) declares that the audit covers the INSTALLED CLI, so a
@@ -6675,8 +6798,8 @@ def _census_languages(
     The narrower-looking version — keep only languages that emitted scoped call
     edges — is wrong in a way that is easy to miss and expensive: it also drops
     a language that IS production code and emits nothing, which is exactly the
-    Kotlin case (roughly 95% of its catalogued sinks unreachable) that this
-    check exists to flag. That would turn the F69.A1 blindness signal into a
+    case (e.g. Kotlin, with most of its catalogued sinks unreachable) that this
+    check exists to flag. That would turn the blindness signal (F69.A1) into a
     silent pass. Pinned by
     ``test_a_PRODUCTION_language_that_emits_nothing_STILL_blocks``.
 
@@ -6684,15 +6807,12 @@ def _census_languages(
     same predicate the flow filter and the edge scoping already run (L53: a
     second home for one fact drifts immediately).
 
-    PRESENCE MEANS A SOURCE FILE, NOT A REFERENCE TARGET. Measured on the real
-    self-survey after the first version of this fix: go, java, rust, swift and
-    elixir stayed in the census on the strength of 9, 9, 8, 4 and 1
-    ``<external>`` nodes, with zero production source files between them — the
-    exact five languages INV-sarum was filed about, surviving the narrowing
-    meant to drop them. A synthetic node exists BECAUSE a fixture referenced
-    it, so counting it as evidence of presence inverts its meaning.
-    ``names_no_source_file`` is the shared predicate for that (it was already
-    needed, privately, by ``sketch._map_source_paths``).
+    PRESENCE MEANS A SOURCE FILE, NOT A REFERENCE TARGET. A synthetic
+    ``<external>`` node exists BECAUSE some file — possibly a fixture —
+    referenced it, so counting it as evidence of presence would keep
+    fixture-only languages in the census and invert its meaning.
+    ``names_no_source_file`` is the shared predicate for that (also used by
+    ``sketch._map_source_paths``).
     """
     from .paths import names_no_source_file
     from .verify_claims import SOURCE_SCOPE_PRODUCTION, symbol_source_scope
@@ -6750,11 +6870,19 @@ def _sink_zone_gaps(
 ) -> dict[tuple[str, str], Any]:
     """What each taint claim's sink zone cannot see, per language (INV-pivam).
 
-    Only ADR-0060's zones are judged this way. An I/O-derived zone's sinks come
-    from the same catalogue whose presence the no-catalogue gate already checks
-    per language; a non-boundary zone can be empty for a language whose
-    catalogue is otherwise full (Go has no ``code_execution`` sink), which that
-    gate cannot see.
+    EVERY BUILT-IN ZONE is judged this way (WI-sojok): ADR-0060's and every
+    I/O-derived one (``taint.builtin_sink_zones``). The no-catalogue gate asks
+    whether a language has a taint catalogue at all, not whether it has a sink
+    in THIS claim's zone, and any zone can be empty for a language whose
+    catalogue is otherwise full: Go has no ``code_execution`` sink and no
+    ``database`` sink, so without this check "untrusted input never reaches a
+    database" would read ``confirmed`` on a Go repo calling ``db.Exec``. A zone
+    a language can never have (``browser_storage`` outside JS) withholds too,
+    as ``code_execution`` does: the tool cannot tell "no such sink exists" from "no row
+    names it". A zone only a project catalogue declares is not judged: its
+    sinks are where the project put them. A zone whose sinks for a language
+    are all COMMUNITY rows is reported apart (``community_only_languages``)
+    and withholds the same way (WI-mizog, ADR-0061 ruling 2).
 
     ``present_languages`` are the taint-supported languages with production
     source in the repo (the census that decides support), narrowed to the
@@ -6764,14 +6892,15 @@ def _sink_zone_gaps(
     the case this gate exists for. A language with no taint catalogue is the
     blindness gate's to report.
     """
-    from .taint import shipped_non_boundary_sink_zones
+    from .taint import builtin_sink_zones, shipped_non_boundary_sink_zones
     from .verify_claims import SinkZoneGap
 
     zones = shipped_non_boundary_sink_zones()
+    judged = builtin_sink_zones()
     gaps: dict[tuple[str, str], Any] = {}
     for claim in claims:
         tf = claim.constraint_taint_flow
-        if tf is None or tf.prohibited_sink_zone not in zones:
+        if tf is None or tf.prohibited_sink_zone not in judged:
             continue
         key = (tf.source_taint, tf.prohibited_sink_zone)
         if key in gaps:
@@ -6780,18 +6909,26 @@ def _sink_zone_gaps(
         if tf.source_taint in flow_languages_by_label:
             present &= set(flow_languages_by_label[tf.source_taint])
         zone = tf.prohibited_sink_zone
-        uncovered = sorted(
-            lang for lang in present
-            if not any(s.zone == zone for s in taint_catalog.sinks_for_language(lang))
+        in_zone = {
+            lang: [s for s in taint_catalog.sinks_for_language(lang) if s.zone == zone]
+            for lang in present
+        }
+        uncovered = sorted(lang for lang, sinks in in_zone.items() if not sinks)
+        # WI-mizog: a zone covered by community rows alone is not covered --
+        # ADR-0061 ruling 2 lets them add findings, never clean a verdict.
+        community_only = sorted(
+            lang for lang, sinks in in_zone.items()
+            if sinks and all(s.community for s in sinks)
         )
         unreached = tuple(sorted(
-            (lang, shapes) for lang, shapes in zones[zone].items()
+            (lang, shapes) for lang, shapes in zones.get(zone, {}).items()
             if lang in present and lang not in uncovered
         ))
-        if uncovered or unreached:
+        if uncovered or unreached or community_only:
             gaps[key] = SinkZoneGap(
                 zone=zone, uncovered_languages=tuple(uncovered),
                 unreached_shapes=unreached,
+                community_only_languages=tuple(community_only),
             )
     return gaps
 
@@ -6856,39 +6993,34 @@ def _taint_blind_reason(
     except these named doors", which is the whole point of the fourth verdict.
 
 
-    TWO WAYS the taint analysis fails to look, and only the first was ever
-    reported. Both were measured on live fixtures:
+    TWO WAYS the taint analysis fails to look:
 
     * **No catalogue.** PHP has no taint sources/sinks, so
-      ``file_put_contents("/tmp/out", $_GET['payload'])`` produced no findings
-      and the claim came back ``confirmed`` at exit 0. Already computed as
-      ``unsupported_taint_languages`` and already printed to stderr — as a
-      note asking the reader to downgrade the verdict themselves.
+      ``file_put_contents("/tmp/out", $_GET['payload'])`` produces no findings
+      and the claim would come back ``confirmed`` at exit 0. Computed as
+      ``unsupported_taint_languages``.
 
     * **Catalogue but blind.** Kotlin HAS a taint catalogue, so it never
       appears in the list above, yet it emits no call edge at all for an
-      external instance-method call — about 95% of its catalogued sinks. A
-      Kotlin file reading a socket and writing it to disk also returned
+      external instance-method call — most of its catalogued sinks. A
+      Kotlin file reading a socket and writing it to disk would also return
       ``confirmed``, with nothing flagged anywhere in the output. This is the
       worse of the two: the tool claims support, finds nothing, and reports
       silence as safety.
 
     The second case reuses :func:`compute_boundary_coverage` rather than
     growing a second implementation of "did this language produce call
-    edges" — it already answers exactly that question for boundary claims,
-    which is why the boundary side never had this bug.
+    edges" — it already answers exactly that question for boundary claims.
 
     Deliberately conservative: a language with a catalogue and genuinely no
     I/O also reports blind. That yields ``inconclusive`` on a clean repo,
     which is an honest "could not tell" rather than an unearned pass.
 
-    KNOWN RESIDUAL, measured and NOT closed by this function. The second
-    check asks "did this language produce ANY call edges", and a single edge
-    is enough to look covered. The Kotlin fixture above emits exactly one
-    ``calls`` edge (plus ``imports`` and ``contains``) while missing every
-    external method call, so it still returns ``confirmed`` — 93 catalogued
-    sinks, ``dataflow_capable: False``, zero findings, and a clean verdict.
-    Closing it needs a signal with resolution finer than "any", e.g. the
+    KNOWN RESIDUAL, NOT closed by this function. The second check asks "did
+    this language produce ANY call edges", and a single edge is enough to look
+    covered: a Kotlin file that emits one ``calls`` edge while missing every
+    external method call still returns ``confirmed``, with zero findings and
+    a clean verdict. Closing it needs a signal with resolution finer than "any", e.g. the
     share of method-construct call edges that resolve to something the
     catalogue can match, and that is a measurement exercise rather than a
     predicate change. Pinned as an xfail by
@@ -6904,30 +7036,23 @@ def _taint_blind_reason(
     # edges has no call structure for a taint flow to travel through, so its
     # missing catalogue says nothing about this claim.
     #
-    # This narrowing is not a nicety — without it the gate is useless. The
-    # first version blocked on ``unsupported_taint_languages`` directly, and
-    # a repo containing ONE yaml file (or json, or markdown — i.e. every real
-    # repo, including one that merely keeps its own claims file in-tree) was
-    # reported inconclusive forever. `confirmed` became unreachable, which is
-    # the blanket-downgrade failure mode that makes a verdict worthless in
-    # the other direction. Caught by
+    # This narrowing is not a nicety — without it the gate is useless.
+    # Blocking on ``unsupported_taint_languages`` directly would report a repo
+    # containing ONE yaml file (or json, or markdown — i.e. every real repo,
+    # including one that merely keeps its own claims file in-tree)
+    # inconclusive forever. `confirmed` would be unreachable, which is the
+    # blanket-downgrade failure mode that makes a verdict worthless in the
+    # other direction. Pinned by
     # test_taint_recall_corpus.test_python_source_without_any_sink_confirms,
     # whose fixture is a legitimately clean repo.
     # AND ONLY PRODUCTION CODE COUNTS, for the same reason the flow filter
     # already says so (INV-dabuf). ``verify_claims`` excludes test/fixture/
     # migration-SOURCED flows by default (WI-bifob) because a fixture reaching
     # a real primitive is a fixture doing its job, not the shipped application
-    # doing it. This census asked no such question, so ONE fixture file in a
-    # language with no taint catalogue blocked EVERY claim in the repo — while
-    # a flow out of that same file was being discarded as non-production. One
-    # tool, two answers about whether a fixture counts.
-    #
-    # MEASURED on hypergumbo's own self-proof at dev d7b069b106: 18 of 18
-    # claims inconclusive, every one blocked by (bash, csharp, solidity),
-    # where csharp is 3 files and solidity 1 — ALL of them under
-    # tests/fixtures. bash is 44 files and mostly real, so this narrowing does
-    # NOT hand the self-proof a pass; it isolates the residual to the one
-    # language that genuinely earns it.
+    # doing it. Without the same scoping here, ONE fixture file in a language
+    # with no taint catalogue would block EVERY claim in the repo — while a
+    # flow out of that same file is discarded as non-production. One tool,
+    # two answers about whether a fixture counts.
     #
     # The classifier is IMPORTED, not re-derived: ``symbol_source_scope`` is
     # the same predicate ``_source_scope`` runs over a flow's source symbol.
@@ -6935,17 +7060,16 @@ def _taint_blind_reason(
     # SCOPED ONCE, CONSUMED BY BOTH CHECKS. The narrowing is applied to the
     # EDGE LIST rather than to the language set, so the census below and the
     # ``compute_boundary_coverage`` call further down walk the same population.
-    # Narrowing only the first check is how this function would come to give
-    # two different answers about the same fixture: measured mid-fix, the
-    # census correctly stopped naming a fixture-only language and the verdict
-    # went on blocking anyway, because the second check still saw the fixture's
-    # edges. That is INV-motos exactly — sharing a predicate is not enough when
-    # the callers run it over different populations.
+    # Narrowing only the first check would make this function give two
+    # different answers about the same fixture: the census would stop naming
+    # a fixture-only language while the verdict went on blocking, because the
+    # second check still saw the fixture's edges. Sharing a predicate is not
+    # enough when the callers run it over different populations (INV-motos).
     scoped_edges = _taint_census_edges(raw_edges, include_non_production)
-    # WI-rusil: SCOPED ON THE EDGE LIST, for the reason given below for the
-    # production filter -- both checks must walk one population. A language
-    # the claim's flows cannot be in drops out of the census AND of the
-    # coverage check together.
+    # SCOPED ON THE EDGE LIST, for the reason given above for the production
+    # filter -- both checks must walk one population. A language the claim's
+    # flows cannot be in drops out of the census AND of the coverage check
+    # together (WI-rusil).
     if source_languages is not None:
         scoped_edges = [
             edge for edge in scoped_edges
@@ -6957,15 +7081,14 @@ def _taint_blind_reason(
         taint_supported_languages = (
             set(taint_supported_languages) & set(source_languages)
         )
-    # WI-mital: the build-target linker mints a ``calls`` edge from a Cargo
-    # ``[[bin]]`` symbol (language slot ``toml``) to the ``main()`` it names, so
-    # a manifest appears to make calls and blocks every claim over a Rust binary
-    # crate on a file that performs no I/O. The predicate is IMPORTED from
-    # ``verify_claims`` rather than re-derived, for the reason the comment above
-    # already gives about this function's two checks: measured mid-fix, patching
-    # only the I/O gate left mini-redis still reporting ``toml`` THROUGH THIS
-    # CENSUS. A rule applied in one place and not the other is how this function
-    # comes to give two different answers.
+    # The build-target linker mints a ``calls`` edge from a Cargo ``[[bin]]``
+    # symbol (language slot ``toml``) to the ``main()`` it names, so a
+    # manifest would appear to make calls and block every claim over a Rust
+    # binary crate on a file that performs no I/O (WI-mital). The predicate is
+    # IMPORTED from ``verify_claims`` rather than re-derived, for the reason
+    # the comment above gives about this function's two checks: applying the
+    # rule to the I/O gate alone would still leave ``toml`` blocking THROUGH
+    # THIS CENSUS.
     blind = _uncatalogued_code_languages(unsupported_taint_languages, scoped_edges)
     if blind:
         langs = ", ".join(blind)
@@ -6993,6 +7116,52 @@ def _taint_blind_reason(
     return None, []
 
 
+#: The behavior-map record lists ``verify-claims`` walks, and whether a null
+#: value means "absent" or is refused. Only ``request_ingress`` is read with
+#: a fallback (``ingress_candidates``' ``isinstance`` test, an older map's
+#: absent key); ``nodes``, ``edges`` and ``entrypoints`` are iterated as
+#: read, so a null crashed.
+_VERIFY_CLAIMS_MAP_RECORD_LISTS: tuple[tuple[str, bool], ...] = (
+    ("nodes", False),
+    ("edges", False),
+    ("entrypoints", False),
+    ("request_ingress", True),
+)
+
+
+def _verify_claims_map_shape_error(behavior_map: Dict[str, Any]) -> Optional[str]:
+    """Why ``behavior_map``'s record lists cannot be walked, or ``None``.
+
+    ``load_substrate`` checks that a ``--input`` file is a JSON object with a
+    ``nodes`` key; it does not look inside. A record list of the wrong type
+    (``"edges": 5``) or a record that is not an object (``"nodes": [5]``)
+    crashed the first loop that read it, and the crash reached ``main``'s
+    internal-error net, which exits 1 -- the code ``verify-claims`` uses for
+    ``violated`` (WI-tajup). Checked here, for this command only, rather than
+    in ``load_substrate``: every other ``--input`` consumer keeps its current
+    behaviour.
+
+    NOT CHECKED: the fields inside a record (an edge whose ``src`` is a
+    number, a ``meta`` that is a string). A map hypergumbo wrote does not
+    carry them, and checking every field of every record of a 300 MB map is a
+    schema validation, not a shape check.
+    """
+    for key, null_is_absent in _VERIFY_CLAIMS_MAP_RECORD_LISTS:
+        if key not in behavior_map:
+            continue
+        records = behavior_map[key]
+        if records is None and null_is_absent:
+            continue
+        if not isinstance(records, list):
+            return (f"not a usable behavior map: '{key}' must be a list, got "
+                    f"{type(records).__name__}")
+        for index, record in enumerate(records):
+            if not isinstance(record, dict):
+                return (f"not a usable behavior map: '{key}[{index}]' must be "
+                        f"an object, got {type(record).__name__}")
+    return None
+
+
 def _verify_claims_boundary_vocabulary_help() -> str:
     """The ``boundary:`` vocabulary block of ``verify-claims --help``, DERIVED.
 
@@ -7000,12 +7169,10 @@ def _verify_claims_boundary_vocabulary_help() -> str:
     ``constraint.boundary`` values are legal and promises that any other value
     fails with exit 2. ``load_claims`` keeps that promise against
     ``KNOWN_IO_BOUNDARIES``, which is ``all_io_boundary_names()`` over the
-    io-boundary registry (ADR-0050). The help used to carry a hand-written copy
-    of the same set, and each value the registry gained was missing from it --
-    ``command_launch`` and ``net_listen`` (fixed by hand in PR #776), then
-    ``navigation_read`` (INV-dadu): the validator accepted it, the help did
-    not list it. An author adding a boundary edits the registry and has no
-    reason to suspect prose in cli.py restates it, so a copy drifts by default.
+    io-boundary registry (ADR-0050). A hand-written copy of the same set in the
+    help would drift by default: an author adding a boundary edits the
+    registry and has no reason to suspect prose in cli.py restates it, so the
+    validator would accept a value the help does not list (INV-dadu).
 
     Built from the registry when the parser is constructed, so the help and the
     validator cannot name different sets. Sorted, the order the validator's
@@ -7038,23 +7205,38 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     """Verify security claims against I/O boundary map and taint flow.
 
     Loads claims from a YAML file, computes the I/O boundary map, runs
-    taint-flow analysis if needed, and checks each claim. Returns exit
-    code 1 if any claim is violated. Supports boundary constraints
-    (ADR-0016) and taint-flow constraints (ADR-0017).
+    taint-flow analysis if needed, and checks each claim. Supports boundary
+    constraints (ADR-0016) and taint-flow constraints (ADR-0017).
 
-    Trust zones checked: ``host_fs``, ``network``, ``host_env``, ``ipc``,
-    ``browser_storage``, ``relay``. Built-in taint labels: ``host_secret``,
+    Exit codes (WI-tajup; the table lives in ``verify_claims``): 0 every
+    claim confirmed; 1 at least one violated; 2 bad input; 3 at least one
+    ``confirmed_with_caveats`` (and none violated or inconclusive); 4 at least
+    one inconclusive (and none violated). EVERY refusal of input below returns
+    ``EXIT_BAD_INPUT`` before a verdict exists -- the claims file, the
+    ``--input`` map, a catalogue -- so no bad input can read as a verdict.
+    Two paths used to return 1, the ``violated`` code: a missing claims file
+    and a missing ``--input`` map.
+
+    Built-in trust zones: the ``AUTO_SINK_ZONE_MAP`` zones in ``taint.py``
+    (``host_fs``, ``subprocess``, ``network``, ``host_env``, ``ipc``,
+    ``browser_storage``, ``database``, ``logging``, ...) plus ADR-0060's
+    ``code_execution`` and ``dom_injection``; a user sink catalogue may add
+    its own (``relay`` is PlazaFlow's). Built-in taint labels: ``host_secret``,
     ``host_description``, ``untrusted_input``, ``plaintext``, ``key_material``,
     ``ciphertext``, ``derived_key``. The source and sink catalogs are derived
     automatically from ``io_primitives/*.yaml`` (every write-side primitive is
     a sink at ``trust_level=untrusted``; ``env_read``, ``host_info_read``,
-    ``net_recv``, ``ipc_recv``, ``db_read``, ``navigation_read`` are sources). ``host_description``
+    ``net_recv``, ``ipc_recv``, ``db_read``, ``navigation_read``,
+    ``command_line_read`` are sources; a ``command_line_read`` flow -- argv,
+    which the launcher chose -- is set aside and counted per verdict in
+    ``command_line_flows`` unless the claim's ``taint_flow`` sets
+    ``include_command_line: true``, WI-zidam). ``host_description``
     is NOT a weaker ``host_secret``: it is a different fact, and a claim naming
     one does not match flows carrying the other (INV-tutar). YAML files under ``taint_sources/`` and
     ``taint_sanitizers/`` contribute cryptographic labels and sanitizer
-    transforms that the auto-layer cannot express.  (Built-in sinks come
-    only from the auto-layer above; ``taint_sinks/`` as a shipped
-    directory was retired in 51e1d232f3.)
+    transforms that the auto-layer cannot express, and ``taint_sinks/``
+    ships the sinks that are not I/O boundaries (``code_execution``,
+    ``dom_injection``; ADR-0060).
 
     Project-local catalogs (WI-votan): the ``--taint-sources``,
     ``--taint-sinks``, and ``--taint-sanitizers`` flags each accept a YAML
@@ -7071,37 +7253,41 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     a domain-specific taint source label.
     """
     repo_root = Path(args.path).resolve()
-    # INV-vivok: the names this repo publishes itself under, read from its own
-    # manifests. Computed once here — the only layer holding ``repo_root`` —
+    # The names this repo publishes itself under, read from its own
+    # manifests (INV-vivok). Computed once here — the only layer holding ``repo_root`` —
     # and threaded to both coverage call sites, the way
     # ``higher_fidelity_available`` already is.
     first_party_packages = collect_first_party_package_names(repo_root)
     claims_path = Path(args.claims)
 
-    if not claims_path.exists():
-        print(f"Error: Claims file not found: {claims_path}", file=sys.stderr)
-        return 1
-
-    # Load claims
     from .verify_claims import (
+        EXIT_BAD_INPUT,
         VERIFY_CLAIMS_SCHEMA_VERSION,
         ClaimsFileError,
         ScopedBlindness,
         compute_boundary_coverage,
+        exit_code_for_verdicts,
+        ingress_candidates,
         load_claims,
+        unseeded_ingress_handlers,
         untyped_receiver_sink_zones,
         verify_claims as _verify,
     )
 
-    # META-jurig load gate: malformed / typo'd / unknown-vocabulary claims
-    # surface as a clean rc=2 error rather than a raw traceback (INV-zurih /
-    # WI-fuhaf) or a silent false "confirmed" (INV-gobob / WI-ruzib / WI-bopoz).
-    # rc=2 (not 1) keeps a bad-input error distinct from a real violation.
+    if not claims_path.exists():
+        print(f"Error: Claims file not found: {claims_path}", file=sys.stderr)
+        return EXIT_BAD_INPUT
+
+    # Load gate (META-jurig): malformed / typo'd / unknown-vocabulary claims
+    # surface as a clean bad-input error rather than a raw traceback
+    # (INV-zurih / WI-fuhaf) or a silent false "confirmed" (INV-gobob /
+    # WI-ruzib / WI-bopoz). 2, not 1 (a real violation) nor 4 (an analysis
+    # that could not decide).
     try:
         claims = load_claims(claims_path)
     except ClaimsFileError as exc:
         print(f"Error: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_BAD_INPUT
     if not claims:
         print("No claims found in file.")
         return 0
@@ -7118,16 +7304,31 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             f"Error: Input file not found: {getattr(args, 'input', None)}",
             file=sys.stderr,
         )
-        return 1
+        return EXIT_BAD_INPUT
 
-    behavior_map = load_substrate(input_path)
+    # A JSON or shape failure raises SubstrateError, which ``main`` maps to 2.
+    # An OSError (a directory, a permission refusal) and a record list of the
+    # wrong type would reach main's internal-error net instead, which exits 1
+    # -- the ``violated`` code (WI-tajup) -- so both are refused here.
+    try:
+        behavior_map = load_substrate(input_path)
+    except OSError as exc:
+        print(
+            f"Error: could not read behavior map {input_path}: "
+            f"{exc.strerror or exc}",
+            file=sys.stderr,
+        )
+        return EXIT_BAD_INPUT
+    shape_error = _verify_claims_map_shape_error(behavior_map)
+    if shape_error is not None:
+        print(f"Error: {input_path}: {shape_error}", file=sys.stderr)
+        return EXIT_BAD_INPUT
     raw_edges = behavior_map.get("edges", [])
 
-    # INV-dabuf G1: the claims file may declare its own denominator. Applied
+    # The claims file may declare its own denominator (INV-dabuf G1). Applied
     # HERE, before anything walks edges, so census, coverage, detection and
     # taint all see ONE population — narrowing only some consumers is how one
-    # tool comes to give two answers about the same edge (INV-motos, measured
-    # on this same command once already). Disclosed on stderr like overlays:
+    # tool comes to give two answers about the same edge (INV-motos). Disclosed on stderr like overlays:
     # a verdict must not be quietly narrower than its claims file says, and
     # the claims file is where the reader can check it.
     from .verify_claims import (
@@ -7139,9 +7340,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     )
     # The node population the LANGUAGE CENSUSES walk. Defaults to every node;
     # narrowed alongside the edges so census and coverage describe one
-    # population (INV-sarum — with edges scoped and nodes not, bash/js/ts read
-    # as "analyzed but produced no call edges" and the analyzer-blind check
-    # blocked every claim on languages the artifact does not contain).
+    # population. With edges scoped and nodes not, a language the artifact
+    # does not contain would read as "analyzed but produced no call edges" and
+    # the analyzer-blind check would block every claim (INV-sarum).
     census_nodes = behavior_map.get("nodes", [])
     try:
         _scope = load_analysis_scope(claims_path)
@@ -7162,12 +7363,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             )
     except _ScopeError as exc:
         # Same posture as a broken overlay: a broken scope declaration is
-        # never confirmed (0) and never violated (1).
+        # bad input (2), never a verdict.
         print(f"Error: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_BAD_INPUT
 
-    # WI-kumol: carry is_resolved + dst_ref so the ADR-0028 receiver gate /
-    # WI-tihup lookup fire on the verify-claims boundary classification too.
+    # Carry is_resolved + dst_ref so the ADR-0028 receiver gate / dst_ref
+    # lookup fire on the verify-claims boundary classification too (WI-kumol).
     edges = _rehydrate_io_boundary_edges(raw_edges)
 
     from .io_boundary import (
@@ -7176,8 +7377,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         load_catalog,
     )
 
-    # INV-fotav: project-local I/O primitive overlays, resolved BEFORE the
-    # per-language catalog loop that consumes them. Claims-file
+    # Project-local I/O primitive overlays, resolved BEFORE the per-language
+    # catalog loop that consumes them (INV-fotav). Claims-file
     # ``extra_catalogs: io_primitives:`` sits BELOW CLI ``--io-primitives``,
     # the same layering the taint arm uses (INV-hukug).
     from .verify_claims import load_extra_catalog_paths as _load_extras
@@ -7190,18 +7391,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Walks ``census_nodes``, not the raw map: under a declared artifact
     # scope this census must describe the same population the coverage check
-    # walks (INV-sarum). Its old rationale for staying unscoped — "load
-    # catalogs to classify every edge in the map, fixtures included" —
-    # assumed the walked edges WERE the whole map; under artifact scope they
-    # are not, and a language present only outside the artifact would read as
-    # "analyzed but produced no call edges", blocking every claim.
+    # walks (INV-sarum). Under artifact scope the walked edges are not the
+    # whole map, so an unscoped census would let a language present only
+    # outside the artifact read as "analyzed but produced no call edges",
+    # blocking every claim.
     languages: set[str] = set()
     for node in census_nodes:
         lang = node.get("language")
         if lang:
             languages.add(lang)
 
-    # WI-najil: same in_progress-catalog disclosure as io-boundaries.
+    # Same in_progress-catalog disclosure as io-boundaries (WI-najil).
     _warn_in_progress_catalogs(languages)
     if not getattr(args, "no_default_overlays", False):
         _warn_default_overlays(languages)
@@ -7215,10 +7415,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     args, "no_default_overlays", False),
             )
         except IoPrimitiveOverlayError as exc:
-            # Exit 2 = inconclusive, matching the taint arm's posture: a broken
-            # catalog config is never `confirmed` (0) and never `violated` (1).
+            # Bad input (2), matching the taint arm's posture: a broken
+            # catalog config is never a verdict.
             print(f"Error: {exc}", file=sys.stderr)
-            return 2
+            return EXIT_BAD_INPUT
         if catalog.primitives:
             catalogs[lang] = catalog
             if catalog.language != lang:
@@ -7232,8 +7432,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     }
     bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=vc_entrypoint_ids or None)
 
-    # WI-kajil / INV-bitig: a zero-chain "confirmed" boundary verdict is only
-    # trustworthy if the I/O analysis could actually see the I/O. Derive a
+    # A zero-chain "confirmed" boundary verdict is only trustworthy if the
+    # I/O analysis could actually see the I/O (WI-kajil, INV-bitig). Derive a
     # coverage signal from call-edge production across the supported languages
     # actually present in the repo (languages with an I/O catalog). An empty
     # analysis (no call edges) or a supported language that produced zero call
@@ -7250,49 +7450,54 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
+    # The request handlers a builtin or user-vouched untrusted_input source
+    # was matched IN (their arrival is represented); the unseeded-ingress
+    # disclosure below leaves them out. Filled per language beside the
+    # propagator call, from the same edges and sources it walks. (WI-ritog)
+    represented_ingress: set[str] = set()
+    parameter_represented: set[str] = set()
     credited_user_summaries: set[str] = set()
-    # INV-nohob: source values the walk saw leave through a construct taint
-    # does not follow; a clean verdict on their label is withheld. Function
+    # Source values the walk saw leave through a construct taint does not
+    # follow; a clean verdict on their label is withheld (INV-nohob). Function
     # scope for the same reason as the set above.
     unfollowed_escapes: list[Any] = []
-    # WI-tigud: the community TERMINATING summaries this run's call graph
-    # calls -- the walk does not let them close a branch, and the violated
-    # verdicts say so. Run-scoped, like ``credited_user_summaries``.
+    # The community TERMINATING summaries this run's call graph calls -- the
+    # walk does not let them close a branch, and the violated verdicts say
+    # so. Run-scoped, like ``credited_user_summaries``. (WI-tigud)
     withheld_summaries: list[str] = []
-    # WI-kabif. Flows the §3a walk REFUTED and removed, collected across every
+    # Flows the §3a walk REFUTED and removed (WI-kabif), collected across every
     # language for the same reason ``credited_user_summaries`` is: the removal
     # count is a property of the RUN, and a per-language split would imply a
     # precision the disclosure does not have.
     refuted_flows: list[Any] = []
-    # INV-javam: track languages with no taint coverage so callers can
+    # Track languages with no taint coverage (INV-javam) so callers can
     # distinguish "no taint-flow violations" from "language not analyzed".
     # Without this, taint-flow trivially passes every claim on unsupported
     # languages and the verify-claims output lies by omission.
     unsupported_taint_languages: list[str] = []
     has_taint_claims = any(c.constraint_taint_flow is not None for c in claims)
     taint_catalog = None
-    # INV-karud (a3): the published data-flow scope. Empty for a run with no
+    # The published data-flow scope (INV-karud a3). Empty for a run with no
     # taint claims, which is why it is initialised here rather than assumed.
     dataflow_rows: list["LanguageDataflowScope"] = []
     # Same reason, and the coverage gate below reads it on EVERY run: the
     # languages whose taint sinks this repo could have matched. Empty when
     # there are no taint claims.
     per_lang_sinks: dict[str, list["TaintSink"]] = {}
-    # INV-karud (b): same reason. ``None`` renders as the empty scope, so the
+    # Same reason (INV-karud b). ``None`` renders as the empty scope, so the
     # envelope carries the key on every run rather than teaching consumers to
     # read its absence as "not applicable".
     sanitizer_scope: "SanitizerScope | None" = None
     findings_by_method: dict[str, int] = {}
-    # INV-busis: same contract as ``sanitizer_scope`` above and initialised for
+    # Same contract as ``sanitizer_scope`` above (INV-busis) and initialised for
     # the same reason -- the assignment below is inside the taint block, and
     # both emit sites run whether or not that block did. ``None`` renders as
     # the zero-filled breakdown, so the key is present on every run.
     walk_verdict_counts: "dict[str, int] | None" = None
-    # WI-mugop's forfeit disclosure. Bound HERE rather than read off
+    # The forfeit disclosure (WI-mugop). Bound HERE rather than read off
     # ``ddg_symbols`` / ``ddg_forfeits`` at the emit site: those are unpacked
     # inside the taint branch, so a run with no taint claims never binds them
-    # and reading them below is `possibly-undefined` — the ratchet says so, and
-    # it is right. Zero is also the correct value for such a run: nothing was
+    # and reading them below would be `possibly-undefined`. Zero is also the correct value for such a run: nothing was
     # walked, so nothing forfeited.
     ddg_walkable_count = 0
     ddg_forfeited_count = 0
@@ -7304,8 +7509,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     from .verify_claims import load_extra_catalog_paths
 
     # Assemble project-local taint catalog paths from CLI flags and the
-    # ``extra_catalogs:`` key in the claims YAML (WI-votan).  INV-hukug: the
-    # two are kept as DISTINCT layers — CLI flags (higher) override claims-file
+    # ``extra_catalogs:`` key in the claims YAML (WI-votan). The two are kept
+    # as DISTINCT layers (INV-hukug) — CLI flags (higher) override claims-file
     # extras (lower) on (module, name, kind), which override the built-in
     # catalog.
     cli_sources = [Path(p) for p in (getattr(args, "taint_sources", None) or [])]
@@ -7332,13 +7537,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     named_community_taint: "list[tuple[Path, str, str]]" = []
     omitted_taint: "list[tuple[Path, str, str]]" = []
 
-    # INV-nufob: resolve+validate the taint catalog whenever taint flags are
-    # present, even with no taint_flow claim to consume them. Previously this
-    # block was gated on ``has_taint_claims``, so ``--taint-sources <bad-path>``
-    # with boundary-only claims silently fell through to "all CONFIRMED"
-    # (exit 0), and a malformed / wrong-shape taint file crashed with an
-    # uncaught traceback. A broken taint config is inconclusive (exit 2),
-    # never confirmed (0) or violated (1).
+    # Resolve+validate the taint catalog whenever taint flags are present,
+    # even with no taint_flow claim to consume them, so that
+    # ``--taint-sources <bad-path>`` with boundary-only claims does not fall
+    # through to "all CONFIRMED" (exit 0) and a malformed / wrong-shape taint
+    # file does not crash with an uncaught traceback (INV-nufob). A broken
+    # taint config is bad input (exit 2), never a verdict.
     if has_taint_claims or any_taint_flags:
         try:
             taint_catalog = load_full_taint_catalog(
@@ -7348,12 +7552,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 cli_source_paths=cli_sources,
                 cli_sink_paths=cli_sinks,
                 cli_sanitizer_paths=cli_sanitizers,
-                # INV-fotav: the SAME overlays that extend the boundary
-                # catalogue extend the auto-derived taint sinks, so a
-                # third-party primitive is declared once rather than twice.
+                # The SAME overlays that extend the boundary catalogue extend
+                # the auto-derived taint sinks, so a third-party primitive is
+                # declared once rather than twice (INV-fotav).
                 io_overlay_paths=io_overlays,
-                # INV-fikoh: and the flag that omits the community rows from
-                # the boundary lookup omits them here too.
+                # And the flag that omits the community rows from the
+                # boundary lookup omits them here too (INV-fikoh).
                 include_community=not getattr(
                     args, "no_default_overlays", False),
                 # ADR-0061 ruling 7 (WI-mimap): the operator's persistent
@@ -7373,7 +7577,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     args, "no_default_overlays", False))
         except (FileNotFoundError, CatalogueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
-            return 2
+            return EXIT_BAD_INPUT
         taint_layers, named_community_taint, omitted_taint = (
             _split_named_taint_files(
                 taint_named,
@@ -7390,7 +7594,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 f"{len(cli_sanitizers) + len(claims_sanitizers)} sanitizer "
                 "path(s). CLI --taint-* entries override claims-file "
                 "extra_catalogs entries, which override built-in defaults, "
-                "on (module, name, kind) match.",
+                "on (module, name, kind) match: an entry replaces the one "
+                "with its own label (sources) or zone (sinks), or every one "
+                "when it names a label or zone the function lacks.",
                 file=sys.stderr,
             )
             if named_community_taint:
@@ -7404,9 +7610,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 )
 
         if any_taint_flags and not has_taint_claims:
-            # INV-nufob: flags present but no taint_flow claim to consume them.
+            # Flags present but no taint_flow claim to consume them (INV-nufob).
             # The catalog was validated above (a bad path already errored with
-            # exit 2); warn that it is otherwise unused rather than silently
+            # exit 2, bad input); warn that it is otherwise unused rather than silently
             # ignoring the flags.
             print(
                 "Warning: --taint-sources/--taint-sinks/--taint-sanitizers "
@@ -7422,13 +7628,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # failure returned exit 2 — so the catalog is populated here.
         assert taint_catalog is not None
 
-        # INV-todas: the claim's taint vocabulary is checked HERE and not in
+        # The claim's taint vocabulary is checked HERE (INV-todas) and not in
         # ``load_claims`` beside the ``constraint.boundary`` check, because
         # unlike KNOWN_IO_BOUNDARIES these vocabularies are not constants — a
         # project-local --taint-sinks file may legitimately declare a zone no
         # built-in catalogue mentions, so the sets have to come from the
-        # RESOLVED catalogue. An unrecognised label previously matched no
-        # finding and confirmed the claim at rc 0, on a fixture that leaked.
+        # RESOLVED catalogue. Unchecked, an unrecognised label would match no
+        # finding and confirm the claim at rc 0.
         from .verify_claims import validate_taint_flow_vocabulary
         try:
             validate_taint_flow_vocabulary(
@@ -7438,17 +7644,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             )
         except ClaimsFileError as exc:
             print(f"Error: {exc}", file=sys.stderr)
-            return 2
+            return EXIT_BAD_INPUT
         # Build per-language source/sink/sanitizer tables. Running
         # propagation per-language avoids cross-language short-name
         # collisions (e.g., elixir HTTPoison.get matching every Python
         # .get() call) that would otherwise flood the findings with
-        # tens of thousands of false positives on multi-language repos.
+        # false positives on multi-language repos.
         per_lang_sources: dict[str, list["TaintSource"]] = {}
         per_lang_sinks = {}
         per_lang_sanitizers: dict[str, list["TaintSanitizer"]] = {}
-        # INV-sarum: the TAINT arm counts languages the way the claims are
-        # scoped — production only — so this census and the production-scoped
+        # The TAINT arm counts languages the way the claims are scoped —
+        # production only (INV-sarum) — so this census and the production-scoped
         # edge list inside ``_taint_blind_reason`` describe one population.
         # ``languages`` (unscoped) stays the census for the BOUNDARY arm and
         # the catalog loop, which answer a different question: what to load in
@@ -7466,40 +7672,25 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             src_count = len(taint_catalog.sources_for_language(lang))
             snk_count = len(taint_catalog.sinks_for_language(lang))
             if src_count == 0 or snk_count == 0:
-                # A FLOW NEEDS BOTH ENDS. This predicate was ``and`` — a
-                # language counted as analysable on ONE half of a catalogue —
-                # and that read as "supported" while propagation was
-                # structurally impossible, so it guaranteed ZERO findings
-                # rather than wrong ones. Zero findings is what ``confirmed``
-                # is made of.
+                # A FLOW NEEDS BOTH ENDS. A language with only ONE half of a
+                # catalogue cannot propagate at all, so counting it as
+                # "supported" would guarantee ZERO findings rather than wrong
+                # ones — and zero findings is what ``confirmed`` is made of.
                 #
-                # It became reachable when io_primitives stopped being only a
-                # BOUNDARY catalogue: the shipped taint_sinks/ tree was
-                # retired (51e1d232f3) and sinks are now auto-derived from
-                # io_primitives via AUTO_SINK_ZONE_MAP. So adding
-                # io_primitives/bash.yaml for redirection — a boundary fact —
-                # silently minted 3 bash SINKS, bash left this list with 0
-                # sources, and the blind gate below was disarmed.
+                # One-sided catalogues arise because sinks are auto-derived
+                # from io_primitives via AUTO_SINK_ZONE_MAP: e.g.
+                # io_primitives/bash.yaml (redirection — a boundary fact)
+                # yields bash SINKS with no sources. Treated as supported,
+                # such a language would leave unsupported_taint_languages, the
+                # stderr note and the blind gate below would all go silent,
+                # and a script whose only statement is
+                # ``echo "$API_KEY" > /etc/cron.d/pwned`` would confirm
+                # "host_secret must not reach host_fs" at rc 0 instead of
+                # returning inconclusive (rc 4).
                 #
-                # MEASURED on the shipped CLI, a script whose only statement
-                # is ``echo "$API_KEY" > /etc/cron.d/pwned`` against the claim
-                # "host_secret must not reach host_fs":
-                #     with ``and``   confirmed, rc 0   <- false confirm
-                #     with ``or``    inconclusive, rc 2
-                # Worse than the flip alone: under ``and`` the stderr note and
-                # the unsupported_taint_languages field BOTH went silent, so a
-                # DISCLOSED false confirm became an undisclosed one.
-                #
-                # The code already believed this three lines of context away —
-                # the propagation loop below is guarded by
-                # ``if per_lang_sources and per_lang_sinks``. This predicate
-                # now agrees with it.
-                #
-                # Collateral, measured across the 15 catalogued languages:
-                # only one-sided languages change classification (kotlin
-                # 45/93, scala 61/76, cpp 17/53 all carry both halves). The
-                # boundary-visibility win is kept in full — a boundary claim
-                # over that same script still returns ``violated``.
+                # This matches the propagation loop below, which is guarded
+                # by ``if per_lang_sources and per_lang_sinks``. A boundary
+                # claim over that same script still returns ``violated``.
                 unsupported_taint_languages.append(lang)
                 continue
             per_lang_sources[lang] = taint_catalog.sources_for_language(lang)
@@ -7521,18 +7712,19 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # languages that have a registered DDG spec.
             (
                 ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
-                ddg_forfeits, ddg_unaccounted, ddg_returns,
+                ddg_forfeits, ddg_unaccounted, ddg_returns, ddg_targets,
+                ddg_params,
             ) = _build_ddg_for_verify_claims(
                 repo_root, sorted(per_lang_sinks), behavior_map.get("nodes", []),
             )
             ddg_walkable_count = len(ddg_symbols)
             ddg_forfeited_count = len(ddg_forfeits)
-            # WI-satal: ``Runner(cmd)`` runs ``Runner.__init__``, but py /
-            # js_ts / dart land the construction edge on the CLASS, where the
-            # walk stops. A caller-to-initializer call edge per construction,
-            # handed to the propagation passes only (no emitted edge changes).
-            # A secret passed to a constructor that launches a program was a
-            # clean verdict before this.
+            # ``Runner(cmd)`` runs ``Runner.__init__``, but py / js_ts / dart
+            # land the construction edge on the CLASS, where the walk stops.
+            # Add a caller-to-initializer call edge per construction, handed
+            # to the propagation passes only (no emitted edge changes).
+            # Without it, a secret passed to a constructor that launches a
+            # program would get a clean verdict (WI-satal).
             construction_edges: list[dict[str, Any]] = [
                 {
                     "src": caller, "dst": initializer, "type": "calls",
@@ -7557,50 +7749,37 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 lang_sources = per_lang_sources.get(lang, [])
                 lang_sinks = per_lang_sinks[lang]
                 lang_sans = per_lang_sanitizers.get(lang, [])
-                # INV-potuf: UNREACHABLE since the census predicate above
-                # started requiring both halves — a language only reaches
-                # this loop with sources AND sinks, so this can no longer
-                # fire. Kept as defence in depth rather than deleted (it is
-                # the last guard before propagation), but NOT counted as
-                # covered: claiming a test exercises it would be false.
-                #
-                # This guard is also the evidence that the census predicate
-                # was wrong: the same rule, stated correctly here and
-                # incorrectly 70 lines up, for four months. If the census
-                # predicate is ever loosened again, this fires and the two
-                # disagree once more — so it is a tripwire, not dead weight.
+                # UNREACHABLE: the census predicate above requires both
+                # halves, so a language only reaches this loop with sources
+                # AND sinks (INV-potuf). Kept as defence in depth rather than
+                # deleted (it is the last guard before propagation), but NOT
+                # counted as covered: claiming a test exercises it would be
+                # false. If the census predicate is ever loosened, this fires
+                # and the two disagree — so it is a tripwire, not dead weight.
                 if not lang_sources or not lang_sinks:  # pragma: no cover
                     continue
-                # WI-dilih: rewrite python:external:0-0:NAME:unresolved
-                # dsts to module-resolved form before either propagation
-                # pass runs. Refinement is per-§1c-extractor; today only
-                # Python contributes hints, but the call is unconditional
-                # because refine_external_edges is a no-op when no hints
-                # exist for the language's edges.
+                # Rewrite python:external:0-0:NAME:unresolved dsts to
+                # module-resolved form before either propagation pass runs
+                # (WI-dilih). Refinement is per-§1c-extractor and only Python
+                # contributes hints, so the call is limited to Python with
+                # hints present.
                 if lang == "python" and hints_by_caller:
                     lang_edges = refine_external_edges(
                         lang_edges, hints_by_caller,
                     )
-                # WI-razol: pass the language's ambiguous short names so a
-                # bare ambiguous callee (str.replace, dict.get) with no module
-                # hint is not falsely matched to a sink/source.
+                # Pass the language's ambiguous short names so a bare
+                # ambiguous callee (str.replace, dict.get) with no module hint
+                # is not falsely matched to a sink/source (WI-razol).
                 lang_ambiguous = taint_catalog.ambiguous_names_for_language(lang)
-                # This literal is NOT a considered scoping decision — say so,
-                # because a bare `lang == "python"` reads like one and a wrong
-                # rationale forecloses options nobody re-measures (L50, which
-                # this module has already paid for twice).
-                #
-                # The truth: routing a language here buys nothing today.
-                # ADR-0017 §3a is implemented, so this is no longer gated on a
-                # literal language. The predicate was `lang == "python"` for as
-                # long as the DDG selected only a confidence LABEL: widening it
-                # then would have stamped analysis_method="ddg" on
-                # structurally-derived findings, a security tool asserting a
-                # precision it did not use. Now the walk decides inclusion, and
-                # `propagate_taint_ddg` labels a finding "precise" only where it
-                # actually adjudicated — so every language with reaching-def
-                # coverage benefits, and every language without one falls
-                # through to the same structural result it had before.
+                # The DDG arm below is not gated on a literal language
+                # (ADR-0017 §3a): the walk decides inclusion, and
+                # `propagate_taint_ddg` labels a finding "precise" only where
+                # it actually adjudicated — so every language with
+                # reaching-def coverage benefits, and every language without
+                # one falls through to the structural result. (Were the DDG
+                # to select only a confidence LABEL, widening it would stamp
+                # analysis_method="ddg" on structurally-derived findings, a
+                # security tool asserting a precision it did not use.)
                 # ``language=lang`` is the cross-language pollution guard. The
                 # ``lang_edges`` selection above is deliberately an OR over src
                 # and dst — the propagation BFS has to see both endpoints of a
@@ -7610,6 +7789,22 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # not this language's, so the OR stays correct for the walk
                 # without letting a `go:` callee be indexed against the Python
                 # catalogue.
+                # A request handler's request PARAMETER is a source (WI-sosov)
+                # where the framework contract names it and the DDG saw it
+                # used; the DDG arm alone takes it (a symbol-level seed at a
+                # handler would be reachability, not dataflow).
+                from .taint import parameter_seeds
+                lang_param_seeds = parameter_seeds(
+                    behavior_map.get("request_ingress") or [],
+                    ddg_params, ddg_edges,
+                    {
+                        n["id"]: (n.get("meta") or {})
+                        for n in behavior_map.get("nodes", [])
+                        if str(n.get("id", "")).startswith(lang_prefix)
+                    },
+                    lang,
+                    edges=lang_edges,
+                )
                 if ddg_edges:
                     taint_findings.extend(propagate_taint_ddg(
                         ddg_edges, lang_edges, lang_sources, lang_sinks,
@@ -7637,31 +7832,46 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # INV-komoj: a source a helper RETURNS is lifted into
                         # the helper's callers.
                         return_spans=ddg_returns,
+                        stmt_targets=ddg_targets,
+                        parameter_seeds=lang_param_seeds,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
                         lang_edges, lang_sources, lang_sinks, lang_sans,
                         ambiguous_names=lang_ambiguous,
                         language=lang,
-                        # INV-komoj, on this arm too: the filed python helper
-                        # defines nothing, so a repository made of such
-                        # functions has no DDG edge and lands HERE.
+                        # INV-komoj, on this arm too: a python helper that
+                        # defines nothing has no DDG edge, so a repository
+                        # made of such functions lands HERE.
                         return_spans=ddg_returns,
                         include_community=not getattr(
                             args, "no_default_overlays", False),
                     ))
-                # INV-nohob: where a source value leaves through a construct
-                # taint does not follow -- run on BOTH arms, because a construct
+                # Where a source value leaves through a construct taint does
+                # not follow (INV-nohob) -- run on BOTH arms, because a construct
                 # on the source line needs no walk (a plain ``g = getenv(..)``
                 # leaves the function with no DDG edge at all).
+                from .taint import represented_ingress_callers
+                represented_ingress.update(represented_ingress_callers(
+                    lang_edges, lang_sources, lang_ambiguous, lang,
+                ))
+                # A parameter seed represents the arrival for the TAINT arm
+                # only (WI-sosov). No ``net_recv`` crossing stands behind it,
+                # so the boundary arm's disclosure keeps naming the handler
+                # (ADR-0049 ruling 3: a webserver must not confirm "never
+                # receives network data" because its request was followed).
+                if ddg_edges:
+                    parameter_represented.update(
+                        seed.handler for seed in lang_param_seeds
+                    )
                 unfollowed_escapes.extend(find_unfollowed_escapes(
                     ddg_edges or [], lang_edges, lang_sources,
                     ambiguous_names=lang_ambiguous, language=lang,
                     stmt_defuse=stmt_defuse,
                     include_community=not getattr(
                         args, "no_default_overlays", False),
-                    # INV-nohob 3/3: a plain assignment into memory the
-                    # function does not own has no call to stamp.
+                    # A plain assignment into memory the function does not
+                    # own has no call to stamp (INV-nohob).
                     store_lines={
                         n["id"]: n["meta"]["non_local_store_lines"]
                         for n in behavior_map.get("nodes", [])
@@ -7676,7 +7886,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     args, "no_default_overlays", False)),
             )
 
-        # INV-karud (a3), PUBLISHED SCOPE. Per-flow ``analysis_method`` says
+        # PUBLISHED SCOPE (INV-karud a3). Per-flow ``analysis_method`` says
         # how one flow was adjudicated; it cannot say what the analysis was
         # CAPABLE of, and without that a reader cannot interpret it. "0 precise
         # findings" reads as "the walk looked and found no data dependence"
@@ -7694,14 +7904,14 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             count_walk_verdicts,
         )
         dataflow_rows = compute_dataflow_scope(taint_catalog, per_lang_sinks)
-        # INV-karud (b)'s scope: what the sanitizer catalogue can express at
+        # The sanitizer scope (INV-karud b): what the sanitizer catalogue can express at
         # all, and which pass honours a same-function barrier (WI-fasub).
         sanitizer_scope = compute_sanitizer_scope(taint_catalog, per_lang_sinks)
         for finding in (taint_findings or []):
             _method = getattr(finding, "analysis_method", "") or "structural"
             findings_by_method[_method] = findings_by_method.get(_method, 0) + 1
-        # INV-busis. The finer axis of the same population: ``ddg_mixed`` above
-        # collapses three walk verdicts and only one of them (``unconfirmed``)
+        # The finer axis of the same population (INV-busis): ``ddg_mixed`` above
+        # collapses three walk verdicts and only one of them (``refuted``)
         # can remove a flow, so ``flows_removed_by_walk`` is uninterpretable
         # without this. Same denominator, deliberately -- both count findings
         # the propagators produced, post-collapse.
@@ -7716,7 +7926,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         ),
         first_party_packages=first_party_packages,
     )
-    # WI-rusil: scope the no-catalogue check by each claim's DECLARED sources.
+    # Scope the no-catalogue check by each claim's DECLARED sources (WI-rusil).
     # Only a label a project catalogue declares in specific languages narrows;
     # a built-in label can start in any language and keeps the answer above.
     blind_by_source_taint: dict[str, ScopedBlindness] = {}
@@ -7758,7 +7968,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         sink_zone_gaps = _sink_zone_gaps(
             claims, taint_catalog, set(per_lang_sinks), flow_languages_by_label,
         )
-    # INV-nuhun: the taint arm's half of INV-fibis's disclosure. Stamped HERE
+    # The taint arm's half of the INV-fibis disclosure (INV-nuhun). Stamped HERE
     # rather than inside ``compute_boundary_coverage`` because this is the first
     # point that holds BOTH the call edges and the taint SINK catalogue — the
     # catalogue is loaded only when a taint claim or flag is present, which is
@@ -7769,8 +7979,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         raw_edges, catalogs, per_lang_sinks,
     )
 
-    # WI-sofov: which of the USER'S OWN terminating function summaries
-    # actually closed a branch this run. Declared at function scope, not
+    # Which of the USER'S OWN terminating function summaries actually closed
+    # a branch this run (WI-sofov). Declared at function scope, not
     # inside the DDG branch, so the verdict call below always has a name
     # to pass -- a repo with no DDG data simply contributes nothing.
     verdicts = _verify(
@@ -7778,31 +7988,57 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         include_non_production=getattr(
             args, "include_non_production_sources", False
         ),
-        # INV-javam's signal now REACHES THE VERDICT instead of only stderr.
-        # It was already computed and already printed as a note asking the
-        # reader to mentally downgrade 'confirmed' — which no CI gate does.
+        # The unsupported-language signal (INV-javam) REACHES THE VERDICT,
+        # not only stderr: a note asking the reader to mentally downgrade
+        # 'confirmed' is something no CI gate does.
         blind_reason=_blind_reason,
         blind_opaque_sites=_blind_opaque,
         blind_by_source_taint=blind_by_source_taint,
         sink_zone_gaps=sink_zone_gaps,
         unfollowed_escapes=unfollowed_escapes,
-        # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
+        # The request handlers no taint source represents -- read off the
+        # graph's own request handlers, so it holds whatever the catalogue
+        # says (WI-fuzik). Taken from ``request_ingress`` (every handler,
+        # before the entrypoint rank floor and size cap), or the capped
+        # ``entrypoints`` on a map without that key (WI-vumig).
+        unseeded_ingress=unseeded_ingress_handlers(
+            ingress_candidates(behavior_map),
+            include_non_production=getattr(
+                args, "include_non_production_sources", False
+            ),
+            represented=represented_ingress | parameter_represented,
+        ),
+        # The boundary arm's list leaves the parameter-seeded handlers IN
+        # (WI-sosov) -- their request is followed, not recorded as a crossing.
+        unseeded_ingress_boundary=unseeded_ingress_handlers(
+            ingress_candidates(behavior_map),
+            include_non_production=getattr(
+                args, "include_non_production_sources", False
+            ),
+            represented=represented_ingress,
+        ),
+        # The SHIPPED catalogue rows a repo-supplied row replaced (INV-faput).
         # Read off the catalogue here because this is the last point that
         # still knows — the displaced rows are gone from every structure the
-        # propagation and verdict code sees, which is exactly why the
-        # suppression left no trace to find downstream.
+        # propagation and verdict code sees, so nothing downstream can
+        # recover them.
         displaced_sinks=getattr(taint_catalog, "_displaced_sinks", None),
         displaced_sources=getattr(taint_catalog, "_displaced_sources", None),
-        # WI-sofov: the user's OWN terminating summaries that actually closed a
-        # branch this run. Empty unless they wrote one, so an installation with
-        # no user summaries produces byte-identical verdicts to before.
+        # The user's OWN terminating summaries that actually closed a branch
+        # this run (WI-sofov). Empty unless they wrote one, so an installation
+        # with no user summaries is unaffected.
         credited_user_summaries=credited_user_summaries,
-        # WI-tigud: community terminating summaries the walk did not credit.
+        # Community terminating summaries the walk did not credit (WI-tigud).
         withheld_community_summaries=withheld_summaries,
+        # Community sinks whose trust_level: trusted was withheld (WI-savoh).
+        withheld_community_trust=(
+            taint_catalog.withheld_community_trust()
+            if taint_catalog is not None else ()
+        ),
     )
 
-    # INV-zosun: assemble the catalogue provenance BEFORE either renderer, so
-    # the text and JSON surfaces cannot disagree about what was trusted. The
+    # Assemble the catalogue provenance BEFORE either renderer, so the text
+    # and JSON surfaces cannot disagree about what was trusted (INV-zosun). The
     # CLI and claims-file layers stay separate all the way here: a catalogue
     # passed on the command line comes from whoever ran the tool, while one
     # reached through `extra_catalogs:` travels with the repository, and a
@@ -7810,7 +8046,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # its own criteria. Both are read from the LOADED origins, each path
     # tagged with its layer, never from the raw flag and claims-file lists:
     # those still hold a file --no-default-overlays omitted, which the report
-    # then named as user-supplied input with a withheld grant (INV-dozav). The
+    # would then name as user-supplied input with a withheld grant (INV-dozav). The
     # omitted files are passed on separately and reported as omitted.
     #
     # ADR-0061 ruling 3, the io_primitives arm: a loaded overlay a flag or the
@@ -7833,7 +8069,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     }, () if getattr(args, "no_default_overlays", False) else languages,
        load_bearing=coverage.load_bearing_grants,
        untraced_vouched=coverage.untraced_vouched_grants,  # WI-pogar
-       # INV-nular. `languages` UNCONDITIONALLY, unlike the argument above:
+       # `languages` UNCONDITIONALLY, unlike the argument above (INV-nular):
        # --no-default-overlays suppresses the COMMUNITY layer, not the shipped
        # catalogue, so the run still rests on base rows and still owes the
        # count. The flag is passed on separately so the community line is
@@ -7852,6 +8088,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 "taint_sanitizers": [*claims_sanitizers, *cli_sanitizers]}
                if taint_catalog is not None else None
            ),
+           cli_named=[
+               *(Path(p) for p in (getattr(args, "io_primitives", None) or [])),
+               *cli_sources, *cli_sinks, *cli_sanitizers,
+           ],
        ),
        repo_root=repo_root,
        io_overlay_origins=io_overlay_origins,
@@ -7864,12 +8104,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Output
     if _read_view_wants_json(args):
-        # WI-nulot / INV-gatog: a versioned top-level envelope (was a bare JSON
-        # array), so metadata is extensible without breaking consumers. The
-        # INV-javam taint-coverage signal — previously stderr-only — is now
-        # machine-visible via `unsupported_taint_languages` (empty when there
-        # are no taint claims or every touched language has a catalog),
-        # mirroring the `io-boundaries --json` envelope.
+        # A versioned top-level envelope, so metadata is extensible without
+        # breaking consumers (WI-nulot, INV-gatog). The taint-coverage signal
+        # (INV-javam) is machine-visible via `unsupported_taint_languages`
+        # (empty when there are no taint claims or every touched language has
+        # a catalog), mirroring the `io-boundaries --json` envelope.
         from .dataflow_scope import dataflow_scope_dict
         output = add_schema_envelope(
             {
@@ -7886,7 +8125,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     functions_walkable=ddg_walkable_count,
                     functions_forfeited=ddg_forfeited_count,
                 ),
-                # INV-zosun: which catalogues this verdict rested on. Always
+                # Which catalogues this verdict rested on (INV-zosun). Always
                 # present, like dataflow_coverage above, so `user_supplied:
                 # false` is an assertable fact rather than an absent key.
                 "catalog_provenance": _provenance,
@@ -7900,16 +8139,16 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         inconclusive = 0
         caveated = 0
         for v in verdicts:
-            # ADR-0033 Phase 3 PR4: "inconclusive" verdict now exists
-            # for claims that couldn't be machine-checked.
+            # The "inconclusive" verdict is for claims that couldn't be
+            # machine-checked (ADR-0033 Phase 3).
             if v.verdict == "confirmed":
                 icon = "✓"
             elif v.verdict == "confirmed_with_caveats":
-                # INV-pojib: distinct from BOTH neighbours on purpose. Sharing
+                # Distinct from BOTH neighbours on purpose (INV-pojib). Sharing
                 # ✓ with `confirmed` would restate the defect — a clean-looking
                 # verdict a repo-supplied entry is holding up — and sharing ?
                 # with `inconclusive` would say the analysis could not look,
-                # which is false: it looked, and then trusted an input.
+                # which is false: it looked, and names what it did not check.
                 icon = "!"
             elif v.verdict == "violated":
                 icon = "✗"
@@ -7939,11 +8178,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             summary_parts.append(f"all {len(verdicts)} CONFIRMED")
         print(f"{', '.join(summary_parts)} (of {len(verdicts)} claim(s))")
 
-        # INV-karud (a3) on the TEXT surface too. A disclosure that exists
-        # only under --json is half shipped: WI-bifob's exclusion bucket
-        # reached the dataclass and never the text renderer, so a text reader
-        # of a violated claim never learned flows had been set aside. Renders
-        # to nothing when no taint-capable language was analyzed.
+        # The data-flow scope (INV-karud a3) on the TEXT surface too. A
+        # disclosure that exists only under --json is half shipped: a text
+        # reader of a violated claim would never learn that flows had been
+        # set aside (WI-bifob's exclusion bucket). Renders to nothing when no
+        # taint-capable language was analyzed.
         from .dataflow_scope import render_dataflow_scope_text
         for line in render_dataflow_scope_text(
             dataflow_rows, findings_by_method, sanitizer_scope,
@@ -7954,14 +8193,14 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         ):
             print(line)
 
-        # INV-zosun on the TEXT surface, for the same reason the block above
-        # exists. The stderr disclosure that predates this is weaker than
-        # json-only: a redirect discards it and it is not attached to the
+        # Catalogue provenance (INV-zosun) on the TEXT surface, for the same
+        # reason the block above exists. A stderr disclosure alone is weaker
+        # than json-only: a redirect discards it and it is not attached to the
         # verdict it qualifies.
         for line in render_catalog_provenance_text(_provenance):
             print(line)
 
-    # INV-javam: warn to stderr when taint claims were evaluated against a
+    # Warn to stderr (INV-javam) when taint claims were evaluated against a
     # repo whose languages have no taint catalog coverage. Even a "all
     # confirmed" verdict is misleading when the language wasn't analyzed.
     if has_taint_claims and unsupported_taint_languages:
@@ -7974,56 +8213,47 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
-    # ADR-0033 Phase 3 PR4 / WI-rolol sub-task A: exit codes
+    # Exit codes (ADR-0033 Phase 3, WI-rolol; WI-tajup -- the table is
+    # ``verify_claims.EXIT_*``):
     #   0 = all confirmed (or no claims to check)
     #   1 = at least one violated
-    #   2 = at least one inconclusive (and zero violated) — distinguishes
+    #   2 = bad input; returned above, before any verdict existed
+    #   3 = at least one confirmed_with_caveats (and none violated or
+    #       inconclusive; INV-pojib). The claim held, with a named caveat:
+    #       something the verdict rests on that the analysis did not check.
+    #       Caveat kinds (verify_claims CAVEAT_* plus deferred_crossing)
+    #       include entries the ANALYSED REPOSITORY supplied about itself and,
+    #       mostly, analysis limits (an untyped receiver, an analyzer blind to
+    #       a construct).
+    #   4 = at least one inconclusive (and zero violated) — distinguishes
     #       "machine-checkable claims all passed" from "couldn't actually
-    #       check the claim." INV-bitig P0 silent-confirm.
-    #   3 = at least one confirmed_with_caveats (and none of the above) —
-    #       INV-pojib (b). The claim held, but part of the reasoning rests on
-    #       an entry the ANALYSED REPOSITORY supplied about itself.
+    #       check the claim" (INV-bitig).
     #
-    # WHY A NEW CODE RATHER THAN PROSE. Remedy (a1) already names the
-    # repo-supplied sanitizer in the verdict text, and that is where it stopped
-    # being useful: a CI gate reads $?, not stdout. Measured before this
-    # landed — an 8-line sanitizer file the repo ships turned a real `violated`
-    # rc 1 into `confirmed` rc 0, indistinguishable from a verdict the analysis
-    # earned unaided.
+    # WHY A NEW CODE RATHER THAN PROSE. The verdict text names a
+    # repo-supplied sanitizer, but a CI gate reads $?, not stdout. Without
+    # rc 3, a small sanitizer file the repo ships could turn a real
+    # `violated` rc 1 into `confirmed` rc 0, indistinguishable from a verdict
+    # the analysis earned unaided.
     #
-    # DIRECTION, stated because this CHANGES A CONSUMER CONTRACT. A gate
-    # written `verify-claims ... || exit 1` now fails on a caveated verdict
-    # where it used to pass. That is fail-closed and deliberate. A repository
+    # DIRECTION. A gate written `verify-claims ... || exit 1` fails on a
+    # caveated verdict. That is fail-closed and deliberate. A repository
     # that legitimately declares its own sanitizers — hypergumbo's own
-    # self-proof does, via its zone-barrier entry — moves from rc 0 to rc 3 and
-    # must either accept rc 3 or drop the entry. Ordered AFTER inconclusive
-    # because "could not look" is a worse state than "looked, and trusted a
-    # declared input".
-    has_violations = any(v.verdict == "violated" for v in verdicts)
-    has_inconclusive = any(v.verdict == "inconclusive" for v in verdicts)
-    has_caveats = any(v.verdict == "confirmed_with_caveats" for v in verdicts)
-    if has_violations:
-        return 1
-    if has_inconclusive:
-        return 2
-    if has_caveats:
-        return 3
-    return 0
+    # self-proof does, via its zone-barrier entry — gets rc 3 and must
+    # either accept rc 3 or drop the entry. Ordered AFTER inconclusive
+    # because "could not look" is a worse state than "looked, with a named
+    # caveat".
+    return exit_code_for_verdicts(verdicts)
 
 
 def _registered_subcommands(parser: argparse.ArgumentParser) -> "set[str]":
     """The subcommand names the parser actually registers.
 
-    ONE FACT, ONE HOME. This used to be a hand-written set literal beside the
-    did-you-mean guard, which made adding a subcommand a two-edit operation
-    with no gate on the second edit. Forgetting it does not fail loudly: the
-    new command parses fine, then the guard above rejects it as "not a valid
-    subcommand" and helpfully suggests a DIFFERENT one — measured on
-    ``init-catalogs`` (WI-talaz), which is how this was found.
-
-    Derived from the parser, so a command cannot exist and be unlisted. The
-    set the literal held was exactly this set, so the swap changed no
-    behaviour; a test pins the two in agreement.
+    ONE FACT, ONE HOME. Derived from the parser, so a command cannot exist
+    and be unlisted. A hand-written set beside the did-you-mean guard would
+    make adding a subcommand a two-edit operation with no gate on the second
+    edit, and forgetting it does not fail loudly: the new command parses
+    fine, then the guard rejects it as "not a valid subcommand" and
+    helpfully suggests a DIFFERENT one (WI-talaz).
     """
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
@@ -8031,22 +8261,26 @@ def _registered_subcommands(parser: argparse.ArgumentParser) -> "set[str]":
     return set()  # pragma: no cover - build_parser always adds subparsers
 
 
-def _maybe_offer_repo_tier_examples() -> None:
+def _maybe_offer_repo_tier_examples(args: argparse.Namespace) -> None:
     """ADR-0047 ruling 9's offer, wrapped so it can never break a run.
 
     An offer is a courtesy. A courtesy that raises out of ``main`` and turns a
     successful analysis into a traceback is strictly worse than no offer, so
     every failure here is swallowed — the user simply is not asked, which is
-    the pre-feature behaviour and is never wrong.
+    never wrong. The command's ``path``, when
+    it took one, is handed over so the offer is not made while the analysed
+    repository overlaps the destination (INV-kuroj).
     """
+    path = getattr(args, "path", None)
     try:
-        maybe_offer_repo_tier_examples()
+        maybe_offer_repo_tier_examples(
+            analysed=Path(path) if isinstance(path, str) else None)
     except Exception:  # pragma: no cover - defensive; see docstring
         pass
 
 
 def cmd_catalog_inventory(args: argparse.Namespace) -> int:
-    """WI-vafit — what THIS installation knows, for the person using it.
+    """What THIS installation knows, for the person using it (WI-vafit).
 
     Deliberately not ``scripts/yaml-catalog-index``. That view asks whether the
     registry is in sync with the tree, and it ships to nobody: ``scripts/`` is
@@ -8181,11 +8415,10 @@ def cmd_config(args: argparse.Namespace) -> int:
     lang = args.language.lower()
     fmt = args.format
 
-    # INV-gufod: `config <X>` reads per-language config, so X must be a known
-    # LANGUAGE — not a framework/linker name or a typo. Previously any string
-    # was accepted, silently returning all-null sections with only a stderr
-    # warning (exit 0), indistinguishable to a script from a real empty config
-    # (e.g. `config airflow-framework-dispatch-linker` looked like success).
+    # `config <X>` reads per-language config, so X must be a known LANGUAGE —
+    # not a framework/linker name or a typo (INV-gufod). Accepting any string
+    # would silently return all-null sections with only a stderr warning
+    # (exit 0), indistinguishable to a script from a real empty config.
     # A real language that simply has no config yaml is still valid (it hits
     # the `not found_any` warning below at exit 0); only non-languages error.
     known_languages = all_known_languages()
@@ -8260,12 +8493,11 @@ def cmd_config(args: argparse.Namespace) -> int:
     return 0
 
 
-# WI-hular: per-language test-coverage blind spots.
+# Per-language test-coverage blind spots (WI-hular).
 #
-# `hypergumbo test-coverage` is a static analysis. Across UAT 2026-04-13
-# (4 languages) it had 100% precision but ~20% recall — i.e., 80% of
-# actually-tested functions were correctly recognised, and ~20% of
-# tested functions were incorrectly reported as untested. The dispatch
+# `hypergumbo test-coverage` is a static analysis with high precision but
+# limited recall: some tested functions are reported as untested (see
+# _TEST_COVERAGE_RECALL_DISCLAIMER for the measured rate). The dispatch
 # patterns below are the documented per-language sources of that
 # recall gap. Surfacing them in --help, the human output footer, and
 # the JSON ``caveats`` field gives users a concrete reason to discount
@@ -8326,10 +8558,9 @@ _TEST_COVERAGE_RECALL_DISCLAIMER = (
     "Empirical false-negative rate ~20% across measured languages "
     "(UAT 2026-04-13, 4 languages, n=hundreds): the tool has high "
     "precision (when it says a function is tested, it is) but limited "
-    "recall (some genuinely-tested functions appear in 'Cold Spots' "
-    "because the tests reach them via dispatch the static call graph "
-    "cannot see). Treat 'untested' as 'unreached by static call graph', "
-    "not 'definitely untested'."
+    "recall (some genuinely-tested functions appear in 'Cold Spots': "
+    f"{STATIC_TEST_REACH_BLIND_SPOT}). Treat 'untested' as 'unreached by "
+    "static call graph', not 'definitely untested'."
 )
 
 
@@ -8379,14 +8610,13 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     # Build lookup tables
     nodes_by_id = {n["id"]: n for n in nodes}
 
-    # WI-dulav: a symbol counts as a test when EITHER its path matches
+    # A symbol counts as a test (WI-dulav) when EITHER its path matches
     # a known test-path heuristic OR the framework-pattern enrichment
     # layer tagged it with a ``test_*`` concept. The second clause
     # catches the Template-Haskell / QuickCheck pattern where ``prop_*``
     # functions live in the same module as the production code they
-    # test and get discovered at compile time via ``$forAllProperties``
-    # (shellcheck: 2214 ``prop_*`` functions in ``src/`` got 0% coverage
-    # before this). Framework concepts recognised as test: anything with
+    # test and get discovered at compile time via ``$forAllProperties``.
+    # Framework concepts recognised as test: anything with
     # ``concept`` starting with ``test`` — covers ``test_function``,
     # ``test_suite``, ``test_lifecycle``, ``test_fixture``, and
     # language-specific variants emitted by the per-framework YAMLs.
@@ -8406,7 +8636,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         kind = node.get("kind", "")
         if kind not in ("function", "method"):
             continue
-        if _is_test_path(path) or _has_test_concept(node):
+        if _is_test_node(path, node.get("meta")) or _has_test_concept(node):
             test_symbols.add(node["id"])
 
     # Identify non-test callable symbols (coverage targets).
@@ -8418,7 +8648,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         kind = node.get("kind", "")
         if kind not in ("function", "method"):
             continue
-        if _is_test_path(path) or _has_test_concept(node):
+        if _is_test_node(path, node.get("meta")) or _has_test_concept(node):
             continue
         target_symbols[node["id"]] = node
 
@@ -8426,12 +8656,16 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         print("No functions found to analyze.", file=sys.stderr)
         return 0
 
-    # Extract call edges for transitive BFS
+    # Extract call edges for transitive BFS, plus the walk-only anchor
+    # edges (WI-fakuh): module-level code and class bodies run with their
+    # container, so a test reaches its own test module's and class's.
+    from .anchor_execution import anchor_execution_edges
+
     call_edges = [
         (edge.get("src", ""), edge.get("dst", ""))
         for edge in edges
         if edge.get("type") == "calls"
-    ]
+    ] + anchor_execution_edges(nodes, edges)
 
     # Compute transitive test coverage using shared helper
     tests_per_target = compute_transitive_test_coverage(
@@ -8486,8 +8720,8 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     coverage_percent = (tested_functions / total_functions * 100) if total_functions > 0 else 0.0
     total_tests = len(test_symbols)
 
-    # WI-hular: collect detected languages so caveats only fire for the
-    # languages actually present in the analyzed repo.
+    # Collect detected languages so caveats only fire for the languages
+    # actually present in the analyzed repo (WI-hular).
     detected_languages: set[str] = set()
     for node in nodes:
         lang = node.get("language")
@@ -8600,8 +8834,8 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         if top_n and (len(test_dense) > top_n or len(cold_spots) > top_n):
             print(f"\n(Showing top {top_n}. Use --top to see more.)")
 
-        # WI-hular: emit the recall disclaimer + per-language blind spots
-        # as a footer so users see them every time, not just on --help.
+        # Emit the recall disclaimer + per-language blind spots as a footer
+        # so users see them every time, not just on --help (WI-hular).
         print("\nCaveats (test-coverage is static analysis only)")
         print("-" * 47)
         print(_TEST_COVERAGE_RECALL_DISCLAIMER)
@@ -8630,7 +8864,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
-# WI-hadap H2: FFI decorator / modifier markers. Presence of any of
+# FFI decorator / modifier markers (WI-hadap H2). Presence of any of
 # these on a dead-code-maybe candidate is a "free hit" — the candidate
 # is definitionally FFI-bound, so a missing linker edge is a
 # high-confidence linker gap rather than a noise false positive.
@@ -8671,8 +8905,7 @@ _FFI_MODIFIER_EXACT = frozenset({
 def _compute_ffi_signature_flag(node: dict) -> bool:
     """Return True if *node* has an FFI-signaling decorator or modifier.
 
-    WI-hadap H2: a dead-code-maybe candidate with an FFI signature is
-    almost certainly a missing cross-language linker edge — it's a
+    A dead-code-maybe candidate with an FFI signature is almost certainly a missing cross-language linker edge — it's a
     "free hit" for the prospector. The symbol declares itself as the
     boundary of a language crossing (Rust #[pyo3], Python ctypes,
     C extern "C", C# [DllImport], Java native, etc.), so if nothing
@@ -8782,14 +9015,13 @@ def _compute_cross_language_hits(
     non-binary files in the repo for occurrences.  Only counts hits in
     files whose extension maps to a different language family.
 
-    INV-hugit: hits in the ``config`` pseudo-language are tallied SEPARATELY
-    and never reach the demoter's threshold. Counting them was worth 112 of
-    207 demotions on this repository — over half of the exclusions rested on
-    manifest substrings, including ``_label`` (24 config hits, 0 code hits),
-    a private helper with no cross-language dispatch story at all. The
-    rationale in the demoter's own comment is DISPATCH; a manifest mentioning
-    a symbol is not that. The count is kept and published rather than
-    discarded, so a reviewer can still see the old signal.
+    Hits in the ``config`` pseudo-language are tallied SEPARATELY and never
+    reach the demoter's threshold (INV-hugit). Counted, manifest substrings
+    would drive many demotions of symbols (e.g. a private helper) with no
+    cross-language dispatch story at all. The rationale in the demoter's own
+    comment is DISPATCH; a manifest mentioning a symbol is not that. The
+    count is kept and published rather than discarded, so a reviewer can
+    still see it.
 
     Returns a :class:`CrossLanguageHits` of two candidate-ID → count maps.
     """
@@ -8894,8 +9126,8 @@ def production_callables(
       (public API, reachable by external callers outside the analysis scope —
       WI-zimum).
 
-    Extracted from the inline classification ``cmd_dead_code_maybe`` used to
-    build so the seed-cohort math has a single named source of truth.
+    A named function so the seed-cohort math in ``cmd_dead_code_maybe`` has
+    a single source of truth.
     """
     production_symbols: dict[str, dict] = {}
     test_symbols: set[str] = set()
@@ -8904,19 +9136,20 @@ def production_callables(
         kind = node.get("kind", "")
         if kind not in ("function", "method"):
             continue
-        # INV-disin: ADR-0031 Class-B synthetic linker stand-ins carry a truthy
-        # protocol_origin (and language=None). They are not real source callables
+        # ADR-0031 Class-B synthetic linker stand-ins carry a truthy
+        # protocol_origin (and language=None) (INV-disin). They are not real source callables
         # — they are placeholder targets synthesized by linkers — so they must
-        # not enter the dead-code candidate universe. Left in, they are ~100%
-        # flagged dead because language-scoped seeds/entrypoints can never match
+        # not enter the dead-code candidate universe. Left in, they are all but
+        # certainly flagged dead because language-scoped seeds/entrypoints can never match
         # a language=None node. Keyed on protocol_origin (the canonical Class-B
         # marker, biconditional-enforced by the spec validator), NOT framework_role
-        # (which also marks Class-A route callables that must stay candidates) and
-        # NOT language-is-None.
+        # and NOT language-is-None. (Route markers are Class B too, WI-mupal,
+        # so they leave the candidate universe here: a marker is a stand-in for a
+        # route, and its handler, a real callable, stays a candidate.)
         if node.get("protocol_origin"):
             continue
         path = node.get("path", "")
-        if _is_test_path(path):
+        if _is_test_node(path, node.get("meta")):
             test_symbols.add(node["id"])
         else:
             production_symbols[node["id"]] = node
@@ -8952,8 +9185,8 @@ _CLONE_KINDS = ("function", "method", "class")
 def _repeat_span_start(node: dict) -> int:
     """Best-effort start line for deterministic member ordering.
 
-    ``span`` is always a ``{start_line, end_line}`` dict in the survey schema
-    (verified: 39,831/39,831 self-corpus nodes), so no non-dict guard is needed.
+    ``span`` is always a ``{start_line, end_line}`` dict in the survey schema,
+    so no non-dict guard is needed.
     """
     return (node.get("span") or {}).get("start_line") or 0
 
@@ -9010,8 +9243,8 @@ def _cluster_repeats(
 
     Returns ``(production_clusters, test_clusters)``, each ranked by descending
     duplication burden (then ``shape_id`` for a stable order). Grouping is by
-    ``(language, shape_id)``: the language key enforces the ADR-0014
-    within-language contract, since shape_id algorithms differ per language and
+    ``(language, shape_id)``: the language key enforces the within-language
+    contract (spec §6 shape_id), since shape_id algorithms differ per language and
     a hash is only comparable within one. A group of >=2 members is a clone
     cluster. Excluded from the universe: non-callable kinds, synthetic linker
     stand-ins (``protocol_origin`` — placeholder targets, not real
@@ -9041,7 +9274,7 @@ def _cluster_repeats(
         cc = members[0].get("cyclomatic_complexity")
         if cc is not None and cc < min_complexity:
             continue
-        prod = [m for m in members if not _is_test_path(m.get("path", ""))]
+        prod = [m for m in members if not _is_test_node(m.get("path", ""), m.get("meta"))]
         record = _build_repeat_cluster(language, shape_id, members, prod)
         (tests if record["is_test_only"] else production).append(record)
 
@@ -9077,7 +9310,7 @@ def _emit_repeat_finder_json(
 def _print_repeat_cluster(cluster: dict) -> None:
     """Print one clone cluster as a refactoring-lead block."""
     kinds = "/".join(cluster["kinds"]) or "symbol"
-    short = cluster["shape_id"].replace("sha256:", "")[:8]
+    short = identity_digest(cluster["shape_id"])[:8]
     cc = cluster["cyclomatic_complexity"]
     cc_str = f"cc {cc}" if cc is not None else "cc ?"
     print(
@@ -9150,7 +9383,7 @@ def cmd_repeat_finder(args: argparse.Namespace) -> int:
     identifiers and literals; spec §337/§342). This activates ``shape_id``'s one
     non-redundant capability over ``fingerprint`` (ADR-0035 §1) — clustering
     structural clones — surfacing candidate copy-paste / extract-helper
-    refactoring leads. Within-language only (ADR-0014; enforced by the language
+    refactoring leads. Within-language only (spec §6 shape_id; enforced by the language
     key).
 
     Default filtering keeps the signal dense: trivial clusters (representative
@@ -9183,33 +9416,26 @@ def cmd_repeat_finder(args: argparse.Namespace) -> int:
 
 # The edge types the dead-code BFS treats as conferring reachability.
 #
-# MODULE-LEVEL ON PURPOSE. This was a ``cmd_dead_code_maybe`` local, which made
-# it unimportable — so its closure gate
-# (``test_dispatch_closure_gate``) had to keep a SECOND copy of the literal and
-# pin the two together by scraping the function's source text. That is the same
-# one-fact-two-homes shape INV-lalad found in taint and verify-claims: the test
-# copy silently disagreeing is exactly what the scrape existed to detect, and a
-# detector is strictly weaker than making the drift impossible. Consumers now
-# import THIS object.
+# MODULE-LEVEL ON PURPOSE, so consumers — its closure gate
+# (``test_dispatch_closure_gate``) among them — import THIS object instead of
+# keeping a second copy of the literal that could silently disagree (the
+# one-fact-two-homes shape INV-lalad found in taint and verify-claims).
+# Making the drift impossible is stronger than detecting it.
 #
-# calls:          direct function/method calls (post-Phase-3, also covers
-#                 FFI/IPC/RPC bridges via meta['bridge_kind']/['protocol'])
+# calls:          direct function/method calls (also covers FFI/IPC/RPC
+#                 bridges via meta['bridge_kind']/['protocol'])
 # dispatches_to:  interface/abstract method → concrete implementation
-#                 (post-Phase-3, also covers HTTP routes via
-#                 meta['dispatch_kind']='route')
+#                 (also covers HTTP routes via meta['dispatch_kind']='route')
 # wraps:          middleware wrapper → inner handler
-# instantiates:   object creation. INV-kahig: constructing an object makes its
-#                 constructor reachable, and every analyzer that emits
-#                 ``instantiates`` (dart/csharp/java/py/js_ts/php/cpp/verilog,
-#                 and now ruby) had its construction edges skipped by this BFS.
-#                 Measured directly against ``_bfs_reachable``: on
+# instantiates:   object creation. Constructing an object makes its
+#                 constructor reachable (INV-kahig). Without this type, on
 #                 ``main -[instantiates]-> init -[calls]-> polish`` with
-#                 seeds={main}, excluding it reaches ONLY ``main`` — both
-#                 ``init`` and ``polish`` fall out as false dead code.
+#                 seeds={main}, ``_bfs_reachable`` reaches ONLY ``main`` —
+#                 both ``init`` and ``polish`` fall out as false dead code.
 #
 # The call-family half DERIVES from the registry (INV-lalad) rather than being
 # restated here, so this set cannot silently disagree with taint's and
-# verify-claims' the way it just did. Local extras are UNIONED, never
+# verify-claims'. Local extras are UNIONED, never
 # substituted — ``dispatches_to``/``wraps`` are reachability-conferring but are
 # not call constructs.
 _REACHABILITY_EDGE_TYPES: Final[frozenset[str]] = call_family_edge_types() | frozenset(
@@ -9224,7 +9450,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 
     The seed set is selected via ``--seeds`` (default ``production``):
     - ``production``: entrypoints + exported public API (the default headline
-      view — dispatch:F2 / 2026-06-10 ruling).
+      view; dispatch:F2).
     - ``entrypoints``: CLI mains, HTTP routes, framework hooks only (the strict
       entry-only cohort; surfaced as a disclosure bucket under the default).
     - ``tests``: test functions only.
@@ -9235,7 +9461,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     BFS over call/dispatches_to/wraps edges; unvisited production callables are
     flagged, ranked by cross-language-hit/shape/FFI signal then LOC. Under the
     default ``production`` view the summary discloses two cohorts the headline
-    folds away: ``entrypoint_only_dead`` (the strict ~89%-dead view) and
+    folds away: ``entrypoint_only_dead`` (the strict entrypoint-only view) and
     ``test_only_reachable`` (functions reachable only once tests are seeded —
     the WI-jufih dead-code-vs-coverage contradiction).
 
@@ -9245,7 +9471,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     where no test-seeded walk ran. ``test_only`` is the cohort with an action
     attached — the function has tests but no production caller, so its tests are
     load-bearing for nothing and a 100% coverage gate conceals the deadness.
-    Emitting it only as a summary count made that bucket unselectable.
+    Carrying it per candidate makes that bucket selectable, not just countable.
     """
     repo_root = Path(args.path).resolve()
 
@@ -9269,11 +9495,11 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         print("No production functions found to analyze.", file=sys.stderr)
         return 0
 
-    # dispatch:F2 — resolve the seed mode. The default is ``production``
-    # (entrypoints + exported public API), the 2026-06-10 ruling's headline
-    # view: it retires the ~89%-dead entrypoint-only false-positive headline
-    # while keeping the strict entrypoint-only view and test-only reachability
-    # as labeled disclosure buckets (see the summary). ``--seeds`` defaults to
+    # Resolve the seed mode (dispatch:F2). The default is ``production``
+    # (entrypoints + exported public API): seeded from entrypoints alone, most
+    # callables read as dead, so the strict entrypoint-only view and
+    # test-only reachability are kept as labeled disclosure buckets instead
+    # (see the summary). ``--seeds`` defaults to
     # None at the argparse layer so an *omitted* flag (warn-worthy) is
     # distinguishable from an explicit ``--seeds entrypoints``.
     seeds_arg = getattr(args, "seeds", None)
@@ -9296,6 +9522,12 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 name=n.get("name", ""),
                 kind=n.get("kind", ""),
                 language=n.get("language", ""),
+                # ADR-0031 Class B: a route marker's host language is here
+                # (WI-mupal). detect_entrypoints ranks by Symbol.host_language,
+                # and the entrypoint cap keeps the top of that ranking, so
+                # dropping it would change which seeds survive.
+                discovery_language=n.get("discovery_language"),
+                protocol_origin=n.get("protocol_origin"),
                 path=n.get("path", ""),
                 span=Span(
                     start_line=span_data.get("start_line", 0),
@@ -9307,31 +9539,29 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             )
             ir_nodes.append(sym)
 
-        # WI-higap: this path reconstructs Edges from a previously-saved
-        # behavior map, and ``Edge.from_dict`` is the one deserializer —
-        # it carries the sentinel fallback for legacy origin fields AND
-        # reads back the fields this call site used to drop on the floor:
-        # ``meta`` (and with it ``evidence_type``, which serialises there),
-        # ``is_resolved``, ``dst_ref`` and ``confidence_source``. Rebuilding
-        # the Edge by hand meant every reconstructed edge claimed the
+        # This path reconstructs Edges from a previously-saved behavior map,
+        # and ``Edge.from_dict`` is the one deserializer (WI-higap) — it
+        # carries the sentinel fallback for legacy origin fields AND reads
+        # back ``meta`` (and with it ``evidence_type``, which serialises
+        # there), ``is_resolved``, ``dst_ref`` and ``confidence_source``. A
+        # hand-built Edge would make every reconstructed edge claim the
         # ``ast_call_direct`` inference pathway it was never told (INV-nudoj).
         ir_edges = [Edge.from_dict(e) for e in edges]
 
         min_conf = getattr(args, "min_confidence", 0.0)
         for ep in detect_entrypoints(ir_nodes, ir_edges):
             # ADR-0039 ruling 3: --min-confidence on entrypoint seeds is a
-            # prominence filter (historically the post-adjustment value), so it
-            # keys on rank_score, matching the entrypoint list's own ordering.
+            # prominence filter, so it keys on rank_score, matching the entrypoint list's own ordering.
             if ep.rank_score >= min_conf:
                 entrypoint_seed_ids.add(ep.symbol_id)
 
-    # WI-vuton heuristic 2: usage_contexts cross-reference. A symbol that
+    # usage_contexts cross-reference (WI-vuton heuristic 2). A symbol that
     # appears as a callable-position (``view_func``) in a usage_context
     # is reached via the framework dispatcher even when no static call
     # edge exists. Route handlers, message-queue handlers, decorator-
     # registered callbacks etc. all surface here; without this seed, they
-    # were the single largest FP class in the dead-code-maybe report on
-    # hypergumbo self-analysis. Only ``view_func`` (and other future
+    # would be the largest false-positive class in the dead-code-maybe
+    # report. Only ``view_func`` (and other future
     # callable-position kinds) seed the BFS — pure name references
     # (``arg_value``) do not represent dispatch sites and should NOT
     # produce reachability claims. Seeded in every mode.
@@ -9362,30 +9592,34 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             if src and dst:
                 call_graph.setdefault(src, []).append(dst)
 
-    # INV-rolok: a construction edge that lands on a CLASS must still reach
-    # the code that runs on construction. Applied to the walk's own graph,
+    # A construction edge that lands on a CLASS must still reach the code
+    # that runs on construction (INV-rolok). Applied to the walk's own graph,
     # after seed detection, so no emitted edge and no other consumer moves.
     for _owner, _init in _construction_initializer_edges(nodes, edges):
         call_graph.setdefault(_owner, []).append(_init)
+    # And code anchored on a file or class runs when its container does
+    # (anchor_execution's contract; WI-fakuh), walk-only like the edges above.
+    from .anchor_execution import anchor_execution_edges
+
+    for _container, _anchor in anchor_execution_edges(nodes, edges):
+        call_graph.setdefault(_container, []).append(_anchor)
 
     reachable = _bfs_reachable(seed_ids, call_graph)
 
     # dispatch:F2 disclosure buckets (computed for the production headline
-    # view). ``entrypoint_only_dead`` re-exposes the strict ~89%-dead cohort
-    # the default used to print; ``test_only_reachable`` names production
+    # view). ``entrypoint_only_dead`` exposes the strict entrypoint-only
+    # cohort; ``test_only_reachable`` names production
     # functions dead under the production seeds yet reachable once test code is
     # also seeded — the WI-jufih dead-code-vs-coverage contradiction, disclosed
     # rather than silently absorbed.
     production_keys = set(production_symbols)
     entrypoint_only_dead: int | None = None
     test_only_reachable: int | None = None
-    # WI-jozah: the IDENTITIES, not only the count. The set was already being
-    # computed here and collapsed to a ``len()`` on the way out, which left the
-    # highest-value cohort in the whole report unselectable — "reachable only
-    # from tests" means the function has tests but no production caller, so the
+    # The IDENTITIES, not only the count (WI-jozah): "reachable only from
+    # tests" means the function has tests but no production caller, so the
     # tests are load-bearing for nothing and a 100% coverage gate is actively
-    # concealing the deadness. On hypergumbo's own tree that is 1859 of 2107
-    # candidates: a list a consumer could count but not filter. ``None`` rather
+    # concealing the deadness — the highest-value cohort in the report, which
+    # a consumer must be able to filter, not just count. ``None`` rather
     # than an empty set under non-default seed modes, because "the test-seeded
     # walk did not run" and "it ran and found nobody" are different facts.
     test_only_ids: set[str] | None = None
@@ -9403,7 +9637,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     exclude_annotated = getattr(args, "exclude_annotated", False)
     exclude_exports = getattr(args, "exclude_exports", False)
 
-    # WI-rumij: propagate class-level annotations to contained methods.
+    # Propagate class-level annotations to contained methods (WI-rumij).
     # Spring frameworks typically annotate the controller class (@Controller,
     # @RestController, @Service) without re-annotating each handler method,
     # so methods report no annotations and slip past --exclude-annotated.
@@ -9430,15 +9664,13 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 
     for sym_id, node in production_symbols.items():
         if sym_id not in reachable:
-            # WI-jifup: symbols in generated files are never actionable
-            # dead-code targets — you regenerate them, not delete them
-            # manually. Unconditional drop (no opt-in flag) because there
-            # is no use case in which the user wants "dead generated
-            # code" surfaced. Closes the residual leak in openapi-gen
-            # utility files (CancelablePromise.ts, request.ts, OpenAPI.ts,
-            # ApiError.ts) that bypassed the ranking-side centrality
-            # penalty (WI-tizij / WI-vubad) because dead-code-maybe does
-            # not use centrality at all.
+            # Symbols in generated files are never actionable dead-code
+            # targets — you regenerate them, not delete them manually
+            # (WI-jifup). Unconditional drop (no opt-in flag) because there
+            # is no use case in which the user wants "dead generated code"
+            # surfaced. The ranking-side centrality penalty for generated
+            # files (WI-tizij / WI-vubad) does not help here, because
+            # dead-code-maybe does not use centrality at all.
             sc = node.get("supply_chain") or {}
             if sc.get("is_generated_file"):
                 continue
@@ -9449,14 +9681,14 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 meta = node.get("meta") or {}
                 if _has_annotation_signal(meta):
                     continue
-                # WI-rumij: check containing class's annotations too
+                # Check containing class's annotations too (WI-rumij)
                 parent_class_id = method_to_class.get(sym_id)
                 if parent_class_id is not None:
                     parent_meta = class_meta_by_id.get(parent_class_id, {})
                     if _has_annotation_signal(parent_meta):
                         continue
-            # WI-zafab filter 3: skip candidates that are part of the
-            # repo's public API (Symbol.is_exported=True). Exported
+            # Skip candidates that are part of the repo's public API
+            # (WI-zafab filter 3) (Symbol.is_exported=True). Exported
             # symbols are reachable by external callers outside the
             # analysis scope — an unreached exported symbol is a
             # definitional false positive for the linker-gap bucket.
@@ -9470,9 +9702,9 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # ``Sub.foo`` with zero in-edges in the static call graph is almost
     # certainly reached via virtual dispatch whenever a base-class method
     # ``Base.foo`` IS reachable — callers go through the base statically
-    # and the runtime picks the override. Pre-fix, every override of a
+    # and the runtime picks the override. Without this, every override of a
     # reachable interface method (the most architecturally important
-    # code) was flagged dead.
+    # code) would be flagged dead.
     #
     # Implementation: walk ``extends`` / ``inherits`` / ``implements``
     # edges to find each class's transitive ancestors; for each dead
@@ -9480,10 +9712,9 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # ancestor class that IS reachable. The last-segment match is
     # agnostic of the analyzer's qualified-name convention (e.g.
     # ``Cache.delete`` → ``delete``).
-    # INV-nosoz: resolved from the registry rather than re-listed here. The
-    # hand-rolled copy this replaces happened to be complete for the three
-    # unambiguous spellings, but could not express the Ruby-mixin half of
-    # ``includes`` — so a method inherited via ``include SomeModule`` was
+    # The edge family is resolved from the registry rather than re-listed
+    # here (INV-nosoz), which also covers the Ruby-mixin half of
+    # ``includes`` — so a method inherited via ``include SomeModule`` is not
     # reported dead.
     extends_graph: dict[str, set[str]] = {}
     for edge in edges:
@@ -9518,7 +9749,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         return seen
 
     def _method_basename(name: str) -> str:
-        # WI-kilal: handle Ruby's ``Class#method`` separator in addition to
+        # Handle Ruby's ``Class#method`` separator (WI-kilal) in addition to
         # Python/Java/JS's ``Class.method``. Cross-language analyzers use
         # different conventions: Python ``ClassA.foo``, Ruby
         # ``ClassA#foo``. Strip whichever separator appears last in the
@@ -9581,14 +9812,11 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # demoter above (a hard exclusion: no per-candidate dead-confidence score
     # exists to demote proportionally yet).
     #
-    # INV-hugit, 2026-09-21, TWO CHANGES THAT ARE ONE CHANGE. The threshold now
-    # reads ONLY hits in files of a real other language: a manifest substring
-    # is not dispatch evidence, and counting it was worth 112 of 207 demotions
-    # on this repository. And the demotions that remain are RECORDED rather
-    # than dropped — a hard exclusion that published only a count left a
-    # wrongly-demoted candidate unreviewable, which is the fail-open direction
-    # for a demoter, and is how INV-rolok's "0 of 2,152 candidates are
-    # __init__" sizing claim came to be manufactured by this code.
+    # The threshold reads ONLY hits in files of a real other language: a
+    # manifest substring is not dispatch evidence (INV-hugit). And the
+    # demotions are RECORDED rather than dropped — a hard exclusion that
+    # published only a count would leave a wrongly-demoted candidate
+    # unreviewable, which is the fail-open direction for a demoter.
     cross_lang_threshold = getattr(args, "cross_lang_threshold", 3)
     cross_lang_demoted_ids: set[str] = set()
     cross_lang_demoted: list[dict[str, Any]] = []
@@ -9614,7 +9842,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         boost = _compute_path_shape_boost(node)
         if boost > 0:
             shape_boosts[node["id"]] = boost
-        # WI-hadap H2: FFI signature auto-flag. An FFI-shaped candidate
+        # FFI signature auto-flag (WI-hadap H2). An FFI-shaped candidate
         # is a "free hit" — definitional cross-language boundary.
         if _compute_ffi_signature_flag(node):
             ffi_flags[node["id"]] = True
@@ -9637,15 +9865,14 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     )
 
     def _reachability_of(symbol_id: str) -> str | None:
-        """Which cohort a dead candidate is in — WI-jozah's per-item label.
+        """Which cohort a dead candidate is in — the per-item label (WI-jozah).
 
-        BINARY, and the filing's suggested three-value vocabulary was one value
-        too many. It proposed ``test_only`` / ``entrypoint_only`` /
-        ``unreachable``, but a dead candidate is by definition unreachable from
-        the PRODUCTION seeds, and those are a superset of the entrypoint seeds —
-        so every dead candidate is entrypoint-only-dead by construction and that
-        label would partition nothing. ``entrypoint_only_dead`` stays a summary
-        count of a different, larger cohort (4314 against 2107 on the self-tree).
+        BINARY (``test_only`` / ``unreachable``). A dead candidate is by
+        definition unreachable from the PRODUCTION seeds, and those are a
+        superset of the entrypoint seeds — so every dead candidate is
+        entrypoint-only-dead by construction and an ``entrypoint_only`` label
+        would partition nothing. ``entrypoint_only_dead`` stays a summary count
+        of a different, larger cohort.
 
         ``None`` under non-default seed modes: no test-seeded walk ran, so the
         cohort is unknown rather than ``unreachable``. Defaulting there would
@@ -9688,33 +9915,31 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 # seeded (WI-jufih). null under explicit non-default modes.
                 "entrypoint_only_dead": entrypoint_only_dead,
                 "test_only_reachable": test_only_reachable,
-                # WI-jozah: the SAME cohort counted over the emitted candidate
-                # list rather than over all production symbols. The two differ
+                # The SAME cohort counted over the emitted candidate list
+                # rather than over all production symbols (WI-jozah). The two differ
                 # and the difference is not an error — ``dead_candidates`` has
                 # the FP demoters applied (generated files, cross-language name
                 # hits, virtual-dispatch overrides, --exclude-* filters), so a
                 # test-only symbol can be demoted out of the list while still
-                # counting toward ``test_only_reachable``. Measured on the
-                # self-tree: 1859 against 1747, a 112-symbol gap.
+                # counting toward ``test_only_reachable``.
                 #
                 # Both numbers are published because a consumer summing the
                 # per-item labels gets the second and would otherwise read the
                 # first as a contradiction. Two denominators, each stated, is
                 # the L60 discipline — the failure mode is publishing one number
-                # and letting the reader guess its scope. (My own first test
-                # here asserted the two were EQUAL and passed, because the
-                # fixture is small enough that no demoter fires.)
+                # and letting the reader guess its scope. (A small fixture where
+                # no demoter fires shows the two as equal.)
                 "test_only_reachable_candidates": (
                     None if test_only_ids is None
                     else sum(
                         1 for n in dead_candidates if n["id"] in test_only_ids
                     )
                 ),
-                # WI-vuton: how many symbols entered the reachable set via
+                # How many symbols entered the reachable set via
                 # framework-dispatch usage_contexts (view_func position) and
                 # how many methods were demoted from dead via inheritance-
                 # based virtual-dispatch reasoning. Surfaces the FP-class
-                # corrections so consumers can audit them.
+                # corrections so consumers can audit them (WI-vuton).
                 "demoted_view_func": len(view_func_seed_ids),
                 "demoted_dispatch_inherited": len(dispatch_inherited_ids),
                 # dispatch:F7 (WI-gavub): candidates excluded because their name
@@ -9732,18 +9957,18 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "span": n.get("span"),
                     "id": n["id"],
                     "cross_language_hits": cross_lang_hits.get(n["id"], 0),
-                    # INV-hugit: manifest substrings, kept and published but
-                    # no longer able to demote on their own.
+                    # Manifest substrings, kept and published but unable to
+                    # demote on their own (INV-hugit).
                     "config_name_hits": config_name_hits.get(n["id"], 0),
                     "path_shape_boost": shape_boosts.get(n["id"], 0),
                     "ffi_signature": ffi_flags.get(n["id"], False),
-                    # WI-jozah: the cohort the summary already counted, now
-                    # attached to the record so it can be selected on.
+                    # The cohort the summary counts, attached to the record
+                    # so it can be selected on (WI-jozah).
                     "reachability": _reachability_of(n["id"]),
                 }
                 for n in dead_candidates
             ],
-            # INV-hugit (D): the demoter's residue, disclosed rather than
+            # The demoter's residue (INV-hugit), disclosed rather than
             # silently dropped — the treatment ``entrypoint_only_dead`` and
             # ``test_only_reachable_candidates`` already get. ALWAYS PRESENT,
             # empty when nothing was demoted: a reader must be able to tell
@@ -9782,7 +10007,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             # dispatch:F2 disclosure buckets.
             print(f"  entrypoint-only view would flag: {entrypoint_only_dead}")
             print(f"  reachable only from tests:       {test_only_reachable}")
-        # INV-hugit: the demoter's residue is disclosed in the text view too,
+        # The demoter's residue is disclosed in the text view too (INV-hugit),
         # and unconditionally — a reader of the default output must be able to
         # tell "nothing was demoted" from "this view does not say".
         print(f"  withheld by cross-language hits: "
@@ -9797,7 +10022,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 name = n.get("name", "?")
                 path = n.get("path", "?")
                 loc = n.get("line_span") or "?"
-                # WI-jozah: the cohort on the line itself. A disclosure that
+                # The cohort on the line itself (WI-jozah). A disclosure that
                 # exists only under --json is half shipped, and "test-only" is
                 # the annotation with an action attached — it says the function
                 # has tests and no production caller.
@@ -9818,10 +10043,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 def _positive_token_budget(raw: str) -> int:
     """argparse type for --tokens: require a positive integer.
 
-    WI-pokor (UAT BUG-02+03): ``-t 0`` was silently treated as "no budget"
-    and produced the default 8000-token sketch; negative values produced
+    Without it, ``-t 0`` would silently be treated as "no budget" and
+    produce the default 8000-token sketch, and negative values would produce
     a header-only output with exit code 0. Both are configuration errors
-    and should fail fast with a clear message.
+    and fail fast with a clear message (WI-pokor).
     """
     try:
         value = int(raw)
@@ -9839,10 +10064,11 @@ def _positive_token_budget(raw: str) -> int:
 def _positive_result_limit(raw: str) -> int:
     """argparse type for a result-count ``--limit``: require a positive integer.
 
-    INV-toniv: ``search --limit -5`` was silently interpreted as Python
-    tail-drop slicing (``matches[:-5]``), and ``--limit 0`` fell through the
-    falsy guard and was treated as "no limit". Both are configuration errors —
-    a result limit must be >= 1 — and should fail fast with a clear message.
+    Without it, ``search --limit -5`` would be silently interpreted as Python
+    tail-drop slicing (``matches[:-5]``), and ``--limit 0`` would fall through
+    the falsy guard and be treated as "no limit". Both are configuration
+    errors — a result limit must be >= 1 — and fail fast with a clear message
+    (INV-toniv).
     """
     try:
         value = int(raw)
@@ -9860,8 +10086,8 @@ def _positive_result_limit(raw: str) -> int:
 def _positive_int_arg(label: str):
     """argparse ``type=`` factory: require a positive integer (>= 1) for ``label``.
 
-    WI-vusaf: ``compact --max-symbols 0`` / negative was silently accepted and
-    produced a degenerate view. A bounded validator fails fast with rc=2.
+    Rejects e.g. ``compact --max-symbols 0`` / negative, which would otherwise
+    produce a degenerate view; fails fast with rc=2 (WI-vusaf).
     """
     def _parse(raw: str) -> int:
         try:
@@ -9933,7 +10159,7 @@ def _add_trace_deps_argument(parser: argparse.ArgumentParser) -> None:
 def _unit_interval_arg(label: str):
     """argparse ``type=`` factory: require a float in the inclusive range [0.0, 1.0].
 
-    WI-vusaf: ``compact --coverage 1.5`` / negative was silently accepted.
+    Rejects e.g. ``compact --coverage 1.5`` / negative (WI-vusaf).
     0.0 and 1.0 are valid (module tests use both).
     """
     def _parse(raw: str) -> float:
@@ -9955,12 +10181,11 @@ def _add_minimal_argument(parser: argparse.ArgumentParser) -> None:
     """Opt-in ``--minimal`` for subcommands that can auto-run an analysis (WI-bikod).
 
     Ten subcommands run a full analysis on a cache miss, via
-    ``_get_or_run_analysis``. That path used to inherit every one of ``survey``'s
-    side-emission defaults, so a caller who typed ``slice --files`` also paid for
-    three budget-tier preview files, up to 25 per-route handler slices, and the
-    sketch pre-computation block — while ``slice --files`` reads only ``nodes``
-    and ``edges``. Measured on this monorepo, declining all three took a cold
-    analysis 517.7s → 455.0s.
+    ``_get_or_run_analysis``. By default that path inherits every one of
+    ``survey``'s side-emission defaults, so a caller who typed ``slice --files``
+    also pays for three budget-tier preview files, up to 25 per-route handler
+    slices, and the sketch pre-computation block — while ``slice --files``
+    reads only ``nodes`` and ``edges``.
 
     ``--minimal`` is the one word that declines the set. It is deliberately
     OPT-IN: the standing ruling (WI-pijal) is that those artifacts earn their
@@ -10012,9 +10237,34 @@ def _add_path_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--path",
         dest="_path_flag",
+        metavar="PATH",
         default=None,
         help="Path to repo root (alternative to positional argument)",
     )
+
+
+#: The one statement of what ``--input`` does on every command that reads a
+#: survey: each resolves it through the same discover-or-analyse step, so
+#: each says the same thing.
+INPUT_HELP = (
+    "Read this survey file. Default: the repository's cached survey, or a "
+    "fresh analysis when there is none."
+)
+
+#: The sketch budget when ``-t`` is not given; the help quotes it.
+DEFAULT_SKETCH_TOKENS = 8000
+
+
+def _backend_trust_name(value: str) -> str:
+    """A backend named as ``--backend`` spells it (``rust-analyzer``) or as
+    the trust store keys it (``rust_analyzer``): one backend either way."""
+    return value.replace("-", "_")
+
+
+def _add_input_argument(parser: argparse.ArgumentParser) -> None:
+    """Add ``--input`` with the shared help line (:data:`INPUT_HELP`)."""
+    parser.add_argument(
+        "--input", type=str, default=None, metavar="FILE", help=INPUT_HELP)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -10036,7 +10286,7 @@ Workflow:
 
     main_epilog = """\
 Examples:
-  hypergumbo ~/myproject                    # Sketch with auto token budget
+  hypergumbo ~/myproject                    # Sketch at the default budget (~8000 tokens)
   hypergumbo ~/myproject -t 8000            # Sketch sized for 8k context
   hypergumbo . -t 4000 -x                   # Exclude test files
   hypergumbo survey . --compact                # LLM-friendly JSON output
@@ -10078,8 +10328,8 @@ For help on ALL commands:   hypergumbo --help --all"""
             "activates the SCIP-backed Rust analyzer (requires 'hypergumbo "
             "install-rust-analyzer'; executes the crate's build.rs). "
             "'scip-python' activates the SCIP-backed Python analyzer (pyright "
-            "via scip-python; executes nothing; needs `npm install -g "
-            "@sourcegraph/scip-python`). 'tree-sitter' turns every opt-in "
+            "via scip-python; executes nothing; needs the scip-python npm "
+            "package, and prints its install steps when it is missing). 'tree-sitter' turns every opt-in "
             "backend off for this run. Default: the environment "
             "(HYPERGUMBO_RUST_ANALYZER / HYPERGUMBO_SCIP_PYTHON), then the "
             "per-repository trust grant or the config tiers."
@@ -10119,18 +10369,13 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_sketch)
-    p_sketch.add_argument(
-        "--input",
-        type=str,
-        default=None,
-        metavar="FILE",
-        help="Use cached results file instead of re-analyzing (faster)",
-    )
+    _add_input_argument(p_sketch)
     p_sketch.add_argument(
         "-t", "--tokens",
         type=_positive_token_budget,
         default=None,
-        help="Limit output to approximately N tokens (must be a positive integer)",
+        help=("Limit output to approximately N tokens (a positive integer; "
+              f"default: {DEFAULT_SKETCH_TOKENS})"),
     )
     p_sketch.add_argument(
         "-x", "--exclude-tests",
@@ -10264,7 +10509,7 @@ Examples:
   hypergumbo survey . --first-party-only   # Exclude vendored/external code
 
 Side-outputs alongside --out:
-  In addition to the path you pass, `run` writes:
+  In addition to the path you pass, `survey` writes:
     <stem>.4k.json / .16k.json / .64k.json   compact-tier previews at the same
                                               prefix as --out (see --budgets
                                               or --no-sketch-fan-out)
@@ -10344,7 +10589,10 @@ Cache location:
         type=int,
         default=None,
         dest="max_files",
-        help="Maximum files to analyze per language (for large repos)",
+        help="Maximum files each language analyzer reads: the first N it "
+             "finds, in discovery order (for large repos). Linkers are not "
+             "bounded; neither are the opt-in SCIP backends, which index the "
+             "whole repository.",
     )
     p_run.add_argument(
         "--max-file-bytes",
@@ -10438,7 +10686,7 @@ Cache location:
         "--no-handler-slices",
         action="store_true",
         dest="no_handler_slices",
-        help="Disable per-route-handler forward slices (WI-sihok). By default "
+        help="Disable per-route-handler forward slices. By default "
              "`run` emits slice.handler.<METHOD>.<path>.json for each "
              "detected handler into a ``<out-stem>.slices/`` subdirectory next "
              "to --out (capped at --max-handler-slices). Use this flag to "
@@ -10454,9 +10702,8 @@ Cache location:
              f"the ``<out-stem>.slices/slice.handler.index.json`` companion "
              f"file with pointers to re-derive on demand.",
     )
-    # WI-kojob: large repos produce 300MB-500MB raw JSON outputs that
-    # gzip to ~5% of their uncompressed size (airflow 320MB → 18MB,
-    # kafka 572MB → 34MB). `--gzip` writes the main output and any
+    # Large repos produce JSON outputs of hundreds of MB that gzip to a small
+    # fraction of their uncompressed size (WI-kojob). `--gzip` writes the main output and any
     # budget-tier outputs as `.gz`; pair with `--out foo.json.gz`.
     p_run.add_argument(
         "--gzip",
@@ -10467,7 +10714,7 @@ Cache location:
              "gzipped JSON. Pair with `--out foo.json.gz`. Downstream "
              "tools like `zcat foo.json.gz | jq .` round-trip cleanly.",
     )
-    # WI-kojob: `--no-sketch-fan-out` is an explicit named alias for
+    # `--no-sketch-fan-out` is an explicit named alias (WI-kojob) for
     # `--budgets none` — surfaced in argparse so it shows up in --help
     # alongside `--no-handler-slices` (the symmetric side-output
     # suppressor).
@@ -10533,11 +10780,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         default=None,
         help="Output JSON path (default: slice.<entry-name>.json)",
     )
-    p_slice.add_argument(
-        "--input",
-        default=None,
-        help="Read from existing behavior map file instead of running analysis",
-    )
+    _add_input_argument(p_slice)
     p_slice.add_argument(
         "--max-hops",
         type=int,
@@ -10607,7 +10850,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         "--inline",
         action="store_true",
         help="Include full node/edge objects in output (not just IDs). "
-             "Makes slice.json self-contained without needing the behavior map.",
+             "Makes slice.json self-contained without needing the survey.",
     )
     p_slice.add_argument(
         "--flat",
@@ -10681,11 +10924,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         help="Pattern to search for (case-insensitive substring match)",
     )
     _add_path_argument(p_search)
-    p_search.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_search)
     p_search.add_argument(
         "--kind",
         default=None,
@@ -10723,18 +10962,13 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_routes)
-    p_routes.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_routes)
     p_routes.add_argument(
         "--language",
         default=None,
         help="Filter by language (e.g., python, javascript)",
     )
-    # WI-godos: routes excludes test-file routes by default (UAT DQ-02
-    # found 14% of plausible's reported routes were from tests). Use
+    # routes excludes test-file routes by default (WI-godos). Use
     # --include-tests to opt back in. The `-x` / `--exclude-tests` flag
     # is kept as a no-op alias so existing scripts don't break.
     p_routes.add_argument(
@@ -10792,11 +11026,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         help="Symbol name to explain (case-insensitive)",
     )
     _add_path_argument(p_explain)
-    p_explain.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_explain)
     p_explain.add_argument(
         "-x",
         "--exclude-tests",
@@ -10832,7 +11062,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         dest="provenance",
         help="Show derivation chains (derived_from) for each edge",
     )
-    # WI-nanut: disambiguation / bounding flags (parity with `symbols`).
+    # Disambiguation / bounding flags (parity with `symbols`; WI-nanut).
     p_explain.add_argument(
         "--language",
         default=None,
@@ -10868,6 +11098,7 @@ The output begins with passes suggested for your current directory."""
 
     p_catalog = sub.add_parser(
         "catalog",
+        aliases=["catalogue"],
         help="List available language analyzers",
         epilog=catalog_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -10954,7 +11185,9 @@ The output begins with passes suggested for your current directory."""
     p_trust.add_argument(
         "backend_name",
         metavar="BACKEND",
-        help="Backend to decide about (currently: rust_analyzer)",
+        type=_backend_trust_name,
+        help=("Backend to decide about (currently: rust-analyzer; the "
+              "rust_analyzer spelling is accepted too)"),
     )
     p_trust.add_argument(
         "path", nargs="?", default=".", help="Repository root (default: .)",
@@ -10970,6 +11203,7 @@ The output begins with passes suggested for your current directory."""
     # hypergumbo trust-catalogues (ADR-0061 ruling 4)
     p_trust_cat = sub.add_parser(
         "trust-catalogues",
+        aliases=["trust-catalogs"],
         help=(
             "Record a per-repository decision to load (or refuse) the "
             "catalogue data a repository's own .hypergumbo.toml names"
@@ -11132,8 +11366,8 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
     )
     p_uninstall_embeddings.set_defaults(func=cmd_uninstall_embeddings)
 
-    # hypergumbo add-extras (single umbrella; consolidated from former
-    # install-extras umbrella per WI-josif).
+    # hypergumbo add-extras (single umbrella over every extras component;
+    # WI-josif).
     p_add_extras = sub.add_parser(
         "add-extras",
         help="Install all optional extras (grammars, gitleaks, embeddings, rust-analyzer)",
@@ -11181,7 +11415,7 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
     p_remove_extras.set_defaults(func=cmd_remove_extras)
 
     # hypergumbo test-coverage
-    # WI-rakol: the "production functions" denominator is shared by
+    # The "production functions" denominator (WI-rakol) is shared by
     # test-coverage and dead-code-maybe (both derive it from
     # ``production_callables``); document it once, in both epilogs.
     production_fn_doc = (
@@ -11203,7 +11437,7 @@ Analyzes the call graph to estimate which functions are tested.
 Does NOT execute code - uses static analysis only.
 Language agnostic - works with any language hypergumbo supports.
 
-Recall caveat (WI-hular): empirical false-negative rate ~20% across
+Recall caveat: empirical false-negative rate ~20% across
 4 languages measured in UAT 2026-04-13. The tool has high precision
 but limited recall: tests that reach production code via reflection,
 dispatch macros, or visitor patterns produce 'untested' false alarms.
@@ -11223,11 +11457,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_test_cov)
-    p_test_cov.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_test_cov)
     p_test_cov.add_argument(
         "--format",
         choices=["text", "json"],
@@ -11263,10 +11493,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_dead_code)
-    p_dead_code.add_argument(
-        "--input", default=None,
-        help="Input behavior map file (default: auto-detect cached results)",
-    )
+    _add_input_argument(p_dead_code)
     p_dead_code.add_argument(
         "--format", choices=["text", "json"], default="text",
         help="Output format (default: text)",
@@ -11275,7 +11502,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         "--seeds", choices=["production", "entrypoints", "tests", "exports", "all"],
         default=None,
         help="Seed set for reachability analysis (default: production = "
-             "entrypoints + exported public API; dispatch:F2). 'entrypoints' is "
+             "entrypoints + exported public API). 'entrypoints' is "
              "the strict entry-only view (also disclosed as a bucket under the "
              "default). 'exports' uses symbols with is_exported=True. 'all' "
              "combines entrypoints, tests, and exports. Omitting the flag prints "
@@ -11292,12 +11519,12 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
     )
     p_dead_code.add_argument(
         "--exclude-exports", action="store_true", default=False,
-        help="WI-zafab filter 3: exclude candidates whose is_exported=True "
+        help="Exclude candidates whose is_exported=True "
              "(public API — reachable by external callers outside the analysis scope)",
     )
     p_dead_code.add_argument(
         "--cross-lang-threshold", type=int, default=3,
-        help="dispatch:F7 (WI-gavub): demote (exclude) candidates whose name "
+        help="Demote (exclude) candidates whose name "
              "appears in >= N other-language files — near-certain cross-language "
              "dispatch / missing-edge false positives (default: 3). Set <= 0 to "
              "disable the demoter.",
@@ -11311,10 +11538,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         help="Find structurally-identical implementations (refactoring leads)",
     )
     _add_path_argument(p_repeat)
-    p_repeat.add_argument(
-        "--input", default=None,
-        help="Input survey file (default: auto-detect cached results)",
-    )
+    _add_input_argument(p_repeat)
     p_repeat.add_argument(
         "--format", choices=["text", "json"], default="text",
         help="Output format (default: text)",
@@ -11356,7 +11580,7 @@ Examples:
 By default (and with --all) low-value kinds are hidden from the connectivity
 table — file/dependency/project/package nodes and CSS class/id/variable/
 keyframes/media/font-face/markdown kinds. Request one of these explicitly with
-`--kind <k>` (e.g. `--kind file`, `--kind variable`) to surface it (WI-sufuh).
+`--kind <k>` (e.g. `--kind file`, `--kind variable`) to surface it.
 
 Output: Rich table with columns Symbol, Kind, In (in-degree), Out (out-degree),
 Deg (total degree), File. Symbol and File columns default to 60 / 80 chars
@@ -11372,11 +11596,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_symbols)
-    p_symbols.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: survey.json)",
-    )
+    _add_input_argument(p_symbols)
     p_symbols.add_argument(
         "-x", "--exclude-tests",
         action="store_true",
@@ -11417,7 +11637,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         dest="all",
         help=(
             "Show all symbols (ignore --limit). Low-value kinds are still "
-            "hidden unless requested via --kind (WI-sufuh)"
+            "hidden unless requested via --kind"
         ),
     )
     p_symbols.add_argument(
@@ -11450,18 +11670,18 @@ Examples:
   hypergumbo compact --input hg.json --max-symbols 50 --coverage 0.9
   hypergumbo compact --input hg.json --no-connectivity
 
-Converts an existing behavior map to compact form with:
+Converts an existing survey to compact form with:
 - Top symbols selected as a 'connected core' by default (connectivity-aware,
   so the crop is a usable graph); pass --no-connectivity for centrality-ranked
 - Summary of omitted symbols (bag-of-words, path patterns, kinds)
 - Induced subgraph edges (only edges between included symbols)
 
-Useful for post-processing large behavior maps into LLM-friendly formats
+Useful for post-processing large surveys into LLM-friendly formats
 without re-running the full analysis."""
 
     p_compact = sub.add_parser(
         "compact",
-        help="Convert behavior map to compact form with coverage-based truncation",
+        help="Convert a survey to compact form with coverage-based truncation",
         epilog=compact_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -11469,7 +11689,7 @@ without re-running the full analysis."""
         "--input",
         required=True,
         metavar="FILE",
-        help="Input behavior map JSON file (required)",
+        help="Input survey JSON file (required)",
     )
     p_compact.add_argument(
         "--out",
@@ -11537,11 +11757,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_io)
-    p_io.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: auto-discover or run analysis)",
-    )
+    _add_input_argument(p_io)
     p_io.add_argument(
         "--format",
         choices=["text", "json"],
@@ -11572,12 +11788,11 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         metavar="NAME",
         help="Filter to a specific primitive (e.g., subprocess.run, os.execv)",
     )
-    # WI-sifif: production-only is now the default for io-boundaries.
-    # Test files are noise for understanding production IO behavior — on
-    # alertmanager, env_read reported 9 chains with 7 of them in test files.
-    # `--exclude-tests` is kept as a no-op for backward compatibility with
-    # users/scripts already passing it; `--include-tests` flips back to the
-    # historical "show everything" behavior.
+    # Production-only is the default for io-boundaries (WI-sifif): test files
+    # are noise for understanding production IO behavior and can hold most of
+    # a boundary's chains. `--exclude-tests` is kept as a no-op for backward
+    # compatibility with users/scripts already passing it; `--include-tests`
+    # shows everything.
     p_io.add_argument(
         "-x",
         "--exclude-tests",
@@ -11595,9 +11810,8 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
             "(default: production-only)"
         ),
     )
-    # WI-mibag: the `external_potential` bucket dominates display on
-    # large repos (kafka: 76K of 76K; airflow: 28K of ~30K). Suppress
-    # it from the default text-output view; JSON output continues to
+    # The `external_potential` bucket dominates display on large repos
+    # (WI-mibag). Suppress it from the default text-output view; JSON output continues to
     # include it unconditionally for downstream tools / agents.
     # `--boundary external_potential` overrides the suppression too
     # since targeted filtering is its own opt-in.
@@ -11626,7 +11840,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         ),
     )
     p_io.add_argument(
-        "--in-repo-catalogues",
+        "--in-repo-catalogues", "--in-repo-catalogs",
         action="store_true",
         help=(
             "Load the catalogue data this repository's own .hypergumbo.toml "
@@ -11649,7 +11863,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
             "(requests, httpx, ...) are declared in an overlay. For a "
             "persistent one use $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ "
             "(`hypergumbo init-catalogs` seeds the community overlays there); "
-            "see docs/CATALOGUES.md. (INV-fotav)"
+            "see docs/CATALOGUES.md."
         ),
     )
     _add_minimal_argument(p_io)
@@ -11681,6 +11895,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
 
     p_init_catalogs = sub.add_parser(
         "init-catalogs",
+        aliases=["init-catalogues"],
         help="Create your catalogue home and seed the community overlays "
              "into it",
         epilog=(
@@ -11718,6 +11933,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
 
     p_cat_inv = sub.add_parser(
         "catalog-inventory",
+        aliases=["catalogue-inventory"],
         help="Show what this installation knows: catalogue families, what you "
              "may extend, and per-language status",
         epilog=(
@@ -11766,17 +11982,23 @@ Claims file format (YAML):
 """ + _verify_claims_boundary_vocabulary_help() + """
 A top-level `extra_catalogs:` key may name extra catalogue files --
 `io_primitives`, `sources`, `sinks`, `sanitizers` (see --io-primitives and
---taint-sources/--taint-sinks/--taint-sanitizers; WI-votan). Your persistent
+--taint-sources/--taint-sinks/--taint-sanitizers). Your persistent
 taint model belongs in $XDG_CONFIG_HOME/hypergumbo/taint_sources.d/,
 taint_sinks.d/ and taint_sanitizers.d/; see docs/CATALOGUES.md.
 
 The claims file is validated up front: a malformed YAML, an unexpected
-shape, an unknown field name, or a boundary value outside the vocabulary
-above produces a clear error and exit code 2 (not a silent pass).
+shape, an unknown field name, a field of the wrong type, or a boundary value
+outside the vocabulary above produces a clear error and exit code 2 (not a
+silent pass).
 
-Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = at least one
-inconclusive, or the claims file failed validation; 3 = at least one
-`confirmed_with_caveats` (and none of the above).
+Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = bad input
+(a claims file or --input map that is missing, unreadable or invalid, a
+catalogue that does not load, a bad argument), reported before any verdict;
+3 = at least one `confirmed_with_caveats` (and none violated or
+inconclusive); 4 = at least one inconclusive (and none violated). When
+verdicts differ, violated wins, then inconclusive, then caveats.
+
+Exit 4 is not a pass: the claim was not checked.
 
 Exit 3 means every claim held, but at least one held on something you have to
 see for yourself. FOUR things raise it, in two families.
@@ -11785,9 +12007,9 @@ The claim rested on catalogue data that did not ship with hypergumbo -- a
 `--taint-*` flag, the claims file's `extra_catalogs:`, or your own channel
 directories:
   - a sanitizer from there was credited with removing a flow the tool would
-    otherwise have reported (INV-pojib);
+    otherwise have reported;
   - a row from there DISPLACED a shipped catalogue row that could have
-    produced evidence for this very claim (INV-faput).
+    produced evidence for this very claim.
 
 Or the analysis looked and could not adjudicate what it saw:
   - control leaves this process at named call sites, and hypergumbo cannot see
@@ -11795,7 +12017,7 @@ Or the analysis looked and could not adjudicate what it saw:
   - a method the catalogue declares FOR THE CLAIMED BOUNDARY is called on a
     receiver whose type could not be determined -- `sock.sendall(payload)`
     where `sock` is an unannotated parameter -- so those calls were never
-    decided either way (INV-fibis).
+    decided either way.
 
 In every case the verdict names the entries or the sites, and the JSON envelope
 carries them under each verdict's `caveats`.
@@ -11817,11 +12039,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help="YAML file with security claims to verify",
     )
     _add_path_argument(p_vc)
-    p_vc.add_argument(
-        "--input",
-        default=None,
-        help="Input behavior map file (default: auto-discover or run analysis)",
-    )
+    _add_input_argument(p_vc)
     p_vc.add_argument(
         "--format",
         choices=["text", "json"],
@@ -11847,7 +12065,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         ),
     )
     p_vc.add_argument(
-        "--in-repo-catalogues",
+        "--in-repo-catalogues", "--in-repo-catalogs",
         action="store_true",
         help=(
             "Load the catalogue data this repository's own .hypergumbo.toml "
@@ -11870,7 +12088,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
             "(requests, httpx, ...) are declared in an overlay. For a "
             "persistent one use $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ "
             "(`hypergumbo init-catalogs` seeds the community overlays there); "
-            "see docs/CATALOGUES.md. (INV-fotav)"
+            "see docs/CATALOGUES.md."
         ),
     )
     p_vc.add_argument(
@@ -11881,7 +12099,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help=(
             "A taint source YAML file or directory for this run. "
             "Repeatable. Entries whose (module, name, kind) matches an "
-            "auto-derived or built-in source are overridden. (WI-votan)"
+            "auto-derived or built-in source are overridden."
         ),
     )
     p_vc.add_argument(
@@ -11892,7 +12110,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help=(
             "A taint sink YAML file or directory for this run. "
             "Repeatable. Entries whose (module, name, kind) matches an "
-            "auto-derived or built-in sink are overridden. (WI-votan)"
+            "auto-derived or built-in sink are overridden."
         ),
     )
     p_vc.add_argument(
@@ -11903,7 +12121,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help=(
             "A taint sanitizer YAML file or directory for this run. "
             "Repeatable. User sanitizers concatenate onto the built-in "
-            "list. (WI-votan)"
+            "list."
         ),
     )
     p_vc.add_argument(
@@ -11911,7 +12129,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         action="store_true",
         help=(
             "Count taint flows whose SOURCE is test, fixture or migration "
-            "code against taint claims. Off by default (WI-bifob): a test "
+            "code against taint claims. Off by default: a test "
             "that opens a listener is not a network-exposure finding about "
             "the product, and because a claim verdict is a disjunction a "
             "single such flow held whole claims at 'violated'. Excluded "
@@ -11939,11 +12157,18 @@ what I could not check" -- and decide per repository whether that is acceptable.
     for i, cmd in enumerate(extras_cmds):
         _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
 
+    # Trust grants, the analysis cache and the catalogues (group_order=2).
+    # Every subcommand is in a named group: one with none would be listed
+    # under a heading made from an internal fallback name.
+    trust_cmds = ["trust-backend", "trust-catalogues", "backend-agreement",
+                  "cache-status", "cache-clear", "init-catalogs",
+                  "catalog-inventory"]
+    for i, cmd in enumerate(trust_cmds):
+        _set_subparser_group(sub, cmd, "trust", 2, suborder=i)
+
     # Build metavar dynamically from the registered subparsers in their
-    # declared group/suborder. Previously this was a hardcoded string that
-    # silently drifted when new subcommands were added — config,
-    # dead-code-maybe, verify-claims, cache-status, and cache-clear were
-    # all omitted from `hypergumbo --help` (WI-zunos).
+    # declared group/suborder, so `hypergumbo --help` cannot silently omit a
+    # subcommand the way a hardcoded string would (WI-zunos).
     sub.metavar = "{" + ",".join(
         name for name, _subparser, _group, _is_new_group
         in _get_subparsers_by_group(sub)
@@ -11952,13 +12177,10 @@ what I could not check" -- and decide per repository whether that is acceptable.
     return p
 
 
-# ADR-0027 Phase-2 audit (WI-jukav): all AXIS_PENDING (Cluster G —
-# build/config-shape). Forward-compatibility verdict gates on the
-# Cluster G audit-findings outcome (already landed in audit-findings
-# 0006 with promotions to language_construct, but the registry
-# axis-update is Wave 6 follow-through per WI-runod). Until that
-# registry update lands, this set is forward-compatible by virtue of
-# none of its values being scheduled for fold/rename in Phase 3.
+# Symbol kinds that are dependency declarations. Their kind axis is
+# AXIS_PENDING (Cluster G — build/config-shape; audit-findings 0006); the set
+# is forward-compatible because none of its values is scheduled for
+# fold/rename.
 _DEPENDENCY_KINDS = frozenset({"dependency"})
 
 
@@ -11973,92 +12195,136 @@ def _classify_symbols(
     Classifies each symbol's file path and updates supply_chain_tier
     and supply_chain_reason fields.  The classification is computed once
     per PATH and shared by every symbol in that file (WI-fojot): it reads
-    the whole file, so per-symbol calls re-read a file once per symbol
-    (40x the bytes on nestjs, 319 s of CPU on flink).  Symbols that already have a tier
+    the whole file, so per-symbol calls would re-read a file once per
+    symbol.  Symbols that already have a tier
     set by a linker (e.g. npm_package with tier=3) are not reclassified
     — the linker's tier takes precedence.
 
-    Dependency-kind symbols (from Cargo.toml, package.json, etc.) are
-    classified as tier 3 (EXTERNAL_DEP) since they represent references
-    to external packages, not first-party code — EXCEPT a declaration
-    naming an in-repo workspace sibling, which is workspace-internal
-    (tier 2 INTERNAL_DEP) per INV-nuzas / ADR-0041 §1. Workspace-sibling
-    recognition uses ``collect_workspace_package_names`` (Python pyproject
-    distribution names); Cargo/npm workspace-sibling analogues are a
-    documented cross-language follow-up and still fall through to tier 3.
+    A dependency declaration (from Cargo.toml, package.json, ...) stands for
+    the package it names (ADR-0041 §1). When an in-tree manifest of the same
+    ecosystem publishes that name (``supply_chain.collect_in_tree_packages``:
+    pyproject, npm, Composer, Cargo, Maven), the declaration carries the tier
+    that manifest classifies to, so a declaration and the package node it
+    names carry one tier (INV-kutub); otherwise it is tier 3 (EXTERNAL_DEP).
+    ``sketch._run_analysis``'s fallback (no map) calls this too, so the two
+    producers cannot disagree.
 
-    INV-virik: when ``limits`` is supplied, ``classify_file`` failures
-    (the default-fallback "outside repo" classification, or any uncaught
+    When ``limits`` is supplied, ``classify_file`` failures (the
+    default-fallback "outside repo" classification, or any uncaught
     ValueError from ``Path.relative_to``) are recorded into
     ``limits.supply_chain.classification_failures`` via
-    ``Limits.add_classification_failure``. Pre-Phase-6, the schema
-    declared this field but no producer ever wrote to it.
+    ``Limits.add_classification_failure`` (INV-virik).
     """
     seen_failures: set[str] = set()
     classification_by_path: dict[str, FileClassification] = {}
-    # INV-nuzas / ADR-0041 §1: recognize in-repo workspace-sibling package
-    # names so a sibling declared as a dependency is tiered workspace-internal
-    # (tier 2), not external (tier 3). Empty set on a non-Python repo → the
-    # dependency branch below is unchanged (all deps tier 3).
-    workspace_names = collect_workspace_package_names(repo_root)
+
+    def _path_classification(rel_path: str) -> FileClassification:
+        classification = classification_by_path.get(rel_path)
+        if classification is None:
+            classification = classify_file(
+                repo_root / rel_path, repo_root, package_roots,
+            )
+            classification_by_path[rel_path] = classification
+        return classification
+
+    # The in-tree packages a dependency declaration may name (INV-kutub,
+    # ADR-0041 §1). Empty on a repo with no such manifest -> every declaration is
+    # tier 3.
+    in_tree = collect_in_tree_packages(repo_root)
     for symbol in symbols:
-        # INV-bonup / ADR-0041 §1: supply_chain_tier names supply-chain DISTANCE
-        # only. Skip symbols already deliberately classified (a reason is set) or
-        # synthetic protocol stand-ins (a truthy `protocol_origin` field — the
-        # canonical ADR-0031 "not a real host-file callable" signal, cli.py:6143/
-        # 6255). The six protocol linkers used to borrow supply_chain_tier=2 purely
-        # to trip this skip, leaking mechanism into the distance axis; keying the
-        # skip on the honest synthetic marker lets those nodes carry a real
-        # first-party distance instead of a phantom internal_dep tier.
-        if (
-            symbol.supply_chain_tier != 1
-            or symbol.supply_chain_reason
-            or symbol.protocol_origin
-        ):
+        # supply_chain_tier names supply-chain DISTANCE only (INV-bonup,
+        # ADR-0041 §1). Skip symbols already deliberately classified, and give
+        # a synthetic protocol stand-in (a truthy `protocol_origin` field — the
+        # canonical ADR-0031 "not a real host-file callable" signal) only its
+        # file's distance (below). Keying on that marker rather than on a
+        # borrowed tier keeps mechanism out of the distance axis.
+        #
+        # A protocol stand-in at tier 1 takes its FILE'S DISTANCE (WI-zuzud).
+        # Skipping stand-ins would assign them no distance at all, so a
+        # stand-in would keep tier 1 even in a minified bundle the tier filter
+        # removes around it. And some linkers pass a DESCRIPTIVE reason
+        # ("message dispatch handler", "synthetic IPC bridge node";
+        # crypto_flow passes tier=1 outright), which marks the node classified
+        # (WI-lidig) without anyone having measured a distance. Distance is a
+        # property of the path, so the path decides, and the linker's reason is kept with the path's beside
+        # it. A linker that stamps a real tier other than 1 (js_module's npm
+        # packages at 3) knows something the path does not, and keeps it. Only
+        # the tier and reason change: the per-file flags (is_test_file and the
+        # rest) describe a file's own symbols, and nothing has reviewed what
+        # they would change on a stand-in. A stand-in with no path has no
+        # distance to take.
+        if symbol.protocol_origin:
+            if symbol.path and symbol.supply_chain_tier == 1:
+                classification = _path_classification(symbol.path)
+                symbol.supply_chain_tier = classification.tier.value
+                reason = symbol.supply_chain_reason
+                if not reason:
+                    symbol.supply_chain_reason = classification.reason
+                elif classification.reason not in reason:
+                    symbol.supply_chain_reason = f"{reason}; {classification.reason}"
+                symbol.supply_chain_classified = True
             continue
-        # Dependency declarations are external references, not source code —
-        # unless the declared name is an in-repo workspace sibling (tier 2).
+        # "Already classified" is an explicit flag (WI-lidig), not inferred
+        # from the default tier 1 with an empty (free-text) reason.
+        if symbol.supply_chain_classified:
+            continue
+        symbol.supply_chain_classified = True
+        # A dependency declaration takes the tier of the package it names:
+        # an in-tree package's manifest classification, else tier 3.
         if symbol.kind in _DEPENDENCY_KINDS:
-            if _normalize_pep503(symbol.name or "") in workspace_names:
-                symbol.supply_chain_tier = 2
+            manifests = in_tree.manifests_named_by(
+                symbol.path, symbol.name or "", symbol.qualified_name,
+            )
+            if manifests:
+                # Two in-tree manifests can publish one name (a package and a
+                # vendored copy of it): the nearest, then the first by path.
+                tier, manifest = min(
+                    (_path_classification(m).tier.value, m) for m in manifests
+                )
+                symbol.supply_chain_tier = tier
                 symbol.supply_chain_reason = (
-                    "workspace-internal dependency declaration"
+                    f"declares in-tree package {symbol.name} ({manifest})"
                 )
             else:
                 symbol.supply_chain_tier = 3
                 symbol.supply_chain_reason = "dependency declaration (external)"
+                # A manifest declaration is the most direct evidence of the
+                # declaration relationship, and it names what it is fetched
+                # from (INV-fuhin). Without the stamps supply_chain_summary
+                # would count every declaration under ``unknown`` for both
+                # keys. An in-tree sibling (above) is not
+                # an external dependency and gets neither.
+                symbol.meta = {
+                    **(symbol.meta or {}),
+                    "directness": "direct",
+                    "ecosystem": declaration_ecosystem(symbol.path, symbol.name or ""),
+                }
             continue
-        # WI-fojot: classify_file is a function of the PATH (it stats and
-        # reads the whole file), so it runs once per path, not once per
-        # symbol: a file with N symbols was read N times.
-        classification = classification_by_path.get(symbol.path)
-        if classification is None:
-            classification = classify_file(
-                repo_root / symbol.path, repo_root, package_roots,
-            )
-            classification_by_path[symbol.path] = classification
+        # classify_file is a function of the PATH (it stats and reads the
+        # whole file), so it runs once per path, not once per symbol — a file
+        # with N symbols is read once, not N times (WI-fojot).
+        classification = _path_classification(symbol.path)
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
         symbol.is_example_file = classification.is_example
         symbol.is_config_file = classification.is_config
         symbol.is_generated_file = classification.is_generated
-        # WI-zimum: fold in modifier-derived export signal. The analyzer
+        # Fold in modifier-derived export signal (WI-zimum). The analyzer
         # may have already set Symbol.is_exported at extraction time
-        # (WI-gipag: Python __all__; WI-nimug / WI-zimum Phase 2b: TS/JS
-        # ``export`` keyword); this step additionally picks up modifier-
+        # (Python ``__all__``; the TS/JS ``export`` keyword); this step additionally picks up modifier-
         # based signals for Go ("exported"), Rust ("pub"/"pub(...)"),
         # and languages that emit "public" via visibility_from_modifiers.
-        # INV-kubup: an export modifier is a positive signal and fills the
-        # field; its ABSENCE is not. The old ``or`` spelling resolved every
-        # unobserved record to False, which read downstream as "measured,
-        # not public API" for the ninety-odd analyzers that have no rule.
+        # An export modifier is a positive signal and fills the field; its
+        # ABSENCE is not (INV-kubup). Resolving every unobserved record to
+        # False would read downstream as "measured, not public API" for the
+        # many analyzers that have no rule.
         if is_exported_from_modifiers(symbol.modifiers):
             symbol.is_exported = True
-        # INV-virik: a fall-through to the "outside repo" default-bucket
-        # classification means the path didn't match ANY tier policy.
-        # Record it as a classification failure so consumers can see the
-        # gap in the limits.supply_chain.classification_failures list.
+        # A fall-through to the "outside repo" default-bucket classification
+        # means the path didn't match ANY tier policy. Record it as a
+        # classification failure so consumers can see the gap in the
+        # limits.supply_chain.classification_failures list (INV-virik).
         if limits is not None and "outside repo" in classification.reason:
             if symbol.path not in seen_failures:
                 seen_failures.add(symbol.path)
@@ -12118,12 +12384,12 @@ def _find_derived_skipped(repo_root: Path) -> list[str]:
     """Enumerate files under derived-artifact directories present on disk but
     excluded from analysis.
 
-    WI-jafoz: ``discovery``'s gitignore-style ``DEFAULT_EXCLUDES`` prune
+    ``discovery``'s gitignore-style ``DEFAULT_EXCLUDES`` prune
     (node_modules, dist, build, __pycache__, ...) fires *before* the tier-4
     derived classifier (``supply_chain.classify_file``), so derived dirs are
-    skipped silently and ``derived_skipped`` reads ``{files: 0, paths: []}``
-    even when the repo plainly contains them. This scan restores an honest
-    "what did we ignore" accounting: it walks the tree directly, matching the
+    skipped silently and, without this scan, ``derived_skipped`` would read
+    ``{files: 0, paths: []}`` even when the repo plainly contains them
+    (WI-jafoz). This scan gives an honest "what did we ignore" accounting: it walks the tree directly, matching the
     same ``DERIVED_PATH_PATTERNS`` the classifier uses, while pruning the
     dependency/VCS excludes so we neither descend into huge dep trees nor
     misattribute a dependency's *own* build output as the project's.
@@ -12181,17 +12447,20 @@ def _compute_supply_chain_summary(
     derived_paths: list[str],
     installed_deps_skipped: Optional[Dict[str, Any]] = None,
     generated_output_skipped: Optional[Dict[str, Any]] = None,
+    vcs_ignored_skipped: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compute supply chain summary from classified symbols.
 
-    Returns a dict with counts per tier plus the three exclusion-disclosure
+    Returns a dict with counts per tier plus the four exclusion-disclosure
     buckets and ``vendored_analysed`` (ADR-0004 point 3a: tier-3 vendored
     directories analysed but not summarised, WI-pasan):
     ``derived_skipped``, ``installed_deps_skipped`` (ADR-0004
     §"Installed dependency source" -- ``discovery.installed_deps_summary``'s
-    ``{dirs, packages, entries}``, empty when nothing was skipped) and
+    ``{dirs, packages, entries}``, empty when nothing was skipped),
     ``generated_output_skipped`` (point 7 --
-    ``discovery.generated_output_summary``'s ``{dirs, entries}``). Tier-3
+    ``discovery.generated_output_summary``'s ``{dirs, entries}``) and
+    ``vcs_ignored_skipped`` (point 9 -- ``discovery.vcs_ignored_summary``'s
+    ``{paths, entries}``). Tier-3
     (external_dep) carries two sub-buckets counting its symbols by ``meta``
     provenance stamps: ``ecosystem`` (ADR-0041 §3: stdlib / third_party / unknown)
     and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
@@ -12209,9 +12478,9 @@ def _compute_supply_chain_summary(
 
     for symbol in symbols:
         tier = symbol.supply_chain_tier
-        # WI-mutuv: the per-tier `files` count is the number of distinct
-        # kind=='file' node paths for that tier. Counting paths from *all* tier
-        # nodes double-counted function paths and, worse, folded in
+        # The per-tier `files` count is the number of distinct kind=='file'
+        # node paths for that tier (WI-mutuv). Counting paths from *all* tier
+        # nodes would double-count function paths and, worse, fold in
         # external_symbol nodes whose path is the ``<external>`` sentinel —
         # phantom "files" that no file node backs. `symbols` still counts every
         # node of the tier.
@@ -12248,6 +12517,9 @@ def _compute_supply_chain_summary(
     summary["generated_output_skipped"] = generated_output_skipped or {
         "dirs": 0, "entries": [],
     }
+    summary["vcs_ignored_skipped"] = vcs_ignored_skipped or {
+        "paths": 0, "entries": [],
+    }
     # ADR-0004 point 3a (WI-pasan): committed vendored code was analysed but
     # left out of the summaries, so say which directories.
     summary["vendored_analysed"] = vendored_analysed_summary(symbols)
@@ -12266,10 +12538,8 @@ def _compute_supply_chain_summary(
 # slice.handler.index.json for the overflow list.
 _DEFAULT_MAX_HANDLER_SLICES = 25
 
-# Forward-slice parameters for per-handler slices, matching the tuned
-# config used by the bakeoff's top-entry forward slices (see
-# scripts/bakeoff-deep around line 2060 and WI-sivun for the hub-threshold
-# choice).
+# Forward-slice parameters for per-handler slices, matching the top-entry
+# forward-slice tuning in scripts/bakeoff-deep (hub threshold: WI-sivun).
 _HANDLER_SLICE_MAX_HOPS = 10
 _HANDLER_SLICE_MAX_FILES = 200
 _HANDLER_SLICE_HUB_THRESHOLD = 100
@@ -12306,9 +12576,8 @@ def _extract_route_info(symbol: Symbol) -> dict[str, str] | None:
     Returns None unless a complete ``(method, path)`` pair is available —
     downstream code uses the return value to decide whether to emit a
     route-qualified filename or a handler-name fallback. Delegates to the
-    canonical accessor :func:`hypergumbo_core.routes.route_of` (marker-first,
-    matching this function's historical framework_role-then-concept
-    precedence). The accessor normalizes the ``'WS'`` sentinel into
+    canonical accessor :func:`hypergumbo_core.routes.route_of` (marker-first:
+    framework_role, then concept). The accessor normalizes the ``'WS'`` sentinel into
     ``protocol='websocket'``; this wrapper reconstructs the raw ``'WS'``
     method to preserve its established ``{method, path}`` contract.
     """
@@ -12362,7 +12631,7 @@ def _emit_handler_slices(
     test-file handlers. Handlers are deduplicated by symbol id; when the
     same id is registered under multiple routes, all registrations appear
     in the emitted file's meta.routes list. Slice parameters mirror the
-    bakeoff's proven forward-slice tuning.
+    forward-slice tuning in ``scripts/bakeoff-deep``.
 
     When `enabled=False`, returns an empty list without touching the
     filesystem — the caller opts out via --no-handler-slices.
@@ -12370,7 +12639,6 @@ def _emit_handler_slices(
     if not enabled:
         return []
 
-    from .paths import is_test_file
     from .slice import AmbiguousEntryError, SliceQuery, slice_graph
 
     # Step 1: collect route symbols, excluding test-file handlers. Order is
@@ -12380,7 +12648,7 @@ def _emit_handler_slices(
     for sym in all_symbols:
         if not _is_route_symbol(sym):
             continue
-        if sym.path and is_test_file(sym.path):
+        if sym.path and _is_test_node(sym.path, sym.meta):
             continue
         handlers.append(sym)
 
@@ -12404,9 +12672,9 @@ def _emit_handler_slices(
     # (meta.framework_role == "route", ~0 outbound edges) and the
     # concept-enriched function handler (the real call graph) for one
     # (method, path) are different ids but produce the same filename; grouping
-    # by id alone let both reach the write step, and the second writer
-    # silently clobbered the first on disk, leaving only the degenerate marker
-    # slice. Keep ONE slice per filename -- prefer the non-marker so the
+    # by id alone would let both reach the write step, and the second writer
+    # would silently clobber the first on disk, possibly leaving only the
+    # degenerate marker slice. Keep ONE slice per filename -- prefer the non-marker so the
     # informative function slice wins -- and merge every colliding id's routes
     # into the survivor.
     fname_order: list[str] = []
@@ -12495,16 +12763,16 @@ def _emit_handler_slices(
             e for e in behavior_map.get("edges", []) if e.get("id") in edge_ids_set
         ]
 
-        # WI-bujim: append the spec-shape entry to behavior_map["features"]
-        # (option (c) — index-only). Full denormalized slice content
+        # Append the spec-shape entry to behavior_map["features"] (index-only;
+        # WI-bujim). Full denormalized slice content
         # (inline nodes/edges/meta) lives in the per-slice file written
         # below; features[] holds just IDs + query + summary so consumers
         # can discover what slices exist via the behavior map alone, and
         # diff across commits using the query-derived stable id.
         #
-        # WI-rijop: but keep a degenerate route *marker* (framework_role=
-        # "route" whose forward slice recovers nothing beyond itself) OUT of
-        # features[] — it is a content-free twin of the real concept-handler
+        # But keep a degenerate route *marker* (framework_role="route" whose
+        # forward slice recovers nothing beyond itself) OUT of features[]
+        # (WI-rijop) — it is a content-free twin of the real concept-handler
         # feature and would double-populate the array. The per-slice file and
         # index entry below are still written for completeness.
         if not (
@@ -12563,7 +12831,7 @@ def _emit_handler_slices(
     return written
 
 
-# _relativize_ir_paths moved to finalize.py (it is finalize sub-step 1's logic, run once at
+# _relativize_ir_paths lives in finalize.py (it is finalize sub-step 1's logic, run once at
 # Phase B below and again as an idempotent backstop inside finalize()). Imported at the top.
 
 
@@ -12576,13 +12844,12 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
 
     ``run_survey`` publishes its ``FileIndex`` through ``discovery.set_file_index``
     so every analyzer, linker and the file-anchor synthesis read one ``os.walk``.
-    That index is process state scoped to one run, and it used to be cleared
-    only on the normal return. A run that raised after indexing — the merge
-    pass's ``UndeclaredProducerError`` refusal (ADR-0057 §10) is one such
-    path — left the previous repository's index behind, and the next
-    ``run_all_analyzers`` in the same process anchored THAT repository's files
-    against ITS OWN root (``relative_to`` raised; CI on PR #1078, two tests
-    sharing an xdist worker). ``finally`` is the only shape that binds the
+    That index is process state scoped to one run. Cleared only on the normal
+    return, a run that raised after indexing — the merge pass's
+    ``UndeclaredProducerError`` refusal (ADR-0057 §10) is one such path —
+    would leave its index behind, and the next ``run_all_analyzers`` in the
+    same process would anchor another repository's files against the stale
+    root (``relative_to`` raises). ``finally`` is the only shape that binds the
     index's lifetime to the call rather than to the happy path.
     """
 
@@ -12602,6 +12869,37 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
             set_active_trace_deps(TraceDeps(), None)
 
     return cast(_SurveyFn, wrapper)
+
+
+def _has_route_concept(symbol: Symbol) -> bool:
+    """Whether the symbol carries a ``concept=route`` from enrichment."""
+    return any(
+        isinstance(c, dict) and c.get("concept") == "route"
+        for c in ((symbol.meta or {}).get("concepts") or [])
+    )
+
+
+def _record_post_pass(
+    analysis_runs: list[dict[str, Any]],
+    run: AnalysisRun,
+    clock: PassClock,
+    nodes_emitted: int,
+    candidates: "list[Any]",
+) -> None:
+    """Record an orchestrator post-pass whether or not it emitted (WI-tivif).
+
+    Appending the run only inside ``if <output>:`` would make a pass that
+    ran and found nothing vanish from ``analysis_runs``, and no consumer
+    could tell it from a pass that never ran. ``candidates`` is what
+    the pass's scan FOUND (the construct it acts on), never what it emitted:
+    the silence reason is the body's claim about it
+    (:func:`pass_silence.silence_reason_for_candidates`).
+    """
+    clock.read().stamp(run)
+    run.nodes_emitted = nodes_emitted
+    if not nodes_emitted:
+        run.silence_reason = silence_reason_for_candidates(candidates)
+    analysis_runs.append(run.to_dict())
 
 
 @_releases_file_index
@@ -12635,8 +12933,12 @@ def run_survey(
             ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/survey.json
         max_tier: Optional maximum supply chain tier (1-4). Symbols with
             tier > max_tier are filtered out. None means no filtering.
-        max_files: Optional maximum files per language analyzer. Limits
-            how many files each analyzer processes (for large repos).
+        max_files: Optional maximum files per language analyzer. Every
+            file an analyzer finds through ``discovery.find_files`` (or a
+            finder that calls ``within_file_budget``) counts, manifests
+            included; the first N are admitted and re-admitted on a second
+            pass (WI-fomid). Linkers and the opt-in SCIP backends are not
+            bounded.
         compact: If True, output compact mode with coverage-based truncation
             and bag-of-words summary of omitted items.
         coverage: Target centrality coverage for compact mode (0.0-1.0).
@@ -12685,14 +12987,15 @@ def run_survey(
     generated_files: list[Path] = []
     behavior_map = new_behavior_map()
 
-    # Build a shared file index from a single os.walk() pass.
-    # This replaces 80+ redundant rglob() calls across analyzers,
-    # profile detection, and linkers — ~75% of uncached runtime.
+    # Build a shared file index from a single os.walk() pass, read by the
+    # analyzers, profile detection and linkers instead of each running its
+    # own rglob() calls.
     from hypergumbo_core.discovery import (
         DEFAULT_EXCLUDES, FileIndex, format_generated_output_disclosure,
-        format_installed_deps_disclosure, generated_output_summary,
-        installed_deps_summary, resolve_trace_deps, set_active_trace_deps,
-        set_file_index, set_max_file_bytes,
+        format_installed_deps_disclosure, format_vcs_ignored_disclosure,
+        generated_output_summary, installed_deps_summary, resolve_trace_deps,
+        set_active_trace_deps, set_file_index, set_max_file_bytes,
+        vcs_ignored_summary,
     )
     # ADR-0057 §5 (WI-hukuf): the arbitration policy is a preference in the
     # ADR-0045 config tiers. Resolved BEFORE any analysis so a bad `[merge]`
@@ -12726,6 +13029,14 @@ def run_survey(
     _output_disclosure = format_generated_output_disclosure(generated_output_skipped)
     if _output_disclosure:
         print(_output_disclosure, file=sys.stderr)
+    # ADR-0004 point 9: files the VCS ignores and does not track are not
+    # part of what is described; name them, so a wrong exclusion is visible.
+    vcs_ignored_skipped = vcs_ignored_summary(
+        file_index.vcs_ignored_skipped, repo_root,
+    )
+    _ignored_disclosure = format_vcs_ignored_disclosure(vcs_ignored_skipped)
+    if _ignored_disclosure:
+        print(_ignored_disclosure, file=sys.stderr)
 
     # Detect repo profile (languages, frameworks) with LOC counting.
     # Analyzers will read the same files shortly, so OS cache is warm.
@@ -12741,11 +13052,10 @@ def run_survey(
     set_max_file_bytes(max_file_bytes)
 
     # Run all language analyzers using consolidated registry
-    # This replaces ~800 lines of repetitive analyzer invocation code
     run_status.phase("Running analyzers")
-    # WI-jadig: pass profile through so the dispatcher can short-circuit
-    # analyzers whose languages have 0 files in this repo (lifecycle policy
-    # member of INV-manov — file-presence pre-filter).
+    # Pass profile through so the dispatcher can short-circuit analyzers
+    # whose languages have 0 files in this repo (file-presence pre-filter;
+    # WI-jadig, INV-manov).
     (
         analysis_runs,
         all_symbols,
@@ -12759,7 +13069,7 @@ def run_survey(
     )
     _log_memory("after analyzers")
 
-    # Resolve deferred symbol references (INV-002 proper fix)
+    # Resolve deferred symbol references (INV-002)
     # UsageContexts extracted during analysis may have symbol_ref=None when
     # the target symbol is in a different file. Now that we have the complete
     # symbol table, resolve these references using multi-strategy lookup.
@@ -12772,7 +13082,7 @@ def run_survey(
             f"suffix={resolution_stats.resolved_suffix})"
         )
 
-    # WI-hopug: strip the machine-specific absolute ``repo_root`` prefix from
+    # Strip the machine-specific absolute ``repo_root`` prefix (WI-hopug) from
     # all Symbol IDs, Edge endpoints, and UsageContext fields now that the
     # symbol table is fully resolved. Must run before ranking / entrypoints /
     # handler-slice emission so every downstream consumer observes a single,
@@ -12809,10 +13119,28 @@ def run_survey(
     # Enrich symbols with framework concept metadata (ADR-3aaa)
     # This applies YAML-based patterns to add concept info (route, model, etc.)
     # to symbols based on their decorators, base classes, annotations, AND
-    # usage contexts (v1.1.x) for call-based frameworks like Django URLs.
+    # usage contexts for call-based frameworks like Django URLs.
     run_status.phase("Enriching symbols")
     detected_frameworks = set(profile.frameworks)
-    enrich_symbols(all_symbols, detected_frameworks, all_usage_contexts)
+    # Enrichment is a pass like any other, so it is recorded (WI-tivif), with
+    # per-YAML counts (zeros included) in metrics.framework_patterns.
+    _fp_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password
+        pass_id="framework-patterns", version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": "framework-patterns",
+             "frameworks": sorted(detected_frameworks)}
+        ),
+    )
+    _fp_clock = PassClock()
+    framework_pattern_counts: dict[str, int] = {}
+    enrich_symbols(
+        all_symbols, detected_frameworks, all_usage_contexts,
+        report=framework_pattern_counts,
+    )
+    _fp_clock.read().stamp(_fp_run)
+    _fp_matched = [n for n in framework_pattern_counts.values() if n]
+    _fp_run.silence_reason = "" if _fp_matched else silence_reason_for_candidates(_fp_matched)
+    analysis_runs.append(_fp_run.to_dict())
 
     # Materialize route symbols from enriched concept metadata (WI-lodik).
     # Annotation-based frameworks (JAX-RS, Spring MVC, ASP.NET) tag handler
@@ -12823,7 +13151,7 @@ def run_survey(
         expand_class_based_view_routes,
         materialize_route_symbols,
     )
-    # WI-tufil: mint a real AnalysisRun for each route-materialization post-pass
+    # Mint a real AnalysisRun for each route-materialization post-pass (WI-tufil)
     # so the route-marker symbols they emit carry a non-empty origin_run_id
     # joining a run in this artifact's analysis_runs (WI-mosil), mirroring the
     # boundary-synthesis pass below. The pass_ids are registered in
@@ -12834,20 +13162,24 @@ def run_survey(
             {"pass_id": "route-materializer"}
         ),
     )
-    # WI-nuvam: these two serial post-passes were never timed at all, so their
-    # duration_ms was only ever the INV-gizik 1 ms floor. Each now carries its
-    # measured wall time and its own-thread CPU time (pass_clock).
+    # Each of these two serial post-passes carries its measured wall time and
+    # its own-thread CPU time (pass_clock), not just the 1 ms duration floor
+    # (INV-gizik; WI-nuvam).
     _route_mat_clock = PassClock()
     materialized_routes = materialize_route_symbols(
         all_symbols, origin_run_id=_route_mat_run.execution_id
     )
     if materialized_routes:
         all_symbols.extend(materialized_routes)
-        _route_mat_clock.read().stamp(_route_mat_run)
-        _route_mat_run.nodes_emitted = len(materialized_routes)
-        analysis_runs.append(_route_mat_run.to_dict())
+    # Recorded whether or not it emitted; a run that is absent cannot say it
+    # found nothing (WI-tivif). Candidates: the symbols carrying a route
+    # concept, the construct this pass materializes.
+    _record_post_pass(
+        analysis_runs, _route_mat_run, _route_mat_clock, len(materialized_routes),
+        [s for s in all_symbols if _has_route_concept(s)],
+    )
 
-    # WI-lojoh: expand Django CBV routes (single ANY route per as_view()
+    # Expand Django CBV routes (WI-lojoh; single ANY route per as_view()
     # registration) into one route per declared HTTP method on the view
     # class. Runs after materialize_route_symbols so any newly minted route
     # symbols can also be expanded.
@@ -12865,9 +13197,11 @@ def run_survey(
         all_symbols = [s for s in all_symbols if s.id not in cbv_removed_ids]
     if cbv_expanded:
         all_symbols.extend(cbv_expanded)
-        _cbv_clock.read().stamp(_cbv_run)
-        _cbv_run.nodes_emitted = len(cbv_expanded)
-        analysis_runs.append(_cbv_run.to_dict())
+    # Candidates: class-based-view routes, what this pass expands (WI-tivif).
+    _record_post_pass(
+        analysis_runs, _cbv_run, _cbv_clock, len(cbv_expanded),
+        [s for s in all_symbols if (s.meta or {}).get("is_class_based_view")],
+    )
 
     # Run cross-language linkers
     run_status.phase("Running linkers")
@@ -12905,14 +13239,22 @@ def run_survey(
         if normed.startswith(_root_prefix):
             uc.path = normed[len(_root_prefix):]  # pragma: no cover
 
+    # One file pseudo-symbol per path (INV-movor): two producers' file nodes
+    # for one path (a component's `typescript:` beside its `vue:`) become the
+    # one in the file's own language, every edge rewired. After the linkers,
+    # which can mint a file node too, and before deduplicate_edges below,
+    # which folds the edges the rewiring made identical.
+    from .analyze.file_records import unify_file_pseudo_symbols
+    unify_file_pseudo_symbols(all_symbols, all_edges, all_usage_contexts)
+
     # synthetic:F2 (5a): backstop stable_id / display_label / fingerprint on
     # Class-B synthetic protocol-synth Symbols the linkers left null (post-pass,
     # AFTER linkers extend all_symbols and paths are normalized, BEFORE
     # fingerprint stamping so that pass skips the now-stamped Class-B nodes).
-    # Identity-neutral (per-field skip-if-set); closes META-huvuh's producer half.
+    # Identity-neutral (per-field skip-if-set); the producer half of META-huvuh.
     populate_synthetic_class_b_identity(all_symbols)
 
-    # ADR-0035 §3 identity reconciliation (closes INV-tazaj's producer half).
+    # ADR-0035 §3 identity reconciliation (the producer half of INV-tazaj).
     # Runs AFTER the enclosure post-pass (so per-site `uses` edges exist to
     # rewire onto LOGICAL hubs) and BEFORE finalize (R1: set membership is final
     # on finalize entry) and the deduplicate_edges call below (which collapses
@@ -12920,9 +13262,9 @@ def run_survey(
     # to one hub node FIRST, then occurrence-index the remaining within-file SITE
     # collisions so each distinct site gets a distinct stable_id.
     dedup_logical_synthetic_identities(all_symbols, all_edges)
-    # WI-gokiv (v8): widen LOGICAL route ids with the (now repo-relative) declaring
-    # file + language so cross-file / cross-language same-(method,path) routes stop
-    # colliding (Wave-2 gate's dominant residual). Runs BEFORE the within-file split
+    # Widen LOGICAL route ids with the (now repo-relative) declaring file +
+    # language so cross-file / cross-language same-(method,path) routes do not
+    # collide (WI-gokiv). Runs BEFORE the within-file split
     # so two same-route declarations in one file get the :occ: ordinal afterwards.
     widen_route_stable_ids(all_symbols)
     split_within_file_stable_id_collisions(all_symbols)
@@ -12931,15 +13273,15 @@ def run_survey(
     # remove self-loops (src == dst) which inflate centrality without adding
     # useful connectivity. Common sources: visitor patterns, name collisions.
     # Using edge_key instead of edge.id catches duplicate relationships at
-    # different call sites (e.g., 24 calls from InitialSchema#up to
-    # Provisioner#create_table in postal).
+    # different call sites (e.g. many calls from one method to the same
+    # callee).
     all_edges = deduplicate_edges(all_edges, remove_self_loops=True)
     # The partial-install check below reads linker_ctx after classification;
     # point it at the deduplicated list so the pre-dedup one can be freed.
     linker_ctx.edges = all_edges
     _log_memory("after linkers")
 
-    # WI-fanun: stamp structural fingerprints on analyzer-produced source
+    # Stamp structural fingerprints (WI-fanun) on analyzer-produced source
     # Symbols that don't already carry one (toml-v1, json-v1, wgsl-v1 keep
     # their manifest-derived fingerprints unchanged). Centralised in
     # hypergumbo_core.fingerprint so no analyzer change is required.
@@ -12962,95 +13304,22 @@ def run_survey(
 
     del linker_ctx, captured_symbols  # Free linker data structures
 
-    # WI-bosab: now that Symbol.is_test_file is set, strip naming-convention
-    # framework concepts (service_by_name / controller_by_name / handler_by_name)
-    # from test-file symbols. enrich_symbols runs earlier (before linkers, so it
-    # cannot see the canonical is_test_file verdict), so a test fixture like
-    # `class MyService` in tests/ was mislabeled a production service until here.
+    # Now that Symbol.is_test_file is set, strip naming-convention framework
+    # concepts (service_by_name / controller_by_name / handler_by_name) from
+    # test-file symbols (WI-bosab). enrich_symbols runs earlier (before
+    # linkers, so it cannot see the canonical is_test_file verdict), so a test
+    # fixture like `class MyService` in tests/ is labelled a production
+    # service until here.
     strip_test_file_only_concepts(all_symbols)
 
-    # Promote route-bearing symbols out of derived (tier 4) so the API surface
-    # is not excluded by the default tier-4 filter — valuable regardless of
-    # whether the code is generated (e.g., go-swagger, protobuf gRPC stubs).
-    # INV-naduh / ADR-0041 §1: tier names supply-chain DISTANCE only, and these
-    # routes live IN the repo (distance 0), so they promote to tier 1
-    # (first_party) — NOT tier 2 (internal_dep), which is reserved for
-    # org-internal *dependency* packages. The "promoted from derived" reason
-    # records that the source was generated/derived.
-    for s in all_symbols:
-        if s.supply_chain_tier == 4:
-            is_route = (s.meta or {}).get("framework_role") == "route"
-            if not is_route:
-                for concept in (s.meta or {}).get("concepts", []):
-                    if isinstance(concept, dict) and concept.get("concept") == "route":
-                        is_route = True
-                        break
-            if is_route:
-                s.supply_chain_tier = 1
-                s.supply_chain_reason = "route promoted from derived"
-
-    # Apply tier filtering: always exclude DERIVED (tier 4) unless --max-tier 4.
-    # DERIVED files are minified/bundled/generated artifacts whose symbols distort
-    # centrality rankings and inflate edge counts via false-positive name collisions.
-    effective_tier = max_tier if max_tier is not None else 3
-    if effective_tier < 4:
-        # Filter symbols by tier
-        filtered_symbols = [
-            s for s in all_symbols if s.supply_chain_tier <= effective_tier
-        ]
-        filtered_symbol_ids = {s.id for s in filtered_symbols}
-
-        # Filter edges: src must be in filtered symbols (or file-level ref),
-        # AND dst must not reference a node that was explicitly removed by
-        # tier filtering. Edges whose dst is an unresolved external reference
-        # (never in the node set) are kept — they represent real dependencies.
-        # Exclude boundary nodes from "removed" set — they're synthetic
-        # endpoints for external references and should be treated as if they
-        # don't exist for tier filtering purposes (same as pre-boundary-node
-        # behavior where unresolved IDs simply weren't in the symbol set).
-        # WI-pozur (ADR-0043 C2 / D-D): boundary synthesis now runs AFTER this
-        # filter, so no boundary nodes exist here and `is_external_boundary(s)`
-        # is always False — this clause is a defensive no-op. Kept (not deleted)
-        # so the carve-out restores itself automatically if synthesis is ever
-        # moved back before filtering.
-        removed_symbol_ids = {
-            s.id for s in all_symbols
-            if s.id not in filtered_symbol_ids
-            and not is_external_boundary(s)
-        }
-
-        def _is_valid_edge_src(src: str) -> bool:
-            if src in filtered_symbol_ids:
-                return True
-            # File-level symbols end with ":file" or ":file:file"
-            if src.endswith(":file") or ":file:" in src:
-                return True
-            # Defensive fallback: check for file extensions in path (unlikely path)
-            for ext in (".py:", ".js:", ".ts:", ".tsx:", ".jsx:"):  # pragma: no cover
-                if ext in src:
-                    return True
-            return False  # pragma: no cover
-
-        filtered_edges = [
-            e
-            for e in all_edges
-            if _is_valid_edge_src(e.src) and e.dst not in removed_symbol_ids
-        ]
-
-        # WI-tulit: record which tier-dropped FILES vanished, so a consumer can see
-        # WHAT was excluded — symbols + edges disappear silently otherwise (neither
-        # analysis_incomplete nor limits.failed_files reflects a tier drop). Computed
-        # from the pre-filter `all_symbols` (file nodes only), before the reassignment.
-        for dropped_path in sorted({
-            s.path
-            for s in all_symbols
-            if s.supply_chain_tier > effective_tier and s.kind == "file"
-        }):
-            limits.add_tier_filtered_file(dropped_path)
-
-        all_symbols = filtered_symbols
-        all_edges = filtered_edges
-        limits.max_tier_applied = effective_tier
+    # Tier filter: route promotion, the DERIVED (tier 4) drop with every edge
+    # touching a dropped node (INV-saruf), and the limits record (WI-tulit).
+    # ONE function, shared with the per-PR claims-coverage guard so the
+    # guard's population is this pipeline's (INV-hotib / WI-jizam); the
+    # body is in tier_filter.py.
+    all_symbols, all_edges = apply_tier_filter(
+        all_symbols, all_edges, max_tier, limits,
+    )
 
     # Exclude non-code node kinds by default.  Documentation/config nodes
     # (markdown sections, TOML tables, INI settings), CSS structural nodes
@@ -13075,21 +13344,18 @@ def run_survey(
     # Create boundary nodes for dangling edge endpoints (WI-sikur / INV-miniz).
     # Edges to external functions (stdlib, npm packages, etc.) would otherwise
     # break slice traversal by pointing to nonexistent nodes.
-    # WI-fozoh: synthesizer collapses dangling refs by (lang, name, kind) and
+    # The synthesizer collapses dangling refs by (lang, name, kind) and
     # returns an id_remap so we can rewrite edges to point at the canonical
-    # boundary Symbols. Without this rewrite, edges would still reference the
-    # original (now-absent) per-reference dangling ids.
-    # synthetic:F1 (WI-sijut/WI-mosil): emit a real AnalysisRun for boundary
-    # synthesis and stamp its execution_id into the boundary nodes'
-    # origin_run_id (the nodes previously carried origin=[] / origin_run_id='').
-    # Only record the run when boundary nodes were actually created.
-    # WI-pozur (ADR-0043 §4, C2 — Phase E): this block runs HERE, AFTER tier+noise
-    # filtering (Phase D), not before. Filtering can newly orphan an edge endpoint
-    # (e.g. a tier-4 file whose file-level outgoing edges the src carve-out keeps);
-    # running synthesis afterward sees that now-dangling src and mints/remaps a
-    # boundary for it, closing the dangling-source class by construction. The
-    # node/edge set is final at this point — finalize's (run-lifecycle:F1) R1 entry
-    # precondition. (Previously this ran pre-filter, leaving dangling srcs.)
+    # boundary Symbols (WI-fozoh). Without this rewrite, edges would still
+    # reference the original (now-absent) per-reference dangling ids.
+    # Boundary synthesis is a real AnalysisRun whose execution_id is stamped
+    # into the boundary nodes' origin_run_id (synthetic:F1, WI-sijut/WI-mosil).
+    # This block runs HERE, AFTER tier+noise filtering (Phase D), so the
+    # node/edge set it sees is final — finalize's (run-lifecycle:F1) R1 entry
+    # precondition (WI-pozur, ADR-0043 §4, C2 — Phase E). The tier filter
+    # removes a removed node's edges with it (INV-saruf), so nothing here is
+    # minted for a filtered in-tree source; what remains dangling are
+    # endpoints that never had a node.
     _boundary_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
         pass_id="boundary_external_symbol_synthesis", version=PASS_VERSION,
         config_fingerprint=compute_config_fingerprint(
@@ -13097,6 +13363,11 @@ def run_survey(
         ),
     )
     _boundary_clock = PassClock()
+    # The construct this pass resolves is a dangling edge endpoint (WI-tivif).
+    _known_ids = {s.id for s in all_symbols}
+    _dangling = [
+        e for e in all_edges if e.src not in _known_ids or e.dst not in _known_ids
+    ]
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
         origin_run_id=_boundary_run.execution_id,
@@ -13104,12 +13375,13 @@ def run_survey(
     )
     if boundary:
         all_symbols.extend(boundary)
-        # INV-gizik: stamp this synthesis pass's duration + node count (it emits
-        # external_symbol placeholder Symbols; edge changes are remaps, not new
-        # edges, so edges_emitted stays 0). WI-nuvam: plus its own CPU time.
-        _boundary_clock.read().stamp(_boundary_run)
-        _boundary_run.nodes_emitted = len(boundary)
-        analysis_runs.append(_boundary_run.to_dict())
+    # Stamp this synthesis pass's duration + node count (INV-gizik; it emits
+    # external_symbol placeholder Symbols; edge changes are remaps, not new
+    # edges, so edges_emitted stays 0), plus its own CPU time (WI-nuvam).
+    # Recorded whether or not it created a node (WI-tivif).
+    _record_post_pass(
+        analysis_runs, _boundary_run, _boundary_clock, len(boundary), _dangling,
+    )
     if id_remap:
         all_edges = apply_external_id_remap(all_edges, id_remap)
     _log_memory("after boundary nodes")
@@ -13136,10 +13408,10 @@ def run_survey(
 
     # ADR-0043 §6/§6.1: the single finalize() reconcile point. The node/edge set is final
     # here (Phase D filtering + Phase E boundary synthesis + ranking are done — finalize's R1
-    # entry precondition). finalize() subsumes the formerly-scattered finalizers in one
-    # ordered pass: re-relativize backstop, pass_version backfill (WI-mipul), run_signature
+    # entry precondition). finalize() runs the finalizers in one ordered pass:
+    # re-relativize backstop, pass_version backfill (WI-mipul), run_signature
     # recompute (META-hufaz), repo_fingerprint stamp (INV-tofur), skipped→limits, commit-dicts,
-    # and the validate_ir call (now structurally last). Budget/compact projections still run
+    # and the validate_ir call (structurally last). Budget/compact projections still run
     # after it returns; the tiered projection re-derives its nodes_summary from the FINAL
     # post-shrink arrays via compact.recompute_view_summary (projection:F1 / INV-pazur).
     _fin_ctx = FinalizeContext(
@@ -13167,26 +13439,34 @@ def run_survey(
     run_status.phase("Computing metrics")
     behavior_map["metrics"] = compute_metrics(
         all_nodes, all_edge_dicts, profile=behavior_map.get("profile"),
+        framework_patterns=framework_pattern_counts,
     )
 
     # Detect and store entrypoints (computed from symbols, persisted for convenience)
     run_status.phase("Detecting entrypoints")
-    entrypoints = detect_entrypoints(all_symbols, all_edges)
-    behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
-    del entrypoints  # Free Entrypoint objects
+    candidates = detect_entrypoint_candidates(all_symbols, all_edges)
+    behavior_map["entrypoints"] = [
+        ep.to_dict()
+        for ep in apply_rank_floor_and_cap(candidates, all_symbols)
+    ]
+    # Every request handler BEFORE the rank floor and the size cap that
+    # ``entrypoints`` applies (WI-vumig). ``entrypoints`` is a ranked
+    # overview; verify-claims' unseeded-ingress disclosure is a completeness
+    # statement and reads this list.
+    behavior_map["request_ingress"] = request_ingress_entries(candidates)
+    del candidates  # Free Entrypoint objects
 
-    # WI-sihok: emit per-handler forward slices alongside the main output so
+    # Emit per-handler forward slices (WI-sihok) alongside the main output so
     # "what does this handler touch?" is answerable without a follow-up
     # `hypergumbo slice --entry <handler>` invocation. Uses behavior_map's
     # in-memory node/edge dicts (already ranked) for inlined slice payloads.
     #
-    # WI-rimos / UX-A: write the fan-out into ``<stem>.slices/`` next to the
-    # ``--out`` target instead of spreading 20-30 ``slice.handler.*.json``
-    # files alongside the main result. Co-locating in a stem-derived
-    # subdirectory keeps the user's --out directory tidy and prevents
-    # successive runs from clobbering each other's slices when --out
-    # changes between invocations (e.g. ``--out /tmp/round-01.json`` then
-    # ``--out /tmp/round-02.json`` no longer share a slice namespace).
+    # Write the fan-out into ``<stem>.slices/`` next to the ``--out`` target
+    # rather than spreading ``slice.handler.*.json`` files alongside the main
+    # result (WI-rimos). A stem-derived subdirectory keeps the user's --out
+    # directory tidy and keeps successive runs with different --out values
+    # (e.g. ``--out /tmp/round-01.json`` then ``--out /tmp/round-02.json``)
+    # from sharing a slice namespace and clobbering each other's slices.
     slice_dir = out_path.parent / f"{out_path.stem}.slices"
     handler_slice_files = _emit_handler_slices(
         behavior_map,
@@ -13199,14 +13479,15 @@ def run_survey(
     )
     generated_files.extend(handler_slice_files)
 
-    # Compute supply chain summary. WI-jafoz: discovery gitignore-excludes
-    # derived dirs (dist/build/__pycache__/...) before the tier-4 classifier
-    # sees them, so we recover them with a direct scan to keep derived_skipped
+    # Compute supply chain summary. Discovery gitignore-excludes derived dirs
+    # (dist/build/__pycache__/...) before the tier-4 classifier sees them, so
+    # we recover them with a direct scan (WI-jafoz) to keep derived_skipped
     # an honest "what did we ignore" view rather than a silent {files:0}.
     behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
         all_symbols, derived_paths=_find_derived_skipped(repo_root),
         installed_deps_skipped=installed_deps_skipped,
         generated_output_skipped=generated_output_skipped,
+        vcs_ignored_skipped=vcs_ignored_skipped,
     )
     _vendored_disclosure = format_vendored_disclosure(
         behavior_map["supply_chain_summary"]["vendored_analysed"],
@@ -13293,12 +13574,12 @@ def run_survey(
 
         behavior_map["sketch_precomputed"] = sketch_precomputed
 
-    # (skipped→limits drain + behavior_map["limits"] commit moved into finalize() sub-step 6.)
+    # (The skipped→limits drain and the behavior_map["limits"] commit are finalize() sub-step 6.)
 
     # Ensure parent directory exists (even if caller gives nested paths later)
     user_out_mkdir(out_path.parent, parents=True, exist_ok=True)
 
-    # WI-kojob: `--no-sketch-fan-out` is an explicit named flag that
+    # `--no-sketch-fan-out` is an explicit named flag (WI-kojob) that
     # collapses to the same effect as `budgets=none`. The named form
     # is more discoverable in --help and reads cleanly in scripts; it
     # wins over any explicit `budgets=...` value because the user's
@@ -13316,7 +13597,7 @@ def run_survey(
         else:
             budget_specs = [b.strip() for b in budgets.split(",") if b.strip()]
 
-        # WI-kojob: when gzipping, the user's out_path ends in `.gz`
+        # When gzipping (WI-kojob), the user's out_path ends in `.gz`
         # (e.g. `output.json.gz`). `generate_tier_filename` splits on
         # the last extension, which would produce `output.json.4k.gz`
         # instead of the natural `output.4k.json.gz`. Compute the
@@ -13338,8 +13619,21 @@ def run_survey(
                 tiered_map = format_tiered_behavior_map(
                     behavior_map, all_symbols, all_edges, target_tokens
                 )
-                # WI-kojob: gzip budget tiers when the main output is
-                # gzipped. Keeps the on-disk layout consistent: all
+                if tiered_map["tier_tokens_used"] > target_tokens:
+                    # One node is left and the file is still over: what does
+                    # not depend on the node selection exceeds the budget by
+                    # itself. The file says so (``tier_tokens_used``); say it
+                    # here too, where the person who asked for the tier is.
+                    print(
+                        f"[warn] {budget_path.name} is "
+                        f"{tiered_map['tier_tokens_used']} tokens, over its "
+                        f"{target_tokens}-token budget with one node kept: "
+                        "the sections that do not depend on the node "
+                        "selection are larger than the budget",
+                        file=sys.stderr,
+                    )
+                # Gzip budget tiers when the main output is gzipped
+                # (WI-kojob). Keeps the on-disk layout consistent: all
                 # artifacts produced by one invocation share the same
                 # compression mode.
                 if gzip_output:
@@ -13348,16 +13642,17 @@ def run_survey(
                 else:
                     user_out_open_json_dump(budget_path, tiered_map)
                 generated_files.append(budget_path)
-                # Free memory between tiers (helps with large repos like tensorflow)
+                # Free memory between tiers (for very large repositories)
                 del tiered_map
-                gc.collect()
+                _collect_if_large(len(all_symbols) + len(all_edges))
             except ValueError:
                 # Skip invalid tier specs silently
                 pass
 
     # Apply compact mode if requested (modifies main output only)
     if compact:
-        # WI-kolal + D12: global centrality-ranked prefix (see cmd_compact).
+        # One global ranking, not per-language floors (WI-kolal, D12; see
+        # cmd_compact).
         config = CompactConfig(
             target_coverage=coverage, language_proportional=False
         )
@@ -13366,45 +13661,42 @@ def run_survey(
             connectivity_aware=connectivity,
         )
 
-    # ADR-0033/ADR-0043 §6: validate_ir + the validation_report now run inside finalize()
+    # ADR-0033/ADR-0043 §6: validate_ir + the validation_report run inside finalize()
     # (sub-step 10, structurally last over the final substrate). Only the stderr warning
-    # summary remains here (I/O). In compact mode behavior_map was rebound above;
+    # summary is emitted here (I/O). In compact mode behavior_map was rebound above;
     # format_compact_behavior_map preserves finalize's validation_report (and analysis_runs)
     # through the projection — it strips only the heavy usage_contexts / sketch_precomputed
     # blocks (WI-judun), so the quality signal survives compact. The shrink-only ratchet gate
-    # (tests/test_validation_report_empty.py) is unchanged.
+    # is tests/test_validation_report_empty.py.
     from .spec_validator import emit_stderr_summary
     emit_stderr_summary(_fin_ctx.violations)
 
-    # INV-bikaj / INV-nanon (arc T6): the CONSUMER half of the pass-silence axis.
-    # Stamping silence_reason made the reason recordable; this is what makes it
-    # OBSERVED, which is the complaint INV-nanon actually raised. Emitted next to
+    # The CONSUMER half of the pass-silence axis (INV-bikaj, INV-nanon).
+    # Stamping silence_reason makes the reason recordable; this line makes it
+    # OBSERVED. Emitted next to
     # the validator summary and under the same discipline -- one line, stderr,
     # and silent when every pass produced output.
     from .pass_silence import emit_silence_summary
     emit_silence_summary(behavior_map.get("analysis_runs", []))
 
-    # WI-dukoh / ADR-0056 W2: the OTHER half of the same question. The line
+    # The OTHER half of the same question (WI-dukoh, ADR-0056 W2). The line
     # above answers "this pass ran and emitted nothing -- why?"; this one
     # answers "this pass did not run at all -- why?". They are separate lines
     # because they are separate populations with separate denominators, and
     # merging them would make a pass that never ran look like a pass that
     # found nothing -- the absent-versus-empty substitution one level up.
-    # skipped_passes has been serialized on every survey since the field
-    # existed and nothing has ever summarized it.
     from .pass_silence import emit_skip_summary
     emit_skip_summary(
         (behavior_map.get("limits") or {}).get("skipped_passes", []),
         ran=len(behavior_map.get("analysis_runs", [])),
     )
 
-    # WI-mamiv / WI-didag: the THIRD outcome. The two lines above report two
+    # The THIRD outcome (WI-mamiv, WI-didag). The two lines above report two
     # populations; the WI-didil contract says every registered analyzer lands
     # in one of them. It can land in neither — a producer that emits output
     # without an AnalysisRun is drained and then dropped from the accounting,
-    # which is how rust_analyzer's success path put 669 nodes and 637 edges
-    # into artifacts from a pass visible nowhere in the catalog. Nothing read
-    # that, so it went a month unnoticed; this is the reader.
+    # putting nodes and edges into the artifact from a pass visible nowhere
+    # in the catalog. This line reports that.
     from .analyze.registry import get_all_analyzers
     from .pass_silence import census_silence, emit_unaccounted_warning
     emit_unaccounted_warning(census_silence(
@@ -13413,15 +13705,13 @@ def run_survey(
         catalog_pass_ids=[a.name for a in get_all_analyzers()],
     ))
 
-    # WI-jijor / ADR-0056 W1: the declaration set's first reader. The CNF
-    # predicate behind it has existed since WI-dilab with ELEVEN call sites,
-    # all of them tests -- LIVE.md §1.7's instrument-with-no-reader defect --
-    # so the ~73 depends_on conjuncts have never been audited against a real
-    # run. Re-pointed from gate to falsification detector: it reports a pass
-    # that EMITTED OUTPUT while one of its declared prerequisites was not in
-    # the active set, which proves the DECLARATION wrong. Advisory only; it
-    # never raises and never suppresses a pass, so unlike the gate INV-hujog
-    # asked for it cannot lose an edge. Wired here (not at catalog-build time)
+    # A production reader for the pass dependency declarations (the
+    # depends_on conjuncts; WI-jijor, ADR-0056 W1), used as a falsification
+    # detector rather than a gate: it reports a pass that EMITTED OUTPUT
+    # while one of its declared prerequisites was not in the active set,
+    # which proves the DECLARATION wrong. Advisory only; it never raises and
+    # never suppresses a pass, so unlike a gate (INV-hujog) it cannot lose
+    # an edge. Wired here (not at catalog-build time)
     # because it needs the runs.
     from .catalog import emit_falsified_dependency_summary, get_default_catalog
     emit_falsified_dependency_summary(
@@ -13429,13 +13719,15 @@ def run_survey(
     )
 
     # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
-    # All data is now in behavior_map as dicts. For large repos like tensorflow (154k
-    # symbols, 505k edges), this can free several GB of memory before final write.
+    # All data is now in behavior_map as dicts. The deletions release the
+    # lists by reference counting; the collection after them is for cycles,
+    # and is forced on a very large graph only (_collect_if_large).
+    _graph_size = len(all_symbols) + len(all_edges)
     del all_symbols
     del all_edges
     del ranked_symbols
     del _fin_ctx  # holds refs to symbols/edges/usage_contexts via the carrier
-    gc.collect()
+    _collect_if_large(_graph_size)
     _log_memory("after cleanup")
 
     run_status.phase("Writing output")
@@ -13454,8 +13746,8 @@ def run_survey(
 
 # ADR-0042 (WI-kisoj): ``run_behavior_map`` is a deprecated alias for
 # ``run_survey`` (the "survey" concept rename). Kept for the one-minor-version
-# window so existing call-sites (~56 tests + a few src modules) resolve without
-# a mass rename; removed at window-close. Assignment (not a wrapper) so the
+# window so existing call-sites resolve without a mass rename; removed at
+# window-close. Assignment (not a wrapper) so the
 # signature and introspection stay identical.
 run_behavior_map = run_survey
 
@@ -13482,11 +13774,7 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
     if subparsers_action is None:
         return  # pragma: no cover
 
-    # Group labels for display
-    group_labels = {
-        "core": "CORE ANALYSIS COMMANDS",
-        "extras": "INSTALLATION & MAINTENANCE COMMANDS",
-    }
+    group_labels = HELP_GROUP_LABELS
 
     # Print help for each subcommand, ordered by group
     for name, subparser, group, is_new_group in _get_subparsers_by_group(
@@ -13494,7 +13782,7 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
     ):
         # Print group header when entering a new group
         if is_new_group:
-            label = group_labels.get(group, group.upper())
+            label = group_labels[group]
             print(f"\n{'=' * 78}")
             print(f"  {label}")
             print("=" * 78)
@@ -13525,16 +13813,15 @@ def _suppress_broken_stdout_pipe() -> None:
 def main(argv=None) -> int:
     import logging
 
-    # INV-vopuh: do NOT reset SIGPIPE to SIG_DFL. Python's default disposition
-    # (SIG_IGN) turns a write to a closed pipe into a *catchable*
-    # ``BrokenPipeError``. Resetting it to SIG_DFL made an EPIPE on ANY pipe in
-    # the process fatal with signal 13 (exit 141, zero output) — including the
+    # Do NOT reset SIGPIPE to SIG_DFL (INV-vopuh). Python's default
+    # disposition (SIG_IGN) turns a write to a closed pipe into a *catchable*
+    # ``BrokenPipeError``. SIG_DFL would make an EPIPE on ANY pipe in the
+    # process fatal with signal 13 (exit 141, zero output) — including the
     # ``transformers`` safetensors-conversion *background thread* that fires
-    # during ``model.encode()`` (sketch_embeddings.py), which silently killed
-    # ``sketch`` at higher token budgets regardless of where the main thread
-    # was. The one case SIG_DFL was installed for — ``hypergumbo explain | head``
-    # exiting quietly — is handled by catching ``BrokenPipeError`` around command
-    # dispatch below.
+    # during ``model.encode()`` (sketch_embeddings.py), silently killing
+    # ``sketch`` regardless of where the main thread was. Exiting quietly
+    # under ``hypergumbo explain | head`` is handled instead by catching
+    # ``BrokenPipeError`` around command dispatch below.
 
     parser = build_parser()
 
@@ -13549,7 +13836,7 @@ def main(argv=None) -> int:
 
     subcommands = _registered_subcommands(parser)
 
-    # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
+    # Accept --debug in any position (WI-balij). Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both
     # work — argparse otherwise rejects --debug after the subcommand because
     # it's only registered on the root parser.
@@ -13558,31 +13845,30 @@ def main(argv=None) -> int:
         debug_flag = True
         argv = [a for a in argv if a != "--debug"]
 
-    # WI-vozof: accept --backend in any position and translate it to the
-    # HYPERGUMBO_RUST_ANALYZER env var that the gate reads. The gate itself
-    # already knows how to honour either signal; this path is CLI-side sugar
+    # Accept --backend in any position and translate it to the backend env
+    # var the gate reads (e.g. HYPERGUMBO_RUST_ANALYZER; WI-vozof). The gate
+    # itself knows how to honour either signal; this path is CLI-side sugar
     # so `hypergumbo survey . --backend rust-analyzer` works identically to
     # `HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey .`. Matches the --debug
     # stripping pattern so the flag works in any position relative to the
     # subcommand.
     #
-    # WI-jinoh / BUG-06: before setting the env var, gate on whether the
-    # ``hypergumbo-lang-rust-analyzer`` Python integration package is
-    # importable. The published v4.1.0 distribution does not include
-    # it; without this gate the SCIP backend silently falls through to
-    # tree-sitter and the user has no surface signal. We exit with a
-    # clear error here rather than at first-engagement so the user's
+    # Before setting the env var, check that the backend's Python
+    # integration package (e.g. ``hypergumbo-lang-rust-analyzer``, an
+    # optional extra) is importable; without it the SCIP backend would
+    # silently fall through to tree-sitter with no surface signal. We exit
+    # with a clear error here rather than at first-engagement so the user's
     # mental model ("--backend rust-analyzer ran, so the SCIP backend
-    # ran") is corrected immediately at parse time.
+    # ran") is corrected immediately at parse time (WI-jinoh / BUG-06).
     argv, backend_choice = _strip_backend_flag(argv, parser)
     if backend_choice is not None:
         _apply_backend_choice(backend_choice)
 
-    # WI-balij (UAT UX-03): if the first positional doesn't name a known
-    # subcommand AND clearly isn't a path (no path separators, no leading
-    # dot/tilde, doesn't exist on disk), the user probably mistyped a
-    # subcommand. Surface that with a Did-you-mean suggestion instead of
-    # silently inserting "sketch" and reporting "path does not exist".
+    # If the first positional doesn't name a known subcommand AND clearly
+    # isn't a path (no path separators, no leading dot/tilde, doesn't exist
+    # on disk), the user probably mistyped a subcommand. Surface that with a
+    # Did-you-mean suggestion instead of silently inserting "sketch" and
+    # reporting "path does not exist" (WI-balij).
     if argv and argv[0] not in subcommands and not argv[0].startswith("-"):
         candidate = argv[0]
         looks_like_subcommand_attempt = (
@@ -13618,7 +13904,7 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
 
-    # WI-munuv: unify the positional `path` and the `--path` flag.
+    # Unify the positional `path` and the `--path` flag (WI-munuv).
     # Subcommands that called _add_path_argument accept both forms;
     # this collapses them into a single args.path so cmd functions
     # don't need to know which form was used. Setting both is a user
@@ -13662,7 +13948,7 @@ def main(argv=None) -> int:
         # lives in should_offer(); the reason it is called here rather than
         # inside the analysis pipeline is that the pipeline is reached from
         # many entry points and is the wrong place to read stdin.
-        _maybe_offer_repo_tier_examples()
+        _maybe_offer_repo_tier_examples(args)
         # Flush while we can still catch a closed downstream pipe *in-band*.
         # stdout is block-buffered when piped, so a large write (e.g. a full
         # sketch) is otherwise deferred to interpreter shutdown — where the
@@ -13675,7 +13961,7 @@ def main(argv=None) -> int:
         # or framework file from a user's channel -- did not parse or had the
         # wrong shape. Same chokepoint posture as SubstrateError below: exit 2
         # with the loader's message, which names the file. Without it a family
-        # whose command did not catch its own error surfaced through the
+        # whose command did not catch its own error would surface through the
         # safety net as an "internal error" with exit 1 -- the code
         # verify-claims uses for ``violated``.
         print(f"Error: {exc}", file=sys.stderr)
@@ -13698,7 +13984,7 @@ def main(argv=None) -> int:
         _suppress_broken_stdout_pipe()
         return 1
     except Exception as exc:  # deliberate top-level safety net (WI-himas)
-        # WI-himas: a top-level catch-all so an *unanticipated* error surfaces
+        # A top-level catch-all so an *unanticipated* error surfaces
         # as a clean message + rc=1 instead of a raw Python traceback dumped at
         # the user. Under --debug the original exception is re-raised so the
         # full traceback is available for diagnosis. Expected/typed failures are
@@ -13725,9 +14011,9 @@ def main(argv=None) -> int:
 def _refuse_module_form() -> int:
     """Answer ``python -m hypergumbo_core.cli`` with exit 2, not a silent 0.
 
-    WI-burol: without a ``__main__`` block this spelling imported the module,
-    ran no command and exited 0 with empty output, which a JSON-consuming
-    driver reads as "no findings". The module entry point is
+    Without a ``__main__`` block this spelling would import the module, run
+    no command and exit 0 with empty output, which a JSON-consuming driver
+    reads as "no findings" (WI-burol). The module entry point is
     ``python -m hypergumbo_core`` (``__main__.py``); keeping it the ONLY one,
     this spelling refuses and names it instead of becoming a second alias.
     """

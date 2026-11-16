@@ -47,3 +47,10 @@
   set: {}  # 38b6
   add:  # 38b6
     isbefore: [WI-pufun-vohuf-bimuh-rigon-mamij-tokas-hamun-rosub]  # 38b6
+- op: discuss  # 82b5
+  at: '2026-10-29T19:49:02Z'  # 82b5
+  by: agent  # 82b5
+  actor: jgstern_agent  # 82b5
+  clock: 5  # 82b5
+  nonce: 82b5  # 82b5
+  message: "ADR-0062 (PR #1943) decided this item's open choices: Yjs 13 (y-websocket 3.1.0 on the client), pycrdt-websocket 0.16.5 server side, route WebSocketRoute('/yjs') inside create_app's route list so WI-hopip's guard covers it (WI-hopip is DONE; the 'until WI-hopip lands' precondition is now 'until WI-sunan lands'). The sidecar alternative in this item's How is REJECTED by ADR-0062 §5 (the bridge and token table must live in the authenticated TrackerSet process). One fixed room per tracker root. Until WI-pupod wires a TrackerSet into run_server, exercise the route via create_app(tracker_set=..., authenticate=...) in-process, as the tests do."  # 82b5

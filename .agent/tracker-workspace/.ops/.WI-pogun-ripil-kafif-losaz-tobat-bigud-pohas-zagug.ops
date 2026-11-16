@@ -1,0 +1,21 @@
+- op: create  # f1d7
+  at: '2026-10-31T10:07:49Z'  # f1d7
+  by: agent  # f1d7
+  actor: jgstern_agent  # f1d7
+  clock: 1  # f1d7
+  nonce: f1d7  # f1d7
+  data:  # f1d7
+    kind: work_item  # f1d7
+    title: "c: a function that returns a function pointer gets the returned pointer's parameter list, so its out-parameter facts are lost"  # f1d7
+    status: todo_hard  # f1d7
+    priority: 3  # f1d7
+    parent:  # f1d7
+    tags:  # f1d7
+    - docstring_audit  # f1d7
+    - analysis_quality  # f1d7
+    isbefore: []  # f1d7
+    duplicate_of: []  # f1d7
+    not_duplicate_of: []  # f1d7
+    pr_ref:  # f1d7
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _c_parameters (c.py:396-401) follows only the declarator field and stops at the outer function_declarator. int (*g(char *dst, const char *s))(int) gives parameters (int) and no out_parameter_call on g(b, \"x\"); a plain h(char *dst, ...) gets one. v07."  # f1d7
+    fields: {}  # f1d7

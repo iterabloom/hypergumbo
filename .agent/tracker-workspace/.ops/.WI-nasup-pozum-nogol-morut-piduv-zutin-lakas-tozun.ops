@@ -19,3 +19,26 @@
     pr_ref:  # f363
     description: "CI runs pytest as ROOT, where os.chmod(path, 0o000) does NOT block reads, so any test that simulates an unreadable file via chmod SKIPS its except-OSError branch under CI root. Locally (non-root) the branch is covered, so the affected-only 100% coverage gate passes locally but fails in CI at 99% the moment a PR touches the enclosing source file. PR #19 hit exactly this at supply_chain.py:891-892 (Cargo OSError branch) -- fixed by converting test_unreadable_cargo_toml to the read_text-mock pattern (test_unreadable_settings_gradle is the correct template; its comment names the gotcha). REMAINING: audit test files for os.chmod(..., 0o000) guarding except-OSError/PermissionError branches (at least test_supply_chain.py ~L1553) and convert each to a read_text/open mock so the branch is covered under root regardless of user."  # f363
     fields: {}  # f363
+- op: discuss  # ff74
+  at: '2026-11-01T10:55:46Z'  # ff74
+  by: agent  # ff74
+  actor: jgstern_agent  # ff74
+  clock: 2  # ff74
+  nonce: ff74  # ff74
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: PARTLY-STALE. Grepped test files at dev 100b6fbb6e. Four files already use monkeypatch and cite the gotcha. Remaining: test_supply_chain.py:1578 (was ~L1553) guards supply_chain.py:1364-1366 'except (OSError, IOError): return False' (no pragma, no other test reaches it), and tests/test_scrub_secrets.py:219 skips as root. test_transcript_scrub_wiring.py:163 is an exec-bit test that holds as root. The root gap was read from the code, not demonstrated (reviewer uid 1002). MECHANISM: a chmod(0o000) read-denial is a no-op for root, so the except-OSError branch is uncovered in root CI."  # ff74
+- op: update  # 6697
+  at: '2026-11-01T10:55:46Z'  # 6697
+  by: agent  # 6697
+  actor: jgstern_agent  # 6697
+  clock: 3  # 6697
+  nonce: '6697'  # 6697
+  set:  # 6697
+    title: "test_supply_chain.py:1578 test_unreadable_file_for_minification still uses chmod(0o000) (root-bypassed; supply_chain.py:1365 except uncovered under CI root); also test_scrub_secrets.py:219"  # 6697
+- op: update  # 324d
+  at: '2026-11-01T10:55:46Z'  # 324d
+  by: agent  # 324d
+  actor: jgstern_agent  # 324d
+  clock: 4  # 324d
+  nonce: 324d  # 324d
+  set:  # 324d
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Grepped test files at dev 100b6fbb6e. Four files already use monkeypatch and cite the gotcha. Remaining: test_supply_chain.py:1578 (was ~L1553) guards supply_chain.py:1364-1366 'except (OSError, IOError): return False' (no pragma, no other test reaches it), and tests/test_scrub_secrets.py:219 skips as root. test_transcript_scrub_wiring.py:163 is an exec-bit test that holds as root. The root gap was read from the code, not demonstrated (reviewer uid 1002). (Original text below; the review entry in the thread has the evidence.)\n\nCI runs pytest as ROOT, where os.chmod(path, 0o000) does NOT block reads, so any test that simulates an unreadable file via chmod SKIPS its except-OSError branch under CI root. Locally (non-root) the branch is covered, so the affected-only 100% coverage gate passes locally but fails in CI at 99% the moment a PR touches the enclosing source file. PR #19 hit exactly this at supply_chain.py:891-892 (Cargo OSError branch) -- fixed by converting test_unreadable_cargo_toml to the read_text-mock pattern (test_unreadable_settings_gradle is the correct template; its comment names the gotcha). REMAINING: audit test files for os.chmod(..., 0o000) guarding except-OSError/PermissionError branches (at least test_supply_chain.py ~L1553) and convert each to a read_text/open mock so the branch is covered under root regardless of user."  # 324d

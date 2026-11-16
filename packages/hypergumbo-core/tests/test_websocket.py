@@ -315,7 +315,7 @@ class TestHelperFunctions:
     """Tests for helper functions."""
 
     def test_make_symbol_id_canonical_shape_with_explicit_language(self) -> None:
-        """Phase 6 PR1 (INV-dulah): ``_make_symbol_id`` emits canonical IDs.
+        """``_make_symbol_id`` emits canonical IDs (INV-dulah).
 
         The shape is ``{language}:{path}:{line}-{line}:{event}-{kind}:function``
         — the language slot is the host file's language (not the literal
@@ -358,11 +358,10 @@ class TestHelperFunctions:
     def test_make_file_id(self) -> None:
         """Should generate canonical make_file_id-shape IDs (INV-ronuf).
 
-        The WS linker historically used a ``websocket:``-prefixed id that did
-        not match the canonical analyze/orchestrator shape, producing phantom
-        shadow file Symbols. After INV-ronuf the WS linker mints canonical
-        ``{language}:{path}:1-1:file:file`` ids so dedup with analyzer and
-        orchestrator file Symbols works naturally.
+        The WS linker mints canonical ``{language}:{path}:1-1:file:file`` ids
+        so dedup with analyzer and orchestrator file Symbols works naturally;
+        any other shape (e.g. a ``websocket:``-prefixed id) produces phantom
+        shadow file Symbols.
         """
         id = _make_file_id("javascript", "src/app.js")
         assert id == "javascript:src/app.js:1-1:file:file"
@@ -401,9 +400,9 @@ class TestINVRonufNoPhantomFileSymbols:
     def test_typescript_file_gets_typescript_language(self, tmp_path: Path) -> None:
         """INV-ronuf clause 3: ``.ts`` files get ``language='typescript'``.
 
-        Previously the WS linker used ``get_language(pattern_type)`` which
-        returned ``'javascript'`` for any non-Python pattern, mis-attributing
-        every ``.ts`` file. Now language is derived from the file extension.
+        Language is derived from the file extension, not from the pattern
+        type: a pattern-type lookup would give ``'javascript'`` for any
+        non-Python pattern and mis-attribute every ``.ts`` file.
         """
         (tmp_path / "sender.ts").write_text("socket.emit('e', data);")
         (tmp_path / "receiver.ts").write_text("socket.on('e', handler);")
@@ -420,11 +419,11 @@ class TestINVRonufNoPhantomFileSymbols:
     def test_tsx_file_gets_typescript_not_grammar_name(self, tmp_path: Path) -> None:
         """WI-komum: ``.tsx`` is ``typescript``, the JS/TS analyzer's tag.
 
-        ``_language_for_file`` took ``language_from_path``, which returns the
-        tree-sitter GRAMMAR name, so a ``.tsx`` sender minted the file id
-        ``tsx:App.tsx:1-1:file:file`` -- a shadow of the analyzer's
-        ``typescript:`` file node for the same path (clause 1) and an edge
-        source in a language no analyzer emits.
+        ``_language_for_file`` must not use ``language_from_path``, which
+        returns the tree-sitter GRAMMAR name: a ``.tsx`` sender would mint
+        the file id ``tsx:App.tsx:1-1:file:file`` -- a shadow of the
+        analyzer's ``typescript:`` file node for the same path (clause 1) and
+        an edge source in a language no analyzer emits.
         """
         (tmp_path / "App.tsx").write_text("socket.emit('e', data);")
         (tmp_path / "server.ts").write_text("socket.on('e', handler);")
@@ -454,7 +453,7 @@ class TestINVRonufNoPhantomFileSymbols:
         """INV-ronuf clause 3: synthesized file Symbols stamp ``stable_id``.
 
         Schema gate (INV-piroh) requires non-None ``stable_id`` for every
-        Symbol; the WS linker previously left it ``None``.
+        Symbol, including the WS linker's synthesized file Symbols.
         """
         (tmp_path / "sender.js").write_text("socket.emit('e', data);")
         (tmp_path / "receiver.js").write_text("socket.on('e', handler);")
@@ -520,13 +519,11 @@ class TestINVRonufNoPhantomFileSymbols:
         The orchestrator's dangling-symbol synthesizer and the language
         analyzers normalize ``Symbol.path`` to be repo-relative before
         linkers run (see ``analyze/all_analyzers.py``). Their file Symbol
-        ids therefore embed repo-relative paths. The WS linker discovered
-        files via ``Path`` objects (absolute) and constructed file ids
-        with absolute paths — so canonical-shape dedup against the
-        orchestrator's pre-existing repo-relative ids silently missed,
-        emitting a duplicate file Symbol per path. The fix is for the WS
-        linker to embed repo-relative paths in its ids and Symbol.path
-        fields.
+        ids therefore embed repo-relative paths. The WS linker discovers
+        files as absolute ``Path`` objects, so it must embed repo-relative
+        paths in its ids and Symbol.path fields; with absolute paths,
+        canonical-shape dedup against the orchestrator's pre-existing ids
+        silently misses and emits a duplicate file Symbol per path.
         """
         from hypergumbo_core.analyze.base import make_file_id
         (tmp_path / "client.js").write_text("socket.emit('e', data);")
@@ -548,7 +545,7 @@ class TestINVRonufNoPhantomFileSymbols:
     def test_file_symbol_paths_are_repo_relative(self, tmp_path: Path) -> None:
         """WI-hifol: file Symbol paths are repo-relative, not absolute.
 
-        Post-fix, every WS-emitted file Symbol must store ``path`` as a
+        Every WS-emitted file Symbol must store ``path`` as a
         repo-relative string (matching what the orchestrator emits). This
         is a stronger invariant than the existing canonical-shape test
         because it pins the path representation, not just the id format.
@@ -621,9 +618,9 @@ class TestLinkWebSocket:
         assert len(message_edges) == 1
         assert "sender.js" in message_edges[0].src
         assert "receiver.js" in message_edges[0].dst
-        # INV-forim: dataflow annotations must persist through the linker.
-        # Historically edge.meta was reassigned after Edge.create, wiping
-        # the access_mode set by the kwargs (dest_access_mode was removed, ADR-0038).
+        # INV-forim: dataflow annotations must persist through the linker;
+        # reassigning edge.meta after Edge.create would wipe the access_mode
+        # set by the kwargs. dest_access_mode is not emitted (ADR-0038).
         assert message_edges[0].meta["access_mode"] == "write"
         assert message_edges[0].meta.get("dest_access_mode") is None
         assert message_edges[0].meta["channel"] == "chat"
@@ -1433,8 +1430,8 @@ socket.on(EVENT, handler);
         assert msg_edges[0].meta.get("event_identifier") == "EVENT"
 
     def test_an_identifier_never_matches_a_string_of_the_same_text(self, tmp_path: Path) -> None:
-        """WI-luhod: ``emit(chat)`` with ``chat`` a parameter is not the
-        ``'chat'`` event; the old raw-string grouping joined them."""
+        """``emit(chat)`` with ``chat`` a parameter is not the ``'chat'``
+        event, so the two must not join on their shared text (WI-luhod)."""
         sender = tmp_path / "sender.js"
         sender.write_text("""
 function relay(chat, payload) {
@@ -1481,9 +1478,9 @@ await channel_layer.send(CHANNEL_NAME, {'type': 'notify'})
         assert send_patterns[0].event_type == "constant"
 
     def test_a_constant_joins_the_literal_it_names(self, tmp_path: Path) -> None:
-        """WI-luhod: ``on(EVENT)`` with ``const EVENT = 'user-login'`` is the
-        ``'user-login'`` event. Before the fix the raw identifier was the
-        grouping key, so this pair never joined."""
+        """``on(EVENT)`` with ``const EVENT = 'user-login'`` is the
+        ``'user-login'`` event: the constant's value, not the raw identifier,
+        is the grouping key, so this pair joins (WI-luhod)."""
         sender = tmp_path / "sender.js"
         sender.write_text("""
 socket.emit('user-login', { user: 'test' });
@@ -1557,22 +1554,18 @@ class TestWebSocketLinkerRegistry:
 class TestWiZolotCrossLanguageBridge:
     """WI-zolot: TS client at /ws must bridge to Python handler at /ws.
 
-    Pre-fix gaps surfaced by self-analysis (2026-05-16 round 4):
-    1. NATIVE_WEBSOCKET_PATTERN only matched ``'`` / ``"`` quoted URLs, so
-       template-string URLs like ``new WebSocket(`${proto}/${host}/ws`)``
-       (the canonical browser pattern) never produced an endpoint.
-    2. Python side only matched ``@app.websocket('/path')`` decorator. The
-       Starlette routing-table style ``WebSocketRoute("/path", handler)``
-       — used by hypergumbo's own ``serve.py:433`` — never produced an
-       endpoint.
-    3. Even when both ends were detected, the linker only emitted
-       within-language file→endpoint ``references`` and send/receive
-       pairings. No client↔server cross-language edge was ever emitted.
-
-    Fix: extend client regex to accept template strings, add Starlette
-    pattern, emit a ``calls`` + ``meta["protocol"]="ws"`` bridge edge when
-    client+server endpoints share a path string. (Cross-language-ness is
-    derivable from the endpoint node languages, not stamped — INV-zigup.)
+    Three pieces make the bridge, each pinned below:
+    1. The client regex accepts template-string URLs like
+       ``new WebSocket(`${proto}/${host}/ws`)`` (the canonical browser
+       pattern), not only ``'`` / ``"`` quoted ones.
+    2. The Python side detects the Starlette routing-table style
+       ``WebSocketRoute("/path", handler)`` (used by hypergumbo's own
+       ``serve.py``) as well as the ``@app.websocket('/path')`` decorator.
+    3. When client and server endpoints share a path string, the linker
+       emits a ``calls`` + ``meta["protocol"]="ws"`` bridge edge, in
+       addition to the within-language file→endpoint ``references`` and
+       send/receive pairings. (Cross-language-ness is derivable from the
+       endpoint node languages, not stamped — INV-zigup.)
     """
 
     def test_native_websocket_template_string_extracts_trailing_path(self, tmp_path: Path) -> None:
@@ -1781,9 +1774,9 @@ class TestWiZolotCrossLanguageBridge:
     def test_self_analysis_shape_end_to_end(self, tmp_path: Path) -> None:
         """End-to-end: replicate hypergumbo's own ws-client.ts + serve.py shapes.
 
-        This is the WI-zolot acceptance criterion as filed: the
+        The WI-zolot acceptance case: the
         ``packages/htrac-frontend/src/ws-client.ts`` shape and the
-        ``serve.py:215`` ``WebSocketRoute('/ws', _ws_handler)`` shape, on
+        ``serve.py`` ``WebSocketRoute('/ws', _ws_handler)`` shape, on
         the same path, must produce exactly one cross-language WS bridge
         edge.
         """
@@ -1817,7 +1810,7 @@ class TestWiZolotCrossLanguageBridge:
         assert (edge.meta or {}).get("server_framework") == "starlette"
 
     def test_fastapi_decorator_still_bridges_too(self, tmp_path: Path) -> None:
-        """The pre-existing ``@app.websocket('/ws')`` Python case bridges too."""
+        """The FastAPI ``@app.websocket('/ws')`` Python case bridges too."""
         ts_file = tmp_path / "client.ts"
         ts_file.write_text("const ws = new WebSocket(`${host}/ws`);\n")
         py_file = tmp_path / "main.py"

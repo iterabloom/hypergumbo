@@ -1,26 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-zamud (INV-mumov, largest remaining limb): a Django test class's fields
-are assigned in ``setUp`` / ``setUpTestData``, not ``__init__``.
+"""A Django test class's fields are assigned in ``setUp`` /
+``setUpTestData``, not ``__init__``.
 
 ``_collect_class_field_maps`` reads a class's OWN ``__init__`` and nothing
-else, so ``self.orga = Organizer.objects.create(...)`` written in ``setUp``
-types nothing, and the chain that hangs off it -- ``self.orga.events.create()``
--- reaches no catalogue entry. Measured on pretix at filing: 1,155 call sites
-of that shape (476 assigned in the class's own setUp, 679 inherited from a
-base test class), which the 2026-09-09 residue census scores as 2,775 shapes
-in the derivability instrument: the largest single population left in
-INV-mumov's family, three times the remaining ORM-chain residue.
+else, so on its own ``self.orga = Organizer.objects.create(...)`` written in
+``setUp`` types nothing, and the chain that hangs off it --
+``self.orga.events.create()`` -- reaches no catalogue entry. Fixtures built
+this way are common in Django test suites, and many are inherited from a base
+test class.
 
-The binding rule is the one the walker already uses for a LOCAL
-(``_DjangoReceiverOracle.instance_from_call``); what is new is only WHERE the
-assignment is read from and that the resulting field type is inherited through
-resolved project bases, because a pretix test's fixture is usually built in a
-base class's setUp and consumed in a subclass's test method.
+The binding rule is the one the walker uses for a LOCAL
+(``_DjangoReceiverOracle.instance_from_call``); what differs is only WHERE the
+assignment is read from, and that the resulting field type is inherited
+through resolved project bases, because a test's fixture is commonly built in
+a base class's setUp and consumed in a subclass's test method.
 
-THE REFUTATION, pre-registered on the item at filing: a base class's setUp
-field must NOT be attributed to a subclass that REASSIGNS the same field to a
-different model. A subclass's own binding wins, and a non-model call
-(``OrderForm()``) binds nothing at all.
+THE REFUTATION: a base class's setUp field must NOT be attributed to a
+subclass that REASSIGNS the same field to a different model. A subclass's own
+binding wins, and a non-model call (``OrderForm()``) binds nothing at all.
+(history: WI-zamud, INV-mumov)
 """
 from __future__ import annotations
 
@@ -81,7 +79,7 @@ class OrderForm:
 
 
 class TestSetUpAssignedFieldsCarryTheModel:
-    """The filed row: the fixture is built in setUp and used in a test."""
+    """The base case: the fixture is built in setUp and used in a test."""
 
     def test_setup_field_reaches_the_related_manager(self, tmp_path: Path) -> None:
         src = '''\
@@ -128,11 +126,10 @@ class EventTest(TestCase):
     ) -> None:
         """``self.orga.save()`` reaches the catalogue (WI-kufok).
 
-        This was pinned as a KNOWN GAP: the instance-write re-key lived only in
-        ``_process_call``'s bare-Name branch, so an ATTRIBUTE receiver never
-        reached it whatever typed it. The write rule is now
-        ``_django_orm_attribute_write`` at every emit site, fed by the same
-        oracle that types the accessor hop below.
+        The instance-write rule is ``_django_orm_attribute_write``, applied at
+        every emit site and fed by the same oracle that types the accessor hop
+        below. A write rule confined to the bare-Name branch would never see an
+        ATTRIBUTE receiver, whatever typed it.
         """
         src = '''\
 from django.test import TestCase
@@ -158,7 +155,7 @@ class EventTest(TestCase):
 
 
 class TestInheritanceThroughProjectBases:
-    """679 of the 1,155 filed sites inherit the fixture from a base class."""
+    """A fixture is often inherited from a base test class."""
 
     def test_base_class_setup_field_is_inherited_by_a_subclass(
         self, tmp_path: Path
@@ -210,12 +207,12 @@ class EventTest(BaseFixture):
 
 
 class TestTheRefutationHolds:
-    """Pre-registered on the item: the narrowings are deliberate."""
+    """The narrowings are deliberate."""
 
     def test_a_subclass_reassignment_wins_over_the_base(
         self, tmp_path: Path
     ) -> None:
-        """The filed refutation cell. ``Team`` has no ``events`` accessor, so
+        """The refutation case. ``Team`` has no ``events`` accessor, so
         crediting the BASE's ``Organizer`` here would be a wrong answer, not a
         missing one."""
         src = '''\
@@ -387,7 +384,7 @@ class EventTest(TestCase):
         self, tmp_path: Path
     ) -> None:
         """The ``no units`` early return: a Django app with models but no test
-        fixture must take exactly the path it took before."""
+        fixture skips the setUp pass and keeps its ordinary ORM edges."""
         src = '''\
 from models import Organizer
 

@@ -45,12 +45,16 @@ from __future__ import annotations
 
 import subprocess  # nosec B404 - required for pip commands
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .safety_zones import tmp_artifact_mkdir, tmp_artifact_rmtree, tmp_artifact_write
+from .safety_zones import (
+    tmp_artifact_dir,
+    tmp_artifact_mkdir,
+    tmp_artifact_rmtree,
+    tmp_artifact_write,
+)
 
 
 # INV-bazoz: the vendor tree is package data beside this module, so the
@@ -305,15 +309,28 @@ def build_all_grammars(
 
     Args:
         build_dir: Directory for the generated binding packages and pip's
-            build artifacts (default: temp dir)
+            build artifacts (default: a fresh private temp dir, removed after)
         quiet: Suppress output if True
 
     Returns:
         Dict mapping grammar name to success status
+
+    THE DEFAULT IS A NEW PRIVATE DIRECTORY, never a fixed name. It was
+    ``<tmp>/ts-grammar-build``, created with ``exist_ok=True``: in a shared
+    ``/tmp`` whoever made that directory first owned it, so another user's
+    leftover crashed this build, and a hostile one could replace the generated
+    ``setup.py`` between its write and the ``pip install`` that runs it -- as
+    you, or as root under ``sudo``. ``tmp_artifact_dir`` is ``mkdtemp``-backed:
+    a fresh 0700 directory no one else can enter, and nothing left behind.
     """
     if build_dir is None:
-        build_dir = Path(tempfile.gettempdir()) / "ts-grammar-build"
+        with tmp_artifact_dir(prefix="ts-grammar-build-") as private:
+            return _build_all_in(Path(private), quiet)
+    return _build_all_in(build_dir, quiet)
 
+
+def _build_all_in(build_dir: Path, quiet: bool) -> dict[str, bool]:
+    """``build_all_grammars``'s body, over a build directory already chosen."""
     # INV-zudak: route build-dir scaffolding through the tmp_artifact wrapper.
     tmp_artifact_mkdir(build_dir, parents=True, exist_ok=True)
 

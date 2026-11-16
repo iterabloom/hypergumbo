@@ -33,3 +33,18 @@
   clock: 3  # 3e8b
   nonce: 3e8b  # 3e8b
   message: "Cross-ref from WI-pifus (2026-10-01, local branch jgstern-agent/fix/pifus, commit f13f35fb0f, not yet integrated): astro.py's _AstroFileExtractor no longer takes repo_root; it takes the rel_path the base class computed, and the `path: Path` parameter is gone from extract/_process_tag/_parse_frontmatter_js and the other per-file helpers. Before that fix every astro src/file id carried the analysis root's own directory name as a leading component (astroroot/src/Page.astro instead of src/Page.astro). Two consequences for this item: (1) a branch editing the astro.py:314 bare-path site will textually conflict with WI-pifus in _process_tag (same hunk region; the line numbers cited here moved by about -10 on that branch); (2) resolving an astro import such as ./Header.astro to the imported file's node needs the importer's root-relative path, which is only correct after WI-pifus. The 4 astro edges counted here were measured on the pre-fix code: their dst is the raw import path and is unaffected by WI-pifus, but their src file ids carried the wrong path."  # 3e8b
+- op: update  # bd48
+  at: '2026-10-22T14:21:21Z'  # bd48
+  by: agent  # bd48
+  actor: jgstern_agent  # bd48
+  clock: 4  # bd48
+  nonce: bd48  # bd48
+  set:  # bd48
+    status: done  # bd48
+- op: discuss  # c101
+  at: '2026-10-22T14:21:21Z'  # c101
+  by: agent  # c101
+  actor: jgstern_agent  # c101
+  clock: 5  # c101
+  nonce: c101  # c101
+  message: "Fixed in PR merged as 3225cad271 + 1d8efc28c8 (dev). base.make_module_import_dst / make_manifest_target_dst give each producer a well-formed 5-slot dst; json_config and Cargo carry the raw path in meta.target_path, which build_target already reads. Gate: test_import_dst_ids_are_canonical CASES now covers json, make, jsonnet, astro, svelte, toml and checks the lang slot is a known language. Live repro on a fixture (package.json main+bin, Makefile 'all: test', main.jsonnet importing lib.libsonnet), hypergumbo run, survey.json: 8 edges, 0 with an <unknown> slot, 0 <unknown> nodes. defines_target -> javascript:bin/cli.js:1-1:file:file and javascript:src/main.js:1-1:file:file; depends_on -> makefile:test:0-0:test:external_symbol; jsonnet file src jsonnet:main.jsonnet:1-1:file:file. Not done here: INV-dulah's close condition (fleet count on the 28 surveys re-run reading 0) is still owed; the jsonnet import of an in-repo lib.libsonnet still lands on an external module id rather than the file node (the WI-modan resolution question, not this slot-shape item)."  # c101

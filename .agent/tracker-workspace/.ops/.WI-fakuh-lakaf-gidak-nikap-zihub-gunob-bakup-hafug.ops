@@ -1,0 +1,52 @@
+- op: create  # 4cea
+  at: '2026-10-22T05:11:03Z'  # 4cea
+  by: agent  # 4cea
+  actor: jgstern_agent  # 4cea
+  clock: 1  # 4cea
+  nonce: 4cea  # 4cea
+  data:  # 4cea
+    kind: work_item  # 4cea
+    title: "dead-code and test reachability disagree on anchors: module-init calls read dead under --seeds entrypoints, three test-only consumers give three answers"  # 4cea
+    status: todo_hard  # 4cea
+    priority: 2  # 4cea
+    parent:  # 4cea
+    tags:  # 4cea
+    - dead_code  # 4cea
+    - call_graph  # 4cea
+    - concept_audit_20261021  # 4cea
+    isbefore: []  # 4cea
+    duplicate_of: []  # 4cea
+    not_duplicate_of: []  # 4cea
+    pr_ref:  # 4cea
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F3. Verified through the production CLI on devref e9215548f6: lib.py 'def build_registry(): ...; REGISTRY = build_registry(); def run(): return REGISTRY' imported by main.py (if __name__ == '__main__': lib.run()) -> 'dead-code-maybe --seeds entrypoints' reports build_registry dead (it runs at import). Default --seeds production hides it (exported API seeded). Agent probe (not re-checked): test_only_reachability.py:268-289 (any src in a test path is a test caller) vs dead-code's test bucket cli.py:9395 and sketch coverage sketch.py:5345 (function/method seeds only) disagree on one fixture (CASES = build_cases() at test-module level; a test-class-body call). Fix shape: an anchor is reached when its container is (file: imported/executed; class body: its module imported; Java static init: class used; field initializer: class constructed), one shared rule for all three consumers."  # 4cea
+    fields: {}  # 4cea
+- op: discuss  # 7878
+  at: '2026-10-25T20:08:21Z'  # 7878
+  by: agent  # 7878
+  actor: jgstern_agent  # 7878
+  clock: 2  # 7878
+  nonce: '7878'  # 7878
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, WIDER THAN FILED. The default --seeds production ALSO reports a private module-init helper dead: lib.py `def _build_registry(): ...; _REGISTRY = _build_registry(); def run(): return _REGISTRY`, imported by main.py -> dead-code-maybe lists _build_registry (reproduced independently twice). The three-consumer half now has a production-path repro (packages/p/src + tests/test_mod.py with module-level CASES = helper() and a test-class-body call): dead-code-maybe json says unreachable/unreachable/test_only; test-coverage (a FOURTH consumer, cmd_test_coverage cli.py:8463) lists both anchor-called helpers in Cold Spots; sketch says ~33% (1/3); scripts/check-test-only-reachability lists all three test-only. Refs: test_only_reachability.py:314-353 (rule :348); cli.py:8961 (function/method-only test seeds), :9409, :9453; the dead-code BFS edge set (cli.py:9271) has no imports; sketch.py:5345 unchanged. WI-mifag closed (PR #1839) without touching the anchor-as-caller rule. Fix addition: the test runner executes test files, so their file and class anchors ARE test seeds (the ratchet's answer); move dead-code, test-coverage and sketch to it. P2 kept."  # 7878
+- op: discuss  # 55e3
+  at: '2026-10-26T00:31:44Z'  # 55e3
+  by: agent  # 55e3
+  actor: jgstern_agent  # 55e3
+  clock: 3  # 55e3
+  nonce: '55e3'  # 55e3
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Neither WI-ziruv nor WI-kosup catches this. Four consumers disagree on one fact, and the contract they should share (when anchored code runs) was never written, so WI-ziruv has no rule to falsify. The fix shape here writes that contract. Does not wait for either audit."  # 55e3
+- op: update  # 3f2e
+  at: '2026-10-26T18:38:40Z'  # 3f2e
+  by: agent  # 3f2e
+  actor: jgstern_agent  # 3f2e
+  clock: 4  # 3f2e
+  nonce: 3f2e  # 3f2e
+  set:  # 3f2e
+    status: done  # 3f2e
+    pr_ref: '1884'  # 3f2e
+- op: discuss  # a4ef
+  at: '2026-10-26T18:38:40Z'  # a4ef
+  by: agent  # a4ef
+  actor: jgstern_agent  # a4ef
+  clock: 5  # a4ef
+  nonce: a4ef  # a4ef
+  message: "DONE in PR #1884 (merged, dev 8c1c17e92b). The contract the earlier note said was never written is now hypergumbo_core.anchor_execution (module docstring): code anchored on a file or class runs when its container does -- a file when any symbol it contains is reached or a loaded file imports it; a class body / static initializer when its file loads or any member is reached. It is served as walk-only edges from the graph's own contains and file->file imports edges (member -> container, file -> its type-like symbols, importer -> imported), added by dead-code-maybe, test-coverage and sketch's coverage line to the graph each walks (nothing emitted). Containing is still not calling: no edge leads from a container to a function. The ratchet already counted anchors in test files as test callers and is unchanged; the walks now agree with it WITHOUT seeding test-file anchors as tests (a test function reaches its own test class and module through member -> container), so test counts stay counts of test functions. Residual (documented): a test file with module-level calls and no test function/class is not reached.\nBEHAVIOURAL EVIDENCE, the filed repros re-run on merged dev through the CLI: lib.py `_REGISTRY = _build_registry(); REGISTRY = build_registry(); def run()` imported by main.py's main guard -> dead-code-maybe --seeds entrypoints: [] and default production: [] (both listed the module-init helpers before). Test half (packages/p/src/p/mod.py + tests/test_mod.py with module-level CASES = f_mod_level() and a test-class-body call): dead-code-maybe --seeds tests -> ['f_uncalled'] only; test-coverage cold spots -> ['f_uncalled'] only (were f_class_body, f_mod_level, f_uncalled); sketch _estimate_test_coverage 3/4 (production-path test test_anchored_code_reachability.py).\nMEASURED vs dev on the same maps: django dead(entrypoints) 8,581 -> 8,297, dead(production) 1,364 -> 1,353, tested 1,917 -> 1,960, test-coverage 3.5s -> 4.6s, 0 newly dead; fastapi entrypoints 1,233 -> 1,165, production 120 unchanged, tested 38 -> 41. Spot-checked django rows against source (a JS class constructed inside a module-level document.addEventListener registration; multipartparser chains)."  # a4ef

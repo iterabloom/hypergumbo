@@ -27,3 +27,10 @@
   clock: 2  # 4917
   nonce: '4917'  # 4917
   message: "SAME SHAPE IN THREE MORE LANGUAGES, for whoever fixes this (WI-vafad tranche 3, 2026-10-03, docs/audits/0022):\n- objc NSFileHandle `seekToFileOffset:` and swift FileHandle `seekToEnd` are rowed fs_write. The tranche-2 flags were re-verified ACCEPT by the tranche-3 verifier: seek(toFileOffset:) -> lseek(SEEK_SET) only, and seekToEnd is lseek(_fd, 0, SEEK_END) returning the offset (swift-corelibs-foundation FileHandle.swift:583, :566-568, a reimplementation). No byte moves. The swift / objc write methods stay rowed.\n- haskell.yaml:133 rows hSeek / hTell / hIsEOF / hReady / hFileSize under fs_read. These are vouched rows outside the sweep's scope and NOT adjudicated; named so the family is complete.\nOne rule across languages (\"a stream-position call crosses nothing\", rust.yaml:70 / :186's wording) is better than five per-language decisions. The ADR-0049 ruling-3 proof still runs per language."  # 4917
+- op: discuss  # a0ab
+  at: '2026-11-01T10:55:40Z'  # a0ab
+  by: agent  # a0ab
+  actor: jgstern_agent  # a0ab
+  clock: 3  # a0ab
+  nonce: a0ab  # a0ab
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat2/). VERDICT: CURRENT. Re-checked 2026-11-01 at dev 100b6fbb6e: c.yaml:39-40 still `stdio: [fopen, fseek, rewind, ungetc, ftell]` under fs_read. Fixture io-boundaries reports stdio.fseek, stdio.ftell, stdio.rewind, stdio.ungetc each as fs_read. Parity cites hold (rust.yaml:70/:186 seek absent; python seek/tell unrowed now at python.yaml:2063; haskell.yaml:133 hSeek/hTell fs_read; objc seekToFileOffset: and swift seekToEnd still rowed). No change since filing. MECHANISM: a module-wide stdio row sweeps position/pushback calls that move no bytes into fs_read (WI-jupaf module-sweep shape). SHARES MECHANISM WITH: WI-dohod, WI-bavat."  # a0ab

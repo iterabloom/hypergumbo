@@ -104,8 +104,3 @@ patterns:
   # Cron jobs (robfig/cron)
   - concept: scheduled_task
     decorator: "^c\\.(AddFunc|Schedule)$"
-
-linkers:
-  - http
-  - grpc
-  - database_query

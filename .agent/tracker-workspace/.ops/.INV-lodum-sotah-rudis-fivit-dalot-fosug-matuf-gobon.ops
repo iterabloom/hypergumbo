@@ -74,3 +74,18 @@
   clock: 8  # d28a
   nonce: d28a  # d28a
   message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). Title follow-up to the earlier note today: dropped the clause \"which the collision splitter would then undo\". ADR-0057 §8 rules that clause out (the splitter runs after the merge, so the question does not arise). The new title names what is still open: the SCIP-only leftovers. The rest of the correction (5 of 21 leftovers differ; the cure belongs after the merge, not in index.py) is in the earlier note."  # d28a
+- op: update  # 6e44
+  at: '2026-10-23T18:47:15Z'  # 6e44
+  by: agent  # 6e44
+  actor: jgstern_agent  # 6e44
+  clock: 9  # 6e44
+  nonce: '6e44'  # 6e44
+  set:  # 6e44
+    status: satisfied  # 6e44
+- op: discuss  # 66b4
+  at: '2026-10-23T18:47:15Z'  # 66b4
+  by: agent  # 66b4
+  actor: jgstern_agent  # 66b4
+  clock: 10  # 66b4
+  nonce: 66b4  # 66b4
+  message: "SATISFIED by PR #1823 (dev 76d192b88f + 8fa6651a43). LIVE REPRO, the row's own measure on real input: aardvark-dns copied to a scratch dir, XDG_CACHE_HOME fresh per arm, HYPERGUMBO_RUST_ANALYZER=1 python -m hypergumbo_core run . (rust-analyzer ~/.cargo/bin). BEFORE = git archive of dev 62597eb508 via PYTHONPATH, AFTER = merged dev editable install (hypergumbo_core.__file__ printed per arm). SCIP-only records: BEFORE 19, of which 3 single-line token spans (variable DNSBACKEND, namespaces tests x2); AFTER 19, 0 single-line -- DNSBACKEND src/server/serve.rs:289-291, tests src/server/serve.rs:488-619, tests src/test/test.rs:3-476, exactly the recorded-fixture expectation. The other 16 are identical in both arms. item_span carriers in the emitted artifact: 0 in both. The artifact's own validation_report: 1 violation in both arms (cross_field), stable_id_stats collision_groups 1 / collided_symbols 3 in both -- INV-kutid's three crate/ roots, unchanged by this fix and next in line (owner ruling (a)). Fix: scip/index.py carries enclosing_range as meta.item_span when it differs from the token; merge_producers drops it on folded records and, for a leftover, takes it as the span and re-mints the id (edges and contexts remapped through id_remap; collision keeps the token span). Full affected suite 25837 passed (+ the one spec count fixed in the PR)."  # 66b4

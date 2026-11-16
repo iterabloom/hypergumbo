@@ -1,0 +1,61 @@
+- op: create  # 12f0
+  at: '2026-11-10T22:35:02Z'  # 12f0
+  by: agent  # 12f0
+  actor: jgstern_agent  # 12f0
+  clock: 1  # 12f0
+  nonce: 12f0  # 12f0
+  data:  # 12f0
+    kind: work_item  # 12f0
+    title: "smart-test --narrow can drop a test that runs changed module-level code: an import is not a coverage row"  # 12f0
+    status: todo_hard  # 12f0
+    priority: 3  # 12f0
+    parent:  # 12f0
+    tags:  # 12f0
+    - smart_test  # 12f0
+    - ci_infrastructure  # 12f0
+    isbefore: []  # 12f0
+    duplicate_of: []  # 12f0
+    not_duplicate_of: []  # 12f0
+    pr_ref:  # 12f0
+    description: "`smart-test --narrow` (WI-bolot, opt-in, local only) can drop a test that executes changed module-level code. Found by the WI-damom bed (PR #2123), edit `rename`.\n\nREPRO. `scripts/smart-test-bed run narrow --edit rename`. The edit renames `chain_b.step_b` to `double_step` and changes the import line in `chain_a.py`, so `chain_a`'s `<module>` block changes. `packages/bed-app/tests/test_cli_usage.py` imports `bedapp.cli`, which imports `chain_a`, but it calls only `main([])` and never runs a `chain_a` function. The mutation oracle (the changed `<module>` block raises) breaks it, so it is MUST-select. The union keeps it; `--narrow` drops it.\n\nCAUSE. `selection_index` rule 2 credits a file's import-time blocks to \"every test that touches the file\", meaning a test observed executing some line of it. Module bodies run at import, under the empty coverage context, so a test that only imports the file has no row for it. `narrow_run_set` then treats that missing row as proof the test is irrelevant. The implication \"executes a line of F => imported F\" is sound; the converse that narrowing relies on is not. This is the ABSENT != EMPTY shape.\n\nSCOPE. Only `--narrow`. The union only adds tests, and the CI manifest is the static slice, which selects importers. The bed's other `<module>` edit, `module-statement` on `tables.py`, does not show it, because every importer of `tables` also calls one of its functions.\n\nCANDIDATE FIXES, not chosen:\n(a) A `narrowing_blocker`: a changed `<module>` or class-body block refuses narrowing, and the run set stays whole. This is sound and simple, and it gives up narrowing on edits like that.\n(b) Keep every run-set file that imports the changed file. This needs an import edge the index does not hold.\n\nWI-gapos (block-level keep set) inherits the same gap and should not ship until this is decided. Done when the bed scores `--narrow` with no dropped MUST on `rename`, plus a unit test in `selection_index`."  # 12f0
+    fields: {}  # 12f0
+- op: update  # be03
+  at: '2026-11-10T22:35:46Z'  # be03
+  by: agent  # be03
+  actor: jgstern_agent  # be03
+  clock: 2  # be03
+  nonce: be03  # be03
+  set:  # be03
+    status: todo_soft  # be03
+  add:  # be03
+    not_duplicate_of: [WI-gokop-nudub-zunal-zibij-fuvad-libot-bituk-visid]  # be03
+- op: discuss  # 27d8
+  at: '2026-11-10T23:38:12Z'  # 27d8
+  by: agent  # 27d8
+  actor: jgstern_agent  # 27d8
+  clock: 3  # 27d8
+  nonce: 27d8  # 27d8
+  message: "Owner decision 2026-11-10: go with fix (a), a narrowing_blocker that refuses narrowing when a changed file has a changed <module> or class-body block, unless the owner says otherwise after this note. Reason: every test that imports a module runs its import-time code, so the only safe keep set for such a file is all its importers, which is the un-narrowed import-graph selection; (b) only adds narrowing of the OTHER files in a multi-file change. Measured over the last 400 commits on dev: 113 modified package source; in 90 (80%) at least one changed file had a changed <module> block, 3 more changed only a class body, 20 (18%) changed only function or method bodies. Per file: 262 of 369 (71%). Follow-up being measured: how many <module> changes are module-docstring-only, which could be routed to the WI-zajuv text-reader set instead of all importers."  # 27d8
+- op: discuss  # b971
+  at: '2026-11-10T23:39:01Z'  # b971
+  by: agent  # b971
+  actor: jgstern_agent  # b971
+  clock: 4  # b971
+  nonce: b971  # b971
+  message: "Follow-up measured, same 400 commits: of the 90 with a changed <module> block, 12 changed only the module docstring. Routing those to the text-reader set would let narrowing apply to 32 of 113 commits instead of 20; most module-level changes are real code (imports, constants, registrations)."  # b971
+- op: update  # 1526
+  at: '2026-11-11T01:47:01Z'  # 1526
+  by: agent  # 1526
+  actor: jgstern_agent  # 1526
+  clock: 5  # 1526
+  nonce: '1526'  # 1526
+  set:  # 1526
+    status: done  # 1526
+    pr_ref: '#2129'  # 1526
+- op: discuss  # e20f
+  at: '2026-11-11T01:47:01Z'  # e20f
+  by: agent  # e20f
+  actor: jgstern_agent  # e20f
+  clock: 6  # e20f
+  nonce: e20f  # e20f
+  message: "Done in PR #2129, fix (a). Changed import-time code (a module body, or a class body outside any function) in a coverable source file is now a narrowing_blocker: the run set stays whole. Behavioural evidence, the filed repro re-run: scripts/smart-test-bed run narrow --edit rename no longer drops packages/bed-app/tests/test_cli_usage.py; narrow dropped-MUST total 33 -> 32 across the 19 edits. The 32 left are test_docstrings and test_tree_gate, the whole-tree text readers the manifest drops too (WI-zajuv, parked) -- NOT fixed here. Unit tests in test_selection_index (TestImportTimeChanges), test_selection_narrow and test_block_hash; the bed end-to-end test pins the rename case. Mutation control: disabling the import-time mark turned two unit tests red. Cost stated: narrowing now refuses on about 82 percent of commits that modify package source (93 of 113 measured)."  # e20f

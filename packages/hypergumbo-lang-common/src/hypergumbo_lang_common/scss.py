@@ -28,9 +28,9 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **includes**: stylesheet file -> mixin for each @include (confidence 0.95
-  when the mixin was already seen in any file processed so far, else 0.6 to
-  a dangling mixin id)
+- **includes**: stylesheet file -> mixin for each @include, confidence 0.95
+  either way. ``is_resolved`` is true when the mixin was already seen in any
+  file processed so far, and false (to a dangling mixin id) otherwise.
 
 Identity
 --------

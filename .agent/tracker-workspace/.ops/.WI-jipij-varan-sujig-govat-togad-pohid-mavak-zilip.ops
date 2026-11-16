@@ -21,3 +21,26 @@
     pr_ref:  # 73f2
     description: "Kotlin and Swift record the FIRST segment of a qualified base class in base_classes, not the last: Kotlin `class A : RecyclerView.Adapter<VH>()` -> base \"RecyclerView\", `class A : java.io.Serializable` -> \"java\"; Swift `class X: Foundation.NSObject` -> \"Foundation\" (kotlin.py ~937-939, swift.py ~231-236; confirmed with the installed tree-sitter grammars by a sweep sub-agent on 2026-10-03, while working WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin). The inheritance linker then binds the QUALIFIER: an in-repo `class Outer` receives an extends edge from `class X : Outer.Inner()`, and an in-repo class named like a package root (rare) receives one too. Separately, PHP qualified bases (`class U extends \\Foo\\Bar`, `extends Foo\\Bar`) are dropped with no edge at all: the core linker splits only on `.` and `::`, so the in-tree lookup misses, and `_external_base_edge` rejects the name because `_CLEAN_IDENT` does not match a backslash path (inheritance.py ~346); in-repo qualified PHP bases are lost the same way. NOT reproduced end-to-end, NOT measured on a corpus."  # 73f2
     fields: {}  # 73f2
+- op: discuss  # 503d
+  at: '2026-11-01T10:56:17Z'  # 503d
+  by: agent  # 503d
+  actor: jgstern_agent  # 503d
+  clock: 2  # 503d
+  nonce: 503d  # 503d
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs2/). VERDICT: PARTLY-STALE. 2026-11-01 review at dev 100b6fbb6e: Kotlin X : Outer.Inner() -> base_classes ['Outer'] and an extends edge X -> in-repo Outer; S : java.io.Serializable -> 'java'; Ad : RecyclerView.Adapter<VH>() -> 'RecyclerView'; Swift Y: Outer2.Inner2 -> 'Outer2', Z: Foundation.NSObject -> extends external Foundation. The PHP half is fixed: class U extends \\Foo\\Bar -> extends in-repo Bar, W extends \\Ext\\Thing -> external Thing (inheritance.py now splits on backslash, 62ac07d6a3 WI-pivap). MECHANISM: Kotlin/Swift base extraction keeps the first user_type segment instead of the leaf (kotlin _extract_user_type_name, swift _extract_base_classes_swift). SHARES MECHANISM WITH: WI-joror INV-tohuj."  # 503d
+- op: update  # cd8f
+  at: '2026-11-01T10:56:17Z'  # cd8f
+  by: agent  # cd8f
+  actor: jgstern_agent  # cd8f
+  clock: 3  # cd8f
+  nonce: cd8f  # cd8f
+  set:  # cd8f
+    title: "Kotlin/Swift record the FIRST segment of a qualified base (java.io.Serializable -> java, Outer.Inner -> Outer), so the linker binds the qualifier"  # cd8f
+- op: update  # e18b
+  at: '2026-11-01T10:56:17Z'  # e18b
+  by: agent  # e18b
+  actor: jgstern_agent  # e18b
+  clock: 4  # e18b
+  nonce: e18b  # e18b
+  set:  # e18b
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review at dev 100b6fbb6e: Kotlin X : Outer.Inner() -> base_classes ['Outer'] and an extends edge X -> in-repo Outer; S : java.io.Serializable -> 'java'; Ad : RecyclerView.Adapter<VH>() -> 'RecyclerView'; Swift Y: Outer2.Inner2 -> 'Outer2', Z: Foundation.NSObject -> extends external Foundation. The PHP half is fixed: class U extends \\Foo\\Bar -> extends in-repo Bar, W extends \\Ext\\Thing -> external Thing (inheritance.py now splits on backslash, 62ac07d6a3 WI-pivap). (Original text below; the review entry in the thread has the evidence.)\n\nKotlin and Swift record the FIRST segment of a qualified base class in base_classes, not the last: Kotlin `class A : RecyclerView.Adapter<VH>()` -> base \"RecyclerView\", `class A : java.io.Serializable` -> \"java\"; Swift `class X: Foundation.NSObject` -> \"Foundation\" (kotlin.py ~937-939, swift.py ~231-236; confirmed with the installed tree-sitter grammars by a sweep sub-agent on 2026-10-03, while working WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin). The inheritance linker then binds the QUALIFIER: an in-repo `class Outer` receives an extends edge from `class X : Outer.Inner()`, and an in-repo class named like a package root (rare) receives one too. Separately, PHP qualified bases (`class U extends \\Foo\\Bar`, `extends Foo\\Bar`) are dropped with no edge at all: the core linker splits only on `.` and `::`, so the in-tree lookup misses, and `_external_base_edge` rejects the name because `_CLEAN_IDENT` does not match a backslash path (inheritance.py ~346); in-repo qualified PHP bases are lost the same way. NOT reproduced end-to-end, NOT measured on a corpus."  # e18b

@@ -3,12 +3,11 @@
 
 Pending tracker ops live in the git working tree (``.agent/.../.ops/``) until
 auto-sync commits and pushes them. That makes them collateral for any
-working-tree-destroying command — ``git reset --hard`` (the one that bit a
-human's approval messages), ``git checkout`` to a stale base, ``git clean -fd``
-— and the historical fixes (WI-buhov, INV-dalup, INV-lovih) each hardened only
-ONE path (auto-pr's rebase, auto-sync's cleanup), which is whack-a-mole. This
-module closes the whole class structurally instead of per-path: every op is
-mirror-appended to a journal at a location **git cannot see** (default
+working-tree-destroying command — ``git reset --hard``, ``git checkout`` to a
+stale base, ``git clean -fd``. Hardening one path at a time (auto-pr's rebase,
+auto-sync's cleanup) leaves every other path exposed (history: WI-buhov,
+INV-dalup, INV-lovih). This module closes the whole class structurally instead:
+every op is mirror-appended to a journal at a location **git cannot see** (default
 ``~/hypergumbo_lab_notebook/tracker-ops-journal/<repo-id>/``), so there is no
 in-repo git command that can lose it. The journal is the durable write-ahead
 log; the working-tree ``.ops`` files are a derived cache that :func:`recover`
@@ -45,7 +44,7 @@ the canonical restore primitive so the journal restore (:func:`recover`) and
 ``do_sync``'s ``sync._union_restore_ops`` share *one* implementation — not
 because the line-level union corrupts the real format (it does not). The bash
 ``do_merge`` restorer (``_ops_union_restore_file`` in
-``scripts/lib/forgejo-api.sh``) still uses a line-level ``awk`` union, which is
+``scripts/lib/forgejo-api.sh``) uses a line-level ``awk`` union, which is
 equivalent for the current format for the same reason. The journal is the
 durable source the Python restorers read from.
 
@@ -301,14 +300,13 @@ def recover(repo_root: Path) -> RecoverResult:
 #: restore cannot put a journalled-but-uncommitted op back as an untracked file
 #: and abort the very fast-forward that was about to commit it.
 #:
-#: IT IS A LOCK, NOT A FLAG, AND THAT IS THE POINT. As a bare ``touch``ed file it
-#: could not answer "does anyone still own this?", so a hard kill left it behind
-#: with self-healing off and nothing able to tell that from a legitimate
-#: 45-minute ``auto-pr``. WI-nutin had already made exactly this move for the
-#: marker next door — see :class:`sync.SyncGate`, whose docstring records the
-#: reason: the OS releases an flock when the holding process exits, even on
-#: SIGKILL, so the gate cannot leak across process lifetimes. The FILE existing
-#: now means nothing; only a live holder suppresses anything.
+#: IT IS A LOCK, NOT A FLAG, AND THAT IS THE POINT. A bare ``touch``ed file
+#: cannot answer "does anyone still own this?", so a hard-killed holder would
+#: leave self-healing off, indistinguishable from a legitimate 45-minute
+#: ``auto-pr``. The OS releases an flock when the holding process exits, even on
+#: SIGKILL, so the lock cannot leak across process lifetimes — the same design
+#: as :class:`sync.SyncGate` (history: WI-nutin). The FILE existing means
+#: nothing; only a live holder suppresses anything.
 RECOVER_MARKER_NAME = "tracker-recover-disabled"
 
 #: Body written by whoever takes the lock, so a peek can name the owner rather
@@ -378,7 +376,7 @@ class SuppressionStatus:
 
         Nothing is said about a lock whose owner is alive (an auto-pr or a
         tracker sync doing its job), nor about a leftover FILE with no holder —
-        the hooks no longer consult the file's existence, so a stray file is
+        the hooks do not consult the file's existence, so a stray file is
         inert. Only an orphaned lock is worth a reader's attention.
         """
         if not self.orphaned:
@@ -403,17 +401,17 @@ class SuppressionStatus:
 def recover_suppression_status(git_dir: Path) -> SuppressionStatus:
     """Classify the recovery-suppression lock in ``git_dir``.
 
-    No clock anywhere. The previous version had to time an unowned marker
-    because a bare file cannot say whether anyone owns it; a lock can, so the
-    question "is somebody there" is answered rather than estimated. The measured
-    grace that answer replaced (900s, sized against a live auto-pr's 172s
-    pre-gate window) is deleted along with the guessing.
+    No clock anywhere. A bare file cannot say whether anyone owns it, so it
+    could only be judged by age against a grace period; a lock can, so the
+    question "is somebody there" is answered rather than estimated, and marker
+    age plays no part.
     """
     marker = git_dir / RECOVER_MARKER_NAME
     if not marker.exists():
         return SuppressionStatus(present=False)
     if not _flock_is_held(marker):
-        # A leftover file with no holder. Inert: the hooks test the LOCK now.
+        # A leftover file with no holder. Inert: the hooks test the LOCK, not
+        # the file.
         return SuppressionStatus(present=True)
 
     owner_pid: int | None = None
@@ -441,12 +439,11 @@ def recover_suppression_status(git_dir: Path) -> SuppressionStatus:
 class RecoverSuppressionLock:
     """Hold the recovery-suppression lock for the span of a git operation.
 
-    ``try_acquire`` returns False when someone else already holds it — an
-    ``auto-pr`` that invoked this process, typically — in which case this caller
-    owns nothing and :meth:`release` does nothing. That replaces the old
-    ``recover_marker_created`` bookkeeping, which existed to stop an inner
-    ``do_sync`` deleting an outer ``auto-pr``'s marker; with a lock the nesting
-    is expressed directly and cannot be got wrong.
+    ``try_acquire`` returns False when someone else already holds it — e.g. an
+    ``auto-pr`` that invoked this process — in which case this caller owns
+    nothing and :meth:`release` does nothing. So an inner ``do_sync`` can never
+    release an outer ``auto-pr``'s suppression; the lock expresses the nesting
+    directly, with no separate ownership bookkeeping.
     """
 
     def __init__(self, git_dir: Path) -> None:

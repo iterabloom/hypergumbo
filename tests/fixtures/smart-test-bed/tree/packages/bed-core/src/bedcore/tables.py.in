@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Import-time code: TABLE is built when the module is imported."""
+
+LIMIT = 10
+
+
+def _build():
+    return {n: n * n for n in range(LIMIT)}
+
+
+TABLE = _build()
+
+
+def lookup(key):
+    return TABLE.get(key, -1)

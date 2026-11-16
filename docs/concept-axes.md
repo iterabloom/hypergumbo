@@ -57,7 +57,7 @@ remaining backlog.
 
 Values that name the relationship the edge expresses between src and dst. Per ADR-0023, this is the only axis a new `edge_type` value should occupy.
 
-- **`calls`** — Caller invokes callee.
+- **`calls`** — Executing src invokes dst. src is a callable, or an anchor (type, Go package variable, file) for code outside any function; read its kind before treating it as a caller (ADR-0023, WI-fazup).
 - **`constrains`** — pip ``-c`` / ``--constraint`` file reference — constrains version selection without forcing install. Peer of ``includes`` (which models ``-r`` / ``--requirement``). Surfaced by WI-nubuv ext A in linkers/requirements.py.
 - **`contains`** — Container symbol holds member symbol.
 - **`data_flows_to`** — Data flow edge per ADR-0015 — value computed at src reaches dst.
@@ -113,6 +113,7 @@ eight clusters; this section lays out the three axes (Cluster A on
 Values that name the source-language syntactic construct the symbol represents. Per ADR-0027, this is the only axis a new `Symbol.kind` value should occupy.
 
 - **`abstract`** — Abstract class / member declaration.
+- **`actor`** — Actor declaration (Pony): a type whose behaviours run asynchronously on its own message queue.
 - **`addtask`** — BitBake addtask symbol. CANONICAL per audit-findings 0006.
 - **`alias`** — Generic alias declaration.
 - **`architecture`** — Architecture symbol (VHDL). CANONICAL per audit-findings 0007.
@@ -149,7 +150,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`error_set`** — Zig error-set declaration. Surfaced by WI-nubuv's inline-IfExp / non-string-Constant classifier fixes from the function-local kind union in hypergumbo-lang-extended1/zig.py:332. Zig errors are a first-class language construct sibling to `struct` / `enum` / `union`.
 - **`event`** — Event symbol (DSL / Solidity). CANONICAL per audit-findings 0007.
 - **`executable`** — Executable declaration (CMake `add_executable`, Meson `executable`). CANONICAL per audit-findings 0005.
-- **`export`** — Export declaration (JS / TS / TOML / Rust).
+- **`export`** — Export declaration: a shell variable marked for export (bash) or a `package.json` `exports` entry (JSON).
 - **`exposed_port`** — Container exposed-port symbol. CANONICAL per audit-findings 0006.
 - **`extension`** — Dart `extension` declaration (`extension NumberParsing on String { ... }`) — a top-level named construct that adds members to an existing type without subclassing. A genuine peer to `class` / `mixin` / `enum` (own keyword, own `extension_declaration` AST node), NOT a `class` (defines no new type) nor a `mixin` (Dart's distinct `mixin_declaration` already maps to `mixin`). Producer: `dart.py` `extension_declaration`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`external_symbol`** — IR-pipeline boundary pseudo-symbol — emitted by ``create_boundary_nodes`` (``ir.py:959``) for every edge endpoint that doesn't resolve to a real Symbol (stdlib calls, npm imports, third-party constructors). CANONICAL per audit-findings 0007 §"Diagnostic findings #3" (Wave 6 PR 6 reclassification): structurally a top-level construct in the IR pipeline's own DSL, parallel to other Cluster H domain-DSL constructs (``playbook``, ``participant``, …). Consumers query boundary status via ``is_external_boundary(sym)`` (meta-key based), so this kind is a label not a discriminator — promotion does not change consumer behavior.
@@ -202,6 +203,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`plot`** — Plot symbol (notebook / R). CANONICAL per audit-findings 0007.
 - **`port`** — Port symbol (k8s / VHDL). CANONICAL per audit-findings 0007.
 - **`prefix`** — Prefix symbol (URI / namespace). CANONICAL per audit-findings 0007.
+- **`primitive`** — Primitive declaration (Pony): a type with no fields and one instance.
 - **`procedure`** — Procedure declaration (Pascal / Ada / SQL).
 - **`program`** — Program declaration (Fortran `PROGRAM`, COBOL `PROGRAM-ID`, Pascal `program`). CANONICAL per audit-findings 0005.
 - **`project`** — Project declaration (Meson `project()`, .csproj root, etc.). CANONICAL per audit-findings 0005.
@@ -465,9 +467,16 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 
 ## `io_boundary` — the I/O-boundary axis (ADR-0050)
 
-**Axiom.** A boundary value names *what data crosses the process boundary at
-this call site, in which direction* — not what the program is thereby arranged
-to do later.
+**Axiom.** A row's *primary* boundary names the *medium* data crosses at this
+call site, and in which direction — not what the program is thereby arranged to
+do later, and not what the data is. A `simultaneous` second boundary records
+either a reading of the same crossing that a taint label needs (that its content
+may carry a credential, `env_read`, or that the party who navigated to the page
+chose it, `navigation_read`), or a second crossing the same call performs at this
+call site, which must satisfy the axiom on its own (`subprocess.check_output`
+launches a process and reads its output). None is primary: consumers read every
+one (`boundaries_of`). So `env_read` means both the process environment and "may
+carry a credential" (ADR-0050 §1).
 
 Six consumers branch on this vocabulary (`AUTO_SOURCE_LABEL_MAP`,
 `OPAQUE_BOUNDARIES`, `_DISCLOSED_ONLY_BOUNDARIES`, `DEFERRED_CROSSING_SHADOWS`,
@@ -480,21 +489,22 @@ in the `total_io_edges` headline (`subprocess` is opaque *and* counted).
 
 ### `data_crossing` — ADR-0050 compliant
 
-Values that name what data crosses the process boundary at this call site, and in which direction. Per ADR-0050 this is the only axis a new catalogue-declarable boundary should occupy.
+Values that name the medium data crosses at this call site, and in which direction. Per ADR-0050 this is the only axis a new catalogue-declarable boundary should occupy.
 
 - **`browser_storage_read`** — Read from browser-local storage. Like fs_read and for the same reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity depends on what is stored, so you add your own taint_sources rows for your threat model (taint_sources.d/).
 - **`browser_storage_write`** — Write to browser-local storage (localStorage and peers). Structurally distinct from the host filesystem -- reachable via XSS, not via local-user FS access (WI-lokuv).
+- **`command_line_read`** — Read the program's own COMMAND LINE -- sys.argv, process.argv, std::env::args: values the party that launched the process chose, as it chose stdin, so it mints untrusted_input (owner ruling 2026-10-22). navigation_read's shape: an argument may also carry a credential, so every row declaring it is SIMULTANEOUS with env_read, which keeps argv's host_secret label and, by declaration order, its scalar io_boundary. verify-claims sets its flows aside and counts them (command_line_flows) unless a claim sets include_command_line: true -- measured, they are true and almost never useful: a CLI doing with its arguments what it exists to do (owner ruling 2026-10-28).
 - **`db_read`** — Read from a database or persistent store -- java.sql.Connection, erlang ets/dets, CoreData NSManagedObjectContext, sqlite3.
 - **`db_write`** — Write to a database or persistent store -- java.sql.Statement, erlang ets/dets, CoreData NSManagedObjectContext.
-- **`env_read`** — Read ambient CONFIGURATION -- values that may carry a credential. Narrowed by INV-tutar: host description and user identity are host_info_read, not this. Mints a host_secret taint source, which is why the narrowing mattered.
+- **`env_read`** — Read the process ENVIRONMENT -- environment variables and the ambient configuration a deployment supplies (application config, system properties) -- whose content may carry a credential. Both readings hold (ADR-0050 section 1): as a primary boundary it names that medium, and as a simultaneous second boundary it records only the credential reading (the page URL, beside navigation_read). Mints a host_secret taint source. Host description and user identity come from the host, not the environment: host_info_read (INV-tutar).
 - **`env_write`** — Mutate the process environment -- os.environ assignment, std::env::set_var, System.Environment setEnv.
 - **`fs_read`** — Read data from the local filesystem. Deliberately QUIET as a taint source -- sensitivity depends on what is stored, so it mints nothing (ADR-0016 risk-classification note).
 - **`fs_write`** — Write data to the local filesystem.
-- **`host_info_read`** — Read host DESCRIPTION or user identity -- not a secret (split from env_read by INV-tutar) -- INCLUDING THE CLOCK (WI-pavob). Fires almost universally, so its discriminating power is deliberately low and that was accepted on the record.
+- **`host_info_read`** — Read the HOST's own state -- its description, the user identity, the clock (WI-pavob) -- a medium the environment did not fill, and not a secret (split from env_read by INV-tutar). Fires almost universally, so its discriminating power is deliberately low and that was accepted on the record.
 - **`ipc_recv`** — Receive data from another process -- stdin, a pipe read, shared memory read.
 - **`ipc_send`** — Send data to another process over a channel the program set up or addressed -- a pipe, a child's stdin, a local socket, an IPC message channel, a signal. NOT the process's own standard output, which is `logging` (audit-findings 0021).
 - **`logging`** — Write to the process's own standard output or standard error -- the channel whose far side the launcher chose, not the program -- directly (sys.stderr, os.Stdout, System.out, std::cerr) or through a print or logging facility whose default destination it is (print, fmt.Println, java.util.logging.Logger, Prelude.putStrLn). A medium, like every data_crossing value (audit-findings 0021).
-- **`navigation_read`** — Read a value the party that NAVIGATED to this page chose -- the page URL, the referrer, window.name. A link can put anything in them, so it mints untrusted_input (INV-dadu). The URL spellings may also carry a credential and are declared SIMULTANEOUS with env_read, so they mint host_secret as well.
+- **`navigation_read`** — Read the page's NAVIGATION -- the page URL, the referrer, window.name: values the party that navigated to this page chose. A link can put anything in them, so it mints untrusted_input (INV-dadu). The URL spellings may also carry a credential and are declared SIMULTANEOUS with env_read, so they mint host_secret as well; by declaration order env_read is their scalar io_boundary.
 - **`net_recv`** — Receive data from the network. Shadowed by net_listen: a deferred-crossing site qualifies a clean net_recv verdict and a clean taint verdict over untrusted_input, the label net_recv derives, and nothing else (ADR-0049 ruling 2, INV-fogum).
 - **`net_send`** — Send data to the network. Egress risk is additionally graded by the supply-chain dst_tier rather than by this value alone.
 - **`process_send`** — Send a message to another runtime-managed process or actor -- erlang send, Control.Concurrent. Distinct from ipc_send: the far side is a peer inside the same runtime, not an OS pipe.
@@ -503,7 +513,7 @@ Values that name what data crosses the process boundary at this call site, and i
 
 The call is correctly classified and the analysis cannot see past it, so it does not license "I looked and found nothing". Split by channel: `subprocess` is catalogue-declared, `command_launch` is producer-stamped, and each is reachable through exactly one of them.
 
-- **`command_launch`** — The same question as subprocess -- did control leave this process? -- asked of the producer-stamped channel (INV-larol). bash.py stamps it directly because there is no bash catalogue and per ADR-0016 there is not going to be one: cataloguing curl as net_send would attribute curl's network activity to the shell script. Definite but uncurated, so disclosed and excluded from the headline.
+- **`command_launch`** — The same question as subprocess -- did control leave this process? -- asked of the producer-stamped channel (INV-larol). bash.py stamps it directly because bash's catalogue covers only the shell's own redirections, and per ADR-0016 external commands will not be catalogued: cataloguing curl as net_send would attribute curl's network activity to the shell script. Definite but uncurated, so disclosed and excluded from the headline.
 - **`subprocess`** — Launch or communicate with a child process. OPAQUE: control left this process for a program whose behaviour is not in the edge set, so a subprocess site withholds a clean verdict on EVERY boundary. Without that, a program whose only statement was subprocess.run(['curl', '-o', '/etc/cron.d/pwned', ...]) returned confirmed rc 0 for both fs_write and net_send must_not_exist claims. The one boundary carrying the display-only high_risk marker (ADR-0016).
 
 ### `deferred_crossing` — disclosed, never minted (ADR-0049)
@@ -511,6 +521,7 @@ The call is correctly classified and the analysis cannot see past it, so it does
 The call ARRANGES a crossing it does not itself perform — exactly what the axiom's second clause excludes from `data_crossing`, which is why it is a section rather than a violation. Each value shadows the data boundary it makes unexaminable.
 
 - **`db_compose`** — Compose a query that has run nothing -- Django's QuerySet combinators (filter / exclude / order_by / ...), ADR-0049 ruling 4's Lazy row. The read happens when the query is EVALUATED (iterated, indexed, materialised), and the python analyzer emits that evaluation as its own db_read call site (WI-fasap); where the evaluation is in a scope this call does not name (a QuerySet returned, handed to a form or a paginator) the read is invisible, which is what the shadow over db_read discloses. DISCLOSED, NEVER MINTED, for net_listen's reason. NOT named `db_query`: that string is the database_query linker's call_kind and names a call that EXECUTES a query -- the opposite reading.
+- **`ipc_listen`** — Bind or serve a LOCAL IPC listener -- a Unix-domain socket server: the call ARRANGES inbound data from another local process to arrive somewhere it does not name, and returns no such data itself. net_listen's local-IPC twin, split by MEDIUM (ADR-0050 section 1; owner ruling 2026-10-26): a Unix socket is not network ingress. DISCLOSED, NEVER MINTED, and it shadows ipc_recv for net_listen's reason. A call that may bind either medium (socket.socket.bind, Go net.Listen with a network argument) stays net_listen until a call-site stamp can tell them apart; and the receive half of a Unix server may itself be rowed net_recv where TCP and Unix share it (asyncio.StreamReader.read).
 - **`net_listen`** — Bind or accept: the call ARRANGES inbound network data to arrive somewhere it does not name, and returns no such data itself. DISCLOSED, NEVER MINTED (ADR-0049). Its shadow over net_recv is required, not optional -- since INV-buzab a classified call is what `examined` means, so a tag that mints nothing would still count as an examined negative and hand verify-claims a green tick over live ingress.
 
 ### `speculative` — synthesised uncertainty
@@ -542,7 +553,7 @@ capitalisation. The lint accepted it because a free-text justification must be
 
 Notions that name where the callee is DEFINED. A type belongs here alongside a namespace: a method-shaped primitive is unaddressable without its owning type, and the catalogues have always spelled it that way.
 
-- **`namespace`** — A package, module or import path: os, java.io, net/http, std::fs, node:fs/promises, ./relative/module. The value that would appear in a clean import statement -- NOT the in-scope alias, which is a property of the importing file. C and C++ header names (<string.h>) are namespaces in this sense, and so are JS/TS relative paths: 2.7% of shipped refs, legitimate.
+- **`namespace`** — A package, module or import path: os, java.io, net/http, std::fs, node:fs/promises, ./relative/module. The value that would appear in a clean import statement -- NOT the in-scope alias, which is a property of the importing file. C and C++ header names (<string.h>) are namespaces in this sense, and so are JS/TS relative paths.
 - **`type`** — The class or type that OWNS a method-shaped primitive: net.Conn, std::fs::File, java.sql.Connection, pathlib.Path. Conformant because a type names where the symbol is DEFINED. This is not a concession -- a method primitive is unaddressable without it, and IoPrimitive.module's own docstring says 'the module or class path'. It is also what makes the capitalisation heuristic in _module_matches necessary: that predicate is trying to recover whether an extra component is a type (same owner) or a sub-package (different owner), which the axis says should be DECLARED rather than inferred from spelling.
 
 ### `call_site_property` — belongs on the call site, not in the key
@@ -555,8 +566,8 @@ Notions that name the CALL SITE rather than the definition. The same primitive r
 
 The analyzer genuinely does not know which module, and says so. Non-conformant as an identity while being the right answer to the question; these want their own field rather than removal.
 
-- **`disjunction`** — A comma-joined SET of candidate modules -- cpp joins every header the unit can see (c.py does the same for an ambiguous libc name), because a call in that unit could come from any of them, and since WI-bapuk PREPENDS the namespace a `std::`-qualified call names (or, for an unqualified call, a `using namespace` the file declares), because that is another home the call could have come from. 6.2% of shipped refs. Non-conformant as an IDENTITY while being the honest answer to the question: the analyzer genuinely does not know which. Already handled downstream by two deliberately different quantifiers -- _module_hint_candidates asks ANY (INV-funuf) and module_hint_disjuncts asks ALL (INV-zimud) -- which is why the shape wants its own field rather than removal.
-- **`sentinel`** — A fixed marker standing for 'no module identity was recovered': 'external' (1.5% of refs) and bash's 'redirect' (0.1%, whose name slot is '>' -- not a call at all). Non-conformant as an identity, and load-bearing as an admission: io_boundary and taint share _UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the two cannot drift about what 'no module' looks like.
+- **`disjunction`** — A comma-joined SET of candidate modules -- cpp joins every header the unit can see (c.py does the same for an ambiguous libc name), because a call in that unit could come from any of them, and since WI-bapuk PREPENDS the namespace a `std::`-qualified call names (or, for an unqualified call, a `using namespace` the file declares), because that is another home the call could have come from. Non-conformant as an IDENTITY while being the honest answer to the question: the analyzer genuinely does not know which. Already handled downstream by two deliberately different quantifiers -- _module_hint_candidates asks ANY (INV-funuf) and module_hint_disjuncts asks ALL (INV-zimud) -- which is why the shape wants its own field rather than removal. Since INV-jahuf a set of two or more is written as a `module-set-` handle and stored once in the map's `module_sets`; both quantifiers expand it (module_sets.expand_module_slot).
+- **`sentinel`** — A fixed marker standing for 'no module identity was recovered': 'external'. Non-conformant as an identity, and load-bearing as an admission: io_boundary and taint share _UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the two cannot drift about what 'no module' looks like. bash's 'redirect' was listed here and is NOT one (WI-daruz): io_primitives/bash.yaml ships `module: redirect` rows that match it, so it is the shell's own namespace -- see `namespace`.
 
 ### `pending_classification` — per-value audit pending
 
@@ -615,7 +626,7 @@ A consumer needing one of these reads its home. The nine that parse the string i
 | Fact | Declared home | Populated by |
 | --- | --- | --- |
 | `return_type` | `FileAnalysis.method_return_types` | go, rust, scala, swift, objc |
-| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 33 analyzers, including py.py, cpp, elixir and nim |
+| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 34 analyzers, including py.py, cpp, elixir, go and nim |
 | `value_type` | `FileAnalysis.class_field_types` | csharp, cpp, go, rust, swift |
 
 **Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.

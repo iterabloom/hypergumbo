@@ -1,38 +1,31 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-lipis, second deliverable: the wrapper's boundary is its ARGUMENT'S ORIGIN.
+"""A Go reader wrapper's boundary is its ARGUMENT'S ORIGIN (WI-lipis).
 
-`go.yaml` files `bufio.{NewScanner,NewReader}` as `ipc_recv` on the note *"When
-wrapping os.Stdin"* — a condition no catalogue row can enforce, because the row
-sees the CALLEE and the answer is in the ARGUMENT. `ipc_recv` is in
-`AUTO_SOURCE_LABEL_MAP`, so every site mints an `untrusted_input` source.
+`bufio.{NewScanner,NewReader}` wrap an arbitrary `io.Reader`, so which boundary
+a read crosses is decided by the ARGUMENT, which no catalogue row can see — a
+row sees only the CALLEE. `go.py` therefore stamps the argument's kind as
+`io_target_kind` (`os.Stdin` -> `std_stream`, an `os.Open` handle ->
+`host_path`, `strings.NewReader` -> `in_memory`, a `net.Conn` ->
+`net_stream`), and the catalogue's dual bufio rows narrow on it. An unstamped
+call falls back to `ipc_recv`, which is in `AUTO_SOURCE_LABEL_MAP` and mints an
+`untrusted_input` source.
 
-THE MEASUREMENT THIS ACTS ON, published on the item before any design was
-chosen. Of the 163 bare-local `bufio.New*` sites across the ADR-0049 cohort's Go
-repositories, hypergumbo's own reaching-def solver resolves **83** (50.9%
-pooled, 25-91% per repo). Of those 83:
-
-    63 (74.1%)  wrap an `os.Open` handle   -> fs_read, deliberately NOT a source
-    18 (21.2%)  other RHS
-     3 ( 3.5%)  an HTTP response body      -> net_recv, correctly a source
-     1 ( 1.2%)  an in-memory buffer        -> no crossing (shipped already)
-     0 ( 0.0%)  wrap `os.Stdin`            -> the row's own stated condition,
-                                             true NOWHERE in the population
-
-So the file-handle case is the LARGER false source and the first deliverable's
-19.1% estimate omitted it.
+These tests cover an argument that is a bare LOCAL, whose origin is the binding
+that reaches the call. Its commonest origin is a file handle, `f, _ :=
+os.Open(p)` — a host-filesystem read, not stdin, and not a source.
 
 WHY THE ORIGIN LOOKUP IS SYNTACTIC HERE AND NOT A SECOND DATAFLOW ENGINE. The
-analyzer runs before any DDG exists, so it cannot ask the reaching-def solver
-that measured the 83. What it CAN see is the enclosing function's own text:
+analyzer runs before any DDG exists, so it cannot ask the reaching-def solver.
+What it CAN see is the enclosing function's own text:
 `f, _ := os.Open(p)` five lines above `bufio.NewScanner(f)`. This resolves the
 LAST binding of the name before the use, in the enclosing function only, and
 abstains on everything else — a deliberately smaller instrument than the DDG,
 whose answers are a subset of the DDG's and never a superset.
 
-INV-zumin's RULING IS OBSERVED: one answer per call site, or none. A bare local
-whose binding this cannot find stamps NOTHING and classifies exactly as before.
-The direction is REMOVAL, so every case below that stops minting is paired with
-a control that must keep minting.
+ONE ANSWER PER CALL SITE, OR NONE (INV-zumin). A bare local whose binding this
+cannot find stamps NOTHING and takes the unstamped fallback. A stamp can
+REMOVE a source, so every case below that stops minting is paired with a
+control that must keep minting.
 """
 
 from __future__ import annotations
@@ -58,10 +51,9 @@ def _edges(tmp_path: Path, body: str):
 def _target_kinds(edges, name: str) -> list[str]:
     """Every stamped `io_target_kind` on a `calls` edge into `bufio`.
 
-    Keyed on the bufio destination and restricted to `calls`, for the two
-    reasons the first deliverable's test records: one line can carry the
-    wrapper AND its argument's call, and `import "bufio"` produces a
-    `go:bufio:` destination of its own with no meta.
+    Keyed on the bufio destination and restricted to `calls`, because one
+    line can carry the wrapper AND its argument's call, and `import "bufio"`
+    produces a `go:bufio:` destination of its own with no meta.
     """
     return [
         (e.meta or {}).get("io_target_kind")
@@ -75,7 +67,7 @@ def _target_kinds(edges, name: str) -> list[str]:
 
 class TestTheArgumentsOriginDecides:
     def test_a_file_handle_bound_above_the_call_is_a_host_path(self, tmp_path) -> None:
-        """THE DEFECT, and the 74.1% case. `f` is a FILE; the row says stdin."""
+        """The commonest origin. `f` is a FILE, not stdin."""
         edges = _edges(tmp_path, """
 func fromFile(p string) {
 \tf, _ := os.Open(p)
@@ -90,8 +82,8 @@ func fromFile(p string) {
     ) -> None:
         """THE CONTROL THAT COSTS SOMETHING. The row's own stated condition,
         reached through a local instead of inline. If this stopped resolving,
-        the change would be deleting the one population the row was written
-        for."""
+        the one population the `ipc_recv` row is written for would go
+        unrecognised."""
         edges = _edges(tmp_path, """
 func fromStdin() {
 \th := os.Stdin
@@ -104,8 +96,8 @@ func fromStdin() {
     def test_an_in_memory_reader_bound_above_the_call_is_still_in_memory(
         self, tmp_path,
     ) -> None:
-        """The first deliverable saw this only INLINE. Through a local it was
-        invisible, which is the same blind spot one hop shorter."""
+        """The INLINE spelling needs no origin lookup; through a local it does,
+        or the same in-memory reader goes unrecognised one hop away."""
         edges = _edges(tmp_path, """
 func fromString(s string) {
 \tr := strings.NewReader(s)
@@ -118,7 +110,7 @@ func fromString(s string) {
     def test_an_unresolvable_origin_stamps_nothing(self, tmp_path) -> None:
         """THE ABSTENTION, and INV-zumin's ruling in force: a parameter has no
         binding in this function, so the analyzer has no answer and must not
-        invent one. Stamping nothing classifies exactly as before."""
+        invent one. Stamping nothing leaves the unstamped fallback in charge."""
         edges = _edges(tmp_path, """
 func fromParam(r *strings.Reader) {
 \tsc := bufio.NewScanner(r)
@@ -129,11 +121,9 @@ func fromParam(r *strings.Reader) {
 
     def test_a_network_conn_is_not_claimed_as_a_file(self, tmp_path) -> None:
         """NON-DESTRUCTION on the source side. `net.Dial` returns a Conn; a
-        read off it IS a network crossing and must keep minting. Before
-        WI-suhug nothing was stamped and the catalogue's `ipc_recv` row
-        decided; now the vocabulary names a network stream and the stamp
-        selects the `net_recv` row -- still minting, and now at the boundary
-        it actually crosses."""
+        read off it IS a network crossing and must keep minting. The stamp
+        names a network stream and selects the `net_recv` row -- still
+        minting, at the boundary it actually crosses (WI-suhug)."""
         edges = _edges(tmp_path, """
 func fromConn(addr string) {
 \tc, _ := net.Dial("tcp", addr)
@@ -173,9 +163,9 @@ func later(p string, s string) {
         assert _target_kinds(edges, "NewScanner") == ["in_memory"]
 
     def test_an_http_body_is_left_to_the_catalogue(self, tmp_path) -> None:
-        """3 of the 83 resolved sites. `resp.Body` is a `net_recv` crossing and
-        the row's `ipc_recv` is the right answer for the wrong reason; either
-        way it must keep minting, so nothing is stamped."""
+        """`resp.Body` is a `net_recv` crossing. Nothing is stamped, so the
+        unstamped `ipc_recv` fallback decides -- the right answer (it mints)
+        for the wrong reason; either way it must keep minting."""
         edges = _edges(tmp_path, """
 func fromBody(u string) {
 \tresp, _ := http.Get(u)

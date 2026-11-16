@@ -1,0 +1,35 @@
+- op: create  # 4b96
+  at: '2026-10-25T11:05:40Z'  # 4b96
+  by: agent  # 4b96
+  actor: jgstern_agent  # 4b96
+  clock: 1  # 4b96
+  nonce: 4b96  # 4b96
+  data:  # 4b96
+    kind: work_item  # 4b96
+    title: "circom: `component c = A(2);` emits the same calls edge twice (component_declaration branch and the inner call_expression)"  # 4b96
+    status: todo_hard  # 4b96
+    priority: 3  # 4b96
+    parent:  # 4b96
+    tags:  # 4b96
+    - docstring_audit  # 4b96
+    - analysis_quality  # 4b96
+    isbefore: []  # 4b96
+    duplicate_of: []  # 4b96
+    not_duplicate_of: []  # 4b96
+    pr_ref:  # 4b96
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- circom.py: `component c = A(2);` emits the same `calls` edge twice -- evidence: repro prints `EDGE edge:sha256:0d0cf33c4ff3b039 circom:a.circom:5-7:B:class -> circom:a.circom:2-4:A:class calls 0.85` twice. Code: the `component_declaration_statement` branch (L360-382) emits an edge for its inner `call_expression`, and `iter_tree` later visits that same `call_expression` and the `call_expression` branch (L303-327) emits it again. (The edge id differs from the reviewer's because the fixture differs; the duplicate is reproduced.)\n\nReproduced independently by the blind re-review.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 4b96
+    fields: {}  # 4b96
+- op: discuss  # 3cfb
+  at: '2026-10-31T10:09:59Z'  # 3cfb
+  by: agent  # 3cfb
+  actor: jgstern_agent  # 3cfb
+  clock: 2  # 3cfb
+  nonce: 3cfb  # 3cfb
+  message: "2026-10-31 docstring audit re-reproduced this twice (a reviewer and the blind re-review): component c = A(); gives two calls edges with one id. No new item filed."  # 3cfb
+- op: discuss  # 22df
+  at: '2026-11-08T04:24:06Z'  # 22df
+  by: agent  # 22df
+  actor: jgstern_agent  # 22df
+  clock: 3  # 22df
+  nonce: 22df  # 22df
+  message: "2026-11-07 docstring audit (dev 4f2feb451b): still reproduces, and the two copies can disagree in confidence: an ambiguous template gives one edge at 0.6227 (component branch) and one at 0.85 (call_expression branch, the flat-0.85 defect filed separately), and which survives deduplicate_edges depends on encounter order. r20, v08."  # 22df

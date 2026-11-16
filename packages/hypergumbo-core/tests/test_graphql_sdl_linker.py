@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-dinum: the GraphQL schema side gets a producer that is not a file extension.
+"""The GraphQL schema side has a producer that is not a file extension.
 
 Both GraphQL linkers take the destination of every edge they can emit from
-``language == "graphql"`` symbols, and until this pass the only producer of
-those read ``*.graphql`` / ``*.gql`` files. The measured consequence:
-``graphql-linker`` emitted 0 edges in 14 corpus runs and
-``graphql-resolver-linker`` emitted edges in 2 of 794.
+``language == "graphql"`` symbols. The GraphQL analyzer reads only
+``*.graphql`` / ``*.gql`` files, so a repository whose schema lives in a
+``gql`` template literal gives those linkers no destinations, and they emit
+nothing, unless this pass produces the schema symbols.
 
-The integration test at the bottom is the one that matters — it is the repro
-from the tracker row, reduced to a fixture: a repository whose schema lives in
-a ``gql`` template literal and whose resolvers sit beside it.
+The integration test at the bottom is the one that matters: a repository
+whose schema lives in a ``gql`` template literal and whose resolvers sit
+beside it. (history: WI-dinum)
 """
 from __future__ import annotations
 
@@ -139,8 +139,8 @@ class TestDefinitionsInBlock:
         assert _definitions_in_block("query GetUser { user { id } }", 1) == []
 
     def test_input_and_enum_are_deliberately_not_minted(self) -> None:
-        """Only the kinds a consumer reads. Minting nodes nothing can link to
-        is the defect this row is about, one level down."""
+        """Only the kinds a consumer reads: a node nothing can link to is the
+        same dead-end this pass exists to remove, one level down."""
         block = "input NewUser {\n name: String\n}\nenum Role {\n ADMIN\n}"
         assert _definitions_in_block(block, 1) == []
 
@@ -209,8 +209,9 @@ class TestExtractEmbeddedSdl:
     def test_a_typescript_interface_is_not_mistaken_for_sdl(
         self, tmp_path: Path,
     ) -> None:
-        """Scanning source text directly for ``type X {`` was tried and is
-        wrong: on apollo-server it matches every TS ``interface ITrace {``."""
+        """Scanning source text directly for ``type X {`` is wrong: it also
+        matches every TS ``interface ITrace {`` (apollo-server is full of
+        them)."""
         _write(tmp_path, "types.ts", "export interface ITrace {\n id: string;\n}\n")
         symbols, _, definitions = extract_embedded_sdl(tmp_path)
         assert (definitions, symbols) == (0, [])
@@ -226,8 +227,8 @@ class TestLinkerEntryPoint:
         assert by_id["graphql-sdl-linker"].depends_on == []
 
     def test_it_is_an_infrastructure_linker_with_no_pass_dependency(self) -> None:
-        """Both halves are deliberate and the WI-dilab closure criterion reads
-        them together.
+        """Both halves are deliberate, and the depends_on criterion (WI-dilab)
+        reads them together.
 
         ADR-3bbb's Infrastructure definition is "graph-structural utilities run
         as Tier 2 passes but NOT doing dispatch recovery" — the second clause is
@@ -240,7 +241,7 @@ class TestLinkerEntryPoint:
         lazy: the criterion requires a non-empty declaration from Bridge /
         Framework / Protocol linkers, and this pass consumes NO upstream pass
         output — it reads source files itself. Declaring the host languages
-        would be the too-wide false claim that WI-rasal spent two PRs removing.
+        would be a too-wide false claim. (history: WI-rasal)
         """
         import hypergumbo_core.linkers.graphql_sdl as module
         from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
@@ -291,15 +292,16 @@ class TestLinkerEntryPoint:
 
 
 class TestTheDeadImplementsBranchNowHasAProducer:
-    """The finding that made this a defect rather than a coverage gap.
+    """The resolver linker's ``implements`` branch depends on this pass.
 
     ``graphql_resolver.py`` builds its ``type.field`` lookup from symbols with
-    ``kind == "field"`` carrying ``meta["parent_type"]``. No producer anywhere
-    in the tree emitted a GraphQL field symbol — the analyzer emits type /
-    input / interface / enum / scalar / union / directive / fragment /
-    operation and never ``field`` — so ``schema_lookup`` was always empty and
-    the ``implements`` branch was unreachable on every repository. Its 100%
-    coverage came from tests that hand-construct the symbol.
+    ``kind == "field"`` carrying ``meta["parent_type"]``. The GraphQL analyzer
+    emits type / input / interface / enum / scalar / union / directive /
+    fragment / operation and never ``field``, so this pass is the only
+    producer of GraphQL field symbols. Without it ``schema_lookup`` is empty
+    and the ``implements`` branch is unreachable on every repository — while
+    tests that hand-construct the symbol still give that branch full
+    coverage.
     """
 
     @pytest.fixture
@@ -328,7 +330,7 @@ class TestTheDeadImplementsBranchNowHasAProducer:
     def test_without_the_sdl_pass_the_resolver_linker_emits_nothing(
         self, repo: Path,
     ) -> None:
-        """The state this row was filed about: resolvers detected, 0 edges."""
+        """Without schema symbols: resolvers detected, 0 edges."""
         result = graphql_resolver_linker(
             LinkerContext(repo_root=repo, symbols=[], edges=[])
         )

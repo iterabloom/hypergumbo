@@ -71,3 +71,71 @@
   clock: 8  # 06c7
   nonce: 06c7  # 06c7
   message: "2026-09-18: two data points for this row. (1) INV-kutid filed — the SCIP\nscheme's sha256(moniker) collides across crate TARGETS (`crate/`, `main().`\nin lib, bin and build.rs; 5 of 756 on aardvark-dns), i.e. the second\nundeclared scheme under the `sha256:` prefix has its own scope defect. (2)\nPR #1044 (INV-dolud) documents that the SCIP scheme is NEVER replaced by\nthe rust.py scheme in production (0 of 52), so every SCIP Symbol in a\nsurvey carries the undeclared scheme, not just the failures. Any fix for\nkutid that folds the document path into the hash should declare the\nscheme it produces, per this row."  # 06c7
+- op: discuss  # 4a97
+  at: '2026-11-01T10:56:01Z'  # 4a97
+  by: agent  # 4a97
+  actor: jgstern_agent  # 4a97
+  clock: 9  # 4a97
+  nonce: 4a97  # 4a97
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: PARTLY-STALE. 2026-11-01 review @100b6fbb6e: the declarations now read stableid-v13 / shapeid-v3 / repofp-v2 / symbol-fp-v2. Emitted values: stable_id sha256:<16hex>, shape_id sha256:<16hex>, repo_fingerprint sha256:<64hex> (config_fingerprint and run_signature also sha256:); fingerprint hgfp2:. No hgstableid/hgshapeid/hgrepofp prefix exists in src. The collision complaint holds. Stale parts: the owner plan's 'v9 = relabel, v10 = bitbake' numbering was used up by WI-tusad (v9) and WI-banod (v10), so the relabel is now v14 and the prefixes need new numbers. The undeclared-SCIP-scheme concern from 2026-09-18 is now declared: v11 (INV-kutid) names scip_stable_id in the spec history. MECHANISM: identity values carry an algorithm prefix (sha256:) rather than a per-scheme, versioned prefix, so three or more identity fields share one value grammar. SHARES MECHANISM WITH: WI-vuvah, INV-pamum, WI-marok."  # 4a97
+- op: update  # 9b05
+  at: '2026-11-01T10:56:01Z'  # 9b05
+  by: agent  # 9b05
+  actor: jgstern_agent  # 9b05
+  clock: 10  # 9b05
+  nonce: 9b05  # 9b05
+  set:  # 9b05
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e: the declarations now read stableid-v13 / shapeid-v3 / repofp-v2 / symbol-fp-v2. Emitted values: stable_id sha256:<16hex>, shape_id sha256:<16hex>, repo_fingerprint sha256:<64hex> (config_fingerprint and run_signature also sha256:); fingerprint hgfp2:. No hgstableid/hgshapeid/hgrepofp prefix exists in src. The collision complaint holds. Stale parts: the owner plan's 'v9 = relabel, v10 = bitbake' numbering was used up by WI-tusad (v9) and WI-banod (v10), so the relabel is now v14 and the prefixes need new numbers. The undeclared-SCIP-scheme concern from 2026-09-18 is now declared: v11 (INV-kutid) names scip_stable_id in the spec history. (Original text below; the review entry in the thread has the evidence.)"  # 9b05
+- op: discuss  # a347
+  at: '2026-11-15T19:25:54Z'  # a347
+  by: agent  # a347
+  actor: jgstern_agent  # a347
+  clock: 11  # a347
+  nonce: a347  # a347
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Behaviour unchanged: stable_id and shape_id emit `sha256:<16hex>`, repo_fingerprint `sha256:<64hex>` (so does analysis_runs[].pass_version), fingerprint `hgfp2:`. No `hgstableid`/`hgshapeid`/`hgrepofp` prefix and no digest-compatibility field in packages/*/src, the spec or the changelog. stable_id scheme is v14 (WI-ruful, 2026-11-12), so the relabel number in the 11-01 header is taken; v10-v14 are all unreleased (tag v9.2.0 carries v9). Constants: schema.py:149/161/168/173; validator pattern spec_validator.py:1951. 75 test files match the `sha256:` prefix. ir.py:606-616 still carries WI-tisar's 2026-07-15 text that stable_id/shape_id need no in-value discriminator. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-talos.md. No status or priority change made by this review."  # a347
+- op: discuss  # dc3c
+  at: '2026-11-15T19:47:30Z'  # dc3c
+  by: agent  # dc3c
+  actor: jgstern_agent  # dc3c
+  clock: 12  # dc3c
+  nonce: dc3c  # dc3c
+  message: "[INVESTIGATION 2026-11-15, owner-requested: which ruling stands, this item's or WI-tisar's; dev e2b6ab8096] THE RECORD. WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj (done) carries an owner-ratified DOCUMENT verdict of 2026-07-15: do not prefix stable_id or shape_id; `sha256:` names the algorithm; the field name and the top-level *_scheme descriptors discriminate; a relabel would churn every serialized value. It shipped as text (37e0252d5b): ir.py:606-616 and two passages of docs/schema.json. This item carries an OWNER DECISION of 2026-07-29, two weeks later: every identity value gets its own versioned prefix (hgstableid<N>:, hgshapeid<N>:, hgrepofp<N>:), labels only, digests unchanged, with a digest-compatibility declaration. The 07-29 entry does not mention WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj, and WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj has no entry saying it was superseded. READING. The later decision is the more specific one, answers the earlier cost argument (digests unchanged, compatibility declared) and addresses a harm the earlier verdict did not weigh: repo_fingerprint also emits `sha256:`, so three of the four schemes are indistinguishable in a value. So this item's decision stands and the ir.py / schema.json text is correct only as a description of what ships today. What the record cannot show is that the 07-15 verdict was weighed on 07-29; that is the one thing for the owner to confirm. WHAT IN THE 07-29 SPEC IS OUT OF DATE EITHER WAY. (1) Numbers: v9 and v10 were used by other bumps (v9 WI-tusad 10-13, v10 WI-banod T1 10-22) and dev is at v14, so the relabel would be v15, with shapeid v4 and repofp v3. (2) The \"two releases\" gate: the last release, v9.2.0 (2026-10-20), carries stableid-v9 and v10-v14 are unreleased, so the next release already crosses five digest-changing bumps; a relabel in that same release costs a consumer no extra re-keying, and a digest-compatibility field would have nothing to promise. (3) Two producers under one field: the SCIP arm still hashes outside the factories (scip/index.py:282-290; 09-18 entries), so one prefix per field would label two algorithms alike. (4) Counts: 75 test files assert the `sha256:` prefix (63 when written); constants at schema.py:149/161/168/173; validator pattern at spec_validator.py:1951. Also sharing the prefix and absent from the spec: analysis_runs[].pass_version, config_fingerprint, run_signature. BEARING ON CURRENT WORK. A store that keeps stable ids across runs (the stored-graph plan, ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md step 1d) must record stable_id_scheme beside them in either case; if the relabel is wanted, doing it before such a store exists avoids migrating it. RECOMMENDATION, owner's call, nothing changed: confirm this item's decision over WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj's; ship the relabel in the same release as v10-v14 and drop the compatibility field; decide the SCIP arm's label in the same change; move the decision into ADR-0035 when it ships, replace the ir.py and schema.json text in that PR, and add a superseded note on WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj."  # dc3c
+- op: update  # 154a
+  at: '2026-11-15T19:57:55Z'  # 154a
+  by: agent  # 154a
+  actor: jgstern_agent  # 154a
+  clock: 13  # 154a
+  nonce: 154a  # 154a
+  set: {}  # 154a
+  remove:  # 154a
+    isbefore: [WI-marok-zotov-futuh-vasin-nogub-galih-tozaf-karuv]  # 154a
+- op: update  # f1cb
+  at: '2026-11-15T19:57:55Z'  # f1cb
+  by: agent  # f1cb
+  actor: jgstern_agent  # f1cb
+  clock: 14  # f1cb
+  nonce: f1cb  # f1cb
+  set:  # f1cb
+    description: "[RE-BASED 2026-11-15 by owner ruling. dev e2b6ab8096]\nThe 2026-07-29 decision STANDS over WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj's 2026-07-15 \"document, do not prefix\" verdict: every identity value\ngets its own readable, hg-namespaced, versioned prefix; labels only, digests not recomputed; `fingerprint` (hgfp2:)\nis already in that form.\n\nThe spec, re-based on today's tree:\n  * NUMBERS. v9 and v10 were used by other bumps and dev is at stableid-v14 / shapeid-v3 / repofp-v2. The relabel\n    takes the next number of each scheme when it ships: hgstableid15:, hgshapeid4:, hgrepofp3: if nothing else\n    bumps first.\n  * WHEN. The last release, v9.2.0, carries stableid-v9 and v10-v14 are unreleased, so the next release already\n    crosses five digest-changing bumps. Ship the relabel in that same release. In that case the\n    digest-compatibility declaration of DECISION 2 has nothing to promise and is not built; if the relabel instead\n    ships after a release that already carries v14, DECISION 2 applies as written.\n  * TWO PRODUCERS. The rust-analyzer (SCIP) arm computes stable_id outside the factories (scip/index.py:282-290).\n    Decide its label in the same change: adopt the factories, or declare its own scheme and prefix. One prefix over\n    two algorithms is not acceptable (09-18 entries).\n  * WHERE IT IS WRITTEN DOWN. Move the decision into ADR-0035 in the PR that ships it, and in that PR replace the\n    text WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj shipped (ir.py:606-616 and the two passages of docs/schema.json), which is correct until then.\n  * SITES. Constants schema.py:149/161/168/173; validator pattern spec_validator.py:1951; 75 test files assert the\n    `sha256:` prefix. Not in the 07-29 spec and sharing the prefix: analysis_runs[].pass_version,\n    config_fingerprint, run_signature -- decide for each whether it is in scope and say so.\n\nA store that persists stable ids across runs must record stable_id_scheme beside them until this ships.\n\n--- text before the re-basing ---\n[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e: the declarations now read stableid-v13 / shapeid-v3 / repofp-v2 / symbol-fp-v2. Emitted values: stable_id sha256:<16hex>, shape_id sha256:<16hex>, repo_fingerprint sha256:<64hex> (config_fingerprint and run_signature also sha256:); fingerprint hgfp2:. No hgstableid/hgshapeid/hgrepofp prefix exists in src. The collision complaint holds. Stale parts: the owner plan's 'v9 = relabel, v10 = bitbake' numbering was used up by WI-tusad (v9) and WI-banod (v10), so the relabel is now v14 and the prefixes need new numbers. The undeclared-SCIP-scheme concern from 2026-09-18 is now declared: v11 (INV-kutid) names scip_stable_id in the spec history. (Original text below; the review entry in the thread has the evidence.)"  # f1cb
+- op: discuss  # e7f3
+  at: '2026-11-15T19:57:56Z'  # e7f3
+  by: agent  # e7f3
+  actor: jgstern_agent  # e7f3
+  clock: 15  # e7f3
+  nonce: e7f3  # e7f3
+  message: "OWNER RULING 2026-11-15 (\"its decision stands, but the spec needs re-basing\" -- agreed): the 2026-07-29 decision to prefix identity values is confirmed over WI-tisar-fomul-satoz-pufoj-pupam-vijup-bival-tosuj's 2026-07-15 verdict. The description now opens with the re-based spec: next scheme numbers (v15 / shapeid v4 / repofp v3 if nothing bumps first), ship with the next release, no compatibility field in that case, the rust-analyzer arm's label decided in the same change, the decision moved into ADR-0035 when it ships. Title, status and priority unchanged."  # e7f3
+- op: update  # f6df
+  at: '2026-11-16T11:46:43Z'  # f6df
+  by: agent  # f6df
+  actor: jgstern_agent  # f6df
+  clock: 16  # f6df
+  nonce: f6df  # f6df
+  set:  # f6df
+    status: done  # f6df
+- op: discuss  # 6a13
+  at: '2026-11-16T11:46:43Z'  # 6a13
+  by: agent  # 6a13
+  actor: jgstern_agent  # 6a13
+  clock: 17  # 6a13
+  nonce: 6a13  # 6a13
+  message: "Done in PR #2200. Re-ran on a multi-language fixture: on dev every stable_id, shape_id and repo_fingerprint began `sha256:`; now stable_id is `hgstableid15:<16hex>` (or `hgscipid1:` when the rust-analyzer arm minted it), shape_id `hgshapeid4:`, repo_fingerprint `hgrepofp3:<64hex>`; schemes hypergumbo-stableid-v15, -shapeid-v4, -repofp-v3 and a new top-level scip_stable_id_scheme = hypergumbo-scip-stableid-v1. Each label is DERIVED from its scheme constant (schema.value_label), so a bump is one edit. NO DIGEST CHANGED BY THE RELABEL: on 27 trees every per-language moved count after the labels equals the count before them, and all stable ids in all 27 maps carry the new label. HOW: a stable id folded into another id's hash input (containing scope, file anchor, occurrence re-mint, route widening) enters it in its v14 text `sha256:<hex>` (analyze/base.py stable_id_hash_input); that frozen literal is now part of the formula. The validator rejects a `sha256:` stable id and a shape-id label in the stable_id field. DECISIONS THE ITEM LEFT TO THE BUILDER, made by me, the owner's to overrule: the label words (hgstableid / hgshapeid / hgrepofp / hgscipid); the SCIP arm gets its own scheme and label; pass_version, config_fingerprint and run_signature keep `sha256:` (content digests with no scheme; said in ADR-0035 section 7); no digest-compatibility field (as the re-based item says); SCHEMA_VERSION not bumped for the additive field. NOT DONE (filed): 506 pinned test literals carry the versioned label and need a rewrite at every bump; fingerprint.py's `hgfp2:` is still its own literal. NOT CHECKED: a live rust-analyzer run (a recorded two-arm artifact was used). Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 6a13

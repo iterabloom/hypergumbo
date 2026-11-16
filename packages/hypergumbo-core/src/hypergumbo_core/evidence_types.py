@@ -9,10 +9,9 @@ queried from ``Edge.meta`` rather than smuggled into the evidence label.
 
 This module is the single source of truth: ``scripts/generate-schema``
 imports ``EVIDENCE_TYPES`` to emit ``x-axis-of-values`` annotations on
-the ``Edge.evidence_type`` schema property. (The schema property stays
-open — ``type: "string"`` with no ``enum`` — per the Path-B decision in
-the Phase 1 plan file; the Phase 4b enum closure (ADR-0028 §"Phase 4")
-closed this registry, not the schema enum.) Consumers that need a
+the ``Edge.evidence_type`` schema property. (The schema property is
+open — ``type: "string"`` with no ``enum``; it is this registry, not the
+schema enum, that is closed (ADR-0028 §"Phase 4").) Consumers that need a
 subset of evidence types should call ``evidence_types_on_axis(...)``
 rather than maintain their own hardcoded set; the property test in
 ``tests/test_evidence_types.py`` enforces that every hardcoded set in
@@ -48,40 +47,32 @@ Axis taxonomy (per ADR-0028 §1):
   / 0012 / 0014).
 - ``pending_classification`` — deferred follow-on long-tail rows
   pending per-cluster audit; see audit-findings 0004 §"Diagnostic
-  findings" and the WI-nubuv ext A / ext B discovery sections below
-  for the current Pending set.
+  findings" and the discovery sections at the end of the registry for
+  the current Pending set.
 
-The ``endpoint_shape`` axis was retired in PR #3635 (Phase 4b enum
-closure / WI-porim). All 111 deprecated values that occupied that axis
-during the Phase 4a deprecation window are now removed from the
-registry; their fold targets live as canonical inference values plus
+There is no ``endpoint_shape`` axis: values that encode resolution
+status, framework dispatch or call construct in the label are not
+registered. They fold to canonical inference values plus
 ``Edge.is_resolved`` (Cluster B) and ``Edge.meta`` keys (Cluster C
 framework dispatch, Cluster D call construct). See
 :mod:`hypergumbo_core.axis_meta_keys` for the meta-key vocabulary and
-audit-findings 0008 / 0012 / 0014 for per-value fold targets.
+audit-findings 0008 / 0012 / 0014 for per-value fold targets (WI-porim).
 
-Seeding completeness (per the Phase 1 plan file):
+Registry coverage:
 
-- Phase 1 seed: 207 static-literal evidence_type values from
-  ``grep packages/*/src``. After the Phase 3 folds and the Phase 4b
-  closure the registry held 126 values (116 ``inference_pathway``,
-  10 ``pending_classification``); WI-nakur's discoveries (four values a
-  helper's returned tuples carried) bring it to 130 (116 / 14).
-- 10 enumerable dynamic variants from the f-string emits
-  (``{pattern_type}_emit`` / ``{pattern_type}_endpoint``) in
-  ``websocket.py`` for the 6 registered ``pattern_type`` literals
-  (``socketio``, ``native``, ``ws``, ``fastapi``, ``starlette``,
-  ``django_channels``). This Phase 1 seed was folded in Phase 3
-  (audit-findings 0014): those variants were collapsed to
-  ``ast_call_direct`` + ``meta["framework_dispatch"]``, so they are
-  no longer seeded.
-- The Phase-3 producer migration retired the former ``di_binding``
-  colon-form placeholder: the DI-resolution site
-  (``_create_di_edges`` in ``linkers/di_resolution.py``) now emits the
-  canonical ``ast_call_direct`` evidence type plus
-  ``meta["framework_dispatch"]=binding.source`` and
-  ``meta["mechanism"]="di"``, so ``di_binding`` is no longer seeded
-  (``find_evidence_type('di_binding')`` returns None).
+- The registry holds the static-literal evidence_type values producers
+  emit, plus the values the L3 linter finds only by following assignment,
+  ternary and returned-tuple flows (the discovery sections at the end of
+  the registry).
+- The ``websocket.py`` f-string emits (``{pattern_type}_emit`` /
+  ``{pattern_type}_endpoint``) are not seeded: those producers emit
+  ``ast_call_direct`` + ``meta["framework_dispatch"]`` instead
+  (audit-findings 0014).
+- ``di_binding`` is not seeded (``find_evidence_type('di_binding')``
+  returns None): the DI-resolution site (``_create_di_edges`` in
+  ``linkers/di_resolution.py``) emits the canonical ``ast_call_direct``
+  evidence type plus ``meta["framework_dispatch"]=binding.source`` and
+  ``meta["mechanism"]="di"``.
 - The dynamic ``f"ast_{edge_type}"`` in ``_create_inheritance_edges``
   (``linkers/inheritance.py``) and in ``_extract_inheritance_edges``
   (``js_ts.py``) only yields ``ast_extends`` / ``ast_implements``, both
@@ -100,8 +91,8 @@ AXIS_PENDING: Final[str] = "pending_classification"
 
 # Retired axis name kept as a public constant for audit-findings
 # validation (``hypergumbo_core.audit_findings._REGISTRIES``) and for
-# downstream readers comparing schema versions across the Phase 4a
-# deprecation window. Not in :data:`VALID_AXES` — no live spec may
+# downstream readers comparing against older schema versions that still
+# carry it. Not in :data:`VALID_AXES` — no live spec may
 # carry this axis; the property test in
 # ``tests/test_evidence_types.py`` enforces the empty-axis invariant.
 AXIS_ENDPOINT_SHAPE: Final[str] = "endpoint_shape"
@@ -399,38 +390,34 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      "Edge inferred from a VHDL architecture declaration."),
 
     # ----------------------------------------------------------------
-    # Cluster B (resolution-status leakage) — Phase 4b removal complete.
-    # Wave 3 (WI-nunal, PR #3564) folded all 18 ``*_unresolved`` /
-    # ``unresolved_*`` variants to canonical inference + ``is_resolved=False``
-    # per audit-findings 0008; deprecated registry entries removed in
-    # PR #3635 (WI-porim).
+    # Cluster B (resolution-status leakage) — no registry entries.
+    # ``*_unresolved`` / ``unresolved_*`` variants fold to canonical
+    # inference + ``is_resolved=False`` per audit-findings 0008
+    # (WI-nunal, WI-porim).
     # ----------------------------------------------------------------
 
     # ----------------------------------------------------------------
-    # Cluster C (framework-specific dispatch conventions) — Phase 4b
-    # removal complete. Wave 5 (WI-kagik, PRs #3572 + self-hosted-forge #162-166)
-    # folded all 65 framework-prefixed values to canonical inference +
+    # Cluster C (framework-specific dispatch conventions) — no registry
+    # entries. Framework-prefixed values fold to canonical inference +
     # ``meta['framework_dispatch']`` / ``meta['detection_pattern']`` per
-    # audit-findings 0014; deprecated registry entries removed in
-    # PR #3635 (WI-porim).
+    # audit-findings 0014 (WI-kagik, WI-porim).
     # ----------------------------------------------------------------
 
     # ----------------------------------------------------------------
-    # Cluster D (apex/peer call-construct overloads) — Phase 4b removal
-    # complete. Wave 4 (WI-nibis, PR #3570) collapsed all 28 call-
-    # construct peers to ``ast_call`` apex + ``meta['call_construct']``
-    # per audit-findings 0012; deprecated registry entries removed in
-    # PR #3635 (WI-porim).
+    # Cluster D (apex/peer call-construct overloads) — no registry
+    # entries. Call-construct peers fold to the ``ast_call`` apex +
+    # ``meta['call_construct']`` per audit-findings 0012 (WI-nibis,
+    # WI-porim).
     # ----------------------------------------------------------------
 
     # ----------------------------------------------------------------
-    # WI-nubuv ext A discoveries — assignment-form producer leaks
+    # Assignment-form producer values
     # ----------------------------------------------------------------
-    # Surfaced by the L3 producer-coherence linter when extension A
-    # (function-local assignment trace) landed and walked back
-    # ``evidence_type = "<literal>"`` shapes that were previously
-    # invisible to the literal-kwarg-only matcher. All registered
-    # AXIS_PENDING for follow-on Cluster-C audit; the values describe
+    # Producers assign these via ``evidence_type = "<literal>"`` inside a
+    # function rather than passing a literal kwarg; the L3
+    # producer-coherence linter's function-local assignment trace finds
+    # them (WI-nubuv). All registered AXIS_PENDING for the Cluster-C
+    # audit; the values describe
     # language/framework mechanism dispatch and are at-risk for
     # mechanism-on-evidence_type fold per ADR-0028 §"Phase 3 Cluster C".
     EvidenceTypeSpec("cffi_call", AXIS_PENDING,
@@ -451,16 +438,13 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      "(could promote to AXIS_INFERENCE_PATHWAY canonical)."),
 
     # ----------------------------------------------------------------
-    # WI-nubuv ext B + IfExp-classifier discoveries — leak shapes that
-    # the literal-kwarg-only matcher (plus poison-on-non-string-Constant
-    # walker) silently hid.
+    # Ternary and loop-unpack producer values
     # ----------------------------------------------------------------
-    # The inline-ternary classifier fix (`evidence_type="a" if cond else
-    # "b"`) and the empirical addendum from WI-nubuv ext A's tracker
-    # discussion (dict-subscript-target ⟶ for-loop unpack producers in
-    # `linkers/pyffi.py`) surfaced four pre-existing producer-emitted
-    # values that were never registered. Registered AXIS_PENDING per the
-    # follow-on-cluster discipline used for the prior ext-A discoveries.
+    # Emitted through an inline ternary (`evidence_type="a" if cond else
+    # "b"`) or a dict-subscript ⟶ for-loop unpack (`linkers/pyffi.py`),
+    # shapes a literal-kwarg-only matcher cannot see; the L3 linter's
+    # ternary and unpack handling finds them (WI-nubuv). Registered
+    # AXIS_PENDING like the assignment-form values above.
     EvidenceTypeSpec("ipc_channel_match", AXIS_PENDING,
                      "Electron IPC channel-name matching inference "
                      "(linkers/ipc.py:546). Emitted in the canonical-"
@@ -521,16 +505,15 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      "Pending cluster-D audit."),
 
     # ----------------------------------------------------------------
-    # WI-nakur discoveries — values carried through data (WI-pubin)
+    # Values carried through data
     # ----------------------------------------------------------------
-    # Surfaced when the L3 producer-coherence linter learned to follow a
-    # value back through a helper that appends tuples to a list and returns
-    # it, and through a dict of tuples (``hypergumbo_core.value_flow``).
-    # Each linker wrote these labels as string literals inside a returned
-    # tuple, so no gate read them. Registered AXIS_PENDING with no
-    # confidence seed -- exactly how the producers already behave (both
-    # pass an explicit ``confidence=``), following the ext A / ext B
-    # discovery precedent above. Each pair is at-risk Cluster C (mechanism
+    # Each linker writes these labels as string literals inside a tuple
+    # that a helper appends to a list and returns, or inside a dict of
+    # tuples; the L3 producer-coherence linter follows the value back
+    # through that data (``hypergumbo_core.value_flow``; WI-nakur,
+    # WI-pubin). Registered AXIS_PENDING with no confidence seed, matching
+    # the producers (both pass an explicit ``confidence=``), like the
+    # assignment-form and ternary values above. Each pair is at-risk Cluster C (mechanism
     # on evidence_type): the fold candidate is one inference pathway per
     # linker plus a ``meta`` key naming the mechanism.
     EvidenceTypeSpec("luajit_ffi_c", AXIS_PENDING,
@@ -573,28 +556,26 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
 # (``ast_call`` / ``ast_call_direct``), whose confidence is conditioned on
 # ``is_resolved``, carry their (resolved, unresolved) pair inline on the spec
 # above and are intentionally absent here. Each value is the edge-weighted
-# modal confidence that pathway's producers currently hardcode (the
-# corpus-dominant value, with the AST-scan site modal as the fallback for
-# pathways absent from the self-corpus). So when a producer drops its explicit
-# ``confidence=`` and lets ``Edge.create`` derive (the WI-nurun producer
-# migration), the published value is unchanged for the dominant cohort while
-# the per-emitter hardcoded outliers collapse to this single canonical value —
-# the INV-suvil fix (confidence derived from evidence, not hardcoded per
-# emitter). Keys are disjoint from the inline-seeded specs above
+# modal confidence of that pathway's producers (the corpus-dominant value,
+# with the AST-scan site modal as the fallback for pathways absent from the
+# self-corpus), so a producer that omits ``confidence=`` and lets
+# ``Edge.create`` derive publishes the dominant cohort's value, and
+# per-emitter outliers collapse to one canonical value: confidence is derived
+# from evidence, not hardcoded per emitter (INV-suvil; WI-nurun). Keys are
+# disjoint from the inline-seeded specs above
 # (``test_confidence_seeds_disjoint_from_inline``). The entries marked
-# "ADR-0039 ruling 6" were unseeded while their producers passed only
-# ``<base> * resolver grade``; ruling 6 moved that grade into
-# ``Edge.create(resolution_score=...)``, which needs a band, so each is seeded
-# at its producers' exact-match base.
+# "ADR-0039 ruling 6" are seeded at their producers' exact-match base: those
+# producers pass the resolver grade as ``Edge.create(resolution_score=...)``,
+# which scales within a band and so needs a seeded base.
 _CONFIDENCE_SEEDS: dict[str, float] = {
     "ast_annotation": 0.5,
     "ast_attribute": 0.95,
     "ast_call_extension": 0.8,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.95 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "ast_call_static": 0.95,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.9 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "ast_call_this": 0.9,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.85 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "ast_call_this_property": 0.85,
     "ast_call_type_inferred": 0.85,
     "ast_call_ufcs": 0.8,
@@ -602,13 +583,13 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "ast_extends": 0.95,
     "ast_implements": 0.95,
     "ast_method_inferred": 0.7,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.95 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "ast_method_this": 0.95,
     "ast_method_this_property": 0.9,
     "ast_method_type_inferred": 0.85,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.85 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "ast_perform": 0.85,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.95 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "ast_static_call": 0.95,
     "ast_type_ref": 0.85,
     "async_spawn": 0.85,
@@ -617,19 +598,19 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "bridging_header_import": 0.95,
     # WI-radim: meson `dependency('x')` is a direct, explicit build-file
     # declaration — as reliable as import/include/require; seeds at the 0.95
-    # ceiling so the producer stops emitting the reserved-1.0 literal.
+    # ceiling rather than the reserved 1.0.
     "build_dependency": 0.95,
     "build_target_main": 0.95,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.8 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "callable_reference": 0.8,
     "canonical_name": 0.95,
     "closure_wrapper": 0.85,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.8 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "constructor_reference": 0.8,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.85 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "designated_init_fptr": 0.85,
     "dispatch_pattern": 0.7,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.8 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "dispatch_table_initializer": 0.8,
     "dispatch_table_reference": 0.85,
     "dockerfile_copy_from": 0.95,
@@ -638,7 +619,7 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "eta_expansion": 0.85,
     "extends": 0.95,
     "function_pointer": 0.85,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.8 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "function_pointer_arg": 0.8,
     "function_reference": 0.8,
     "function_reference_arg": 0.7,
@@ -660,8 +641,8 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "module_source": 0.95,
     # ADR-0039 R1 (WI-vakuh / WI-lutad): a name-parse containment heuristic —
     # reliable but structurally weaker than the certain span_overlap (0.90), so
-    # it seeds BELOW it to restore reliability ordering, and in-band (the old
-    # literal 1.0 breached the 0.95 ceiling on ~18k edges).
+    # it seeds BELOW it to keep reliability ordering, and in-band (under the
+    # 0.95 ceiling).
     "naming_convention": 0.85,
     "notify": 0.9,
     "object_field_reference": 0.8,
@@ -674,7 +655,7 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "require_static": 0.9,
     "signal_constraint": 0.85,
     "source_statement": 0.95,
-    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.9 x resolver grade.
+    # ADR-0039 ruling 6 (WI-himod): exact-match base, scaled by resolver grade.
     "sql_foreign_key": 0.9,
     "stack_construction": 0.85,
     "static": 0.95,
@@ -683,9 +664,9 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "subdir_include": 0.95,
     "trait_impl": 0.95,
     # ADR-0039 R1/R3 (WI-botif): a real dispatch relationship — reliably 0.85;
-    # the 1/sqrt(N) fan-out dampener + test-file penalty are RANKING signals that
-    # relocate to Edge.rank_score (type_hierarchy.py), so published confidence is
-    # the flat in-band base, not the dampened value that undershot the 0.40 floor.
+    # the 1/sqrt(N) fan-out dampener + test-file penalty are RANKING signals
+    # carried on Edge.rank_score (type_hierarchy.py), so published confidence is
+    # the flat in-band base; a dampened value would undershoot the 0.40 floor.
     "type_hierarchy": 0.85,
     "typeclass_instance": 0.9,
     "use": 0.95,

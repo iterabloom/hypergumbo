@@ -1,0 +1,22 @@
+- op: create  # 73af
+  at: '2026-11-02T23:30:24Z'  # 73af
+  by: agent  # 73af
+  actor: jgstern_agent  # 73af
+  clock: 1  # 73af
+  nonce: 73af  # 73af
+  data:  # 73af
+    kind: work_item  # 73af
+    title: "inherited_calls Site 2: Java binds a typed receiver to the FIRST same-named class (no INV-fahub guard) because java.py stamps no import-resolved receiver_type_id"  # 73af
+    status: todo_hard  # 73af
+    priority: 2  # 73af
+    parent:  # 73af
+    tags:  # 73af
+    - resolution  # 73af
+    - call_graph  # 73af
+    - analysis_quality  # 73af
+    isbefore: []  # 73af
+    duplicate_of: []  # 73af
+    not_duplicate_of: []  # 73af
+    pr_ref:  # 73af
+    description: "PROBLEM. inherited_calls Site 2 binds a Java typed-receiver call through the receiver's type NAME, and Java alone (_LEGACY_SITE2_LANGS) takes the FIRST same-named in-repo class that has the method instead of the INV-fahub collision guard every other language gets. Measured 2026-11-02 (WI-jomik, lab ~/hypergumbo_lab_notebook/jomik_java_11022026/: RESULT.md, judge_collisions.py, collision_verdicts_*.json), Site-2 edges whose receiver type name has 2+ Java types in the repo: jedis 794 (Builder 673: redis.clients.jedis.Builder vs dozens of nested X.Builder), commons-compress 627 (harmony pack200 vs unpack200 CpBands/BcBands/Segment/...). Judged by Java's own simple-type-name rule (same file, single-type import, same package) the edges the guard WOULD drop: commons-compress 457 correct / 42 wrong / 8 undecidable; jedis 124 / 40 / 245 undecidable (chained receivers). Also seen: in-repo utils.BoundedInputStream receives calls on commons-io's BoundedInputStream, the one those files import.\n\nWHY NOT JUST THE GUARD. Turning the guard on for Java (variant B of the A/B) drops ~9 correct edges per wrong one on commons-compress. Not shipped.\n\nDIRECTION. The WI-supat channel: java.py stamps receiver_type_id on the unresolved edge when Java's name rule names exactly one in-repo type (declared in the file, single-type import, same package; an on-demand import or an import of an EXTERNAL type of that name names none in-repo, so no id and no bind). Then remove java from _LEGACY_SITE2_LANGS so an unstamped collision is unresolved. Measure with diff_sites.py on jedis + commons-compress: expected lost = the WRONG and undecidable collision edges, kept = the 457/124 correct ones."  # 73af
+    fields: {}  # 73af

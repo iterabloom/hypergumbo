@@ -1,0 +1,21 @@
+- op: create  # 0561
+  at: '2026-11-08T04:22:11Z'  # 0561
+  by: agent  # 0561
+  actor: jgstern_agent  # 0561
+  clock: 1  # 0561
+  nonce: '0561'  # 0561
+  data:  # 0561
+    kind: work_item  # 0561
+    title: "haxe: a call inside a local (nested) function gets a src id no symbol carries, so it surfaces as an external_symbol node"  # 0561
+    status: todo_hard  # 0561
+    priority: 3  # 0561
+    parent:  # 0561
+    tags:  # 0561
+    - docstring_audit  # 0561
+    - analysis_quality  # 0561
+    isbefore: []  # 0561
+    duplicate_of: []  # 0561
+    not_duplicate_of: []  # 0561
+    pr_ref:  # 0561
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _find_enclosing_context takes the innermost function_declaration (haxe.py:168-171) and mints an id (:180), but symbol extraction never descends into function bodies (:324). class Main { function run() { function inner() { helper(); } inner(); } } gives src haxe:Main.hx:3-5:Main.inner:fn, absent from the symbols; survey synthesizes it as an external_symbol. r24, v08."  # 0561
+    fields: {}  # 0561

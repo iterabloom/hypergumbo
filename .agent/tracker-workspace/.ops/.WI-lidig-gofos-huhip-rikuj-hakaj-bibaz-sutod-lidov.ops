@@ -31,3 +31,48 @@
     tags: [dogfood_tranche_04]  # 3eac
   remove:  # 3eac
     tags: [dogfood_tranch_04]  # 3eac
+- op: discuss  # f133
+  at: '2026-10-25T20:08:24Z'  # f133
+  by: agent  # f133
+  actor: jgstern_agent  # f133
+  clock: 3  # f133
+  nonce: f133  # f133
+  message: "From the WI-fuzat premise re-check 2026-10-25 (dev 16534a75f7): the concept audit 2026-10-21 (F4) asked for supply-chain 'unclassified' to be explicit rather than tier 1 + empty supply_chain_reason (which ir.py:727 declares never-branch-on free text). Still present at cli.py:12072-12077 and analyze/base.py:2008-2011. Tracked here with the F78.A3 sentinel watch-item, not in WI-fuzat."  # f133
+- op: update  # b668
+  at: '2026-10-25T21:26:14Z'  # b668
+  by: agent  # b668
+  actor: jgstern_agent  # b668
+  clock: 4  # b668
+  nonce: b668  # b668
+  set: {}  # b668
+  add:  # b668
+    isbefore: [INV-kutub-napih-rudak-lijam-hozof-zavih-sigip-ropop]  # b668
+- op: discuss  # fcc9
+  at: '2026-10-25T21:26:14Z'  # fcc9
+  by: agent  # fcc9
+  actor: jgstern_agent  # fcc9
+  clock: 5  # fcc9
+  nonce: fcc9  # fcc9
+  message: "2026-10-25: INV-kutub (sibling dependency declarations to tier 1 under the owner's project-frame ruling on ADR-0041 §1) edits the declaration branch that runs only behind this item's tier-1 'unclassified' guard (cli.py:12071-12078: tier 1 + empty reason + no protocol_origin). Land this item's explicit unclassified marker first, or together."  # fcc9
+- op: discuss  # 5356
+  at: '2026-10-26T00:31:43Z'  # 5356
+  by: agent  # 5356
+  actor: jgstern_agent  # 5356
+  clock: 6  # 5356
+  nonce: '5356'  # 5356
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0041 row waits on INV-kutub, which waits on this item (explicit 'unclassified' marker before the declaration branch changes)."  # 5356
+- op: update  # 8b48
+  at: '2026-10-26T23:31:51Z'  # 8b48
+  by: agent  # 8b48
+  actor: jgstern_agent  # 8b48
+  clock: 7  # 8b48
+  nonce: 8b48  # 8b48
+  set:  # 8b48
+    status: done  # 8b48
+- op: discuss  # 64d8
+  at: '2026-10-26T23:31:51Z'  # 64d8
+  by: agent  # 64d8
+  actor: jgstern_agent  # 64d8
+  clock: 8  # 64d8
+  nonce: 64d8  # 64d8
+  message: "Fixed in PR #1889 (merged as a4546cb836 via rebase). Root cause: the annotator (cli._classify_symbols) read \"unclassified\" off tier 1 + an empty supply_chain_reason, a free-text field ir.py declares never-branch-on, so a deliberate tier-1/no-reason stamp was indistinguishable from none (the F78.A3 sentinel). Fix: an explicit Symbol.supply_chain_classified flag (compare=False, not serialized; schema spec marks it omitted), set by the annotator, by __post_init__ when a constructor passes a tier or reason, by from_dict, and by the producers that assign a tier later (annotation_convention @hg:route, route promotion, sketch fallback). The guard now reads the flag or protocol_origin.\nBehavioural evidence, re-run on merged dev a4546cb836: `hypergumbo survey` on a two-member pyproject workspace with a tests/ file -> 12 nodes, 0 missing a supply_chain dict, every orchestrator-synthesized file node carries a path-derived tier-1 reason ('path matches ^packages/[^/]+/src/' x2, 'test path matches (?:^|/)tests?/' x1, 'default (no matching pattern)' x2) -- the item's positive control still holds. test_supply_chain_classified_flag.py + test_supply_chain.py: 305 passed on merged dev, including the annotator leaving a deliberate tier-1/no-reason node alone (the case the old guard re-classified). Pre-merge A/B: apollo-server 7,349 nodes, identical tier and reason dev vs branch. No output change, by design."  # 64d8

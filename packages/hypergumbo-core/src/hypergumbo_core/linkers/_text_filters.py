@@ -84,22 +84,19 @@ def reset_active_parse_cache(
     _active_parse_cache.reset(token)
 
 
-# WI-finij: the per-invocation read log behind ``AnalysisRun.files_analyzed``.
+# The per-invocation read log behind ``AnalysisRun.files_analyzed``.
 #
 # ``derive_silence_reason`` reads ``files_analyzed == 0`` as the POSITIVE claim
 # "this pass received zero input files" and stamps ``no_candidate_files``. Zero
-# is also the dataclass default, so a linker that read four hundred files and
-# never assigned the counter produced that claim falsely — measured on the
-# 2026-09-16 self-survey, EIGHT linkers did, reading 14 to 834 files apiece
-# (pyffi 389, grpc 397, di-resolution 396, annotation-convention 834,
-# wasm-bindgen 14, solidity-abi 14, crypto-flow 17, message-dispatch 17).
+# is also the dataclass default, so a linker that read hundreds of files but
+# never assigned the counter would make that claim falsely.
 #
-# Counting here rather than in eighteen linker bodies makes the count a DERIVED
-# fact: seventeen linkers already assign it correctly and eighteen do not, which
-# is the evidence that "remember to count" does not survive a new linker.
+# Counting here rather than in each linker body makes the count a DERIVED
+# fact: "remember to count" does not survive a new linker.
 # ``tests/test_linker_file_read_accounting.py`` gates the other half — a direct
 # ``Path.read_text`` / ``Path.read_bytes`` inside ``linkers/`` fails there,
-# because such a call would bypass this log and re-open the hole.
+# because such a call would bypass this log and go uncounted.
+# (history: WI-finij)
 #
 # A SET of path strings, so ``files_analyzed`` counts FILES and a linker that
 # reads one file three times still reports one. ``None`` means no linker
@@ -131,8 +128,8 @@ def reset_active_read_log(token: contextvars.Token[Optional[set[str]]]) -> None:
 def note_source_read(file_path: Path) -> None:
     """Record ``file_path`` against the active read log, if one is bound.
 
-    Every reader in this module funnels through here. Silent when unbound so
-    that direct/test invocation of a linker body behaves exactly as before.
+    Every reader in this module funnels through here. Silent when unbound, so
+    a direct/test invocation of a linker body reads without counting.
     """
     log = _active_read_log.get()
     if log is not None:
@@ -177,8 +174,8 @@ def read_source_bytes(file_path: Path) -> bytes:
 # Extension → tree-sitter-language-pack GRAMMAR name, for masking doc regions.
 # Unknown extensions return None, in which case the masker falls through and
 # returns content unchanged. The JS/TS rows are DERIVED from taxonomy.LANGUAGES
-# (WI-hizon): a hand-written copy omitted ``.mts`` / ``.cts``, so a linker that
-# read those files got their comments unmasked. A grammar name is not a
+# (WI-hizon): a hand-written copy drifts (missing ``.mts`` / ``.cts``, say), and
+# a linker reading such files gets their comments unmasked. A grammar name is not a
 # language label -- ``.tsx`` parses with ``tsx`` but its language is
 # ``typescript`` (WI-pokij); label with ``taxonomy.get_language``.
 _EXTENSION_TO_LANGUAGE: dict[str, str] = {
@@ -309,11 +306,11 @@ def _collect_mask_ranges(
         if mask_string_literals_too and ntype == "string":
             ranges.append((node.start_byte, node.end_byte))
             continue
-        # WI-kakov: one ``children`` call per node, never ``child(i)`` in a
-        # loop. tree-sitter's child(i) walks the siblings from the start, so
-        # the indexed loop is O(k^2) in a node's child count, and a binary
-        # file parsed as JavaScript has ERROR nodes wide enough that the walk
-        # never finished on nextjs. Same push order, so the same ranges.
+        # One ``children`` call per node, never ``child(i)`` in a loop.
+        # tree-sitter's child(i) walks the siblings from the start, so the
+        # indexed loop is O(k^2) in a node's child count, and a binary file
+        # parsed as JavaScript has ERROR nodes wide enough that such a walk
+        # effectively never finishes. (history: WI-kakov)
         stack.extend(node.children)
     return ranges
 

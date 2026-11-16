@@ -74,3 +74,26 @@
   clock: 9  # 48a3
   nonce: 48a3  # 48a3
   message: "2026-10-10 docstring audit: commonlisp.py ~322 `local_symbols.get(name)` finds the enclosing function by NAME via one-per-name symbol_by_name. Repro: two `(defmethod area ...)` forms -> the call inside the first is credited to area@4; a later `(defvar tick)` becomes the caller of calls inside `(defun tick)`. ocaml.py has the same shape (filed separately)."  # 48a3
+- op: discuss  # fdc2
+  at: '2026-11-01T10:55:54Z'  # fdc2
+  by: agent  # fdc2
+  actor: jgstern_agent  # fdc2
+  clock: 10  # fdc2
+  nonce: fdc2  # fdc2
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: PARTLY-STALE. 2026-11-01 review on dev 100b6fbb6e: the gate has 22 UNVERIFIED rows (25 minus nim/cpp/pony). commonlisp is confirmed: a call inside the first (defmethod area) gets src area@6-7. ocaml is now position-keyed (907d2f25d3), so the 10-11 'ocaml same shape' note is stale. ocaml, cobol, zig, luau, wolfram and apex already use symbols_at/symbol_declared_by but none of their rows has moved. MECHANISM: enclosing-callable lookup keyed by name (one entry per name) and the gate enumerated analyzers by function-name pattern rather than by mechanism. SHARES MECHANISM WITH: WI-tikul."  # fdc2
+- op: update  # b5f5
+  at: '2026-11-01T10:55:54Z'  # b5f5
+  by: agent  # b5f5
+  actor: jgstern_agent  # b5f5
+  clock: 11  # b5f5
+  nonce: b5f5  # b5f5
+  set:  # b5f5
+    title: "INV-midag residual + WI-gujab fold: 22 analyzers' calls-edge enclosing lookup unverified by the call-anchor gate (6 already position-keyed in code; commonlisp confirmed name-keyed)"  # b5f5
+- op: update  # b834
+  at: '2026-11-01T10:55:54Z'  # b834
+  by: agent  # b834
+  actor: jgstern_agent  # b834
+  clock: 12  # b834
+  nonce: b834  # b834
+  set:  # b834
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review on dev 100b6fbb6e: the gate has 22 UNVERIFIED rows (25 minus nim/cpp/pony). commonlisp is confirmed: a call inside the first (defmethod area) gets src area@6-7. ocaml is now position-keyed (907d2f25d3), so the 10-11 'ocaml same shape' note is stale. ocaml, cobol, zig, luau, wolfram and apex already use symbols_at/symbol_declared_by but none of their rows has moved. (Original text below; the review entry in the thread has the evidence.)\n\nRESIDUAL OF INV-midag, whose statement is general: every analyzer-origin calls edge with a line lies inside its src's span.\n\nINV-midag's gate (test_call_anchor_gate*.py) enumerated the analyzers that DEFINE a function named `_(get|find)_enclosing_(function|method|callable)*`. That is a NAME pattern, not the mechanism. Found 2026-09-24 while closing WI-mapor, which verified all 42 modules the pattern sees.\n\n25 more analyzer modules emit `calls` edges and match no such name. Their lookup is spelled otherwise, or is inline, or comes from the base class:\n  lang-mainstream : bash cpp jupyter lua py\n  lang-common     : clojure commonlisp fortran ocaml purescript racket robot\n  lang-extended1  : ada apex asm circom cobol haxe jsonnet luau nim pony tcl wolfram zig\nExamples of the other spellings: _find_enclosing_defn (clojure), _find_enclosing_proc (tcl), _get_enclosing_fortran_symbol, _find_enclosing_lua_function, _find_enclosing_subprogram (ada).\npy is already verified by construction (WI-jafat keys on node id). cpp was not in INV-midag's 26-repo table: unmeasured, not clean.\n\nTHE GATE NOW ENUMERATES THEM (same change that closes INV-midag). A module counts if it defines such a lookup OR emits a calls edge. These 25 are UNVERIFIED against this row, so a 26th cannot arrive unclassified.\n\nASKED, per language, the WI-mapor procedure:\n1. Write a same-named-callables fixture in the language's own shape.\n2. Assert reach first, then containment.\n3. If it fails, key on position (symbols_at / symbol_declared_by).\n4. Move the entry to VERIFIED.\nMeasure on corpus repos where they exist (whole_bunch_of_repos has cpp, lua, bash, zig, ocaml, ...). WI-mapor's instruments are reusable: ~/hypergumbo_lab_notebook/mapor_09242026/ (probe.py, ab.py, diff.py)."  # b834

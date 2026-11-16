@@ -33,8 +33,8 @@ def test_detects_script_src_tag(tmp_path: Path) -> None:
     assert len(script_edges) == 1
     assert "index.html" in script_edges[0]["src"]
     assert "app.js" in script_edges[0]["dst"]
-    # INV-vavat / ADR-0023: <script src> is a `references` relationship with
-    # the ref_construct in meta — NOT the old endpoint-shape edge_type "script_src".
+    # INV-vavat / ADR-0023: <script src> is a `references` relationship; the
+    # script_src construct rides in meta (ref_construct), not in edge_type.
     assert script_edges[0]["type"] == "references"
     assert script_edges[0]["meta"]["ref_construct"] == "script_src"
 
@@ -141,14 +141,14 @@ def test_skips_unreadable_html_files(tmp_path: Path) -> None:
     assert len(script_edges) == 1
 
 
-# ─── INV-tajap PR 2: html_entry detection ─────────────────────────────────
+# ─── html_entry detection (INV-tajap) ─────────────────────────────────────
 #
-# Pre-fix: HTML files were parsed and got file-kind Symbols, but no concept
-# rode on the file Symbol — so entrypoint detection ignored every index.html
-# in the repo. SPA roots (the page that bootstraps the JS bundle) looked like
-# inert content. This sub-fix stamps a ``html_entry`` concept on the file
-# Symbol when the filename is index.html (the convention-based SPA root),
-# and entrypoints.py turns that into a HTML_ENTRY entrypoint.
+# A file-kind Symbol alone does not make an HTML file an entrypoint: with no
+# concept on it, entrypoint detection ignores every index.html, and SPA roots
+# (the page that bootstraps the JS bundle) look like inert content. The
+# analyzer stamps a ``html_entry`` concept on the file Symbol when the
+# filename is index.html (the convention-based SPA root), and entrypoints.py
+# turns that into a HTML_ENTRY entrypoint.
 
 
 def test_inv_tajap_index_html_emits_html_entry_concept(tmp_path: Path) -> None:
@@ -302,7 +302,8 @@ def test_wi_majov_relative_src_from_subdirectory_with_query(
     the path."""
     (tmp_path / "lib").mkdir()
     (tmp_path / "lib" / "a.js").write_text("function a() {}\n")
-    # Not ``site/``: discovery excludes it (mkdocs build output).
+    # ``pages/`` rather than ``site/``: discovery prunes ``site/`` when MkDocs
+    # evidence claims it as build output.
     (tmp_path / "pages").mkdir()
     (tmp_path / "pages" / "page.html").write_text(
         '<html><script src="../lib/a.js?v=3#x"></script></html>\n'

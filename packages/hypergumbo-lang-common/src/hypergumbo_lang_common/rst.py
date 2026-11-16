@@ -14,11 +14,14 @@ How It Works
 5. Populates docstrings onto the symbols just extracted
    (``populate_docstrings_from_tree``)
 
-Every symbol here is minted through ``make_doc_symbol_ids``, which issues
-``id`` and ``stable_id`` together. That pairing is the INV-dulah contract
-for documentation families: the ``id`` carries the span so two same-named
-sections stay distinct, while the ``stable_id`` survives the section moving
-down the file. The ``stable_id`` hashes the titles of the sections a symbol
+Every symbol's ``id`` is minted through ``make_doc_symbol_ids`` (the
+INV-dulah contract for documentation families). Targets also take the
+``stable_id`` that call issues; sections and directives discard it and take
+their ``stable_id`` from a separate ``make_doc_stable_id`` call that hashes
+the section title (or the directive name plus its arguments) instead of the
+ordinal their ``id`` carries (WI-tusad). The ``id`` carries the span so two
+same-named sections stay distinct, while the ``stable_id`` survives the
+section moving down the file. The ``stable_id`` hashes the titles of the sections a symbol
 sits in (INV-punig; ADR-0035 §1, scheme v9). tree-sitter-rst emits every
 section as a sibling, so the hierarchy comes from the adornment styles, in
 the order the document first uses them, as reStructuredText defines it
@@ -32,8 +35,32 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **references**: Cross-document references (:ref:, :doc:, etc.)
-- **includes**: toctree and include relationships
+- **references**: Cross-document references (:ref:, :doc:, etc.), from the
+  referring file's node (``make_file_id``)
+- **includes**: toctree and include relationships, from the directive
+
+Every dst is the id of a node or a stand-in in the id grammar (they were
+``rst:file:<path>``, ``rst:doc:<entry>`` and ``rst:<role>:<target>``, which are
+no ids, so finalize folded every include of a repository into one
+``<unknown>`` node per spelling):
+
+- an ``include`` path and a ``:doc:`` / toctree document name are looked up
+  on disk (``edge_target.in_tree_file_id``), next to the referring file, or
+  for a leading ``/`` under each directory above it, nearest first (Sphinx
+  reads it from its source directory, which this analyzer does not know). A
+  document name is tried as written, then with ``.rst`` and ``.md``. A hit is
+  that file's node, in its own language; a miss is the
+  ``make_module_import_dst`` stand-in for the name as written;
+- a ``:ref:`` label is looked up among the run's ``target`` symbols once
+  every file is read (labels are global, and compared lowercased as Sphinx
+  does): exactly one is that symbol, else ``rst:ref:0-0:<label>:unresolved``;
+- any other role names an object of another domain and is
+  ``rst:<role>:0-0:<target>:unresolved``.
+
+A toctree entry is one LINE of the directive's content (tree-sitter-rst splits
+the content into a text node per word and punctuation mark, so ``api/index``
+used to give three edges); ``Title <name>`` names ``name``, as it does in a
+role, and ``self`` is the document itself.
 
 Why This Design
 ---------------
@@ -45,17 +72,22 @@ Why This Design
 
 from __future__ import annotations
 
+import posixpath
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol,
+    _get_python_toolchain, make_pass_id,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, make_doc_stable_id, make_doc_symbol_ids,
-    populate_docstrings_from_tree,
+    make_file_id, make_module_import_dst, populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.edge_target import external_target, in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -97,6 +129,37 @@ ADMONITION_DIRECTIVES = frozenset({
 })
 
 
+#: The suffixes a document name (``:doc:``, a toctree entry) is tried with.
+_DOCUMENT_SUFFIXES = ("", ".rst", ".md")
+
+
+def _explicit_target(text: str) -> str:
+    """The target of ``Title <target>``; ``text`` itself when it has no title.
+
+    A leading ``~`` or ``!`` (Sphinx's display modifiers) is not part of it.
+    """
+    text = text.strip()
+    if text.endswith(">") and "<" in text:
+        text = text[text.rindex("<") + 1:-1].strip()
+    return text.lstrip("~!")
+
+
+def _path_candidates(rel_path: str, written: str, suffixes: tuple[str, ...]) -> list[str]:
+    """The repository-relative paths ``written`` can name, read in ``rel_path``."""
+    directory = posixpath.dirname(rel_path)
+    if not written.startswith("/"):
+        return [posixpath.join(directory, written + suffix) for suffix in suffixes]
+    # ``/x`` is read from Sphinx's source directory: some directory at or
+    # above this file, tried nearest first.
+    directories = [directory]
+    while directories[-1]:
+        directories.append(posixpath.dirname(directories[-1]))
+    return [
+        posixpath.join(above, written.lstrip("/") + suffix)
+        for above in directories for suffix in suffixes
+    ]
+
+
 class _RSTExtractor:
     """Analyzer for RST files."""
 
@@ -113,6 +176,47 @@ class _RSTExtractor:
         # as (level, title), outermost first.
         self._styles: list[tuple[str, bool]] = []
         self._open_sections: list[tuple[int, str]] = []
+        # Each ``:ref:`` as (referring file's node id, label, line), resolved
+        # against the run's targets once every file is read.
+        self._pending_refs: list[tuple[str, str, int]] = []
+
+    def _file_dst(
+        self, path: Path, written: str, suffixes: tuple[str, ...] = ("",),
+    ) -> tuple[str, bool]:
+        """The dst for a file named by path, and whether it is in the tree."""
+        rel_path = path.relative_to(self.repo_root).as_posix()
+        found = in_tree_file_id(
+            path, rel_path, _path_candidates(rel_path, written, suffixes),
+        )
+        if found is not None:
+            return found, True
+        return make_module_import_dst("rst", written), False
+
+    def _resolve_refs(self) -> None:
+        """One ``references`` edge per ``:ref:``, to the target it names."""
+        labels: dict[str, list[str]] = {}
+        for sym in self._symbols:
+            if sym.kind == "target":
+                labels.setdefault(" ".join(sym.name.lower().split()), []).append(sym.id)
+        for src_id, label, line in self._pending_refs:
+            found = labels.get(" ".join(label.lower().split()), [])
+            dst_ref = None
+            if len(found) == 1:
+                dst = found[0]
+            else:
+                dst, dst_ref = external_target("rst", label, "ref")
+            self._edges.append(Edge.create(
+                src=src_id,
+                dst=dst,
+                edge_type="references",
+                line=line,
+                origin=PASS_ID,
+                origin_run_id=self._execution_id,
+                evidence_type="static",
+                evidence_lang="rst",
+                is_resolved=len(found) == 1,
+                dst_ref=dst_ref,
+            ))
 
     def analyze(self) -> AnalysisResult:
         """Run the RST analysis."""
@@ -144,6 +248,8 @@ class _RSTExtractor:
                 self._files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
                 continue
+
+        self._resolve_refs()
 
         duration_ms = int((time.time() - start_time) * 1000)
 
@@ -351,41 +457,54 @@ class _RSTExtractor:
 
         # Extract include directive as edge
         if directive_type == "include" and arguments:
+            dst, in_tree = self._file_dst(path, arguments)
             edge = Edge.create(
                 src=symbol_id,
-                dst=f"rst:file:{arguments}",
+                dst=dst,
                 edge_type="includes",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=self._execution_id,
                 evidence_type="static",
                 evidence_lang="rst",
+                is_resolved=in_tree,
             )
             self._edges.append(edge)
 
     def _extract_toctree_entries(
         self, node: "tree_sitter.Node", path: Path, source_id: str
     ) -> None:
-        """Extract entries from a toctree directive."""
+        """Extract entries from a toctree directive, one per content line."""
         for child in node.children:
             if child.type == "body":
                 for body_child in child.children:
                     if body_child.type == "content":
-                        for content_child in body_child.children:
-                            if content_child.type == "text":
-                                entry = _get_node_text(content_child).strip()
-                                if entry and not entry.startswith(":"):
-                                    edge = Edge.create(
-                                        src=source_id,
-                                        dst=f"rst:doc:{entry}",
-                                        edge_type="includes",
-                                        line=content_child.start_point[0] + 1,
-                                        origin=PASS_ID,
-                                        origin_run_id=self._execution_id,
-                                        evidence_type="static",
-                                        evidence_lang="rst",
-                                    )
-                                    self._edges.append(edge)
+                        first_line = body_child.start_point[0] + 1
+                        lines = _get_node_text(body_child).splitlines()
+                        for offset, line in enumerate(lines):
+                            entry = _explicit_target(line)
+                            if not entry or entry.startswith(":"):
+                                continue
+                            if entry == "self":
+                                dst, in_tree = make_file_id(
+                                    "rst", path.relative_to(self.repo_root).as_posix(),
+                                ), True
+                            else:
+                                dst, in_tree = self._file_dst(
+                                    path, entry, _DOCUMENT_SUFFIXES,
+                                )
+                            edge = Edge.create(
+                                src=source_id,
+                                dst=dst,
+                                edge_type="includes",
+                                line=first_line + offset,
+                                origin=PASS_ID,
+                                origin_run_id=self._execution_id,
+                                evidence_type="static",
+                                evidence_lang="rst",
+                                is_resolved=in_tree,
+                            )
+                            self._edges.append(edge)
 
     def _extract_target(self, node: "tree_sitter.Node", path: Path) -> None:
         """Extract a reference target."""
@@ -446,18 +565,34 @@ class _RSTExtractor:
         if role not in ("ref", "doc", "any", "mod", "func", "class", "meth", "attr"):
             return
 
-        rel_path = path.relative_to(self.repo_root)
-        src_id = f"rst:{rel_path}"
+        src_id = make_file_id("rst", path.relative_to(self.repo_root).as_posix())
+        target = _explicit_target(target)
+        line = node.start_point[0] + 1
+        if not target:
+            return
+        if role == "ref":
+            # Labels are global: resolved once every file's targets are known.
+            self._pending_refs.append((src_id, target, line))
+            return
+
+        dst_ref: Optional[ExternalRef] = None
+        if role == "doc":
+            dst, in_tree = self._file_dst(path, target, _DOCUMENT_SUFFIXES)
+        else:
+            # An object of another domain (``:func:`pkg.mod.fn```).
+            (dst, dst_ref), in_tree = external_target("rst", target, role), False
 
         edge = Edge.create(
             src=src_id,
-            dst=f"rst:{role}:{target}",
+            dst=dst,
             edge_type="references",
-            line=node.start_point[0] + 1,
+            line=line,
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="static",
             evidence_lang="rst",
+            is_resolved=in_tree,
+            dst_ref=dst_ref,
         )
         self._edges.append(edge)
 

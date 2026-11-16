@@ -1,0 +1,67 @@
+- op: create  # 4069
+  at: '2026-10-27T09:13:17Z'  # 4069
+  by: agent  # 4069
+  actor: jgstern_agent  # 4069
+  clock: 1  # 4069
+  nonce: '4069'  # 4069
+  data:  # 4069
+    kind: work_item  # 4069
+    title: "ADR-0050 section 1 covers only a READING as a simultaneous second boundary; 29 of 35 shipped simultaneous primitives pair two CROSSINGS (ipc_recv+subprocess 23), which the axiom cannot be applied to"  # 4069
+    status: todo_hard  # 4069
+    priority: 4  # 4069
+    parent:  # 4069
+    tags:  # 4069
+    - io_boundary  # 4069
+    - catalogue  # 4069
+    - axis  # 4069
+    isbefore: []  # 4069
+    duplicate_of: []  # 4069
+    not_duplicate_of: []  # 4069
+    pr_ref:  # 4069
+    description: "Found 2026-10-27 by WI-ziruv while classifying ADR-0050's axiom. Needs a ruling (docs or catalogue), no behaviour defect shown.\n\nADR-0050 section 1: a row's PRIMARY boundary names the medium; \"A `simultaneous` SECOND boundary may record a reading of the same crossing that a taint label needs: that its content may carry a credential (env_read), or that the party who navigated to the page chose it (navigation_read).\"\nShipped catalogues carry 35 `simultaneous: true` rows (io_primitives/ and io_primitives_overlays/). Only the 6 env_read+navigation_read primitives are readings in that sense. The rest pair two CROSSINGS: ipc_recv+subprocess 23 (e.g. python subprocess.check_output, python.yaml:979-981: it launches a process AND reads its output), host_info_read+subprocess 3, fs_write+subprocess 3, net_recv+net_send 2, fs_read+fs_write 1, fs_read+logging 1 (counts per (file, module, name)).\nThe axiom neither permits nor forbids a second boundary that is itself a medium crossing, so it cannot be applied to those 29 primitives: nothing says which is primary or what the second means. Also open: WI-novap (scala Process.apply rowed fs_write simultaneous). Decide: extend section 1 with a sentence for a call that performs two crossings (and how first-declared-wins picks the primary), or move those rows."  # 4069
+    fields: {}  # 4069
+- op: update  # 11c4
+  at: '2026-10-27T09:25:52Z'  # 11c4
+  by: agent  # 11c4
+  actor: jgstern_agent  # 11c4
+  clock: 2  # 11c4
+  nonce: 11c4  # 11c4
+  set:  # 11c4
+    title: "ADR-0050 section 1 covers only a READING as a simultaneous second boundary; 33 of the 39 shipped simultaneous primitives pair two CROSSINGS (ipc_recv+subprocess 23), which the axiom cannot be applied to"  # 11c4
+    description: "Found 2026-10-27 by WI-ziruv while classifying ADR-0050's axiom. Needs a ruling (docs or catalogue), no behaviour defect shown.\n\nADR-0050 section 1: a row's PRIMARY boundary names the medium; \"A `simultaneous` SECOND boundary may record a reading of the same crossing that a taint label needs: that its content may carry a credential (env_read), or that the party who navigated to the page chose it (navigation_read).\"\nShipped catalogues carry 35 `simultaneous: true` rows (io_primitives/ and io_primitives_overlays/) naming 39 primitives. Only the 6 env_read+navigation_read primitives are readings in that sense. The other 33 pair two CROSSINGS: ipc_recv+subprocess 23 (e.g. python subprocess.check_output, python.yaml:979-981: it launches a process AND reads its output), host_info_read+subprocess 3, fs_write+subprocess 3, net_recv+net_send 2, fs_read+fs_write 1, fs_read+logging 1 (counts per (file, module, name)).\nThe axiom neither permits nor forbids a second boundary that is itself a medium crossing, so it cannot be applied to those 33 primitives: nothing says which is primary or what the second means. Also open: WI-novap (scala Process.apply rowed fs_write simultaneous). Decide: extend section 1 with a sentence for a call that performs two crossings (and how first-declared-wins picks the primary), or move those rows."  # 11c4
+- op: discuss  # 981c
+  at: '2026-10-27T09:26:36Z'  # 981c
+  by: agent  # 981c
+  actor: jgstern_agent  # 981c
+  clock: 3  # 981c
+  nonce: 981c  # 981c
+  message: "2026-10-27 correction: the first filing said 29 of 35. Recount from the YAML: 35 simultaneous: true rows name 39 primitives (a row can list several names); 6 are env_read+navigation_read, 33 pair two crossings. Title and description corrected."  # 981c
+- op: discuss  # 8712
+  at: '2026-10-27T21:26:30Z'  # 8712
+  by: agent  # 8712
+  actor: jgstern_agent  # 8712
+  clock: 4  # 8712
+  nonce: '8712'  # 8712
+  message: "2026-10-27 INVESTIGATION (owner-requested; ADR-0049/0050, INV-zumin, code, all 39 primitives). Recommendation: option (1), amend ADR-0050 section 1. The rows match what the mechanism was built for; the axiom sentence is narrower than the mechanism.\n\nFACTS\n- The simultaneous flag was minted (INV-zumin, IoPrimitive docstring) for a call that is TRUE under several boundaries at once; its worked example is a launch that also writes. WI-rutup's section 1 sentence later described one use of it, the content or chooser READING.\n- Consumers treat a simultaneous edge as reaching ALL its boundaries: boundaries_of(), compute_boundary_map's one-chain-per-boundary fan-out, taint minting per boundary. \"Primary\" is only the scalar meta.io_boundary, set first-declared-wins by CATALOG_BOUNDARY_TYPES order. Its 5 readers are presence checks or fan-outs, and boundaries_of's docstring calls a scalar reader a bug.\n- So the stored \"primary\" is not the axiom's primary: for the 6 URL rows the scalar is env_read, while section 1 says the medium (navigation_read) is primary.\n- ADR-0049 ruling 1 / INV-lozat already justify the 23 ipc_recv+subprocess rows, each a launch plus a transfer of the child's bytes at the call.\n\nTHE 39 under the widened rule (\"a simultaneous boundary is a reading of the same crossing that a taint label needs, OR a second crossing the same call performs AT THIS CALL SITE that itself satisfies the axiom\"):\n- hold, 32: ipc_recv+subprocess 23; env_read+navigation_read 6; erlang filelib.ensure_dir (fs_read+fs_write); python builtins.license (fs_read+logging); objc NSURLConnection sendSynchronousRequest (net_send+net_recv).\n- fail, 4:\n  - scala Process.apply / Process.Process / Process.run (fs_write+subprocess). apply builds a ProcessBuilder and launches nothing; the fs_write is what the child may do later, which the axiom's \"not what the program is arranged to do later\" clause excludes. That is WI-novap.\n  - objc NSURLConnection sendAsynchronousRequest's net_recv: the response arrives in completionHandler, a deferred receive. That is WI-mapim's shape (it names NSURLSession; this row is the same).\n- judgment, 3: python platform.architecture / platform / processor (host_info_read+subprocess). The returned data's medium is the child's stdout (ipc_recv), its content host description. Keep: ipc_recv would mint untrusted_input for host facts, and host_info_read works here as the reading the host_description label needs.\n\nPROPOSED section 1 text (the third sentence): \"A `simultaneous` second boundary records either a reading of the same crossing that a taint label needs (as above), or a second crossing the same call performs at this call site, which must satisfy this axiom on its own. Every simultaneous boundary is a fact about the call, and consumers read them all (`boundaries_of`). The scalar `io_boundary` is the first declared in vocabulary order and carries no primacy.\""  # 8712
+- op: discuss  # bc38
+  at: '2026-10-27T21:41:05Z'  # bc38
+  by: agent  # bc38
+  actor: jgstern_agent  # bc38
+  clock: 5  # bc38
+  nonce: bc38  # bc38
+  message: "OWNER RULING 2026-10-27 (in session): yes to the amendment. ADR-0050 section 1 is widened: a simultaneous second boundary is either a reading of the same crossing that a taint label needs, or a second crossing the same call performs at this call site, which must satisfy the axiom on its own; every simultaneous boundary is a fact consumers read (boundaries_of), and the scalar io_boundary carries no primacy. Rows that fail it stay with WI-novap (scala Process.*) and WI-mapim (NSURLConnection async)."  # bc38
+- op: update  # 9781
+  at: '2026-10-27T22:10:08Z'  # 9781
+  by: agent  # 9781
+  actor: jgstern_agent  # 9781
+  clock: 6  # 9781
+  nonce: '9781'  # 9781
+  set:  # 9781
+    status: done  # 9781
+- op: discuss  # c4cb
+  at: '2026-10-27T22:10:08Z'  # c4cb
+  by: agent  # c4cb
+  actor: jgstern_agent  # c4cb
+  clock: 7  # c4cb
+  nonce: c4cb  # c4cb
+  message: "Done in PR #1907 (ff3be24026), on the owner ruling above. ADR-0050 section 1 now says a simultaneous second boundary is a reading the taint label needs, or a second crossing the same call performs at this call site that satisfies the axiom on its own, and that none is primary. The ADR records the check of all 39 primitives: 32 hold, 3 are kept by judgment (python platform.*), 4 fail and are already filed (WI-novap, WI-mapim). The same sentence was updated in io_boundary_types, the concept-axes generator and docs/concept-axes.md, and the falsifiability survey. Docs only; no rows changed, so there is no behaviour to re-run."  # c4cb

@@ -11,7 +11,6 @@ Covered branches:
 - extract_usage_value: unrecognized transform falls through all elif (535->525)
 - extract_usage_value: "last" transform with preceding "split:" (535 true branch)
 - extract_usage_value: "last" without preceding "split:" (539->525, 540->539)
-- extract_usage_value: dead code check for " | " (537->525, unreachable but tested)
 - enrich_symbols: symbol with empty name skipped in lookup (954->953)
 - enrich_symbols: duplicate simple_name, non-callable doesn't overwrite (958->953)
 """

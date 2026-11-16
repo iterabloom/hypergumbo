@@ -22,3 +22,10 @@
     fields:  # 37fc
       statement: "GLSL 3.30+ declarations such as `layout(location = 0) in vec3 pos;` and `layout(std140) uniform Block {...}` produce symbols; function identity is case-sensitive."  # 37fc
       root_cause: "glsl.py ~243-248 classifies declarations with text.startswith('uniform'/'in '/'out '); names are lowercased at ~202/305/353."  # 37fc
+- op: discuss  # b1ab
+  at: '2026-11-01T10:56:09Z'  # b1ab
+  by: agent  # b1ab
+  actor: jgstern_agent  # b1ab
+  clock: 2  # b1ab
+  nonce: b1ab  # b1ab
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs1/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: shader with layout(location=0) in vec3 pos and layout(std140) uniform Block produces no symbol for either (plain uniform/in/out do); MyFn(1.0) emits calls main -> myfn. glsl.py:274-278 startswith classification and .lower() keys at :233/:339/:392 unchanged; _make_edge_id/hashlib still referenced only by its own test. Symbol names keep case; only lookup keys are lowercased. MECHANISM: declarations classified by text prefix instead of qualifier nodes; symbol registry keyed case-insensitively."  # b1ab

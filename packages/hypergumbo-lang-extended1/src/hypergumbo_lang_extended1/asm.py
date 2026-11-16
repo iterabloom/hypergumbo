@@ -9,7 +9,8 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract labels as symbols
-2. Pass 2: Detect call instructions and resolve targets against label registry
+2. Pass 2: Detect ``call`` instructions (only that mnemonic; ``callq``, ``bl``,
+   ``blx``, ``jal`` and jumps are not read) and resolve targets against label registry
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the assembly-specific extraction
@@ -32,7 +33,11 @@ Assembly-Specific Considerations
 - Indirect calls through CPU registers (e.g. `call rax`) are skipped via the
   `_REGISTER_NAMES` set, since registers aren't function names and would
   otherwise create false external call edges.
-- Section directives (.text, .data, .bss, .rodata) hint at symbol purpose
+- Section context sets a label's kind: a label after ``.section .data``,
+  ``.section .bss`` or ``.section .rodata`` is a variable, every other label
+  a function (the file starts in ``.text``). Only the ``.section <name>`` form
+  switches the section; bare ``.text`` / ``.data`` / ``.bss`` directives are
+  not tracked, and subsection names such as ``.rodata.str1.1`` count as text.
 - Identity (ADR-0035 §1, scheme v9; INV-punig): a local label (numeric
   ``1:``, which GAS lets a file repeat, or dotted ``.loop`` / ``.Lx``) hashes
   the global label before it (``overload_arity.nested_qualified_name``), so

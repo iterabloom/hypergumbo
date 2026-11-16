@@ -1,0 +1,36 @@
+- op: create  # f991
+  at: '2026-11-15T19:48:10Z'  # f991
+  by: agent  # f991
+  actor: jgstern_agent  # f991
+  clock: 1  # f991
+  nonce: f991  # f991
+  data:  # f991
+    kind: work_item  # f991
+    title: "spec section 14 3a does not disclose that Poetry, optional-dependency and PEP 735 pyproject tables yield no dependency nodes, though INV-kutub's closing note says the limits are disclosed there"  # f991
+    status: todo_soft  # f991
+    priority: 4  # f991
+    parent:  # f991
+    tags:  # f991
+    - docs  # f991
+    - supply_chain  # f991
+    isbefore: []  # f991
+    duplicate_of: []  # f991
+    not_duplicate_of: []  # f991
+    pr_ref:  # f991
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT (documentation). docs/hypergumbo-spec.md section \"3a. Dependency declarations\" (line 1980 onward) ends with a\n\"Not recognized:\" list (line 2003) that names a Cargo dependency renamed with `package = \"...\"` and go.mod. It does\nnot name the pyproject tables that emit no dependency node: `[project.optional-dependencies]`,\n`[tool.poetry.dependencies]`, `[tool.poetry.group.*.dependencies]`, `[tool.poetry.dev-dependencies]` and\n`[dependency-groups]` (PEP 735). Only `[project].dependencies` does (toml_config.py:270; WI-kagap-radad-zomuh-ruhal-fipuv-bonid-tibig-vufil, open, is the\ndefect itself). INV-kutub-napih-rudak-lijam-hozof-zavih-sigip-ropop's closing note says what the matcher does not cover is \"disclosed in spec section 14 3a\";\nfor these tables it is not (`git log -S\"PEP 735\" -- docs/hypergumbo-spec.md` returns no commit).\n\nA second, related fact for the same paragraph: import directness is computed separately by py_deps.py, which reads\n`[project].dependencies`, `[project.optional-dependencies]` and `[tool.poetry.dependencies]`; an import declared\nonly in `[dependency-groups]`, a Poetry group or `[tool.poetry.dev-dependencies]` is stamped `undeclared`.\n\nASK. Add the five tables to the \"Not recognized\" list, with the directness consequence for the three that py_deps\ndoes not read; remove the entries again when WI-kagap-radad-zomuh-ruhal-fipuv-bonid-tibig-vufil ships.\n\nACCEPTANCE. The spec section lists each pyproject table with what is and is not produced for it, and a test or the\nspec-contract pin covers the sentence if one exists for this section.\n\nNOT CHECKED: whether other manifest formats have undisclosed tables of the same kind (package.json\noptionalDependencies and peerDependencies, Cargo target-specific tables)."  # f991
+    fields: {}  # f991
+- op: update  # 817d
+  at: '2026-11-16T04:57:53Z'  # 817d
+  by: agent  # 817d
+  actor: jgstern_agent  # 817d
+  clock: 2  # 817d
+  nonce: 817d  # 817d
+  set:  # 817d
+    status: done  # 817d
+- op: discuss  # d02e
+  at: '2026-11-16T04:57:53Z'  # d02e
+  by: agent  # d02e
+  actor: jgstern_agent  # d02e
+  clock: 3  # d02e
+  nonce: d02e  # d02e
+  message: "Done in PR #2198: spec section 14 3a lists the eleven pyproject tables with their dependency_scope, the entries that name no package, the identity and linking rule, the directness gate and what is not read; a test checks the spec table against the code list in both directions. The item's NOT CHECKED (package.json optional/peerDependencies, Cargo target tables) is still not checked."  # d02e

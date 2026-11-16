@@ -1,0 +1,5 @@
+from bedcore.chain_a import run_a
+
+
+def test_run_a():
+    assert run_a(1) == 9

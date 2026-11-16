@@ -74,11 +74,9 @@ def test_main_uses_sys_argv_when_argv_not_provided(tmp_path, monkeypatch):
 def test_usage_metavar_includes_every_registered_subparser():
     """WI-zunos: every registered subparser must appear in the usage line.
 
-    Previously the metavar was a hardcoded string that drifted as new
-    subcommands were added (config, dead-code-maybe, verify-claims,
-    cache-status, cache-clear were all silently omitted). The fix
-    builds the metavar dynamically from the registered subparsers,
-    so every command shows up in `hypergumbo --help`.
+    A hardcoded metavar drifts as subcommands are added and silently drops
+    them from `hypergumbo --help`; the metavar must be built from the
+    registered subparsers.
     """
     parser = build_parser()
     sub_action = next(
@@ -87,14 +85,17 @@ def test_usage_metavar_includes_every_registered_subparser():
     )
     metavar = sub_action.metavar
     assert metavar is not None
-    # Every registered subparser name appears in the metavar. The deprecated
-    # ``run`` alias (ADR-0042) is intentionally hidden — it is an alias of
-    # ``survey`` (which does appear), so it is excluded here.
-    for name in sub_action.choices:
-        if name == "run":
-            continue
+    # Every registered subparser appears in the metavar under its own name.
+    # An alias (``run`` for ``survey``, ADR-0042; ``catalogue`` for
+    # ``catalog``) is the same parser under a second name and is not listed.
+    primaries = {a.dest for a in sub_action._choices_actions}
+    assert {id(sub_action.choices[name]) for name in primaries} == {
+        id(parser_) for parser_ in sub_action.choices.values()}
+    assert {"run", "catalogue"} <= set(sub_action.choices) - primaries
+    for name in primaries:
         assert name in metavar, f"{name!r} missing from sub.metavar={metavar!r}"
-    # Explicit guards for the five that were previously missing.
+    # Explicit guards for five named commands, so the test still fails if a
+    # command drops out of the choices and the metavar together.
     for previously_missing in (
         "config", "dead-code-maybe", "verify-claims",
         "cache-status", "cache-clear",

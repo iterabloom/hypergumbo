@@ -1,0 +1,22 @@
+- op: create  # 0d41
+  at: '2026-10-30T21:49:15Z'  # 0d41
+  by: agent  # 0d41
+  actor: jgstern_agent  # 0d41
+  clock: 1  # 0d41
+  nonce: 0d41  # 0d41
+  data:  # 0d41
+    kind: work_item  # 0d41
+    title: "a --first-party-only map holds tier-3 boundary nodes: boundary nodes are created after the tier filter"  # 0d41
+    status: todo_hard  # 0d41
+    priority: 3  # 0d41
+    parent:  # 0d41
+    tags:  # 0d41
+    - concept_audit  # 0d41
+    - consumer_agreement  # 0d41
+    - supply_chain  # 0d41
+    isbefore: []  # 0d41
+    duplicate_of: []  # 0d41
+    not_duplicate_of: []  # 0d41
+    pr_ref:  # 0d41
+    description: "From WI-borib (docs/audits/0026; agent D, live run in ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/D_run/). Verdict PIN. One tier classifier (supply_chain.classify_file), with side paths that disagree with it:\n1. A --first-party-only map records max_tier_applied=1 and holds 5 tier-3 boundary nodes: boundary nodes are created after the tier filter.\n2. profile own_files uses path patterns only, so it counts minified files and dist/ output the map calls tier 4.\n3. Route promotion to tier 1 runs only in run_survey.\n4. The js_module workspace index skips only node_modules; the declaration-tier walk skips more.\n\nACCEPTANCE: a property test -- with max_tier_applied = k, no node in the map has tier > k -- with a reach control; the own_files / tier-4 difference named or removed."  # 0d41
+    fields: {}  # 0d41

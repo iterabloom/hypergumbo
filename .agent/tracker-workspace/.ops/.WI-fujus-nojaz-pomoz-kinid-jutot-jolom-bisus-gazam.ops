@@ -27,3 +27,26 @@
   clock: 2  # 720c
   nonce: 720c  # 720c
   message: "Scaffold note 2026-10-16: the Lit scaffold in packages/htrac-frontend is being removed (owner decision; see WI-popal). This view starts from a fresh React scaffold (Vite + React), since BlockNote, @xyflow/react and Excalidraw are all React; the old ws-client.ts / service worker are recoverable from git history if useful."  # 720c
+- op: discuss  # baf2
+  at: '2026-11-01T22:22:32Z'  # baf2
+  by: agent  # baf2
+  actor: jgstern_agent  # baf2
+  clock: 3  # baf2
+  nonce: baf2  # baf2
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/tool1/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at dev 9ae4abe13f. Not obsolete: ADR-0019 (amended 2026-10-17) and ADR-0062 (00e944eab4, 2026-10-29) name WI-fujus as the planned BlockNote view. Stale parts: packages/htrac-frontend and its Lit scaffold were removed in 86cb7d3a37. Yjs 13.6 is now decided. Under ADR-0062 section 1, posted discussion entries are op-only plain strings and drafts are Y.Map<client_token, Y.Text>, one per client, so 'two clients co-edit a discussion draft' cannot happen; co-editing applies only to title and description. Item C is WI-rudat and item D is WI-vojil (both todo_hard, with isbefore edges in place). MECHANISM: the view was specced against the removed Lit scaffold, before ADR-0062 fixed the doc shape; posted discussion is op-only and drafts are one Y.Text per client. SHARES MECHANISM WITH: WI-kinab,WI-divug."  # baf2
+- op: update  # 59cf
+  at: '2026-11-01T22:22:32Z'  # 59cf
+  by: agent  # 59cf
+  actor: jgstern_agent  # 59cf
+  clock: 4  # 59cf
+  nonce: 59cf  # 59cf
+  set:  # 59cf
+    title: "Live tracker doc (ADR-0062): BlockNote editor for title/description Y.Text and per-client discussion drafts in a new React app; writes via WI-rudat"  # 59cf
+- op: update  # 4811
+  at: '2026-11-01T22:22:32Z'  # 4811
+  by: agent  # 4811
+  actor: jgstern_agent  # 4811
+  clock: 5  # 4811
+  nonce: '4811'  # 4811
+  set:  # 4811
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 9ae4abe13f. Not obsolete: ADR-0019 (amended 2026-10-17) and ADR-0062 (00e944eab4, 2026-10-29) name WI-fujus as the planned BlockNote view. Stale parts: packages/htrac-frontend and its Lit scaffold were removed in 86cb7d3a37. Yjs 13.6 is now decided. Under ADR-0062 section 1, posted discussion entries are op-only plain strings and drafts are Y.Map<client_token, Y.Text>, one per client, so 'two clients co-edit a discussion draft' cannot happen; co-editing applies only to title and description. Item C is WI-rudat and item D is WI-vojil (both todo_hard, with isbefore edges in place). (Original text below; the review entry in the thread has the evidence.)\n\n## What\nA BlockNote (`@blocknote/core` + `@blocknote/react`, MPL-2.0, Yjs-native via y-prosemirror) editor bound to an item's discussion/notes Y.Text in the live Y.Doc, mounted as a React island inside the existing Lit scaffold in packages/htrac-frontend (or a React page, if the scaffold moves to React -- Excalidraw/BlockNote/xyflow are all React). Reads arrive via the Yjs sync endpoint (item D); writes persist only through the op bridge (item C), so an edit becomes a `discuss` op with attribution.\n## Why BlockNote\nClosest maintained equivalent of BlockSuite's block/page mode (0.56.0, 2026-10-14) now that the BlockSuite npm line is dormant (last publish 2025-07-01). It peers on both `yjs ^13.6` and `@y/y ^14-rc`; follow the ADR's version choice.\n## Done when\nTwo clients co-edit a discussion draft and the committed text appears in the ops log as a `discuss` op by the right author; the view degrades to read-only when the bridge is unavailable. Frontend typechecks and builds (no CI runs the frontend today -- state that in the PR and run it locally).\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4."  # 4811

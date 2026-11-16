@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# hypergumbo's in-repo self-audit catalogue — the ANALYSED REPOSITORY as a taint
+# source (WI-pakag, 2026-11-04; measurement docs/measurements/0032).
+#
+# The eighteen entry-point claims take a CLI handler as the source: they say
+# what each subcommand can reach. For a tool whose job is to read arbitrary
+# repositories, the threat that matters is the repository itself: data it
+# chose reaching a write outside the zones, a launch, or the network. This
+# file names that data so a claim can take it as its source.
+#
+# WHERE REPO CONTENT ENTERS. `fs_read` mints no taint label by design
+# (taint.py: a read is not a source), so the repository is declared here as
+# a caller-seeded source on discovery, the one place every analyzer gets the
+# paths the repository chose: `find_files` / `find_non_test_files` and the
+# `FileIndex` views over the single walk. The walk seeds at the function that
+# asked (start_at: caller) and the DDG arm lifts the returned value through
+# `return` statements, so the contents read from those paths follow the names
+# wherever the def-use chain follows them.
+#
+# WHAT A CLAIM OVER THIS LABEL SAYS, AND DOES NOT SAY. The matcher is
+# function-granular and carries no argument identity (io_boundary.py: "The
+# walk carries NO argument identity"), so a claim can prohibit a ZONE for this
+# label and cannot say in which ARGUMENT the data arrived. Repo content
+# legitimately reaches user_cache, user_out and tmp_artifact as CONTENT (the
+# survey JSON is made of it); whether it also chose a PATH there is answered
+# today by the wrappers (each resolves its path and raises on zone escape) and
+# by reading the three sites where a repo-chosen value does sit in a path or
+# argv position (measurement 0032 §5), not by a claim.
+#
+# WHY NOT `pathlib.Path.read_text` AS THE ANCHOR. Measured: it labels every
+# file read in the shipped scope, including the tracker package reading its
+# own ops and config, and reports those as "repo content" reaching the network
+# and a subprocess (7 and 161 flows, none of them the analysed repository).
+#
+# A NEW LABEL NEEDS A BARRIER TRANSFORM: zone_barrier_sanitizers.yaml is keyed
+# per input_taint and has no wildcard; without the analysed_repo_content
+# transform there, these claims report every wrapper's internal stdlib call
+# (test_self_catalog_barrier_coverage.py keeps the pairing).
+taint_label: analysed_repo_content
+
+sources:
+  python:
+    - module: hypergumbo_core.discovery
+      start_at: caller
+      return_tainted: true
+      functions:
+        - find_files
+        - find_non_test_files
+      methods:
+        # FileIndex views over the one walk. Method rows match only where the
+        # receiver is typed; on the tree-sitter map that is the minority of
+        # sites, which the untyped_receiver caveat discloses per claim.
+        - all_files
+        - by_extension
+        - by_name
+        - by_glob
+        - match_pattern

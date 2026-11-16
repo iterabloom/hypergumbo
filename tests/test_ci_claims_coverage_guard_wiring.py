@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The self-claims COVERAGE guard runs per PR (INV-jojog).
 
-``test_ci_self_claims_gate_scope.py`` records that the DRIFT gate's per-PR arm
-was removed on 2026-08-30 for cost, leaving detection to the twice-daily cron.
-Four of the five reds since were one shape -- a shipped call into a module the
-I/O catalogue cannot classify -- and that shape is decidable from the python
-analyzer's edges alone, in ~30 s. This pins the cheap arm that decides it:
+``test_ci_self_claims_gate_scope.py`` pins that the DRIFT gate has no per-PR
+arm, for cost, leaving detection to the twice-daily cron. The commonest drift --
+a shipped call into a module the I/O catalogue cannot classify -- is decidable
+from the python analyzer's edges alone, cheaply enough to run per PR. This pins
+the cheap arm that decides it:
 
 * the step exists in the per-PR pipeline and actually invokes the script;
 * its path filter covers everything that can move the answer -- shipped

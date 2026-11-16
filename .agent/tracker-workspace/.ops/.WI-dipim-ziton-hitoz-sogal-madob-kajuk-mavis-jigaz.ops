@@ -18,3 +18,19 @@
     pr_ref:  # 0f65
     description: "Extend _check_id_roundtrip (spec_validator.py) to enforce ADR-0036 Ruling-3's path/span sentinel enumeration, beyond the span start<=end check already shipped in PR #227: path '<external>' is the only legal non-file path sentinel; span '0-0' is the synthetic-no-location sentinel; span '1-1' is legal ONLY in the file pseudo-symbol triple (name='file', kind='file'). Anything outside the enumeration is a violation. Identity-neutral (validator-only). Land advisory first and run a schema-coverage-corpus + self-analysis scan before promoting to error — the memo flagged false-positive risk on uncatalogued conventions. Deferred follow-up of id-format:F3 (PR #227)."  # 0f65
     fields: {}  # 0f65
+- op: update  # 24cc
+  at: '2026-10-24T19:50:20Z'  # 24cc
+  by: agent  # 24cc
+  actor: jgstern_agent  # 24cc
+  clock: 2  # 24cc
+  nonce: 24cc  # 24cc
+  set:  # 24cc
+    status: done  # 24cc
+    pr_ref: '1836'  # 24cc
+- op: discuss  # f841
+  at: '2026-10-24T19:50:20Z'  # f841
+  by: agent  # f841
+  actor: jgstern_agent  # f841
+  clock: 3  # f841
+  nonce: f841  # f841
+  message: "Done in PR #1836 (dev 09525e1fd2), owner ruling 2026-10-24 (narrow + amend the table). Ruling 3 read literally flags correct ids (grpc census: 18 real 1-1 spans, 1,904 C++ include targets named file, 7 angle headers), so the table's reading was amended in ADR-0036 and two rules are enforced. (1) The file pseudo-symbol (name and kind 'file') has span 1-1, at error: 0 hits on grpc, whisper.cpp, sherpa-onnx. (2) No <unknown> path slot, at warning until WI-zihij's producers are fixed: grpc 221, whisper.cpp 361. LIVE on merged dev: hypergumbo run on a 2-file repo (CMakeLists.txt with target_link_libraries(app ${SOME_LIB}) + main.c) gives rc=0, and validation_report carries one warning for cmake:<unknown>:0-0:${SOME_LIB}:external_symbol. Both file nodes are 1-1:file:file, with no triple violation."  # f841

@@ -58,3 +58,19 @@
   set: {}  # e4ef
   add:  # e4ef
     tags: [awaits_bakeoff_validation]  # e4ef
+- op: update  # 744d
+  at: '2026-11-02T10:19:45Z'  # 744d
+  by: agent  # 744d
+  actor: jgstern_agent  # 744d
+  clock: 7  # 744d
+  nonce: 744d  # 744d
+  set: {}  # 744d
+  remove:  # 744d
+    tags: [awaits_bakeoff_validation]  # 744d
+- op: discuss  # 4b00
+  at: '2026-11-02T10:19:45Z'  # 4b00
+  by: agent  # 4b00
+  actor: jgstern_agent  # 4b00
+  clock: 8  # 4b00
+  nonce: 4b00  # 4b00
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). django: measured host-secret-no-network violated(3), host-description-no-network violated(2), both at urllib.request.OpenerDirector.open (recorded inconclusive(0) -> violated(1)/(2)). Tag stripped."  # 4b00

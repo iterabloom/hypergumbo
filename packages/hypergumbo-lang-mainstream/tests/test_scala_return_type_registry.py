@@ -1,19 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-gokop: a Scala receiver bound by INFERENCE takes the declared return type.
+"""A Scala receiver bound by INFERENCE takes the declared return type (WI-gokop).
 
-WHAT WAS MISSING. ``scala.py`` typed a receiver only from a DECLARED type: a
-parameter annotation, a ``val`` annotation or ``new``, a class parameter. Scala
-code mostly writes none of these::
+A DECLARED type -- a parameter annotation, a ``val`` annotation or ``new``, a
+class parameter -- is not enough to type Scala receivers. Scala code mostly
+writes none of these::
 
     val x = mk()          <- the return type of ``mk``
     mk().getEncoding()    <- a chained receiver
     a.b.close()           <- a parameterless member (``def b: T`` / ``val b: T``)
     this.helper()         <- the enclosing type
 
-Every receiver among them fell to the ``external`` sentinel with no
-``receiver_type_hint``. The base ``TreeSitterAnalyzer`` already aggregates every
-file's ``FileAnalysis.method_return_types`` into ``_method_return_type_registry``
-(swift and rust fill it); scala now fills it in Pass 1 and reads it in Pass 2.
+Typed from declarations alone, every receiver among them falls to the
+``external`` sentinel with no ``receiver_type_hint``. The base
+``TreeSitterAnalyzer`` aggregates every file's
+``FileAnalysis.method_return_types`` into ``_method_return_type_registry``
+(other analyzers, such as swift and rust, fill it too); scala fills it in
+Pass 1 and reads it in Pass 2.
 
 WHAT IS DELIBERATELY NOT INFERRED, pinned below so a later change has to argue
 with it:
@@ -24,13 +26,13 @@ with it:
   ``Option.getOrElse`` to ``T`` and earn a hint that is wrong. (Rust unwraps
   because its ``?`` / ``.unwrap()`` project the value at the call site; Scala has
   no such operator.) Every name Scala imports implicitly is refused as an
-  inferred type, as WI-pokam refused it for a generic base: it cannot qualify, so
-  its only reachable effect is the short-name mis-bind PR #892 measured.
+  inferred type, as it is for a generic base (WI-pokam): it cannot qualify, so
+  its only reachable effect is a short-name mis-bind.
 * The NEAREST binder of a name decides. A typed ``val`` outside a lambda does
   not type the lambda's same-named parameter. When the nearest binder's type
-  cannot be said, the file-wide declared map answers as it did before -- kept on
-  measurement (see ``_ScalaReceiverTyper``): the stricter reading dropped ~250
-  hints per corpus repo that were mostly right by naming convention.
+  cannot be said, the file-wide declared map answers (see
+  ``_ScalaReceiverTyper``): the stricter reading, which refuses the map there,
+  drops many hints that are right by naming convention.
 """
 
 from __future__ import annotations
@@ -200,7 +202,7 @@ def _slot(edge) -> str:
 
 
 class TestInferredReceiverIsTyped:
-    """The four shapes the item names, plus the members a chain walks through."""
+    """The four shapes the module docstring names, plus the members a chain walks through."""
 
     def test_val_bound_to_a_call_result(self, edges: list) -> None:
         e = _edge(edges, 'x.write("callResult")', "write")
@@ -275,10 +277,10 @@ class TestDeliberatelyNotInferred:
         assert _hint(e) is None and _slot(e) == "external"
 
     def test_an_untyped_binder_defers_to_the_file_wide_map(self, edges: list) -> None:
-        """PINNED PRE-EXISTING BEHAVIOUR, kept on measurement. ``leaky`` here is
-        an inferred val whose type cannot be said; the file-wide map still answers
-        from ``leakSource``'s annotated val, as it always has (ADR-0006 "Scope
-        Handling"). The map is neither widened nor narrowed by this change."""
+        """PINNED: ``leaky`` here is an inferred val whose type cannot be said,
+        so the file-wide map answers from ``leakSource``'s annotated val
+        (ADR-0006 "Scope Handling"). The return-type registry neither widens
+        nor narrows that map."""
         control = _edge(edges, "leaky.flush()", "flush")
         assert _hint(control) == "FileWriter"
         e = _edge(edges, 'leaky.write("leakTarget")', "write")
@@ -288,10 +290,9 @@ class TestDeliberatelyNotInferred:
 class TestNestedTypeReference:
     """A return type written as a TYPE MEMBER of a project object
     (``Outer.Inner``) is the type ``Inner``: its members are looked up by the
-    leaf. Measured on sbt: ``NetworkClient.parseArgs`` returns
-    ``NetworkClient.Arguments``, and ``parseArgs(..).withBaseDirectory(..)``
-    stayed unresolved -- and a parameter typed ``Arguments`` that the registry
-    re-typed lost the bind it had before."""
+    leaf. Kept whole, a return type such as ``NetworkClient.Arguments`` leaves
+    ``parseArgs(..).withBaseDirectory(..)`` unresolved, and re-typing a
+    parameter declared ``Arguments`` to it loses that parameter's bind."""
 
     _FILES: ClassVar[dict[str, str]] = {
         "lib/Lib.scala": (
@@ -357,10 +358,10 @@ class TestImplicitNameCollider:
     implicitly, does not capture the standard library's: outside that object
     and with no import, ``Map(pairs*)`` is ``scala.Predef.Map``.
 
-    Measured, not hypothetical: sbt declares ``SessionVar.Map`` (a case class
-    with a ``get``), and reading ``val mappings = Map(mappingList*)`` and
-    ``Map[String, X](..)`` as that case class bound two ``.get`` calls to it --
-    the collider WI-pokam measured, reached through a case-class ``apply``. The
+    Reading ``val m = Map(..)`` or ``Map[K, V](..)`` as a project case class
+    ``SessionVar.Map`` (one with a ``get``) through its ``apply`` would bind
+    the standard map's ``.get`` calls to that case class -- the same
+    implicit-name collision WI-pokam guards for generic bases. The
     companion-style owner path (``List.empty``) is refused by the same rule.
     """
 
@@ -423,12 +424,12 @@ object Use {
 class TestSameNamedTypesInTwoPackages:
     """A qualified type decides WHICH same-named type a bind may land on.
 
-    Measured on lila, where 74 files declare a class ``Env``:
-    ``env.tournament.version(id)`` -- typed ``lila.tournament.Env`` through the
-    registry -- bound to ``lila.challenge.Env.version``, because members are
-    looked up by the SIMPLE name and the resolver keeps one ``Env.version``.
-    The qualified path now has to agree with the symbol (the WI-tipoh check), so
-    a call binds into its own package or stays unresolved -- never across.
+    Members are looked up by the SIMPLE name and the resolver keeps one
+    ``Env.version``, so when several packages each declare a class ``Env``, a
+    call typed ``lila.tournament.Env`` through the registry could bind to
+    ``lila.challenge.Env.version``. The qualified path has to agree with the
+    symbol (the WI-tipoh check), so a call binds into its own package or stays
+    unresolved -- never across.
     """
 
     _FILES: ClassVar[dict[str, str]] = {

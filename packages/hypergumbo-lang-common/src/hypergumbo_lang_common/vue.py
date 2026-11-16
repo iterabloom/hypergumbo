@@ -32,8 +32,11 @@ Edges Extracted
 ---------------
 - **imports**: from the .vue file to each component its template uses
   (capitalized tags, or hyphenated tags that are not HTML or Vue
-  built-ins); resolved to the imported ``.vue`` path when the script
-  imports it, otherwise an unresolved dangling component target
+  built-ins). When the script imports it by a relative path
+  (``./Kid.vue``) and that file is in the tree, the edge ends on the
+  file's node (``file_reference_dst``); an aliased (``@/...``) or missing
+  path keeps ``vue:<path>:0-0:<Name>:component`` for the Vue component
+  linker; a tag with no import is an unresolved dangling component target
   (ADR-0023 §6 folded the former `imports_component` type into
   canonical `imports`)
 
@@ -59,13 +62,13 @@ Why This Design
 from __future__ import annotations
 
 import re
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    claim_declaration_silence,
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
@@ -74,6 +77,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.file_records import file_reference_dst
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -260,7 +264,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
                 before = len(symbols)
                 self._extract_symbols(
                     tree.root_node, path, repo_root, content,
-                    symbols, edges, current_imports,
+                    symbols, edges, current_imports, run.execution_id,
                 )
                 populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
                 files_analyzed += 1
@@ -269,6 +273,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
         duration_ms = int((_time.time() - start_time) * 1000)
         run.files_analyzed = files_analyzed
+        claim_declaration_silence(run, symbols, symbols, edges)
         run.duration_ms = duration_ms
 
         return AnalysisResult(
@@ -281,6 +286,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         content: bytes, symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Extract symbols from a syntax tree node.
 
@@ -290,7 +296,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
         self._extract_script_pass(node, path, repo_root, content, symbols, current_imports)
 
         # Second pass: extract template and style content
-        self._extract_template_style_pass(node, path, repo_root, content, symbols, edges, current_imports)
+        self._extract_template_style_pass(node, path, repo_root, content, symbols, edges, current_imports, execution_id)
 
     def _extract_script_pass(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
@@ -307,15 +313,16 @@ class VueAnalyzer(TreeSitterAnalyzer):
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         content: bytes, symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Second pass: extract template and style content."""
         if node.type == "template_element":
-            self._extract_template_content(node, path, repo_root, symbols, edges, current_imports)
+            self._extract_template_content(node, path, repo_root, symbols, edges, current_imports, execution_id)
         elif node.type == "style_element":
             self._extract_style_info(node, path, repo_root, symbols)
 
         for child in node.children:
-            self._extract_template_style_pass(child, path, repo_root, content, symbols, edges, current_imports)
+            self._extract_template_style_pass(child, path, repo_root, content, symbols, edges, current_imports, execution_id)
 
     def _extract_script_content(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
@@ -485,46 +492,56 @@ class VueAnalyzer(TreeSitterAnalyzer):
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Extract component usage from template element."""
-        self._extract_template_node(node, path, repo_root, symbols, edges, current_imports)
+        self._extract_template_node(node, path, repo_root, symbols, edges, current_imports, execution_id)
 
     def _extract_template_node(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Recursively extract from template nodes."""
         if node.type == "element":
-            self._process_element(node, path, repo_root, symbols, edges, current_imports)
+            self._process_element(node, path, repo_root, symbols, edges, current_imports, execution_id)
             for child in node.children:
                 if child.type not in ("start_tag", "self_closing_tag"):
-                    self._extract_template_node(child, path, repo_root, symbols, edges, current_imports)
+                    self._extract_template_node(child, path, repo_root, symbols, edges, current_imports, execution_id)
             return
 
         for child in node.children:
-            self._extract_template_node(child, path, repo_root, symbols, edges, current_imports)
+            self._extract_template_node(child, path, repo_root, symbols, edges, current_imports, execution_id)
 
     def _process_element(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
         """Process an element node."""
         for child in node.children:
             if child.type == "start_tag":
-                self._process_tag(child, path, repo_root, symbols, edges, current_imports)
+                self._process_tag(child, path, repo_root, symbols, edges, current_imports, execution_id)
                 break
             elif child.type == "self_closing_tag":
-                self._process_tag(child, path, repo_root, symbols, edges, current_imports)
+                self._process_tag(child, path, repo_root, symbols, edges, current_imports, execution_id)
                 break
 
     def _process_tag(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         symbols: list[Symbol], edges: list[Edge],
         current_imports: dict[str, str],
+        execution_id: str,
     ) -> None:
-        """Process a tag node (start_tag or self_closing_tag)."""
+        """Process a tag node (start_tag or self_closing_tag).
+
+        ``execution_id`` is the pass's one AnalysisRun id, handed down from
+        ``analyze``: an edge that minted an id of its own here joined no run,
+        and the map failed the provenance cross-check on every component
+        reference.
+        """
         tag_name = ""
         directives: list[str] = []
         directive_values: list[str] = []
@@ -583,8 +600,6 @@ class VueAnalyzer(TreeSitterAnalyzer):
             )
         )
 
-        execution_id = f"uuid:{uuid.uuid4()}"
-
         if is_component:
             import_path = current_imports.get(tag_name, "")
             if not import_path and "-" in tag_name:
@@ -601,10 +616,13 @@ class VueAnalyzer(TreeSitterAnalyzer):
             # is a 5-part dangling component id so the relationship keeps
             # representation in the graph. See WI-vobiv for dst-id discipline.
             if import_path:
+                # A relative import of a file in the tree ends on that
+                # file's node; an aliased or missing one keeps the dangling
+                # component id for the Vue component linker to resolve.
                 component_name_from_path = Path(import_path).stem or tag_name
-                formatted_dst = (
-                    f"vue:{import_path}:0-0:{component_name_from_path}:component"
-                )
+                formatted_dst = file_reference_dst(
+                    "vue", path, rel_path.as_posix(), import_path,
+                ) or f"vue:{import_path}:0-0:{component_name_from_path}:component"
             else:
                 formatted_dst = f"vue:component:{tag_name}:0-0:{tag_name}:component"
             edge = Edge.create(

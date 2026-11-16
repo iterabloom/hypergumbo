@@ -27,3 +27,10 @@
   clock: 2  # 92e0
   nonce: '92e0'  # 92e0
   message: "Declarations landed in PR #1065: all 32 registrations now carry language_state=\"no_taxonomy_spec\" (31 where name==language, plus yaml_ansible -> ansible). The instrument is test_registry_language_vocabulary.py::TestEveryAnalyzerIsInADeclaredState::test_no_spec_state_languages_are_absent_from_the_taxonomy — it fails on a stale declaration, so disposition (a)/(b) for any entry is: add the spec or fold, delete the declaration, watch the test. The residual count is `grep -rl 'language_state=\"no_taxonomy_spec\"' packages/*/src` (32 today)."  # 92e0
+- op: discuss  # 7cda
+  at: '2026-11-01T10:56:10Z'  # 7cda
+  by: agent  # 7cda
+  actor: jgstern_agent  # 7cda
+  clock: 3  # 7cda
+  nonce: 7cda  # 7cda
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: grep finds 32 language_state=\"no_taxonomy_spec\" declarations, the same 32 names as filed (apex ... v, yaml_ansible). gleam/odin/ansible are not in taxonomy.LANGUAGES. A one-file .gleam fixture through hypergumbo survey gives profile.languages=[] while the gleam analyzer still emits main/hello functions. No entry has been dispositioned yet. MECHANISM: registered analyzer languages lack a taxonomy LanguageSpec, so profile/detection never see them."  # 7cda

@@ -88,8 +88,3 @@ patterns:
   # @AllowConcurrentEvents marks thread-safe event handlers
   - concept: event_handler
     decorator: "^AllowConcurrentEvents$"
-
-linkers:
-  - http
-  - database_query
-  - event-sourcing

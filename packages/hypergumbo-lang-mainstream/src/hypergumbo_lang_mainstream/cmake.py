@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """CMake analysis pass using tree-sitter-cmake.
 
-This analyzer uses tree-sitter to parse CMakeLists.txt files and extract:
+This analyzer uses tree-sitter to parse CMakeLists.txt and ``*.cmake`` files
+and extract:
 - Project definitions
 - Library targets (add_library)
 - Executable targets (add_executable)
@@ -29,7 +30,12 @@ Why This Design
 - Uses tree-sitter-cmake package for grammar
 - Shared target registry across files allows resolution of targets defined
   earlier in iteration order; unresolved names are treated as external library
-  references
+  references. Such a ``links`` edge ends at a stand-in in the id grammar
+  (``edge_target.external_target``): ``cmake:external:0-0:<name>:unresolved``
+  for a bare name, a ``${VAR}`` or a flag, and
+  ``cmake:<Pkg>:0-0:<Lib>:unresolved`` for an imported target ``Pkg::Lib``.
+  It was the four-slot string ``cmake:external:<name>:library``, which is no
+  id, so finalize gave it the path slot ``<unknown>``
 - Build-system-specific: targets, functions, macros are first-class
 
 Function and macro identity (WI-tusad)
@@ -41,10 +47,10 @@ argument count and the blocks enclosing the definition (:func:`_block_label`,
 as for targets below). CMake commands are global, but a project defines one
 conditionally (``if(WIN32) function(helper) ... else() function(helper)``),
 and the two definitions are two identities (INV-punig, scheme v9); a
-top-level definition hashes no chain. Without the count, two definitions of
-one name in a file shared the backstop floor key and were both left null;
-now ``function(run x)`` and a later ``function(run x y)`` hold ids that do not
-depend on each other. Every
+top-level definition hashes no chain. The count matters because two
+definitions of one name in a file would otherwise share the backstop floor
+key and both be left null; with it, ``function(run x)`` and a later
+``function(run x y)`` hold ids that do not depend on each other. Every
 CMake function also accepts extra arguments through ``ARGN``; that is true of
 all of them, so it is not recorded as a variadic entry and does not enter the
 hash.
@@ -57,8 +63,8 @@ command as the scope chain: each ``body`` is labelled by the command that
 opens it (``if(WIN32)``, ``function(setup)``, ``foreach(...)``; an
 ``elseif(APPLE)`` / ``else()`` branch under its ``if``: ``if(WIN32)`` /
 ``else()``; :func:`_block_label`). ``add_library(foo ...)`` in two
-branches of an ``if`` is two symbols that the floor key ``(kind, path,
-name)`` nulled. Two ``find_package(X)`` in one block remain a same-scope tie.
+branches of an ``if`` is two symbols, which the floor key ``(kind, path,
+name)`` alone would tie and null. Two ``find_package(X)`` in one block remain a same-scope tie.
 ``project`` keeps the backstop's table formula.
 """
 from __future__ import annotations
@@ -68,10 +74,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol,
+    make_pass_id,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_symbol_id, node_text,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -143,7 +153,7 @@ def _extract_cmake_signature(node: "tree_sitter.Node", source: bytes) -> Optiona
 
 def _command_definition_identity(
     node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
-) -> tuple[Optional[str], dict[str, object]]:
+) -> tuple[Optional[StableId], dict[str, object]]:
     """``(stable_id, meta)`` of a ``function()`` / ``macro()`` definition.
 
     See the module docstring: the named arguments become ``meta["parameters"]``
@@ -155,8 +165,8 @@ def _command_definition_identity(
         ],
     }
     # The definition node (``function_def`` / ``macro_def``) sits in the
-    # blocks that enclose it; a top-level definition has no chain and keeps
-    # the value ``qualified_name=name`` gave it before INV-punig.
+    # blocks that enclose it; a top-level definition has no chain, so its
+    # qualified name is just ``name`` (INV-punig).
     definition = node.parent if node.parent is not None else node
     stable_id = scoped_stable_id(
         kind=kind, lang="cmake", path=rel_path, name=name,
@@ -174,9 +184,11 @@ def _block_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     body and each branch is its own scope in a target's stable_id chain. A
     whole conditional (``if_condition``) is labelled by its ``if(...)``, and its
     first branch adds nothing more, so an ``elseif`` / ``else`` branch is
-    ``if(WIN32)`` / ``else()`` (the Makefile chain's shape): the ``else()`` of
-    two different conditionals were one label, and two definitions in them
-    tied (INV-punig). The ``if`` branch keeps the chain it had.
+    ``if(WIN32)`` / ``else()`` (the Makefile chain's shape). Labelling a
+    branch by its own command alone would give the ``else()`` of two
+    different conditionals one label, and two definitions in them would tie
+    (INV-punig). The ``if`` branch's chain is the conditional's ``if(...)``
+    label alone.
     """
     if node.type == "if_condition":
         return " ".join(node_text(node.children[0], source).split())
@@ -187,7 +199,7 @@ def _block_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 
 def _target_stable_id(
     node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
-) -> str:
+) -> StableId:
     """The ADR-0035 stable_id of a target-like command (see the docstring)."""
     return scoped_stable_id(
         kind=kind, lang="cmake", path=rel_path, name=name,
@@ -231,7 +243,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="project",
                     name=project_name,
                     path=rel_path,
@@ -258,7 +270,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=_target_stable_id(node, source, rel_path, "library", lib_name),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="library",
                     name=lib_name,
                     path=rel_path,
@@ -285,7 +297,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=_target_stable_id(node, source, rel_path, "executable", exe_name),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="executable",
                     name=exe_name,
                     path=rel_path,
@@ -315,12 +327,23 @@ def _process_cmake_tree(
                         if dep.lower() in visibility_keywords:
                             continue
                         # Look up dependency
-                        if dep.lower() in target_registry:
+                        dst_ref: Optional[ExternalRef] = None
+                        resolved = dep.lower() in target_registry
+                        if resolved:
                             dst_id = target_registry[dep.lower()]
                             confidence = 0.90
                         else:
-                            # External library reference
-                            dst_id = f"cmake:external:{dep}:library"
+                            # A library no file read so far defines: a
+                            # stand-in in the id grammar. An imported target
+                            # ``Pkg::Lib`` names its package, which goes in
+                            # the path slot (a colon in the name slot is no
+                            # id); a bare name, a ``${VAR}`` or a flag has no
+                            # known package.
+                            package, scoped, library = dep.rpartition("::")
+                            if scoped and package and library:
+                                dst_id, dst_ref = external_target("cmake", library, package)
+                            else:
+                                dst_id, dst_ref = external_target("cmake", dep)
                             confidence = 0.70
 
                         edge = Edge.create(
@@ -332,6 +355,8 @@ def _process_cmake_tree(
                             origin=PASS_ID,
                             evidence_type="cmake_target_link",
                             origin_run_id=run_id,
+                            is_resolved=resolved,
+                            dst_ref=dst_ref,
                         )
                         edges.append(edge)
 
@@ -346,7 +371,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=_target_stable_id(node, source, rel_path, "subdirectory", subdir),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="subdirectory",
                     name=subdir,
                     path=rel_path,
@@ -372,7 +397,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=_target_stable_id(node, source, rel_path, "package", pkg_name),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="package",
                     name=pkg_name,
                     path=rel_path,
@@ -404,7 +429,7 @@ def _process_cmake_tree(
                             id=symbol_id,
                             stable_id=stable_id,
                             shape_id=None,
-                            # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                            # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                             kind="function",
                             name=func_name,
                             path=rel_path,
@@ -447,7 +472,7 @@ def _process_cmake_tree(
                             id=symbol_id,
                             stable_id=stable_id,
                             shape_id=None,
-                            # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                            # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                             kind="macro",
                             name=macro_name,
                             path=rel_path,

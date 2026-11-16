@@ -148,8 +148,3 @@ patterns:
     symbol_kind: "^variable$"
     meta_match:
       constructed_from: "(.*\\.)?Blueprint$"
-
-linkers:
-  - http
-  - websocket
-  - orm

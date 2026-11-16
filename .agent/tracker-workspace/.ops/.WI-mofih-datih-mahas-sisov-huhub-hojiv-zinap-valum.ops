@@ -18,3 +18,18 @@
     pr_ref:  # 1d72
     description: "swift_objc.py (~line 196) builds its import edge's src as\n\n    file_id = f\"swift_objc:{rel_path}:1-1:file:file\"\n\n-- the PASS NAME in the language slot, not `make_file_id(<language>, rel_path)`. No Symbol is minted for it, so the id matches no node and the edge's src dangles. Its dst is the raw `#import` header string, not an id. Neither endpoint is a graph record. Sibling shape of INV-ronuf / INV-movor / INV-bahov (all satisfied for their own linkers), which fixed exactly this non-canonical-file-id class elsewhere.\n\nFound by the WI-latup derived_from sweep (verdict group 5). derived_from there is now `[]` with a `consumed-none` declaration; that is honest about the derivation and says nothing about the dangling endpoints, which are this row.\n\nFIX SHAPE: `make_file_id(\"objc\"|header language, rel_path)` for the src (reusing an existing canonical file Symbol when present, as js_module does via existing_file_symbol_by_canonical_id), and resolve the imported header to its file id (or a declared external placeholder) for the dst. Verify with the spec validator's dangling-endpoint check (WI-mujor) on a fixture."  # 1d72
     fields: {}  # 1d72
+- op: update  # f805
+  at: '2026-10-22T15:31:50Z'  # f805
+  by: agent  # f805
+  actor: jgstern_agent  # f805
+  clock: 2  # f805
+  nonce: f805  # f805
+  set:  # f805
+    status: done  # f805
+- op: discuss  # 5b72
+  at: '2026-10-22T15:31:50Z'  # 5b72
+  by: agent  # 5b72
+  actor: jgstern_agent  # 5b72
+  clock: 3  # 5b72
+  nonce: 5b72  # 5b72
+  message: "Fixed in c4d7ba35da (dev). swift_objc's import src is the existing file node (or make_file_id('objc', rel) when none), and its dst is objc:<header>:0-0:header:header, the cpp/objc header convention. Linker ids carry the swift language slot, and the role goes in the name via _ROLE_FOLDS. Live repro on dev ad12089f32: App-Bridging-Header.h (#import \"Legacy.h\", <UIKit/UIKit.h>), Legacy.h/.m, main.swift; hypergumbo run, survey.json. The swift-objc-linker run reports edges_emitted=2. Both merge into the objc analyzer's identical imports edges, possible only because the ids now agree: objc:App-Bridging-Header.h:1-1:file:file -> objc:Legacy.h:0-0:header:external_symbol and -> objc:UIKit/UIKit.h:0-0:header:external_symbol, src and dst both present as nodes. No id anywhere has the old swift_objc language slot (0). Not done: the in-repo Legacy.h import lands on a header placeholder, not on the Legacy.h file node (a resolution question, like WI-modan)."  # 5b72

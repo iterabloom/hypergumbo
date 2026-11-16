@@ -19,3 +19,32 @@
     pr_ref:  # e5d1
     description: "Found by the WI-tusad B4 batch (2026-10-12). The F# analyzer (packages/hypergumbo-lang-common/src/hypergumbo_lang_common/fsharp.py) emits no symbol for a class type (`type Shape(r: float) = ...`, tree-sitter node `anon_type_defn`) or for any member: `member this.Area = ...` (property), `member this.Scale(k)` and an overload `member this.Scale(k, j)` (methods), `static member`, `abstract member` slots and their `default`/`override` bodies, `member val X = ... with get, set` (auto-property), `new(...) = ...` (additional constructor), members of an `interface IFoo with` implementation, and `with member p.Len = ...` members on records/unions. They are absent from the graph, not null, so calls made inside a member body have no enclosing symbol and are dropped (the enclosing lookup walks only `function_or_value_defn`).\n\nMeasured on a probe file (B4 scratch): `type Shape(r) = member this.Area = r * r; member this.Scale(k: float) = r * k; member _.Scale(k: float, j: float) = ...` -> 0 symbols besides the module.\n\nCousin of INV-kagib (dropped declarations). Why not done in B4: emitting members well needs the class type symbol (kind class / interface), a member name and kind per form (property vs method vs constructor vs abstract slot), parameter parsing for tupled `(k: float, j: float)` arguments (the bundled grammar parses the whole tuple as ONE typed_pattern), the typed-tier producer id so overloads differ, and the enclosing-symbol walk extended to member_defn. Estimated M-L (~200-300 LoC + tests).\n\nInvariant: every declaration the analyzer recognises is emitted as its own symbol; same-name overloads get distinct producer stable_ids that do not move when an earlier overload is deleted. Acceptance: probe above emits Shape (class), Shape.Area, two Shape.Scale methods with distinct non-null ids; deleting the first Scale moves no other id; the gate fixture for fsharp gains a member."  # e5d1
     fields: {}  # e5d1
+- op: discuss  # 5422
+  at: '2026-11-01T10:55:57Z'  # 5422
+  by: agent  # 5422
+  actor: jgstern_agent  # 5422
+  clock: 2  # 5422
+  nonce: '5422'  # 5422
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: fixture with class Shape(r) (property, overloaded Scale, static member, member val), interface IFoo (abstract member) and Bar implementing IFoo emits only Geo:module, helper:function and the file node; calls from member bodies to helper are dropped. Interface and implementing types are not emitted either. MECHANISM: F# declaration and enclosing-symbol walks cover only function_or_value_defn. SHARES MECHANISM WITH: WI-losaf."  # 5422
+- op: discuss  # f863
+  at: '2026-11-15T19:25:54Z'  # f863
+  by: agent  # f863
+  actor: jgstern_agent  # f863
+  clock: 3  # f863
+  nonce: f863  # f863
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): probe `type Shape(r) = member Area / Scale(k) / Scale(k, j)` emits no Shape node and no member node. Wider fixture (static member, `member val`, `new()`, abstract member in interface IFoo, `interface IFoo with` in Bar, record `with member`) emits module, `helper`, record `P`, field `P.X` only; its three member bodies that call `helper`, and one in the probe, emit no calls edge. Enclosing walk still tests `function_or_value_defn` only (fsharp.py L592, L304). A class-level `let inner` IS emitted as `Shape.inner` with its calls, contained by the module since Shape has no node. Gate cases `fsharp` / `fsharp-nested` hold no member. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-tamib.md. No status or priority change made by this review."  # f863
+- op: update  # 00f7
+  at: '2026-11-16T04:57:53Z'  # 00f7
+  by: agent  # 00f7
+  actor: jgstern_agent  # 00f7
+  clock: 4  # 00f7
+  nonce: 00f7  # 00f7
+  set:  # 00f7
+    status: done  # 00f7
+- op: discuss  # 5a21
+  at: '2026-11-16T04:57:53Z'  # 5a21
+  by: agent  # 5a21
+  actor: jgstern_agent  # 5a21
+  clock: 5  # 5a21
+  nonce: 5a21  # 5a21
+  message: "Fixed in PR #2198. F# classes, interfaces, structs and their members (method, property, constructor, field; interface implementations, record/union members, type extensions) are symbols, and calls reach them where the source names the target (static through the type, construction, the self identifier, a typed value). Existing ids did not move: 0 declared gone on the fixtures and on rabbitmq deps/rabbit (34,595 of 34,595 base call edges kept). Dead-code on a calling fixture 5/4/1 -> 19/13/6, each remaining candidate uncalled except one reached only through an interface slot. ONLY TWO genuine F# files are cloned on this machine, so class and member forms are measured on fixtures. Residuals filed: is_exported is set on no F# symbol; interface dispatch; the last declaration of a file with no trailing newline is lost; nested modules emit no symbol."  # 5a21

@@ -19,3 +19,10 @@
     pr_ref:  # 2f78
     description: "Split from WI-jusus's residual tail. Ruby class-level CONSTANTS, @@class-vars, and attr_accessor/reader/writer already emit (699239d969). Method-body instance variables (def foo; @x = 1; end) are not emitted as field symbols. Needs a design call on whether per-instance @ivars set in methods should be fields (cf. Python self.x own-field emission); fails-safe: emit none rather than wrong."  # 2f78
     fields: {}  # 2f78
+- op: discuss  # 70fc
+  at: '2026-11-01T22:22:24Z'  # 70fc
+  by: agent  # 70fc
+  actor: jgstern_agent  # 70fc
+  clock: 2  # 70fc
+  nonce: 70fc  # 70fc
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f (fx_sobun: class Foo with LIMIT, @@count, attr_reader :name, @name/@size set in initialize). Survey emits fields Foo::LIMIT, Foo::@@count and Foo#name (from attr_reader) and no field for @size. ruby.py has no instance_variable handling. The design call is still open; premise holds. MECHANISM: ruby analyzer emits field symbols only for class-body constants, @@class-vars and attr_* calls; method-body @ivar assignments are never visited as declarations."  # 70fc

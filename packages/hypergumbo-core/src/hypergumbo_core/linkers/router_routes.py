@@ -116,7 +116,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
-from ..paths import is_test_file
+from ..paths import is_test_node
 from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
@@ -126,13 +126,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PASS_ID = make_pass_id("router-routes-linker")
-
-
-def _encloses(container_span: "Span", member_span: "Span") -> bool:
-    return (
-        container_span.start_line <= member_span.start_line
-        and container_span.end_line >= member_span.end_line
-    )
 
 
 def _span_size(span: "Span") -> int:
@@ -166,7 +159,7 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
         span = sym.span
         if span is None:
             continue
-        if is_test_file(sym.path):
+        if is_test_node(sym.path, sym.meta):
             continue
         if has_concept(sym, "router"):
             routers_by_file.setdefault(sym.path, []).append((sym, span))
@@ -183,7 +176,7 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
             enclosing = [
                 (r, r_span)
                 for r, r_span in routers
-                if _encloses(r_span, route_span)
+                if r_span.encloses(route_span)
             ]
             if not enclosing:
                 continue

@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Imports limits inside the function that needs it."""
+
+
+def late():
+    from bedcore import limits
+
+    return limits.CAP + 1

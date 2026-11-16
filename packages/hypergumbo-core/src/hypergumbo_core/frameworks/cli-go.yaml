@@ -71,5 +71,3 @@ patterns:
   # pflag package
   - concept: option
     decorator: "^pflag\\.(String|Int|Bool|Float64)$"
-
-linkers: []

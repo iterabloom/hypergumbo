@@ -26,3 +26,49 @@
   clock: 2  # b315
   nonce: b315  # b315
   message: "Bears on WI-hilum (branch jgstern-agent/fix/hilum): cpp overload choice re-chooses a call among definitions with the picked symbol's EXACT name. A member template defined in a class body (sherpa-onnx keyword-spotter-transducer-impl.h L319 template InitKeywords(Manager *mgr)) is named unqualified 'InitKeywords' with kind function, so it is outside the 'KeywordSpotterTransducerImpl::InitKeywords' overload set. Two consequences, measured on sherpa-onnx d7526c8: (1) the call InitKeywords(is) at L336, inside that template, still binds the template itself (a self-call the hilum fix cannot see); (2) the L300/L314 calls now resolve uniquely to the istream& overload only BECAUSE the template is missing from the set -- once this item qualifies member templates, those calls become an ambiguous record {L283, L319} (both take one argument) unless an argument-shape check (object vs pointer) separates them. Re-measure the InitKeywords sites when this lands."  # b315
+- op: update  # e840
+  at: '2026-10-25T11:37:00Z'  # e840
+  by: agent  # e840
+  actor: jgstern_agent  # e840
+  clock: 3  # e840
+  nonce: e840  # e840
+  set:  # e840
+    title: "cpp: an in-class constructor or member template is emitted as a free function with an unqualified name (qualified-name class bodies class X::Impl: see INV-tohuj)"  # e840
+- op: discuss  # 25b8
+  at: '2026-10-25T11:37:00Z'  # 25b8
+  by: agent  # 25b8
+  actor: jgstern_agent  # 25b8
+  clock: 4  # 25b8
+  nonce: 25b8  # 25b8
+  message: "Re-scoped 2026-10-25 (owner-approved fold): point 3 (members of a class declared with a qualified name, class X::Impl, stay unqualified) is the same mechanism as INV-tohuj (_get_enclosing_class, cpp.py:1448, reads only a direct type_identifier) and is now owned there, with the self-bind and pimpl-forward consequences. This item keeps points 1-2 (in-class constructor; member template)."  # 25b8
+- op: discuss  # 5b8d
+  at: '2026-11-15T19:25:54Z'  # 5b8d
+  by: agent  # 5b8d
+  actor: jgstern_agent  # 5b8d
+  clock: 5  # 5b8d
+  nonce: 5b8d  # 5b8d
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Points 1-2 reproduce. Fixture: in-class `S()` -> `function S`; member template `get` -> `function get`; template `over(M*)` -> `function over` beside `method T::over`; out-of-class `O::O`, `O::get` are methods. Rule: `_extract_function_name`, cpp.py:697-698 (`identifier` leaf -> function). The struct does get `contains` edges to these functions. sherpa-onnx d7526c8, keyword-spotter-transducer-impl.h run alone as .hpp: template `InitKeywords`@319 is `function`; L336 self-binds in `analyze_cpp` (no edge in the survey); L300/L314 -> L283; and L77 `InitKeywords()` in the in-class constructor binds the template@319, not the zero-argument overload@294. `_get_enclosing_class` is at cpp.py:1458. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-rugin.md. No status or priority change made by this review."  # 5b8d
+- op: update  # 7e47
+  at: '2026-11-15T19:49:51Z'  # 7e47
+  by: agent  # 7e47
+  actor: jgstern_agent  # 7e47
+  clock: 6  # 7e47
+  nonce: '7e47'  # 7e47
+  set: {}  # 7e47
+  add:  # 7e47
+    isbefore: [WI-jidot-jabag-bihun-pimib-jufug-jidub-tukis-nakav]  # 7e47
+- op: update  # dfe9
+  at: '2026-11-16T11:46:40Z'  # dfe9
+  by: agent  # dfe9
+  actor: jgstern_agent  # dfe9
+  clock: 7  # dfe9
+  nonce: dfe9  # dfe9
+  set:  # dfe9
+    status: done  # dfe9
+- op: discuss  # 1cca
+  at: '2026-11-16T11:46:40Z'  # 1cca
+  by: agent  # 1cca
+  actor: jgstern_agent  # 1cca
+  clock: 8  # 1cca
+  nonce: 1cca  # 1cca
+  message: "Fixed in PR #2200. Re-ran the filed forms: an in-class constructor, a member template, a template overload and a constructor template were kind function with bare names (`S`, `get`, `over`, `T`) on dev and are methods of their class now (`S::S`, `T::get`, ...). sherpa-onnx csrc: 1,218 of 5,963 C++ symbols moved with this item and INV-tohuj together (20.43%), 496 of them function -> method; whisper.cpp 413 of 18,625 (2.22%). Constructions now reach constructors (dead-code candidates on csrc 1,581 -> 1,077). NOT DONE (filed): 285 of 729 constructors there are still candidates (member construction and implicit base-constructor calls are not modelled); class template specialisations keep bare members; out-of-class members of class templates keep `A<T>::f`; a C++ method's qualified_name is None (it was before too). The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 1cca

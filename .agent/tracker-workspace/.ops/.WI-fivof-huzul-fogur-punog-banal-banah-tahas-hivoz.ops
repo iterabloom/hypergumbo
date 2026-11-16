@@ -19,3 +19,10 @@
     pr_ref:  # 561f
     description: "Cluster 28D (audit-findings 0012) apex/peer call-construct fold, follow-up to the ast_call_method fold (WI-nibis/WI-hubit). Two AXIS_PENDING call-construct peers remain in EVIDENCE_TYPES, both from inline-ternary producers, both 0-edge on the self-corpus (need a multi-language corpus to size). (1) ast_call_namespace -- js_ts.py:4919, ternary 'ast_new if is_class else ast_call_namespace' (JS namespace-import call, import star as obj then obj.method()); fold to ast_call + meta['call_construct']='namespace' (NOT ast_call_direct -- a namespace member call is not a direct call). (2) qualified_call -- r_lang.py:398, ternary 'static if not path_hint else qualified_call' (R pkg::fn); per its registry description fold to the 'static' apex + meta['call_construct']='qualified'. Each ternary needs its non-folded branch preserved. Add a row to the 0012 addendum + the substrate-wide negative close-check. Completes the Cluster-D fold (then remove both from the registry). Source: vocab:F1 deferral, dev d9bdc39d0a."  # 561f
     fields: {}  # 561f
+- op: discuss  # 0a9d
+  at: '2026-11-01T10:55:58Z'  # 0a9d
+  by: agent  # 0a9d
+  actor: jgstern_agent  # 0a9d
+  clock: 2  # 0a9d
+  nonce: 0a9d  # 0a9d
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: evidence_types.py:502/512 still register qualified_call and ast_call_namespace as AXIS_PENDING; fixtures emit R dplyr::filter -> meta.evidence_type qualified_call and JS import * as util; util.helper() -> ast_call_namespace. Producers moved to r_lang.py:507 (if/else, not inline ternary) and js_ts.py:6761; registry descriptions cite stale lines. Incidental: the R qualified external dst is r:external:0-0::external_symbol (package and name lost). MECHANISM: call-construct variants encoded as separate AXIS_PENDING evidence types instead of apex + meta.call_construct."  # 0a9d

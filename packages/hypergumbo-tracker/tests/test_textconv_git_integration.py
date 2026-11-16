@@ -3,17 +3,16 @@
 
 Why this file exists
 --------------------
-``textconv`` had thorough tests and was still broken in production for months.
-Every existing test called ``textconv_main`` **in-process** (``test_cli.py``) or
-**mocked the subprocess** (``test_setup.py``, which asserted the configured
-command string equalled ``"python -m hypergumbo_tracker.cli textconv"`` — the
-string that does not work). So the suite covered the renderer and the config
-plumbing while leaving the only thing that can fail untested: whether *git*,
-resolving its own attributes, can invoke the configured command successfully.
+The other ``textconv`` tests call ``textconv_main`` **in-process**
+(``test_cli.py``) or **mock the subprocess** (``test_setup.py``). They cover the
+renderer and the config plumbing but not the only thing that can fail in
+deployment: whether *git*, resolving its own attributes, can invoke the
+configured command successfully. A mocked test happily asserts a command
+string that does not actually run.
 
-The live symptom was that ``git log -p`` exited **128** anywhere it touched a
-``.ops`` file — the driver printed argparse's "invalid choice" usage dump to
-stderr, and git aborts a diff whose textconv driver writes to stderr.
+When it cannot, ``git log -p`` exits **128** anywhere it touches a ``.ops``
+file — e.g. a driver that prints argparse's "invalid choice" usage dump to
+stderr — because git aborts a diff whose textconv driver writes to stderr.
 
 Two properties matter and neither is checkable in-process:
 
@@ -175,10 +174,8 @@ def test_git_diff_and_blame_succeed_through_the_driver(repo_with_ops: Path) -> N
 def test_uncompilable_op_log_does_not_break_the_diff(repo_with_ops: Path) -> None:
     """An op log git cannot compile must still produce a clean ``git log -p``.
 
-    This is the case the first version of this gate MISSED: every fixture here
-    was a well-formed op log, so the driver's own failure path was never
-    exercised against git. On the real repo it aborted the scan after 1086 of
-    6343 commits with "Op log has no create op".
+    With only well-formed op logs as fixtures, the driver's own failure path
+    ("Op log has no create op") would never be exercised against git.
 
     That shape is NORMAL history, not corruption: promoting or demoting an item
     moves its op log between tiers, so the pre-move segment has ops without
@@ -215,7 +212,7 @@ def test_a_stderr_writing_driver_is_detected_as_broken(repo_with_ops: Path) -> N
     """Positive control: the gate must FAIL for a driver that writes to stderr.
 
     Without this, a gate that never fires looks identical to a gate that passes.
-    This is the shape the real defect had — a driver that exits non-zero and
+    A misconfigured driver has exactly this shape — it exits non-zero and
     prints usage to stderr — so we prove the assertions above can catch it.
     """
     _configure_driver(repo_with_ops, "sh -c 'echo boom >&2; exit 1' --")

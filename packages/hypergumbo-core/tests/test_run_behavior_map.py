@@ -31,9 +31,8 @@ def test_run_behavior_map_writes_behavior_map_json(tmp_path):
 
 def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     """INV-tofur: every AnalysisRun in the output must carry a non-null
-    repo_fingerprint matching the declared top-level scheme. Acceptance
-    criterion from the tracker: self-analysis dogfood must show
-    `analysis_runs[*].repo_fingerprint` non-null on every run."""
+    repo_fingerprint matching the declared top-level scheme, i.e.
+    `analysis_runs[*].repo_fingerprint` is non-null on every run."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     # One source file ensures at least the python-ast analyzer runs and
@@ -51,12 +50,12 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     assert runs, "expected at least one AnalysisRun in output"
     for run in runs:
         fp = run.get("repo_fingerprint")
-        # WI-bosog: the field is sha256:<64hex> (scheme-prefixed, uniform with
-        # run_signature / config_fingerprint).
+        # The field is hgrepofp3:<64hex>: the repo-fingerprint scheme's
+        # label, then the digest (ADR-0035 "Value labels").
         assert (
             isinstance(fp, str)
-            and fp.startswith("sha256:")
-            and len(fp[len("sha256:"):]) == 64
+            and fp.startswith("hgrepofp3:")
+            and len(fp[len("hgrepofp3:"):]) == 64
         ), (
             f"AnalysisRun pass={run.get('pass')!r} has invalid "
             f"repo_fingerprint={fp!r}"
@@ -67,21 +66,19 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     fps = {run["repo_fingerprint"] for run in runs}
     assert len(fps) == 1, f"runs produced divergent fingerprints: {fps}"
 
-    assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v2"
-    # WI-bosog: the field is now sha256:-prefixed, uniform with the sibling
-    # run_signature / config_fingerprint identity fields.
-    assert all(fp.startswith("sha256:") for fp in fps)
+    assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v3"
+    # The field carries its scheme's label (ADR-0035 "Value labels").
+    assert all(fp.startswith("hgrepofp3:") for fp in fps)
 
 
 def test_sketch_precomputed_omits_vocabulary(tmp_path):
     """INV-padoz: the sketch_precomputed cache must not carry a ``vocabulary``
     field.
 
-    It had no consumer anywhere (``compact`` strips ``sketch_precomputed``
-    entirely; no reader in any package's ``src``) and, per the Wave-4
-    typed-SketchPrecomputed direction, was resolved by DELETION rather than
-    lemmatization. The retained cache fields stay populated — the deletion is
-    surgical, not a removal of the whole precompute payload.
+    The field has no consumer (``compact`` strips ``sketch_precomputed``
+    entirely and no package's ``src`` reads it), so it is not emitted at all.
+    The other cache fields stay populated — only ``vocabulary`` is absent,
+    not the whole precompute payload.
     """
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -96,7 +93,7 @@ def test_sketch_precomputed_omits_vocabulary(tmp_path):
     sp = data["sketch_precomputed"]
 
     assert "vocabulary" not in sp, "deleted sketch_precomputed.vocabulary reappeared"
-    # Retained cache fields remain (surgical deletion).
+    # The other cache fields are still emitted.
     assert "config_info" in sp
     assert "readme_description" in sp
     assert "additional_file_centrality_scores" in sp
@@ -105,13 +102,12 @@ def test_sketch_precomputed_omits_vocabulary(tmp_path):
 def test_run_behavior_map_no_symbol_has_absolute_path_in_name(tmp_path):
     """INV-vaguj: no Symbol may have an absolute filesystem path in its ``name``.
 
-    The orchestrator's ``synthesize_file_symbols_for_dangling_edges``
-    historically stamped whatever path a dangling endpoint id carried into
-    ``Symbol.name``. When analyzers leaked absolute paths in their
-    edge endpoint ids (most did), the resulting file-kind Symbols ended up
-    with ``name="/home/.../foo.py"`` while ``path`` was normalised to
-    relative. INV-dihif's user-visible explain leak is a downstream
-    consequence.
+    Analyzers can leak absolute paths into dangling edge endpoint ids, and
+    the orchestrator's ``synthesize_file_symbols_for_dangling_edges`` turns
+    those endpoints into file-kind Symbols. It must strip the name to
+    repo-relative form; otherwise the Symbol gets
+    ``name="/home/.../foo.py"`` while ``path`` is normalised to relative,
+    which surfaces in user-visible ``explain`` output (INV-dihif).
 
     Property: after running the full pipeline, no Symbol has a ``name``
     that ``Path(name).is_absolute()`` reports as True.
@@ -263,9 +259,9 @@ def test_find_derived_skipped_enumerates_derived_dirs_and_prunes_deps(tmp_path):
 
 
 def test_run_behavior_map_derived_skipped_accounts_for_excluded_dirs(tmp_path):
-    """WI-jafoz behavioral evidence: a repo whose only build artifacts live in a
-    discovery-excluded derived dir previously reported ``derived_skipped`` as
-    ``{files: 0, paths: []}`` (a silent lie). It must now enumerate them."""
+    """WI-jafoz, end to end: a repo whose only build artifacts live in a
+    discovery-excluded derived dir must still enumerate them in
+    ``derived_skipped`` rather than report a silent ``{files: 0, paths: []}``."""
     repo_root = tmp_path / "repo"
     (repo_root / "src").mkdir(parents=True)
     (repo_root / "src" / "app.py").write_text("def main(): pass\n")
@@ -284,7 +280,7 @@ def test_run_behavior_map_derived_skipped_accounts_for_excluded_dirs(tmp_path):
         "derived_skipped"
     ]
 
-    # No longer a silent {files: 0, paths: []}: the build/ artifacts are counted.
+    # The build/ artifacts are counted, not a silent {files: 0, paths: []}.
     assert derived_skipped["files"] >= 2
     assert "build/artifact.o" in derived_skipped["paths"]
     assert "build/artifact.js" in derived_skipped["paths"]
@@ -465,6 +461,32 @@ def test_run_behavior_map_custom_budgets(tmp_path):
     assert data_2k["tier_tokens"] == 2000
 
 
+def test_a_tier_that_cannot_meet_its_budget_warns_and_the_others_do_not(tmp_path, capsys):
+    """WI-lavum. A budget smaller than the sections that do not depend on
+    the node selection cannot be met by leaving nodes out; the file records
+    it (``tier_tokens_used``) and the run says so on stderr. The default
+    tiers of a small repository fit, and are silent."""
+    repo_root = tmp_path / "repo"
+    (repo_root / "src").mkdir(parents=True)
+    (repo_root / "src" / "app.py").write_text(
+        "def helper():\n    return 1\n\n\ndef main():\n    return helper()\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=repo_root, out_path=out_path,
+                     budgets="50,4k,16k", include_sketch_precomputed=False)
+    err = capsys.readouterr().err
+
+    tiny = json.loads((tmp_path / "out.50.json").read_text())
+    assert tiny["tier_tokens_used"] > tiny["tier_tokens"] == 50
+    assert len(tiny["nodes"]) == 1
+    assert f"[warn] out.50.json is {tiny['tier_tokens_used']} tokens, over its 50-token budget" in err
+    for spec in ("4k", "16k"):
+        tier = json.loads((tmp_path / f"out.{spec}.json").read_text())
+        assert tier["tier_tokens_used"] <= tier["tier_tokens"]
+        assert len(tier["nodes"]) == 2  # both functions: nothing had to be left out
+        assert f"out.{spec}.json" not in err
+
+
 def test_run_behavior_map_budgets_none(tmp_path):
     """budgets='none' disables budget file generation."""
     repo_root = tmp_path / "repo"
@@ -603,8 +625,8 @@ def test_run_behavior_map_emits_partial_json_when_analyzer_crashes(tmp_path):
     healthy analyzers' nodes survive, and the crash is recorded pass-level.
 
     This drives the full production ``run_behavior_map`` path (not just the
-    orchestrator function), exercising serialization of the ``crashed:`` entry
-    — the behavioral closure-evidence bar set by the sibling L1/L2 fix.
+    orchestrator function), so it also exercises serialization of the
+    ``crashed:`` entry.
     """
     from hypergumbo_core.analyze.registry import _ANALYZER_REGISTRY, register_analyzer
 
@@ -706,8 +728,7 @@ def test_run_behavior_map_gzip_output_also_gzips_budget_tiers(tmp_path):
 def test_run_behavior_map_no_sketch_fan_out_skips_budget_files(tmp_path):
     """WI-kojob: no_sketch_fan_out=True suppresses budget-tier emission.
 
-    Equivalent to `budgets='none'` but expressed as a dedicated flag —
-    matches the CLI ergonomic the UAT campaign requested.
+    Equivalent to `budgets='none'` but expressed as a dedicated flag.
     """
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -785,16 +806,16 @@ def test_run_behavior_map_gzip_and_no_sketch_fan_out_combine(tmp_path):
 
 
 def test_synthetic_producers_emit_resolvable_provenance(tmp_path):
-    """synthetic:F1 behavioral closure: the two synthetic-node producers
-    (orchestrator file-symbol synthesis + boundary external_symbol synthesis)
-    emit a real AnalysisRun and stamp resolvable provenance on their nodes.
+    """The two synthetic-node producers (orchestrator file-symbol synthesis +
+    boundary external_symbol synthesis) emit a real AnalysisRun and stamp
+    resolvable provenance on their nodes (synthetic:F1).
 
-    Previously these nodes shipped ``origin=[]`` / ``origin_run_id=''`` — a
-    third sentinel state that broke the node->AnalysisRun referential-integrity
-    JOIN (WI-dizir 492 file nodes, WI-sijut 1645 external_symbol origin=[],
-    WI-mosil 2236 origin_run_id=''). After the fix every synthetic node carries
-    a non-empty ``origin`` (a synthesis-mechanism pass-id) and an
-    ``origin_run_id`` that resolves to a real ``AnalysisRun.execution_id``.
+    Every synthetic node must carry a non-empty ``origin`` (a
+    synthesis-mechanism pass-id) and an ``origin_run_id`` that resolves to a
+    real ``AnalysisRun.execution_id``. An empty ``origin=[]`` /
+    ``origin_run_id=''`` is a third sentinel state that breaks the
+    node->AnalysisRun referential-integrity JOIN (WI-dizir, WI-sijut,
+    WI-mosil).
 
     The fixture deliberately triggers BOTH producers: ``import os`` (stdlib,
     unresolved) yields boundary external_symbol nodes, and app.py's own
@@ -833,8 +854,8 @@ def test_synthetic_producers_emit_resolvable_provenance(tmp_path):
         "boundary_external_symbol_synthesis",
     }
 
-    # Boundary external_symbol nodes now carry the boundary synthesis mechanism
-    # (was origin=[] — zero provenance).
+    # Boundary external_symbol nodes carry the boundary synthesis mechanism
+    # as their origin (never origin=[] — zero provenance).
     externals = [n for n in data["nodes"] if n["kind"] == "external_symbol"]
     assert externals, "fixture produced no external_symbol boundary nodes"
     for n in externals:
@@ -869,12 +890,11 @@ def test_synthetic_producers_emit_resolvable_provenance(tmp_path):
     assert "boundary_external_symbol_synthesis" in passes
 
 
-def test_synthesis_runs_absent_when_no_synthetic_nodes(tmp_path):
-    """synthetic:F1 conditional-append (FALSE branch): a synthesis AnalysisRun
-    is recorded ONLY when its producer actually mints nodes. A trivial repo with
-    no dangling/external edges leaves BOTH synthesis passes absent from
-    analysis_runs (no empty-pass records) — the stated rationale for the
-    ``if produced:`` guards at both orchestrator sites."""
+def test_synthesis_runs_are_recorded_when_they_mint_nothing(tmp_path):
+    """The two synthesis passes (synthetic:F1), on a repo where neither mints a
+    node, are still recorded as AnalysisRuns with ``nodes_emitted == 0`` and
+    a silence reason, so a consumer can tell "ran, found nothing" from
+    "never ran" (WI-tivif)."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     # A module-level assignment: one analyzer runs, but no imports (no
@@ -887,16 +907,17 @@ def test_synthesis_runs_absent_when_no_synthetic_nodes(tmp_path):
         include_sketch_precomputed=False,
     )
     data = json.loads(out_path.read_text())
-    passes = {r.get("pass") for r in data["analysis_runs"]}
-    assert "orchestrator_file_symbol_synthesis" not in passes
-    assert "boundary_external_symbol_synthesis" not in passes
+    runs = {r.get("pass"): r for r in data["analysis_runs"]}
+    for pass_id in ("orchestrator_file_symbol_synthesis", "boundary_external_symbol_synthesis"):
+        assert runs[pass_id]["nodes_emitted"] == 0, pass_id
+        assert runs[pass_id]["silence_reason"] == "no_candidate_construct", pass_id
 
 
 def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):
-    """WI-dagif (file-anchor:F1, node-bearing slice): a file with content nodes
-    but no imports/calls (hence no make_file_id edge) still gets a kind="file"
-    anchor at the orchestrator chokepoint, and the containment linker's
-    span-based pass roots its top-level members at it (rootful contains tree)."""
+    """A file with content nodes but no imports/calls (hence no make_file_id
+    edge) still gets a kind="file" anchor at the orchestrator chokepoint, and
+    the containment linker's span-based pass roots its top-level members at it
+    (rootful contains tree). (WI-dagif; file-anchor:F1, node-bearing slice)"""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     # Class-only Java file: class + fields, NO imports/calls -> no make_file_id
@@ -909,13 +930,13 @@ def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):
     data = json.loads(out_path.read_text())
     nodes = data["nodes"]
 
-    # The node-bearing path now carries exactly one file anchor.
+    # The node-bearing path carries exactly one file anchor.
     anchors = [n for n in nodes if n.get("kind") == "file" and n["path"] == "Data.java"]
     assert len(anchors) == 1, f"expected one file anchor for Data.java, got {anchors}"
     anchor_id = anchors[0]["id"]
 
-    # Closure (scoped to the real source path): the class node's path has a
-    # file anchor — i.e. the contains tree is no longer rootless.
+    # Scoped to the real source path: the class node's path has a file
+    # anchor that contains it — i.e. the contains tree is rooted.
     cls = next(n for n in nodes if n.get("kind") == "class" and n["path"] == "Data.java")
     contains = {(e["src"], e["dst"]) for e in data["edges"] if e["type"] == "contains"}
     assert (anchor_id, cls["id"]) in contains, (
@@ -925,10 +946,10 @@ def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):
 
 
 def test_additional_file_candidate_anchored_and_subset_invariant_f1_f4(tmp_path):
-    """file-anchor:F1+F4: every Additional-File candidate (config/doc) gets a
-    kind="file" anchor even with NO content nodes (F1), and every
+    """Every Additional-File candidate (config/doc) gets a kind="file" anchor
+    even with NO content nodes (F1), and every
     additional_file_centrality_scores key is a real file-anchor node path —
-    the WI-rajod subset invariant (F4)."""
+    the WI-rajod subset invariant (F4). (F1/F4: file-anchor audit findings)"""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     # `helper` is called twice -> in_degree 2 -> qualifies for mention centrality;
@@ -984,15 +1005,15 @@ def test_files_analyzed_is_deterministic_across_runs(tmp_path):
     repeated runs of the same tree.
 
     Analyzer and linker passes run concurrently (``ThreadPoolExecutor`` +
-    ``as_completed`` in ``analyze.all_analyzers``), so a per-pass file-discovery
-    race — each pass doing its own ``os.walk`` under threads — historically made
-    ``files_analyzed`` vary run-to-run (the filing: 18 of 84 ARs, several scanning
-    100+ files). The shared, sorted ``discovery.FileIndex`` (one ``os.walk`` at
-    startup, deterministically ordered, consulted by every pass) is what keeps
-    each pass's file set stable; this test guards that determinism structurally
-    rather than by chance. The fixture spans multiple languages (→ multiple
-    concurrent analyzers) and a Flask route + a DB ``execute`` (→ the scan-heavy
-    route/db linkers the filing named), then runs the pipeline three times.
+    ``as_completed`` in ``analyze.all_analyzers``), so per-pass file discovery
+    — each pass doing its own ``os.walk`` under threads — would race and make
+    ``files_analyzed`` vary run-to-run. The shared, sorted
+    ``discovery.FileIndex`` (one ``os.walk`` at startup, deterministically
+    ordered, consulted by every pass) is what keeps each pass's file set
+    stable; this test guards that determinism structurally rather than by
+    chance. The fixture spans multiple languages (→ multiple concurrent
+    analyzers) and a Flask route + a DB ``execute`` (→ the scan-heavy
+    route/db linkers), then runs the pipeline three times.
     """
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1036,8 +1057,7 @@ def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
     entrypoint-bearing — it must survive the default (non ``--include-docs``)
     noise filter AND be detected as a manifest-declared CLI_COMMAND, while an
     npm ``package.json`` run-script (no ``entry_point``) is correctly filtered
-    as noise. Regression guard for the ADR-0043 §5 C3 / audit-findings 0005
-    reconciliation."""
+    as noise. See ADR-0043 §5 C3 and audit-findings 0005."""
     repo_root = tmp_path / "repo"
     (repo_root / "mypkg").mkdir(parents=True)
     (repo_root / "pyproject.toml").write_text(
@@ -1075,13 +1095,11 @@ def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
         if ep.get("kind") == "cli_command"
         and (ep.get("meta") or {}).get("evidence_type") == "manifest_declared"
     ]
-    # INV-kazij: this assertion fails ONLY in the full-suite CI container —
-    # never locally, on any tree, in any interleaving, with or without the
-    # meta-package installed (all measured; see the item). Every cheap
-    # hypothesis is dead, so the assertion now DISCLOSES which link of the
-    # chain broke: (a) did the toml-config pass run at all, (b) did it emit
-    # the script symbol and with which concepts, (c) what entrypoints were
-    # derived. The next CI failure is a mechanism reading, not a repeat.
+    # This assertion is environment-sensitive (it can fail in the CI
+    # container yet pass locally; history: INV-kazij), so a failure must
+    # carry its own diagnosis: it reports which link of the chain broke — (a) did the toml-config pass
+    # run at all, (b) did it emit the script symbol and with which concepts,
+    # (c) what entrypoints were derived.
     if not cli_eps:  # pragma: no cover — diagnostic path, exercised only on failure
         toml_runs = [
             (r.get("pass"), r.get("files_analyzed"), r.get("nodes_emitted"))
@@ -1109,8 +1127,7 @@ def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
 
 
 def test_a_language_whose_pass_ran_is_never_reported_skipped(tmp_path):
-    """INV-nidul closure evidence, production path (the aardvark-dns repro as a
-    fixture): a repo with a Makefile. The profile detects ``makefile``; the
+    """INV-nidul, production path: a repo with a Makefile. The profile detects ``makefile``; the
     ``make`` pass runs (tree-sitter-make is a hard dependency of the mainstream
     package, so this is not a skipif); and ``limits.skipped_languages`` must
     NOT claim Makefile went unanalysed. Every symbol the pass emitted carries

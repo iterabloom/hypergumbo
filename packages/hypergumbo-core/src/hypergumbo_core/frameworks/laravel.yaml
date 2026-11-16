@@ -176,9 +176,3 @@ patterns:
 
   - concept: component
     base_class: "^Livewire\\\\Component$"
-
-linkers:
-  - http
-  - websocket
-  - message_queue
-  - database_query

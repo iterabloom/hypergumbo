@@ -1,0 +1,21 @@
+- op: create  # d2ba
+  at: '2026-11-06T04:10:11Z'  # d2ba
+  by: agent  # d2ba
+  actor: jgstern_agent  # d2ba
+  clock: 1  # d2ba
+  nonce: d2ba  # d2ba
+  data:  # d2ba
+    kind: invariant  # d2ba
+    title: "Six safety_zones wrappers are in no sink catalogue, so verify-claims never bins their writes"  # d2ba
+    status: violated  # d2ba
+    priority: 4  # d2ba
+    parent:  # d2ba
+    tags: []  # d2ba
+    isbefore: []  # d2ba
+    duplicate_of: []  # d2ba
+    not_duplicate_of: []  # d2ba
+    pr_ref:  # d2ba
+    description: "Found 2026-11-05 (WI-satih row 39 fix) by diffing the public functions of hypergumbo_core.safety_zones against docs/hypergumbo-self-catalog/*_sinks.yaml.\n\nSix wrappers are in NO sink catalogue: cache_write_zip, cache_unlink, cache_rename, user_out_open_json_dump_gzip, tmp_artifact_extract, tmp_artifact_dir. Each calls _safety_zone_barrier, which zone_barrier_sanitizers.yaml declares a sanitizer, so the structural walk stops at the wrapper and reports nothing: these writes are invisible to verify-claims, not binned in their zone.\n\nMeasured effect today: none on a verdict. The self-claims prohibit only dev_zone (7), host_fs (7), install_artifact (5), network (2), subprocess (2); no claim prohibits user_cache, user_out or tmp_artifact, the three zones the six belong to. It is the false-all-clear direction the moment such a claim is written.\n\nCure: list each in its zone's catalogue, and add a parity test: every public safety_zones function is in exactly one *_sinks.yaml, the one its name prefix declares (the shape test_every_destructive_wrapper_enforces_a_zone already uses for enforcement). Re-run check-self-claims before and after (23 cwc) and diff verdicts."  # d2ba
+    fields:  # d2ba
+      statement: "Every public safety_zones wrapper is a sink in exactly the catalogue of the zone its name declares"  # d2ba
+      root_cause: "wrappers were added (zone enforcement, gzip output, scratch dirs, archive extraction) without a catalogue row, and no test pairs the wrapper list with the catalogues"  # d2ba

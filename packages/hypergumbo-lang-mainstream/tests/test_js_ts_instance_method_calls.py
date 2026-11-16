@@ -3,23 +3,22 @@
 (WI-nasuf's javascript cell), and a ``new``-constructed receiver carries its
 constructor's module into the slot (INV-misup).
 
-INV-misup. The analyzer resolved a member call only when the receiver was a
-NAMED GLOBAL whose name is the module (``localStorage.setItem``). A receiver
-bound by construction — ``ws = new WebSocket(u); ws.send(x)`` — landed
-``WebSocket`` in ``var_types``, the in-repo lookup for ``WebSocket.send``
-missed, and nothing was emitted: in JS or TS, at module or function scope,
-called or assigned. Eleven catalogue rows across WebSocket, XMLHttpRequest,
-EventSource and BroadcastChannel were inert, and the whole XHR egress surface
-was empty. ``js_ts.py``'s own ``JS_KNOWN_GLOBALS`` comment assumed the
-opposite.
+Constructed receivers (INV-misup). A receiver bound by construction --
+``ws = new WebSocket(u); ws.send(x)`` -- lands ``WebSocket`` in ``var_types``,
+and the in-repo lookup for ``WebSocket.send`` misses; the call is still
+emitted, in JS or TS, at module or function scope, called or assigned.
+Resolving a member call only when the receiver is a NAMED GLOBAL whose name is
+the module (``localStorage.setItem``) would leave the catalogue rows for
+WebSocket, XMLHttpRequest, EventSource and BroadcastChannel inert, and the
+whole XHR egress surface empty.
 
-WI-nasuf. An UNTYPED receiver (``obj.write(x)``) emitted nothing either,
-while ``helper(x)``, ``fs.readFileSync(x)`` and ``console.log(x)`` in the
-same function all emitted. python, java, go, rust, scala and swift emit the
-``external`` placeholder with ``call_construct: method`` for exactly this
-case; javascript now does too, and ``analyzer_disclosure`` flips its dated
-declaration so a clean verdict stops carrying the ``analyzer_method_call_blind``
-caveat and starts carrying the per-site ``untyped_receiver`` one instead.
+Untyped receivers (WI-nasuf). An UNTYPED receiver (``obj.write(x)``) emits the
+``external`` placeholder with ``call_construct: method``, as python, java, go,
+rust, scala and swift do for exactly this case, and as ``helper(x)``,
+``fs.readFileSync(x)`` and ``console.log(x)`` in the same function emit their
+edges. ``analyzer_disclosure`` declares javascript as emitting these edges, so
+a clean verdict carries the per-site ``untyped_receiver`` caveat rather than
+``analyzer_method_call_blind``.
 
 The module slot for a constructed receiver is the constructor's own path:
 a catalogued global constructor (``WebSocket``), or a namespace-imported
@@ -179,7 +178,7 @@ class TestConstructedReceiverCarriesItsModule:
 
 class TestUntypedReceiverEmitsThePlaceholder:
     def test_obj_write_emits_beside_its_siblings(self, tmp_path: Path) -> None:
-        """WI-nasuf's own fixture: three sibling shapes emitted, the fourth did not."""
+        """WI-nasuf's fixture: ``obj.write`` emits beside its three sibling shapes."""
         edges = _edges(
             tmp_path / "u",
             "const fs = require('fs');\n"
@@ -241,27 +240,17 @@ class TestUntypedReceiverEmitsThePlaceholder:
 
 
 class TestHandlerAssignmentEmitsARegistrationEdge:
-    """OVERTURNED 2026-09-10 (WI-dosuh), deliberately and with its predecessor
-    kept in view.
+    """A handler ASSIGNMENT (``ws.onmessage = handler``) emits a registration
+    edge, so the ``WebSocket.onmessage``, ``WebSocket.onclose`` and
+    ``EventSource.onmessage`` catalogue rows have a call edge to match, and
+    ``analyzer_disclosure.CONSTRUCT_BLIND_ROWS`` declares no javascript
+    blindness for the construct. If the analyzer stops emitting the edge, that
+    declaration must return in the same change.
 
-    This class used to be ``TestHandlerAssignmentEmitsNoEdge``, and it pinned
-    the opposite: ``ws.onmessage = handler`` is a property ASSIGNMENT, not a
-    call, so no call edge existed for ``WebSocket.onmessage``,
-    ``WebSocket.onclose`` or ``EventSource.onmessage`` to match, and the
-    limitation was DECLARED in ``analyzer_disclosure.CONSTRUCT_BLIND_ROWS``
-    rather than fixed. Its docstring named its own falsifier -- "when the
-    analyzer starts emitting a registration edge for the assignment it fails,
-    and the declaration must flip in the same change" -- and that is exactly
-    what happened: ``js_ts.py`` now emits the registration edge, and the
-    javascript entry in ``CONSTRUCT_BLIND_ROWS`` was removed in the same
-    change.
-
-    IT IS FLIPPED, NOT DELETED, because the fixture is the same one WI-zumoz
-    measured on 2026-08-28 and 2026-09-06, and a reader who finds this
-    behaviour surprising should land on the history rather than on nothing.
     The construct's full spelling coverage lives in
-    ``test_js_ts_handler_assignment.py``; this keeps the original four-line
-    fixture honest at its original site.
+    ``test_js_ts_handler_assignment.py``; this keeps the four-line fixture the
+    construct was first measured on (WI-zumoz) at its original site.
+    (history: WI-dosuh; this class once pinned the opposite behaviour.)
     """
 
     def test_the_assignments_and_the_call_all_reach_the_catalogue(

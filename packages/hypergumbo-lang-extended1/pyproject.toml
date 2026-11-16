@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo-lang-extended1"
-version = "9.2.0"
+version = "10.0.0"
 description = "Extended language analyzers (set 1) for hypergumbo"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,16 +18,20 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = [
-  "hypergumbo-core==9.2.0",
+  "hypergumbo-core==10.0.0",
   # Tree-sitter grammars for extended languages
   "tree-sitter-zig~=1.1.2",
   "tree-sitter-odin~=1.3.0",
-  "tree-sitter-agda~=1.3.3",
   "tree-sitter-solidity~=1.2.13",
   "tree-sitter-verilog~=1.0.3",
   "tree-sitter-vhdl~=1.3.1",
   "tree-sitter-llvm~=1.1.0",
   "tree-sitter-tlaplus~=1.5.0",
+  # The pack's grammars: Agda, asm, Ada, Apex, BibTeX, BitBake, Cap'n Proto,
+  # COBOL, D, Fennel, fish, GDScript, Gleam, Hack, Haxe, Janet, Jsonnet, KDL,
+  # Luau, Nim, Pascal, Pony, Prisma, Smithy, SPARQL, Tcl, Twig, V. Pinned as
+  # the other language packages pin it (the pin also selects the Agda revision).
+  "tree-sitter-language-pack~=0.13.0",
   # Note: Some grammars (Lean, Wolfram) may need to be built from source
   # (see scripts/build-source-grammars)
 ]

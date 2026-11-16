@@ -38,3 +38,19 @@ sources:
         # third-party software or hit the network on the user's behalf.
         - cmd_cache_status
         - cmd_cache_clear
+        # INV-kuroj: runtime subcommands no *_sources.yaml named, found by
+        # diffing every `def cmd_*` against the catalogued sources (the gate
+        # test_user_state_config_zones.py::test_every_cmd_handler_is_catalogued_somewhere
+        # keeps it closed). Three of them write per-user state or config.
+        - cmd_trust_backend
+        - cmd_trust_catalogues
+        - cmd_init_catalogs
+        - cmd_backend_agreement
+        - cmd_repeat_finder
+        - cmd_catalog_inventory
+    # The repo-tier offer runs from main() after EVERY subcommand, outside any
+    # cmd_* handler, so no claim covered its two writes (INV-kuroj).
+    - module: hypergumbo_core.repo_tier_offer
+      start_at: callee
+      functions:
+        - maybe_offer_repo_tier_examples

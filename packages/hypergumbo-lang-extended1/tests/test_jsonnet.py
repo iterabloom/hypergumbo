@@ -236,7 +236,7 @@ local myFunc(x) = x;
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("jsonnet:test.jsonnet:")
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """

@@ -112,6 +112,3 @@ patterns:
     usage:
       kind: "^type$"
       name: "^(Get|Post|Put|Delete|Patch|ReqBody|Capture|QueryParam|Header)$"
-
-linkers:
-  - http

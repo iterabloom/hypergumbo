@@ -33,3 +33,26 @@
   clock: 3  # e343
   nonce: e343  # e343
   message: "Merged in PR #1456 (dev 05fefe416b).\n\nPARTIAL, on branch jgstern-agent/fix/hilum (commits 179d46a25f, 2228166597).\n- Ask 3 is done. Visible overloads are chosen by argument count, with the UFCS receiver counted.\n- Ask 1 is done analyzer-side rather than through receiver_type_dispatch. A candidate whose first parameter the first argument's DECLARED type provably cannot bind is dropped. Generics, type classes, library types and conflicted names are never excluded.\n- Ask 2 was not measured as asked: untyped receivers keep binding, and no withholding arm was built.\n- Behavior (`test_a_typed_receiver_that_cannot_bind_leaves_the_call_to_the_library`): `result.add photo` in a proc returning `seq[Photo]` no longer binds `types.add*(timeline: var seq[Tweets]; ..)`.\n- On nitter 8114eef the `types.add*` binds go 64 -> 26. The residual is WI-gudav: field chains, inferred locals, a module-level variable, and the second argument.\n- Over the 4 INV-fahub repos, of 4,543 dev guess sites: 947 are now unique, 206 unresolved, and 3,390 still ambiguous with `resolution_quality` stamped.\n- Not asserted: that UFCS calls bind with argument types in general.\n\nIntegration: the first stage-8 integration run failed the scoped coverage gate on 13 new lines (elixir/nim/cpp); fixed by 1788619572 (tests + 3 justified pragmas) before merge."  # e343
+- op: discuss  # 9045
+  at: '2026-11-01T10:55:56Z'  # 9045
+  by: agent  # 9045
+  actor: jgstern_agent  # 9045
+  clock: 4  # 9045
+  nonce: '9045'  # 9045
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: PARTLY-STALE. Review 2026-11-01 at dev 100b6fbb6e: asks 1 and 3 merged (PR #1456, e242c45023). Fixture: put(1)->m1.put, put(1,2)->m2.put (arity works); result.add p with result: seq[Photo] -> external add (type exclusion works). Untyped x.put(3) (x: auto) still binds m2.put at 0.85; ask 2's withholding A/B was never run. Title figures (64x, 1,657) are pre-fix; the 26 residual is WI-gudav. MECHANISM: overload chosen without argument types: untyped receiver takes the only arity-admitting visible proc. SHARES MECHANISM WITH: WI-gudav."  # 9045
+- op: update  # d934
+  at: '2026-11-01T10:55:56Z'  # d934
+  by: agent  # d934
+  actor: jgstern_agent  # d934
+  clock: 5  # d934
+  nonce: d934  # d934
+  set:  # d934
+    title: "nim: untyped-receiver UFCS calls still bind a visible project proc; measure a withholding arm (WI-bivab ask 2; asks 1+3 merged in PR #1456)"  # d934
+- op: update  # aa56
+  at: '2026-11-01T10:55:56Z'  # aa56
+  by: agent  # aa56
+  actor: jgstern_agent  # aa56
+  clock: 6  # aa56
+  nonce: aa56  # aa56
+  set:  # aa56
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Review 2026-11-01 at dev 100b6fbb6e: asks 1 and 3 merged (PR #1456, e242c45023). Fixture: put(1)->m1.put, put(1,2)->m2.put (arity works); result.add p with result: seq[Photo] -> external add (type exclusion works). Untyped x.put(3) (x: auto) still binds m2.put at 0.85; ask 2's withholding A/B was never run. Title figures (64x, 1,657) are pre-fix; the 26 residual is WI-gudav. (Original text below; the review entry in the thread has the evidence.)\n\nEVIDENCE (analyze_nim, dev bb8142b887, after WI-giloh / PR #1202 scoped resolution to visible declarations):\nnitter: 64 calls bind types.nim's `proc add*(timeline: var seq[Tweets]; tweet: Tweet)`, e.g. `result.add photo` on a `seq[GalleryPhoto]` in parser.nim, which is system's `add`. 63 come from files that import types, so types' `add*` IS visible there. Nim would pick by argument types, and the analyzer has none.\nAcross nitter + nim-chronos c679d29 + pixie 30bb510 + nimble 33a6bc8, 1,657 calls resolve as an overload guess among several visible modules (ListNameResolver, confidence 1/sqrt N).\n\nMECHANISM: a UFCS call `x.f(a)` means `f(x, a)`. With no receiver type, the scoped lookup binds the only visible project `f` even when x's type selects a library overload (system / std). Scope cannot decide this; types can.\n\nPRIOR ART:\n- INV-fahub (satisfied): cross-language \"unresolvable receiver misbinds to a same-named internal def\". Its fleet gate (PR 86a58ce952) excluded nim as having \"no cross-class magnet\". The UFCS form is nim's magnet.\n- WI-situj (D facet, done): value-receiver UFCS calls go unresolved with receiver_type_hint.\n- INV-vigaf (satisfied, META) + WI-panah: UFCS/extension resolution lives in the receiver_type_dispatch linker.\nNo nim row existed.\n\nASKED:\n1. Follow the D facet. A value-receiver call (receiver not a module) where the receiver's type is known from a typed parameter / `var x: T` emits unresolved with receiver_type_hint=T, for receiver_type_dispatch to match the first-parameter type.\n2. Decide the untyped-receiver case by measurement. Withholding loses the genuine UFCS edges (e.g. `component.data.parseListDetails(result)` in nitter); keeping them keeps the `add` misbinds. Diff the edge set and read a random sample of each arm; do not pick by count.\n3. Bare calls with several visible overloads: arity is known at the call site. Filtering candidates by parameter count is the cheap first cut; measure it."  # aa56

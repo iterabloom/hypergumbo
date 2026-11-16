@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -156,9 +157,9 @@ def link_lua_ffi(
     result_edges: list[Edge] = []
     seen_edges: set[tuple[str, str]] = set()  # (src_id, func_name) dedup
 
-    # Build multi-value lookup for C/C++ functions by name. INV-zuhub:
-    # multi-value indexing surfaces cross-file short-name collisions so
-    # the FFI resolver can downgrade ambiguous edges.
+    # Build multi-value lookup for C/C++ functions by name. Multi-value
+    # indexing surfaces cross-file short-name collisions so the FFI
+    # resolver can downgrade ambiguous edges (INV-zuhub).
     c_lookup: dict[str, list[Symbol]] = {}
     for sym in c_symbols:
         if sym.kind in ("function", "method"):
@@ -180,6 +181,9 @@ def link_lua_ffi(
         return (c_sym, is_fallback)
 
     # --- Phase 1: Scan Lua files for ffi.C / ffi.load calls ---
+    # WI-lisan: every FFI-shaped call the scan finds, before resolution.
+    found_ffi_calls: list[tuple[str, str, int]] = []
+
     lua_files: set[str] = set()
     for sym in lua_symbols:
         if sym.language == "lua":
@@ -194,6 +198,7 @@ def link_lua_ffi(
             continue
 
         ffi_calls = _scan_lua_file_for_ffi_calls(lua_path)
+        found_ffi_calls.extend(ffi_calls)
 
         for func_name, evidence_type, line_num in ffi_calls:
             resolved = _resolve(func_name)
@@ -228,9 +233,9 @@ def link_lua_ffi(
                 continue
             seen_edges.add(dedup_key)
 
-            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-            # + meta['bridge_kind']='ffi'. INV-zuhub: downgrade when
-            # the FFI symbol name had cross-file collisions.
+            # Canonical 'calls' edge tagged meta['bridge_kind']='ffi'
+            # (ADR-0023 §6). Downgraded when the FFI symbol name had
+            # cross-file collisions (INV-zuhub).
             confidence = 0.5 if is_fallback else 0.85
             edge_meta: dict[str, object] = {"bridge_kind": "ffi"}
             if is_fallback:
@@ -270,9 +275,9 @@ def link_lua_ffi(
             continue
         seen_edges.add(dedup_key)
 
-        # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-        # + meta['bridge_kind']='ffi'. INV-zuhub: downgrade when the
-        # FFI symbol name had cross-file collisions.
+        # Canonical 'calls' edge tagged meta['bridge_kind']='ffi'
+        # (ADR-0023 §6). Downgraded when the FFI symbol name had
+        # cross-file collisions (INV-zuhub).
         confidence = 0.5 if is_fallback else 0.85
         edge_meta = {"bridge_kind": "ffi"}
         if is_fallback:
@@ -292,6 +297,9 @@ def link_lua_ffi(
             derived_from=[edge.src, c_sym.id, edge.id],
         ))
 
+    # Phase 2 emits whenever a name resolves, so a silent run is one whose
+    # phase-1 FFI calls (if any) did not resolve.
+    run.silence_reason = silence_reason_for_candidates(found_ffi_calls)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return LuaFFILinkResult(edges=result_edges, run=run)

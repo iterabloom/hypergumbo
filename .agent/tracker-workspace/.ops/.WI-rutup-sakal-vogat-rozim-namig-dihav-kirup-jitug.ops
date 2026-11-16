@@ -1,0 +1,69 @@
+- op: create  # e22a
+  at: '2026-10-22T05:13:23Z'  # e22a
+  by: agent  # e22a
+  actor: jgstern_agent  # e22a
+  clock: 1  # e22a
+  nonce: e22a  # e22a
+  data:  # e22a
+    kind: work_item  # e22a
+    title: "ADR-0050's axiom is applied three ways (medium, content, chooser); amend it to MEDIUM and fix the rows that contradict it (Unix-domain sockets are ipc in C, net in go/node/python asyncio)"  # e22a
+    status: todo_hard  # e22a
+    priority: 3  # e22a
+    parent:  # e22a
+    tags:  # e22a
+    - io_boundary  # e22a
+    - adr_0050  # e22a
+    - catalogue  # e22a
+    - concept_audit_20261021  # e22a
+    isbefore: []  # e22a
+    duplicate_of: []  # e22a
+    not_duplicate_of: []  # e22a
+    pr_ref:  # e22a
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, agent read. ADR-0050 section 1 axiom 'what data crosses ... in which direction' + its own 'logging names a medium' (io_boundary_types.py:327-329) vs elixir.yaml:251-254 / erlang.yaml:315 / javascript.yaml:296,303 ('env_read means may carry a credential' -> document.cookie and document.location as env_read) vs navigation_read's chooser definition (:400-415). Recommended verdict DOCUMENT (owner-endorsed 2026-10-22): amend ADR-0050 section 1 to say the value names the MEDIUM. Then rows: ipc_send's definition includes 'a local socket' (io_boundary_types.py:221-224) and C rows AF_UNIX there (c.yaml:168-174, 263) but go net.DialUnix is net_send (go.yaml:262), ListenUnix net_listen, python asyncio.start_unix_server net_listen (python.yaml:749), node net.Socket IPC path net_send. Also swift.yaml:182 'argv is env_read in every catalogue' (go rows no os.Args). The argv / cookie label change is its own measured item."  # e22a
+    fields: {}  # e22a
+- op: discuss  # abaf
+  at: '2026-10-25T20:08:23Z'  # abaf
+  by: agent  # abaf
+  actor: jgstern_agent  # abaf
+  clock: 2  # abaf
+  nonce: abaf  # abaf
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). PARTLY MISPREMISED (code/row read). Axiom half current: ADR-0050 §1 (:71-85) and the registry axiom (io_boundary_types.py:4-9) unchanged; content-reading rows elixir.yaml:249-258, erlang.yaml:315, javascript.yaml:295-297 (cookie), :298-307 (location); navigation_read's chooser definition io_boundary_types.py:399-413; 'logging names a medium' :324-329. Scope wider: env_read's OWN definition is by content ('values that may carry a credential', :235-238) and host_info_read by identity (:247-250), so the amendment must address the INV-tutar split itself, not only rows. The Unix-socket comparison was wrong: it set C's AF_UNIX send rows against go dial/listen (go.yaml:262 DialUnix, :376 ListenUnix), but C's own connect() is also net_send (c.yaml:157-162), and WI-potog (PR #1417) kept go dial/listen to that precedent and moved go writes/reads (fmt.Fprint*, io.WriteString, bufio) to ipc. Remaining socket cases: go net.Conn.Write/Read = WI-kalol; python asyncio.StreamReader = WI-foloh; untracked, now owned here: python socket.socket.send/recv over AF_UNIX (python.yaml:610-611) and node net.Socket (javascript.yaml:163-164). asyncio.start_unix_server (python.yaml:749, net_listen) cannot be fixed by a row edit: there is no ipc-side listen value, so it needs a vocabulary ruling. swift.yaml:181-183 'argv is env_read in every catalogue' is false (go has no os.Args row); it goes with WI-zidam. OWNER RULING 2026-10-25 (via WI-zidam's cookie route): the amendment is NOT 'the value names only the medium'. It says: a row's primary boundary names the MEDIUM; a `simultaneous` second boundary may record the reading a taint label needs (credential-bearing; chosen by the party that navigated), as the shipped INV-dadu URL rows already do. It must state outright that env_read therefore still means both the process environment and 'may carry a credential'. Lands before WI-zidam (isbefore added). P3 kept."  # abaf
+- op: update  # 5536
+  at: '2026-10-25T20:08:25Z'  # 5536
+  by: agent  # 5536
+  actor: jgstern_agent  # 5536
+  clock: 3  # 5536
+  nonce: '5536'  # 5536
+  set: {}  # 5536
+  add:  # 5536
+    isbefore: [WI-zidam-lilam-mufuk-dozup-dipoz-budik-sigas-fujop]  # 5536
+- op: discuss  # 45bd
+  at: '2026-10-26T00:31:43Z'  # 45bd
+  by: agent  # 45bd
+  actor: jgstern_agent  # 45bd
+  clock: 4  # 45bd
+  nonce: 45bd  # 45bd
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0050 row waits on this amendment, and classifies the axis against the medium wording."  # 45bd
+- op: update  # b77b
+  at: '2026-10-26T21:11:17Z'  # b77b
+  by: agent  # b77b
+  actor: jgstern_agent  # b77b
+  clock: 5  # b77b
+  nonce: b77b  # b77b
+  set:  # b77b
+    status: done  # b77b
+    pr_ref: '1887'  # b77b
+- op: discuss  # fa9f
+  at: '2026-10-26T21:11:17Z'  # fa9f
+  by: agent  # fa9f
+  actor: jgstern_agent  # fa9f
+  clock: 6  # fa9f
+  nonce: fa9f  # fa9f
+  message: "DONE in PR #1887 (merged, dev d0103b7248). A documentation item: ADR-0050 section 1's axiom is rewritten in place to the owner's 2026-10-25 form -- a row's PRIMARY boundary names the medium; a simultaneous SECOND boundary may record the credential or navigator reading a taint label needs -- and says outright that env_read means both the process environment (env vars and ambient deployment configuration) and 'may carry a credential'. The false claim that the axiom was 'taken verbatim from ADR-0049 ruling 1' now says it applies that ruling's transfer test. Same text in io_boundary_types' module docstring and scripts/generate-concept-axes (docs/concept-axes.md regenerated); env_read / host_info_read / navigation_read definitions rewritten from the content / identity / chooser readings the premise check found. Rows: the elixir/erlang Application.get_env notes asserted the opposite ('env_read means may carry a credential, NOT reads the process environment') and now follow the ruling. EVIDENCE (doc item): on merged dev, docs/adr/0050-io-boundary-axis.md:73 reads the new axiom; find_io_boundary('env_read').description begins 'Read the process ENVIRONMENT -- environment variables and the ambient configuration a deployment supplies'. No boundary changed, so no output moved. Routed with reasoning: document.cookie, argv and swift's 'argv is env_read in every catalogue' -> WI-zidam (plus a note there on whether the INV-dadu URL rows' scalar primary should be navigation_read: first-declared-wins makes it env_read, the order is pinned by three tests, and the ruling cites those rows as already conforming); python socket.socket / node net.Socket over AF_UNIX need an analyzer io_target_kind stamp like C's WI-baran -> WI-muful (new); asyncio.start_unix_server / go net.ListenUnix need a vocabulary ruling (no ipc-side listen value) -> WI-gaziv (new, needs_ruling). Local suite note: test_autopr_signal_termination timed out under full parallel load twice (passes alone, unrelated); recorded in the commit."  # fa9f
+- op: discuss  # f844
+  at: '2026-10-26T23:31:52Z'  # f844
+  by: agent  # f844
+  actor: jgstern_agent  # f844
+  clock: 7  # f844
+  nonce: f844  # f844
+  message: "Correction to the closure note and to PR #1887's commit body: the test_autopr_signal_termination.py timeout in my two local full-suite runs was NOT parallel load. I had launched the suite as `( cmd & )`, which starts it with SIGINT ignored, so the test's SIGINT never reached the child and it timed out. Under harness backgrounding the same test passes (confirmed 10-26 during WI-lidig's full suite, 30837 passed). The PR's content and closure stand; only the stated cause was wrong."  # f844

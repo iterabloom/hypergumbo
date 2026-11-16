@@ -51,3 +51,10 @@
   clock: 5  # 4806
   nonce: '4806'  # 4806
   message: "Fixed in PR #1750 (d17a67451d). full-suite.yml self-tree-validation now installs scip-python 0.6.6 + node, builds the self-map with HYPERGUMBO_SCIP_PYTHON=1 and NODE_OPTIONS=--max-old-space-size=9000, runs whatever earlier steps did (status: [success, failure]), and the reachability gate gets --require-pass scip_python, which exits 1 'FAIL: the map lacks …' when the backend did not contribute. Behavioral evidence (local whole-tree build of this repo): plain map 5m32s / 3.9 GB peak, 0 of 7,973 Python method calls typed; scip map 8m47s / 10.3 GB peak summed RSS, scip_python pass 55,281 nodes / 301,695 edges, 9,435 of 9,619 method calls typed (98.1%). On that map: stv matrix {} exit 0; reachability gated cohort 293, identical keys to the baseline. Tests: 3 wiring tests in tests/test_check_test_only_reachability_ci_wiring.py fail on the old YAML and pass on the new one. NOT yet verified: a live cron firing (apt/npm reachability from the CI VM and the real peak on the 16 GB VM); the first 01:00/13:00 UTC run will show it."  # 4806
+- op: discuss  # 6f2d
+  at: '2026-10-25T00:02:06Z'  # 6f2d
+  by: agent  # 6f2d
+  actor: jgstern_agent  # 6f2d
+  clock: 6  # 6f2d
+  nonce: 6f2d  # 6f2d
+  message: "Observation 2026-10-24 (no status change): one of three local `run .` builds with HYPERGUMBO_SCIP_PYTHON=1 and no --backend flag recorded scip_python as skipped (`backend_disabled`, 6m25s). The other two built typed on the same tree and env, one with --backend scip-python and one env-only. Probing resolve_scip_python_optin (True) and is_scip_python_available (True, 0.17 s) directly passed, and the cron map at a02f461d was typed via the env var. Not reproduced. Suspect the 5 s `--version` probe under pipeline load: should_use_scip_python_backend folds \"binary unavailable\" into the same `backend_disabled` reason as \"not opted in\". In CI, `--require-pass scip_python` turns such a skip into exit 1, so it cannot pass silently."  # 6f2d

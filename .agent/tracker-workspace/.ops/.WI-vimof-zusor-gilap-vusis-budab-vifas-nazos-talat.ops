@@ -1,0 +1,49 @@
+- op: create  # d7b2
+  at: '2026-11-02T00:03:17Z'  # d7b2
+  by: agent  # d7b2
+  actor: jgstern_agent  # d7b2
+  clock: 1  # d7b2
+  nonce: d7b2  # d7b2
+  data:  # d7b2
+    kind: work_item  # d7b2
+    title: "agda: ERROR/MISSING nodes in 45% of agda-stdlib files (40% under the language-pack grammar); the failing constructs are uncharacterized"  # d7b2
+    status: todo_soft  # d7b2
+    priority: 4  # d7b2
+    parent:  # d7b2
+    tags:  # d7b2
+    - agda  # d7b2
+    - analysis_quality  # d7b2
+    isbefore: []  # d7b2
+    duplicate_of: []  # d7b2
+    not_duplicate_of: []  # d7b2
+    pr_ref:  # d7b2
+    description: "MEASURED 2026-11-01 in the Agda grammar A/B (~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/agda_grammar_check/cmp.py; data in cmp_stdlib.json and cmp_plfa.json). Counted: files whose parse tree holds at least one ERROR or MISSING node.\n- agda-stdlib, 1264 files: PyPI tree-sitter-agda 1.3.3 (bundled today) 571 files (45%), 2160 nodes; tree-sitter-language-pack 508 files (40%), 2064 nodes.\n- plfa, 40 files: 26 vs 23.\n\nINV-vokir (a declaration after a layout block) and WI-molon (an empty nested module body) are two named shapes. The rest is NOT CHARACTERIZED: which constructs produce the errors, and how many declarations, references and stable_ids are lost or misplaced because of them.\n\nASKED: classify the ERROR and MISSING nodes over agda-stdlib by enclosing construct (and the first token inside the error); rank the shapes by file count; for each, decide between an analyzer workaround, an upstream grammar issue, or an accepted loss, and file per-shape items. This also bears on the owner's pending grammar-swap decision (bundled 1.3.3 vs language pack; see INV-vokir and WI-molon), since both grammars share the upstream and most of the errors."  # d7b2
+    fields: {}  # d7b2
+- op: discuss  # 0362
+  at: '2026-11-15T19:25:54Z'  # 0362
+  by: agent  # 0362
+  actor: jgstern_agent  # 0362
+  clock: 2  # 0362
+  nonce: '0362'  # 0362
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096: parse-only census on a local agda-stdlib clone (ab4fbd25bb, 1247 files; not the 1264-file clone of 11-01). The item's method gives 573 files (1.3.3) and 507 (pack 0.13.0), matching the filed 571/508. That method walks `.children`, which hides zero-width `_dedent`/`_newline` MISSING tokens. By `root.has_error`: 747 files (59.9%) under 1.3.3, 510 (40.9%) under the pack; 174 files are 1.3.3-flagged with nothing visible, 171 of them clean under the pack. A hidden MISSING does not always change output (INV-vokir's control probe). INV-vokir's split shape: 9 files. Classification not started; no per-shape items exist. Scripts: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-vimof. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-vimof.md. No status or priority change made by this review."  # 0362
+- op: discuss  # 0979
+  at: '2026-11-15T21:14:29Z'  # 0979
+  by: agent  # 0979
+  actor: jgstern_agent  # 0979
+  clock: 3  # 0979
+  nonce: '0979'  # 0979
+  message: "[AGDA GRAMMAR INVESTIGATION 2026-11-15, owner-requested, dev 03068d3531; report ~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/README.md section 2] One grammar, two revisions: PyPI tree-sitter-agda 1.3.3 (the only release on PyPI, checked today) and the later upstream commit that tree-sitter-language-pack 0.13.0 builds. Today's analyzer on agda-stdlib ab4fbd2 (1,247 files): files parsed through error recovery 747 under 1.3.3, 510 under the pack (all among the 747); declarations 21,563 vs 21,633; with the name found as a declaration on its start line 20,080 vs 20,161; source lines with a declaration in one arm only: 47 in 13 files (1.3.3), 118 in 52 files (pack); same position, different name 506 (the pack's deeper in 453). 32 saved probe files of INV-vokir, WI-molon and WI-bokud: 15 equal; in the other 17 the pack emits the names the source declares. Either way a damaged file is listed in limits.failed_files with partial_parse. Stable ids move under the swap, so it needs a scheme bump. RECOMMENDATION TO THE OWNER: switch to the pack's revision in the v15 bump PR, with WI-siniv (declare the pack in extended1). Not examined: the pack's 1.25 release line. No status change. If the owner switches, this item's numbers re-base to the pack (510 files, 40.9%) and it no longer feeds a grammar choice; the classification is still owed."  # 0979
+- op: discuss  # c63f
+  at: '2026-11-15T21:27:44Z'  # c63f
+  by: agent  # c63f
+  actor: jgstern_agent  # c63f
+  clock: 4  # c63f
+  nonce: c63f  # c63f
+  message: "[OWNER RULING 2026-11-15] 'switch to the language pack's grammar, in PR 2'. Agda moves from the tree-sitter-agda 1.3.3 wheel to the revision tree-sitter-language-pack builds, in the v15 bump PR (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md), because stable ids move. WI-siniv-dovas-bodin-patip-dumug-sufov-mukal-sumas (extended1 declares the pack) rides with it as a prerequisite. This item stays open as a study, re-based on the pack's numbers (510 of 1,247 agda-stdlib files in error recovery); it no longer feeds a grammar choice."  # c63f
+- op: discuss  # 1962
+  at: '2026-11-16T11:46:43Z'  # 1962
+  by: agent  # 1962
+  actor: jgstern_agent  # 1962
+  clock: 5  # 1962
+  nonce: '1962'  # 1962
+  message: "PR #2200, 2026-11-16: the Agda analyzer now reads the language pack's grammar. New figure for this item: 510 of 1,248 agda-stdlib files (40.9%) parse through error recovery (747 with the old wheel). Separate finding filed at P2: 13 signatures are lost in files with NO error node, which this item's count cannot see."  # 1962

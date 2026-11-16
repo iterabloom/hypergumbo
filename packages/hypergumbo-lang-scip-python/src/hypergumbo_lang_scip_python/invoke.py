@@ -5,15 +5,17 @@
 --output FILE`` writes a SCIP index for a Python project; pyright resolves the project's own
 modules and whatever is importable from the invoking interpreter's
 environment (so a project analysed inside its own virtualenv gets its
-dependencies typed too). It executes NOTHING from the project — static
+dependencies typed too). It runs none of the project's code — static
 inference only — which is why this backend's opt-in is a preference and
-not a trust grant.
+not a trust grant. It does launch pip and python from ``PATH`` to list the
+installed packages; ``hypergumbo_core.safety_zones.backend_index_scip_python``
+says which, and from where.
 
 The project goes in ``--cwd``. scip-python 0.6.6 takes no positional
 project: handed one, it ignores it, indexes its own working directory and
-exits 0 -- and the subprocess runs in a scratch directory, so until WI-nijod
-every run indexed that empty directory ("Total Project Files 0") and
-returned a valid, empty index. The version is a constant: left out, it is
+exits 0 -- and since the subprocess runs in a scratch directory, it indexes
+that empty directory ("Total Project Files 0") and returns a valid, empty
+index (history: WI-nijod). The version is a constant: left out, it is
 the project's git revision, and outside a git checkout the indexer crashes
 on the first module (``normalizeNameOrVersion``). Nothing downstream reads
 it -- translation keys on the descriptors -- and a constant keeps symbol
@@ -33,14 +35,15 @@ import subprocess  # nosec B404 — required for the scip-python invocation
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from hypergumbo_core.safety_zones import backend_index_scip_python
 from hypergumbo_core.scip_python_install import SCIP_PYTHON_BINARY
 
 
 #: V8's fatal-error text when the heap limit is reached. The default limit
-#: (~4 GB) is too small for a large project: hypergumbo's own tree (1,712
-#: files) aborted at 4.2 GB RSS and indexed in 306 s at 8.4 GB with
-#: ``--max-old-space-size=9000`` (WI-nijod). The limit is the user's to set --
-#: it is memory on their machine -- so the failure names the knob instead.
+#: (~4 GB) is too small for a large project: a tree of a couple thousand
+#: Python files can need about twice that (``--max-old-space-size=9000``).
+#: The limit is the user's to set -- it is memory on their machine -- so the
+#: failure names the knob instead of raising it. (history: WI-nijod)
 _NODE_HEAP_EXHAUSTED = b"JavaScript heap out of memory"
 
 
@@ -83,16 +86,15 @@ def run_scip_python_index(
 
     ``cwd`` is a caller-owned scratch directory that receives ``index.scip``;
     the project itself is never written to. The timeout defaults to 15
-    minutes: scip-python indexed 179 files in 40 s at 2.1 GB RSS, and a
-    large monorepo should fail visibly rather than hang the pipeline.
+    minutes: ample for an ordinary project, short enough that a large
+    monorepo fails visibly rather than hanging the pipeline.
     """
     resolve = which if which is not None else shutil.which
     resolved = resolve(scip_python_bin)
     if resolved is None:
-        raise ScipPythonNotInstalled(
-            f"'{scip_python_bin}' is not on PATH; install it with "
-            "npm install -g @sourcegraph/scip-python"
-        )
+        # The install steps live in the analyzer's warning, not here: this
+        # message becomes the pass's skip_reason in the emitted map.
+        raise ScipPythonNotInstalled(f"'{scip_python_bin}' is not on PATH")
     output = cwd / "index.scip"
     argv = [
         resolved, "index", "--cwd", str(project),
@@ -100,7 +102,10 @@ def run_scip_python_index(
         "--project-version", "0",
         "--output", str(output),
     ]
-    run = runner if runner is not None else subprocess.run
+    # INV-tusos: the default launcher is the declared ``analyser_backend``
+    # zone wrapper, so the self-proof sees the launch; ``runner`` stays the
+    # test seam.
+    run = runner if runner is not None else backend_index_scip_python
     try:
         completed = run(  # nosec B603 — argv is built here from a resolved binary
             argv, cwd=str(cwd), capture_output=True, timeout=timeout_sec, check=False,

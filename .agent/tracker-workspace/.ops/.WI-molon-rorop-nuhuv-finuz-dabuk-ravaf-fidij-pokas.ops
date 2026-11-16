@@ -26,3 +26,99 @@
   clock: 2  # 1e39
   nonce: '1e39'  # 1e39
   message: "From WI-tusad F2 (2026-10-13), recorded by F3: the bundled tree-sitter-agda 1.3.3 (grammar_module) (1) swallows EVERY declaration after a one-constructor data type into it (not only misparses the type), and (2) nests the next module inside an EMPTY nested module body (`module C where` with nothing after it). The tree-sitter-language-pack agda grammar parses both correctly. Workaround in the WI-tusad gate fixtures: a two-constructor Nat and non-empty module bodies. Consequence for identity: declarations after such a type hash the wrong scope chain and are named under it."  # 1e39
+- op: discuss  # 92fc
+  at: '2026-11-01T22:22:23Z'  # 92fc
+  by: agent  # 92fc
+  actor: jgstern_agent  # 92fc
+  clock: 3  # 92fc
+  nonce: 92fc  # 92fc
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 on dev 9ae4abe13f (tree-sitter-agda 1.3.3, fx_molon). Part 1 reproduces but is INV-vokir's (P3) mechanism: after a one-constructor data block the next signature splits into two function nodes (foo not emitted), and a following 'data Bool' header is lost too. It does not swallow every later declaration. Part 2 as titled does NOT reproduce: in 4 where-block probes each block nests under its own clause. The F2 correction does reproduce: an empty nested 'module C where' gives an ERROR, enclosing module A is not emitted, and 'run' loses its A chain. agda.py:65-69 repeats the where claim. MECHANISM: tree-sitter-agda 1.3.3 layout errors: a one-entry layout block splits the next declaration (INV-vokir), and an empty nested module body ERRORs the enclosing module. SHARES MECHANISM WITH: INV-vokir. PROPOSED DISPOSITION: split (awaiting owner authorization; status unchanged). PROPOSED REMAINDER TITLE: agda: an empty nested module body (module C where, nothing after) makes tree-sitter-agda ERROR the enclosing module, losing it and later scope chains"  # 92fc
+- op: update  # 5178
+  at: '2026-11-01T22:22:23Z'  # 5178
+  by: agent  # 5178
+  actor: jgstern_agent  # 5178
+  clock: 4  # 5178
+  nonce: '5178'  # 5178
+  set:  # 5178
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 on dev 9ae4abe13f (tree-sitter-agda 1.3.3, fx_molon). Part 1 reproduces but is INV-vokir's (P3) mechanism: after a one-constructor data block the next signature splits into two function nodes (foo not emitted), and a following 'data Bool' header is lost too. It does not swallow every later declaration. Part 2 as titled does NOT reproduce: in 4 where-block probes each block nests under its own clause. The F2 correction does reproduce: an empty nested 'module C where' gives an ERROR, enclosing module A is not emitted, and 'run' loses its A chain. agda.py:65-69 repeats the where claim. (Original text below; the review entry in the thread has the evidence.)\n\nReported by the WI-tusad B4 fix agent (PR #1562, 2026-10-12); not independently reproduced. Two tree-sitter-agda parse defects seen while migrating Agda stable_ids: (1) a data declaration with exactly one constructor is misparsed; (2) only the first clause-level where block in a file is nested under its clause, later ones are not. Neither was caused by B4. Effect on output not measured: symbols inside a mis-nested where may get the wrong scope chain (and so a different stable_id than intended). Next step: minimal repro for each, then decide grammar upgrade/patch vs analyzer-side workaround (see scripts/build-source-grammars if agda is built from source)."  # 5178
+- op: update  # 2cc7
+  at: '2026-11-01T22:27:40Z'  # 2cc7
+  by: agent  # 2cc7
+  actor: jgstern_agent  # 2cc7
+  clock: 5  # 2cc7
+  nonce: 2cc7  # 2cc7
+  set:  # 2cc7
+    title: "agda: an empty nested module body (module C where, nothing after) makes tree-sitter-agda ERROR the enclosing module, losing it and later scope chains"  # 2cc7
+- op: discuss  # 288a
+  at: '2026-11-01T22:27:40Z'  # 288a
+  by: agent  # 288a
+  actor: jgstern_agent  # 288a
+  clock: 6  # 288a
+  nonce: 288a  # 288a
+  message: "SPLIT (owner-approved 2026-11-01). Part 1 (one-constructor data block breaks the next declaration) moved to INV-vokir-bohuj-vumop-datup-tobog-rovoz-furoj-vofos. Part 2 as originally titled (where-blocks nest under the wrong clause) does not reproduce in 4 probes. This item now covers the empty-nested-module ERROR: 'module C where' with an empty body ERRORs lines 3-20, module A is not emitted and 'run' loses its A chain. agda.py:65-69 repeats the non-reproducing where claim and should be corrected with the fix."  # 288a
+- op: discuss  # f8bd
+  at: '2026-11-01T23:38:02Z'  # f8bd
+  by: agent  # f8bd
+  actor: jgstern_agent  # f8bd
+  clock: 7  # f8bd
+  nonce: f8bd  # f8bd
+  message: "GRAMMAR-SWAP CHECK 2026-11-01 (owner asked to verify before any grammar change; artifacts ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/agda_grammar_check/). WHAT THE TWO GRAMMARS ARE: PyPI tree-sitter-agda 1.3.3 = upstream tree-sitter/tree-sitter-agda tag v1.3.3 (47802091de, 2024-11-10). tree-sitter-language-pack 0.13.0 pins agda to the same repo at master e8d47a6987 (2025-08-30, from the pack's sources/language_definitions.json). The 1.3.3..e8d47a6987 diff is 3 files: publish.yml, tree-sitter.json (query paths) and src/scanner.c d44b342455 'fix(scanner): adjust container allocations' (the layout-token ring buffer was grown by realloc without re-linearising it, so queued newline/indent tokens land in the wrong slots after a wrap). Same ABI 14, identical 228 node kinds, 0 fields: agda.py's node-type branches see the same vocabulary. No reason for choosing the dedicated wheel is recorded (7b0a72d33c; both deps already existed then). FIXTURES: the pack parses this item's probes and WI-molon's fx_molon M/N (empty nested module) error-free; where the bundled grammar is error-free the trees are identical. CORPUS (agda-stdlib 1264 .agda + PLFA 40, shallow clones): files with parse errors 571->508 (stdlib); the pack never errors on a file 1.3.3 parses cleanly, but has MORE error nodes in 56 already-erroring files. Analyzer A/B on stdlib (AgdaAnalyzer vs a language_pack_name='agda' subclass, separate caches): symbols 23480->23596; real declarations GAINED 166 in 51 files; real declarations LOST 43 in 10 files (e.g. record IsMagma in src/Algebra/Structures.agda, Lattice/MeetSemilattice/BooleanAlgebra/DistributiveLattice records in src/Algebra/Lattice/Bundles.agda, LeftModule, Data/Integer Positive); scope chains deeper (correct, sampled) on 516 lines, shallower on 86; stable_id changes for 192 common symbols; 149 of 1265 files change. Junk-named symbols (e.g. a field named ':') are ~equal (316 vs 307), and ~40% of stdlib files error under EITHER grammar. VERDICT: the swap fixes this item's shapes but is a trade, not a strict improvement; it is not the fix for agda parse quality in general. Prerequisites if pursued: WI-siniv (extended1 does not declare the pack), and the pack's ~=0.13.0 pin would then also pin the agda revision. Owner decision; nothing changed."  # f8bd
+- op: discuss  # 9274
+  at: '2026-11-02T00:04:12Z'  # 9274
+  by: agent  # 9274
+  actor: jgstern_agent  # 9274
+  clock: 8  # 9274
+  nonce: '9274'  # 9274
+  message: "Related, filed 2026-11-01 as WI-vimof: ERROR or MISSING nodes appear in 571 of 1264 agda-stdlib files under 1.3.3 and 508 under the language pack. This item and INV-vokir are two named shapes; the rest is uncharacterized."  # 9274
+- op: discuss  # 8416
+  at: '2026-11-15T19:25:53Z'  # 8416
+  by: agent  # 8416
+  actor: jgstern_agent  # 8416
+  clock: 9  # 8416
+  nonce: '8416'  # 8416
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096, tree-sitter-agda 1.3.3: N.agda reproduces (ERROR 3:0-20:0; no `A`; `C` and `run` bare). The trigger is wider than an empty body. Empty nested module with nothing after its parent: correct symbols. Non-empty nested module (`c : Set / c = Set`): `c` named `A.c`, a following `run` loses `A`, a following top-level `module B` is named `A.C.B`. A nested record or two-constructor data inside a module makes the next sibling lose the module chain. Language pack 0.13.0 parses all 16 probes with `has_error=False`. agda.py:65-69 where claim still present; contradicted by W, W2, Cl. Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-molon. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-molon.md. No status or priority change made by this review."  # 8416
+- op: update  # eade
+  at: '2026-11-15T19:47:29Z'  # eade
+  by: agent  # eade
+  actor: jgstern_agent  # eade
+  clock: 10  # eade
+  nonce: eade  # eade
+  set:  # eade
+    title: "agda: layout blocks nested in a module (non-empty nested module, record, data; an empty nested module followed by top-level code) lose scope chains or the enclosing module under tree-sitter-agda 1.3.3"  # eade
+    description: "[WIDENED 2026-11-15 by owner ruling, dev e2b6ab8096, tree-sitter-agda 1.3.3 as bundled]\nThe trigger is wider than the original title's \"empty nested module body\". Under the bundled grammar, layout blocks\nnested inside a module lose scope chains; an empty nested module ALONE is handled correctly.\n\nProbe grid (each a file `module T where` followed by the shape; emitted names shown; fixtures and scripts in\n~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-molon):\n\n  shape                                            emitted                                         correct would be\n  non-empty nested module, last in file             A, A.C, A.c                                     A.C.c\n  non-empty nested module, then a sibling           A, A.C, A.c, run                                A.C.c, A.run\n  nested module with 3 declarations, then sibling   C, C.c, C.d (A lost)                            A, A.C, A.C.c, A.C.d\n  empty nested module, then `run` in A              A, A.C, A.run                                   (correct)\n  empty nested module, then top-level code          C, run, B, B.f (A lost)  <- the filed shape     A, A.C, A.run, B, B.f\n  empty nested module, last in A, then top-level    run, C, B, B.f (A lost)                         A, A.run, A.C, B, B.f\n  nested module then a top-level module             A, A.C, A.C.c, A.C.B, A.f                       B, B.f at top level\n  nested record inside a module, then sibling       A, A.R, A.R.x, run                              A.run\n  nested data (two constructors), then sibling      A, A.D, A.k1, A.k2, run, B, f                   A.run, B.f (run and f lose their module)\n\ntree-sitter-language-pack 0.13.0 parses all 16 probes with has_error False. The decision between upgrading or\npatching the grammar and working around it in the analyzer is the item's open step; WI-vimof holds the corpus\ncensus (747 of 1,247 agda-stdlib files flagged by root.has_error under 1.3.3, 510 under the pack).\n\nNot reproduced, and to be removed from the analyzer's docstring: the claim at agda.py:65-69 that only the first\nclause-level where block nests under its clause. In the three probes run (W, W2, Cl) every where block nests under its own clause.\n\nAcceptance: every row of the grid emits the \"correct would be\" names; the docstring claim is corrected.\n\n--- text before the widening ---\n[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 on dev 9ae4abe13f (tree-sitter-agda 1.3.3, fx_molon). Part 1 reproduces but is INV-vokir's (P3) mechanism: after a one-constructor data block the next signature splits into two function nodes (foo not emitted), and a following 'data Bool' header is lost too. It does not swallow every later declaration. Part 2 as titled does NOT reproduce: in 4 where-block probes each block nests under its own clause. The F2 correction does reproduce: an empty nested 'module C where' gives an ERROR, enclosing module A is not emitted, and 'run' loses its A chain. agda.py:65-69 repeats the where claim. (Original text below; the review entry in the thread has the evidence.)\n\nReported by the WI-tusad B4 fix agent (PR #1562, 2026-10-12); not independently reproduced. Two tree-sitter-agda parse defects seen while migrating Agda stable_ids: (1) a data declaration with exactly one constructor is misparsed; (2) only the first clause-level where block in a file is nested under its clause, later ones are not. Neither was caused by B4. Effect on output not measured: symbols inside a mis-nested where may get the wrong scope chain (and so a different stable_id than intended). Next step: minimal repro for each, then decide grammar upgrade/patch vs analyzer-side workaround (see scripts/build-source-grammars if agda is built from source)."  # eade
+- op: discuss  # 1e47
+  at: '2026-11-15T19:47:29Z'  # 1e47
+  by: agent  # 1e47
+  actor: jgstern_agent  # 1e47
+  clock: 11  # 1e47
+  nonce: '1e47'  # 1e47
+  message: "OWNER RULING 2026-11-15: widened from 'an empty nested module body' to nested layout blocks in general. Title and description rewritten; the probe grid is at the top of the description. No status or priority change."  # 1e47
+- op: discuss  # 8fc2
+  at: '2026-11-15T21:14:28Z'  # 8fc2
+  by: agent  # 8fc2
+  actor: jgstern_agent  # 8fc2
+  clock: 12  # 8fc2
+  nonce: 8fc2  # 8fc2
+  message: "[AGDA GRAMMAR INVESTIGATION 2026-11-15, owner-requested, dev 03068d3531; report ~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/README.md section 2] One grammar, two revisions: PyPI tree-sitter-agda 1.3.3 (the only release on PyPI, checked today) and the later upstream commit that tree-sitter-language-pack 0.13.0 builds. Today's analyzer on agda-stdlib ab4fbd2 (1,247 files): files parsed through error recovery 747 under 1.3.3, 510 under the pack (all among the 747); declarations 21,563 vs 21,633; with the name found as a declaration on its start line 20,080 vs 20,161; source lines with a declaration in one arm only: 47 in 13 files (1.3.3), 118 in 52 files (pack); same position, different name 506 (the pack's deeper in 453). 32 saved probe files of INV-vokir, WI-molon and WI-bokud: 15 equal; in the other 17 the pack emits the names the source declares. Either way a damaged file is listed in limits.failed_files with partial_parse. Stable ids move under the swap, so it needs a scheme bump. RECOMMENDATION TO THE OWNER: switch to the pack's revision in the v15 bump PR, with WI-siniv (declare the pack in extended1). Not examined: the pack's 1.25 release line. No status change. This item's N, Nc and the 9 differing grid probes give the declared scope chains under the pack. The docstring at agda.py:65-69 still needs correcting either way."  # 8fc2
+- op: discuss  # 100e
+  at: '2026-11-15T21:27:44Z'  # 100e
+  by: agent  # 100e
+  actor: jgstern_agent  # 100e
+  clock: 13  # 100e
+  nonce: 100e  # 100e
+  message: "[OWNER RULING 2026-11-15] 'switch to the language pack's grammar, in PR 2'. Agda moves from the tree-sitter-agda 1.3.3 wheel to the revision tree-sitter-language-pack builds, in the v15 bump PR (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md), because stable ids move. WI-siniv-dovas-bodin-patip-dumug-sufov-mukal-sumas (extended1 declares the pack) rides with it as a prerequisite. The switch fixes this item's probes; the docstring at agda.py:65-69 is corrected in the same change."  # 100e
+- op: update  # bd05
+  at: '2026-11-16T11:46:42Z'  # bd05
+  by: agent  # bd05
+  actor: jgstern_agent  # bd05
+  clock: 14  # bd05
+  nonce: bd05  # bd05
+  set:  # bd05
+    status: done  # bd05
+- op: discuss  # d9c9
+  at: '2026-11-16T11:46:42Z'  # d9c9
+  by: agent  # d9c9
+  actor: jgstern_agent  # d9c9
+  clock: 15  # d9c9
+  nonce: d9c9  # d9c9
+  message: "Done in PR #2200. Re-ran all ten rows of the item's grid plus its N, Nc, d and control fixtures: nine rows were wrong on dev (the tenth, an empty nested module followed by top-level code, was right, as filed) and every row now gives the names the item lists as correct. No analyzer code was changed for this item: the grammar switch of INV-vokir fixed the layout nesting; this commit replaced the docstring that claimed the old behaviour and added the scope-chain tests. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # d9c9

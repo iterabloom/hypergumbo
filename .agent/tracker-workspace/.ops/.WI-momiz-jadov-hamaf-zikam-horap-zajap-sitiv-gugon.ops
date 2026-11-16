@@ -1,0 +1,22 @@
+- op: create  # b5b6
+  at: '2026-10-28T10:55:46Z'  # b5b6
+  by: agent  # b5b6
+  actor: jgstern_agent  # b5b6
+  clock: 1  # b5b6
+  nonce: b5b6  # b5b6
+  data:  # b5b6
+    kind: work_item  # b5b6
+    title: "an unbound / UFCS call into a method-only module is classified and reported starved in one run (rust std::io::Write::write_all(out, b), python csv.DictWriter.writerow(w, row)) -- WI-bobuf's residual, ADR-0059 re-open trigger"  # b5b6
+    status: todo_hard  # b5b6
+    priority: 3  # b5b6
+    parent:  # b5b6
+    tags:  # b5b6
+    - io_boundary  # b5b6
+    - verify_claims  # b5b6
+    - catalogue  # b5b6
+    isbefore: []  # b5b6
+    duplicate_of: []  # b5b6
+    not_duplicate_of: []  # b5b6
+    pr_ref:  # b5b6
+    description: "RESIDUAL OF WI-bobuf (filed 2026-10-28 with WI-bobuf's guard, verify_claims.classified_yet_starved). The eighth live shape of INV-dihun's classified-yet-starved contradiction, reproduced through the production pipeline on dev 3c53837bb5:\n\n  rust:   let mut out = std::io::stdout(); std::io::Write::write_all(&mut out, b\"hello\\n\").unwrap(); out.flush().unwrap();\n          -> io-boundaries classifies rust:std::io::Write:0-0:write_all as fs_write, and method_starved_modules reports std::io::Write starved (generic claims: 'structurally invisible', exit 2).\n  python: q = pathlib.Path('x'); q.exists(); csv.DictWriter.writerow(w, row)\n          -> csv.DictWriter.writerow classified, csv.DictWriter starved.\n\nCAUSE: an unbound / UFCS call (Type::method(recv, ...), Class.method(obj, ...)) carries no call_construct, so reached_row_kind is None (route 1 fails) and route 2 indexes function-kind names only, while the module declares only method rows. The language has OTHER stamped edges, so it is not abstained on.\n\nWHY IT IS ITS OWN ITEM: test_blind_language_method_starvation.py::test_a_METHOD_name_on_an_unstamped_edge_still_starves pins starvation on the premise that an unstamped method-name edge is the blind-analyzer shape, and loosening on any classified edge was refused for INV-fugus. UFCS falsifies the premise and is ADR-0059's own re-open trigger (a row reached both ways). Candidate cures, not chosen: (a) the analyzers stamp a construct for an unbound/UFCS call (a new construct that reached_row_kind maps to method), (b) route 3: an edge whose DST names the receiver's own type with the receiver as first argument. Either must keep the blind-Kotlin java.io.File-constructor case starving.\n\nClosure test: packages/hypergumbo-core/tests/test_classified_yet_starved.py::test_an_unbound_call_is_not_starved (strict xfails, rust_ufcs and python_unbound)."  # b5b6
+    fields: {}  # b5b6

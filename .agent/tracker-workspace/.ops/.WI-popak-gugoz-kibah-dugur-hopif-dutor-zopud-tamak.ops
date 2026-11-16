@@ -25,3 +25,19 @@
   clock: 2  # 4882
   nonce: '4882'  # 4882
   message: "From WI-fubom (ADR sweep, 2026-09-30): the trigger this item waits on may have fired. ADR-0036's \"Why advisory\" bullet names three blockers; one is \"the ~1,645 external_symbol kind-slot disagreements (WI-pubiv)\", and WI-pubiv is now `done` (ADR-0037 Implementation status: create_boundary_nodes mints boundary ids with an external_symbol kind slot, so the final graph carries no :unresolved slot). The other two (WI-kugaj route/event cohort, the tsconfig node) were not checked. _check_id_roundtrip still emits _ID_ROUNDTRIP_ADVISORY on all three advisory sub-checks (spec_validator.py). WI-fubom did not edit ADR-0036; its Enforcement banner over the intended design was judged a pending-design note, not retracted text."  # 4882
+- op: update  # a835
+  at: '2026-10-24T15:08:02Z'  # a835
+  by: agent  # a835
+  actor: jgstern_agent  # a835
+  clock: 3  # a835
+  nonce: a835  # a835
+  set:  # a835
+    status: done  # a835
+    pr_ref: '1834'  # a835
+- op: discuss  # 784e
+  at: '2026-10-24T15:08:02Z'  # 784e
+  by: agent  # 784e
+  actor: jgstern_agent  # 784e
+  clock: 4  # 784e
+  nonce: 784e  # 784e
+  message: "Done in PR #1834 (dev f63509447f). The id-format:F3 round-trip checks (kind slot registered, kind slot == Symbol.kind, name slot non-empty) went warning -> error, and VALIDATION_BASELINES went 11 -> 0 on all four substrates. Gating backlog drained: WI-pubiv, WI-kugaj and the tsconfig fold earlier; WI-lusoh (#1832) and WI-pusan (#1833) today. LIVE on merged dev: hypergumbo run on a copy of tests/fixtures/schema-coverage-corpus gives rc=0 and validation_report violations 0 (all classes 0). A legacy-shape cuda id (cuda:k.cu:1-2:k:global on kind=function) through _check_id_roundtrip now yields two 'error' violations. Surveys swept at 0 before the flip: grpc, whisper.cpp, sherpa-onnx, envoy-half, torsocks, modsecurity, shaka-packager, plasma-desktop, aardvark-dns."  # 784e

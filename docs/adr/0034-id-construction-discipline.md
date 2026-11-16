@@ -5,7 +5,7 @@
 - Date: 2026-06-01
 - Supersedes: —
 - Superseded by: Partially superseded by ADR-0037 (Out-of-scope `:unresolved` blessing), ADR-0036 (reviewer-checklist item 5 correction); core factory-discipline decision in force
-- Related: ADR-0014 (Typed stable_id factories — the family of `make_*_stable_id` factories whose discipline this ADR generalizes to `Symbol.id` construction), ADR-0033 (Spec-vs-Data Validator Stage — the runtime enforcement substrate; this ADR's policy is enforced by ADR-0033's `id_format` validator class), ADR-0031 (Symbol.language reshape — its Class B "synthetic stand-in" classification clarifies which language string belongs in the canonical ID's first segment for linker-emitted Symbols); tracker items INV-sadiv (218 call_site nodes emitted with ad-hoc `<path>::<role>::<line>` IDs — closed by this ADR's six-site migration), INV-dulah (META: ID-format escapes), INV-hunup (META: stable_id multiplicity — out of scope here, addressed by Phase 6 PR1).
+- Related: ADR-0035 (stable_id identity contract, which superseded ADR-0014; with `docs/hypergumbo-spec.md` §6 the home of the `make_*_stable_id` factory family whose discipline this ADR generalizes to `Symbol.id` construction), ADR-0033 (Spec-vs-Data Validator Stage — the runtime enforcement substrate; this ADR's policy is enforced by ADR-0033's `id_format` validator class), ADR-0031 (Symbol.language reshape — its Class B "synthetic stand-in" classification clarifies which language string belongs in the canonical ID's first segment for linker-emitted Symbols); tracker items INV-sadiv (218 call_site nodes emitted with ad-hoc `<path>::<role>::<line>` IDs — closed by this ADR's six-site migration), INV-dulah (META: ID-format escapes), INV-hunup (META: stable_id multiplicity — out of scope here, addressed by Phase 6 PR1).
 
 ## Context
 
@@ -97,7 +97,7 @@ return Symbol(
 
 This ADR addresses only `Symbol.id` construction. Three adjacent identity-discipline gaps remain open and are tracked separately:
 
-- **`Symbol.stable_id` format and multiplicity** (INV-hunup, INV-bazij) — Phase 6 PR1 / PR3 territory. The `stable_id` field has its own schema (`sha256:<16hex>` and family-specific factory outputs) and its own validator class (Phase 6).
+- **`Symbol.stable_id` format and multiplicity** (INV-hunup, INV-bazij) — Phase 6 PR1 / PR3 territory. The `stable_id` field has its own schema (`hgstableid<N>:<16hex>` or the SCIP arm's `hgscipid<N>:<16hex>` since ADR-0035 §7, `sha256:<16hex>` through scheme v14, and family-specific factory outputs) and its own validator class (Phase 6).
 - **`Edge.id` format** — an edge id is `edge:sha256:<16hex>`, not the five-slot node grammar, and the validator checks it against that shape (`_check_edge_id_format`, WI-vodin). The placeholder *dst* shape `make_unresolved_edge` mints is ADR-0036's id grammar, with its `:unresolved` kind token folded into `external_symbol` on the final graph (ADR-0037 ruling 4).
 - **Stable-id collision counting** (INV-bazij P0, 60% collision rate) — Phase 6 PR3 territory. Collision detection is a separate validator concern (cross-record coherence), not a per-record shape check.
 
@@ -116,6 +116,8 @@ The `id_format` validator class at `packages/hypergumbo-core/src/hypergumbo_core
 - **`Edge.id` answers to a different grammar** — `edge:sha256:<16hex>`, a content digest — and is checked against that, at both the producer (this linter) and the runtime (`_check_edge_id_format`). The two ids are counterparts in role, not in shape.
 
 Its first run found **26 sites** whose emitted ids this ADR's own runtime validator classifies as malformed, the commonest being a bare line number where the grammar requires `start-end`. All 26 were repaired in the same change.
+
+**The kind slot against the Symbol's kind (ADR-0036 Ruling 2), added 2026-11-15.** A grammatical id can still name the wrong kind: a producer calls the factory correctly and hands it a role word (`fn`, `export_entry`, `bridge_caller`) while building the Symbol with its real kind. So where `Symbol(id=..., kind=...)` and the id's kind word are both string literals readable through the same three hops, the linter compares them and reports a `kind_slot_mismatch`. The word is read where it is WRITTEN (a factory's `kind` argument, a template's last slot, a helper's `return`), never from a helper's parameter names: the websocket linker's helper takes a `kind` it appends to the name slot. Its first run found 33 sites in 18 files; 32 were real at run time (two validator errors per node) and one, that websocket helper, was the linter's own error and was corrected in the linter. A mismatch whose correction would move a stable id is declared in `KNOWN_KIND_SLOT_HOLES` with its reason, and a declaration nothing matches is itself reported. The set is empty: its two first entries (robot's `test_case`, twig's `function_call`, each minting the node id and the stable id from one `make_doc_symbol_ids` call) were corrected with the v15 stable-id scheme. What the linter cannot read is a COMPUTED word (a variable holding a keyword, a table lookup: three such producers were found only by running them), which is why `test_stable_id_floor_gate` asserts the same property on the output of every registered analyzer's fixture.
 
 ### Reviewer-time check (this ADR's reviewer checklist)
 
@@ -155,7 +157,7 @@ The checklist above remains the documented manual gate for judgement calls the l
 
 ## References
 
-- ADR-0014 (Typed stable_id factories) — the parallel discipline for `Symbol.stable_id`.
+- ADR-0035 and `docs/hypergumbo-spec.md` §6 (the `make_*_stable_id` factories; formerly ADR-0014) — the parallel discipline for `Symbol.stable_id`.
 - ADR-0031 §"Class B synthetic stand-ins" — clarifies the language-string choice for linker-emitted Symbols.
 - ADR-0033 §"Validator classes" — the four-class catalog this ADR's `id_format` class extends to five.
 - Lab notebook `id-construction-discipline-05312026.md` — the original posture document.

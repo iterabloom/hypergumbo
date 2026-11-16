@@ -1,29 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The stdlib climb: every row here was a measured hole in the shipped catalogue.
+"""The stdlib climb: python rows that close measured holes in the shipped catalogue.
 
-Under artifact scope the self-proof's blocker list stopped moving, and what
-remained was 89 modules — every one a genuine dependency of the shipped tool.
+Under artifact scope the self-proof's blocker list is the set of modules the
+shipped tool genuinely depends on whose I/O the catalogue has not examined.
 The stdlib share of that list is not gate bookkeeping: ``os.open`` +
-``os.write`` is the exact pair INV-zubuh measured writing a file while the
-tool confirmed "never writes to the host filesystem". These tests pin the
-classifications; the census numbers on the PR are the recall evidence.
+``os.write`` can write a file while the tool confirms "never writes to the
+host filesystem" (INV-zubuh). These tests pin the classifications.
 
-PLACEMENT RULE (owner, 2026-08-15): stdlib rows and stdlib completeness live
+PLACEMENT RULE (owner ruling): stdlib rows and stdlib completeness live
 in the SHIPPED CATALOGUE (``io_primitives/python.yaml``, ADR-0016 §27);
 third-party lives in the project overlay; taint is written NOWHERE — both
 taint halves auto-derive from these declarations (ADR-0017 §453), and a
-hand-written taint entry beside them is the two-homes drift that produced
-INV-potuf.
+hand-written taint entry beside them is two-homes drift (INV-potuf).
 
-THE SLOT FAMILY RESOLVES INV-ponad BY ROWS, NOT BY A JOIN CHANGE. The filed
-root-cause said teaching the (module, name) join about attributes was the fix
-and rows would be "a second home for one fact". Implementing it showed the
-opposite: the attribute row (``module: sys, attributes: [stdout]``) speaks
-about REFERENCE edges — naming the stream is the boundary-relevant act the
-tagger reads — while a method row (``module: sys.stdout, methods: [write]``)
-speaks about CALL edges on the stream object. Two edge shapes, two facts, two
-rows; a join change would have coupled ``classify_call`` to every catalogue's
-attribute declarations to avoid writing the second fact down.
+THE SLOT FAMILY IS SOLVED BY ROWS, NOT BY A JOIN CHANGE (INV-ponad). Teaching
+the (module, name) join about attributes looks like the fix, with method rows
+"a second home for one fact", but the two rows state different facts: the
+attribute row (``module: sys, attributes: [stdout]``) speaks about REFERENCE
+edges — naming the stream is the boundary-relevant act the tagger reads —
+while a method row (``module: sys.stdout, methods: [write]``) speaks about
+CALL edges on the stream object. Two edge shapes, two facts, two rows; a join
+change would couple ``classify_call`` to every catalogue's attribute
+declarations to avoid writing the second fact down.
 """
 
 from __future__ import annotations
@@ -42,8 +40,8 @@ def _boundary(module: str, name: str) -> str | None:
 
 
 class TestTheInvZubuhPairIsClosed:
-    """The measured false-confirm: ``os.open`` + ``os.write`` wrote a file
-    while the boundary claim confirmed. Both now classify."""
+    """``os.open`` + ``os.write`` can write a file while a boundary claim
+    confirms (INV-zubuh), so both must classify."""
 
     def test_os_open_is_filesystem_io(self) -> None:
         assert _boundary("os", "open") in ("fs_read", "fs_write")
@@ -63,28 +61,24 @@ class TestTheInvZubuhPairIsClosed:
     @pytest.mark.parametrize("name", ["getuid", "getgid", "geteuid", "getcwd",
                                       "uname", "getlogin"])
     def test_host_identifying_reads_are_catalogued(self, name: str) -> None:
-        """THE BOUNDARY MOVED, THE POINT DID NOT (INV-tutar). These are host and
-        user IDENTIFYING reads, so they belong to ``host_info_read``; what this
-        test exists to assert is that ``os``'s read surface is ENUMERATED, which
-        is INV-zubuh's question and is unchanged.
+        """These are host and user IDENTIFYING reads, so they belong to
+        ``host_info_read`` (INV-tutar); what this test exists to assert is that
+        ``os``'s read surface is ENUMERATED, which is INV-zubuh's question.
 
-        The docstring here used to explain why ``getpid`` / ``cpu_count`` /
-        ``times`` were held OUT: "env_read rows auto-derive host_secret TAINT
-        SOURCES and a pid is not a secret". That reasoning is what INV-tutar was
-        filed about — the catalogue distorting its own membership to protect a
-        downstream label — and it no longer applies, because these rows now
-        derive ``host_description``. Adding those three is an ADDITION and was
-        deliberately not folded into the split; the test below still pins their
-        current absence rather than blessing it."""
+        ``getpid`` / ``cpu_count`` / ``times`` are not rowed. Holding them out
+        because "a pid is not a secret" would be the catalogue distorting its own
+        membership to protect a downstream label (INV-tutar), and that reason
+        does not apply: these rows derive ``host_description``, not
+        ``host_secret``. Adding the three would be a separate ADDITION; the test
+        below pins their current absence rather than blessing it."""
         assert _boundary("os", name) == "host_info_read", name
 
     def test_a_csprng_read_is_not_an_environment_read_at_all(self) -> None:
-        """``os.getrandom`` was in the list above and was REMOVED by INV-tutar's
-        split rather than moved. It is not an environment read under any
-        reading, and the same file already keeps ``os.urandom`` out because
-        hypergumbo ships a HAND-WRITTEN taint source for it and an auto-derived
-        twin DISPLACES that — measured tripping the INV-faput caveat on every
-        python repo (rc 0 fixtures went rc 3)."""
+        """``os.getrandom`` is not an environment read under any reading, so it
+        has no row at all (INV-tutar). ``os.urandom`` stays out too: hypergumbo
+        ships a HAND-WRITTEN taint source for it, and an auto-derived twin
+        would DISPLACE that and trip the INV-faput caveat on every python repo
+        (rc 0 fixtures go rc 3)."""
         assert _boundary("os", "getrandom") is None
         assert _boundary("os", "urandom") is None
         assert CATALOGS["python"].module_io_is_enumerated("os")
@@ -103,9 +97,10 @@ class TestTheInvZubuhPairIsClosed:
 
 
 class TestTheSlotFamily:
-    """INV-ponad: ``os.environ.get`` / ``sys.stdout.write`` carried the
-    ATTRIBUTE as their module slot, so the parent's attribute row could not
-    reach them and the most-catalogued names in the file read as blindness."""
+    """INV-ponad: ``os.environ.get`` / ``sys.stdout.write`` carry the
+    ATTRIBUTE as their module slot, so the parent's attribute row cannot
+    reach them; without these rows the most-catalogued names in the file
+    read as blindness."""
 
     def test_reading_the_environment_through_its_mapping(self) -> None:
         assert _boundary("os.environ", "get") == "env_read"
@@ -128,17 +123,18 @@ class TestTheSlotFamily:
 
 
 class TestTheFileObjectWrites:
-    """WI-fuvuj's synthetic ``file`` module catalogued the READ half only, so
-    ``f = open(p); f.write(secret)`` classified the open and lost the write."""
+    """The synthetic ``file`` module (WI-fuvuj) needs its WRITE half: with the
+    read half only, ``f = open(p); f.write(secret)`` classifies the open and
+    loses the write."""
 
     @pytest.mark.parametrize("name", ["write", "writelines", "truncate"])
     def test_writes_through_a_typed_file_object(self, name: str) -> None:
         assert _boundary("file", name) == "fs_write", name
 
     def test_flush_is_deliberately_not_a_write_row(self) -> None:
-        """flush commits writes ALREADY counted; a row for it made every bare
-        .flush() in runtime code read as a direct unwrapped fs-write (the
-        wrapper-discipline gate caught cli.py within the run)."""
+        """flush commits writes ALREADY counted; a row for it would make every
+        bare .flush() in runtime code read as a direct unwrapped fs-write,
+        which the wrapper-discipline gate then flags (cli.py included)."""
         assert _boundary("file", "flush") is None
 
 
@@ -157,23 +153,23 @@ class TestPathlibPathSurface:
 
     @pytest.mark.parametrize("name", ["cwd", "home", "expanduser"])
     def test_process_and_user_state_reads(self, name: str) -> None:
-        """``host_info_read`` since INV-tutar: ``Path.cwd`` / ``Path.home`` /
+        """``host_info_read`` (INV-tutar): ``Path.cwd`` / ``Path.home`` /
         ``expanduser`` describe the host, they do not read configuration that
-        could hold a credential. The assertion this test exists for — that the
-        rows are CATALOGUED at all — is unchanged."""
+        could hold a credential. The assertion this test exists for is that
+        the rows are CATALOGUED at all."""
         assert _boundary("pathlib.Path", name) == "host_info_read", name
 
 
 class TestThePrinters:
     """``logging`` covers stdout/stderr in this vocabulary, so a module that
-    prints does I/O — the rule that decided most refusals in the survey. These
-    rows are what let those modules stop blocking HONESTLY."""
+    prints does I/O and keeps blocking until its printers are rowed. These
+    rows are what let such modules stop blocking HONESTLY."""
 
     def test_warnings_warn_reaches_stderr(self) -> None:
         assert _boundary("warnings", "warn") == "logging"
 
     def test_typing_reveal_type_reaches_stderr(self) -> None:
-        """The probe's own catch: the one I/O surface in ``typing``."""
+        """The one I/O surface in ``typing``."""
         assert _boundary("typing", "reveal_type") == "logging"
 
     def test_argparse_help_and_error_output(self) -> None:
@@ -217,7 +213,7 @@ class TestArchivesAndImports:
     ])
     def test_host_databases_are_catalogued_as_host_info(self, module, name) -> None:
         """``pwd`` / ``grp`` / ``platform`` read the host's user and platform
-        databases. INV-tutar moved them to ``host_info_read``: a username is
+        databases. They are ``host_info_read`` (INV-tutar): a username is
         identifying, which is a privacy question, and it is not the credential
         question ``host_secret`` names."""
         assert _boundary(module, name) == "host_info_read", (module, name)
@@ -227,15 +223,15 @@ class TestArchivesAndImports:
         assert _boundary("fcntl", "fcntl") == "fs_write"
 
     def test_asyncio_subprocess_surface(self) -> None:
-        """asyncio carried net rows and NO subprocess rows — the same
-        one-boundary-vouches-for-all shape as INV-zubuh's ``os``."""
+        """asyncio needs subprocess rows beside its net rows; net rows alone
+        would be the one-boundary-vouches-for-all shape of INV-zubuh's ``os``."""
         assert _boundary("asyncio", "create_subprocess_exec") == "subprocess"
         assert _boundary("asyncio", "create_subprocess_shell") == "subprocess"
 
 
 class TestTheCompletenessTail:
     """Modules whose calls are pure compute at their slot: a dated
-    closed-world entry, not rows. The probe from the survey ran over each."""
+    closed-world entry, not rows, each checked with the survey probe."""
 
     @pytest.mark.parametrize("module", [
         "pathlib", "sys.modules", "urllib", "concurrent.futures",
@@ -250,20 +246,17 @@ class TestTheCompletenessTail:
 class TestBuiltinsIsEnumeratedAndItsIoIsRowed:
     """INV-bofab: the module every bare builtin call names must be examined.
 
-    INV-foluz (a33de088bc) made ``py.py`` emit an edge for every bare builtin
-    call with ``builtins`` in the module slot -- ``len``, ``str``,
-    ``isinstance``, thousands of sites per repo. ``builtins`` carried three
-    rows (``open`` twice, ``input``) and NO completeness entry, so the
+    ``py.py`` emits an edge for every bare builtin call with ``builtins`` in
+    the module slot (INV-foluz) -- ``len``, ``str``, ``isinstance``, thousands
+    of sites per repo. Without a completeness entry for ``builtins``, the
     coverage gate's "a named module the catalogue has not enumerated" branch
-    fired on every Python repo, hypergumbo's own included: all 18 self-claims
-    moved ``confirmed_with_caveats -> inconclusive`` at the next cron firing
-    and sat there, masked, for two firings.
+    fires on every Python repo, hypergumbo's own included, and every
+    self-claim drops from ``confirmed_with_caveats`` to ``inconclusive``.
 
     The completeness entry rests on THESE rows. The survey's probe cannot see
-    a C module, so the surface was walked by hand over ``dir(builtins)``
-    (144 public callables on 3.12); what prints, reads, or launches is rowed
-    here, and everything else is a constructor, an exception class, or
-    in-process evaluation.
+    a C module, so the surface is walked by hand over ``dir(builtins)``; what
+    prints, reads, or launches is rowed here, and everything else is a
+    constructor, an exception class, or in-process evaluation.
     """
 
     def test_builtins_is_enumerated(self) -> None:

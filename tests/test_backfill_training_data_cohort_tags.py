@@ -503,29 +503,23 @@ class TestRealV0WindowBoundaries:
 
     @pytest.fixture(scope="class")
     def timeline(self, bf_mod):
-        """The real-history walk, computed ONCE for the whole class (WI-fodad).
+        """The real-history walk, computed ONCE for the whole class.
 
-        Every test here needs the same timeline and each used to recompute it.
-        That walk is `git log --reverse` over full history with a pathspec — the
-        only full-history walk in the suite, and so the only thing in the suite
-        that needed a tree object from every commit. Measured in CI once:
-        1,185,559 ms on the first invocation, 19 ms on every one after.
-        Recomputing it five times turned one slow command into five red tests
-        and burned 5 x the subprocess cap before failing.
-
-        The cost itself is gone — it was never this command's fault. CI was
-        cloning with `--filter=tree:0` (plugin-git's `partial: true` default), so
-        the walk re-fetched every tree from origin one at a time; the clone is
-        now pinned complete and gated in prepare-git (WI-fodad). Sharing one
-        walk across the class is kept anyway: it is strictly less work, and it
-        means any future environment regression fails ONCE and legibly instead
-        of five times in a way that reads like a flaky assertion.
+        Every test here needs the same timeline. That walk is
+        `git log --reverse` over full history with a pathspec — the only
+        full-history walk in the suite, and so the only thing in the suite that
+        needs a tree object from every commit. On a partial clone
+        (`--filter=tree:0`) it re-fetches every tree from origin one at a time
+        and can run for many minutes, so CI needs a complete clone. Sharing one
+        walk across the class is strictly less work, and it means an
+        environment regression fails ONCE and legibly instead of five times in
+        a way that reads like a flaky assertion (history: WI-fodad).
         """
         walked = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         # NON-VACUITY FLOOR (L17). Without this, an empty timeline makes four of
         # this class's five tests pass for free: resolve_sha_at_timestamp returns
-        # "" and every `not sha.startswith(...)` assertion holds trivially. CI hit
-        # exactly that and reported 1 failed / 4 passed, which reads as one flaky
+        # "" and every `not sha.startswith(...)` assertion holds trivially. The
+        # class then reports 1 failed / 4 passed, which reads as one flaky
         # assertion instead of "the git walk produced nothing".
         assert walked, (
             "get_commit_timeline returned an EMPTY timeline for "
@@ -538,12 +532,11 @@ class TestRealV0WindowBoundaries:
     def test_timeline_includes_known_shas(self, bf_mod, timeline) -> None:
         """The timeline includes the four boundary commits.
 
-        The failure message is deliberately verbose. This assertion failed once
-        in CI with a bare "SHA not found", which is indistinguishable between
-        "the walk returned a DIFFERENT history" (a truncated/partial clone) and
-        "the walk returned NOTHING" (git errored and get_commit_timeline
-        swallowed it into []). Those need opposite fixes, and the bare message
-        cost a whole CI round-trip to disambiguate.
+        The failure message is deliberately verbose. A bare "SHA not found"
+        cannot distinguish "the walk returned a DIFFERENT history" (a
+        truncated/partial clone) from "the walk returned NOTHING" (git errored
+        and get_commit_timeline swallowed it into []). Those need opposite
+        fixes, and telling them apart should not cost a CI round-trip.
         """
         shas = {sha for _, sha in timeline}
         missing = [

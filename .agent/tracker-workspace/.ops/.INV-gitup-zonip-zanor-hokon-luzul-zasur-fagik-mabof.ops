@@ -21,3 +21,10 @@
     fields:  # 111d
       statement: "a tier-1 core-attribute rejection never names a CLI flag that no subcommand accepts"  # 111d
       root_cause: "flag_for has no branch for tracker-computed attributes, and the drift test exempts them instead of asserting their message"  # 111d
+- op: discuss  # a00a
+  at: '2026-11-01T10:55:50Z'  # a00a
+  by: agent  # a00a
+  actor: jgstern_agent  # a00a
+  clock: 2  # a00a
+  nonce: a00a  # a00a
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: CURRENT. Reviewed 2026-11-01 at 100b6fbb6e: check_field_key('created'/'updated'/'id'/'discussion') still raises '...Use --created/--updated/--id/--discussion instead.' Walking _build_parser() with nested subparsers, none of those four flags exists. flag_for (field_keys.py:111-116) has no computed-attribute branch, and test_field_keys.py:178 still exempts the names. ('kind' is fine: --kind exists on add and list.) MECHANISM: flag name derived mechanically from attribute name with no branch for tracker-computed attributes; drift test exempts them."  # a00a

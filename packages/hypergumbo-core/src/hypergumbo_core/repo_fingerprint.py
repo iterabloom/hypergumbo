@@ -68,12 +68,14 @@ field without conditional logic.
 ## Scheme
 
 The top-level ``repo_fingerprint_scheme`` (``schema.REPO_FINGERPRINT_SCHEME``,
-currently ``hypergumbo-repofp-v2``) identifies this algorithm and its field
+currently ``hypergumbo-repofp-v3``) identifies this algorithm and its field
 rendering, and any algorithm change must bump the scheme version. v2 (WI-bosog)
 added the ``sha256:`` prefix to the AR-record FIELD
-(:func:`compute_repo_fingerprint_field`), uniform with run_signature /
-config_fingerprint; the bare digest returned by :func:`compute_repo_fingerprint`
-(the colon-free cache-dir path segment) is unchanged.
+(:func:`compute_repo_fingerprint_field`); v3 replaced it with the scheme's own
+label ``hgrepofp3:`` (``schema.REPO_FINGERPRINT_PREFIX``, derived from the
+constant), with the digest unchanged (ADR-0035 §"Value labels"). The bare
+digest returned by :func:`compute_repo_fingerprint` (the colon-free cache-dir
+path segment) is unchanged.
 
 That rule is currently violated (INV-pamum): the git branch's switch from the
 ``git status`` dirty-file set to hashing HEAD plus the whole source tree landed
@@ -97,6 +99,8 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+from .ir import RepoFingerprint
+from .schema import REPO_FINGERPRINT_PREFIX
 from .safety_zones import repo_inspect_git
 from pathlib import Path
 
@@ -287,7 +291,7 @@ def compute_repo_fingerprint(repo_root: Path) -> str:
     return _compute_non_git_fingerprint(repo_root)
 
 
-def compute_repo_fingerprint_field(repo_root: Path) -> str:
+def compute_repo_fingerprint_field(repo_root: Path) -> RepoFingerprint:
     """Render the AnalysisRun ``repo_fingerprint`` FIELD value (WI-bosog).
 
     The bare :func:`compute_repo_fingerprint` digest doubles as a filesystem
@@ -299,8 +303,10 @@ def compute_repo_fingerprint_field(repo_root: Path) -> str:
     prefix uniformly across the AR's identity fields. This helper stamps the
     prefix onto the FIELD while leaving the cache-dir digest untouched. The
     full 64-hex digest is retained — ``repo_fingerprint`` is a content hash of
-    the code snapshot, not a derived 16-hex signature — so the field is
-    ``sha256:<64hex>`` (the ``pass_version`` rendering convention). Governed by
-    ``schema.REPO_FINGERPRINT_SCHEME`` (bumped to v2 when the prefix landed).
+    the code snapshot, not a derived 16-hex signature. The prefix is the
+    scheme's label ``schema.REPO_FINGERPRINT_PREFIX`` (``hgrepofp<N>:``), so
+    the field is ``hgrepofp<N>:<64hex>`` and reads as a repo fingerprint
+    without its field name. Governed by ``schema.REPO_FINGERPRINT_SCHEME``
+    (v2 added a ``sha256:`` prefix, v3 replaced it with the label).
     """
-    return "sha256:" + compute_repo_fingerprint(repo_root)
+    return RepoFingerprint(REPO_FINGERPRINT_PREFIX + compute_repo_fingerprint(repo_root))

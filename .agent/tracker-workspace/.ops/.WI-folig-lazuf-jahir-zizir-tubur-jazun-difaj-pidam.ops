@@ -1,0 +1,22 @@
+- op: create  # a790
+  at: '2026-11-08T04:22:17Z'  # a790
+  by: agent  # a790
+  actor: jgstern_agent  # a790
+  clock: 1  # a790
+  nonce: a790  # a790
+  data:  # a790
+    kind: work_item  # a790
+    title: "check-edge-type-runtime-coherence: a non-UTF-8, truncated-gzip or non-object behavior map raises a traceback and exits 1 (the offender code) instead of 2"  # a790
+    status: todo_hard  # a790
+    priority: 3  # a790
+    parent:  # a790
+    tags:  # a790
+    - docstring_audit  # a790
+    - analysis_quality  # a790
+    - cli_robustness  # a790
+    isbefore: []  # a790
+    duplicate_of: []  # a790
+    not_duplicate_of: []  # a790
+    pr_ref:  # a790
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. runtime_coherence.main catches only (FileNotFoundError, OSError) and JSONDecodeError (runtime_coherence.py:337-350). Bytes \\xff\\xfe{} raise UnicodeDecodeError, a truncated .json.gz raises EOFError, [1,2] raises AttributeError at :112. The module docstring promises 2 when the map cannot be read. r24, v08."  # a790
+    fields: {}  # a790

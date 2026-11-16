@@ -1,50 +1,46 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-karud: a taint finding may claim only what the analysis adjudicated.
 
-WHAT WAS WRONG. ``propagate_taint_structural`` and ``propagate_taint_ddg``
-emitted one ``TaintFlowFinding`` per (source call site, sink call site) pair
-reachable in the call graph, and each such finding says "primitive P1 reached
-primitive P2". For a flow the data-dependence walk actually confirmed
-(``analysis_method == "ddg"``) that is an earned claim. For every other flow it
-is not: inclusion rested on call-graph reachability alone, so the honest
-statement is "symbol S reads {P1..Pn} and reaches zone Z via {Q1..Qm}" — one
-fact, not n x m of them.
+WHY COLLAPSE. ``propagate_taint_structural`` and ``propagate_taint_ddg`` find
+flows per (source call site, sink call site) pair reachable in the call graph,
+and a per-pair finding says "primitive P1 reached primitive P2". For a flow the
+data-dependence walk actually confirmed (``analysis_method == "ddg"``) that is
+an earned claim. For every other flow it is not: inclusion rests on call-graph
+reachability alone, so the honest statement is "symbol S reads {P1..Pn} and
+reaches zone Z via {Q1..Qm}" — one fact, not n x m of them.
+``collapse_unadjudicated_flows`` emits one finding per such situation.
 
-The cost was measured before this was written. On six repos (caddy, sops,
-poetry, mitmproxy, knex, express) verify-claims reported **359 flows describing
-78 (source_symbol, claim) situations — 4.60x**, with 281 of 359 rows (78%)
-being additional rows about a situation already reported; caddy's
-``cmd/commandfuncs.go cmdRun`` alone emitted 76. Two multipliers, not one:
+Two multipliers, not one:
 
-* **2.87x pairs** — the |sources| x |sinks| product within one symbol. It
-  scales with the CATALOGUE, not the code: adding a seventh browser global
-  adds rows to a repo whose source did not change.
-* **1.60x duplicate paths** — distinct call-graph routes to the SAME primitive
-  pair are distinct rows, because ``_flow_identity`` keys on ``path``.
+* **pairs** — the |sources| x |sinks| product within one symbol. It scales
+  with the CATALOGUE, not the code: adding a seventh browser global adds rows
+  to a repo whose source did not change.
+* **duplicate paths** — distinct call-graph routes to the SAME primitive pair
+  are distinct rows, because ``_flow_identity`` keys on ``path``.
 
-A fix keyed only on the pair product leaves the second, which is why the
-grouping below keys on neither primitive.
+A key built from the pair would leave the route multiplier standing, which is
+why the grouping keys on neither primitive.
 
-WHY ADJUDICATED FLOWS ARE LEFT ALONE. 6 of the 359 census flows are ``ddg``.
-Collapsing them would erase precision that a walk actually earned, for 1.7% of
-the volume. They pass through as singleton situations.
+WHY ADJUDICATED FLOWS ARE LEFT ALONE. ``ddg`` flows are a small share of the
+volume (about 1.7% on a six-repo census: caddy, sops, poetry, mitmproxy, knex,
+express). Collapsing them would erase precision that a walk actually earned for
+almost no noise reduction. They pass through as singleton situations.
 
 WHAT IS DELIBERATELY IN THE GROUPING KEY. ``sanitized`` (a sanitized and an
 unsanitized flow are different facts and the consumer filters on it) and
-``source_boundary`` (WI-vazal split net_recv / ipc_recv / db_read inside the
+``source_boundary`` (net_recv / ipc_recv / db_read are kept distinct inside the
 one ``untrusted_input`` label precisely so "a request body reached the
 database" and "a row read from the database reached the database" stay
-separable; merging them would undo that). ``taint_label``, ``source_symbol``
-and ``sink_zone`` are the situation itself.
+separable, WI-vazal; merging them would undo that). ``taint_label``,
+``source_symbol`` and ``sink_zone`` are the situation itself.
 
 WHY COLLAPSING BEFORE THE CONSUMER'S FILTERS IS SAFE. Every filter in
 ``verify_taint_claim`` — the label/zone ``constrained`` filter, the
 ``sanitized`` filter, the ``resource_naming_only`` and ``trusted_sink``
-exclusions (in the key since WI-gajir; before it a group took both from its
-first member), and ``_source_scope``'s production exclusion (which reads
-``source_symbol`` and nothing else) — tests a field that is IN the grouping
-key. So each filter's verdict is constant across a group, and no group can be
-half-included. That is asserted below rather than asserted-by-inspection.
+exclusions (WI-gajir), and ``_source_scope``'s production exclusion (which
+reads ``source_symbol`` and nothing else) — tests a field that is IN the
+grouping key. So each filter's verdict is constant across a group, and no group
+can be half-included. That is asserted below rather than asserted-by-inspection.
 """
 
 from __future__ import annotations
@@ -122,15 +118,16 @@ def _make_finding(**kw: object) -> TaintFlowFinding:
 
 
 class TestTheRepro:
-    """The item's own synthetic case, measured on the pre-fix tree."""
+    """The synthetic n x n case: one function, n sources, n sinks."""
 
     def test_three_sources_and_three_sinks_are_one_situation_not_nine(
         self,
     ) -> None:
-        """Measured before the fix: **9 findings**. The code is one function
-        reading three tainted values and calling three deleting primitives;
-        which value reaches which primitive was never checked, so nine
-        independent pair claims are eight claims more than the analysis has.
+        """The code is one function reading three tainted values and calling
+        three deleting primitives; which value reaches which primitive is never
+        checked, so nine independent pair claims would be eight claims more
+        than the analysis has. One finding, carrying ``collapsed_flow_count``
+        9.
         """
         findings = propagate_taint_structural(
             _n_by_n_edges(3, 3), _SOURCES, _SINKS, [],
@@ -147,8 +144,8 @@ class TestTheRepro:
         assert f.collapsed_flow_count == 9
 
     def test_it_stops_scaling_with_the_catalogue(self) -> None:
-        """1x1 -> 1, 2x2 -> 1, 3x3 -> 1. Pre-fix the same three fixtures
-        measured 1, 4 and 9 — the product this item filed."""
+        """1x1 -> 1, 2x2 -> 1, 3x3 -> 1, not the 1, 4, 9 of the pair
+        product."""
         counts = [
             len(propagate_taint_structural(
                 _n_by_n_edges(n, n), _SOURCES[:n], _SINKS[:n], [],
@@ -158,7 +155,7 @@ class TestTheRepro:
         assert counts == [1, 1, 1]
 
     def test_two_routes_to_the_same_pair_are_one_finding(self) -> None:
-        """The 1.60x multiplier nobody had named. Pre-fix: **2 findings**,
+        """The route multiplier. Uncollapsed, two routes are two findings
         identical on every field except ``path``, because ``_flow_identity``
         keys on the path. ``path`` is documented as ONE witness route, not the
         route set, so a second witness is not a second fact."""
@@ -218,11 +215,10 @@ class TestWhatIsNotCollapsed:
         assert {f.sanitized for f in out} == {True, False}
 
     def test_two_source_boundaries_do_not_merge(self) -> None:
-        """WI-vazal: three boundaries collapse into the one label
-        ``untrusted_input``, and it kept the boundary so "a request body
-        reached the database" and "a row read from the database reached the
-        database" stay separable. Grouping across the boundary would undo
-        exactly that."""
+        """Three boundaries share the one label ``untrusted_input``, and the
+        finding keeps the boundary so "a request body reached the database" and
+        "a row read from the database reached the database" stay separable
+        (WI-vazal). Grouping across the boundary would undo exactly that."""
         out = collapse_unadjudicated_flows([
             _make_finding(source_boundary="net_recv"),
             _make_finding(source_boundary="db_read",
@@ -255,8 +251,8 @@ class TestTheRecordStaysVerifiable:
 
     def test_primitives_are_module_qualified(self) -> None:
         """``remove`` alone is not checkable against a catalogue; ``os.remove``
-        is. WI-joruv's point, applied to the set form: the emitted SYMBOL
-        frequently does not carry the module a catalog entry declared."""
+        is. The emitted SYMBOL frequently does not carry the module a catalog
+        entry declared (WI-joruv), so the set form qualifies each primitive."""
         out = collapse_unadjudicated_flows([_make_finding()])
         assert out[0].source_primitives == ("socket.recv_into",)
         assert out[0].sink_primitives == ("os.remove",)
@@ -299,7 +295,7 @@ class TestTheRecordStaysVerifiable:
     def test_a_directly_constructed_finding_has_populated_tuples(self) -> None:
         """The tuples default to ``()``. A dataclass default that reads as
         "no primitives" would make every hand-built finding silently empty to
-        the consumers that now read the tuple — so they are derived in
+        the consumers that read the tuple — so they are derived in
         ``__post_init__`` instead of left to the caller."""
         f = TaintFlowFinding(
             taint_label="untrusted_input", source_symbol=HANDLER,
@@ -330,7 +326,7 @@ class TestTheRecordStaysVerifiable:
 class TestTheConsumerReportsBothNumbers:
     """The pair count is not hidden — it is disclosed beside the situation
     count. A reader who wants "how many source->sink pairs" must still be able
-    to get it, or this fix would be trading one silent number for another."""
+    to get it, or the collapse would trade one silent number for another."""
 
     def test_the_verdict_counts_situations_and_discloses_pairs(self) -> None:
         claim = Claim(
@@ -408,7 +404,7 @@ class TestTheConsumerReportsBothNumbers:
 
 
 class TestTheVerdictIsPreserved:
-    """A shape change that flipped a verdict would be a different fix."""
+    """Collapsing changes the shape of the findings, never the verdict."""
 
     def test_collapsing_never_changes_whether_a_violation_exists(self) -> None:
         claim = Claim(
@@ -450,21 +446,21 @@ class TestTheVerdictIsPreserved:
 
 
 class TestEveryConsumerFilterIsInTheKey:
-    """WI-gajir: a group may not be half-excluded by ANY consumer filter.
+    """A group may not be half-excluded by ANY consumer filter (WI-gajir).
 
     ``verify_taint_claim`` excludes a finding on two per-SINK flags as well as
     on ``sanitized``: ``resource_naming_only`` (WI-bulag) and ``trusted_sink``
-    (WI-lukoz). Both arrived after the key was written and neither was added
-    to it, so a group took both flags from ``grp[0]`` alone. Measured on the
-    shipped CLI before the fix: ``net.Dial("tcp", a)`` then
-    ``fmt.Fprintln(con, os.Getenv("API_KEY"))`` confirmed "no secret reaches
-    the network" with 0 flows, because net.Dial's resource-naming flow was
-    the representative and the content flow went out with it.
+    (WI-lukoz). Both are in the grouping key. If a group took them from its
+    first member alone, ``net.Dial("tcp", a)`` then
+    ``fmt.Fprintln(con, os.Getenv("API_KEY"))`` would confirm "no secret
+    reaches the network" with 0 flows whenever net.Dial's resource-naming flow
+    was the representative, taking the content flow out with it.
 
     Each case runs both member orders: the representative is whichever member
-    came first, so one order hides the content flow (the false all-clear) and
-    the other counts the excluded member as evidence. Collapsed and raw must
-    give the same verdict and the same evidence count.
+    comes first, so with a flag outside the key one order hides the content
+    flow (the false all-clear) and the other counts the excluded member as
+    evidence. Collapsed and raw must give the same verdict and the same
+    evidence count.
     """
 
     _CLAIM = Claim(
@@ -539,17 +535,19 @@ class TestEveryConsumerFilterIsInTheKey:
 
 
 class TestEveryReaderOfTheWitnessScalarMoved:
-    """A field whose meaning changed leaves stale readers behind (L8)."""
+    """Every reader of the witness scalar must read the set instead; a reader
+    left on the witness silently drops the rest of the group (L8)."""
 
     def test_the_ddg_target_selector_reads_every_sink_symbol(self) -> None:
-        """``select_ddg_targets`` picked DDG targets off ``finding.sink_symbol``
-        — the witness. After the collapse a finding stands for every sink
-        symbol it reached, so selecting on the witness would silently drop the
-        rest of the group from data-flow coverage, shrinking the analysis that
-        decides whether the next run can adjudicate the pair at all.
+        """A collapsed finding stands for every sink symbol it reached, so
+        ``select_ddg_targets`` must select DDG targets from ``sink_symbols``,
+        not from the ``sink_symbol`` witness. Selecting on the witness would
+        silently drop the rest of the group from data-flow coverage, shrinking
+        the analysis that decides whether the next run can adjudicate the pair
+        at all.
 
-        Honest scope: this function has NO production caller today (tests
-        only), so this is a latent reader, not an observed regression.
+        Honest scope: this function has NO production caller (tests only), so
+        this pins a latent reader, not an observed regression.
         """
         collapsed = collapse_unadjudicated_flows([
             _make_finding(sink_symbol="py:os:0-0:remove:unresolved"),
@@ -576,7 +574,7 @@ class TestTheCollapseDoesNotMutateItsInput:
 
 
 class TestTheResidualThisDoesNotClose:
-    """What is still true after this ships, stated so it is not re-derived."""
+    """What the collapse does not change, stated so it is not re-derived."""
 
     def test_a_collapsed_finding_still_reports_one_witness_path(self) -> None:
         """``path`` is one route among several and this does not change that.

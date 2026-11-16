@@ -1,0 +1,21 @@
+- op: create  # b8cc
+  at: '2026-10-31T10:06:44Z'  # b8cc
+  by: agent  # b8cc
+  actor: jgstern_agent  # b8cc
+  clock: 1  # b8cc
+  nonce: b8cc  # b8cc
+  data:  # b8cc
+    kind: work_item  # b8cc
+    title: "go: a call on a typed local of a qualified in-module type skips embedding promotion (f.Qux() on a.Foo{*b.Baz} is unresolved) unless some package declares a same-named <BareType>.Qux"  # b8cc
+    status: todo_hard  # b8cc
+    priority: 3  # b8cc
+    parent:  # b8cc
+    tags:  # b8cc
+    - docstring_audit  # b8cc
+    - analysis_quality  # b8cc
+    isbefore: []  # b8cc
+    duplicate_of: []  # b8cc
+    not_duplicate_of: []  # b8cc
+    pr_ref:  # b8cc
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. go.py:4464-4486: the typed-local call arm reaches _go_method_of_type only under `elif qualified_name in global_symbols`, so _go_promoted_method (go.py:3759) never runs in the promotion case. The method value g := f.Qux resolves (go.py:3710 calls it unconditionally). The existing test passes only because outer and embedded types share a name (test_go_name_scope_by_position.py:485-544). v05."  # b8cc
+    fields: {}  # b8cc

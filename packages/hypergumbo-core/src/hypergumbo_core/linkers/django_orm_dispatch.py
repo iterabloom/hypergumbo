@@ -18,8 +18,9 @@ class reachable from its enclosing module, the override methods are
 pulled out of the dead-code set.
 
 A class qualifies when any name on its transitive base chain (itself plus
-in-tree ancestors reached over ``extends`` / ``implements`` edges) matches,
-so ``Order(LoggedModel)`` with ``LoggedModel(models.Model)`` is caught. When
+in-tree ancestors reached over the inheritance edge family, ``extends`` /
+``implements`` / ``inherits``) matches, so ``Order(LoggedModel)`` with
+``LoggedModel(models.Model)`` is caught. When
 a matching base is an unqualified short name that also names an in-tree
 Python class, the linker cannot tell Django's type from the local one
 (INV-zuhub): those edges drop to confidence 0.5 and carry
@@ -28,8 +29,9 @@ Python class, the linker cannot tell Django's type from the local one
 Why a Framework Linker (Not Per-Analyzer Logic)
 ------------------------------------------------
 Identical reasoning to the Airflow framework-dispatch linker (WI-nutav):
-the inheritance detection is already handled by the ``inheritance``
-linker's ``base_classes`` metadata; the Django-specific knowledge is a
+the inheritance detection is already handled by the analyzers'
+``base_classes`` extraction and the ``inheritance`` linker's edges; the
+Django-specific knowledge is a
 single per-base method map that belongs in one place, not smeared across
 the Python analyzer. Extending to other base families is a new per-base
 method table, not per-analyzer code; third-party Django-ecosystem bases
@@ -222,8 +224,9 @@ def _find_django_subclasses(
     """Return (class_symbol, framework_method_names, is_fallback) for every Django subclass.
 
     A class qualifies when **any** name in its transitive ``base_classes``
-    chain — itself plus every in-tree ancestor reached via
-    ``extends``/``implements`` edges — matches a Django base. This
+    chain — itself plus every in-tree ancestor reached via the inheritance
+    edge family (``extends`` / ``implements`` / ``inherits``) — matches a
+    Django base. This
     catches intermediate-base patterns (``Order(LoggedModel)`` /
     ``LoggedModel(models.Model)``, ``HierarkeyForm(forms.Form)`` / custom
     subclass) that the direct-only matcher missed; per WI-halat / UAT

@@ -1,0 +1,22 @@
+- op: create  # 01df
+  at: '2026-11-03T03:33:26Z'  # 01df
+  by: agent  # 01df
+  actor: jgstern_agent  # 01df
+  clock: 1  # 01df
+  nonce: 01df  # 01df
+  data:  # 01df
+    kind: work_item  # 01df
+    title: "go: a value-receiver call through a field typed by a NAMED function type (Decoder.DecodePostings PostingsDecoder, with type PostingsDecoder func(...)) is refused by WI-surid's admit, which asks the declared type for a func literal"  # 01df
+    status: todo_hard  # 01df
+    priority: 4  # 01df
+    parent:  # 01df
+    tags:  # 01df
+    - go  # 01df
+    - analysis_quality  # 01df
+    - call_resolution  # 01df
+    isbefore: []  # 01df
+    duplicate_of: []  # 01df
+    not_duplicate_of: []  # 01df
+    pr_ref:  # 01df
+    description: "PROBLEM. WI-surid's value-receiver admit (go.py _go_value_member) accepts a field when its declared type in field_type_registry starts with `func`. A field typed by a NAMED function type (`DecodePostings PostingsDecoder`, with `type PostingsDecoder func(encoding.Decbuf) (int, Postings, error)`) holds the type NAME, so a call through it is refused and stays unresolved: a correct edge lost. MEASURED (WI-surid A/B, lab ~/hypergumbo_lab_notebook/surid_11022026/RESULT.md): 1 of the 45 field binds lost across cert-manager, alertmanager, coredns and prometheus -- prometheus tsdb/index/index_test.go:532 `(&Decoder{DecodePostings: DecodePostingsRaw}).DecodePostings(d)` -> Decoder.DecodePostings; the named type is at tsdb/index/index.go:122. Plain `func(...)` fields (436 kept binds) are unaffected.\n\nDIRECTION. Pass 1 already mints a kind=\"type\" symbol for `type X func(...)`; record which named types are function types (a per-file set aggregated like field_type_registry in analyze_go) and let _go_value_member admit a field whose declared type NAME, bare or package-qualified, is one. Measure on the same four repos: the one prometheus bind returns, nothing else moves."  # 01df
+    fields: {}  # 01df

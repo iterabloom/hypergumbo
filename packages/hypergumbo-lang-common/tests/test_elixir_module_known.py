@@ -1,30 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-kafor: which modules count as "this project's" for a qualified call.
+"""WI-kafor: a qualified call binds a project symbol only by its exact name.
 
-`_handle_dot_call`'s last resort before the unresolved fallback asked whether
-the project plausibly owns the written module, and asked it as a SUBSTRING
-test -- `any(f"{module}." in k for k in global_symbols)` -- though the comment
-above it describes a prefix-COMPONENT test. When it passed, the resolver bound
-by BARE NAME with only a path hint, so `Logger.error(...)` could land on any
-project function named `error`.
-
-TWO SUB-MECHANISMS, instrumented on phoenix-framework rather than assumed, and
-the reason a component-aware fix would NOT have been enough:
+`_handle_dot_call` binds `Mod.f(...)` to `Mod.f`, or to `Expanded.f` after
+alias expansion, and to nothing else. It never binds by BARE NAME (`f`) behind
+a test of whether the project "owns" `Mod`, because a bare-name bind lets
+`Logger.error(...)` land on any project function named `error`, and no
+ownership test short of an exact one is safe:
 
   SUFFIX ARTIFACT, matching mid-component. `Logger.` is a substring of
   `Phoenix.Logger.install`; `Path.` of `...StaticPath.path`; `Supervisor.` of
   `Phoenix.Endpoint.Supervisor.init`. A component-aware test rejects these.
 
-  NAMESPACE PREFIX, a real component-boundary match that is still wrong.
-  phoenix defines 56 modules under `Mix.`, so `Mix.` matches
-  `Mix.Tasks.Local.Phx` on any component test -- and `Mix.raise/1` is still
-  Elixir's, not phoenix's.
+  NAMESPACE PREFIX, a real component-boundary match that is still wrong. A
+  project that defines modules under `Mix.` matches `Mix.Tasks.Local.Phx` on
+  any component test -- and `Mix.raise/1` is still Elixir's, not the
+  project's.
 
-So the rule is neither substring nor component-prefix but EXACT: the project
-must define a module whose FULL NAME IS the (alias-expanded) written module.
-That is Elixir's own semantics -- `Mod.f()` can reach only `Mod` -- and it
-only narrows a fallback path, since a fully-qualified first-party call is
-already caught by the `qualified_name in global_symbols` check above it.
+That is Elixir's own semantics -- `Mod.f()` can reach only `Mod`. A call that
+does not bind exactly falls to the unresolved edge, which names the
+(alias-expanded) module so the catalogue and the linkers can match it.
 """
 from pathlib import Path
 
@@ -51,7 +45,7 @@ class TestTheSuffixArtifact:
     def test_logger_error_does_not_bind_a_project_error(
         self, tmp_path: Path,
     ) -> None:
-        """The filed case: `Logger.` is a substring of `Phoenix.Logger.`."""
+        """`Logger.` is a substring of `Phoenix.Logger.`."""
         result = _analyze(tmp_path, {
             "caller.ex": "defmodule Caller do\n"
                          "  def go do\n"
@@ -74,8 +68,8 @@ class TestTheSuffixArtifact:
     ) -> None:
         """`Path.` is a substring of `...StaticPath.path` on phoenix.
 
-        On the corpus this bound `Path.join(project_path, ...)` to a Phoenix
-        Channel's `join/3` inside an EEx template -- 112 edges.
+        A bare-name bind would land `Path.join(project_path, ...)` on a
+        project Channel's `join/3`.
         """
         result = _analyze(tmp_path, {
             "caller.ex": "defmodule Caller do\n"
@@ -121,7 +115,7 @@ class TestTheNamespacePrefix:
 
 
 class TestFirstPartyCallsSTILLBind:
-    """P3's control: the rule must only narrow, never lose a real binding."""
+    """Control: refusing bare-name binds must never lose a real binding."""
 
     def test_an_alias_expanded_project_call_still_binds(
         self, tmp_path: Path,
@@ -146,16 +140,13 @@ class TestFirstPartyCallsSTILLBind:
         assert [d for d in dsts if "My.Deep.Scope.route_prefix" in d], dsts
 
     def test_the_multi_alias_brace_form_still_binds(self, tmp_path: Path) -> None:
-        """`alias Phx.New.{Project}` — ordinary Elixir, and it was unread.
+        """`alias Phx.New.{Project}` — ordinary Elixir, read from its tuple.
 
-        The brace form puts the prefix under a `dot` node, so
-        `_extract_alias_hints` found no `alias` child of `arguments` and
-        registered NOTHING. That was invisible while the ownership gate was a
-        substring test, because `"Project."` is a substring of
-        `Phx.New.Project.ecto?` and the resolver bound these calls correctly
-        by accident. An exact gate asks whether the project defines `Project`
-        — it defines `Phx.New.Project` — so reading the directive is what
-        keeps these edges. 44 real edges on phoenix-framework depend on it.
+        The brace form puts the prefix under a `dot` node, so there is no
+        `alias` child of `arguments`; `_extract_alias_hints` must read each
+        member from the tuple or register NOTHING. Resolution is exact: the
+        project defines `Phx.New.Project`, not `Project`, so without these
+        hints `Project.ecto?` goes unresolved.
         """
         result = _analyze(tmp_path, {
             "caller.ex": "defmodule Caller do\n"
@@ -184,7 +175,7 @@ class TestFirstPartyCallsSTILLBind:
         An alias binds a component, so `Gen.Context.build(...)` is a call to
         `Mix.Tasks.Phx.Gen.Context.build/2`. Looking the whole written name
         `Gen.Context` up in the hint map answers nothing; the expansion has to
-        graft the remainder onto the aliased head. 29 real phoenix calls.
+        graft the remainder onto the aliased head.
         """
         result = _analyze(tmp_path, {
             "caller.ex": "defmodule Caller do\n"
@@ -240,11 +231,11 @@ class TestFirstPartyCallsSTILLBind:
     def test_an_exactly_named_project_module_still_reaches_the_resolver(
         self, tmp_path: Path,
     ) -> None:
-        """The narrowed gate still OPENS when the project owns the module.
+        """A module the project defines exactly still binds.
 
-        `Helper` is defined exactly, and its function is multi-clause, so the
-        qualified-name check above does not settle it and the resolver
-        fallback is what must bind it.
+        `Helper` is defined exactly and `pick` is multi-clause; the exact
+        `Helper.pick` qualified-name lookup is what binds the call, with no
+        bare-name fallback involved.
         """
         result = _analyze(tmp_path, {
             "caller.ex": "defmodule Caller do\n"
@@ -266,8 +257,9 @@ class TestAliasFormsThatNameNoModuleStatically:
 
     Each is ordinary Elixir whose target is not a literal module path, so no
     hint can be registered honestly -- and registering a wrong one is worse
-    than registering none, because a module hint KILLS the fallback paths that
-    would otherwise still resolve the call.
+    than registering none, because a module hint REWRITES the module every
+    matching call names, sending it to the wrong first-party symbol or the
+    wrong unresolved module.
     """
 
     def test_an_attribute_alias_registers_no_hint(self, tmp_path: Path) -> None:
@@ -301,7 +293,7 @@ class TestAliasFormsThatNameNoModuleStatically:
 
 
 class TestModulesWithNoProjectPresenceAreUnchanged:
-    """`Macro` / `Enum` / `String` were already refused; keep them refused."""
+    """`Macro` / `Enum` / `String`, with no project presence, stay unresolved."""
 
     def test_an_entirely_external_module_still_goes_unresolved(
         self, tmp_path: Path,

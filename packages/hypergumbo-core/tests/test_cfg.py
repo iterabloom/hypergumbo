@@ -683,8 +683,8 @@ class TestCfgBuilderRust:
 
         The direct-child case (``expression_statement > if_expression``) is
         covered by ``test_if_else``; this one is deliberately *nested*, since
-        the containment check recurses and a one-level fixture leaves that
-        recursion unexercised.
+        the containment walk descends through several levels and a one-level
+        fixture leaves that descent unexercised.
         """
         cfg = self._build(
             "fn foo(c: bool) -> i32 {\n"
@@ -1290,7 +1290,7 @@ class TestCfgBuilderEdgeCases:
         assert cfg.entry_block in reachable
 
     def test_conditional_empty_true_body(self) -> None:
-        """Conditional where true body produces no partial (lines 741-743)."""
+        """Conditional where true body produces no partial."""
         mapping = CfgNodeMapping(
             language="test", grammar="test",
             conditionals=[ConditionalMapping(
@@ -1340,7 +1340,7 @@ class TestCfgBuilderEdgeCases:
         assert found_true or len(cfg.blocks) >= 2
 
     def test_conditional_empty_false_body(self) -> None:
-        """Conditional where false body found but produces no partial (line 756)."""
+        """Conditional where false body found but produces no partial."""
         mapping = CfgNodeMapping(
             language="test", grammar="test",
             conditionals=[ConditionalMapping(
@@ -1407,7 +1407,7 @@ class TestCfgBuilderEdgeCases:
         assert len(cfg.blocks) >= 2
 
     def test_loop_empty_body_not_infinite(self) -> None:
-        """Non-infinite loop with empty body (lines 826-827)."""
+        """Non-infinite loop with empty body."""
         mapping = CfgNodeMapping(
             language="test", grammar="test",
             loops=[LoopMapping(
@@ -1451,7 +1451,7 @@ class TestCfgBuilderEdgeCases:
         assert cfg.exit_block in reachable
 
     def test_context_manager_no_body_content(self) -> None:
-        """Context manager where body exists but produces no partial (line 1081)."""
+        """Context manager where body exists but produces no partial."""
         mapping = CfgNodeMapping(
             language="test", grammar="test",
             context_manager=[ContextManagerMapping(
@@ -1500,7 +1500,7 @@ class TestCfgBuilderEdgeCases:
         assert found_exception
 
     def test_sequential_child_no_entry(self) -> None:
-        """Sequential composition where a child returns partial with no entry (line 630)."""
+        """Sequential composition where a child returns partial with no entry."""
         mapping = CfgNodeMapping(language="test", grammar="test")
 
         # First child: produces a normal block
@@ -1665,7 +1665,7 @@ class TestCfgBuilderEdgeCases:
         arm2.is_named = True
         arm2.children = [arm2_body]
 
-        # Punctuation child that should be skipped (line 1170 coverage)
+        # Punctuation child that should be skipped
         punct = MagicMock()
         punct.type = ","
         punct.is_named = False
@@ -2168,13 +2168,11 @@ def _MockTaintFinding(
 ) -> TaintFlowFinding:
     """Build a real ``TaintFlowFinding`` for the DDG-target selector tests.
 
-    THIS WAS A HAND-WRITTEN MOCK CLASS that re-declared nine of the dataclass's
-    fields, and it drifted the moment the dataclass gained a field the selector
-    reads: INV-karud added ``sink_symbols`` (a finding now stands for every
-    sink symbol it reached, not just the witness one) and every test here
-    raised ``AttributeError`` on a mock that could not have been wrong about
-    anything else. A stand-in that restates a type's shape is a second home for
-    it; constructing the real dataclass costs nothing here — it is a plain
+    Deliberately the real dataclass rather than a hand-written mock: a stand-in
+    that restates a type's shape is a second home for it, and it breaks with
+    ``AttributeError`` whenever the dataclass gains a field the selector reads
+    (such as ``sink_symbols``, every sink symbol a finding reached; INV-karud).
+    Constructing the real dataclass costs nothing here — it is a plain
     dataclass with no I/O — and ``__post_init__`` keeps the derived tuples
     correct without this file knowing they exist.
     """
@@ -2463,22 +2461,22 @@ class TestPopulateDefUseForCfg:
         body = self._get_body(tree)
         cfg = build_function_cfg(body, src, mapping, "p:t.py:1-3:f:function")
         # The CfgStatement for the assignment line should be of type
-        # 'assignment' (not 'identifier' / 'integer' as would happen if
-        # atomic-statement classification were absent).
+        # 'assignment' (not 'identifier' / 'integer' as happens without
+        # atomic-statement classification).
         node_types = {
             stmt.node_type
             for block in cfg.blocks.values()
             for stmt in block.statements
         }
         assert "assignment" in node_types
-        # And NOT bare identifiers — those are the pre-atomic-classification
-        # symptoms.
+        # And NOT bare identifiers — those are the symptoms of missing
+        # atomic-statement classification.
         assert "identifier" not in node_types
         assert "integer" not in node_types
 
 
 class TestUncoveredCallLines:
-    """WI-joluk: does the CFG's recorded coverage reach every call site?
+    """Does the CFG's recorded coverage reach every call site? (WI-joluk)
 
     The gate behind INV-lupav. If the def/use extractor never saw part of a
     function, the §3a walk can still exhaust its (incomplete) graph and report
@@ -2487,18 +2485,17 @@ class TestUncoveredCallLines:
     """
 
     def test_go_if_initializer_call_is_uncovered(self) -> None:
-        """The motivating case, and the reason the test is on BYTE EXTENTS.
+        """An unrecorded ``if`` initializer, and the reason the test is on BYTE EXTENTS.
 
-        Until WI-losod ``CfgBuilder._process_conditional`` recorded only the
-        condition child of an ``if``. For ``if n := sink(v); n > 0`` that was
-        ``n > 0``; the initializer became no CfgStatement at all. Both sit on
-        the SAME LINE, so a line-based coverage test reports the call as
-        covered and the gate was vacuous precisely where the gap was (700 of
-        caddy's 6,596 ``if`` statements carried a call there).
+        In ``if n := sink(v); n > 0`` a conditional that records only its
+        condition child (``n > 0``) leaves the initializer in no CfgStatement.
+        Both sit on the SAME LINE, so a line-based coverage test would report
+        the call as covered and the gate would be vacuous precisely where the
+        gap is.
 
-        go.yaml now records the initializer, so the unrecorded shape is
-        reproduced with a mapping that lacks ``initializer_child``; the real
-        mapping is the control.
+        go.yaml records the initializer, so the unrecorded shape is reproduced
+        with a mapping that lacks ``initializer_child``; the real mapping is
+        the control. (WI-losod)
         """
         import dataclasses
 
@@ -2542,20 +2539,17 @@ class TestUncoveredCallLines:
         assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_go_range_clause_binding_is_uncovered(self) -> None:
-        """WI-mugop: THE SHAPE THE CALLS-ONLY PREDICATE COULD NOT SEE.
+        """An unrecorded binding that holds NO CALL is still uncovered.
 
         ``for _, c := range v`` binds ``c`` from ``v`` in a range clause, and
-        the clause contains NO CALL. While the loop hook did not record it
-        (until WI-losod), the original predicate returned an empty frozenset
-        for a function whose taint chain the extractor demonstrably had not
-        followed, leaving the §3a walk free to exhaust and refute; measured on
-        this exact source, calls-only reported ``frozenset()`` and the widened
-        predicate reported line 4.
+        the clause contains no call. A predicate that looked only at call
+        nodes would return an empty frozenset for a function whose taint chain
+        the extractor demonstrably had not followed, leaving the §3a walk free
+        to exhaust and refute. (WI-mugop)
 
-        go.yaml now records the clause, so the shape is reproduced with a
-        mapping that lacks the ``header_child`` key: the predicate must still
-        see an unrecorded binding that holds no call. The real mapping is the
-        control.
+        go.yaml records the clause, so the shape is reproduced with a mapping
+        that lacks the ``header_child`` key: the predicate must still report
+        line 4. The real mapping is the control.
         """
         import dataclasses
 
@@ -2585,7 +2579,7 @@ class TestUncoveredCallLines:
         and reads as a finding about the substrate rather than a broken gate.
 
         Deliberately carries string and integer literals and a keyword-heavy
-        construct, because the widened predicate counts named LEAVES — if it
+        construct, because the predicate counts named LEAVES — if it
         tripped on ordinary tokens inside recorded statements it would fail
         here rather than silently on a corpus.
         """
@@ -2605,8 +2599,8 @@ class TestUncoveredCallLines:
         assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_interior_nodes_are_not_counted(self) -> None:
-        """The spelling that was measured and REJECTED. Counting any uncovered
-        NAMED node rather than named leaves forfeits every function on every
+        """Counting named LEAVES, not every named node. Counting any uncovered
+        NAMED node rather than named leaves would forfeit every function on every
         repository, because the function body is contained in no statement
         extent by construction — a clean-looking 100% that says nothing about
         coverage. Pinned here so nobody widens it that far by accident."""
@@ -2634,9 +2628,8 @@ class TestUncoveredCallLines:
         unconfigured language look fully covered — failing open, in the
         direction that deletes findings.
 
-        Java was the live example (it declared no ``call_node_types``) until
-        WI-gotun wired it, and every shipped mapping now declares the key. So
-        the undeclared mapping is java.yaml with the key removed.
+        Every shipped mapping declares ``call_node_types``, so the undeclared
+        mapping is java.yaml with the key removed.
         """
         import yaml
 
@@ -2696,12 +2689,11 @@ class TestUnaccountedNames:
     whether code sits OUTSIDE every recorded statement. These constructs are
     recorded, so there is no uncovered extent at any predicate width — and the
     extractor then fills the statement with nothing. Both failures produce the
-    same downstream lie: the §3a walk exhausts, returns ``False``, and since
-    2026-09-02 that ``False`` REMOVES the reported flow.
+    same downstream lie: the §3a walk exhausts, returns ``False``, and that
+    ``False`` REMOVES the reported flow.
 
-    EVERY CASE HERE WAS READ BACK AGAINST A FOUR-LANGUAGE SWEEP, not guessed —
-    one earlier guess at this clause's shape (a use captured inside a Go func
-    literal) does not reproduce, and nearly got the clause recorded as unreal.
+    Every case here is a shape observed on real code, not a guessed one; a
+    guessed shape that does not reproduce would make the clause look unreal.
     """
 
     @pytest.fixture(autouse=True)
@@ -2716,11 +2708,11 @@ class TestUnaccountedNames:
         input — the shape ``test_a_cfg_with_no_definitions_answers_empty``
         pins deliberately, reached here by accident.
 
-        So these cases silently depended on whether some earlier test in the
-        same process had imported ``go_def_use``: green alone, green after
-        ``test_go_def_use.py``, and RED on an xdist worker that drew neither
-        (which is how CI saw it). Establish the production configuration
-        instead of inheriting whatever the worker happened to import.
+        Relying on import order would make these cases depend on whether some
+        earlier test in the same process had imported ``go_def_use`` — green
+        alone or after ``test_go_def_use.py``, red on an xdist worker that drew
+        neither. Establish the production configuration instead of inheriting
+        whatever the worker happened to import.
         """
         from hypergumbo_core import cfg as _cfg
         from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
@@ -2732,7 +2724,7 @@ class TestUnaccountedNames:
         )
 
     def test_go_grouped_var_declaration_hides_its_value(self) -> None:
-        """The motivating shape, live in alertmanager (api/v2/api.go:251).
+        """A grouped ``var ( ... )`` declaration, a shape found in real Go code.
 
         The grammar nests grouped specs one level deeper — inside a
         ``var_spec_list`` — than ``_handle_spec_declaration`` descends, so the
@@ -2765,8 +2757,8 @@ class TestUnaccountedNames:
 
         Without this the predicate could pass its own test by reporting every
         name, which would withhold ``False`` from every walk on every
-        repository — the spelling a floor check already killed once (WI-mugop
-        phase 1). A gate that cannot return "accounted for" is not a gate.
+        repository (the same floor check as WI-mugop's). A gate that cannot
+        return "accounted for" is not a gate.
         """
         tree, src = _parse_go(
             "package main\n"
@@ -2786,8 +2778,7 @@ class TestUnaccountedNames:
     def test_python_subscript_index_is_never_read(self) -> None:
         """``c[key] = 1`` records ``defines=['c'] uses=[]``.
 
-        The dominant shape in the Python half of the sweep, and a DIFFERENT
-        construct from Go's — which is the argument against closing this clause
+        The dominant Python shape, and a DIFFERENT construct from Go's — which is the argument against closing this clause
         with a per-language list of gaps. A list written from either language
         ships the other one invisible.
         """
@@ -2812,8 +2803,7 @@ class TestUnaccountedNames:
         inside it records nothing. Attributing each leaf to its INNERMOST
         recorded statement — the obvious implementation — reports the empty
         inner one and flags a variable the extractor demonstrably did follow.
-        This is a false positive the filed item asserted was a real one, and
-        it is the reason the accumulated ancestor set exists.
+        That false positive is the reason the accumulated ancestor set exists.
         """
         tree, src = _parse_go(
             "package main\n"
@@ -2840,7 +2830,7 @@ class TestUnaccountedNames:
         ``defines`` — ``defs_at`` and ``inherits`` are both built from them —
         so reporting ``fmt``, ``sink`` or a type name would be noise no
         consumer can act on. Restricting to defined names is what keeps the
-        measured floor at 12.6% of functions instead of all of them.
+        predicate from flagging every function.
         """
         tree, src = _parse_go(
             "package main\n"
@@ -2884,3 +2874,316 @@ class TestUnaccountedNames:
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-6:f:function")
         # DELIBERATELY NOT populated.
         assert unaccounted_names(cfg, body, src) == frozenset()
+
+
+def _branch_lines(cfg: FunctionCfg) -> list[int]:
+    """The line of every condition block: a block with both a true and a false edge."""
+    return sorted(
+        block.statements[0].line
+        for block in cfg.blocks.values()
+        if {"true", "false"} <= {e.edge_type for e in block.successors}
+    )
+
+
+def _recorded_lines(cfg: FunctionCfg) -> set[int]:
+    return {s.line for block in cfg.blocks.values() for s in block.statements}
+
+
+class TestIfElifChain:
+    """INV-kakav: every arm of a Python if/elif/else chain is a CFG branch.
+
+    tree-sitter-python lays the chain flat: every ``elif_clause`` and the
+    ``else_clause`` sit under the ``if_statement``'s REPEATED ``alternative``
+    field. Reading that field only once would keep the ``if`` arm and the
+    first ``elif`` (as straight-line code, no branch) and drop every later
+    arm from the CFG, so their definitions and uses would never reach the DDG
+    and the taint walk would forfeit the function. The other five grammars
+    nest ``else if`` as an ``if`` inside a single alternative, which the last
+    test pins.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> None:
+        clear_cfg_mapping_cache()
+
+    CHAIN = (
+        "def f(ch, out):\n"
+        "    if ch == 'a':\n"
+        "        out.append('A')\n"
+        "    elif ch == 'b':\n"
+        "        out.append('B')\n"
+        "    elif ch == 'c':\n"
+        "        out.append('C')\n"
+        "    else:\n"
+        "        out.append('Z')\n"
+        "    return out\n"
+    )
+
+    def _build(self, source: str) -> tuple[FunctionCfg, Any, bytes, CfgNodeMapping]:
+        mapping = load_cfg_mapping("python")
+        assert mapping is not None
+        tree, src = _parse_python(source)
+        body = _get_function_body(tree, "python")
+        return build_function_cfg(body, src, mapping, _sym_id()), body, src, mapping
+
+    def test_an_elif_clause_is_a_conditional(self) -> None:
+        mapping = load_cfg_mapping("python")
+        assert mapping is not None
+        assert mapping.classify("elif_clause") == "conditional"
+        elif_mapping = mapping.get_conditional("elif_clause")
+        assert elif_mapping is not None and elif_mapping.false_child is None
+
+    def test_every_arm_is_a_branch(self) -> None:
+        cfg, _, _, _ = self._build(self.CHAIN)
+        # One condition block per ``if`` / ``elif``, at the condition's line.
+        assert _branch_lines(cfg) == [2, 4, 6]
+        # Every arm's body and the statement after the chain are recorded.
+        assert {3, 5, 7, 9, 10} <= _recorded_lines(cfg)
+
+    def test_every_arm_is_covered(self) -> None:
+        cfg, body, src, mapping = self._build(self.CHAIN)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+
+    def test_a_chain_without_else_falls_through_and_every_arm_reaches(self) -> None:
+        """A definition before the chain, and one in each arm, all reach the use after it."""
+        from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
+
+        assert ensure_def_use_extractors_registered()
+        cfg, body, src, _ = self._build(
+            "def f(c):\n"
+            "    x = 0\n"
+            "    if c == 1:\n"
+            "        x = 1\n"
+            "    elif c == 2:\n"
+            "        x = 2\n"
+            "    elif c == 3:\n"
+            "        x = 3\n"
+            "    return x\n"
+        )
+        populate_def_use_for_cfg(cfg, body, src, "python")
+        result = solve_reaching_defs(cfg)
+        reaching = sorted(
+            e.def_line for e in result.ddg_edges if e.variable == "x" and e.use_line == 9
+        )
+        # Line 2 survives the all-false path, and line 8 (the last elif's body)
+        # is in the CFG; reading only one alternative would yield [4, 6].
+        assert reaching == [2, 4, 6, 8]
+
+    @pytest.mark.parametrize(
+        ("language", "source", "get_body"),
+        [
+            (
+                "go",
+                "func f(a, b, c bool) {\n"
+                "\tif a {\n"
+                "\t\tx(1)\n"
+                "\t} else if b {\n"
+                "\t\tx(2)\n"
+                "\t} else if c {\n"
+                "\t\tx(3)\n"
+                "\t} else {\n"
+                "\t\tx(4)\n"
+                "\t}\n"
+                "}\n",
+                lambda tree: _get_go_function_body(tree),
+            ),
+            (
+                "typescript",
+                "function f(a: boolean, b: boolean, c: boolean): void {\n"
+                "  if (a) {\n"
+                "    x(1);\n"
+                "  } else if (b) {\n"
+                "    x(2);\n"
+                "  } else if (c) {\n"
+                "    x(3);\n"
+                "  } else {\n"
+                "    x(4);\n"
+                "  }\n"
+                "}\n",
+                lambda tree: next(
+                    c.child_by_field_name("body")
+                    for c in tree.root_node.children if c.type == "function_declaration"
+                ),
+            ),
+            (
+                "rust",
+                "fn f(a: bool, b: bool, c: bool) {\n"
+                "    if a {\n"
+                "        x(1);\n"
+                "    } else if b {\n"
+                "        x(2);\n"
+                "    } else if c {\n"
+                "        x(3);\n"
+                "    } else {\n"
+                "        x(4);\n"
+                "    }\n"
+                "}\n",
+                lambda tree: _get_function_body(tree, "rust"),
+            ),
+        ],
+    )
+    def test_a_nesting_grammar_keeps_its_chain(
+        self, language: str, source: str, get_body: Any,
+    ) -> None:
+        """One alternative per ``if``: the nested ``else if`` is an ``if`` in its own right."""
+        mapping = load_cfg_mapping(language)
+        assert mapping is not None
+        tree_src = {
+            "go": _parse_go, "typescript": _parse_ts, "rust": _parse_rust,
+        }[language](source)
+        tree, src = tree_src
+        cfg = build_function_cfg(get_body(tree), src, mapping, f"{language}:t:1-11:f:function")
+        assert _branch_lines(cfg) == [2, 4, 6]
+        assert {3, 5, 7, 9} <= _recorded_lines(cfg)
+
+
+def _block_with_line(cfg: FunctionCfg, line: int) -> BasicBlock:
+    """The block that records a statement at ``line`` (exactly one expected)."""
+    found = [b for b in cfg.blocks.values() if any(s.line == line for s in b.statements)]
+    assert len(found) == 1, (line, [b.id for b in found])
+    return found[0]
+
+
+def _edges_from(block: BasicBlock) -> set[tuple[str, str]]:
+    return {(e.target_block, e.edge_type) for e in block.successors}
+
+
+class TestElseClause:
+    """INV-rotol: the ``else`` clause of a Python try/for/while is a CFG branch.
+
+    Python alone among the shipped grammars hangs an ``else_clause`` off
+    ``try``, ``for`` and ``while``. The mappings name it as ``else_child`` so
+    the handlers place it; a skipped clause would leave its statements in no
+    block, ``uncovered_semantic_lines`` would list them, and the function
+    would forfeit taint refutation. The try-else body runs on the no-exception
+    path, between the try body and ``finally``; the loop-else body runs on
+    the loop's normal exit and never after a ``break``. A ``break`` INSIDE a
+    loop's else clause belongs to the enclosing loop.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> None:
+        clear_cfg_mapping_cache()
+
+    def _build(self, source: str) -> tuple[FunctionCfg, Any, bytes, CfgNodeMapping]:
+        mapping = load_cfg_mapping("python")
+        assert mapping is not None
+        tree, src = _parse_python(source)
+        body = _get_function_body(tree, "python")
+        return build_function_cfg(body, src, mapping, _sym_id()), body, src, mapping
+
+    TRY_ELSE = (
+        "def f(g, out):\n"
+        "    try:\n"
+        "        v = g()\n"
+        "    except ValueError:\n"
+        "        v = None\n"
+        "    else:\n"
+        "        out.append(v)\n"
+        "    finally:\n"
+        "        out.append(0)\n"
+        "    return out\n"
+    )
+
+    FOR_ELSE = (
+        "def f(items, out):\n"
+        "    for x in items:\n"
+        "        if x:\n"
+        "            break\n"
+        "    else:\n"
+        "        out.append(0)\n"
+        "    return out\n"
+    )
+
+    WHILE_ELSE = (
+        "def f(out):\n"
+        "    n = 0\n"
+        "    while n < 3:\n"
+        "        n += 1\n"
+        "    else:\n"
+        "        out.append(n)\n"
+        "    return out\n"
+    )
+
+    NESTED_BREAK = (
+        "def f(rows, out):\n"
+        "    while True:\n"
+        "        for x in rows:\n"
+        "            out.append(x)\n"
+        "        else:\n"
+        "            break\n"
+        "    return out\n"
+    )
+
+    def test_python_names_the_else_clause(self) -> None:
+        mapping = load_cfg_mapping("python")
+        assert mapping is not None
+        for node_type in ("for_statement", "while_statement"):
+            loop = mapping.get_loop(node_type)
+            assert loop is not None and loop.else_child == "type:else_clause"
+        try_catch = mapping.get_try_catch("try_statement")
+        assert try_catch is not None and try_catch.else_child == "type:else_clause"
+
+    @pytest.mark.parametrize("language", ["c", "go", "java", "rust", "typescript"])
+    def test_other_grammars_name_no_else_clause(self, language: str) -> None:
+        """No other shipped grammar has the clause; their mappings leave ``else_child`` unset."""
+        mapping = load_cfg_mapping(language)
+        assert mapping is not None
+        assert all(lo.else_child is None for lo in mapping.loops)
+        assert all(tc.else_child is None for tc in mapping.try_catch)
+
+    def test_try_else_runs_after_the_try_body_and_before_finally(self) -> None:
+        cfg, body, src, mapping = self._build(self.TRY_ELSE)
+        assert {3, 5, 7, 9, 10} <= _recorded_lines(cfg)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        try_body = _block_with_line(cfg, 3)
+        except_body = _block_with_line(cfg, 5)
+        else_body = _block_with_line(cfg, 7)
+        finally_body = _block_with_line(cfg, 9)
+        assert _edges_from(try_body) == {(else_body.id, "always")}
+        assert _edges_from(else_body) == {(finally_body.id, "always")}
+        # The handler skips the else clause: straight to finally.
+        assert _edges_from(except_body) == {(finally_body.id, "always")}
+
+    def test_try_else_sees_only_the_try_body_definition(self) -> None:
+        from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
+
+        assert ensure_def_use_extractors_registered()
+        cfg, body, src, _ = self._build(self.TRY_ELSE)
+        populate_def_use_for_cfg(cfg, body, src, "python")
+        result = solve_reaching_defs(cfg)
+        reaching = sorted(
+            e.def_line for e in result.ddg_edges if e.variable == "v" and e.use_line == 7
+        )
+        # The handler's ``v = None`` at line 5 must not reach the else body.
+        assert reaching == [3]
+
+    def test_for_else_runs_on_exhaustion_and_not_after_break(self) -> None:
+        cfg, body, src, mapping = self._build(self.FOR_ELSE)
+        assert {4, 6, 7} <= _recorded_lines(cfg)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        header = _block_with_line(cfg, 2)
+        break_block = _block_with_line(cfg, 4)
+        else_body = _block_with_line(cfg, 6)
+        after = _block_with_line(cfg, 7)
+        assert (else_body.id, "false") in _edges_from(header)
+        assert _edges_from(else_body) == {(after.id, "always")}
+        assert _edges_from(break_block) == {(after.id, "always")}
+
+    def test_while_else_runs_when_the_condition_fails(self) -> None:
+        cfg, body, src, mapping = self._build(self.WHILE_ELSE)
+        assert {2, 4, 6, 7} <= _recorded_lines(cfg)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        header = _block_with_line(cfg, 3)
+        else_body = _block_with_line(cfg, 6)
+        assert (else_body.id, "false") in _edges_from(header)
+        assert _edges_from(else_body) == {(_block_with_line(cfg, 7).id, "always")}
+
+    def test_a_break_in_a_loop_else_leaves_the_enclosing_loop(self) -> None:
+        cfg, body, src, mapping = self._build(self.NESTED_BREAK)
+        assert {4, 6, 7} <= _recorded_lines(cfg)
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        break_block = _block_with_line(cfg, 6)
+        # The ``for``'s else clause is outside the ``for``: its ``break`` exits
+        # the ``while`` to the return, not back to the ``while`` header.
+        assert _edges_from(break_block) == {(_block_with_line(cfg, 7).id, "always")}

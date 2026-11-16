@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for Go return-type registry (WI-kuroj / INV-dihos Phase 1).
+"""Tests for Go return-type registry (history: WI-kuroj, INV-dihos).
 
 The return-type registry enables chained receiver-type resolution:
 when ``x := e.Query()`` and ``e`` has type ``Engine``, the registry
@@ -76,10 +76,10 @@ class TestGoReturnTypeFromSignature:
         assert _go_return_type_from_signature("(x int) bool") is None
 
     def test_package_qualified_return_type(self) -> None:
-        """The qualifier SURVIVES (WI-doluf). It used to be stripped here, and
-        the strip is now derived at the two sites that need a bare name -- see
+        """The qualifier SURVIVES; the bare name is derived (``_bare_go_type``)
+        where a registry key or symbol lookup needs one -- see
         TestExternalReturnTypeReachesTheModuleSlot for why the stored form has
-        to be the qualified one."""
+        to be the qualified one (history: WI-doluf)."""
         assert _go_return_type_from_signature("(x int) http.Client") == "http.Client"
 
     def test_package_qualified_in_tuple(self) -> None:
@@ -99,12 +99,13 @@ class TestGoReturnTypeFromSignature:
 
 
 class TestUnwrapRhsExpression:
-    """The shared unwrap, asserted directly — it is the whole WI-jolif fix.
+    """The shared unwrap, asserted directly.
 
     ``short_var_declaration``'s last child is an ``expression_list``, never the
-    expression. Two consumers ask "what is on the right": ``_type_from_rhs``
-    unwrapped it and worked, the registry lookup did not and was dead code. One
-    helper now answers for both.
+    expression. Two consumers ask "what is on the right" -- ``_type_from_rhs``
+    and the return-type registry lookup -- and both go through this helper. A
+    consumer that tests the wrapper itself (``rhs.type == "call_expression"``)
+    can never match and is dead code (history: WI-jolif).
     """
 
     @staticmethod
@@ -168,13 +169,12 @@ def _make_go_module(tmp_path: Path, files: dict[str, str]) -> Path:
 def go_available():
     """Skip ONLY when the Go grammar is genuinely absent.
 
-    This fixture used to probe ``_analyzer.is_grammar_available()`` inside a bare
-    ``except Exception: pytest.skip``. No such method exists — ``is_grammar_available``
-    is a module function in ``hypergumbo_core.analyze.base`` — so every call raised
-    ``AttributeError``, the handler swallowed it, and all three integration tests below
-    reported as skipped on a machine where the grammar was installed and working. They
-    had never executed. A skip reachable by a typo is a green tick over a hole, so the
-    probe is now a direct call with no handler: if it breaks, the suite breaks loudly.
+    The probe is a direct call to ``is_grammar_available`` (a module function
+    in ``hypergumbo_core.analyze.base``) with no exception handler. Wrapping
+    it in a bare ``except Exception: pytest.skip`` would turn any error in the
+    probe -- a typo included -- into a silent skip of every test using this
+    fixture: a green tick over a hole. If the probe breaks, the suite must
+    break loudly (history: WI-jolif).
     """
     from hypergumbo_core.analyze.base import is_grammar_available
 
@@ -187,24 +187,13 @@ class TestGoReturnTypeRegistryIntegration:
     verify that the return-type registry enables ``typed_receiver_call``
     edges for the chained call.
 
-    WI-jolif, CLOSED. These three never executed: the ``go_available`` fixture
-    probed a method that does not exist inside a bare ``except Exception:
-    pytest.skip``, so every call raised ``AttributeError``, the handler swallowed
-    it, and all three reported "grammar unavailable" on a machine where the
-    grammar is installed and the 15 unit tests beside them pass. The unit half of
-    the feature was covered; the end-to-end half was a green tick over a hole.
-
-    WHEN THE FIXTURE WAS REPAIRED, ALL THREE FAILED, and they were marked
-    ``xfail(strict=True)`` rather than left skipped so they would RUN and fail
-    honestly. The defect they were failing on: the WI-kuroj registry lookup
-    guarded on ``rhs.type == "call_expression"``, but a
-    ``short_var_declaration``'s last child is an ``expression_list`` WRAPPER —
-    a condition that node can never satisfy. The block was dead from the day it
-    shipped, so the registry was built, threaded through three call layers, and
-    consulted by a branch nothing could reach. It now unwraps through the same
-    helper ``_type_from_rhs`` uses. ``strict=True`` is what turned the fix into a
-    red suite demanding this marker's removal, which is exactly the signal it was
-    put there for.
+    The unit tests above cover what the registry holds; these cover whether
+    the call-site lookup ever reaches it. That lookup must unwrap the
+    ``short_var_declaration``'s ``expression_list`` WRAPPER (via
+    ``_unwrap_rhs_expression``, as ``_type_from_rhs`` does) before checking
+    for a ``call_expression``; a guard on the wrapper's own type can never be
+    satisfied, leaving the registry built but unconsulted (history: WI-jolif,
+    WI-kuroj).
     """
 
     def test_chained_method_call_resolves_via_registry(
@@ -376,27 +365,22 @@ func main() {
 
 
 class TestExternalReturnTypeReachesTheModuleSlot:
-    """WI-doluf: a return-value-inferred receiver must keep its PACKAGE.
+    """A return-value-inferred receiver must keep its PACKAGE.
 
-    THE DEFECT, MEASURED (INV-linub L3 residual). A DECLARED external receiver
-    type reaches the io-boundary module slot -- ``func f(conn net.Conn)`` emits
-    dst ``go:net:0-0:Read``, which the catalogue's ``net.Conn.Read`` row
-    matches. A type INFERRED FROM A RETURN VALUE did not: the slot was filled
-    with the ``external`` placeholder, so no method row could ever match it,
-    and go's real receive surface was unreachable on any code that assigns a
-    stdlib handle from a factory.
+    A DECLARED external receiver type reaches the io-boundary module slot --
+    ``func f(conn net.Conn)`` emits dst ``go:net.Conn:0-0:Read:unresolved``,
+    which the catalogue's ``net.Conn.Read`` row matches. A type INFERRED FROM
+    A RETURN VALUE must reach it the same way: a slot holding the ``external``
+    placeholder matches no method row, leaving go's receive surface
+    unreachable on code that assigns a stdlib handle from a factory.
 
-    WHY IT DROPPED. ``_go_return_type_from_signature`` stripped the package
-    qualifier (``net.Conn`` -> ``Conn``) because in-repo symbols are stored
-    unqualified. That is true of the SYMBOL LOOKUP and false of the MODULE
-    SLOT, which is the one consumer that needs the package. One fact was being
-    stored in the form only one of its two consumers wanted, so the other was
-    silently served a placeholder.
-
-    THE FIX IS DERIVATION, NOT A SECOND HOME: the registry now stores the
-    qualified truth and the symbol-lookup path strips it where it needs a bare
-    name -- which the receiver path at the call site already did for declared
-    types (``bare_recv``), so the two forms cannot drift apart.
+    In-repo symbols are stored unqualified, so the SYMBOL LOOKUP wants the
+    bare name while the MODULE SLOT needs the package. Storing only the bare
+    form would serve the slot a placeholder. So the registry stores the
+    qualified form, and the bare form is DERIVED where it is needed
+    (``_bare_go_type``), as the call-site receiver path does for declared
+    types (``bare_recv``) -- one stored form, so the two cannot drift apart
+    (history: WI-doluf, INV-linub).
     """
 
     def test_the_fold_is_one_function(self) -> None:
@@ -419,9 +403,9 @@ class TestExternalReturnTypeReachesTheModuleSlot:
         ) == "http.Response"
 
     def test_unqualified_return_types_are_unchanged(self) -> None:
-        """CONTROL. The in-repo case must not move -- INV-dihos Phase 1 rests
-        on it, and a change here would be a silent regression in chained
-        receiver resolution rather than a fix."""
+        """CONTROL. The in-repo case must not move -- chained receiver
+        resolution rests on it (INV-dihos), and a change here would silently
+        regress it."""
         assert _go_return_type_from_signature("(x int) Result") == "Result"
         assert _go_return_type_from_signature("(x int) *Result") == "Result"
         assert _go_return_type_from_signature("(x int) (Result, error)") == "Result"
@@ -469,7 +453,7 @@ func readIt() {
             "the receiver's package was dropped; dst still names the 'external' "
             f"placeholder: {[e.dst for e in reads]}"
         )
-        # INV-vusum: the slot now names the TYPE under its package.
+        # The slot names the TYPE under its package (history: INV-vusum).
         assert any(e.dst.startswith("go:net.Conn:") for e in reads), (
             f"expected the dst to name net.Conn; got {[e.dst for e in reads]}"
         )
@@ -480,9 +464,9 @@ func readIt() {
         """THE CONTROL THAT COSTS SOMETHING.
 
         A factory returning an IN-REPO type must still resolve to that repo's
-        symbol, not acquire a bogus package hint. If qualifying the registry
-        broke this, the fix would have traded one unreachable surface for
-        another and the suite would still be green without this test.
+        symbol, not acquire a bogus package hint. Without this test, a change
+        to the registry's stored form could trade one unreachable surface for
+        another and leave the suite green.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 

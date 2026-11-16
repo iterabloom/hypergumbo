@@ -1,20 +1,23 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A bare call is attributed to the module that actually exports it (WI-jozap).
 
-WHAT WAS WRONG, and why pinning the ordering is not the fix. The branch read
-``source_module = next(iter(imported_modules))`` — an arbitrary element of a
-``set[str]``, and Python randomises string hashing per process, so the same code
-over the same repository did not produce the same answer twice (67 and 166 edges
-moved between identical runs on phoenix-framework). Sorting the set would make
-the answer reproducible and still wrong: `is_atom` is a Kernel auto-import,
-available with no ``import`` directive at all, so attributing it to `Plug.Conn`
-is false under every ordering.
+``_bare_call_source_module``'s rules, in order, with no set iteration: an
+``only:`` list that names the function wins; a Kernel auto-import gets NO
+module-keyed edge; an importable name takes its owning stdlib module only
+when that module is imported. Anything else gets no edge.
 
-THE POPULATION WAS TWO POPULATIONS. ``_ELIXIR_STDLIB_FUNCTIONS`` unioned Kernel
-auto-imports with names that genuinely come from an imported module (IO.puts,
-Enum.map, String.split, Logger.error) and the branch treated them alike. The
-ownership was already written down beside the names as prose comments and never
-used as data.
+Picking an element of the imported-module set is wrong twice over.
+``next(iter(<set>))`` depends on Python's per-process string-hash
+randomisation, so identical runs over the same repository disagree; and
+sorting the set would make the answer reproducible and still wrong: `is_atom`
+is a Kernel auto-import, available with no ``import`` directive at all, so
+attributing it to `Plug.Conn` is false under every ordering.
+
+So the stdlib names are TWO POPULATIONS, kept as data:
+``_ELIXIR_KERNEL_AUTO_IMPORTS`` (never an imported module's function) and
+``_ELIXIR_IMPORTABLE_BARE_FUNCTIONS``, which maps each name that genuinely
+comes from an imported module (IO.puts, Enum.map, String.split, Logger.error)
+to the module that exports it.
 """
 from __future__ import annotations
 
@@ -205,12 +208,12 @@ class TestDeterminism:
     def test_the_answer_does_not_depend_on_set_iteration_order(
         self, tmp_path: Path,
     ) -> None:
-        """The defect's own signature: many imports, one bare call.
+        """Many imports, one bare call.
 
-        With ``next(iter(<set>))`` the module chosen here depended on string
-        hashing. There is now no set iteration on this path at all, so a single
-        in-process run suffices to pin the RULE; the cross-process property is
-        measured on a real repository in the lab record.
+        With ``next(iter(<set>))`` the module chosen here would depend on
+        string hashing. This path does no set iteration, so a single
+        in-process run suffices to pin the RULE; the cross-process property
+        is not exercised here.
         """
         edges = _edges(tmp_path, '''
 defmodule Demo do

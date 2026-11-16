@@ -36,7 +36,7 @@ shape being fixed. ``analysis_method``'s published vocabulary is unchanged, so
 docs/measurements/0006, docs/VERIFY-CLAIMS-SCOPE.md and any consumer reading
 ``ddg_mixed`` keep meaning exactly what they meant.
 
-CONFIRM-ONLY IS UNCHANGED. ``unconfirmed`` and ``escaped`` are recorded, not
+CONFIRM-ONLY IS UNCHANGED. ``refuted`` and ``escaped`` are recorded, not
 acted on: §3a still never removes a flow, so no verdict moves because of this.
 What moves is that the addressable domain can be MEASURED instead of
 upper-bounded.
@@ -44,11 +44,11 @@ upper-bounded.
 
 from hypergumbo_core.taint import (
     WALK_VERDICTS,
-    WALK_VERDICT_CONFIRMED,
+    WALK_VERDICT_REACHED,
     WALK_VERDICT_ESCAPED,
     WALK_VERDICT_NOT_ATTEMPTED,
     WALK_VERDICT_UNAVAILABLE,
-    WALK_VERDICT_UNCONFIRMED,
+    WALK_VERDICT_REFUTED,
     TaintFlowFinding,
     walk_verdict_for,
 )
@@ -61,8 +61,8 @@ from hypergumbo_core.taint import (
 
 def test_the_five_verdicts_are_declared_in_one_place():
     assert WALK_VERDICTS == frozenset({
-        WALK_VERDICT_CONFIRMED,
-        WALK_VERDICT_UNCONFIRMED,
+        WALK_VERDICT_REACHED,
+        WALK_VERDICT_REFUTED,
         WALK_VERDICT_ESCAPED,
         WALK_VERDICT_NOT_ATTEMPTED,
         WALK_VERDICT_UNAVAILABLE,
@@ -83,21 +83,21 @@ def test_the_field_defaults_to_empty_for_a_map_that_predates_it():
 # ---------------------------------------------------------------------------
 
 
-def test_a_dependence_found_is_confirmed():
+def test_a_dependence_found_is_reached():
     assert walk_verdict_for(True, ran=True, covered=True) == \
-        WALK_VERDICT_CONFIRMED
+        WALK_VERDICT_REACHED
 
 
-def test_the_walk_exhausting_without_a_dependence_is_unconfirmed():
+def test_the_walk_exhausting_without_a_dependence_is_refuted():
     """False: every route accounted for, none of them carried the value."""
     assert walk_verdict_for(False, ran=True, covered=True) == \
-        WALK_VERDICT_UNCONFIRMED
+        WALK_VERDICT_REFUTED
 
 
-def test_the_walk_losing_track_is_escaped_not_unconfirmed():
+def test_the_walk_losing_track_is_escaped_not_refuted():
     """None: the value left tracked ground. THE distinction this item exists for.
 
-    Removal on ``unconfirmed`` is removal on knowledge; removal on ``escaped``
+    Removal on ``refuted`` is removal on knowledge; removal on ``escaped``
     is removal on ignorance, and INV-busis measures escapes as common (86.5% of
     production escape sites are not a call statement node).
     """
@@ -119,7 +119,7 @@ def test_no_reaching_def_data_is_unavailable():
 def test_coverage_cannot_be_claimed_without_the_data():
     """``ran`` implies ``covered``; the opposite pairing is not a state."""
     assert walk_verdict_for(True, ran=True, covered=False) == \
-        WALK_VERDICT_CONFIRMED
+        WALK_VERDICT_REACHED
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +130,8 @@ def test_coverage_cannot_be_claimed_without_the_data():
 def test_every_non_confirming_verdict_still_reads_as_approximate():
     """No published verdict moves: §3a stays confirm-only."""
     from hypergumbo_core.taint import method_for_walk_verdict
-    assert method_for_walk_verdict(WALK_VERDICT_CONFIRMED) == "ddg"
-    for verdict in (WALK_VERDICT_UNCONFIRMED, WALK_VERDICT_ESCAPED,
+    assert method_for_walk_verdict(WALK_VERDICT_REACHED) == "ddg"
+    for verdict in (WALK_VERDICT_REFUTED, WALK_VERDICT_ESCAPED,
                     WALK_VERDICT_NOT_ATTEMPTED):
         assert method_for_walk_verdict(verdict) == "ddg_mixed"
     assert method_for_walk_verdict(WALK_VERDICT_UNAVAILABLE) == "structural"
@@ -176,7 +176,7 @@ def test_the_blocker_field_is_empty_unless_the_walk_was_not_attempted():
         taint_label="host_secret", source_symbol="s", source_primitive="p",
         sink_symbol="k", sink_primitive="q", sink_zone="host_fs",
         sanitized=False, confidence="approximate", analysis_method="ddg",
-        walk_verdict=WALK_VERDICT_CONFIRMED,
+        walk_verdict=WALK_VERDICT_REACHED,
     )
     assert finding.walk_blocked_by == ""
 

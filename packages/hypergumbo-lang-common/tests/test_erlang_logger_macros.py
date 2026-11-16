@@ -1,52 +1,38 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-zihor: OTP's ?LOG_* macros are logging calls and produced no edge at all.
+"""OTP's ``?LOG_*`` level macros are logging calls and must produce call edges.
 
 tree-sitter parses Erlang SOURCE, not preprocessed source, so a
-``?LOG_DEBUG("...", [Secret])`` was invisible: no call edge, therefore no
-catalogue match, therefore no logging sink. On rabbitmq that is **1,910 macro
-uses against 183 direct `logger:` calls** — the analyzer saw 9% of the project's
-logging surface.
+``?LOG_DEBUG("...", [Secret])`` has no call node: left alone it yields no call
+edge, therefore no catalogue match, therefore no logging sink. In Erlang
+projects these macros, not direct ``logger:`` calls, carry most of the logging
+surface. The analyzer turns each into a ``calls`` edge to
+``logger:<level>``; these tests pin the rules that keep that sound.
 
-MEASURED, and the measurement is why this is scoped to eight names rather than
-built as a preprocessor. Expanding the eight kernel level macros across
-rabbitmq source-to-source and running the six generic taint claims cold on
-separate caches, `host-secret-no-logging` moves **68 -> 138 situations**
-(93 -> 2028 collapsed source->sink pairs) while the other six claims are
-**byte-identical**. So 1,910 macro sites convert to +70 reported situations —
-**3.7%** — which is the item's own hypothesis confirmed: a recall hole no source
-reaches is worth far less than its size suggests. Keyed on (source, caller)
-rather than (source, sink, caller), **all 68 of the pre-expansion situations
-survive**; 61 of them merely re-root their sink from `io:format` to `logger:*`.
-
-THE VOCABULARY IS EIGHT NAMES, NOT A ``?LOG_`` PREFIX. rabbitmq also defines
-``?LOG_DIR`` (a directory string), ``?LOG_PREFIX`` (a prefix string) and
-``?LOG_EXCH_NAME`` (a binary). A prefix match would mint three logging sinks
-out of string literals — the name-based-gate failure this subsystem keeps
-paying for.
+THE VOCABULARY IS EIGHT NAMES, NOT A ``?LOG_`` PREFIX. Projects define their
+own ``?LOG_*`` macros that are not logging calls -- rabbitmq has ``?LOG_DIR``
+(a directory string), ``?LOG_PREFIX`` and ``?LOG_EXCH_NAME`` (a binary). A
+prefix match would mint logging sinks out of string literals.
 
 THE GATE IS THE INCLUDE, NOT THE NAME, and that is what makes it sound rather
-than merely probable. A file only gets OTP's macros by including
-``kernel/include/logger.hrl``. Measured across rabbitmq, emqx, ejabberd and
-vernemq: gating on an include of any header named ``logger.hrl`` covers
-**2267 of 2267** sites, because ejabberd reaches kernel's header through its own
-same-named one. Gating on the literal ``include_lib("kernel/include/logger.hrl")``
-covers 2266 and misses exactly that file.
+than merely probable: a file only gets OTP's macros by including a header
+named ``logger.hrl``. The gate accepts any include path ending in
+``logger.hrl``, not only the literal
+``include_lib("kernel/include/logger.hrl")``, because a project can reach
+kernel's header through its own same-named one (ejabberd does).
 
-WHY NOT A REAL PREPROCESSOR (the item's option (b)). Because macro NAMES
-collide at a material rate — 87 of 693 function-like macros in emqx are defined
-in more than one file, 21 of 124 in ejabberd — so a global name→body map is
-ambiguous and correct expansion needs per-file include resolution. The eight
-kernel names have the opposite property: they are **never** redefined anywhere
-in six erlang repositories. That asymmetry is what licenses handling these
-eight by name and refusing to generalise on the cheap.
+WHY A NAME TABLE AND NOT A PREPROCESSOR. User-defined function-like macro
+names are redefined in more than one file often enough that a global
+name->body map is ambiguous; correct expansion needs per-file include
+resolution. The eight kernel names are never redefined, which is what licenses
+handling them by name.
 
-WHAT THIS DELIBERATELY DOES NOT COVER, stated because the hole is bigger than
-this item's title. emqx routes 1,233 logging sites through its own ``?SLOG``
-family (which expands to ``logger:log``), and ejabberd 1,330 through
+WHAT THIS DELIBERATELY DOES NOT COVER. Project-local logging macros -- emqx's
+``?SLOG`` family (expanding to ``logger:log``), ejabberd's
 ``?DEBUG``/``?INFO_MSG``/``?WARNING_MSG``/``?ERROR_MSG``/``?CRITICAL_MSG``
-(which expand to ``?LOG_*``). Those are project-local macros and need the
-include-resolving expander this change declines to build. OTP's eight names are
-2,267 of roughly 3,530 macro-mediated logging sites in the corpus — about 64%.
+(expanding to ``?LOG_*``) -- reach a logger only through include resolution,
+which the analyzer does not do, so their sites still produce no logging edge.
+
+(history: INV-zihor)
 """
 
 from pathlib import Path
@@ -137,8 +123,8 @@ go() ->
 def test_a_project_local_logger_hrl_also_gates(tmp_path: Path) -> None:
     """ejabberd's shape: its own logger.hrl includes kernel's.
 
-    Measured: this is the difference between covering 2266 and 2267 of the
-    corpus's OTP macro sites.
+    A gate on the literal ``kernel/include/logger.hrl`` include would miss
+    this file.
     """
     _write(tmp_path, "d.erl", """
 -module(d).
@@ -166,7 +152,7 @@ go() ->
 
 
 def test_a_direct_logger_call_is_unchanged(tmp_path: Path) -> None:
-    """CONTROL. The path that already worked must keep working."""
+    """CONTROL. A literal ``logger:`` call keeps its ``ast_call``/``remote`` edge."""
     _write(tmp_path, "f.erl", f"""
 -module(f).
 {_KERNEL_INCLUDE}

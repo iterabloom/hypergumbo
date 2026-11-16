@@ -5,8 +5,20 @@ This analyzer uses tree-sitter to parse Groovy files and extract:
 - Class declarations
 - Interface declarations
 - Enum declarations
-- Method declarations (inside classes)
+- Method declarations (inside classes and enums; an enum's are named
+  ``Color.label``, WI-nomah)
 - Top-level function definitions (def keyword)
+- The signature of a method or function (``_extract_groovy_signature``)
+  writes each parameter as ``Type name``, the type as its source text
+  whatever node kind spells it (a primitive, a qualified ``java.util.List``,
+  a generic, an array, with dimensions written after the name), a varargs
+  parameter as ``Type... name``, and the return type. This text is hashed
+  into the typed stable_id (``normalize_groovy_signature``: the types-first
+  rule, a varargs parameter hashed as its array type). Before, a primitive
+  or qualified parameter type was dropped and the parameter NAME hashed in
+  its place, such a return type was dropped, and a varargs parameter was
+  dropped whole. Untyped parameters (``def f(x)``) do not parse in
+  tree-sitter-groovy 0.1.2 and are not written.
 - Identity over the FULL type chain (``_groovy_scope``; INV-fabih): methods
   hashed their emitted nearest-owner name (``Inner.go``) and types the
   backstop's bare-name table key, so two nested ``class Inner`` tied; types
@@ -22,6 +34,12 @@ This analyzer uses tree-sitter to parse Groovy files and extract:
 Note: Trait declarations are not currently supported by tree-sitter-groovy v0.1.2
 (the grammar parses 'trait X' as a function call). Support will be added when
 the grammar is updated.
+
+The same grammar ends an enum's body after its constants unless a ``;``
+follows them (``RED, GREEN;``): without it the enum closes early and its
+methods parse as top-level ``function_definition`` nodes, which are emitted
+as unqualified ``function`` symbols. With the ``;`` they are the enum's
+``method``s.
 
 It also handles Gradle build files (.gradle) which use Groovy DSL.
 
@@ -59,6 +77,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -72,6 +91,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -245,10 +265,12 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up the tree to find the enclosing class/interface/trait name."""
+    """Walk up the tree to find the nearest enclosing type's name (class,
+    interface, trait or enum: ``_GROOVY_TYPE_DECLS``; WI-nomah: enum was
+    missing, so an enum's methods were emitted bare)."""
     current = node.parent
     while current is not None:
-        if current.type in ("class_declaration", "interface_declaration", "trait_declaration"):
+        if current.type in _GROOVY_TYPE_DECLS:
             name_node = find_child_by_type(current, "identifier")
             if name_node:
                 return node_text(name_node, source)
@@ -300,6 +322,53 @@ def _get_enclosing_function_groovy(
     return None  # pragma: no cover - defensive
 
 
+def _groovy_parameter_text(
+    param: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """One parameter of a ``formal_parameters`` list as ``Type name``.
+
+    The type is the source text of the parameter's ``type`` field whatever
+    its node kind (``type_identifier``, ``scoped_type_identifier``,
+    ``generic_type``, ``array_type``, ``integral_type``,
+    ``floating_point_type``, ``boolean_type``), with any dimensions written
+    after the name (``String a[]`` is ``String[] a``). A varargs parameter
+    (``spread_parameter``, which has no fields: its type is its first
+    named child that is not ``modifiers``, and its declarator follows the
+    ``...``) is written ``Type... name``. Modifiers (``final``) and annotations are not written:
+    neither changes the type or the overload set. A default value is not
+    written. A receiver parameter (``C this``) and a parameter the grammar
+    could not parse (an ``ERROR`` node: an untyped ``x`` in ``f(x)``) give
+    ``None``.
+    """
+    if param.type == "formal_parameter":
+        type_node = param.child_by_field_name("type")
+        name_node = param.child_by_field_name("name")
+        name = node_text(name_node, source) if name_node is not None else ""
+        if not name:
+            # A recovered parameter whose name is MISSING (``f(String x, y)``
+            # parses ``y`` as a type with an empty name): left out as before.
+            return None
+        if type_node is None:  # pragma: no cover - the grammar requires a type
+            return name
+        type_text = node_text(type_node, source)
+        dims = param.child_by_field_name("dimensions")
+        if dims is not None:
+            type_text += node_text(dims, source)
+        return f"{type_text} {name}"
+    if param.type == "spread_parameter":
+        spread_type = next(
+            (c for c in param.named_children if c.type != "modifiers"), None,
+        )
+        declarator = find_child_by_type(param, "variable_declarator")
+        spread_name = (
+            declarator.child_by_field_name("name") if declarator is not None else None
+        )
+        if spread_type is None or spread_name is None:
+            return None  # pragma: no cover - the grammar requires both
+        return f"{node_text(spread_type, source)}... {node_text(spread_name, source)}"
+    return None
+
+
 def _extract_groovy_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -307,47 +376,66 @@ def _extract_groovy_signature(
 
     Returns signature in format: (Type param, Type param2): ReturnType
     Omits void return types.
+
+    Every parameter is written by ``_groovy_parameter_text`` and the return
+    type is the source text of the declaration's ``type`` field whatever its
+    node kind, with any dimensions written after the parameter list
+    (``String f()[]`` returns ``String[]``). A ``def`` method of a class has a
+    ``def`` type; a script-level ``def f()`` has the ``def`` keyword and no
+    type, so it writes no return type. This text is hashed into the typed
+    stable_id (``normalize_groovy_signature``): a type left out here is one the
+    id cannot see. Before, only ``type_identifier``, ``array_type`` and
+    ``generic_type`` were written; a primitive or qualified parameter was
+    written as its name alone, such a return type and a varargs parameter
+    were dropped.
     """
     params: list[str] = []
-    return_type: Optional[str] = None
+    params_node = node.child_by_field_name("parameters")
+    if params_node is not None:
+        for param in params_node.named_children:
+            text = _groovy_parameter_text(param, source)
+            if text is not None:
+                params.append(text)
 
-    # Look for formal_parameters node
-    for child in node.children:
-        if child.type == "formal_parameters":
-            for param in child.children:
-                if param.type == "formal_parameter":
-                    param_type = None
-                    param_name = None
-                    for pc in param.children:
-                        if pc.type in ("type_identifier", "primitive_type",
-                                       "array_type", "generic_type"):
-                            param_type = node_text(pc, source)
-                        elif pc.type == "identifier":
-                            param_name = node_text(pc, source)
-                    if param_type and param_name:
-                        params.append(f"{param_type} {param_name}")
-                    elif param_name:  # pragma: no cover - dynamic typing
-                        params.append(param_name)
-        elif child.type in ("type_identifier", "primitive_type", "void_type",
-                            "array_type", "generic_type"):
-            # Return type appears before the method name
-            return_type = node_text(child, source)
+    signature = f"({', '.join(params)})"
 
-    params_str = ", ".join(params)
-    signature = f"({params_str})"
-
-    if return_type and return_type != "void":
+    type_node = node.child_by_field_name("type")
+    if type_node is not None and type_node.type != "void_type":
+        return_type = node_text(type_node, source)
+        dims = node.child_by_field_name("dimensions")
+        if dims is not None:
+            return_type += node_text(dims, source)
         signature += f": {return_type}"
 
     return signature
+
+
+#: ``Type... name`` followed by the next parameter or the list's end: how
+#: ``_groovy_parameter_text`` writes a varargs parameter.
+_GROOVY_VARARGS_RE = re.compile(r"\.\.\.(\s+[A-Za-z_$][\w$]*)(?=\s*[,)])")
 
 
 def normalize_groovy_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Groovy signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Groovy signature for typed stable_id (spec §6 typed tier).
+
+    The types-first family's rule (``normalize_signature_types_first``,
+    shared with Java, C# and Dart): names dropped, a qualified type's head
+    stripped to its simple name, generic arguments as written, the return
+    type after ``:``. One Groovy step comes first: a varargs parameter
+    ``T... xs`` is written ``T[] xs``, the type Groovy (like Java) gives it,
+    so ``f(T... x)`` and ``f(T[] x)``, one method, hash as one, while
+    ``f(Object o)`` and ``f(Object... os)``, a legal overload pair, hash
+    apart (the shared rule alone erases the marker, hashing both as
+    ``(Object)``). Only a ``...`` followed by a parameter name and then
+    ``,`` or ``)`` is rewritten; a signature without one reaches the shared
+    rule unchanged.
+    """
     from hypergumbo_core.analyze.base import normalize_signature_types_first
+    if signature and "..." in signature:
+        signature = _GROOVY_VARARGS_RE.sub(r"[]\1", signature)
     return normalize_signature_types_first(
         signature, type_params, skip_void_return=False, return_sep=":",
     )
@@ -652,7 +740,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         {"decorators": annotations} if annotations else None
                     )
 
-                    # Typed stable_id (ADR-0014 §3)
+                    # Typed stable_id (spec §6 typed tier)
                     norm_sig = normalize_groovy_signature(signature)
                     stable_id = make_typed_stable_id(
                         "method", norm_sig, visibility_from_modifiers(modifiers),
@@ -699,7 +787,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     signature = _extract_groovy_signature(node, source)
                     modifiers = _extract_modifiers_groovy(node)
 
-                    # Typed stable_id (ADR-0014 §3)
+                    # Typed stable_id (spec §6 typed tier)
                     norm_sig = normalize_groovy_signature(signature)
                     stable_id = make_typed_stable_id(
                         "function", norm_sig, visibility_from_modifiers(modifiers),
@@ -899,16 +987,32 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         if not edge_added:
                             # AMB-METHOD guard: when 3+ classes define the same
                             # method name, suppress the edge to avoid false positives.
-                            amb_check = method_resolver.lookup(callee_name)
-                            if not amb_check.found and amb_check.candidates:
+                            if method_resolver.too_ambiguous(callee_name):
                                 continue  # 3+ method candidates, suppress
 
-                            # Check local symbols first
-                            if callee_name in local_symbols:
-                                callee = local_symbols[callee_name]
+                            # Check local symbols first. ``local_symbols``
+                            # holds every method under its bare name too, last
+                            # one in the file winning, so prefer the scope's
+                            # own ``Type.callee``; a bare call's short-name hit
+                            # on another type's method is the INV-fahub magnet
+                            # and goes to the guarded resolver path below
+                            # (WI-nomah: ``helper()`` in ``K`` bound to an
+                            # ``Other.helper`` declared after it).
+                            _local_scope = receiver or _get_enclosing_class(node, source)
+                            local_callee: Optional[Symbol] = (
+                                local_symbols.get(f"{_local_scope}.{callee_name}")
+                                if _local_scope else None
+                            )
+                            if local_callee is None and callee_name in local_symbols:
+                                _short = local_symbols[callee_name]
+                                if receiver or not defer_bare_method_call(
+                                    _short.kind, _short.name, "suffix", _local_scope,
+                                ):
+                                    local_callee = _short
+                            if local_callee is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=callee.id,
+                                    dst=local_callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
@@ -941,10 +1045,12 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                 _sym = lookup_result.symbol
                                 _defer = (
                                     receiver is None
-                                    and _sym is not None
-                                    and defer_bare_method_call(
+                                    and (
+                                        (_sym is not None and defer_bare_method_call(
                                         _sym.kind, _sym.name,
                                         lookup_result.match_type, _enclosing_type,
+                                    ))
+                                        or defer_unresolved_tie(lookup_result)
                                     )
                                 )
                                 if lookup_result.found and _sym is not None and not _defer:

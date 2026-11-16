@@ -1,0 +1,21 @@
+- op: create  # c5a7
+  at: '2026-10-31T10:07:54Z'  # c5a7
+  by: agent  # c5a7
+  actor: jgstern_agent  # c5a7
+  clock: 1  # c5a7
+  nonce: c5a7  # c5a7
+  data:  # c5a7
+    kind: work_item  # c5a7
+    title: "c: the displayed signature drops a variadic ... (int f(int a, ...) renders as (int a) int); c_family_parameters also misses C's variadic_parameter node"  # c5a7
+    status: todo_hard  # c5a7
+    priority: 4  # c5a7
+    parent:  # c5a7
+    tags:  # c5a7
+    - docstring_audit  # c5a7
+    - analysis_quality  # c5a7
+    isbefore: []  # c5a7
+    duplicate_of: []  # c5a7
+    not_duplicate_of: []  # c5a7
+    pr_ref:  # c5a7
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. c.py:259 keeps only parameter_declaration; c_family.py:372 matches child.type == '...' but tree-sitter-c wraps it in variadic_parameter (C++ emits a bare ...). The variadic_call stamp still works; no current C-grammar caller of c_family_parameters has variadics (GLSL only). v07."  # c5a7
+    fields: {}  # c5a7

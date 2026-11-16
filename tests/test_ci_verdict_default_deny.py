@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-ditav / WI-ninar: a CI verdict may PERMIT a merge only by being zero.
+"""A CI verdict may PERMIT a merge only by being zero (WI-ditav / WI-ninar).
 
-Two defects that compose into "a PR merges while CI is pending", which happened
-live to PR #160.
+Two properties keep a PR from merging while CI is pending: no consumer may
+treat an unrecognised verdict as permission, and the hung-runner verdict must
+not fire on a healthy pipeline. Broken together, they compose into exactly
+that merge.
 
-WI-ditav -- four consumers of ``poll_ci`` decided whether to merge by
-enumerating the codes that BLOCK::
+DEFAULT-DENY VERDICTS (WI-ditav). A consumer of ``poll_ci`` that decides
+whether to merge by enumerating the codes that BLOCK::
 
     poll_ci "$HEAD_SHA" || poll_result=$?
     if   [[ $poll_result -eq 1 ]]; then exit 1
@@ -13,28 +15,23 @@ enumerating the codes that BLOCK::
     fi
     ... falls through to the merge ...
 
-Exit 3 (hung runner) was introduced LATER by a different fix, so a guard that
-was correct the day it was written silently became a permit. Two of the four
-sites -- ``merge-pr:297`` and ``auto-pr``'s post-rebase path -- fell through to
-the merge on exit 3 as shipped; the other two would fall through on any code
-added in future. The two sites that were already safe were safe for exactly the
-reason L54 gives: they branch on ``rc == 0`` and treat everything else as
-refusal. ``poll_ci``'s own header comment documented only "0 = success,
-1 = failure, 2 = timeout" -- it never mentioned 3, which is plausibly how four
-call sites came to omit it.
+fails open the moment ``poll_ci`` allocates a new code: exit 3 (hung runner)
+falls straight through to the merge in exactly this shape. A guard that
+branches on ``rc == 0`` and treats everything else as refusal does not have
+the hazard (L54), so every merge decision routes through
+``ci_verdict_permits_merge``, which permits only 0.
 
-WI-ninar -- ``poll_ci`` decided "has any job started?" by asking whether any
-status context had gone NON-pending. That was written for Forgejo Actions, which
-posted one context per job. Woodpecker posts exactly ONE aggregate context which
-stays ``pending`` for the entire pipeline, so the answer was "no" for the whole
-run and every pipeline outliving ``CI_STALE_PENDING_SECONDS`` (300 s default,
-against a ~360 s suite) was declared a hung runner. The heuristic was not
-detecting anything; it was structurally incapable of being satisfied.
+DISPATCH DETECTION (WI-ninar). ``poll_ci`` returns 3 when no pipeline was
+dispatched within ``CI_STALE_PENDING_SECONDS``. "Dispatched" means a status
+context EXISTS, not that one has gone non-pending: Woodpecker posts exactly
+ONE aggregate context, which stays ``pending`` for the entire pipeline, so a
+"has anything gone non-pending?" predicate is never satisfied and declares
+every pipeline that outlives the threshold (300 s default) a hung runner.
 
 The tests below are behavioural, not textual. ``poll_ci`` is driven with
 ``api_get`` overridden in the sourced shell, so the decision is exercised
-against real payloads with no forge -- which is what lets the WI-ninar change be
-distinguished from the bug it replaces (same inputs, different verdict).
+against real payloads with no forge -- which is what distinguishes the two
+dispatch predicates (same inputs, different verdict).
 """
 
 # covers: scripts/lib/forgejo-api.sh
@@ -78,11 +75,11 @@ def test_known_failure_verdicts_refuse(code: int) -> None:
 
 @pytest.mark.parametrize("code", [4, 7, 42])
 def test_unallocated_verdicts_refuse(code: int) -> None:
-    """THE regression: a code nobody has allocated yet must still refuse.
+    """A code nobody has allocated yet must still refuse.
 
-    This is the property the old enumerate-the-blocking-codes shape lacked. A
-    guard that lists what blocks it fails open the moment the producer learns a
-    new verdict -- which is precisely how exit 3 became a permit.
+    This is the property an enumerate-the-blocking-codes guard lacks: a guard
+    that lists what blocks it fails open the moment the producer learns a new
+    verdict.
     """
     result = _bash(f"ci_verdict_permits_merge {code}")
     assert result.returncode != 0, (
@@ -133,11 +130,11 @@ _SUCCESS = (
 
 
 def test_a_pending_aggregate_context_is_not_a_hung_runner() -> None:
-    """THE WI-ninar regression, in the exact shape Woodpecker produces.
+    """The WI-ninar case, in the exact shape Woodpecker produces.
 
     One aggregate context, pending, with the stale threshold already elapsed.
-    The old predicate ("has anything gone non-pending?") answers no and returns
-    3 immediately. The correct predicate ("does a context EXIST?") answers yes:
+    A "has anything gone non-pending?" predicate answers no and returns 3
+    immediately. The correct predicate ("does a context EXIST?") answers yes:
     Woodpecker posts that context when it creates the run, so its presence is
     proof of dispatch. The run should then be allowed to keep going and time out
     normally (2), never be declared hung.
@@ -154,9 +151,10 @@ def test_a_pending_aggregate_context_is_not_a_hung_runner() -> None:
 
 
 def test_no_context_at_all_is_still_a_dispatch_failure() -> None:
-    """The original intent is preserved: nothing posted means nothing started.
+    """Nothing posted still means nothing started.
 
-    Without this the fix would be indistinguishable from deleting the check.
+    Without this the dispatch predicate would be indistinguishable from
+    deleting the check.
     """
     out = _bash(
         _STUB.format(payload=_NO_CONTEXT_AT_ALL, timeout=1), timeout=120,
@@ -189,19 +187,18 @@ def test_helper_has_exactly_one_definition() -> None:
 def test_merge_pr_has_no_hand_rolled_verdict_gate() -> None:
     """merge-pr's ONLY verdict decision must be the chokepoint.
 
-    Scope is deliberate, and the reason is worth recording rather than hiding
-    (L23). The first draft of this guard applied the same rule to auto-pr:
-    "a comparison against a non-zero code is only legitimate as a retry guard".
-    It produced a FALSE POSITIVE on auto-pr's exit-2 recovery branch, which
-    compares against 2 to decide whether to close-and-repush and then RE-POLLS
-    -- a recovery construct, not a merge gate, and textually indistinguishable
-    from one at line level. A rule that needs a per-site exemption list is a
-    rule that gets exempted into uselessness, so it is not applied there.
+    Scope is deliberate (L23). Applied to auto-pr, the rule "a comparison
+    against a non-zero code is only legitimate as a retry guard" gives a FALSE
+    POSITIVE on auto-pr's exit-2 recovery branch, which compares against 2 to
+    decide whether to close-and-repush and then RE-POLLS -- a recovery
+    construct, not a merge gate, and textually indistinguishable from one at
+    line level. A rule that needs a per-site exemption list is a rule that
+    gets exempted into uselessness, so it is not applied there.
 
     merge-pr has exactly one poll site, no retry logic and no recovery branch,
     so in that file any comparison of a poll result against a code IS the merge
-    gate -- which is precisely the construct that merged PR #160 with CI
-    pending. auto-pr is covered by the call-count guard below instead.
+    gate -- precisely the construct that lets a PR merge with CI pending.
+    auto-pr is covered by the call-count guard below instead.
     """
     text = MERGE_PR.read_text()
     offenders = [

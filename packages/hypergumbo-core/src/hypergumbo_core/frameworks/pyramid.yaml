@@ -69,6 +69,3 @@ patterns:
       kind: "^call$"
       name: "^config\\.add_view$"
       position: "^route_name$"
-
-linkers:
-  - http

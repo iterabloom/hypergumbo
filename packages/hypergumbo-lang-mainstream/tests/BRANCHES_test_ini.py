@@ -3,7 +3,6 @@
 
 Tests specific branch paths in the INI analyzer that may not be covered
 by the main test suite. Focuses on:
-- Helper function behavior
 - Section extraction with categorization
 - Setting extraction with sensitivity detection
 - Value masking for sensitive values
@@ -13,8 +12,6 @@ from pathlib import Path
 
 from hypergumbo_lang_mainstream.ini import (
     _categorize_section,
-    _is_sensitive_key,
-    _mask_value,
     analyze_ini,
     find_ini_files,
 )
@@ -30,35 +27,9 @@ def make_ini_file(tmp_path: Path, name: str, content: str) -> None:
 # former test_make_symbol_id_format format test was retired here (INV-dulah).
 
 
-class TestIniHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_mask_value_short(self) -> None:
-        """Test masking short values."""
-        assert _mask_value("ab") == "***"
-        assert _mask_value("a") == "***"
-        assert _mask_value("") == "***"
-
-    def test_mask_value_normal(self) -> None:
-        """Test masking normal length values."""
-        masked = _mask_value("secretpassword")
-        assert masked.startswith("s")
-        assert masked.endswith("d")
-        assert "***" not in masked or len(masked) > 3
-
-    def test_is_sensitive_key_true(self) -> None:
-        """Test sensitive key detection."""
-        assert _is_sensitive_key("password") is True
-        assert _is_sensitive_key("db_password") is True
-        assert _is_sensitive_key("API_KEY") is True
-        assert _is_sensitive_key("secret_token") is True
-        assert _is_sensitive_key("auth_credential") is True
-
-    def test_is_sensitive_key_false(self) -> None:
-        """Test non-sensitive key detection."""
-        assert _is_sensitive_key("host") is False
-        assert _is_sensitive_key("port") is False
-        assert _is_sensitive_key("debug") is False
+# The key test and mask moved to hypergumbo_core.analyze.config_secrets
+# (INV-puvoh) and are tested there; the former helper tests pinned the
+# first/last-character mask that leaked a secret's edges and length.
 
 
 class TestSectionCategorization:

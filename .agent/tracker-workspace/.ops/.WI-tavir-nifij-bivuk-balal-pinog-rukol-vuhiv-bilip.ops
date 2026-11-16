@@ -21,3 +21,18 @@
     pr_ref:  # 5385
     description: "Prior-tranche flags from WI-vafad (tranche 2, apple sub-tranche, 2026-09-13), never filed, re-verified ACCEPT at dev fe3c32259d (docs/audits/0022, prior-backlog section).\n\nobjc NSNotificationCenter `addObserver:selector:name:object:` and `addObserverForName:object:queue:usingBlock:` are rowed ipc_recv. Registration inserts a closure into the center's IN-PROCESS registrar (swift-corelibs-foundation NotificationCenter.swift:92-102; NSNotification.swift:124). Nothing crosses a process boundary, and the delivered notification was posted by this same process. WI-povom already moved the POST side (post* rows) out of ipc_send on exactly this reasoning: in-process pub/sub is not IPC. The receive side was left behind. The verifier also noticed the swift twin, NotificationCenter.addObserver, rowed the same way, which was not adjudicated here.\n\nCAVEAT that travels with apple rows: the evidence is swift-corelibs-foundation, a reimplementation, and the selector-based `addObserver:selector:name:object:` overload does not exist there (only the block forms). The decisive fact, that the center is in-process, does not depend on the overload. The catalogue already rows the cross-process class, NSDistributedNotificationCenter, separately under ipc_send (audit 0021). Apple's documented contract was NOT read in this sweep; confirm it at developer.apple.com at fix time.\n\nipc_recv derives untrusted_input, so these rows MINT a taint source at a call that observes nothing from outside the process. Removal is the false-positive direction. ADR-0049 ruling 3 still applies."  # 5385
     fields: {}  # 5385
+- op: discuss  # 4a2c
+  at: '2026-11-01T10:55:41Z'  # 4a2c
+  by: agent  # 4a2c
+  actor: jgstern_agent  # 4a2c
+  clock: 2  # 4a2c
+  nonce: 4a2c  # 4a2c
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat3/). VERDICT: CURRENT. 2026-11-01 review at 100b6fbb6e: objc.yaml:353-356 and swift.yaml:256-258 still row the addObserver forms under ipc_recv; WI-povom (done) removed only the post side. Fixture io-boundaries reports ipc_recv for both objc selectors and for swift NotificationCenter.addObserver. Premise holds; the swift twin is live and should be in scope explicitly. MECHANISM: in-process pub/sub registration rowed as a cross-process receive, minting a taint source. SHARES MECHANISM WITH: WI-lasih,WI-lotaz,WI-novap,WI-pusah."  # 4a2c
+- op: update  # 7654
+  at: '2026-11-01T10:55:41Z'  # 7654
+  by: agent  # 7654
+  actor: jgstern_agent  # 7654
+  clock: 3  # 7654
+  nonce: '7654'  # 7654
+  set:  # 7654
+    title: "objc NSNotificationCenter addObserver (two selectors) and swift NotificationCenter.addObserver are rowed ipc_recv but register in the in-process center"  # 7654

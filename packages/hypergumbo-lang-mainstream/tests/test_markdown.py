@@ -250,7 +250,7 @@ some code
         # is now a canonical sha256 hash (it no longer reuses the composite id).
         import re
         assert section.stable_id != section.id
-        assert re.match(r"^sha256:[0-9a-f]{16}$", section.stable_id)
+        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", section.stable_id)
         assert "markdown:" in section.id
         assert "README.md" in section.id
 
@@ -394,7 +394,7 @@ class TestMarkdownStableIdCanonical:
     @staticmethod
     def _canonical(sid: str) -> bool:
         import re
-        return bool(re.match(r"^sha256:[0-9a-f]{16}$", sid))
+        return bool(re.match(r"^hgstableid15:[0-9a-f]{16}$", sid))
 
     def test_section_stable_id_canonical(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# Title\n\n## Sub\n")

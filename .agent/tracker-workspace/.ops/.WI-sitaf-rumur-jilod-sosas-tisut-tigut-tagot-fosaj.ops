@@ -20,3 +20,70 @@
     pr_ref:  # 041e
     description: "FOUND 2026-10-04/05 by INV-komoj (branch jgstern-agent/fix/komoj). The ADR-0017 §3a walk seeds EVERY variable a source call line defines (defs_at). INV-komoj's return lift asks that walk \"does the value reach a return statement\". So `x, err := helper()` followed by `return fmt.Errorf(\"..: %w\", err)` made the function \"return the value\", and the lift climbed every Go error chain above a source. Measured with `err` dropped from the return walk's seeds: runc walk-based lifts 39 -> 26, buildah 85 -> 59.\n\nINV-komoj closes the common case structurally. ddg_build records the identifiers in each result position of a return statement, and the lift records the positions the value occupies. The caller is then seeded only on the variables its call defines at those positions (taint._received_seeds), using the order stmt_defuse keeps.\n\nTHE RESIDUAL is the arity mismatch. Go's def/use extractor drops the blank identifier, so `_, err := get()` defines (\"err\",) against an arity of 2. The seeds then fall back to every variable, so `err` is tainted again and the chain climbs. The same fallback applies when a statement on the call line defines a different number of variables for any other reason.\n\nFix direction: record the left-hand side's positions including blanks. For example, the extractor could emit a placeholder for `_`, or the CFG statement could carry the LHS arity. Then `_received_seeds` can map positions exactly. Not a name rule on `err`.\n\nNot measured: how many corpus lifts take the fallback path."  # 041e
     fields: {}  # 041e
+- op: discuss  # c2f1
+  at: '2026-10-20T23:40:27Z'  # c2f1
+  by: agent  # c2f1
+  actor: jgstern_agent  # c2f1
+  clock: 2  # c2f1
+  nonce: c2f1  # c2f1
+  message: "Status check 2026-10-20: still open on dev 2760e4010b. go_def_use.py still drops the blank identifier (_BLANK at lines 114/146/211), and taint._received_seeds still requires len(defines) == arity before mapping positions, else returns None (seed everything)."  # c2f1
+- op: update  # 8a89
+  at: '2026-10-22T01:58:28Z'  # 8a89
+  by: agent  # 8a89
+  actor: jgstern_agent  # 8a89
+  clock: 3  # 8a89
+  nonce: 8a89  # 8a89
+  set:  # 8a89
+    status: in_progress  # 8a89
+- op: update  # d854
+  at: '2026-10-22T03:21:16Z'  # d854
+  by: agent  # d854
+  actor: jgstern_agent  # d854
+  clock: 4  # d854
+  nonce: d854  # d854
+  set:  # d854
+    status: done  # d854
+- op: discuss  # 7e5a
+  at: '2026-10-22T03:21:16Z'  # 7e5a
+  by: agent  # 7e5a
+  actor: jgstern_agent  # 7e5a
+  clock: 5  # 7e5a
+  nonce: 7e5a  # 7e5a
+  message: "Fixed in PR #1797 (dev e9215548f6). DefUseResult/CfgStatement gain targets (LHS by position, blank kept as '_'); Go short-var and assignment handlers report it when a blank is present and every other target names exactly one variable; stmt_defuse uses it, so _received_seeds maps the received position exactly. Repro through the production CLI (fresh cache), claim host_secret -> subprocess, fixture get() returns os.Getenv at position 0; wrap() does '_, err := get(); return \"ls\", err'; main() does 'name, err := wrap(); exec.Command(name, err.Error()).Run()': BEFORE (dev e3ea9db6c9) exit 1, violated, 2 evidence rows with source_returned_by [wrap, get] -- the error-chain climb; AFTER (merged dev) exit 3, confirmed_with_caveats, 0 evidence. Control (value, _ := get(); return value, nil) stays violated with returned_by {get, wrap} (test_go_a_blank_elsewhere_keeps_the_value_s_position). Corpus: 0 verdicts moved on runc/gin/coredns/buildah; buildah walks 2874 -> 2749, host-secret-no-network evidence 91 -> 79. NOT COVERED: 'var _, err = f()' spec declarations; a target naming no variable (*p) keeps the seed-everything fallback."  # 7e5a
+- op: update  # ac11
+  at: '2026-10-22T04:26:42Z'  # ac11
+  by: agent  # ac11
+  actor: jgstern_agent  # ac11
+  clock: 6  # ac11
+  nonce: ac11  # ac11
+  set:  # ac11
+    status: todo_hard  # ac11
+- op: discuss  # c6c8
+  at: '2026-10-22T04:26:42Z'  # c6c8
+  by: agent  # c6c8
+  actor: jgstern_agent  # c6c8
+  clock: 7  # c6c8
+  nonce: c6c8  # c6c8
+  message: "REOPENED 2026-10-22: PR #1797 reverted by PR #1799. The 2026-10-21 concept audit (F1, ~/hypergumbo_lab_notebook/concept_audit_10212026/) found that putting Go's blank '_' into stmt_defuse's defines slot made two consumers read it as a variable. Verified through the production CLI, claim host_secret -> subprocess: (a) '_, err := get(); fmt.Println(err); exec.Command(\"ls\")' with get returning os.Getenv, and (b) 's, _ := tok.(string); fmt.Println(s); exec.Command(\"ls\")' read confirmed_with_caveats (exit 3) before e9215548f6, violated (exit 1, ddg_mixed/escaped) after it, and exit 3 again on merged dev after the revert. Causes: taint inherits made '_' an heir with no recorded use (unrecorded_heir escape); _received_seeds seeded {'_'}, which the walk reads as source_undefined. RE-FIX SHAPE: carry positions APART from defines (stmt_defuse defines stay bindings), and make a received position that lands on a blank mean 'nothing received' (seed nothing / lift nothing), not 'unknown'. Tests to carry: the two fixtures above (must stay exit 3) plus the original pair (blank at the value's position discards it; value, _ := keeps it)."  # c6c8
+- op: update  # df95
+  at: '2026-10-22T07:25:55Z'  # df95
+  by: agent  # df95
+  actor: jgstern_agent  # df95
+  clock: 8  # df95
+  nonce: df95  # df95
+  set:  # df95
+    status: done  # df95
+- op: discuss  # a029
+  at: '2026-10-22T07:25:56Z'  # a029
+  by: agent  # a029
+  actor: jgstern_agent  # a029
+  clock: 9  # a029
+  nonce: a029  # a029
+  message: "Fixed in PR #1805 (dev 1f1e22d3f2), replacing the reverted #1797. Positions travel apart from defines: DefUseResult/CfgStatement.targets (None for a blank), RepoDdg.stmt_targets -> propagate_taint_ddg; stmt_defuse defines stay the variables bound; _received_seeds returns an EMPTY set only when every call line was read and every received slot is a blank, and the walk reads that as 'carries nothing'. Repro on merged dev through the production CLI, fresh cache, claim host_secret -> subprocess: the filed shape (get returns os.Getenv; wrap: '_, err := get(); return \"ls\", err'; main: 'name, err := wrap(); exec.Command(name, err.Error()).Run()') exit 3, confirmed_with_caveats, 0 evidence (was exit 1 violated on e3ea9db6c9). The two concept-audit regression shapes ('_, err := get(); fmt.Println(err); exec.Command(\"ls\")' and 's, _ := tok.(string); fmt.Println(s); exec.Command(\"ls\")') stay exit 3, confirmed_with_caveats, 0 evidence. Control (value, _ := get(); return value, nil) stays violated with returned_by {get, wrap} (test_go_a_blank_elsewhere_keeps_the_value_s_position). Corpus A/B (runc, gin, coredns, buildah): 0 verdicts moved; buildah walks False 1 -> 21, each a value received into a blank. NOT COVERED: 'var _, err = f()' declarations; a target naming no variable (*p) keeps the seed-everything fallback."  # a029
+- op: discuss  # d4a3
+  at: '2026-11-04T20:12:14Z'  # d4a3
+  by: agent  # d4a3
+  actor: jgstern_agent  # d4a3
+  clock: 10  # d4a3
+  nonce: d4a3  # d4a3
+  message: "SIBLING FILED 2026-11-04 while draining INV-komoj: WI-kikar-favir-sugiz-nazib-kanij-rujam-tadil-donul. Your fixture spelling (v := os.Getenv; return v, nil) still reads confirmed_with_caveats on dev 4c9d5d4d2f, so this fix holds; the direct-call spelling (return os.Getenv(x), nil) has no recorded result position and takes the seed-everything fallback (record ~/hypergumbo_lab_notebook/komoj_drain_11042026/). Not a reopen: this item's NOT COVERED list did not name it and its own repro passes."  # d4a3

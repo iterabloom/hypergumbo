@@ -5,14 +5,14 @@ The record-class-level writer-contract sub-patterns (default-only initializer,
 schema-declares-no-writer) partition only by ``(record_class, field)``. They
 miss a *kind-conditioned* NULL: a field populated on ``function`` symbols but
 100% NULL on every ``method`` symbol never trips a Symbol-level check, because
-at least one Symbol (the function) carries it -- this is the 194-of-312 NULL
-(kind,field) cell class WI-libib names. Rather than enforce the full matrix
-(rejected by the item's own author as over-broad), the mechanism is a
-*registered* positive population contract: each entry asserts a specific
-(language, kind, field) cell stays populated, and a 100%-NULL partition on that
-cell is a writer regression. The first entries are ``qualified_name`` on Python
-function/method/class (WI-hudug; the producer half is done -- WI-fagab /
-ADR-0032 -- so these currently emit no violation and act as a regression guard).
+at least one Symbol (the function) carries it (the NULL (kind, field) cell class
+of WI-libib). Enforcing the full kind x field matrix would be over-broad, so the
+mechanism is a *registered* positive population contract: each entry asserts a
+specific (language, kind, field) cell stays populated, and a 100%-NULL partition
+on that cell is a writer regression. The registered entries are
+``qualified_name`` on Python function/method/class (WI-hudug), which the
+producer populates (ADR-0032), so they emit no violation on a healthy run and
+act as a regression guard.
 
 These tests lock both the mechanism (partition by language+kind, skip an absent
 partition, fire only on a 100%-NULL registered cell) and WI-hudug's concrete
@@ -75,7 +75,7 @@ def test_flags_100pct_null_qualified_name_on_python_functions() -> None:
 
 def test_silent_when_qualified_name_populated() -> None:
     """When the field is populated across the kind partition, no violation --
-    the writer IS wiring the slot (the steady state post-WI-fagab)."""
+    the writer IS wiring the slot (the steady state)."""
     syms = [_pysym("function", "pkg.fn", f"s:{i}") for i in range(3)]
     violations = _check_kind_conditioned_population(syms)
     assert not any(

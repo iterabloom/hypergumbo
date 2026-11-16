@@ -1,0 +1,9 @@
+from bedapp.cli import main
+
+
+def test_no_args_prints_usage():
+    assert main([]).startswith("Usage")
+
+
+def test_runs_the_chain():
+    assert main(["1"]) == "9"

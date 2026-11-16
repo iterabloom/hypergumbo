@@ -96,7 +96,7 @@ class TestSuccess:
         logged: list[str] = []
         result = analyze_python_with_scip_impl(
             tmp_path, gate=lambda **kw: True, invoke=lambda p, *, cwd, project_name: b"",
-            translate=lambda b, *, run_id: ([], []), log=logged.append,
+            translate=lambda b, *, run_id, log=None: ([], []), log=logged.append,
         )
         assert result.skipped is False and result.run is not None and result.symbols == []
         assert logged and "produced no symbols" in logged[0]
@@ -106,9 +106,61 @@ class TestSuccess:
         # (WI-nijod: every run indexed an empty scratch dir and looked clean).
         assert result.run.silence_reason == UNREPORTED
 
+    def test_a_missing_binary_warning_carries_the_install_steps(self, tmp_path: Path) -> None:
+        """A backend switched on by config, not the flag, never passes the CLI's
+        exit-2 gate, so this warning is where that user learns how to install."""
+        logged: list[str] = []
+        analyze_python_with_scip_impl(
+            tmp_path, gate=lambda **kw: True, log=logged.append,
+            invoke=lambda p, *, cwd, project_name: (_ for _ in ()).throw(ScipPythonNotInstalled("gone")),
+        )
+        assert len(logged) == 1
+        assert "did not run" in logged[0] and "scip-python --version" in logged[0]
+
+    def test_other_failures_carry_no_install_steps(self, tmp_path: Path) -> None:
+        logged: list[str] = []
+        analyze_python_with_scip_impl(
+            tmp_path, gate=lambda **kw: True, log=logged.append,
+            invoke=lambda p, *, cwd, project_name: (_ for _ in ()).throw(
+                ScipPythonInvocationFailed("exit 1", b"boom", returncode=1)),
+        )
+        assert len(logged) == 1 and "--version" not in logged[0]
+
     def test_the_default_warning_channel_is_a_user_warning(self, tmp_path: Path) -> None:
         with pytest.warns(UserWarning, match="did not run"):
             analyze_python_with_scip_impl(
                 tmp_path, gate=lambda **kw: True,
                 invoke=lambda p, *, cwd, project_name: (_ for _ in ()).throw(ScipPythonNotInstalled("gone")),
             )
+
+
+def test_the_scratch_dir_comes_from_the_tmp_artifact_zone(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """INV-tusos: the index output directory is the ``tmp_artifact`` wrapper's,
+    not a raw ``tempfile.TemporaryDirectory`` outside every zone."""
+    import contextlib
+
+    import hypergumbo_lang_scip_python.analyzer as analyzer_mod
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    prefixes: list[object] = []
+
+    @contextlib.contextmanager
+    def zone_dir(*, prefix=None):
+        prefixes.append(prefix)
+        yield str(scratch)
+
+    monkeypatch.setattr(analyzer_mod, "tmp_artifact_dir", zone_dir)
+    cwds: list[Path] = []
+
+    def invoke(project, *, cwd, project_name):
+        cwds.append(cwd)
+        return b""
+
+    analyze_python_with_scip_impl(
+        tmp_path, gate=lambda **kw: True, invoke=invoke,
+        translate=lambda b, *, run_id, log=None: ([], []), log=lambda m: None,
+    )
+    assert prefixes == ["hypergumbo-scip-python-"]
+    assert cwds == [scratch]

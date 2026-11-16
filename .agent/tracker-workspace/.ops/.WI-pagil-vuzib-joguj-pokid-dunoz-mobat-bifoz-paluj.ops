@@ -1,0 +1,21 @@
+- op: create  # 3882
+  at: '2026-10-25T11:05:14Z'  # 3882
+  by: agent  # 3882
+  actor: jgstern_agent  # 3882
+  clock: 1  # 3882
+  nonce: '3882'  # 3882
+  data:  # 3882
+    kind: work_item  # 3882
+    title: "message_dispatch depends_on names nine languages but the linker scans only javascript, typescript and rust (too-broad clause)"  # 3882
+    status: todo_hard  # 3882
+    priority: 3  # 3882
+    parent:  # 3882
+    tags:  # 3882
+    - docstring_audit  # 3882
+    - analysis_quality  # 3882
+    isbefore: []  # 3882
+    duplicate_of: []  # 3882
+    not_duplicate_of: []  # 3882
+    pr_ref:  # 3882
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- message_dispatch.py: depends_on does not match the scanned languages -- evidence: L58 `_DISPATCH_LANGUAGES = (\"javascript\", \"typescript\", \"rust\")` vs L389-392 `depends_on=[[\"python\", \"javascript\", \"ruby\", \"java\", \"go\", \"csharp\", \"elixir\", \"erlang\", \"rust\"]]`, with a comment citing postMessage/Erlang send/Akka tell, which the body never scans. Because the clause is a disjunction, a present python/ruby/... pass satisfies it, so a JS/Rust repo with a toolchain-blocked javascript or rust analyzer is never stamped PREREQUISITE_ABSENT. Fix: `depends_on=[[\"javascript\", \"rust\"]]`.\n\nOpposite direction from WI-ziguf (too narrow).\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 3882
+    fields: {}  # 3882

@@ -126,7 +126,9 @@ PROTOCOL_ORIGINS: Final[tuple[ProtocolOriginSpec, ...]] = (
     ProtocolOriginSpec(
         "http",
         "Synthetic stand-ins for HTTP client / fetch / axios calls "
-        "discovered as escape points. http linker emits."
+        "discovered as escape points (http linker), and for HTTP routes: "
+        "every route marker a language analyzer or the route materializer "
+        "mints for an HTTP registration (WI-mupal; ADR-0031 section 2a)."
     ),
     ProtocolOriginSpec(
         "openapi",

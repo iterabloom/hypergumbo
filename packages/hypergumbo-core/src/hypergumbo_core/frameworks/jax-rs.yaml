@@ -38,6 +38,3 @@ patterns:
   # Async response
   - concept: async
     decorator: "^Suspended$"
-
-linkers:
-  - http

@@ -3,7 +3,8 @@
 """CLI for coverage-directed test selection (shadow phase).
 
 DELIBERATELY THIN. Every decision lives in hypergumbo_core.{block_hash,
-selection_index,selection_shadow}, which are unit-tested at 100%; code in
+selection_index,selection_shadow,selection_log,prose_only,import_closure},
+which are unit-tested at 100%; code in
 scripts/ is exercised only through subprocess and so contributes nothing to
 coverage. Anything here that is more than argument shuffling is in the wrong
 file.
@@ -14,29 +15,53 @@ shadowing would be retired within a day and rightly so. Every entry point
 catches broadly and exits 0 — see `main`.
 
     update  fold one run's coverage contexts into the index
+    fold-reads  store only a run's read record, for a run with failures
     shadow  report what coverage WOULD have selected, without acting on it
     select  print the selection, for a caller that intends to ACT on it
     narrow  print a run set with provably-irrelevant test files REMOVED
+    prose-select  write the changed files that differ only in comments or
+                  docstrings, and the tests recorded evidence says they need
+    readers  print the test files recorded reading a changed file as data
+    import-closure  print the test files whose imports reach a source file
+                    whose import-time code changed
+    report  print the accrued shadow evidence and its verdict
+    stale-pick  print the newest older graph a fresh slice can be compared with
+    stale-record  store what a fresh walk and a walk on an older graph named
+    stale-report  print the accrued stale-graph evidence and its verdict
+    run-record  store what one test run ran against and which tests failed
+    line-tests  print which tests the index records running FILE:LINE
+    line-records  print how many pairs of the index have statement records
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent
                       / "packages" / "hypergumbo-core" / "src"))
 
+from hypergumbo_core.import_closure import build as build_import_graph
+from hypergumbo_core.prose_only import (
+    fold_run, global_refusal, select_for_prose, tests_reading,
+)
 from hypergumbo_core.selection_index import (
-    Narrowing, narrow_run_set, narrowing_blockers, open_index,
-    rebase_to_repo, selectable_test_files, select_tests, speakable_test_files,
-    touching_test_files, update_from_run,
+    Narrowing, droppable_test_files, import_time_changed_sources,
+    narrow_run_set, narrowing_blockers,
+    open_index, rebase_to_repo, record_counts, selectable_test_files,
+    select_tests, speakable_test_files, tests_of_line, touching_test_files,
+    update_from_run,
 )
 from hypergumbo_core.selection_log import (
-    append_observation, evaluate, load_observations,
+    append_observation, append_run_record, append_stale_graph_observation,
+    evaluate, evaluate_stale_graph, load_observations, newest_older_graph,
+    register_graph, sliceable_sources, sliced_test_files, stale_graph_row,
+    store_snapshot,
 )
 from hypergumbo_core.selection_shadow import (
     compare, failed_tests_from_junit, ran_tests_from_junit,
@@ -49,14 +74,29 @@ DEFAULT_INDEX = Path(
                    Path.home() / "hypergumbo_lab_notebook" / "selection_index.sqlite")
 )
 
-#: APPEND-ONLY, and out-of-repo for the same reason as the index. The shadow
-#: originally wrote one JSON file per run that the next run overwrote, so no
-#: evidence could accumulate; the observations are a forward-only time series
-#: and a lost run is lost permanently.
+#: APPEND-ONLY, and out-of-repo for the same reason as the index. The
+#: observations are a forward-only time series: a per-run file that the next
+#: run overwrites would accumulate no evidence, and a lost run is lost
+#: permanently.
 DEFAULT_LOG = Path(
     os.environ.get("HG_SELECTION_LOG",
                    Path.home() / "hypergumbo_lab_notebook" / "selection_observations.jsonl")
 )
+
+
+_NOTEBOOK = Path.home() / "hypergumbo_lab_notebook"
+
+#: The stale-graph shadow's observations, the graphs it can compare against,
+#: and the run records. Out-of-repo and append-only, like DEFAULT_LOG.
+DEFAULT_STALE_LOG = Path(os.environ.get(
+    "HG_STALE_GRAPH_LOG", _NOTEBOOK / "stale_graph_observations.jsonl"))
+DEFAULT_GRAPHS = Path(os.environ.get(
+    "HG_SLICE_GRAPHS", _NOTEBOOK / "slice_graphs.jsonl"))
+DEFAULT_RUNS = Path(os.environ.get("HG_RUN_RECORDS", _NOTEBOOK / "run_records.jsonl"))
+
+#: Untracked files that count as part of a change: the surfaces smart-test's
+#: own change detection reads (INV-kinin). Pending tracker ops never do.
+_CHANGE_SURFACE = re.compile(r"^(packages/|tests/|scripts/|\.githooks/|\.agent/hooks/)")
 
 
 def _lines(path: str | None) -> list[str]:
@@ -74,11 +114,56 @@ def cmd_update(args: argparse.Namespace) -> int:
     update_from_run(
         conn, Path(args.coverage_db),
         ran_tests=ran, git_sha=args.sha, full_run=args.full, repo_root=root,
+        scope_complete=args.scope_complete,
     )
+    # After the coverage fold, not before: a full run resets both, and the
+    # prose-only rule reads the two together.
+    if args.source_reads and Path(args.source_reads).is_dir():
+        stored = fold_run(conn, Path(args.source_reads), root, full_run=args.full,
+                          skip=_failed(args, root))
+        _forget(Path(args.source_reads))
+        if args.verbose:
+            print(f"[coverage-select] stored source reads for {stored} tests",
+                  file=sys.stderr)
     conn.close()
     if args.verbose:
         print(f"[coverage-select] indexed {len(ran or ())} ran tests", file=sys.stderr)
     return 0
+
+
+def _failed(args: argparse.Namespace, root: Path) -> set[str]:
+    if args.junit and Path(args.junit).exists():
+        return failed_tests_from_junit(Path(args.junit), root)
+    return set()
+
+
+def cmd_fold_reads(args: argparse.Namespace) -> int:
+    """Store a run's read record and nothing else, then remove the record
+    files. For a RED run, whose coverage is not folded into the index, and
+    for the record a KILLED run left behind.
+
+    The record names the tests that failed and they are not stored; a junit
+    report, when there is one, names them again.
+    """
+    root = Path(args.repo_root).resolve()
+    reads = Path(args.source_reads)
+    if not any(reads.glob("*.json")):
+        return 0
+    conn = open_index(Path(args.index))
+    stored = fold_run(conn, reads, root, skip=_failed(args, root))
+    conn.close()
+    _forget(reads)
+    if args.verbose or args.announce:
+        print(f"[coverage-select] stored the read record of {stored} test(s)",
+              file=sys.stderr)
+    return 0
+
+
+def _forget(reads: Path) -> None:
+    """Remove record files that have been stored, so that what is left in the
+    directory is always a record nobody stored yet."""
+    for part in reads.glob("*.json"):
+        part.unlink(missing_ok=True)
 
 
 def _base_source(root: Path, base: str, rel: str) -> str | None:
@@ -86,8 +171,8 @@ def _base_source(root: Path, base: str, rel: str) -> str | None:
 
     Change detection is GIT's job. The index stores block -> tests and nothing
     about what the tree used to look like: it is rewritten after every run, so
-    using its digests as the baseline made every run compare the working tree
-    against itself and select nothing (measured: 0 vs smart-test's 87).
+    using its digests as the baseline would compare the working tree against
+    itself and select nothing.
     """
     done = subprocess.run(["git", "-C", str(root), "show", f"{base}:{rel}"],
                           capture_output=True, text=True)
@@ -185,8 +270,8 @@ def cmd_select(args: argparse.Namespace) -> int:
 def cmd_narrow(args: argparse.Namespace) -> int:
     """Print the run set with safely-irrelevant test files REMOVED.
 
-    Phase 3 (WI-bolot). Reads the current run set on ``--run-set`` and prints
-    what survives, one file per line. Refusals go to stderr and the run set is
+    Reads the current run set on ``--run-set`` and prints what survives, one
+    file per line (history: WI-bolot). Refusals go to stderr and the run set is
     echoed back UNCHANGED, so a caller can pipe unconditionally.
 
     HOW THIS DIFFERS FROM `select`, since both consult the same index. `select`
@@ -197,6 +282,11 @@ def cmd_narrow(args: argparse.Namespace) -> int:
     keep the whole file-touch set (the local coverage gate is whole-file, not
     changed-lines), and refuse outright on an unknown coverable source or a
     missing changed file.
+
+    POSITIVE EVIDENCE is ``droppable_test_files``: the test file's latest run
+    in this checkout measured every package, the changed source files among
+    them, and left rows for each of its tests. A file with rows from a run
+    that measured less is kept, and the count of such files is printed.
     """
     root = Path(args.repo_root).resolve()
     run_set = _lines(args.run_set)
@@ -215,13 +305,20 @@ def cmd_narrow(args: argparse.Namespace) -> int:
     }
     conn = open_index(Path(args.index))
     selection = select_tests(conn, base_sources)
+    keep = (touching_test_files(conn, abs_changed, root)
+            | selectable_test_files(selection.tests, root))
+    droppable = droppable_test_files(conn, root, abs_changed)
     result: Narrowing = narrow_run_set(
         run_set,
-        keep=touching_test_files(conn, abs_changed, root)
-        | selectable_test_files(selection.tests, root),
-        droppable=speakable_test_files(conn, root),
+        keep=keep,
+        droppable=droppable,
         forbidden=narrowing_blockers(selection, root),
+        changed=changed,
     )
+    # Files with rows, none on the change, that stay because their latest run
+    # does not vouch for that silence.
+    uninformed = ((speakable_test_files(conn, root) - droppable)
+                  & frozenset(run_set)) - keep - frozenset(changed)
     conn.close()
 
     for f in sorted(result.kept):
@@ -230,12 +327,145 @@ def cmd_narrow(args: argparse.Namespace) -> int:
         print(f"[coverage-select] narrow REFUSED: {result.refusal}",
               file=sys.stderr)
     else:
+        held = (f"; kept {len(uninformed)} more whose latest run did not "
+                "measure the change with every package measured"
+                if uninformed else "")
         print(f"[coverage-select] narrow: {len(run_set)} -> "
-              f"{len(result.kept)} file(s), dropped {len(result.dropped)}",
+              f"{len(result.kept)} file(s), dropped {len(result.dropped)}{held}",
               file=sys.stderr)
         if args.verbose:
             for f in sorted(result.dropped):
                 print(f"    - {f}", file=sys.stderr)
+    return 0
+
+
+def _read(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+#: Every test file smart-test can select: the full suite's roots, flat.
+_TEST_FILE = r"^(packages/[^/]+/tests/(test_|BRANCHES_test_)[^/]*\.py|tests/test_[^/]*\.py)$"
+
+
+def cmd_prose_select(args: argparse.Namespace) -> int:
+    """Write the prose-only changed files to ``--files-out`` and the test
+    files they select to ``--tests-out``, one path per line.
+
+    An empty ``--files-out`` means "no prose-only file"; NO file means the
+    rule did not answer (it refused, or this command failed), and the caller
+    must then select for every changed file by its usual means.
+    """
+    root = Path(args.repo_root).resolve()
+    conn = open_index(Path(args.index))
+    refusal = global_refusal(conn)
+    if refusal:
+        print(f"[coverage-select] prose-only rule off: {refusal}", file=sys.stderr)
+        conn.close()
+        return 0
+    changed = {
+        rel: (_base_source(root, args.base, rel), _read(root / rel))
+        for rel in _lines(args.changed_files) if rel.endswith(".py")
+    }
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
+         "--exclude-standard"], capture_output=True, text=True, check=True).stdout
+    universe = [rel for rel in listed.split("\0")
+                if re.match(_TEST_FILE, rel) and (root / rel).is_file()]
+    result = select_for_prose(conn, root, changed, universe)
+    conn.close()
+    for rel, why in sorted(result.rejected.items()):
+        print(f"[coverage-select] prose-only but not eligible: {rel} ({why})",
+              file=sys.stderr)
+    if result.files:
+        why_counts: dict[str, int] = {}
+        for why in result.tests.values():
+            # "reads <what>" and "starts a process (<what>)" vary per test file.
+            key = why.split(" (")[0] if why.startswith("starts") else \
+                "reads a changed file, docstring or line number" \
+                if why.startswith("reads ") else why
+            why_counts[key] = why_counts.get(key, 0) + 1
+        print(f"[coverage-select] prose-only: {len(result.files)} file(s) select "
+              f"{len(result.tests)} of {len(universe)} test file(s)", file=sys.stderr)
+        for key, count in sorted(why_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"    {count:5d}  {key}", file=sys.stderr)
+        if args.verbose:
+            for f, why in sorted(result.tests.items()):
+                print(f"    {f}: {why}", file=sys.stderr)
+    Path(args.tests_out).write_text("".join(f"{f}\n" for f in sorted(result.tests)))
+    Path(args.files_out).write_text("".join(f"{f}\n" for f in sorted(result.files)))
+    return 0
+
+
+def cmd_readers(args: argparse.Namespace) -> int:
+    """Print the test FILES recorded reading a changed file as data, one per
+    line (``prose_only.tests_reading``).
+
+    For a CODE change. A test that checks source files by reading them from
+    disk imports none of them, so the import-graph slice does not select it;
+    smart-test unions this answer into the manifest. Files that no longer
+    exist are left out: the record is persistent and pytest treats a missing
+    path as a collection error. An empty answer prints nothing.
+    """
+    root = Path(args.repo_root).resolve()
+    changed = [c for c in _lines(args.changed_files) if c.endswith(".py")]
+    if not changed:
+        return 0
+    conn = open_index(Path(args.index))
+    found = tests_reading(conn, changed)
+    conn.close()
+    files = sorted(f for f in found if (root / f).is_file())
+    for f in files:
+        print(f)
+    if args.verbose:
+        for f in files:
+            print(f"[coverage-select] readers: {f} reads {found[f]}",
+                  file=sys.stderr)
+    return 0
+
+
+def cmd_import_closure(args: argparse.Namespace) -> int:
+    """Print the test FILES whose imports reach a changed source file whose
+    IMPORT-TIME code changed (a module or class body), one per line.
+
+    The call-edge slice lists a module that imports the changed file but
+    reaches a test of that module only through a call into the changed file.
+    A constant read, a module attribute read and a value computed at import
+    are not calls, so such a test was left out of the manifest
+    (:mod:`hypergumbo_core.import_closure` has the case and the cost).
+    smart-test unions this answer in.
+
+    The graph is read from the working tree: every Python file git tracks or
+    would track. A changed function body is not a trigger; the slice and the
+    coverage record select for it. An empty answer prints nothing.
+    """
+    root = Path(args.repo_root).resolve()
+    changed = [c for c in _lines(args.changed_files) if c.endswith(".py")]
+    if not changed:
+        return 0
+    base_sources = {str(root / c): _base_source(root, args.base, c) for c in changed}
+    hit = import_time_changed_sources(base_sources, root)
+    if not hit:
+        return 0
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
+         "--exclude-standard", "--", "*.py"],
+        capture_output=True, text=True, check=True).stdout
+    sources = {rel: text for rel in listed.split("\0")
+               if rel and (text := _read(root / rel)) is not None}
+    graph = build_import_graph(sources, gone=[h for h in hit if h not in sources])
+    tests = sorted(f for f in graph.dependents(hit) if re.match(_TEST_FILE, f))
+    for f in tests:
+        print(f)
+    print(f"[coverage-select] import-closure: {len(hit)} file(s) with changed "
+          f"import-time code are loaded by {len(tests)} test file(s)",
+          file=sys.stderr)
+    if args.verbose:
+        for h in hit:
+            mine = sum(1 for f in graph.dependents([h]) if re.match(_TEST_FILE, f))
+            print(f"    {mine:5d}  {h}", file=sys.stderr)
     return 0
 
 
@@ -247,6 +477,143 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _git(root: Path, *argv: str, ok: tuple[int, ...] = (0,)) -> bytes | None:
+    """stdout of one git command in ``root``; None when it did not succeed."""
+    done = subprocess.run(["git", "-C", str(root), *argv],  # noqa: S603, S607
+                          capture_output=True)
+    return done.stdout if done.returncode in ok else None
+
+
+def _git_lines(root: Path, *argv: str) -> list[str]:
+    out = _git(root, *argv)
+    return [ln for ln in (out or b"").decode("utf-8", "replace").splitlines() if ln]
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _head(root: Path) -> str:
+    return "".join(_git_lines(root, "rev-parse", "HEAD")) or "unknown"
+
+
+def _uncommitted(root: Path) -> tuple[list[str], list[str]]:
+    """(tracked files that differ from HEAD, untracked files that are part of
+    a change). Tracker ``.ops`` files are pending almost always and are no
+    part of what a test run is about."""
+    tracked = [f for f in _git_lines(root, "diff", "--name-only", "HEAD")
+               if not f.endswith(".ops")]
+    untracked = [f for f in _git_lines(root, "ls-files", "--others", "--exclude-standard")
+                 if _CHANGE_SURFACE.match(f) and not f.endswith(".ops")]
+    return tracked, untracked
+
+
+def cmd_stale_pick(args: argparse.Namespace) -> int:
+    row = newest_older_graph(Path(args.graphs), args.fresh_survey)
+    if row is not None:
+        print(row["survey"])
+    return 0
+
+
+def cmd_stale_record(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    changed = _lines(args.changed_files)
+    head = _head(root)
+    tracked, untracked = _uncommitted(root)
+    graph = None
+    if args.older_survey:
+        graph = dict(newest_older_graph(Path(args.graphs), args.fresh_survey or "") or {})
+        if graph.get("survey") != args.older_survey:
+            graph = {"survey": args.older_survey}
+        count = _git_lines(root, "rev-list", "--count", f"{graph.get('head')}..{head}")
+        graph["age_commits"] = int(count[0]) if count else None
+    row = stale_graph_row(
+        fresh=sliced_test_files(_lines(args.fresh_out), str(root)),
+        stale=(sliced_test_files(_lines(args.stale_out), str(root))
+               if args.older_survey else None),
+        edited_tests=sliced_test_files(changed, str(root)),
+        head=head, at=_now(),
+        changed_source=sliceable_sources(changed),
+        graph=graph, why_no_comparison=args.why,
+        fresh_seconds=args.fresh_seconds, stale_seconds=args.stale_seconds,
+    )
+    append_stale_graph_observation(Path(args.stale_log), row)
+    if args.fresh_survey:
+        register_graph(Path(args.graphs), survey=args.fresh_survey, head=head,
+                       dirty=bool(tracked or untracked), at=_now())
+    lost = row["fresh_only_unedited"]
+    if row["stale"] is None:
+        print(f"[coverage-select] stale-graph shadow: no comparison ({args.why})",
+              file=sys.stderr)
+    elif lost:
+        print(f"[coverage-select] STALE GRAPH LOST {len(lost)} TEST FILE(S) the fresh "
+              f"walk names and this change did not edit: {', '.join(lost[:5])}",
+              file=sys.stderr)
+    else:
+        print(f"[coverage-select] stale-graph shadow: a graph {graph['age_commits']} "
+              f"commit(s) old named every unedited test file the fresh walk named "
+              f"({len(row['fresh'])} fresh, {len(row['stale'])} stale)", file=sys.stderr)
+    return 0
+
+
+def cmd_stale_report(args: argparse.Namespace) -> int:
+    """Print the accrued stale-graph evidence and its verdict."""
+    ev = evaluate_stale_graph(load_observations(Path(args.stale_log)))
+    print(f"[coverage-select] stale-graph evidence from {args.stale_log}")
+    print(ev.summary())
+    return 0
+
+
+def cmd_run_record(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    head = _head(root)
+    base = "".join(_git_lines(root, "merge-base", "HEAD", args.base_branch)) or "unknown"
+    tracked, untracked = _uncommitted(root)
+    committed = [f for f in _git_lines(root, "diff", "--name-only", f"{base}..HEAD")
+                 if not f.endswith(".ops")]
+    patch = b""
+    if tracked:
+        patch += _git(root, "diff", "--binary", "HEAD", "--", *tracked) or b""
+    for path in untracked:
+        # rc 1 is git's "the two differ", which a new file always does.
+        patch += _git(root, "diff", "--binary", "--no-index", "--", "/dev/null", path,
+                      ok=(0, 1)) or b""
+    snapshot = store_snapshot(Path(args.runs).with_suffix(".d"), patch) if patch else None
+    ran = failed = None
+    if args.junit and Path(args.junit).exists():
+        ran = ran_tests_from_junit(Path(args.junit), root)
+        failed = failed_tests_from_junit(Path(args.junit), root)
+    append_run_record(
+        Path(args.runs), at=_now(), kind=args.kind, head=head, base=base,
+        changed_files=sorted({*committed, *tracked, *untracked}),
+        snapshot=snapshot,
+        ran_files=None if ran is None else {t.split("::")[0] for t in ran},
+        tests_ran=None if ran is None else len(ran),
+        failed=failed, exit_code=args.exit,
+    )
+    return 0
+
+
+def cmd_line_tests(args: argparse.Namespace) -> int:
+    """Print what the index records about who ran one line
+    (``selection_index.tests_of_line``). ``FILE`` is resolved against the
+    current directory, as the index stores absolute paths."""
+    file_part, _, line_part = args.where.rpartition(":")
+    conn = open_index(Path(args.index))
+    answer = tests_of_line(conn, str(Path(file_part).resolve()), int(line_part))
+    conn.close()
+    print(json.dumps(answer.as_dict(), indent=2) if args.json else answer.describe())
+    return 0
+
+
+def cmd_line_records(args: argparse.Namespace) -> int:
+    """Print how much of the index has statement records."""
+    conn = open_index(Path(args.index))
+    print(record_counts(conn).describe())
+    conn.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", default=".")
@@ -254,13 +621,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--junit", default=None)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--log", default=str(DEFAULT_LOG))
+    parser.add_argument("--stale-log", default=str(DEFAULT_STALE_LOG))
+    parser.add_argument("--graphs", default=str(DEFAULT_GRAPHS))
+    parser.add_argument("--runs", default=str(DEFAULT_RUNS))
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     up = sub.add_parser("update")
     up.add_argument("--coverage-db", required=True)
     up.add_argument("--sha", default=None)
     up.add_argument("--full", action="store_true")
+    up.add_argument("--scope-complete", action="store_true",
+                    help="coverage measured every package of the checkout in "
+                         "this run; without it the run's tests cannot be "
+                         "narrowed away later")
+    up.add_argument("--source-reads", default=None,
+                    help="directory of pytest_source_reads output to store")
     up.set_defaults(func=cmd_update)
+
+    fr = sub.add_parser("fold-reads")
+    fr.add_argument("--source-reads", required=True)
+    fr.add_argument("--announce", action="store_true",
+                    help="say how many tests were stored")
+    fr.set_defaults(func=cmd_fold_reads)
 
     sh = sub.add_parser("shadow")
     sh.add_argument("--changed-files", default=None)
@@ -286,8 +668,62 @@ def main(argv: list[str] | None = None) -> int:
                     help="git ref the working tree is diffed against")
     nw.set_defaults(func=cmd_narrow)
 
+    ps = sub.add_parser("prose-select")
+    ps.add_argument("--changed-files", default=None)
+    ps.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    ps.add_argument("--files-out", required=True)
+    ps.add_argument("--tests-out", required=True)
+    ps.set_defaults(func=cmd_prose_select)
+
+    rd = sub.add_parser("readers")
+    rd.add_argument("--changed-files", default=None)
+    rd.set_defaults(func=cmd_readers)
+
+    ic = sub.add_parser("import-closure")
+    ic.add_argument("--changed-files", default=None)
+    ic.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    ic.set_defaults(func=cmd_import_closure)
+
     rp = sub.add_parser("report")
     rp.set_defaults(func=cmd_report)
+
+    sp = sub.add_parser("stale-pick")
+    sp.add_argument("--fresh-survey", required=True)
+    sp.set_defaults(func=cmd_stale_pick)
+
+    sr = sub.add_parser("stale-record")
+    sr.add_argument("--changed-files", default=None)
+    sr.add_argument("--fresh-out", required=True,
+                    help="the fresh slice's output file")
+    sr.add_argument("--fresh-survey", default=None,
+                    help="the survey the fresh slice wrote; registered as a graph")
+    sr.add_argument("--older-survey", default=None)
+    sr.add_argument("--stale-out", default=None,
+                    help="the output of the same slice on --older-survey")
+    sr.add_argument("--fresh-seconds", type=float, default=None)
+    sr.add_argument("--stale-seconds", type=float, default=None)
+    sr.add_argument("--why", default=None,
+                    help="why no comparison was made, when none was")
+    sr.set_defaults(func=cmd_stale_record)
+
+    sub.add_parser("stale-report").set_defaults(func=cmd_stale_report)
+
+    rr = sub.add_parser("run-record")
+    rr.add_argument("--kind", required=True,
+                    help="how the tests were chosen: selected, explicit or full")
+    rr.add_argument("--exit", type=int, default=None)
+    rr.add_argument("--base-branch", default="origin/dev")
+    rr.set_defaults(func=cmd_run_record)
+
+    lt = sub.add_parser("line-tests")
+    lt.add_argument("where", metavar="FILE:LINE")
+    lt.add_argument("--json", action="store_true")
+    lt.set_defaults(func=cmd_line_tests)
+
+    lr = sub.add_parser("line-records")
+    lr.set_defaults(func=cmd_line_records)
 
     args = parser.parse_args(argv)
     try:

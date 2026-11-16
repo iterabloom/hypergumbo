@@ -213,3 +213,63 @@ class TestCmdSliceIoBoundary:
 
         assert rc == 2
         assert "unknown --io-boundary category 'bogus_cat'" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# WI-votat: a call true for two boundaries is kept for both
+# ---------------------------------------------------------------------------
+def _stdlib(name: str, start: int) -> Symbol:
+    return Symbol(
+        id=f"python:stdlib/subprocess.py:{start}-{start + 2}:{name}:function",
+        name=name,
+        kind="function",
+        language="python",
+        path="stdlib/subprocess.py",
+        span=Span(start_line=start, end_line=start + 2, start_col=0, end_col=0),
+    )
+
+
+class TestMultiBoundaryCall:
+    """``subprocess.check_output`` is both ``ipc_recv`` and ``subprocess``
+    (a simultaneous row): the filter read the scalar ``meta['io_boundary']``,
+    which names only the first, so ``--io-boundary subprocess`` dropped it
+    while ``io-boundaries`` listed it under both."""
+
+    def _graph(self):
+        main = _py_symbol("main", "src/app.py")
+        check_output = _stdlib("subprocess.check_output", 10)
+        run = _stdlib("subprocess.run", 20)
+        e_check = _calls_edge(main.id, check_output.id)
+        e_run = _calls_edge(main.id, run.id)
+        nodes = [main, check_output, run]
+        edges = [e_check, e_run]
+        return nodes, edges, e_check, e_run
+
+    def _filtered(self, boundary: str) -> set[str]:
+        nodes, edges, _, _ = self._graph()
+        result = slice_graph(nodes, edges, SliceQuery(entrypoint="main", max_hops=5))
+        _apply_io_boundary_filter(result, nodes, edges, boundary)
+        return result.edge_ids
+
+    def test_a_second_boundary_keeps_the_call(self):
+        _, _, e_check, e_run = self._graph()
+        assert self._filtered("subprocess") == {e_check.id, e_run.id}
+        assert self._filtered("ipc_recv") == {e_check.id}
+
+    def test_the_filter_and_io_boundaries_agree_per_boundary(self):
+        """Cross-consumer property: for every boundary, ``slice --io-boundary``
+        keeps exactly the edges ``io-boundaries`` lists under it."""
+        from hypergumbo_core.io_boundary import compute_boundary_map, load_catalog
+
+        nodes, edges, _, _ = self._graph()
+        boundary_map = compute_boundary_map(
+            edges, {"python": load_catalog("python")},
+        )
+        by_pair = {(e.src, e.dst): e.id for e in edges}
+        listed = {
+            name: {by_pair[(c.io_edge_src, c.io_edge_dst)] for c in entry.chains}
+            for name, entry in boundary_map.entries.items()
+        }
+        assert {"subprocess", "ipc_recv"} <= set(listed)
+        for name, edge_ids in listed.items():
+            assert self._filtered(name) == edge_ids, name

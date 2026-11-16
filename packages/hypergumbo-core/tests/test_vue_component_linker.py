@@ -563,3 +563,96 @@ class TestInvBahovCanonicalFileIdReuse:
         )
         assert card is not None
         assert card.stable_id == make_file_stable_id("vue", "Card.vue")
+
+
+class TestOneFileNodePerPath:
+    """INV-movor: a component import lands on the file node its path has.
+
+    The linker used to look the target up under a ``vue:`` id only, so it
+    minted a second file node beside the script analyzer's
+    ``javascript:`` one, and a ``vue:`` node for a ``.svelte`` file.
+    """
+
+    @staticmethod
+    def _file(lang: str, path: str) -> Symbol:
+        return _sym(f"{lang}:{path}:1-1:file:file", path, "file", path=path, language=lang)
+
+    @staticmethod
+    def _import(src: Symbol, import_path: str) -> Edge:
+        return Edge.create(
+            src=src.id, dst=f"{src.language}:{import_path}:0-0:module:module",
+            edge_type="imports", line=1, origin="test", origin_run_id="test-run",
+            evidence_type="import", meta={"import_path": import_path, "source_path": src.path},
+        )
+
+    def test_reuses_the_script_analyzers_node(self, tmp_path: Path) -> None:
+        (tmp_path / "App.vue").write_text("<template><Kid/></template>")
+        (tmp_path / "Kid.vue").write_text("<script>export default {}</script>")
+        app = self._file("vue", "App.vue")
+        kid = self._file("javascript", "Kid.vue")  # minted for Kid's <script>
+        result = link_vue_components(LinkerContext(
+            repo_root=tmp_path, symbols=[app, kid],
+            edges=[self._import(app, "./Kid.vue")],
+        ))
+        assert result.symbols == []
+        assert [(e.src, e.dst) for e in result.edges] == [(app.id, kid.id)]
+
+    def test_prefers_the_node_in_the_files_own_language(self, tmp_path: Path) -> None:
+        (tmp_path / "App.vue").write_text("<template><Kid/></template>")
+        (tmp_path / "Kid.vue").write_text("<template><Leaf/></template>")
+        app = self._file("vue", "App.vue")
+        script = self._file("typescript", "Kid.vue")
+        own = self._file("vue", "Kid.vue")
+        for symbols in ([app, script, own], [app, own, script]):
+            result = link_vue_components(LinkerContext(
+                repo_root=tmp_path, symbols=symbols,
+                edges=[self._import(app, "./Kid.vue")],
+            ))
+            assert result.symbols == []
+            assert [e.dst for e in result.edges] == [own.id]
+
+    def test_a_svelte_target_is_minted_svelte(self, tmp_path: Path) -> None:
+        (tmp_path / "App.svelte").write_text("<Child />")
+        (tmp_path / "Child.svelte").write_text("<p>c</p>")
+        app = self._file("svelte", "App.svelte")
+        result = link_vue_components(LinkerContext(
+            repo_root=tmp_path, symbols=[app],
+            edges=[self._import(app, "./Child.svelte")],
+        ))
+        (minted,) = result.symbols
+        assert minted.id == "svelte:Child.svelte:1-1:file:file"
+        assert (minted.language, minted.kind) == ("svelte", "file")
+        assert minted.meta == {"component_framework": "svelte"}
+        assert [e.dst for e in result.edges] == [minted.id]
+
+    def test_a_format_the_taxonomy_does_not_list_takes_the_importers(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / "Page.astro").write_text("<Hero />")
+        (tmp_path / "Hero.astro").write_text("<h1>h</h1>")
+        page = self._file("astro", "Page.astro")
+        result = link_vue_components(LinkerContext(
+            repo_root=tmp_path, symbols=[page],
+            edges=[self._import(page, "./Hero.astro")],
+        ))
+        (minted,) = result.symbols
+        assert minted.id == "astro:Hero.astro:1-1:file:file"
+        assert minted.language == "astro"
+
+    def test_an_import_the_analyzer_already_resolved_gets_no_second_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / "App.vue").write_text("<template><Kid/></template>")
+        (tmp_path / "Kid.vue").write_text("<template><p/></template>")
+        app = self._file("vue", "App.vue")
+        kid = self._file("vue", "Kid.vue")
+        resolved = Edge.create(
+            src=app.id, dst=kid.id, edge_type="imports", line=1, origin="vue",
+            origin_run_id="test-run", evidence_type="import",
+            meta={"import_path": "./Kid.vue", "source_path": "App.vue"},
+        )
+        result = link_vue_components(LinkerContext(
+            repo_root=tmp_path, symbols=[app, kid], edges=[resolved],
+        ))
+        assert result.symbols == [] and result.edges == []
+

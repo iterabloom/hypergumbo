@@ -29,3 +29,10 @@
   clock: 2  # 0360
   nonce: '0360'  # 0360
   message: "Re-confirmed 2026-10-20 by the docstring audit (verifier repro): struct S { virtual void f() = 0; } -> struct S modifiers [], its method S::f ['public','virtual','abstract']; class C with the same member -> ['abstract']. cpp.py's docstring left stating the intent."  # 0360
+- op: discuss  # 394f
+  at: '2026-10-31T10:09:59Z'  # 394f
+  by: agent  # 394f
+  actor: jgstern_agent  # 394f
+  clock: 3  # 394f
+  nonce: 394f  # 394f
+  message: "2026-10-31 docstring audit re-reproduced this: struct Shape { virtual int area() = 0; } gets no abstract modifier (the struct_specifier arm, cpp.py:1091-1112). No new item filed."  # 394f

@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for WI-zajob: stop-hook watched-process detector.
+"""Tests for the stop-hook watched-process detector (WI-zajob).
 
 The stop hook pauses when a "watched" long-running command (pytest, auto-pr,
 merge-pr, smart-test) is alive, so that legitimate stops during a test or
-CI poll do not tick the circuit-breaker hash. The original implementation
-used ``pgrep -af <regex>`` with a substring match against the full cmdline,
-so ANY process whose arguments happened to contain the pattern text was
-treated as a live watched process. This included ``inotifywait`` helpers
-spawned by pytest tempdir fixtures (``/tmp/pytest-<id>/...``), which could
-leak and stay alive for hours after the parent pytest run ended. The hook
-would then sleep up to 30 minutes waiting for those helpers to exit.
+CI poll do not tick the circuit-breaker hash. A substring match of the
+pattern against the full cmdline (``pgrep -af <regex>``) over-matches: ANY
+process whose arguments contain the pattern text counts as live. That
+includes ``inotifywait`` helpers spawned by pytest tempdir fixtures
+(``/tmp/pytest-<id>/...``), which can leak and stay alive for hours after
+the parent pytest run ends, and the hook would then sleep up to 30 minutes
+waiting for them to exit.
 
-The fix anchors detection to argv[0] (after path strip) and requires the
-full pattern to match the LEADING tokens of the cmdline, not appear
-anywhere inside it. These tests guard the pure ``is_watched_cmdline``
-predicate so the regression cannot silently return.
+So detection is anchored to argv[0] (after path strip) and the full pattern
+must match the LEADING tokens of the cmdline, not appear anywhere inside it.
+These tests guard the pure ``is_watched_cmdline`` predicate.
 """
 from __future__ import annotations
 
@@ -99,10 +98,10 @@ def test_bash_scripts_watched(cmdline: str) -> None:
 
 
 def test_inotifywait_with_pytest_tmpdir_is_not_watched() -> None:
-    """The actual WI-zajob reproducer: an ``inotifywait`` helper spawned by a
-    pytest fixture holds a ``/tmp/pytest-<id>/...`` path in argv. The old
-    substring match treated this as "pytest is alive" and the hook slept for
-    up to 30 minutes. The new detector must reject it."""
+    """The WI-zajob reproducer: an ``inotifywait`` helper spawned by a
+    pytest fixture holds a ``/tmp/pytest-<id>/...`` path in argv. A substring
+    match treats this as "pytest is alive" and the hook sleeps for up to 30
+    minutes. The detector must reject it."""
     mod = _import_module()
     cmdline = (
         "inotifywait -qq -e close_write "
@@ -135,10 +134,9 @@ def test_editor_viewing_auto_pr_is_not_watched() -> None:
 
 def test_bash_dash_c_wrapper_is_not_watched() -> None:
     """A ``bash -c "echo pytest"`` heredoc should never be treated as a live
-    watched process, even though its cmdline mentions pytest. This was the
-    only case the original filter caught; the new detector keeps that
-    exclusion because ``-c`` means "execute this string", not "invoke the
-    binary the string happens to name"."""
+    watched process, even though its cmdline mentions pytest: ``-c`` means
+    "execute this string", not "invoke the binary the string happens to
+    name"."""
     mod = _import_module()
     assert mod.is_watched_cmdline(
         'bash -c "echo pytest && sleep 1"', DEFAULT_PATTERNS

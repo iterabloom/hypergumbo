@@ -1,0 +1,21 @@
+- op: create  # 8894
+  at: '2026-11-16T04:59:05Z'  # 8894
+  by: agent  # 8894
+  actor: jgstern_agent  # 8894
+  clock: 1  # 8894
+  nonce: '8894'  # 8894
+  data:  # 8894
+    kind: work_item  # 8894
+    title: "Ruby: residual constant-resolution forms after the full-path registry"  # 8894
+    status: todo_hard  # 8894
+    priority: 3  # 8894
+    parent:  # 8894
+    tags:  # 8894
+    - ruby  # 8894
+    - analysis_quality  # 8894
+    isbefore: []  # 8894
+    duplicate_of: []  # 8894
+    not_duplicate_of: []  # 8894
+    pr_ref:  # 8894
+    description: "WHAT. After PR #2198 the Ruby registry is keyed by full lexical path. Left:\n- a compact declaration nested in a block whose head is a TOP-LEVEL constant (module Outer; class Inner::Thing with a top-level Inner) is keyed Outer::Inner::Thing, so Inner::Thing.run from outside is unresolved (base bound it). Grep found 5 of 2,215 nested-compact declarations in mastodon and 34 of 65,164 in gitlab; every sampled one has its head under the enclosing scope. Resolving the head needs the whole-program declared set;\n- superclass lookup inside a compactly declared scope (module A::B; class Q < X) also tries A::X, which Ruby does not;\n- extend M is treated like include M for constant lookup; a top-level include is not walked;\n- classes assigned to a constant (Struct.new, Class.new) are not symbols;\n- the core inherited-calls and inheritance linkers still identify a Ruby class by Symbol.name (chatwoot: PdfProcessingError has the correct extends edge and also a stand-in parent Base);\n- the per-file bare-method key is last-write-wins among same-named methods of one file.\nThe removal of every last-segment fallback overlaps WI-kazut. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 8894
+    fields: {}  # 8894

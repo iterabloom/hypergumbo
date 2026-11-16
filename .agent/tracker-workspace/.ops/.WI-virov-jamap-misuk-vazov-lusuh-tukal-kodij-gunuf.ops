@@ -1,0 +1,22 @@
+- op: create  # a1a1
+  at: '2026-10-26T09:10:59Z'  # a1a1
+  by: agent  # a1a1
+  actor: jgstern_agent  # a1a1
+  clock: 1  # a1a1
+  nonce: a1a1  # a1a1
+  data:  # a1a1
+    kind: work_item  # a1a1
+    title: "python: a bare call in a class body to a function the class body defined earlier (x = Read('1') after def Read) is not bound -- it calls a phantom external_symbol"  # a1a1
+    status: todo_hard  # a1a1
+    priority: 3  # a1a1
+    parent:  # a1a1
+    tags:  # a1a1
+    - call_graph  # a1a1
+    - python  # a1a1
+    - dead_code  # a1a1
+    isbefore: []  # a1a1
+    duplicate_of: []  # a1a1
+    not_duplicate_of: []  # a1a1
+    pr_ref:  # a1a1
+    description: "Found 2026-10-26 while closing WI-nafif, on dev 1b50a90482 through the production CLI. Fixture: `class C:\\n    def Read(s): return 1\\n    def compute(s): return 2\\n    x = Read(\"1\")\\n    y = compute(\"1\")` -> `hypergumbo survey` publishes C -> python:external:0-0:Read:external_symbol and C -> python:external:0-0:compute:external_symbol (confidence 0.5), although both functions are defined earlier in the same class body. Python semantics: during class-body execution the names already bound in the class namespace are visible to later class-body statements, so `Read(\"1\")` calls C.Read. Consequences: a phantom external call edge, and the class-scope function reads uncalled (dead-code). Not the magnet pass (nothing is demoted; the bind is never made). CHANGELOG [Unreleased] says class-body calls now emit edges anchored on the class; the anchor is right, the resolution is missing. Fix: resolve a bare call in a class body against the class-body names bound before it (methods and assigned names, in source order), then module scope. Control: a name bound AFTER the call, and a name only a method body binds, must not resolve. Not checked: nested classes, decorators that rebind, comprehensions in class bodies (which do NOT see class scope -- must stay unresolved)."  # a1a1
+    fields: {}  # a1a1

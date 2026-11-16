@@ -250,3 +250,63 @@ class TestSwiftObjCLinkerRegistered:
         assert result is not None
         assert hasattr(result, "symbols")
         assert hasattr(result, "edges")
+
+
+class TestBridgingHeaderImportEndpoints:
+    """WI-mofih-datih: a bridging-header import edge dangled at both ends. Its
+    src was ``swift_objc:<path>:1-1:file:file`` (the PASS NAME in the language
+    slot, no node) and its dst the raw ``#import`` string. Both ends now take
+    the ObjC analyzer's own shapes, so the edge meets the graph's nodes and
+    dedupes against the analyzer's identical edge."""
+
+    def test_src_is_the_header_file_node_and_dst_the_header_placeholder(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.linkers.swift_objc import link_swift_objc
+
+        header = tmp_path / "MyApp-Bridging-Header.h"
+        header.write_text('#import "LegacyHelper.h"\n#import <UIKit/UIKit.h>\n')
+        edges = [e for e in link_swift_objc(tmp_path).edges if e.edge_type == "imports"]
+        assert {e.src for e in edges} == {make_file_id("objc", str(header))}
+        assert sorted(e.dst for e in edges) == [
+            "objc:LegacyHelper.h:0-0:header:header",
+            "objc:UIKit/UIKit.h:0-0:header:header",
+        ]
+
+    def test_an_existing_file_node_for_the_header_is_reused(
+        self, tmp_path: Path,
+    ) -> None:
+        """When the run already holds a file node for the header (the analyzer
+        that parsed it may be C, not ObjC), the edge starts there."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.swift_objc import link_swift_objc
+
+        header = tmp_path / "MyApp-Bridging-Header.h"
+        header.write_text('#import "LegacyHelper.h"\n')
+        file_node = Symbol(
+            id=f"c:{header}:1-1:file:file", name="file", kind="file",
+            language="c", path=str(header), span=Span(1, 1, 0, 0),
+        )
+        edges = link_swift_objc(tmp_path, graph_symbols=[file_node]).edges
+        assert [e.src for e in edges if e.edge_type == "imports"] == [file_node.id]
+
+
+def test_every_minted_symbol_id_round_trips_to_its_node(tmp_path: Path) -> None:
+    """ADR-0036 Ruling 2 and the language-slot rule on the linker's own
+    symbols: the kind slot is the node's kind, the language slot its
+    discovery language (they are Class B stand-ins, language None)."""
+    from hypergumbo_core.linkers.swift_objc import link_swift_objc
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    (tmp_path / "App.swift").write_text(
+        "import Foundation\n\n@objc class Bridge: NSObject {\n"
+        "    @objc func tap() {}\n}\n\nlet s = #selector(Bridge.tap)\n"
+    )
+    symbols = link_swift_objc(tmp_path).symbols
+    assert {s.kind for s in symbols} >= {"function", "reference"}
+    for sym in symbols:
+        assert sym.id.rsplit(":", 1)[-1] == sym.kind, sym.id
+        assert sym.kind in set(all_symbol_kind_names()), sym.id
+        assert sym.id.split(":")[0] == (sym.discovery_language or sym.language), sym.id
+    assert len({s.id for s in symbols}) == len(symbols)

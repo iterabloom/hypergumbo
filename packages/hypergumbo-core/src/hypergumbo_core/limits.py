@@ -131,6 +131,8 @@ class Limits:
     # WI-tulit: files whose symbols/edges the tier filter dropped (see
     # add_tier_filtered_file). Present-when-populated in to_dict per INV-virik.
     tier_filtered_files: List[str] = field(default_factory=list)
+    #: The ``--max-files`` cap every language analyzer ran under (WI-fomid:
+    #: enforced at file discovery, so it binds all of them). Not linkers.
     max_files_per_analyzer: int | None = None
     test_files_excluded: bool = False
     supply_chain: SupplyChainLimits = field(default_factory=SupplyChainLimits)

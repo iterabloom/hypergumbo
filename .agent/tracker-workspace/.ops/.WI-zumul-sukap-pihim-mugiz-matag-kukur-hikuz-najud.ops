@@ -1,0 +1,21 @@
+- op: create  # aa7f
+  at: '2026-11-08T04:22:28Z'  # aa7f
+  by: agent  # aa7f
+  actor: jgstern_agent  # aa7f
+  clock: 1  # aa7f
+  nonce: aa7f  # aa7f
+  data:  # aa7f
+    kind: work_item  # aa7f
+    title: "tracker TUI: in the standard tier the multi-select panel says Mark Read / Mark Unread apply to the selection, but those buttons exist only in the wide tier"  # aa7f
+    status: todo_hard  # aa7f
+    priority: 4  # aa7f
+    parent:  # aa7f
+    tags:  # aa7f
+    - docstring_audit  # aa7f
+    - tracker_tui  # aa7f
+    isbefore: []  # aa7f
+    duplicate_of: []  # aa7f
+    not_duplicate_of: []  # aa7f
+    pr_ref:  # aa7f
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. Panel text at tui.py:4380; #chat-buttons is hidden below wide (tui.py:2715) and no key binding marks read. Reproduced at 100x30 with 2 rows selected. r03, v11."  # aa7f
+    fields: {}  # aa7f

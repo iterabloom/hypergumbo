@@ -26,3 +26,10 @@
   clock: 2  # 072d
   nonce: 072d  # 072d
   message: "Measured sizing (WI-misod A/B after arm, 23 corpus repos under 200 MB, 2026-10-01; file ~/hypergumbo_lab_notebook/decontend/run_09302026/misod/unresolved_shapes.txt): unresolved sites by identifier shape -- event-sourcing 981 (544 dotted, 352 bare lower/camel, 85 bare UPPER), IPC 36 (10 dotted, 23 lower/camel, 3 UPPER), message-queue 193 (43 dotted, 150 lower/camel, 0 UPPER). Only 21 sites resolved as same-file constants (all 21 hand-checked correct). Bare UPPER names (88) are the likeliest imported constants (shape 1 of this item); many dotted ES sites are NOT string stand-ins at all (vscode `part.onWillDispose`, `Event.filter` -- event objects), and many lower/camel MQ sites are a separate false positive (WI-darom-rujil-kasal-fazod-damag-sipin-rohak-rugol: Svelte/RxJS `.subscribe(param => ...)`). Not measured: how many of the 88 UPPER names an import-following resolver would actually resolve."  # 072d
+- op: discuss  # b143
+  at: '2026-11-01T10:56:04Z'  # b143
+  by: agent  # b143
+  actor: jgstern_agent  # b143
+  clock: 3  # b143
+  nonce: b143  # b143
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: kafka producer.send(ORDERS_TOPIC) with the constant imported from settings.py, send(Topics.ORDERS) and a function-local LOCAL = 'orders' all yield publishers with topic None, and none joins the 'orders' subscriber. _name_args.py unchanged since eb0c86b990 (WI-luhod's constant resolution is websocket/HTTP only). All three shapes reproduce. MECHANISM: _name_args.ConstantResolver resolves only same-file module-scope string constants; no import following, no Class.ATTR, no function-local. SHARES MECHANISM WITH: WI-darom."  # b143

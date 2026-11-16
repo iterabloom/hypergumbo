@@ -1,0 +1,22 @@
+- op: create  # bee2
+  at: '2026-11-01T20:00:40Z'  # bee2
+  by: agent  # bee2
+  actor: jgstern_agent  # bee2
+  clock: 1  # bee2
+  nonce: bee2  # bee2
+  data:  # bee2
+    kind: work_item  # bee2
+    title: "go: a method chained on a conversion call (Map[int](x).Foo(), and non-generic Plain(x).Bar()) leaves the receiver untyped (external 0.4); the chained-call branch reads only call_expression operands"  # bee2
+    status: todo_hard  # bee2
+    priority: 3  # bee2
+    parent:  # bee2
+    tags:  # bee2
+    - go  # bee2
+    - call_graph  # bee2
+    - analysis_quality  # bee2
+    isbefore: []  # bee2
+    duplicate_of: []  # bee2
+    not_duplicate_of: []  # bee2
+    pr_ref:  # bee2
+    description: "SPLIT from WI-moloj-modig-rimav-zazud-vikiv-sufiv-pohus-sibav part 2 (owner-approved 2026-11-01, P3 review at dev 100b6fbb6e). The chained-call receiver branch types only a call_expression operand whose callee is a function; a type conversion spelled as a call, generic (Map[int](x)) or not (Plain(x)), is not recognised as producing a value of that type, so .Foo()/.Bar() fall to the generic guards (external 0.4). Review fixture: ~/hypergumbo_lab_notebook/p3_review_11012026/ (WI-moloj's batch). Siblings: WI-moloj (value arms), WI-jojam (generic-receiver method naming)."  # bee2
+    fields: {}  # bee2

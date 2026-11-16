@@ -1,59 +1,33 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """One registry-backed answer to "is this an inheritance edge?" (INV-nosoz).
 
-The defect
-----------
-``edge_types.INHERITANCE_EDGE_TYPES`` exists and two consumers use it.
-Measured across the tree, seven *other* sites answered the same question
-their own way and disagreed:
-
-===========================================  ==========================================
-site                                         vocabulary
-===========================================  ==========================================
-``edge_types.INHERITANCE_EDGE_TYPES``        ``{extends, inherits, implements}``
-``cli.py`` (dead-code ancestor walk)         hand-rolled complete copy
-``cli.py`` (test-exclusion preservation)     ``("extends", "implements")``
-``linkers/_transitive_bases.py``             ``("extends", "implements")``
-``linkers/inherited_calls.py``               ``("extends", "implements", "includes")``
-``linkers/type_hierarchy.py``                inline ``== "extends"`` / ``== "implements"``
-===========================================  ==========================================
-
-ADR-0023 §3 already says consumers should resolve the family from the
-registry instead of keeping a list. Six of eight sites did not.
-
-The measured consequence, on real repositories
------------------------------------------------
-* **openzeppelin-contracts** — 516 ``inherits`` edges, 545 ``overrides``
-  edges, and **0** Solidity ``dispatches_to``. ``type_hierarchy`` branches
-  on two string literals and never consults the registry constant that
-  does contain ``inherits``.
-* **postal** (Rails) — 41 ``includes`` edges, of which 39 are Ruby mixins,
-  and **0** of them reach ``type_hierarchy``.
+The rule
+--------
+Every consumer that asks whether an edge is inheritance resolves the family
+from the registry (``edge_types.INHERITANCE_EDGE_TYPES`` /
+``is_inheritance_edge``), never from a list of its own, as ADR-0023 §3
+requires. A hand-rolled partial list silently drops family members: a
+consumer that branches on ``"extends"`` and ``"implements"`` alone never sees
+Solidity ``inherits`` or a Ruby mixin ``includes``, so those hierarchies get
+no ``dispatches_to`` edges. ``find_partial_inheritance_family_literals``
+keeps the tree from re-forking the vocabulary.
 
 Why ``includes`` is NOT in ``INHERITANCE_EDGE_TYPES``
 -----------------------------------------------------
-The tracker item posed the open question as "is ``includes`` a member of
-the inheritance family?" and framed it as the Ruby mixin edge type. It is
-not one relationship. ``includes`` is a **registered two-meaning value** —
-its own registry entry reads "File or class includes / sources / mixes-in
-another unit's ...". Nine producers emit it and eight mean *file
-inclusion*: latex, make, meson, puppet, requirements, rst, scss, twig.
-Exactly one, ``linkers/inheritance.py``, means the Ruby mixin.
-
-Measured in postal: 39 ``class -> module`` mixin edges from the
-inheritance linker, and 2 ``file -> external_symbol`` edges from SCSS
-``@include`` of a Sass mixin. Putting the bare string into
-``INHERITANCE_EDGE_TYPES`` would have enrolled a stylesheet ``@include``,
-a Makefile ``include`` and a LaTeX ``\\include`` as class is-a edges in
-slice expansion, ranking centrality and the dead-code ancestor walk —
-the mirror-image of the hand-rolled copies, which the item itself warned
-against.
+``includes`` is not one relationship. It is a **registered two-meaning
+value** — its own registry entry reads "File or class includes / sources /
+mixes-in another unit's ...". Most of its producers (latex, make, meson,
+puppet, requirements, rst, scss, twig) mean *file inclusion*; only
+``linkers/inheritance.py`` means the Ruby mixin. Putting the bare string
+into ``INHERITANCE_EDGE_TYPES`` would enroll a stylesheet ``@include``, a
+Makefile ``include`` and a LaTeX ``\\include`` as class is-a edges in slice
+expansion, ranking centrality and the dead-code ancestor walk.
 
 So the family is resolved by a **predicate over the edge**, not by a set
-of type strings alone. The discriminator already exists and is
-registry-backed: ``evidence_type="ast_includes"``, whose spec reads "Edge
-inferred from a runtime mixin declaration (Ruby ``include``/``extend``,
-etc.)" and which exactly one emit site produces.
+of type strings alone. The discriminator is registry-backed:
+``evidence_type="ast_includes"``, whose spec reads "Edge inferred from a
+runtime mixin declaration (Ruby ``include``/``extend``, etc.)" and which
+exactly one emit site produces.
 """
 
 from __future__ import annotations
@@ -91,7 +65,7 @@ class TestFamilyMembership:
         assert INHERITANCE_EDGE_TYPES == {"extends", "inherits", "implements"}
 
     def test_includes_is_deliberately_absent_from_the_set(self) -> None:
-        """``includes`` means file-inclusion for 8 of its 9 producers.
+        """``includes`` means file-inclusion for most of its producers.
 
         This is a load-bearing exclusion, not an omission. If a future
         change adds it, slice / ranking / dead-code start treating a
@@ -135,7 +109,7 @@ class TestFamilyMembership:
     def test_bare_includes_with_no_evidence_is_not_inheritance(self) -> None:
         """Absence of evidence is not evidence of a mixin.
 
-        Eight of nine producers mean file-inclusion, so the conservative
+        Most producers mean file-inclusion, so the conservative
         reading of an unstamped ``includes`` is "not inheritance".
         """
         assert is_inheritance_edge("includes") is False
@@ -183,19 +157,14 @@ def _edge(src: str, dst: str, edge_type: str, evidence_type: str) -> Edge:
 
 
 class TestSolidityInheritsGetsDispatch:
-    """openzeppelin-contracts: 516 ``inherits`` edges, 0 dispatches.
+    """Solidity ``inherits`` reaches the dispatch map.
 
-    Solidity needed TWO fixes, on two different axes, and this file pins the
-    first. INV-nosoz routed ``type_hierarchy`` through the registry so the
-    ``inherits`` edge reaches the dispatch map; measured alone, that moved
-    openzeppelin-contracts by **zero**, because the map it now reached was
-    empty. INV-lapas supplied the members: Solidity emitted contract members
-    as ``kind="function"`` (2,025 of them, none ``kind="method"``) while
-    ``link_type_hierarchy`` indexes with a literal ``sym.kind != "method"``.
-
-    With both fixed, openzeppelin-contracts goes **0 -> 877** Solidity
-    dispatches. Neither fix produces that alone, which is why they were
-    filed and measured separately rather than folded together.
+    Solidity dispatch needs two things on two different axes, and this file
+    pins the first: ``type_hierarchy`` must take ``inherits`` from the
+    registry so the edge reaches the dispatch map. The second is the
+    producer's: contract members must be emitted as ``kind="method"``
+    (INV-lapas), because ``link_type_hierarchy`` indexes only
+    ``kind == "method"`` members. Either one alone yields no dispatches.
     """
 
     def test_solidity_inherits_reaches_the_dispatch_map(self) -> None:
@@ -266,7 +235,7 @@ class TestSolidityInheritsGetsDispatch:
 
 
 class TestRubyMixinGetsDispatch:
-    """postal: 39 Ruby mixin edges, 0 dispatches."""
+    """A Ruby ``include`` mixin produces ``dispatches_to`` edges."""
 
     def test_ruby_include_produces_dispatches_to(self) -> None:
         mod = _sym("ruby:/m.rb:1-10:Greet:module", "Greet", "module", "ruby")
@@ -298,8 +267,8 @@ class TestRubyMixinGetsDispatch:
         """POSITIVE CONTROL on the widening: file-inclusion must NOT dispatch.
 
         Identical edge_type to the mixin above, different evidence. If this
-        starts producing dispatches, the predicate has widened to the eight
-        file-inclusion producers and the fix has become the bug it replaced.
+        starts producing dispatches, the predicate has widened to the
+        file-inclusion producers and treats stylesheets as class hierarchies.
         """
         sheet = _sym("scss:/a.scss:1-10:a.scss:file", "a.scss", "file", "scss")
         mixin = _sym("scss:/b.scss:1-10:clearfix:external_symbol", "clearfix",
@@ -323,18 +292,14 @@ class TestRubyMixinGetsDispatch:
 
 
 class TestInheritanceMapsDoNotClobber:
-    """``dict.update()`` replaced a child list instead of merging it.
+    """A type both extended and implemented keeps both child lists.
 
     ``build_inheritance_maps`` returns two maps that ``link_type_hierarchy``
-    immediately unions with two ``.update()`` calls. ``dict.update`` REPLACES
-    the value for a shared key, so a type that is both extended and
-    implemented lost one set of children entirely.
-
-    Honest scope: this is latent-by-construction. Three repositories were
-    measured (openzeppelin-contracts, postal, sherpa-onnx) and all three
-    emit **zero** ``implements`` edges, so no overlapping key was observed
-    live. It is fixed here because widening the family raises the odds of a
-    shared key, not because a repro was found.
+    merges. Unioning them with ``dict.update`` instead would REPLACE the
+    value for a shared key, so a type that is both extended and implemented
+    would lose one set of children entirely. The case is rare (it needs a
+    type with both kinds of child), and widening the family makes a shared
+    key likelier.
     """
 
     def test_a_type_both_extended_and_implemented_keeps_both_children(
@@ -417,8 +382,7 @@ class TestBothEdgeShapes:
     """The predicate must read an ``Edge`` object AND a serialized dict.
 
     Linkers get ``Edge`` objects; the CLI read views get dicts. The two
-    shapes diverge in two ways that have each cost a debugging session — a
-    serialized edge names its type ``"type"`` rather than ``"edge_type"``,
+    shapes diverge in two easily-missed ways — a serialized edge names its type ``"type"`` rather than ``"edge_type"``,
     and its ``evidence_type`` is nested under ``meta`` rather than sitting
     at the top level. A predicate that handles only one shape is silently
     wrong in half the tree.
@@ -542,7 +506,7 @@ class TestGuardExemptions:
     def test_equality_chain_flagged_when_language_can_emit(
         self, tmp_path: Path
     ) -> None:
-        """The shape that caused the defect: an ``==`` chain, not a literal set."""
+        """An ``==`` chain enumerates the family as surely as a literal set."""
         offenders = self._scan(
             tmp_path,
             "@register_linker('x', depends_on=[['solidity']])\n"

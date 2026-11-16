@@ -1,0 +1,21 @@
+- op: create  # 4de4
+  at: '2026-11-03T09:32:15Z'  # 4de4
+  by: agent  # 4de4
+  actor: jgstern_agent  # 4de4
+  clock: 1  # 4de4
+  nonce: 4de4  # 4de4
+  data:  # 4de4
+    kind: work_item  # 4de4
+    title: "Pattern.is_test_file in a framework (detected) YAML is decorative: the exclusion set is built from convention files only and strips by concept name across every producer"  # 4de4
+    status: todo_hard  # 4de4
+    priority: 4  # 4de4
+    parent:  # 4de4
+    tags:  # 4de4
+    - analysis_quality  # 4de4
+    - frameworks  # 4de4
+    isbefore: []  # 4de4
+    duplicate_of: []  # 4de4
+    not_duplicate_of: []  # 4de4
+    pr_ref:  # 4de4
+    description: "PROBLEM. `Pattern.is_test_file: false` is honoured only when it is declared in an always-loaded convention file: `framework_patterns._test_excluded_concepts()` iterates `_CONVENTION_PATTERN_IDS` only, and `strip_test_file_only_concepts` strips by CONCEPT NAME from that set. A framework (detected) YAML that writes `is_test_file: false` on a rule changes nothing by itself -- the loader accepts the key (`_PATTERN_KEYS`), the YAML reads as if it excluded test files, and no test says otherwise. Two consequences: (a) a decorative key in a framework file (found writing servlet.yaml for WI-losij; the key was removed and the mechanism commented instead; after that there are 0 such declarations in frameworks/); (b) a concept declared test-excluded in a convention file is stripped from EVERY producer's test-file symbols, including framework files that never asked (route_handler: flask-restful 41 test-file handlers on the WI-losij branch -- the wanted reading there, but reached by side effect, and now stated in comments on flask-restful.yaml, falcon.yaml, nex.yaml).\n\nFIX CANDIDATES. (1) Make the loader REJECT `is_test_file` in a non-convention file (a validation error naming the mechanism), so the YAML cannot claim what it does not do; or (2) honour it: build the excluded set from every LOADED pattern def of the run (detected frameworks + conventions), which needs `strip_test_file_only_concepts` to receive the loaded defs (today it takes only the symbols); either way document the concept-name keying in the `is_test_file` field doc (framework_patterns.py ~182-210). (2) still strips by concept name across producers; a per-rule (producer-keyed) exclusion would need the concept dict to carry its producing rule, which it does not. Pin with a test: a framework-file rule with `is_test_file: false` either fails to load (1) or strips its concept from a test-file symbol (2).\n\nNOT ASSERTED: that any shipped behaviour is wrong today; after WI-losij the declarations are consistent with the mechanism. This is a trap for the next YAML author.\n\nORIGIN: WI-bosab (done) added the is_test_file gate for naming-convention concepts, which is why the exclusion set is built from convention files; this row is about the reach of the key, not the gate."  # 4de4
+    fields: {}  # 4de4

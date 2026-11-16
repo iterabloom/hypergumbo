@@ -26,18 +26,25 @@ Exit codes, in precedence order — the first that applies wins:
 
 | code | condition |
 |---:|---|
+| `2` | **bad input**, before any verdict: a claims file that is missing, unreadable or fails validation, a `--input` map that is missing or not a usable behavior map, a catalogue that does not load, a bad argument |
 | `1` | any `violated` |
-| `2` | any `inconclusive` (and no violation), **or the claims file failed validation** |
+| `4` | any `inconclusive` (and no violation) |
 | `3` | any `confirmed_with_caveats` (and none of the above) |
 | `0` | everything `confirmed`, no caveats |
+
+Bad input never combines with a verdict: the run stops before any claim is
+checked.
+
+**Exit 4 is not a pass: the claim was not checked.** It is the one most often
+mistaken for success in a shell pipeline.
 
 **A gate written `verify-claims … || exit 1` fails on exit 3.** That is
 deliberate and fail-closed. If you want caveated verdicts to pass, accept `3`
 explicitly — do not widen the gate to "anything non-zero is fine", which would
-also swallow `1` and `2`.
+also swallow `1`, `2` and `4`.
 
-`2` is the one most often mistaken for success in a shell pipeline. It means
-the tool did not check your claim.
+A crash inside hypergumbo itself (`hypergumbo: internal error: …`, "This is a
+bug") exits `1`, the same code as `violated`.
 
 ## The caveat vocabulary
 
@@ -108,6 +115,34 @@ it disables the uncovered-module gate for it. It is the most powerful line you
 can write in an overlay. Every grant is disclosed **by module name** in the
 run's provenance output, not merely as the file it came in — check that list
 against what you meant to claim.
+
+**What a grant is, from the ground.** Think of the I/O catalogue as a table
+with one row per library call the checker knows about, and a column saying
+what that call does to the outside world: filesystem, network, process launch,
+environment, or nothing. A call with no row is not "no I/O". It is a missing
+cell, and one missing cell anywhere on a reachable path blocks a `confirmed`
+verdict, because a security claim that treats silence as innocence is
+worthless: a dependency can do anything. A `module_completeness` grant is the
+fill-in rule for one module, written by a person and dated: *for every call
+into this module that has no row, read the cell as "no I/O", because I looked
+and the rows are the whole list.* Nothing checks a grant. It is trusted as
+written, which is why the shipped catalogues grant only modules whose entire
+public surface is computation over values already in memory, and why the
+header of hypergumbo's own overlay records a six-line overlay whose single
+grant for `telnetlib` turned a program that writes an API key into a telnet
+session from `inconclusive` to `confirmed`.
+
+**What a grant covers.** A grant names an owner path and vouches for that path
+and for the **types defined at it**, never for a child module or package. A
+grant on `numpy` answers for `numpy.ndarray`, because the audit that read
+`numpy` read its classes, and says nothing about `numpy.linalg`, a different
+module with its own surface; a grant on Go's `os` answers for `os.File` and
+not for `os/exec`. Audit accordingly: "complete" includes the methods of the
+module's types, and a type that performs I/O needs rows at the type key. How
+the gate tells a type from a child module is decided per language from facts
+the tool already holds (the resolver's symbol kind, Go's `/`, Python's
+standard-library list); where none applies, the slot must be granted exactly
+(ADR-0016 §7, "What a completeness grant vouches for").
 
 The **shipped catalogues make the same claim** — python's `module_completeness`
 block carries over a hundred dated audits — and a clean verdict that rests on
@@ -226,7 +261,7 @@ real:
   `walk_verdict` field (on every JSON evidence row, and in the text view's
   "§3a walk verdicts" line) says which: `not_attempted` (a guard above the walk
   failed, so it never ran), `escaped` (it ran and lost the value), or
-  `unconfirmed` (it ran to exhaustion and found no dependence; such a flow is
+  `refuted` (it ran to exhaustion and found no dependence; such a flow is
   removed, so it never survives into a report). **Most `ddg_mixed` rows never
   ran a walk at all**: on measurement 0007's cohort re-run on 2026-09-22,
   `not_attempted` was 242 of 282 `ddg_mixed` rows (85.8%) by default and 551 of
@@ -265,6 +300,7 @@ they qualify a reported finding:
 |---|---|
 | `choice_shaped_source` | Some evidence rows are rooted at a source whose value the far side *chose* from a constrained set rather than authored, so the finding can only be a selection, never an injected payload. |
 | `withheld_community_sanitizer` | Some reported flows pass through a sanitizer from a **community** catalogue file — third-party rows hypergumbo ships without maintaining (ADR-0061) — which was not credited. Vouched for, it would have cleared them; the evidence rows name it under `withheld_sanitizers`. To vouch for one, copy its file into `$XDG_CONFIG_HOME/hypergumbo/taint_sanitizers.d/` and delete its `provenance: community` line: the flow is then cleared under `user_supplied_sanitizer`. |
+| `withheld_community_trust` | A reported flow reaches a sink that a **community** file declares `trust_level: trusted`, and the trust was not credited: trust only removes flows from the evidence, which an unmaintained row may not do. To vouch for one, copy its file into `$XDG_CONFIG_HOME/hypergumbo/taint_sinks.d/` and delete its `provenance: community` line. |
 | `withheld_community_summary` | This run's call graph calls function summaries from a **community** file that would *end* a taint branch (e.g. testify's `require.*`), and they were not allowed to: an unmaintained row may not remove a finding. Run-scoped, so it may name a summary no reported flow crossed. To vouch for one, copy its file into `$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/` and delete its `provenance: community` line. |
 
 ## Related

@@ -1,0 +1,5 @@
+from bedcore.registry import dispatch
+
+
+def test_dispatch_upper():
+    assert dispatch("upper", "x") == "X"

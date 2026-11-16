@@ -120,5 +120,3 @@ patterns:
   - concept: build_helper
     symbol_kind: "^function$"
     language: "^starlark$"
-
-linkers: []

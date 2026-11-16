@@ -8,14 +8,14 @@ not a transfer: ``net/http.ListenAndServe`` returns an ``error`` and nothing
 else, so a taint source minted there is attributed to a scope that never sees a
 request.
 
-WHY THE TAG ALONE IS NOT ENOUGH, WHICH IS WHAT THIS FILE EXISTS TO PIN. Since
-INV-buzab, a call the catalogue CLASSIFIED is what ``examined`` means. Retagging
+WHY THE TAG ALONE IS NOT ENOUGH, WHICH IS WHAT THIS FILE EXISTS TO PIN. A call
+the catalogue CLASSIFIED is what ``examined`` means (INV-buzab). Retagging
 a launch to a boundary that mints no taint STILL CLASSIFIES IT, so without a
 shadow the call becomes an examined negative and ``verify-claims`` returns a
-green tick over live ingress. ADR-0016's own table measures that shape in the
-outbound direction: cataloguing ``curl`` as ``net_send`` took a cron-dropper
-claim from ``inconclusive`` rc 2 to ``confirmed`` rc 0 -- six correct lines
-bought a false all-clear. A disclosure boundary without its shadow is strictly
+green tick over live ingress. ADR-0016's table shows the same shape in the
+outbound direction: a correct row that classifies a call without a shadow can
+turn an ``inconclusive`` rc 4 claim into ``confirmed`` rc 0 -- a false
+all-clear. A disclosure boundary without its shadow is strictly
 worse than leaving the false source in place, so the middle row of the table
 below is the one that matters.
 
@@ -26,26 +26,24 @@ opposite -- we know exactly what we cannot see. A listener says nothing about
 whether the program writes files. Routing this through ``opaque_sites`` would
 send every server in every language to ``inconclusive`` on ``fs_write`` and
 ``env_read``: a change that REPORTS LESS, on a gate that already withholds, and
-one that every existing opacity test would have stayed green through. The
+one that every existing opacity test would stay green through. The
 scoping is ADR-0049 ruling 2 clause 3 verbatim ("over the CORRESPONDING data
 boundary"), not an optimisation of it.
 
-REAL CATALOGUE, REAL EDGE SHAPES. The sibling file
-``test_verify_claims_examined_negative.py`` records that a hand-written
-``IoBoundaryCatalog`` fixture is how a false-all-clear survived once already, so
-these tests load the SHIPPED go catalogue and the edge dicts are the shapes an
-actual ``hypergumbo survey`` emitted over a Go accept-loop fixture.
+REAL CATALOGUE, REAL EDGE SHAPES. A hand-written ``IoBoundaryCatalog``
+fixture can let a false all-clear survive (see the sibling file
+``test_verify_claims_examined_negative.py``), so these tests load the SHIPPED
+go catalogue and the edge dicts are the shapes an actual ``hypergumbo survey``
+emitted over a Go accept-loop fixture.
 
-THE SHIPPED TREE NOW CARRIES ``net_listen`` (INV-kanuk). Go's 21 setup and
-serve-loop rows were retagged once the census (WI-hazop) and the reachability
-pass (WI-vapud, measurement 0009) cleared ADR-0049 ruling 3's bar, so these
-tests assert the REAL rows rather than synthesising one. THE FALSIFIABILITY
-CONTROL MOVED WITH THEM: it is no longer "the shipped catalogue defers nothing"
--- that sentence is now false -- but :func:`_go_catalog_without_deferrals`, the
-same catalogue with every deferred row forced back to ``net_recv``, i.e. the
-tree as it stood before the retag. A test that cannot fail is worse than no
-test, and the obvious edit here (delete the control, it goes red) is exactly
-how a control stops controlling.
+THE SHIPPED TREE CARRIES ``net_listen`` (INV-kanuk). Go's setup and serve-loop
+rows are tagged ``net_listen`` (they meet ADR-0049 ruling 3's bar; WI-hazop,
+WI-vapud, measurement 0009), so these tests assert the REAL rows rather than
+synthesising one. THE FALSIFIABILITY CONTROL is therefore not the shipped
+catalogue but :func:`_go_catalog_without_deferrals`: the same catalogue with
+every deferred row forced back to ``net_recv``. A test that cannot fail is
+worse than no test, and the obvious edit here (delete the control, it goes
+red) is exactly how a control stops controlling.
 """
 
 from __future__ import annotations
@@ -86,23 +84,21 @@ LISTEN_EDGE = {
 }
 
 
-#: The go rows INV-kanuk moved, as (module, name). Written out rather than
-#: derived from the catalogue, because a list derived from the thing under test
-#: agrees with it by construction and would pass over a catalogue that lost
-#: every row.
+#: The go rows tagged ``net_listen`` (INV-kanuk), as (module, name). Written
+#: out rather than derived from the catalogue, because a list derived from the
+#: thing under test agrees with it by construction and would pass over a
+#: catalogue that lost every row.
 GO_DEFERRED_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("net", "Listen"), ("net", "ListenTCP"), ("net", "ListenUDP"),
-    ("net", "ListenUnix"), ("net", "ListenPacket"),
+    ("net", "ListenPacket"),
     ("syscall", "Socket"), ("syscall", "Bind"), ("syscall", "Listen"),
     # WI-mujod: keyed by the import path the go analyzer stamps.
     ("golang.org/x/sys/unix", "Socket"), ("golang.org/x/sys/unix", "Bind"),
     ("golang.org/x/sys/unix", "Listen"),
-    # THE LAUNCH ROWS, moved by measurement 0010 (ADR-0049 open work step 3).
-    # Each blocks and serves: the request bytes reach a registered handler, and
-    # the only value returned to this caller is an error. Both adjudicated
-    # findings rooted in `net/http.ListenAndServe` are false positives, and in
-    # one of them the sink path begins at a call that runs BEFORE the launch
-    # statement.
+    # THE LAUNCH ROWS (ADR-0049 open work step 3; measurement 0010). Each
+    # blocks and serves: the request bytes reach a registered handler, and the
+    # only value returned to this caller is an error, so a source minted at
+    # the launch would be attributed to a scope that never sees the request.
     ("net/http", "ListenAndServe"), ("net/http", "ListenAndServeTLS"),
     ("net/http", "Serve"),
     ("github.com/gin-gonic/gin.Engine", "Run"),
@@ -114,11 +110,19 @@ GO_DEFERRED_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("google.golang.org/grpc.Server", "Serve"),
 })
 
+#: The go rows that name a Unix-domain listener: ``ipc_listen`` (ADR-0050 §1's
+#: medium axiom -- the medium is local IPC, not the network; WI-gaziv).
+#: ``ListenUnix`` and ``ListenUnixgram`` are the Unix twins of ``ListenTCP``
+#: and ``ListenUDP`` in the net_listen set above.
+GO_IPC_LISTEN_ROWS: frozenset[tuple[str, str]] = frozenset({
+    ("net", "ListenUnix"), ("net", "ListenUnixgram"),
+})
+
 #: The go rows that MUST NOT move: each returns data chosen by the far side.
 GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
-    # WI-suhug: the bufio rows INV-bagok withheld until a target kind could
-    # name a network stream. They are TRANSFERS (the read happens in the
-    # scope that built the handle -- measurement 0010's finding), rowed under
+    # The bufio rows, which depend on a target kind that can name a network
+    # stream (WI-suhug, INV-bagok). They are TRANSFERS (the read happens in the
+    # scope that built the handle; measurement 0010), rowed under
     # net_recv beside their fs_read / ipc_recv twins and selected only by a
     # ``net_stream`` stamp; an unstamped call keeps its declared fallback.
     ("bufio", "NewScanner"), ("bufio", "NewReader"),
@@ -127,10 +131,10 @@ GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("bufio.Reader", "ReadSlice"), ("bufio.Reader", "Read"),
     ("bufio.Scanner", "Scan"), ("bufio.Scanner", "Text"),
     ("bufio.Scanner", "Bytes"),
-    # 2026-09-08 WI-dozul. A DNS lookup returns the answer the RESOLVER chose,
-    # so it is a transfer by ADR-0049's question and belongs on this side of
-    # the pin rather than with the setup rows above -- the same verdict that
-    # keeps ``accept`` here while ``bind`` and ``listen`` went to net_listen.
+    # A DNS lookup returns the answer the RESOLVER chose, so it is a transfer
+    # by ADR-0049's question and belongs on this side of the pin rather than
+    # with the setup rows above -- the same verdict that keeps ``accept`` here
+    # while ``bind`` and ``listen`` are net_listen (WI-dozul).
     ("net", "LookupHost"), ("net", "LookupIP"), ("net", "LookupAddr"),
     ("net", "LookupCNAME"), ("net", "LookupMX"), ("net", "LookupNS"),
     ("net", "LookupTXT"), ("net", "LookupSRV"), ("net", "LookupPort"),
@@ -150,11 +154,10 @@ GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
 
 
 def _go_catalog_without_deferrals():
-    """The shipped go catalogue as it stood BEFORE INV-kanuk's retag.
+    """The shipped go catalogue with every ``net_listen`` row forced back to ``net_recv``.
 
-    Every ``net_listen`` row forced back to ``net_recv``. This is the
-    falsifiability control for every assertion below: the shipped catalogue can
-    no longer play that role, because it now genuinely defers.
+    This is the falsifiability control for every assertion below (INV-kanuk):
+    the shipped catalogue cannot play that role, because it genuinely defers.
     """
     cat = load_catalog("go")
     prims = [
@@ -216,8 +219,9 @@ class TestTheCatalogueQuery:
         assert cat.deferred_crossings("net", "Listen") == frozenset({"net_recv"})
 
     def test_an_ordinary_row_shadows_nothing(self) -> None:
-        """The transfer rows are the counter-control: they survived the retag
-        and must keep shadowing nothing, or the family took `accept` with it."""
+        """The transfer rows are the counter-control: they stay ``net_recv``
+        and must shadow nothing; otherwise the retag swept up `accept` with
+        the family."""
         cat = load_catalog("go")
         assert cat.deferred_crossings("net.Conn", "Read") == frozenset()
         assert cat.deferred_crossings("net.Listener", "Accept") == frozenset()
@@ -284,11 +288,11 @@ class TestTheTwoEnvelopePathsCannotDrift:
 
     ``cmd_io_boundaries`` rebuilds the JSON envelope BY HAND on the filtered
     path instead of calling :meth:`BoundaryMap.to_dict`, so every new
-    disclosed-only bucket has to be added in two homes. Adding ``net_listen``
-    to one of them is exactly what happened here, and the existing key-lock
-    test caught it -- but only because someone had already written the new key
-    into a hardcoded ``expected_keys``. That is a gate that fires after the
-    author has done the work, not one that does the work for them.
+    disclosed-only bucket has to be added in two homes. A key-lock test with
+    a hardcoded ``expected_keys`` catches a bucket added to only one of them
+    only once someone has written the new key into that list -- a gate that
+    fires after the author has done the work, not one that does the work for
+    them.
 
     This asserts the two paths agree by DERIVATION, so the next bucket is
     covered on the commit that adds it, with no list to remember.
@@ -323,10 +327,9 @@ class TestTheDisclosureSentenceAtScale:
     """The truncation branch, which a one-site fixture never reaches.
 
     Every other test here uses a single deferred-crossing site, so the "+N more"
-    path was uncovered while the file read as thorough. CI's package-isolated
-    coverage gate is what said so -- a local run reached it through some other
-    test and reported 100%, which is the cross-package gap
-    ``check-package-coverage`` exists to catch.
+    path needs its own test. A local run may reach it through some other
+    package's test while CI's package-isolated coverage gate does not -- the
+    cross-package gap ``check-package-coverage`` exists to catch.
     """
 
     def test_the_sentence_is_bounded_and_says_how_many_it_dropped(self) -> None:
@@ -347,9 +350,9 @@ class TestTheDisclosureSentenceAtScale:
 class TestTheUnruledDebtListIsReachable:
     """``unruled_multi_boundary_primitives`` over the REAL shipped catalogues.
 
-    Not a deferred-crossing test. It is here because ADR-0049 added a value to
-    ``CATALOG_BOUNDARY_TYPES``, which puts ``io_boundary.py`` in the changed-file
-    set that CI holds to 100% -- and this function's body was reached only
+    Not a deferred-crossing test. It is here because a change to
+    ``CATALOG_BOUNDARY_TYPES`` puts ``io_boundary.py`` in the changed-file set
+    that CI holds to 100%, and this function's body is otherwise reached only
     through a wider selection than the per-PR manifest runs. Asserting it
     directly makes the coverage independent of which other test happens to walk
     past it.
@@ -378,10 +381,8 @@ class TestTheUnruledDebtListIsReachable:
 
         ``unruled_multi_boundary_primitives`` returns ``[]`` across all fifteen
         catalogues, with and without default overlays -- every multi-boundary
-        primitive in the tree today carries a ruling. So the append is
-        unreachable from real data and a synthetic row is the ONLY way to
-        exercise it, which is exactly why the line sat uncovered until CI's
-        package-isolated gate asked.
+        primitive in the tree carries a ruling. So the append is unreachable
+        from real data and a synthetic row is the ONLY way to exercise it.
 
         Kept honest by the control above: an empty answer must come from
         absence, not from a loop that never runs. Here the loop runs and finds
@@ -395,8 +396,8 @@ class TestTheUnruledDebtListIsReachable:
                 # ``boundary_ruling="unruled"`` must be EXPLICIT. A
                 # multi-boundary primitive with the field unset returns
                 # ``None``, not ``unruled`` -- "nothing declared" and "declared
-                # open" are different states, which is the INV-vaduk split that
-                # made this predicate necessary in the first place.
+                # open" are different states -- the INV-vaduk split this
+                # predicate exists to report.
                 IoPrimitive(module="acme", name="ambiguous",
                             boundary="net_recv", kind="function",
                             boundary_ruling="unruled"),
@@ -411,23 +412,21 @@ class TestTheUnruledDebtListIsReachable:
 
 
 class TestTheGoRetag:
-    """INV-kanuk: the first catalogue rows to use ``net_listen``.
+    """Go's connection-setup and serve rows are ``net_listen`` (INV-kanuk).
 
-    Go's 8 connection-SETUP rows minted ``untrusted_input`` at calls that return
-    a descriptor or an ``error``. WI-dosov had already removed the same shape
-    from Haskell, but the enforcing F2 gate could not see Go at all -- it
-    parametrised over a hardcoded 9-language list Go was not in, AND matched
-    lowercase names while Go capitalises every export, so adding Go to the list
-    would still have reported clean.
+    Go's connection-SETUP rows return a descriptor or an ``error``; as
+    ``net_recv`` rows they would mint ``untrusted_input`` at calls that never
+    see the data (the same shape as WI-dosov in Haskell). Go capitalises every
+    export, so a name check over these rows must compare case-insensitively.
 
-    THE FIX IS A RETAG, NOT A REMOVAL, AND THAT DISTINCTION IS THE ITEM. This
-    item was blocked on its own reasoning that removal was unlicensed: go's real
-    receive surface is unreachable on idiomatic code (``ln, _ := net.Listen(...)``
-    then ``ln.Accept()`` emits ``go:external:0-0:Accept``), so deleting the rows
-    would take go's network-input surface to nothing rather than relocating it
-    -- the WI-lunav failure at eight rows. A retag has no such problem: the call
-    is still classified, so it still counts as examined (INV-buzab), and the
-    shadow qualifies the clean verdict instead of granting it.
+    THE ROWS ARE RETAGGED, NOT REMOVED, AND THAT DISTINCTION IS THE POINT.
+    Removal is not licensed: go's real receive surface is unreachable on
+    idiomatic code (``ln, _ := net.Listen(...)`` then ``ln.Accept()`` emits
+    ``go:external:0-0:Accept``), so deleting the rows would take go's
+    network-input surface to nothing rather than relocating it (WI-lunav). A
+    retag has no such problem: the call is still classified, so it still
+    counts as examined (INV-buzab), and the shadow qualifies the clean verdict
+    instead of granting it.
     """
 
     def test_every_setup_and_serve_row_moved(self) -> None:
@@ -437,40 +436,43 @@ class TestTheGoRetag:
         assert listen == GO_DEFERRED_ROWS
 
     def test_nothing_else_moved_with_them(self) -> None:
-        """THE COUNTER-CONTROL, and it guards two different things at once.
+        """THE COUNTER-CONTROL.
 
         ADR-0049 ruling 4 keeps ``accept`` a TRANSFER, and a family-wide retag
-        is exactly how it would have been swept up. The launch rows are a
-        separate case: they ARE deferred crossings, and they stay only because
-        the cross-language pin has not been released yet."""
+        is exactly how it would get swept up; the bufio and DNS-lookup
+        transfers are pinned here for the same reason."""
         cat = load_catalog("go")
         recv = {(p.module, p.name) for p in cat.primitives
                 if p.boundary == "net_recv"}
         assert recv == GO_TRANSFER_ROWS
 
     def test_nothing_was_dropped_on_the_way(self) -> None:
-        """The two sets PARTITION what used to be net_recv. A retag that lost a
-        row would satisfy both tests above and still be a recall regression."""
+        """The net_listen / net_recv / ipc_listen sets PARTITION the go rows
+        of the network-receive family. A retag that lost a row would satisfy
+        both tests above and still be a recall regression."""
         cat = load_catalog("go")
         moved = {(p.module, p.name) for p in cat.primitives
-                 if p.boundary in ("net_listen", "net_recv")}
-        assert moved == GO_DEFERRED_ROWS | GO_TRANSFER_ROWS
-        # 31 + WI-suhug's 11 bufio net_recv rows + WI-dozul's 20 resolver rows
-        # (net.Lookup* 9, net.Resolver.Lookup* 11).
-        assert len(moved) == 62
+                 if p.boundary in ("net_listen", "net_recv", "ipc_listen")}
+        assert moved == GO_DEFERRED_ROWS | GO_TRANSFER_ROWS | GO_IPC_LISTEN_ROWS
+        # 20 net_listen + 41 net_recv (11 bufio, 20 resolver lookups --
+        # net.Lookup* 9, net.Resolver.Lookup* 11 -- and 10 accept/recv) +
+        # 2 ipc_listen.
+        assert len(moved) == 63
+
+    def test_the_unix_listeners_are_ipc_listen(self) -> None:
+        cat = load_catalog("go")
+        ipc = {(p.module, p.name) for p in cat.primitives
+               if p.boundary == "ipc_listen"}
+        assert ipc == GO_IPC_LISTEN_ROWS
 
     def test_the_f2_predicate_now_comes_back_empty_for_go(self) -> None:
-        """INV-kanuk's own repro, and it is EMPTY NOW -- which it was not.
+        """INV-kanuk's own repro, which must come back EMPTY.
 
-        The item filed EIGHT offenders. INV-kanuk removed seven and left the
-        eighth, ``fiber.App.Listen``, deliberately: a FALSE POSITIVE OF THE
-        PREDICATE rather than a survivor, since the predicate matches lowercase
-        NAMES while the family is cut by MECHANISM, and fiber's ``Listen`` is a
-        server launch spelled like a setup call. It was exempted at ROW
-        granularity so the exemption could not quietly cover anything else.
-
-        The launch retag moved it, so the exemption is deleted and the
-        predicate is clean. THE ASSERTION IS DELIBERATELY NOT JUST ``== []``:
+        ``fiber.App.Listen`` is the instructive row: the predicate matches
+        lowercase NAMES while the family is cut by MECHANISM, and fiber's
+        ``Listen`` is a server launch spelled like a setup call. It is
+        ``net_listen`` as a launch row, so the predicate is clean with no
+        exemption. THE ASSERTION IS DELIBERATELY NOT JUST ``== []``:
         emptiness here is only meaningful if the row still EXISTS somewhere,
         and the second half checks it landed on ``net_listen`` rather than
         being dropped. An empty gate over a deleted row is the failure this
@@ -503,10 +505,11 @@ class TestTheGoRetag:
     def test_before_the_retag_the_same_claim_was_granted_outright(self) -> None:
         """WHAT THE RETAG BOUGHT, stated as a difference rather than asserted.
 
-        On the pre-retag catalogue the identical edge and claim produce a bare
-        ``confirmed``: ``net.Listen`` was a net_recv row, so it minted a source
-        AND counted as examined. If this stops differing from the test above,
-        the retag has stopped changing anything.
+        On the control catalogue (``net_listen`` forced back to ``net_recv``)
+        the identical edge and claim raise no deferred-crossing disclosure: as
+        a net_recv row, ``net.Listen`` mints a source AND counts as examined.
+        If this stops differing from the test above, the retag has stopped
+        changing anything.
         """
         cats = {"go": _go_catalog_without_deferrals()}
         coverage = compute_boundary_coverage([LISTEN_EDGE], {"go"}, cats)
@@ -535,8 +538,9 @@ EVALUATION_EDGE = {
     "line": 13,
 }
 
-#: The ``django.db.models`` rows that carried ``db_read`` BEFORE the retag,
-#: written out rather than derived, for the reason ``GO_DEFERRED_ROWS`` gives.
+#: The ``django.db.models`` QuerySet rows, executing and composing alike --
+#: the set that would all be ``db_read`` without ``db_compose``. Written out
+#: rather than derived, for the reason ``GO_DEFERRED_ROWS`` gives.
 DJANGO_PRE_RETAG_READ_ROWS: frozenset[str] = frozenset({
     "all", "filter", "exclude", "get", "count", "exists", "first", "last",
     "values", "values_list", "annotate", "aggregate", "order_by", "distinct",
@@ -544,7 +548,7 @@ DJANGO_PRE_RETAG_READ_ROWS: frozenset[str] = frozenset({
     "select_related", "prefetch_related",
 })
 #: The executing reads, which MUST stay: each returns rows, a row, or a scalar
-#: the database chose -- plus the three evaluation dunders WI-fasap added.
+#: the database chose -- plus the three evaluation dunders (WI-fasap).
 DJANGO_READ_ROWS: frozenset[str] = frozenset({
     "get", "count", "exists", "first", "last", "aggregate", "earliest",
     "latest", "in_bulk", "iterator", "__iter__", "__aiter__", "__getitem__",
@@ -552,8 +556,8 @@ DJANGO_READ_ROWS: frozenset[str] = frozenset({
 
 
 def _python_catalog_with_the_combinators_reading():
-    """The shipped python catalogue as it stood BEFORE WI-fasap: every
-    ``db_compose`` row forced back to ``db_read``. The falsifiability control
+    """The shipped python catalogue with every ``db_compose`` row forced
+    back to ``db_read`` (WI-fasap). The falsifiability control
     for the assertions below, exactly as :func:`_go_catalog_without_deferrals`
     is for the net family."""
     cat = load_catalog("python")
@@ -575,11 +579,11 @@ class TestTheDatabaseTwinVocabulary:
     def test_it_is_catalog_declarable_and_declared_last(self) -> None:
         assert "db_compose" in CATALOG_BOUNDARY_TYPES
         assert "db_compose" in KNOWN_IO_BOUNDARIES
-        # Declared after every boundary that existed before it, so
-        # first-declared-wins resolution of every existing row is untouched by
-        # the addition; only boundaries added later follow it.
+        # Declared after the boundaries that precede it, so it changes no
+        # earlier row's first-declared-wins primary; only the boundaries
+        # listed below follow it.
         later = CATALOG_BOUNDARY_TYPES[CATALOG_BOUNDARY_TYPES.index("db_compose") + 1:]
-        assert later == ("navigation_read",)
+        assert later == ("navigation_read", "ipc_listen", "command_line_read")
 
     def test_clause_1_it_mints_no_taint(self) -> None:
         assert "db_compose" not in AUTO_SOURCE_LABEL_MAP
@@ -606,8 +610,8 @@ class TestTheDatabaseTwinCatalogueQuery:
         assert cat.deferred_crossings("django.db.models", "select_for_update") == frozenset({"db_read"})
 
     def test_an_executing_read_shadows_nothing(self) -> None:
-        """The counter-control: the reads survived the retag and must keep
-        shadowing nothing, or the family took ``get`` with it."""
+        """The counter-control: the executing reads stay ``db_read`` and must
+        shadow nothing; otherwise the retag swept up ``get`` with the family."""
         cat = load_catalog("python")
         for name in ("get", "exists", "iterator", "__iter__", "__getitem__"):
             assert cat.deferred_crossings("django.db.models", name) == frozenset(), name
@@ -688,9 +692,10 @@ class TestTheDatabaseThreeRowTable:
         assert not any(c["kind"] == "deferred_crossing" for c in verdict.caveats)
 
     def test_before_the_retag_the_combinator_was_a_read_and_shadowed_nothing(self) -> None:
-        """WHAT THE RETAG BOUGHT, stated as a difference: on the pre-retag
-        catalogue the same edge is a ``db_read`` row -- it minted a source AND
-        counted as examined, and no disclosure was raised."""
+        """WHAT THE RETAG BOUGHT, stated as a difference: on the control
+        catalogue the same edge is a ``db_read`` row -- it mints a source AND
+        counts as examined, so the verdict is a bare ``confirmed`` with no
+        disclosure."""
         verdict = self._verdict(shipped=False)
         assert verdict.verdict == "confirmed", verdict.verdict
         assert not any(c["kind"] == "deferred_crossing" for c in verdict.caveats)
@@ -750,3 +755,74 @@ class TestTheDjangoRetag:
         edges = [_E(e["src"], e["dst"], e["type"]) for e in (COMPOSE_EDGE, EVALUATION_EDGE)]
         assert tag_io_boundaries(edges, cats) == 2
         assert [e.meta["io_boundary"] for e in edges] == ["db_compose", "db_read"]
+
+
+class TestTheIpcListenerVocabulary:
+    """WI-gaziv: ``ipc_listen`` is the local-IPC twin of ``net_listen``.
+
+    ADR-0050 §1 names a row's primary boundary by the MEDIUM data crosses,
+    and a Unix-domain listener's medium is local IPC. Rowing
+    ``asyncio.start_unix_server`` or Go's ``net.ListenUnix`` as ``net_listen``
+    would read as network ingress, so they get their own value rather than
+    ``net_listen`` widened to "any listener". It carries ``net_listen``'s
+    three clauses, over ``ipc_recv``."""
+
+    def test_it_is_catalog_declarable_and_declared_last(self) -> None:
+        assert "ipc_listen" in CATALOG_BOUNDARY_TYPES
+        assert "ipc_listen" in KNOWN_IO_BOUNDARIES
+        # Declared after the boundaries that precede it, so it changes no
+        # earlier row's first-declared-wins primary; only command_line_read
+        # (WI-zidam) follows it.
+        assert CATALOG_BOUNDARY_TYPES[-2:] == ("ipc_listen", "command_line_read")
+
+    def test_clause_1_it_mints_no_taint(self) -> None:
+        assert "ipc_listen" not in AUTO_SOURCE_LABEL_MAP
+
+    def test_clause_2_it_is_disclosed_not_headlined(self) -> None:
+        assert "ipc_listen" in _DISCLOSED_ONLY_BOUNDARIES
+        assert BoundaryMap(ipc_listen_edges=3).to_dict()["ipc_listen_edges"] == 3
+
+    def test_clause_3_the_shadow_is_scoped_to_ipc_recv(self) -> None:
+        assert "ipc_listen" not in OPAQUE_BOUNDARIES
+        assert DEFERRED_CROSSING_SHADOWS["ipc_listen"] == "ipc_recv"
+
+
+#: The python ``ipc_listen`` rows (WI-gaziv): asyncio's Unix server and
+#: socketserver's six Unix server classes -- the Unix twins of the
+#: ``net_listen`` TCP servers.
+PY_IPC_LISTEN_ROWS: frozenset[tuple[str, str]] = frozenset(
+    {("asyncio", "start_unix_server")}
+    | {
+        (f"socketserver.{cls}", method)
+        for cls in (
+            "UnixStreamServer", "UnixDatagramServer",
+            "ThreadingUnixStreamServer", "ThreadingUnixDatagramServer",
+            "ForkingUnixStreamServer", "ForkingUnixDatagramServer",
+        )
+        for method in ("serve_forever", "handle_request")
+    }
+)
+
+
+class TestTheIpcListenerCatalogueRows:
+
+    def test_the_python_unix_servers_are_ipc_listen(self) -> None:
+        cat = load_catalog("python")
+        ipc = {(p.module, p.name) for p in cat.primitives
+               if p.boundary == "ipc_listen"}
+        assert ipc == PY_IPC_LISTEN_ROWS
+
+    def test_a_unix_listener_shadows_ipc_recv_and_its_tcp_twin_net_recv(self) -> None:
+        """The counter-control: the network twins stay ``net_listen``
+        (shadowing ``net_recv``)."""
+        py, go = load_catalog("python"), load_catalog("go")
+        assert py.deferred_crossings("asyncio", "start_unix_server") == frozenset({"ipc_recv"})
+        assert py.deferred_crossings(
+            "socketserver.UnixStreamServer", "serve_forever",
+        ) == frozenset({"ipc_recv"})
+        assert py.deferred_crossings("asyncio", "start_server") == frozenset({"net_recv"})
+        assert py.deferred_crossings(
+            "socketserver.TCPServer", "serve_forever",
+        ) == frozenset({"net_recv"})
+        assert go.deferred_crossings("net", "ListenUnix") == frozenset({"ipc_recv"})
+        assert go.deferred_crossings("net", "ListenTCP") == frozenset({"net_recv"})

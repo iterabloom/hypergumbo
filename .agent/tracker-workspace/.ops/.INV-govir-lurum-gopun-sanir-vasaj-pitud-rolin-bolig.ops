@@ -21,3 +21,10 @@
     fields:  # 6896
       statement: "When TrackerSet.reconcile gives up on a cross-tier duplicate (attempt cap or no winner), every copy reads back with cross_tier_conflict=True and is excluded from ready()."  # 6896
       root_cause: "The cap branch sets cross_tier_conflict on a throwaway compile_ops() result and discards it, and compile_ops never turns the appended reconcile op into the flag; only the cache read-back sets it."  # 6896
+- op: discuss  # 45d3
+  at: '2026-11-01T10:55:50Z'  # 45d3
+  by: agent  # 45d3
+  actor: jgstern_agent  # 45d3
+  clock: 2  # 45d3
+  nonce: 45d3  # 45d3
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: CURRENT. Reviewed 2026-11-01 at 100b6fbb6e with a live repro on a temp 3-tier root (journal/XDG redirected): a WORKSPACE invariant copied into canonical, then reconcile() called 4 times, returned [id],[id],[],[]. Afterwards both copies read cross_tier_conflict=False and the item is still in ready(). trackerset.py:765-775 still sets the flag on a discarded compile_ops result. The cap trips after 2 calls because each call appends to both copies. Still latent: no production caller. MECHANISM: conflict state written to a transient compiled object and to an op kind compile_ops never folds into the flag."  # 45d3

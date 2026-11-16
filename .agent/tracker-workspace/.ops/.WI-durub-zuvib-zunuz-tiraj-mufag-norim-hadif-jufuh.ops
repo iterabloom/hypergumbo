@@ -19,3 +19,26 @@
     pr_ref:  # 3dad
     description: "When --pool points at a directory whose entries are themselves repo-collections (e.g. ~/ALL_REPOS, which contains curriculum_repos/, special_repos/, whole_bunch_of_repos/, ...), 'bakeoff-broad cohort' recurses into the sub-collections to select repos but stores only the bare repo NAME, while 'bakeoff-broad run' resolves each as <pool>/<name> at the TOP level. Result: FileNotFoundError. Repro (2026-06-11, dev 578464ad62): bakeoff-broad init --pool ~/ALL_REPOS; cohort --count 1 selected 'webtunnel' (found via recursion, 0.1MB go); run -> FileNotFoundError: /home/jgstern_agent/ALL_REPOS/webtunnel (get_dir_size). The pool_utils depth-2 recursion (shipped per a prior CHANGELOG 'Bakeoff infrastructure' note) finds nested repos but the cohort->run handoff loses the collection prefix. Workaround used for the campaign R0 baseline: point --pool at a FLAT directory of git repos (e.g. ~/ALL_REPOS/repos_Apr12_2026), which resolves correctly. Fix: cohort must persist each repo's full path (or path relative to the pool root), and run must resolve against that, not <pool>/<name>."  # 3dad
     fields: {}  # 3dad
+- op: discuss  # 2054
+  at: '2026-11-01T10:55:45Z'  # 2054
+  by: agent  # 2054
+  actor: jgstern_agent  # 2054
+  clock: 2  # 2054
+  nonce: '2054'  # 2054
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: PARTLY-STALE. The reported FileNotFoundError is fixed by 371adbe47c (07-04): bakeoff-broad/deep run uses _pool_repo_path -> pool_utils.resolve_repo_path, and on a nested fixture 'other' resolves to pool/collB/other. The filed fix direction is not built: the cohort persists RepoInfo.path but run re-resolves by bare name, and with collA/webtunnel and collB/webtunnel it returns collB/webtunnel (first in unsorted scandir), so same-named repos can be swapped. MECHANISM: run re-derives a repo's path from its bare name instead of reading the path the cohort persisted."  # 2054
+- op: update  # 593c
+  at: '2026-11-01T10:55:45Z'  # 593c
+  by: agent  # 593c
+  actor: jgstern_agent  # 593c
+  clock: 3  # 593c
+  nonce: 593c  # 593c
+  set:  # 593c
+    title: "bakeoff run re-resolves cohort repos by bare name (pool_utils first-match, scandir order) instead of the persisted path: same-named repos in two collections can swap"  # 593c
+- op: update  # 68fa
+  at: '2026-11-01T10:55:46Z'  # 68fa
+  by: agent  # 68fa
+  actor: jgstern_agent  # 68fa
+  clock: 4  # 68fa
+  nonce: 68fa  # 68fa
+  set:  # 68fa
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] The reported FileNotFoundError is fixed by 371adbe47c (07-04): bakeoff-broad/deep run uses _pool_repo_path -> pool_utils.resolve_repo_path, and on a nested fixture 'other' resolves to pool/collB/other. The filed fix direction is not built: the cohort persists RepoInfo.path but run re-resolves by bare name, and with collA/webtunnel and collB/webtunnel it returns collB/webtunnel (first in unsorted scandir), so same-named repos can be swapped. (Original text below; the review entry in the thread has the evidence.)\n\nWhen --pool points at a directory whose entries are themselves repo-collections (e.g. ~/ALL_REPOS, which contains curriculum_repos/, special_repos/, whole_bunch_of_repos/, ...), 'bakeoff-broad cohort' recurses into the sub-collections to select repos but stores only the bare repo NAME, while 'bakeoff-broad run' resolves each as <pool>/<name> at the TOP level. Result: FileNotFoundError. Repro (2026-06-11, dev 578464ad62): bakeoff-broad init --pool ~/ALL_REPOS; cohort --count 1 selected 'webtunnel' (found via recursion, 0.1MB go); run -> FileNotFoundError: /home/jgstern_agent/ALL_REPOS/webtunnel (get_dir_size). The pool_utils depth-2 recursion (shipped per a prior CHANGELOG 'Bakeoff infrastructure' note) finds nested repos but the cohort->run handoff loses the collection prefix. Workaround used for the campaign R0 baseline: point --pool at a FLAT directory of git repos (e.g. ~/ALL_REPOS/repos_Apr12_2026), which resolves correctly. Fix: cohort must persist each repo's full path (or path relative to the pool root), and run must resolve against that, not <pool>/<name>."  # 68fa

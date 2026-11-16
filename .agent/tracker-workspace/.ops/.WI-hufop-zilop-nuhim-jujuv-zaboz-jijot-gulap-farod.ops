@@ -19,3 +19,10 @@
     pr_ref:  # 3dc8
     description: "Follow-up to WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok. With --trace-deps, installed dependency source (e.g. thc_dev deps/: 81 Mix packages) is re-parsed on every cold survey and the whole results entry is keyed by repo state. A package pinned in mix.lock / package-lock.json / composer.lock / go.sum / Gemfile.lock at a version is identical across runs and across repos, so its parsed symbols/edges could be cached once under <ecosystem>/<name>@<version> and spliced in. Open questions: cross-file resolution between first-party and dependency symbols happens after parsing, so only per-file analyzer output is cacheable; git/path deps (thc_dev heroicons) have no version pin and need a content hash instead."  # 3dc8
     fields: {}  # 3dc8
+- op: discuss  # 0e9e
+  at: '2026-11-01T10:56:05Z'  # 0e9e
+  by: agent  # 0e9e
+  actor: jgstern_agent  # 0e9e
+  clock: 2  # 0e9e
+  nonce: 0e9e  # 0e9e
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: the cache is still keyed per repo state (cli.py:1331/12860); no lockfile/package@version keyed dependency cache exists in core src; post-10-07 cache commits (3989655c22, df2aef43b5) only widen the per-repo key. Feature request still open as written. MECHANISM: results cache key is whole-repo state (<fingerprint>/results/<state_hash>/<analyzer>); no per-package or per-file analyzer-output cache. SHARES MECHANISM WITH: WI-vufad."  # 0e9e

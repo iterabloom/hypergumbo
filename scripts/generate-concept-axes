@@ -35,50 +35,56 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # without requiring an editable install.
 sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 
-from hypergumbo_core.edge_types import (  # noqa: E402
-    AXIS_ENDPOINT_SHAPE,
-    AXIS_PENDING,
-    AXIS_RELATIONSHIP,
-    EDGE_TYPES,
-    EdgeTypeSpec,
-)
-from hypergumbo_core.symbol_kinds import (  # noqa: E402
-    AXIS_LANGUAGE_CONSTRUCT,
-    AXIS_PENDING as KIND_AXIS_PENDING,
-    SYMBOL_KINDS,
-    SymbolKindSpec,
-)
-from hypergumbo_core.evidence_types import (  # noqa: E402
-    AXIS_INFERENCE_PATHWAY,
-    AXIS_PENDING as EVIDENCE_AXIS_PENDING,
-    EVIDENCE_TYPES,
-    EvidenceTypeSpec,
-)
-from hypergumbo_core.io_boundary_types import (
-    AXIS_DATA_CROSSING,
-    AXIS_DEFERRED_CROSSING,
-    AXIS_OPACITY,
-    AXIS_SPECULATIVE,
-    IO_BOUNDARY_TYPES,
-    IoBoundarySpec,
-)
-from hypergumbo_core.module_key_axis import (
-    AXIS_CALL_SITE_PROPERTY,
-    AXIS_OWNER_PATH,
-    AXIS_PENDING as MODULE_KEY_AXIS_PENDING,
-    AXIS_UNCERTAINTY,
-    MODULE_KEY_AXIOM,
-    MODULE_KEY_NOTIONS,
-)
-from hypergumbo_core.signature_axis import (
-    AXIS_DECLARATION_SURFACE,
-    AXIS_FOREIGN_FACT,
-    AXIS_PENDING as SIGNATURE_AXIS_PENDING,
-    FACT_HOMES,
-    LEGACY_VALUE_PARSERS,
-    SIGNATURE_AXIOM,
-    SIGNATURE_NOTIONS,
-)
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from generator_check import could_not_run, run  # noqa: E402
+
+try:
+    from hypergumbo_core.edge_types import (  # noqa: E402
+        AXIS_ENDPOINT_SHAPE,
+        AXIS_PENDING,
+        AXIS_RELATIONSHIP,
+        EDGE_TYPES,
+        EdgeTypeSpec,
+    )
+    from hypergumbo_core.symbol_kinds import (  # noqa: E402
+        AXIS_LANGUAGE_CONSTRUCT,
+        AXIS_PENDING as KIND_AXIS_PENDING,
+        SYMBOL_KINDS,
+        SymbolKindSpec,
+    )
+    from hypergumbo_core.evidence_types import (  # noqa: E402
+        AXIS_INFERENCE_PATHWAY,
+        AXIS_PENDING as EVIDENCE_AXIS_PENDING,
+        EVIDENCE_TYPES,
+        EvidenceTypeSpec,
+    )
+    from hypergumbo_core.io_boundary_types import (
+        AXIS_DATA_CROSSING,
+        AXIS_DEFERRED_CROSSING,
+        AXIS_OPACITY,
+        AXIS_SPECULATIVE,
+        IO_BOUNDARY_TYPES,
+        IoBoundarySpec,
+    )
+    from hypergumbo_core.module_key_axis import (
+        AXIS_CALL_SITE_PROPERTY,
+        AXIS_OWNER_PATH,
+        AXIS_PENDING as MODULE_KEY_AXIS_PENDING,
+        AXIS_UNCERTAINTY,
+        MODULE_KEY_AXIOM,
+        MODULE_KEY_NOTIONS,
+    )
+    from hypergumbo_core.signature_axis import (
+        AXIS_DECLARATION_SURFACE,
+        AXIS_FOREIGN_FACT,
+        AXIS_PENDING as SIGNATURE_AXIS_PENDING,
+        FACT_HOMES,
+        LEGACY_VALUE_PARSERS,
+        SIGNATURE_AXIOM,
+        SIGNATURE_NOTIONS,
+    )
+except ImportError as exc:
+    sys.exit(could_not_run(exc))
 
 
 # Edge.type section ordering (most-canonical first). Each entry:
@@ -165,8 +171,8 @@ _IO_BOUNDARY_SECTIONS: tuple[tuple[str, str, str], ...] = (
     (
         AXIS_DATA_CROSSING,
         "`data_crossing` — ADR-0050 compliant",
-        "Values that name what data crosses the process boundary at this "
-        "call site, and in which direction. Per ADR-0050 this is the only "
+        "Values that name the medium data crosses at this call site, and in "
+        "which direction. Per ADR-0050 this is the only "
         "axis a new catalogue-declarable boundary should occupy.",
     ),
     (
@@ -358,9 +364,16 @@ _IO_BOUNDARY_HEADER = """\
 
 ## `io_boundary` — the I/O-boundary axis (ADR-0050)
 
-**Axiom.** A boundary value names *what data crosses the process boundary at
-this call site, in which direction* — not what the program is thereby arranged
-to do later.
+**Axiom.** A row's *primary* boundary names the *medium* data crosses at this
+call site, and in which direction — not what the program is thereby arranged to
+do later, and not what the data is. A `simultaneous` second boundary records
+either a reading of the same crossing that a taint label needs (that its content
+may carry a credential, `env_read`, or that the party who navigated to the page
+chose it, `navigation_read`), or a second crossing the same call performs at this
+call site, which must satisfy the axiom on its own (`subprocess.check_output`
+launches a process and reads its output). None is primary: consumers read every
+one (`boundaries_of`). So `env_read` means both the process environment and "may
+carry a credential" (ADR-0050 §1).
 
 Six consumers branch on this vocabulary (`AUTO_SOURCE_LABEL_MAP`,
 `OPAQUE_BOUNDARIES`, `_DISCLOSED_ONLY_BOUNDARIES`, `DEFERRED_CROSSING_SHADOWS`,
@@ -723,4 +736,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    sys.exit(main())
+    run(main)

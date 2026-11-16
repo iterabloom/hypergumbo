@@ -62,6 +62,7 @@ from typing import Callable, List, Optional, Protocol, Tuple
 
 from google.protobuf.message import DecodeError
 
+from hypergumbo_core.install_steps import rust_analyzer_install_steps
 from hypergumbo_core.ir import Edge, Symbol
 from hypergumbo_core.safety_zones import tmp_artifact_dir
 
@@ -92,13 +93,15 @@ class TranslateFn(Protocol):
     """The translator's call shape, as a Protocol rather than a Callable alias.
 
     ``Callable[[bytes, SourceReader], ...]`` cannot express the keyword-only
-    ``run_id`` this function now forwards (WI-didag), and widening it to
+    ``run_id`` this function now forwards (WI-didag), nor the keyword ``log``
+    the translator reports its refusals through (INV-sipod), and widening it to
     ``Callable[..., ...]`` would drop argument checking on the injection seam
     that every graceful-degrade test uses.
     """
 
     def __call__(
         self, scip_bytes: bytes, source_reader: SourceReader, *, run_id: str = ...,
+        log: Optional[Callable[[str], None]] = ...,
     ) -> Tuple[List[Symbol], List[Edge]]: ...
 
 @dataclass(frozen=True)
@@ -303,16 +306,24 @@ def try_analyze_with_rust_analyzer(
                     detail = _format_no_output(exc)
                 else:
                     detail = str(exc)
+                # The steps describe the machine, not the workspace: print
+                # them with the first workspace that finds the binary missing.
+                steps = ""
+                if isinstance(exc, RustAnalyzerNotInstalled) and "install-steps" not in _LOGGED_FALLBACK:
+                    _LOGGED_FALLBACK.add("install-steps")
+                    steps = f"\n\n{rust_analyzer_install_steps()}"
                 emit(
                     f"rust-analyzer backend unavailable for {workspace}: "
-                    f"{type(exc).__name__}: {detail} — falling through to rust.py",
+                    f"{type(exc).__name__}: {detail} — falling through to rust.py{steps}",
                 )
             # WI-luvud: the taxonomy already knows which state this is; before
             # this the information died here and all four became one ``None``.
             return ScipAttempt.failure(_silence_code_for(exc), str(exc))
 
     try:
-        symbols, edges = translate_fn(scip_bytes, source_reader, run_id=run_id)
+        symbols, edges = translate_fn(
+            scip_bytes, source_reader, run_id=run_id, log=emit,
+        )
         # An EMPTY index is a success, not a failure: rust-analyzer ran to
         # completion and found nothing to index. Reporting it as a failure is
         # what put a pass that RAN into the "did not run" bucket (WI-luvud).

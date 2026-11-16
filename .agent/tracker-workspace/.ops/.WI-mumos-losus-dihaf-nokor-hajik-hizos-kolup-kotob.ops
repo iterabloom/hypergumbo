@@ -1,0 +1,38 @@
+- op: create  # b9ea
+  at: '2026-10-20T22:31:27Z'  # b9ea
+  by: agent  # b9ea
+  actor: jgstern_agent  # b9ea
+  clock: 1  # b9ea
+  nonce: b9ea  # b9ea
+  data:  # b9ea
+    kind: work_item  # b9ea
+    title: "tracker TUI modal tests click before the target button is hit-testable: under a starved pause the click lands on #modal-dialog and the 30 s dismissal wait times out"  # b9ea
+    status: todo_hard  # b9ea
+    priority: 2  # b9ea
+    parent:  # b9ea
+    tags:  # b9ea
+    - testing  # b9ea
+    - flaky_isolation  # b9ea
+    - ci_infrastructure  # b9ea
+    - tracker  # b9ea
+    isbefore: []  # b9ea
+    duplicate_of: []  # b9ea
+    not_duplicate_of: []  # b9ea
+    pr_ref:  # b9ea
+    description: "OBSERVED IN CI 2026-10-20: nightly cron at 979a6c11, leg 3 (Python 3.12.12), step test-matrix: 1 failed / 33,405 passed, coverage 100%.\n    FAILED packages/hypergumbo-tracker/tests/test_tui.py::TestWaitForDismissalHelper::test_it_returns_the_result_under_the_one_tick_model[#submit]\n    AssertionError: modal was never dismissed within 30.0s (its result callback did not run); screen=LockScreen, result='NOT_SET'.\n30 s with no dismissal is not slowness: the click never pressed a button.\n\nMECHANISM. _wait_for_modal returns once #modal-dialog has a non-zero size. That is not the same as the dialog's children being laid out where hit-testing finds them. Under a starved Pilot.pause (Textual 7.5.0's wait_for_idle returning at once, which is WI-ruhul's load model), at the moment _wait_for_modal returns the buttons report region y=16 while app.get_widget_at() at their centre returns the Vertical #modal-dialog; the settled layout puts them at y=13. pilot.click() resolves the widget's region, the mouse events land on the dialog, no Button.Pressed fires, and nothing dismisses the modal. pilot.click() returns False in that case, and no test checks its return value.\n\nREPRO (scratch probe, LockScreen in _ModalTestApp, 5 runs per cell):\n    real pause                                      #cancel 5/5 landed, #submit 5/5\n    wait_for_idle -> one sleep(0), rest of pause()  #cancel 0/5,        #submit 0/5\n    pause -> one sleep(0) (the test file's model)   #cancel 0/5,        #submit 0/5\nWaiting on _wait_for_screen(), or on the button's region being unchanged for 3 ticks, does not help (0/5): the region is stable at the wrong place.\n\nFIX, VALIDATED IN THE PROBE: before clicking, wait (wall-clock bounded) until app.get_widget_at(centre of target.region) IS the target, then click and assert the click landed. Under the starved model that made 30/30 land; it settled after ~0.05 s of wall-clock time, about 150 starved pauses, which is why _wait_for_modal's 30-round bound cannot cover it. Layout settles on time, not on tick count.\n\nSHAPE OF THE CHANGE: one helper (e.g. _click(pilot, app, selector)) that does the hit-test wait, clicks, and raises naming the selector and what was under it if the click did not land; route every pilot.click in test_tui.py through it. Related but distinct: WI-zolin (side-effect reads after a fixed pause count), WI-balap (order-dependent empty submit, possibly this same mechanism, not checked), INV-bozid (the 2026-08-20 'NOT_SET' failure whose note already says the click never landed)."  # b9ea
+    fields: {}  # b9ea
+- op: update  # e51a
+  at: '2026-10-20T23:07:12Z'  # e51a
+  by: agent  # e51a
+  actor: jgstern_agent  # e51a
+  clock: 2  # e51a
+  nonce: e51a  # e51a
+  set:  # e51a
+    status: done  # e51a
+- op: discuss  # fcfd
+  at: '2026-10-20T23:07:13Z'  # fcfd
+  by: agent  # fcfd
+  actor: jgstern_agent  # fcfd
+  clock: 3  # fcfd
+  nonce: fcfd  # fcfd
+  message: "Fixed in PR #1782. tests/tui_pilot.click waits until the target is the widget get_widget_at() finds at the exact click point, then clicks and raises if the click did not land; all 84 pilot.click sites in test_tui.py and test_item_nav_modal.py use it. Evidence: (1) TestClickWhenClickable, under wait_for_idle patched to return at once: a plain pilot.click on #cancel returns False and the modal is never dismissed; the helper lands on #cancel and #submit. (2) The same model applied to every test in both files: unmodified dev 20 failed, 11 of them modal click tests including the nightly's failing test_it_returns_the_result_under_the_one_tick_model[#submit]; with the fix those 11 pass and no new test fails. Unstarved: 580 passed."  # fcfd

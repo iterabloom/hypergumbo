@@ -1173,10 +1173,14 @@ void caller() {
 
         result = analyze_cpp(tmp_path)
 
+        # The class edge, and one to the constructor the two arguments
+        # select (construction.py reaches it alone).
         inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
-        assert len(inst_edges) == 1
-        assert "Config" in inst_edges[0].dst
-        assert inst_edges[0].evidence_type == "stack_construction"
+        assert sorted(e.dst.rsplit(":", 2)[-2:][1] for e in inst_edges) == [
+            "class", "method",
+        ]
+        assert all("Config" in e.dst for e in inst_edges)
+        assert {e.evidence_type for e in inst_edges} == {"stack_construction"}
 
     def test_brace_initialization(self, tmp_path: Path) -> None:
         """``Widget w{};`` should create an instantiates edge."""
@@ -2298,7 +2302,7 @@ class TestCppBareMethodMagnetGate:
 
 
 class TestCppStableId:
-    """Tests for stable_id computation in C++ (ADR-0014 §2)."""
+    """Tests for stable_id computation in C++ (ADR-0035 §1)."""
 
     def test_function_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.cpp import analyze_cpp
@@ -2309,7 +2313,7 @@ class TestCppStableId:
         result = analyze_cpp(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
     def test_class_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.cpp import analyze_cpp
@@ -2320,11 +2324,11 @@ class TestCppStableId:
         result = analyze_cpp(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
         assert cls.stable_id is not None
-        assert cls.stable_id.startswith("sha256:")
+        assert cls.stable_id.startswith("hgstableid15:")
 
 
 class TestCppShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.cpp import analyze_cpp
@@ -2335,7 +2339,7 @@ class TestCppShapeId:
         result = analyze_cpp(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.cpp import analyze_cpp
@@ -2346,7 +2350,7 @@ class TestCppShapeId:
         result = analyze_cpp(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 class TestCppUnresolvedExternalEdges:

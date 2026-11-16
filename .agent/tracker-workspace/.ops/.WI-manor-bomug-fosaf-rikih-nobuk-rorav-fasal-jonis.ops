@@ -27,3 +27,10 @@
   clock: 2  # ba6b
   nonce: ba6b  # ba6b
   message: "Evidence 2026-10-16/17 for the accrual mode (2): during an afternoon of tracker filing with the local dev unable to fast-forward (reconcile said 'flush failed ... CI failed' while the cron full-suite on dev's HEAD was red), every subsequent op re-flushed the whole dirty set: origin/dev gained 34 consecutive 'tracker: N files (M ops)' commits, ten of them byte-identical '12 files (9 ops)'. All local .ops were already identical to origin/dev; the ff was done by staging those identical files and 'git merge --ff-only'. Side effect fixed separately: those 34 commits aged docs/ARCHITECTURE.md past the 30-commit window (generate-architecture --check now excludes tracker-only commits)."  # ba6b
+- op: discuss  # fc60
+  at: '2026-11-01T09:32:32Z'  # fc60
+  by: agent  # fc60
+  actor: jgstern_agent  # fc60
+  clock: 3  # fc60
+  nonce: fc60  # fc60
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: CURRENT. tracker cli.py:2956 --timeout default 300; sync.py do_sync(ci_timeout=300) (:1508) mints sync_branch tracker-sync/<timestamp> per call (:1533-1534); timeout -> SyncResult(success=False, error='CI timed out after Ns', exit_code=2) (:1832-1837); cli.py:2645-2651 turns any not-success into 'flush failed, not fast-forwarding' and returns. _find_open_pr (:1739) is keyed on the fresh branch name, so no adopt/resume path exists. WI-torug (c8de5b2b30) added sync --prune and auto-prune on the auto-sync SUCCESS path only (cli.py:3594). Later sync.py/cli.py commits are docstring-only. ROOT-CAUSE GROUP: tracker sync - the poll deadline collapsed into a flush failure (INV-rahib is the auto-pr twin, deferred). Status unchanged."  # fc60

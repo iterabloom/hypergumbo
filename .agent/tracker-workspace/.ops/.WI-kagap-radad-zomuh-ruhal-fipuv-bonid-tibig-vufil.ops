@@ -1,0 +1,43 @@
+- op: create  # b9a2
+  at: '2026-10-27T01:37:20Z'  # b9a2
+  by: agent  # b9a2
+  actor: jgstern_agent  # b9a2
+  clock: 1  # b9a2
+  nonce: b9a2  # b9a2
+  data:  # b9a2
+    kind: work_item  # b9a2
+    title: "pyproject Poetry, optional-dependency and PEP 735 dependency tables emit no dependency nodes (only [project].dependencies does)"  # b9a2
+    status: todo_hard  # b9a2
+    priority: 3  # b9a2
+    parent:  # b9a2
+    tags:  # b9a2
+    - supply_chain  # b9a2
+    - toml  # b9a2
+    isbefore: []  # b9a2
+    duplicate_of: []  # b9a2
+    not_duplicate_of: []  # b9a2
+    pr_ref:  # b9a2
+    description: "toml_config emits a kind=dependency node only for pyproject [project].dependencies (toml_config.py, the `is_pyproject and table_name == \"project\"` arm). Not emitted: [tool.poetry.dependencies], [tool.poetry.group.<g>.dependencies], [tool.poetry.dev-dependencies], [project.optional-dependencies] and PEP 735 [dependency-groups]. Consequence: a Poetry project's declared dependencies are invisible to every consumer of declaration nodes (the dependency linker, supply_chain_summary, INV-kutub's in-tree declaration tier, directness). Found by INV-kutub's measurement 2026-10-26: the poetry repo (~/curriculum_repos/poetry) has 22 sibling declarations in tests/fixtures Poetry tables (e.g. tests/fixtures/project_with_nested_local/pyproject.toml: foo, bar) and the survey has no node for any of them; its 24 dependency nodes are all from [project].dependencies. Fix direction: emit one node per entry of each listed table, with meta dependency_scope for dev/group/optional (the cargo dev/build precedent, WI-limas), names PEP 508-parsed for array forms and table keys for Poetry; stable_id scoped by table (INV-punig). Measure node counts before/after on poetry and a uv/PEP 735 repo. Check the python dependency linker and directness producers for consumers keyed to the current single table."  # b9a2
+    fields: {}  # b9a2
+- op: discuss  # ad28
+  at: '2026-11-15T19:25:53Z'  # ad28
+  by: agent  # ad28
+  actor: jgstern_agent  # ad28
+  clock: 2  # ad28
+  nonce: ad28  # ad28
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0): six-table fixture emits dependency nodes for `[project].dependencies` only; sole arm is toml_config.py L270. poetry's 97 pyproject files: 24 dependency nodes; 157 `[tool.poetry.dependencies]` and 27 `[tool.poetry.group.*.dependencies]` entries have none. The item's to-do on directness, answered: import directness comes from `py_deps.py`, which reads `[project].dependencies`, `[project.optional-dependencies]`, `[tool.poetry.dependencies]` directly; imports declared only in `[dependency-groups]`, a Poetry group or `[tool.poetry.dev-dependencies]` are stamped `undeclared`. `depends_on_manifest` (linkers/dependency.py) exists only for node-backed entries. \"WI-limas\" here means WI-limas-buvin. Spec §14 §3a \"Not recognized\" does not list these tables. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-kagap.md. No status or priority change made by this review."  # ad28
+- op: update  # 15fb
+  at: '2026-11-16T04:57:53Z'  # 15fb
+  by: agent  # 15fb
+  actor: jgstern_agent  # 15fb
+  clock: 3  # 15fb
+  nonce: 15fb  # 15fb
+  set:  # 15fb
+    status: done  # 15fb
+- op: discuss  # f09b
+  at: '2026-11-16T04:57:53Z'  # f09b
+  by: agent  # f09b
+  actor: jgstern_agent  # f09b
+  clock: 4  # f09b
+  nonce: f09b  # f09b
+  message: "Fixed in PR #2198. Eleven pyproject tables yield dependency nodes through one list shared by toml_config and py_deps (PEP 621 dependencies and optional-dependencies, PEP 735 dependency-groups, build-system.requires, Poetry dependencies / dev-dependencies / groups, PDM, uv, Hatch). Dependency nodes: poetry 24 -> 178, sqlalchemy 1 -> 85; `undeclared` external symbols on poetry 1,265 -> 1,084. A package in two tables is two nodes with table-scoped stable ids; [project].dependencies stays unscoped; every base node keeps its id and stable id by position (poetry 5,943 of 5,943, sqlalchemy 65,443 of 65,443). linkers/dependency.py keeps one declaration per manifest, runtime first (this also applies to Cargo; no Cargo repository measured). Visible: supply_chain_summary counts declarations, so poetry's direct goes 161 -> 471."  # f09b

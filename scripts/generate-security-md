@@ -39,29 +39,26 @@ END_MARKER = "<!-- END generated -->"
 IO_ALLOWLIST_PATH = REPO_ROOT / "docs" / "hypergumbo.io-allowlist.yaml"
 #: Primitive families scripts/check-io-allowlist inventories, in its order.
 IO_FAMILIES = ("fs_write", "process", "network", "server", "code_exec",
-               "deserialize", "native", "dynamic_import")
+               "deserialize", "native", "dynamic_import", "env_write")
 EXPECTED_VERDICTS_PATH = REPO_ROOT / "docs" / "hypergumbo.claims.expected.json"
 
 # How the measured verdicts reach this document. The snapshot is the SAME file
 # `scripts/check-self-claims` diffs the live run against, so the prose here and
 # the gate cannot disagree: changing one without the other fails CI.
 #
-# WHY THIS EXISTS. This section used to assert that regressions "fail the gate"
-# while no workflow referenced verify-claims at all, and it drifted until it
-# asserted the OPPOSITE of what the tool reports about this very repository --
-# "runtime CLI subcommands do not shell out", against 1101 reported flows and a
-# canary that caught `git` executed 28 times by `sketch`. Prose describing
-# machine-checkable facts has to be GENERATED from those facts.
+# Prose describing machine-checkable facts has to be GENERATED from those
+# facts: hand-written, it drifts until it asserts the opposite of what the
+# tool reports about this very repository.
 
 _BADGE = {
     "violated": "\u26a0 **CURRENTLY VIOLATED** \u2014 ",
     "inconclusive": "**INCONCLUSIVE** (the analysis could not see enough "
                     "to confirm) \u2014 ",
     "confirmed": "\u2713 confirmed \u2014 ",
-    # INV-pojib. An unknown verdict badges as "" here, which renders a caveated
-    # claim indistinguishable from a confirmed one in the very document whose
-    # job is to not overstate what was verified. Registered when the fourth
-    # verdict value was added rather than left to be discovered.
+    # Every verdict value needs an entry: an unknown verdict badges as "" here,
+    # which renders a caveated claim indistinguishable from a confirmed one in
+    # the very document whose job is to not overstate what was verified
+    # (history: INV-pojib).
     "confirmed_with_caveats": "\u2713 confirmed WITH CAVEATS (rests on an "
                               "entry this repository supplied about itself) "
                               "\u2014 ",
@@ -175,14 +172,14 @@ def _render_measured_status(verdicts: dict[str, str]) -> list[str]:
 
 
 def _render_scope_section() -> list[str]:
-    """WI-kozos: say which execution context the claims cover.
+    """Say which execution context the claims cover (history: WI-kozos).
 
     Every claim declares a python ``cmd_*`` handler as its source, so the
     whole artifact describes ONE thing: what the installed CLI does when a
-    user runs it. It said so nowhere, which left "hypergumbo's safety claims
-    are checked by running hypergumbo against its own source" readable as a
-    claim about the REPOSITORY. It is not one, and the narrower statement is
-    both true and load-bearing for everything else in this file.
+    user runs it. Unless that is stated, "hypergumbo's safety claims are
+    checked by running hypergumbo against its own source" reads as a claim
+    about the REPOSITORY. It is not one, and the narrower statement is both
+    true and load-bearing for everything else in this file.
 
     Placed BEFORE the measured verdicts on purpose: a reader needs to know
     what was examined before being told whether it passed.
@@ -268,13 +265,16 @@ def _render_independent_gate_section() -> list[str]:
         "The verdicts below are hypergumbo grading itself, and every one "
         "carries caveats naming what the analysis could not see. "
         "``scripts/check-io-allowlist`` is a second check that shares none of "
-        "that machinery: a stdlib-only AST walk of ``packages/*/src`` that "
+        "that machinery: an AST walk of ``packages/*/src`` built on the "
+        "standard library and PyYAML, importing nothing from hypergumbo, that "
         "finds every call site — and every non-call reference, such as a "
         "primitive handed to a callback — of a risky primitive family "
-        "(filesystem writes and deletes, process launch, network clients and "
-        "model downloads, servers, ``eval``/``exec``/``compile``, unsafe "
-        "deserialization, native-library loading, dynamic import of a "
-        "non-literal name) and requires each one to be listed in "
+        "(filesystem writes and deletes, raw-descriptor writes included; "
+        "process launch and signals by pid; network clients and model "
+        "downloads; servers; ``eval``/``exec``/``compile``; unsafe "
+        "deserialization; native-library loading; dynamic import of a "
+        "non-literal name; writes to the process environment, working "
+        "directory, umask or identity) and requires each one to be listed in "
         "``docs/hypergumbo.io-allowlist.yaml`` with its zone, the program it "
         "launches, its purpose and the commands that reach it. An unlisted "
         "site or a stale entry fails CI. It proves nothing about a site — an "
@@ -534,9 +534,9 @@ def _render_claims_section(
         "safety regressions."
     )
     lines.append("")
-    # Data-driven on purpose: an earlier hardcoded version of this
-    # paragraph said "both are ``inconclusive``" and kept saying it after
-    # the verdicts moved \u2014 the exact drift THIS file's history warns about.
+    # Data-driven on purpose: a hardcoded verdict for these two claims
+    # (e.g. "both are ``inconclusive``") goes stale the moment the verdicts
+    # move, the exact drift this generator exists to prevent.
     dz = verdicts.get("runtime-cli-no-dev-zone", "unmeasured")
     ia = verdicts.get("runtime-cli-no-install-artifact", "unmeasured")
     lines.append(
@@ -561,8 +561,10 @@ def _render_claims_section(
         "both verdict arms disclose it, with a count, a denominator and the "
         "distinct method names, so a reader can size it rather than merely "
         "be told it exists. On this repository the measured size is stark "
-        "and is reported rather than softened: **6,541 of 9,267 method call "
-        "sites (70.6%) have a receiver the analysis could not type**. That "
+        "and is reported rather than softened: **10,395 of 14,024 method call "
+        "sites (74.1%) have a receiver the analysis could not type** "
+        "(measured 2026-11-03 on the shipped-artifact scope; the figure is "
+        "the `unknown_receiver_scope` caveat's own count). That "
         "figure bounds every verdict in the table above. And a language "
         "that emits even ONE call edge passes the coverage check while the "
         "rest of its call structure may be unanalysable: Kotlin emits one "

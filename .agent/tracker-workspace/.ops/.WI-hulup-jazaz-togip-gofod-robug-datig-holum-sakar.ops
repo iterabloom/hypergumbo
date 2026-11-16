@@ -32,3 +32,18 @@
   clock: 3  # 8496
   nonce: '8496'  # 8496
   message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). STILL REPRODUCES, but narrower than filed. Status unchanged.\n\nFixture: a.ts importing from \"lit\"; full survey. Emitted node:\n  id=typescript:npm:0-0:lit:package, kind=package, path=\"\", language=null, discovery_language=typescript, span 0-0.\nThe same survey also has one `<external>` node, so a single artifact now carries TWO no-anchor spellings of node.path: \"\" and \"<external>\".\n\nWhat changed since filing (06-07):\n- language=null and the all-zero span are BY DESIGN now:\n  - linkers/js_module.py:876-897 marks the node as an ADR-0031 Class B synthetic, with discovery_language carrying the context;\n  - span 0-0 is ADR-0036 Ruling 3's \"synthetic node with no source location\" sentinel.\n  Those two parts of the title are not defects.\n- The kind is now `package` (the id's kind slot says package, not npm_package).\n- Since 1c2ce91f7b (06-15) the producer COMMENTS in favour of path=\"\": \"no declaring manifest path, so path=\\\"\\\" keeps it a single logical node (ADR-0035 §4 ...)\".\n\nThe live question: WI-kapul was closed wont_do on 07-22 on the ruling that node.path is the filesystem anchor, with the documented `<external>` sentinel for \"no file anchor\" (ADR-0036 Ruling 3 table). An npm stand-in has no file anchor either, yet it uses an UNDECLARED \"\" instead of the declared sentinel. So either \"\" joins the enumeration with its own meaning, or this node takes `<external>`. That is a decision. Recommend re-titling to \"npm_package stand-in uses path=\\\"\\\" where the declared no-anchor sentinel is <external>\"."  # 8496
+- op: update  # d71e
+  at: '2026-11-01T09:32:29Z'  # d71e
+  by: agent  # d71e
+  actor: jgstern_agent  # d71e
+  clock: 4  # d71e
+  nonce: d71e  # d71e
+  set:  # d71e
+    title: "js-module-linker npm package stand-in uses path='' where ADR-0036 Ruling 3's declared no-anchor sentinel is '<external>' (decide: enumerate '' or adopt '<external>')"  # d71e
+- op: discuss  # 22a6
+  at: '2026-11-01T09:32:29Z'  # 22a6
+  by: agent  # 22a6
+  actor: jgstern_agent  # 22a6
+  clock: 5  # 22a6
+  nonce: 22a6  # 22a6
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A2/). VERDICT: PARTLY-STALE. Fixture a.ts `import {html} from 'lit'` -> node typescript:npm:0-0:lit:package, kind=package (not npm_package), path='', language=null, discovery_language=typescript, span 0-0, origin js-module-linker; the same artifact carries typescript:lit:0-0:html:external_symbol with path '<external>'. id_format violations: 0. language=null and span 0-0 are by design (ADR-0031 Class B, ADR-0036 R3). Source: linkers/js_module.py:965-973 (unchanged since 1c2ce91f7b). What remains: '' is an undeclared second no-anchor spelling of node.path beside the documented '<external>' (ir.py:737; ADR-0036 R3 table, whose full enumeration is not landed). Title re-scoped. ROOT-CAUSE GROUP: hand-rolled ids/placeholders bypass the ADR-0036 chokepoint (with INV-dulah, WI-ribuz, META-sigap). Status unchanged."  # 22a6

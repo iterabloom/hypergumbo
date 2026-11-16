@@ -78,8 +78,8 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     assert result == 0
 
     data = json.loads((tmp_path / "results.json").read_text())
-    # Should have JavaScript symbols (excluding the WI-dagif file anchor that
-    # app.js, a node-bearing path, now also gets).
+    # Should have JavaScript symbols (excluding the file anchor that app.js,
+    # a node-bearing path, also gets; WI-dagif).
     js_nodes = [
         n for n in data["nodes"]
         if n["language"] == "javascript" and n["kind"] != "file"
@@ -138,9 +138,9 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: dispatcher pre-filters analyzers when their language has zero
-    # files in the profile, so we need at least one .php file for the patched
-    # analyzer to be dispatched and surface its skip reason.
+    # The dispatcher skips analyzers whose language has zero files in the
+    # profile, so at least one .php file is needed for the patched analyzer
+    # to be dispatched and surface its skip reason (WI-jadig).
     (tmp_path / "stub.php").write_text("<?php\n")
 
     # Create mock result with skipped flag
@@ -176,7 +176,7 @@ def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.c").write_text("int main(void){return 0;}\n")
 
     # Create mock result with skipped flag
@@ -212,7 +212,7 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "Stub.java").write_text("class Stub {}\n")
 
     # Create mock result with skipped flag
@@ -248,7 +248,7 @@ def test_cmd_run_with_elixir_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.ex").write_text("defmodule Stub do\nend\n")
 
     # Create mock result with skipped flag
@@ -284,7 +284,7 @@ def test_cmd_run_with_rust_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.rs").write_text("fn main() {}\n")
 
     # Create mock result with skipped flag
@@ -320,7 +320,7 @@ def test_cmd_run_with_go_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.go").write_text("package main\nfunc main() {}\n")
 
     # Create mock result with skipped flag
@@ -356,7 +356,7 @@ def test_cmd_run_with_ruby_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.rb").write_text("def stub; end\n")
 
     # Create mock result with skipped flag
@@ -392,7 +392,7 @@ def test_cmd_run_with_kotlin_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.kt").write_text("fun main() {}\n")
 
     # Create mock result with skipped flag
@@ -428,7 +428,7 @@ def test_cmd_run_with_swift_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.swift").write_text("func stub() {}\n")
 
     # Create mock result with skipped flag
@@ -464,7 +464,7 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.scala").write_text("object Stub {}\n")
 
     # Create mock result with skipped flag
@@ -500,7 +500,7 @@ def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.lua").write_text("local function stub() end\n")
 
     # Create mock result with skipped flag
@@ -536,7 +536,7 @@ def test_cmd_run_with_haskell_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "Stub.hs").write_text("module Stub where\n")
 
     # Create mock result with skipped flag
@@ -572,7 +572,7 @@ def test_cmd_run_with_ocaml_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
-    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    # A stub source file is needed; see test_cmd_run_with_php_analyzer_skipped.
     (tmp_path / "stub.ml").write_text("let stub () = ()\n")
 
     # Create mock result with skipped flag
@@ -637,8 +637,8 @@ JNIEXPORT void JNICALL Java_NativeLib_sayHello(JNIEnv *env, jobject obj) {
     runs = [r["pass"] for r in data["analysis_runs"]]
     assert "jni-linker" in runs
 
-    # Should have native bridge edge — post-ADR-0023 §6 Phase 3 the
-    # JNI linker emits 'calls' + meta['bridge_kind']='native'.
+    # Should have native bridge edge — the JNI linker emits 'calls' +
+    # meta['bridge_kind']='native' (ADR-0023 §6).
     native_edges = [
         e for e in data["edges"]
         if e["type"] == "calls"
@@ -648,7 +648,7 @@ JNIEXPORT void JNICALL Java_NativeLib_sayHello(JNIEnv *env, jobject obj) {
 
 
 def test_cmd_run_gzip_auto_appends_gz_extension(tmp_path: Path, capsys) -> None:
-    """WI-makom: --gzip with --out foo.json must auto-append .gz."""
+    """--gzip with --out foo.json must auto-append .gz (WI-makom)."""
     args = FakeArgs()
     args.path = str(tmp_path)
     args.out = str(tmp_path / "output.json")
@@ -695,7 +695,7 @@ def test_cmd_run_gzip_auto_appends_gz_extension(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_run_gzip_with_gz_extension_unchanged(tmp_path: Path) -> None:
-    """WI-makom: --gzip with --out foo.json.gz must NOT double-append."""
+    """--gzip with --out foo.json.gz must NOT double-append (WI-makom)."""
     args = FakeArgs()
     args.path = str(tmp_path)
     args.out = str(tmp_path / "output.json.gz")
@@ -796,10 +796,10 @@ def _slice_args(tmp_path: Path, out) -> "FakeArgs":
 
 
 def test_slice_negative_hub_threshold_rejected(tmp_path: Path, capsys) -> None:
-    """WI-bolar: a negative --hub-threshold is rejected at parse time (rc=2),
-    not silently coerced through the ``raw if raw else None`` truthiness guard
-    (which passed negatives through) into a collapsed slice. ``0`` stays the
-    documented disable sentinel — that path is unchanged."""
+    """A negative --hub-threshold is rejected at parse time (rc=2).
+    cmd_slice's ``raw if raw else None`` truthiness guard maps only ``0`` to
+    "disabled" and would pass a negative through into a collapsed slice.
+    ``0`` remains the documented disable sentinel (WI-bolar)."""
     with pytest.raises(SystemExit) as exc:
         main(["slice", str(tmp_path), "--hub-threshold=-5"])
     assert exc.value.code == 2
@@ -809,10 +809,9 @@ def test_slice_negative_hub_threshold_rejected(tmp_path: Path, capsys) -> None:
 def test_cmd_slice_explicit_out_slice_json_is_honored(
     tmp_path: Path, monkeypatch, capsys,
 ) -> None:
-    """INV-fapid: an explicit ``--out slice.json`` is written to that literal
-    path, no longer silently overridden by entry-name auto-detection (the
-    default sentinel is now ``None``, so the collision with a user's
-    ``slice.json`` is gone)."""
+    """An explicit ``--out slice.json`` is written to that literal path, not
+    overridden by entry-name auto-naming: the default sentinel is ``None``, so
+    no user-chosen filename collides with it (INV-fapid)."""
     args = _slice_args(tmp_path, "slice.json")
     monkeypatch.chdir(tmp_path)
 
@@ -823,10 +822,9 @@ def test_cmd_slice_explicit_out_slice_json_is_honored(
 def test_cmd_slice_omitted_out_auto_generates_from_entry(
     tmp_path: Path, capsys,
 ) -> None:
-    """INV-fapid: with ``--out`` omitted (``None``), the output name is
-    auto-generated from the entry (into the cache dir) to avoid accidental
-    overwrites — the default-name path, now keyed on ``out is None`` rather
-    than the ``== 'slice.json'`` string collision."""
+    """With ``--out`` omitted (``None``), the output name is auto-generated
+    from the entry (into the cache dir) to avoid accidental overwrites; the
+    default-name path is keyed on ``out is None`` (INV-fapid)."""
     args = _slice_args(tmp_path, None)
 
     assert cmd_slice(args) == 0
@@ -836,9 +834,9 @@ def test_cmd_slice_omitted_out_auto_generates_from_entry(
 def test_main_unexpected_exception_exits_1_with_clean_message(
     monkeypatch, capsys,
 ) -> None:
-    """WI-himas: an unexpected exception in a command surfaces through main()'s
+    """An unexpected exception in a command surfaces through main()'s
     top-level handler as a clean 'internal error' message + rc=1, not a raw
-    Python traceback dumped at the user."""
+    Python traceback dumped at the user (WI-himas)."""
     def _boom(_args):
         raise RuntimeError("kaboom")
     monkeypatch.setattr("hypergumbo_core.cli.cmd_catalog", _boom)
@@ -854,8 +852,8 @@ def test_main_unexpected_exception_exits_1_with_clean_message(
 
 
 def test_main_unexpected_exception_reraises_under_debug(monkeypatch) -> None:
-    """WI-himas: under --debug the original exception propagates so the full
-    traceback is available for diagnosis (no clean-swallow)."""
+    """Under --debug the original exception propagates so the full
+    traceback is available for diagnosis (no clean-swallow; WI-himas)."""
     def _boom(_args):
         raise RuntimeError("kaboom-debug")
     monkeypatch.setattr("hypergumbo_core.cli.cmd_catalog", _boom)
@@ -1030,7 +1028,7 @@ def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_slice_no_duplicate_artifacts(tmp_path: Path, capsys) -> None:
-    """WI-nijum: slice output summary must not list the same path twice."""
+    """Slice output summary must not list the same path twice (WI-nijum)."""
     behavior_map = {
         "schema_version": "0.1.0",
         "nodes": [
@@ -1143,8 +1141,8 @@ def test_cmd_slice_with_limits_hit(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "limits hit: hop_limit" in out
-    # WI-mibuj: the magnitude is printed with the flag -- b was not expanded,
-    # so c and the b->c edge are missing from the slice.
+    # The magnitude is printed with the flag -- b was not expanded, so c and
+    # the b->c edge are missing from the slice (WI-mibuj).
     assert (
         "hop_limit (cap 1): 1 node(s), 1 edge(s), 1 file(s) omitted at the "
         "frontier; 1 node(s) not expanded" in out
@@ -2495,8 +2493,8 @@ def test_cmd_catalog_shows_all_passes(capsys, tmp_path, monkeypatch) -> None:
     assert "Available Passes:" in out
     assert "python" in out
     assert "html" in out
-    assert "javascript" in out  # extras now shown by default
-    # v1.1.x: Show framework patterns instead of deprecated packs
+    assert "javascript" in out  # extras are shown by default
+    # Framework patterns are listed; packs are marked deprecated
     assert "Available Framework Patterns (v1.1.x):" in out
     assert "--frameworks" in out
     assert "Packs are deprecated" in out
@@ -2640,8 +2638,8 @@ def test_cmd_sketch_generates_comparison_table_by_default(tmp_path: Path, capsys
 
 
 def test_cmd_sketch_no_comparison_sketches_flag_skips_table(tmp_path: Path, capsys) -> None:
-    """WI-fufop: --no-comparison-sketches skips the 4x/16x comparison sketches
-    and the representativeness table (for batch/scripted single-budget runs)."""
+    """--no-comparison-sketches skips the 4x/16x comparison sketches and the
+    representativeness table (for batch/scripted single-budget runs; WI-fufop)."""
     (tmp_path / "package.json").write_text('{"name": "batchpkg", "version": "1.0.0"}')
     args = FakeArgs()
     args.path = str(tmp_path)
@@ -2688,10 +2686,9 @@ def test_cmd_sketch_nonexistent_path(capsys) -> None:
 def test_cmd_sketch_single_file_input_exits_cleanly(tmp_path: Path, capsys) -> None:
     """Pointing sketch at a file (not a directory) exits cleanly with a hint.
 
-    Per WI-zujum (UAT 2026-04-13 BUG-04): the prior behaviour printed a
-    helpful hint, then proceeded into ``generate_sketch`` and crashed with
-    ``NotADirectoryError`` from ``Path.iterdir()``. The hint must terminate
-    the command so users see the suggestion, not a traceback.
+    The hint must terminate the command: continuing into ``generate_sketch``
+    would crash with ``NotADirectoryError`` from ``Path.iterdir()``, so users
+    would see a traceback instead of the suggestion (WI-zujum).
     """
     sample = tmp_path / "thing.tla"
     sample.write_text("---- MODULE Thing ----\n==== ")
@@ -2752,7 +2749,7 @@ def test_positive_token_budget_accepts_positive_int() -> None:
 
 
 def test_positive_token_budget_rejects_zero() -> None:
-    """`-t 0` is rejected (WI-pokor / UAT BUG-02)."""
+    """`-t 0` is rejected (WI-pokor)."""
     import argparse
     from hypergumbo_core.cli import _positive_token_budget
     with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
@@ -2760,7 +2757,7 @@ def test_positive_token_budget_rejects_zero() -> None:
 
 
 def test_positive_token_budget_rejects_negative() -> None:
-    """`-t -1` / `-t -100` are rejected (WI-pokor / UAT BUG-03)."""
+    """`-t -1` / `-t -100` are rejected (WI-pokor)."""
     import argparse
     from hypergumbo_core.cli import _positive_token_budget
     with pytest.raises(argparse.ArgumentTypeError, match="token budget"):
@@ -3136,7 +3133,7 @@ def test_print_output_summary_with_cached_artifacts(tmp_path: Path, capsys) -> N
 
 
 def test_print_output_summary_generated_includes_noun(tmp_path: Path) -> None:
-    """WI-nijum: 'Generated N' must include the noun 'artifact(s)'."""
+    """'Generated N' must include the noun 'artifact(s)' (WI-nijum)."""
     import io
 
     f1 = tmp_path / "a.json"
@@ -3152,7 +3149,7 @@ def test_print_output_summary_generated_includes_noun(tmp_path: Path) -> None:
 
 
 def test_print_output_summary_deduplicates_artifacts(tmp_path: Path) -> None:
-    """WI-nijum: duplicate paths in the artifact list must be collapsed."""
+    """Duplicate paths in the artifact list must be collapsed (WI-nijum)."""
     import io
 
     f1 = tmp_path / "a.json"
@@ -3627,11 +3624,12 @@ def test_cmd_slice_files_mode(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_slice_files_mode_max_hops_none(tmp_path: Path, capsys) -> None:
-    """Regression: --files mode with max_hops=None (argparse default) must not crash.
+    """--files mode with max_hops=None (argparse default) must not crash.
 
-    Previously raised TypeError: '<' not supported between 'int' and 'NoneType'
-    because getattr(args, "max_hops", 10) returns None when the attribute exists
-    but is set to None by argparse.
+    argparse sets the attribute to None when --max-hops is not passed, so a
+    ``getattr(args, "max_hops", 10)`` default never applies; the BFS hop
+    comparison needs an int fallback or it raises TypeError
+    ('<' not supported between 'int' and 'NoneType').
     """
     from hypergumbo_core.cli import _handle_files_mode
     from hypergumbo_core.ir import Symbol, Edge, Span
@@ -3951,7 +3949,7 @@ def test_cmd_slice_files_mode_stdout_output(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_slice_files_integration(tmp_path: Path, capsys) -> None:
-    """Test cmd_slice with --files flag (integration test for line 914)."""
+    """Test cmd_slice with --files flag (integration test for the --files dispatch)."""
     from hypergumbo_core.cli import cmd_slice
 
     # Create a behavior map with symbols
@@ -4079,10 +4077,9 @@ def test_cmd_compact_converts_behavior_map(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("suffix", [".json", ".json.gz"])
 def test_cmd_compact_accepts_gzipped_input(tmp_path: Path, suffix: str) -> None:
-    """WI-mokim: cmd_compact must round-trip plain .json AND .json.gz
-    fixtures. Prior to WI-mokim the .gz path dumped gzip bytes into
-    json.loads and exploded; this guards that consumer-side decompression
-    stays wired up."""
+    """cmd_compact must round-trip plain .json AND .json.gz fixtures: .gz
+    input has to be decompressed before json.loads, which cannot parse gzip
+    bytes (WI-mokim)."""
     import gzip
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
@@ -4179,8 +4176,8 @@ def test_cmd_compact_file_not_found(tmp_path: Path) -> None:
 
 
 def test_wi_vusaf_compact_arg_validators() -> None:
-    """WI-vusaf: the compact flag validators accept valid values and reject
-    out-of-range ones with argparse.ArgumentTypeError (→ CLI exit 2)."""
+    """The compact flag validators accept valid values and reject
+    out-of-range ones with argparse.ArgumentTypeError (→ CLI exit 2; WI-vusaf)."""
     import argparse
     from hypergumbo_core.cli import (
         _positive_int_arg, _nonneg_int_arg, _unit_interval_arg,
@@ -4214,8 +4211,8 @@ def test_wi_vusaf_compact_arg_validators() -> None:
 def test_wi_vusaf_main_rejects_bad_compact_flags(
     tmp_path: Path, flag: str, val: str
 ) -> None:
-    """WI-vusaf: numerically invalid compact flags are rejected at the CLI
-    boundary (exit 2), not silently accepted."""
+    """Numerically invalid compact flags are rejected at the CLI
+    boundary (exit 2), not silently accepted (WI-vusaf)."""
     bm = {"schema_version": SCHEMA_VERSION, "nodes": [], "edges": []}
     inp = tmp_path / "hg.json"
     inp.write_text(json.dumps(bm))
@@ -4227,8 +4224,8 @@ def test_wi_vusaf_main_rejects_bad_compact_flags(
 def test_wi_vusaf_cmd_compact_rejects_max_lt_min(
     tmp_path: Path, capsys
 ) -> None:
-    """WI-vusaf: --max-symbols < --min-symbols is a cross-flag config error
-    (rc=2 with a clear message), caught before any file load."""
+    """--max-symbols < --min-symbols is a cross-flag config error
+    (rc=2 with a clear message), caught before any file load (WI-vusaf)."""
     args = FakeArgs()
     args.input = str(tmp_path / "unused.json")
     args.out = None
@@ -4243,8 +4240,8 @@ def test_wi_vusaf_cmd_compact_rejects_max_lt_min(
 
 
 def test_wi_zulij_connectivity_flag_routes_both_modes(tmp_path: Path) -> None:
-    """WI-zulij: the compact default is centrality-ranked; --connectivity opts
-    into connectivity-aware selection. Both produce a valid compact view."""
+    """The compact default is centrality-ranked; --connectivity opts into
+    connectivity-aware selection. Both produce a valid compact view (WI-zulij)."""
     bm = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -4267,9 +4264,9 @@ def test_wi_zulij_connectivity_flag_routes_both_modes(tmp_path: Path) -> None:
 
 
 def test_add_schema_envelope_spread_shape() -> None:
-    """WI-gogif: the shared read-view envelope spreads schema_version + view +
+    """The shared read-view envelope spreads schema_version + view +
     payload at top level (spec Appendix C) — NOT nested under 'data' — and
-    preserves per-view schema_version and key order."""
+    preserves per-view schema_version and key order (WI-gogif)."""
     from hypergumbo_core.cli import add_schema_envelope
 
     env = add_schema_envelope(
@@ -4289,8 +4286,8 @@ def test_add_schema_envelope_spread_shape() -> None:
 
 
 def test_cmd_catalog_json_format(tmp_path: Path, capsys, monkeypatch) -> None:
-    """WI-soroz: catalog --format json emits a passes / framework_patterns /
-    suggested envelope."""
+    """catalog --format json emits a passes / framework_patterns /
+    suggested envelope (WI-soroz)."""
     from hypergumbo_core.cli import cmd_catalog
 
     monkeypatch.chdir(tmp_path)  # empty dir -> not large, no suggestions
@@ -4311,8 +4308,8 @@ def test_cmd_catalog_json_format(tmp_path: Path, capsys, monkeypatch) -> None:
 def test_cmd_catalog_json_large_directory(
     tmp_path: Path, capsys, monkeypatch
 ) -> None:
-    """WI-soroz: in a large directory, catalog --format json sets
-    large_directory=True and skips language detection (no suggestions)."""
+    """In a large directory, catalog --format json sets
+    large_directory=True and skips language detection (no suggestions; WI-soroz)."""
     from hypergumbo_core.cli import cmd_catalog
 
     monkeypatch.chdir(tmp_path)
@@ -4332,9 +4329,9 @@ def test_cmd_catalog_json_large_directory(
 def test_cmd_slice_auto_entry_exclude_tests(tmp_path: Path, capsys) -> None:
     """--entry auto with --exclude-tests skips test file entrypoints.
 
-    Regression: previously --entry auto ignored --exclude-tests, causing
-    high-connectivity test file mains (e.g., compiler/test/paranoia.d:main)
-    to be selected over production entrypoints.
+    Without this, a high-connectivity test-file main (e.g.,
+    compiler/test/paranoia.d:main) would be selected over production
+    entrypoints.
     """
     # Test file entrypoint with high connectivity (many outgoing edges)
     test_node = {
@@ -4487,10 +4484,10 @@ def test_cmd_slice_auto_entry_prefers_main_over_route(
 ) -> None:
     """--entry auto prefers main() over route handlers with more edges.
 
-    Reproduces the alertmanager issue: V1DeprecationRouter.deprecationHandler
-    (7 out-edges, all to dead-end route nodes) was selected over main()
-    (2 out-edges but actually the application root). Main functions should
-    get a boost because they are the canonical application entrypoint.
+    The fixture mirrors alertmanager: V1DeprecationRouter.deprecationHandler
+    (7 out-edges, all to dead-end route nodes) must not be selected over
+    main() (2 out-edges, but the application root). Main functions get a
+    boost because they are the canonical application entrypoint.
     """
     main_node = {
         "id": "go:cmd/app/main.go:1-50:main:function",
@@ -4580,13 +4577,13 @@ def test_cmd_slice_auto_entry_prefers_main_over_route(
 
 
 # ============================================================================
-# WI-balij: subcommand parser cleanup tests
+# Subcommand parser: typo detection and --debug placement (WI-balij)
 # ============================================================================
 
 
 def test_invalid_subcommand_reports_error_with_exit_code_2(capsys) -> None:
     """`hypergumbo foobar` exits 2 with a 'not a valid subcommand' message
-    instead of silently inserting `sketch` and reporting 'path does not exist'.
+    rather than being routed to `sketch` as a nonexistent path.
     """
     result = main(["foobar"])
     assert result == 2
@@ -4617,7 +4614,7 @@ def test_path_argument_still_routes_to_default_sketch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A real path (e.g. `hypergumbo .`) still routes to the default sketch
-    subcommand — it must NOT trip the new typo-detection branch.
+    subcommand — it must NOT trip the typo-detection branch.
     """
     captured: dict = {}
 
@@ -4656,8 +4653,8 @@ def test_relative_path_routes_to_default_sketch(
 def test_debug_flag_accepted_after_subcommand(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`hypergumbo sketch <path> --debug` no longer fails with
-    'unrecognized arguments: --debug' — the flag works in any position.
+    """`hypergumbo sketch <path> --debug` is accepted (no
+    'unrecognized arguments: --debug') — the flag works in any position.
     """
     monkeypatch.setattr(
         "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
@@ -4669,8 +4666,8 @@ def test_debug_flag_accepted_after_subcommand(
 def test_debug_flag_accepted_before_subcommand(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The original `hypergumbo --debug sketch <path>` form still works
-    (regression guard for the WI-balij fix).
+    """The `hypergumbo --debug sketch <path>` form (flag before the
+    subcommand) also works.
     """
     monkeypatch.setattr(
         "hypergumbo_core.cli.cmd_sketch", lambda args: 0,
@@ -4722,14 +4719,14 @@ def test_no_debug_flag_does_not_call_basicconfig(
 
 
 # ============================================================================
-# WI-munuv: unified path argument across subcommands
+# Unified path argument across subcommands: positional or --path (WI-munuv)
 # ============================================================================
 
 
 def test_routes_accepts_positional_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`hypergumbo routes /path` works (previously --path-only)."""
+    """`hypergumbo routes /path` works (positional form)."""
     captured: dict = {}
     monkeypatch.setattr(
         "hypergumbo_core.cli.cmd_routes",
@@ -4743,7 +4740,7 @@ def test_routes_accepts_positional_path(
 def test_routes_accepts_path_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`hypergumbo routes --path /path` still works (regression guard)."""
+    """`hypergumbo routes --path /path` works (flag form)."""
     captured: dict = {}
     monkeypatch.setattr(
         "hypergumbo_core.cli.cmd_routes",
@@ -4757,7 +4754,7 @@ def test_routes_accepts_path_flag(
 def test_sketch_accepts_path_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`hypergumbo sketch --path /path` works (previously positional-only)."""
+    """`hypergumbo sketch --path /path` works (flag form)."""
     captured: dict = {}
     monkeypatch.setattr(
         "hypergumbo_core.cli.cmd_sketch",
@@ -4771,7 +4768,7 @@ def test_sketch_accepts_path_flag(
 def test_sketch_accepts_positional_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`hypergumbo sketch /path` still works (regression guard)."""
+    """`hypergumbo sketch /path` works (positional form)."""
     captured: dict = {}
     monkeypatch.setattr(
         "hypergumbo_core.cli.cmd_sketch",
@@ -4842,7 +4839,7 @@ def test_both_forms_explicit_is_user_error(
 def test_io_boundaries_accepts_positional_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`hypergumbo io-boundaries /path` works (previously --path-only)."""
+    """`hypergumbo io-boundaries /path` works (positional form)."""
     captured: dict = {}
     monkeypatch.setattr(
         "hypergumbo_core.cli.cmd_io_boundaries",

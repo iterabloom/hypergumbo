@@ -31,3 +31,10 @@
   set: {}  # 7c70
   add:  # 7c70
     isbefore: [WI-lugag-nisap-holip-kazuz-basah-vukuh-ratap-kafup]  # 7c70
+- op: discuss  # 9d95
+  at: '2026-11-01T22:22:25Z'  # 9d95
+  by: agent  # 9d95
+  actor: jgstern_agent  # 9d95
+  clock: 3  # 9d95
+  nonce: 9d95  # 9d95
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/links1/). VERDICT: CURRENT. Re-checked 2026-11-01 at 9ae4abe13f. Predecessor WI-mugog (Phase A) is done (833d95a40f), so this item is unblocked. string_interpolation.yaml still has only javascript and typescript entries, and SCOPE.md lists python and ruby as deferred to Phase B. Fixture requests.get(f\"{BASE}/users/{uid}\") against @app.route(\"/api/users/<uid>\") produced no HTTP edge. Kotlin, Scala and Swift are not in SCOPE.md either; the property test was not re-run here. MECHANISM: string_interpolation.yaml declares only javascript/typescript placeholder patterns; the Python/Ruby/Kotlin/Scala/Swift scanners have no interpolation fold. SHARES MECHANISM WITH: INV-miloj,WI-lugag,WI-vaguk."  # 9d95

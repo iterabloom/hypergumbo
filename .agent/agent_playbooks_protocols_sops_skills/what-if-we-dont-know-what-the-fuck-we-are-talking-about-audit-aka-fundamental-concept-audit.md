@@ -220,7 +220,7 @@ and `proto.py`. Three out of seven verdicts in that cluster were
 wrong — a 43% miss rate for that single re-trace, ~5% across the
 broader cluster.
 
-**The five producer-emit shapes** that any verdict claiming "no
+**The six producer-emit shapes** that any verdict claiming "no
 producer" or "this fold target is correct" must check:
 
 1. **Literal kwarg.** `Symbol(kind="<value>", ...)` or
@@ -248,15 +248,22 @@ producer" or "this fold target is correct" must check:
    by the analyzer module before being read out at emit time. WI-nubuv
    ext C (todo_soft) is the structural backstop.
 
+6. **String method on an AST node type.** `kind=node.type.replace(
+   "_definition", "")` derives the emitted value from the grammar's node
+   name, so the value never appears as a literal anywhere in the analyzer.
+   `pony.py:327` emits `actor` and `primitive` this way; neither was a
+   registered kind until WI-higik (concept audit 2026-10-22). Grep for `.type.replace(`,
+   `.type.removesuffix(` and `.type.split(` near `kind=`.
+
 The producer-emit shapes above are the *known* miss categories for
-this codebase as of 2026-05-07. New languages or analyzer styles can
+this codebase as of 2026-10-22 (shape 6 added that day). New languages or analyzer styles can
 introduce new shapes; treat the list as a checklist seed, not as
-exhaustive. When you find a sixth shape during an audit, append it
+exhaustive. When you find a seventh shape during an audit, append it
 here with a file:line example.
 
 **Procedure.** For every value the audit's per-pair Step 6 verdict
 will touch — especially every value receiving a DEPRECATE-NO-FOLD
-verdict — run *each* of the five greps above. The audit's evidence
+verdict — run *each* of the six greps above. The audit's evidence
 section must record either the producer site found (file:line) or an
 explicit "ran shape N grep, zero hits" entry. A verdict that lists
 literal-grep hits only is incomplete and must not ship.
@@ -442,13 +449,15 @@ Each verdict is justified by which of the four leakage tests (Step 3)
 fired most diagnostically. The audit-findings document records the
 fired test alongside the verdict.
 
-> **Refactor trigger.** If a future axis declaration reveals that the
-> verdict scheme genuinely varies per axis — i.e., a different host
-> dataclass needs a different trichotomy or a four-way split — promote
-> this subsection into a standalone `docs/family-audit-methodology.md`
-> at that point. Don't speculatively split now; the trichotomy has been
-> empirically general across the three audited axes (`Edge.edge_type`,
-> `Symbol.kind`, `Edge.evidence_type`).
+> **Refactor trigger — fired, resolved (WI-daruz, 2026-10-28).** It
+> fired on pass-silence (ADR-0054) and on the io-boundary axis (host
+> `IoPrimitive`: audit-findings 0021's `io_boundary_membership` and
+> 0022's `io_boundary_row_candidates`). Both non-trichotomy schemes
+> live as declared `kind:` block formats in `docs/audits/README.md`
+> §sibling formats, and that section is the lift — no standalone
+> `docs/family-audit-methodology.md`. New trigger (ADR-0024 carries the
+> same text): when two `kind:`s need the SAME non-trichotomy scheme,
+> write the standalone methodology file.
 
 ### Step 7 — Record findings
 
@@ -804,7 +813,15 @@ runs can find prior work:
   the "exists" question has its own field and consumers check it. Kept with a
   written re-evaluation trigger (fires the moment any consumer reads `status`
   without checking `is_supported`, or constructs `IoBoundaryCatalog` outside
-  `_from_dict`). No new axis declared — remedy is naming/documentation plus one
+  `_from_dict`). **[Fired, and closed 2026-10-28, WI-daruz:** both legs held —
+  `merge` and the missing-file path construct directly, and four readers
+  read `.status` unchecked — but the hazard they guarded was already fixed by
+  WI-gofah: a missing file now stamps `status: unsupported`, so no reader can
+  see a default `complete`. KEEP closed. The field now holds three values
+  (`provenance_declared` / `in_progress`, which a file declares, and
+  `unsupported`, which only the missing-file path sets), with `overlay_only`
+  a separate flag; new trigger: a reader that treats any status other than
+  `provenance_declared` as a completeness claim.**]** No new axis declared — remedy is naming/documentation plus one
   small fold. Two items filed: WI-maduh (document what it enforces vs. what
   gates verdicts), WI-sihiz (fold `overlay` out of the completeness field).
   Full write-up:
@@ -888,6 +905,12 @@ runs can find prior work:
   convention applied to all 15 catalogues. Pair 2 identity-vs-sentinel: Test 2
   fires, **KEEP** — guarded by `_UNRESOLVED_MODULE_PLACEHOLDERS`; trigger
   written (any catalogue row whose module is literally `external`/`redirect`).
+  **[Fired before it was written, closed 2026-10-28, WI-daruz:** `io_primitives/
+  bash.yaml` had shipped four `module: redirect` rows since 2026-08-14, so
+  `redirect` was never a sentinel — it is the shell's own namespace and the
+  module-key axis now files it under `namespace`. The KEEP rested on a
+  mis-measurement ("no catalogue row matches it"). `external` stays a
+  sentinel.**]**
   Pair 3 qualifier-in-MODULE-slot vs NAME-slot: Test 2 fires, **DEPRECATE, fix
   the producers**. Silent bugs, each verified through the production classifier:
   **F1** the suffix arm has no capitalisation test, so sops'
@@ -1006,7 +1029,13 @@ runs can find prior work:
   than after it. **Enforcement finding: INV-tadup is a DENYLIST** (four ejected
   values, with a positive control) — right for regression, blind to a value it
   has never seen, which is how `assignment` shipped through every gate in the
-  repo unreviewed. Adjacent: **`meta["receiver"]` CONFIRMED LEAK** — 9 values
+  repo unreviewed. Adjacent: **`meta["receiver"]` CONFIRMED LEAK** *(its
+  keep-trigger — "if a consumer needs to query class and shape
+  independently" — fired: `method_call_recovery` branches on `field_chain`
+  alone. Re-verdicted OK by the WI-kosup sweep (WI-mujug note, 2026-10-28):
+  both readers' value sets match the producers' and a partition test guards
+  it. New trigger in `axis_meta_keys`: a consumer needs the CLASS of a
+  `field_chain` receiver — WI-daruz)* — 9 values
   splitting into syntactic shape (`qualified`, `field_chain`, `bare`) and
   resolution outcome (`typed_var`, `stdlib`, `external`, `constant_external`),
   where `external` is the very thing `remote_external` was ejected from
@@ -1126,6 +1155,86 @@ runs can find prior work:
   write-up: `~/hypergumbo_lab_notebook/concept-audit-io-primitive-kind_09232026.md`.
 
 (Future audits append here.)
+
+- **2026-10-30 — consumer agreement (`consumer-agreement`, WI-borib).**
+  Trigger: the input filed after audit #20 for the one critique shape it had
+  no scope for -- two consumers deriving one fact separately. Method: four
+  read-only sub-agents on the pinned tree (a17367f254), one per family
+  (reachability, ranking and scope, counts and pass disclosure,
+  classification and tier), AST walks for every derivation; the orchestrator
+  measured each separate pair on one default survey per language family and
+  read every disagreement it counted. **Confirmed**: of 17 facts, 12 are
+  derived separately. On real output: five test predicates, so ripgrep's
+  `#[test]` functions are 434 of dead-code's 817 candidates while slice calls
+  them tests; dead-code and test-coverage contradict on overrides reached by
+  `dispatches_to`; taint ignores `io_target_kind` where io-boundaries honours
+  it. Write-up `docs/audits/0026-consumer-agreement.md`; 14 items, WI-vosop
+  decided. The lesson worth carrying: re-taking WI-vosop's harness-vs-survey
+  diff edge by edge found a Rust binding that depends on FILE ORDER -- the
+  harness walks files, a survey sorts them, and the two produce different
+  call graphs from one analyzer. An instrument that imitates a pipeline
+  inherits none of the pipeline's ambient state unless it is told to.
+
+- **2026-10-28 — reader census (`reader-census`, WI-kosup).** Trigger: the
+  input filed after audit #19, scope widened by the owner on 10-25. Method:
+  six read-only sub-agents on one pinned worktree (02a25bba56), one per scope
+  (fields, meta keys, knobs and catalogue keys, functions, vocabulary subsets,
+  keep-with-trigger verdicts), AST walks over the six emit/read shapes, each
+  reader classified display / presence / branch; the orchestrator re-checked
+  the highest-impact claims. **Confirmed in all six scopes**: 9 fields to
+  delete and 4 to wire, 115 registered meta keys with no production reader,
+  6 readers keyed to keys or values nothing writes (the worst a hand-written
+  framework_role subset that misses the IPC linkers' f-string values), 5
+  catalogue loaders that ignore unknown keys, 269 unchecked vocabulary subsets,
+  and 44 keep-with-trigger verdicts of which 9 had fired with nobody acting
+  and none is evaluated by anything. Write-up `docs/audits/0023-reader-census.md`;
+  14 action items and 4 named decisions. The lesson worth carrying: the
+  sweep's first live finding was the orchestrator's own merge of the same
+  day -- a guard function added as test-only, which the test-only ratchet
+  would have flagged on the next full suite.
+- **2026-10-22 — vocabulary since the last audit (`vocabulary-since-0923`).**
+  Trigger: cadence (683 commits against a threshold of 72). Owner-requested,
+  pinned to merged dev `e9215548f6` so in-flight work could proceed, with
+  findings reconciled against later commits afterwards. Method: six read-only
+  sub-agents on one pinned worktree, with no tracker, git, smart-test or corpus
+  runs. Five each took one TERM across every consumer, not one subsystem. The
+  sixth was neutral and got no hypothesis. The orchestrator re-checked the
+  highest-impact claims itself. **Confirmed in five of six families.** The
+  neutral agent's top nominee (catalogue trust/tier/provenance) was the
+  family one primed agent had, and both agents reached the same three defects
+  independently, which is the cross-check that design was for.
+
+  The lesson worth carrying is that the audit's first silent bug was the
+  orchestrator's own merge from the day before. WI-sitaf put Go's blank `_`
+  into `stmt_defuse`'s "defines" slot as a positional placeholder. Two
+  consumers read it as a variable: `inherits` made it an heir with no
+  recorded use, and the received-position seed read `{"_"}` as an untracked
+  source. `_, err := get(); fmt.Println(err)` and `s, _ := tok.(string)`
+  turned from exit 3 into a false `violated`. The fix's own corpus A/B had
+  not caught it, because the cohort's verdicts were already `violated` with
+  evidence capped at 100, so new false rows were invisible. Reverted first,
+  then refixed with positions in their own channel.
+
+  Other confirmed findings:
+  - finalize re-derives every `evidence_derived` confidence, erasing ADR-0039
+    ruling 6's resolver interpolation on every published resolved edge;
+  - `calls.src` has no written contract, although anchors (file, type, Go
+    variable) are mandated, so the magnet pass, dead code and test-only
+    reachability each read an anchor differently;
+  - catalogue tier code calls a command-line-named in-repo file `in_repo`
+    against ADR-0061 ruling 1;
+  - `slice --io-boundary` reads only the scalar boundary;
+  - a caveat counts names as "rows".
+
+  Owner verdicts are recorded per family in the write-up, plus one owner
+  decision: argv mints `untrusted_input` as well, and `document.cookie`
+  moves to browser storage keeping `host_secret`, measured first. Also new:
+  a SIXTH producer-emit shape for Step 4.5, a string method applied to an
+  AST node type (`pony.py:327`, `node.type.replace("_definition", "")`).
+
+  Filed: 19 items tagged `concept_audit_20261021`, and WI-sitaf reopened.
+  Full write-up:
+  `~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md`.
 
 ## Relationship to other playbooks
 

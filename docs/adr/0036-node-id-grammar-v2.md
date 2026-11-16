@@ -1,10 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0036: node.id Grammar v2 — Anchored Parsing, Colon Policy, Kind-Slot Purity
 
-- Status: Accepted — Decision/Enforcement shipped only partially (see the id-format:F3 partial-landing amendment below: Ruling 2 round-trip is ADVISORY; Ruling-1 name-slot round-trip and Ruling-3 sentinel enumeration NOT landed)
+- Status: Accepted. Enforced as §Enforcement lists: Ruling 2 and Ruling 3 (as Ruling 3's amendment reads it) are validator checks; the Ruling-1 name-slot round-trip is measured on every run (`validation_report.name_slot_stats`, a count by producer, file pseudo-symbols exempt) and raises no violation
 - Date: 2026-06-10
-
-> **Amended in place** — see the §Enforcement "Amendment — id-format:F3 partial landing (2026-06-13)" section below for the actual landed-vs-advisory enforcement state.
 
 - Supersedes: ADR-0034 (partial — reviewer-checklist item 5's claim that a kind-slot round-trip check already existed; the shipped `id_format` gate is shape-only, and Ruling 2's round-trip validator here is the actual instrument). This ADR tightens the grammar whose factory discipline ADR-0034 established; ADR-0034's core factory discipline remains in force.
 - Superseded by: —
@@ -159,64 +157,100 @@ catalog language and `kind` must always be a registry symbol-kind. Extending thi
 requires amending this ADR (or a successor registry module, if the enumeration later
 outgrows a table — at four rows it does not).
 
-### Enforcement
+**Amendment — what the table means (WI-dipim, owner 2026-10-24).** Read
+literally, the table above says that span `1-1` and name `file` are legal *only*
+in the file triple, and that anything else outside it is a violation. A census
+of grpc (merged dev 9814ac193b, 129,954 nodes,
+`~/hypergumbo_lab_notebook/dipim_10242026/RULING3_CENSUS.md`) shows that this
+reading flags correct ids:
 
-> **Landed-vs-advisory state:** the three layers below describe the *intended* enforcement. For what actually shipped, see the id-format:F3 amendment immediately following (Ruling 2 round-trip is ADVISORY; Ruling-1 name-slot round-trip and the full Ruling-3 sentinel enumeration are NOT landed). Do not read this section as fully-shipped enforcement.
+- **18 real one-line spans** on line 1 (`python:…/__init__.py:1-1:__path__:variable`).
+  `1-1` is an ordinary span as well as the file triple's.
+- **1,904 C++ include targets** named `file` (`cpp:<header path>:0-0:file:external_symbol`),
+  an unresolved `#include`'s convention.
+- **7 angle-bracket system headers** in the path slot (`cpp:<string>:0-0:header:external_symbol`),
+  where the path slot holds the include text.
+
+The table is read as follows. Those three are legal. What IS enforced
+(`spec_validator._check_id_roundtrip`):
+
+| Rule | Severity | Measured at landing |
+|---|---|---|
+| An id named `file` of kind `file` (the file pseudo-symbol) has span `1-1`. The converse is not required: kind `file` also carries manifest entries with a role (an npm script or `main`, a pyproject script; `meta["entry_role"]`, audit-findings 0005) | error | 0 (grpc, whisper.cpp, sherpa-onnx) |
+| No path slot is `<unknown>`. It is finalize's fallback for an edge dst that is not an id (INV-dulah, WI-bufar-pokam) | warning: producers still emitting non-id dsts | whisper.cpp 0, SwiftLint 0 (2026-11-15, after the starlark, cmake, rst, cuda, glsl and wgsl producers were fixed); grpc not re-measured since |
+| Span `start <= end` | error | 0 |
+
+The `<unknown>` warning goes to `error` once it reads 0 on the measured
+corpus with every producer of a non-id edge destination fixed.
+
+
+### Enforcement
 
 Three layers, extending ADR-0034's:
 
-1. **Factories** (`make_symbol_id`, `make_file_id`, and the Wave-2
-   `make_synthetic_symbol()` chokepoint) apply the colon policy: reject or sanitize
-   per-slot at construction time, instead of interpolating blindly.
-2. **Runtime validator** (`spec_validator.py` `id_format` class) gains round-trip
-   sub-checks (strategy id-format:F3, landing as the canary *before* cohort
-   migrations): kind slot == `node.kind` ∈ registry; name slot ==
-   sanitized `Symbol.name`; span/path sentinels ∈ the Ruling 3 enumeration.
-3. **Static linter** (WI-vodin) flags `Symbol(id=f"...")` construction at the source
-   level, after the factory API is final (strategy id-format:F4).
+1. **Factories.** `make_symbol_id` passes the name it is given through
+   `sanitize_id_name_segment` (`:` → `.`), so every id it builds has a
+   colon-free name slot. The boundary synthesizer (`ir._canonical_external_id`)
+   does the same for every `external_symbol` and passes the node's own `name`.
+   `make_file_id` builds the file triple `1-1:file:file`. A factory guarantees
+   that the slot is colon-free, not that it equals `Symbol.name`: a producer
+   that hands the factory another string than the name it stores still mints
+   a well-formed id.
+2. **Runtime validator** (`spec_validator.py`, class `id_format`), on every run:
 
-### Amendment — id-format:F3 partial landing (2026-06-13)
+   | Rule | Implementation | Severity |
+   |---|---|---|
+   | The id has five slots of the right charset (`_CANONICAL_ID_PATTERN`) | `_check_id_format` | error |
+   | The kind slot is a registered symbol kind | `_check_id_roundtrip` | error |
+   | The kind slot equals `Symbol.kind` | `_check_id_roundtrip` | error |
+   | The name slot is non-empty | `_check_id_roundtrip` | error |
+   | Ruling 3, as its amendment reads it: the file triple's span is `1-1`; span `start <= end` | `_check_id_roundtrip` | error |
+   | Ruling 3: no path slot is `<unknown>` | `_check_id_roundtrip` | warning |
+   | Ruling 1: the name slot equals `sanitize_id_name_segment(Symbol.name)` | `compute_name_slot_stats`, reported as `validation_report.name_slot_stats` | measured; no violation |
 
-The Enforcement layer-2 round-trip validator (`spec_validator._check_id_roundtrip`,
-wired into `validate_ir`) shipped as a Wave-2 T0 PR. What landed, and the gating:
+   The membership half of Ruling 2 is checked on the id's kind slot rather
+   than on `node.kind`, because `axis_conformance` already checks `node.kind`
+   against the registry. When the slot equals the kind, the two checks agree.
 
-- **Round-trip (Ruling 2), advisory.** For ids already passing the shape-only
-  `_CANONICAL_ID_PATTERN`, the check parses the last three colon-free tokens via
-  `rsplit(":", 3)` and flags **kind-slot ∉ registry** and **kind-slot ≠
-  `Symbol.kind`**, both at `warning`. Ruling 2 phrases the membership half as
-  `node.kind ∈ registry`; the implementation instead checks the **id kind-slot**
-  ∈ registry, because `axis_conformance` already owns `node.kind` membership.
-  Checking the slot is the net-new "purity" instrument and is strictly stronger:
-  it also guards a malformed slot when `Symbol.kind` is absent. The two verdicts
-  coincide on every realistic case (when slot == kind, slot ∈ registry ⇔ kind ∈
-  registry).
-- **Name-slot non-empty, advisory.** A subset of the grammar; the full Ruling-1
-  `name slot == sanitized(Symbol.name)` round-trip and the producer-side
-  `make_symbol_id` `:`→`.` sanitization (id-changing for any colon-named symbol,
-  hence T1) are **not yet landed** — deferred follow-ups.
-- **Span `start <= end`, error.** A subset of Ruling 3 with no id-changing
-  backlog. The **full Ruling-3 sentinel enumeration** (path `<external>`; the
-  `0-0` and `1-1`+`file`+`file` span triples) is **not yet landed** — a deferred
-  follow-up (it risks false positives on uncatalogued conventions and wants a
-  corpus scan before going strict).
-- **Why advisory.** A strict (error) pass red-flags the known id-changing (T1)
-  backlog that cannot clear before the v6 stable_id bump: the ~1,645
-  external_symbol kind-slot disagreements (WI-pubiv), the 22-node route/event
-  role cohort (WI-kugaj), and the single tsconfig node (audit-findings 0005,
-  whose producer folded `Symbol.kind` → `file` but left `tsconfig` in the id
-  kind-slot). The canary makes that backlog **measurable now** (the
-  schema-coverage-corpus ratchet baselines were bumped +11 to pin it); a gating
-  tracker item promotes the membership/round-trip/name checks to `error` once
-  those folds land.
-- **Decision #5 (register-vs-fold), resolved.** GraphQL `mutation` /
-  `subscription` are **registered** as `language_construct` siblings of
-  `query`/`fragment` — they were an audit-findings 0007 omission, NOT a
-  deliberate unify-to-`query` fold (the only `query` verdict on record is
-  SPARQL's, audit-findings 0007). The anonymous-operation fallback `operation`
-  is registered as `pending_classification` (its semantic fold to `query` is
-  id-changing, deferred). `tsconfig` is **not** registered — it is
-  DEPRECATE-NO-FOLD (audit-findings 0005); the fix folds its id kind-slot to
-  `file` (id-changing/T1). Registering kinds is identity-neutral.
+   **The Ruling-1 name-slot measurement.** Each node id is parsed from the
+   right; the name slot is the second-to-last `:`-separated token. An id with
+   fewer than five slots is counted as `not_parsed` and left to
+   `_check_id_format`. A raw `:` in a name shifts the right-anchored slots, so
+   the slot read is the name's last fragment and the node counts as a
+   mismatch. One rule exempts a node: the file pseudo-symbol (kind `file`, id
+   ending `1-1:file:file`; `analyze.file_records.is_file_pseudo_symbol`),
+   because Ruling 3 fixes its name slot to the literal `file` while
+   `Symbol.name` holds the path. No other sentinel in Ruling 3 defines a name
+   slot: every `external_symbol`, the `0-0` module and include-target stand-ins
+   among them, builds its name slot from its own name, and is checked like
+   every other node. The block reports `ids_checked`,
+   `exempt_file_nodes`, `not_parsed`, `mismatched`, and `by_producer`: for each
+   producer (the node's originating pass id, or its language when `origin` is
+   empty), its mismatches, its checked ids, and its smallest mismatching id
+   with that node's name. Producers are ordered by mismatches, then name, and
+   capped at 20. `producers_cut` counts the producers left out. A mismatch
+   adds no `ValidationViolation` and the round-trip is not in `_WIRED_CHECKS`.
+
+   **What promotes it.** The name-slot round-trip becomes an `error` sub-check
+   of `_check_id_roundtrip`, one violation per node, when `mismatched` is 0 on
+   the schema-coverage corpus in every substrate of
+   `packages/hypergumbo-core/tests/test_validation_report_empty.py` and on the
+   repositories surveyed for the promotion. Until then a violation per node would add thousands of
+   entries to a JavaScript repository's report: on knex, 6,356 of its 6,361
+   mismatches are anonymous-callback ids (`_cb_forEach@33` in the slot,
+   `_cb_forEach` in `Symbol.name`). Each producer family reaches 0 by making
+   its id's name slot and its `Symbol.name` the same string. The `<unknown>`
+   path-slot warning becomes an error when its producers stop emitting an edge
+   `dst` that is not an id.
+3. **Static linter** (`check_id_construction.py`, run as
+   `scripts/check-id-construction`) checks every expression that reaches
+   `Symbol(id=...)` or `Edge(id=...)` against the id grammar, in the source.
+
+**Kind registrations this grammar depends on.** GraphQL `mutation` and
+`subscription` are registered `language_construct` kinds beside `query` and
+`fragment`. The anonymous-operation fallback `operation` is registered as
+`pending_classification`. `tsconfig` is not a kind: a tsconfig node's kind
+slot is `file` (audit-findings 0005).
 
 ## Alternatives considered
 

@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-jubim: kotlin and scala type a receiver from what a JDK call RETURNS.
+"""Kotlin and scala type a receiver from what a JDK call RETURNS (WI-jubim).
 
 ``Runtime.getRuntime().exec(c)``: ``exec`` is called on the VALUE
 ``getRuntime`` returns, and ``java.lang.Runtime.exec`` is a method-kind
 ``subprocess`` row, so it needs a typed receiver. Java reads that type from
-``library_signatures/java.yaml`` (WI-lalot, WI-halin). Kotlin and scala read no
-row at all, so before this change both emitted ``<lang>:external:0-0:exec``,
-the subprocess sink was unreachable, and a secret piped into the command was
-reported ``inconclusive`` rather than ``violated``. Reproduced before the fix on
-``~/hypergumbo_lab_notebook/suril_09072026/fxkt`` and ``fxsc``.
+``library_signatures/java.yaml`` (WI-lalot, WI-halin), and kotlin and scala read
+the same rows. Without them both would emit ``<lang>:external:0-0:exec``, the
+subprocess sink would be unreachable, and a secret piped into the command would
+be reported ``inconclusive`` rather than ``violated``.
 
 The rows are java's own, read through ``library_signatures.ROW_PARENTS``: no
 row is copied into a kotlin or scala file.
@@ -63,7 +62,7 @@ def _classified(lang: str, edge) -> str | None:
     return None if prim is None else f"{prim.module}.{prim.name} {prim.boundary}"
 
 
-# --- the shapes the rows now type, one fixture per shape -------------------
+# --- the shapes the rows type, one fixture per shape ------------------------
 
 _KOTLIN_SHAPES = {
     "chained": 'fun f(c: String) {\n    Runtime.getRuntime().exec(c)\n}\n',

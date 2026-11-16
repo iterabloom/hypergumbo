@@ -184,7 +184,7 @@ class TestTheBoundaryMapCarriesTheEcosystem:
 
     def test_the_envelope_groups_the_untraced_modules(self) -> None:
         out = self._bmap(_py_dependency_map()).to_dict()
-        assert out["schema_version"] == IO_BOUNDARIES_SCHEMA_VERSION == "2.4"
+        assert out["schema_version"] == IO_BOUNDARIES_SCHEMA_VERSION == "2.5"
         assert out["untraced_modules"] == {
             "third_party": ["llmkit.Chain"], "stdlib": [], "unknown": [],
         }
@@ -274,7 +274,7 @@ class TestIoBoundariesNeverSaysNoIoOverAnUntracedCall:
         cmd_io_boundaries(_args(tmp_path, _py_dependency_map(), json_output=True,
                                 boundary="net_send"))
         data = json.loads(capsys.readouterr().out)
-        assert data["schema_version"] == "2.4"
+        assert data["schema_version"] == "2.5"
         assert data["untraced_modules"]["third_party"] == ["llmkit.Chain"]
 
     def test_control_a_repo_with_no_external_calls_still_says_no_io(

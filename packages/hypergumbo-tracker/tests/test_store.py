@@ -213,12 +213,11 @@ class TestCompile:
         """An update op with explicit null set/add/remove must compile as
         no-ops, not crash.
 
-        Regression: ``op_dict.get("remove", {})`` returns the default only
-        when the key is *absent*; an op carrying an explicit ``"remove":
-        null`` yields ``None``, so ``None.items()`` crashed whole-corpus
-        compilation — breaking ``list``/``tags``/``add`` and the TUI. (The
-        SQLite read-cache had masked one such pre-existing op until a sync
-        invalidated it.) A null set/add/remove dict means "no changes".
+        ``op_dict.get("remove", {})`` returns the default only when the key
+        is *absent*; an op carrying an explicit ``"remove": null`` yields
+        ``None``, and calling ``.items()`` on it would crash whole-corpus
+        compilation — breaking ``list``/``tags``/``add`` and the TUI. A null
+        set/add/remove dict means "no changes".
         """
         ops = [
             {
@@ -912,9 +911,9 @@ class TestSimHash:
 
         Two code paths check SimHash similarity — create-time (store) and
         validation-pass (validation). They must use the same threshold to
-        avoid accidental drift. Tighter than 13 (the old loose create-time
-        value) to reduce false-positive warnings on unrelated items that
-        share common tracker vocabulary.
+        avoid accidental drift. The shared value is kept tight to reduce
+        false-positive warnings on unrelated items that share common tracker
+        vocabulary.
         """
         from hypergumbo_tracker import validation as _validation_mod
         assert _SIMHASH_THRESHOLD == _validation_mod._SIMHASH_THRESHOLD
@@ -1292,7 +1291,8 @@ class TestCorruptFileHandling:
 
 
 class TestParseOpsReadRace:
-    """WI-fix: bounded retry on transient read races (observed 2026-04-22)."""
+    """Transient read races: _parse_ops_file's bounded retry, and race-log
+    recording when a read failure is retried or suppressed."""
 
     def _write_good(self, ops_dir: Path) -> Path:
         path = ops_dir / ".INV-race.ops"
@@ -1591,7 +1591,7 @@ class TestFindGitDir:
 
 
 # ---------------------------------------------------------------------------
-# ready() with before semantics (corrected)
+# ready() with isbefore semantics
 # ---------------------------------------------------------------------------
 
 
@@ -3715,7 +3715,7 @@ class TestTakeOwnershipFallback:
         atomic single-syscall replace rather than a cross-filesystem
         copy+delete (which exposes a readable-but-absent window that
         live-update readers race with, crashing them with EACCES).
-        Regression test for the 2026-04-19 TUI crash on INV-rikis.
+        (INV-rikis)
         """
         import stat
         import tempfile as real_tempfile
@@ -3784,7 +3784,7 @@ class TestTakeOwnershipFallback:
                 Store._take_ownership_via_tmp(ops_file, target_mode)
 
         # The sibling tempfile must be cleaned up; the target's own
-        # directory is the only place mkstemp now puts tempfiles.
+        # directory is the only place mkstemp puts tempfiles.
         leftover = list(tmp_path.glob(".htrac_*.ops"))
         assert leftover == [], f"Tempfile not cleaned up: {leftover}"
         # Original file is still in place (atomic rename never happened)

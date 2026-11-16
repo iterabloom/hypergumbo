@@ -28,3 +28,10 @@
   set: {}  # f991
   add:  # f991
     not_duplicate_of: [WI-sobig-hutih-luziv-bokag-hiruz-zahot-gahog-gizap]  # f991
+- op: discuss  # d536
+  at: '2026-11-01T10:55:41Z'  # d536
+  by: agent  # d536
+  actor: jgstern_agent  # d536
+  clock: 3  # d536
+  nonce: d536  # d536
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat3/). VERDICT: CURRENT. 2026-11-01 review at 100b6fbb6e: VALID_BOUNDARY_RULINGS is still {call_site_undecidable, unruled} (io_boundary.py:762-768); EXPECTED_UNRULED holds only python:builtins.help; both help rows (python.yaml:897, :1100) are unruled and multi_boundary_reason returns 'unruled'. pydoc.getpager on Python 3.12.3 still matches the cited shape. No second unruled row exists in any catalogue, so the re-open trigger has not fired. MECHANISM: boundary_ruling vocabulary has no value for 'A always, B environment-conditioned'."  # d536

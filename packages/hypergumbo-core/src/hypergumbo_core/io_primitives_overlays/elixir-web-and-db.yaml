@@ -49,7 +49,6 @@
 # `--no-default-overlays`.
 
 language: elixir
-status: overlay
 provenance: community
 retrieved: 2026-04-15
 

@@ -145,9 +145,12 @@ Content.
         include_edges = [e for e in result.edges if e.edge_type == "includes"]
         assert len(include_edges) >= 3
         dsts = {e.dst for e in include_edges}
-        assert "rst:doc:intro" in dsts
-        assert "rst:doc:chapter1" in dsts
-        assert "rst:doc:chapter2" in dsts
+        # No such documents here: the stand-in for each name as written.
+        assert dsts == {
+            "rst:intro:0-0:module:module",
+            "rst:chapter1:0-0:module:module",
+            "rst:chapter2:0-0:module:module",
+        }
 
     def test_extracts_include_directive(self, tmp_path: Path) -> None:
         make_rst_file(tmp_path, "test.rst", """
@@ -193,7 +196,8 @@ See :doc:`other-page` for details.
         result = analyze_rst(tmp_path)
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) == 1
-        assert "doc" in ref_edges[0].dst
+        # No such document here: the stand-in for the name as written.
+        assert ref_edges[0].dst == "rst:other-page:0-0:module:module"
 
     def test_extracts_multiple_references(self, tmp_path: Path) -> None:
         make_rst_file(tmp_path, "test.rst", """
@@ -252,7 +256,7 @@ Title
         # which put the kind word where the span belongs.
         assert re.match(r"^rst:test\.rst:\d+-\d+:section_\d+:section$", section.id), section.id
         assert section.stable_id != section.id
-        assert re.compile(r"^sha256:[0-9a-f]{16}$").match(section.stable_id)
+        assert re.compile(r"^hgstableid15:[0-9a-f]{16}$").match(section.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """Every emitted symbol carries a canonical sha256 stable_id."""
@@ -295,7 +299,7 @@ See :ref:`other-section` and :doc:`other-page`.
 """)
         result = analyze_rst(tmp_path)
         assert len(result.symbols) >= 1
-        pattern = re.compile(r"^sha256:[0-9a-f]{16}$")
+        pattern = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert pattern.match(symbol.stable_id), (
                 f"{symbol.kind} {symbol.name!r} has non-canonical "
@@ -459,3 +463,110 @@ Content only paragraph.
         # Should have one section
         sections = [s for s in result.symbols if s.kind == "section"]
         assert len(sections) == 1
+
+
+class TestEdgeEndpoints:
+    """Every end of an rst edge is a node's id or a stand-in in the id grammar.
+
+    The dsts were ``rst:file:<path>``, ``rst:doc:<entry>`` and
+    ``rst:<role>:<target>`` and a reference's src was ``rst:<path>``: no ids,
+    so finalize folded every include of a repository into one ``<unknown>``
+    node per spelling.
+    """
+
+    def _edges(self, repo: Path, edge_type: str) -> list[tuple[str, str, bool]]:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        result = analyze_rst(repo)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        ids = {s.id: s for s in result.symbols}
+        return [
+            (ids[e.src].kind if e.src in ids else e.src, e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == edge_type
+        ]
+
+    def test_include_of_a_file_of_the_repository_is_its_file_node(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        make_rst_file(tmp_path, "docs/guide/index.rst", (
+            ".. include:: part.rst\n\n"
+            ".. include:: ../../README.md\n\n"
+            ".. include:: /shared/note.rst\n\n"
+            ".. include:: /nowhere/gone.rst\n\n"
+            ".. include:: snippet.inc\n"
+        ))
+        make_rst_file(tmp_path, "docs/guide/part.rst", "Part\n====\n")
+        make_rst_file(tmp_path, "docs/shared/note.rst", "Note\n====\n")
+        make_rst_file(tmp_path, "docs/guide/snippet.inc", "text\n")
+        (tmp_path / "README.md").write_text("# readme\n")
+
+        assert self._edges(tmp_path, "includes") == [
+            ("directive", make_file_id("rst", "docs/guide/part.rst"), True),
+            # Another language's file: that analyzer's node, not an rst twin.
+            ("directive", make_file_id("markdown", "README.md"), True),
+            # ``/x``: under a directory above the file (Sphinx's source dir).
+            ("directive", make_file_id("rst", "docs/shared/note.rst"), True),
+            ("directive", "rst:/nowhere/gone.rst:0-0:module:module", False),
+            # On disk, but no analyzer gives a ``.inc`` file a node.
+            ("directive", "rst:snippet.inc:0-0:module:module", False),
+        ]
+
+    def test_toctree_entry_is_one_line_and_reaches_its_document(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        make_rst_file(tmp_path, "docs/index.rst", (
+            ".. toctree::\n"
+            "   :maxdepth: 2\n"
+            "\n"
+            "   intro\n"
+            "\n"
+            "   api/index\n"
+            "   Notes <api/notes>\n"
+            "   https://example.com/x\n"
+            "   self\n"
+            "   missing/page\n"
+        ))
+        make_rst_file(tmp_path, "docs/intro.rst", "Intro\n=====\n")
+        make_rst_file(tmp_path, "docs/api/index.rst", "API\n===\n")
+        (tmp_path / "docs" / "api" / "notes.md").write_text("# notes\n")
+
+        assert self._edges(tmp_path, "includes") == [
+            ("directive", make_file_id("rst", "docs/intro.rst"), True),
+            # ``api/index`` is ONE entry, not ``api``, ``/`` and ``index``.
+            ("directive", make_file_id("rst", "docs/api/index.rst"), True),
+            ("directive", make_file_id("markdown", "docs/api/notes.md"), True),
+            ("directive", "rst:https://example.com/x:0-0:module:module", False),
+            ("directive", make_file_id("rst", "docs/index.rst"), True),
+            ("directive", "rst:missing/page:0-0:module:module", False),
+        ]
+
+    def test_references_start_at_the_file_and_reach_what_they_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        make_rst_file(tmp_path, "docs/a.rst", (
+            "See :ref:`Some-Label`, :ref:`shown <some-label>`, :ref:`gone`,\n"
+            ":ref:`twice`, :doc:`b`, :doc:`nowhere`, :func:`~pkg.mod.fn`\n"
+            "and :ref:`<>`.\n"
+        ))
+        make_rst_file(tmp_path, "docs/b.rst", (
+            ".. _some-label:\n\nB\n=\n\n.. _twice:\n\nText.\n"
+        ))
+        make_rst_file(tmp_path, "docs/c.rst", ".. _twice:\n\nC\n=\n")
+
+        result = analyze_rst(tmp_path)
+        label = next(s for s in result.symbols if s.name == "some-label")
+        here = make_file_id("rst", "docs/a.rst")
+        b = make_file_id("rst", "docs/b.rst")
+        edges = sorted(self._edges(tmp_path, "references"))
+        assert edges == sorted([
+            (here, b, True),
+            (here, "rst:nowhere:0-0:module:module", False),
+            # An object of another domain keeps its role as the namespace.
+            (here, "rst:func:0-0:pkg.mod.fn:unresolved", False),
+            # A label is global and compared without case; ``Title <label>``.
+            (here, label.id, True),
+            (here, label.id, True),
+            (here, "rst:ref:0-0:gone:unresolved", False),
+            # Two targets share the label: not guessed between.
+            (here, "rst:ref:0-0:twice:unresolved", False),
+        ])

@@ -21,3 +21,67 @@
     fields:  # 69ce
       statement: "Every top-level type signature and its defining clause yield one function symbol, whatever declaration precedes them."  # 69ce
       root_cause: "tree-sitter-agda parses 'go : Nat' on the line after a 'data ... where' block as two sibling 'function' nodes (lhs atom go | lhs atom ':' atom Nat) instead of one with a signature rhs; agda.py's function branch finds no name/rhs pair for either and skips both, and the next clause 'go = zero' then has no signature to attach to."  # 69ce
+- op: discuss  # 0b0c
+  at: '2026-11-01T10:55:52Z'  # 0b0c
+  by: agent  # 0b0c
+  actor: jgstern_agent  # 0b0c
+  clock: 2  # 0b0c
+  nonce: 0b0c  # 0b0c
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. Both filed probes reproduce: probe 1 has no 'go', probe 2 has no 'run'; the control emits all four. The tree dump shows 'run : Nat -> Nat' as two sibling function nodes. Extra probes: dropping the blank line after the data block still loses 'go'; two postulate lines followed by a blank line keep 'run', so the trigger depends on the grammar's layout handling. MECHANISM: agda analyzer skips a signature tree-sitter-agda splits into two sibling function nodes (lhs atom name | lhs atom ':' ...)."  # 0b0c
+- op: discuss  # 1c77
+  at: '2026-11-01T22:27:40Z'  # 1c77
+  by: agent  # 1c77
+  actor: jgstern_agent  # 1c77
+  clock: 3  # 1c77
+  nonce: 1c77  # 1c77
+  message: "SPLIT IN from WI-molon-rorop-nuhuv-finuz-dabuk-ravaf-fidij-pokas part 1 (owner-approved 2026-11-01, P4 review). Live at dev 9ae4abe13f with tree-sitter-agda 1.3.3 (fixtures ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/fx_molon): after a data block with ONE constructor, the next signature 'foo : Unit -> Unit' is split into two function nodes ('foo' and ': Unit -> Unit') and foo is not emitted; a following 'data Bool' header is lost too (Bool not emitted, true/false come out as functions). It breaks the next declaration, not every later one. Same layout-block mechanism as this item."  # 1c77
+- op: discuss  # d2c2
+  at: '2026-11-01T23:38:02Z'  # d2c2
+  by: agent  # d2c2
+  actor: jgstern_agent  # d2c2
+  clock: 4  # d2c2
+  nonce: d2c2  # d2c2
+  message: "GRAMMAR-SWAP CHECK 2026-11-01 (owner asked to verify before any grammar change; artifacts ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/agda_grammar_check/). WHAT THE TWO GRAMMARS ARE: PyPI tree-sitter-agda 1.3.3 = upstream tree-sitter/tree-sitter-agda tag v1.3.3 (47802091de, 2024-11-10). tree-sitter-language-pack 0.13.0 pins agda to the same repo at master e8d47a6987 (2025-08-30, from the pack's sources/language_definitions.json). The 1.3.3..e8d47a6987 diff is 3 files: publish.yml, tree-sitter.json (query paths) and src/scanner.c d44b342455 'fix(scanner): adjust container allocations' (the layout-token ring buffer was grown by realloc without re-linearising it, so queued newline/indent tokens land in the wrong slots after a wrap). Same ABI 14, identical 228 node kinds, 0 fields: agda.py's node-type branches see the same vocabulary. No reason for choosing the dedicated wheel is recorded (7b0a72d33c; both deps already existed then). FIXTURES: the pack parses this item's probes and WI-molon's fx_molon M/N (empty nested module) error-free; where the bundled grammar is error-free the trees are identical. CORPUS (agda-stdlib 1264 .agda + PLFA 40, shallow clones): files with parse errors 571->508 (stdlib); the pack never errors on a file 1.3.3 parses cleanly, but has MORE error nodes in 56 already-erroring files. Analyzer A/B on stdlib (AgdaAnalyzer vs a language_pack_name='agda' subclass, separate caches): symbols 23480->23596; real declarations GAINED 166 in 51 files; real declarations LOST 43 in 10 files (e.g. record IsMagma in src/Algebra/Structures.agda, Lattice/MeetSemilattice/BooleanAlgebra/DistributiveLattice records in src/Algebra/Lattice/Bundles.agda, LeftModule, Data/Integer Positive); scope chains deeper (correct, sampled) on 516 lines, shallower on 86; stable_id changes for 192 common symbols; 149 of 1265 files change. Junk-named symbols (e.g. a field named ':') are ~equal (316 vs 307), and ~40% of stdlib files error under EITHER grammar. VERDICT: the swap fixes this item's shapes but is a trade, not a strict improvement; it is not the fix for agda parse quality in general. Prerequisites if pursued: WI-siniv (extended1 does not declare the pack), and the pack's ~=0.13.0 pin would then also pin the agda revision. Owner decision; nothing changed."  # d2c2
+- op: discuss  # 007a
+  at: '2026-11-02T00:04:12Z'  # 007a
+  by: agent  # 007a
+  actor: jgstern_agent  # 007a
+  clock: 5  # 007a
+  nonce: 007a  # 007a
+  message: "Related, filed 2026-11-01 as WI-vimof: ERROR or MISSING nodes appear in 571 of 1264 agda-stdlib files under 1.3.3 and 508 under the language pack. This item and WI-molon are two named shapes; the rest is uncharacterized. Classifying them bears on the pending grammar-swap decision."  # 007a
+- op: discuss  # dd9f
+  at: '2026-11-15T19:25:52Z'  # dd9f
+  by: agent  # dd9f
+  actor: jgstern_agent  # dd9f
+  clock: 6  # dd9f
+  nonce: dd9f  # dd9f
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096, tree-sitter-agda 1.3.3: probes 1-3 and the 11-01 additions all reproduce through `hypergumbo run` (fixtures ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/INV-vokir). First corpus measure, parse only, local agda-stdlib clone ab4fbd25bb (1247 files): the split shape occurs 9 times in 9 files under 1.3.3 (7 function signatures), 0 under language-pack 0.13.0; `Data/Nat/Primality.agda:35 recompute-nonTrivial` confirmed lost end to end. The shape leaves no ERROR node and no MISSING node visible through `.children`, only a hidden `(MISSING _dedent)` and `root.has_error`; 4 of the 9 files are therefore outside WI-vimof's 571-file count. WI-siniv still open. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-vokir.md. No status or priority change made by this review."  # dd9f
+- op: discuss  # 6315
+  at: '2026-11-15T21:14:28Z'  # 6315
+  by: agent  # 6315
+  actor: jgstern_agent  # 6315
+  clock: 7  # 6315
+  nonce: '6315'  # 6315
+  message: "[AGDA GRAMMAR INVESTIGATION 2026-11-15, owner-requested, dev 03068d3531; report ~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/README.md section 2] One grammar, two revisions: PyPI tree-sitter-agda 1.3.3 (the only release on PyPI, checked today) and the later upstream commit that tree-sitter-language-pack 0.13.0 builds. Today's analyzer on agda-stdlib ab4fbd2 (1,247 files): files parsed through error recovery 747 under 1.3.3, 510 under the pack (all among the 747); declarations 21,563 vs 21,633; with the name found as a declaration on its start line 20,080 vs 20,161; source lines with a declaration in one arm only: 47 in 13 files (1.3.3), 118 in 52 files (pack); same position, different name 506 (the pack's deeper in 453). 32 saved probe files of INV-vokir, WI-molon and WI-bokud: 15 equal; in the other 17 the pack emits the names the source declares. Either way a damaged file is listed in limits.failed_files with partial_parse. Stable ids move under the swap, so it needs a scheme bump. RECOMMENDATION TO THE OWNER: switch to the pack's revision in the v15 bump PR, with WI-siniv (declare the pack in extended1). Not examined: the pack's 1.25 release line. No status change. This item's probes p1, p2, p4, p5, p7 gain the lost declaration under the pack; the split shape occurs 9 times in the stdlib under 1.3.3 and 0 under the pack."  # 6315
+- op: discuss  # 4c93
+  at: '2026-11-15T21:27:44Z'  # 4c93
+  by: agent  # 4c93
+  actor: jgstern_agent  # 4c93
+  clock: 8  # 4c93
+  nonce: 4c93  # 4c93
+  message: "[OWNER RULING 2026-11-15] 'switch to the language pack's grammar, in PR 2'. Agda moves from the tree-sitter-agda 1.3.3 wheel to the revision tree-sitter-language-pack builds, in the v15 bump PR (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md), because stable ids move. WI-siniv-dovas-bodin-patip-dumug-sufov-mukal-sumas (extended1 declares the pack) rides with it as a prerequisite. This invariant is expected to hold after the switch; it closes only on its probes re-run on the merged tree."  # 4c93
+- op: update  # 0e81
+  at: '2026-11-16T11:46:42Z'  # 0e81
+  by: agent  # 0e81
+  actor: jgstern_agent  # 0e81
+  clock: 9  # 0e81
+  nonce: '0e81'  # 0e81
+  set:  # 0e81
+    status: satisfied  # 0e81
+- op: discuss  # 3f3d
+  at: '2026-11-16T11:46:42Z'  # 3f3d
+  by: agent  # 3f3d
+  actor: jgstern_agent  # 3f3d
+  clock: 10  # 3f3d
+  nonce: 3f3d  # 3f3d
+  message: "Closed on the FILED mechanism by PR #2200; the general statement is NOT asserted. Re-ran probes 1 to 3, the 11-01 shapes and the controls: `go`, `run`, `foo`, `Bool` were missing on dev and are emitted now, and agda-stdlib's `recompute-nonTrivial` (Primality.agda) is back. Cause removed, not patched: the analyzer reads the language pack's Agda grammar and the tree-sitter-agda wheel is no longer a dependency. agda-stdlib (1,248 files, 21,563 symbols): 725 moved (3.36%), 1,171 removed (1,085 of them `_` modules, WI-bokud), 149 added; files parsed through error recovery 747 -> 510. WHAT STILL BREAKS THE STATEMENT ('every top-level type signature and its defining clause yield one function symbol'): the pack's grammar loses 13 real signatures in agda-stdlib in files it parses with NO error node (8 in Reflection/AST/AlphaEquality.agda), filed as its own item at P2; and the 510 error-recovery files are WI-vimof's subject. The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 3f3d

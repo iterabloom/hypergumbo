@@ -1,20 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-simiv: the same-function sanitizer credit fires on ordinary Python.
+"""The same-function sanitizer credit fires on ordinary Python (WI-simiv).
 
-WI-fasub's arm (a sanitizer called in the same function as the source earns
-``sanitized`` when the barrier walk returns a definite ``False``) was tested
-only with hand-built DDG edges. On the production path, three ordinary
-decrypt -> encrypt -> write shapes reported ``sanitized_flows 0``. Instrumented
-at dev b39173ecbe, the guarded walk never returned ``False``, for two
-extractor reasons and not by design:
+WI-fasub's arm -- a sanitizer called in the same function as the source earns
+``sanitized`` when the barrier walk returns a definite ``False`` -- depends on
+the extractor modelling two ordinary shapes. If either is missed, the guarded
+walk never returns ``False`` on a decrypt -> encrypt -> write function, and
+hand-built DDG edges would not show it:
 
-* ``with open(...) as f: f.write(e)`` -- the ``with`` clause was a CFG
-  statement no AST node matched, so ``f`` was never defined and the clause was
+* ``with open(...) as f: f.write(e)`` -- if the ``with`` clause is a CFG
+  statement no AST node matches, ``f`` is never defined and the clause is
   uncovered code; uncovered code forfeits the function's refutation (INV-lupav),
   and a forfeited walk returns ``None``.
-* ``open(...).write(e)`` -- the inner ``open(...)`` call overwrote the
-  statement's uses with ``[]``, so ``e`` had no recorded use and the walk
-  escaped.
+* ``open(...).write(e)`` -- if the inner ``open(...)`` call replaces the
+  statement's uses with ``[]``, ``e`` has no recorded use and the walk escapes.
 
 The core half is ``test_cfg_statement_node_matching.py``. This file pins the
 python ``with_clause`` rule and the end-to-end credit, with a control whose

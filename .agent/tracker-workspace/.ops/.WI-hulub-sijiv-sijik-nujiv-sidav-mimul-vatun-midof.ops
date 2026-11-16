@@ -37,3 +37,26 @@
   clock: 3  # 0c92
   nonce: 0c92  # 0c92
   message: "Re-measured 2026-07-30 on a fresh self-survey (40979 nodes / 138626 edges). The filed figures are stale in BOTH directions, mostly because the registries themselves moved:\n\n  filed:    18/54 edge_types, 26/140 symbol_kinds, 33/125 evidence_types\n  measured: 17/25 edge_types, 29/152 symbol_kinds, 39/125 evidence_types\n\nThe edge_type denominator fell 54 -> 25 because the endpoint_shape and pending_classification axes were drained to empty (ADR-0023 fold, register pt.24/pt.25), so coverage there is now 68% rather than 33% — the gap largely closed by deleting unemitted vocabulary rather than by emitting more. symbol_kinds went the other way (140 -> 152 registered) while emitted rose only 26 -> 29, so that ratio worsened.\n\nNo action taken. Recorded because the item is framed as a coverage OBSERVATION and its numbers are the whole content; anyone acting on it should start from these rather than re-deriving them."  # 0c92
+- op: discuss  # 9fd7
+  at: '2026-11-01T10:56:00Z'  # 9fd7
+  by: agent  # 9fd7
+  actor: jgstern_agent  # 9fd7
+  clock: 4  # 9fd7
+  nonce: 9fd7  # 9fd7
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: PARTLY-STALE. 2026-11-01 review: the registries now hold 25 edge types, 157 symbol kinds and 130 evidence types. The filed 54/140/125 and the July 152/125 counts are stale. Today's .hypergumbo/self-analysis.json (scripts/generate-architecture, packages/ only, 57844 nodes) emits 13/25 edge types, 19/157 symbol kinds and 32/130 evidence types, with none outside the registries. This scope differs from the July whole-repo survey, so the drop from 17/29/39 is not a like-for-like comparison. producer_coherence checks producer->registry only, so the observation stands. MECHANISM: Axis registries are permissive; no gate checks that each registered value has an observed producer."  # 9fd7
+- op: update  # 0dc2
+  at: '2026-11-01T10:56:00Z'  # 0dc2
+  by: agent  # 0dc2
+  actor: jgstern_agent  # 0dc2
+  clock: 5  # 0dc2
+  nonce: 0dc2  # 0dc2
+  set:  # 0dc2
+    title: "Registry coverage on packages/ self-run (2026-11-01): 13/25 edge_types, 19/157 symbol_kinds, 32/130 evidence_types emitted"  # 0dc2
+- op: update  # c2be
+  at: '2026-11-01T10:56:00Z'  # c2be
+  by: agent  # c2be
+  actor: jgstern_agent  # c2be
+  clock: 6  # c2be
+  nonce: c2be  # c2be
+  set:  # c2be
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review: the registries now hold 25 edge types, 157 symbol kinds and 130 evidence types. The filed 54/140/125 and the July 152/125 counts are stale. Today's .hypergumbo/self-analysis.json (scripts/generate-architecture, packages/ only, 57844 nodes) emits 13/25 edge types, 19/157 symbol kinds and 32/130 evidence types, with none outside the registries. This scope differs from the July whole-repo survey, so the drop from 17/29/39 is not a like-for-like comparison. producer_coherence checks producer->registry only, so the observation stands. (Original text below; the review entry in the thread has the evidence.)\n\n**Mechanic**: All three multi-value axis registries (edge_types, symbol_kinds, evidence_types) are deliberately over-permissive to accommodate future linkers and analyzers. On the project's own self-corpus (Python + sidecar HTML/CSS/JS + a small fixture corpus), edge_types coverage is 33%, symbol_kinds 19%, evidence_types 26%. Top in-registry-but-never-observed values include `abi_call`, `crypto_flow`, `graphql_calls`, `grpc_calls`, `http_calls`, `kernel_launch`, plus most of the specialized AST sub-vocabularies (`ast_method_*`, `ast_call_*` variants).\n\n**Expectation**: Either the self-corpus exercises a representative slice of the registry (e.g., via fixture corpora), or the registry maintainers have an alternative validation channel (cross-language polyglot test repos) that prevents registry-drift bugs on the long tail from hiding indefinitely.\n\n**Scope**: 36 of 54 edge_types (67%), 114 of 140 symbol_kinds (81%), 92 of 125 evidence_types (74%) unobserved on the self-corpus.\n\n**Exposure**: Registry-drift bugs in the ~75% unobserved rows — invisible to verify-claims runs, axis-coherence audits, and ad-hoc inspection on the self-corpus.\n\n**Consequence**: A registry value with no real producer on the self-corpus is invisible to the project's standard validation; the bakeoff feedback loop cannot detect drift in three-quarters of each registry's vocabulary.\n\n**Source**: F50.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # c2be

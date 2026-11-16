@@ -1,0 +1,51 @@
+- op: create  # 334a
+  at: '2026-10-25T20:06:02Z'  # 334a
+  by: agent  # 334a
+  actor: jgstern_agent  # 334a
+  clock: 1  # 334a
+  nonce: 334a  # 334a
+  data:  # 334a
+    kind: work_item  # 334a
+    title: "a user taint source file's attributes: key is silently ignored: the file reports loaded and contributes nothing"  # 334a
+    status: todo_hard  # 334a
+    priority: 3  # 334a
+    parent:  # 334a
+    tags:  # 334a
+    - taint  # 334a
+    - catalogue  # 334a
+    - concept_audit_20261021  # 334a
+    isbefore: []  # 334a
+    duplicate_of: []  # 334a
+    not_duplicate_of: []  # 334a
+    pr_ref:  # 334a
+    description: "Found by the WI-mozig premise re-check 2026-10-25 on dev 16534a75f7. The user taint source loader _load_source_yaml (taint.py:1766-1815) builds only functions: and methods: entries. A user file under taint_sources.d/ or --taint-sources with an attributes: key (e.g. attributes: [location] for document.location) is reported as loaded and contributes nothing, with no warning. Live check: such a file left both affected claims' verdicts identical to baseline. WI-jojis (wont_do) chose auto-derivation from io_primitives for attribute sources, so supporting the key is not required; the minimum is that the loader refuses or warns, naming the ignored key -- a user row that silently does nothing is the 'silent limitation is a defect' case."  # 334a
+    fields: {}  # 334a
+- op: discuss  # 6efd
+  at: '2026-10-26T00:31:44Z'  # 6efd
+  by: agent  # 6efd
+  actor: jgstern_agent  # 6efd
+  clock: 2  # 6efd
+  nonce: 6efd  # 6efd
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section B: catalogue/overlay/taint/claims YAML keys are now in the knob inventory, and an accepted key with no reader is a write-only knob. The minimum fix here (refuse or warn, naming the key) does not wait for the sweep."  # 6efd
+- op: update  # c3fa
+  at: '2026-10-28T07:36:52Z'  # c3fa
+  by: agent  # c3fa
+  actor: jgstern_agent  # c3fa
+  clock: 3  # c3fa
+  nonce: c3fa  # c3fa
+  set:  # c3fa
+    status: done  # c3fa
+- op: discuss  # b336
+  at: '2026-10-28T07:36:52Z'  # b336
+  by: agent  # b336
+  actor: jgstern_agent  # b336
+  clock: 4  # b336
+  nonce: b336  # b336
+  message: "Fixed in PR #1914 (ccf9c92eeb). The source, sink and sanitizer loaders refuse every key they do not read, top-level and per entry, with TaintCatalogError (exit 2), naming the key, the allowed set and a near-miss suggestion; an attributes: key also says attribute sources come from an io_primitives attributes: row via --io-primitives (WI-jojis). Behavioural evidence: test_taint_catalog_unknown_keys.py::test_verify_claims_refuses_the_file_with_exit_2 (verify-claims --taint-sources with attributes: [location] -> rc 2, stderr names 'attributes'); per-shape refusals for all three files; every shipped file passes. Mutating the refusal away turned 8 of 10 tests red."  # b336
+- op: discuss  # a3e4
+  at: '2026-10-28T07:37:55Z'  # a3e4
+  by: agent  # a3e4
+  actor: jgstern_agent  # a3e4
+  clock: 5  # a3e4
+  nonce: a3e4  # a3e4
+  message: "SHA correction: PR #1914 was rebased at merge; the commit on dev is e3c1caa463, not ccf9c92eeb."  # a3e4

@@ -94,3 +94,19 @@
   set: {}  # 3b9f
   add:  # 3b9f
     tags: [awaits_bakeoff_validation]  # 3b9f
+- op: update  # ccb0
+  at: '2026-11-02T10:19:35Z'  # ccb0
+  by: agent  # ccb0
+  actor: jgstern_agent  # ccb0
+  clock: 11  # ccb0
+  nonce: ccb0  # ccb0
+  set: {}  # ccb0
+  remove:  # ccb0
+    tags: [awaits_bakeoff_validation]  # ccb0
+- op: discuss  # 7d20
+  at: '2026-11-02T10:19:36Z'  # 7d20
+  by: agent  # 7d20
+  actor: jgstern_agent  # 7d20
+  clock: 12  # 7d20
+  nonce: 7d20  # 7d20
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). catalogue + corpus: measured production load_catalog returns net_recv for the DNS rows in python / go / c / rust / javascript / erlang; whisper.cpp carries 5 netdb chains (recorded 0 rows -> 84; measurement 0019 (6 situations, 0 of 6 useful, trigger ruled on in 0019 itself)). Tag stripped."  # 7d20

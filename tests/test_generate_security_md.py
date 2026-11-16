@@ -183,8 +183,9 @@ def test_missing_security_md_errors(tmp_path: Path, monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 # WI-kozos: the audit must state WHICH execution context it covers.
 #
-# All 18 claims declare python cmd_* handlers as sources — the INSTALLED
-# CLI's behaviour. The artifact was silent about every other way code in this
+# The entry-point claims declare python cmd_* handlers as sources, and the
+# repo-content claims the analysed repository as seen by the installed CLI's
+# discovery — the INSTALLED CLI's behaviour either way. The artifact was silent about every other way code in this
 # repository runs, so a reader could take "hypergumbo's safety claims are
 # checked by running hypergumbo against its own source" as a claim about the
 # repository rather than about the shipped CLI. The smaller statement is the
@@ -208,7 +209,7 @@ def test_scope_names_the_covered_context_explicitly() -> None:
 def test_scope_names_every_uncovered_context() -> None:
     """A scope statement that omits an uncovered context is worse than none:
     it reads as completeness. Each row here is a way code in this repo runs
-    that the 18 claims say nothing about."""
+    that the self-claims say nothing about."""
     mod = _load_script_module()
     block = mod._render_full_generated_block({"claims": []})
     for uncovered in ("conftest", "hooks", "CI", "build.rs"):

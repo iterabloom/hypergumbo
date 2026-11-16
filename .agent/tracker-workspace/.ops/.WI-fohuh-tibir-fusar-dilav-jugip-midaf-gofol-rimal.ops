@@ -51,3 +51,19 @@
   set: {}  # f740
   add:  # f740
     tags: [awaits_bakeoff_validation]  # f740
+- op: update  # efb3
+  at: '2026-11-02T10:19:48Z'  # efb3
+  by: agent  # efb3
+  actor: jgstern_agent  # efb3
+  clock: 6  # efb3
+  nonce: efb3  # efb3
+  set: {}  # efb3
+  remove:  # efb3
+    tags: [awaits_bakeoff_validation]  # efb3
+- op: discuss  # 0f9c
+  at: '2026-11-02T10:19:49Z'  # 0f9c
+  by: agent  # 0f9c
+  actor: jgstern_agent  # 0f9c
+  clock: 7  # 0f9c
+  nonce: 0f9c  # 0f9c
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). whisper.cpp: measured analyze_cuda_files calls 4,784 (recorded 4,635 -> 4,784). Tag stripped."  # 0f9c

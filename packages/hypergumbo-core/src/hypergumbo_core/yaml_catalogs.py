@@ -54,9 +54,12 @@ every family.
 
 from __future__ import annotations
 
+import copy
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 
@@ -279,6 +282,22 @@ PROVENANCE_BUILTIN = "builtin"
 PROVENANCE_COMMUNITY = "community"
 
 
+def declares_builtin(data: object) -> bool:
+    """True when a parsed catalogue file declares ``provenance: builtin``.
+
+    THE ONE RULE FOR A SHIPPED FILE (WI-fuzat): it is ``builtin`` only when it
+    says so, and any other shipped file is treated as community -- it may add,
+    never make a verdict cleaner. Three rules used to decide "builtin" (an
+    explicit line, "not community", and path-or-line) and agreed only because
+    ``test_catalogue_scope_gates.py`` forces every shipped file to declare one
+    of the two; a file that slipped past that gate now lands on the
+    withholding side under every reader. A file the operator supplied is
+    asked :func:`declares_community` instead: it is theirs unless it says
+    otherwise.
+    """
+    return isinstance(data, dict) and data.get("provenance") == PROVENANCE_BUILTIN
+
+
 def declares_community(data: object) -> bool:
     """True when a parsed catalogue file declares ``provenance: community``.
 
@@ -292,10 +311,99 @@ class CatalogueError(Exception):
     """A catalogue file could not be parsed or has the wrong shape.
 
     The message names the file. ``cli.main`` turns any instance into
-    ``Error: <message>`` and exit 2 (inconclusive): a broken catalogue means the
-    command could not do what it was asked, which is never a clean result (0)
-    and never ``violated`` (1).
+    ``Error: <message>`` and exit 2 (bad input): a broken catalogue means the
+    command could not do what it was asked, which is never a clean result (0),
+    never ``violated`` (1) and, for ``verify-claims``, never ``inconclusive``
+    (4).
     """
+
+
+def reject_unknown_keys(
+    observed: Any,
+    allowed: "frozenset[str] | set[str]",
+    *,
+    origin: str,
+    where: str,
+    error: "type[Exception]" = CatalogueError,
+    reasons: "Optional[dict[str, str]]" = None,
+) -> None:
+    """Refuse a mapping key no reader reads, naming it (WI-rinaz, WI-hapon).
+
+    A catalogue key nothing reads is a WRITE-ONLY KNOB: the file reports
+    loaded and the key does nothing. ``net_sendd:`` in an io_primitives
+    overlay loaded with zero rows and no message, so the overlay's author
+    believed a claim they never made. Every catalogue loader refuses an
+    unknown key the way the claims file does, through this one helper, so
+    the message and the near-miss hint read the same in every family.
+
+    ``origin`` names the file (``"taint catalog /x.yaml"``), ``where`` the
+    level (``"top-level"``, ``"net_send row"``); ``reasons`` maps a key to a
+    sentence saying where that key's meaning actually lives.
+    """
+    import difflib
+
+    unknown = sorted(str(key) for key in observed if key not in allowed)
+    if not unknown:
+        return
+    close = difflib.get_close_matches(unknown[0], sorted(allowed), n=3, cutoff=0.5)
+    hint = f" Did you mean: {', '.join(close)}?" if close else ""
+    raise error(
+        f"{origin}: unknown {where} key(s) "
+        f"{', '.join(repr(k) for k in unknown)}, which nothing reads "
+        f"(allowed: {', '.join(sorted(allowed))}).{hint}"
+        + "".join((reasons or {}).get(k, "") for k in unknown)
+    )
+
+
+#: Documents already parsed in this process, keyed by (which parser, the
+#: TEXT parsed), most recently used last. See :func:`parse_yaml_once`.
+_PARSED_YAML: "OrderedDict[tuple[str, str], Any]" = OrderedDict()
+_PARSED_YAML_MAX = 256
+_PARSED_YAML_LOCK = threading.Lock()
+
+
+def parse_yaml_once(parser: str, content: str, parse: Callable[[], Any]) -> Any:
+    """What ``parse()`` makes of ``content``, parsed once per process.
+
+    WHY. The shipped catalogues are read again and again within one run:
+    ``load_catalog`` parses its file on every call, and one ``verify-claims``
+    makes about forty such calls for fifteen files, then reads the library
+    signatures, the dataflow patterns and the catalogue tiers the same way.
+    PyYAML's parser is pure Python: 0.26 s for the fifteen I/O catalogues on
+    an idle machine, and 30% of the test time of the forty slowest test files
+    (87,522 documents).
+
+    THE RULES THAT MAKE KEEPING THE RESULT SAFE.
+
+    * The key is the whole text (and ``parser``, the name of the parser, since
+      two parsers may read one text differently). An edited file is a
+      different key and is parsed again: nothing has to notice the edit, and
+      a path is never a key.
+    * Every caller gets its own deep copy (3 ms for the fifteen catalogues),
+      so a caller that changes what it was handed changes nobody else's.
+    * A text ``parse`` refuses is not kept. It is refused again on every
+      call, by that call's ``parse``, so the message names that call's file.
+    * At most ``_PARSED_YAML_MAX`` texts are kept, the least recently used
+      going first, so a process that loads many distinct files stays bounded.
+    """
+    key = (parser, content)
+    with _PARSED_YAML_LOCK:
+        if key in _PARSED_YAML:
+            _PARSED_YAML.move_to_end(key)
+            return copy.deepcopy(_PARSED_YAML[key])
+    document = parse()
+    with _PARSED_YAML_LOCK:
+        _PARSED_YAML[key] = document
+        _PARSED_YAML.move_to_end(key)
+        while len(_PARSED_YAML) > _PARSED_YAML_MAX:
+            _PARSED_YAML.popitem(last=False)
+    return copy.deepcopy(document)
+
+
+def safe_load_once(content: str) -> Any:
+    """``yaml.safe_load(content)``, parsed once per process per text
+    (:func:`parse_yaml_once`). A ``yaml.YAMLError`` propagates every time."""
+    return parse_yaml_once("safe", content, lambda: yaml.safe_load(content))
 
 
 def read_catalogue_yaml(
@@ -314,7 +422,7 @@ def read_catalogue_yaml(
     shape and leaves the shape to the real load.
     """
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = safe_load_once(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         raise error(f"could not parse {what} {path}: {exc}") from exc
     if not mapping:

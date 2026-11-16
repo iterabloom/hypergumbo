@@ -1,0 +1,22 @@
+- op: create  # a7d3
+  at: '2026-10-30T21:46:58Z'  # a7d3
+  by: agent  # a7d3
+  actor: jgstern_agent  # a7d3
+  clock: 1  # a7d3
+  nonce: a7d3  # a7d3
+  data:  # a7d3
+    kind: work_item  # a7d3
+    title: "symbols, sketch and compact rank and count different populations without saying so; compact's node projection drops discovery_language (language unknown)"  # a7d3
+    status: todo_hard  # a7d3
+    priority: 4  # a7d3
+    parent:  # a7d3
+    tags:  # a7d3
+    - concept_audit  # a7d3
+    - consumer_agreement  # a7d3
+    - ranking  # a7d3
+    isbefore: []  # a7d3
+    duplicate_of: []  # a7d3
+    not_duplicate_of: []  # a7d3
+    pr_ref:  # a7d3
+    description: "From WI-borib (docs/audits/0026). Verdict RENAME (different questions, unnamed in the output) plus one projection defect.\n\n1. \"The important symbols\" is answered by three populations: symbols ranks every node (externals and stand-ins included, 5 of 14 rows on agent B's fixture); sketch Key Symbols ranks the KEY_SYMBOL_KINDS allowlist; compact's default ranks any kind as a bridge with key-only seeds (by design, fa7ae4e388). WI-zulij aligned the population and test-edge filter (5e4fbcf7a4) and recorded 55% top-10 agreement; nothing pins agreement end to end. None of the outputs says which population it ranks.\n2. A compact output's metrics.languages counts the COMPACTED subset under the field name the survey uses for the whole repo (ripgrep: survey rust 5,163 nodes / 97 files, compact 100 / 2).\n3. DEFECT: compact's node projection drops discovery_language, so a route/stand-in node whose language lives only there counts as language unknown -- reproduced on real output, mitmproxy compact metrics.languages carries unknown: {nodes: 1} (~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/M/b/).\n\nACCEPTANCE: each view's output names the population it ranks or counts; compact's projection keeps discovery_language."  # a7d3
+    fields: {}  # a7d3

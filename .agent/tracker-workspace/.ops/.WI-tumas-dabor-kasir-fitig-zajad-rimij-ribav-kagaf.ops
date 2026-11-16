@@ -1,0 +1,21 @@
+- op: create  # 7d7c
+  at: '2026-11-08T04:22:22Z'  # 7d7c
+  by: agent  # 7d7c
+  actor: jgstern_agent  # 7d7c
+  clock: 1  # 7d7c
+  nonce: 7d7c  # 7d7c
+  data:  # 7d7c
+    kind: work_item  # 7d7c
+    title: "tracker TUI: toggling tree view off and on clears the multi-selection but leaves its check marks and the '(N items selected)' panel on screen"  # 7d7c
+    status: todo_hard  # 7d7c
+    priority: 3  # 7d7c
+    parent:  # 7d7c
+    tags:  # 7d7c
+    - docstring_audit  # 7d7c
+    - tracker_tui  # 7d7c
+    isbefore: []  # 7d7c
+    duplicate_of: []  # 7d7c
+    not_duplicate_of: []  # 7d7c
+    pr_ref:  # 7d7c
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. action_toggle_tree (tui.py:3423-3438) clears _multi_selected without calling _refresh_selection_view, and _restore_selection does not repaint an unchanged row. Pilot at 160x45: select rows 0 and 2, press t t: selection empty, cells still show check marks, panel still reads (2 items selected); Mark Read then acts on nothing. r03, v11."  # 7d7c
+    fields: {}  # 7d7c

@@ -284,6 +284,16 @@ net_send:
     notes: "WI-suhug: the net_send twin of the logging row (see it)."
   - module: net.Conn
     methods: [Write]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_send
+    notes: >-
+      WI-kalol: a write through the connection's OWN method crosses the medium
+      the connection was made on (ADR-0050 §1), which is fixed where it was
+      dialled or accepted -- WI-baran's dual-row shape, for Go's method form.
+      Declared under net_send and ipc_send; go.py stamps the receiver through
+      its binding (`net.Dial("unix", p)`, `ln.Accept()` over a unix listener
+      -> pipe -> ipc_send; a TCP dial -> net_stream -> net_send). An unstamped
+      receiver abstains to net_send, today's row.
   - module: crypto/tls
     functions: [Dial, DialWithDialer, Client]
     notes: "TLS connection establishment"
@@ -335,6 +345,9 @@ net_recv:
       socket/bind/listen while keeping accept.
   - module: net.Conn
     methods: [Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: "WI-kalol: the read twin of the net.Conn Write row (see it); a pipe stamp selects ipc_recv, an unstamped receiver keeps net_recv."
   - module: bufio
     functions: [NewScanner, NewReader]
     boundary_ruling: call_site_undecidable
@@ -373,10 +386,13 @@ net_recv:
 # so the crossing is DISCLOSED rather than either minted or silently dropped.
 net_listen:
   - module: net
-    functions: [Listen, ListenTCP, ListenUDP, ListenUnix, ListenPacket]
+    functions: [Listen, ListenTCP, ListenUDP, ListenPacket]
     notes: >-
       SETUP. Returns a net.Listener; nothing has been received. The bytes
       arrive at a later Accept/Read, which are rowed separately under net_recv.
+      Listen and ListenPacket take the network as an argument and may bind a
+      Unix socket; they stay here until a call-site stamp can tell. ListenUnix
+      and ListenUnixgram are ipc_listen (below).
   - module: syscall
     functions: [Socket, Bind, Listen]
     notes: >-
@@ -391,6 +407,18 @@ net_listen:
       begins at a call that runs BEFORE the ListenAndServe statement. The real
       receive stays rowed under net_recv as net.Listener.Accept /
       net.Conn.Read, which the represented-crossing probe confirms still fire.
+
+
+# WI-gaziv (owner ruling 2026-10-26, ADR-0050 section 1's medium axiom): a
+# Unix-domain listener is LOCAL IPC, not network ingress. ipc_listen is
+# net_listen's local-IPC twin -- disclosed, never minted, shadowing ipc_recv.
+ipc_listen:
+  - module: net
+    functions: [ListenUnix, ListenUnixgram]
+    notes: >-
+      SETUP. ListenUnix returns a *net.UnixListener and ListenUnixgram a
+      *net.UnixConn bound to a socket path (ListenUDP's Unix twin); nothing
+      has been received. The bytes arrive at a later Accept/Read.
 
 subprocess:
   - module: os/exec
@@ -432,9 +460,10 @@ subprocess:
 
       `Run` and `Start` stay launch-only in the row above: they return an
       error, not the child's message. The precedent is rust.yaml's
-      `std::process::Child.wait_with_output` / `ChildStdout.read`, which cite
-      python.yaml's `os.wait` in turn -- the return direction of a subprocess
-      was already modelled in two catalogues, and this makes the rest agree.
+      `std::process::Child.wait_with_output` / `ChildStdout.read` -- the return
+      direction of a subprocess was already modelled there, and this makes the
+      rest agree. (They once cited python.yaml's `os.wait`, a status-only row
+      WI-lanos removed: a bare exit status is not the child's message.)
   - module: syscall
     functions: [Exec, ForkExec]
 
@@ -485,6 +514,18 @@ ipc_send:
     boundary_ruling: call_site_undecidable
     abstains_to: logging
     notes: "WI-suhug: the ipc_send twin of the logging row (see it)."
+  - module: net.Conn
+    methods: [Write]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_send
+    notes: "WI-kalol: the ipc_send twin of the net_send row (see it); selected by a `pipe` stamp, a Unix-domain connection."
+  - module: net.UnixConn
+    methods: [Write, WriteTo, WriteToUnix, WriteMsgUnix]
+    notes: >-
+      WI-kalol: a *net.UnixConn is a Unix-domain socket by its TYPE, so a write
+      through it is local IPC with no call-site question (ADR-0050 §1). It had
+      no rows at all: net.DialUnix / net.ListenUnixgram connections (runc's
+      notify socket, docker-cli's plugin socket) crossed no boundary.
 
 logging:
   - module: os
@@ -541,8 +582,9 @@ ipc_recv:
       The siblings that return only an exit status or a HANDLE stay
       launch-only: a status is not the child's message, and a handle is a
       crossing that has not happened yet (the ADR-0049 deferred shape).
-      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
-      `os.wait`.
+      Follows rust.yaml's `Child.wait_with_output`. (Its own precedent,
+      python.yaml's `os.wait`, is no longer rowed: a bare exit status is
+      not the child's message -- WI-lanos, ADR-0049 §Ruling 4.)
   - module: fmt
     functions: [Scan, Scanln, Scanf]
     notes: >-
@@ -579,3 +621,11 @@ ipc_recv:
     abstains_to: fs_read
     notes: >-
       WI-vutav: the ipc_recv twin of the fs_read row; see `bufio.Reader` above.
+  - module: net.Conn
+    methods: [Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: "WI-kalol: the ipc_recv twin of the net_recv row (see the net_send Write row); selected by a `pipe` stamp."
+  - module: net.UnixConn
+    methods: [Read, ReadFrom, ReadFromUnix, ReadMsgUnix]
+    notes: "WI-kalol: the read twin of the net.UnixConn ipc_send row (see it)."

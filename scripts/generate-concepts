@@ -28,6 +28,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from generator_check import run  # noqa: E402
 FRAMEWORKS_DIR = (
     REPO_ROOT
     / "packages"
@@ -329,4 +331,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run(main)

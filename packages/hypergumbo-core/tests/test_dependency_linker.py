@@ -295,6 +295,77 @@ def test_depends_on_manifest_file_outside_all_package_dirs_falls_back():
     assert dep_edges[0].meta.get("disambiguation_fallback") is True
 
 
+def _scoped_dep_sym(sym_id: str, name: str, manifest_path: str, scope: str) -> Symbol:
+    sym = _dep_sym(sym_id, name, manifest_path)
+    sym.meta = {"dependency_scope": scope}
+    return sym
+
+
+def _one_manifest_declarations() -> list[Symbol]:
+    """``requests`` declared four times in one pyproject, as its tables allow."""
+    return [
+        _scoped_dep_sym("toml:root:2:requests", "requests", "pyproject.toml", "build"),
+        _scoped_dep_sym("toml:root:6:requests", "requests", "pyproject.toml", "dev"),
+        _dep_sym("toml:root:13:requests", "requests", "pyproject.toml"),
+        _scoped_dep_sym("toml:root:21:requests", "requests", "pyproject.toml", "optional"),
+    ]
+
+
+def _linked(toml_symbols: list[Symbol], code_symbols: list[Symbol]) -> Edge:
+    edge = _import_edge("e1", "python:mod", "requests")
+    result = link_dependencies(
+        toml_symbols=toml_symbols, code_edges=[edge], code_symbols=code_symbols,
+    )
+    dep_edges = [e for e in result.edges if e.edge_type == "depends_on_manifest"]
+    assert len(dep_edges) == 1, dep_edges
+    return dep_edges[0]
+
+
+def test_one_manifest_links_to_its_runtime_declaration_in_any_order():
+    """A package a manifest declares in several tables (runtime, an extra, a
+    dev group, the build requirements) links to the runtime declaration,
+    wherever the tables stand in the file."""
+    import itertools
+
+    file_s = _file_sym("python:mod", "src/app.py")
+    for order in itertools.permutations(_one_manifest_declarations()):
+        edge = _linked(list(order), [file_s])
+        assert edge.dst == "toml:root:13:requests", [s.id for s in order]
+        assert edge.confidence == 0.9
+        assert edge.meta is None
+
+
+def test_one_manifest_is_not_an_ambiguous_fallback():
+    """Several declarations in ONE manifest are not several manifests: an
+    importer with no known path still gets the confident edge it got when the
+    manifest had one declaration."""
+    edge = _linked(_one_manifest_declarations(), [])
+    assert edge.dst == "toml:root:13:requests"
+    assert edge.confidence == 0.9
+    assert edge.meta is None
+
+
+def test_scoped_declarations_rank_optional_then_dev_then_build():
+    """With no runtime declaration the nearest role to runtime is taken; a
+    scope outside the vocabulary ranks last."""
+    file_s = _file_sym("python:mod", "src/app.py")
+    odd = _scoped_dep_sym("toml:root:1:requests", "requests", "pyproject.toml", "odd")
+    build, dev, _runtime, optional = _one_manifest_declarations()
+    assert _linked([odd, build, dev, optional], [file_s]).dst == optional.id
+    assert _linked([odd, build, dev], [file_s]).dst == dev.id
+    assert _linked([odd, build], [file_s]).dst == build.id
+    assert _linked([odd], [file_s]).dst == odd.id
+
+
+def test_nearest_manifest_wins_over_the_role_of_the_declaration():
+    """The role only chooses among the declarations of one manifest."""
+    root_runtime = _dep_sym("toml:root:requests", "requests", "pyproject.toml")
+    pkg_dev = _scoped_dep_sym(
+        "toml:a:requests", "requests", "packages/a/pyproject.toml", "dev")
+    file_a = _file_sym("python:mod", "packages/a/tests/test_x.py")
+    assert _linked([root_runtime, pkg_dev], [file_a]).dst == "toml:a:requests"
+
+
 def test_multiple_files_import_same_dependency():
     """Test that multiple files importing same dep each get an edge."""
     cargo_dep = Symbol(
@@ -759,13 +830,11 @@ def _bare_import(dst: str) -> Edge:
                        origin="test", origin_run_id="test")
 
 
-def test_import_requirement_counts_only_linkable_imports():
+def test_import_requirement_counts_only_linkable_imports(tmp_path):
     """WI-juzaj: the import_edges requirement counts only the third-party
     Rust/Python imports link_dependencies can use, so a repo whose imports are
     Elixir/JS (or stdlib-only Python) does not trigger a partial-requirement
     warning about Cargo.toml/pyproject.toml."""
-    from pathlib import Path
-
     from hypergumbo_core.linkers.dependency import _count_import_edges
     from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -781,7 +850,7 @@ def test_import_requirement_counts_only_linkable_imports():
         Edge.create(src="f", dst="python:click:0-0:x:unresolved", edge_type="calls",
                     line=1, origin="test", origin_run_id="test"),
     ]
-    ctx = LinkerContext(repo_root=Path("."), edges=edges)
+    ctx = LinkerContext(repo_root=tmp_path, edges=edges)
     assert _count_import_edges(ctx) == 2
 
 
@@ -805,13 +874,11 @@ def _code_sym(sym_id: str, kind: str, path: str, language: str,
     )
 
 
-def test_import_requirement_skips_resolved_first_party_python_imports():
+def test_import_requirement_skips_resolved_first_party_python_imports(tmp_path):
     """INV-nuraf: an import the analyzer resolved to an in-repo symbol is the
     repo's own code, which no pyproject.toml declares, so it is not counted.
     The dst ids are the exact shapes the Python analyzer emits for
     ``from pkg import b`` / ``import pkg.a`` / ``from pkg.b import fb``."""
-    from pathlib import Path
-
     from hypergumbo_core.linkers.dependency import _count_import_edges
     from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -831,7 +898,7 @@ def test_import_requirement_skips_resolved_first_party_python_imports():
         Edge.create(src=a_file, dst=b_func, edge_type="imports", line=1,
                     origin="test", origin_run_id="test"),
     ]
-    ctx = LinkerContext(repo_root=Path("."), symbols=symbols, edges=edges)
+    ctx = LinkerContext(repo_root=tmp_path, symbols=symbols, edges=edges)
     assert _count_import_edges(ctx) == 0
 
     # The third-party control still counts alongside them.
@@ -839,13 +906,11 @@ def test_import_requirement_skips_resolved_first_party_python_imports():
     assert _count_import_edges(ctx) == 1
 
 
-def test_import_requirement_skips_first_party_rust_modules_and_own_crate():
+def test_import_requirement_skips_first_party_rust_modules_and_own_crate(tmp_path):
     """INV-nuraf analogue: Rust import dsts are never resolved to in-repo ids,
     so a crate's own modules (``use util::helper`` beside ``mod util;``,
     ``use net::tcp`` for ``src/net/mod.rs``) and its own crate name (an
     integration test's ``use my_crate::x``) are recognised by name instead."""
-    from pathlib import Path
-
     from hypergumbo_core.linkers.dependency import _count_import_edges
     from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -874,22 +939,24 @@ def test_import_requirement_skips_first_party_rust_modules_and_own_crate():
         _bare_import("rust:main::x:0-0:module:module"),
         _bare_import("rust:mod::x:0-0:module:module"),
     ]
-    ctx = LinkerContext(repo_root=Path("."), symbols=symbols, edges=edges)
+    ctx = LinkerContext(repo_root=tmp_path, symbols=symbols, edges=edges)
     assert _count_import_edges(ctx) == 3
 
 
-def test_import_requirement_unmet_on_first_party_only_python_repo():
+def test_import_requirement_unmet_on_first_party_only_python_repo(tmp_path):
     """INV-nuraf production path: check_linker_requirements (what the
     partial-requirement warning reads) reports 0 third-party imports for a repo
-    whose only imports are between its own modules."""
-    from pathlib import Path
+    whose only imports are between its own modules.
 
+    ``repo_root`` is an empty directory: every linker's requirement counters
+    run here, and the subprocess-CLI one parses each Python file under the
+    root (61 s when the root was the checkout)."""
     from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
 
     a_file = "python:pkg/a.py:1-1:file:file"
     b_file = "python:pkg/b.py:1-1:file:file"
     ctx = LinkerContext(
-        repo_root=Path("."),
+        repo_root=tmp_path,
         symbols=[_code_sym(a_file, "file", "pkg/a.py", "python"),
                  _code_sym(b_file, "file", "pkg/b.py", "python")],
         edges=[Edge.create(src=a_file, dst=b_file, edge_type="imports", line=1,

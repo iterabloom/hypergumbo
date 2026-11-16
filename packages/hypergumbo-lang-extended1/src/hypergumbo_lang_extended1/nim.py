@@ -24,14 +24,18 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract proc/func/method definitions with signatures, plus
    type definitions and field/variable symbols
-2. Pass 2: Extract import edges and call edges. A call's caller is the proc
+2. Pass 2: Extract import edges and call edges. An ``import`` statement
+   gives one ``imports`` edge per module it names, from the importing file's
+   node (``make_file_id``) to the one repository file the module path
+   resolves to (``_NimScope.resolve_module``), else to the
+   ``make_module_import_dst`` stand-in for the path as written
+   (``nim:std/strutils:0-0:module:module``). A call's caller is the proc
    whose declaration contains it, found by the declaration's position, so
    exported (``proc a*``) and overloaded procs keep their calls. Its target
    is a declaration the calling module can SEE (``_NimScope``): its own file,
    the files ``include`` joins to it, then exported declarations of the
    modules it imports (narrowed by ``from`` / ``except``, extended through
-   ``export``) -- never a private proc of another module, which the flat
-   one-declaration-per-name registry had allowed. Among those it can see, the
+   ``export``) -- never a private proc of another module. Among those it can see, the
    overloads are narrowed by ARITY (each proc records ``meta["parameters"]``;
    a UFCS receiver is the first argument) and by the DECLARED type of the
    first argument -- a parameter, ``result``, or a typed ``var`` / ``let`` --
@@ -44,15 +48,16 @@ and result assembly. This module provides only the Nim-specific extraction
 logic.
 
 A callable's stable_id hashes its ``meta["parameters"]``, types included
-(``overload_arity.node_declared_arity_stable_id``, WI-tusad): the grammar has
-no parameter-list child where ``compute_stable_id`` looks, so the overloads
-``run(x: int)`` / ``run(x: string)`` tied on ``param_count 0``. Every
-stable_id also hashes the routines enclosing the symbol (``_nim_scope``;
-INV-fabih), so a proc nested in two procs no longer ties.
+(``overload_arity.node_declared_arity_stable_id``; history: WI-tusad): the
+grammar has no parameter-list child where ``compute_stable_id`` looks, so it
+would give the overloads ``run(x: int)`` / ``run(x: string)`` the same
+``param_count 0``. Every stable_id also hashes the routines enclosing the
+symbol (``_nim_scope``; history: INV-fabih), so same-named procs nested in
+different procs get distinct ids.
 
 Why This Design
 ---------------
-- TreeSitterAnalyzer eliminates ~150 lines of boilerplate
+- TreeSitterAnalyzer supplies the shared orchestration boilerplate
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-language-pack for Nim grammar
 - Nim is growing in systems programming communities
@@ -75,6 +80,8 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     find_child_by_type,
     iter_tree,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
@@ -124,8 +131,8 @@ def _declared_name_node(
     EXPORTED one — Nim's ``*`` postfix, ``proc greet*`` / ``type Person*`` —
     wraps that identifier in an ``exported_symbol`` node (``identifier`` +
     ``*``), so a bare ``find_child_by_type(parent, "identifier")`` finds
-    nothing and the whole declaration was silently dropped (INV-bisom, 0/246
-    on the filed corpus). Resolve the inner identifier in either shape, and
+    nothing and would silently drop the whole declaration (history:
+    INV-bisom). Resolve the inner identifier in either shape, and
     report whether the ``*`` export marker was present so the caller can set
     ``Symbol.is_exported`` (mirroring go.py's lexical-case export rule).
     """
@@ -143,11 +150,12 @@ _NIM_ROUTINES = frozenset({"proc_declaration", "func_declaration", "method_decla
 
 
 def _nim_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """The procs, funcs and methods enclosing ``node``, outermost first
-    (INV-fabih): every Nim symbol hashed an empty qualified name, so ``proc
-    inner`` nested in procs ``a`` and ``b`` tied and deleting the first moved
-    the second. ``overload_arity.nested_qualified_name`` over it is ``""``
-    for a top-level symbol, which keeps its value."""
+    """The procs, funcs and methods enclosing ``node``, outermost first.
+
+    This is the stable_id's qualified name: without it ``proc inner`` nested
+    in procs ``a`` and ``b`` would tie, and deleting the first would move the
+    second's id (history: INV-fabih). ``overload_arity.nested_qualified_name``
+    over it is ``""`` for a top-level symbol, which keeps its value."""
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type not in _NIM_ROUTINES:
             return None
@@ -184,14 +192,13 @@ def _make_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        # WI-bokab (v7): fold the declaring file's identity into the
-        # containing slot via the base helper. ``rel_path`` is the
-        # repo-relative path threaded down from
-        # ``extract_symbols_from_file(... rel_path ...)``, so the anchor is
-        # location-independent — two same-(kind, name) procs in different
-        # files now hash distinctly.
-        # WI-tusad: arity (with types) from meta["parameters"], so the
-        # overloads run(int) / run(string) stop tying.
+        # The declaring file's identity fills the containing slot via the
+        # base helper. ``rel_path`` is the repo-relative path threaded down
+        # from ``extract_symbols_from_file(... rel_path ...)``, so the anchor
+        # is location-independent and two same-(kind, name) procs in
+        # different files hash distinctly. Arity (with types) comes from
+        # meta["parameters"], so the overloads run(int) / run(string) differ.
+        # (history: WI-bokab, WI-tusad)
         stable_id=node_declared_arity_stable_id(
             analyzer, node, kind=kind, name=name, meta=meta,
             file_stable_id=analyzer._file_anchor(rel_path),
@@ -516,44 +523,39 @@ def _extract_import_aliases(
 
 
 def _extract_import_edges(
-    source: bytes, file_stable_id: str, run_id: str, node: "tree_sitter.Node",
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    scope: "_NimScope",
 ) -> list[Edge]:
-    """Extract import edges from an import statement."""
+    """One ``imports`` edge per module an import statement names.
+
+    The edge starts at the importing file's node. The modules are read as
+    ``_extract_module_scope`` reads them (``std/[a, b]`` is two, ``x as y`` is
+    ``x``), and each is looked up the way a call's visibility is
+    (``_NimScope.resolve_module``): exactly one repository file is that file's
+    node, and none or several is the stand-in for the module path as written.
+    """
     edges: list[Edge] = []
-    expr_list = find_child_by_type(node, "expression_list")
-    if expr_list:
-        for child in expr_list.children:
-            if child.type == "identifier":
-                import_name = node_text(child, source)
-                edges.append(
-                    Edge.create(
-                        src=file_stable_id,
-                        dst=f"nim:{import_name}:0-0:module:module",
-                        edge_type="imports",
-                        evidence_type="ast_import",
-                        line=node.start_point[0] + 1,
-                        confidence=0.9,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
-                    )
+    for item in _import_items(node):
+        if item.type == "infix_expression" and find_child_by_type(item, "as"):
+            item = item.named_children[0]
+        for spec in _expand_module_specs(item, source):
+            files = scope.resolve_module(spec, rel_path)
+            edges.append(
+                Edge.create(
+                    src=make_file_id("nim", rel_path),
+                    dst=(
+                        make_file_id("nim", files[0]) if len(files) == 1
+                        else make_module_import_dst("nim", spec)
+                    ),
+                    edge_type="imports",
+                    evidence_type="ast_import",
+                    line=node.start_point[0] + 1,
+                    confidence=0.9,
+                    is_resolved=len(files) == 1,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
-            elif child.type == "infix_expression":
-                for subchild in child.children:
-                    if subchild.type == "identifier":
-                        import_name = node_text(subchild, source)
-                        edges.append(
-                            Edge.create(
-                                src=file_stable_id,
-                                dst=f"nim:{import_name}:0-0:module:module",
-                                edge_type="imports",
-                                evidence_type="ast_import",
-                                line=node.start_point[0] + 1,
-                                confidence=0.9,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                            )
-                        )
-                        break  # Only take the first identifier (module name)
+            )
     return edges
 
 
@@ -563,11 +565,11 @@ def _find_enclosing_proc_nim(
 ) -> Optional[Symbol]:
     """The proc, func or method whose declaration contains ``node``.
 
-    Keyed by the declaration's POSITION, not its name (INV-midag, WI-bujar).
-    The name lookup read a bare ``identifier`` child, which an exported
-    ``proc api*`` does not have (the name sits inside ``exported_symbol``), so
-    every call from a module's public API was dropped; and Nim overloads by
-    parameter types, so a name credited every overload's calls to the last.
+    Keyed by the declaration's POSITION, not its name. A lookup by a bare
+    ``identifier`` child misses an exported ``proc api*`` (the name sits
+    inside ``exported_symbol``) and so drops every call from a module's
+    public API; and Nim overloads by parameter types, so a name would credit
+    every overload's calls to the last one (history: INV-midag, WI-bujar).
     ``_make_symbol`` spans each symbol from its declaration node, so the node
     the walk reaches is the one the index is keyed on. A call no proc
     contains (module-init code at top level) has no caller.
@@ -971,9 +973,8 @@ class _NimScope:
     joins), which outranks every other module.
 
     The flat name registry keeps ONE symbol per name, the last registered, so
-    the lookup it replaced bound calls to a private proc in a module the caller
-    never imported: 1,555 edges on four repositories, 96 into one private
-    ``proc get`` on nitter. Overloads are chosen by ARITY (WI-bivab): a tier
+    resolving through it would bind calls to a private proc in a module the
+    caller never imported. Overloads are chosen by ARITY (WI-bivab): a tier
     counts only when one of its declarations can take the call's argument
     count, the receiver of a UFCS call included. Nim picks among the rest by
     argument types, which the analyzer does not know: two that both fit are
@@ -1124,16 +1125,16 @@ class _NimScope:
         call ``m.f(a)`` passes ``args`` arguments; a UFCS call ``x.f(a)``
         passes ``x`` too. The first tier with a declaration that can take
         that many arguments decides (WI-bivab), so a nearer overload of
-        another arity no longer hides a farther one that fits; when none
+        another arity does not hide a farther one that fits; when none
         anywhere can, the call is not a project call (``system.add`` and its
         kin) and is left unresolved.
 
         ``first_type`` is the DECLARED type of the unqualified call's first
         argument (the UFCS receiver), when the caller knows it: a declaration
         whose first parameter that type provably cannot bind to
-        (:meth:`_NimTypes.incompatible`) is no candidate. nitter's
-        ``result.add photo`` in a proc returning ``seq[GalleryPhoto]`` is
-        system's ``add``, not ``types.add*(timeline: var seq[Tweets]; ..)``.
+        (:meth:`_NimTypes.incompatible`) is no candidate: ``result.add
+        photo`` in a proc returning ``seq[GalleryPhoto]`` is system's ``add``,
+        not a project's ``add*(timeline: var seq[Tweets]; ..)``.
         """
         candidates = self.by_name.get(name, [])
         grants = self.module_named(receiver, caller) if receiver else None
@@ -1146,8 +1147,8 @@ class _NimScope:
                 return qualified
             # The module declares no such name -- or none that takes this many
             # arguments -- so the receiver is a value that shadows the module's
-            # name (nitter's ``query.getTabClass`` with a ``query`` parameter
-            # and a ``query`` module): a UFCS call, receiver included.
+            # name (``query.getTabClass`` with a ``query`` parameter and a
+            # ``query`` module): a UFCS call, receiver included.
         if args is not None and dotted:
             args += 1
         # Nearest first: the caller's file, then the files ``include`` joins
@@ -1314,14 +1315,13 @@ class NimAnalyzer(TreeSitterAnalyzer):
         if scope is None:  # pragma: no cover - defensive: Pass 2 runs inside analyze()
             scope = _NimScope()
         edges: list[Edge] = []
-        file_stable_id = f"nim:{rel_path}:file:"
         decl_index = symbols_at(self.file_symbols(local_symbols))
         proc_types = _ProcTypes(source)
 
         for node in iter_tree(tree.root_node):
             if node.type == "import_statement":
                 edges.extend(_extract_import_edges(
-                    source, file_stable_id, run.execution_id, node,
+                    source, rel_path, run.execution_id, node, scope,
                 ))
 
             elif node.type == "call":

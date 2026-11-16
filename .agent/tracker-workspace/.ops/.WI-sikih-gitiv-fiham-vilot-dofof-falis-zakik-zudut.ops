@@ -1,0 +1,22 @@
+- op: create  # 2a04
+  at: '2026-11-16T11:47:13Z'  # 2a04
+  by: agent  # 2a04
+  actor: jgstern_agent  # 2a04
+  clock: 1  # 2a04
+  nonce: 2a04  # 2a04
+  data:  # 2a04
+    kind: work_item  # 2a04
+    title: "php: an untyped parameter hashes its name; property and constant types are not hashed; enum cases and promoted parameters are not symbols"  # 2a04
+    status: todo_hard  # 2a04
+    priority: 3  # 2a04
+    parent:  # 2a04
+    tags:  # 2a04
+    - php  # 2a04
+    - stable_id  # 2a04
+    - analysis_quality  # 2a04
+    isbefore: []  # 2a04
+    duplicate_of: []  # 2a04
+    not_duplicate_of: []  # 2a04
+    pr_ref:  # 2a04
+    description: "WHAT (MOVES IDS).\n- An untyped `$x` contributes its NAME to the hashed signature, so renaming it moves the id: 823 parameters in grpc `src/php`, 90 in koel.\n- `?T` and `T|null` hash two texts.\n- Property types, class-constant types and a typed constant's type are not hashed (would move every typed property).\n- A method or property with explicit `public` hashes differently from one with no modifier (class constants do not, by PR #2200's rule).\n\nWHAT (does not move ids).\n- Enum cases, closures and arrow functions are not symbols; promoted constructor parameters are not emitted as fields; anonymous-class members have bare names.\n- `readonly array $d` with no visibility misparses (tree-sitter-php 0.24.1).\n- Intersection, DNF and by-reference-return types were measured on a fixture only: no PHP tree on the machine uses them.\n\nFixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 2a04
+    fields: {}  # 2a04

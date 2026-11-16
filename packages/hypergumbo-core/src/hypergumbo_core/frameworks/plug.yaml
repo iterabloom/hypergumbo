@@ -69,7 +69,3 @@ patterns:
   # Ecto changesets
   - concept: model
     decorator: "^use Ecto\\.Changeset$"
-
-linkers:
-  - http
-  - database_query

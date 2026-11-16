@@ -64,3 +64,10 @@
   clock: 7  # e7ca
   nonce: e7ca  # e7ca
   message: "Part 1 (spec/schema contradiction) RECONCILED — confirmed: docs/schema.json `properties.sketch_precomputed: x-internal=true` (\"INTERNAL cache artifact, NOT a stability contract\"). Part 2 (mid-token truncation, embedding chunk-window path) is a NARROW residual that rarely fires (the hard char slices in `_build_context_chunk` only trigger when a 3-line window exceeds 800 chars — uncommon for config lines); the \"stray ]\" the filing cites is actually chunk-boundary selection, the same `_build_context_chunk` root cause as WI-gupod's cosmetic residual. Per the G9 Recommended close-out (owner 2026-07-21) the cosmetic `_build_context_chunk` cleanup is deprioritized (zero-external-consumer x-internal cache; not worth the cold-slice CI tax). Downgraded todo_hard -> todo_soft as the tracked home for that residual."  # e7ca
+- op: discuss  # 2d52
+  at: '2026-11-01T10:56:01Z'  # 2d52
+  by: agent  # 2d52
+  actor: jgstern_agent  # 2d52
+  clock: 8  # 2d52
+  nonce: 2d52  # 2d52
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: _build_context_chunk is still at sketch.py:1650 (moved from earlier lines) with the same slices. Called directly on a 3-line package.json window with max_chunk_chars=80 it returns '{ \"dependencies\": {\"alpha-package\": \"^1.2.3\", \"beta-package\": \"^4.5.6\", \"gamma-p', cut mid-token. Part 1 (spec/schema) stays reconciled. The residual is narrow, as the 2026-07-22 entry says: it applies only to the embedding chunk path and only to windows longer than 800 chars. MECHANISM: _build_context_chunk clips by fixed character count (chunk[:max] / result[:max-3]+'...') instead of at token or line boundaries. SHARES MECHANISM WITH: WI-gupod(done)."  # 2d52

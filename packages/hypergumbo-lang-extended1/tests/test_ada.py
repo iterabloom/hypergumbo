@@ -446,3 +446,53 @@ class TestAdaCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function', 'procedure'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestWithClauseEdgeEndpoints:
+    """A ``with`` clause's ``imports`` edge joins the file node to a package.
+
+    Both ends were hand-built strings (``ada:<path>:file:`` and
+    ``ada:?:<Unit>:package``) that named no node, so finalize folded every
+    file with a ``with`` clause into one ``<unknown>`` placeholder.
+    """
+
+    def test_with_clause_edges_are_ids(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (tmp_path / "main.adb").write_text(
+            "with Ada.Text_IO;\nwith util;\n"
+            "procedure Main is\nbegin\n   Util.Go;\nend Main;\n"
+        )
+        (tmp_path / "util.ads").write_text(
+            "package Util is\n   procedure Go;\nend Util;\n"
+        )
+
+        result = analyze_ada(tmp_path)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        package = next(s for s in result.symbols if s.kind == "package")
+        imports = [
+            (e.src, e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == "imports"
+        ]
+        here = make_file_id("ada", "main.adb")
+        assert imports == [
+            (here, "ada:Ada.Text_IO:0-0:module:module", False),
+            # ``with util`` names ``package Util``: Ada compares without case.
+            (here, package.id, True),
+        ]
+
+    def test_the_package_index_is_per_run(self, tmp_path: Path) -> None:
+        """A package an earlier ``analyze()`` read is no target for a later one."""
+        first, second = tmp_path / "first", tmp_path / "second"
+        first.mkdir()
+        second.mkdir()
+        (first / "util.ads").write_text("package Util is\nend Util;\n")
+        (second / "main.adb").write_text(
+            "with Util;\nprocedure Main is\nbegin\n   null;\nend Main;\n"
+        )
+        analyze_ada(first)
+        result = analyze_ada(second)
+        assert [e.dst for e in result.edges if e.edge_type == "imports"] == [
+            "ada:Util:0-0:module:module",
+        ]

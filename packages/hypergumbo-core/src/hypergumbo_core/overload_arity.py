@@ -160,7 +160,7 @@ if TYPE_CHECKING:
     import tree_sitter
 
     from .analyze.base import TreeSitterAnalyzer
-    from .ir import Symbol
+    from .ir import StableId, Symbol
 
 
 #: The ``Symbol.meta`` key holding the structured parameter list.
@@ -391,7 +391,7 @@ def declared_arity_stable_id(
     decorators: str = "",
     containing_stable_id: str = "",
     result_type: str = "",
-) -> str:
+) -> StableId:
     """The ADR-0035 producer stable_id of a callable whose arity came from meta.
 
     See the module docstring for the tier choice. ``path`` must be
@@ -480,7 +480,7 @@ def scoped_stable_id(
     scope: Sequence[str] = (),
     arity: Optional[DeclaredArity] = None,
     decorators: str = "",
-) -> str:
+) -> StableId:
     """The ADR-0035 producer stable_id of a declaration whose scope chain the
     producer holds as a list: :func:`declared_arity_stable_id` with the
     qualified name ``scope[0]/.../scope[-1]/name``.
@@ -511,7 +511,7 @@ def scoped_table_stable_id(
     path: str,
     name: str,
     scope: Sequence[str] = (),
-) -> str:
+) -> StableId:
     """The table-formula stable_id of a table-kind declaration nested in
     ``scope`` (INV-fabih; see the module docstring).
 
@@ -537,7 +537,7 @@ def pass_minted_stable_id(
     name: str,
     scope: Sequence[str] = (),
     arity: Optional[DeclaredArity] = None,
-) -> str:
+) -> StableId:
     """The ADR-0035 producer stable_id of a symbol a pass outside the language
     analyzer mints (INV-fufij; see the module docstring): :func:`scoped_stable_id`
     with the minting pass as the outermost scope.
@@ -561,7 +561,7 @@ def node_declared_arity_stable_id(
     file_stable_id: str,
     qualified_name: str = "",
     result_type: str = "",
-) -> str:
+) -> StableId:
     """``compute_stable_id`` with the arity read from ``meta`` instead of the node.
 
     For a producer that already mints ``analyzer.compute_stable_id(node, ...)``

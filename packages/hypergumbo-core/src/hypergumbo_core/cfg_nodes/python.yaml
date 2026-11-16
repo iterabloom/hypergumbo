@@ -15,20 +15,34 @@ conditional:
   - node_type: if_statement
     condition_child: "field:condition"
     true_child: "field:consequence"
+    # REPEATED: every `elif_clause` and the `else_clause` of one chain sit
+    # under this field, in order. The builder chains them (INV-kakav); read
+    # once, only the first survived.
     false_child: "field:alternative"
+  # An `elif` arm is a conditional of its own. Its false branch is not a
+  # child of its own node but the NEXT alternative of the enclosing
+  # `if_statement`, which the builder hands it; hence no false_child here.
+  - node_type: elif_clause
+    condition_child: "field:condition"
+    true_child: "field:consequence"
 
 loop:
   - node_type: while_statement
     condition_child: "field:condition"
     body_child: "field:body"
+    # `while ... else:` runs when the condition fails, never after a
+    # `break`; skipped whole before INV-rotol.
+    else_child: "type:else_clause"
   - node_type: for_statement
     body_child: "field:body"
     # `for v in xs:` binds `v` from `xs` each iteration, and the binding has
     # no node of its own: the header statement is recorded AT the loop node
     # (py_def_use's for_statement handler reads only left/right), cut at the
-    # body for the coverage gates (WI-losod). The `else:` clause is not
-    # processed by this hook.
+    # body for the coverage gates (WI-losod).
     header_is_node: true
+    # `for ... else:` runs on exhaustion, never after a `break`; skipped
+    # whole before INV-rotol.
+    else_child: "type:else_clause"
 
 break_statement: [break_statement]
 continue_statement: [continue_statement]
@@ -39,6 +53,9 @@ try_catch:
     body_child: "field:body"
     catch_clause_type: except_clause
     finally_child: "type:finally_clause"
+    # `try ... else:` runs when the body raised nothing, before `finally`;
+    # the handlers skip it. Skipped whole before INV-rotol.
+    else_child: "type:else_clause"
 
 context_manager:
   - node_type: with_statement
@@ -90,4 +107,10 @@ atomic_statement:
 # name. A `lambda` holds one expression and no statement, so it needs no entry.
 nested_function:
   - node_type: function_definition
+    body_child: "field:body"
+  # A class body runs once, where it is written, but its bindings are CLASS
+  # attributes, not this scope's names: inlined, `u = "x"` in a class killed the
+  # module's `u` (WI-nilir). A may-run region keeps what it reads and lets
+  # nothing it binds kill an outer definition.
+  - node_type: class_definition
     body_child: "field:body"

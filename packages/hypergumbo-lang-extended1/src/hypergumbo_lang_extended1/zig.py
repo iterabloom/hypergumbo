@@ -61,7 +61,7 @@ Zig grammar key patterns:
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     ExternalRef,
@@ -69,6 +69,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     make_symbol_id,
     make_unresolved_edge,
@@ -261,7 +262,7 @@ def _extract_symbols_from_tree(
     """
     file_anchor = analyzer._file_anchor(rel_path)
 
-    def scoped_id(kind: str, name: str, chain: tuple[str, ...]) -> str:
+    def scoped_id(kind: str, name: str, chain: tuple[str, ...]) -> StableId:
         return declared_arity_stable_id(
             kind=kind, lang="zig", path=rel_path, name=name,
             qualified_name=".".join((*chain, name)), arity=None,
@@ -623,7 +624,7 @@ def _extract_edges_from_tree(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, container,
                         )
-                    ):
+                    ) or defer_unresolved_tie(lookup_result):
                         edges.append(make_unresolved_edge(
                             "zig", current_function_sym.id, call_name,
                             line, PASS_ID, run.execution_id,

@@ -1,0 +1,23 @@
+- op: create  # 7c6c
+  at: '2026-11-01T09:55:54Z'  # 7c6c
+  by: agent  # 7c6c
+  actor: jgstern_agent  # 7c6c
+  clock: 1  # 7c6c
+  nonce: 7c6c  # 7c6c
+  data:  # 7c6c
+    kind: work_item  # 7c6c
+    title: "go: io.ReadAll / io.Copy / io.ReadFull over a pipe or network body mint nothing: single fixed fs_read rows with no stream stamp, so a drained subprocess or HTTP body is not a receive"  # 7c6c
+    status: todo_hard  # 7c6c
+    priority: 2  # 7c6c
+    parent:  # 7c6c
+    tags:  # 7c6c
+    - go  # 7c6c
+    - taint  # 7c6c
+    - io_boundary  # 7c6c
+    - catalogue  # 7c6c
+    isbefore: []  # 7c6c
+    duplicate_of: []  # 7c6c
+    not_duplicate_of: []  # 7c6c
+    pr_ref:  # 7c6c
+    description: "SPLIT 2026-11-01 from WI-lipis-jisiz-bokul-nusah-kuduk-nahav-mofuf-gimuk (closed: the wrapper-constructor half is done in go/c/haskell/java). This is the residual its 2026-09-13 and 2026-10-03 entries name. WHAT. io.ReadAll, io.Copy and io.ReadFull take an io.Reader whose origin is the argument's, exactly like bufio.NewReader, but io_primitives/go.yaml:68-69 declares each as ONE fixed fs_read row and no stream stamp is applied, so the machinery that fixed the wrappers cannot act: _target_kind_discriminated_keys narrows a row only when two or more read boundaries are declared for it. REPRO (dev 24d0b860ee; fixtures ~/hypergumbo_lab_notebook/p2_review_11012026/B1/fx_lipis_go, out_lipis_go.txt): untrusted-input-no-host-fs is violated only from fromStdin (bufio.NewReader(os.Stdin).ReadString); fromPipe - `out, _ := cmd.StdoutPipe(); b, _ := io.ReadAll(out)` written to a file - mints nothing, although a popen'd pipe in C (fgets over popen) and Java's Process.getInputStream() stamp ipc_recv today (WI-kanor, c6ba0f1ead). The same control is pinned in test_handle_launch_far_end.py per WI-kanor's residual. ACCEPTANCE: in the fixture, fromPipe reports an ipc_recv-origin flow and a net body (`io.ReadAll(resp.Body)`) a net_recv-origin flow, while fromFile (os.Open) and fromMem (strings.NewReader) stay silent; the three rows gain the dual declaration (or a stream stamp from the argument's origin) and the io-boundaries/taint parity test keeps agreeing."  # 7c6c
+    fields: {}  # 7c6c

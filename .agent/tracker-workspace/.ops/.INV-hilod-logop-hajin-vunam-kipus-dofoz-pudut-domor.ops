@@ -22,3 +22,10 @@
     fields:  # 7075
       statement: "The inventory's your_files counts the user's files in every wired user channel."  # 7075
       root_cause: "build_inventory hardcodes io_primitives.d and uses user_overlay_paths instead of user_channel_files."  # 7075
+- op: discuss  # ee28
+  at: '2026-11-01T10:55:43Z'  # ee28
+  by: agent  # ee28
+  actor: jgstern_agent  # ee28
+  clock: 2  # ee28
+  nonce: ee28  # ee28
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat4/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. catalogue_inventory.py:202 still sets your_files=len(user_overlay_paths(...)) only when channel==\"io_primitives.d\". Repro with XDG_CONFIG_HOME holding one yaml each in frameworks.d and io_primitives.d: build_inventory reports frameworks 0, io_primitives 1, while user_channel_files('frameworks', env, home) returns the file. All 8 channels are in WIRED_CHANNELS. The suggested fix still applies. MECHANISM: inventory count hardcodes one user channel instead of asking the per-channel file lister."  # ee28

@@ -39,45 +39,21 @@ Centrality Boost:
 - Boost formula: min(0.15, log(1 + in_degree) / 20), with ``rank_score``
   capped at 1.0
 - This ranks "core" domain models higher than utility DTOs
+
+Visibility:
+- A model whose symbol is private (``Symbol.visibility``, the language's own
+  notion: a leading underscore in Python, ``private`` in Java, an unexported
+  name in Go) has its ``rank_score`` halved, which puts it under every public
+  model. A symbol with no computed visibility is not demoted.
 """
 from __future__ import annotations
 
 import math
 import re
 from dataclasses import dataclass
-from enum import Enum
 from typing import List
 
 from .ir import Symbol, Edge
-
-
-class DataModelKind(Enum):
-    """Types of data models that can be detected.
-
-    This enum currently mixes three axes:
-      (1) language construct: ``DATACLASS`` (Python ``@dataclass`` decorator).
-      (2) library/framework: ``ORM_MODEL`` (Django/SQLAlchemy/TypeORM/GORM),
-          ``PYDANTIC_MODEL``, ``SCHEMA`` (Marshmallow / GraphQL types).
-      (3) architectural role: ``DTO``, ``DOMAIN_MODEL``, ``ENTITY`` (DDD-style).
-
-    A class may legitimately satisfy values across multiple axes (e.g., a
-    ``@dataclass`` that is also a Pydantic-style validator and is also a DTO).
-    The current detection table at ``MODEL_BASE_CLASSES`` picks one verdict per
-    class via regex priority order, losing the cross-axis information.
-
-    Re-evaluation triggers (any one is sufficient): (a) a consumer needs to
-    filter by axis independently; (b) the detection table grows past ~12
-    values; (c) a class is observed where the picked value visibly hides a
-    cross-axis signal a consumer needs. See the WI-juvag-numud audit thread.
-    """
-
-    ORM_MODEL = "orm_model"  # Django Model, SQLAlchemy, TypeORM, etc.
-    PYDANTIC_MODEL = "pydantic_model"  # Pydantic BaseModel
-    DATACLASS = "dataclass"  # Python @dataclass
-    ENTITY = "entity"  # JPA @Entity, TypeORM @Entity
-    SCHEMA = "schema"  # Marshmallow, GraphQL schema types
-    DTO = "dto"  # Data Transfer Object
-    DOMAIN_MODEL = "domain_model"  # Generic domain model (naming convention)
 
 
 @dataclass
@@ -86,14 +62,12 @@ class DataModel:
 
     Attributes:
         symbol_id: ID of the symbol that is a data model.
-        kind: Type of data model detected.
         confidence: Confidence score (0.0-1.0).
         label: Human-readable label for the data model.
         framework: Framework that defined this model (if known).
     """
 
     symbol_id: str  # axis: identity
-    kind: DataModelKind  # currently write-only — no consumer reads this field (sketch uses label/framework instead)
     confidence: float
     label: str  # axis: free-text — human-readable label for display; consumers render, never branch on the value itself.
     framework: str = ""  # axis: free-text — framework label like "Django", "Pydantic"; consumers display, never branch on the value itself.
@@ -103,54 +77,43 @@ class DataModel:
     # ``detect_datamodels`` after dedup; default 0.0 for a bare-constructed model.
     rank_score: float = 0.0
 
-    def to_dict(self) -> dict:
-        """Serialize to dictionary."""
-        return {
-            "symbol_id": self.symbol_id,
-            "kind": self.kind.value,
-            "confidence": self.confidence,
-            "label": self.label,
-            "framework": self.framework,
-            "rank_score": self.rank_score,
-        }
-
 
 # Known data model base classes (regex patterns)
 MODEL_BASE_CLASSES = [
     # Python ORMs
-    (r"^(django\.db\.)?models\.Model$", DataModelKind.ORM_MODEL, "Django"),
-    (r"^Model$", DataModelKind.ORM_MODEL, "Django"),  # Short form
-    (r"^(sqlalchemy\.orm\.)?DeclarativeBase$", DataModelKind.ORM_MODEL, "SQLAlchemy"),
-    (r"^Base$", DataModelKind.ORM_MODEL, "SQLAlchemy"),  # Common SQLAlchemy pattern
-    (r"^(pydantic\.)?BaseModel$", DataModelKind.PYDANTIC_MODEL, "Pydantic"),
-    (r"^BaseModel$", DataModelKind.PYDANTIC_MODEL, "Pydantic"),  # Short form
+    (r"^(django\.db\.)?models\.Model$", "Django"),
+    (r"^Model$", "Django"),  # Short form
+    (r"^(sqlalchemy\.orm\.)?DeclarativeBase$", "SQLAlchemy"),
+    (r"^Base$", "SQLAlchemy"),  # Common SQLAlchemy pattern
+    (r"^(pydantic\.)?BaseModel$", "Pydantic"),
+    (r"^BaseModel$", "Pydantic"),  # Short form
     # Python schemas
-    (r"^(marshmallow\.)?Schema$", DataModelKind.SCHEMA, "Marshmallow"),
-    (r"^Schema$", DataModelKind.SCHEMA, "Marshmallow"),  # Short form
+    (r"^(marshmallow\.)?Schema$", "Marshmallow"),
+    (r"^Schema$", "Marshmallow"),  # Short form
     # TypeScript/JavaScript
-    (r"^Entity$", DataModelKind.ENTITY, "TypeORM"),
+    (r"^Entity$", "TypeORM"),
     # Java/Kotlin
-    (r"^(javax\.persistence\.)?Entity$", DataModelKind.ENTITY, "JPA"),
+    (r"^(javax\.persistence\.)?Entity$", "JPA"),
     # Go
-    (r"^gorm\.Model$", DataModelKind.ORM_MODEL, "GORM"),
+    (r"^gorm\.Model$", "GORM"),
 ]
 
 # Known data model decorators (regex patterns)
 MODEL_DECORATORS = [
-    (r"^dataclass$", DataModelKind.DATACLASS, "Python"),
-    (r"^dataclasses\.dataclass$", DataModelKind.DATACLASS, "Python"),
-    (r"^Entity$", DataModelKind.ENTITY, "TypeORM"),
-    (r"^Table$", DataModelKind.ORM_MODEL, "SQLAlchemy"),
-    (r"^mapped_as_dataclass$", DataModelKind.ORM_MODEL, "SQLAlchemy"),
+    (r"^dataclass$", "Python"),
+    (r"^dataclasses\.dataclass$", "Python"),
+    (r"^Entity$", "TypeORM"),
+    (r"^Table$", "SQLAlchemy"),
+    (r"^mapped_as_dataclass$", "SQLAlchemy"),
 ]
 
-# Naming convention patterns (class name endings)
+# Naming convention patterns (class name endings) and the label each gives
 NAMING_PATTERNS = [
-    (r"[a-z]Model$", DataModelKind.DOMAIN_MODEL),
-    (r"[a-z]Entity$", DataModelKind.ENTITY),
-    (r"[a-z]Schema$", DataModelKind.SCHEMA),
-    (r"[a-z]DTO$", DataModelKind.DTO),
-    (r"[a-z]Record$", DataModelKind.DOMAIN_MODEL),
+    (r"[a-z]Model$", "Domain model"),
+    (r"[a-z]Entity$", "Entity"),
+    (r"[a-z]Schema$", "Schema"),
+    (r"[a-z]DTO$", "DTO"),
+    (r"[a-z]Record$", "Record"),
 ]
 
 
@@ -159,6 +122,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[DataModel]:
 
     YAML framework patterns emit "model", "schema", or "entity" concepts
     for classes that match known data model patterns.
+
+    The label names the construct only ("model"); the framework goes in
+    ``DataModel.framework``, and the sketch renders ``{framework} {label}``.
+    A label carrying the framework too printed it twice (WI-kibat).
 
     Args:
         symbols: All symbols with potential concept metadata.
@@ -186,10 +153,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[DataModel]:
             framework = concept.get("framework", "")
 
             if concept_type == "model":
-                label = f"{framework} model" if framework else "Data model"
+                label = "model" if framework else "Data model"
                 models.append(DataModel(
                     symbol_id=sym.id,
-                    kind=DataModelKind.ORM_MODEL,
                     confidence=0.95,
                     label=label,
                     framework=framework,
@@ -197,10 +163,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[DataModel]:
                 break  # One model per symbol
 
             elif concept_type == "schema":
-                label = f"{framework} schema" if framework else "Schema"
+                label = "schema" if framework else "Schema"
                 models.append(DataModel(
                     symbol_id=sym.id,
-                    kind=DataModelKind.SCHEMA,
                     confidence=0.95,
                     label=label,
                     framework=framework,
@@ -208,10 +173,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[DataModel]:
                 break
 
             elif concept_type == "entity":
-                label = f"{framework} entity" if framework else "Entity"
+                label = "entity" if framework else "Entity"
                 models.append(DataModel(
                     symbol_id=sym.id,
-                    kind=DataModelKind.ENTITY,
                     confidence=0.95,
                     label=label,
                     framework=framework,
@@ -246,11 +210,10 @@ def _detect_from_decorators(symbols: List[Symbol]) -> List[DataModel]:
 
         for dec in decorators:
             dec_name = dec if isinstance(dec, str) else dec.get("name", "")
-            for pattern, kind, framework in MODEL_DECORATORS:
+            for pattern, framework in MODEL_DECORATORS:
                 if re.match(pattern, dec_name):
                     models.append(DataModel(
                         symbol_id=sym.id,
-                        kind=kind,
                         confidence=0.90,
                         label=f"@{dec_name.split('.')[-1]}",
                         framework=framework,
@@ -288,11 +251,10 @@ def _detect_from_base_classes(symbols: List[Symbol]) -> List[DataModel]:
 
         for base in bases:
             base_name = base if isinstance(base, str) else str(base)
-            for pattern, kind, framework in MODEL_BASE_CLASSES:
+            for pattern, framework in MODEL_BASE_CLASSES:
                 if re.match(pattern, base_name):
                     models.append(DataModel(
                         symbol_id=sym.id,
-                        kind=kind,
                         confidence=0.85,
                         label=f"extends {base_name.split('.')[-1]}",
                         framework=framework,
@@ -324,25 +286,10 @@ def _detect_from_naming(symbols: List[Symbol]) -> List[DataModel]:
         if sym.kind != "class":
             continue
 
-        for pattern, kind in NAMING_PATTERNS:
+        for pattern, label in NAMING_PATTERNS:
             if re.search(pattern, sym.name):
-                # Extract the suffix for the label
-                if sym.name.endswith("Model"):
-                    label = "Domain model"
-                elif sym.name.endswith("Entity"):
-                    label = "Entity"
-                elif sym.name.endswith("Schema"):
-                    label = "Schema"
-                elif sym.name.endswith("DTO"):
-                    label = "DTO"
-                elif sym.name.endswith("Record"):
-                    label = "Record"
-                else:  # pragma: no cover
-                    label = "Data model"
-
                 models.append(DataModel(
                     symbol_id=sym.id,
-                    kind=kind,
                     confidence=0.70,
                     label=label,
                     framework="",
@@ -350,6 +297,10 @@ def _detect_from_naming(symbols: List[Symbol]) -> List[DataModel]:
                 break  # One detection per symbol
 
     return models
+
+
+#: Rank multiplier for a data model whose symbol is private.
+_PRIVATE_MODEL_RANK = 0.5
 
 
 def detect_datamodels(
@@ -399,6 +350,7 @@ def detect_datamodels(
     for edge in edges:
         incoming_counts[edge.dst] = incoming_counts.get(edge.dst, 0) + 1
 
+    private = {s.id: s.visibility == "private" for s in symbols}
     for model in unique_models:
         model.rank_score = model.confidence
         in_degree = incoming_counts.get(model.symbol_id, 0)
@@ -407,6 +359,13 @@ def detect_datamodels(
             # capped at 0.15 so centrality never overwhelms the base signal.
             centrality_boost = min(0.15, math.log(1 + in_degree) / 20)
             model.rank_score = min(1.0, model.rank_score + centrality_boost)
+        # A private model is an implementation detail of its module. Halved,
+        # it ranks under every public model (the weakest detection is 0.70),
+        # so a list cut by rank shows the repository's vocabulary first.
+        # ``visibility`` is the language's own notion, computed in finalize;
+        # None means nobody computed it, which is not a claim of private.
+        if private.get(model.symbol_id):
+            model.rank_score *= _PRIVATE_MODEL_RANK
 
     # Sort by rank_score (importance), highest first.
     unique_models.sort(key=lambda m: m.rank_score, reverse=True)

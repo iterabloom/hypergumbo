@@ -44,5 +44,3 @@ patterns:
   - concept: lifecycle_hook
     parent_base_class: "^ContentProvider$"
     method_name: "^onCreate$"
-
-linkers: []

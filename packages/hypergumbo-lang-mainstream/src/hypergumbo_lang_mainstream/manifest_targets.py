@@ -25,9 +25,10 @@ How It Works
 3. Extractors regex-parse the file content and call the shared ``_emit``
    helper directly, appending to the caller-owned ``symbols`` / ``edges``
    lists. They return ``None``; nothing is yielded.
-4. ``_emit`` builds the Symbol + ``defines_target`` Edge for each target;
-   the Symbol's stable_id is minted there (this pass is no language's
-   producer, so the floor key was all it had; INV-fufij)
+4. ``_emit`` builds the Symbol + ``defines_target`` Edge for each target
+   and mints the Symbol's stable_id there: this pass is no language's
+   producer, so without its own mint the symbol would get only the backstop
+   floor key (history: INV-fufij)
 5. The build-target linker (``linkers/build_target.py``) later resolves these
    edges to ``main()`` functions
 
@@ -119,7 +120,6 @@ def _emit(
             scope=(target_path,),
         ),
         shape_id=None,
-        # ADR-0032: canonical_name dropped (was redundant with name=).
         fingerprint=None,
         kind=kind,
         name=name,
@@ -129,14 +129,11 @@ def _emit(
         origin=PASS_ID,
         meta={"target_path": target_path},
     ))
-    # WI-hugom: previously dst was the raw target_path, which fell
-    # through ir._parse_dangling_id and stuffed the path into the
-    # language slot of the synthesized boundary node — observed on kafka
-    # cohort-001/iter-001 as 34 nodes with paths like
-    # 'org/apache/kafka/.../FooConfig.java' in the language slot. Same
-    # shape as the original INV-nodij toml_config bug. Construct a
-    # properly-formed 5-part dst id and stash target_path on the edge
-    # meta where build_target.py's linker already looks first.
+    # dst must be a well-formed 5-part id (lang:path:span:name:kind). A raw
+    # target_path as dst falls through ir._parse_dangling_id, which puts the
+    # path into the language slot of the synthesized boundary node. The
+    # path itself rides on edge meta, where the build-target linker looks
+    # first. (history: WI-hugom, INV-nodij)
     edge_meta: dict[str, str] = {"target_path": target_path}
     if target_function:
         edge_meta["target_function"] = target_function
@@ -154,7 +151,8 @@ def _emit(
 
 
 # ---------------------------------------------------------------------------
-# Per-format extractors — each takes file content and yields matches
+# Per-format extractors — each parses file content and appends to the
+# caller's symbols/edges lists via ``_emit``
 # ---------------------------------------------------------------------------
 
 # Gradle: mainClass = "..." / mainClassName = "..." / mainClass.set("...")
@@ -175,10 +173,11 @@ def _extract_gradle(
         class_name = m.group(1)
         # Could be Java or Kotlin — try .java first (more common in Gradle)
         target = _class_to_path(class_name, ".java")
-        # WI-kunut: a Gradle mainClass target is a Java class (target_path is
-        # .java) — its language is 'java', not the build-format 'gradle' (which
-        # is not a registered language → axis_conformance leak). Matches every
-        # sibling extractor mapping manifest→target language (sbt→scala etc.).
+        # A Gradle mainClass target is a Java class (target_path is .java) —
+        # its language is 'java', not the build format 'gradle', which is not
+        # a registered language (an axis_conformance leak). Every extractor
+        # stamps the target's language, not the manifest's (sbt→scala etc.).
+        # (history: WI-kunut)
         _emit(symbols, edges, rel_path, class_name.rsplit(".", 1)[-1],
               "binary", line, target, "java", run_id=run_id)
 
@@ -200,8 +199,9 @@ def _extract_csproj(
         line = content[:m.start()].count("\n") + 1
         class_name = m.group(1)
         target = _class_to_path(class_name, ".cs")
-        # WI-kunut: a .csproj StartupObject is a C# class (target_path is .cs) —
-        # language 'csharp', not the build-format 'csproj'. Mirrors gradle→java.
+        # A .csproj StartupObject is a C# class (target_path is .cs) —
+        # language 'csharp', not the build format 'csproj'. Mirrors
+        # gradle→java. (history: WI-kunut)
         _emit(symbols, edges, rel_path, class_name.rsplit(".", 1)[-1],
               "binary", line, target, "csharp", run_id=run_id)
 
@@ -548,9 +548,10 @@ def _analyze_manifest_targets(repo_root: Path) -> AnalysisResult:
     return AnalysisResult(symbols=symbols, edges=edges, run=run)
 
 
-# WI-juzig: not a language — eleven manifest formats, each symbol stamped with
-# its format's language. Under the old ``[name]`` default ``manifest_targets``
-# was a language the spec validator accepted.
+# Not a language — eleven manifest formats, each symbol stamped with its
+# target's language — so it registers as no_language. The registry default
+# would treat ``manifest_targets`` itself as the pass's language.
+# (history: WI-juzig)
 @register_analyzer(
     "manifest_targets", language_state=LANGUAGE_STATE_NO_LANGUAGE, backend="regex",
 )

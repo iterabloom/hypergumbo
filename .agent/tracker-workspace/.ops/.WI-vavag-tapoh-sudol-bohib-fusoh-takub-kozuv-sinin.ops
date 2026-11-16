@@ -1,0 +1,23 @@
+- op: create  # 5ac0
+  at: '2026-11-16T04:58:18Z'  # 5ac0
+  by: agent  # 5ac0
+  actor: jgstern_agent  # 5ac0
+  clock: 1  # 5ac0
+  nonce: 5ac0  # 5ac0
+  data:  # 5ac0
+    kind: work_item  # 5ac0
+    title: "A Svelte/Vue/Astro component whose only file node is the JavaScript analyzer's sits in the typescript:/javascript: slot"  # 5ac0
+    status: todo_hard  # 5ac0
+    priority: 3  # 5ac0
+    parent:  # 5ac0
+    tags:  # 5ac0
+    - stable_id  # 5ac0
+    - v15  # 5ac0
+    - svelte  # 5ac0
+    - vue  # 5ac0
+    isbefore: []  # 5ac0
+    duplicate_of: []  # 5ac0
+    not_duplicate_of: []  # 5ac0
+    pr_ref:  # 5ac0
+    description: "WHAT. PR #2198 left every path with one file pseudo-symbol. Where two producers had minted one, the survivor is the file's own language. Where ONLY the JavaScript analyzer minted one (a component with a script and no template edges), the node stays typescript:X.vue / javascript:X.svelte: re-slotting it changes make_file_stable_id's input, a stable-id move.\n\nMEASURED. koel 62 of 297 components, workadventure play/src/front 187 of 440. If members are re-anchored on the new file id too, up to 1,925 (koel) and 3,844 (workadventure) member ids move.\n\nFOR THE BUMP, to check first: whether the containment linker roots typescript members under a svelte: file node; that the placeholder demotion (ADR-0057 section 14.1) survives once both producers mint one id. Blade paths keep php: because taxonomy.get_language reads the last suffix only (.blade.php -> blade is unreachable in _EXTENSION_MAP). Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 5ac0
+    fields: {}  # 5ac0

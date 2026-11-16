@@ -489,8 +489,9 @@ class TestGroovyEmptyRepo:
 class TestGroovySignatureExtraction:
     """Tests for Groovy method signature extraction.
 
-    Note: Groovy's tree-sitter grammar uses dynamic parameter types,
-    so we only capture parameter names in most cases.
+    Typed parameters are written ``Type name``. An untyped parameter
+    (``def f(x)``) does not parse in tree-sitter-groovy 0.1.2 and is not
+    written.
     """
 
     def test_params_extraction(self, tmp_path: Path) -> None:
@@ -507,10 +508,7 @@ class Calculator {
         result = analyze_groovy(tmp_path)
         methods = [s for s in result.symbols if s.kind == "method" and "add" in s.name]
         assert len(methods) == 1
-        # Groovy's grammar has limited type info, but captures params
-        assert methods[0].signature is not None
-        assert "x" in methods[0].signature
-        assert "y" in methods[0].signature
+        assert methods[0].signature == "(int x, int y): int"
 
     def test_void_return_type_omitted(self, tmp_path: Path) -> None:
         """Void return type is omitted from signature."""
@@ -544,8 +542,9 @@ class Counter {
         result = analyze_groovy(tmp_path)
         methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
         assert len(methods) == 1
-        # Empty params
-        assert methods[0].signature == "()"
+        # Empty params; the ``int`` return type is written (it was dropped
+        # before: the renderer had no case for ``integral_type``).
+        assert methods[0].signature == "(): int"
 
 class TestGroovyImportAliases:
     """Tests for import alias extraction and qualified call resolution."""
@@ -1051,7 +1050,7 @@ abstract class AbsClass {}
 
 
 class TestNormalizeGroovySignature:
-    """Tests for Groovy signature normalization (ADR-0014 §3)."""
+    """Tests for Groovy signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.groovy import normalize_groovy_signature
@@ -1339,7 +1338,7 @@ class TestGroovyParamTypeInference:
 
 
 class TestGroovyShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_method_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
@@ -1350,7 +1349,7 @@ class TestGroovyShapeId:
         result = analyze_groovy(tmp_path)
         method = next(s for s in result.symbols if s.kind == "method")
         assert method.shape_id is not None
-        assert method.shape_id.startswith("sha256:")
+        assert method.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
@@ -1361,7 +1360,7 @@ class TestGroovyShapeId:
         result = analyze_groovy(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 class TestGroovyCyclomaticComplexity:
@@ -1418,3 +1417,106 @@ class TestGroovyCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in callable_kinds:
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestGroovyEnumMembersAndBareCalls:
+    """WI-nomah: an enum's methods are its own, and a bare call stays in its type.
+
+    ``_get_enclosing_class`` skipped ``enum_declaration``, so an enum's methods
+    were emitted bare (``label``); and ``local_symbols`` holds every method
+    under its bare name too, last one in the file winning, so ``helper()`` in
+    ``Color`` (or in any class) bound to an ``Other.helper`` declared after it.
+    """
+
+    def _calls(self, tmp_path: Path, code: str):
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "A.groovy").write_text(code)
+        result = analyze_groovy(tmp_path)
+        names = {s.id: s.name for s in result.symbols}
+        calls = {(names.get(e.src), names.get(e.dst))
+                 for e in result.edges if e.edge_type == "calls"}
+        return result, calls
+
+    def test_enum_methods_are_qualified_and_call_their_own(self, tmp_path: Path) -> None:
+        result, calls = self._calls(tmp_path, (
+            "enum Color {\n"
+            "    RED, GREEN;\n"
+            "    String label() { return helper() }\n"
+            "    String helper() { return \"x\" }\n"
+            "}\n"
+            "class Other {\n"
+            "    String helper() { return \"y\" }\n"
+            "}\n"
+        ))
+        methods = {s.name for s in result.symbols if s.kind == "method"}
+        assert {"Color.label", "Color.helper", "Other.helper"} <= methods
+        assert ("Color.label", "Color.helper") in calls
+        assert ("Color.label", "Other.helper") not in calls
+
+    def test_a_class_bare_call_stays_in_the_class(self, tmp_path: Path) -> None:
+        _, calls = self._calls(tmp_path, (
+            "class K {\n"
+            "    String a() { return helper() }\n"
+            "    String helper() { return \"x\" }\n"
+            "}\n"
+            "class Other {\n"
+            "    String helper() { return \"y\" }\n"
+            "}\n"
+        ))
+        assert ("K.a", "K.helper") in calls
+        assert ("K.a", "Other.helper") not in calls
+
+    def test_a_type_qualified_call_reaches_that_type(self, tmp_path: Path) -> None:
+        _, calls = self._calls(tmp_path, (
+            "class Other {\n"
+            "    static String helper() { return \"y\" }\n"
+            "}\n"
+            "class K {\n"
+            "    String a() { return Other.helper() }\n"
+            "    String helper() { return \"x\" }\n"
+            "}\n"
+        ))
+        assert ("K.a", "Other.helper") in calls
+        assert ("K.a", "K.helper") not in calls
+
+    def test_a_free_function_and_a_variable_receiver_still_bind(self, tmp_path: Path) -> None:
+        _, calls = self._calls(tmp_path, (
+            "def util() { return 1 }\n"
+            "class Other {\n"
+            "    String helper() { return \"y\" }\n"
+            "}\n"
+            "class K {\n"
+            "    def a() { return util() }\n"
+            "    String b(Other o) { return o.helper() }\n"
+            "}\n"
+        ))
+        assert ("K.a", "util") in calls
+        assert ("K.b", "Other.helper") in calls
+
+
+class TestGroovyImportBoundBaseHints:
+    """The package and import facts the inheritance linker reads, from the
+    Groovy package's own tests: CI measures a changed file with the selected
+    tests of its package only, and the test that covered these lines
+    (``test_import_bound_external_bases``) is not selected for a groovy.py
+    change."""
+
+    def test_package_imports_alias_and_wildcard(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "T.groovy").write_text(
+            "package org.acme.app\n"
+            "import groovy.lang.Script\n"
+            "import org.acme.util.*\n"
+            "import org.acme.Base as B\n"
+            "class T extends Script {}\n"
+            "class V extends B {}\n"
+            "class W extends Local {}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        classes = {s.name: s for s in result.symbols if s.kind == "class"}
+        assert classes["T"].qualified_name == "org.acme.app.T"
+        assert classes["T"].meta["base_class_imports"] == {"Script": "groovy.lang.Script"}
+        assert classes["V"].meta["base_class_imports"] == {"B": "org.acme.Base"}
+        assert "base_class_imports" not in classes["W"].meta

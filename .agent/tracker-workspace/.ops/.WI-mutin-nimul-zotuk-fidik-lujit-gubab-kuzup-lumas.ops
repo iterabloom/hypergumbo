@@ -1,0 +1,21 @@
+- op: create  # 635b
+  at: '2026-11-16T04:58:42Z'  # 635b
+  by: agent  # 635b
+  actor: jgstern_agent  # 635b
+  clock: 1  # 635b
+  nonce: 635b  # 635b
+  data:  # 635b
+    kind: work_item  # 635b
+    title: "Java writes a comma-joined set of candidate types into the module slot, not a module-set handle"  # 635b
+    status: todo_hard  # 635b
+    priority: 3  # 635b
+    parent:  # 635b
+    tags:  # 635b
+    - module_key  # 635b
+    - java  # 635b
+    isbefore: []  # 635b
+    duplicate_of: []  # 635b
+    not_duplicate_of: []  # 635b
+    pr_ref:  # 635b
+    description: "WHAT. C and C++ write a disjunction of candidate modules as a module-set-<16 hex> handle with the list in the map's top-level module_sets (INV-jahuf). java.py (_wildcard_candidate_slot, _qualify_receiver_type) still writes the comma-joined list itself into ExternalRef.module_path.\n\nMEASURED on the 22-repository module-key cohort: 1,160 edges (jedis 1,154, spring-petclinic 6; 247 distinct values). It is the one violator class left among edges carrying a dst_ref.\n\nALSO not classified by the module-key registry: <unknown> 449 edges (purescript 317, cmake 54, nix 43, rst 33, meson 2, before PR #2198's endpoint fixes), Rust glob paths X::* 119, Ruby ? 20 (postal; source not traced), JavaScript 'some CJS module' / 'some ES module' 7. Stale figures remain in dated documents: docs/surveys/axiom-falsifiability.md:68,94; docs/audits/0023-reader-census.md:110. Data: pr1/marok/. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 635b
+    fields: {}  # 635b

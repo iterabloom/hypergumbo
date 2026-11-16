@@ -221,7 +221,6 @@ class TestTheUserChannelIsREADAndNotMerelyDeclared:
     def test_a_user_row_is_loaded(self, tmp_path: Path, monkeypatch) -> None:
         env = self._channel(tmp_path, "go.yaml", (
             "language: go\n"
-            "module_completeness: partial\n"
             "signatures:\n"
             "  inhouse.Open: inhouse.Handle\n"
         ))
@@ -239,7 +238,6 @@ class TestTheUserChannelIsREADAndNotMerelyDeclared:
         something about their own build that the shipped file cannot."""
         env = self._channel(tmp_path, "go.yaml", (
             "language: go\n"
-            "module_completeness: partial\n"
             "signatures:\n"
             "  net.Listen: mycorp.Listener\n"
         ))
@@ -255,7 +253,6 @@ class TestTheUserChannelIsREADAndNotMerelyDeclared:
     ) -> None:
         env = self._channel(tmp_path, "java.yaml", (
             "language: java\n"
-            "module_completeness: partial\n"
             "signatures:\n"
             "  Foo.bar: com.example.Baz\n"
         ))

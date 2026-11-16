@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-midag, kotlin: a call edge's src is the function whose span contains it.
 
-The enclosing lookup keyed on the declaration's SHORT name, which several
-functions in one file share: ``HttpUrl.parse`` and ``Builder.parse`` in okhttp's
-HttpUrl.kt, or one test name under two ``describe`` blocks in detekt. It
-returned whichever registered last. On a pinned 26-repo run, 2,014 of 54,037
-kotlin call edges (3.7%) named a src whose span does not contain the call.
-The cure INV-mozas shipped for elixir applies unchanged: the enclosing
-declaration node IS the symbol's node, so its start position identifies it.
+The enclosing lookup finds the declaration by position: the enclosing
+declaration node IS the symbol's node, so its start position identifies it (the
+same rule as elixir's, INV-mozas). A lookup keyed on the declaration's SHORT
+name fails because several functions in one file share it -- ``HttpUrl.parse``
+and ``Builder.parse`` in one file, or one test name under two ``describe``
+blocks -- and returns whichever registered last, naming a src whose span does
+not contain the call.
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def test_a_call_is_anchored_to_the_method_that_contains_it(tmp_path: Path) -> No
 
 
 def test_the_same_test_name_under_two_blocks(tmp_path: Path) -> None:
-    """detekt's shape: one leaf name in two enclosing objects."""
+    """One leaf name in two enclosing objects."""
     anchors = _anchors(tmp_path, """\
 object StringProperty {
     fun usesDefault() { check(1) }

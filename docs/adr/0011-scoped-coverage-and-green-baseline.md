@@ -80,19 +80,12 @@ When running affected tests, smart-test:
    ```
    This ensures smart-test sees changes regardless of when pytest runs in the workflow (before or after staging).
 
-3. **Scopes coverage to affected packages:**
+3. **Measures every package; only the gate (item 5) is scoped:**
    ```bash
-   # Extract unique package source directories containing changed files
-   pkg_dirs=$(echo "$CHANGED_FILES" |
-              grep -E '^packages/.*/src/.*\.py$' |
-              sed 's|^\(packages/[^/]*/src\)/.*|\1|' |
-              sort -u)
-
-   # Build --cov arguments for just those packages
-   for pkg_dir in $pkg_dirs; do
-       COV_PATHS+=("--cov=$pkg_dir")
-   done
+   # COV_PATHS stays the full list on a targeted run
+   COV_PATHS=(--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src ...)
    ```
+   The run's per-test coverage is folded into the selection index ([ADR-0010](0010-modular-packages-and-smart-testing.md)), which treats a test's having no row on a file as "does not run it" only for a run that measured every package. Cost against measuring only the packages that hold a changed file, each selection run twice each way: 5,127 tests selected for a core file, 780 s either way; 7,084 tests selected for a mainstream file, 951 s against 993 s (+4.4%).
 
 4. **Suppresses misleading package-level coverage:**
    ```bash
@@ -124,6 +117,13 @@ The `ci.yml` workflow reads the manifest and performs the same scoped coverage c
 
 This ensures the same coverage rules apply both locally and on CI.
 
+**Prose-only files are not coverage-gated.** A changed source file whose code equals the base's, with only comments or docstrings different (the prose-only rule; see [ADR-0010](0010-modular-packages-and-smart-testing.md) §"What the Manifest Carries"), has no changed executable line, and its tests come from recorded evidence rather than the import graph, so the tests that cover its lines are mostly not selected. Gating it would fail on code nobody changed. Both gates leave it out:
+
+- **Locally**, `smart-test` drops it from `CHANGED_SOURCE_FILES` before writing the manifest, and from the scoped `coverage report --include`.
+- **In CI**, the coverage step runs `scripts/prose-only-files BASE HEAD` on the PR's own diff and removes those files from the gated set. The list comes from the diff, never from the manifest, so a manifest cannot talk a code change out of the gate; if the helper fails it prints nothing and exempts nothing.
+
+A file whose code changed is gated as before, including in a change that also edits prose elsewhere.
+
 ### Part 4: Infrastructure-Only PRs Skip pytest
 
 When a PR changes only shell scripts, YAML, or config files (no Python source):
@@ -146,7 +146,7 @@ This matches the intended architecture:
 
 | Mode | Test Scope | Coverage Scope | Threshold |
 |------|------------|----------------|-----------|
-| `pytest` (affected-only) | Tests depending on changed files | Changed source files only | 100% |
+| `pytest` (affected-only) | Tests depending on changed files (prose-only files: tests recorded seeing them) | Changed source files only, prose-only files excluded | 100% |
 | `pytest --full` | All tests | All packages | 100% |
 
 ### Per-Package Isolation Check
@@ -230,7 +230,7 @@ which are retained for history. See WI-kalub for the full investigation.
 [smart-test] Changed files since 5718a11e1429664a0d5c39f42d2eb04cc2b200d1:
   packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py
 [smart-test] Found 2 affected test files
-[smart-test] Scoping coverage to 1 package(s) containing 1 changed source file(s)
+[smart-test] 1 changed source file(s) in 1 package(s); every package is measured, the 100% gate reads the changed files
 
 Running 2 affected test files with scoped coverage
   (enforcing 100% coverage for changed source files only)

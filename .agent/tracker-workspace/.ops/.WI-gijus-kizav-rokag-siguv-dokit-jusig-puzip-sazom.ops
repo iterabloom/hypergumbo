@@ -1,0 +1,21 @@
+- op: create  # 98e3
+  at: '2026-10-31T10:06:55Z'  # 98e3
+  by: agent  # 98e3
+  actor: jgstern_agent  # 98e3
+  clock: 1  # 98e3
+  nonce: '98e3'  # 98e3
+  data:  # 98e3
+    kind: work_item  # 98e3
+    title: "python: self.<NestedClass>() emits a calls/ast_call edge to the class instead of instantiates/ast_new"  # 98e3
+    status: todo_hard  # 98e3
+    priority: 3  # 98e3
+    parent:  # 98e3
+    tags:  # 98e3
+    - docstring_audit  # 98e3
+    - analysis_quality  # 98e3
+    isbefore: []  # 98e3
+    duplicate_of: []  # 98e3
+    not_duplicate_of: []  # 98e3
+    pr_ref:  # 98e3
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. Case 2a (py.py:9401-9402) never sets is_instantiation, while Case 2b (py.py:9408) does. Fixture class Outer: class Inner; def make(self): return self.Inner() gives calls Outer.make -> Inner ast_call. v02."  # 98e3
+    fields: {}  # 98e3

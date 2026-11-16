@@ -59,7 +59,3 @@ patterns:
   # WebSocket event handlers - @SubscribeMessage('event')
   - concept: websocket_handler
     decorator: "^SubscribeMessage$"
-
-linkers:
-  - http
-  - websocket

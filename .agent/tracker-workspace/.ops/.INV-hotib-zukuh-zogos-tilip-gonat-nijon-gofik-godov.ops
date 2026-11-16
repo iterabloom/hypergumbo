@@ -1,0 +1,93 @@
+- op: create  # 95d9
+  at: '2026-11-04T04:01:27Z'  # 95d9
+  by: agent  # 95d9
+  actor: jgstern_agent  # 95d9
+  clock: 1  # 95d9
+  nonce: 95d9  # 95d9
+  data:  # 95d9
+    kind: invariant  # 95d9
+    title: "Self-claims gate red: all 18 self-claims inconclusive on dev (3 unclassified modules: scip_pb2, textual.widgets.Select, datetime.timezone) while SECURITY.md says 18 confirmed_with_caveats and the per-PR claims-coverage guard passes the same tree"  # 95d9
+    status: violated  # 95d9
+    priority: 2  # 95d9
+    parent:  # 95d9
+    tags:  # 95d9
+    - security  # 95d9
+    - verify_claims  # 95d9
+    - ci  # 95d9
+    isbefore: []  # 95d9
+    duplicate_of: []  # 95d9
+    not_duplicate_of: []  # 95d9
+    pr_ref:  # 95d9
+    description: "**Observed (2026-11-03).** The self-claims gate is red and the published table is wrong in the direction WI-vanun was about. `scripts/ci-debug cron-status`: the most recent `ci/woodpecker/cron/full-suite` (2026-11-03T18:18-05:00, dev 42d20c51) fails at step `self-claims-gate (exit 1)`: all 18 claims in `docs/hypergumbo.claims.yaml` moved `confirmed_with_caveats -> inconclusive`, and `opaque_boundary` left every caveat list. Reproduced locally on dev dce94fea97 (`python -m hypergumbo_core verify-claims . --claims docs/hypergumbo.claims.yaml --json`, rc 2, 2m00s on a warm cache; `check-self-claims-drift` rc 1). Every verdict gives the same reason: \"makes calls into 3 module(s) that the I/O catalog could not classify (hypergumbo_core.scip._generated.scip_pb2, textual.widgets.Select, datetime.timezone), which is what withholds the qualified verdict the launches alone would have earned; 2 of them are untraced dependency source\". The same step also fails `self-tree-validation` (id_format|warning: 2 > baseline 0), a separate ratchet.\n\n**Two things wrong.** (1) `docs/hypergumbo.claims.expected.json` (last recorded 2026-09-14, 4d0933b10c) and the SECURITY.md verdict table (\"confirmed_with_caveats 18\") no longer describe what the tool reports; nobody acknowledged the drift. Per the gate's own contract the drift must be adjudicated, not re-recorded blind: row or grant (dated module_completeness) the three modules at the exact slot named, or decide the call should not be in the shipped tree, then re-record and regenerate SECURITY.md. (2) The per-PR guard `scripts/check-claims-coverage` (INV-jojog) says \"the shipped tree's self-claims are qualifiable\" on the SAME tree (rc 0, 31.6 s, 394 files, 71,539 edges) while the cron withholds every verdict on exactly the shape the guard exists to catch (a shipped call into a module the catalogue can neither row nor enumerate). The guard runs the python analyzer alone over the packaging roots; the cron's full map evidently carries module slots the guard's edge set does not (candidates: the generated scip_pb2 being excluded as generated output under ADR-0004, so \"untraced\"; a linker-produced edge; a slot minted by the WI-gabak import-anchored module change #2036, which is in the window). Which commit introduced the drift is NOT established: cron-status shows only the latest run; bisect with `check-self-claims` against the snapshot.\n\n**Evidence.** `~/hypergumbo_lab_notebook/self_audit_11032026/`: self_claims.json (full verdict JSON with caveat entries), self_claims_drift.txt, cron_self_claims.log, cron_self_tree.log, claims_coverage.log, self_io_boundaries.json (whole-repo io-boundaries, 6m17s).\n\n**Invariant.** The committed self-claim snapshot and SECURITY.md match what `verify-claims` reports on dev, and a shape the cron gate withholds on is one the per-PR guard also reports."  # 95d9
+    fields:  # 95d9
+      statement: "The committed self-claim snapshot (docs/hypergumbo.claims.expected.json) and the SECURITY.md verdict table match what verify-claims reports on dev, and any coverage shape that makes the cron self-claims gate withhold a verdict is one the per-PR check-claims-coverage guard also reports."  # 95d9
+      root_cause: "Three module slots in the shipped-artifact map have neither a catalogue row nor a module_completeness grant (hypergumbo_core.scip._generated.scip_pb2 and textual.widgets.Select as untraced dependency source, datetime.timezone as stdlib), so the uncovered-module gate withholds every self-claim verdict; the drift since the 2026-09-14 snapshot was never adjudicated, and the per-PR guard's python-analyzer-only edge set does not carry these slots, so it reported qualifiable on the same tree. Introducing commit not yet bisected."  # 95d9
+- op: update  # fed0
+  at: '2026-11-04T04:17:40Z'  # fed0
+  by: agent  # fed0
+  actor: jgstern_agent  # fed0
+  clock: 2  # fed0
+  nonce: fed0  # fed0
+  set: {}  # fed0
+  add:  # fed0
+    isbefore: [WI-muzah-bubim-zunom-masup-mikab-dajul-bigig-lopaf]  # fed0
+- op: discuss  # a005
+  at: '2026-11-04T04:17:41Z'  # a005
+  by: agent  # a005
+  actor: jgstern_agent  # a005
+  clock: 3  # a005
+  nonce: a005  # a005
+  message: "Cross-ref 2026-11-03: the guard half of this invariant's statement (check-claims-coverage reporting the same uncovered-module shape the cron withholds on) is tracked as WI-jizam-razas-sihap-budol-jinab-lopad-todoj-votip; this item's own closure is adjudicating the three modules, re-recording docs/hypergumbo.claims.expected.json and regenerating SECURITY.md. Umbrella: the audit-sentence META. Sequenced before WI-muzah-bubim-zunom-masup-mikab-dajul-bigig-lopaf because a backend switch for the gate re-records the same snapshot."  # a005
+- op: discuss  # bb24
+  at: '2026-11-04T04:18:57Z'  # bb24
+  by: agent  # bb24
+  actor: jgstern_agent  # bb24
+  clock: 4  # bb24
+  nonce: bb24  # bb24
+  message: "Umbrella for the five audit-sentence steps: META-kazuf-zabok-gabom-sidod-bapij-monav-vozus-kafop."  # bb24
+- op: update  # e5fd
+  at: '2026-11-04T04:51:16Z'  # e5fd
+  by: agent  # e5fd
+  actor: jgstern_agent  # e5fd
+  clock: 5  # e5fd
+  nonce: e5fd  # e5fd
+  set:  # e5fd
+    status: pending_validation  # e5fd
+    fields:  # e5fd
+      statement: "The committed self-claim snapshot (docs/hypergumbo.claims.expected.json) and the SECURITY.md verdict table match what verify-claims reports on dev: every module slot the shipped tree calls into is rowed or carries a dated module_completeness grant, so no self-claim verdict is withheld by the uncovered-module gate. (Re-scoped 2026-11-03 after PR #2042: the guard-parity clause is WI-jizam's own deliverable.)"  # e5fd
+- op: discuss  # 427c
+  at: '2026-11-04T04:51:16Z'  # 427c
+  by: agent  # 427c
+  actor: jgstern_agent  # 427c
+  clock: 6  # 427c
+  nonce: 427c  # 427c
+  message: "FIX DEPLOYED in PR #2042 (dev 5c85a1d0c3), pending_validation until the next full-suite cron's self-claims-gate step is green. Three dated module_completeness grants at the exact slots named: datetime.timezone (python.yaml), textual.widgets.Select and hypergumbo_core.scip._generated.scip_pb2 (docs/io-primitives-overlays/hypergumbo-self.yaml); SECURITY.md's untyped-receiver paragraph re-measured (10,395 of 14,024). BEHAVIOURAL EVIDENCE (production path, lab ~/hypergumbo_lab_notebook/self_audit_11032026/after_grants_*): verify-claims on the patched tree rc 3, 18 of 18 confirmed_with_caveats, opaque_boundary back on every claim; scripts/check-self-claims-drift against the committed snapshot: OK, 18 unchanged, so the September snapshot was NOT re-recorded; scripts/check-claims-coverage 0; smart-test 11,277 passed (the one red, test_check_mode_passes_on_committed_state, was SECURITY.md regenerated after the run started; green on re-run). BISECT: at 1443c2da57, the parent of #2036's 3e4b895996, all 18 were ALREADY inconclusive on scip_pb2 alone (ab_pregabak_1443c2da57.json, 12m27s); #2036 added the two from-imported slots. The scip_pb2 introducing commit is not bisected further. Statement re-scoped to the snapshot half; the guard-parity half is WI-jizam. NOT covered: the same cron's self-tree-validation red (id_format|warning 2 > 0) has a separate cause and keeps the cron red after this fix."  # 427c
+- op: discuss  # f4db
+  at: '2026-11-04T07:46:01Z'  # f4db
+  by: agent  # f4db
+  actor: jgstern_agent  # f4db
+  clock: 7  # f4db
+  nonce: f4db  # f4db
+  message: "Guard half closed by WI-jizam in PR #2043 (dev 94b03ded17): check-claims-coverage now exits 1 on the acf67df4cb tree naming the same modules the cron withheld on. This invariant's remaining validation is the next full-suite cron's self-claims-gate going green on dev (the grants shipped in #2042)."  # f4db
+- op: discuss  # 7176
+  at: '2026-11-04T08:51:58Z'  # 7176
+  by: agent  # 7176
+  actor: jgstern_agent  # 7176
+  clock: 8  # 7176
+  nonce: '7176'  # 7176
+  message: "Cross-ref 2026-11-04: the snapshot now holds 23 entries (five repo-content claims, PR #2044); the cron's self-claims-gate validates all 23 together. On the scip-python map the same tree withholds all 23 on 86 class-qualified slots (measurement 0031, WI-zihuh-tabos-diluh-bihos-tanur-jogas-zanun-fafud): the slot-exactness rule this invariant established is what makes 25 already-granted modules withhold there."  # 7176
+- op: update  # de2e
+  at: '2026-11-04T17:05:58Z'  # de2e
+  by: agent  # de2e
+  actor: jgstern_agent  # de2e
+  clock: 9  # de2e
+  nonce: de2e  # de2e
+  set:  # de2e
+    status: satisfied  # de2e
+- op: discuss  # a2f2
+  at: '2026-11-04T17:05:58Z'  # a2f2
+  by: agent  # a2f2
+  actor: jgstern_agent  # a2f2
+  clock: 10  # a2f2
+  nonce: a2f2  # a2f2
+  message: "VALIDATED by the full-suite cron: ci/woodpecker/cron/full-suite pipeline 6005 on dev 7a53fa053f, step self-claims-gate OK; its log line reads: check-self-claims-drift: OK, 23 claims unchanged (23 confirmed_with_caveats). Log saved at ~/hypergumbo_lab_notebook/self_audit_11032026/cron_self_claims_validated_11042026.log. Behavioural evidence on the production path (the gate command itself, on the cron image), re-running the filed repro: the committed snapshot (now 23 entries, PR #2044) and the SECURITY.md table match what verify-claims reports on dev, and no verdict is withheld by the uncovered-module gate. Guard half: WI-jizam done (PR #2043). NOT covered, separate cause: the same pipeline still fails self-tree-validation (id_format|warning 2 over baseline 0, WI-jigup ratchet), so the cron stays red on that step."  # a2f2

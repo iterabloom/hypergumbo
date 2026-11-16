@@ -19,3 +19,18 @@
     pr_ref:  # 56d0
     description: "At the end of a plain `hypergumbo hypergumbo` run, after the sketch is printed, hypergumbo asks interactively:\n\n  hypergumbo found a checkout at /home/jgstern_agent/hypergumbo.\n  Place EXAMPLE repo-tier overlay files in /home/jgstern_agent/hypergumbo/.hypergumbo-examples?\n  Nothing is written into any repository you analyse, and this is asked once. [y/N]\n\nObserved by the user 2026-10-14. Problems: (1) it blocks at the end of a long run that the user may have walked away from; (2) in a notebook (`!hypergumbo ...` in Colab) or any non-interactive stdin there is no way to answer — behaviour there has NOT been checked (does it read EOF as N, or hang?); (3) it is unrelated to the command the user ran.\n\nFirst step: find the prompt's call site and its isatty guard (if any), and reproduce under a non-TTY stdin. Then decide whether it belongs behind an explicit subcommand or flag instead."  # 56d0
     fields: {}  # 56d0
+- op: update  # fd3b
+  at: '2026-11-01T09:32:32Z'  # fd3b
+  by: agent  # fd3b
+  actor: jgstern_agent  # fd3b
+  clock: 2  # fd3b
+  nonce: fd3b  # fd3b
+  set:  # fd3b
+    title: "First interactive analysis of a repo other than the checkout ends with the one-time overlay-examples prompt (non-TTY runs are guarded; analysing the checkout itself no longer asks): decide whether it belongs behind a subcommand or flag"  # fd3b
+- op: discuss  # 2b38
+  at: '2026-11-01T09:32:32Z'  # 2b38
+  by: agent  # 2b38
+  actor: jgstern_agent  # 2b38
+  clock: 3  # 2b38
+  nonce: 2b38  # 2b38
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: PARTLY-STALE. repo_tier_offer.py:168-170 `interactive = sys.stdin.isatty(); if not interactive: return False` has been there since the feature's first commit (4b5478145d), so question (2) is answered: a non-TTY run never asks (verified: XDG_STATE_HOME=<empty> hypergumbo survey fx </dev/null -> rc 0, no prompt, no offers.json); under a PTY the prompt fires and 'n' records {repo_tier_examples: {accepted: false}}. 53ae8f9e01 (10-25, INV-kuroj) added the overlap guard: should_offer(analysed=~/hypergumbo) -> False, so the filed repro (`hypergumbo hypergumbo`) no longer fires; analysed=<other repo> or None -> True. Call site cli.py:13926 in main()'s generic post-command hook. Residual: the first interactive analysis of any OTHER repo on a box with ~/hypergumbo and no recorded decision still prompts once, at the end of a possibly long run. Title re-scoped. ROOT CAUSE: an offer wired into main()'s post-command hook, gated on environment rather than on the command or a flag (singleton). Status unchanged."  # 2b38

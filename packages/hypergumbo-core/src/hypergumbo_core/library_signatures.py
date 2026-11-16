@@ -6,10 +6,10 @@ ANALYSED DECLARATIONS: an analyzer fills ``FileAnalysis.method_return_types`` du
 and :meth:`TreeSitterAnalyzer.analyze` aggregates it, first writer wins, into
 ``_method_return_type_registry`` for Pass 2. A receiver bound to a LIBRARY call therefore
 cannot be typed at all -- there is no declaration in the repository to register -- and the
-820 method-kind ``io_primitives`` rows across nine languages that need a typed receiver stay
-unreachable no matter how correct they are. Measured on Go: ``ln, _ := net.Listen(...)``
-then ``ln.Accept()`` emits ``go:external:0-0:Accept`` and the catalogue's
-``net.Listener.Accept`` row matches nothing.
+method-kind ``io_primitives`` rows across nine languages that need a typed receiver (820 of
+them when this catalogue was proposed) stay unreachable no matter how correct they are.
+Measured on Go: ``ln, _ := net.Listen(...)`` then ``ln.Accept()`` emits
+``go:external:0-0:Accept`` and the catalogue's ``net.Listener.Accept`` row matches nothing.
 
 WHY A SEPARATE FAMILY AND NOT A ``returns:`` KEY ON THE io_primitives ROWS (WI-lalot weighed
 these in order): it is a SIGNATURE fact, not an I/O fact, and one file whose declared job is
@@ -33,8 +33,9 @@ THE KEY SHAPE IS PER-LANGUAGE AND IS THE ONE THING A ROW FILE CAN GET SILENTLY W
 because a mis-keyed row simply never matches and no error is raised. Go is the sharp case:
 keys carry an UNQUALIFIED receiver (``Listener.Accept``, the fold ``go.py::_bare_go_type``
 performs) while VALUES are package-QUALIFIED (``net.Conn``), because the io-boundary module
-slot needs the package. Each shipped row file states its own key shape in a header comment,
-and :func:`load_library_signatures` refuses a row whose value is empty or whose key is not a
+slot needs the package. Each shipped built-in row file states its key shape in a header
+comment (a community companion uses its built-in file's shape), and
+:func:`load_library_signatures` refuses a row whose value is empty or whose key is not a
 string, which is as much as a loader can check without re-implementing nine analyzers.
 
 ONE LIBRARY, SEVERAL LANGUAGES (WI-jubim). kotlin and scala call the JDK directly, so they
@@ -52,7 +53,12 @@ row file has two sections read this way: ``signatures`` (producer key -> returne
 :func:`load_library_signatures`) and ``package_variables`` (``<package>.<Variable>`` ->
 its type, :func:`load_library_package_variables`), for a typed value a library exposes
 without a call, such as Go's ``http.DefaultClient``. Only the go analyzer reads the second
-section.
+section. Two more sections are read only by python (WI-himim): ``tuple_returns``
+(a producer that returns a tuple: ``asyncio.open_connection`` ->
+``"asyncio.StreamReader, asyncio.StreamWriter"``, :func:`load_library_tuple_returns`)
+and ``member_types`` (an attribute of a typed object:
+``asyncio.subprocess.Process.stdout`` -> ``asyncio.StreamReader``,
+:func:`load_library_member_types`).
 """
 from __future__ import annotations
 
@@ -83,14 +89,30 @@ ROW_PARENTS: dict[str, str] = {"kotlin": "java", "scala": "java"}
 
 _WHAT = "library signature file"
 
+#: WI-hapon: the top-level keys a row file may carry.
+_FILE_KEYS: frozenset[str] = frozenset({
+    "provenance", "language", "retrieved", "signatures", "package_variables",
+    "tuple_returns", "member_types",
+})
+
 
 def _rows_from(path: "Path", section: str = "signatures") -> dict[str, str]:
     """One section of a row file, validated. A mis-keyed row never matches and raises
     nothing, so the shape of a row is checked where it is read rather than where it
     is used."""
-    from hypergumbo_core.yaml_catalogs import CatalogueError, read_catalogue_yaml
+    from hypergumbo_core.yaml_catalogs import (
+        CatalogueError,
+        read_catalogue_yaml,
+        reject_unknown_keys,
+    )
 
     raw: dict[str, Any] = read_catalogue_yaml(path, what=_WHAT)
+    # WI-hapon: a ``signature:`` typo read as no rows at all, and
+    # ``module_completeness: partial`` sat in five shipped files with no reader
+    # (deleted). ``provenance`` / ``retrieved`` feed the ADR-0061 tier.
+    reject_unknown_keys(
+        raw, _FILE_KEYS, origin=f"{_WHAT} {path}", where="top-level",
+    )
     rows: Any = raw.get(section) or {}
     if not isinstance(rows, dict):
         raise CatalogueError(f"{path}: '{section}' must be a mapping")
@@ -168,6 +190,52 @@ def load_library_signatures(lang: str) -> dict[str, str]:
     that only add.
     """
     return _load_section(lang, "signatures")
+
+
+def _split_tuple(key: str, value: str, origin: str) -> tuple[str, ...]:
+    """A ``tuple_returns`` value split by position, every position non-empty (WI-himim)."""
+    from hypergumbo_core.yaml_catalogs import CatalogueError
+
+    types = tuple(part.strip() for part in value.split(","))
+    if len(types) < 2 or not all(types):
+        raise CatalogueError(
+            f"{origin}: tuple_returns row {key!r} must list two or more non-empty types"
+        )
+    return types
+
+
+@lru_cache(maxsize=None)
+def load_library_tuple_returns(lang: str) -> dict[str, tuple[str, ...]]:
+    """``<producer key>`` -> the types of the tuple it returns, by position (WI-himim).
+
+    ``reader, writer = await asyncio.open_connection(h, p)``: the producer returns
+    a ``(StreamReader, StreamWriter)`` pair, which a single-typed ``signatures``
+    row cannot say, and nine analyzers read that section's values as one type
+    each. So it is a section of its own, read only where a TUPLE target is typed
+    (python), and the value stays a string -- ``"A, B"`` -- so every section of
+    a row file has one shape; :func:`_split_tuple` refuses a value that does
+    not split into two or more non-empty positions. Layered like the others:
+    built-in, then community rows that only add, then the user's rows, which
+    replace.
+    """
+    return {
+        key: _split_tuple(key, value, f"{_WHAT} ({lang})")
+        for key, value in _load_section(lang, "tuple_returns").items()
+    }
+
+
+@lru_cache(maxsize=None)
+def load_library_member_types(lang: str) -> dict[str, str]:
+    """``<type>.<attribute>`` -> the attribute's type (WI-himim).
+
+    A MEMBER ATTRIBUTE is how a library object hands over another typed object
+    without a call: ``proc.stdout`` is the ``StreamReader`` of an
+    ``asyncio.subprocess.Process``. ``signatures`` keys producers that are
+    CALLED and ``package_variables`` module-level values; this keys an
+    attribute read off an object already typed, so ``proc.stdout.read()`` can
+    reach the reader's rows. Only python reads it today.
+    """
+    return _load_section(lang, "member_types")
 
 
 @lru_cache(maxsize=None)

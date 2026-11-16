@@ -58,6 +58,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
+    claim_declaration_silence,
     AnalysisResult,
     TreeSitterAnalyzer,
     find_child_by_type,
@@ -387,6 +388,7 @@ class ProtoAnalyzer(TreeSitterAnalyzer):
             files_analyzed=files_analyzed,
             duration_ms=duration_ms,
         )
+        claim_declaration_silence(run, all_symbols, all_symbols, all_edges)
 
         return AnalysisResult(
             symbols=all_symbols,

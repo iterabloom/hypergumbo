@@ -639,7 +639,7 @@ class TestManifestWalks:
         assert set(DEFAULT_EXCLUDES) <= skip
 
     def test_a_dependency_manifest_is_not_a_first_party_name(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
         _write(tmp_path / "pyproject.toml", '[project]\nname = "mine"\n')
         _write(tmp_path / "venv" / "pyvenv.cfg", "home = /usr\n")
@@ -647,7 +647,7 @@ class TestManifestWalks:
             tmp_path / "venv" / "lib" / "python3.12" / "site-packages" / "dep"
             / "pyproject.toml", '[project]\nname = "theirs"\n',
         )
-        assert collect_workspace_package_names(tmp_path) == {"mine"}
+        assert set(collect_in_tree_packages(tmp_path).own.values()) == {"mine"}
 
     def test_derived_skipped_scan_does_not_enter_installed_source(self, tmp_path: Path) -> None:
         from hypergumbo_core.cli import _find_derived_skipped

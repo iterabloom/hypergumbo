@@ -29,7 +29,7 @@ def test_cmd_routes_shows_http_routes(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
                 },
@@ -41,7 +41,7 @@ def test_cmd_routes_shows_http_routes(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:def456",
+                "stable_id": "hgstableid15:def456",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users", "method": "POST"}]
                 },
@@ -171,7 +171,7 @@ def test_cmd_routes_filter_by_language(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/data", "method": "GET"}]
                 },
@@ -183,7 +183,7 @@ def test_cmd_routes_filter_by_language(tmp_path: Path, capsys) -> None:
                 "language": "javascript",
                 "path": "src/api.js",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:def456",
+                "stable_id": "hgstableid15:def456",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/data", "method": "GET"}]
                 },
@@ -332,7 +332,7 @@ def test_cmd_routes_with_input_file(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users/{id}", "method": "DELETE"}]
                 },
@@ -395,7 +395,7 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/users.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
                 },
@@ -407,7 +407,7 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/users.py",
                 "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:def456",
+                "stable_id": "hgstableid15:def456",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users", "method": "POST"}]
                 },
@@ -419,7 +419,7 @@ def test_cmd_routes_groups_by_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/posts.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:ghi789",
+                "stable_id": "hgstableid15:ghi789",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/posts", "method": "GET"}]
                 },
@@ -456,7 +456,7 @@ def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
                 },
@@ -468,7 +468,7 @@ def test_cmd_routes_with_route_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:def456",
+                "stable_id": "hgstableid15:def456",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users", "method": "POST"}]
                 },
@@ -509,7 +509,7 @@ def test_cmd_routes_with_concept_metadata(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",  # Hash stable_id, not HTTP method
+                "stable_id": "hgstableid15:abc123",  # Hash stable_id, not HTTP method
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users", "method": "GET"}]
                 },
@@ -521,7 +521,7 @@ def test_cmd_routes_with_concept_metadata(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:def456",
+                "stable_id": "hgstableid15:def456",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/users", "method": "POST"}]
                 },
@@ -563,7 +563,7 @@ def test_cmd_routes_concept_without_path(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     # Route concept with method but no path
                     "concepts": [{"concept": "route", "method": "GET"}]
@@ -603,7 +603,7 @@ def test_main_with_routes(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/items/{id}", "method": "PUT"}]
                 },
@@ -634,7 +634,7 @@ def test_cmd_routes_prints_output_summary(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "concepts": [{"concept": "route", "path": "/items", "method": "GET"}]
                 },
@@ -900,7 +900,7 @@ def test_cmd_routes_shows_controller_action(tmp_path: Path, capsys) -> None:
                 "language": "ruby",
                 "path": "config/routes.rb",
                 "span": {"start_line": 5, "end_line": 5, "start_col": 0, "end_col": 30},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "http_method": "GET",
                     "route_path": "/users",
@@ -915,7 +915,7 @@ def test_cmd_routes_shows_controller_action(tmp_path: Path, capsys) -> None:
                 "language": "ruby",
                 "path": "config/routes.rb",
                 "span": {"start_line": 6, "end_line": 6, "start_col": 0, "end_col": 30},
-                "stable_id": "sha256:def456",
+                "stable_id": "hgstableid15:def456",
                 "meta": {
                     "http_method": "POST",
                     "route_path": "/users",
@@ -930,7 +930,7 @@ def test_cmd_routes_shows_controller_action(tmp_path: Path, capsys) -> None:
                 "language": "ruby",
                 "path": "config/routes.rb",
                 "span": {"start_line": 10, "end_line": 10, "start_col": 0, "end_col": 30},
-                "stable_id": "sha256:ghi789",
+                "stable_id": "hgstableid15:ghi789",
                 "meta": {
                     "http_method": "GET",
                     "route_path": "/health",
@@ -979,7 +979,7 @@ def test_cmd_routes_controller_action_from_concept(tmp_path: Path, capsys) -> No
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "stable_id": "sha256:abc123",
+                "stable_id": "hgstableid15:abc123",
                 "meta": {
                     "concepts": [
                         {
@@ -1428,7 +1428,7 @@ def _route_node(symbol_id: str, name: str, line: int, route_path: str, method: s
         "language": "python",
         "path": "src/api.py",
         "span": {"start_line": line, "end_line": line + 2, "start_col": 0, "end_col": 10},
-        "stable_id": f"sha256:{symbol_id}",
+        "stable_id": f"hgstableid15:{symbol_id}",
         "meta": {"concepts": [{"concept": "route", "path": route_path, "method": method}]},
     }
 

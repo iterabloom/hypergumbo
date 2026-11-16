@@ -2,7 +2,7 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Partially superseded by ADR-0037 (§3a: the `:unresolved` dst kind token), ADR-0038 (the `dest_access_mode` reliance), ADR-0052 (§3a's removal-COVERAGE ambition; the removal capability stays in force); core STRUCTURAL taint analysis in force. Per-subsection implementation state: **§3a** the DDG walk runs and adjudicates — it removes a flow whose walk returns `unconfirmed` (WI-kabif, PR #716) — and is confirm-only in practice (ADR-0052: measurement 0007 found the `unconfirmed` population empty on an 11-repo corpus); **§3c–3d** mixed-coverage verdicts live; **§4b** declared summaries live (declared terminating entries reach `_use_site_terminates`; the catalogue's size is deliberately not pinned here); **§4c** return flow into callers live, by lifting the caller's call site into a source (INV-komoj); **§4a** inferred summaries implemented but unwired (`infer_summary` has zero production callers, and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite implemented but unwired (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it, so the two are named separately. See Phased Implementation for anchor commits
+Status: Partially superseded by ADR-0037 (§3a: the `:unresolved` dst kind token), ADR-0038 (the `dest_access_mode` reliance), ADR-0052 (§3a's removal-COVERAGE ambition; the removal capability stays in force); core STRUCTURAL taint analysis in force. Per-subsection implementation state: **§3a** the DDG walk runs and adjudicates — it removes a flow whose walk returns `refuted` (WI-kabif, PR #716) — and is confirm-only in practice (ADR-0052: measurement 0007 found the `refuted` population empty on an 11-repo corpus); **§3c–3d** mixed-coverage verdicts live; **§4b** declared summaries live (declared terminating entries reach `_use_site_terminates`; the catalogue's size is deliberately not pinned here); **§4c** return flow into callers live, by lifting the caller's call site into a source (INV-komoj); **§4a** inferred summaries implemented but unwired (`infer_summary` has zero production callers, and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite implemented but unwired (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it, so the two are named separately. See Phased Implementation for anchor commits
 
 > **Two pieces of this ADR are governed elsewhere.** (a) The `:unresolved` kind token in the dst shape §3a's sink matching and refinement pass read (`{lang}:external:0-0:{name}:unresolved`) folds into `external_symbol` on the final graph (ADR-0037 ruling 4); the refinement pass reads the resolution verdict from `Edge.is_resolved`, not from the kind slot. Sink matching still parses the callee name and module from the `dst` string, because `dst_ref` is `None` by construction on resolved edges and on edges whose module is the `"external"` sentinel (ADR-0037; WI-lonad). (b) The §"Interaction with ADR-0015 `access_mode` metadata" subsection's reliance on `dest_access_mode` is superseded by ADR-0038: `dest_access_mode` is removed, and bridge direction is the `data_direction` meta key.
 
@@ -585,8 +585,8 @@ transforms:
 > false negatives on container and alias mutation.
 >
 > **MEASURED EFFECT AT THE GRANT: ZERO.** hypergumbo-core reports 15 confirmed /
-> 12 escaped / **0 unconfirmed** across 27 walks, and the 11-repo cohort reports
-> the same zero (153 `ddg_mixed` rows: 0 unconfirmed / 14 escaped / 139
+> 12 escaped / **0 refuted** across 27 walks, and the 11-repo cohort reports
+> the same zero (153 `ddg_mixed` rows: 0 refuted / 14 escaped / 139
 > not_attempted). These are live semantics over a currently empty class. They
 > activate as escape sites close — the remaining ones on the self-tree belong to
 > INV-mumov (1) and INV-linub (3). Forcing every escape closed yields 7 `False`
@@ -596,9 +596,9 @@ transforms:
 >
 > **What `propagate_taint_ddg` does:** steps 1–4 run. `_ddg_taint_reaches` *is*
 > this subsection's forward walk and has **two** production call sites. On the
-> §3a arm its `True` / `False` / `None` result becomes the `confirmed` /
-> `unconfirmed` / `escaped` walk verdict (`walk_verdict_for`), and only
-> `unconfirmed` removes the flow. On the WI-fasub same-function sanitizer
+> §3a arm its `True` / `False` / `None` result becomes the `reached` /
+> `refuted` / `escaped` walk verdict (`walk_verdict_for`), and only
+> `refuted` removes the flow. On the WI-fasub same-function sanitizer
 > barrier arm a `False` earns `sanitized`, which DROPS the flow from a claim's
 > violation set. On both arms an unearned `False` would be a live falsehood,
 > which is why WI-joluk's forfeit gate runs on both.

@@ -1,0 +1,21 @@
+- op: create  # 4371
+  at: '2026-10-25T11:37:11Z'  # 4371
+  by: agent  # 4371
+  actor: jgstern_agent  # 4371
+  clock: 1  # 4371
+  nonce: '4371'  # 4371
+  data:  # 4371
+    kind: work_item  # 4371
+    title: "ruby: an in-repo `Local.new` resolves to an unresolved external ruby:Local:0-0:initialize placeholder although Local is defined in the same file"  # 4371
+    status: todo_hard  # 4371
+    priority: 3  # 4371
+    parent:  # 4371
+    tags:  # 4371
+    - analysis_quality  # 4371
+    - ruby  # 4371
+    isbefore: []  # 4371
+    duplicate_of: []  # 4371
+    not_duplicate_of: []  # 4371
+    pr_ref:  # 4371
+    description: "FOUND 2026-10-25 (premise check of META-sigap), fixture only.\n\n`class Local; def initialize; end; end` and, in the SAME file, `Local.new` -> the call resolves to ruby:Local:0-0:initialize:external_symbol (unresolved) although Local and its initialize are defined in that file. Ruby construction calls go through `.new`, which the analyzer emits as a plain calls edge to an external placeholder instead of an instantiates edge to the in-repo class (or a calls edge to its initialize).\n\nExpected: an in-repo `Local.new` binds to the in-repo Local (instantiates, matching java/cs/php/ts in-repo `new Local()`), and its initialize is reachable. Distinct from WI-jubag (EXTERNAL constructors) and INV-dosoz (nested-namespace registration). Not measured on a corpus."  # 4371
+    fields: {}  # 4371

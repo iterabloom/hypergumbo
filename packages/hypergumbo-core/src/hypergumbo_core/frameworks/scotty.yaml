@@ -169,6 +169,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^finish$"
-
-linkers:
-  - http

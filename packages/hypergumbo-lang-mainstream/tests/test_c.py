@@ -1896,7 +1896,7 @@ class TestStructDesignatedInitFptr:
 
 
 class TestCStableId:
-    """Tests for stable_id computation in C (ADR-0014 §2)."""
+    """Tests for stable_id computation in C (ADR-0035 §1)."""
 
     def test_function_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.c import analyze_c
@@ -1905,7 +1905,7 @@ class TestCStableId:
         result = analyze_c(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("sha256:")
+        assert func.stable_id.startswith("hgstableid15:")
 
     def test_struct_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.c import analyze_c
@@ -1914,7 +1914,7 @@ class TestCStableId:
         result = analyze_c(tmp_path)
         struct = next(s for s in result.symbols if s.name == "Point")
         assert struct.stable_id is not None
-        assert struct.stable_id.startswith("sha256:")
+        assert struct.stable_id.startswith("hgstableid15:")
 
 
 class TestCUnresolvedExternalEdges:
@@ -1991,7 +1991,7 @@ void do_stuff() {
 
 
 class TestCShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.c import analyze_c
@@ -2000,7 +2000,7 @@ class TestCShapeId:
         result = analyze_c(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
     def test_struct_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.c import analyze_c
@@ -2009,7 +2009,7 @@ class TestCShapeId:
         result = analyze_c(tmp_path)
         struct = next(s for s in result.symbols if s.name == "Point")
         assert struct.shape_id is not None
-        assert struct.shape_id.startswith("sha256:")
+        assert struct.shape_id.startswith("hgshapeid4:")
 
 
 # WI-gotuv: bare-identifier matching for C stdio globals

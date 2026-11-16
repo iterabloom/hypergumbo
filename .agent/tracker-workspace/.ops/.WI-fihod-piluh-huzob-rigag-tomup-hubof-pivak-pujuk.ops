@@ -1,0 +1,22 @@
+- op: create  # 0d4f
+  at: '2026-11-02T10:17:08Z'  # 0d4f
+  by: agent  # 0d4f
+  actor: jgstern_agent  # 0d4f
+  clock: 1  # 0d4f
+  nonce: 0d4f  # 0d4f
+  data:  # 0d4f
+    kind: work_item  # 0d4f
+    title: "swift: 70 member-chain call sites WI-hojib typed on its branch arm are untyped on dev (response.headers.first, app.cache.get; vapor 51, Kingfisher 19) -- untyped at the hojib-era code too under tree-sitter-swift 0.7.4"  # 0d4f
+    status: todo_soft  # 0d4f
+    priority: 3  # 0d4f
+    parent:  # 0d4f
+    tags:  # 0d4f
+    - swift  # 0d4f
+    - receiver_typing  # 0d4f
+    - analysis_quality  # 0d4f
+    isbefore: []  # 0d4f
+    duplicate_of: []  # 0d4f
+    not_duplicate_of: []  # 0d4f
+    pr_ref:  # 0d4f
+    description: "Residual found by the 2026-11-02 awaits_bakeoff_validation drain while validating WI-silos + WI-hojib (record: ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md, threeway/silos/). Three-way by call site with silos's own arm.py on its frozen copies: of the sites hojib's final arm (B3) changed, dev keeps B3 at vapor 800/919, hummingbird 129/193, Kingfisher 258/394, Alamofire 935/949 -- moved overall. But 70 sites (vapor 51, Kingfisher 19) are back at the BEFORE arm: receiver_type_hint None where B3 typed them. 57 of the 70 are a member chain through a declared member (`response.headers.first(name:)` -> HTTPHeaders, `app.cache.get(..)` -> Cache, `self.cache.memoryStorage.remove(..)`), 5 are `self.get(..).get()` (EventLoopFuture), the rest `self.storage.metaChangingQueue.async` / String literals. NOT a later code regression that I could find: the pre-#2004 tree, the hojib merge commit ecbb226a0d and eabbd346cd all give 0 of the 51 vapor sites typed UNDER TODAY'S GRAMMAR (tree-sitter-swift 0.7.4, installed 2026-10-04 21:57), while hojib's B3 arm ran at 15:45 that day on the older grammar. So either the grammar floor changed how these chains parse, or the merged code differs from the B3 arm; not separated. Repro: python decontend/run_10032026/silos/arm.py dev <packages> decontend/run_10032026/silos/frozen out.json vapor Kingfisher, then three_way.py against hojib's archived arm.A.json / arm.B3.json."  # 0d4f
+    fields: {}  # 0d4f

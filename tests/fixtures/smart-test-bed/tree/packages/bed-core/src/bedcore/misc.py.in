@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""A pragma'd function, a type comment, and a docstring read at runtime."""
+
+counter = 0  # type: int
+
+
+def usage():
+    """Usage: bed run <x>"""
+
+
+def help_text():
+    return usage.__doc__.strip()
+
+
+def debug_dump(value):  # pragma: no cover
+    print(repr(value))

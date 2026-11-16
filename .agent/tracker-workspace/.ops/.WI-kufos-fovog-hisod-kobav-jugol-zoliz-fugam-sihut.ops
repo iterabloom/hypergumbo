@@ -19,3 +19,39 @@
     pr_ref:  # 72c4
     description: "FOUND 2026-10-04 by WI-gajir's sweep (LIVE rule 3) of every per-finding value a collapsed taint row takes from grp[0]. WI-gajir fixed the two consumer EXCLUSION flags (resource_naming_only, trusted_sink: now in the collapse key). Two consumers in verify_claims.py still read a WITNESS SCALAR of a collapsed row where the question is about the whole group:\n\n(1) _withhold_for_tainted_evaluation (INV-dudal; verify_claims.py ~6450) builds `reached` from `_join_site_name(f.sink_module, f.sink_primitive)`, the representative's sink only. A group in dom_injection / code_execution whose representative is NOT an evaluation site but which also stands for document.write / eval keeps the qualification it must withdraw: confirmed_with_caveats where INV-dudal requires inconclusive (the false-clean direction of a withholding gate). Unit-level demonstration on the WI-gajir worktree (fdeb4d5bca): two structural findings, untrusted_input -> dom_injection, sinks myHtml.myHtml and document.write. Raw list -> withdrawn (None). Collapsed with myHtml first -> qualification kept (['document.write']). Collapsed with document.write first -> withdrawn. EXPOSURE: built-in rows in those two zones are ALL evaluation sites, so this needs a project/user/community sink declared in dom_injection or code_execution AND an unadjudicated flow. Not reproduced end-to-end (a quick JS fixture with location.hash produced no source flow at all; not investigated). Fix shape: read the group's sinks, not the witness. Note sink_primitives holds `_qualify(module, name)` (\"eval.eval\") while the evaluation-site set uses `_join_site_name` (\"eval\"), so the union needs the same spelling or a per-member (module, name) tuple.\n\n(2) The choice-shaped-source caveat (WI-jivih; verify_claims.py ~6241) tests `is_choice_shaped_source(v.source_primitive)`, the witness source. A group whose source_primitives include a choice-shaped source but whose witness is not one gets no caveat; a group whose witness is choice-shaped but which also reads authored sources is described as \"rooted at\" a choice-shaped source. Disclosure only: the verdict value and evidence_count are untouched. Not measured on any corpus.\n\nChecked and NOT affected (by code reading on fdeb4d5bca): sanitized (in the key), sanitized_by / sanitized_by_user_supplied / withheld_sanitizers / sink_carriers / walk_*_values (unioned), confidence (a function of the walk verdict, constant inside one analysis_method group), walk_verdict removal (WI-kabif, applied per member before the collapse), source_symbol / source_boundary / analysis_method / sink_zone / taint_label (in the key)."  # 72c4
     fields: {}  # 72c4
+- op: discuss  # 1792
+  at: '2026-10-25T20:08:24Z'  # 1792
+  by: agent  # 1792
+  actor: jgstern_agent  # 1792
+  clock: 2  # 1792
+  nonce: '1792'  # 1792
+  message: "WI-zakil part 2 is this item's part (2), reproduced via CLI 2026-10-25 on dev 16534a75f7: a collapsed (accept, recv) row with witness recv gets no choice_shaped_source caveat; swap the call order and it does. WI-zakil part 1 (the caveat counts distinct names but says 'evidence rows', verify_claims.py:6578-6582 vs :6625) lives in the same block -- fix together."  # 1792
+- op: discuss  # a837
+  at: '2026-10-26T00:31:44Z'  # a837
+  by: agent  # a837
+  actor: jgstern_agent  # a837
+  clock: 3  # a837
+  nonce: a837  # a837
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output): the choice-shaped-source rule's test should run over a collapsed row's whole group, not its witness. Part (2) here is the counterexample. No blocking."  # a837
+- op: discuss  # 6604
+  at: '2026-10-27T20:37:28Z'  # 6604
+  by: agent  # 6604
+  actor: jgstern_agent  # 6604
+  clock: 4  # 6604
+  nonce: '6604'  # 6604
+  message: "2026-10-27: both parts reproduced end to end, and production-path closure tests exist (PR #1905, merged 2fe7978820). packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCollapsedRowIsItsGroup. Part (2): recv and accept reaching subprocess through a helper collapse into one ddg_mixed row (collapsed_flow_count 2, source_primitives [accept, recv]); the choice_shaped_source caveat appears only when accept is called first. Part (1): process.env.TOKEN reaching a yours dom_injection sink (zlib.gzipSync, an enumerated module, so nothing else withholds) and document.write through one helper; document.write first -> inconclusive (INV-dudal withdraws), yours sink first -> confirmed_with_caveats, the false-clean direction. Both strict xfails, plus reach controls. Mutation: applying each fix shape (caveat over source_primitives; reached over the group's sink_primitives) flips its xfail to XPASS. Remove the marks in the fix PR."  # 6604
+- op: update  # b98f
+  at: '2026-10-28T03:20:53Z'  # b98f
+  by: agent  # b98f
+  actor: jgstern_agent  # b98f
+  clock: 5  # b98f
+  nonce: b98f  # b98f
+  set:  # b98f
+    status: done  # b98f
+- op: discuss  # 85ed
+  at: '2026-10-28T03:20:53Z'  # 85ed
+  by: agent  # 85ed
+  actor: jgstern_agent  # 85ed
+  clock: 6  # 85ed
+  nonce: 85ed  # 85ed
+  message: "Fixed in PR #1911 (802367974a). (1) _withhold_for_tainted_evaluation reads every member of a collapsed row's sink_primitives, mapped to the opaque-site spelling (_evaluation_site_spellings), not the witness sink. (2) the choice_shaped_source caveat tests source_primitives. Behavioural evidence: the production-path tests test_axiom_falsification.py::TestCollapsedRowIsItsGroup::test_the_evaluation_withdrawal_does_not_depend_on_the_witness (both member orders now inconclusive) and ::test_the_choice_caveat_does_not_depend_on_the_witness (same caveats in both orders) were strict xfails and now pass unmarked; core unit tests test_a_collapsed_row_is_withheld_for_any_member_of_its_group and test_a_group_whose_witness_is_not_choice_shaped_is_caveated. Each fix was mutated back to the witness read and its tests went red."  # 85ed

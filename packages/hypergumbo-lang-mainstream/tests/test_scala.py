@@ -150,10 +150,10 @@ class TestScalaSecondaryConstructor:
         no enclosing type."""
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
-        # We construct this by wrapping in an object so the tree-sitter
-        # parse is valid. The "this" method would be enclosed by the
-        # object, so enclosing_type != None and is_secondary_ctor=True.
-        # Instead, verify a plain top-level function is unaffected.
+        # A top-level ``def this`` cannot be built directly: wrapping it in
+        # an object to get a valid parse gives it an enclosing type, which
+        # makes it a secondary constructor. So this checks that a plain
+        # top-level function is unaffected and no constructor is emitted.
         scala_file = tmp_path / "Top.scala"
         scala_file.write_text(
             "def regular(): Int = 42\n",
@@ -952,7 +952,7 @@ case class CaseClass(x: Int)
 
 
 class TestNormalizeScalaSignature:
-    """Tests for Scala signature normalization (ADR-0014 §3)."""
+    """Tests for Scala signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.scala import normalize_scala_signature
@@ -1267,7 +1267,7 @@ class TestScalaFunctionReferences:
 
 
 class TestScalaShapeId:
-    """Tests for shape_id auto-wiring via node_for_symbol (ADR-0014 §1)."""
+    """Tests for shape_id auto-wiring via node_for_symbol (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.scala import analyze_scala
@@ -1278,7 +1278,7 @@ class TestScalaShapeId:
         result = analyze_scala(tmp_path)
         func = next(s for s in result.symbols if s.kind in ("function", "method"))
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.scala import analyze_scala
@@ -1289,7 +1289,7 @@ class TestScalaShapeId:
         result = analyze_scala(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 class TestScalaShortNameConfidencePenalty:
@@ -1620,14 +1620,13 @@ class TestScalaInvFahubReceiverGating:
     def test_bare_call_suffix_matched_to_unrelated_method_does_not_misbind(
         self, tmp_path: Path
     ) -> None:
-        """The DOMINANT Scala funnel (real-repro 2026-07-18, docspell 242
-        misbinds): a BARE call — implicit-``this`` (case-class ``.copy()``) or a
+        """A BARE call — implicit-``this`` (case-class ``.copy()``) or a
         chained-receiver call whose receiver was dropped — whose ONLY resolver
         match is a *suffix* match to an unrelated class's ``method`` MUST NOT bind
-        ``is_resolved=True`` @0.68. A class-member method needs a receiver/scope;
-        a bare suffix match is the magnet (dozens of files → one arbitrary
-        ``FileCopyTask.copy``). It must be withheld → honest unresolved edge
-        (INV-nogof withhold-not-pick-first)."""
+        ``is_resolved=True``. A class-member method needs a receiver/scope; a
+        bare suffix match is a magnet that pulls same-named calls from many
+        files onto one arbitrary method (here ``FileCopyTask.copy``). It must be
+        withheld → honest unresolved edge (INV-nogof withhold-not-pick-first)."""
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "task.scala").write_text(
@@ -1665,10 +1664,11 @@ class TestScalaInvFahubReceiverGating:
         self, tmp_path: Path
     ) -> None:
         """A bare call to a DIFFERENT same-file class's method (not implicit
-        ``this``, and previously bound @0.85 via ``local_symbols``) is deferred
-        to the inherited_calls Site-1 walker with an ``enclosing_class`` hint —
-        NOT bound directly to the unrelated method. This closes the same-file
-        ``local_symbols`` half of the funnel so it is provably 0."""
+        ``this``) is deferred to the inherited_calls Site-1 walker with an
+        ``enclosing_class`` hint — NOT bound directly to the unrelated method
+        through the same-file ``local_symbols`` table. This is the same-file
+        half of the bare-call funnel; the suffix-match test above covers the
+        cross-file half."""
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "m.scala").write_text(

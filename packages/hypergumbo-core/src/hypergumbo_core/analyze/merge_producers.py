@@ -5,9 +5,9 @@ ADR-0057 §3, WI-kokiz.
 
 WHY A PASS, AND WHY HERE. When two backends analyse one language — the
 tree-sitter ``rust`` incumbent and the ``rust_analyzer`` SCIP arm — each
-emits its own Symbol for every declaration it sees, and until this pass
-nothing folded them: ``run_all_analyzers`` concatenated both lists and every
-Phase-C reader saw two records for one function. The merge key is
+emits its own Symbol for every declaration it sees, and
+``run_all_analyzers`` concatenates both lists, so without this pass every
+Phase-C reader would see two records for one function. The merge key is
 whole-table (per file, the item whose span contains the other producer's
 name token), it rewrites identity that hundreds of ``.src`` / ``.dst`` /
 ``.kind`` reads key on, and membership must be settled before serialize
@@ -25,16 +25,18 @@ WHAT IT READS, AND FROM WHERE. Nothing here is Rust-shaped:
   the backend-neutral declaration name, ``span_role`` says whether
   ``Symbol.span`` is the identifier token or the item. Two records pair
   when they share a path and a key and their spans satisfy the roles: a
-  token inside an item, or item equal to item. ``merge_participants``
+  token inside an item, an item on the same start and end lines as an
+  item, or a token at the same start line and column as a token.
+  ``merge_participants``
   supplies the anchored producers and REFUSES, naming the analyzer, a
   producer of a shared language with no declaration; that exception is
   this pass's refusal, and it is not caught here.
 * WHICH producer's value the scalar slot keeps: the precedence of the
   ``policy`` argument (:class:`~..arbitration.ArbitrationPolicy`). The
   built-in, ``BUILTIN_POLICY``, is ADR-0057 §5's incumbent-first default
-  (:func:`~.registry.incumbent_first`). Since WI-hukuf, ``config.toml``'s
-  ``[merge] prefer`` / ``[merge.prefer_by_attribute]`` can change it, and
-  cli.py passes ``policy_from_config(...)``. Where the incumbent did not observe an
+  (:func:`~.registry.incumbent_first`). ``config.toml``'s
+  ``[merge] prefer`` / ``[merge.prefer_by_attribute]`` can change it
+  (WI-hukuf); cli.py passes ``policy_from_config(...)``. Where the incumbent did not observe an
   attribute and the other producer did (``signature``, ``docstring``,
   ``qualified_name``, ...), the merged record takes the value that exists —
   disjoint coverage is one value with one provenance (§1).
@@ -43,10 +45,9 @@ THE MERGED RECORD. A copy of the incumbent's, with: a NEW ``id`` minted from
 the merged attributes through ``make_symbol_id`` (ADR-0036: an id derives
 from attributes, so the merged attributes give the merged id — which
 coincides with the incumbent's exactly when incumbent-first arbitration
-leaves every identity attribute the incumbent's); the ITEM span (the
-INV-lodum cure for every merged record — a SCIP record spanned over its
-name token is folded into the item the incumbent spanned; SCIP-only
-leftovers keep their token span); ``origin`` = both producers' pass ids,
+leaves every identity attribute the incumbent's); the ITEM span (a SCIP
+record spanned over its name token is folded into the item the incumbent
+spanned; a leftover is covered below; INV-lodum); ``origin`` = both producers' pass ids,
 incumbent first; ``meta`` = the union, the incumbent winning a key both
 set, so the SCIP moniker (``scip_symbol``) survives on the merged record;
 ``origin_run_id`` = this pass's run, since this pass emitted the record as
@@ -72,8 +73,10 @@ EDGES (§11, §13). ``src``, ``dst`` and ``edge_type`` are identity. Every
 edge endpoint (and ``derived_from``) that named a folded record is rewired
 to the merged id and its ``edge_key`` reset. Then the participants' edges
 that now agree on all three are FOLDED here (not left for
-``deduplicate_edges``, whose survivor is encounter order — the SCIP arm
-runs first by priority, and the fold must be incumbent-first): the
+``deduplicate_edges``, whose survivor is encounter order — and
+``run_all_analyzers`` collects results in thread-pool completion order
+(``as_completed``), so which producer's edge comes first is not
+deterministic, while the fold must be incumbent-first): the
 survivor is the incumbent's edge, the others' call sites are absorbed
 (``_absorb_call_site``), ``origin`` is the union, and ``confidence`` is
 COMBINED, not arbitrated by precedence: two DISTINCT inference pathways
@@ -96,11 +99,25 @@ the same way.
 WHAT IT REFUSES TO GUESS. A record with two candidate partners, or a
 candidate claimed by two records, is left unmerged and reported
 (:attr:`MergeReport.ambiguous`); a wrong fold would be a false identity
-claim, and the fixture measures zero such cases on aardvark-dns. A language
+claim. A language
 with one producer present is untouched: a tree-sitter-only run is
 byte-identical before and after, and no AnalysisRun is appended for a pass
-that folded nothing (the file-symbol synthesizer's convention; whether a
-no-op pass gets a run is the ADR-0056 question the owner reserved).
+that folded nothing (whether a no-op pass gets a run is a decision ADR-0056
+leaves open).
+
+A LEFTOVER'S SPAN (INV-lodum). A token-anchored record the pass did not fold
+has no partner item to take, but its producer may have observed the item
+too: the SCIP shim carries the Definition's ``enclosing_range`` in
+``meta["item_span"]`` when it differs from the token. After pairing — which
+runs on the token, so the declared anchor is undisturbed — such a record
+takes that span, its id is re-minted from it (ADR-0036) and rewired like a
+fold (:attr:`MergeReport.respanned`), whether or not its language had a
+second producer. The carrier is dropped from every record, folded or not:
+it is the producer's input to this pass, not an attribute. One refusal: an
+extent whose re-minted id already names a record keeps the token span, since
+taking it would make one id name two records. The record keeps its own
+``origin_run_id``: the producer observed both extents, and this pass only
+chose between them.
 """
 from __future__ import annotations
 
@@ -114,9 +131,11 @@ from ..arbitration import (
 from ..arbitration import CORROBORATED_CONFIDENCE as CORROBORATED_CONFIDENCE  # re-export: the §13 level
 from ..pass_clock import PassClock
 from ..ir import (
+    CONFIDENCE_SOURCE_CORROBORATED,
     PASS_VERSION,
     AnalysisRun,
     Edge,
+    Span,
     Symbol,
     UsageContext,
     _absorb_call_site,
@@ -141,8 +160,8 @@ PASS_ID = "producer-merge"
 #: reached — ADR-0012's number for a type-resolved call. A declared level,
 #: not a formula: ``max`` would launder SCIP's 0.85 emitter constant into
 #: evidence and noisy-OR overstates producers reading the same text. The
-#: built-in policy's default; configurable since WI-hukuf as
-#: ``[merge] corroborated_confidence``.
+#: built-in policy's default; configurable as
+#: ``[merge] corroborated_confidence`` (WI-hukuf).
 
 #: Attributes whose candidates are recorded per merged record (ADR-0057 §1).
 TRACKED_ATTRIBUTES: Tuple[str, ...] = (
@@ -189,6 +208,8 @@ class MergeReport:
     corroborated: int = 0
     #: partial external identity keys absorbed by a complete one (§15)
     external_folds: int = 0
+    #: ids of unfolded records that took their producer's item extent (INV-lodum)
+    respanned: List[str] = field(default_factory=list)
     run: Optional[AnalysisRun] = None
 
 
@@ -244,9 +265,9 @@ def abstention_blind_attributes(
     ``MergeAnchor.observes`` decides instead of the value (ADR-0057 §10).
 
     Kept as a function over a record type so the derivation itself is
-    testable: the live sets are empty today (INV-kubup made ``is_exported``
-    ``Optional[bool] = None``, which was the last one), and a guard that can
-    only be exercised by regressing the tree is not a guard.
+    testable: the live sets are empty (every tracked attribute's default is
+    absent, ``is_exported`` included; INV-kubup), and a guard that can only
+    be exercised by regressing the tree is not a guard.
     """
     declared = {f.name: f for f in fields(record_type)}
     blind = []
@@ -266,7 +287,7 @@ def abstention_blind_attributes(
 #: The live set, DERIVED not listed, so a tracked attribute that gains a
 #: concrete default appears here the day it is added and the registry
 #: contract test then demands that every anchored producer rule on it. Empty
-#: since INV-kubup: every tracked attribute's default is absent, so each
+#: (INV-kubup): every tracked attribute's default is absent, so each
 #: record says for itself, per record, whether its producer observed it —
 #: which is strictly better information than a per-producer declaration.
 ABSTENTION_BLIND_ATTRIBUTES: Tuple[str, ...] = abstention_blind_attributes(Symbol)
@@ -311,9 +332,9 @@ def arbitrate(candidates: Sequence[Candidate], precedence: Sequence[str]) -> Can
 
     Pure over the candidate set: the value held by the earliest producer in
     ``precedence`` wins; ties cannot arise because a producer holds one
-    value. ``precedence`` is the stamped default — incumbent first (§5) —
-    until WI-hukuf reads it from ``config.toml``; a caller with another
-    policy passes another order and reads the same candidates.
+    value. The built-in policy's ``precedence`` is incumbent first (§5);
+    ``config.toml`` can set another order (WI-hukuf), and a caller with
+    another policy passes another order and reads the same candidates.
     """
     rank = {producer: index for index, producer in enumerate(precedence)}
     return min(candidates, key=lambda c: min(rank.get(p, len(rank)) for p in c[1]))
@@ -384,7 +405,7 @@ def _merge_one(
     merged = replace(incumbent)
     members = [(incumbent_name, incumbent), (other_name, other)]
     precedence = [incumbent_name, other_name]
-    # The ITEM span: whichever member spans the item (INV-lodum cure) — the
+    # The ITEM span: whichever member spans the item (INV-lodum) — the
     # one attribute not decided by precedence. (A member with no span never
     # pairs — _spans_pair — so both spans exist here.)
     item_holder = other if (incumbent_role != SPAN_ROLE_ITEM and other_role == SPAN_ROLE_ITEM) else incumbent
@@ -401,6 +422,7 @@ def _merge_one(
     # meta: union, incumbent wins a key both set.
     meta: Dict[str, Any] = dict(other.meta or {})
     meta.update(incumbent.meta or {})
+    meta.pop("item_span", None)  # the producer's input, spent: the record has the item span
     merged.meta = meta or None
     # origin: both producers, incumbent first (INV-jidat: pass ids that contributed).
     origins = list(incumbent.origin if isinstance(incumbent.origin, list) else [incumbent.origin])
@@ -424,6 +446,34 @@ def _merge_one(
         candidates={attr: _candidates(attr, members, observed_by) for attr in TRACKED_ATTRIBUTES},
     )
     return merged, record
+
+
+def _take_item_extents(symbols: List[Symbol], report: MergeReport) -> None:
+    """Span every unfolded record carrying ``meta["item_span"]`` over it.
+
+    See "A LEFTOVER'S SPAN" in the module docstring. Replaces each such
+    record in ``symbols`` with a copy whose span and id are the item's and
+    records the id change in ``report.id_remap`` for the caller's rewiring;
+    a record whose re-minted id is already taken keeps its span and loses
+    only the carrier.
+    """
+    taken = {s.id for s in symbols}
+    for index, symbol in enumerate(symbols):
+        if not symbol.meta or "item_span" not in symbol.meta:
+            continue
+        kept: Dict[str, Any] = dict(symbol.meta or {})
+        extent = kept.pop("item_span")
+        symbol.meta = kept or None  # the carrier is spent, whichever span the record keeps
+        span = Span(start_line=extent["start_line"], end_line=extent["end_line"],
+                    start_col=extent["start_col"], end_col=extent["end_col"])
+        new_id = make_symbol_id(symbol.language or "", symbol.path,
+                                span.start_line, span.end_line, symbol.name, symbol.kind)
+        if new_id in taken:
+            continue
+        symbols[index] = replace(symbol, id=new_id, span=span)
+        taken.add(new_id)
+        report.id_remap[symbol.id] = new_id
+        report.respanned.append(new_id)
 
 
 def _fold_edges(
@@ -460,7 +510,7 @@ def _fold_edges(
         chosen: Dict[str, Candidate] = {}
         if distinct_pathways:
             chosen["confidence"] = (policy.corroborated_confidence, tuple(producers))
-            survivor.confidence_source = "corroborated"
+            survivor.confidence_source = CONFIDENCE_SOURCE_CORROBORATED
             report.corroborated += 1
         winners = _stamp_slot(
             survivor, members, ("confidence", "evidence_type"), precedence, chosen=chosen,
@@ -584,7 +634,7 @@ def _absorb_partial_external_keys(
         chosen: Dict[str, Candidate] = {}
         if distinct_pathways:
             chosen["confidence"] = (policy.corroborated_confidence, tuple(producers))
-            survivor.confidence_source = "corroborated"
+            survivor.confidence_source = CONFIDENCE_SOURCE_CORROBORATED
             report.corroborated += 1
         _stamp_slot(
             survivor, members, ("confidence", "evidence_type"), precedence, chosen=chosen,
@@ -739,6 +789,7 @@ def merge_producer_records(
         symbols[:] = [
             replacement.get(id(s), s) for s in symbols if id(s) not in dropped
         ]
+    _take_item_extents(symbols, report)
     remap = report.id_remap
     for edge in edges:
         changed = False

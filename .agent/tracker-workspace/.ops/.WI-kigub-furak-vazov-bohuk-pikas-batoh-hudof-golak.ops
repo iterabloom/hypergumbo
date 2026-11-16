@@ -68,3 +68,19 @@
   clock: 7  # 97dd
   nonce: 97dd  # 97dd
   message: "Tagged awaits_bakeoff_validation at merge: PR #908 carries quantitative improvement claims (+122 edges / 25 OTP modules, 52->65 primitives, db_read and db_write appearing as new boundary kinds, two verdicts moved). All measured directly by seeded A/B on phoenix-framework, NOT by a bakeoff cycle, so the tag is the rule applying mechanically rather than a claim that a green DEEP cycle would validate any of it -- band metrics validate no delta. The queue stands at 16 with this one."  # 97dd
+- op: update  # a2f2
+  at: '2026-11-02T10:19:38Z'  # a2f2
+  by: agent  # a2f2
+  actor: jgstern_agent  # a2f2
+  clock: 8  # a2f2
+  nonce: a2f2  # a2f2
+  set: {}  # a2f2
+  remove:  # a2f2
+    tags: [awaits_bakeoff_validation]  # a2f2
+- op: discuss  # 7a75
+  at: '2026-11-02T10:19:38Z'  # 7a75
+  by: agent  # 7a75
+  actor: jgstern_agent  # 7a75
+  clock: 9  # 7a75
+  nonce: 7a75  # 7a75
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). phoenix-framework: measured total_io_edges 297; db_read 8 / db_write 11; atom-module edges ets.insert 7, ets.lookup 3 (+lookup_element 4), ets.new 2, ets.info 2, ets.delete 1, httpc.request 4 (recorded 250 -> 277; 0/0 -> 8/10; 0 -> insert 7 lookup 2 new 2 info 1 delete ...). Tag stripped."  # 7a75

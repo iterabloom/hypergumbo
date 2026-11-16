@@ -1,23 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """``status: provenance_declared`` says what the validator checks (INV-titih).
 
-``status: complete`` was validated as exactly four conditions — the literal
+The status value is validated as exactly four conditions — the literal
 string, a present ``stdlib_provenance.source_url``, an https scheme, and an
-allowlisted hostname — and counted no rows. python.yaml carried it from
-May 2026 while missing ``os.open`` / ``os.write``, the exact pair INV-zubuh
-measured producing a "never writes to the host filesystem" confirm. The word
-asserted coverage; the check asserted a citation.
+allowlisted hostname — and counts no rows. Spelled ``complete``, it asserted
+coverage while the check asserted a citation: a catalogue could carry it while
+missing ``os.open`` / ``os.write``, the pair that writes a file under a "never
+writes to the host filesystem" confirm (INV-zubuh).
 
-The fix is the rename, not a coverage gate: the coverage claim has a real
+The remedy is the name, not a coverage gate: the coverage claim has a real
 home (``module_completeness``, dated per-module audits, per-slot and exact),
-so the status field's value now names the thing it verifies. The literal
+so the status field's value names the thing it verifies. The literal
 ``complete`` is REFUSED with a migration-pointing error so the overclaiming
 spelling cannot come back.
 
-The missing-catalog default (``load_catalog`` of an uncatalogued language
-returns the default status rather than something honest like
-``in_progress``) is a SEPARATE known defect, pinned here as-is so changing
-it is a deliberate act, not a side effect.
+``load_catalog`` of an uncatalogued language reports ``unsupported`` rather
+than a declared-provenance status (WI-gofah); that is pinned here too.
 """
 from __future__ import annotations
 
@@ -75,7 +73,7 @@ class TestProvenanceChecksStillEnforced:
 
 class TestLiveTree:
     def test_no_shipped_catalog_says_complete(self) -> None:
-        # Every shipped catalogue loads under the new vocabulary. Loading
+        # Every shipped catalogue loads under the status vocabulary. Loading
         # is the assertion: a leftover ``status: complete`` raises at load.
         from hypergumbo_core.io_boundary import _CATALOG_DIR
 
@@ -90,13 +88,9 @@ class TestLiveTree:
             )
 
     def test_missing_catalog_reports_its_own_status(self) -> None:
-        # WI-gofah, resolved. This used to pin the dataclass default
-        # ("provenance_declared") as a KNOWN DEFECT, documented not endorsed,
-        # with the note that changing it "flips dst_classification_unreliable
-        # for catalogue-less languages". Measured at tip, it cannot: a
+        # A catalogue that does not exist must not claim declared provenance
+        # (WI-gofah). Reporting ``unsupported`` flips no verdict: a
         # catalogue-less language produces NO chains at all
-        # (``_external_potential_chains`` skips ``not is_supported``), so there
-        # is nothing to flip. What was real is that the FIELD claimed declared
-        # provenance for a catalogue that does not exist. It now says so.
+        # (``_compute_external_potential`` skips ``not is_supported``).
         assert load_catalog("no-such-language").status == "unsupported"
         assert load_catalog("no-such-language").is_supported is False

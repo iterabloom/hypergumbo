@@ -1,0 +1,36 @@
+- op: create  # a03a
+  at: '2026-11-09T05:46:22Z'  # a03a
+  by: agent  # a03a
+  actor: jgstern_agent  # a03a
+  clock: 1  # a03a
+  nonce: a03a  # a03a
+  data:  # a03a
+    kind: work_item  # a03a
+    title: "kotlin: a bare call binds to the last same-named method in the file, another class's included (same-file local_symbols has no INV-fahub guard)"  # a03a
+    status: todo_hard  # a03a
+    priority: 2  # a03a
+    parent:  # a03a
+    tags:  # a03a
+    - analyzer  # a03a
+    - analysis_quality  # a03a
+    isbefore: []  # a03a
+    duplicate_of: []  # a03a
+    not_duplicate_of: []  # a03a
+    pr_ref:  # a03a
+    description: "Repro (dev, 2026-11-08): class Point { fun m(): Int { return helper() }; fun helper(): Int = 1 } + class Other { fun helper(): Int = 2 } in one file -> calls Point.m -> Other.helper. Consequence: Point.helper looks dead and Other.helper gains a false caller whenever a same-file class declared later shares the method name. Cause, same as the C# and Groovy fixes (PRs #2097, #2098): the same-file branch 'if callee_name in local_symbols: callee = local_symbols[callee_name]' binds the bare short name, which the last declaration owns, without defer_bare_method_call. Fix shape: prefer local_symbols[f'{scope}.{callee}'] (receiver, else enclosing type), and send a bare cross-type short-name hit through defer_bare_method_call('suffix'). Same branch exists in ruby.py (checked: binds correctly, Point#m -> Point#helper) and julia.py (not checked)."  # a03a
+    fields: {}  # a03a
+- op: update  # fb00
+  at: '2026-11-09T11:13:28Z'  # fb00
+  by: agent  # fb00
+  actor: jgstern_agent  # fb00
+  clock: 2  # fb00
+  nonce: fb00  # fb00
+  set:  # fb00
+    status: done  # fb00
+- op: discuss  # 51a5
+  at: '2026-11-09T11:13:28Z'  # 51a5
+  by: agent  # 51a5
+  actor: jgstern_agent  # 51a5
+  clock: 3  # 51a5
+  nonce: 51a5  # 51a5
+  message: "Fixed in PR #2103. Two causes: the same-file branch bound the bare short name (last declaration wins), and the resolver indexes methods under bare names too, returning an 'exact' hit for Other.helper, with no INV-fahub guard on Kotlin's simple-call path at all. Now: prefer Enclosing.callee; a short-name hit on another type's method goes through defer_bare_method_call('suffix'); the resolver branch reads an 'exact' hit whose name differs from the callee as short-name evidence unless an import names the callee (test_jvm_import_outranks_project_name caught the okhttp Companion import case before push). Withheld calls are unresolved with enclosing_class for the inherited-calls linker. Live repro, dev vs branch: Point { m() = helper() } + Other { helper() } in one file and in two files -> dev Point.m -> Other.helper, branch unresolved helper with enclosing_class Point; nested Inner.m -> Inner.h, companion Outer.useC -> Outer.c and free caller -> top unchanged. Known cost, shown by the same repro: o.run { helper() } bound to Other.helper on dev (right by accident) and is unresolved on the branch, since scope-function receivers are not typed."  # 51a5

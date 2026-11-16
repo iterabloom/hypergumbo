@@ -43,7 +43,6 @@
 # `--no-default-overlays`.
 
 language: swift
-status: overlay
 provenance: community
 retrieved: 2026-03-24
 

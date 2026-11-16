@@ -7,6 +7,29 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-16
+
+### Added
+
+- **Select several TUI list items (Shift+click or Space) and mark them read or unread together.**
+
+### Changed
+
+- **The TUI starts in about two thirds of the time**: its footer is rebuilt only when its keys change.
+
+### Fixed
+
+- **Marking items or changing the TUI view keeps the list's scroll position.**
+- **TUI preferences are per user**, under `$XDG_STATE_HOME/hypergumbo-tracker/`, so `git clean` and other accounts no longer overwrite them.
+
+### Development
+
+- **TUI tests no longer misclick on a slow machine.**
+
+### Documentation
+
+- **Comments and docstrings state current rules, not history**; the web server's describe its deny-by-default gate and unwired login modules.
+
 ## [0.11.0] - 2026-10-20
 
 ### Breaking and contract changes

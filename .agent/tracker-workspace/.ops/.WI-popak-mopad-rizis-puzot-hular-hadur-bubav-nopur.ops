@@ -52,3 +52,18 @@
   clock: 5  # d4c7
   nonce: d4c7  # d4c7
   message: "SimHash neighbour checked: WI-sazap is the --reproducible byte-repro mode; unrelated."  # d4c7
+- op: update  # 0223
+  at: '2026-10-22T21:20:07Z'  # 0223
+  by: agent  # 0223
+  actor: jgstern_agent  # 0223
+  clock: 6  # 0223
+  nonce: '0223'  # 0223
+  set:  # 0223
+    status: done  # 0223
+- op: discuss  # 31d8
+  at: '2026-10-22T21:20:07Z'  # 31d8
+  by: agent  # 31d8
+  actor: jgstern_agent  # 31d8
+  clock: 7  # 31d8
+  nonce: 31d8  # 31d8
+  message: "Fixed. Part (1), hash-shaped css:sha256 ids, was fixed earlier by WI-vodin (five-slot ids). Part (2), import edges never reaching the survey, is fixed in d5ba9bfe67 (merged to dev). The edge src was css:<path>:1-1:<path>:file (the path in the name slot), which matched no node and was materialised as a phantom external_symbol. It is now make_file_id. An @import of a file in the repository, resolved against the importing file's directory, lands on that file's node. Remote URLs, paths outside the repo and missing files keep the module placeholder. css joined the INV-dulah pipeline gate (test_import_dst_ids_are_canonical.py). LIVE REPRO on dev 9b93a6396a, hypergumbo run . --include-docs on site.css (@import \"base.css\"; @import url(\"theme.css\"); .site{}), base.css, theme.css (.theme, .x, .y). Exit 0. All 7 css nodes are five-slot (e.g. css:theme.css:2-2:.y:class_selector, css:site.css:1-1:file:file). spec_validator.validate_ir on them is clean, so id_format 0. Survey imports edges: site.css file -> base.css file and site.css file -> theme.css file, both dsts present in the node list. The item measured analyzer 2 / pipeline 0 before; it is now 2 / 2. Not checked: SCSS/LESS @use/@forward."  # 31d8

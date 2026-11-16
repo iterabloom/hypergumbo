@@ -73,8 +73,8 @@ When `--with-source` is set, budget shifts dramatically from file listings to ac
 | Frameworks | Fixed: all detected frameworks (no limit) | — |
 | Tests | Fixed: summary line only | — |
 | Configuration | Heuristic lines + semantic embedding | — |
-| Entry Points | 33% of remaining, **capped at 2000 tokens** | Prevents starving source content at large budgets |
-| Data Models | 20% of remaining, **capped at 1500 tokens** | Prevents starving source content at large budgets |
+| Entry Points | 33% of remaining, and no more than **13%** of remaining or 2000 tokens, whichever is larger | A listing gives way to code; the floor keeps a small sketch's entry points |
+| Data Models | 20% of remaining, and no more than **8%** of remaining or 1500 tokens, whichever is larger | A listing gives way to code; the floor keeps a small sketch's models |
 | Source Files (list) | **10%** of remaining | Shrink: paths are low-value |
 | Key Symbols | **20%** of remaining | Shrink: actual code is better |
 | Additional Files (list) | **5%** of remaining | Shrink: paths are low-value |
@@ -95,7 +95,7 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 | Data Models | Centrality (most-referenced models first) |
 | Source Files | Symbol importance density = Σ(in-degrees) / LOC |
 | Key Symbols | Two-phase: coverage-first, then centrality × tier weight |
-| Additional Files | README-first hybrid round-robin across (a) README links in document order, (b) semantic similarity to the project's 5W1H embedding, (c) symbol-mention centrality |
+| Additional Files | README-first hybrid round-robin across (a) README links in document order, (b) the overview order: documentation before configuration, process files (contributing guide, code of conduct, security policy, licence, change log) last within a role, shallower first, overview wording as the tie-break ([measurement 0033](../measurements/0033-additional-files-embedding-vs-location.md)), (c) documents that mention a central symbol, by mentions per byte (documentation-role files with at least one mention only). Files with the same bytes are one candidate: the shallowest path is listed and printed, and its copies are named beside it (the first three, then a count) |
 | Source Content | Same as Source Files (top density first) |
 | Additional File Content | Same as Additional Files (top of README-first hybrid round-robin first) |
 
@@ -108,24 +108,28 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 
 ### Cutoff Logic
 
-Each section computes a maximum item count from its budget allocation:
-
-```
-max_items = max(minimum, budget_for_section // tokens_per_item)
-```
+Each section takes entries until its budget allocation is used, measured on the rendered text, and never fewer than its minimum:
 
 | Section | Tokens per Item | Minimum | Default Ceiling | Notes |
 |---------|-----------------|---------|-----------------|-------|
 | Structure | — | — | 10 root dirs | Tree expands until N root dirs shown |
-| Entry Points | ~25 | 5 | 20 | Shows CLI commands + HTTP routes |
-| Data Models | ~15 | 3 | 30 | ORM models, entities, grouped by file |
-| Source Files | ~15 | 5 | 50 | Paths only; shrinks with --with-source |
-| Key Symbols | ~25 | 5 | 100 | Max 5 per file to ensure breadth |
-| Additional Files | ~15 | 1 | — | Paths only; shrinks with --with-source |
+| Entry Points | measured | 5 | — | CLI commands, HTTP routes, library API; the most entries whose rendered section fits the share |
+| Data Models | measured | 3 | — | ORM models, entities, grouped by file; the most models whose rendered section fits the share |
+| Source Files | measured | 5 | — | Path and module docstring; entries are taken until the share is used (below) |
+| Key Symbols | measured | 5 | 100 | Max 5 per file to ensure breadth; file blocks are added until the share is used |
+| Additional Files | measured | 1 | — | Paths only; entries are added until the share is used; shrinks with --with-source |
 | Source Content | varies | 1 | — | Harmonic truncation (depth-over-breadth) |
-| Additional File Content | varies | 1 | — | Dynamic truncation with median floor |
+| Additional File Content | varies | 1 | — | Harmonic truncation by position, 500-token floor |
 
-The "tokens per item" values are estimates used to calculate how many items fit in the allocated budget. Actual token usage varies by item complexity. Source Files Content uses harmonic truncation (top-ranked files get proportionally more space); Additional Files Content uses median-based truncation.
+"measured" means the section is sized by what its entries cost, not by a count derived from a per-entry constant. Source Files Content and Additional Files Content both use harmonic truncation (earlier files get proportionally more space).
+
+### Source Files: Sized by Its Entries
+
+The Source Files listing is cut by what its entries cost. Entries are taken in rank order (importance density) until the next one would pass the section's share, and never fewer than five. An entry is a path and, when the file has one, its module docstring, so entries differ in size several-fold between repositories and languages; the count is therefore not derived from a per-entry constant. (It used to be the share divided by 12 tokens, a figure set when an entry was a bare path. An entry with a docstring costs about 32, and the section took 2.6 times its share on a repository whose files carry docstrings.)
+
+**Past the files worth naming one by one, the listing stops at its share and summarises.** There is no second cut-off by score: the share is what bounds the list, and a score threshold would need a value nobody has measured. The line that ends a cut listing says what was left out: how many files, how many of them are tests, and which top-level directories hold them (the three largest, then a count for the rest), as in `- ... and 588 more files (553 of them tests): `packages/` 540, `scripts/` 40, 8 elsewhere`.
+
+**Key Symbols and the Additional Files listing are cut the same way.** Key Symbols adds file blocks (heading, bullets, the file's count line) in rank order until the next would pass the section's share, and always shows the first; the files cut are counted in the section's last line. The Additional Files listing adds entries in selection order until the next would pass its share, and always lists the first. Both used to be a count, the share divided by a constant (35 tokens a symbol, 12 a path). A section that passes its share pushes the sketch over its budget, and the last step of generation then drops whole sections from the end until the text fits: on one measured repository at 32k without source content, Key Symbols and Additional Files were both dropped. The count is still computed (it bounds how many symbols and files are selected); it no longer bounds the section.
 
 ### Structure: Tree Built from Important Files
 
@@ -177,17 +181,18 @@ The Structure section displays a `tree`-like visualization showing paths to impo
 Both Source Files Content (Section 9) and Additional Files Content (Section 10) use dynamic truncation. Files that fit within budget are included in full; oversized files are truncated to a computed target and appended with `[...truncated...]`.
 
 **Truncation for Source Files Content (harmonic):**
-- Uses `compute_harmonic_shares(effective_n, source_budget)` to distribute budget across files by density rank. File at rank *i* (1-indexed) gets `budget * (1/i) / H_n` tokens, where `H_n` is the *n*-th harmonic number.
-- **Effective N** is the largest rank whose harmonic share meets the 500-token floor. This prevents diluting shares across too many files.
-- **Surplus handling**: When a file uses fewer tokens than its harmonic share, the surplus remains available for later files (they can exceed their pure harmonic share).
-- Files that fit entirely within their share are included in full. Oversized files are truncated to their share.
+- The file at density rank *r* (1-indexed) may use `level / r` tokens: a harmonic profile, so a better-ranked file gets proportionally more depth. `level` is the highest the section's budget pays for (`sketch._content_plan`).
+- A file that costs no more than its allowance is printed whole. A longer one is cut to its allowance, and is left out while that allowance is under the 500-token floor (a file shorter than the floor is printed when it fits whole).
+- Every allowance grows with `level`, and `level` with the budget. So a larger budget prints every file a smaller one printed, at no less depth; a long file is held to its rank's allowance at every budget and cannot use up the section.
 
-**Truncation floor for Additional Files Content:**
-- Uses `max(median(token_counts), 500)` throughout.
+**Truncation for Additional Files Content (harmonic, by position):**
+- A file that fits in what is left is printed whole. One that does not is cut to its share: the file at position *i* gets `budget * (1/i) / H_N`, where N is the largest number of files for which the smallest share is still at least 500 tokens. A file past position N is cut to the 500-token floor, and printing stops when less than the floor is left.
+- The README is first, so it gets the largest share. The rule used to be `max(median(sizes printed so far), 500)`; the first file has no median, so a README longer than the budget was cut to 500 tokens (to 262 on one measured repository, at the nearest section boundary) while the next file was printed whole.
+- A cut is made at a `## ` section boundary, or at a paragraph break when the text has none. A line inside a fenced code block is neither: a README that shows example output holds `## ` lines that are text of the example.
 
 **Why harmonic truncation for source files:** The previous elbow+median approach spread content evenly across files. Harmonic weighting gives proportionally more depth to higher-ranked (more architecturally important) files, matching developer intuition: you want the most detail on the most important code.
 
-**Entry Point / Data Model caps (--with-source only):** At large budgets, Entry Points and Data Models can saturate to 100% representativeness early but keep consuming their full percentage allocation. Absolute caps (2000 tokens for Entry Points, 1500 for Data Models) ensure surplus budget flows to Source Files Content where it provides more value. The caps are generous enough that they only clip at large budgets (32k+) where the sections are already fully represented.
+**Entry Points and Data Models with source:** a listing gives way to code. Each keeps 0.4 of its no-source share of what is left, the factor the Source Files listing shrinks by (25% to 10%): 13% for Entry Points and 8% for Data Models, and never less than a floor of 2000 and 1500 tokens, so a small sketch still names its entry points. The limit grows with the budget: a larger sketch shows more of both, and at 128k all of them on every repository measured (20, up to 500 entry points). Both sections are sized by what they cost: the number shown is the most whose rendered section fits the budget (`sketch._largest_fitting`), not the budget over a constant per entry.
 
 **Safety:** Truncation uses `truncate_to_tokens()` which respects line boundaries and proper markdown fencing. The `[...truncated...]` marker signals to readers that content continues.
 
@@ -196,6 +201,10 @@ Both Source Files Content (Section 9) and Additional Files Content (Section 10) 
 The Key Symbols section has special handling: **always include at least 5 symbols** when analysis produces results, even if this causes slight budget overage. This was added because experiments showed some projects had 0 Key Symbols at 1k budget when budget was exhausted by earlier sections. Key Symbols is the most valuable section for code understanding.
 
 ### Key Symbols: Two-Phase Selection
+
+Which files the two phases may draw from:
+- The top N files by score (the sum of a file's three most central symbols), where N grows with the symbol budget: 20, or one file for every three symbols of budget when that is more.
+- A file that holds an entry point and did not make the top N may still be admitted, best score first, up to one such file for every four ranked ones. An entry file's symbols are called by nothing, so score alone would not show the program's own `main`; a repository can also hold hundreds of entry points, and they must not outnumber the files chosen on merit.
 
 Phase 1 (Coverage-First):
 - Take top N files by symbol importance density
@@ -223,7 +232,7 @@ The Key Symbols section uses a rich output format:
 - **Grouped by file**: Symbols are organized under file headers
 - **Signature truncation**: Long signatures are truncated with `…`
 - **Docstring excerpts**: First line of docstring shown when available
-- **Overflow indicator**: `(... +N more, top score: X.XX)` shows additional symbols not displayed
+- **Overflow indicator**: `(... +N more, top score: X.XX)` counts every key symbol of that file that is not a bullet under it: bullets plus N is the file's key symbols. The section's last line, `(... and M more symbols across K other files)`, counts only the symbols of the K files that are not shown. Data Models follows the same rule (`... and N more in this file`; `... and M more data models in K other files`): a list cut by rank and then grouped by file says, per file, what the cut removed, and a file's group is not kept whole when most of it made the cut.
 
 ### Centrality Computation
 

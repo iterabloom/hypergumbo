@@ -60,7 +60,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.overload_arity import (
     declared_arity, declared_arity_stable_id, parameter_entry,
@@ -174,7 +174,7 @@ def _parameters(header_node: "tree_sitter.Node", source: bytes) -> list[dict[str
     return entries
 
 
-def _callable_stable_id(kind: str, rel_path: str, name: str, meta: dict[str, Any]) -> str:
+def _callable_stable_id(kind: str, rel_path: str, name: str, meta: dict[str, Any]) -> StableId:
     """The ADR-0035 producer id of a ``define`` / ``declare`` (WI-tusad).
 
     Its typed parameters through ``overload_arity.declared_arity_stable_id``;

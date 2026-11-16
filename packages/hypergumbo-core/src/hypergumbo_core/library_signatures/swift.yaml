@@ -14,7 +14,6 @@
 #     type (`FileManager`, `URLSession`) -- unlike go, swift does NOT qualify.
 provenance: builtin
 language: swift
-module_completeness: partial
 signatures:
   # Foundation producers whose result is a catalogued receiver.
   FileManager.temporaryDirectory: URL

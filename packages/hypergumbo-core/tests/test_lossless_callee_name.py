@@ -9,18 +9,14 @@ file exists to honour::
     names live in ``Symbol.name`` ... Consumers that need the exact name MUST
     read ``Symbol.name``, never re-derive it from the ID.
 
-THE DEFECT WAS THAT THE LOSSLESS HOME WAS NEVER FILLED. Measured on a 14-line
-Objective-C repro (INV-divuf / WI-nakut), the shipped output carried::
-
-    node.id             objc:external:0-0::external_symbol
-    node.name           ''            <- the designated lossless home, EMPTY
-    node.qualified_name None
-    edge.dst_ref        None
-
-so ``writeToFile:atomically:`` existed NOWHERE in the output. The boundary node
-is synthesised FROM the id, which made the id the name's ONLY home -- precisely
-the arrangement Ruling 1 forbids. The colon was not the defect; it was what made
-the missing home visible.
+THE HAZARD IS AN UNFILLED LOSSLESS HOME. The boundary node for an unresolved
+call is synthesised FROM the id. Without a separate carrier, an Objective-C
+selector such as ``writeToFile:atomically:`` (whose id name slot parses as
+empty) leaves ``node.name`` empty, ``node.qualified_name`` and
+``edge.dst_ref`` None, and the selector exists NOWHERE in the output: the id is
+the name's ONLY home, precisely the arrangement Ruling 1 forbids. The colon is
+not the defect; it is what makes the missing home visible.
+(history: INV-divuf, WI-nakut)
 
 WHY A META KEY AND NOT ``dst_ref``. ``make_unresolved_edge`` already builds an
 ``ExternalRef`` when the module is known, and that ref carries the name at full
@@ -31,12 +27,13 @@ in ``dst_ref`` sometimes and in ``meta`` otherwise would give one fact two homes
 (LIVE.md rule 7). So the producer stamps ``meta['callee_name']`` on EVERY
 unresolved edge, and that is the single home consumers read.
 
-SEQUENCING, recorded because it is load-bearing: this lands BEFORE the
-producer-side ``:`` -> ``.`` sanitisation that Ruling 1 also mandates and that
-ADR-0036's own amendment lists as a deferred follow-up. Sanitising first would
-fold ``writeToFile:atomically:`` to ``writeToFile.atomically.``, which cannot be
-unambiguously reversed (a name may contain a literal dot) -- destroying the very
-value the lossless home is meant to preserve.
+ORDERING CONSTRAINT. Ruling 1 also mandates producer-side ``:`` -> ``.``
+sanitisation of the unresolved edge id, which ADR-0036's own amendment lists as
+a deferred follow-up. It is safe only once the lossless home is filled:
+sanitising folds ``writeToFile:atomically:`` to ``writeToFile.atomically.``,
+which cannot be unambiguously reversed (a name may contain a literal dot), so
+without ``meta['callee_name']`` it would destroy the very value this file
+protects.
 """
 
 import pytest
@@ -45,12 +42,12 @@ from hypergumbo_core.analyze.base import make_unresolved_edge
 from hypergumbo_core.axis_meta_keys import AXIS_EDGE_META, find_meta_key
 from hypergumbo_core.ir import create_boundary_nodes, symbol_path_slot
 
-# The real production shape, from the WI-nakut repro. `blob` is `id`, so the
-# receiver cannot be typed and no module_hint is available -- the WI-huzuv cell.
+# A real production shape. `blob` is `id`, so the receiver cannot be typed
+# and no module_hint is available -- the WI-huzuv cell.
 SELECTOR = "writeToFile:atomically:"
 SRC = "objc:Saver.m:8-13:Saver.persist.toPath.:method"
 
-#: Today's id spelling — the raw selector still sits in the id, colons and all.
+#: The current id spelling — the raw selector sits in the id, colons and all.
 _RAW_EDGE = {"src": "objc:Saver.m:4-8:save:method",
              "dst": "objc:external:0-0:writeToFile:atomically::unresolved",
              "type": "calls", "line": 6,
@@ -110,7 +107,7 @@ class TestTheProducerFillsTheLosslessHome:
 
 
 class TestTheBoundaryNodeCarriesTheRealName:
-    """``Symbol.name`` is the home ADR-0036 designates. It was empty."""
+    """``Symbol.name`` is the home ADR-0036 designates; it must hold the real name."""
 
     def test_the_synthesised_node_is_not_nameless(self) -> None:
         nodes, _remap = create_boundary_nodes([], [_edge()])
@@ -122,8 +119,9 @@ class TestTheBoundaryNodeCarriesTheRealName:
 
     def test_distinct_selectors_do_not_collapse_into_one_node(self) -> None:
         """THE IDENTITY DAMAGE, at the layer it happens. Both ids parse to an
-        EMPTY name slot (an objc selector ends in ':'), so ``_dedupe_key``
-        merged them -- 80 distinct selectors became 17 on Mantle."""
+        EMPTY name slot (an objc selector ends in ':'), so a ``_dedupe_key``
+        built from the id name slot would merge distinct selectors into one
+        node."""
         edges = [_edge("writeToFile:atomically:"),
                  _edge("createFileAtPath:contents:attributes:")]
         nodes, _remap = create_boundary_nodes([], edges)
@@ -182,14 +180,12 @@ class TestTheIdStaysColonFreeWhileTheNameDoesNot:
     """Ruling 1's two halves, which must hold TOGETHER: a LOSSY key and a
     LOSSLESS field.
 
-    THE REGRESSION THIS PINS WAS REAL AND MINE. Feeding the full-fidelity name
-    into the dedupe key is what keeps two selectors distinct — but handing that
-    same name to the id minted
+    Feeding the full-fidelity name into the dedupe key is what keeps two
+    selectors distinct — but handing that same name to the id unfolded mints
     ``rust:external:0-0:Vec::with_capacity:external_symbol``, which the
     ``id_format`` validator correctly rejects as ``double_colon_separator``
-    (INV-sadiv). Measured before the fold was added: bellman's id_format
-    violations went 1 -> 16. Getting the lossless half right by breaking the
-    lossy half is not getting Ruling 1 right.
+    (INV-sadiv). Getting the lossless half right by breaking the lossy half is
+    not getting Ruling 1 right.
     """
 
     @pytest.mark.parametrize("callee,expected_slot", [
@@ -213,7 +209,7 @@ class TestTheIdStaysColonFreeWhileTheNameDoesNot:
         assert ext[0].name == callee
 
     def test_the_validator_accepts_the_minted_id(self) -> None:
-        """The instrument that caught the regression, asserted directly rather
+        """The production validator's own gate, asserted directly rather
         than trusted — a shape that merely 'looks colon-free' is not the test.
 
         ``_CANONICAL_ID_PATTERN`` is the gate the production validator applies
@@ -228,17 +224,17 @@ class TestTheIdStaysColonFreeWhileTheNameDoesNot:
             assert _CANONICAL_ID_PATTERN.match(ext[0].id), ext[0].id
 
     def test_one_home_for_the_sanitizer(self) -> None:
-        """It moved to ``ir`` (which mints boundary ids) and is re-exported from
-        ``analyze.base`` (which imports ``ir``). A copy on either side would be
-        the two-homes defect this project keeps paying for."""
+        """It lives in ``ir`` (which mints boundary ids) and is re-exported from
+        ``analyze.base`` (which imports ``ir``). A copy on either side would
+        give one fact two homes."""
         from hypergumbo_core.analyze.base import sanitize_id_name_segment as a
         from hypergumbo_core.ir import sanitize_id_name_segment as b
 
         assert a is b
 
 
-#: The shape the reader disagreement took in production: the id's name slot has
-#: escaped ``::`` to ``..``, and only ``meta['callee_name']`` still has the truth.
+#: The shape on which the readers can disagree: the id's name slot has escaped
+#: ``::`` to ``..``, and only ``meta['callee_name']`` still has the truth.
 _ESCAPED = {"src": "rust:src/a.rs:1-9:main:function",
             "dst": "rust:external:0-0:String..from_utf8:external_symbol",
             "type": "calls", "line": 4, "is_resolved": False, "dst_ref": None,
@@ -248,12 +244,11 @@ _ESCAPED = {"src": "rust:src/a.rs:1-9:main:function",
 class TestOneReaderForOneFact:
     """INV-difud: every reader of an edge's callee name returns the same string.
 
-    ``verify_claims._callee_name`` read ``meta['callee_name']`` then the id;
-    ``finalize._stub_callee_name`` read ``dst_ref.name`` then parsed the id
-    POSITIONALLY as ``parts[-2]``, consulting the lossless home never. Two
-    homes for one read is how they drift apart (LIVE.md rule 7), and they had:
-    12 external edges on this repository's own survey, every one a name whose
-    id slot escaped ``::`` to ``..``.
+    Two readers exist: ``verify_claims._callee_name`` and
+    ``finalize._stub_callee_name``. One that skips ``meta['callee_name']`` and
+    parses the id instead (e.g. positionally as ``parts[-2]``) disagrees with
+    the other on every name whose id slot escaped ``::`` to ``..``. Two homes
+    for one read is how readers drift apart (LIVE.md rule 7).
     """
 
     def _edge_object(self):

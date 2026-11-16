@@ -19,3 +19,26 @@
     pr_ref:  # 808e
     description: "FOUND 2026-09-24 while measuring WI-narij.\n\nA fully qualified call loses its qualifier:\n- `scala.sys.process.Process(c).!` and `sys.process.Process(c).!` are emitted as `scala:external:0-0:Process`, stamped call_construct=method.\n- gate_named_entry never matches a method-stamped call with no context, so neither form classifies after WI-narij either.\nFixture: /tmp scratch; the three lines above reproduce it.\n\nCorpus: spark core/.../api/r/BaseRRunner.scala:282 and scala3 project/RepublishPlugin.scala:393 (`sys.process.Process(\"git rev-parse HEAD\").!!`). Those are 2 edges on 11 repos, so the volume is small.\n\nASKED: the scala analyzer writes a dotted qualifier into the module slot, as java.py does for `java.lang.System.getenv`. Measure what else changes; every qualified call is affected, not only Process."  # 808e
     fields: {}  # 808e
+- op: discuss  # 8380
+  at: '2026-11-01T10:55:43Z'  # 8380
+  by: agent  # 8380
+  actor: jgstern_agent  # 8380
+  clock: 2  # 8380
+  nonce: '8380'  # 8380
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat4/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 on dev 100b6fbb6e. fdd99a9eae (INV-vokut, 2026-09-28) fixed the fully qualified form: `scala.sys.process.Process(c).!` now emits scala:scala.sys.process.Process:0-0:Process and classifies subprocess (plus a deliberate simultaneous fs_write row). `sys.process.Process(\"git ...\").!!` still emits scala:external:0-0:Process with call_construct=method and reaches no boundary. Only the sys-rooted half remains. MECHANISM: inline path taken as module only when its root is scala/java/javax, so a path rooted at an auto-imported package is dropped. SHARES MECHANISM WITH: WI-tuzaf."  # 8380
+- op: update  # be68
+  at: '2026-11-01T10:55:43Z'  # be68
+  by: agent  # be68
+  actor: jgstern_agent  # be68
+  clock: 3  # be68
+  nonce: be68  # be68
+  set:  # be68
+    title: "scala: a sys.process.Process(c) call (path rooted at the auto-imported sys package) loses its qualifier and never classifies"  # be68
+- op: update  # 5bcd
+  at: '2026-11-01T10:55:43Z'  # 5bcd
+  by: agent  # 5bcd
+  actor: jgstern_agent  # 5bcd
+  clock: 4  # 5bcd
+  nonce: 5bcd  # 5bcd
+  set:  # 5bcd
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 on dev 100b6fbb6e. fdd99a9eae (INV-vokut, 2026-09-28) fixed the fully qualified form: `scala.sys.process.Process(c).!` now emits scala:scala.sys.process.Process:0-0:Process and classifies subprocess (plus a deliberate simultaneous fs_write row). `sys.process.Process(\"git ...\").!!` still emits scala:external:0-0:Process with call_construct=method and reaches no boundary. Only the sys-rooted half remains. (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-09-24 while measuring WI-narij.\n\nA fully qualified call loses its qualifier:\n- `scala.sys.process.Process(c).!` and `sys.process.Process(c).!` are emitted as `scala:external:0-0:Process`, stamped call_construct=method.\n- gate_named_entry never matches a method-stamped call with no context, so neither form classifies after WI-narij either.\nFixture: /tmp scratch; the three lines above reproduce it.\n\nCorpus: spark core/.../api/r/BaseRRunner.scala:282 and scala3 project/RepublishPlugin.scala:393 (`sys.process.Process(\"git rev-parse HEAD\").!!`). Those are 2 edges on 11 repos, so the volume is small.\n\nASKED: the scala analyzer writes a dotted qualifier into the module slot, as java.py does for `java.lang.System.getenv`. Measure what else changes; every qualified call is affected, not only Process."  # 5bcd

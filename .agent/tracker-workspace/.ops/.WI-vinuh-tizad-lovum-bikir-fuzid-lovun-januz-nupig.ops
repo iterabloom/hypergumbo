@@ -58,3 +58,19 @@
   set: {}  # 9502
   add:  # 9502
     tags: [awaits_bakeoff_validation]  # 9502
+- op: update  # b9fb
+  at: '2026-11-02T10:19:46Z'  # b9fb
+  by: agent  # b9fb
+  actor: jgstern_agent  # b9fb
+  clock: 7  # b9fb
+  nonce: b9fb  # b9fb
+  set: {}  # b9fb
+  remove:  # b9fb
+    tags: [awaits_bakeoff_validation]  # b9fb
+- op: discuss  # 39b2
+  at: '2026-11-02T10:19:46Z'  # 39b2
+  by: agent  # 39b2
+  actor: jgstern_agent  # 39b2
+  clock: 8  # 39b2
+  nonce: 39b2  # 39b2
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). prometheus: measured scrape.go:1394 slog.New(..).Error -> go:log/slog.Logger:Error (recorded log/slog.Error -> log/slog.Logger.Error). Tag stripped."  # 39b2

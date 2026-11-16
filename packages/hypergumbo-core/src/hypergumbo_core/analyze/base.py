@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Base classes and utilities for language analyzers.
 
-This module provides shared infrastructure for all language analyzers,
-eliminating duplication across the analyzer files (119 call
-``register_analyzer``) spread across the five ``hypergumbo-lang-*``
-packages.
+This module provides shared infrastructure for all language analyzers, so
+the analyzer modules spread across the ``hypergumbo-lang-*`` packages do
+not each carry their own copy.
 
 Shared Components
 -----------------
@@ -13,8 +12,13 @@ Shared Components
   analyzer follows — Pass 1 extracts symbols per file, Pass 2 resolves calls
   and imports against the global symbol registry — plus grammar loading,
   file discovery, graceful degradation when a grammar is unavailable, and
-  result assembly. Subclasses override the language-specific extraction
-  hooks and inherit the orchestration. ~105 analyzer modules subclass it.
+  result assembly. Most subclasses override the language-specific extraction
+  hooks and inherit the orchestration, but a minority of subclasses (go,
+  java, js_ts, csharp, kotlin, php and ruby among them) override
+  ``analyze()`` with their own loop and never reach
+  ``_analyze_body``, so the per-file and between-pass steps described next
+  apply only to the subclasses that run it, directly or through
+  ``super().analyze`` (as cpp, dart, elixir and scala do).
   Per file, Pass 1 parses through the ``parse_source`` hook (an override may
   rewrite the bytes, length-preserving, for a grammar that lags its
   language), records a tree that needed error recovery in
@@ -33,6 +37,13 @@ Shared Components
   declaration in the repository always wins. During Pass 2,
   ``file_symbols`` hands an analyzer every symbol of the current file,
   where the name-keyed ``symbol_by_name`` keeps only one per name.
+  After ``post_process``, ``claim_declaration_silence`` records why a run
+  that read files emitted nothing: ``no_candidate_construct`` when Pass 1
+  declared nothing, ``candidates_unresolved`` when post-processing dropped
+  what it declared; five analyzers that override ``analyze()`` (c,
+  json_config, latex, proto, vue) call the same helper. When the grammar is
+  unavailable the run is returned skipped with
+  ``skip_reason_code=DEPENDENCY_UNAVAILABLE``.
 - **AnalysisResult**: Universal result type returned by all analyzers
 - **FileAnalysis**: Intermediate per-file analysis result
 - **Tree-sitter helpers**: node_text (slices the source bytes),
@@ -64,7 +75,11 @@ Shared helpers
   clauses). ``symbols_at`` indexes symbols by declaration start position and
   ``symbol_declared_by`` maps a declaration node back to its symbol; every
   analyzer should credit calls this way, reading the file's symbols from
-  ``TreeSitterAnalyzer.file_symbols``. The one line-span variant is
+  ``TreeSitterAnalyzer.file_symbols``. A call in no function is not
+  dropped: ``enclosing_declared_symbol`` anchors it on the nearest enclosing
+  type declaration that has a symbol, and when there is none
+  ``file_anchor_symbol`` supplies the anchor of last resort, the file node
+  that ``make_file_id`` names. The one line-span variant is
   ``_innermost_callable_at``: ``emit_module_attribute_refs`` uses it to
   anchor a module-attribute read (a taint source) to the narrowest
   callable containing its line, over the ``enclosing_symbols`` its callers
@@ -104,18 +119,25 @@ Shared helpers
   ``make_entry_stable_id`` (shader entry points), ``make_protocol_stable_id``
   (linker stand-ins) and ``make_synthetic_symbol_identity`` (Class-B
   stand-ins). ``is_table_kind`` tells a producer which of its kinds the
-  backstop's table owns, and ``ancestor_labels`` collects the enclosing
-  scopes a producer hashes into its scope chain.
+  backstop's table owns, ``floor_stable_id_key`` computes the backstop's
+  floor key for every other kind (one definition, also read by
+  ``spec_validator.compute_stable_id_stats``), and ``ancestor_labels``
+  collects the enclosing scopes a producer hashes into its scope chain.
+- **Smaller helpers.** ``make_module_import_dst`` and
+  ``make_manifest_target_dst`` build well-formed dst ids for ``imports``
+  edges and manifest ``defines_target`` edges; ``visibility_from_modifiers``
+  and ``is_exported_from_modifiers`` read visibility and exported-ness from a
+  modifier list; ``run_recording_log`` wraps a log so each line is also
+  recorded on ``run.warnings``; ``html_element_tag`` and ``block_prelude``
+  are the ``label_of`` callbacks ``ancestor_labels`` uses for HTML-family and
+  block-bodied grammars.
 
 Why This Design
 ---------------
-Previously, each analyzer duplicated these components. This led to:
-- ~100+ copies of identical dataclasses
-- Inconsistent helper implementations
-- High maintenance burden when adding new analyzers
-
-Now, analyzers import from this module and focus only on
-language-specific parsing logic.
+Keeping one copy of each shared dataclass and helper here means helper
+behavior is consistent across languages and a new analyzer only implements
+its language-specific parsing logic; analyzers import the rest from this
+module.
 """
 
 from __future__ import annotations
@@ -127,29 +149,33 @@ import re as _re
 import time
 import warnings
 from dataclasses import dataclass, field
+import posixpath
 from pathlib import Path
 from collections.abc import Container, Sequence
-from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional
+from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional, Sized
 
 from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
+from ..taxonomy import get_language
 from ..paths import normalize_path
 from ..ir import (
-    PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
-    compute_config_fingerprint, compute_pass_version, make_pass_id,
+    PASS_VERSION, AnalysisRun, Edge, ExternalRef, ShapeId, Span, StableId,
+    Symbol, UsageContext, compute_config_fingerprint, compute_pass_version, make_pass_id,
 )
 
 # EXPLICIT re-export (the ``X as X`` form), not a plain import: ``--strict``
-# forbids implicit re-export, and six linkers import this name from here. The
-# sanitizer's home moved to ``ir`` (INV-divuf) because ``ir`` mints boundary ids
-# too (``_canonical_external_id``) and importing the other way round would be a
-# cycle; ``analyze.base`` stays the producer-facing surface it has always been.
+# forbids implicit re-export, and linkers and analyzers import this name from
+# here. The
+# sanitizer lives in ``ir`` because ``ir`` mints boundary ids too
+# (``_canonical_external_id``) and importing it from here would be a cycle;
+# ``analyze.base`` remains the producer-facing surface (INV-divuf).
 from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
+from ..schema import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 from ..axis_meta_keys import write_meta_key
 from ..call_constructs import require_declared as _require_declared_construct
 from ..symbol_resolution import NameResolver
-from ..pass_silence import DEPENDENCY_UNAVAILABLE
+from ..pass_silence import DEPENDENCY_UNAVAILABLE, silence_reason_for_candidates
 
 # ---------------------------------------------------------------------------
 # Memory safety: abort analysis before OOM crashes the machine
@@ -205,23 +231,23 @@ if TYPE_CHECKING:
 class AnalysisResult:
     """Universal result type for all language analyzers.
 
-    This replaces the per-language XxxAnalysisResult dataclasses
-    (GoAnalysisResult, RustAnalysisResult, etc.) which were all identical.
+    Every analyzer returns this one type; there is no per-language result
+    class.
 
     Attributes:
         symbols: List of detected symbols (functions, classes, etc.)
         edges: List of relationships between symbols (calls, imports, etc.)
-        usage_contexts: List of usage contexts for call-based pattern matching (v1.1.x)
+        usage_contexts: List of usage contexts for call-based pattern matching
         run: Provenance tracking for the analysis pass
         skipped: Whether the analysis was skipped (e.g., missing dependency)
         skip_reason: Human-readable reason for skipping
         skip_reason_code: The same fact on the closed pass-silence-reason axis
-            (WI-dukoh / ADR-0056 W2). One channel, two fields: ``skip_reason``
+            (ADR-0056, WI-dukoh). One channel, two fields: ``skip_reason``
             keeps the payload a code cannot express (the pip command, the
             exception text) and this carries the classification a consumer can
-            branch on without matching twenty-eight spellings. Empty means the
+            branch on without matching free-text spellings. Empty means the
             producer did not classify itself, which reads as ``unreported`` —
-            never as ``no_candidate_files``, the 98.94%-common value that a
+            never as ``no_candidate_files``, the most common value, which a
             permissive default would manufacture on its behalf.
     """
 
@@ -254,7 +280,7 @@ class FileAnalysis:
         symbol_by_name: Quick lookup by symbol name for edge resolution
         import_aliases: Mapping of import alias → import path (Go, etc.)
         node_for_symbol: Mapping of symbol ID → tree-sitter node for
-            automatic shape_id computation (ADR-0014 §1). Analyzers that
+            automatic shape_id computation (spec §6 shape_id). Analyzers that
             populate this get shape_id computed by the base class.
     """
 
@@ -321,12 +347,13 @@ class FileAnalysis:
 
 @dataclass(frozen=True)
 class ArityFlags:
-    """Parameter arity classification for stable_id computation (ADR-0014 §2).
+    """Parameter arity classification for stable_id computation (ADR-0035 §1).
 
     Captures the structural shape of a function's parameter list without
-    recording names or types.  Two functions with the same ArityFlags and
-    kind will produce the same untyped-tier stable_id (by design — they
-    have the same *interface shape*).
+    recording names or types, so two functions with the same *interface
+    shape* share ArityFlags. The untyped-tier stable_id
+    (:func:`assemble_stable_id`) hashes these flags alongside the name,
+    scope chain and decorators, so equal flags alone do not make equal ids.
 
     Attributes:
         param_count: Number of regular parameters (excludes self/cls/receiver).
@@ -366,12 +393,10 @@ def node_text(node: "tree_sitter.Node", source: bytes) -> str:
 def node_own_text(node: "tree_sitter.Node") -> str:
     """Decoded ``node.text``, None-safe — the ONE home for this fact.
 
-    ``tree_sitter.Node.text`` is ``bytes | None``, and 35 analyzers carried
-    a byte-similar private ``_get_node_text`` copy of this two-liner
-    (WI-sarag) — with the None guard present in some copies and absent in
-    others, the half-guarded-population tell (WI-vokiz) that means there
-    is no contract, only local habit. Analyzers import this under their
-    historical local name (``import ... as _get_node_text``); a
+    ``tree_sitter.Node.text`` is ``bytes | None``. Every analyzer decodes it
+    through this one function, so the None guard is a contract rather than
+    a per-copy habit (WI-sarag, WI-vokiz). Analyzers import it under the
+    local name ``_get_node_text`` (``import ... as _get_node_text``); a
     recurrence test fails if a new private copy appears.
 
     Distinct from :func:`node_text`, which slices the SOURCE by byte
@@ -396,13 +421,13 @@ def stamp_io_mode_from_call(
     where each language puts the argument
     (:func:`~hypergumbo_core.io_boundary.mode_argument_for`); this is the one
     place that reads it off a parse tree, so C and C++ cannot answer
-    differently. INV-kaduh is what a per-analyzer copy of this costs: python
-    had one, C had none, and ``fopen(path, "w")`` tagged ``fs_read`` in every
-    C and C++ repo — an EXAMINED negative for the boundary that is true.
+    differently. Without it, a language with no reader of its own tags
+    ``fopen(path, "w")`` as ``fs_read`` — an EXAMINED negative for the
+    boundary that is true (INV-kaduh).
 
     Applied ONCE over ``edges[first_new:]``, keyed on the exact call node
-    rather than on a line number — two calls can share a line, and ADR-0038's
-    retired line-granular classifier is why that is stated rather than assumed.
+    rather than on a line number, because two calls can share a line (see
+    ADR-0038).
 
     A non-literal mode (``fopen(p, m)``) stamps NOTHING. Absence is recorded as
     absence: :func:`~hypergumbo_core.io_boundary.resolve_mode_boundary` applies
@@ -431,9 +456,9 @@ def stamp_io_mode_from_call(
         # (WI-nolut). Read here, in the one producer, rather than in a copy.
         content = find_child_by_type(args[spec.position], "string_fragment")
     if content is None and spec.flag_modes:
-        # WI-ninuz: a flag expression (Go's ``os.O_WRONLY|os.O_CREATE``). Any
-        # flag that writes makes the call a write; a variable names no flag and
-        # stamps nothing, exactly as a non-literal mode string does.
+        # A flag expression (Go's ``os.O_WRONLY|os.O_CREATE``). Any flag that
+        # writes makes the call a write; a variable names no flag and stamps
+        # nothing, exactly as a non-literal mode string does (WI-ninuz).
         stack, implied = [args[spec.position]], set()
         while stack:
             cur = stack.pop()
@@ -496,9 +521,9 @@ def find_child_by_field(
 
 # Node types that mean "a value is produced by calling something", and the
 # field each grammar uses for the callee. Shared rather than re-derived per
-# analyzer: WI-nopod's whole point is that a fact recorded in N places
-# diverges, and the parity column
-# (``test_constructed_from_parity``) enforces the semantics uniformly.
+# analyzer, because a fact recorded in N places diverges; the parity column
+# (``test_constructed_from_parity``) enforces the semantics uniformly
+# (WI-nopod).
 _CALL_NODE_CALLEE_FIELDS: "tuple[str, ...]" = (
     "function", "constructor", "callee",
 )
@@ -595,19 +620,17 @@ def make_symbol_id(
     and the id stops parsing, while colons in the ``path`` slot are harmless and
     stay verbatim (Rust's ``std::cmp`` module ids depend on that).
 
-    This fold was deferred for a long time on the premise that it would "churn"
-    colon-bearing source identifiers such as Objective-C selectors
-    (``removeItemAtPath:error:``). Measurement reversed that premise: those ids
-    were ALREADY unparseable seven-segment strings, so sanitizing repairs them
-    rather than churning them. Selector-style and coordinate-style names are the
-    beneficiaries.
+    The ids it changes are those of colon-bearing source identifiers such as
+    Objective-C selectors (``removeItemAtPath:error:``) and coordinate-style
+    names, which unsanitized would yield unparseable seven-segment ids; a
+    colon-free name passes through unchanged.
 
     The substitution is documented-lossy (full fidelity lives in ``Symbol.name``)
-    and idempotent, so producers that already route through
-    :func:`sanitize_id_name_segment` — the synthetic linker stand-ins per
-    WI-vuzaf, the Maven manifest sites per INV-dulah — are unaffected. Those
-    explicit calls stay: they pin the right *value* into the slot, whereas this
-    only guarantees the slot is colon-free.
+    and idempotent, so producers that route through
+    :func:`sanitize_id_name_segment` themselves — the synthetic linker
+    stand-ins (WI-vuzaf), the Maven manifest sites (INV-dulah) — get the same
+    id. Those explicit calls are needed regardless: they pin the right *value* into
+    the slot, whereas this only guarantees the slot is colon-free.
     """
     return (
         f"{lang}:{path}:{start_line}-{end_line}"
@@ -628,6 +651,42 @@ def make_file_id(lang: str, path: str) -> str:
     return f"{lang}:{path}:1-1:file:file"
 
 
+def make_module_import_dst(importer_lang: str, import_path: str) -> str:
+    """The canonical dst of an ``imports`` edge to a module or file by path.
+
+    ``<importer_lang>:<import_path>:0-0:module:module`` -- the JS/TS
+    analyzer's shape (the language slot is the IMPORTING file's language),
+    which ``linkers/js_module`` parses to resolve the import to a file node
+    and finalize materialises as a well-formed boundary node otherwise. A bare
+    path as dst is no id: finalize's 4-part fallback renders it with the path
+    in the language slot and ``<unknown>`` in the path slot (INV-dulah,
+    WI-bufar-pokam).
+    """
+    return f"{importer_lang}:{import_path}:0-0:module:module"
+
+
+def make_manifest_target_dst(
+    manifest_path: str, target: str, fallback_lang: str,
+) -> str:
+    """The dst of a manifest's ``defines_target`` edge to its entry file.
+
+    A manifest names its entry file relative to its own directory (npm
+    ``bin`` / ``main`` / ``exports``, Cargo ``[[bin]] path``). The dst is
+    that file's node id -- ``make_file_id`` on the path joined onto the
+    manifest's directory, in the language the file's extension says (else
+    *fallback_lang*: an npm bin without an extension is a node script) -- so
+    the edge meets the file when it is analysed and is a well-formed id when
+    it is not (a ``dist/`` build output). Callers keep the manifest-relative
+    path in ``meta["target_path"]`` for the build-target linker
+    (WI-bufar-pokam).
+    """
+    joined = posixpath.normpath(
+        posixpath.join(posixpath.dirname(manifest_path), target.lstrip("./"))
+    )
+    lang = get_language(Path(joined)) or fallback_lang
+    return make_file_id(lang, joined)
+
+
 _FILE_ID_SUFFIX = ":1-1:file:file"
 
 
@@ -640,12 +699,11 @@ PARTIAL_PARSE_REASON = "partial_parse"
 def record_partial_parse(run: AnalysisRun, path: str, tree: Any) -> int:
     """Record ``path`` as partially parsed when its tree carries parse errors.
 
-    WI-bulaz. ``tree.root_node.has_error`` is set on every tree whose parse
-    needed error recovery, and nothing read it: the grammar's recovery yields
-    an ABSENCE (declarations inside or after the damaged region go missing), so
-    a file whose parse died looked exactly like a file that declares nothing,
-    and the run exited 0. Measured before this: objc 38 of 387 files after
-    WI-lafom's rewrite, swift 5 each on VernissageServer and Alamofire.
+    ``tree.root_node.has_error`` is set on every tree whose parse needed error
+    recovery. The grammar's recovery yields an ABSENCE (declarations inside or
+    after the damaged region go missing), so without this record a file whose
+    parse died looks exactly like a file that declares nothing, and the run
+    still exits 0 (WI-bulaz).
 
     Recorded through the existing per-file channel (``limits.failed_files``),
     with a count of damaged nodes, because the file WAS analysed, just not all
@@ -654,10 +712,10 @@ def record_partial_parse(run: AnalysisRun, path: str, tree: Any) -> int:
     descended.
 
     A damaged node is an ERROR node, a MISSING node, or a node that reports
-    ``has_error`` although none of its children does. The last is not a
-    theoretical case: tree-sitter-markdown flags pipe-table cells that way and
-    builds no ERROR node at all, so counting only ERROR/MISSING printed
-    "0 ... node(s)" for a file it had just called broken (crun's crun.1.md).
+    ``has_error`` although none of its children does. The last case is real:
+    tree-sitter-markdown flags pipe-table cells that way and builds no ERROR
+    node at all, so counting only ERROR/MISSING nodes would report
+    "0 ... node(s)" for a file just recorded as broken.
     """
     root = tree.root_node
     if not root.has_error:
@@ -685,7 +743,7 @@ def file_anchor_symbol(lang: str, path: str, pass_id: str, run_id: str) -> Symbo
     Every call site an analyzer parses must emit a calls edge anchored on SOME
     symbol (INV-foluz). A call at module level, in a function literal bound to a
     module-level name, or in a static initialiser has no enclosing function, and
-    nine analyzers dropped it. This is the anchor of last resort: the file node
+    would otherwise be dropped. This is the anchor of last resort: the file node
     the ``make_file_id`` id already names (the ``imports`` edges' source), which
     is how python and php anchor module-level code. One definition, so the
     analyzers that use it cannot disagree about the id, the kind or the span.
@@ -734,13 +792,12 @@ def synthesize_file_symbols_for_dangling_edges(
 ) -> list[Symbol]:
     """Synthesize real file Symbols for any ``make_file_id``-shape dangling edge endpoint.
 
-    WI-ramuv chokepoint: many analyzers emit import / module-level edges
-    whose ``src`` (and occasionally ``dst``) is :func:`make_file_id` shape
+    Many analyzers emit import / module-level edges whose ``src`` (and
+    occasionally ``dst``) is :func:`make_file_id` shape
     (``{lang}:{path}:1-1:file:file``) without emitting a matching producer-
-    side ``kind="file"`` Symbol. ``ir.create_boundary_nodes`` then turns
-    every such dangling endpoint into an external boundary node, which is
-    structurally wrong (the file IS first-party) and forces Plan A
-    canonical-id collapsing as a band-aid.
+    side ``kind="file"`` Symbol. Left dangling, ``ir.create_boundary_nodes``
+    would turn every such endpoint into an external boundary node, which is
+    structurally wrong: the file IS first-party (WI-ramuv).
 
     This helper runs at the orchestrator (after analyzer result
     aggregation, before boundary-node synthesis) and emits one real
@@ -748,29 +805,26 @@ def synthesize_file_symbols_for_dangling_edges(
     those edges land on real producer-side Symbols and never enter the
     boundary pipeline.
 
-    INV-vaguj
-    ---------
+    Effect of ``repo_root`` (INV-vaguj)
+    -----------------------------------
     When ``repo_root`` is provided, two identity claims on each synthesised
-    Symbol become honest:
+    Symbol are honest:
 
     * **``name``/``path``** — paths under ``repo_root`` strip to repo-relative
-      form. Analyzers that leaked absolute paths into the dangling endpoint
-      id no longer poison the synthesised ``Symbol.name`` with a leading
-      ``/home/.../`` prefix (downstream the ``Symbol.path`` normalisation
-      loop in ``all_analyzers`` already handled ``.path``, but never
-      ``.name`` — the two values drifted, which is the root cause of
-      INV-dihif's user-visible explain leak).
+      form, so an analyzer that leaked an absolute path into the dangling
+      endpoint id does not put a leading ``/home/.../`` prefix into
+      ``Symbol.name``. The ``Symbol.path`` normalisation loop in
+      ``all_analyzers`` runs later and fixes ``.path`` but never ``.name``,
+      so the two would otherwise drift (INV-dihif).
     * **``span.end_line``** — when the file is readable under ``repo_root``,
-      reflects the file's actual line count, not the hardcoded ``1``. A
-      3179-line ``cli.py`` ships with ``span.end_line=3179`` instead of
-      ``span.end_line=1``. Unreadable files retain ``end_line=1`` (a
-      schema-valid value; the tracker-proposed sentinel ``-1`` would
-      violate the INV-piroh schema gate's ``minimum=0`` constraint on
-      ``Span.end_line``).
+      reflects the file's actual line count, not a hardcoded ``1``.
+      Unreadable files retain ``end_line=1`` (a schema-valid value; a
+      ``-1`` sentinel would violate the INV-piroh schema gate's
+      ``minimum=0`` constraint on ``Span.end_line``).
 
-    When ``repo_root`` is ``None`` (legacy call form retained for unit
-    tests that pre-date this fix), the pre-INV-vaguj shape is preserved:
-    ``name = path = <whatever-was-in-the-endpoint>`` and ``end_line = 1``.
+    When ``repo_root`` is ``None`` (a call form unit tests use), paths are
+    kept verbatim: ``name = path = <whatever-was-in-the-endpoint>`` and
+    ``end_line = 1``.
 
     Args:
         symbols: All Symbols collected from analyzers (mutated only via
@@ -782,8 +836,8 @@ def synthesize_file_symbols_for_dangling_edges(
         origin_run_id: Execution id of the ``AnalysisRun`` the orchestrator
             emits for this synthesis pass (synthetic:F1). Stamped into each
             synthesized Symbol's ``origin_run_id`` so the node->AnalysisRun
-            JOIN resolves. Defaults to ``""`` for legacy/unit-test callers
-            that don't supply a run.
+            JOIN resolves. Defaults to ``""`` for callers (unit tests) that
+            don't supply a run.
 
     Returns:
         List of new Symbols (one per previously-dangling
@@ -814,15 +868,15 @@ def synthesize_file_symbols_for_dangling_edges(
             language = head[:colon]
             path = head[colon + 1 :]
 
-            # INV-vaguj: strip the repo_root prefix so absolute paths
-            # leaked by upstream analyzers don't surface in ``name``.
+            # Strip the repo_root prefix so absolute paths leaked by
+            # upstream analyzers don't surface in ``name`` (INV-vaguj).
             end_line = 1
             if root_prefix is not None:
                 normed = path.replace("\\", "/")
                 if normed.startswith(root_prefix):
                     path = normed[len(root_prefix):]
-                # INV-vaguj: stamp the file's real line count when we can
-                # read it; otherwise keep the schema-valid sentinel of 1.
+                # Stamp the file's real line count when we can read it;
+                # otherwise keep the schema-valid sentinel of 1.
                 end_line = _read_file_end_line(repo_root, path)
 
             synthesized[endpoint] = Symbol(
@@ -836,9 +890,9 @@ def synthesize_file_symbols_for_dangling_edges(
                     end_line=end_line, end_col=0,
                 ),
                 origin="orchestrator_file_symbol_synthesis",
-                # synthetic:F1: stamp the orchestrator-emitted AnalysisRun's
-                # execution_id so the node->AnalysisRun JOIN resolves (was the
-                # empty-string sentinel). Defaults to '' for legacy callers.
+                # The orchestrator-emitted AnalysisRun's execution_id, so the
+                # node->AnalysisRun JOIN resolves (synthetic:F1). '' when the
+                # caller supplies no run.
                 origin_run_id=origin_run_id,
             )
 
@@ -851,7 +905,7 @@ def synthesize_file_anchors_for_node_bearing_paths(
     origin_run_id: str = "",
 ) -> list[Symbol]:
     """Synthesize a ``kind="file"`` anchor for every path that has content
-    nodes but no file anchor (WI-dagif; file-anchor:F1, node-bearing slice).
+    nodes but no file anchor (WI-dagif, file-anchor:F1).
 
     Sibling of :func:`synthesize_file_symbols_for_dangling_edges`: that pass is
     keyed on dangling ``make_file_id`` EDGE endpoints (WI-ramuv); this one is
@@ -867,12 +921,12 @@ def synthesize_file_anchors_for_node_bearing_paths(
     containment linker's span-based pass roots the file's top-level members at it
     — no separate ``contains``-edge emission is needed here.
 
-    SAFETY — why this is landable independently of file-anchor:F4 (the centrality
-    surface split): these paths already carry content nodes, so they are already
-    in the Additional-Files exclusion set (``source_paths`` in cli.py) and minting
-    their anchors cannot empty that surface. The nodeless cohort (yaml/markdown/
-    config files with zero nodes) is deliberately NOT anchored here — that is the
-    full F1+F4 co-release, gated on the WI-rajod-invariant human decision.
+    SAFETY: these paths already carry content nodes, so they are already in the
+    Additional-Files exclusion set (``content_source_paths`` in cli.py) and minting their
+    anchors cannot empty that surface. Nodeless files (yaml/markdown/config files
+    with zero nodes) are deliberately NOT anchored here;
+    :func:`synthesize_file_anchors_for_paths` mints those for the candidates the
+    caller selects (file-anchor:F4, WI-rajod).
 
     Args:
         symbols: All Symbols collected from analyzers + the dangling-edge pass.
@@ -899,15 +953,20 @@ def synthesize_file_anchors_for_node_bearing_paths(
         _rel(s.path) for s in symbols if s.kind == "file" and s.path
     }
     # path -> representative language (first content node wins; deterministic in
-    # input order). A path with no language is skipped — make_file_id needs one.
+    # input order). host_language, because a Class-B stand-in discovered in the
+    # file is content of it too: a Rails config/routes.rb holds nothing but
+    # route-marker stand-ins (language None) and would otherwise get no anchor
+    # (WI-mupal). A path with no host language at all is skipped — make_file_id
+    # needs one.
     needs_anchor: dict[str, str] = {}
     for sym in symbols:
-        if sym.kind == "file" or not sym.path or not sym.language:
+        language = sym.host_language
+        if sym.kind == "file" or not sym.path or not language:
             continue
         rel = _rel(sym.path)
         if rel in anchored or rel in needs_anchor:
             continue
-        needs_anchor[rel] = sym.language
+        needs_anchor[rel] = language
 
     synthesized: list[Symbol] = []
     for rel, language in needs_anchor.items():
@@ -932,7 +991,7 @@ def synthesize_file_anchors_for_paths(
     origin_run_id: str = "",
 ) -> list[Symbol]:
     """Mint a ``kind="file"`` anchor for each ``(rel_path, language)`` whose path
-    has no existing Symbol (file-anchor:F1, additional-file-candidate cohort).
+    has no existing Symbol (file-anchor:F1).
 
     Generic path-keyed minter: the caller (``all_analyzers``) selects the
     candidates via :func:`taxonomy.additional_file_candidates` + ``get_language``
@@ -958,7 +1017,7 @@ def synthesize_file_anchors_for_paths(
     # analyzers (e.g. html) emit file Symbols with ABSOLUTE paths that the
     # pipeline only normalizes downstream (after this chokepoint). The candidate
     # keys here are repo-relative, so an absolute existing path would not match
-    # and we would mint a duplicate anchor (the html double-file-node regression).
+    # and we would mint a duplicate file node.
     existing: set[str] = set()
     for s in symbols:
         if not s.path:
@@ -984,6 +1043,23 @@ def synthesize_file_anchors_for_paths(
             origin_run_id=origin_run_id,
         ))
     return synthesized
+
+
+def run_recording_log(
+    run: AnalysisRun, emit: Callable[[str], None],
+) -> Callable[[str], None]:
+    """A log that records each line on ``run.warnings`` before emitting it.
+
+    The pattern for a pass's own diagnostics: a warning a consumer can read
+    later from ``analysis_runs`` as well as from stderr (INV-pitab). The SCIP
+    translators take a ``log`` and report what they refused through it
+    (INV-sipod).
+    """
+    def _log(message: str) -> None:
+        run.warnings.append(f"UserWarning: {message}")
+        emit(message)
+
+    return _log
 
 
 def make_unresolved_edge(
@@ -1020,12 +1096,12 @@ def make_unresolved_edge(
             from ``(lang, module_hint, callee_name)`` (ADR-0037 ruling 2),
             EXCEPT when ``module_hint`` is the ``"external"`` sentinel — then
             the module is unknown and ``dst_ref`` stays ``None`` (WI-huzuv,
-            the ADR-0037 "unidentified reference" cell). The legacy ``dst``
+            the ADR-0037 "unidentified reference" cell). The ``dst``
             string is built from the same components so the two stay coherent.
         enclosing_class: Owning class short name of the call site (Site 1:
             bare / `this` / `self` calls). Lands on ``Edge.meta`` under
-            ``"enclosing_class"`` for the inherited_calls linker (INV-nilud
-            campaign, PR-1) to walk the ancestor chain.
+            ``"enclosing_class"`` for the inherited_calls linker to walk the
+            ancestor chain (INV-nilud).
         receiver_type_hint: Inferred receiver type short name (Site 2:
             typed-receiver calls). Lands on ``Edge.meta`` under
             ``"receiver_type_hint"``.
@@ -1049,8 +1125,7 @@ def make_unresolved_edge(
     """
     dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
     # ADR-0037 ruling 2: derive dst_ref from the components this helper already holds,
-    # instead of leaving it the optional-and-usually-omitted kwarg that left 67.8% of
-    # external edges without a structured ref (WI-zuhon). A caller-supplied richer ref
+    # so producers need not remember to pass it (WI-zuhon). A caller-supplied richer ref
     # still wins. EXCEPTION (WI-huzuv): when module_hint is the "external" sentinel the
     # module is unknown, so dst_ref stays None — the "unidentified reference" cell of the
     # ADR-0037 table (False, None); promoting the literal sentinel to a path would invent
@@ -1062,11 +1137,11 @@ def make_unresolved_edge(
     # sanitized ``:`` -> ``.`` ... the ID is a location-addressed key, not a
     # fidelity surface"), and the same ruling instructs consumers needing the
     # exact name to read it from elsewhere and NEVER re-derive it from the id.
-    # There was no elsewhere: an Objective-C selector ENDS in a colon, so the
-    # id's second-to-last token is the EMPTY STRING, the boundary node
-    # synthesised from that id got ``name=''``, and ``writeToFile:atomically:``
-    # appeared NOWHERE in the output (INV-divuf / WI-nakut, measured on a
-    # 14-line repro). Stamped UNCONDITIONALLY -- including the WI-huzuv cell
+    # ``meta["callee_name"]`` is that elsewhere. An Objective-C selector ENDS in
+    # a colon, so the id's second-to-last token is the EMPTY STRING and a
+    # boundary node synthesised from the id alone would get ``name=''``, losing
+    # ``writeToFile:atomically:`` entirely (INV-divuf, WI-nakut). Stamped
+    # UNCONDITIONALLY -- including the WI-huzuv cell
     # above where ``dst_ref`` is correctly withheld because the module is
     # unknown, which is precisely the objc cell. Carrying the name in
     # ``dst_ref`` sometimes and here otherwise would give one fact two homes
@@ -1096,6 +1171,24 @@ def make_unresolved_edge(
     )
 
 
+def claim_declaration_silence(
+    run: AnalysisRun, declared: Sized, symbols: Sized, edges: Sized,
+) -> None:
+    """An analyzer that read files and emits nothing says why (WI-lisan).
+
+    An analyzer's scan finds declarations, and its emission is those
+    declarations, so a silent run either declared nothing
+    (``no_candidate_construct``) or declared something that post-processing
+    then dropped (``candidates_unresolved``). ``declared`` is the scan's
+    finding -- for the base pipeline, pass 1's symbols before
+    ``post_process``. Call it after ``run.files_analyzed`` is set: a run that
+    read no file is the orchestrator's ``no_candidate_files``, and a run that
+    emitted something has no silence to explain.
+    """
+    if run.files_analyzed and not symbols and not edges:
+        run.silence_reason = silence_reason_for_candidates(declared)
+
+
 def defer_bare_method_call(
     candidate_kind: str,
     candidate_name: str,
@@ -1103,7 +1196,7 @@ def defer_bare_method_call(
     enclosing_type: Optional[str],
     separator: str = ".",
 ) -> bool:
-    """INV-fahub: should a BARE call that resolved to ``candidate`` be WITHHELD?
+    """Should a BARE call that resolved to ``candidate`` be WITHHELD? (INV-fahub)
 
     A bare / implicit-``this`` / ``self`` call (``copy(...)``, a chained-receiver
     call whose receiver token was dropped, a same-file short-name hit) may
@@ -1111,7 +1204,7 @@ def defer_bare_method_call(
     class (implicit ``this``). It must NOT confidently bind to a DIFFERENT class's
     method on weak short-name evidence — that is the cross-language magnet misbind
     (``copy`` → ``FileCopyTask.copy``, ``delete`` → ``ActivityPubClient.delete``:
-    dozens of call sites → one arbitrary def, per real-repro validation). Deferring
+    every such call site → one arbitrary def). Deferring
     such a call to the shared ``inherited_calls`` **Site-1** walker (by emitting
     ``make_unresolved_edge(..., enclosing_class=<enclosing_type>)``) lets it be
     recovered iff the method is actually on the enclosing class's linearization (a
@@ -1142,17 +1235,36 @@ def defer_bare_method_call(
     return match_type not in ("exact", "path_hint")
 
 
-def make_route_stable_id(method: str, path: str) -> str:
+
+def defer_unresolved_tie(lookup_result: Any) -> bool:
+    """Should an UNRESOLVED tie be deferred to Site-1? (INV-fahub, WI-jomik)
+
+    The shared resolvers do not pick among two or more candidates without
+    in-file evidence (``symbol_resolution`` module docstring): such a lookup
+    returns no symbol, its candidates kept. :func:`defer_bare_method_call`
+    defers a weak hit on a method by stamping ``enclosing_class`` so the
+    ``inherited_calls`` Site-1 walker can recover a genuine own-class or
+    inherited implicit-``this`` call. A tie among methods is the same call
+    without a pick, so it is deferred the same way: True when the lookup found nothing and at least two of its
+    candidates exist, one of them a method. Callers OR this into their
+    ``_defer`` and emit the unresolved edge with ``enclosing_class``.
+    """
+    if getattr(lookup_result, "found", True):
+        return False
+    candidates = getattr(lookup_result, "candidates", None) or []
+    return len(candidates) >= 2 and any(
+        getattr(c, "kind", None) == "method" for c in candidates
+    )
+
+def make_route_stable_id(method: str, path: str) -> StableId:
     """Compute a collision-free stable_id for route symbols.
 
-    Uses ``_short_sha256("route:{method}:{path}")`` per ADR-0014 §4 +
-    Phase 6 PR1 (INV-hunup). The previous approach set stable_id to
-    bare HTTP methods (e.g. "GET"), causing every same-method route to
-    collide; that was already fixed. Phase 6 PR1 additionally aligns the
-    output shape with the canonical ``sha256:<16hex>`` schema that the
-    other ``make_*_stable_id`` factories use, closing the
-    ``raw_hex_64`` escape category for ~20 call-site Symbols emitted by
-    the HTTP linker and ~N route Symbols emitted by various analyzers.
+    Uses ``_short_sha256("route:{method}:{path}")`` per ADR-0035 §3
+    (INV-hunup). Hashing the path with the method keeps same-method routes
+    from colliding, and the output has the canonical ``hgstableid<N>:<16hex>``
+    shape the other ``make_*_stable_id`` factories use. The result is
+    file-blind; :func:`widen_route_stable_ids` folds in the declaring file
+    later.
 
     Args:
         method: HTTP method (e.g. "GET", "POST", "ANY"). Case-insensitive —
@@ -1160,7 +1272,7 @@ def make_route_stable_id(method: str, path: str) -> str:
         path: Route path (e.g. "/users", "/posts/:id").
 
     Returns:
-        A ``sha256:<16hex>``-shaped string that uniquely identifies the
+        A ``hgstableid<N>:<16hex>``-shaped string that uniquely identifies the
         (method, path) pair.
     """
     # Normalize empty paths to "/" — empty strings from annotation extraction
@@ -1188,14 +1300,13 @@ def make_route_symbol(
 ) -> Symbol:
     """Mint a route-marker Symbol with canonical identity + provenance (WI-zugob).
 
-    Every route-marker producer previously hand-rolled this record, and they
-    drifted apart in three ways the validators catch — an id kind-slot left as
-    the literal ``route`` fossil (``route`` is not a registered symbol kind, so
-    ``id_format`` fails), an absent ``origin_run_id`` (``cross_field``), and an
-    unregistered ``origin`` pass-id (``axis_conformance``). This is the shared
-    minting chokepoint the WI-tufil producer scout found did not exist; it
-    encapsulates the shape ``framework_patterns.materialize_route_symbols``
-    already proved for the go/js/java trio.
+    The shared minting chokepoint for route markers. A hand-rolled marker
+    drifts in three ways the validators catch — an id kind-slot of the literal
+    ``route`` (``route`` is not a registered symbol kind, so ``id_format``
+    fails), an absent ``origin_run_id`` (``cross_field``), and an unregistered
+    ``origin`` pass-id (``axis_conformance``).
+    ``framework_patterns.materialize_route_symbols`` mints through it too
+    (WI-tufil).
 
     **Naming.** ``Symbol.name`` is ``"{METHOD} {path}"`` and the id name-slot is
     derived from it, so ADR-0036 Ruling 1 (``id name-slot == sanitized(name)``)
@@ -1227,31 +1338,39 @@ def make_route_symbol(
             and re-supplying ``http_method`` would undo the transport split.
         is_exported: Whether the route's handler is part of the public API
             (go derives it from the handler's leading capital).
-        protocol_origin: ADR-0031 Class B discriminator. Set it when the marker
-            is a SYNTHETIC stand-in fabricated from a protocol definition rather
-            than a real source declaration (the grpc linker reading a ``.proto``,
-            the annotation linker reading an ``@hg:route`` directive). When set,
-            ``Symbol.language`` becomes ``None`` and the ``language`` argument
-            moves to ``discovery_language`` — the host source language the
-            pattern was discovered in — matching what the other Class-B linkers
-            (message_queue / database_query / subprocess_cli) already emit. The
-            id lang-slot still uses ``language`` either way, so the id stays a
-            parseable five-segment ADR-0036 record for synthetic and real
-            markers alike.
-        discovery_language: Host source language for a synthetic marker, stated
-            EXPLICITLY rather than derived from ``language``. The two are not
+        protocol_origin: ADR-0031 Class B family. EVERY route marker is a
+            synthetic stand-in for the ROUTE, not a declaration (WI-mupal):
+            the marker is named for the route, anchored
+            at the registration, and reaches the handler -- itself a separate
+            node -- by a ``dispatches_to`` edge; ADR-0035 types the route as a
+            LOGICAL entity. So ``Symbol.language`` is always ``None``. Left
+            ``None`` here, the family is the route's transport
+            (:func:`routes.route_protocol_origin`: ``http``, ``websocket``,
+            ``phoenix_ipc``, ``grpc``). A linker that fabricates a marker from a
+            protocol definition passes its own (``grpc``, ``annotation``). The id
+            lang-slot uses ``language`` either way, so the id stays a parseable
+            five-segment ADR-0036 record.
+        discovery_language: Host source language of the marker. Left ``None``
+            with ``protocol_origin`` also ``None`` (every analyzer and the route
+            materializer), it is ``language``: the analyzer found the
+            registration in a file of that language. A linker passing its own
+            ``protocol_origin`` states this EXPLICITLY, because the two are not
             always the same judgement: the grpc linker deliberately leaves it
             ``None`` (a gRPC route is fabricated from a service definition, not
             discovered inside a host file), while the annotation linker sets it
-            to the language of the file carrying the directive. Deriving it here
-            would silently overturn that per-linker decision, so the caller owns
-            it.
+            to the language of the file carrying the directive.
 
     Returns:
-        A route-marker ``Symbol`` with ``kind="function"`` (the ADR-0027 Phase-3
-        route→function fold; the route signal lives in ``meta.framework_role``).
+        A route-marker ``Symbol`` with ``kind="function"`` (``route`` is not a
+        symbol kind: ADR-0027 folds it into ``function``, as for every Class-B
+        stand-in; the route
+        signal lives in ``meta.framework_role``).
     """
-    from ..routes import transport_meta
+    from ..routes import route_protocol_origin, transport_meta
+
+    if protocol_origin is None:
+        protocol_origin = route_protocol_origin(method)
+        discovery_language = language
 
     normalized_path = route_path if route_path else "/"
     name = f"{method} {normalized_path}"
@@ -1271,9 +1390,9 @@ def make_route_symbol(
         ),
         name=name,
         kind="function",
-        # ADR-0031 Class B: a synthetic stand-in has no host language of its
-        # own, so `language` names where it was DISCOVERED, not what it is.
-        language=None if protocol_origin else language,
+        # ADR-0031 Class B: a synthetic stand-in has no source language of
+        # its own; where it was DISCOVERED is discovery_language.
+        language=None,
         discovery_language=discovery_language,
         protocol_origin=protocol_origin,
         path=path,
@@ -1287,21 +1406,20 @@ def make_route_symbol(
     )
 
 
-def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str:
-    """ADR-0035 §3 SITE-axis identity for ``call_site`` stand-ins (v8, WI-napoh).
+def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> StableId:
+    """ADR-0035 §3 SITE-axis identity for ``call_site`` stand-ins (WI-napoh).
 
     Identity formula: ``sha256("site:{protocol_origin}:{rel_path}:{target}")[:16]``.
 
     SITE-axis kinds represent a CODE LOCATION — "this file issues this call" — so
     their identity MUST fold the declaring file's repo-relative path (``rel_path``),
     unlike LOGICAL kinds (message_queue / event_sourcing topics, routes) whose
-    identity is the external target deduped across reference sites. Before v8 the
-    HTTP client ``call_site`` borrowed :func:`make_route_stable_id` and the SQL
-    query ``call_site`` borrowed :func:`make_protocol_stable_id` — both LOGICAL and
-    file-blind — so two files issuing ``GET /api/users`` (or running ``SELECT
-    users``) collided cross-file (the Wave-2 identity-gate residual, INV-tazaj
-    corpus limb / WI-napoh). The dedicated ``site:`` namespace also guarantees a
-    SITE id can never collide with a LOGICAL id by construction.
+    identity is the external target deduped across reference sites. A LOGICAL,
+    file-blind factory (:func:`make_route_stable_id`,
+    :func:`make_protocol_stable_id`) would make two files issuing ``GET
+    /api/users`` (or running ``SELECT users``) collide cross-file (INV-tazaj,
+    WI-napoh). The dedicated ``site:`` namespace also guarantees a SITE id can
+    never collide with a LOGICAL id by construction.
 
     ``target`` is the per-family logical target string (e.g. ``"GET:/api/users"``
     for http, ``"SELECT:users"`` for sql). The within-file occurrence ordinal is
@@ -1312,17 +1430,15 @@ def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str
     return _short_sha256(f"site:{protocol_origin}:{rel_path}:{target}")
 
 
-def make_entry_stable_id(entry_type: str, name: str, path: str) -> str:
+def make_entry_stable_id(entry_type: str, name: str, path: str) -> StableId:
     """Compute a collision-free stable_id for entry-point symbols.
 
-    Uses ``_short_sha256("entry:{entry_type}:{name}")`` per ADR-0014 §4 +
-    Phase 6 PR1 (INV-hunup). Used for symbols like WGSL shader stages
-    (@vertex, @fragment, @compute) where the previous approach set
-    stable_id to the bare entry type string, causing same-type entry
-    points to collide. Phase 6 PR1 aligns the output shape with the
-    canonical ``sha256:<16hex>`` schema so consumers can match this
-    factory's output against the ``_check_stable_id_format`` regex
-    without a special case.
+    Uses ``_short_sha256("entry:{entry_type}:{name}:{path}")`` per ADR-0035
+    §3 (INV-hunup). Used for symbols like WGSL shader stages (@vertex,
+    @fragment, @compute); hashing the name with the entry type keeps
+    same-type entry points from colliding. The output has the canonical
+    ``hgstableid<N>:<16hex>`` shape, so consumers can match it against the
+    ``_check_stable_id_format`` regex without a special case.
 
     ADR-0035 §4: the declaring file ``path`` is folded in. Shader entry names are file-scoped
     (every shader has a ``main``), so without the path two ``@vertex fn main`` in distinct files
@@ -1334,15 +1450,83 @@ def make_entry_stable_id(entry_type: str, name: str, path: str) -> str:
         path: Repo-relative path of the declaring file.
 
     Returns:
-        A ``sha256:<16hex>``-shaped string that uniquely identifies the
+        A ``hgstableid<N>:<16hex>``-shaped string that uniquely identifies the
         (entry_type, name, path) triple.
     """
     return _short_sha256(f"entry:{entry_type}:{name}:{path}")
 
 
-def _short_sha256(payload: str) -> str:
-    """Return the canonical ``sha256:{16-hex}`` form used by `_compute_stable_id`."""
-    return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
+def _digest16(payload: str) -> str:
+    """The first 16 hex digits of ``sha256(payload)``: the digest every
+    stable id and shape id carries after its label."""
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def _short_sha256(payload: str) -> StableId:
+    """Return the ``hgstableid<N>:{16-hex}`` stable id of a hash input.
+
+    The ONE place a tree-sitter (or Python ``ast``) stable id is minted (the
+    ``StableId`` wrap; see ``hypergumbo_core.ir.StableId``): every
+    ``make_*_stable_id`` factory and ``assemble_stable_id`` reach it. The
+    label is ``schema.STABLE_ID_PREFIX``, derived from the scheme constant
+    (ADR-0035 §"Value labels"); the digest is ``sha256(payload)[:16]``.
+    The SCIP arm mints through :func:`mint_scip_stable_id` instead.
+    """
+    return StableId(STABLE_ID_PREFIX + _digest16(payload))
+
+
+def mint_scip_stable_id(payload: str) -> StableId:
+    """Return the ``hgscipid<N>:{16-hex}`` stable id of a SCIP hash input.
+
+    The ONE place a rust-analyzer (SCIP) arm stable id is minted:
+    ``scip.index.scip_stable_id`` and the occurrence re-mint of a SCIP id
+    (:func:`split_within_file_stable_id_collisions`) reach it. A separate
+    mint because the SCIP arm hashes a different input (document path and
+    moniker) from the tree-sitter factories, and one label over two
+    algorithms would hide which one a value came from (ADR-0035 §"Value
+    labels"). Lives here, not in ``scip``, because the occurrence re-mint
+    needs it and ``scip`` imports this module.
+    """
+    return StableId(SCIP_STABLE_ID_PREFIX + _digest16(payload))
+
+
+def mint_shape_id(structure: str) -> ShapeId:
+    """Return the ``hgshapeid<N>:{16-hex}`` shape id of a structural skeleton.
+
+    The ONE place a ``Symbol.shape_id`` is minted (the ``ShapeId`` wrap):
+    the tree-sitter walker (:meth:`TreeSitterAnalyzer.compute_shape_id`)
+    and Python's ``ast``-based ``_compute_shape_id`` /
+    ``_compute_value_shape_id`` each build their skeleton string and hash
+    it here, so the hash, its truncation and its label live once.
+    """
+    return ShapeId(SHAPE_ID_PREFIX + _digest16(structure))
+
+
+#: How a stable id is written when it is folded into ANOTHER id's hash input
+#: (a containing scope, a file anchor, the id an occurrence or route re-mint
+#: extends). This is hash input, not a label: it is the text the stableid-v14
+#: values had, and it stays that text so that relabelling values (v14 -> v15)
+#: moved no digest. Changing it moves every nested id, which is a stable-id
+#: scheme bump (ADR-0035 §"Value labels").
+_NESTED_ID_HASH_LABEL = "sha256:"
+
+#: The labels a stable id may carry: tree-sitter / ``ast``, then SCIP.
+_STABLE_ID_LABELS = (STABLE_ID_PREFIX, SCIP_STABLE_ID_PREFIX)
+
+
+def stable_id_hash_input(value: str) -> str:
+    """The text a stable id contributes to another id's hash input.
+
+    A labelled stable id is written with :data:`_NESTED_ID_HASH_LABEL` in
+    place of its label, so the digest of an id that folds another id is a
+    function of the folded id's DIGEST, not of the label it is displayed
+    with. Any other value (an empty containing id, a non-canonical value a
+    producer stamped) is returned unchanged.
+    """
+    for label in _STABLE_ID_LABELS:
+        if value.startswith(label):
+            return _NESTED_ID_HASH_LABEL + value[len(label):]
+    return value
 
 
 def assemble_stable_id(
@@ -1354,33 +1538,73 @@ def assemble_stable_id(
     name: str,
     qualified_name: str,
     occurrence_index: int = 0,
-) -> str:
-    """The single stable_id v6 hash formula (ADR-0035 §1), shared by every producer.
+    *,
+    is_async: bool = False,
+) -> StableId:
+    """The single untyped-tier stable_id hash formula (ADR-0035 §1).
 
     ``sha256(kind:param_count:arity_flags:decorators:containing_stable_id
-             :name:qualified_name:occurrence_index)``
+             :name:qualified_name:occurrence_index[:async])``
+
+    ``is_async`` appends ``:async`` for an async (Kotlin: ``suspend``)
+    declaration: the caller gets a coroutine or future, a different contract,
+    so the id changes; every non-async id is the formula without the suffix.
+
+    ``containing_stable_id`` enters the hash as :func:`stable_id_hash_input`
+    writes it (the digest, not the display label), so relabelling ids moves
+    no digest.
 
     This is the one place the formula lives; both :meth:`TreeSitterAnalyzer.compute_stable_id`
     (the tree-sitter path) and the Python analyzer's ``_compute_stable_id`` (the AST path)
-    call it, so they can no longer diverge (the v5 divergence — py.py folded ``body_sig`` and
-    omitted ``qualified_name`` — was the WI-gitun / INV-tazaj defect surface).
+    call it, so they cannot diverge (WI-gitun, INV-tazaj).
 
     The ``qualified_name`` slot carries the FULL enclosing scope chain (enclosing classes →
     enclosing functions → local name), which is what makes two same-local-name symbols in
-    distinct scopes hash distinctly (ADR-0035 §1 "unique within run"). ``body_sig`` is
-    deliberately ABSENT: structural identity is ``shape_id``'s job, and folding the member set
-    here churned the class id on every member add/remove (violating §1 "survives body edits").
+    distinct scopes hash distinctly (ADR-0035 §1 "unique within run"). A body signature
+    is deliberately ABSENT: structural identity is ``shape_id``'s job, and folding the member set
+    here would churn the class id on every member add/remove (violating §1 "survives body
+    edits").
 
     ``occurrence_index`` is the §1 within-scope ordinal — a tiebreaker for two definitions that
-    are otherwise hash-identical in one scope (e.g. conditional redefinition). It is ``0`` in
-    the v6 carrier (no such collision exists on the measured corpus); the slot is present so
-    populating it later never requires another scheme bump (§6 "one atomic bump").
+    are otherwise hash-identical in one scope (e.g. conditional redefinition). It defaults to
+    ``0``; the slot is present so populating it never requires a scheme bump (§6 "one atomic
+    bump").
     """
     sig = (
         f"{kind}:{param_count}:{arity_flags}:{decorators}"
-        f":{containing_stable_id}:{name}:{qualified_name}:{occurrence_index}"
+        f":{stable_id_hash_input(containing_stable_id)}:{name}:{qualified_name}:{occurrence_index}"
+        f"{_ASYNC_SUFFIX if is_async else ''}"
     )
     return _short_sha256(sig)
+
+
+#: Appended to either stable_id formula's hash input for an async declaration.
+_ASYNC_SUFFIX = ":async"
+
+#: Token types that mark a declaration async: ``async`` (JS/TS, Rust, C#,
+#: Swift, Hack, Dart's body marker), ``async*`` (a Dart async generator) and
+#: ``suspend`` (Kotlin).
+_ASYNC_MARKER_TOKENS = frozenset({"async", "async*", "suspend"})
+
+
+def declares_async(node: "tree_sitter.Node") -> bool:
+    """True when ``node`` declares itself async, read from its own tokens.
+
+    Looks at the node's direct children and inside its modifier wrappers
+    (Rust ``function_modifiers``, C# ``modifier``, Kotlin ``modifiers`` /
+    ``function_modifier``), never into a body or parameter list, so an async
+    closure inside a function does not make the function async. Pass the node
+    that carries the marker: the declaration in most grammars, the
+    ``function_body`` in Dart.
+    """
+    pending = list(node.children)
+    while pending:
+        child = pending.pop()
+        if child.type in _ASYNC_MARKER_TOKENS:
+            return True
+        if "modifier" in child.type:
+            pending.extend(child.children)
+    return False
 
 
 #: A declaration's symbol, keyed by where its declaration node starts.
@@ -1396,9 +1620,8 @@ def symbols_at(symbols: "Sequence[Symbol]", file_path: Optional[str] = None) -> 
     its start position identifies the symbol exactly. A name does not: two
     methods ``parse`` in two classes of one file, an Erlang ``-ifdef``/``-else``
     pair, an Elixir function per arity or a C ``#ifdef`` alternative share one,
-    and every name-keyed lookup returned whichever registered last. On a pinned
-    26-repo run that anchored 2,014 kotlin and 964 scala call edges to a function
-    that does not contain them.
+    and a name-keyed lookup returns whichever registered last, anchoring call
+    edges to a function that does not contain them.
 
     It works only where the symbol's span starts at the declaration node the walk
     reaches. Each analyzer adopting it verifies that for its own grammar, since
@@ -1423,10 +1646,10 @@ def enclosing_declared_symbol(
 ) -> Optional[Symbol]:
     """The nearest ancestor of ``node`` of one of ``node_types`` that HAS a symbol.
 
-    INV-bamij. A call in a type's body but in no function (a Ruby class-body
+    A call in a type's body but in no function (a Ruby class-body
     ``include``, a Scala ``object``'s ``val``, a Swift or Kotlin property
     initialiser, a Swift ``init`` the analyzer emits no symbol for) is anchored
-    on that type rather than dropped or pushed out to the file. Keyed by the
+    on that type rather than dropped or pushed out to the file (INV-bamij). Keyed by the
     declaration's POSITION (:func:`symbol_declared_by`), never its name; an
     ancestor with no symbol is walked past.
     """
@@ -1440,8 +1663,8 @@ def enclosing_declared_symbol(
     return None
 
 
-def make_file_stable_id(language: str, path: str) -> str:
-    """INV-sotiv: stable identity for ``kind="file"`` Symbols.
+def make_file_stable_id(language: str, path: str) -> StableId:
+    """Stable identity for ``kind="file"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("file:{language}:{path}")[:16]``. Path is the
     repo-relative file path (set by ``all_analyzers``' normalisation pass).
@@ -1452,11 +1675,11 @@ def make_file_stable_id(language: str, path: str) -> str:
     return _short_sha256(f"file:{language}:{path}")
 
 
-def make_module_stable_id(language: str, path: str, name: str) -> str:
-    """INV-sotiv: stable identity for ``kind="module"`` Symbols.
+def make_module_stable_id(language: str, path: str, name: str) -> StableId:
+    """Stable identity for ``kind="module"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("module:{language}:{path}:{name}")[:16]``. The
-    declaring file ``path`` is folded in (ADR-0035 §4 same-shape audit): module
+    declaring file ``path`` is folded in (ADR-0035 §4): module
     names are file-scoped local identifiers (e.g. two Verilog ``module counter``
     in distinct files), so without the path they collapse cross-file. Mirrors
     :func:`make_variable_stable_id` / :func:`make_export_stable_id`.
@@ -1464,7 +1687,7 @@ def make_module_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"module:{language}:{path}:{name}")
 
 
-def make_dependency_stable_id(language: str, path: str, name: str) -> str:
+def make_dependency_stable_id(language: str, path: str, name: str) -> StableId:
     """ADR-0035 §4: stable identity for ``kind="dependency"`` Symbols — one node per
     manifest declaration.
 
@@ -1478,8 +1701,8 @@ def make_dependency_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"dependency:{language}:{path}:{name}")
 
 
-def make_variable_stable_id(language: str, path: str, name: str) -> str:
-    """INV-sotiv: stable identity for ``kind="variable"`` Symbols.
+def make_variable_stable_id(language: str, path: str, name: str) -> StableId:
+    """Stable identity for ``kind="variable"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("variable:{language}:{path}:{name}")[:16]``.
     Variables of the same name in different files get distinct stable_ids
@@ -1489,13 +1712,18 @@ def make_variable_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"variable:{language}:{path}:{name}")
 
 
-def make_export_stable_id(language: str, path: str, name: str) -> str:
-    """INV-sotiv: stable identity for ``kind="export"`` Symbols.
+def make_export_stable_id(language: str, path: str, name: str) -> StableId:
+    """Stable identity for ``kind="export"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("export:{language}:{path}:{name}")[:16]``.
     Exports are file-scoped, so ``(path, name)`` is the natural identity.
-    Bash function exports, Python ``__all__`` entries, and JS named
-    exports all use this shape.
+
+    Two producers emit this kind (``producer_coherence.find_emitted_symbol_kinds``
+    lists them): bash, one Symbol per exported VARIABLE per file (``export -f``
+    of a function emits none), and json_config, one per ``package.json``
+    ``exports`` entry. A Python ``__all__`` entry, an ES named export and a
+    Rust ``pub use`` emit no ``export`` Symbol; js_ts's ``kind="export"`` is a
+    ``UsageContext``, which has no stable id.
     """
     return _short_sha256(f"export:{language}:{path}:{name}")
 
@@ -1503,41 +1731,31 @@ def make_export_stable_id(language: str, path: str, name: str) -> str:
 def make_doc_stable_id(
     language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
     scope: "Sequence[str]" = (),
-) -> str:
-    """Stable identity for documentation / config noise-node Symbols (id-format:F2 4a).
+) -> StableId:
+    """Stable identity for documentation / config noise-node Symbols (id-format:F2).
 
     Identity formula:
-    ``sha256("doc:{language}:{path}:{kind}:{name}:{start_line}-{end_line}")[:16]``.
+    ``sha256("doc:{language}:{path}:{kind}:{scope/.../name}")[:16]``.
 
-    Used by the markdown and gitignore analyzers for their ``section`` /
-    ``code_block`` / ``link`` / ``pattern`` Symbols — all ``_NOISE_KINDS``
-    (absent from default output). Unlike the name-scoped
-    :func:`make_variable_stable_id` family (which deliberately omits the span so
-    a binding's identity survives edits), the payload here folds in ``kind`` and
-    the ``{start}-{end}`` span: these doc nodes routinely share a ``name``
-    (anonymous code blocks are all ``"code"``; a file can repeat a heading), so
-    the span is the only disambiguator and dropping it would collapse distinct
-    siblings to one stable_id (the INV-dubam / INV-tazaj collision class). This
-    preserves the per-node distinctness the previously-reused composite
-    ``Symbol.id`` carried, while replacing its non-canonical shape with the
-    canonical ``sha256:<16hex>``. Pass the same ``name`` and span that
-    :func:`make_symbol_id` received at the call site so the 1:1 distinctness is
-    exact. For single-line nodes (e.g. markdown links) pass the same value for
-    both ``start_line`` and ``end_line``; the factory hashes the span verbatim
-    and does not validate span plausibility.
+    Used directly by doc/config analyzers such as markdown and gitignore (their
+    ``section`` / ``code_block`` / ``link`` / ``pattern`` Symbols — all
+    ``_NOISE_KINDS``, absent from default output), and through
+    :func:`make_doc_symbol_ids` by the doc/markup/template family. The output
+    has the canonical ``hgstableid<N>:<16hex>`` shape.
 
-    **The span left the hash (WI-tusad, stable_id scheme bump).** ADR-0035 §3
-    keeps line numbers out of identity hashes; with the span in it, deleting
-    or inserting any line above a doc node moved its id (the floor gate's
-    delete-an-earlier-sibling check failed for every adopter). The hash is now
-    ``doc:{language}:{path}:{kind}:{scope/.../name}``: ``scope`` is the chain
-    the producer nests the node in (an INI setting's section, a KDL node's
-    parents), and two nodes still identical after it (two anonymous ``code``
-    blocks under one heading) are a same-scope tie the per-file split pass
-    orders. ``start_line`` / ``end_line`` are still accepted (every caller has
-    them, for the node id) but no longer enter the value.
+    These doc nodes routinely share a ``name`` (anonymous code blocks are all
+    ``"code"``; a file can repeat a heading), so the payload folds in ``kind``
+    and ``scope``, the chain the producer nests the node in (an INI setting's
+    section, a KDL node's parents). Two nodes still identical after it (two
+    anonymous ``code`` blocks under one heading) are a same-scope tie that
+    :func:`split_within_file_stable_id_collisions` orders.
+
+    Line numbers stay out of the hash (ADR-0035 §3): with the span in it,
+    deleting or inserting any line above a doc node would move its id
+    (WI-tusad). ``start_line`` / ``end_line`` are still accepted, since every
+    caller has them for the node id, but are not hashed.
     """
-    del start_line, end_line  # kept for the callers; no longer hashed (see above)
+    del start_line, end_line  # kept for the callers; not hashed (see above)
     chain = "/".join((*scope, name))
     return _short_sha256(f"doc:{language}:{path}:{kind}:{chain}")
 
@@ -1545,56 +1763,39 @@ def make_doc_stable_id(
 def make_doc_symbol_ids(
     language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
     scope: "Sequence[str]" = (),
-) -> tuple[str, str]:
+) -> tuple[str, StableId]:
     """Mint the ``(node.id, stable_id)`` PAIR for a doc/markup/template Symbol
     together, from one argument set (INV-dulah).
 
-    The doc/markup/template analyzer family (rst/scss/vue/svelte/puppet/robot/
-    astro/twig/pony/sparql/kdl) each carried a near-duplicate local
-    ``_make_symbol_id`` that built the raw composite ``Symbol.id``, then SEPARATELY
-    called :func:`make_doc_stable_id` for the canonical ``stable_id``. Holding the
-    two identities in two places is exactly the drift that let WI-rijup ship
-    ``stable_id == raw id`` for nine of them. Minting both here, from the same
-    ``(language, path, kind, name, start_line, end_line)`` tuple, makes that
-    divergence unrepresentable, and dedups the eleven copies onto one definition.
+    The doc/markup/template analyzer family (e.g. rst/scss/vue/svelte/puppet/
+    robot/astro/twig/pony/sparql/kdl) needs both the raw composite ``Symbol.id``
+    and the canonical ``stable_id``. Minting both here, from the same
+    ``(language, path, kind, name, start_line, end_line)`` tuple, keeps the two
+    identities from drifting apart (e.g. ``stable_id == raw id``, WI-rijup) and
+    gives the family one definition instead of per-analyzer copies.
 
     ``node.id`` is the canonical ADR-0036 grammar, minted by delegating to
     :func:`make_symbol_id` — this helper does NOT re-implement the format. The
-    delegation is the point: an f-string copy of the grammar is exactly how
-    ``js_ts.py`` and ``json_config.py`` each opted out of the shared minter's
-    guarantees, and it is what let the doc family drift for months.
+    delegation is the point: an f-string copy of the grammar opts out of the
+    shared minter's guarantees. The canonical right-anchored parse
+    (``span, name, kind = parts[-3:]``) must find span, name and kind in their
+    slots; a hand-built shape such as
+    ``"{language}:{path}:{kind}:{start_line}:{name}"`` puts the kind word in the
+    span slot and fails ``id_format`` with ``malformed_span_segment``.
 
-    **This shape changed (INV-dulah, doc-family slot-ORDER limb).** The helper
-    previously emitted ``"{language}:{path}:{kind}:{start_line}:{name}"`` — kind
-    third, no span, name last — deliberately not the documented grammar, on the
-    recorded premise that "full grammar conformance for the doc family would
-    re-key every node and is a separate, larger decision." Measurement retired
-    that framing rather than the work: against the canonical right-anchored parse
-    (``span, name, kind = parts[-3:]``) the *kind word landed in the span slot*,
-    so every id from all eleven adopters failed ``id_format`` with
-    ``malformed_span_segment`` and could not be parsed back into its slots at
-    all. These were not ids in a different-but-workable convention; they were
-    unparseable. The re-key is consumer-visible for ``node.id`` and identity-safe:
-    ``stable_id`` below is computed from the same argument set either way, so it
-    is byte-identical, and no ``*_scheme`` bumps (the scheme-bump principle — a
-    bump follows an ALTERED existing computed value, and none is altered here).
+    Delegating also inherits the always-on name-slot sanitization
+    (``':' -> '.'``, WI-sikar): svelte's ``on:click`` event symbols would
+    otherwise carry an id name-slot of ``button:click``, whose colon shifts every
+    right-anchored slot.
 
-    Delegating also inherits the WI-sikar always-on name-slot sanitization
-    (``':' -> '.'``), which repairs a real six-segment break the old f-string
-    shipped: svelte's ``on:click`` event symbols carried an id name-slot of
-    ``button:click``, whose colon shifted every right-anchored slot.
+    The markdown/gitignore analyzers mint the canonical shape themselves and do
+    not use this helper.
 
-    The markdown/gitignore analyzers were excluded from this helper *because* it
-    diverged from the grammar; they already mint the canonical shape, so that
-    reason is now spent and folding them on is a clean follow-up.
-
-    ``stable_id`` is the canonical ``sha256:<16hex>`` from
-    :func:`make_doc_stable_id` — unchanged for every adopter (they already called
-    it with these same args).
+    ``stable_id`` is the canonical ``hgstableid<N>:<16hex>`` from
+    :func:`make_doc_stable_id`.
 
     ``path`` is coerced with ``str()`` so callers may pass ``str`` or
-    ``pathlib.Path`` (the family is split between the two); on POSIX the f-string
-    interpolation the analyzers previously used produced the identical string.
+    ``pathlib.Path`` (the family is split between the two).
     """
     spath = str(path)
     symbol_id = make_symbol_id(language, spath, start_line, end_line, name, kind)
@@ -1602,8 +1803,8 @@ def make_doc_symbol_ids(
     return symbol_id, stable_id
 
 
-def make_project_stable_id(name: str) -> str:
-    """INV-sotiv: stable identity for ``kind="project"`` Symbols.
+def make_project_stable_id(name: str) -> StableId:
+    """Stable identity for ``kind="project"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("project:{name}")[:16]``. Projects are
     repo-level and language-agnostic, so the bare name suffices.
@@ -1611,8 +1812,8 @@ def make_project_stable_id(name: str) -> str:
     return _short_sha256(f"project:{name}")
 
 
-def make_interface_stable_id(language: str, path: str, name: str) -> str:
-    """INV-sotiv: stable identity for ``kind="interface"`` Symbols.
+def make_interface_stable_id(language: str, path: str, name: str) -> StableId:
+    """Stable identity for ``kind="interface"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("interface:{language}:{path}:{name}")[:16]``. The declaring file
     ``path`` is folded in (ADR-0035 §4): interface names are file-scoped declarations that
@@ -1623,8 +1824,8 @@ def make_interface_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"interface:{language}:{path}:{name}")
 
 
-def make_type_stable_id(language: str, path: str, name: str) -> str:
-    """INV-sotiv: stable identity for ``kind="type"`` Symbols.
+def make_type_stable_id(language: str, path: str, name: str) -> StableId:
+    """Stable identity for ``kind="type"`` Symbols (INV-sotiv).
 
     Identity formula: ``sha256("type:{language}:{path}:{name}")[:16]``. The declaring file
     ``path`` is folded in (ADR-0035 §4): type/type-alias names are file-scoped and commonly
@@ -1634,8 +1835,8 @@ def make_type_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"type:{language}:{path}:{name}")
 
 
-def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -> str:
-    """WI-rihob: stable identity for container/declaration Symbol kinds.
+def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -> StableId:
+    """Stable identity for container/declaration Symbol kinds (WI-rihob).
 
     Identity formula: ``sha256("{kind}:{language}:{path}:{name}")[:16]`` — the
     same file-scoped, name-in-hash shape as :func:`make_interface_stable_id` and
@@ -1643,9 +1844,7 @@ def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -
     the named-declaration container kinds — ``class`` / ``struct`` / ``enum`` /
     ``trait`` / ``protocol`` / ``contract`` — that the tree-sitter producers
     (js_ts and its csharp/rust/swift/solidity/wgsl analogues) construct with a
-    ``shape_id=`` but no ``stable_id=``, leaving them at ``None`` (measured:
-    0/4 TypeScript classes, plus the TS enum, csharp class/struct/enum, rust
-    enum/struct/trait, swift class/enum/protocol, solidity contract, wgsl struct).
+    ``shape_id=`` but no ``stable_id=``.
 
     The declaring ``path`` is folded in because these names routinely repeat
     across files (every module can declare ``class Config``); ``kind`` is
@@ -1664,25 +1863,22 @@ def make_declaration_stable_id(kind: str, language: str, path: str, name: str) -
     return _short_sha256(f"{kind}:{language}:{path}:{name}")
 
 
-def make_protocol_stable_id(category: str, *parts: str) -> str:
-    """Phase 6 PR1 (INV-hunup): canonical-shape stable_id for protocol
-    linker stand-ins.
+def make_protocol_stable_id(category: str, *parts: str) -> StableId:
+    """Canonical-shape stable_id for protocol linker stand-ins (INV-hunup).
 
     Identity formula: ``sha256("{category}:{parts joined by colon}")[:16]``.
-    Used by linkers that emit ADR-0031 Class B synthetic Symbols where
-    the previous code constructed the stable_id with an ad-hoc f-string
-    (e.g., ``f"{queue_type}:{topic}"`` from message_queue or
-    ``f"{type_name}.{field_name}"`` from graphql_resolver). The escape
-    categories addressed:
+    Used by linkers that emit ADR-0031 Class B synthetic Symbols, in place of
+    an ad-hoc f-string (e.g. ``f"{queue_type}:{topic}"`` in message_queue or
+    ``f"{type_name}.{field_name}"`` in graphql_resolver). An ad-hoc value lands
+    in one of the non-canonical shapes:
 
     * ``raw_hex_64`` — full ``hashlib.sha256(...).hexdigest()`` without
-      the ``sha256:`` prefix.
+      a label.
     * ``colon_1`` / ``colon_2`` — composite name with no namespace prefix.
     * ``no_colon`` — bare event/method name with no disambiguator.
 
-    All four shapes now route through this factory, which guarantees the
-    canonical ``sha256:<16hex>`` schema the new
-    ``_check_stable_id_format`` validator (Phase 6 PR1) enforces.
+    This factory guarantees the canonical ``hgstableid<N>:<16hex>`` schema the
+    ``_check_stable_id_format`` validator enforces.
 
     Args:
         category: Linker family namespace (e.g. ``"db_query"``,
@@ -1694,20 +1890,20 @@ def make_protocol_stable_id(category: str, *parts: str) -> str:
             caller controls disambiguator priority.
 
     Returns:
-        A ``sha256:<16hex>``-shaped string suitable for direct use as
+        A ``hgstableid<N>:<16hex>``-shaped string suitable for direct use as
         ``Symbol.stable_id``.
     """
     key = ":".join((category,) + tuple(parts))
     return _short_sha256(key)
 
 
-def _declaration_kind_stable_id(sym: Symbol) -> str:
+def _declaration_kind_stable_id(sym: Symbol) -> StableId:
     """Backstop factory for container/declaration kinds (WI-rihob)."""
     return make_declaration_stable_id(sym.kind, sym.language, sym.path, sym.name)
 
 
 # Mapping from Symbol.kind to the factory function used by
-# populate_kind_stable_ids (the table ADR-0014 §5b records). A kind NOT present
+# populate_kind_stable_ids (the table the spec records, §6 backstop). A kind NOT present
 # here falls to the backstop FLOOR (:func:`floor_stable_id_key`, ADR-0035 §1):
 # the same ``{kind}:{language}:{path}:{name}`` shape, but stamped only when the
 # key is unique in its file. A kind earns a row here only when its identity is
@@ -1715,12 +1911,11 @@ def _declaration_kind_stable_id(sym: Symbol) -> str:
 # alone) or when same-name members of the kind in one file are same-scope ties
 # that the occurrence pass may order.
 #
-# WI-rihob: the container/declaration kinds (class/struct/enum/trait/protocol/
-# contract) are backstopped here. Despite the earlier assumption that "class
-# computes its own", the tree-sitter producers (js_ts and its csharp/rust/swift/
-# solidity/wgsl analogues) construct them with ``shape_id=`` but no
-# ``stable_id=``, so they fell through to None; they share interface/type's
-# file-scoped name-in-hash shape via :func:`make_declaration_stable_id`.
+# The container/declaration kinds (class/struct/enum/trait/protocol/contract)
+# are backstopped here because the tree-sitter producers (js_ts and its
+# csharp/rust/swift/solidity/wgsl analogues) construct them with ``shape_id=``
+# but no ``stable_id=``; they share interface/type's file-scoped name-in-hash
+# shape via :func:`make_declaration_stable_id` (WI-rihob).
 _KIND_STABLE_ID_FACTORIES = {
     "file": lambda s: make_file_stable_id(s.language, s.path),
     "module": lambda s: make_module_stable_id(s.language, s.path, s.name),
@@ -1736,10 +1931,10 @@ _KIND_STABLE_ID_FACTORIES = {
     "trait": _declaration_kind_stable_id,
     "protocol": _declaration_kind_stable_id,
     "contract": _declaration_kind_stable_id,
-    # META-nomiz: the generic kind-scoped formula for a "template" symbol minted
-    # before the linkers. The view-template linker's own templates are minted
-    # AFTER this backstop runs, so this row never reached them (they shipped null);
-    # they stamp their own id (INV-fufij, overload_arity.pass_minted_stable_id).
+    # The generic kind-scoped formula for a "template" symbol minted before the
+    # linkers (META-nomiz). The view-template linker's own templates are minted
+    # AFTER this backstop runs, so this row never reaches them; they stamp their
+    # own id (INV-fufij, overload_arity.pass_minted_stable_id).
     "template": _declaration_kind_stable_id,
 }
 
@@ -1749,9 +1944,9 @@ def floor_stable_id_key(
     language: Optional[str],
     path: Optional[str],
     name: Optional[str],
-) -> Optional[str]:
-    """WI-motiz: the backstop FLOOR key for a symbol, or ``None`` when the floor
-    does not apply (ADR-0035 §1).
+) -> Optional[StableId]:
+    """The backstop FLOOR key for a symbol, or ``None`` when the floor does not
+    apply (ADR-0035 §1, WI-motiz).
 
     The floor is :func:`make_declaration_stable_id` over ``(kind, language,
     path, name)``. It applies to a symbol that carries a language and whose
@@ -1789,7 +1984,7 @@ def is_table_kind(kind: str) -> bool:
 
 
 def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
-    """INV-sotiv backstop: fill missing ``Symbol.stable_id`` by kind.
+    """Backstop: fill missing ``Symbol.stable_id`` by kind (INV-sotiv).
 
     Runs at the orchestrator chokepoint (``analyze.all_analyzers`` after
     path normalisation, before the linkers) and mutates ``symbols`` in place.
@@ -1799,8 +1994,10 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     keep priority — this backstop never overrides a non-``None`` value.
 
     **Table kinds.** A ``None`` symbol whose kind is in
-    ``_KIND_STABLE_ID_FACTORIES`` (the eight INV-sotiv kinds, the six WI-rihob
-    container kinds, META-nomiz's ``template``; ADR-0014 §5b) takes its table
+    ``_KIND_STABLE_ID_FACTORIES`` (``file``, ``module``, ``dependency``,
+    ``variable``, ``export``, ``project``, ``interface``, ``type``; the
+    container kinds ``class`` / ``struct`` / ``enum`` / ``trait`` /
+    ``protocol`` / ``contract``; ``template``; spec §6 backstop) takes its table
     formula. Two same-name members of one table kind in a file share the key
     and are split later by :func:`split_within_file_stable_id_collisions`.
 
@@ -1811,15 +2008,14 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     otherwise it stays ``None``. The occurrence index must never disambiguate a
     floor key: the key has no scope chain, arity or decorators, so a floor
     collision (GDScript ``run`` in inner classes ``A`` / ``B``, both named
-    ``run``; proto ``A.Inner`` / ``B.Inner``, both named ``Inner``, before
-    their producers took the formula) is no same-scope tie,
+    ``run``) is no same-scope tie,
     and an emission-order ordinal over it would move an id onto a different
     symbol when an earlier sibling is deleted. A null means "this run cannot
     back an identity"; a moved id is a wrong join that no validator can see.
     Leaving the group ``None`` keeps it out of the split pass by construction
     (that pass skips ``None``).
     """
-    floor_groups: dict[tuple[str, str], list[Symbol]] = {}
+    floor_groups: dict[tuple[str, StableId], list[Symbol]] = {}
     held: set[tuple[str, str]] = set()
     for sym in symbols:
         if sym.stable_id is None:
@@ -1838,10 +2034,10 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
 
 def make_synthetic_symbol_identity(
     sym: Symbol, occurrence: int = 0,
-) -> tuple[str, str, str]:
-    """synthetic:F2 chokepoint resolver: derive ``(stable_id, display_label,
-    fingerprint)`` for a Class-B synthetic stand-in Symbol from its already-set
-    fields.
+) -> tuple[StableId, str, str]:
+    """Chokepoint resolver: derive ``(stable_id, display_label, fingerprint)``
+    for a Class-B synthetic stand-in Symbol from its already-set fields
+    (synthetic:F2).
 
     **Injective stable_id (ADR-0035 §1 zero-by-design-collisions).** The key is
     ``(protocol_origin, kind, path, name, occurrence)`` hashed via
@@ -1856,29 +2052,27 @@ def make_synthetic_symbol_identity(
       writer and an observer on the same channel, both ``kind="function"`` with
       ``name=channel``; or two call sites to the same target in one file).
 
-    A coarser ``(protocol_origin, name)`` key (the first cut) manufactured
-    by-design collisions on exactly those families — turning honest
+    A coarser ``(protocol_origin, name)`` key would manufacture by-design
+    collisions on exactly those families — turning an honest
     ``stable_id=None`` into a *wrong, colliding* value — so the key is the full
     injective tuple uniformly, not a per-kind LOGICAL/SITE branch. **Line
     numbers stay out of the hash** (occurrence, not line — the ADR-0035 §3 SITE
     rule applied uniformly): a freshly-stamped id churns only when same-key
     siblings in a file are added/removed/reordered, not on unrelated edits.
 
-    ADR-0036 (lines 134-138) defers the lang-slot binding for ``language=None``
-    synthetic node IDs to "the ``make_synthetic_symbol()`` chokepoint" — bound
-    to ``discovery_language or language``. In 5a that binding does NOT enter the
-    stable_id hash (``make_protocol_stable_id`` takes a *category*, not a
-    language) and ``node.id`` is owned by the producing linker (kind-slot
-    re-keying is the deferred 5b migration), so the binding is a recorded rule
-    honored here and consumed by 5b — not a 5a hash input.
+    The node's language is not a hash input: ``make_protocol_stable_id`` takes
+    a *category*, not a language. ADR-0036 binds the lang slot of a
+    ``language=None`` stand-in's id to ``discovery_language or language``,
+    but ``node.id`` is owned by the producing linker; this resolver does not
+    re-key it.
     """
     stable_id = make_protocol_stable_id(
         sym.protocol_origin, sym.kind, sym.path, sym.name, str(occurrence),
     )
     # display_label (ADR-0032): a human-readable stand-in label. The Symbol's
     # ``name`` already carries the protocol-qualified identity for these nodes,
-    # so it is the honest display string. Stamping it closes META-huvuh's
-    # producer half (display_label was null on Class-B).
+    # so it is the honest display string. Stamping it gives Class-B stand-ins
+    # a display_label (META-huvuh).
     display_label = sym.name
     # fingerprint: the central ``stamp_symbol_fingerprints`` pass cannot
     # fingerprint a ``language=None`` symbol (no grammar), so stamp here,
@@ -1889,14 +2083,14 @@ def make_synthetic_symbol_identity(
 
 
 def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
-    """synthetic:F2 (5a): backstop identity/display stamping for Class-B
-    synthetic protocol-synth Symbols.
+    """Backstop identity/display stamping for Class-B synthetic protocol-synth
+    Symbols (synthetic:F2).
 
     A Class-B stand-in (ADR-0031: ``language is None`` AND ``protocol_origin``
     set) minted by a linker may ship without ``stable_id`` / ``display_label`` /
-    ``fingerprint`` (the ~7 zero-stable_id protocol linkers — ipc / openapi /
-    phoenix_ipc / solidity_abi / swift_objc / websocket / wasm_bindgen — plus
-    the unstamped subset of others such as yjs_crdt / crypto_flow). This
+    ``fingerprint`` (ipc, openapi, phoenix_ipc, solidity_abi and swift_objc
+    mint theirs with no ``stable_id``; wasm_bindgen, yjs_crdt and crypto_flow
+    pass ``stable_id=None``). This
     post-*linker* orchestrator pass — a sibling to
     :func:`populate_kind_stable_ids`, run AFTER linkers extend ``symbols`` —
     fills those three fields via the :func:`make_synthetic_symbol_identity`
@@ -1911,10 +2105,11 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
     deterministic ``(span, id)`` order so it is stable run-to-run regardless of
     symbol-list order.
 
-    WI-lidig: this pass NEVER writes ``supply_chain_tier`` /
-    ``supply_chain_reason`` — the annotator re-classifies
-    ``(tier==1 AND reason=='')`` nodes via the path classifier, and stamping a
-    reason here would break that re-classification.
+    This pass NEVER writes ``supply_chain_tier`` / ``supply_chain_reason``
+    (WI-lidig): the annotator classifies every node whose
+    ``supply_chain_classified`` is False via the path classifier, and a
+    constructor given a tier or reason sets that flag, so stamping one here
+    would skip the classification.
     """
     # Pre-assign occurrence indices for every Class-B null-stable_id node,
     # grouped by (protocol_origin, kind, path, name) and ordered deterministically
@@ -1967,18 +2162,17 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
 # canonical sha256 LOGICAL key) AND graphql.py's client call-sites (one stand-in per
 # call, keyed on the raw operation_name — SITE-axis). A coarse origin-only dedup
 # would silently collapse distinct client call sites (and their per-call metadata)
-# across files, so graphql collisions flow to the SITE occurrence-index pass instead;
-# the cross-file graphql residue rides the same tracked file-identity follow-up as the
-# top-level tree-sitter (INV-zudob) family.
+# across files, so graphql collisions flow to the SITE occurrence-index pass instead.
+# Cross-file graphql collisions remain open, tracked with the top-level tree-sitter
+# file-identity family (INV-zudob).
 _LOGICAL_DEDUP_PROTOCOL_ORIGINS = frozenset({"message_queue", "event_sourcing"})
 
 
 def _occurrence_sort_key(sym: Symbol) -> tuple[int, int, int, int, str]:
     """Deterministic within-group order (ADR-0043 §6): span position, then id.
 
-    A span-less Symbol sorts as position zero — identical to the degenerate
-    ``Span(0, 0, 0, 0)`` that ``Symbol.from_dict`` used to fabricate for a
-    missing span — with ``sym.id`` as the deterministic tie-breaker.
+    A span-less Symbol sorts as position zero (as a ``Span(0, 0, 0, 0)``
+    would), with ``sym.id`` as the deterministic tie-breaker.
     """
     sp = sym.span
     if sp is None:
@@ -2051,17 +2245,18 @@ def split_within_file_stable_id_collisions(symbols: list[Symbol]) -> int:
     """ADR-0035 §3 SITE occurrence-indexing: disambiguate within-file collisions.
 
     Within one file, two emitted Symbols sharing a ``stable_id`` are distinct code
-    SITES (repeated SQL/HTTP call sites, repeated shell ``export``s, repeated
-    markdown links, manifest script entries, …). v6 leaves them colliding because
-    the producers do not populate an occurrence index. This pass groups by
+    SITES (repeated SQL/HTTP call sites, repeated markdown links, manifest
+    script entries, …). The producers do not populate an
+    occurrence index, so they collide until this pass. It groups by
     ``(path, stable_id)`` and, for each colliding group, re-mints the 2nd-and-later
     members (ordered deterministically by span/id) with a ``:occ:<n>`` suffix
     re-hash — the 1st keeps the original id. Line numbers stay OUT of identity
     (§3); the occurrence ordinal goes in. Returns the count of re-minted ids.
 
-    Per ADR-0035 §6 the occurrence-disambiguation slot was reserved precisely so
-    this needs no scheme bump (it stays scheme v6); only the colliding symbols'
-    values change. LOGICAL stand-ins are already collapsed by
+    Per ADR-0035 §6 the occurrence-disambiguation slot is reserved so this needs
+    no scheme bump; only the colliding symbols' values change. The re-mint
+    hashes the id's digest (:func:`stable_id_hash_input`) and keeps its
+    scheme: a SCIP-arm id is re-minted with the SCIP label. LOGICAL stand-ins are already collapsed by
     :func:`dedup_logical_synthetic_identities` (run first), so they present no
     within-file collision here. Pathless / null-stable_id Symbols are out of
     scope (this is the in-a-file guarantee).
@@ -2072,23 +2267,27 @@ def split_within_file_stable_id_collisions(symbols: list[Symbol]) -> int:
             continue
         groups.setdefault((sym.path, sym.stable_id), []).append(sym)
     reminted = 0
-    for group in groups.values():
+    for (_path, shared_id), group in groups.items():
         if len(group) < 2:
             continue
+        mint = (
+            mint_scip_stable_id
+            if shared_id.startswith(SCIP_STABLE_ID_PREFIX)
+            else _short_sha256
+        )
         for occurrence, sym in enumerate(sorted(group, key=_occurrence_sort_key)):
             if occurrence == 0:
                 continue
-            sym.stable_id = _short_sha256(f"{sym.stable_id}:occ:{occurrence}")
+            sym.stable_id = mint(f"{stable_id_hash_input(shared_id)}:occ:{occurrence}")
             reminted += 1
     return reminted
 
 
 def _is_route_for_widening(sym: Symbol) -> bool:
-    """Identify LOGICAL ``route`` Symbols whose file-blind v6 id needs the v8 fold.
+    """Identify LOGICAL ``route`` Symbols whose file-blind id needs the file fold.
 
     Route stand-ins are emitted across analyzers/linkers with three non-uniform
-    markers (no single one covers every producer, verified against the
-    ``make_route_stable_id`` call sites): the ``make_symbol_id`` kind suffix
+    markers (no single one covers every ``make_route_stable_id`` producer): the ``make_symbol_id`` kind suffix
     ``:route`` / ``:route_mount``; ``meta["framework_role"]`` ==
     ``"route"`` / ``"route_mount"``; or a ``meta`` carrying both ``route_path``
     and ``http_method`` (the synthesized per-route handler ``function`` nodes,
@@ -2109,27 +2308,26 @@ def _is_route_for_widening(sym: Symbol) -> bool:
 
 
 def widen_route_stable_ids(symbols: list[Symbol]) -> int:
-    """ADR-0035 §3 + WI-gokiv (v8): fold file identity into LOGICAL ``route`` ids.
+    """Fold file identity into LOGICAL ``route`` ids (ADR-0035 §3, WI-gokiv).
 
     :func:`make_route_stable_id` keys a route on ``route:{method}:{path}`` only —
-    file-blind by the ADR-0014 §4 contract carried into v6. The Wave-2 identity
-    gate showed this is the dominant corpus-collision class: the same
-    ``(method, path)`` declared in different files (express's 33 example apps) or
-    different LANGUAGES (gin-Go + express-JS both minting ``route:GET:/``) shares
-    one stable_id though the registrations are semantically distinct. The
-    2026-06-16 ruling: route stays LOGICAL *in spirit* (within-app dedup is owned
+    file-blind by the ADR-0035 §3 contract. Unwidened, the same ``(method,
+    path)`` declared in different files (an express repo's many example apps) or
+    different LANGUAGES (gin-Go and express-JS both minting ``route:GET:/``)
+    would share one stable_id though the registrations are semantically
+    distinct. Route stays LOGICAL *in spirit* (within-app dedup is owned
     structurally by the route materializer's ``seen_routes``, keyed on meta — not
     by stable_id), but the IDENTITY widens with the declaring file + language so
-    cross-file / cross-language routes no longer collide.
+    cross-file / cross-language routes do not collide.
 
     This is a post-pass (mirroring :func:`split_within_file_stable_id_collisions`)
-    rather than a per-producer change because the ~16 ``make_route_stable_id`` call
+    rather than a per-producer change because the ``make_route_stable_id`` call
     sites carry the file path as an ABSOLUTE string at mint, whereas ``sym.path``
     is normalised to the repo-relative form only later (``all_analyzers``' path
     pass). Folding the *normalised* ``sym.path`` here is the single point that is
     both complete (no straggler producer) and location-independent (no absolute
-    path baked into identity — the regression WI-bokab's location-independence
-    guard forbids). Must run BEFORE :func:`split_within_file_stable_id_collisions`
+    path baked into identity, which WI-bokab's location-independence guard
+    forbids). Must run BEFORE :func:`split_within_file_stable_id_collisions`
     so two same-route declarations in one file (now sharing the folded id) get the
     ``:occ:<n>`` ordinal. Returns the count of re-minted ids.
     """
@@ -2139,8 +2337,12 @@ def widen_route_stable_ids(symbols: list[Symbol]) -> int:
             continue
         if not _is_route_for_widening(sym):
             continue
+        # host_language, not language: every route marker is a Class-B
+        # stand-in with language None (WI-mupal); its declaring language is
+        # discovery_language.
         sym.stable_id = _short_sha256(
-            f"route_site:{sym.language or ''}:{normalize_path(sym.path)}:{sym.stable_id}"
+            f"route_site:{sym.host_language or ''}:{normalize_path(sym.path)}"
+            f":{stable_id_hash_input(sym.stable_id)}"
         )
         widened += 1
     return widened
@@ -2156,13 +2358,15 @@ def make_typed_stable_id(
     name: str,
     qualified_name: str,
     file_stable_id: str = "",
-) -> str:
+    is_async: bool = False,
+) -> StableId:
     """Compute a typed-tier stable_id from a normalized signature.
 
-    v6 formula (ADR-0014 §3 + ADR-0035 §1 WI-zitod ``name``/``qualified_name`` slots)::
+    Formula (spec §6 typed tier, with the ADR-0035 §1 ``name`` / ``qualified_name``
+    slots)::
 
         sha256({kind}:{normalized_signature}:{visibility}:{decorators}
-               :{containing_stable_id}:{name}:{qualified_name})
+               :{containing_stable_id}:{name}:{qualified_name}[:async])
 
     The typed tier is preferred when type information is available (e.g. Java,
     C#, Kotlin, TypeScript, Dart, Go, Python with annotations).  It produces
@@ -2171,10 +2375,9 @@ def make_typed_stable_id(
 
     ``name`` and ``qualified_name`` are MANDATORY keyword args (ADR-0035 §1 WI-zitod):
     without them two distinct-named symbols with the same normalized signature,
-    visibility, decorators, and container collapsed to one id (e.g. js_ts methods at
-    16.88% on HTRAC). ``qualified_name`` carries the full enclosing scope chain — the same
+    visibility, decorators, and container collapse to one id. ``qualified_name`` carries the full enclosing scope chain — the same
     role it plays in :func:`assemble_stable_id`. They have no default so a producer that
-    forgets them fails loudly rather than silently re-opening the collision.
+    forgets them fails loudly rather than silently collapsing ids.
 
     Decorators/annotations are included because they change runtime behavior
     (e.g. ``@staticmethod``, ``@lru_cache``, ``@Override``).  Two functions
@@ -2193,33 +2396,38 @@ def make_typed_stable_id(
             ``"Override,Test"``).  Empty string when no decorators are present.
         name: Symbol's local name (mandatory; the WI-zitod disambiguator).
         qualified_name: Full scope-qualified name (mandatory; carries the scope chain).
-        file_stable_id: WI-bokab (v7) file-identity anchor. When ``containing_stable_id``
+        file_stable_id: File-identity anchor (WI-bokab). When ``containing_stable_id``
             is empty (the tree-sitter producers carry scope in ``qualified_name`` rather
             than threading an enclosing-scope id), this value is folded into the
             ``containing_stable_id`` slot so same-``(kind, name, qualified_name)`` symbols
             in different files hash distinctly — mirroring py.py's ``file_containing_id``
             (ADR-0035 §1/§4). Produce it via :meth:`TreeSitterAnalyzer._file_anchor`. An
             explicit non-empty ``containing_stable_id`` always wins.
+        is_async: True for an async (Kotlin: ``suspend``) declaration; appends
+            ``:async`` to the hash input, as in :func:`assemble_stable_id`. Read
+            it from the node with :func:`declares_async`.
 
     Returns:
-        Stable ID in ``sha256:{16-hex-chars}`` format.
+        Stable ID in ``hgstableid<N>:{16-hex-chars}`` format.
     """
-    # WI-bokab (v7): fold the declaring file's identity for file-resident symbols
-    # that don't already carry an enclosing scope. Additive — tree-sitter producers
-    # never pass a real containing_stable_id today.
+    # Fold the declaring file's identity for file-resident symbols that don't
+    # already carry an enclosing scope (WI-bokab). Tree-sitter producers do not
+    # pass a real containing_stable_id. Either enters the hash through
+    # stable_id_hash_input (its digest, not its label).
     if not containing_stable_id and file_stable_id:
         containing_stable_id = file_stable_id
     sig = (
         f"{kind}:{normalized_signature}:{visibility}"
-        f":{decorators}:{containing_stable_id}:{name}:{qualified_name}"
+        f":{decorators}:{stable_id_hash_input(containing_stable_id)}:{name}:{qualified_name}"
+        f"{_ASYNC_SUFFIX if is_async else ''}"
     )
     return _short_sha256(sig)
 
 
 _VISIBILITY_MODIFIERS = frozenset({"public", "private", "protected", "internal"})
 
-# WI-zimum: modifiers that denote externally-reachable / public-API symbols
-# across languages.
+# Modifiers that denote externally-reachable / public-API symbols across
+# languages (WI-zimum).
 #
 # - ``public``:     Java, C#, Kotlin, Scala, Groovy, TypeScript class members
 # - ``exported``:   Go naming-convention synthetic modifier (see
@@ -2228,7 +2436,7 @@ _VISIBILITY_MODIFIERS = frozenset({"public", "private", "protected", "internal"}
 # - ``pub`` and ``pub(...)``:
 #                   Rust. The full ``pub(crate)`` / ``pub(super)`` /
 #                   ``pub(in path)`` forms all count as "exported" for the
-#                   purposes of WI-zimum because they are reachable from at
+#                   dead-code seed set because they are reachable from at
 #                   least one external module — they are public relative to
 #                   the file they are defined in, which is what the dead-code
 #                   seed set cares about.
@@ -2256,8 +2464,8 @@ def is_exported_from_modifiers(modifiers: list[str] | None) -> bool:
 
     Recognises the cross-language set from `_EXPORTED_MODIFIERS_EXACT` plus
     Rust's qualified ``pub(...)`` forms (``pub(crate)``, ``pub(super)``,
-    ``pub(in ::path)``). A symbol is considered "exported" for the purposes
-    of WI-zimum (dead-code seed set) when ANY of its modifiers match.
+    ``pub(in ::path)``). A symbol is considered "exported" for the dead-code
+    seed set (WI-zimum) when ANY of its modifiers match.
 
     Languages without visibility modifiers pass an empty list and this
     returns False — the per-language analyzer is expected to set the
@@ -2286,37 +2494,99 @@ _DOC_COMMENT_TYPES = frozenset({
     "multiline_comment",
 })
 
-# Prefixes to strip from comment text, in order of specificity.
-_COMMENT_STRIP_RE = _re.compile(
-    r"^\s*(?:"
-    r"/\*\*\s*"   # /** (Javadoc/JSDoc/KDoc/PHPDoc opener)
-    r"|\*/\s*"    # */ (block closer)
-    r"|\*\s?"     # * (block continuation line)
-    r"|///\s?"    # /// (Rust/C#/Swift)
-    r"|//!\s?"    # //! (Rust inner doc)
-    r"|//\s?"     # // (Go)
-    r"|%+\s?"     # % or %% (Erlang)
-    r"|#\s?"      # # (Ruby/Python/Elixir)
-    r")"
-)
+# A block comment's opener and closer, by the first two characters of the
+# comment's own text. What follows the opener on its line (``*`` or ``!`` of a
+# doc comment, ``|`` of a Haddock or Elm one) belongs to the opener.
+_BLOCK_COMMENTS = {
+    "/*": (_re.compile(r"^/\*+!?"), _re.compile(r"\*+/\s*$")),
+    "{-": (_re.compile(r"^\{-+\|?"), _re.compile(r"-+\}\s*$")),
+    "(*": (_re.compile(r"^\(\*+"), _re.compile(r"\*+\)\s*$")),
+    "<!": (_re.compile(r"^<!--+"), _re.compile(r"--+>\s*$")),
+}
+# A continuation line of a ``/* ... */`` block conventionally starts with a
+# star of its own.
+_BLOCK_CONTINUATION_RE = _re.compile(r"^\s*\*+(?!/)\s?")
+# The characters a line comment opens with, in any of the languages analysed:
+# ``//`` ``///`` ``//!`` ``#`` ``##`` ``--`` ``;`` ``;;`` ``%`` ``%%`` ``!``.
+_LINE_MARKER_CHARS = "/#-;%!"
 
 # Tag lines to skip (Javadoc @param, @returns, etc.)
 _DOC_TAG_RE = _re.compile(r"^\s*@\w+")
+# A line that is about the file and its tooling, not about the declaration
+# under it: an editor modeline, an encoding declaration, a licence header.
+_FILE_HEADER_RE = _re.compile(
+    r"^(?:-\*-.*-\*-$|(?:vim?|ex):\s|coding[:=]"
+    r"|SPDX-License-Identifier\b|Copyright\b|\(c\)\s|\u00a9)",
+    _re.IGNORECASE,
+)
+# A word of running text. A usage line has none after the name: what follows
+# is placeholders (``DOTPATH``, ``<file>``, ``[-v]``, ``$1``, ``(a, b)``).
+_LOWERCASE_WORD_RE = _re.compile(r"[a-z]{3,}")
+_PLACEHOLDER_RE = _re.compile(r"<[^>]*>|\[[^\]]*\]|\([^)]*\)|\{[^}]*\}|\$\w+")
+
+
+def _comment_text_lines(raw: str) -> list[str]:
+    """The lines of one comment node with its own markers removed.
+
+    The markers are read from the comment, not from a list of languages: a
+    comment that opens with a block opener is closed by the matching closer,
+    and any other comment is a line comment whose marker is the run of
+    marker characters it starts with (plus ``!`` after ``//``, Rust's inner
+    doc form). Every line of the node is stripped of that same marker, so
+    ``--`` is a marker in a ``--`` comment and text in a ``#`` one.
+    """
+    stripped = raw.strip()
+    block = _BLOCK_COMMENTS.get(stripped[:2])
+    if block is not None:
+        opener, closer = block
+        body = closer.sub("", opener.sub("", stripped, count=1), count=1)
+        return [_BLOCK_CONTINUATION_RE.sub("", line).strip() for line in body.split("\n")]
+    char = stripped[:1]
+    if char not in _LINE_MARKER_CHARS or not char:
+        return [line.strip() for line in stripped.split("\n")]
+    marker = _re.compile(rf"^\s*{_re.escape(char)}+!?\s?")
+    return [marker.sub("", line, count=1).strip() for line in stripped.split("\n")]
+
+
+def _is_usage_line(line: str, name: str) -> bool:
+    """Whether ``line`` only restates the declaration: its name, then
+    nothing but argument placeholders."""
+    head, _, rest = line.partition(" ")
+    if "(" in head:
+        head, _, tail = head.partition("(")
+        rest = f"({tail} {rest}"
+    return head.rstrip(":") == name and not _LOWERCASE_WORD_RE.search(
+        _PLACEHOLDER_RE.sub(" ", rest))
 
 
 def extract_doc_comment(
     node: "tree_sitter.Node",
     source: bytes,
     max_len: int = 80,
+    name: str | None = None,
 ) -> str | None:
     """Extract first-line summary of the doc comment preceding a declaration node.
 
     Walks backwards through prev_named_sibling collecting consecutive comment
-    nodes with no blank-line gap.  Cleans comment delimiters and returns the
-    first non-empty content line, truncated to *max_len*.
+    nodes with no blank-line gap, removes each comment's own markers
+    (:func:`_comment_text_lines`) and returns the first line that documents
+    the declaration, truncated to *max_len*.
 
-    Works across languages: handles ``/** */`` (Java/Kotlin/JS/PHP),
-    ``///`` (Rust/C#/Swift), ``//`` (Go), and ``#`` (Ruby) comment styles.
+    Which lines document a declaration is decided on the text left after the
+    markers are gone, so the rule is the same for every comment syntax:
+
+    - A line with no letter says nothing: a ruled line of dashes or stars, a
+      box corner, a block opener standing alone on its line.
+    - A tag line (``@param``) describes a part, not the whole.
+    - A shebang (``#!`` on the file's first line), an editor modeline, an
+      encoding declaration and a licence or copyright line are about the
+      file. They are reached when the declaration is the first thing in it.
+    - A line that only restates the declaration (``json_field DOTPATH``,
+      given *name*) is passed over when a describing line follows, and is
+      the summary when none does.
+
+    A comment with no documenting line gives ``None``: no summary is better
+    than a row of dashes printed as what a function does.
     """
     # Collect comment nodes walking backwards from the declaration
     comment_nodes: list["tree_sitter.Node"] = []
@@ -2336,24 +2606,25 @@ def extract_doc_comment(
     # Reverse so we process top-to-bottom
     comment_nodes.reverse()
 
-    # Decode and clean comment text
+    usage_line: str | None = None
     for cnode in comment_nodes:
         raw = source[cnode.start_byte:cnode.end_byte].decode("utf-8", errors="replace")
-        for raw_line in raw.split("\n"):
-            line = _COMMENT_STRIP_RE.sub("", raw_line)
-            # Strip trailing block-comment closer
-            if line.rstrip().endswith("*/"):
-                line = line.rstrip()[:-2]
-            line = line.strip()
-            # Skip empty lines, closing delimiters, and tag lines
-            if not line or line == "/" or _DOC_TAG_RE.match(line):
+        if cnode.start_point[0] == 0 and raw.startswith("#!"):
+            raw = raw.partition("\n")[2]
+        for line in _comment_text_lines(raw):
+            if (not any(ch.isalpha() for ch in line) or _DOC_TAG_RE.match(line)
+                    or _FILE_HEADER_RE.match(line)):
                 continue
-            # Found the first content line — truncate and return
-            if len(line) > max_len:
-                return line[: max_len - 1] + "\u2026"
-            return line
+            if name and usage_line is None and _is_usage_line(line, name):
+                usage_line = line
+                continue
+            return _truncate_summary(line, max_len)
 
-    return None
+    return _truncate_summary(usage_line, max_len) if usage_line else None
+
+
+def _truncate_summary(line: str, max_len: int) -> str:
+    return line if len(line) <= max_len else line[: max_len - 1] + "\u2026"
 
 
 def populate_docstrings_from_tree(
@@ -2402,7 +2673,7 @@ def populate_docstrings_from_tree(
         # the declaration node whose prev_named_sibling is a comment.
         candidate = node
         while candidate is not None:
-            doc = extract_doc_comment(candidate, source)
+            doc = extract_doc_comment(candidate, source, name=sym.name)
             if doc is not None:
                 sym.docstring = doc
                 break
@@ -2413,7 +2684,7 @@ def populate_docstrings_from_tree(
 
 
 # ---------------------------------------------------------------------------
-# Signature normalization utilities (ADR-0014 §3)
+# Signature normalization utilities (spec §6 typed tier)
 # ---------------------------------------------------------------------------
 
 
@@ -2694,6 +2965,36 @@ def normalize_signature_go(
     a tuple: ``(int, error)``.
 
     Output format: ``(Type,Type)ReturnType``
+
+    Deliberate rewrites (kept exactly; they are what the hash means by "the
+    same interface"): a parameter's name is dropped; ONE leading ``*`` is
+    stripped from a parameter type and from a single result type (``*T``
+    and ``T`` hash alike), and every leading ``*`` from a tuple result
+    element; a package qualifier at the head of a type is stripped
+    (``*http.Request`` -> ``Request``, ``pkg.List[int]`` -> ``List[int]``)
+    by :func:`strip_fqn_prefix`, which leaves a qualifier inside a type
+    alone (``[]pkg.T``). Historical rewrites, kept because changing them
+    would move identities that lose nothing: in a grouped ``a, b int`` the
+    first name is hashed as written (``(a,int)``); a tuple result element
+    keeps its name (``(n int,err error)``) unless a qualifier was cut, when
+    the name goes with it (``r *http.Response`` -> ``Response``); a tuple
+    result is split by :func:`split_params_top_level`, which does not see
+    braces.
+
+    What was lost by accident, and is now written: a parameter's type was
+    its LAST whitespace token, so ``chan int``, ``<-chan int``, ``chan<-
+    int`` and ``int`` hashed alike, ``func(int) error`` hashed as
+    ``error``, ``map[string] int`` as ``int``, ``pkg.List[int, string]`` as
+    ``string]``, and ``struct{ a int }`` / ``interface{ A() }`` as ``}``;
+    and ``strip_fqn_prefix`` cuts at the last dot of a type with no ``[``,
+    so ``chan pkg.T`` hashed as ``T`` and ``func(x pkg.A) error`` as ``A)
+    error``, in a result as well as a parameter. A variadic ``...T`` (which
+    the analyzer used to drop) is ``...`` followed by ``T`` normalized as a
+    parameter type. A type whose old text lost nothing hashes as before, so
+    only declarations that had a hole move: :func:`_go_param_type`,
+    :func:`_go_result_type` and :func:`_go_tuple_result_element` each
+    compute the old text and keep it when :func:`_go_fqn_cut_is_deliberate`
+    says the only cut was a qualifier.
     """
     if not signature:
         return None
@@ -2708,47 +3009,142 @@ def normalize_signature_go(
     # Return type in Go — could be "(Type, Type)" or "Type"
     return_str = rest.strip()
 
-    # Parse params — Go format: "name Type" where Type is the last token
-    raw_params = split_params_top_level(params_str)
-    types: list[str] = []
-    for p in raw_params:
-        p = p.strip()
-        if not p:
-            continue
-        # Strip pointer: "*Type" → "Type"
-        parts = p.split()
-        if len(parts) >= 2:
-            # Last token is the type
-            raw_type = parts[-1]
-            if raw_type.startswith("*"):
-                raw_type = raw_type[1:]
-            types.append(_normalize_type(raw_type, type_params))
-        else:
-            # Single token — might be a type with no name
-            raw_type = parts[0]
-            if raw_type.startswith("*"):
-                raw_type = raw_type[1:]
-            types.append(_normalize_type(raw_type, type_params))
-
+    types = [
+        _go_param_type(p, type_params)
+        for p in _go_split_top_level(params_str)
+        if p.strip()
+    ]
     norm_params = ",".join(types)
 
     if return_str:
-        # Normalize return type (strip pointer prefixes, FQN)
         ret = return_str
         if ret.startswith("(") and ret.endswith(")"):
             # Tuple return: "(int, error)" → normalize each
-            inner = ret[1:-1]
-            ret_parts = split_params_top_level(inner)
             norm_ret = "(" + ",".join(
-                _normalize_type(r.strip().lstrip("*"), type_params)
-                for r in ret_parts
+                _go_tuple_result_element(r, type_params)
+                for r in split_params_top_level(ret[1:-1])
             ) + ")"
             return f"({norm_params}){norm_ret}"
-        if ret.startswith("*"):
-            ret = ret[1:]
-        norm_return = _normalize_type(ret, type_params)
-        return f"({norm_params}){norm_return}"
+        return f"({norm_params}){_go_result_type(ret, type_params)}"
     return f"({norm_params})"
+
+
+#: Keywords that open a Go type: a parameter part starting with one has no name.
+#: A pattern, not a set of strings: these are Go source tokens, and two of them
+#: spell Symbol kinds, which a string collection in this module would be read as.
+_GO_TYPE_KEYWORD_RE = _re.compile(r"chan|func|map|struct|interface")
+_GO_IDENT = r"[^\W\d]\w*"
+#: A type whose head is a package-qualified name: ``pkg.T``, ``pkg.List[int]``.
+_GO_QUALIFIED_HEAD_RE = _re.compile(
+    rf"{_GO_IDENT}(?:\.{_GO_IDENT})+(?:\[.*\])?", _re.DOTALL)
+#: What a qualifier cut may remove from a parameter or single result type.
+_GO_QUALIFIER_CUT_RE = _re.compile(rf"(?:{_GO_IDENT}\.)+")
+#: ... and from a tuple result element: a name, pointer stars, a qualifier.
+_GO_ELEMENT_CUT_RE = _re.compile(
+    rf"(?:(?P<name>{_GO_IDENT})\s+)?\**(?:{_GO_IDENT}\.)+")
+#: What a deliberate cut leaves: a bare type name, with type arguments.
+_GO_CUT_REST_RE = _re.compile(rf"{_GO_IDENT}(?:\[.*\])?", _re.DOTALL)
+
+
+def _go_fqn_cut_is_deliberate(text: str, *, element: bool = False) -> bool:
+    """Whether ``strip_fqn_prefix(text)`` loses only what Go means to lose.
+
+    True when it changes nothing, or when it removes a package qualifier
+    (for a tuple result ``element``, also a name and pointer stars) and
+    leaves a bare type name. False when the cut is through a type:
+    ``chan pkg.T`` -> ``T``, ``func(pkg.T)`` -> ``T)``.
+    """
+    out = strip_fqn_prefix(text)
+    if out == text:
+        return True
+    cut = text[: len(text) - len(out)]
+    pattern = _GO_ELEMENT_CUT_RE if element else _GO_QUALIFIER_CUT_RE
+    match = pattern.fullmatch(cut)
+    if match is None or not _GO_CUT_REST_RE.fullmatch(out):
+        return False
+    return _GO_TYPE_KEYWORD_RE.fullmatch(match.groupdict().get("name") or "") is None
+
+
+def _go_strip_one_star(text: str) -> str:
+    return text[1:] if text.startswith("*") else text
+
+
+def _go_type(text: str, type_params: list[str] | None) -> str:
+    """A Go type written whole, with the deliberate rewrites of a parameter.
+
+    Each run of whitespace becomes one space, one leading ``*`` is stripped,
+    a package-qualified head is stripped to its name, and a variadic
+    ``...T`` is ``...`` followed by ``T`` written the same way.
+    """
+    t = " ".join(text.split())
+    if t.startswith("..."):
+        return "..." + _go_type(t[3:], type_params)
+    t = _go_strip_one_star(t)
+    if _GO_QUALIFIED_HEAD_RE.fullmatch(t):
+        t = strip_fqn_prefix(t)
+    return normalize_generic_params(t, type_params) if type_params else t
+
+
+def _go_param_type(part: str, type_params: list[str] | None) -> str:
+    """The hashed type of one parameter part (``name Type`` or ``Type``)."""
+    part = part.strip()
+    head = part.split(None, 1)
+    if len(head) == 2 and head[0].isidentifier() and _GO_TYPE_KEYWORD_RE.fullmatch(head[0]) is None:
+        typ = head[1]
+    else:
+        typ = part
+    # The old text: the last whitespace token, one "*" off, qualifier cut.
+    old = _go_strip_one_star(part.split()[-1])
+    if len(typ.split()) == 1 and _go_fqn_cut_is_deliberate(old):
+        return _normalize_type(old, type_params)
+    return _go_type(typ, type_params)
+
+
+def _go_result_type(ret: str, type_params: list[str] | None) -> str:
+    """The hashed text of a single (unparenthesized) result type."""
+    old = _go_strip_one_star(ret)
+    if _go_fqn_cut_is_deliberate(old):
+        return _normalize_type(old, type_params)
+    return _go_type(ret, type_params)
+
+
+def _go_tuple_result_element(element: str, type_params: list[str] | None) -> str:
+    """The hashed text of one element of a parenthesized result list."""
+    old = element.strip().lstrip("*")
+    if _go_fqn_cut_is_deliberate(old, element=True):
+        return _normalize_type(old, type_params)
+    t = " ".join(old.split())
+    return normalize_generic_params(t, type_params) if type_params else t
+
+
+def _go_split_top_level(params: str) -> list[str]:
+    """Split a Go parameter list at its top-level commas.
+
+    Like :func:`split_params_top_level`, and also not inside ``{...}`` (a
+    ``struct{ a, b int }`` parameter type) or a string literal (a struct
+    tag); ``<`` is not a bracket (in Go it is only the channel arrow, which
+    ``split_params_top_level`` takes for one, so ``(c <-chan int, d int)``
+    was one part). Parts are not stripped and empty parts are kept.
+    """
+    parts: list[str] = []
+    depth = 0
+    quote = ""
+    start = 0
+    for i, ch in enumerate(params):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"`":
+            quote = ch
+        elif ch in "[({":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            parts.append(params[start:i])
+            start = i + 1
+    parts.append(params[start:])
+    return parts
 
 
 def _find_matching_paren(s: str, start: int) -> int:
@@ -2799,7 +3195,8 @@ def iter_tree(root: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
     """Iterate over all nodes in a tree-sitter tree without recursion.
 
     Uses an explicit stack to avoid RecursionError on deeply nested code
-    (e.g., TensorFlow has files exceeding Python's 1000-level limit).
+    (large generated or framework sources can nest deeper than Python's
+    default 1000-frame recursion limit).
 
     Args:
         root: The root node of the tree to traverse
@@ -2851,7 +3248,7 @@ def html_element_tag(node: "tree_sitter.Node") -> Optional[str]:
     The ``label_of`` an element scope chain passes to :func:`ancestor_labels`
     in the component grammars that share tree-sitter-html's element shape
     (Vue, Svelte, Astro): a slot or directive inside ``<div>`` and the same one
-    inside ``<section>`` are two identities (ADR-0035 §1, scheme v9).
+    inside ``<section>`` are two identities (ADR-0035 §1).
     """
     if node.type not in ("element", "template_element"):
         return None
@@ -2936,14 +3333,12 @@ def symbols_by_path_index(
 ) -> dict[str, list["Symbol"]]:
     """Index symbols by their ``path``, for per-file ``enclosing_symbols``.
 
-    INV-fafol. Paired with :func:`symbols_for_path` because the KEY FORMAT IS
-    NOT STABLE across the pipeline and assuming it is cost a silent no-op: at
-    the point js_ts builds this index the symbols carry ABSOLUTE paths, while
-    the per-file name computed at the emit site is repo-RELATIVE. The lookup
-    returned an empty list, the anchoring silently did nothing, and the
-    measured verdict was unchanged — indistinguishable from the fix not
-    working. Both halves live here so neither side can drift into assuming a
-    format the other does not produce.
+    Paired with :func:`symbols_for_path` because the KEY FORMAT IS NOT STABLE
+    across the pipeline: at the point js_ts builds this index the symbols
+    carry ABSOLUTE paths, while the per-file name computed at the emit site is
+    repo-RELATIVE. A lookup under the wrong spelling returns an empty list and
+    the anchoring silently does nothing. Both halves live here so neither side
+    can drift into assuming a format the other does not produce (INV-fafol).
     """
     out: dict[str, list["Symbol"]] = {}
     for sym in symbols:
@@ -2974,16 +3369,14 @@ def _innermost_callable_at(
 ) -> "Symbol | None":
     """The narrowest callable whose span contains *line*, or None.
 
-    INV-fafol. A taint source must be anchored to the callable that performs
-    the read, or it cannot participate in propagation: propagation pairs a
-    source and a sink that share a caller, and every tree-sitter analyzer was
-    passing the FILE pseudo-symbol as ``caller_symbol``. So a
-    ``module_attr_ref`` edge's src was the file while the sink's src was the
-    function, and the two never met. Measured on one JS file holding both
-    shapes: ``os.hostname() -> fs.writeFileSync`` is found (a CALL, already
-    anchored to its function) while ``process.env.API_KEY ->
-    fs.writeFileSync`` in the sibling function is not — same file, same sink,
-    the only difference being which end anchors where.
+    A taint source must be anchored to the callable that performs the read,
+    or it cannot participate in propagation: propagation pairs a source and a
+    sink that share a caller. Tree-sitter analyzers pass the FILE
+    pseudo-symbol as ``caller_symbol``, so without this a ``module_attr_ref``
+    edge's src would be the file while the sink's src is the function, and
+    ``process.env.API_KEY -> fs.writeFileSync`` would never meet, though a
+    CALL source such as ``os.hostname()`` (already anchored to its function)
+    would (INV-fafol).
 
     RESOLVED BY LINE SPAN, deliberately, rather than by walking tree-sitter
     ancestors to a function node. Span containment needs no per-language
@@ -2996,7 +3389,7 @@ def _innermost_callable_at(
     Returns None when no callable contains the line, which is correct and
     load-bearing: a genuinely module-level read (top-of-file ``process.env``)
     belongs to the file, and the caller keeps its existing pseudo-symbol for
-    exactly that case. The fix must not invent a callable that is not there.
+    exactly that case. This must not invent a callable that is not there.
 
     ``owner_kinds`` widens the set for a language whose package-level
     ``var`` initializer is itself an anchor (go, INV-nopoh / WI-labik): there
@@ -3058,15 +3451,13 @@ def _has_ancestor_of_kind(
     ``std::io`` in ``use std::io::{self, Write};`` is the WRAPPER rather than
     the ``use_declaration`` a caller would naturally name.
 
-    INV-pusin was closed once against the proximate test, on a repro using the
-    single spelling that test happens to handle (``use a::b::c;``), while
-    every braced / wildcard / aliased spelling kept leaking into the
+    The proximate test handles only the single spelling ``use a::b::c;``;
+    every braced / wildcard / aliased spelling would leak into the
     uncatalogued-module gate as a fake attribute read. Asking about ANCESTRY
-    states the invariant the item actually ratified — *a path anywhere inside
-    an import declaration is an import* — and is closed over grammar shapes
-    nobody has enumerated. That is what stops the defect recurring a third
-    time through a fourth node kind, instead of growing the skip tuple until
-    the emitter is dead.
+    states the invariant directly — *a path anywhere inside an import
+    declaration is an import* — and is closed over grammar shapes nobody has
+    enumerated, so a new wrapper node kind cannot reopen the leak and the skip
+    tuple does not have to grow with every grammar shape (INV-pusin).
     """
     parent = node.parent
     while parent is not None:
@@ -3157,20 +3548,20 @@ def emit_module_attribute_refs(
             ``use_declaration`` / ``using_declaration`` for imports,
             ``scoped_type_identifier`` / ``generic_type`` /
             ``function_definition`` / ``declaration`` for type
-            positions.  Empty by default, so the languages that pass
-            nothing (javascript, java, go) are unaffected.
+            positions.  Empty by default (javascript, java and go pass
+            nothing).
 
-            INV-pusin: the walk below treats every scoped node outside
-            callee position as an attribute read, and in a ``scoped_path``
+            The walk below treats every scoped node outside callee
+            position as an attribute read, and in a ``scoped_path``
             language a ``use`` path and a return-type path are both
             scoped nodes.  The ``use`` case is a DUPLICATE HOME — the
             analyzer already emits that statement as an ``imports``
-            edge — so the fact ``verify_claims`` deliberately excludes as
-            an import re-entered as a ``module_attr_ref`` and withheld
-            the boundary verdict on a crate with no dependencies at all
-            (measured: ``use std::fs;`` alone put ``std`` and ``std.fs``
-            on the uncatalogued-module list).  A return type has no
-            second home and is simply not a read.
+            edge — so emitting it here would re-enter, as a
+            ``module_attr_ref``, the fact ``verify_claims`` deliberately
+            excludes as an import (``use std::fs;`` alone would put
+            ``std`` and ``std.fs`` on the uncatalogued-module list and
+            withhold the boundary verdict) (INV-pusin).  A return type
+            has no second home and is simply not a read.
 
             THE ANCESTOR IS RESOLVED PAST THE NESTED-PREFIX LEVELS, not
             from the immediate parent: ``std::net`` inside
@@ -3186,19 +3577,16 @@ def emit_module_attribute_refs(
             inside an IMPORT declaration", matched against EVERY ancestor
             rather than only the proximate one.  Empty by default.
 
-            INV-pusin, SECOND CLOSURE.  ``skip_context_kinds`` alone was
-            not enough: tree-sitter-rust wraps the braced, wildcard and
-            aliased ``use`` forms in ``scoped_use_list`` / ``use_wildcard``
-            / ``use_as_clause``, so the proximate context of ``std::io``
-            in ``use std::io::{self, Write};`` is the wrapper and the path
-            leaked as a read.  The item was marked satisfied against a
-            repro spelled ``use a::b::c;`` — the one form the proximate
-            test handles — so a closure satisfied the repro and not the
-            statement.  Enumerating the wrappers would fix those three and
-            leave the next grammar shape to leak; asking about ancestry
-            states the ratified invariant directly (*a path anywhere
-            inside an import declaration is an import*) and is closed over
-            shapes nobody has enumerated.  See
+            ``skip_context_kinds`` alone is not enough for imports:
+            tree-sitter-rust wraps the braced, wildcard and aliased
+            ``use`` forms in ``scoped_use_list`` / ``use_wildcard`` /
+            ``use_as_clause``, so the proximate context of ``std::io`` in
+            ``use std::io::{self, Write};`` is the wrapper and the path
+            would leak as a read.  Enumerating the wrappers would fix
+            those three and leave the next grammar shape to leak; asking
+            about ancestry states the invariant directly (*a path
+            anywhere inside an import declaration is an import*) and is
+            closed over shapes nobody has enumerated (INV-pusin).  See
             :func:`_has_ancestor_of_kind`.
         carrier_call_kinds: INV-hopib. Call node types whose use of an
             attribute is recorded on its edge as ``meta["attr_carrier"]`` =
@@ -3208,34 +3596,24 @@ def emit_module_attribute_refs(
             (java's ``object``), or the object of the member access that is
             the call's callee (``os.Stdout.Write(b)``). A stream-object row
             is matched wherever the object is used, so ``io.WriteString(
-            os.Stderr, k)`` made ``os.Stderr`` a taint sink beside the call
+            os.Stderr, k)`` makes ``os.Stderr`` a taint sink beside the call
             that writes; the carrier is what lets taint report the write once
             and lets a surviving stream finding name its call. Empty (the
-            default) stamps nothing, so cpp and rust -- whose stream writes
-            are ``<<`` expressions and ``stdout()`` calls, not attribute
-            uses inside a call -- are unaffected.
+            default) stamps nothing; cpp and rust pass nothing, since their
+            stream writes are ``<<`` expressions and ``stdout()`` calls, not
+            attribute uses inside a call.
         carrier_receiver_fields: see ``carrier_call_kinds``.
         carrier_arguments_field: the call's arguments field name.
         carrier_argument_wrapper_kinds: node types a grammar puts BETWEEN an
             argument and the arguments node (tree-sitter-kotlin's
             ``value_argument``); a use inside one is still handed to the call.
-            Empty (the default) changes nothing.
+            Empty by default.
         attribute_names: when given, only an access whose attribute is one of
             these is a read. For a language that calls a parameterless method
             without parentheses (scala's ``System.currentTimeMillis``), an
             access on the module is not necessarily a FIELD read, and the
             caller names the fields (WI-rabum). None, the default, keeps every
             attribute.
-
-    FIELD NAMES MAY NAME A CHILD BY POSITION OR TYPE. Every ``*_field_names`` /
-    ``*_fields`` / ``*_field`` argument goes through :func:`_child_by_fields`,
-    where a name beginning ``@`` selects a NAMED child instead of a field:
-    ``@first``, ``@last``, or ``@<node type>``. tree-sitter-kotlin declares no
-    fields on ``navigation_expression`` or ``call_expression``, so kotlin
-    passes ``@first`` / ``@last`` / ``@value_arguments`` (WI-rabum).
-
-    A BACKTICK-QUOTED attribute names the member it quotes: kotlin writes
-    ``System.`in``` because ``in`` is a keyword there.
         owner_kinds: the symbol kinds a read may be anchored on (see
             :func:`_innermost_callable_at`). Defaults to callables.
         is_local_value: given the base node of an attribute access whose
@@ -3243,8 +3621,8 @@ def emit_module_attribute_refs(
             in scope there instead -- ``func f(os T) { _ = os.Args }`` reads
             a field of ``os`` the parameter, not the package. Such a read is
             skipped. The scope is the caller's (go's ``_GoLocalScope``);
-            None, the default, treats every import-named base as the import,
-            the historical behaviour. Not consulted on ``scoped_path``
+            None, the default, treats every import-named base as the import.
+            Not consulted on ``scoped_path``
             languages, whose ``::`` paths cannot be shadowed by a value.
         scoped_path: When True, switches the helper to a left-recursive
             path-walk model used by languages whose scoped access is
@@ -3259,6 +3637,16 @@ def emit_module_attribute_refs(
             colon-tolerant).  Catalog matching still works because
             ``IoBoundaryCatalog`` registers both ``::`` and ``.``
             forms in its qualified-name index.
+
+    FIELD NAMES MAY NAME A CHILD BY POSITION OR TYPE. Every ``*_field_names`` /
+    ``*_fields`` / ``*_field`` argument goes through :func:`_child_by_fields`,
+    where a name beginning ``@`` selects a NAMED child instead of a field:
+    ``@first``, ``@last``, or ``@<node type>``. tree-sitter-kotlin declares no
+    fields on ``navigation_expression`` or ``call_expression``, so kotlin
+    passes ``@first`` / ``@last`` / ``@value_arguments`` (WI-rabum).
+
+    A BACKTICK-QUOTED attribute names the member it quotes: kotlin writes
+    ``System.`in``` because ``in`` is a keyword there.
     """
     # tree-sitter's Python bindings return a fresh wrapper object on each
     # accessor call, so `id()` is unstable across two walks of the same
@@ -3316,22 +3704,14 @@ def emit_module_attribute_refs(
             # Replace the leftmost alias with its real module, KEEPING the
             # language's own separator (INV-rilit).
             #
-            # THIS USED TO DOT-NORMALISE ``::`` TO ``.`` "so the resulting edge
-            # ID survives ``:``-split parsing in io_boundary" — a workaround
-            # that outlived its defect. ADR-0036 (D1a) made the path slot the
-            # one colon-TOLERANT slot in the grammar, and ``symbol_path_slot``
-            # carries ``rust:std::fs:0-0:write:external_symbol`` as a worked
-            # example; ``symbol_name_slot`` is span-anchored for the same
-            # reason. Meanwhile the normalisation split one module into TWO
-            # NODES — ``imports`` and ``calls`` emitted ``std::io`` while this
-            # emitted ``std.io`` — so every per-dependency question was
-            # answered over half a population. Measured on bellman: TEN
-            # entities under two spellings in a single run.
-            #
-            # It was also only HALF applied, which is the tell: only the path
-            # taken from the imports map was rewritten, so C++ emitted
-            # ``cpp:std:0-0:std.numbers::pi:attribute`` — one id carrying BOTH
-            # separators.
+            # ``::`` is NOT dot-normalised to ``.``. ADR-0036 (D1a) makes the
+            # path slot the one colon-TOLERANT slot in the grammar, and
+            # ``symbol_path_slot`` carries
+            # ``rust:std::fs:0-0:write:external_symbol`` as a worked example;
+            # ``symbol_name_slot`` is span-anchored for the same reason.
+            # ``imports`` and ``calls`` edges spell the module ``std::io``, so
+            # a dotted ``std.io`` here would split one module into TWO NODES
+            # and answer every per-dependency question over half a population.
             real_leftmost = imports[leftmost_text]
             real_module = real_leftmost + base_text[len(leftmost_text):]
         else:
@@ -3340,8 +3720,8 @@ def emit_module_attribute_refs(
             if is_local_value is not None and is_local_value(base):
                 continue
             real_module = imports[base_text]
-        # The qualified name joins with the SAME separator the module uses, or
-        # the id mixes conventions the way the C++ case above did.
+        # The qualified name joins with the SAME separator the module uses, so
+        # one id never mixes conventions (``std.numbers::pi``).
         sep = "::" if scoped_path else "."
         qname = f"{real_module}{sep}{attr_name}"
         line_no = node.start_point[0] + 1
@@ -3473,7 +3853,7 @@ def make_file_finder(patterns: list[str]) -> Callable[[Path], Iterator[Path]]:  
 class TreeSitterAnalyzer:
     """Base class for tree-sitter-based language analyzers.
 
-    Encapsulates the universal two-pass architecture used by 100+ analyzers:
+    Encapsulates the two-pass architecture every tree-sitter analyzer uses:
       Pass 1: Discover files, parse with tree-sitter, extract symbols
       Pass 2: Re-walk ASTs, resolve calls/imports against global symbol registry
 
@@ -3493,8 +3873,7 @@ class TreeSitterAnalyzer:
 
     Why This Design
     ---------------
-    Previously, each analyzer duplicated this two-pass loop (~100 lines).
-    The base class captures the scaffolding so subclasses focus solely on
+    The base class captures the two-pass scaffolding so subclasses focus solely on
     language-specific extraction logic. Analyzers can override any template
     method, or override ``analyze()`` entirely for full control.
 
@@ -3549,35 +3928,32 @@ class TreeSitterAnalyzer:
 
     # -- Grammar source: exactly one of these should be set ----------------
     #
-    # Read-only PROPERTIES rather than the `Optional[str] = None` class
-    # attributes they replace. Subclasses still declare them the same way —
-    # `grammar_module = "tree_sitter_go"` in the class body — and nothing about
-    # that changes: a subclass class-attribute precedes this base in the MRO, so
-    # `self.grammar_module` returns the string, while a subclass that declares
-    # neither falls through to the property and gets `None`, exactly as before.
+    # Read-only PROPERTIES rather than `Optional[str] = None` class attributes.
+    # Subclasses declare them the usual way — `grammar_module =
+    # "tree_sitter_go"` in the class body: a subclass class-attribute precedes
+    # this base in the MRO, so `self.grammar_module` returns the string, while a
+    # subclass that declares neither falls through to the property and gets
+    # `None`.
     #
-    # Why: 105 analyzer subclasses across the three language packages each
-    # narrowed one of these from `str | None` to `str`, which mypy reports as
-    # `mutable-override` — a covariant override of a MUTABLE attribute. That was
-    # 105 of the ~957 strict errors, 11% of the whole surface, from these two
-    # declarations. An attribute that is only ever *read* has no business being
-    # declared mutable, so the fix is the declaration, not 105 subclass edits.
+    # Why: analyzer subclasses narrow one of these from `str | None` to `str`,
+    # which mypy reports as `mutable-override` — a covariant override of a
+    # MUTABLE attribute — at every subclass. An attribute that is only ever
+    # *read* has no business being declared mutable, so the fix belongs in the
+    # declaration, not in each subclass.
     #
-    # The tempting alternative — `ClassVar[str] = ""`, matching the `lang` /
-    # `pass_id` sentinels a few lines up — is a LIVE BEHAVIOUR CHANGE and was
-    # rejected: five `is not None` checks below (`_check_grammar_available`,
-    # `_create_parser`) would become permanently true, so every language-pack
-    # analyzer would call `importlib.import_module("")`; and `_get_config_dict`
-    # feeds `compute_config_fingerprint`, a PERSISTED cache key, so every
-    # analyzer's `config_fingerprint` would change. `ClassVar` alone does not
-    # silence the error, and `Final` makes it worse (it adds
-    # "cannot assign to final name" at all 105 sites).
+    # `ClassVar[str] = ""`, matching the `lang` / `pass_id` sentinels a few lines
+    # up, would be a LIVE BEHAVIOUR CHANGE: the `is not None` checks below
+    # (`_check_grammar_available`, `_create_parser`) would become permanently
+    # true, so every language-pack analyzer would call
+    # `importlib.import_module("")`; and `_get_config_dict` feeds
+    # `compute_config_fingerprint`, a PERSISTED cache key, so every analyzer's
+    # `config_fingerprint` would change. `ClassVar` alone does not silence the
+    # error, and `Final` makes it worse (it adds "cannot assign to final name"
+    # at every subclass).
     #
-    # Residual sharp edge, unexercised today and grepped to confirm it: a
-    # CLASS-level read (`TreeSitterAnalyzer.grammar_module`) now yields the
-    # property object rather than `None`, and `self.grammar_module = ...` would
-    # raise. Every read in `packages/*/src/` is `self.`-qualified and there are
-    # zero such assignments anywhere in the repo.
+    # Sharp edge: a CLASS-level read (`TreeSitterAnalyzer.grammar_module`)
+    # yields the property object rather than `None` (`grammar_distribution`
+    # accounts for this), and `self.grammar_module = ...` raises.
     @property
     def grammar_module(self) -> Optional[str]:
         """Direct grammar package name (e.g., "tree_sitter_go")."""
@@ -3586,6 +3962,23 @@ class TreeSitterAnalyzer:
     @property
     def language_pack_name(self) -> Optional[str]:
         """Language-pack grammar name (e.g., "nim")."""
+        return None
+
+    @classmethod
+    def grammar_distribution(cls) -> Optional[str]:
+        """The PyPI distribution that supplies this analyzer's grammar (WI-pakof).
+
+        ``tree-sitter-<lang>`` for a dedicated wheel (the module's
+        underscores are the distribution's hyphens: ``tree_sitter_c_sharp``
+        is ``tree-sitter-c-sharp``), ``tree-sitter-language-pack`` for a
+        pack grammar, ``None`` when the class declares neither. Read at
+        CLASS level, where an undeclared slot is the base property object.
+        """
+        module = getattr(cls, "grammar_module", None)
+        if isinstance(module, str):
+            return module.replace("_", "-")
+        if isinstance(getattr(cls, "language_pack_name", None), str):
+            return "tree-sitter-language-pack"
         return None
 
     # -- Optional configuration --------------------------------------------
@@ -3612,14 +4005,10 @@ class TreeSitterAnalyzer:
         """Return the analyzer's effective configuration dict for
         ``config_fingerprint`` derivation.
 
-        INV-lidul / Phase 6 PR2: ``AnalysisRun.config_fingerprint``
-        defaulted to ``sha256:44136fa355b3678a`` (sha256 of ``{}``) for
-        every analyzer + linker run on self-analysis (84 of 84 runs
-        identical), collapsing distinct passes onto the same
-        cache-keying fingerprint. The Phase 6 PR2 closure derives a
-        per-analyzer fingerprint from this class's identity + grammar
-        + file-pattern set — at least making the 84 runs distinct, and
-        giving subclasses a one-method override path to thread real
+        The fingerprint is derived from this class's identity + grammar +
+        file-pattern set, so distinct passes do not collapse onto the
+        default ``AnalysisRun.config_fingerprint`` (sha256 of ``{}``)
+        (INV-lidul). Subclasses override this one method to thread real
         per-run config (e.g., file globs, language filters).
         """
         return {
@@ -3636,9 +4025,8 @@ class TreeSitterAnalyzer:
         """Replace the default config_fingerprint with one derived from
         ``self._get_config_dict()``.
 
-        Pre-Phase-6 every run carried the literal ``sha256:44136fa355b3678a``
-        default; this method derives a stable fingerprint from the
-        analyzer's effective config so distinct analyzers register
+        Derives a stable fingerprint from the analyzer's effective config,
+        in place of the ``sha256``-of-``{}`` default, so distinct analyzers register
         distinct fingerprints and within-analyzer config changes
         propagate via ``compute_pass_version``. Delegates to the shared
         :func:`ir.compute_config_fingerprint` primitive (also used by the
@@ -3650,8 +4038,7 @@ class TreeSitterAnalyzer:
     def _extend_toolchain(self, run: AnalysisRun) -> None:
         """Extend ``run.toolchain`` with grammar/library version info.
 
-        INV-nihug / Phase 6 PR2 closure: ``AnalysisRun.create`` defaults
-        ``toolchain`` to ``{"name": "python", "version": <host>}`` via
+        ``AnalysisRun.create`` defaults ``toolchain`` to ``{"name": "python", "version": <host>}`` via
         ``_get_python_toolchain``. That default is correct for the host
         but doesn't capture the actual dependency chain that produced
         this analysis — every TreeSitter analyzer depends on the
@@ -3660,7 +4047,7 @@ class TreeSitterAnalyzer:
         ``self.language_pack_name``). This method appends those into
         ``run.toolchain`` so cache fingerprinting and reproducibility
         comparisons can tell apart two runs that used different grammar
-        versions on the same host Python.
+        versions on the same host Python (INV-nihug).
 
         The keys appended:
         - ``tree_sitter_version``: package version of the ``tree_sitter`` lib.
@@ -3984,11 +4371,10 @@ class TreeSitterAnalyzer:
         because a ``self`` chain is rooted in the impl/class; this starts from
         ``var_types[root]`` because a variable carries its own declared type.
 
-        This is what Go's ``_resolve_field_chain`` does (root in ``var_types``,
-        walk the field registry), ported so Rust's WI-dizag shape B —
-        ``h.f.write_all(..)`` — can recover ``File`` from ``Holder.f`` instead
-        of discarding it. Additive: nothing else calls it, so no analyzer that
-        relies on the self-only resolver changes behaviour.
+        Go's own ``_resolve_field_chain`` follows the same scheme (root in
+        ``var_types``, walk the field registry). The rust analyzer calls this
+        to type ``h.f.write_all(..)``, recovering ``File`` from ``Holder.f``
+        (WI-dizag).
 
         Args:
             value_node: The receiver node of a method call (e.g. the ``h.f``
@@ -4109,13 +4495,13 @@ class TreeSitterAnalyzer:
         """
         return symbols, edges, usage_contexts
 
-    # -- shape_id computation (ADR-0014 §1) ---------------------------------
+    # -- shape_id computation (spec §6 shape_id) -----------------------------
 
     _SHAPE_SKIP_TYPES: ClassVar[frozenset[str]] = frozenset(
         {"comment", "line_comment", "block_comment", "ERROR", "MISSING"}
     )
 
-    def compute_shape_id(self, node: "tree_sitter.Node") -> str:
+    def compute_shape_id(self, node: "tree_sitter.Node") -> ShapeId:
         """Compute shape_id by hashing the structural skeleton of a CST subtree.
 
         Walks the tree-sitter concrete syntax tree non-recursively, strips
@@ -4123,19 +4509,27 @@ class TreeSitterAnalyzer:
         resulting S-expression.  This captures the structural "shape" of code
         independent of naming and formatting.
 
-        Filtering strategy (ADR-0014 §1):
+        Filtering strategy (spec §6 shape_id):
         - Anonymous nodes (punctuation like ``{``, ``;``, ``(``) are skipped
         - Comment, ERROR, and MISSING nodes are skipped
         - Named leaf nodes (identifiers, literals) emit only their type name
         - Named non-leaf nodes emit ``(type child1 child2 ...)`` structure
 
+        Python does not use this walker. ``py.py`` hashes Python's ``ast``
+        instead, which gives a skeleton with no formatting noise and no
+        wrapper nodes, and a different hash for the same code. The
+        divergence is intended and costs nothing: a ``shape_id`` is only
+        compared with another of the same language (``repeat-finder``
+        groups by ``(language, shape_id)``), so the two implementations
+        never meet. This walker hashes the grammar's CST, so its value is
+        stable only for a given grammar version (spec §6, "Identity and
+        provenance scheme versioning").
+
         Returns:
-            Shape hash in ``sha256:{16-hex-chars}`` format matching
+            Shape hash in ``hgshapeid<N>:{16-hex-chars}`` format matching
             the Python analyzer's convention.
         """
-        structure = self._cst_structure(node)
-        hash_val = hashlib.sha256(structure.encode()).hexdigest()[:16]
-        return f"sha256:{hash_val}"
+        return mint_shape_id(self._cst_structure(node))
 
     def _cst_structure(self, node: "tree_sitter.Node") -> str:
         """Build an S-expression skeleton of a CST subtree.
@@ -4189,7 +4583,7 @@ class TreeSitterAnalyzer:
 
         return " ".join(parts)
 
-    # -- Parameter classification (ADR-0014 §2) ----------------------------
+    # -- Parameter classification (ADR-0035 §1) ----------------------------
 
     # Node types that indicate variadic positional params, by grammar.
     # Languages may add to this set via _VARARGS_NODE_TYPES class attribute.
@@ -4272,7 +4666,7 @@ class TreeSitterAnalyzer:
             has_kwargs=has_kwargs,
         )
 
-    # -- stable_id computation (ADR-0014 §2) ---------------------------------
+    # -- stable_id computation (ADR-0035 §1) ---------------------------------
 
     # Node types for decorator/annotation wrappers, by grammar.
     _DECORATOR_NODE_TYPES: ClassVar[frozenset[str]] = frozenset({
@@ -4290,16 +4684,16 @@ class TreeSitterAnalyzer:
         "function_parameters",   # Rust
     })
 
-    def _file_anchor(self, rel_path: str) -> str:
-        """WI-bokab (v7): the file-identity value folded into ``containing_stable_id``
-        for this analyzer's file-resident symbols.
+    def _file_anchor(self, rel_path: str) -> StableId:
+        """The file-identity value folded into ``containing_stable_id`` for this
+        analyzer's file-resident symbols (WI-bokab).
 
         Returns ``make_file_stable_id(self.lang, normalize_path(rel_path))`` — the same
         value the file Symbol's own stable_id carries (``populate_kind_stable_ids``
         computes it from the normalized repo-relative path), so a child symbol's anchor
         byte-matches its file node. ``rel_path`` MUST be repo-relative; folding an
-        absolute path would make the stable_id location-dependent (the regression
-        WI-bokab's smoke test guarded against).
+        absolute path would make the stable_id location-dependent (WI-bokab's
+        smoke test guards against this).
         """
         return make_file_stable_id(self.lang, normalize_path(rel_path))
 
@@ -4313,22 +4707,21 @@ class TreeSitterAnalyzer:
         qualified_name: str = "",
         occurrence_index: int = 0,
         file_stable_id: str = "",
-    ) -> str:
+    ) -> StableId:
         """Compute an untyped-tier stable_id for a function/class/method node.
 
-        Delegates to :func:`assemble_stable_id` — the single v6 formula (ADR-0035 §1)::
+        Delegates to :func:`assemble_stable_id` — the single untyped-tier
+        formula (ADR-0035 §1)::
 
             sha256({kind}:{param_count}:{arity_flags}:{decorators}
-                   :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index})
+                   :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index}
+                   [:async])
 
-        Per INV-tazaj fix shape: the previous interface-shape-only signature
-        produced ~60% collisions on the dogfood corpus because shape alone
-        does not distinguish 155 zero-parameter bash functions in a single
-        file (or 152 tests with empty bodies). Including `name` and
-        `qualified_name` gives a structural-identity-within-a-rename-scope
-        guarantee: stable_id survives BODY edits but NOT rename or move.
-        This is the right tradeoff for a field that must distinguish ~34K
-        symbols.
+        Interface shape alone does not distinguish, e.g., many zero-parameter
+        functions in one file or tests with empty bodies, so `name` and
+        `qualified_name` are included (INV-tazaj). That gives a
+        structural-identity-within-a-rename-scope guarantee: stable_id
+        survives BODY edits but NOT rename or move.
 
         Args:
             node: Tree-sitter node for the symbol's definition.
@@ -4336,23 +4729,22 @@ class TreeSitterAnalyzer:
             containing_stable_id: Stable ID of the enclosing scope (class or
                 module).  Empty string for top-level definitions.
             name: Symbol's local name (e.g., ``"poll_ci"``). Defaults to
-                empty for back-compat with legacy callers; new sites should
-                pass it for uniqueness.
+                empty; callers should pass it for uniqueness.
             qualified_name: Dotted full-qualified name (e.g.,
                 ``"module.Class.method"``). Defaults to empty when the
                 analyzer does not compute one at stable_id time.
-            file_stable_id: WI-bokab (v7) file-identity anchor (see
+            file_stable_id: File-identity anchor (WI-bokab; see
                 :meth:`_file_anchor`). When ``containing_stable_id`` is empty,
                 this is folded into the containing slot so same-named symbols in
                 different files hash distinctly. An explicit ``containing_stable_id``
                 wins. Pass ``file_stable_id=self._file_anchor(rel_path)``.
 
         Returns:
-            Stable ID in ``sha256:{16-hex-chars}`` format.
+            Stable ID in ``hgstableid<N>:{16-hex-chars}`` format.
         """
-        # WI-bokab (v7): fold the declaring file's identity for file-resident
-        # symbols lacking an enclosing-scope containing. Additive — tree-sitter
-        # producers carry scope in qualified_name and pass no containing today.
+        # Fold the declaring file's identity for file-resident symbols lacking
+        # an enclosing-scope containing id (WI-bokab). Tree-sitter producers
+        # carry scope in qualified_name and pass no containing id.
         if not containing_stable_id and file_stable_id:
             containing_stable_id = file_stable_id
 
@@ -4372,7 +4764,8 @@ class TreeSitterAnalyzer:
         decorators = self._extract_decorator_names(node)
         decorators_str = ",".join(sorted(decorators))
 
-        # 3. Hash via the shared v6 formula (ADR-0035 §1).
+        # 3. Hash via the shared formula (ADR-0035 §1); an async
+        # declaration's marker is read from the node itself.
         return assemble_stable_id(
             kind,
             flags.param_count,
@@ -4382,6 +4775,7 @@ class TreeSitterAnalyzer:
             name,
             qualified_name,
             occurrence_index,
+            is_async=declares_async(node),
         )
 
     def _find_params_node(
@@ -4492,37 +4886,35 @@ class TreeSitterAnalyzer:
     ) -> AnalysisResult:
         """Inner ``analyze()`` body that does the actual work.
 
-        Kept as a separate method so the outer ``analyze()`` is a thin
-        seam — handy for INV-pitab-style future wiring (e.g., per-call
-        instrumentation) without re-threading every analyzer."""
+        ``analyze()`` only creates the ``AnalysisRun`` and start time and
+        hands them here, so it stays a thin seam where per-call wiring (such
+        as instrumentation) can go without touching any analyzer."""
         effective_pass_id = self.pass_id or make_pass_id(self.lang)
-        # INV-gizik / Phase 6 PR2: stamp pass_version from the concrete
-        # analyzer subclass's module hash when the subclass hasn't set
-        # one explicitly. Mirrors the linker-side stamping in
-        # registry.py:_stamp_pass_version. Without this, every
-        # TreeSitterAnalyzer subclass inherits the empty default and
-        # the field is unset for 44 of 84 runs on the self-analysis.
+        # Stamp pass_version from the concrete analyzer subclass's module
+        # hash when the subclass hasn't set one explicitly; otherwise every
+        # TreeSitterAnalyzer subclass inherits the empty default (INV-gizik).
+        # Mirrors the linker-side stamping in
+        # linkers/registry.py:_stamp_pass_version.
         if not run.pass_version:
             try:
                 run.pass_version = compute_pass_version(type(self))
             except Exception:  # pragma: no cover - defensive
                 pass
 
-        # INV-nihug / Phase 6 PR2: extend the default
-        # ``{"name": "python", "version": <host>}`` toolchain with
-        # tree-sitter library / grammar-pack version info when this
-        # analyzer is grammar-backed. Not every analyzer runs purely on
-        # the host Python interpreter; the toolchain field must reflect
-        # the actual dependency chain that produced the analysis.
+        # Extend the default ``{"name": "python", "version": <host>}``
+        # toolchain with tree-sitter library / grammar-pack version info
+        # when this analyzer is grammar-backed. Not every analyzer runs
+        # purely on the host Python interpreter; the toolchain field must
+        # reflect the actual dependency chain that produced the analysis
+        # (INV-nihug).
         try:
             self._extend_toolchain(run)
         except Exception:  # pragma: no cover - defensive
             pass
 
-        # INV-lidul / Phase 6 PR2: replace the default empty-config
-        # fingerprint with a derived per-analyzer fingerprint. Without
-        # this, all 84 self-analysis runs share the literal default
-        # ``sha256:44136fa355b3678a`` (sha256 of ``{}``).
+        # Replace the default empty-config fingerprint (sha256 of ``{}``,
+        # identical for every run) with a derived per-analyzer fingerprint
+        # (INV-lidul).
         try:
             self._stamp_config_fingerprint(run)
         except Exception:  # pragma: no cover - defensive
@@ -4530,16 +4922,18 @@ class TreeSitterAnalyzer:
 
         # 1. Check grammar availability
         if not self._check_grammar_available():
-            msg = (
-                f"{self.lang} analysis skipped: grammar not available. "
-                f"Install the required tree-sitter grammar package."
+            # Name the distribution to install when it is known (WI-gidid,
+            # WI-pakof). The warning is NOT appended to ``run.warnings``: a
+            # skipped pass's run is discarded
+            # (``all_analyzers.collect_analyzer_result`` appends only an
+            # unskipped run), so that write would reach no consumer. The skip
+            # entry's reason carries the same fact.
+            distribution = type(self).grammar_distribution()
+            install = (
+                f"Install {distribution}." if distribution
+                else "Install the required tree-sitter grammar package."
             )
-            # INV-pitab: structurally record the warning on the run so
-            # consumers reading the AnalysisRun later see the gap. Also
-            # call warnings.warn so existing stderr / pytest.warns
-            # consumers continue to see it. No thread-global state
-            # mutation (would race in the orchestrator's ThreadPoolExecutor).
-            run.warnings.append(f"UserWarning: {msg}")
+            msg = f"{self.lang} analysis skipped: grammar not available. {install}"
             warnings.warn(msg, UserWarning, stacklevel=2)
             run.duration_ms = int((time.time() - start_time) * 1000)
             return AnalysisResult(
@@ -4605,7 +4999,7 @@ class TreeSitterAnalyzer:
                 )
                 analysis.symbols.insert(0, file_sym)
 
-            # Auto-compute shape_id and docstring for symbols with nodes (ADR-0014 §1)
+            # Auto-compute shape_id and docstring for symbols with nodes (spec §6 shape_id)
             if analysis.node_for_symbol:
                 sym_by_id = {s.id: s for s in analysis.symbols}
                 for sym_id, ts_node in analysis.node_for_symbol.items():
@@ -4614,7 +5008,8 @@ class TreeSitterAnalyzer:
                         if sym.shape_id is None:
                             sym.shape_id = self.compute_shape_id(ts_node)
                         if sym.docstring is None:
-                            sym.docstring = extract_doc_comment(ts_node, source)
+                            sym.docstring = extract_doc_comment(
+                                ts_node, source, name=sym.name)
 
             # Fallback: populate docstrings for symbols without node_for_symbol
             # by finding their tree-sitter nodes via position matching.
@@ -4655,8 +5050,8 @@ class TreeSitterAnalyzer:
         for analysis, _, _source in file_analyses.values():
             for key, ret_type in analysis.method_return_types.items():
                 method_return_type_registry.setdefault(key, ret_type)
-        # WI-lalot: LIBRARY rows join the same dict, AFTER the analysed ones, so
-        # a declaration in the repository always beats a catalogue guess. Without
+        # LIBRARY rows join the same dict, AFTER the analysed ones, so a
+        # declaration in the repository always beats a catalogue guess (WI-lalot). Without
         # them a receiver bound to a library call cannot be typed at all -- there
         # is no declaration in the tree to register -- and the method-kind
         # io_primitives rows that need a typed receiver are unreachable however
@@ -4704,6 +5099,7 @@ class TreeSitterAnalyzer:
         self._current_file_symbols = None
 
         # 7. Post-process
+        declared = list(all_symbols)
         all_symbols, all_edges, all_contexts = self.post_process(
             all_symbols, all_edges, all_contexts, run,
         )
@@ -4711,6 +5107,7 @@ class TreeSitterAnalyzer:
         # 8. Assemble result
         run.files_analyzed = files_analyzed
         run.files_skipped = files_skipped
+        claim_declaration_silence(run, declared, all_symbols, all_edges)
         run.duration_ms = int((time.time() - start_time) * 1000)
 
         return AnalysisResult(

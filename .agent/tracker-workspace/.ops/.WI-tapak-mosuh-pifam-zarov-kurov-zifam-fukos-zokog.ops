@@ -23,3 +23,39 @@
     pr_ref:  # 3b7c
     description: "Introduce NewType aliases for identifier-bearing fields: StableId, NodeId, EdgeId, ConfigFingerprint, etc. Pair each with a canonical factory function (compute_stable_id, make_node_id, etc.) that's the only entry point for constructing the NewType. Refactor emitters that currently use raw str for these fields. Closes some INV-kurup canonical-factory-bypass sub-cases at type-check time — direct str → NewType assignment becomes a type error, forcing the call site through the factory. Also closes part of INV-lidul (config_fingerprint constant) — the factory can refuse to construct a fingerprint from an empty config dict."  # 3b7c
     fields: {}  # 3b7c
+- op: discuss  # 5556
+  at: '2026-11-01T10:55:49Z'  # 5556
+  by: agent  # 5556
+  actor: jgstern_agent  # 5556
+  clock: 2  # 5556
+  nonce: '5556'  # 5556
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at 100b6fbb6e: NewType has 0 uses in packages/*/src. INV-lidul was satisfied 2026-06-17 via fingerprint stamping (PR #271), not NewType, and compute_config_fingerprint({}) still returns sha256:44136fa355b3678a (no refusing factory). INV-kurup's Symbol.id/Edge.id bypasses now have a static lint (scripts/check-id-construction, WI-vodin, in pre-commit). The INV-lidul rationale is void; re-scope to fields that lint does not cover. MECHANISM: identifiers typed as raw str so factory bypass is not a type error. SHARES MECHANISM WITH: INV-kurup,WI-totov."  # 5556
+- op: update  # 238b
+  at: '2026-11-01T10:55:49Z'  # 238b
+  by: agent  # 238b
+  actor: jgstern_agent  # 238b
+  clock: 3  # 238b
+  nonce: 238b  # 238b
+  set:  # 238b
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at 100b6fbb6e: NewType has 0 uses in packages/*/src. INV-lidul was satisfied 2026-06-17 via fingerprint stamping (PR #271), not NewType, and compute_config_fingerprint({}) still returns sha256:44136fa355b3678a (no refusing factory). INV-kurup's Symbol.id/Edge.id bypasses now have a static lint (scripts/check-id-construction, WI-vodin, in pre-commit). The INV-lidul rationale is void; re-scope to fields that lint does not cover. (Original text below; the review entry in the thread has the evidence.)\n\nIntroduce NewType aliases for identifier-bearing fields: StableId, NodeId, EdgeId, ConfigFingerprint, etc. Pair each with a canonical factory function (compute_stable_id, make_node_id, etc.) that's the only entry point for constructing the NewType. Refactor emitters that currently use raw str for these fields. Closes some INV-kurup canonical-factory-bypass sub-cases at type-check time — direct str → NewType assignment becomes a type error, forcing the call site through the factory. Also closes part of INV-lidul (config_fingerprint constant) — the factory can refuse to construct a fingerprint from an empty config dict."  # 238b
+- op: discuss  # 9651
+  at: '2026-11-15T19:25:54Z'  # 9651
+  by: agent  # 9651
+  actor: jgstern_agent  # 9651
+  clock: 4  # 9651
+  nonce: '9651'  # 9651
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. `NewType` has 0 uses in packages/, scripts/, docs/. Symbol.id, Edge.id/src/dst, AnalysisRun.config_fingerprint are `str`; Symbol.stable_id/shape_id are `Optional[str]`. `make_node_id` (named in the description) does not exist; the Symbol.id factory is `make_symbol_id` (base.py:597). INV-lidul is satisfied (2026-06-17), so that rationale is void; `compute_config_fingerprint({})` still returns sha256:44136fa355b3678a, and a fixture run shows 81 distinct fingerprints over 81 runs, none equal to it. INV-kurup is violated (open). scripts/check-id-construction exits 0 and is in .githooks/pre-commit:433. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-tapak.md. No status or priority change made by this review."  # 9651
+- op: discuss  # 20cb
+  at: '2026-11-16T11:46:43Z'  # 20cb
+  by: agent  # 20cb
+  actor: jgstern_agent  # 20cb
+  clock: 5  # 20cb
+  nonce: 20cb  # 20cb
+  message: "PR #2200, 2026-11-16: a SUBSET is done and the item stays open. StableId, ShapeId and RepoFingerprint are NewTypes over str in ir.py, each wrapped once where it is minted (analyze/base.py `_short_sha256`, `mint_scip_stable_id`, `mint_shape_id`; ir.py `_canonical_external_stable_id`; repo_fingerprint.py `compute_repo_fingerprint_field`); a test (test_id_newtypes.py) holds the list of mint sites. No emitted value changed (fixture 157 nodes and meson 23,602 nodes equal in both arms). The axis checker and the schema generator were taught to read a NewType field. mypy strict 466 before and after; the baseline file says 477 and was not lowered. Sizing for the rest (pr2/tapak_sizing.md): NodeId, EdgeId, RunId, EdgeKey, SymbolFingerprint = 476 mypy errors, 74 hand-built node ids, 14 linker sites that set Symbol.fingerprint to a bare 16-hex hash. LIMIT: the mint-site test reads the plain name, so an aliased import of StableId evades it. The re-scope to a subset was my call; the owner's to overrule."  # 20cb
+- op: discuss  # 6888
+  at: '2026-11-16T15:45:58Z'  # 6888
+  by: agent  # 6888
+  actor: jgstern_agent  # 6888
+  clock: 6  # 6888
+  nonce: '6888'  # 6888
+  message: "OWNER RULING 2026-11-16: NodeId alone gets the NewType treatment, as its own PR after the release (after PR 3 and the release, beside PR 4 = WI-buzup). The other four types named here (EdgeId, RunId, EdgeKey, SymbolFingerprint) stay filed on this item, unscheduled. No status change."  # 6888

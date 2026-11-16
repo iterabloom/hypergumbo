@@ -17,8 +17,14 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract all symbols from all files
 2. Pass 2: Extract edges: calls resolved with NameResolver (a
-   ``package X renames Y`` alias is passed as a path hint), and imports to a
-   ``package`` placeholder
+   ``package X renames Y`` alias is passed as a path hint), and one
+   ``imports`` edge per unit a ``with`` clause names, from the file's node
+   (``make_file_id``). Its dst is the ``package`` symbol the run-wide registry
+   holds under that name, compared without case as Ada compares names (the
+   registry keeps one symbol per name, so of a spec and its body it is the
+   one registered last), else the ``make_module_import_dst`` stand-in
+   ``ada:<Unit.Name>:0-0:module:module`` (``Ada.Text_IO``, or a unit that is
+   a subprogram and not a package)
 
 A call whose callee the resolver cannot find still gets an edge, built by
 ``make_unresolved_edge`` (e.g. ``Ada.Text_IO.Put_Line``). The caller is the
@@ -67,6 +73,8 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     find_child_by_type,
     iter_tree,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
@@ -419,6 +427,10 @@ class AdaAnalyzer(TreeSitterAnalyzer):
 
     lang = "ada"
     file_patterns: ClassVar[list[str]] = ["*.ads", "*.adb", "*.ada"]
+
+    #: ``package`` symbol ids by lowercased name, for what a ``with`` clause
+    #: names. Built on first use in Pass 2 and live only inside ``analyze()``.
+    _package_index: Optional[dict[str, str]] = None
     language_pack_name = "ada"
 
     def extract_symbols_from_file(
@@ -457,6 +469,25 @@ class AdaAnalyzer(TreeSitterAnalyzer):
         """Extract Ada package renaming declarations for disambiguation."""
         return _extract_package_renames(tree, source)
 
+    def analyze(
+        self, repo_root: Path, max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run the base two-pass analysis with a fresh package index."""
+        self._package_index = None
+        try:
+            return super().analyze(repo_root, max_files)
+        finally:
+            self._package_index = None
+
+    def _package_ids(self, global_symbols: dict[str, Symbol]) -> dict[str, str]:
+        """The run's ``package`` symbol ids by lowercased name, built once."""
+        if self._package_index is None:
+            self._package_index = {
+                sym.name.lower(): sym.id
+                for sym in global_symbols.values() if sym.kind == "package"
+            }
+        return self._package_index
+
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
@@ -466,41 +497,33 @@ class AdaAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from an Ada file."""
         edges: list[Edge] = []
-        file_stable_id = f"ada:{rel_path}:file:"
 
         for node in iter_tree(tree.root_node):
             # Process imports (with_clause)
             if node.type == "with_clause":
                 for child in node.children:
-                    if child.type == "selected_component":
-                        import_name = node_text(child, source)
-                        edges.append(
-                            Edge.create(
-                                src=file_stable_id,
-                                dst=f"ada:?:{import_name}:package",
-                                edge_type="imports",
-                                evidence_type="import_declaration",
-                                line=node.start_point[0] + 1,
-                                confidence=0.9,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            )
+                    # The ``with`` keyword and the separators are their own
+                    # node types; only a unit name is one of these two.
+                    if child.type not in ("selected_component", "identifier"):
+                        continue
+                    import_name = node_text(child, source)
+                    package_id = self._package_ids(global_symbols).get(
+                        import_name.lower(),
+                    )
+                    edges.append(
+                        Edge.create(
+                            src=make_file_id("ada", rel_path),
+                            dst=package_id
+                            or make_module_import_dst("ada", import_name),
+                            edge_type="imports",
+                            evidence_type="import_declaration",
+                            line=node.start_point[0] + 1,
+                            confidence=0.9,
+                            is_resolved=package_id is not None,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
                         )
-                    elif child.type == "identifier":
-                        text = node_text(child, source)
-                        if text != "with":  # Skip the keyword
-                            edges.append(
-                                Edge.create(
-                                    src=file_stable_id,
-                                    dst=f"ada:?:{text}:package",
-                                    edge_type="imports",
-                                    evidence_type="import_declaration",
-                                    line=node.start_point[0] + 1,
-                                    confidence=0.9,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                )
-                            )
+                    )
 
             # Process procedure calls
             elif node.type == "procedure_call_statement":

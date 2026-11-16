@@ -23,3 +23,10 @@
     fields:  # 5550
       statement: "Test wall-clock should scale with available hardware rather than with one workstation's core count."  # 5550
       root_cause: "Not a defect. The local checks are already near-optimally parallel (4,795s serial completing in 780s wall on 6 cores = 6.15x, ~102% of theoretical max), so no restructuring win exists and core count is the binding constraint."  # 5550
+- op: discuss  # 4fc0
+  at: '2026-11-01T22:22:32Z'  # 4fc0
+  by: agent  # 4fc0
+  actor: jgstern_agent  # 4fc0
+  clock: 2  # 4fc0
+  nonce: 4fc0  # 4fc0
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/tool1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 9ae4abe13f as a speculative plan. Nothing has started or superseded it: nproc is still 6; pytest-xdist 3.8.0 is installed (supports --tx ssh); check-package-coverage still writes a per-package COVERAGE_FILE (line 78). The sizing table has drifted: test_timings.json now holds 52,939 entries with latest-run serial sum ~16,645 s (core ~6,442, top-level tests ~4,728, mainstream ~4,698) vs 38,391 tests / 9,356 s recorded. Whether the store includes deleted tests was not checked. MECHANISM: test wall-clock is CPU-bound on one 6-core host; the only lever left is more hardware, with environment-dependent coverage as the design hazard. SHARES MECHANISM WITH: WI-kahar,WI-sagar."  # 4fc0

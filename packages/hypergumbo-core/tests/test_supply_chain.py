@@ -11,10 +11,13 @@ Tests the classification of files into supply chain tiers:
 - Tier 4 (derived): Build artifacts, minified/bundled output
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.supply_chain import (
     Tier,
     FileClassification,
@@ -391,7 +394,7 @@ members = ["crates/*"]
         # Files in workspace src/ are tier 1 (the workspace IS the library)
         result = classify_file(crate_dir / "src" / "lib.rs", tmp_path, roots)
         assert result.tier == Tier.FIRST_PARTY
-        # Workspace files are first-party (reason no longer requires "source")
+        # Workspace files are first-party (the reason string is not checked)
 
     def test_maven_workspaces(self, tmp_path):
         """Detect internal modules from Maven parent pom.xml."""
@@ -424,7 +427,7 @@ members = ["crates/*"]
             tmp_path, roots,
         )
         assert result.tier == Tier.FIRST_PARTY
-        # Workspace files are first-party (reason no longer requires "source")
+        # Workspace files are first-party (the reason string is not checked)
 
     def test_maven_workspaces_nonexistent_module(self, tmp_path):
         """Maven modules that don't exist on disk are ignored."""
@@ -495,7 +498,7 @@ members = ["crates/*"]
         result = classify_file(pkg_dir / "lib" / "index.ts", tmp_path, roots)
         assert result.tier == Tier.FIRST_PARTY
         assert "socket.io" in result.reason
-        # Workspace files are first-party (reason no longer requires "source")
+        # Workspace files are first-party (the reason string is not checked)
 
     def test_workspace_non_source_is_first_party(self, tmp_path):
         """Non-test files in workspace are first-party (workspace IS the project)."""
@@ -518,9 +521,8 @@ members = ["crates/*"]
         is_test=True (INV-tisid).
 
         Workspace packages are by definition part of the project; their
-        tests are first-party test code, not vendored deps. Pre-fix
-        (INV-tisid) the workspace branch returned INTERNAL_DEP, making
-        ~99% of self-analysis internal_dep entries tests rather than
+        tests are first-party test code, not vendored deps. Returning
+        INTERNAL_DEP here would make tier 2 mostly tests rather than
         actual internal dependencies.
         """
         pkg_json = tmp_path / "package.json"
@@ -564,11 +566,10 @@ members = ["crates/*"]
         examples/ dir, BOTH are first-party (tier 1) but carry distinct role
         flags — tests get is_test=True, examples get is_example=True.
 
-        INV-tisid: pre-fix the workspace test branch returned INTERNAL_DEP,
-        making ~99% of self-analysis internal_dep entries tests rather than
-        real internal deps (508 of 509 on 2026-05-16). INV-naduh / ADR-0041
-        §1: examples are the project's own code (distance 0) → first-party,
-        with is_example carrying the role, not tier 2.
+        Tests are not INTERNAL_DEP, which would make tier 2 mostly tests
+        rather than real internal deps (INV-tisid). Examples are the project's
+        own code (distance 0) → first-party, with is_example carrying the
+        role, not tier 2 (INV-naduh, ADR-0041 §1).
         """
         pkg_json = tmp_path / "package.json"
         pkg_json.write_text('{"workspaces": ["packages/*"]}')
@@ -917,9 +918,8 @@ class TestTestFileClassification:
     (configured internal_package_roots); other in-repo role files — tests,
     examples, fuzz harnesses, notebooks, docs — are first-party (tier 1)
     with their role carried by flags/reason, not by tier. Per INV-tisid,
-    routing tests through tier 2 made tier 2 a synonym for is_test and
-    drowned out the real internal-dep signal (~99% of self-analysis
-    internal_dep entries were tests).
+    routing tests through tier 2 would make tier 2 a synonym for is_test and
+    drown out the real internal-dep signal.
 
     Common conventions across languages:
     - Directory-based: tests/, test/, __tests__/, spec/, src/test/
@@ -1044,14 +1044,11 @@ class TestTestFileClassification:
     def test_elixir_test_exs_in_phoenix_test_dir_is_first_party(self, tmp_path):
         """WI-pugas: Phoenix `test/<ctx>/foo_test.exs` files are tier 1
         with is_test=True. The file lives in a `test/` directory AND
-        matches the `_test.exs$` co-located pattern, and the FILE pattern
-        wins (override) because the file is first-party Elixir code, not
-        a vendored dep.
+        matches the `_test.exs$` co-located pattern; the FILE pattern is
+        checked first (override), so the reason names it.
 
-        Pre-fix on phoenix bakeoff 2026-05-10, all 1328 test files
-        classified as supply_chain.tier=2 (internal_dep), conflating
-        "is_test" with "is vendored" on the tier axis. This regression
-        guard ensures Elixir tests don't leak back into tier 2.
+        Pins that Elixir tests stay out of tier 2, which would conflate
+        "is_test" with "is a dependency" on the tier axis.
         """
         # Phoenix-style layout: test/ at repo root with mix.exs.
         (tmp_path / "mix.exs").write_text(
@@ -1089,9 +1086,9 @@ class TestTestFileClassification:
 
     def test_elixir_test_helper_in_test_dir_is_first_party(self, tmp_path):
         """Non-`_test.exs` files in test/ (e.g., test_helper.exs) fall
-        through to the dir pattern, which now routes to tier 1 with
-        is_test=True per INV-tisid. The "broader 'all of test/ is
-        first-party' rule" hinted at by WI-pugas is now in effect.
+        through to the dir pattern, which routes to tier 1 with
+        is_test=True per INV-tisid, so all of test/ is first-party
+        (WI-pugas).
         """
         (tmp_path / "mix.exs").write_text("defmodule X.MixProject do\nend\n")
         test_dir = tmp_path / "test"
@@ -1107,9 +1104,9 @@ class TestTestFileClassification:
 
     def test_elixir_test_exs_outside_test_dir_is_first_party(self, tmp_path):
         """An Elixir `_test.exs` file co-located outside `test/` (e.g.
-        `lib/my_app/things/widget_test.exs`) was already tier 1 via the
-        existing TEST_FILE_PATTERNS check; the override list doesn't
-        regress that path."""
+        `lib/my_app/things/widget_test.exs`) is tier 1 with is_test=True,
+        recognised by the override pattern alone (no test directory is
+        involved)."""
         src_dir = tmp_path / "lib" / "my_app"
         src_dir.mkdir(parents=True)
         (src_dir / "widget_test.exs").write_text(
@@ -1219,7 +1216,7 @@ class TestTestFileClassification:
         derived branch fires first and is_test stays False — the file is
         not exposed as a test file because it isn't read as source.
         """
-        # dist/tests/ should still be tier 4 (derived), not tier 2 (test)
+        # dist/tests/ should still be tier 4 (derived), not tier 1 (test)
         (tmp_path / "package.json").write_text('{"main": "dist/index.js"}')
         dist_tests = tmp_path / "dist" / "tests"
         dist_tests.mkdir(parents=True)
@@ -1861,10 +1858,10 @@ class TestSupplyChainLimits:
 class TestClassifySymbolsRecordsClassificationFailures:
     """INV-virik: _classify_symbols wires Limits.add_classification_failure.
 
-    Pre-Phase-6 the schema declared the field but no producer wrote to it.
-    The Phase 6 PR2 fix passes the run-level ``Limits`` instance into
-    ``_classify_symbols`` so the "outside repo" default-fallback case
-    records into ``limits.supply_chain.classification_failures``.
+    The run-level ``Limits`` instance is passed into ``_classify_symbols`` so
+    the "outside repo" default-fallback case records into
+    ``limits.supply_chain.classification_failures``; without it the schema
+    field would have no producer.
     """
 
     def test_outside_repo_symbol_records_failure(self, tmp_path: Path) -> None:
@@ -1962,9 +1959,9 @@ class TestClassifySymbolsOncePerPath:
     """WI-fojot: ``classify_file`` is a function of the PATH, so it runs once
     per path, not once per symbol.
 
-    Per symbol it stats the file and reads the WHOLE file
-    (``is_likely_minified``): a file with N symbols was read N times (40x the
-    bytes on nestjs; 319 s of CPU on flink).
+    Each call stats the file and reads the WHOLE file
+    (``is_likely_minified``), so calling it per symbol would read a file with
+    N symbols N times -- a large CPU cost on big repos.
     """
 
     def test_one_classify_call_per_path(
@@ -2073,37 +2070,75 @@ class TestClassifySymbolsPreservesTier:
 
         assert sym.supply_chain_reason == "manually classified"
 
-    def test_protocol_origin_stand_in_not_reclassified(self, tmp_path: Path) -> None:
-        """INV-bonup / ADR-0041 §1: a synthetic protocol stand-in (tier-1 default,
-        NO supply_chain_reason, but a truthy protocol_origin) is skipped by
-        _classify_symbols rather than reclassified by host-file path.
+    def test_a_protocol_stand_in_takes_its_files_distance(self, tmp_path: Path) -> None:
+        """WI-zuzud: a synthetic protocol stand-in is tiered by its PATH.
 
-        protocol_origin is the honest synthetic marker that replaces the old
-        supply_chain_tier=2 'lock' — the six protocol linkers used to borrow tier 2
-        purely to trip this skip, leaking mechanism into the distance axis. This
-        mirrors the solidity_abi call-site node, the one stand-in with no reason of
-        its own (so it depends on the protocol_origin skip, not the reason skip)."""
+        Skipping it would assign it no distance at all: it would keep the
+        default tier 1 even inside a minified bundle the tier filter removes
+        around it (INV-bonup). Only the tier and its reason are stamped; the
+        per-file flags are left alone."""
         from hypergumbo_core.cli import _classify_symbols
         from hypergumbo_core.ir import Symbol, Span
 
-        stand_in = Symbol(
-            id="solidity:abi:transfer",
-            name="transfer",
-            kind="call_site",
-            language=None,
-            path="contract.ts",
-            span=Span(1, 1, 0, 0),
-            protocol_origin="solidity_abi",
+        (tmp_path / "contract.ts").write_text("export const x = 1;\n")
+        (tmp_path / "bundle.js").write_text(
+            "var a=1;send('x')\n//# sourceMappingURL=bundle.js.map\n"
         )
 
+        def stand_in(path: str) -> Symbol:
+            return Symbol(
+                id=f"solidity:abi:{path}", name="transfer", kind="call_site",
+                language=None, path=path, span=Span(1, 1, 0, 0),
+                protocol_origin="solidity_abi",
+            )
+
+        source, bundled, pathless = stand_in("contract.ts"), stand_in("bundle.js"), stand_in("")
         package_roots = detect_package_roots(tmp_path)
-        _classify_symbols([stand_in], tmp_path, package_roots)
+        _classify_symbols([source, bundled, pathless], tmp_path, package_roots)
 
-        # Skipped via protocol_origin: keeps the first-party default distance and
-        # gets no classification reason stamped (reclassification would set one).
-        assert stand_in.supply_chain_tier == 1
-        assert not stand_in.supply_chain_reason
+        assert source.supply_chain_tier == 1 and source.supply_chain_reason
+        assert bundled.supply_chain_tier == 4
+        assert "minified" in bundled.supply_chain_reason
+        assert not bundled.is_generated_file  # per-file flags untouched
+        # No path, no distance to take: left as the producer made it.
+        assert pathless.supply_chain_tier == 1
+        assert not pathless.supply_chain_classified
 
+    def test_a_linker_reason_does_not_stand_in_for_a_distance(
+        self, tmp_path: Path,
+    ) -> None:
+        """Seven linkers pass a DESCRIPTIVE reason at tier 1 ("message dispatch
+        handler"), which marks the node classified without any distance having
+        been measured. The path still decides, and the linker's words are kept
+        beside the path's. A linker's non-default tier is kept as stamped."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "bundle.js").write_text(
+            "postMessage('x')\n//# sourceMappingURL=bundle.js.map\n"
+        )
+        described = Symbol(
+            id="javascript:bundle.js:1-1:x:function", name="x", kind="function",
+            language=None, path="bundle.js", span=Span(1, 1, 0, 0),
+            protocol_origin="message_dispatch",
+            supply_chain_reason="message dispatch sender",
+        )
+        npm = Symbol(
+            id="npm:left-pad", name="left-pad", kind="function", language=None,
+            path="bundle.js", span=Span(1, 1, 0, 0), protocol_origin="npm",
+            supply_chain_tier=3, supply_chain_reason="npm_package (third-party dependency)",
+        )
+        _classify_symbols([described, npm], tmp_path, detect_package_roots(tmp_path))
+
+        assert described.supply_chain_tier == 4
+        assert described.supply_chain_reason.startswith("message dispatch sender; ")
+        assert "minified" in described.supply_chain_reason
+        assert (npm.supply_chain_tier, npm.supply_chain_reason) == (
+            3, "npm_package (third-party dependency)",
+        )
+        # Idempotent: a second pass neither re-tiers nor repeats the reason.
+        _classify_symbols([described], tmp_path, detect_package_roots(tmp_path))
+        assert described.supply_chain_reason.count("minified") == 1
 
 class TestClassifySymbolsDependencyTier:
     """_classify_symbols assigns tier 3 to dependency-kind symbols."""
@@ -2174,9 +2209,9 @@ class TestClassifySymbolsDependencyTier:
     def test_dev_dependency_gets_tier3(self, tmp_path: Path) -> None:
         """Dev-scoped dependency symbols should be tier 3.
 
-        Post-Phase-4b (ADR-0027 §6, PR #3633): producers emit
-        ``kind="dependency"`` + ``meta["dependency_scope"]="dev"``
-        rather than the deprecated ``kind="devDependency"``."""
+        Producers emit ``kind="dependency"`` +
+        ``meta["dependency_scope"]="dev"`` rather than the deprecated
+        ``kind="devDependency"`` (ADR-0027 §6)."""
         from hypergumbo_core.cli import _classify_symbols
         from hypergumbo_core.ir import Symbol, Span
 
@@ -2217,208 +2252,220 @@ class TestClassifySymbolsDependencyTier:
         assert sym.supply_chain_tier == 1  # First-party, not tier 3
 
 
-class TestWorkspaceSiblingDependencyTier:
-    """INV-nuzas / ADR-0041 §1: a workspace sibling that another workspace
-    package declares as a *dependency* is workspace-INTERNAL (tier 2
-    ``internal_dep``), not a third-party external (tier 3).
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
 
-    ``_classify_symbols`` previously stamped every ``kind='dependency'``
-    symbol tier-3 unconditionally, so in a monorepo where sibling packages
-    list each other as dependencies (the normal pattern) every internal
-    cross-package dependency edge was mis-tiered external — corrupting
-    tier-weighted views. The fix consults the set of in-repo package
-    distribution names (``collect_workspace_package_names``) and tiers a
-    matching dependency declaration tier-2.
-    """
 
-    def test_python_workspace_sibling_dependency_gets_tier2(
-        self, tmp_path: Path
+def _declaration(path: str, name: str, qualified_name: str | None = None) -> Symbol:
+    return Symbol(
+        id=f"dep:{path}:{name}",
+        name=name,
+        kind="dependency",
+        language="toml",
+        path=path,
+        span=Span(1, 0, 1, 12),
+        qualified_name=qualified_name,
+    )
+
+
+def _tier_of_declaration(
+    repo: Path, path: str, name: str, qualified_name: str | None = None,
+) -> tuple[int, str]:
+    from hypergumbo_core.cli import _classify_symbols
+
+    dep = _declaration(path, name, qualified_name)
+    _classify_symbols([dep], repo, set())
+    return dep.supply_chain_tier, dep.supply_chain_reason
+
+
+_POM = (
+    '<project xmlns="http://maven.apache.org/POM/4.0.0">'
+    "<modelVersion>4.0.0</modelVersion>{body}</project>"
+)
+
+
+class TestInTreeDependencyDeclarationTier:
+    """INV-kutub / ADR-0041 §1: a dependency declaration stands for the package
+    it names, so one naming an in-tree package carries that package's tier --
+    the tier its own manifest (and so its package node) classifies to -- in
+    every ecosystem whose manifests both publish a name and declare
+    dependencies. A third-party declaration stays tier 3.
+
+    So a sibling declaration (Python, npm, Cargo, ...) never disagrees with
+    the sibling's own package node, which is tier 1."""
+
+    def test_python_sibling_is_tier1_and_names_the_sibling(self, tmp_path: Path) -> None:
+        _write(tmp_path / "packages/a/pyproject.toml",
+               '[project]\nname = "pkg-a"\ndependencies = ["pkg_b", "rich"]\n')
+        _write(tmp_path / "packages/b/pyproject.toml", '[project]\nname = "pkg-b"\n')
+
+        tier, reason = _tier_of_declaration(tmp_path, "packages/a/pyproject.toml", "pkg_b")
+        assert tier == 1
+        assert reason == "declares in-tree package pkg_b (packages/b/pyproject.toml)"
+        tier, reason = _tier_of_declaration(tmp_path, "packages/a/pyproject.toml", "rich")
+        assert (tier, reason) == (3, "dependency declaration (external)")
+
+    def test_python_match_is_pep503_and_reads_poetry(self, tmp_path: Path) -> None:
+        _write(tmp_path / "pkg_a/pyproject.toml", '[project]\nname = "My.Pkg.A"\n')
+        _write(tmp_path / "libs/w/pyproject.toml", '[tool.poetry]\nname = "widget-lib"\n')
+
+        assert _tier_of_declaration(tmp_path, "app/pyproject.toml", "my_pkg_a")[0] == 1
+        assert _tier_of_declaration(tmp_path, "app/pyproject.toml", "Widget_Lib")[0] == 1
+
+    def test_npm_and_composer_match_exactly(self, tmp_path: Path) -> None:
+        _write(tmp_path / "packages/b/package.json", '{"name": "@ws/b"}')
+        _write(tmp_path / "php/b/composer.json", '{"name": "ws/b"}')
+
+        assert _tier_of_declaration(tmp_path, "packages/a/package.json", "@ws/b")[0] == 1
+        assert _tier_of_declaration(tmp_path, "packages/a/package.json", "@ws/B")[0] == 3
+        assert _tier_of_declaration(tmp_path, "php/a/composer.json", "ws/b")[0] == 1
+
+    def test_cargo_folds_underscore_and_hyphen(self, tmp_path: Path) -> None:
+        _write(tmp_path / "Cargo.toml", '[workspace]\nmembers = ["crate-b"]\n')
+        _write(tmp_path / "crate-b/Cargo.toml", '[package]\nname = "crate-b"\n')
+
+        tier, reason = _tier_of_declaration(tmp_path, "crate-a/Cargo.toml", "crate_b")
+        assert tier == 1
+        assert reason == "declares in-tree package crate_b (crate-b/Cargo.toml)"
+        assert _tier_of_declaration(tmp_path, "crate-a/Cargo.toml", "serde")[0] == 3
+
+    def test_maven_matches_the_coordinate_and_resolves_own_group(
+        self, tmp_path: Path,
     ) -> None:
-        """A sibling package declared as a dependency → tier 2; a genuine
-        third-party dependency in the same manifest stays tier 3."""
-        from hypergumbo_core.cli import _classify_symbols
-        from hypergumbo_core.ir import Symbol, Span
+        parent = "<parent><groupId>org.ex</groupId><artifactId>p</artifactId></parent>"
+        _write(tmp_path / "mod-a/pom.xml",
+               _POM.format(body=parent + "<artifactId>mod-a</artifactId>"))
+        _write(tmp_path / "mod-b/pom.xml",
+               _POM.format(body=parent + "<artifactId>mod-b</artifactId>"))
 
-        pkg_a = tmp_path / "packages" / "pkg-a"
-        pkg_a.mkdir(parents=True)
-        (pkg_a / "pyproject.toml").write_text(
-            '[project]\nname = "my-pkg-a"\nversion = "0.1"\n'
-        )
-        pkg_b = tmp_path / "packages" / "pkg-b"
-        pkg_b.mkdir(parents=True)
-        (pkg_b / "pyproject.toml").write_text(
-            '[project]\nname = "my-pkg-b"\n'
-            'dependencies = ["my-pkg-a", "rich"]\n'
-        )
+        # A sibling named through the declaring module's own group property ...
+        assert _tier_of_declaration(
+            tmp_path, "mod-a/pom.xml", "mod-b", "${project.groupId}:mod-b",
+        )[0] == 1
+        # ... or literally.
+        assert _tier_of_declaration(
+            tmp_path, "mod-a/pom.xml", "mod-b", "org.ex:mod-b",
+        )[0] == 1
+        # The same artifactId under another group is someone else's package.
+        assert _tier_of_declaration(
+            tmp_path, "mod-a/pom.xml", "mod-b", "other.org:mod-b",
+        )[0] == 3
+        # A declaration with no coordinate, or a group property in a pom
+        # whose own coordinate is unknown, cannot be matched.
+        assert _tier_of_declaration(tmp_path, "mod-a/pom.xml", "mod-b")[0] == 3
+        assert _tier_of_declaration(
+            tmp_path, "other/pom.xml", "mod-b", "${project.groupId}:mod-b",
+        )[0] == 3
 
-        sibling = Symbol(
-            id="toml:dep:my-pkg-a",
-            name="my-pkg-a",
-            kind="dependency",
-            language="toml",
-            path="packages/pkg-b/pyproject.toml",
-            span=Span(3, 0, 3, 12),
-        )
-        external = Symbol(
-            id="toml:dep:rich",
-            name="rich",
-            kind="dependency",
-            language="toml",
-            path="packages/pkg-b/pyproject.toml",
-            span=Span(3, 0, 3, 12),
-        )
+    def test_ecosystems_do_not_cross(self, tmp_path: Path) -> None:
+        """An npm ``core`` is not the crate ``core``."""
+        _write(tmp_path / "web/package.json", '{"name": "core"}')
 
-        _classify_symbols([sibling, external], tmp_path, set())
+        assert _tier_of_declaration(tmp_path, "rs/Cargo.toml", "core")[0] == 3
+        assert _tier_of_declaration(tmp_path, "Gemfile", "core")[0] == 3
 
-        assert sibling.supply_chain_tier == 2
-        assert "workspace" in sibling.supply_chain_reason
-        assert external.supply_chain_tier == 3
-        assert "dependency declaration" in external.supply_chain_reason
+    def test_declaration_takes_the_named_manifests_tier(self, tmp_path: Path) -> None:
+        """One package, one tier: a package vendored under ``third_party/`` is
+        tier 3 as a package node, so a declaration naming it is tier 3 too --
+        not tier 1 because its source is in the tree."""
+        vendored = tmp_path / "third_party/libfoo/Cargo.toml"
+        _write(vendored, '[package]\nname = "libfoo"\n')
+        package_tier = classify_file(vendored, tmp_path, set()).tier
 
-    def test_workspace_sibling_pep503_normalization(self, tmp_path: Path) -> None:
-        """Sibling match is PEP 503-normalized: an underscore/dot in either
-        the declared dep name or the package's own name still matches."""
-        from hypergumbo_core.cli import _classify_symbols
-        from hypergumbo_core.ir import Symbol, Span
+        tier, reason = _tier_of_declaration(tmp_path, "app/Cargo.toml", "libfoo")
+        assert package_tier == Tier.EXTERNAL_DEP
+        assert tier == package_tier.value
+        assert "third_party/libfoo/Cargo.toml" in reason
 
-        pkg_a = tmp_path / "pkg_a"
-        pkg_a.mkdir()
-        # Own name uses dots; the dependency declaration uses underscores.
-        (pkg_a / "pyproject.toml").write_text('[project]\nname = "My.Pkg.A"\n')
+    def test_nearest_of_two_publishing_manifests_wins(self, tmp_path: Path) -> None:
+        """A package and a vendored copy of it publish one name; the declaration
+        takes the nearer (tier 1), and between equal tiers the first by path."""
+        _write(tmp_path / "packages/b/package.json", '{"name": "@ws/b"}')
+        _write(tmp_path / "third_party/b/package.json", '{"name": "@ws/b"}')
+        _write(tmp_path / "x/package.json", '{"name": "@ws/x"}')
+        _write(tmp_path / "a/package.json", '{"name": "@ws/x"}')
 
-        dep = Symbol(
-            id="toml:dep:my_pkg_a",
-            name="my_pkg_a",
-            kind="dependency",
-            language="toml",
-            path="other/pyproject.toml",
-            span=Span(1, 0, 1, 12),
-        )
-
-        _classify_symbols([dep], tmp_path, set())
-        assert dep.supply_chain_tier == 2
-
-    def test_poetry_named_sibling_gets_tier2(self, tmp_path: Path) -> None:
-        """A workspace member that declares its name under Poetry
-        ``[tool.poetry].name`` is recognized as a sibling too."""
-        from hypergumbo_core.cli import _classify_symbols
-        from hypergumbo_core.ir import Symbol, Span
-
-        pkg = tmp_path / "libs" / "widget"
-        pkg.mkdir(parents=True)
-        (pkg / "pyproject.toml").write_text(
-            '[tool.poetry]\nname = "widget-lib"\n'
-        )
-
-        dep = Symbol(
-            id="toml:dep:widget-lib",
-            name="widget-lib",
-            kind="dependency",
-            language="toml",
-            path="app/pyproject.toml",
-            span=Span(1, 0, 1, 12),
-        )
-
-        _classify_symbols([dep], tmp_path, set())
-        assert dep.supply_chain_tier == 2
-
-    def test_non_sibling_dependency_stays_tier3(self, tmp_path: Path) -> None:
-        """When no in-repo package matches, the dependency stays tier 3."""
-        from hypergumbo_core.cli import _classify_symbols
-        from hypergumbo_core.ir import Symbol, Span
-
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nname = "the-app"\ndependencies = ["requests"]\n'
-        )
-        dep = Symbol(
-            id="toml:dep:requests",
-            name="requests",
-            kind="dependency",
-            language="toml",
-            path="pyproject.toml",
-            span=Span(3, 0, 3, 12),
-        )
-
-        _classify_symbols([dep], tmp_path, set())
-        assert dep.supply_chain_tier == 3
-        assert "dependency declaration" in dep.supply_chain_reason
+        tier, reason = _tier_of_declaration(tmp_path, "packages/a/package.json", "@ws/b")
+        assert tier == 1
+        assert reason.endswith("(packages/b/package.json)")
+        tier, reason = _tier_of_declaration(tmp_path, "packages/a/package.json", "@ws/x")
+        assert tier == 1
+        assert reason.endswith("(a/package.json)")
 
 
-class TestCollectWorkspacePackageNames:
-    """Unit coverage for ``collect_workspace_package_names`` — the
-    workspace-sibling recognizer backing the tier-2 dependency rule."""
+class TestCollectInTreePackages:
+    """Unit coverage for ``collect_in_tree_packages``, the in-tree package
+    recognizer behind the declaration tier."""
 
-    def test_collects_pep621_names_across_monorepo(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+    def test_reads_each_ecosystems_own_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
-        for name, rel in [("core-pkg", "packages/core"), ("util-pkg", "packages/util")]:
-            d = tmp_path / rel
-            d.mkdir(parents=True)
-            (d / "pyproject.toml").write_text(f'[project]\nname = "{name}"\n')
+        _write(tmp_path / "py/pyproject.toml", '[project]\nname = "My_Cool.Pkg"\n')
+        _write(tmp_path / "js/package.json", '{"name": "@s/js"}')
+        _write(tmp_path / "php/composer.json", '{"name": "v/php"}')
+        _write(tmp_path / "rs/Cargo.toml", '[package]\nname = "rs_crate"\n')
+        _write(tmp_path / "jv/pom.xml", _POM.format(
+            body="<groupId>g</groupId><artifactId>jv</artifactId>"))
 
-        assert collect_workspace_package_names(tmp_path) == {"core-pkg", "util-pkg"}
-
-    def test_normalizes_names_pep503(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
-
-        (tmp_path / "pyproject.toml").write_text('[project]\nname = "My_Cool.Pkg"\n')
-        assert collect_workspace_package_names(tmp_path) == {"my-cool-pkg"}
-
-    def test_reads_poetry_name(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
-
-        (tmp_path / "pyproject.toml").write_text('[tool.poetry]\nname = "poe-pkg"\n')
-        assert collect_workspace_package_names(tmp_path) == {"poe-pkg"}
+        in_tree = collect_in_tree_packages(tmp_path)
+        assert in_tree.by_name == {
+            ("pyproject.toml", "my-cool-pkg"): ("py/pyproject.toml",),
+            ("package.json", "@s/js"): ("js/package.json",),
+            ("composer.json", "v/php"): ("php/composer.json",),
+            ("Cargo.toml", "rs-crate"): ("rs/Cargo.toml",),
+            ("pom.xml", "g:jv"): ("jv/pom.xml",),
+        }
+        assert in_tree.own["jv/pom.xml"] == "g:jv"
+        assert in_tree.own["rs/Cargo.toml"] == "rs_crate"
 
     def test_project_without_name_falls_back_to_poetry(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
-        # [project] present but no name; [tool.poetry].name supplies it.
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nversion = "1.0"\n[tool.poetry]\nname = "fallback-pkg"\n'
-        )
-        assert collect_workspace_package_names(tmp_path) == {"fallback-pkg"}
+        _write(tmp_path / "pyproject.toml",
+               '[project]\nversion = "1.0"\n[tool.poetry]\nname = "fallback-pkg"\n')
+        assert collect_in_tree_packages(tmp_path).own == {"pyproject.toml": "fallback-pkg"}
 
-    def test_pyproject_without_any_name_is_skipped(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+    def test_manifests_naming_no_package_add_nothing(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
-        (tmp_path / "pyproject.toml").write_text('[build-system]\nrequires = []\n')
-        assert collect_workspace_package_names(tmp_path) == set()
+        _write(tmp_path / "pyproject.toml", '[build-system]\nrequires = []\n')
+        _write(tmp_path / "bad/pyproject.toml", '[project\nname = broken')
+        _write(tmp_path / "Cargo.toml", '[workspace]\nmembers = []\n')
+        _write(tmp_path / "a/pom.xml", _POM.format(body="<artifactId>x</artifactId>"))
+        _write(tmp_path / "b/pom.xml", "<project><unclosed></project>")
+        _write(tmp_path / "package.json", "not json")
+        _write(tmp_path / "README.md", "hi")
+        assert collect_in_tree_packages(tmp_path).by_name == {}
 
-    def test_malformed_toml_is_skipped(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+    def test_pom_dependency_coordinate_is_not_the_projects(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
-        (tmp_path / "pyproject.toml").write_text('[project\nname = broken')
-        assert collect_workspace_package_names(tmp_path) == set()
+        _write(tmp_path / "pom.xml", _POM.format(body=(
+            "<groupId>me</groupId><artifactId>app</artifactId><dependencies>"
+            "<dependency><groupId>them</groupId><artifactId>lib</artifactId>"
+            "</dependency></dependencies>")))
+        assert collect_in_tree_packages(tmp_path).own == {"pom.xml": "me:app"}
 
-    def test_excluded_and_dot_dirs_are_not_walked(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+    def test_dependency_and_dot_dirs_are_not_walked(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
         for skip_dir in ("node_modules", ".venv"):
-            d = tmp_path / skip_dir / "vendored"
-            d.mkdir(parents=True)
-            (d / "pyproject.toml").write_text('[project]\nname = "leaked-pkg"\n')
-        (tmp_path / "pyproject.toml").write_text('[project]\nname = "real-pkg"\n')
-
-        assert collect_workspace_package_names(tmp_path) == {"real-pkg"}
-
-    def test_no_pyproject_returns_empty(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
-
-        (tmp_path / "README.md").write_text("hi")
-        assert collect_workspace_package_names(tmp_path) == set()
+            _write(tmp_path / skip_dir / "vendored/package.json", '{"name": "leaked"}')
+        _write(tmp_path / "package.json", '{"name": "real"}')
+        assert collect_in_tree_packages(tmp_path).own == {"package.json": "real"}
 
 
 class TestIsTestFileAxis:
     """WI-rigun: is_test_file is independent of supply_chain_tier.
 
-    These tests pin the new behavior end-to-end: classify_file sets
+    These tests pin the behavior end-to-end: classify_file sets
     is_test, _classify_symbols propagates it to Symbol.is_test_file,
     and Symbol.to_dict / Symbol.from_dict round-trip the field through
     the supply_chain block.  Test files (both co-located like _test.go
     AND in dedicated directories like tests/, spec/) are tier 1 with
-    is_test=True per INV-tisid; tier 2 is reserved for in-repo non-test
-    code (examples, fuzz harnesses, vendored deps).
+    is_test=True per INV-tisid; tier 2 is reserved for org-internal
+    dependency packages (INV-naduh).
     """
 
     def test_workspace_test_file_is_test_true(self, tmp_path: Path) -> None:
@@ -2558,7 +2605,7 @@ class TestIsTestFileAxis:
         # INV-kubup: the PRESENCE of an export modifier is the signal this
         # step reads. `unexported` is a signal too, but it is the visibility
         # pass's (finalize maps it to `private`, which cannot be public API);
-        # this step no longer writes a False nobody computed.
+        # this step does not write a False nobody computed.
         assert private_fn.is_exported is None
 
     def test_classify_symbols_sets_is_exported_for_rust_pub(
@@ -2645,7 +2692,7 @@ class TestIsGeneratedFileAxis:
         result = classify_file(
             tmp_path / "service_pb2.py", tmp_path
         )
-        # pb2 files are already DERIVED tier AND now also is_generated
+        # pb2 files are DERIVED tier AND also is_generated
         assert result.is_generated is True
 
     def test_zz_generated_go_is_generated(self, tmp_path: Path) -> None:
@@ -2893,13 +2940,14 @@ class TestIsGeneratedFileAxis:
 class TestDependencyManifest:
     """Tests for DependencyManifest (WI-vovuk).
 
-    ADR-0041 §1/§2 (supply:F5): ``classify_import`` now returns
-    ``Tier.EXTERNAL_DEP`` for ALL third-party imports — tier names supply-chain
-    distance and nothing else, so a declared (direct) third-party package is no
-    longer promoted to tier 2. The direct/transitive/undeclared declaration
-    relationship moved to ``classify_directness`` (stamped as the ``directness``
-    meta key). Tier 2 (``internal_dep``) is reserved for workspace/org-internal
-    packages, assigned by file classification, not by the manifest classifier.
+    ``classify_import`` returns ``Tier.EXTERNAL_DEP`` for ALL third-party
+    imports (ADR-0041 §1/§2, supply:F5) — tier names supply-chain distance and
+    nothing else, so a declared (direct) third-party package is not promoted
+    to tier 2. The direct/transitive/undeclared declaration relationship is
+    reported by ``classify_directness`` (stamped as the ``directness`` meta
+    key). Tier 2 (``internal_dep``) is reserved for org-internal code outside
+    the project, assigned by file classification, not by the manifest
+    classifier.
     """
 
     def test_classify_direct_dep(self) -> None:
@@ -3155,7 +3203,7 @@ class TestIsConfigFileAxis:
     def test_config_under_tests_is_test_not_config(self, tmp_path: Path) -> None:
         """tests/fixtures/package.json → is_test=True, is_config=False.
 
-        After INV-tisid the file is tier 1 (first-party test fixture),
+        The file is tier 1 (first-party test fixture, INV-tisid),
         not tier 2. The role-flag mutual-exclusion guarantee is what
         this test pins: is_config must remain False because is_test
         already claimed the role slot.
@@ -3170,13 +3218,13 @@ class TestIsConfigFileAxis:
 
 
 class TestRoleFlagMutualExclusion:
-    """WI-jobuj acceptance (rescoped per INV-naduh): every Symbol has at most
-    one of is_test_file / is_example_file / is_config_file set.
+    """Every Symbol has at most one of is_test_file / is_example_file /
+    is_config_file set (WI-jobuj acceptance).
 
-    WI-jobuj originally scoped this to tier 2, but per INV-naduh / ADR-0041
-    §1 the role-bearing files (tests, examples, configs) are now first-party
-    (tier 1). The mutual-exclusion property is tier-independent: a file may
-    carry at most one role flag regardless of its supply-chain tier.
+    Per INV-naduh / ADR-0041 §1 the role-bearing files (tests, examples,
+    configs) are first-party (tier 1). The mutual-exclusion property is
+    tier-independent: a file may carry at most one role flag regardless of
+    its supply-chain tier.
     """
 
     def _classify(self, tmp_path: Path, rel: str, content: str = "") -> FileClassification:
@@ -3431,10 +3479,10 @@ class TestTierByPath:
 class TestGeneratorFingerprints:
     """WI-munam: generator output that does not declare itself in a comment.
 
-    Of the three vendored tree-sitter grammars, only lean's parser.c carries
-    ``@generated``; circom's and wolfram's open with the parser include and
-    the ``LANGUAGE_VERSION`` table header and were classified tier 3, their
-    generated parse tables standing for hand-written C.
+    A tree-sitter parser.c need not carry ``@generated``: some (circom's and
+    wolfram's vendored grammars) open with just the parser include and the
+    ``LANGUAGE_VERSION`` table header. Without a fingerprint their generated
+    parse tables would stand for hand-written C.
     """
 
     _TS_PARSER = (

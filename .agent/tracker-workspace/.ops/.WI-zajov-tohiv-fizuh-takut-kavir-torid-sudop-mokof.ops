@@ -30,3 +30,10 @@
     tags: [dogfood_tranche_04]  # 6d7e
   remove:  # 6d7e
     tags: [dogfood_tranch_04]  # 6d7e
+- op: discuss  # 3696
+  at: '2026-11-01T10:56:00Z'  # 3696
+  by: agent  # 3696
+  actor: jgstern_agent  # 3696
+  clock: 3  # 3696
+  nonce: '3696'  # 3696
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: slice.py:853-863 still uses len(non_dispatch_edges) > hub_threshold, gated by hop>=2 and not-entry. Fixture entry->m->h->{c1,c2,c3}: --hub-threshold 3 kept and traversed h (6 nodes, limits_hit []); --hub-threshold 2 pruned h (3 nodes, ['hub_pruned']). Docs say 'exceeds' (slice.py:21) and 'more ... than' (CLI help), but no text states that a node with exactly N edges is kept. The requested explicit note is still missing. MECHANISM: slice hub prune uses strict > on the non-dispatches_to degree, applied only at hop>=2 to non-entry nodes. SHARES MECHANISM WITH: WI-gidip."  # 3696

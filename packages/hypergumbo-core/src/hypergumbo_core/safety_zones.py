@@ -11,35 +11,46 @@ each safety zone a distinct sink callee, which the project-local catalog
 at ``docs/hypergumbo-self-catalog/`` declares in its corresponding zone.
 
 Most wrappers are otherwise transparent — they delegate to
-``Path.write_text`` / ``Path.write_bytes`` / ``shutil.copy2`` /
-``np.save`` etc. with no behavior change relative to a direct call.
+``Path.write_text`` / ``Path.write_bytes`` / ``shutil.copy2`` etc. with no
+behavior change relative to a direct call.
 The ZONE-ENFORCED ones are not: :func:`cache_rmtree`, :func:`cache_unlink`,
 :func:`cache_write_zip`, :func:`cache_rename` (both endpoints),
-:func:`tmp_artifact_rmtree`, :func:`tmp_artifact_extract` (``dest`` and
+:func:`tmp_artifact_write_bytes`, :func:`tmp_artifact_rmtree`,
+:func:`tmp_artifact_extract` (``dest`` and
 every archive member; non-regular tar members refused) and
+:func:`install_artifact_copy`, :func:`install_artifact_chmod` and
 :func:`install_artifact_unlink` first resolve the path and raise
 :class:`SafetyZoneViolation` if it escapes its zone root (symlinks
 included). That check is a real runtime guard, not a label.
 
+Three wrappers PUBLISH rather than write in place: :func:`user_out_open_json_dump`,
+:func:`user_out_open_json_dump_gzip` and :func:`install_artifact_copy` write a
+hidden sibling and rename it over the target only once it is complete
+(:func:`_publish_when_complete` for the two ``user_out`` ones; the install copy
+does the same in its own zone). Each target is one a reader trusts by its
+existence alone -- the results-cache ``survey.json``, the installed gitleaks --
+so a write that dies part-way must leave the old file whole, never a truncated
+one under the trusted name.
+
 How to use — the full wrapper inventory, by zone:
 
 - **user_cache** (``~/.cache/hypergumbo/<fingerprint>/...``):
-  :func:`cache_write`, :func:`cache_write_bytes`, :func:`cache_save_npy`,
-  :func:`cache_mkdir`; and the zone-enforced :func:`cache_write_zip`
+  :func:`cache_write`, :func:`cache_write_bytes`, :func:`cache_mkdir`; and the zone-enforced :func:`cache_write_zip`
   (soft-delete archives), :func:`cache_rename`, :func:`cache_unlink`,
   :func:`cache_rmtree`.
 - **user_out** (a user-supplied ``--out`` path): :func:`user_out_write`,
   :func:`user_out_open_json_dump` (the ``with open(...) as f:
   json.dump(...)`` pattern), :func:`user_out_open_json_dump_gzip`,
   :func:`user_out_mkdir`.
-- **tmp_artifact** (ephemeral ``/tmp/`` — sketch comparisons, grammar
-  build dirs): :func:`tmp_artifact_write`, :func:`tmp_artifact_mkdir`,
-  :func:`tmp_artifact_dir` (a context-managed scratch directory), and the
-  zone-enforced :func:`tmp_artifact_rmtree` and :func:`tmp_artifact_extract`.
-- **install_artifact** (downloaded binaries, archive contents):
-  :func:`install_artifact_write_bytes`, :func:`install_artifact_copy`,
-  :func:`install_artifact_mkdir`, :func:`install_artifact_chmod`, and the
-  zone-enforced :func:`install_artifact_unlink`.
+- **tmp_artifact** (ephemeral ``/tmp/`` — grammar build dirs, the gitleaks
+  download and its extraction): :func:`tmp_artifact_write`,
+  :func:`tmp_artifact_mkdir`, :func:`tmp_artifact_dir` (a context-managed
+  scratch directory), and the zone-enforced :func:`tmp_artifact_write_bytes`,
+  :func:`tmp_artifact_rmtree` and :func:`tmp_artifact_extract`.
+- **install_artifact** (the installed gitleaks binary under ``~/.local/bin``):
+  :func:`install_artifact_mkdir`, and the zone-enforced
+  :func:`install_artifact_copy`, :func:`install_artifact_chmod` and
+  :func:`install_artifact_unlink`.
 
 - **repo_inspection** — not writes at all. This family wraps SUBPROCESS
   launches against the analysed repository so the taint pass can bin them
@@ -49,6 +60,22 @@ How to use — the full wrapper inventory, by zone:
   :func:`repo_inspect_probe`, the narrowest member, which reads nothing at
   all — not the repository, not the environment — and only asks an external
   tool whether it is installed and at what version.
+- **user_state** — :func:`user_state_write`, the per-user decisions under
+  ``$XDG_STATE_HOME/hypergumbo/``: trust grants, in-repo catalogue grants and
+  the repo-tier offer's answer (INV-kuroj).
+- **user_config** — :func:`user_config_mkdir` / :func:`user_config_write`, the
+  catalogue home ``init-catalogs`` seeds (``$XDG_CONFIG_HOME/hypergumbo/`` or
+  ``--home``).
+- **developer_checkout** — :func:`developer_checkout_write`, the example tree
+  the repo-tier offer places in ``~/hypergumbo`` on a "y" (ADR-0047 ruling 9).
+- **analyser_backend** — the opt-in SCIP indexers, which READ the analysed
+  repository and act on it, so they sit outside ``repo_inspection`` (whose
+  split trigger is exactly that): :func:`backend_index_scip_python` (static
+  inference: runs none of the project's code, though it launches pip and
+  python from ``PATH``) and
+  :func:`backend_index_rust_analyzer`, which EXECUTES the project's
+  ``build.rs`` and proc macros. One wrapper each, so a claim can permit one
+  and prohibit the other (INV-tusos).
 
 What this pattern does NOT do:
 - It does NOT prevent misuse for the NON-enforced wrappers — a
@@ -73,16 +100,15 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
+import stat
 # The repo_inspection zone below is built on this; see its section header.
 import subprocess  # nosec B404
 from contextlib import contextmanager
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:  # pragma: no cover - typing-only import
-    import numpy as np
+from typing import Any
 
 
 class SafetyZoneViolation(RuntimeError):
@@ -131,13 +157,13 @@ def _install_zone_root() -> Path:
 def _require_within_zone(path: Path, root: Path, zone: str) -> None:
     """Refuse ``path`` unless it is inside ``root``.
 
-    THE DEFECT THIS EXISTS TO CLOSE, stated plainly because a guard whose
-    reason is forgotten gets removed: ``cmd_cache_clear`` built its target as
-    ``cache_dir / repo`` and deleted it. ``pathlib`` discards the left
-    operand when the right is ABSOLUTE, so ``--repo /home/you/thesis``
-    resolved to ``/home/you/thesis`` and was recursively deleted, reported as
-    a routine cache eviction. A relative ``../..`` escapes the same way. The
-    call site checked ``is_dir()`` — existence, not containment.
+    The escape this closes, stated plainly because a guard whose reason is
+    forgotten gets removed: ``pathlib`` discards the left operand when the
+    right is ABSOLUTE, so a target built as ``cache_dir / repo`` with
+    ``--repo /home/you/thesis`` IS ``/home/you/thesis``, and deleting it
+    recursively deletes the user's directory while reporting a routine cache
+    eviction. A relative ``../..`` escapes the same way. Checking ``is_dir()``
+    tests existence, not containment.
 
     Both paths are ``resolve()``d first, so a symlink pointing out of the
     zone is refused too; checking the unresolved path would let
@@ -203,16 +229,16 @@ def cache_rmtree(
 ) -> None:
     """Recursively delete a cache directory under ``~/.cache/hypergumbo/``.
 
-    SAFETY ZONE: ``user_cache``. Used by ``cmd_cache_clear`` to evict
-    stale cache entries. Wrapping ``shutil.rmtree`` here gives the
-    structural-taint pass a distinct callee — verify-claims previously
-    flagged generic ``.rmtree`` reachability from runtime CLI as a
-    documented overapproximation because the bare callee match couldn't
-    tell cache-clear writes apart from arbitrary fs deletes.
+    SAFETY ZONE: ``user_cache``. Used by ``cache-clear`` to remove entries, and
+    by the end-of-run eviction after ``survey`` (``_maybe_evict_cache`` and
+    ``_archive_entry``) to drop what it reclaims. Wrapping ``shutil.rmtree``
+    here gives the structural-taint pass a distinct callee: a bare ``.rmtree``
+    callee match cannot tell a cache eviction apart from an arbitrary
+    filesystem delete reachable from the runtime CLI.
 
     ENFORCED, not merely declared: a path outside the cache root raises
     :class:`SafetyZoneViolation`. See :func:`_require_within_zone` for the
-    verified escape this closes.
+    escape this closes.
 
     ``zone_root`` lets a caller that already resolved the cache base pass it
     in, so the guard is checked against the SAME root the caller is
@@ -249,7 +275,7 @@ def cache_write_zip(
 
     SAFETY ZONE: ``user_cache``. Soft-deleted cache entries are archived rather
     than destroyed, and building that archive is a cache WRITE like any other —
-    it belongs behind a wrapper for the same reason ``cache_save_npy`` does.
+    it belongs behind a wrapper for the same reason ``cache_write`` does.
     Constructing a ``ZipFile`` inside runtime-path code would be an unwrapped
     fs-write primitive: the zone-barrier sanitizer would not apply, the write
     would land as an unsanitized ``host_fs`` flow, and the discipline gate
@@ -261,9 +287,8 @@ def cache_write_zip(
     :class:`SafetyZoneViolation`.
 
     The archive is assembled in memory and written in one call, so peak
-    additional memory is the COMPRESSED size — measured at 6% of the source on
-    a real 210.9 MB cache entry — rather than the size of the inputs, which are
-    streamed through the compressor.
+    additional memory is the COMPRESSED size rather than the size of the
+    inputs, which are streamed through the compressor.
     """
     import io
     import zipfile
@@ -283,8 +308,8 @@ def cache_unlink(path: Path, zone_root: Path | None = None) -> None:
     SAFETY ZONE: ``user_cache``. The soft-delete folders hold one zip per
     evicted entry, so bounding them means unlinking FILES rather than trees —
     ``cache_rmtree``'s shape does not fit, and a bare ``Path.unlink`` would be
-    an unwrapped filesystem delete reachable from the runtime CLI, which is
-    exactly the population the ``runtime-cli-no-host-fs`` claim drove to zero.
+    an unwrapped filesystem delete reachable from the runtime CLI, which the
+    ``runtime-cli-no-host-fs`` claim reports as a ``host_fs`` flow.
 
     ENFORCED, not merely declared: a path outside the cache root raises
     :class:`SafetyZoneViolation`, via the same guard ``cache_rmtree`` uses.
@@ -302,18 +327,12 @@ def cache_rename(src: Path, dst: Path, zone_root: Path | None = None) -> None:
     the ``.evicting-`` scratch name — the rename-before-delete ordering that
     is the whole crash-safety argument for soft eviction.
 
-    WHY THIS WRAPPER HAD TO EXIST. It did not, and that was the defect. The
-    module shipped ``cache_write`` / ``cache_write_bytes`` / ``cache_rmtree``
-    / ``cache_write_zip`` / ``cache_unlink`` / ``cache_mkdir`` and no rename
-    of any zone, so ``_archive_entry``'s two renames were bare for want of
-    anything to call. Once ``pathlib.Path``'s surface was rowed in the I/O
-    catalogue, ``Path.rename`` became a catalogued ``host_fs`` sink and
-    ``runtime-cli-no-host-fs`` went ``confirmed_with_caveats`` ->
-    ``violated`` on precisely those two flows, reachable from ``cmd_run`` and
-    ``cmd_cache_status`` via ``_maybe_evict_cache``. The writes were always
-    inside the cache; what was missing was the barrier that says so. This is
-    the same argument ``cache_unlink``'s docstring makes about a bare
-    ``Path.unlink``, one primitive later.
+    WHY A WRAPPER. ``Path.rename`` is a catalogued ``host_fs`` sink, so a bare
+    rename in ``_archive_entry`` (reachable from ``cmd_run`` and
+    ``cmd_cache_status`` via ``_maybe_evict_cache``) violates
+    ``runtime-cli-no-host-fs`` even though both endpoints are inside the
+    cache: what the claim needs is the barrier that says so. This is the same
+    argument ``cache_unlink``'s docstring makes about a bare ``Path.unlink``.
 
     ENFORCED, not merely declared: **both** endpoints must lie within the
     cache root or :class:`SafetyZoneViolation` is raised. Checking only the
@@ -332,29 +351,66 @@ def cache_rename(src: Path, dst: Path, zone_root: Path | None = None) -> None:
     src.rename(dst)
 
 
-def cache_save_npy(path: Path, embedding: "np.ndarray") -> None:  # pragma: no cover - exercised by test_cache_save_npy with importorskip
-    """Save a numpy array to a cache path via ``np.save``.
-
-    SAFETY ZONE: ``user_cache``. Embeddings cache is the primary
-    consumer; ``np.save`` is the canonical write for ``.npy`` files.
-    """
-    _safety_zone_barrier()
-    # Local import keeps numpy soft-required; sketch_embeddings already
-    # imports numpy at call time, so this stays cost-free in practice.
-    import numpy as np
-    np.save(path, embedding)
-
-
 def user_out_write(path: Path, content: str) -> None:
     """Write content to a user-supplied ``--out`` / ``--output`` path.
 
-    SAFETY ZONE: ``user_out``. Used by ``cmd_slice`` / ``cmd_search`` /
-    ``cmd_io_boundaries`` and similar runtime CLI subcommands that
-    accept a user-specified destination. The user typed the path; they
-    own it.
+    SAFETY ZONE: ``user_out``. Used by ``slice --files --output``,
+    ``backend-agreement --out`` and the handler-slice index that ``run``
+    writes beside its ``--out``. The user typed the path; they own it.
+    (``run_survey`` also reaches this wrapper when no ``--out`` was given and
+    the path is the results cache: a mislabel, INV-supod.)
     """
     _safety_zone_barrier()
     path.write_text(content)
+
+
+def _scratch_sibling(target: Path) -> Path:
+    """The hidden name a publishing write uses before renaming onto ``target``.
+
+    Unique per process and call, so two runs never share one; no reader looks
+    for a ``.writing`` name, so a scratch file left by a SIGKILL is inert.
+    """
+    return target.with_name(
+        f".{target.name}.{os.getpid()}.{secrets.token_hex(4)}.writing",
+    )
+
+
+@contextmanager
+def _publish_when_complete(path: Path, *, keep_mode: bool) -> Iterator[Path]:
+    """Yield a hidden sibling of ``path`` to write; rename it over ``path`` after.
+
+    Not a wrapper: the ``user_out`` JSON wrappers call it after their barrier
+    (``install_artifact_copy`` publishes the same way, in its own zone).
+    The caller creates the yielded file. When its block finishes, the file is
+    renamed over ``path`` (``os.replace``, atomic on one filesystem); when the
+    block raises -- or the process is interrupted -- the sibling is removed and
+    ``path`` is exactly what it was before.
+
+    WHY. ``survey.json`` in the results cache is found by existence alone, so a
+    survey killed while writing it in place (Ctrl-C, the OOM killer on a big
+    map, a full disk) would leave a truncated file that every read command
+    serves as a cache hit and fails on, "not valid JSON", until the user
+    re-surveys. Likewise a gitleaks install that dies mid-copy would leave a
+    partial binary shadowing a working one on PATH. Eviction follows the same
+    rule: publish whole files only.
+
+    A symlinked ``path`` is resolved first, so the link keeps pointing at the
+    file it named and that file is what is replaced. ``keep_mode`` carries an
+    existing target's permission bits over, so a user who narrowed their output
+    file does not see it widened by the rename. A SIGKILL can still leave the
+    sibling (:func:`_scratch_sibling`).
+    """
+    target = Path(os.path.realpath(path))
+    scratch = _scratch_sibling(target)
+    try:
+        yield scratch
+        if keep_mode and target.exists():
+            os.chmod(scratch, stat.S_IMODE(target.stat().st_mode))
+        os.replace(scratch, target)
+    except BaseException:
+        if os.path.lexists(scratch):
+            os.unlink(scratch)
+        raise
 
 
 def user_out_open_json_dump(path: Path, obj: Any) -> None:
@@ -366,10 +422,15 @@ def user_out_open_json_dump(path: Path, obj: Any) -> None:
     keep output deterministic — required so the safety claim's
     re-verification can run on a freshly-generated artifact and produce
     byte-identical output.
+
+    PUBLISHED WHOLE (:func:`_publish_when_complete`): a dump that dies part-way
+    leaves the previous file intact, because ``survey.json`` in the results
+    cache is trusted by its existence alone.
     """
     _safety_zone_barrier()
-    with open(path, "w") as f:
-        json.dump(obj, f, indent=2, sort_keys=True)
+    with _publish_when_complete(path, keep_mode=True) as scratch:
+        with open(scratch, "x") as f:
+            json.dump(obj, f, indent=2, sort_keys=True)
 
 
 def user_out_open_json_dump_gzip(path: Path, obj: Any) -> None:
@@ -380,25 +441,24 @@ def user_out_open_json_dump_gzip(path: Path, obj: Any) -> None:
     set, on both the main output and the budget-tier outputs. The
     inner JSON encoding is identical to the uncompressed path
     (``indent=2, sort_keys=True``) so ``gunzip <out>.json.gz`` produces
-    byte-identical content to the uncompressed path's output.
+    byte-identical content to the uncompressed path's output. Published whole,
+    as :func:`user_out_open_json_dump` is.
     """
     _safety_zone_barrier()
     import gzip
-    with gzip.open(path, "wt") as f:
-        json.dump(obj, f, indent=2, sort_keys=True)
+    with _publish_when_complete(path, keep_mode=True) as scratch:
+        with gzip.open(scratch, "xt") as f:
+            json.dump(obj, f, indent=2, sort_keys=True)
 
 
 def user_out_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
     """Create the parent directory of a user-supplied ``--out`` path.
 
-    SAFETY ZONE: ``user_out``. INV-zudak, reopened: this wrapper did not
-    exist, and its absence is why the violation was unavoidable rather than
-    careless. Four of the five offending ``cli.py`` callsites sit on the line
-    DIRECTLY ABOVE a :func:`user_out_write` / :func:`user_out_open_json_dump`
-    call — the write was already wrapped and the ``mkdir`` that creates its
-    directory could not be, because ``user_out`` was the one zone with a write
-    wrapper and no mkdir wrapper. The zone whose path comes from the USER is
-    the one most in need of a checked call, and it was the one missing it.
+    SAFETY ZONE: ``user_out``. A wrapped :func:`user_out_write` /
+    :func:`user_out_open_json_dump` is often preceded by the ``mkdir`` that
+    creates its directory; that ``mkdir`` needs a wrapper of the same zone, or
+    it surfaces as a raw ``host_fs`` flow beside a correctly wrapped write.
+    (history: INV-zudak)
 
     DELIBERATELY NOT ZONE-BOUNDED, unlike :func:`tmp_artifact_rmtree` and
     :func:`cache_rmtree`. There is no zone root to check against: the user
@@ -408,8 +468,8 @@ def user_out_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False)
     write is recorded as a ``user_out`` crossing instead of surfacing as an
     unsanitized ``host_fs`` flow that ``runtime-cli-no-host-fs`` must report.
     Creating the directory the user asked for is correct behaviour; doing it
-    through a bare ``Path.mkdir`` is what made it indistinguishable from
-    arbitrary directory creation.
+    through a bare ``Path.mkdir`` makes it indistinguishable from arbitrary
+    directory creation.
     """
     _safety_zone_barrier()
     path.mkdir(parents=parents, exist_ok=exist_ok)
@@ -431,13 +491,31 @@ def cache_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) ->
 def tmp_artifact_write(path: Path, content: str) -> None:
     """Write content to an ephemeral path under ``/tmp/`` or a tempdir.
 
-    SAFETY ZONE: ``tmp_artifact``. Used by sketch budget-comparison
-    output and tree-sitter grammar build scaffolding. These writes are
-    intentionally ephemeral — the OS clears them on reboot — and not
-    audit-load-bearing the way cache writes are.
+    SAFETY ZONE: ``tmp_artifact``. Used by ``build_grammar`` for the
+    tree-sitter package scaffolding (``__init__.py``, ``binding.c``,
+    ``setup.py``). These writes are intentionally ephemeral — the OS clears
+    them on reboot — and not audit-load-bearing the way cache writes are.
     """
     _safety_zone_barrier()
     path.write_text(content)
+
+
+def tmp_artifact_write_bytes(path: Path, data: bytes) -> None:
+    """Write downloaded bytes into the tmp zone.
+
+    SAFETY ZONE: ``tmp_artifact``. Used by ``install-gitleaks`` to land the
+    release archive inside a :func:`tmp_artifact_dir` before
+    :func:`tmp_artifact_extract` unpacks it; only the extracted binary
+    reaches the install zone (:func:`install_artifact_copy`). Writing the
+    archive through an ``install_artifact`` wrapper would make verify-claims
+    count a scratch write as an install.
+
+    ENFORCED, though its one caller's path is inside the zone by
+    construction: the check makes the name true of every future caller too.
+    """
+    _safety_zone_barrier()
+    _require_within_zone(path, _tmp_zone_root(), "tmp_artifact")
+    path.write_bytes(data)
 
 
 def tmp_artifact_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
@@ -457,7 +535,8 @@ def tmp_artifact_rmtree(path: Path) -> None:
     """Recursively delete an ephemeral build directory under ``/tmp/``.
 
     SAFETY ZONE: ``tmp_artifact``. Used by ``build_grammars.py`` to
-    refresh the per-grammar scaffold directory before regenerating it.
+    refresh the per-grammar scaffold directory before regenerating it, and by
+    ``sketch`` to remove the legacy sketch-compare directory.
     Distinct wrapper from :func:`cache_rmtree` so verify-claims can
     distinguish cache eviction from grammar-build scaffold reset.
 
@@ -475,17 +554,17 @@ def tmp_artifact_extract(archive: Path, dest: Path) -> None:
     SAFETY ZONE: ``tmp_artifact``. ENFORCED, and enforced TWICE OVER, because
     an archive is the one input that NAMES ITS OWN DESTINATIONS: the caller's
     ``dest`` must lie in the zone, and so must every member path after
-    resolution. Checking only ``dest`` would be the ``cmd_cache_clear`` defect
-    one level down -- containment of the argument you looked at, while the
-    thing doing the writing supplies paths you did not.
+    resolution. Checking only ``dest`` would repeat the escape
+    :func:`_require_within_zone` describes one level down -- containment of
+    the argument you looked at, while the thing doing the writing supplies
+    paths you did not.
 
-    WHY THIS ARRIVED LATE, and it is INV-lalad's lesson again: INV-zudak
-    enumerated the fs-write primitives that must route through a wrapper, and
-    ``extractall`` is not among them. It became visible only when WI-jabus
-    rowed ``zipfile.ZipFile`` as a class-qualified receiver, at which point
-    ``install-gitleaks-no-host-fs`` moved to ``violated`` -- a claim asserting
-    writes go ONLY through wrappers, over code whose extraction did not. The
-    write was always there; what was missing was the barrier that says so.
+    Extraction is a filesystem write even though ``extractall`` is not in the
+    enumerated list of fs-write primitives (write_text / mkdir / unlink / ...):
+    the taint pass sees it through the catalogued ``zipfile.ZipFile`` /
+    ``tarfile`` receivers, and unwrapped it violates
+    ``install-gitleaks-no-host-fs``, which asserts that writes go ONLY through
+    wrappers. (history: INV-lalad, INV-zudak, WI-jabus)
 
     THE TAR BRANCH IS THE DANGEROUS ONE, and it is the one almost every user
     takes: ``_get_download_url`` picks ``.zip`` only on Windows. CPython's
@@ -513,10 +592,9 @@ def tmp_artifact_extract(archive: Path, dest: Path) -> None:
             for name in zf.namelist():
                 _require_within_zone(dest / name, dest_root, "tmp_artifact")
             # The suppressions sit HERE, one line under the loop that earns
-            # them:
-            # every member was resolved against dest_root immediately above.
-            # In gitleaks.py they stood in for that check rather than after
-            # it, which is the difference between a mitigation and a waiver.
+            # them: every member was resolved against dest_root immediately
+            # above. A suppression with no such check before it is a waiver,
+            # not a mitigation.
             zf.extractall(dest)  # noqa: S202  # nosec B202
         return
     with tarfile.open(archive, "r:gz") as tf:
@@ -544,19 +622,19 @@ def tmp_artifact_dir(*, prefix: str | None = None) -> Iterator[str]:
     :func:`tmp_artifact_write` / :func:`tmp_artifact_mkdir` /
     :func:`tmp_artifact_rmtree`, for callers that need a whole throwaway
     directory rather than a named path — ``gitleaks.install_gitleaks`` (archive
-    extraction) and the rust-analyzer probe in ``graceful_degrade``.
+    extraction), ``gitleaks._scan`` (the scan's working directory),
+    ``build_grammars.build_all_grammars`` (the default grammar build directory,
+    which must be private: pip runs the ``setup.py`` written into it), the
+    rust-analyzer run in ``graceful_degrade`` and scip-python's index scratch.
 
-    WHY THIS ARRIVED LATE (INV-lalad). INV-zudak established that every
-    fs-write primitive on a claimed entry point must route through a wrapper,
-    and enumerated them as write_text / mkdir / unlink / chmod / copy2 /
-    rmtree / replace. ``tempfile.TemporaryDirectory`` is none of those: it is
-    CONSTRUCTOR-shaped, and until INV-lalad the taint walk could not traverse
-    construction edges at all (``instantiates`` was absent from
-    ``TAINT_CALL_EDGE_TYPES``). So the two unwrapped call sites never surfaced
-    as raw ``host_fs`` flows, and the drain looked complete while two writes
-    sat outside the discipline the claims assert. An enumerated list of
+    WHY A WRAPPER. Every fs-write primitive on a claimed entry point must
+    route through a wrapper, and ``tempfile.TemporaryDirectory`` creates a
+    directory without being one of the enumerated primitives (write_text /
+    mkdir / unlink / chmod / copy2 / rmtree / replace): it is
+    CONSTRUCTOR-shaped, visible to the taint walk only through the
+    ``instantiates`` edges in ``TAINT_CALL_EDGE_TYPES``. An enumerated list of
     primitives is only as complete as the analysis that would notice a
-    missing one.
+    missing one. (history: INV-lalad, INV-zudak)
 
     No ``_require_within_zone`` check: unlike the other wrappers this does not
     accept a caller-supplied path — ``TemporaryDirectory`` allocates inside
@@ -575,24 +653,12 @@ def install_artifact_mkdir(path: Path, *, parents: bool = False, exist_ok: bool 
     an extras install dir).
 
     SAFETY ZONE: ``install_artifact``. INV-zudak: pairs with
-    :func:`install_artifact_write_bytes` /
     :func:`install_artifact_copy` so the install zone has a complete
     sink surface for verify-claims. Used by ``install-gitleaks`` to
     scaffold ``GITLEAKS_INSTALL_DIR`` before landing the binary.
     """
     _safety_zone_barrier()
     path.mkdir(parents=parents, exist_ok=exist_ok)
-
-
-def install_artifact_write_bytes(path: Path, data: bytes) -> None:
-    """Write a downloaded archive's bytes to disk during install flow.
-
-    SAFETY ZONE: ``install_artifact``. Used during ``install-gitleaks``
-    to land the downloaded release archive before extraction. The path
-    is typically under ``/tmp/`` or the install dir.
-    """
-    _safety_zone_barrier()
-    path.write_bytes(data)
 
 
 def install_artifact_copy(src: Path, dst: Path) -> None:
@@ -602,9 +668,29 @@ def install_artifact_copy(src: Path, dst: Path) -> None:
     place the gitleaks binary under ``~/.local/bin/``. Wraps
     ``shutil.copy2`` so the install-artifact zone has a distinct sink
     callee, separate from the general filesystem zone.
+
+    ENFORCED: ``dst`` is resolved, so a ``~/.local/bin/gitleaks`` that is a
+    symlink to a binary elsewhere (a dotfile manager's, ``~/go/bin``'s) raises
+    :class:`SafetyZoneViolation` instead of being overwritten through the link
+    -- the same file :func:`install_artifact_unlink` refuses to remove.
+
+    PUBLISHED WHOLE, as :func:`_publish_when_complete` does for ``user_out``:
+    a copy that dies part-way leaves the previous binary intact. A partial one
+    would be preferred over a good gitleaks on PATH, could not run, and would
+    turn every later secret scan off. Inline rather than through that helper so each
+    zone's writes stay in a function of that zone.
     """
     _safety_zone_barrier()
-    shutil.copy2(src, dst)
+    _require_within_zone(dst, _install_zone_root(), "install_artifact")
+    target = Path(os.path.realpath(dst))
+    scratch = _scratch_sibling(target)
+    try:
+        shutil.copy2(src, scratch)
+        os.replace(scratch, target)
+    except BaseException:
+        if os.path.lexists(scratch):
+            os.unlink(scratch)
+        raise
 
 
 def install_artifact_chmod(path: Path, mode: int) -> None:
@@ -615,8 +701,12 @@ def install_artifact_chmod(path: Path, mode: int) -> None:
     Distinct wrapper so verify-claims can distinguish hypergumbo's own
     post-install ``chmod`` from arbitrary mode-bit mutation on the
     user's filesystem.
+
+    ENFORCED, as :func:`install_artifact_copy` is: ``chmod`` follows a
+    symlink, so an unchecked one would re-mode a file outside the zone.
     """
     _safety_zone_barrier()
+    _require_within_zone(path, _install_zone_root(), "install_artifact")
     path.chmod(mode)
 
 
@@ -640,19 +730,15 @@ def install_artifact_unlink(path: Path) -> None:
 # repo_inspection zone (WI-fasuv)
 # ---------------------------------------------------------------------------
 #
-# WHY THIS ZONE EXISTS. The shipped claim ``runtime-cli-no-subprocess`` said
-# "Runtime CLI subcommands do not shell out. All subprocess invocations (curl,
-# git, pip, rustup, gitleaks) happen only via extras / build-time subcommands."
-# That is false as written: ``strace -f -e trace=execve`` on a default
-# ``sketch`` shows git x25, a real gitleaks secret scan, and a rust-analyzer
-# --version probe. gitleaks is named in the claim as build-time-only and is not.
-#
-# THE OWNER CHOSE TO DECLARE THE CAPABILITY RATHER THAN REWORD THE CLAIM
-# (2026-08-11). Rewording -- "except read-only repo inspection" -- was the
-# cheap option and is the one that launders: it weakens a shipped security
-# claim with nothing enforcing the carve-out's bounds, so the sentence becomes
-# true by meaning less. Routing through declared wrappers keeps the claim
-# strong AND true, and makes the boundary machine-checked.
+# WHY THIS ZONE EXISTS. Runtime CLI subcommands DO launch subprocesses
+# against the analysed repository: a default ``sketch`` runs local git
+# (fingerprinting, repo identity), a real gitleaks secret scan, and a
+# rust-analyzer ``--version`` probe. ``runtime-cli-no-subprocess`` stays true
+# by declaring that capability through these wrappers, not by rewording the
+# claim with a carve-out ("except read-only repo inspection"): a carve-out
+# with nothing enforcing its bounds weakens a shipped security claim until it
+# is true by meaning less, while the wrappers keep the boundary
+# machine-checked. (history: WI-fasuv)
 #
 # WHAT UNITES THESE THREE, since it is not what they read. It is what they
 # CANNOT do: none writes to the host filesystem, none takes a network action on
@@ -676,9 +762,12 @@ def repo_inspect_git(argv: list[str], **kwargs: Any) -> "subprocess.CompletedPro
     """Run a local ``git`` command against the analysed repository.
 
     SAFETY ZONE: ``repo_inspection``. Used for cache-key fingerprinting
-    (``rev-parse HEAD``, ``rev-list --max-parents=0 HEAD``) and repo identity
-    (``config --get remote.origin.url``). Read-only and local: no fetch, no
-    push, no network. Callers resolve the binary via ``shutil.which`` rather
+    (``rev-parse HEAD``, ``rev-list --max-parents=0 HEAD``), repo identity
+    (``config --get remote.origin.url``), discovery's submodule and HEAD-tree
+    checks (``ls-tree HEAD``), its ignored-and-untracked rule (``check-ignore
+    --no-index --stdin``, file names on stdin) and an in-repo catalogue's committed / modified
+    state (``ls-files --error-unmatch``, ``status --porcelain``). Read-only and
+    local: no fetch, no push, no network. Callers resolve the binary via ``shutil.which`` rather
     than letting the shell search ``PATH`` (Bandit S607).
     """
     _safety_zone_barrier()
@@ -714,3 +803,101 @@ def repo_inspect_probe(argv: list[str], **kwargs: Any) -> "subprocess.CompletedP
     """
     _safety_zone_barrier()
     return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
+
+
+def backend_index_scip_python(argv: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
+    """Run ``scip-python index`` over the analysed repository.
+
+    SAFETY ZONE: ``analyser_backend``. Reached only when the scip-python backend
+    is enabled -- ``--backend scip-python``, ``HYPERGUMBO_SCIP_PYTHON``, or
+    ``[backends] scip_python`` in the user's config.toml OR the analysed repo's
+    own ``.hypergumbo.toml``, so a repository can turn this launch on for
+    itself. Static inference: it reads every Python file and runs none of the
+    project's code, which is why a preference opt-in is ADR-0045-consistent.
+    It does launch programs of its own. Run without ``--environment``, which
+    hypergumbo does not pass, scip-python 0.6.6 changes into the project
+    directory and runs ``pip3`` (else ``pip``) ``list --format=json``, then
+    ``python3`` (else ``python``) on a package-metadata script it writes under
+    the system temp directory and removes, falling back to ``pip show -f``.
+    Each is resolved on ``PATH``, so a relative ``PATH`` entry would resolve
+    inside the analysed repository. It writes its index into a
+    ``tmp_artifact`` scratch directory.
+
+    The launch always carries ``PIP_DISABLE_PIP_VERSION_CHECK=1``, over any
+    value the user set. pip without the exemption that spares ``list`` its
+    weekly upgrade check (upstream 24.0; 26.2.2 has it) connects to the
+    package index during ``pip3 list``, and ``runtime-cli-no-network`` says
+    analysis makes no network request.
+    """
+    _safety_zone_barrier()
+    env = kwargs.pop("env", None)
+    env = dict(os.environ if env is None else env)
+    env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+    return subprocess.run(argv, env=env, **kwargs)  # noqa: S603  # nosec B603
+
+
+def backend_index_rust_analyzer(argv: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
+    """Run ``rust-analyzer scip`` over the analysed workspace.
+
+    SAFETY ZONE: ``analyser_backend``. THE MOST DANGEROUS LAUNCH IN THIS TREE:
+    indexing EXECUTES the analysed project's ``build.rs`` and proc macros. It
+    is reached only when the rust-analyzer backend is selected -- by
+    ``--backend rust-analyzer``, by ``HYPERGUMBO_RUST_ANALYZER=1``, or by a
+    ``trust-backend`` grant for the repository (ADR-0045); those are
+    ALTERNATIVES, so the flag or the variable alone launches it. A default run
+    only probes ``--version`` through :func:`repo_inspect_probe`.
+    """
+    _safety_zone_barrier()
+    return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
+
+
+def user_state_write(path: Path, content: str, *, private: bool) -> None:
+    """Write a per-user decision under ``$XDG_STATE_HOME/hypergumbo/``.
+
+    SAFETY ZONE: ``user_state``. The trust store (ADR-0045), the in-repo
+    catalogue grants (ADR-0061 ruling 4) and the repo-tier offer's answer
+    (ADR-0047 ruling 9). Creates the parent directory. ``private`` is the
+    caller's statement, not a default: a trust grant is ``0o600`` because which
+    repositories someone agreed to execute is theirs, while the offer's answer
+    is a display preference and deliberately is not.
+
+    A private file is ``0o600`` BEFORE its content lands: ``touch`` creates a new
+    one at that mode and ``chmod`` narrows one an older version left wider, so
+    the grant is never readable at the umask's mode, not even between two lines.
+    """
+    _safety_zone_barrier()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if private:
+        path.touch(mode=0o600)
+        path.chmod(0o600)
+    path.write_text(content, encoding="utf-8")
+
+
+def user_config_mkdir(path: Path) -> None:
+    """Create a directory of the user's catalogue home.
+
+    SAFETY ZONE: ``user_config``. Only ``init-catalogs`` writes here (ADR-0047
+    ruling 4: never during analysis). Not zone-enforced, because ``--home``
+    lets the user name any directory.
+    """
+    _safety_zone_barrier()
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def user_config_write(path: Path, content: str) -> None:
+    """Write a file into the user's catalogue home. SAFETY ZONE: ``user_config``."""
+    _safety_zone_barrier()
+    path.write_text(content, encoding="utf-8")
+
+
+def developer_checkout_write(path: Path, content: str) -> None:
+    """Write an example file under ``~/hypergumbo/.hypergumbo-examples/``.
+
+    SAFETY ZONE: ``developer_checkout``. Reached only on a "y" to the
+    repo-tier offer, made only on a TTY, once, and never while the analysed
+    path overlaps the checkout. Creates the parent directory. The caller
+    asserts containment (``write_repo_tier_examples``).
+    """
+    _safety_zone_barrier()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")

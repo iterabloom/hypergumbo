@@ -19,3 +19,10 @@
     pr_ref:  # 4d7a
     description: "FOUND 2026-10-04 while fixing WI-losod (branch jgstern-agent/fix/losod). c_def_use treats a bare declarator (`int i;`) as neither a definition nor a use (\"declare without a value the walk could chain\"). Before WI-losod that was invisible because nothing defined `i` in a C89-style loop (`int i; for (i = 0; i < n; i++)`). Now the for initializer defines `i`, so `i` is a tracked name, and cfg.unaccounted_names reports it at the `int i;` statement that mentions it without accounting for it.\n\nEffect: a §3a walk that carries `i` escapes instead of refuting (per variable, so only walks over the loop counter; it never confirms or removes anything). Direction is the safe one; the cost is lost refutation on such walks. Probe: void f(int n) { int i; for (i = 0; i < n; i++) { use(i); } } -> unaccounted {'i'} on the losod branch, {} on the base.\n\nFix shape: a bare declarator DEFINES its name (a new, uninitialised variable: a definition that kills any earlier one and carries no taint), or the statement accounts for it as a declaration. Volume unmeasured."  # 4d7a
     fields: {}  # 4d7a
+- op: discuss  # 3384
+  at: '2026-11-01T10:55:30Z'  # 3384
+  by: agent  # 3384
+  actor: jgstern_agent  # 3384
+  clock: 2  # 3384
+  nonce: '3384'  # 3384
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint1/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e (WI-losod merged as a0a706f8dd): probe of void f(int n){ int i; for (i = 0; i < n; i++) { use(i); } } gives 'int i;' def=[] use=[], the for initializer defines i, and unaccounted_names = ['i']. c_def_use.py:150 rule unchanged (docs-only commits since). Premise unchanged. MECHANISM: a bare C declarator is neither a def nor a use yet mentions a tracked name. SHARES MECHANISM WITH: WI-nohuv."  # 3384

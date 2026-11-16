@@ -30,7 +30,7 @@ Matching strategy
    first non-delegate function or method symbol in the file is used as
    the anchor instead (``fallback_candidates`` in
    ``go_memberlist_linker``), so the delegates stay reachable.
-3. Find any method symbol whose bare name matches one of the
+3. Find any method or function symbol whose bare name matches one of the
    canonical delegate names AND whose defining file imports
    memberlist. Treat those as dispatch targets.
 4. Emit ``dispatches_to`` edges from each anchor function to each
@@ -53,6 +53,7 @@ from pathlib import Path
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_source_bytes
 
@@ -148,12 +149,19 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
         return LinkerResult(run=run)
 
     memberlist_files = _collect_memberlist_files(ctx.repo_root)
+    # WI-lisan: the construct is a file that uses memberlist. Its probe reads
+    # every Go file, so each return below is a run that read files.
+    run.silence_reason = silence_reason_for_candidates(memberlist_files)
     if not memberlist_files:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(run=run)
 
-    # Build a set of paths that import memberlist, for cheap lookups.
-    memberlist_paths: set[str] = {str(p) for p in memberlist_files}
+    # WI-tupam: discovery yields absolute paths, but survey relativizes
+    # Symbol.path before the linkers run, so a symbol's path is resolved
+    # against the repo root before it is looked up in memberlist_files.
+    def _discovered_path(sym_path: str) -> Path:
+        path = Path(sym_path)
+        return path if path.is_absolute() else ctx.repo_root / path
 
     # Find delegate method symbols defined in any memberlist-importing
     # file. A delegate method is: kind in {method, function} AND
@@ -163,7 +171,7 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
         for sym in ctx.symbols
         if sym.kind in ("method", "function")
         and _short_name(sym.name) in _DELEGATE_METHOD_NAMES
-        and sym.path in memberlist_paths
+        and _discovered_path(sym.path) in memberlist_files
     ]
 
     if not delegate_symbols:
@@ -180,7 +188,7 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
     files_analyzed = 0
 
     for path_str, delegates in by_path.items():
-        source = memberlist_files.get(Path(path_str))
+        source = memberlist_files.get(_discovered_path(path_str))
         if source is None:  # pragma: no cover
             continue
         files_analyzed += 1

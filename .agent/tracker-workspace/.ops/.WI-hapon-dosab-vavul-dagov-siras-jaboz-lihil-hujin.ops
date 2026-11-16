@@ -1,0 +1,51 @@
+- op: create  # 5d90
+  at: '2026-10-28T13:41:09Z'  # 5d90
+  by: agent  # 5d90
+  actor: jgstern_agent  # 5d90
+  clock: 1  # 5d90
+  nonce: 5d90  # 5d90
+  data:  # 5d90
+    kind: work_item  # 5d90
+    title: "catalogue loaders other than taint silently ignore unknown keys (io_primitives overlays, function_summaries, library_signatures, frameworks, dataflow_patterns), and frameworks name_pattern / usage_call / detect / linkers are accepted but unread"  # 5d90
+    status: todo_hard  # 5d90
+    priority: 3  # 5d90
+    parent:  # 5d90
+    tags:  # 5d90
+    - concept_audit  # 5d90
+    - kosup_sweep  # 5d90
+    - catalogue  # 5d90
+    isbefore: []  # 5d90
+    duplicate_of: []  # 5d90
+    not_duplicate_of: []  # 5d90
+    pr_ref:  # 5d90
+    description: "From the WI-kosup knob census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/C_knobs.md K1, K7). Catalogue YAML loaders that SILENTLY IGNORE an unknown key (a write-only knob: the file reports loaded and the key does nothing), WI-rinaz's shape in other loaders:\n- io_primitives (IoBoundaryCatalog._from_dict / load_overlay_catalog): a user overlay with net_sendd: or function: loads with 0 primitives and no message (reproduced by the census agent).\n- function_summaries, library_signatures, frameworks, dataflow_patterns loaders.\nAlso write-only keys those loaders accept: library_signatures module_completeness: partial (5 files); DataflowConfig.calls (no file produces it); frameworks linkers: (101 files, read only by tests), detect: (3 files, no reader), name_pattern (Graphene resolve_*) and usage_call (two ZIO route rules) -- those patterns match nothing (reproduced). Fix per loader: refuse unknown keys with the key named (the claims-file and WI-rinaz rule), and wire or delete each accepted-but-unread key."  # 5d90
+    fields: {}  # 5d90
+- op: discuss  # b354
+  at: '2026-10-29T00:08:53Z'  # b354
+  by: agent  # b354
+  actor: jgstern_agent  # b354
+  clock: 2  # b354
+  nonce: b354  # b354
+  message: "Part 1 shipped in PR #1928: the io_primitives loader (IoBoundaryCatalog._from_dict, so shipped catalogues and every overlay) refuses an unknown key at top level, in a boundary row, a stdlib_other row and a completeness entry, naming it with a near-miss hint, via yaml_catalogs.reject_unknown_keys (lifted from taint's WI-rinaz helper, which now calls it). Live case found: docs/templates/bash-io-primitives.template.yaml's fs_delete: section (rm, shred) loaded zero rows; now fs_write. Accepted as human-read: seeded_from (init-catalogs stamp) and a completeness entry's source_url. Remaining: function_summaries, library_signatures, frameworks, dataflow_patterns loaders and their accepted-but-unread keys."  # b354
+- op: discuss  # dbf1
+  at: '2026-10-29T00:09:53Z'  # dbf1
+  by: agent  # dbf1
+  actor: jgstern_agent  # dbf1
+  clock: 3  # dbf1
+  nonce: dbf1  # dbf1
+  message: "Correction: part 1 is PR #1927 (dev d0061769ad), not #1928."  # dbf1
+- op: update  # 43b6
+  at: '2026-10-29T01:47:41Z'  # 43b6
+  by: agent  # 43b6
+  actor: jgstern_agent  # 43b6
+  clock: 4  # 43b6
+  nonce: 43b6  # 43b6
+  set:  # 43b6
+    status: done  # 43b6
+- op: discuss  # e612
+  at: '2026-10-29T01:47:41Z'  # e612
+  by: agent  # e612
+  actor: jgstern_agent  # e612
+  clock: 5  # e612
+  nonce: e612  # e612
+  message: "Done across PR #1927 (io_primitives, dev d0061769ad) and PR #1929 (dev 479300f972): every catalogue loader -- taint (WI-rinaz), io_primitives, frameworks, library_signatures, function_summaries, dataflow_patterns -- refuses a key nothing reads through yaml_catalogs.reject_unknown_keys, naming file, level and key with a near-miss hint. Behavioral evidence: an overlay with net_sendd: / function: (the census repro) now fails 'unknown top-level key(s) net_sendd ... Did you mean: net_send' (CatalogueError, exit 2) instead of loading 0 rows; test_io_catalogue_unknown_keys.py / test_catalogue_unknown_keys.py exercise each loader and level through the real loaders. Accepted-but-unread keys deleted: frameworks linkers: (101 files) and detect: (3), library_signatures module_completeness: partial (5), DataflowConfig.calls. Dead rules deleted with notes: Graphene name_pattern, zio usage_call x2 -- the gaps they hid filed as WI-sorop. Live cases the strictness caught: the shipped bash template's fs_delete: (rm/shred now fs_write) and a test's in-house framework fixture that loaded zero patterns. Not done (outside the item text): function-summary VALUES no consumer reads (census K7), dataflow row values the maps ignore (K13)."  # e612

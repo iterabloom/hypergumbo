@@ -1,0 +1,30 @@
+- op: create  # 6c1a
+  at: '2026-10-27T20:16:04Z'  # 6c1a
+  by: agent  # 6c1a
+  actor: jgstern_agent  # 6c1a
+  clock: 1  # 6c1a
+  nonce: 6c1a  # 6c1a
+  data:  # 6c1a
+    kind: work_item  # 6c1a
+    title: "elixir: IO.read/gets/getn/binread are fs_read only though they default to stdin (the erlang io rows they wrap are fs_read+ipc_recv), and IO.inspect is fs_read though it writes stdout"  # 6c1a
+    status: todo_hard  # 6c1a
+    priority: 3  # 6c1a
+    parent:  # 6c1a
+    tags:  # 6c1a
+    - elixir  # 6c1a
+    - catalogue  # 6c1a
+    - io_boundary  # 6c1a
+    - taint  # 6c1a
+    isbefore: []  # 6c1a
+    duplicate_of: []  # 6c1a
+    not_duplicate_of: []  # 6c1a
+    pr_ref:  # 6c1a
+    description: "FOUND 2026-10-27 by the cross-catalogue medium check (WI-ziruv follow-up: \"the same medium gets the same boundary across catalogues\", packages/hypergumbo-core/tests/test_medium_families.py).\n\nThe elixir catalogue's IO rows disagree with the erlang io rows they wrap, and with every other catalogue's stdin and stdout rows.\n\n(1) Reading. elixir.yaml rows IO.read, IO.binread, IO.getn and IO.gets under fs_read ONLY (\"Elixir IO module reads (stdin, devices, opened files)\"). Each takes `device \\\\ :stdio`: with no device it reads standard input. The erlang io.read / io.get_line / io.get_chars rows they delegate to are fs_read + ipc_recv with boundary_ruling: call_site_undecidable (INV-nular), and elixir.yaml itself carries those erlang rows under the lowercase `io` module. Every other catalogue's stdin reader includes ipc_recv: python builtins.input / sys.stdin.*, c getchar / scanf, go fmt.Scan*, haskell getLine, rust std::io.stdin, scala StdIn.readLine. Consequence: `IO.gets(\"> \")` mints no untrusted_input source, which is the stdin case INV-nular fixed for erlang.\n\n(2) Direction. IO.inspect is rowed fs_read. IO.inspect(item, opts) writes the inspected item to the device (default :stdio) and returns it unchanged: an outbound write to the process's own stdout, which every catalogue rows `logging` (audit-findings 0021). It is the inverse of the INV-nular error (an input declared as an output).\n\nFix shape: (1) add the ipc_recv arm to IO.read/binread/getn/gets with boundary_ruling: call_site_undecidable, matching erlang; (2) move IO.inspect to logging beside IO.puts / IO.write.\n\nNot checked: elixir analyzer stamps for the device argument; whether any test pins these rows' boundaries."  # 6c1a
+    fields: {}  # 6c1a
+- op: discuss  # 06a7
+  at: '2026-10-27T20:37:29Z'  # 06a7
+  by: agent  # 06a7
+  actor: jgstern_agent  # 06a7
+  clock: 2  # 06a7
+  nonce: 06a7  # 06a7
+  message: "2026-10-27: closure test, PR #1905: packages/hypergumbo-core/tests/test_medium_families.py rows elixir:IO.gets, elixir:IO.read (stdin family, ipc_recv) and elixir:IO.inspect (stdout family, logging) are strict xfails naming this item. IO.getn and IO.binread are not members there; add them when fixing."  # 06a7

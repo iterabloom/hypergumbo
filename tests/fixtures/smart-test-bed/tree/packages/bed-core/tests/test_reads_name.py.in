@@ -1,0 +1,5 @@
+from bedcore.reads_name import tripled
+
+
+def test_tripled():
+    assert tripled() == 12

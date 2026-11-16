@@ -69,7 +69,7 @@ class TestAnsibleContentDiscriminator:
         return {p.relative_to(root).as_posix() for p in find_ansible_files(root)}
 
     def test_root_yamllint_config_not_claimed(self, tmp_path: Path) -> None:
-        """The filed instance: a root-level yamllint config is not Ansible."""
+        """A root-level yamllint config is not Ansible."""
         (tmp_path / ".yamllint.yaml").write_text(
             "extends: default\nrules:\n  line-length:\n    max: 120\n"
         )
@@ -95,7 +95,7 @@ class TestAnsibleContentDiscriminator:
         assert self._rels(tmp_path) == {"site.yml", "imports.yml"}
 
     def test_plain_config_in_vars_dir_not_claimed(self, tmp_path: Path) -> None:
-        """The directory arm's measured misfire: web/vars/app.yaml."""
+        """An Ansible-named directory alone does not claim: web/vars/app.yaml."""
         (tmp_path / "web" / "vars").mkdir(parents=True)
         (tmp_path / "web" / "vars" / "app.yaml").write_text("port: 8080\nhost: x\n")
         (tmp_path / "src" / "tasks").mkdir(parents=True)
@@ -149,7 +149,7 @@ class TestAnsibleContentDiscriminator:
         assert self._rels(tmp_path) == {"playbooks/site.yml", "group_vars/web.yml"}
 
     def test_playbook_beside_ansible_dirs_marks_its_tree(self, tmp_path: Path) -> None:
-        """containerd's contrib/ansible layout: the play sits beside tasks/ and vars/.
+        """A contrib/ansible layout: the play sits beside tasks/ and vars/.
 
         The playbook is neither at the root nor under an Ansible-named
         directory; it is found because it sits directly in a directory with
@@ -209,7 +209,7 @@ class TestAnsibleContentDiscriminator:
     def test_behavior_map_has_no_ansible_language_for_yamllint_only_repo(
         self, tmp_path: Path
     ) -> None:
-        """Live repro of the filed defect through the production entry point."""
+        """Through the production entry point, a yamllint-only repo has no ansible."""
         import json
 
         from hypergumbo_core.cli import run_behavior_map
@@ -839,3 +839,101 @@ def test_root_list_with_a_non_mapping_item_is_not_a_playbook(tmp_path: Path) -> 
     mixed.write_text("- hosts: all\n- just-a-string\n")
     assert _top_level_shape(mixed) == _NO_SHAPE
     assert find_ansible_files(tmp_path) == []
+
+
+class TestAnsibleTaskSections:
+    """A task's kind comes from the section that holds it (WI-nobaj, WI-lubah).
+
+    A single per-file "current section" flag, set while a play's keys are read
+    and before its nested items are visited, would emit every task of a play
+    with a ``handlers:`` key after ``tasks:`` as a handler. A role's task or
+    handler file is a bare list with no section key at all; its kind comes
+    from the file's tasks/ or handlers/ directory.
+    """
+
+    @staticmethod
+    def _kinds(tmp_path: Path) -> dict[str, str]:
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        return {
+            s.name: s.kind for s in analyze_ansible(tmp_path).symbols
+            if s.kind in ("task", "handler")
+        }
+
+    def test_tasks_and_handlers_of_one_play_keep_their_kinds(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / "site.yml").write_text(
+            "- name: Web\n"
+            "  hosts: web\n"
+            "  pre_tasks:\n"
+            "    - name: Update cache\n"
+            "      apt: update_cache=yes\n"
+            "  tasks:\n"
+            "    - name: Install nginx\n"
+            "      apt: name=nginx\n"
+            "    - block:\n"
+            "        - name: Configure nginx\n"
+            "          template: src=a dst=b\n"
+            "      rescue:\n"
+            "        - name: Report failure\n"
+            "          debug: msg=x\n"
+            "  handlers:\n"
+            "    - name: restart nginx\n"
+            "      service: name=nginx state=restarted\n"
+            "  post_tasks:\n"
+            "    - name: Smoke test\n"
+            "      uri: url=http://localhost\n"
+        )
+        assert self._kinds(tmp_path) == {
+            "Update cache": "task",
+            "Install nginx": "task",
+            "Configure nginx": "task",
+            "Report failure": "task",
+            "restart nginx": "handler",
+            "Smoke test": "task",
+        }
+
+    def test_a_loop_item_with_a_name_is_not_a_task(self, tmp_path: Path) -> None:
+        (tmp_path / "site.yml").write_text(
+            "- hosts: all\n"
+            "  tasks:\n"
+            "    - name: Add users\n"
+            "      user: name={{ item.name }}\n"
+            "      loop:\n"
+            "        - name: alice\n"
+            "        - name: bob\n"
+        )
+        assert self._kinds(tmp_path) == {"Add users": "task"}
+
+    def test_role_task_and_handler_files_yield_their_symbols(
+        self, tmp_path: Path,
+    ) -> None:
+        tasks = tmp_path / "roles" / "web" / "tasks"
+        handlers = tmp_path / "roles" / "web" / "handlers"
+        tasks.mkdir(parents=True)
+        handlers.mkdir(parents=True)
+        (tasks / "main.yml").write_text(
+            "- name: Install nginx\n"
+            "  apt: name=nginx\n"
+            "- name: Start nginx\n"
+            "  service: name=nginx state=started\n"
+        )
+        (handlers / "main.yml").write_text(
+            "- name: restart nginx\n"
+            "  service: name=nginx state=restarted\n"
+        )
+        assert self._kinds(tmp_path) == {
+            "Install nginx": "task",
+            "Start nginx": "task",
+            "restart nginx": "handler",
+        }
+
+    def test_a_role_requirements_list_is_not_tasks(self, tmp_path: Path) -> None:
+        tasks = tmp_path / "roles" / "web" / "tasks"
+        tasks.mkdir(parents=True)
+        (tasks / "main.yml").write_text("- name: Install nginx\n  apt: name=nginx\n")
+        (tmp_path / "roles" / "requirements.yml").write_text(
+            "- src: geerlingguy.nginx\n  name: nginx\n"
+        )
+        assert self._kinds(tmp_path) == {"Install nginx": "task"}

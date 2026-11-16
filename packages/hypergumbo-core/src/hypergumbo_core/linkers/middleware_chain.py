@@ -46,7 +46,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
-from ..paths import is_test_file
+from ..paths import is_test_node
 from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
@@ -82,7 +82,7 @@ def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
             continue
         if sym.span is None:
             continue
-        if is_test_file(sym.path):
+        if is_test_node(sym.path, sym.meta):
             continue
         middleware_by_file.setdefault(sym.path, []).append(sym)
 

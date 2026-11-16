@@ -86,3 +86,10 @@
   clock: 9  # 4d62
   nonce: 4d62  # 4d62
   message: "Re-scoped premise CONFIRMED accurate (2026-07-21): no `SketchPrecomputed` dataclass exists (grep `class SketchPrecomputed` -> none; the field is a hand-assembled dict at cli.py, its schema a hand-written x-internal overlay). The original \"has no schema\" premise is falsified (schema exists, x-internal). Sole residual is the prevention-only typed contract, owner-migrated to end-of-Wave-5 / the mypy typed-contract ramp; a typed SketchPrecomputed would be the natural home to codify the identity/normalization invariants WI-gupod/WI-samif gesture at. Deferred, not started."  # 4d62
+- op: discuss  # 21f8
+  at: '2026-11-01T10:56:01Z'  # 21f8
+  by: agent  # 21f8
+  actor: jgstern_agent  # 21f8
+  clock: 10  # 21f8
+  nonce: 21f8  # 21f8
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: grep finds no SketchPrecomputed anywhere in packages/*/src. The block is still built key by key at cli.py:13486-13555 (config_info, readme_description, additional_file_centrality_scores). docs/schema.json:559 marks it x-internal:true with exactly those 3 properties, hand-written at scripts/generate-schema:779. A live survey emits the same 3 keys. The prevention-only residual holds; the line citations in the statement (schema.json:336-385) are out of date. MECHANISM: sketch_precomputed is a hand-assembled dict (cli.py) with a hand-written x-internal schema overlay (generate-schema) and no owning dataclass. SHARES MECHANISM WITH: WI-samif."  # 21f8

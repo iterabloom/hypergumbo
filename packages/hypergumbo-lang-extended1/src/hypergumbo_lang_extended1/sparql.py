@@ -7,7 +7,7 @@ commonly used in semantic web and knowledge graph applications.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract PREFIX declarations and query definitions
+1. Pass 1: Extract PREFIX and BASE declarations and query definitions
 2. Pass 2: Create vocabulary usage edges linking queries to prefixes
 
 The base class handles grammar checking, parser creation, file discovery,
@@ -17,6 +17,9 @@ logic.
 Symbols Extracted
 -----------------
 - **Prefixes**: Namespace prefix declarations (PREFIX foaf: <...>)
+- **Base**: BASE IRI declarations (BASE <...>), one ``base`` symbol named
+  ``BASE`` per declaration, carrying the IRI in ``meta["iri"]``; no edges
+  point at it
 - **Queries**: Query definitions, named by their form (SELECT, CONSTRUCT, ASK,
   DESCRIBE); a query has no name of its own
 

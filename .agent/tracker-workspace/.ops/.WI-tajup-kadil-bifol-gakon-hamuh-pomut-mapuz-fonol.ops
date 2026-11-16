@@ -1,0 +1,58 @@
+- op: create  # 72e5
+  at: '2026-10-31T10:07:00Z'  # 72e5
+  by: agent  # 72e5
+  actor: jgstern_agent  # 72e5
+  clock: 1  # 72e5
+  nonce: '72e5'  # 72e5
+  data:  # 72e5
+    kind: work_item  # 72e5
+    title: "verify-claims exits 1 (the violated code) when the --claims file or the --input map does not exist; bad input must exit 2"  # 72e5
+    status: todo_hard  # 72e5
+    priority: 3  # 72e5
+    parent:  # 72e5
+    tags:  # 72e5
+    - docstring_audit  # 72e5
+    - analysis_quality  # 72e5
+    - cli_robustness  # 72e5
+    isbefore: []  # 72e5
+    duplicate_of: []  # 72e5
+    not_duplicate_of: []  # 72e5
+    pr_ref:  # 72e5
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. cli.py:7182-7184 (claims file missing) and 7217-7222 (--input missing) return 1; --help gives 2 for a claims file that fails validation, and cli.py:7200 says rc=2 keeps bad input distinct from a violation. Repro: hypergumbo verify-claims repo --claims /nonexistent.yaml -> 'Error: Claims file not found', rc 1. v01."  # 72e5
+    fields: {}  # 72e5
+- op: discuss  # 86ac
+  at: '2026-11-01T23:36:19Z'  # 86ac
+  by: agent  # 86ac
+  actor: jgstern_agent  # 86ac
+  clock: 2  # 86ac
+  nonce: 86ac  # 86ac
+  message: "PARTIAL overlap noted on WI-ditom (owner-approved; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-ditom's 'transforms string row -> AttributeError -> main catch-all exits 1 = violated' exit-code half is WI-tajup's main() exit-code collision; the loader shape-check half stays here."  # 86ac
+- op: discuss  # ca6b
+  at: '2026-11-14T05:05:56Z'  # ca6b
+  by: agent  # ca6b
+  actor: jgstern_agent  # ca6b
+  clock: 3  # ca6b
+  nonce: ca6b  # ca6b
+  message: "Second outside-reader review, 2026-11-13 (self-run cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, re-checked on dev fed15705d7, 20 other repositories measured; ~/hypergumbo_lab_notebook/outside_reader_review2_11142026). RELATED QUESTION for the owner, not filed separately. The help states 'Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = at least one inconclusive, or the claims file failed validation'. The reader read the shared 2 as a defect for CI: a gate cannot tell a typo in the claims file from an analysis that could not decide. This item moves two more bad-input paths onto 2. Whether bad input and inconclusive keep sharing a code is a contract decision (the codes are documented); if they are to be split, it is cheaper to rule before this item is done than after."  # ca6b
+- op: discuss  # f3d9
+  at: '2026-11-15T21:59:34Z'  # f3d9
+  by: agent  # f3d9
+  actor: jgstern_agent  # f3d9
+  clock: 4  # f3d9
+  nonce: f3d9  # f3d9
+  message: "OWNER RULING 2026-11-15 on the question raised in this thread on 11-14 (plan: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md, PR 3, before the release): SPLIT the shared code. Bad input exits 2 (a missing or invalid claims file, a missing --input map: the two paths this item moves off 1 land there); inconclusive moves from 2 to 3. So the contract becomes 0 = all confirmed, 1 = at least one violated, 2 = bad input, 3 = at least one inconclusive. Help text and spec change with it. To check while building: every reader of verify-claims' exit code in this repository (scripts, gates, tests, docs)."  # f3d9
+- op: update  # 31ed
+  at: '2026-11-16T19:01:10Z'  # 31ed
+  by: agent  # 31ed
+  actor: jgstern_agent  # 31ed
+  clock: 5  # 31ed
+  nonce: 31ed  # 31ed
+  set:  # 31ed
+    status: done  # 31ed
+- op: discuss  # 4185
+  at: '2026-11-16T19:01:10Z'  # 4185
+  by: agent  # 4185
+  actor: jgstern_agent  # 4185
+  clock: 6  # 4185
+  nonce: '4185'  # 4185
+  message: "DONE in PR #2203 (dev c9295d38c6, commit 657aa54a5a). OWNER RULINGS: 2026-11-15 split the shared code; 2026-11-16 option C on the numbers, because confirmed_with_caveats already exits 3 in released versions: 0 = every claim confirmed, 1 = at least one violated, 2 = bad input (before any verdict), 3 = at least one confirmed_with_caveats (unchanged), 4 = at least one inconclusive (was 2). Mixed verdicts: violated, then inconclusive, then caveats. THIS ITEM'S FILED REPRO, RE-RUN BY ME ON BOTH ARMS (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr3/repro/out_base.txt, out_fixed.txt): `hypergumbo verify-claims repo --claims /nonexistent.yaml` prints 'Error: Claims file not found' and exits 1 before, 2 on the PR's code; a missing --input map ('Error: Input file not found') exits 1 before, 2 after; a claim with no constraint (inconclusive) exits 2 before, 4 after. ALSO MOVED TO 2 (each crashed into the internal-error net and exited 1 before): an unreadable claims file; a claim field of the wrong type (list boundary / source_taint / prohibited_sink_zone, string max_chains); a --input that is a directory or whose nodes / edges / entrypoints are not lists of objects; a taint catalogue row or field of the wrong type, named by path. NEW REFUSALS that loaded before: must_not_exist: \"no\" (was read as true, exit 0), max_chains: true, a non-list request_ingress, a taint source / sink name YAML reads as a non-string, argument_tainted: [yes]. A 35-case probe: every bad-input case exits 2. Readers in this repository: scripts/check-allowlist-commands counts a run on 0 or 4 (was 0 or 2). NOT ASSERTED / LEFT OPEN, filed as WI-nidun-rimoz-kufih-nitub-tovil-sazur-kofal-tumig: a wrong-typed field inside an --input record, a genuine internal error and a broken pipe still exit 1; `claims: []` exits 0; other commands' missing --input."  # 4185

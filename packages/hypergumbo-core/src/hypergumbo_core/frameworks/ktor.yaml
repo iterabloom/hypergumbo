@@ -65,6 +65,3 @@ patterns:
   # Ktor CallLogging
   - concept: middleware
     decorator: "^callLogging$"
-
-linkers:
-  - http

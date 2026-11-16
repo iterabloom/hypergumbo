@@ -19,3 +19,10 @@
     pr_ref:  # 5a29
     description: "FOUND 2026-09-30 while working WI-halin (branch jgstern-agent/fix/halin). java.py's object_creation_expression arm emits the instantiates edge only when the created type is a bare type_identifier child; a generic (new Box<>(), new Box<String>()) or package-qualified (new p.Box()) creation of a PROJECT class emits no instantiates edge at all.\n\nREPRO (analyze_java, one file):\n  public class A { void g() { Box<String> b = new Box<>(); var c = new p.Box(); } }\n  class Box<T> {}\n-> zero instantiates edges.\n\nWI-halin widened only the receiver-typing half of that arm (a var bound from a generic or qualified constructor is now typed, via _java_created_type_name); the instantiates-edge lookup was deliberately left on the bare type_identifier, because widening it adds call-graph edges and is an unmeasured behaviour change outside that item. Fix direction: resolve the created type through _java_created_type_name (strip generics; for a qualified name resolve the last component guarded by the import check). Corpus frequency not measured."  # 5a29
     fields: {}  # 5a29
+- op: discuss  # 3f5b
+  at: '2026-10-31T10:09:58Z'  # 3f5b
+  by: agent  # 3f5b
+  actor: jgstern_agent  # 3f5b
+  clock: 2  # 3f5b
+  nonce: 3f5b  # 3f5b
+  message: "2026-10-31 docstring audit re-reproduced this (java.py:3677-3678 resolves only a direct type_identifier; new B<String>(), new B<>() and new B.In() give no instantiates edge). No new item filed."  # 3f5b

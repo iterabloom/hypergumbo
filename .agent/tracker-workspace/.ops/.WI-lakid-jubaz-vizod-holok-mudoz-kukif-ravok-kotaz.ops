@@ -37,3 +37,10 @@
   set: {}  # 937a
   add:  # 937a
     isbefore: [WI-vojil-patas-hubob-tirar-nigol-lulor-ponah-virir]  # 937a
+- op: discuss  # bd7c
+  at: '2026-10-29T19:49:02Z'  # bd7c
+  by: agent  # bd7c
+  actor: jgstern_agent  # bd7c
+  clock: 4  # bd7c
+  nonce: bd7c  # bd7c
+  message: "ADR-0062 (PR #1943) fixes the shape this item projects: items Y.Map<id, Y.Map>; title/description as Y.Text; discussion as Y.Array of plain posted entries; drafts Y.Map<client_token, Y.Text>; op-only fields as plain values; the STEALTH tier is not projected. No pycrdt-store: the doc is rebuilt from the ops log at startup. pycrdt is now 0.14.10 (this item says 0.14.9)."  # bd7c

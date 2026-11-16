@@ -1,0 +1,52 @@
+- op: create  # 3294
+  at: '2026-10-22T05:14:23Z'  # 3294
+  by: agent  # 3294
+  actor: jgstern_agent  # 3294
+  clock: 1  # 3294
+  nonce: '3294'  # 3294
+  data:  # 3294
+    kind: work_item  # 3294
+    title: "empty-zone gate covers only the ADR-0060 zones: a claim on a zone with no sinks for the language (database in go/c/cpp/haskell/rust, host_env in 8 languages, ipc on JVM) is not withheld for that reason"  # 3294
+    status: todo_hard  # 3294
+    priority: 3  # 3294
+    parent:  # 3294
+    tags:  # 3294
+    - verify_claims  # 3294
+    - taint  # 3294
+    - io_boundary  # 3294
+    - concept_audit_20261021  # 3294
+    isbefore: []  # 3294
+    duplicate_of: []  # 3294
+    not_duplicate_of: []  # 3294
+    pr_ref:  # 3294
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, agent read (verdict effect NOT traced): cli.py:6774-6775 checks emptiness only for code_execution / dom_injection; its docstring premise (6753-6756) says the no-catalogue gate covers I/O zones, but that gate counts sinks per LANGUAGE (7466-7468). Measured zero-sink zones while the language has a catalogue: database (c, cpp, go, haskell, rust); host_env (c, cpp, go, java, kotlin, scala, objc, swift); ipc (java, kotlin, scala). Input: the shipped untrusted-input-no-database claim (docs/example-claims/generic-taint-claims.yaml:77-87) on a Go repo -- first check whether another gate already withholds it."  # 3294
+    fields: {}  # 3294
+- op: discuss  # 9f99
+  at: '2026-10-25T20:08:23Z'  # 9f99
+  by: agent  # 9f99
+  actor: jgstern_agent  # 9f99
+  clock: 2  # 9f99
+  nonce: 9f99  # 9f99
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, WRONG VERDICT SHOWN. Shipped claim untrusted-input-no-database on Go: typed DB calls are withheld by the unclassified-call gate (net/http handler -> db.Exec, a typed *sql.DB parameter, gorm: all inconclusive); but fmt.Scanln -> package-global `var db *sql.DB; db.Exec(v)` reads confirmed_with_caveats (rc 3) whose only caveat is untyped_receiver -- implying typing would help, though go has no database sinks at all; a DB-free repo reads confirmed; on the same repos a code_execution claim reads inconclusive ('go has no sink in the code_execution zone'). Refs: _sink_zone_gaps cli.py:6796 (docstring premise :6804-6808, zone filter :6821-6825, per-language emptiness :6836); per-language sink count :7516-7519; shipped_non_boundary_sink_zones taint.py:2286; claim file lines unchanged. Zone list wider than filed: database also empty for javascript, typescript, bash; host_env and ipc also for groovy, bash; logging, network, subprocess for bash; network for haskell with --no-default-overlays. browser_storage is empty for every non-JS language by nature: the fix must rule whether a zone a language can never have withholds (the code_execution precedent says it does). P3 kept."  # 9f99
+- op: discuss  # 07f1
+  at: '2026-10-26T00:31:44Z'  # 07f1
+  by: agent  # 07f1
+  actor: jgstern_agent  # 07f1
+  clock: 3  # 07f1
+  nonce: 07f1  # 07f1
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section D: the empty-zone gate checks a hand-written two-zone subset (code_execution, dom_injection) where the property holds for every zone. The fix here does not wait for the sweep."  # 07f1
+- op: update  # 2358
+  at: '2026-10-28T14:21:36Z'  # 2358
+  by: agent  # 2358
+  actor: jgstern_agent  # 2358
+  clock: 4  # 2358
+  nonce: '2358'  # 2358
+  set:  # 2358
+    status: done  # 2358
+- op: discuss  # bb82
+  at: '2026-10-28T14:21:36Z'  # bb82
+  by: agent  # bb82
+  actor: jgstern_agent  # bb82
+  clock: 5  # bb82
+  nonce: bb82  # bb82
+  message: "Fixed in PR #1922 (0ba6186e97). cli._sink_zone_gaps judges every BUILT-IN zone (taint.builtin_sink_zones: the AUTO_SINK_ZONE_MAP zones and ADR-0060's), not only code_execution/dom_injection; a zone only a project catalogue declares is not judged. Ruling taken (the re-check asked for one): a zone a language can never have (browser_storage outside JS) withholds too, as code_execution always did -- the tool cannot tell 'no such sink exists' from 'no row names it'. Behavioural evidence: test_every_builtin_zone_is_judged.py::test_a_database_claim_on_go_is_withheld (production CLI, Go fmt.Scanln -> package-global db.Exec under untrusted-input-no-database: inconclusive, 'no sink in the database zone'; mutating the gate back to two zones reds it) with a network-zone control; test_java_stdio_receiver_typed's ipc claim is now withheld for java having no ipc sink. Measured: verify-claims, 7 generic claims, on fastapi, django, full-stack-fastapi-template, apollo-server, dash.js, growthbook, ExoPlayer, detekt and gin-realworld: no verdict moved (gin-realworld's database claim was already withheld by the unclassified-call gate)."  # bb82

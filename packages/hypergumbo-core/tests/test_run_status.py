@@ -159,7 +159,7 @@ def test_live_run_draws_phases_counts_and_one_complete_line(
     token = status.begin(True)
     status.phase("Running linkers")
     status.phase("Running linkers")  # repeat: no new phase
-    status.item("Embedding files", 41, 53)
+    status.item("Computing centrality", 41, 53)
     inner = status.begin(False)  # nested: joins regardless of progress
     status.phase("Writing output")
     status.end(inner)
@@ -167,7 +167,7 @@ def test_live_run_draws_phases_counts_and_one_complete_line(
     status.end(token)
     text = out.getvalue()
     assert "\r[    0s] Running linkers (0s)" in text
-    assert "· Embedding files 41/53" in text
+    assert "· Computing centrality 41/53" in text
     assert text.count("Complete in 0s") == 1
     assert "Slowest phases" not in text  # a short run gets no summary
     assert "%" not in text and "ETA" not in text
@@ -357,7 +357,7 @@ def test_sketch_progress_reports_into_run_status(monkeypatch: pytest.MonkeyPatch
     prog.start_phase("config")
     prog.start_phase("analysis", cached=True)
     prog.start_phase("structure", cached=True)  # no cached text: plain name
-    prog.update_item_progress("Embedding files", 2, 5)
+    prog.update_item_progress("Computing centrality", 2, 5)
     prog.complete_phase("structure")
     prog.finish()
     prog.disable()
@@ -370,5 +370,5 @@ def test_sketch_progress_reports_into_run_status(monkeypatch: pytest.MonkeyPatch
         "Sketch: Building structure",
     ]
     text = status._stream_override.getvalue()
-    assert "· Embedding files 2/5" in text
+    assert "· Computing centrality 2/5" in text
     assert "ignored" not in text

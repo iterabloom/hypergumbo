@@ -90,8 +90,3 @@ patterns:
   # Play i18n
   - concept: middleware
     decorator: "^Messages$"
-
-linkers:
-  - http
-  - websocket
-  - database_query

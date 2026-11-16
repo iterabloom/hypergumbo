@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for scripts/audit-autopr-convergence (WI-lapap).
 
-The reader INV-rahib's convergence ledger never had. The ledger
-(``.git/AUTOPR_HISTORY.jsonl``) was added so that "does auto-pr always end in a
-declared terminal state" could be answered over a sequence of runs instead of
-organically; it then accumulated 483 rows holding 41 merged-and-exited-1 runs
-and 14 undeclared-terminal-state runs, and nothing read it for six weeks.
+The reader for INV-rahib's convergence ledger. The ledger
+(``.git/AUTOPR_HISTORY.jsonl``) exists so that "does auto-pr always end in a
+declared terminal state" can be answered over a sequence of runs instead of
+organically; unread, it lets merged-and-exited-1 runs and
+undeclared-terminal-state runs accumulate unseen.
 
 The property these tests care about most is **absent is not empty is not
 clean**. This repository's recurring defect is a zero that means "never
 modelled" being read as a zero that means "nothing wrong" — so an audit whose
 ledger is missing, empty or unreadable must say *I cannot conclude*, never
 *converged*. An instrument that reports all-clear when it read nothing is worse
-than no instrument, because it manufactures the reassurance that stopped anyone
-looking in the first place.
+than no instrument, because it manufactures the reassurance that stops anyone
+looking.
 
 The ledger lives inside ``.git/``, so it is local to a clone and CI can never
 see it. That is why this is a script the agent runs and a stop-hook nudge,
@@ -126,7 +126,7 @@ def test_clean_ledger_reports_converged(tmp_path: Path) -> None:
 
 
 def test_merged_with_nonzero_exit_is_a_violation(tmp_path: Path) -> None:
-    """Class 1: the run merged and reported failure (INV-rahib, 41 of 481)."""
+    """Class 1: the run merged and reported failure (INV-rahib)."""
     rows = [_row("merged", 0, pr=1), _row("merged", 1, pr=2)]
     rc, out = aac.run([str(_ledger(tmp_path, rows))])
     assert rc == aac.EXIT_VIOLATION
@@ -136,8 +136,9 @@ def test_merged_with_nonzero_exit_is_a_violation(tmp_path: Path) -> None:
 
 def test_already_merged_with_nonzero_exit_is_also_a_violation(tmp_path: Path) -> None:
     """`already_merged` is a converged-merged state too, so it carries the
-    same obligation. Pinning it separately because auto-pr reaches it from a
-    different path (_autopr_handle_already_merged) that had the same defect."""
+    same obligation. Pinned separately because auto-pr reaches it from a
+    different path (_autopr_handle_already_merged) that can carry the same
+    defect."""
     rows = [_row("already_merged", 1, pr=1)]
     rc, _ = aac.run([str(_ledger(tmp_path, rows))])
     assert rc == aac.EXIT_VIOLATION
@@ -145,7 +146,7 @@ def test_already_merged_with_nonzero_exit_is_also_a_violation(tmp_path: Path) ->
 
 def test_undeclared_terminal_state_is_a_violation(tmp_path: Path) -> None:
     """Class 2: `unknown` is the initializer, so reaching it means the run fell
-    off the end (owner ruling 2026-08-03)."""
+    off the end (per an owner ruling)."""
     rows = [_row("merged", 0, pr=1), _row("unknown", 1, pr=2, sha=None)]
     rc, out = aac.run([str(_ledger(tmp_path, rows))])
     assert rc == aac.EXIT_VIOLATION
@@ -157,9 +158,8 @@ def test_undeclared_with_exit_zero_is_reported_as_the_worst_shape(
 ) -> None:
     """exit 0 + no terminal state + no merge = success claimed for nothing.
 
-    One such row exists in the live ledger. It must not be tallied silently
-    alongside the exit-1 undeclared runs, because the two differ in what they
-    told the caller.
+    It must not be tallied silently alongside the exit-1 undeclared runs,
+    because the two differ in what they told the caller.
     """
     rows = [_row("unknown", 0, pr=1, sha=None)]
     rc, out = aac.run([str(_ledger(tmp_path, rows))])
@@ -262,7 +262,7 @@ def test_script_default_path_is_the_repo_ledger() -> None:
     """With no argument the audit reads this clone's real ledger.
 
     Pinned because a default that silently pointed somewhere else would make
-    every unattended invocation a no-op — the shape of the defect being fixed.
+    every unattended invocation a no-op — an unread ledger again.
     """
     assert aac.default_ledger_path(REPO_ROOT) == REPO_ROOT / ".git" / "AUTOPR_HISTORY.jsonl"
 
@@ -273,9 +273,10 @@ def test_script_default_path_is_the_repo_ledger() -> None:
 def _undeclared(pr: int, site, *, instrumented: bool = True) -> str:
     """An undeclared-terminal-state row.
 
-    ``instrumented=False`` OMITS the key entirely, which is what every row
-    written before WI-nazoj looks like. That is a different fact from a row
-    whose ``abort_site`` is null, and the audit must not flatten them.
+    ``instrumented=False`` OMITS the key entirely, which is what a row
+    written by an auto-pr that predates abort-site recording looks like
+    (WI-nazoj). That is a different fact from a row whose ``abort_site`` is
+    null, and the audit must not flatten them.
     """
     row = {
         "exit_code": 1,
@@ -294,8 +295,8 @@ def _undeclared(pr: int, site, *, instrumented: bool = True) -> str:
 def test_an_undeclared_row_shows_where_it_died(tmp_path: Path) -> None:
     """The whole point of the attribution: a line number, not a shrug.
 
-    Fourteen of these accumulated over five weeks with nothing to distinguish
-    them from each other, so nobody could tell whether they shared a cause.
+    Without a site, undeclared rows are indistinguishable from each other, so
+    nobody can tell whether they share a cause.
     """
     rc, out = aac.run([str(_ledger(tmp_path, [_undeclared(1, "auto-pr:2114")]))])
     assert rc == aac.EXIT_VIOLATION
@@ -310,7 +311,7 @@ def test_a_row_from_before_the_instrumentation_is_not_called_unattributed(
     A row with no ``abort_site`` KEY was written by a version of auto-pr that
     could not record one. Reporting it as "abort site not recorded" would
     describe a limitation of the run rather than of the instrument, and would
-    make the historical backlog look like fourteen live instrument failures.
+    make the historical backlog look like live instrument failures.
     """
     rc, out = aac.run(
         [str(_ledger(tmp_path, [_undeclared(1, None, instrumented=False)]))]
@@ -354,11 +355,12 @@ def test_json_output_tallies_the_abort_sites(tmp_path: Path) -> None:
 
 # --- externally terminated is a fourth bucket, not a violation (WI-katap) ---
 #
-# Measured 2026-09-20: 22 of 84 post-instrumentation runs carried
-# `final_state=unknown`, and 14 of the 15 PRs behind them had MERGED. The
-# violation signal was firing on runs that succeeded, because a kill from the
-# caller's `timeout` wrapper was indistinguishable from auto-pr falling off the
-# end. auto-pr now names the signal; this is the reader half.
+# A run killed by a signal (a caller's `timeout` wrapper, say) never got to
+# decide, and the PR behind it can merge anyway. Recorded as
+# `final_state=unknown`, such a kill would be indistinguishable from auto-pr
+# falling off the end, and the violation signal would fire on runs that
+# succeeded. auto-pr records the signal (`terminated_sig*`, `terminated_by`);
+# this is the reader half.
 
 
 def _sig_row(state: str, exit_code: int, pr: int, terminated_by: str | None) -> str:
@@ -429,8 +431,8 @@ def test_a_merged_run_that_was_also_signalled_stays_merged_and_is_disclosed(
 
     A run that merged and was then killed during housekeeping is NOT a
     violation — Class 1 is about a merge reported as a failure, and the exit
-    code here is an honest signal death. But the kill is disclosed, because it
-    is the fact Class 1's own investigation had to recover from a terminal log.
+    code here is an honest signal death. But the kill is disclosed, because
+    otherwise that fact could be recovered only from a terminal log.
     """
     mod = _load()
     rows = [_sig_row("merged", 143, 1, "SIGTERM")]
@@ -445,9 +447,10 @@ def test_pre_instrumentation_rows_are_not_claimed_as_unsignalled(
     """ABSENT is not EMPTY, one level further in — the audit's own house rule.
 
     A row written before the signal traps existed carries no `terminated_by`
-    KEY. It must not be reported as "this run was not signalled", because the
-    22 rows that prompted this work are exactly such rows and most of them WERE
-    signalled. The audit has to say it cannot tell.
+    KEY. It must not be reported as "this run was not signalled", because a
+    kill and a fall-off-the-end both left such rows as `unknown`, and rows of
+    this shape include runs that WERE signalled. The audit has to say it
+    cannot tell.
     """
     mod = _load()
     rows = [_row("unknown", 1, pr=1, sha=None)]  # no terminated_by key at all

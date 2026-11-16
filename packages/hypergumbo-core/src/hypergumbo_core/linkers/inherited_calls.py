@@ -1,21 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Infrastructure linker: inherited-call resolution via ancestor walking.
 
-INV-nilud campaign META — see ``~/puluf-plan.md``. PR-2 (WI-hatip) lays
-the substrate + Ruby `include`/`extend` mixin coverage; PR-3 (WI-dukog)
-adds Java Site-1; PR-4 (WI-sivuk) threads Site-2/3 hints; PR-5
-(WI-puvil) lifts Java Sites 2 and 3 fully — this module.
-
 Why a linker
 ------------
-Inheritance-aware call resolution used to live in two analyzers: Java
-(``java.py:1414-1622``, three call sites emitting ``ast_call_inherited``
-/ ``ast_call_inherited_method`` / ``ast_call_inherited_field``) and
-Ruby (``ruby.py:1901-1956``, ``_find_inherited_initialize``). The other
-12 analyzers shared the same silent gap with no equivalent walk. The
-WI-puluf Ruby mixin investigation surfaced the deeper duplication, and
-per ADR-3bbb this work belongs in a Tier-2 Infrastructure linker
-— same layer as ``inheritance.py``.
+Resolving a call against a class's ancestors is the same walk in every
+language; only the MRO order differs. Done per analyzer, it is duplicated
+where it exists and silently missing everywhere else, so per ADR-3bbb it
+lives here, in one Tier-2 Infrastructure linker at the same layer as
+``inheritance.py``, serving every analyzer that stamps the hints below.
+(history: INV-nilud, WI-puluf)
 
 Three Sites
 -----------
@@ -27,9 +20,9 @@ The linker dispatches per unresolved-call edge by which hint(s)
   ``enclosing_class``. The linker walks ``extends``/``implements``/
   ``inherits``/``includes`` edges from the enclosing class, consults each parent
   symbol's ``meta["fields"]`` (``{field: type_name}``, populated by the
-  Java analyzer in PR-5 and the Python analyzer in WI-hiziz) for a
-  matching field name, looks up the field's type as a class symbol, and
-  resolves the method on that type's MRO. Emits
+  Java and Python analyzers) for a matching field name, looks up the
+  field's type as a class symbol, and resolves the method on that type's
+  MRO. Emits
   ``ast_call_inherited_field`` at confidence 0.80. For Python the parent
   walk follows the C3 linearization (WI-rarab), so a field name declared
   at two depths with divergent types takes the MRO-earlier declaration,
@@ -37,12 +30,18 @@ The linker dispatches per unresolved-call edge by which hint(s)
   BFS.
 
 - **Site 2** (``receiver_type_hint``): ``var.method()`` where the
-  analyzer inferred ``var``'s type. Three-step resolution:
+  analyzer inferred ``var``'s type. Resolution:
   (1) direct method on the type → ``ast_call_type_inferred`` at 0.85;
-  (2) MRO walk on the type → ``ast_call_inherited_method`` at 0.70;
-  (3) fallback to the type symbol itself → ``ast_call_inherited_method``
-  at 0.70. Step (2) is a forward improvement over the pre-PR-5
-  in-analyzer behavior, which never walked the chain for Site 2.
+  (2) MRO walk on the type → ``ast_call_inherited_method`` at 0.70.
+  A method on neither leaves the CALL unresolved; for Java
+  (``_SITE2_TYPE_USE_LANGS``) step (3) adds a ``uses`` edge from the caller
+  to the type (``ast_call_inherited_method`` at 0.70): the caller depends on
+  the type, which is not the callee. It must not be a ``calls`` edge: such a
+  call targets a method inherited from an external base (``getMessage``,
+  ``getClass``, an ``InputStream`` subclass's ``read``) or an in-repo method
+  the walk missed, and a ``calls`` edge to the type would hand
+  ``method_call_recovery`` a class hint that binds ``...builder().build()``
+  to an unrelated ``Builder.build``. (history: WI-jomik)
 
 - **Site 1** (``enclosing_class`` only): bare or ``this.method()`` call.
   Walks the enclosing class's MRO via the registered per-language
@@ -63,40 +62,31 @@ linker only emits NEW edges; it never mutates existing ones.
 
 Per-language MRO walkers
 ------------------------
-The dispatch table is hardcoded (YAML / decorator-hooks were rejected as
-ceremony for static language semantics). Initial table (PR-2):
+The dispatch table is hardcoded (YAML / decorator hooks would be ceremony
+for static language semantics):
 
-- ``_walk_insertion_order``: Ruby, Groovy. BFS through inheritance edges
-  in declaration order. Per-source visited set guards against cycles.
-- ``_walk_single_then_interfaces`` (Java; PR-3 / WI-dukog): single
-  superclass (``extends``) walked before interfaces
-  (``implements``/``includes``) via edge-type priority. Also registered
-  for PHP, JavaScript, TypeScript, C# and Objective-C (see below).
+- ``_walk_insertion_order``: Ruby, Groovy, Go, Rust, C++. BFS through
+  inheritance edges in declaration order. Per-source visited set guards
+  against cycles.
+- ``_walk_single_then_interfaces``: Java, PHP, JavaScript, TypeScript, C#,
+  Objective-C. Single superclass (``extends``) walked before interfaces
+  (``implements``/``includes``) via edge-type priority.
+- ``_walk_c3`` (Python): true C3 linearization over the in-tree
+  ``extends`` chain. Python's MRO is C3, not insertion-order BFS — the two
+  diverge on uneven-depth diamonds, where BFS picks the wrong ancestor.
+  Registered for ``python`` only; deliberately NOT added to
+  ``_LEGACY_SITE2_LANGS`` (Python keeps the strict Site-2 collision guard).
+- ``_walk_linearization`` (Scala): right-to-left BFS approximating Scala
+  trait linearization (``extends B with T1 with T2`` → ``C, T2, T1, B``;
+  rightmost mixin wins, superclass last).
+- ``_walk_left_to_right`` (Swift): left-to-right pre-order DFS (single
+  superclass chain, then protocol extensions in declaration order).
 
-- ``_walk_c3`` (Python; WI-hiziz / D1): true C3 linearization over the
-  in-tree ``extends`` chain. Python's MRO is C3, not insertion-order BFS —
-  the two diverge on uneven-depth diamonds, where BFS picks the wrong
-  ancestor. Registered for ``python`` only; deliberately NOT added to
-  ``_LEGACY_SITE2_LANGS`` (Python keeps strict Site-2, no Step-3 fallback).
-
-- ``_walk_linearization`` (Scala; WI-nazab): right-to-left BFS
-  approximating Scala trait linearization (``extends B with T1 with T2``
-  → ``C, T2, T1, B``; rightmost mixin wins, superclass last). Registered
-  for ``scala``.
-- ``_walk_left_to_right`` (Swift; WI-sojim): left-to-right pre-order DFS
-  (single superclass chain, then protocol extensions in declaration
-  order). Registered for ``swift``.
-- INV-fahub registered walkers for eight more languages: Go, Rust and C++
-  use ``_walk_insertion_order``; PHP, JavaScript, TypeScript, C# and
-  Objective-C use ``_walk_single_then_interfaces``.
-
-Both recover Step-2 (inherited-method) calls for the Scala/Swift facets
-(WI-bihit/WI-votar), which already stamp ``receiver_type_hint`` and so
-already resolve Step-1 (direct method on the typed receiver); the walker
-adds the ancestor-chain hop. External-base shadowing (INV-guviv) stays
-Python-scoped — the guard is applied at Site-1, Site-2 and Site-3 for
-``python`` only; the other walkers resolve in-tree ancestors and inherit
-that tracked limitation rather than worsening it.
+The Scala and Swift analyzers stamp ``receiver_type_hint``, so Site-2
+resolves a method directly on the typed receiver for them; their walkers
+add the ancestor-chain step. External-base shadowing (INV-guviv) is guarded
+for Python only — at Site-1, Site-2 and Site-3; the other walkers see only
+in-tree ancestors and share that limitation unguarded.
 
 The analyzer must opt in by emitting the hint. Without a registered walker
 for the source language, Site-2 still resolves a method directly on the
@@ -133,7 +123,9 @@ class ids next to the names: ``enclosing_class_id`` (an exact lexical
 method-to-class map) and ``receiver_type_id`` (stamped only when the type's
 short name is unique within the file) on the edge meta, and
 ``meta["field_type_ids"]`` (``{field: class_id}``) on the parent class
-symbol for Site-3. The Python analyzer is the only producer today. An id
+symbol for Site-3. The Python analyzer stamps all three. The Java analyzer
+stamps ``enclosing_class_id`` only, found by the call's position, so a Java
+typed receiver still goes by name. An id
 that is a known class symbol in the call's language replaces the name lookup
 and skips that guard; a missing, stale or foreign-language id falls back to
 the name path and its guard.
@@ -161,26 +153,26 @@ from .type_hierarchy import (
 
 PASS_ID = make_pass_id("inherited-calls-linker")
 
-# INV-nosoz: the registry family plus ``includes`` for the Ruby mixin walk.
-# This read ``("extends", "implements", "includes")`` — it had the mixin but
-# omitted ``inherits``, so Solidity ancestors were never walked. ``includes``
-# is unioned rather than being registry-resident because eight of its nine
-# producers mean file inclusion; the MRO walkers below only ever see edges
-# whose src is a type, so a Makefile ``include`` cannot reach them.
+# The registry's inheritance family plus ``includes`` for the Ruby mixin walk.
+# Taking the family from the registry, not a hand-written tuple, keeps every
+# member walked (``inherits`` carries Solidity ancestors). ``includes`` is
+# unioned rather than registry-resident because most of its producers mean
+# file inclusion; the MRO walkers below only ever see edges whose src is a
+# type, so a Makefile ``include`` cannot reach them. (history: INV-nosoz)
 _INHERITED_CALL_EDGE_TYPES: tuple[str, ...] = tuple(sorted(
     INHERITANCE_EDGE_TYPES | frozenset({"includes"})
 ))
 
-# Confidence per Site (preserves Java/Ruby precedent; see module docstring).
+# Confidence per Site (see module docstring).
 _SITE_1_CONFIDENCE = 0.90
 _SITE_2_DIRECT_CONFIDENCE = 0.85  # ast_call_type_inferred
 _SITE_2_INHERITED_CONFIDENCE = 0.70  # ast_call_inherited_method
 _SITE_3_CONFIDENCE = 0.80  # ast_call_inherited_field
 
-# Depth cap matches the existing Java + Ruby ancestor walks.
+# Maximum ancestor hops any walker takes.
 _DEFAULT_DEPTH_CAP = 10
 
-# Edge-type priority for the single-then-interfaces walker (Java/Kotlin/C#).
+# Edge-type priority for the single-then-interfaces walker (see _MRO_WALKERS).
 # Lower value = walked first. extends is the single-superclass MRO; implements
 # / includes are interfaces / mixin contributions consulted after the extends
 # chain is exhausted at the same depth.
@@ -286,8 +278,7 @@ def _walk_insertion_order(
             the order they appear in the list.
         method_index: Method lookup index built by
             ``build_method_index(...)``.
-        depth_cap: Maximum walk depth; matches the existing Java + Ruby
-            10-hop limit.
+        depth_cap: Maximum walk depth (``_DEFAULT_DEPTH_CAP``, 10 hops).
 
     Returns:
         First matching method ``Symbol``, or ``None`` if not found within
@@ -322,7 +313,7 @@ def _walk_single_then_interfaces(
     method_index: _TypeHierarchyIndex,
     depth_cap: int = _DEFAULT_DEPTH_CAP,
 ) -> Symbol | None:
-    """BFS prioritizing extends parents over interfaces (Java/Kotlin/C# MRO).
+    """BFS prioritizing extends parents over interfaces (Java-like MRO).
 
     Java method dispatch walks the single superclass chain (``extends``)
     before considering interface default methods (``implements``). When a
@@ -333,15 +324,15 @@ def _walk_single_then_interfaces(
 
     This is implemented as BFS where, at each node, parents are pushed in
     edge-type priority order (extends first, then implements / includes).
-    The visited set ensures each class is examined once. Because BFS
-    explores level-by-level, the extends parent at depth 1 is checked
-    before the implements parent at depth 1 even though both are queued
-    after popping the start class — the queue order at each push respects
-    edge-type priority. This is correct for Java's "single-superclass MRO
-    before interfaces" rule on every test case in our corpus.
+    The visited set ensures each class is examined once. Within one depth
+    the extends parent is checked before the implements parent, because
+    the queue order at each push respects edge-type priority. Across depths
+    BFS order holds, so an interface at depth 1 is checked before the
+    superclass's own superclass at depth 2 — an approximation of Java's
+    rule, which exhausts the whole superclass chain first.
 
-    Registered for Java in PR-3 (``WI-dukog``); future PRs may extend the
-    registry to Kotlin / C# / Scala-class.
+    Registered for Java, PHP, JavaScript, TypeScript, C# and Objective-C
+    (``_MRO_WALKERS``).
     """
     visited: set[str] = {start_class_id}
     queue: deque[tuple[str, int]] = deque([(start_class_id, 0)])
@@ -537,15 +528,15 @@ def _walk_left_to_right(
     method_index: _TypeHierarchyIndex,
     depth_cap: int = _DEFAULT_DEPTH_CAP,
 ) -> Symbol | None:
-    """Left-to-right depth-first walk (Swift / PHP / Obj-C / C++ MRO; WI-sojim).
+    """Left-to-right depth-first walk (Swift MRO; WI-sojim).
 
     Swift resolves a call against the single superclass chain first, then
-    protocol extensions in declaration order; Obj-C categories and C++ bases
-    similarly resolve left-to-right, depth-first. Implemented with an
+    protocol extensions in declaration order. Implemented with an
     explicit stack whose parents are pushed in REVERSED order so the
     leftmost parent's subtree is popped (explored) before its right
-    siblings — a left-to-right pre-order DFS. Registered for Swift here;
-    the same walker fits PHP/Obj-C/C++ when their analyzers are onboarded.
+    siblings — a left-to-right pre-order DFS. Registered for Swift only;
+    PHP and Obj-C use ``_walk_single_then_interfaces`` and C++ uses
+    ``_walk_insertion_order`` (``_MRO_WALKERS``).
     """
     visited: set[str] = {start_class_id}
     methods_by_class: dict[str, Symbol] = dict(
@@ -570,8 +561,7 @@ def _walk_left_to_right(
 
 
 # Per-language MRO dispatch. Hardcoded clauses (no YAML / no decorator
-# hooks) because the table is static language semantics — see ADR-3bbb
-# and the WI-hatip plan discussion at ~/puluf-plan.md.
+# hooks) because the table is static language semantics (ADR-3bbb).
 _MRO_WALKERS: dict[str, Callable[
     [str, str, dict[str, list[tuple[str, str]]],
      _TypeHierarchyIndex, int], Symbol | None,
@@ -582,19 +572,19 @@ _MRO_WALKERS: dict[str, Callable[
     "python": _walk_c3,
     "scala": _walk_linearization,  # WI-nazab
     "swift": _walk_left_to_right,  # WI-sojim
-    # INV-fahub fleet walkers: recover the inherited implicit-``this``/``self``
-    # calls the fleet magnet gate defers. Each language's analyzer emits
-    # ``base_classes`` (or, for Rust, ``implements``) metadata that the
+    # These walkers recover the inherited implicit-``this``/``self`` calls
+    # the analyzers defer to this linker (INV-fahub). Each language's analyzer
+    # emits ``base_classes`` (or, for Rust, ``implements``) metadata that the
     # language-agnostic ``inheritance`` linker turns into the extends/implements
     # edges these walkers traverse. Walker choice follows the language's MRO
     # shape: single-superclass-then-interfaces (Java-like) for php/js/ts/csharp/
     # objc; insertion-order BFS for go struct embedding, rust trait impls, and
     # C++ multiple inheritance. (lua/zig emit no inheritance model, so no
-    # walker recovers anything for them — deliberately unregistered. dart has
-    # emitted extends/implements/includes edges since WI-lahub but has no
-    # walker yet: its member lookup runs class, mixins right to left, then the
-    # superclass, and ``implements`` contributes no implementation, which no
-    # walker here models.)
+    # walker recovers anything for them — deliberately unregistered. dart
+    # emits extends/implements/includes edges but has no walker: its member
+    # lookup runs class, mixins right to left, then the superclass, and
+    # ``implements`` contributes no implementation, which no walker here
+    # models.)
     "go": _walk_insertion_order,
     "rust": _walk_insertion_order,
     "php": _walk_single_then_interfaces,
@@ -617,10 +607,9 @@ _MRO_WALKERS: dict[str, Callable[
 # win Python's real MRO — invisible to the in-tree-only C3 walk. Non-stdlib
 # external bases (a 3rd-party ORM base, an auth mixin) are DELIBERATELY not
 # cataloged: that list is open-ended, and the common external-mixin-first idiom
-# must not be over-suppressed (the naive "any external ahead → suppress" gate,
-# rejected in the INV-guviv design workflow, regressed exactly that idiom). They
-# remain a documented residual (fast-follow: extend to well-known ORM bases only
-# if a bakeoff shows real hits).
+# must not be over-suppressed (a naive "any external base ahead → suppress"
+# gate would suppress exactly that idiom). They remain a documented residual;
+# extend the catalog to well-known ORM bases only if a bakeoff shows real hits.
 _STDLIB_BASE_METHODS: dict[str, frozenset[str]] = {
     "dict": frozenset({
         "keys", "values", "items", "get", "pop", "popitem",
@@ -742,43 +731,52 @@ def _python_stdlib_base_shadows(
     return False  # pragma: no cover - the subset guard guarantees an in-tree hit
 
 
-# Languages that get the LEGACY-PERMISSIVE Site-2 typed-receiver resolution:
-# the Step-3 type-symbol fallback fires, and a same-name-class collision
-# resolves by first-match rather than biasing to unresolved. This preserves
-# the Java analyzer's pre-PR-5 behavior and the INV-nilud-validated Java
-# Site-2 edges. Only ``java`` currently emits ``receiver_type_hint`` (Ruby /
-# Groovy emit Site-1/Site-3 hints only), so ``java`` is the sole member.
+# Languages whose Site-2 typed-receiver resolution is LEGACY-PERMISSIVE: a
+# same-name-class collision resolves by first match (the first same-named
+# class that has the method) rather than biasing to unresolved. Java only,
+# on evidence rather than precedent: Java has no ``receiver_type_id``
+# producer, and most Java first-match bindings agree with Java's own name
+# rule (same file, single-type import, same package), so the guard would
+# drop far more right edges than wrong ones (history: WI-jomik). Once the
+# Java analyzer stamps an import-resolved ``receiver_type_id`` (the WI-supat
+# channel, module docstring), Java can leave this set.
 #
-# Every OTHER (newly-onboarded) language — Python (WI-noham Part A) and any
-# future emitter — gets the STRICT INV-fahub mode: resolve ONLY when the
-# method is directly on the concretely-named, unambiguous type (linker Step 1
-# / Step 2 MRO), NEVER the Step-3 type-symbol fallback (which would mint a
-# ``calls→class`` edge — a new runtime_coherence partition — and bind an
-# under-determined receiver to a class), and NEVER a same-name-class first
-# match (INV-fahub: an under-determined receiver must stay ambiguous/external).
+# Every OTHER language — Python (WI-noham) and any future emitter —
+# gets the STRICT INV-fahub mode: a same-name-class collision is unresolved
+# (an under-determined receiver must stay ambiguous/external). No language
+# gets a ``calls→class`` fallback (module docstring, Site 2).
 #
 # DELIBERATELY DECOUPLED from ``_MRO_WALKERS``: this is NOT ``set(_MRO_WALKERS)``.
-# Adding a Python MRO walker (deferred D1) must NOT silently re-enable Python's
-# permissive Step-3 fallback; a language opts into permissiveness only by being
-# listed HERE, consciously, after allowlisting the ``calls→class`` partition.
+# Adding an MRO walker must NOT silently make a language permissive; a
+# language opts in only by being listed HERE, consciously.
 _LEGACY_SITE2_LANGS: frozenset[str] = frozenset({"java"})
+
+# Languages whose Site-2 step 3 records a ``uses`` edge from the caller to the
+# receiver's TYPE when the method is nowhere on its chain: ``repo.save(e)``
+# on a Spring Data ``OwnerRepository`` (``save`` is ``JpaRepository``'s) is a
+# controller -> repository dependency, and Java emits no other method -> type
+# edge. It is ``uses``, not ``calls``: the type is not the callee, and a
+# ``calls`` edge here would hand ``method_call_recovery`` a false class hint
+# (module docstring, Site 2). Java only, the one language measured with it;
+# another opts in after its own A/B.
+_SITE2_TYPE_USE_LANGS: frozenset[str] = frozenset({"java"})
 
 
 # ``_SITE1_STRICT_LANGS`` — languages whose Site-1 (``enclosing_class``)
-# resolution applies the INV-fahub same-short-name ambiguity guard (WI-hiziz
-# PR-2). This is DELIBERATELY NOT ``all langs except _LEGACY_SITE2_LANGS``: the
+# resolution applies the INV-fahub same-short-name ambiguity guard, as do the
+# two Site-3 guards. This is DELIBERATELY NOT
+# ``all langs except _LEGACY_SITE2_LANGS``: the
 # guard's premise is that two in-tree classes sharing a short name are DISTINCT
 # classes (true in Python, which has module namespaces — a bare ``enclosing_class``
 # name genuinely under-determines which module's class the caller is in). It is
 # FALSE in Ruby (and any single-global-namespace language): a *reopened* class
 # (``class Worker`` opened in several files — ubiquitous in Rails) emits one class
 # symbol per definition, all sharing the same short name, yet they are ONE logical
-# class. Applying the guard there would suppress the INV-nilud-validated
-# ``X.new → inherited #initialize`` Site-1 resolution this linker was built to
-# preserve. So the guard is opt-in per language, and only Python (whose Site-1
-# WI-hiziz PR-2 onboards) is a member; Ruby/Groovy keep their loop-all-first-match
-# Site-1 behavior. WI-supat (D3) threads a concrete class id to recover Python's
-# guard-sacrificed recall.
+# class. Applying the guard there would suppress the Ruby
+# ``X.new → inherited #initialize`` Site-1 resolution (INV-nilud). So the guard
+# is opt-in per language, and only Python is a member; Ruby/Groovy keep their
+# loop-all-first-match Site-1 behavior. A concrete class id threaded by the
+# producer recovers Python's guard-sacrificed recall (module docstring; WI-supat).
 _SITE1_STRICT_LANGS: frozenset[str] = frozenset({"python"})
 
 
@@ -806,18 +804,16 @@ def _walk_parents_for_field(
     (``None``), matching ``_walk_c3``. Other languages keep the insertion-order
     BFS below.
 
-    Used by Site-3 resolution (WI-puvil / PR-5). The Java analyzer
-    populates each class symbol's ``meta["fields"]`` with the
-    ``{field_name: type_name}`` map it would otherwise have used in the
-    in-analyzer ``class_fields`` walk. This walker traverses the
-    enclosing class's parents and returns the first field-type name it
-    finds; the caller then looks up the method on that type.
+    Used by Site-3 resolution. The Java and Python analyzers populate each
+    class symbol's ``meta["fields"]`` with its ``{field_name: type_name}``
+    map. This walker traverses the enclosing class's parents and returns
+    the first field-type name it finds; the caller then looks up the
+    method on that type.
 
     Args:
         start_class_id: Symbol ID of the enclosing class. The walk does
-            NOT examine its own fields — this is by design, matching the
-            analyzer's pre-PR-5 behavior, which only fires Site-3 when the
-            receiver isn't in the enclosing class's own field set.
+            NOT examine its own fields — by design: Site-3 is for a
+            receiver that is not one of the enclosing class's own fields.
         field_short_name: The receiver-as-field name to look for.
         inheritance_index: Map ``child_id -> [(parent_id, edge_type), ...]``.
         class_symbols: Map ``class_id -> Symbol``. Used to read
@@ -827,10 +823,11 @@ def _walk_parents_for_field(
     Returns:
         On a HIT, a ``(type_name, type_id_or_None)`` 2-tuple — the field's type
         short name plus the concrete type id from the parent's parallel
-        ``meta["field_type_ids"]`` (WI-supat PR-B), or ``None`` when the parent
-        carries only the legacy name-keyed ``meta["fields"]`` (java / pre-PR-B).
-        On a MISS (no ancestor declares the field), bare ``None`` — preserving
-        the depth-cap / cycle negatives that assert ``result is None``.
+        ``meta["field_type_ids"]`` (WI-supat), or ``None`` when the parent
+        has no id for the field (Java stamps only the name-keyed
+        ``meta["fields"]``). On a MISS (no ancestor within the depth cap
+        declares the field, or a Python hierarchy cannot be linearized),
+        bare ``None``.
     """
     if src_lang == "python":
         # WI-rarab: C3-ordered field walk. Linearize the enclosing class and
@@ -889,17 +886,15 @@ def _extract_method_short_name(callee_name: str) -> str:
     "inherited-calls-linker",
     priority=18,  # Between inheritance (15) and type_hierarchy (60).
     description=(
-        "Walks ancestor chains to resolve unresolved calls that carry the "
-        "enclosing_class hint added by make_unresolved_edge (PR-1). PR-2 "
-        "registers the Ruby/Groovy insertion-order walker; later PRs add "
-        "Java/Kotlin/Python/etc walkers and Site-2/3 receiver resolvers."
+        "Resolves unresolved calls by walking the ancestor chain in each "
+        "language's own method-resolution order: a bare call inside a class "
+        "(enclosing_class hint), a call on a typed receiver "
+        "(receiver_type_hint) and a call on an inherited field."
     ),
     activation=LinkerActivation(always=True),
-    # CNF: the analyzers whose output can make this linker emit ANYTHING
-    # (WI-rasal, repaired from evidence — 226 surveys falsified the previous
-    # ``["java", "ruby", "groovy"]``, which was a snapshot of ``_MRO_WALKERS``
-    # taken when that dict had three entries and never updated when INV-fahub's
-    # fleet PR took it to fourteen).
+    # CNF: the analyzers whose output can make this linker emit ANYTHING.
+    # A hand-copied snapshot of ``_MRO_WALKERS`` goes stale as soon as a
+    # walker is added (history: WI-rasal).
     #
     # Derived, not hand-copied, from the three emission paths:
     #   Site 1  — ``enclosing_class`` producers INTERSECT ``_MRO_WALKERS``
@@ -909,16 +904,16 @@ def _extract_method_short_name(callee_name: str) -> str:
     #             type (this is what adds ``d`` and ``kotlin``)
     #   Site 3  — ``inherited_field_receiver`` producers
     # ``test_depends_on_producer_sets.py`` re-derives all three and fails when
-    # the registry moves again. Note ``_MRO_WALKERS`` is keyed on
+    # this list drifts from the registry. Note ``_MRO_WALKERS`` is keyed on
     # ``Symbol.language``, a wider vocabulary than pass ids: its ``typescript``
     # key maps onto the ``javascript`` pass.
     #
-    # The former ``["inheritance-linker"]`` conjunct is GONE. It was falsified
-    # on 26 surveys and it was false: Site-2 step 1 emits
-    # ``ast_call_type_inferred`` with no inheritance edges in the graph at all.
-    # The ordering it recorded — run after inheritance-linker, whose
-    # extends/implements/includes edges the MRO walks traverse — is carried by
-    # ``priority=18`` against that linker's 15, which is the axis for it.
+    # There is no ``["inheritance-linker"]`` conjunct: it would be false, since
+    # Site-2 step 1 emits ``ast_call_type_inferred`` with no inheritance edges
+    # in the graph at all. Running after inheritance-linker, whose
+    # extends/implements/includes edges the MRO walks traverse, is an
+    # ordering, carried by ``priority=18`` against that linker's 15, which is
+    # the axis for it.
     depends_on=[
         [
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
@@ -929,10 +924,11 @@ def _extract_method_short_name(callee_name: str) -> str:
         ],
     ],
     # ADR-0057 §14.1: this pass's resolutions may demote the stub they were
-    # derived from. Granted on measurement, not on being a linker — audited
-    # 70 of 70 correct and consistent with the declared inheritance graph on
-    # 329 of 329 (docs/audits/0020). The sibling recovery pass is NOT granted
-    # it: 16 of its 64 edges are wrong and no shipped signal separates them.
+    # derived from. Granted on audited evidence, not for being a linker: its
+    # resolutions audit as correct and consistent with the declared
+    # inheritance graph (docs/audits/0020). The sibling recovery pass is NOT
+    # granted it: a material share of its edges are wrong and no shipped
+    # signal separates them.
     supersedes_consumed_stub=True,
 )
 def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
@@ -961,10 +957,10 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         if s.kind in ("class", "struct", "module", "interface", "trait", "protocol", "object"):
             class_ids_by_name.setdefault(s.name, []).append(s.id)
             class_symbols[s.id] = s
-    # WI-hiziz (D1): C3 needs left-to-right base order, but a qualified in-tree
-    # base's extends edge arrives out of order (recovered late by the
+    # C3 needs left-to-right base order, but a qualified in-tree base's
+    # extends edge arrives out of order (recovered late by the
     # inheritance-linker). Restore each Python class's source base order from
-    # meta['base_classes'] before the C3 walker consumes the index.
+    # meta['base_classes'] before the C3 walker consumes the index (WI-hiziz).
     _reorder_python_bases_by_source(inheritance_index, class_symbols)
     method_index = build_method_index(
         ctx.symbols, class_ids_by_name, class_symbols,
@@ -996,11 +992,12 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         receiver_type_hint = meta.get("receiver_type_hint")
         inherited_field_receiver = meta.get("inherited_field_receiver")
         enclosing_class = meta.get("enclosing_class")
-        # WI-supat (D3): the concrete class ids the producer threaded alongside
-        # the name hints (an AUTHORITATIVE enclosing-class id, and a
-        # within-file-uniqueness-gated receiver-type id). Consumed by the Site
+        # The concrete class ids the producer threaded alongside the name
+        # hints: an AUTHORITATIVE enclosing-class id, and a
+        # within-file-uniqueness-gated receiver-type id. Consumed by the Site
         # resolvers to skip the same-short-name ambiguity guard precisely. The
         # Site-3 field-TYPE id rides the parent class symbol's meta, not here.
+        # (history: WI-supat)
         receiver_type_id = meta.get("receiver_type_id")
         enclosing_class_id = meta.get("enclosing_class_id")
 
@@ -1064,10 +1061,10 @@ def _same_language_class_ids(
     turns a receiver / enclosing-class / field-type NAME into candidate class
     ids keeps the name path from two distinct failures:
 
-    * **Confidently-wrong cross-language edge** — the concrete leak was the
-      Java legacy-permissive Site-2 (``_LEGACY_SITE2_LANGS``), which skips the
+    * **Confidently-wrong cross-language edge** — exposed at the Java
+      legacy-permissive Site-2 (``_LEGACY_SITE2_LANGS``), which skips the
       same-name ambiguity guard and so would bind a Java receiver to a Python
-      namesake's method (Step 1) or type symbol (Step 3 fallback).
+      namesake's method (Step 1).
     * **False-negative from count pollution** — a foreign-language namesake
       inflates the strict ``len(...) > 1`` ambiguity guard, suppressing a
       legitimate same-language resolution that was never actually ambiguous.
@@ -1147,7 +1144,7 @@ def _try_resolve(
             run=run,
         )
 
-    # Site 1: bare/this call (existing PR-2/PR-3 path).
+    # Site 1: bare/this call.
     if enclosing_class:
         return _resolve_site1(
             edge=edge, callee_short=callee_short,
@@ -1182,9 +1179,9 @@ def _resolve_site1(
     walker = _MRO_WALKERS.get(src_lang)
     if walker is None:
         return None
-    # WI-supat (D3): prefer the AUTHORITATIVE concrete enclosing-class id the
-    # producer threaded (an exact lexical method→class map, immune to the
-    # bare-name last-write-wins clobber). A valid, same-language id names exactly
+    # Prefer the AUTHORITATIVE concrete enclosing-class id the producer
+    # threaded (an exact lexical method→class map, immune to the
+    # bare-name last-write-wins clobber; WI-supat). A valid, same-language id names exactly
     # one class, so the receiver is NOT under-determined — resolve it precisely
     # and SKIP the ambiguity guard, recovering the recall the guard sacrifices
     # (both same-short-name and cross-language namesakes, since ``class_symbols``
@@ -1204,15 +1201,15 @@ def _resolve_site1(
         )
         if not start_class_ids:
             return None
-        # WI-hiziz PR-2: INV-fahub ambiguity guard for Site-1. ``enclosing_class``
+        # INV-fahub ambiguity guard for Site-1. ``enclosing_class``
         # is a NAME only; in a language with module namespaces
         # (``_SITE1_STRICT_LANGS`` — Python) two in-tree classes sharing that short
         # name are DISTINCT classes, so the enclosing receiver is under-determined
         # — bias to unresolved rather than binding whichever namesake the walk hits
         # first. This is scoped to ``_SITE1_STRICT_LANGS`` (NOT "all but Java"): in
         # Ruby the same short name is a class REOPENING (one logical class), so
-        # applying the guard would suppress its INV-nilud-validated Site-1
-        # resolution. The concrete-id path above recovers Python's guard-sacrificed
+        # applying the guard would suppress its Site-1 resolution (INV-nilud).
+        # The concrete-id path above recovers Python's guard-sacrificed
         # recall when the producer could stamp an authoritative id.
         if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
             return None
@@ -1267,40 +1264,39 @@ def _resolve_site2(
 ) -> Edge | None:
     """Site 2: ``var.method()`` typed receiver.
 
-    Three-step resolution preserving the Java analyzer's pre-PR-5 behavior:
+    Resolution:
 
     1. **Direct lookup** — method defined on the type itself →
-       ``ast_call_type_inferred`` at 0.85 (matches analyzer's Case 3 if).
+       ``ast_call_type_inferred`` at 0.85.
     2. **MRO walk** — method on an ancestor of the type →
-       ``ast_call_inherited_method`` at 0.70 (forward improvement: the
-       analyzer never walked the chain for Site 2).
-    3. **Type-symbol fallback** — method nowhere on the chain →
-       ``ast_call_inherited_method`` at 0.70 pointing to the type
-       symbol itself (matches analyzer's Case 3 else fallback).
+       ``ast_call_inherited_method`` at 0.70.
+
+    3. **Type use** — method on neither: the call stays unresolved, and a
+       language in ``_SITE2_TYPE_USE_LANGS`` (Java) gets a ``uses`` edge to
+       the type symbol at 0.70, never a ``calls`` edge (module docstring,
+       Site 2). It names the caller, not the call stub, in
+       ``derived_from``, so the still-unresolved stub is not demoted.
 
     Step 2 requires the language to have an MRO walker; step 1 works
     without one.
 
-    Two ``src_lang``-gated modes (WI-noham Part A):
+    Two ``src_lang``-gated modes for a same-name-class collision
+    (``len(type_class_ids) > 1``, WI-noham):
 
     * **Legacy-permissive** (``src_lang in _LEGACY_SITE2_LANGS`` — Java only):
-      steps 1-3 as above, first same-name class wins. Preserves the
-      INV-nilud-validated Java edges.
-    * **Strict INV-fahub** (every other language, e.g. Python): step 3 is
-      DISABLED (no ``calls→class`` under-determined bind / new ratchet
-      partition), and a same-name-class collision (``len(type_class_ids) > 1``)
-      biases to unresolved rather than binding by first match. Only a method
-      DIRECTLY on the single, concretely-named type (step 1 / step 2 MRO)
-      resolves.
+      the first same-name class that has the method wins.
+    * **Strict INV-fahub** (every other language, e.g. Python): the collision
+      biases to unresolved. Only a method on the single, concretely-named
+      type (step 1 / step 2 MRO) resolves.
     """
-    # WI-supat (D3): prefer the concrete receiver-type id the producer threaded.
+    # Prefer the concrete receiver-type id the producer threaded (WI-supat).
     # It is stamped only when the type's short name is UNIQUE within the file (so
     # the bare-name inference that produced it could not have hit the wrong
     # same-file twin) and is validated here as a real, same-language
     # ``class_symbols`` key. A valid id names exactly one type, so the receiver is
-    # NOT under-determined — resolve it precisely (Step 1/2 only; Step 3 stays
-    # gated below) and SKIP the ambiguity guard, recovering the recall the guard
-    # sacrifices. Absent / stale / foreign-language → the original name path.
+    # NOT under-determined — resolve it precisely (Step 1/2) and SKIP the
+    # ambiguity guard, recovering the recall the guard
+    # sacrifices. Absent / stale / foreign-language → the name path below.
     if (
         receiver_type_id is not None
         and receiver_type_id in class_symbols
@@ -1370,27 +1366,26 @@ def _resolve_site2(
                     derived_from=[edge.id, type_class_id],
                 )
 
-    # Step 3: fallback to the type symbol itself.
-    # Strict INV-fahub gate: only legacy-permissive languages fall back. For
-    # every newly-onboarded language the method was nowhere on the (single)
-    # type's chain, so we leave the call unresolved rather than mint a
-    # low-confidence ``calls→class`` edge (a new runtime_coherence partition
-    # and an under-determined bind).
-    if src_lang not in _LEGACY_SITE2_LANGS:
+    # Step 3: the method is nowhere on the type's chain (an external base's,
+    # or one the walk cannot see). The call stays unresolved; a language in
+    # _SITE2_TYPE_USE_LANGS records that the caller USES the type.
+    if src_lang not in _SITE2_TYPE_USE_LANGS:
         return None
     type_class_id = type_class_ids[0]
     type_sym = class_symbols.get(type_class_id)
     if type_sym is None:  # pragma: no cover
         return None
-    if (edge.src, type_sym.id) in existing_call_pairs:  # pragma: no cover
-        return None
+    # derived_from names the caller, not the call stub: ADR-0057 §14.1 reads
+    # a stub id there as "this resolution consumed it", and this edge leaves
+    # the call unresolved, so naming the stub would demote a live stub.
+    # (history: WI-gupak)
     return Edge.create(
-        src=edge.src, dst=type_sym.id, edge_type="calls",
+        src=edge.src, dst=type_sym.id, edge_type="uses",
         line=edge.line, confidence=_SITE_2_INHERITED_CONFIDENCE,
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_method",
         is_resolved=True,
-        derived_from=[edge.id, type_class_id],
+        derived_from=[edge.src, type_class_id],
     )
 
 
@@ -1417,11 +1412,11 @@ def _resolve_site3(
     MRO walk if one is registered). Emits ``ast_call_inherited_field``
     at confidence 0.80.
     """
-    # WI-supat (D3): prefer the authoritative concrete enclosing-class id (same
-    # contract as Site-1). A valid, same-language id starts the parent-walk from
+    # Prefer the authoritative concrete enclosing-class id (same contract as
+    # Site-1; WI-supat). A valid, same-language id starts the parent-walk from
     # exactly the caller's lexical class, so the enclosing receiver is not
     # under-determined — skip the enclosing ambiguity guard. The field-TYPE
-    # disambiguation below is INDEPENDENT (recovered in PR-B).
+    # disambiguation below is INDEPENDENT (its own id, its own guard).
     if (
         enclosing_class_id is not None
         and enclosing_class_id in class_symbols
@@ -1434,7 +1429,7 @@ def _resolve_site3(
         )
         if not encl_class_ids:  # pragma: no cover
             return None
-        # WI-hiziz PR-3: INV-fahub ambiguity guard on the ENCLOSING class,
+        # INV-fahub ambiguity guard on the ENCLOSING class,
         # mirroring Site-1/Site-2, scoped to _SITE1_STRICT_LANGS (Python — module
         # namespaces make same-short-name classes distinct). Two same-name
         # enclosing classes would each expose different parent fields →
@@ -1458,11 +1453,11 @@ def _resolve_site3(
     if field_type is None:
         return None
 
-    # WI-supat (D3) PR-B: prefer the concrete field-TYPE id the producer threaded
-    # on the parent's meta['field_type_ids'] (validated, same-language). It names
+    # Prefer the concrete field-TYPE id the producer threaded on the parent's
+    # meta['field_type_ids'] (validated, same-language; WI-supat). It names
     # exactly one type, so the field's type is not under-determined — skip the
-    # field-type ambiguity guard. Absent (java/legacy) / stale / foreign-language
-    # falls back to the re-globalized name path + guard below.
+    # field-type ambiguity guard. Absent (Java stamps none) / stale /
+    # foreign-language falls back to the re-globalized name path + guard below.
     if (
         field_type_id is not None
         and field_type_id in class_symbols
@@ -1476,7 +1471,7 @@ def _resolve_site3(
         )
         if not field_type_class_ids:
             return None
-        # WI-hiziz PR-3: the SECOND INV-fahub guard — the field's TYPE name is
+        # The SECOND INV-fahub guard — the field's TYPE name is
         # also re-globalized; two same-short-name types are under-determined for
         # a strict language. Bias to unresolved rather than resolving the method
         # on an arbitrary namesake type (the concrete-id path above recovers this
@@ -1519,7 +1514,7 @@ def _resolve_site3(
     if resolved_target is None:
         return None
     # Dedup: the analyzer may already have a resolved calls edge to this target
-    # (Python producer now exercises this — WI-hiziz PR-3 dedup test).
+    # (the Python producer can emit one).
     if (edge.src, resolved_target.id) in existing_call_pairs:
         return None
     return Edge.create(

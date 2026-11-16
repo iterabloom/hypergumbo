@@ -54,7 +54,7 @@ Seven rulings, all decided. Rulings 1–5 were decided 2026-06-10; rulings 6 and
 
 - `evidence_derived` — confidence came through `derive_confidence(...)`.
 - `emitter_constant` — a hardcoded producer constant (the legacy state of the ~566 sites).
-- `composite` — confidence still carries blended ranking adjustment (transitional; eliminated by ruling 3).
+- `composite` — confidence still carries blended ranking adjustment (transitional; eliminated by ruling 3). **Retired 2026-10-28 (WI-daruz):** no producer ever stamped it, and it is no longer a legal value. ADR-0057 §13 has since added `corroborated`, so the live set is `evidence_derived | emitter_constant | corroborated`, compared everywhere through the `ir.CONFIDENCE_SOURCE_*` constants.
 
 The discriminator lets the ~566 hardcoded emitter constants migrate incrementally — each producer flips to `evidence_derived` as it adopts the derivation layer, with no flag-day — and makes the guarding property test expressible: **no emitter may produce a single constant confidence value across >100 edges without declaring `confidence_source=emitter_constant`.** The test fails any producer that silently re-grows a flat constant while claiming derivation.
 
@@ -66,6 +66,8 @@ The ranking adjustments move, unchanged in formula and magnitude, to a separate 
 - `entrypoints.py`: the multiplicative penalties, the library-export demotion, and the in/out-degree connectivity boosts.
 
 Entrypoint sorting (`entrypoints.py::MIN_ENTRYPOINT_CONFIDENCE`) and `MIN_ENTRYPOINT_CONFIDENCE` filtering re-key from `confidence` to `rank_score`. **The ruling explicitly requires the ranking signal survive relocation unchanged**: these adjustments encode hard-won bakeoff fixes — the forgejo Go-export demotion, the DMD test-`main()` penalty, the gemini-cli telemetry-export carve-out are named in the code comments — and regressing them is out of scope. `rank_score` initializes from detection confidence and accumulates the same adjustments the confidence field accumulates today; only the field name changes for the ranking consumer. Edges/entrypoints whose producers have not yet separated continue publishing `confidence_source=composite` until their migration PR lands.
+
+The order among entrypoints of equal `rank_score` and the entrypoint cap's choice among them are not part of the formula this ruling freezes: equal scores order by detection `confidence`, then language weight, then effective out-degree, and a cap that cuts through a group of equal scores deals its slots round-robin across source files.
 
 `rank_score` is a numeric field (not axis-governed vocabulary); `confidence_source` carries the bounded-enum axis declaration per ADR-0024.
 
@@ -85,7 +87,7 @@ The `reason` vocabulary is not migrated anywhere: its mechanism-encoding job is 
 
 ### 6. A resolver's match quality interpolates within the pathway band (2026-10-15)
 
-*Problem.* Ruling 1 derives one base per inference pathway, but many analyzers also know *how well* the callee name resolved: `NameResolver` / `ListNameResolver` (`symbol_resolution.py`) return a `LookupResult.confidence` of 1.0 for an exact match, 0.90 for a path-hint match, 0.85 for a suffix match and `0.70 / sqrt(n)` for an ambiguous match among `n` candidates. About 35 producers folded that score in as `confidence=<BASE> * lookup_result.confidence`, each with its own `<BASE>` (0.6–0.95). That shape is outside the derivation layer, and its exact-match value is the producer's private constant, not the pathway base: `c.py` emitted `0.95 × 1.0` on `ast_call_direct` (band ceiling 0.85), which is 31 of the 42 self-tree violations INV-zatug-gofaj-hodub-basig-gurob-faliv-nudok-jomum recorded. Its ambiguous values fall *below* the band floor too: `0.85 × 0.70/sqrt(4) = 0.30` against an `ast_call` floor of 0.40.
+*Problem.* Ruling 1 derives one base per inference pathway, but many analyzers also know *how well* the callee name resolved: `NameResolver` / `ListNameResolver` (`symbol_resolution.py`) return a `LookupResult.confidence` of 1.0 for an exact match, 0.90 for a path-hint match, 0.85 for a suffix match and `0.70 / sqrt(n)` for an ambiguous match among `n` candidates (a pick they make only in a `variants` registry or under `allow_ambiguous`: a tie with nothing in the caller's file to back it is unresolved, see `symbol_resolution.py`). About 35 producers folded that score in as `confidence=<BASE> * lookup_result.confidence`, each with its own `<BASE>` (0.6–0.95). That shape is outside the derivation layer, and its exact-match value is the producer's private constant, not the pathway base: `c.py` emitted `0.95 × 1.0` on `ast_call_direct` (band ceiling 0.85), which is 31 of the 42 self-tree violations INV-zatug-gofaj-hodub-basig-gurob-faliv-nudok-jomum recorded. Its ambiguous values fall *below* the band floor too: `0.85 × 0.70/sqrt(4) = 0.30` against an `ast_call` floor of 0.40.
 
 *Ruling.* A producer that has a resolution-quality score passes **only the score** (`Edge.create(..., resolution_score=s)`, `0 ≤ s ≤ 1`), and the derivation layer computes
 

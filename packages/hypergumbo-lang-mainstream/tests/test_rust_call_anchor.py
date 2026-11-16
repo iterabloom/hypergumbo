@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-midag, rust: a call edge's src is the function whose span contains it.
 
-rust already looked the enclosing function up by span, but built that index from
-``global_symbols``, keyed by QUALIFIED name. Two ``impl IntoIterator`` blocks for
-``AttributeSet`` and ``&AttributeSet`` (just's attribute_set.rs) both define
-``AttributeSet::into_iter``, so one vanished from the index and its calls fell
-back to the name lookup: 5 of 8,842 rust call edges on a 26-repo run.
+The span index must not be built from ``global_symbols``, which is keyed by
+QUALIFIED name: two ``impl IntoIterator`` blocks for ``AttributeSet`` and
+``&AttributeSet`` both define ``AttributeSet::into_iter``, so one would vanish
+from such an index and its calls would fall back to the name lookup, landing
+in the wrong method.
 """
 from __future__ import annotations
 

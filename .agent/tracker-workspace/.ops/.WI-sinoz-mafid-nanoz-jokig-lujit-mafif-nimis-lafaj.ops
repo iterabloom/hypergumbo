@@ -1,0 +1,21 @@
+- op: create  # fd8f
+  at: '2026-11-16T04:59:11Z'  # fd8f
+  by: agent  # fd8f
+  actor: jgstern_agent  # fd8f
+  clock: 1  # fd8f
+  nonce: fd8f  # fd8f
+  data:  # fd8f
+    kind: work_item  # fd8f
+    title: "Python: base-class and annotation forms the scope-chain registry does not reach"  # fd8f
+    status: todo_hard  # fd8f
+    priority: 3  # fd8f
+    parent:  # fd8f
+    tags:  # fd8f
+    - python  # fd8f
+    - analysis_quality  # fd8f
+    isbefore: []  # fd8f
+    duplicate_of: []  # fd8f
+    not_duplicate_of: []  # fd8f
+    pr_ref:  # fd8f
+    description: "WHAT. After PR #2198 the Python registry is keyed by full scope chain. Left, each present before and after:\n- linkers/inheritance.py: class Meta(Parent.Meta) in a file that also has a module-level Meta binds the module-level one at 0.5 (_qualifier_fit accepts a candidate whose qualified name is a suffix of the written base);\n- py.py _resolve_base_class: class X(B) where only A.B exists binds A.B at 0.95 by short name;\n- def f(x: A.B): x.go() : the annotation is not typed;\n- a bare call to an enclosing function's nested function resolves to a same-named module-level function first (test_py_scope_stack.py::TestStep4IsLastResort pins it; it is not Python's order);\n- class_field_types and sibling maps are keyed by short class name;\n- cls.B(), self.B().go(), an inherited member through a nested class with a twin class name;\n- DRF router.register(r'x', ViewSet) and Flask view_func=V.as_view('x') extract nothing;\n- a def under if/try in a class body is emitted as kind function with a bare name (both are stable-id inputs);\n- analysing a sub-tree changes the import prefix (pretix: 521 of 611 route markers keep the name path because control/urls.py imports pretix.control.views while src/pretix registers control.views);\n- the CBV expander unions HTTP methods of all same-short-named classes; single-valued tables in linkers/route_handler.py still let a non-handler symbol first in order block a later handler. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # fd8f
+    fields: {}  # fd8f

@@ -2,31 +2,27 @@
 """INV-polad: a call site the analyzer DELIBERATELY drops must still be
 disclosed when the name it dropped is one the I/O catalogue calls a sink.
 
-THE DEFECT. rust.py carries a 77-name denylist of ubiquitous method names
-(`_RUST_GENERIC_TRAIT_METHODS`). Ten of them are names rust.yaml declares as
-I/O sinks — `UdpSocket.send`, `io::Write.write`, `TcpStream.read`,
-`Command.spawn` and friends — so `sock.send(payload)` emitted NO EDGE AT ALL
-and a clean `net_send` verdict had nothing to disclose. Measured: a crate whose
-`exfiltrate()` calls `sock.send(payload)` returned a BARE `confirmed`.
+THE HAZARD. rust.py's denylist of ubiquitous method names
+(`_RUST_GENERIC_TRAIT_METHODS`) includes names rust.yaml declares as I/O sinks —
+`UdpSocket.send`, `io::Write.write`, `TcpStream.read`, `Command.spawn` and
+friends — so `sock.send(payload)` emits NO EDGE AT ALL. Without a disclosure, a
+crate whose `exfiltrate()` calls `sock.send(payload)` gets a BARE `confirmed`
+on `net_send`.
 
-WHY THE OBVIOUS FIX IS THE WRONG ONE, measured rather than assumed. Emitting
-the suppressed calls as ordinary unresolved-external edges inflates the graph
-with `.clone()` / `.unwrap()` / `.map()` noise: on two real crates that took
-total edges +33% and +67%, and the EXTERNAL edge population +115% and +207%.
-Paying that on every Rust repository — in centrality, dead-code, slice and
-supply-chain output — to make ten names disclosable is not a trade worth
-making.
+WHY THE OBVIOUS FIX IS THE WRONG ONE. Emitting the suppressed calls as ordinary
+unresolved-external edges inflates the graph with `.clone()` / `.unwrap()` /
+`.map()` noise, multiplying a crate's external-edge population. Paying that on
+every Rust repository — in centrality, dead-code, slice and supply-chain output
+— to make a handful of names disclosable is not a trade worth making.
 
-WHY THE DENYLIST ITSELF STAYS. It does two jobs and only one was ever at issue.
-It stops a name-only RESOLUTION binding `x.load()` to a project `JoltDevice::load`
-(WI-bakak: 22 of 29 false callers), which is correct and untouched. This file
-is about the SECOND job it had quietly acquired — suppressing the disclosure.
+WHY THE DENYLIST ITSELF STAYS. It stops a name-only RESOLUTION binding
+`x.load()` to a project `JoltDevice::load` (history: WI-bakak), and that job is
+correct. This file is about its side effect — suppressing the disclosure.
 
-THE FIX IS A DECLARATION, THE SAME SHAPE AS PR2's. The denylist MOVES to
-``analyzer_disclosure`` and rust.py imports it, so the fact has ONE home and the
-disclosure cannot drift from the behaviour it describes. The overlap with the
-catalogue is computed at render time from the shipped catalogue, so it cannot go
-stale either.
+THE FIX IS A DECLARATION. The denylist lives in ``analyzer_disclosure`` and
+rust.py imports it, so the fact has ONE home and the disclosure cannot drift
+from the behaviour it describes. The overlap with the catalogue is computed at
+render time from the shipped catalogue, so it cannot go stale either.
 """
 from __future__ import annotations
 
@@ -129,9 +125,10 @@ class TestTheVerdict:
 
     def test_a_clean_rust_verdict_is_not_bare(self) -> None:
         """THE POINT. ``send`` is denylisted AND a catalogued net_send sink, so
-        ``sock.send(payload)`` emits nothing and the verdict had nothing to
-        disclose. Verified end to end on the shipped CLI as well: a crate whose
-        only boundary reach is a denylisted name returns rc 3 naming all nine.
+        ``sock.send(payload)`` emits nothing and, undisclosed, the verdict has
+        nothing to say about it. The same holds end to end on the shipped CLI:
+        a crate whose only boundary reach is a denylisted name returns rc 3
+        naming the suppressed sinks.
         """
         coverage = compute_boundary_coverage(
             _edges("rust"), {"rust"}, {"rust": _catalog("rust", "send")},

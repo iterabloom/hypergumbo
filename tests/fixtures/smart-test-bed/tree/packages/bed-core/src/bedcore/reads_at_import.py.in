@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Calls into limits once, at import, and keeps the result."""
+from bedcore.limits import ceiling
+
+CEILING = ceiling()
+
+
+def kept():
+    return CEILING

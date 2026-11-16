@@ -26,15 +26,13 @@ from hypergumbo_core.linkers.http import (
 class TestINVMopifCallSiteFold:
     """INV-mopif: HTTP client Symbols must be ``kind="call_site"``, not ``"function"``.
 
-    Resolves an audit-internal inconsistency in audit-findings 0013, which
-    assigned ``fold_target: function`` to the ``http_client`` row even
-    though the same audit's rationale describes the producer as a "HTTP
-    client *call site*". Audit-findings 0010 sub-case (a) already set the
-    precedent (``abi_call`` → ``kind="call_site"`` + ``meta["call_kind"]``);
-    these tests pin the harmonised fold for ``http_client``. Sister
-    producers ``database_query`` (``meta["call_kind"]="db_query"``),
+    The producer names an HTTP client *call site*, so it shares the
+    ``kind="call_site"`` + ``meta["call_kind"]`` shape of ``abi_call``.
+    These tests pin that shape for ``http_client``. Sister producers
+    ``database_query`` (``meta["call_kind"]="db_query"``),
     ``subprocess_cli`` (``meta["call_kind"]="subprocess"``), and
     ``solidity_abi`` (``meta["call_kind"]="abi"``) ship the same shape.
+    (audit-findings 0010 and 0013.)
     """
 
     def _make_call(
@@ -61,16 +59,16 @@ class TestINVMopifCallSiteFold:
     def test_create_client_symbol_emits_call_site_kind(self, tmp_path: Path) -> None:
         """INV-mopif: ``kind`` is ``"call_site"``, not ``"function"``.
 
-        ``call_site`` is on ``AXIS_LANGUAGE_CONSTRUCT`` (``symbol_kinds.py:156``)
-        and exists precisely for this shape. ``function`` previously caused
-        dead-code analysis to flag live ``fetch()`` calls because nothing
+        ``call_site`` is on ``AXIS_LANGUAGE_CONSTRUCT`` (``symbol_kinds.py``)
+        and exists precisely for this shape. As ``function``, a live
+        ``fetch()`` would be flagged by dead-code analysis, because nothing
         in source ever calls a Symbol whose name is ``"GET event.request"``.
         """
         sym = _create_client_symbol(self._make_call(tmp_path), tmp_path)
         assert sym.kind == "call_site"
 
     def test_create_client_symbol_stamps_call_kind_http(self, tmp_path: Path) -> None:
-        """INV-mopif: ``meta["call_kind"]="http"`` per audit 0010's pattern.
+        """INV-mopif: ``meta["call_kind"]="http"``.
 
         ``call_kind`` is the per-row specialisation key for ``call_site``
         Symbols, paralleling ``"db_query"`` / ``"subprocess"`` / ``"abi"``
@@ -80,16 +78,16 @@ class TestINVMopifCallSiteFold:
         assert (sym.meta or {}).get("call_kind") == "http"
 
     def test_create_client_symbol_preserves_framework_role(self, tmp_path: Path) -> None:
-        """Audit-0013 fold residue ``meta["framework_role"]="http_client"``
-        stays — ``call_kind`` and ``framework_role`` carry orthogonal info
+        """``meta["framework_role"]="http_client"`` is kept alongside
+        ``call_kind`` — the two carry orthogonal info
         (syntactic-construct specialisation vs. framework-participation).
         """
         sym = _create_client_symbol(self._make_call(tmp_path), tmp_path)
         assert (sym.meta or {}).get("framework_role") == "http_client"
 
     def test_create_client_symbol_keeps_call_metadata(self, tmp_path: Path) -> None:
-        """Existing ``meta`` keys (``http_method``, ``url_path``, ``raw_url``,
-        ``url_type``) are untouched by the kind harmonisation."""
+        """The call ``meta`` keys (``http_method``, ``url_path``, ``raw_url``,
+        ``url_type``) are present alongside the ``call_site`` kind."""
         sym = _create_client_symbol(
             self._make_call(tmp_path, "POST", "/api/login"), tmp_path
         )
@@ -102,9 +100,9 @@ class TestINVMopifCallSiteFold:
     def test_link_http_emits_call_site_kind_end_to_end(self, tmp_path: Path) -> None:
         """End-to-end: ``link_http`` produces only ``call_site`` client Symbols.
 
-        Pins the harmonisation at the public entry-point so a producer-side
-        regression (e.g. a future framework_role-only fold) cannot silently
-        re-introduce ``kind="function"`` on call sites.
+        Pins the ``call_site`` kind at the public entry-point so a
+        producer-side regression (e.g. a framework_role-only fold) cannot
+        silently re-introduce ``kind="function"`` on call sites.
         """
         (tmp_path / "client.js").write_text('fetch("/api/users");\n')
         result = link_http(tmp_path, [])
@@ -570,7 +568,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -598,7 +596,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -624,7 +622,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users/:id", "method": "GET"}]
             },
@@ -648,7 +646,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -672,7 +670,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -695,7 +693,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -704,9 +702,7 @@ class TestLinkHttp:
         result = link_http(tmp_path, [route_symbol])
 
         # Should create an http_client call-site symbol for the fetch call.
-        # INV-mopif: kind is "call_site" (per audit 0010's precedent),
-        # not "function" (the audit-0013 fold target was inconsistent with
-        # 0010's call-site treatment).
+        # Its kind is "call_site", not "function" (INV-mopif).
         assert len(result.symbols) >= 1
         client_sym = result.symbols[0]
         assert client_sym.kind == "call_site"
@@ -744,7 +740,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/data", "method": ""}]
             },
@@ -878,14 +874,14 @@ class TestVariableUrlPatterns:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={"concepts": [{"concept": "route", "path": path, "method": "GET"}]},
         )
 
     def test_a_constant_url_resolves_and_matches_its_route(self, tmp_path):
-        """WI-luhod: ``const API_URL = '/api/users'; fetch(API_URL)`` is a
-        request to ``/api/users``. Before the fix the identifier text was
-        route-matched, so it reached no route."""
+        """``const API_URL = '/api/users'; fetch(API_URL)`` is a request to
+        ``/api/users``: the constant's value, not the identifier text, is
+        route-matched (WI-luhod)."""
         client_file = tmp_path / "client.js"
         client_file.write_text("const API_URL = '/api/users';\nfetch(API_URL);\n")
 
@@ -897,8 +893,8 @@ class TestVariableUrlPatterns:
         assert result.edges[0].confidence == 0.9
 
     def test_an_unresolved_identifier_is_not_route_matched(self, tmp_path):
-        """An identifier whose value is unknown has no path to match. Before the
-        fix its TEXT was matched, so a route whose path was that text joined."""
+        """An identifier whose value is unknown has no path to match. Its TEXT
+        is not matched, so a route whose path is that text does not join."""
         client_file = tmp_path / "client.js"
         client_file.write_text("fetch(API_URL);")
 
@@ -921,7 +917,7 @@ class TestVariableUrlPatterns:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1111,10 +1107,10 @@ class TestConceptMetadataSupport:
         assert method is None
 
     def test_get_route_info_from_concept_dual_carry_uses_marker(self):
-        """BUG-2: a marker carrying a path-less concept=route must extract the
+        """A marker carrying a path-less concept=route must extract the
         marker's own route_path/http_method (marker-first), not the concept's
-        empty path. Previously the concept-first extractor returned (None,None)
-        and the route was silently dropped from HTTP client->route matching."""
+        empty path; a concept-first read yields (None, None) and silently
+        drops the route from HTTP client->route matching (WI-tosul)."""
         from hypergumbo_core.linkers.http import _get_route_info_from_concept
 
         symbol = Symbol(
@@ -1429,7 +1425,7 @@ class TestGoHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1835,7 +1831,7 @@ class TestRubyHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1888,7 +1884,7 @@ class TestJavaHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1979,7 +1975,7 @@ class TestFindSourceFiles:
 
 
 class TestCreateClientSymbolStableId:
-    """Tests for _create_client_symbol stable_id collision fix (INV-popop)."""
+    """Tests that _create_client_symbol stable_ids do not collide (INV-popop)."""
 
     def test_different_urls_produce_different_stable_ids(self, tmp_path: Path):
         """GET /users and GET /posts must not collide on stable_id."""
@@ -1996,12 +1992,12 @@ class TestCreateClientSymbolStableId:
         assert sym_a.stable_id != sym_b.stable_id
 
     def test_same_url_different_files_distinct_stable_id(self, tmp_path: Path):
-        """v8 (WI-napoh): the SAME request from DIFFERENT files must NOT collide.
+        """The SAME request from DIFFERENT files must NOT collide (WI-napoh).
 
         The HTTP client call_site is a SITE-axis node (ADR-0035 §3): its identity
         folds the declaring file's repo-relative path, so two files issuing
-        ``GET /api/users`` get distinct stable_ids. Pre-v8 they shared the
-        file-blind ``make_route_stable_id`` value — the Wave-2 corpus residual.
+        ``GET /api/users`` get distinct stable_ids rather than the shared value
+        a file-blind ``make_route_stable_id`` would give them.
         """
         call_a = HttpClientCall(
             method="GET", url="/api/users", line=10,
@@ -2035,7 +2031,7 @@ class TestCreateClientSymbolStableId:
         """stable_id must not be a bare HTTP method string.
 
         Phase 6 PR1 (INV-hunup): the underlying ``make_route_stable_id``
-        now returns the canonical ``sha256:<16hex>`` shape (23 chars
+        now returns the canonical ``hgstableid15:<16hex>`` shape (29 chars
         total) rather than the raw 64-char hexdigest. The test still
         asserts non-bare-method semantics; the length expectation
         migrates.
@@ -2047,9 +2043,9 @@ class TestCreateClientSymbolStableId:
         sym = _create_client_symbol(call, tmp_path)
         assert sym.stable_id != "POST"
         assert sym.stable_id != "post"
-        # Should be the canonical sha256:<16hex> shape (23 chars total).
-        assert sym.stable_id.startswith("sha256:")
-        assert len(sym.stable_id) == len("sha256:") + 16
+        # Should be the canonical hgstableid15:<16hex> shape (29 chars total).
+        assert sym.stable_id.startswith("hgstableid15:")
+        assert len(sym.stable_id) == len("hgstableid15:") + 16
 
     def test_different_methods_same_url_different_stable_ids(self, tmp_path: Path):
         """GET /api/users and POST /api/users are distinct."""
@@ -2768,7 +2764,7 @@ class TestJsTemplateLiteralEndToEnd:
 
         # ADR-0031: Class B synthetic stand-ins carry language=None;
         # discovery_language carries the host -- ``typescript`` for ``api.ts``
-        # (WI-komum: this assertion used to pin the ``javascript`` hardcode).
+        # (WI-komum).
         ts_syms = [s for s in result.symbols if s.discovery_language == "typescript"]
         assert len(ts_syms) == 1
         assert any(
@@ -2846,12 +2842,11 @@ class TestJsTemplateLiteralEndToEnd:
 class TestJsTsClientLanguageFollowsFileSuffix:
     """WI-komum: a TypeScript client call carries ``typescript``, not ``javascript``.
 
-    ``_scan_javascript_file`` used to hardcode ``language="javascript"`` at
-    every one of its thirteen ``HttpClientCall`` sites, so a ``fetch`` in
-    ``a.ts`` minted ``javascript:a.ts:...:call_site`` with
-    ``discovery_language="javascript"`` while the JS/TS analyzer tags every
-    other symbol of that file ``typescript``. The language now comes from the
-    file suffix through ``js_ts_language_from_path`` (INV-tofun parity).
+    ``_scan_javascript_file`` takes the language of every ``HttpClientCall``
+    from the file suffix through ``js_ts_language_from_path``, so a ``fetch``
+    in ``a.ts`` mints ``typescript:a.ts:...:call_site`` with
+    ``discovery_language="typescript"``, matching the tag the JS/TS analyzer
+    gives every other symbol of that file (INV-tofun parity).
 
     One snippet per scan branch: each case asserts the branch was REACHED (the
     branch's own URL is among the calls) before asserting the language, so a
@@ -2916,8 +2911,8 @@ class TestJsTsClientLanguageFollowsFileSuffix:
 
     def test_ts_client_to_ts_route_is_same_language(self, tmp_path: Path) -> None:
         """A ``.ts`` client calling a route the analyzer tagged ``typescript``
-        is a same-language match (0.9), not the cross-language 0.8 the old
-        ``javascript`` hardcode produced."""
+        is a same-language match (0.9), not the cross-language 0.8 a
+        ``javascript`` tag on the client would produce."""
         (tmp_path / "client.ts").write_text('fetch("/api/users");\n')
         route_symbol = Symbol(
             id="typescript:server.ts:1-1:getUsers:function",
@@ -2926,7 +2921,7 @@ class TestJsTsClientLanguageFollowsFileSuffix:
             path=str(tmp_path / "server.ts"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="typescript",
-            stable_id="sha256:abc123",
+            stable_id="hgstableid15:abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },

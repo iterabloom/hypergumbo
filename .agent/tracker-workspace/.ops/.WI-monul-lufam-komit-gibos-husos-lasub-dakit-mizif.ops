@@ -37,3 +37,40 @@
   clock: 3  # 246b
   nonce: 246b  # 246b
   message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CONSUMER-SIDE MEMBER. CLAUSE: ADR-0051 s2, \"the receiver's type already has a home in Edge.meta['receiver_type_hint'] -- stamped by six analyzers and read by neither io_boundary nor taint\". NOTION: the consumers cannot tell whether the slot carries a namespace or a type, so they decide by ORTHOGRAPHY, while the field carrying the conformant TYPE goes unread at that seam. This is the remedy the axiom names rather than a violation of it, and it is what would let INV-kotob / WI-gudak's receiver_variable slots be bypassed instead of repaired."  # 246b
+- op: update  # 0db0
+  at: '2026-10-25T23:58:44Z'  # 0db0
+  by: agent  # 0db0
+  actor: jgstern_agent  # 0db0
+  clock: 4  # 0db0
+  nonce: 0db0  # 0db0
+  set:  # 0db0
+    priority: 3  # 0db0
+- op: discuss  # 893e
+  at: '2026-10-25T23:58:44Z'  # 893e
+  by: agent  # 893e
+  actor: jgstern_agent  # 893e
+  clock: 5  # 893e
+  nonce: 893e  # 893e
+  message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). CURRENT, refs drifted; PAYOFF PREMISE LARGELY STALE -> P2 to P3. AST scan of io_boundary.py and taint.py across every read shape (literal/variable-key get, subscript, kwarg, f-string, meta iteration): no direct read. Live differential via io-boundaries --input: changing java readLine's receiver_type_hint BufferedReader->ProcessBuilder leaves boundaries byte-identical; changing only the module slot to java.lang.Bogus removes the fs_read chain -- the matcher reads the slot and ignores the hint. New since filing (927e6afd40, 2026-10-12): owner_ancestry.py:229-231 reads the hint for IN-REPO owners only, feeding io_boundary.py:5736 / taint.py:1458 via ancestor_retry_hints -- not the external package-vs-type question this item is about. Refs: registry axis_meta_keys.py:1391; _module_matches io_boundary.py:5181 (the Go-convention docstring was replaced by WI-zozun's case-disagreement test; Swift carve-out :5356-5360; orthography still decides); producers now 10 analyzers, consumers 4. Premise: the Swift target was fixed producer-side by INV-kotob (2026-09-04, three days after filing), JVM bare-type slots by INV-dibij (PR #1853); the project fixes the slot at the producer instead. FIRST STEP: count edges whose hint disagrees with the module slot; build only if nonzero."  # 893e
+- op: discuss  # 5baa
+  at: '2026-10-26T00:31:44Z'  # 5baa
+  by: agent  # 5baa
+  actor: jgstern_agent  # 5baa
+  clock: 6  # 5baa
+  nonce: 5baa  # 5baa
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section C: receiver_type_hint has readers (two linkers, owner_ancestry), so a per-field reader count calls it read. The defect is per QUESTION: the consumer that decides package-vs-type does not read it. WI-kosup now records that shape per question."  # 5baa
+- op: update  # 69a1
+  at: '2026-10-28T12:33:19Z'  # 69a1
+  by: agent  # 69a1
+  actor: jgstern_agent  # 69a1
+  clock: 7  # 69a1
+  nonce: 69a1  # 69a1
+  set:  # 69a1
+    status: wont_do  # 69a1
+- op: discuss  # ab69
+  at: '2026-10-28T12:33:19Z'  # ab69
+  by: agent  # ab69
+  actor: jgstern_agent  # ab69
+  clock: 8  # ab69
+  nonce: ab69  # ab69
+  message: "DECIDED NOT TO WIRE, on measurement (2026-10-28; a refusal is a decision). The premise holds (io_boundary.py and taint.py read no receiver_type_hint at the package-vs-type seam), but reading it there would not improve that decision. Measured over 30 recent surveys (~/hypergumbo_lab_notebook/*/*.dev.json + the self survey): hints are BARE type names in every language but Java (javascript 0/2,131 qualified, python 0/1,699, typescript 0/299, cpp 0/4, swift 0/2; java 4,983/35,157 qualified). Substituting the hint for the module slot in classify_call: the QUALIFIED hints change 0 classifications; the bare ones change 120, every sampled one a short-name match against another module's rows (org.slf4j.Logger.info -> a bare 'Logger' row's logging; a JS 'B.open' -> browser_storage_read) -- the unverified match INV-tapat / INV-maluk closed. The swift receiver-variable target this item was raised for was fixed producer-side by INV-kotob. So the slot (the owner path, ADR-0051) stays the consumers' evidence; ADR-0051 s2 now states this and the measurement (lands with WI-ziviv's PR). The hint keeps its readers (inherited_calls, receiver_type_dispatch, owner_ancestry for in-repo owners). WI-pupus (go: a typed receiver gets the package slot in a whole-repo survey) is the live package-vs-type defect, and it is a producer fix."  # ab69

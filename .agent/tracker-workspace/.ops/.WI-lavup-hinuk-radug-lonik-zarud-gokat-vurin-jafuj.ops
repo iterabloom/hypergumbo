@@ -1,0 +1,21 @@
+- op: create  # fd02
+  at: '2026-10-25T11:04:59Z'  # fd02
+  by: agent  # fd02
+  actor: jgstern_agent  # fd02
+  clock: 1  # fd02
+  nonce: fd02  # fd02
+  data:  # fd02
+    kind: work_item  # fd02
+    title: "grpc _resolve_unresolved_grpc_edges: the linker-minted half and its minted_ids branch can never match a symbol link_grpc mints; the unit test fakes the shape"  # fd02
+    status: todo_hard  # fd02
+    priority: 3  # fd02
+    parent:  # fd02
+    tags:  # fd02
+    - docstring_audit  # fd02
+    - analysis_quality  # fd02
+    isbefore: []  # fd02
+    duplicate_of: []  # fd02
+    not_duplicate_of: []  # fd02
+    pr_ref:  # fd02
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- grpc.py: The linker-minted half of `_resolve_unresolved_grpc_edges` (L1169-1174, and the `minted_ids` branch at L1183/L1217-1218) cannot match a symbol that link_grpc mints. It could only match if a proto service were itself named `Register...Server...`. The unit test (test_grpc_linker.py:2307-2318) hand-builds a \"grpc-linker\" symbol named `RegisterUserServer`, a shape link_grpc never produces -- evidence: the repro in notebook staleness_audit_10252026/verify/V07.md (minted names are all `User`; resolution over minted symbols returns `[]`).\n\nSame function as WI-vuzon's grpc Register*Server any-language lookup; a different defect (dead branch, not over-broad match).\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # fd02
+    fields: {}  # fd02

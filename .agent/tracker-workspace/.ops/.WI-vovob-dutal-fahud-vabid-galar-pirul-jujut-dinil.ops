@@ -26,3 +26,26 @@
   clock: 2  # 18b7
   nonce: 18b7  # 18b7
   message: "Bearing from WI-misod-toruv-gimip-botuj-kadup-ludon-damib-buguk (branch jgstern-agent/fix/misod, local, not merged): message_queue.py now builds edges from a shared join (linkers/_name_args.py pair_by_name). On a VALUE join meta.channel and meta.topic are still the same string (the resolved topic), so this row's duplication is unchanged for those edges. On an IDENTIFIER join (either end's topic unresolved) meta.topic is None and NO channel key is written; the identifier is on meta.topic_identifier. So after misod lands, channel == topic holds on every edge that has a channel, and the 103/103 count will shift only by the identifier-joined edges that lose channel. misod did not fold or drop either key (not its scope)."  # 18b7
+- op: discuss  # c0ce
+  at: '2026-11-01T10:56:00Z'  # c0ce
+  by: agent  # c0ce
+  actor: jgstern_agent  # c0ce
+  clock: 3  # c0ce
+  nonce: c0ce  # c0ce
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: PARTLY-STALE. 2026-11-01 review @100b6fbb6e: on a Kafka + Redis fixture, both event_publishes edges had channel=='topic' ('orders'/'orders', 'alerts'/'alerts'). message_queue.py:577-593 passes channel=join.channel and topic=join.value. The 103/103 self-corpus count is stale: those edges came from test files (drained by WI-nitob), and today's packages/ self-analysis has 0 event_publishes edges. MECHANISM: Edge.create(channel=join.channel) and meta.topic=join.value receive the same resolved string."  # c0ce
+- op: update  # c4cf
+  at: '2026-11-01T10:56:00Z'  # c4cf
+  by: agent  # c4cf
+  actor: jgstern_agent  # c4cf
+  clock: 4  # c4cf
+  nonce: c4cf  # c4cf
+  set:  # c4cf
+    title: "message-queue-linker event_publishes edges carry meta.channel identical to meta.topic on every value-joined edge"  # c4cf
+- op: update  # 508c
+  at: '2026-11-01T10:56:00Z'  # 508c
+  by: agent  # 508c
+  actor: jgstern_agent  # 508c
+  clock: 5  # 508c
+  nonce: 508c  # 508c
+  set:  # 508c
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e: on a Kafka + Redis fixture, both event_publishes edges had channel=='topic' ('orders'/'orders', 'alerts'/'alerts'). message_queue.py:577-593 passes channel=join.channel and topic=join.value. The 103/103 self-corpus count is stale: those edges came from test files (drained by WI-nitob), and today's packages/ self-analysis has 0 event_publishes edges. (Original text below; the review entry in the thread has the evidence.)\n\n**Defect.** On event-publish edges, `meta.channel` duplicates `meta.topic` exactly — two keys carrying the same string.\n\n**Evidence.** The producer writes both channel and topic onto event_publishes edges, and the two values are identical on every such edge: channel != topic on 0 of 103 (identical 103/103).\n\n**Contract.** Two distinct metadata keys should carry distinct information; one of the redundant keys should be dropped.\n\n**Consequence.** A consumer reading message-publish metadata sees two keys that always agree, with no documented reason for both; a consumer that branches on a perceived difference between them will never see one and may assume the redundancy is meaningful."  # 508c

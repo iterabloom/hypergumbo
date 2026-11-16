@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-hilum, cpp: a call to an overloaded name binds by the call's ARITY.
 
-The callee was taken from a name-keyed view that keeps one definition per
-name, with no look at how many arguments the call passes. Among overloads
-every call went to one of them, and an overload calling its sibling was drawn
-as a call to ITSELF: sherpa-onnx's ``InitKeywords()`` calling
-``InitKeywords(is)`` came out ``InitKeywords@294 -> InitKeywords@294``.
+A name-keyed view keeps one definition per name and ignores how many arguments
+the call passes. Taking the callee from it sends every call among overloads to
+one of them, and draws an overload calling its sibling as a call to ITSELF
+(``InitKeywords()`` calling ``InitKeywords(is)`` would come out
+``InitKeywords -> InitKeywords``, the same definition).
 
 Each test asserts REACH (an edge exists at the call line) before asserting
 which definition it reaches, and every fixture puts the WRONG overload where
-the name-keyed view would pick it (registered last), so the pre-fix code fails.
+the name-keyed view would pick it (registered last), so a name-keyed choice
+fails.
 """
 from __future__ import annotations
 
@@ -40,7 +41,8 @@ def _params(result, name: str, line: int):
 
 
 def test_an_overload_calling_its_sibling_is_not_a_self_call(tmp_path: Path) -> None:
-    """The filed instance, reduced: sherpa-onnx keyword-spotter-transducer-impl.h."""
+    """Two overloads that each call a third, reduced from sherpa-onnx's
+    keyword-spotter-transducer-impl.h."""
     # ``.hpp``: a lone ``.h`` belongs to the C analyzer (header_owner).
     (tmp_path / "k.hpp").write_text("""\
 #include <istream>
@@ -218,10 +220,10 @@ void run() {
 
 def test_a_call_on_another_object_is_not_rechosen(tmp_path: Path) -> None:
     """The pimpl idiom: ``X::Generate(a, b)`` forwards to
-    ``impl_->Generate(a, b)``. With no receiver type the name lookup picked X's
-    overloads, and the one matching the arity is the CALLER: re-choosing by
-    arity would draw a false self-call. Since WI-lamij the receiver is typed
-    (``impl_`` is an ``Impl*``), so the call binds no X overload at all."""
+    ``impl_->Generate(a, b)``. With no receiver type the name lookup would pick
+    X's overloads, and the one matching the arity is the CALLER: re-choosing by
+    arity would draw a false self-call. The receiver is typed (``impl_`` is an
+    ``Impl*``; WI-lamij), so the call binds no X overload at all."""
     (tmp_path / "x.cpp").write_text("""\
 class X {
  public:
@@ -311,8 +313,8 @@ def test_an_unknown_signature_is_not_an_if_alternative(tmp_path: Path) -> None:
     """A candidate that records no parameters (unknown arity) is admitted
     beside a same-named overload, and the two are NOT taken for ``#if``
     alternatives of one function: the choice stays ambiguous. Every cpp
-    callable writes ``meta["parameters"]`` now (pure virtuals too, WI-tusad),
-    so the unknown one is built by hand."""
+    callable writes ``meta["parameters"]`` (pure virtuals too, WI-tusad), so
+    the unknown one is built by hand."""
     from hypergumbo_core.ir import Span, Symbol
     from hypergumbo_lang_mainstream.cpp import _alternatives_of_one_function
 

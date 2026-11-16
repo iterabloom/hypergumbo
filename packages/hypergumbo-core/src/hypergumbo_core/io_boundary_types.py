@@ -1,12 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Canonical registry of I/O-boundary values — the io-boundary axis (ADR-0050).
 
-THE AXIOM, taken verbatim from ADR-0049 ruling 1 so that ruling stays the
-value-level ruling and this module is the axis it lives on:
+THE AXIOM (ADR-0050 section 1, which applies ADR-0049 ruling 1's transfer test
+to the axis as a whole):
 
-    A boundary value names WHAT DATA CROSSES THE PROCESS BOUNDARY AT THIS
-    CALL SITE, IN WHICH DIRECTION -- not what the program is thereby
-    arranged to do later.
+    A row's PRIMARY boundary names the MEDIUM data crosses at this call site,
+    and in which direction -- not what the program is thereby arranged to do
+    later, and not what the data is. A ``simultaneous`` SECOND boundary
+    records either a reading of the same crossing that a taint label needs
+    (that its content may carry a credential, ``env_read``, or that the party
+    who navigated to the page chose it, ``navigation_read``, or that the party
+    who launched the process chose it, ``command_line_read``), or a second
+    crossing the same call performs at this call site, which must satisfy the
+    axiom on its own. None of a call's simultaneous boundaries is primary:
+    consumers read them all (``io_boundary.boundaries_of``), and the scalar
+    ``io_boundary`` is merely the first in ``CATALOG_BOUNDARY_TYPES`` order
+    (WI-kuzoh, owner ruling 2026-10-27).
+
+So ``env_read`` means both the process environment (as a primary boundary) and
+"may carry a credential" (wherever it is declared).
 
 WHY THIS MODULE EXISTS (INV-tafig). ADR-0016 and ``taint.py`` both call this
 vocabulary "hypergumbo's canonical I/O-boundary risk taxonomy", and six
@@ -49,7 +61,7 @@ than a comment someone has to keep true.
 
 THE SECTIONS, and why headline membership is NOT one of them
 ------------------------------------------------------------
-Four axes partition the twenty-one values:
+Four axes partition the twenty-three values:
 
 ``data_crossing``     the axiom's canonical section. Data crosses the process
                       boundary at this call site, in a named direction.
@@ -65,17 +77,17 @@ Four axes partition the twenty-one values:
 Headline membership (``total_io_edges``) cuts ACROSS that partition and is
 therefore PER-VALUE METADATA, not a section. ``subprocess`` is the value that
 proves it: it is opaque AND curated, so it counts in the headline, while
-``external_potential``, ``command_launch``, ``net_listen`` and ``db_compose``
-are disclosed and excluded. An axis query would have to special-case exactly one value, which is
+``external_potential``, ``command_launch``, ``net_listen``, ``db_compose`` and
+``ipc_listen`` are disclosed and excluded. An axis query would have to special-case exactly one value, which is
 the shape ADR-0024's fold-residue discipline says to put on the spec instead.
 
 KNOWN GAP, stated rather than left for the next reader to rediscover
 ------------------------------------------------------------------
-ADR-0016's "controlled vocabulary" table documents TEN of these twenty-one.
+ADR-0016's "controlled vocabulary" table documents TEN of these twenty-three.
    ``env_write``, ``db_read``, ``db_write``, ``process_send``, ``logging``,
    ``browser_storage_read``, ``browser_storage_write``, ``net_listen``,
-   ``db_compose``, ``external_potential`` and ``command_launch`` are absent
-   from it. The
+   ``db_compose``, ``ipc_listen``, ``command_line_read``,
+   ``external_potential`` and ``command_launch`` are absent from it. The
    vocabulary grew and its documentation did not, which is the drift INV-tafig
    describes; the descriptions below are sourced from the shipped catalogue
    rows and the consumer code, not from that table.
@@ -232,10 +244,15 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Read ambient CONFIGURATION -- values that may carry a credential. "
-            "Narrowed by INV-tutar: host description and user identity are "
-            "host_info_read, not this. Mints a host_secret taint source, which "
-            "is why the narrowing mattered."
+            "Read the process ENVIRONMENT -- environment variables and the "
+            "ambient configuration a deployment supplies (application config, "
+            "system properties) -- whose content may carry a credential. Both "
+            "readings hold (ADR-0050 section 1): as a primary boundary it names "
+            "that medium, and as a simultaneous second boundary it records only "
+            "the credential reading (the page URL, beside navigation_read). "
+            "Mints a host_secret taint source. Host description and user "
+            "identity come from the host, not the environment: host_info_read "
+            "(INV-tutar)."
         ),
     ),
     IoBoundarySpec(
@@ -245,8 +262,9 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Read host DESCRIPTION or user identity -- not a secret (split "
-            "from env_read by INV-tutar) -- INCLUDING THE CLOCK (WI-pavob). "
+            "Read the HOST's own state -- its description, the user identity, "
+            "the clock (WI-pavob) -- a medium the environment did not fill, "
+            "and not a secret (split from env_read by INV-tutar). "
             "Fires almost universally, so its discriminating power is "
             "deliberately low and that was accepted on the record."
         ),
@@ -403,11 +421,62 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Read a value the party that NAVIGATED to this page chose -- the "
-            "page URL, the referrer, window.name. A link can put anything in "
-            "them, so it mints untrusted_input (INV-dadu). The URL spellings "
-            "may also carry a credential and are declared SIMULTANEOUS with "
-            "env_read, so they mint host_secret as well."
+            "Read the page's NAVIGATION -- the page URL, the referrer, "
+            "window.name: values the party that navigated to this page chose. "
+            "A link can put anything in them, so it mints untrusted_input "
+            "(INV-dadu). The URL spellings may also carry a credential and are "
+            "declared SIMULTANEOUS with env_read, so they mint host_secret as "
+            "well; by declaration order env_read is their scalar "
+            "io_boundary."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # AXIS_DEFERRED_CROSSING again, last of all so first-declared-wins leaves
+    # every existing row alone (WI-gaziv).
+    # ------------------------------------------------------------------
+    IoBoundarySpec(
+        name="ipc_listen",
+        axis=AXIS_DEFERRED_CROSSING,
+        direction=DIRECTION_INBOUND,
+        catalog_declarable=True,
+        counts_in_headline=False,
+        description=(
+            "Bind or serve a LOCAL IPC listener -- a Unix-domain socket "
+            "server: the call ARRANGES inbound data from another local "
+            "process to arrive somewhere it does not name, and returns no "
+            "such data itself. net_listen's local-IPC twin, split by MEDIUM "
+            "(ADR-0050 section 1; owner ruling 2026-10-26): a Unix socket is "
+            "not network ingress. DISCLOSED, NEVER MINTED, and it shadows "
+            "ipc_recv for net_listen's reason. A call that may bind either "
+            "medium (socket.socket.bind, Go net.Listen with a network "
+            "argument) stays net_listen until a call-site stamp can tell "
+            "them apart; and the receive half of a Unix server may itself be "
+            "rowed net_recv where TCP and Unix share it "
+            "(asyncio.StreamReader.read)."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # AXIS_DATA_CROSSING once more, last of all for the same reason
+    # (WI-zidam).
+    # ------------------------------------------------------------------
+    IoBoundarySpec(
+        name="command_line_read",
+        axis=AXIS_DATA_CROSSING,
+        direction=DIRECTION_INBOUND,
+        catalog_declarable=True,
+        counts_in_headline=True,
+        description=(
+            "Read the program's own COMMAND LINE -- sys.argv, process.argv, "
+            "std::env::args: values the party that launched the process "
+            "chose, as it chose stdin, so it mints untrusted_input (owner "
+            "ruling 2026-10-22). navigation_read's shape: an argument may "
+            "also carry a credential, so every row declaring it is "
+            "SIMULTANEOUS with env_read, which keeps argv's host_secret label "
+            "and, by declaration order, its scalar io_boundary. verify-claims "
+            "sets its flows aside and counts them (command_line_flows) "
+            "unless a claim sets include_command_line: true -- measured, "
+            "they are true and almost never useful: a CLI doing with its "
+            "arguments what it exists to do (owner ruling 2026-10-28)."
         ),
     ),
     # ------------------------------------------------------------------
@@ -437,11 +506,11 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         description=(
             "The same question as subprocess -- did control leave this "
             "process? -- asked of the producer-stamped channel (INV-larol). "
-            "bash.py stamps it directly because there is no bash catalogue and "
-            "per ADR-0016 there is not going to be one: cataloguing curl as "
-            "net_send would attribute curl's network activity to the shell "
-            "script. Definite but uncurated, so disclosed and excluded from "
-            "the headline."
+            "bash.py stamps it directly because bash's catalogue covers only "
+            "the shell's own redirections, and per ADR-0016 external commands "
+            "will not be catalogued: cataloguing curl as net_send would "
+            "attribute curl's network activity to the shell script. Definite "
+            "but uncurated, so disclosed and excluded from the headline."
         ),
     ),
 )

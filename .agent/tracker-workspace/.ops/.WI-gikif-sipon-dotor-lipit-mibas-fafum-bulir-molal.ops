@@ -1,0 +1,28 @@
+- op: create  # d8eb
+  at: '2026-11-16T11:48:16Z'  # d8eb
+  by: agent  # d8eb
+  actor: jgstern_agent  # d8eb
+  clock: 1  # d8eb
+  nonce: d8eb  # d8eb
+  data:  # d8eb
+    kind: work_item  # d8eb
+    title: "python: annotation forms the hashed signature still drops (/ and * markers, *args and **kwargs, PEP 695, tuple[()])"  # d8eb
+    status: todo_hard  # d8eb
+    priority: 3  # d8eb
+    parent:  # d8eb
+    tags:  # d8eb
+    - python  # d8eb
+    - stable_id  # d8eb
+    isbefore: []  # d8eb
+    duplicate_of: []  # d8eb
+    not_duplicate_of: []  # d8eb
+    pr_ref:  # d8eb
+    description: "WHAT, after PR #2200 filled the annotation forms `_format_annotation` wrote as the empty string on the HASHED path:\n- Still not in the hashed text: the `/` and `*` markers, `*args` / `**kwargs` annotations, PEP 695 type parameters, `tuple[()]` (display side: WI-tirob-jabav-mosis-kiluh-farih-dimoj-hisah-huliz).\n- Base classes and decorator values still go through the default renderer with its holes: that part stays on WI-dujor-papop-fupus-sutuf-bajaz-sivaj-salir-nivur, which is open.\n- An `@overload` sibling can be re-minted indirectly by the collision split when its twin changes tier (seen once, on poetry).\n\nFixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # d8eb
+    fields: {}  # d8eb
+- op: discuss  # b5c1
+  at: '2026-11-16T15:18:08Z'  # b5c1
+  by: agent  # b5c1
+  actor: jgstern_agent  # b5c1
+  clock: 2  # b5c1
+  nonce: b5c1  # b5c1
+  message: "2026-11-16: WI-dujor-papop-fupus-sutuf-bajaz-sivaj-salir-nivur is now closed (owner ruling), so this item's line 'that part stays on WI-dujor, which is open' is out of date: the base-class and decorator forms are on WI-bosor-jidud-sahib-luhap-latot-duzid-hanoh-lotam. Also a correction: those two forms are NOT hash inputs (decorator names are hashed through `_extract_py_decorator_names`, base classes are not hashed), so they do not belong with this item's id-moving leftovers."  # b5c1

@@ -1,21 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Registration must survive a registry clear, because a bare import cannot.
 
-THE FLAKE THIS CLOSES. ``ensure_def_use_extractors_registered`` re-registers the
+THE FLAKE THIS PREVENTS. ``ensure_def_use_extractors_registered`` re-registers the
 def/use extractors by importing their modules for the decorator side effect. Once
-a module is in ``sys.modules`` that import is a no-op, so after
-``clear_def_use_extractors()`` the registry stayed EMPTY while the function still
-returned ``True``. Every language then reported ``dataflow_capable: False``.
-
-IT WAS ALREADY KNOWN AND ALREADY WORKED AROUND, once, locally.
-``test_ddg_build.py::test_python_still_produces_edges`` carries a hand-rolled
-``importlib.reload`` guard whose docstring names the mechanism exactly. Every other
-consumer was unguarded, including ``test_taint_recall_corpus.py``, whose
-``dataflow_capable`` assertions therefore passed or failed depending on which tests
-shared an xdist worker with ``test_cfg.py`` (which clears the registry five times).
-Observed as two failures in a full-suite run that passed at every smaller scope and
-passed again when re-run — the worst shape of test flake, because it makes a green
-suite uninformative.
+a module is in ``sys.modules`` that import is a no-op, so without a reload a
+``clear_def_use_extractors()`` leaves the registry EMPTY while the function still
+returns ``True``, and every language reports ``dataflow_capable: False``.
+Assertions on ``dataflow_capable`` (``test_taint_recall_corpus.py``'s among them)
+then pass or fail depending on which tests share an xdist worker with
+``test_cfg.py``, which clears the registry. Such a failure appears only in a
+full-suite run and passes again on re-run — the worst shape of test flake,
+because it makes a green suite uninformative.
 
 The fix lives at the single place that owns registration rather than in each test
 that trips over it, which is why this file asserts the PRODUCTION function's
@@ -32,9 +27,10 @@ from hypergumbo_core.cfg import (
 )
 from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
 
-#: Every language the four force-imported modules register. ``ts_def_use``
-#: registers twice — WI-nonad stacked ``javascript`` onto the TypeScript grammar,
-#: and javascript is the one whose absence produced the observed failure.
+#: Languages the force-imported modules register that these tests check
+#: (``c`` and ``java`` register too and are not listed). ``ts_def_use``
+#: registers twice — ``javascript`` is stacked onto the TypeScript extractor
+#: (WI-nonad) — and javascript is the one downstream tests assert capable.
 _EXPECTED = ("go", "python", "rust", "typescript", "javascript")
 
 
@@ -62,15 +58,14 @@ class TestRegistrationSurvivesAClear:
             ensure_def_use_extractors_registered()
 
     def test_partial_restore_is_repaired(self) -> None:
-        """THE CASE THAT DEFEATED THE FIRST VERSION OF THIS GUARD.
+        """A POPULATED BUT INCOMPLETE REGISTRY must still be repaired.
 
         ``test_py_def_use.py`` clears the registry and reloads only its OWN
         module, so the registry ends up POPULATED BUT INCOMPLETE. A guard that
-        asked "is the registry non-empty" saw health and did nothing, and
-        ``javascript`` stayed missing — which is precisely the state that
-        produced two JavaScript data-flow failures in a full-suite run while
-        every narrower scope passed. The guard therefore compares against the
-        full expected set, not against emptiness.
+        asked "is the registry non-empty" would see health and do nothing,
+        leaving ``javascript`` missing and JavaScript data-flow assertions
+        failing only in a full-suite run. The guard therefore compares against
+        the full expected set, not against emptiness.
         """
         ensure_def_use_extractors_registered()
         clear_def_use_extractors()
@@ -98,7 +93,7 @@ class TestRegistrationSurvivesAClear:
             )
 
     def test_javascript_specifically_recovers(self) -> None:
-        """Named separately because it is the one the observed failure asserted.
+        """Named separately because a downstream test depends on it.
 
         ``test_taint_recall_corpus.py::test_published_scope_distinguishes_capable_
         from_incapable`` asserts ``javascript`` is data-flow capable, and

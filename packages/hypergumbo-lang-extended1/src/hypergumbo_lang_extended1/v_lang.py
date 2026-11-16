@@ -186,7 +186,8 @@ def _extract_return_type(node: "tree_sitter.Node") -> Optional[str]:
 
 
 #: Declaration keywords whose single-letter name the grammar misreads, with the
-#: kind slot of the id and the emitted kind (as the regular branches below).
+#: kind word the stable id hashes and the emitted kind (as the regular branches
+#: below). The node id's kind slot is the emitted kind (ADR-0036 Ruling 2).
 _V_TYPE_KEYWORDS: dict[str, tuple[str, str]] = {
     "struct": ("struct", "class"), "enum": ("enum", "enum"),
     "interface": ("interface", "interface"),
@@ -273,7 +274,7 @@ def _find_enclosing_function(
         if current.type == "function_declaration":
             name = _get_identifier(current)
             if name:
-                return make_symbol_id("v", str(path.relative_to(repo_root)), current.start_point[0] + 1, current.end_point[0] + 1, name, "fn")
+                return make_symbol_id("v", str(path.relative_to(repo_root)), current.start_point[0] + 1, current.end_point[0] + 1, name, "function")
         current = current.parent
     return None  # pragma: no cover
 
@@ -350,7 +351,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                     )
 
                 sym = Symbol(
-                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "fn"),
+                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
                     stable_id=stable_id,
                     name=name,
                     kind="function",
@@ -379,7 +380,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 field_count = _count_struct_fields(node)
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
+                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
                     stable_id=self.compute_stable_id(node, kind="struct", name=name, file_stable_id=file_stable_id),
                     name=name,
                     kind="class",
@@ -456,7 +457,7 @@ class VAnalyzer(TreeSitterAnalyzer):
             elif keyword == "enum":
                 rec_meta["variant_count"] = _body_member_lines(body)
             sym = Symbol(
-                id=make_symbol_id("v", rel_path, node.start_point[0] + 1, body.end_point[0] + 1, name, id_kind),
+                id=make_symbol_id("v", rel_path, node.start_point[0] + 1, body.end_point[0] + 1, name, kind),
                 stable_id=self.compute_stable_id(node, kind=id_kind, name=name, file_stable_id=file_stable_id),
                 name=name,
                 kind=kind,

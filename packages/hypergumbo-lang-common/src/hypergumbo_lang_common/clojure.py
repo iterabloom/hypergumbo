@@ -78,7 +78,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -395,7 +395,7 @@ def _extract_symbols_from_file(
 
                         is_callable = kind in _CLOJURE_CALLABLE_KINDS
                         parameters: "list[dict[str, object]] | None" = None
-                        stable_id: "str | None" = None
+                        stable_id: "StableId | None" = None
                         if kind in _CLOJURE_IDENTITY_KINDS:
                             qualified = (
                                 f"{current_ns}/{def_name}" if current_ns else def_name

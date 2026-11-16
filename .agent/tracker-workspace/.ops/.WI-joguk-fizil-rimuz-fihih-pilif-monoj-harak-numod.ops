@@ -1,0 +1,36 @@
+- op: create  # 5085
+  at: '2026-10-25T11:05:35Z'  # 5085
+  by: agent  # 5085
+  actor: jgstern_agent  # 5085
+  clock: 1  # 5085
+  nonce: '5085'  # 5085
+  data:  # 5085
+    kind: work_item  # 5085
+    title: "bitbake: symbol ids are keyed by name only, so DEPENDS = and DEPENDS += in one file give two Symbols with one id"  # 5085
+    status: todo_hard  # 5085
+    priority: 3  # 5085
+    parent:  # 5085
+    tags:  # 5085
+    - docstring_audit  # 5085
+    - analysis_quality  # 5085
+    isbefore: []  # 5085
+    duplicate_of: []  # 5085
+    not_duplicate_of: []  # 5085
+    pr_ref:  # 5085
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- bitbake.py: symbol ids are keyed by name only, so repeated assignments collide -- evidence: bitbake.py:77 `return f\"bitbake:{path}:0-0:{name}:{kind}\"`; repro on `DEPENDS = \"a\"\\nDEPENDS += \"b\"` prints `SYM bitbake:a.bb:0-0:DEPENDS:variable ... DEPENDS = a` and `SYM bitbake:a.bb:0-0:DEPENDS:variable ... DEPENDS = b` (two Symbols, one id).\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 5085
+    fields: {}  # 5085
+- op: update  # 0f2e
+  at: '2026-11-16T04:57:55Z'  # 0f2e
+  by: agent  # 0f2e
+  actor: jgstern_agent  # 0f2e
+  clock: 2  # 0f2e
+  nonce: 0f2e  # 0f2e
+  set:  # 0f2e
+    status: done  # 0f2e
+- op: discuss  # 9922
+  at: '2026-11-16T04:57:55Z'  # 9922
+  by: agent  # 9922
+  actor: jgstern_agent  # 9922
+  clock: 3  # 9922
+  nonce: '9922'  # 9922
+  message: "Fixed in PR #2198 with INV-dulah's BitBake limb. Re-ran the repro: DEPENDS = \"a\" then DEPENDS += \"b\" now gives two Symbols with two ids (the id carries the declaration's own lines). Fixture plus fluent-bit's two recipes: ids shared by two nodes 4 -> 0; contains edges 23 -> 30; no stable id gone. No Yocto layer is cloned on this machine."  # 9922

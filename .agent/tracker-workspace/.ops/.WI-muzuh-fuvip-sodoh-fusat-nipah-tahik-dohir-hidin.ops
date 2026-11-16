@@ -1,0 +1,21 @@
+- op: create  # d017
+  at: '2026-11-08T04:24:01Z'  # d017
+  by: agent  # d017
+  actor: jgstern_agent  # d017
+  clock: 1  # d017
+  nonce: d017  # d017
+  data:  # d017
+    kind: work_item  # d017
+    title: "ddg_build records a walked module root as one expression-body return spanning the whole file"  # d017
+    status: todo_hard  # d017
+    priority: 3  # d017
+    parent:  # d017
+    tags:  # d017
+    - docstring_audit  # d017
+    - analysis_quality  # d017
+    isbefore: []  # d017
+    duplicate_of: []  # d017
+    not_duplicate_of: []  # d017
+    pr_ref:  # d017
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. _solve_one_function(root, root, ...) (ddg_build.py:946-950) passes the module root as body; module is not in _STATEMENT_BLOCK_NODE_TYPES (:684-687), so the WI-sodoj branch (:653-658) fires. A 6-line app.py gives a file return span 1-7 whose names include identifiers from inside a function body. Impact only when a call edge targets a file pseudo-symbol (taint.py:4319), not tested. r19, v07."  # d017
+    fields: {}  # d017

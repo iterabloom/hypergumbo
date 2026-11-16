@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Last link of A -> B -> C. test_citations cites line 4 of this file."""
+
+ANCHOR_C = "chain-c-anchor"
+
+
+def step_c(x):
+    return x + 3

@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Python http.server request handlers (WI-losij)
+#
+# The standard library reaches a request handler through a BASE CLASS: a
+# subclass of ``http.server.BaseHTTPRequestHandler`` (or of its stdlib
+# subclasses ``SimpleHTTPRequestHandler`` / ``CGIHTTPRequestHandler``)
+# defines ``do_GET`` / ``do_POST`` / ..., and ``HTTPServer`` dispatches every
+# request to the method named after its verb. Nothing registers the method
+# by name, so no route, decorator or usage pattern sees it. Before this file
+# such a handler was no entrypoint, so verify-claims' unseeded-ingress
+# withhold (WI-fuzik) could not fire on it: a one-file probe whose ``do_GET``
+# opens ``self.path`` read ``confirmed_with_caveats`` on "request data never
+# chooses a file to write" once ``http.server`` was declared complete.
+#
+# The rule reads the method's ``parent_base_classes`` (the enclosing class's
+# bases as written; the python analyzer stamps them since WI-sorop) AND the
+# method name. The verb is upper-case by the stdlib's own dispatch
+# (``'do_' + self.command``), which keeps a helper named ``do_work`` out.
+#
+# Always loaded: http.server is the standard library, so no import detection
+# gates it. Test files are excluded: a test's fake server is not the
+# program's ingress. That exclusion is keyed by CONCEPT NAME
+# (strip_test_file_only_concepts), so every ``route_handler`` producer's
+# test-file symbols lose it (flask-restful, falcon, nex; a comment on each
+# of their rules says so), which is the reading they want too.
+
+# ADR-0061: http.server is the Python standard library; no third-party
+# library is named, the same line CATALOGUE_SCOPE's python entry draws.
+provenance: builtin
+id: python-http-server
+language: python
+
+patterns:
+  - concept: route_handler
+    method_name: "^do_[A-Z]+$"
+    parent_base_class: "^(http\\.server\\.)?(Base|Simple|CGI)HTTPRequestHandler$"
+    language: "^python$"
+    is_test_file: false

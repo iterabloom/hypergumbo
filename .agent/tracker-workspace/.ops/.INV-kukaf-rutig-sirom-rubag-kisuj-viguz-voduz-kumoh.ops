@@ -21,3 +21,10 @@
     fields:  # 1f19
       statement: "hypergumbo sketch --config-extraction MODE renders the Configuration section in MODE."  # 1f19
       root_cause: "cli.py run_behavior_map precomputes sketch_precomputed['config_info'] with ConfigExtractionMode.HYBRID unconditionally (~cli.py:12885); sketch.py (~6609) prefers that cached value over its own config_extraction_mode, so the flag never reaches _extract_config_info."  # 1f19
+- op: discuss  # d834
+  at: '2026-11-01T10:55:48Z'  # d834
+  by: agent  # d834
+  actor: jgstern_agent  # d834
+  clock: 2  # d834
+  nonce: d834  # d834
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e. Code shape unchanged, lines moved: cli.py:13492 calls _extract_config_info(mode=ConfigExtractionMode.HYBRID); sketch.py:6690-6698 uses sketch_precomputed['config_info'] when present. Live (6-file mixed-config fixture, fresh XDG_CACHE_HOME per run, sentence-transformers 5.7.0 offline): the Configuration section is sha256 6d8cb4b2... for heuristic, hybrid and embedding alike, including '--- Additional context (semantic) ---'. A direct _extract_config_info(mode=HEURISTIC) returns no semantic block (247 chars vs 581 for HYBRID). MECHANISM: survey precomputes config_info with HYBRID unconditionally and sketch prefers the cached value over its --config-extraction mode. SHARES MECHANISM WITH: WI-fumap."  # d834

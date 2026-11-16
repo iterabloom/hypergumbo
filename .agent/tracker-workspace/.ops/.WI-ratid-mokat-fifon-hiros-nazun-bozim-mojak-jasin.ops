@@ -51,3 +51,19 @@
   set: {}  # 10e7
   add:  # 10e7
     tags: [awaits_bakeoff_validation]  # 10e7
+- op: update  # 4da3
+  at: '2026-11-02T10:19:41Z'  # 4da3
+  by: agent  # 4da3
+  actor: jgstern_agent  # 4da3
+  clock: 6  # 4da3
+  nonce: 4da3  # 4da3
+  set: {}  # 4da3
+  remove:  # 4da3
+    tags: [awaits_bakeoff_validation]  # 4da3
+- op: discuss  # 6818
+  at: '2026-11-02T10:19:41Z'  # 6818
+  by: agent  # 6818
+  actor: jgstern_agent  # 6818
+  clock: 7  # 6818
+  nonce: '6818'  # 6818
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). pretix: measured in-tree base binds spelled pkg.X with pkg outside the repo: 0 real (4 heuristic hits, all in-repo submodule imports / a nested Meta) (recorded 46 wrong -> 0) ; django: measured extends -> python:unittest:TestCase externals: 108 (the record’s 108 exactly). The dotted-base heuristic is NOT usable on django (from django import forms makes forms.Form look external) and is not cited (recorded 0 -> 108). Tag stripped."  # 6818

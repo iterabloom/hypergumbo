@@ -71,7 +71,3 @@ patterns:
   # aiohttp_session
   - concept: middleware
     decorator: "^setup$"
-
-linkers:
-  - http
-  - websocket

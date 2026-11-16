@@ -1,0 +1,21 @@
+- op: create  # 50fe
+  at: '2026-11-08T04:23:44Z'  # 50fe
+  by: agent  # 50fe
+  actor: jgstern_agent  # 50fe
+  clock: 1  # 50fe
+  nonce: 50fe  # 50fe
+  data:  # 50fe
+    kind: work_item  # 50fe
+    title: "ranking: is_utility_symbol does not match a Go DefaultClock.Now (the INV-mahap example)"  # 50fe
+    status: todo_hard  # 50fe
+    priority: 4  # 50fe
+    parent:  # 50fe
+    tags:  # 50fe
+    - docstring_audit  # 50fe
+    - analysis_quality  # 50fe
+    isbefore: []  # 50fe
+    duplicate_of: []  # 50fe
+    not_duplicate_of: []  # 50fe
+    pr_ref:  # 50fe
+    description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. ^now$ is case-sensitive (ranking.py:550) and (?i)clock$ matches only the type; is_utility_symbol('DefaultClock.Now') and ('Now') are False. A one-line Now() is still dampened by the trivial-sink rule. r15, v05."  # 50fe
+    fields: {}  # 50fe

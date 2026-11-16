@@ -60,6 +60,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -248,6 +249,8 @@ def link_napi(
     for sym in c_cpp_symbols:
         if sym.language in ("c", "cpp") and sym.kind in ("function", "method"):
             c_cpp_files.add(sym.path)
+    # WI-lisan: every N-API export the scan finds, before resolution.
+    found_exports: list[tuple[str, str, str]] = []
 
     for c_path_str in c_cpp_files:
         c_path = Path(c_path_str)
@@ -258,6 +261,7 @@ def link_napi(
             continue
 
         napi_exports = _scan_c_cpp_file_for_napi_exports(c_path)
+        found_exports.extend(napi_exports)
 
         for js_name, c_cpp_name, evidence_type in napi_exports:
             # Look up the C/C++ symbol by function name. When more than
@@ -317,6 +321,7 @@ def link_napi(
             derived_from=[edge.src, target_sym.id, edge.id],
         ))
 
+    run.silence_reason = silence_reason_for_candidates(found_exports)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return NAPILinkResult(edges=result_edges, run=run)

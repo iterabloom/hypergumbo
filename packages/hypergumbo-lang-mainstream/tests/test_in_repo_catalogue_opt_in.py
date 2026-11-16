@@ -81,7 +81,7 @@ def _verify(repo: Path, *flags: str) -> tuple[int, dict, str]:
 
 def test_without_an_opt_in_the_repository_does_not_grade_itself(repo: Path) -> None:
     rc, doc, err = _verify(repo)
-    assert (rc, doc["verdicts"][0]["verdict"]) == (2, "inconclusive")
+    assert (rc, doc["verdicts"][0]["verdict"]) == (4, "inconclusive")
     assert "deps.yaml" in err and "NOT loaded" in err
     assert doc["catalog_provenance"]["tiers"]["in_repo"] == []
 
@@ -112,7 +112,7 @@ def test_a_recorded_grant_opts_in_for_the_repository(repo: Path) -> None:
 def test_a_recorded_refusal_keeps_it_off_and_quiet(repo: Path) -> None:
     assert _run(["trust-catalogues", str(repo), "--revoke"])[0] == 0
     rc, doc, err = _verify(repo)
-    assert (rc, doc["verdicts"][0]["verdict"]) == (2, "inconclusive")
+    assert (rc, doc["verdicts"][0]["verdict"]) == (4, "inconclusive")
     assert "NOT loaded" not in err
 
 

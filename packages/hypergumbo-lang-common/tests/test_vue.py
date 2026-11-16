@@ -11,7 +11,7 @@ from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import vue as vue_module
 from hypergumbo_lang_common.vue import analyze_vue, find_vue_files, is_vue_tree_sitter_available
 
-_CANONICAL_STABLE_ID_RE = re.compile(r"^sha256:[0-9a-f]{16}$")
+_CANONICAL_STABLE_ID_RE = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
 
 def make_vue_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Vue file in the temp directory."""
@@ -589,7 +589,7 @@ export default {
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """WI-rijup: every emitted Symbol.stable_id is the canonical sha256
-        form (``sha256:<16hex>``), not the raw composite ``vue:...`` id.
+        form (``hgstableid15:<16hex>``), not the raw composite ``vue:...`` id.
 
         Reuses the complete-component fixture (directives, slots, props, and a
         style block) so the assertion is non-vacuous.
@@ -862,3 +862,79 @@ import Modal from '@/components/Modal.vue';
         assert edge is not None
         assert edge.dst == "vue:@/components/Modal.vue:0-0:Modal:component"
         assert edge.meta.get("import_path") == "@/components/Modal.vue"
+
+
+class TestRunProvenance:
+    """Every record the analyzer emits joins its one AnalysisRun."""
+
+    def test_component_edges_carry_the_runs_execution_id(self, tmp_path: Path) -> None:
+        """An ``imports`` edge names the pass's own run, not an id of its own.
+
+        The edge helper minted a fresh uuid per tag, so the edge's
+        ``origin_run_id`` matched no AnalysisRun and the map failed the
+        provenance cross-check on every component reference.
+        """
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <Kid /><Other /><unimported-tag />
+</template>
+<script>
+import Kid from "./Kid.vue";
+import Other from "./Other.vue";
+</script>
+""")
+        result = analyze_vue(tmp_path)
+        imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(imports) == 3
+        assert result.run is not None
+        assert {e.origin_run_id for e in imports} == {result.run.execution_id}
+
+
+class TestComponentImportResolution:
+    """A relative import of a component in the tree ends on that file's node.
+
+    The edge used to end on ``vue:./Kid.vue:0-0:Kid:component`` whether or not
+    ``Kid.vue`` existed, which the pipeline turned into an ``external_symbol``
+    stand-in for a file sitting in the repository.
+    """
+
+    _APP = """<template>
+  <Kid /><Deep /><Up /><Gone /><Aliased /><deep-kebab /><Unimported />
+</template>
+<script>
+import Kid from "./Kid.vue";
+import Deep from "./parts/Deep.vue";
+import Up from "../shared/Up.vue";
+import Gone from "./Gone.vue";
+import Aliased from "@/Aliased.vue";
+import DeepKebab from "./parts/DeepKebab.vue";
+</script>
+"""
+
+    def _edges(self, tmp_path: Path) -> dict[str, object]:
+        make_vue_file(tmp_path, "src/App.vue", self._APP)
+        for rel in ("src/Kid.vue", "src/parts/Deep.vue", "shared/Up.vue",
+                    "src/Aliased.vue", "src/parts/DeepKebab.vue"):
+            make_vue_file(tmp_path, rel, "<template><p>x</p></template>")
+        result = analyze_vue(tmp_path)
+        return {e.meta["component_name"]: e for e in result.edges if e.edge_type == "imports"}
+
+    def test_an_existing_relative_target_is_its_file_node(self, tmp_path: Path) -> None:
+        edges = self._edges(tmp_path)
+        for name, target in (
+            ("Kid", "src/Kid.vue"),
+            ("Deep", "src/parts/Deep.vue"),
+            ("Up", "shared/Up.vue"),
+            ("deep-kebab", "src/parts/DeepKebab.vue"),
+        ):
+            edge = edges[name]
+            assert edge.dst == f"vue:{target}:1-1:file:file"
+            assert edge.src == "vue:src/App.vue:1-1:file:file"
+            assert edge.is_resolved is True
+            assert edge.meta["import_path"].endswith(".vue")  # the raw path stays
+
+    def test_a_missing_or_aliased_target_keeps_the_placeholder(self, tmp_path: Path) -> None:
+        edges = self._edges(tmp_path)
+        assert edges["Gone"].dst == "vue:./Gone.vue:0-0:Gone:component"
+        # An alias is the Vue component linker's to resolve, not the analyzer's.
+        assert edges["Aliased"].dst == "vue:@/Aliased.vue:0-0:Aliased:component"
+        assert edges["Unimported"].dst == "vue:component:Unimported:0-0:Unimported:component"

@@ -236,13 +236,13 @@ def test_the_result_is_a_frozen_record(home: Path) -> None:
 def test_a_materialized_overlay_still_loads_and_stays_community(home: Path) -> None:
     """THE POINT OF THE WHOLE FEATURE, and the one failure that would make it
     worse than doing nothing: shipping a directory whose contents the loader
-    rejects. The ``seeded_from:`` stamp is a new top-level key, so this is not
-    hypothetical — it asserts the stamped file is still valid input.
+    rejects. The ``seeded_from:`` stamp is an added top-level key, so this is
+    not hypothetical — it asserts the stamped file is still valid input.
 
     Also checks WHOSE rows they are. A seeded file keeps its ``provenance:
     community`` line, and ADR-0061 ruling 3 reads the tier from that line,
     never from the directory: the rows stay unvouched (they add a detection but
-    do not EXAMINE, #598/ADR-0047) until the user deletes the line, which is
+    do not EXAMINE, ADR-0047) until the user deletes the line, which is
     the act of vouching (INV-lamap)."""
     from hypergumbo_core.io_boundary import load_catalog
 
@@ -388,11 +388,11 @@ def test_one_directory_is_reported_in_the_singular(tmp_path: Path,
 # ----------------------------------------------------------------------
 
 def test_every_registered_subcommand_is_accepted_by_the_guard() -> None:
-    """THE BUG THIS PINS, found on this very feature. The guard's set used to
-    be a hand-written literal; a new subcommand parsed fine and was then
-    rejected as "not a valid subcommand" with a suggestion to run a DIFFERENT
-    one. Deriving the set from the parser makes that unrepresentable, and this
-    fails if anyone reintroduces a literal."""
+    """The guard's subcommand set is DERIVED from the parser. A hand-written
+    literal goes stale: a new subcommand parses fine and is then rejected as
+    "not a valid subcommand" with a suggestion to run a DIFFERENT one.
+    Deriving the set makes that unrepresentable, and this fails if anyone
+    reintroduces a literal."""
     import argparse as _argparse
     from hypergumbo_core.cli import _registered_subcommands, build_parser
     parser = build_parser()
@@ -406,7 +406,7 @@ def test_every_registered_subcommand_is_accepted_by_the_guard() -> None:
 
 
 def test_the_new_subcommand_is_reachable_through_main(tmp_path: Path) -> None:
-    """End to end through argv, which is the path that was broken."""
+    """End to end through argv, the path a stale subcommand literal breaks."""
     from hypergumbo_core.cli import main
     rc = main(["init-catalogs", "--home", str(tmp_path / "h"), "--format", "json"])
     assert rc == 0
@@ -439,10 +439,10 @@ def test_a_row_dropped_in_the_channel_reaches_a_run(tmp_path: Path,
     """THE INSTRUCTION HYPERGUMBO ALREADY PRINTS, MADE TRUE.
 
     Every run that loads a community overlay tells the reader to "override them
-    in $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/" (ADR-0047 ruling 6). Before
-    WI-talaz nothing read that directory — the ADR-0045 ``io_primitives``
-    setting is a list of paths a user NAMES, not a scan — so the sentence was
-    false. This asserts the path the disclosure describes actually works."""
+    in $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/" (ADR-0047 ruling 6). The
+    ADR-0045 ``io_primitives`` setting is a list of paths a user NAMES, not a
+    scan, so without the directory scan that sentence would be false
+    (WI-talaz). This asserts the path the disclosure describes actually works."""
     from hypergumbo_core.cli import _resolve_io_overlays
     from hypergumbo_core.io_boundary import load_catalog
 
@@ -490,9 +490,9 @@ def test_the_scan_sits_below_an_explicitly_named_path(tmp_path: Path,
 def test_a_foreign_language_overlay_in_the_channel_does_not_break_a_run(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    """The seeded directory holds overlays for FIVE languages at once, so the
-    scan hands every one of them to every language's load. INV-lufib already
-    ruled that shape — an overlay for another SHIPPED language is "not mine"
+    """The seeded directory holds overlays for several languages at once, so
+    the scan hands every one of them to every language's load. INV-lufib's
+    rule covers that shape — an overlay for another SHIPPED language is "not mine"
     and is skipped — so this asserts the scan leans on that rule instead of
     inventing a second filter."""
     from hypergumbo_core.catalogue_home import materialize_catalogue_home
@@ -514,8 +514,8 @@ def test_a_foreign_language_overlay_in_the_channel_does_not_break_a_run(
 def test_the_readme_lists_no_inert_channel_while_every_channel_is_read(
     home: Path,
 ) -> None:
-    """WI-mimap wired the three taint channels, so every declared channel is
-    read and the README must not send anyone to a dead directory."""
+    """Every declared channel is read, the three taint channels included
+    (WI-mimap), so the README must not send anyone to a dead directory."""
     text = materialize_catalogue_home(home, version="9.9.9").readme.read_text()
     assert "NOT yet consulted" not in text
     assert "taint_sinks.d/" in text

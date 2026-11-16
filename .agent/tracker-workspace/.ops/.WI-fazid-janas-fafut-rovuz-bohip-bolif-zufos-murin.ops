@@ -18,3 +18,10 @@
     pr_ref:  # e6a4
     description: "Latent-bug flag from the WI-hiziz PR-2 design memo (wf_6991b0ea-f64) and review. py.py derives an enclosing class short name via caller_symbol.name.split('.')[0] at (formerly) py.py:3816 (an existing idiom predating PR-2). Today a method's name/qualified_name is exactly 'Class.method' (one dot), so [0] == [-2] and both yield the direct class. But the field is only bare-two-segment by current convention; if a future change ever chains the full scope ('Outer.Inner.method'), [0] yields 'Outer' (WRONG) while [-2] yields 'Inner' (the direct enclosing class — the class_ids_by_name key). WI-hiziz PR-2's new Site-1 emission deliberately uses .split('.')[-2] for exactly this robustness. Harmonize the sibling site(s) to [-2] to remove the latent divergence. Pure refactor, no behavior change on the current producer; verify with a nested-class test."  # e6a4
     fields: {}  # e6a4
+- op: discuss  # 3dd7
+  at: '2026-11-01T22:22:24Z'  # 3dd7
+  by: agent  # 3dd7
+  actor: jgstern_agent  # 3dd7
+  clock: 2  # 3dd7
+  nonce: 3dd7  # 3dd7
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f. There are now two [0] sites: py.py:7519 (class_name for class_field_types) and py.py:7560 (_own_cls for class_external_field_types, added by a21ef3223f INV-mumov). The qualified_name sites at 9933/10111 already use [-2]. Today a nested-class method is named 'B.go', so the two agree: fixture fx_fazid (A.B.go calling self.c.ping()) resolves to C.ping at 0.85. Latent premise holds; harmonize both sites. It turns into a live bug if WI-naviz chains the full scope into name. MECHANISM: enclosing class derived as name.split('.')[0] (first segment) instead of [-2] (direct owner); correct only while method names are two-segment. SHARES MECHANISM WITH: WI-naviz."  # 3dd7

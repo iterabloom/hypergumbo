@@ -332,24 +332,23 @@ class TestAnalyzerVersionSemantic:
     def test_version_fallback_when_no_pass_version(self, tmp_path: Path) -> None:
         """run.version still equals PASS_VERSION when pass_version is empty.
 
-        INV-gizik / Phase 6 PR2 closure: ``pass_version`` is now auto-stamped
-        from the concrete analyzer subclass's module hash when the subclass
-        leaves it empty (mirrors the linker-side stamping). The empty-string
-        default is therefore observable only briefly, replaced with a
-        ``sha256:<hex>`` code-hash by the time ``analyze`` returns. The
+        ``pass_version`` is auto-stamped from the concrete analyzer subclass's
+        module hash when the subclass leaves it empty (mirrors the linker-side
+        stamping; INV-gizik). The empty-string default is therefore replaced
+        with a ``sha256:<hex>`` code-hash by the time ``analyze`` returns. The
         ``version`` field stays anchored to ``PASS_VERSION`` per INV-kohat.
         """
         analyzer = StubAnalyzer()
         analyzer.pass_version = ""
         result = analyzer.analyze(tmp_path)
         assert result.run.version == PASS_VERSION
-        # INV-gizik: pass_version is now auto-stamped from the subclass
+        # INV-gizik: pass_version is auto-stamped from the subclass
         # module hash when not set explicitly.
         assert result.run.pass_version.startswith("sha256:")
 
 
 class TestPhase6PR2WriterContractWiring:
-    """Phase 6 PR2: TreeSitterAnalyzer wires INV-lidul (config_fingerprint),
+    """TreeSitterAnalyzer wires INV-lidul (config_fingerprint),
     INV-gizik (pass_version), INV-nihug (toolchain extension), and INV-pitab
     (warnings capture) at the base-class level."""
 
@@ -421,13 +420,14 @@ class TestPhase6PR2WriterContractWiring:
             == "language_pack:stub_pack"
         )
 
-    def test_warnings_captured_for_grammar_unavailable_path(
+    def test_the_grammar_unavailable_warning_names_what_to_install(
         self, tmp_path: Path,
     ) -> None:
-        """INV-pitab: the grammar-unavailable branch explicitly populates
-        ``run.warnings`` so the per-run AnalysisRun record surfaces the
-        skip reason in machine-readable form (the schema declares the
-        field; the producer now writes to it)."""
+        """WI-gidid: the warning names the distribution (WI-pakof's
+        ``grammar_distribution``), not "the required tree-sitter grammar
+        package". It is not written to ``run.warnings``: a skipped pass's run
+        is discarded by ``collect_analyzer_result``, so a write there would
+        reach no consumer; the skip entry carries the reason."""
         import pytest as _pytest
 
         class UnavailableStubAnalyzer(StubAnalyzer):
@@ -436,10 +436,27 @@ class TestPhase6PR2WriterContractWiring:
 
         (tmp_path / "test.stub").write_text("content")
         analyzer = UnavailableStubAnalyzer()
-        with _pytest.warns(UserWarning):
+        distribution = UnavailableStubAnalyzer.grammar_distribution()
+        assert distribution  # reach: the stub declares a grammar source
+        with _pytest.warns(UserWarning, match=f"Install {distribution}"):
             result = analyzer.analyze(tmp_path)
         assert result.skipped is True
-        assert any("not available" in w for w in result.run.warnings)
+        assert result.run.warnings == []
+
+    def test_an_undeclared_grammar_source_keeps_the_generic_advice(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import pytest as _pytest
+
+        class UnavailableStubAnalyzer(StubAnalyzer):
+            def _check_grammar_available(self) -> bool:
+                return False
+
+        monkeypatch.setattr(UnavailableStubAnalyzer, "grammar_distribution",
+                            classmethod(lambda cls: None))
+        (tmp_path / "test.stub").write_text("content")
+        with _pytest.warns(UserWarning, match="Install the required tree-sitter grammar package"):
+            UnavailableStubAnalyzer().analyze(tmp_path)
 
 
 class TestTreeSitterAnalyzerSkipped:
@@ -515,8 +532,8 @@ class TestTreeSitterAnalyzerFileSymbols:
 
     def test_file_symbol_spans_full_file_not_line_one(self, tmp_path: Path) -> None:
         """WI-sijug: the inline file node spans the whole file (parsed ``end_point``),
-        not the degenerate line-1-only ``Span(1,0,1,0)`` that fingerprinted just a
-        shebang/comment and yielded a needless null."""
+        not a degenerate line-1-only ``Span(1,0,1,0)``, which would fingerprint
+        just a shebang/comment and yield a needless null."""
 
         class _MultiLineFileSymbolAnalyzer(FileSymbolAnalyzer):
             def _create_parser(self) -> object:
@@ -772,7 +789,7 @@ class TestTreeSitterAnalyzerReparse:
 
 
 # ---------------------------------------------------------------------------
-# shape_id computation tests (ADR-0014 §1)
+# shape_id computation tests (spec §6 shape_id)
 # ---------------------------------------------------------------------------
 
 
@@ -855,10 +872,10 @@ class TestComputeShapeId:
         assert structure == "(block expression_statement )"
 
     def test_compute_shape_id_format(self) -> None:
-        """compute_shape_id should return sha256:{16-hex-chars} format."""
+        """compute_shape_id should return hgshapeid4:{16-hex-chars} format."""
         node = MockNode(type="identifier")
         shape_id = self.analyzer.compute_shape_id(node)
-        assert shape_id.startswith("sha256:")
+        assert shape_id.startswith("hgshapeid4:")
         hex_part = shape_id.split(":")[1]
         assert len(hex_part) == 16
         int(hex_part, 16)  # should not raise
@@ -884,7 +901,7 @@ class TestComputeShapeId:
         node = _make_tree("block", MockNode(type="expression_statement"))
         structure = self.analyzer._cst_structure(node)
         expected = hashlib.sha256(structure.encode()).hexdigest()[:16]
-        assert self.analyzer.compute_shape_id(node) == f"sha256:{expected}"
+        assert self.analyzer.compute_shape_id(node) == f"hgshapeid4:{expected}"
 
     def test_node_becomes_leaf_when_only_anonymous_children(self) -> None:
         """A named node with only anonymous children should be treated as a leaf."""
@@ -918,7 +935,7 @@ class TestComputeShapeId:
             node = _make_tree(f"wrapper_{i}", node)
         # Should not raise RecursionError
         shape_id = self.analyzer.compute_shape_id(node)
-        assert shape_id.startswith("sha256:")
+        assert shape_id.startswith("hgshapeid4:")
 
 
 class TestShapeIdAutoComputation:
@@ -958,7 +975,7 @@ class TestShapeIdAutoComputation:
         sym = result.symbols[0]
 
         assert sym.shape_id is not None
-        assert sym.shape_id.startswith("sha256:")
+        assert sym.shape_id.startswith("hgshapeid4:")
         assert sym.shape_id == analyzer.compute_shape_id(mock_node)
 
     def test_shape_id_not_overwritten_if_already_set(self, tmp_path: Path) -> None:
@@ -979,7 +996,7 @@ class TestShapeIdAutoComputation:
                     span=Span(start_line=1, start_col=0, end_line=10, end_col=0),
                     origin=self.pass_id,
                     origin_run_id=run.execution_id,
-                    shape_id="sha256:preset_value_abc",
+                    shape_id="hgshapeid4:preset_value_abc",
                 )
                 analysis.symbols.append(sym)
                 analysis.symbol_by_name["test"] = sym
@@ -991,7 +1008,7 @@ class TestShapeIdAutoComputation:
         sym = result.symbols[0]
 
         # Should keep the preset value, not overwrite
-        assert sym.shape_id == "sha256:preset_value_abc"
+        assert sym.shape_id == "hgshapeid4:preset_value_abc"
 
     def test_no_node_for_symbol_no_shape_id(self, tmp_path: Path) -> None:
         """Symbols without entries in node_for_symbol keep shape_id=None."""
@@ -1006,7 +1023,7 @@ class TestShapeIdAutoComputation:
 
 
 # ---------------------------------------------------------------------------
-# ArityFlags and classify_parameter_flags tests (ADR-0014 §2)
+# ArityFlags and classify_parameter_flags tests (ADR-0035 §1)
 # ---------------------------------------------------------------------------
 
 
@@ -1130,7 +1147,7 @@ class TestClassifyParameterFlags:
 
 
 # ---------------------------------------------------------------------------
-# compute_stable_id tests (ADR-0014 §2)
+# compute_stable_id tests (ADR-0035 §1)
 # ---------------------------------------------------------------------------
 
 
@@ -1158,10 +1175,10 @@ class TestComputeStableId:
         return MockNode(type="function_definition", children=children)
 
     def test_format(self) -> None:
-        """compute_stable_id should return sha256:{16-hex-chars} format."""
+        """compute_stable_id should return hgstableid15:{16-hex-chars} format."""
         node = self._make_function_node()
         sid = self.analyzer.compute_stable_id(node, kind="function")
-        assert sid.startswith("sha256:")
+        assert sid.startswith("hgstableid15:")
         hex_part = sid.split(":")[1]
         assert len(hex_part) == 16
         int(hex_part, 16)
@@ -1196,8 +1213,8 @@ class TestComputeStableId:
     def test_containing_stable_id_differentiates(self) -> None:
         """Different containing_stable_id values produce different hashes."""
         node = self._make_function_node()
-        sid_a = self.analyzer.compute_stable_id(node, "method", containing_stable_id="sha256:classA")
-        sid_b = self.analyzer.compute_stable_id(node, "method", containing_stable_id="sha256:classB")
+        sid_a = self.analyzer.compute_stable_id(node, "method", containing_stable_id="hgstableid15:classA")
+        sid_b = self.analyzer.compute_stable_id(node, "method", containing_stable_id="hgstableid15:classB")
         assert sid_a != sid_b
 
     def test_no_params_node(self) -> None:
@@ -1207,7 +1224,7 @@ class TestComputeStableId:
             _make_tree("block", MockNode(type="pass_statement")),
         ])
         sid = self.analyzer.compute_stable_id(node, kind="class")
-        assert sid.startswith("sha256:")
+        assert sid.startswith("hgstableid15:")
 
     def test_hash_matches_manual(self) -> None:
         """The hash should match a manual sha256 of the canonical string."""
@@ -1226,20 +1243,19 @@ class TestComputeStableId:
         # ":" between the arity flags and the trailing "0".
         expected_sig = "function:2:False,False,False:::::0"
         expected_hash = hashlib.sha256(expected_sig.encode()).hexdigest()[:16]
-        assert sid == f"sha256:{expected_hash}"
+        assert sid == f"hgstableid15:{expected_hash}"
 
     def test_name_disambiguates_same_shape(self) -> None:
-        """Phase 6 PR3 (INV-bazij): two same-shape symbols with different
-        names produce different stable_ids when name is passed."""
+        """Two same-shape symbols with different names produce different
+        stable_ids when name is passed (INV-bazij)."""
         node = self._make_function_node()
         sid_a = self.analyzer.compute_stable_id(node, kind="function", name="poll_ci")
         sid_b = self.analyzer.compute_stable_id(node, kind="function", name="do_merge")
         assert sid_a != sid_b
 
     def test_qualified_name_disambiguates(self) -> None:
-        """Phase 6 PR3 (INV-bazij): same name, different qualified_name
-        (e.g., same method name in two different classes) produces
-        different stable_ids."""
+        """Same name, different qualified_name (e.g., same method name in
+        two different classes) produces different stable_ids (INV-bazij)."""
         node = self._make_function_node()
         sid_a = self.analyzer.compute_stable_id(
             node, kind="method", name="run", qualified_name="ClassA.run",

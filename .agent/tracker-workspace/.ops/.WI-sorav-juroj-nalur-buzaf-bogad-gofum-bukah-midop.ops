@@ -1,0 +1,44 @@
+- op: create  # 8850
+  at: '2026-10-22T05:14:33Z'  # 8850
+  by: agent  # 8850
+  actor: jgstern_agent  # 8850
+  clock: 1  # 8850
+  nonce: '8850'  # 8850
+  data:  # 8850
+    kind: work_item  # 8850
+    title: "small concept-audit cleanups: ContentRule.ecosystem is a tool/mechanism label (rename to tool), channel_kind's declared example message_queue has no producer (producers emit queue)"  # 8850
+    status: todo_hard  # 8850
+    priority: 4  # 8850
+    parent:  # 8850
+    tags:  # 8850
+    - docs  # 8850
+    - axis  # 8850
+    - discovery  # 8850
+    - concept_audit_20261021  # 8850
+    isbefore: []  # 8850
+    duplicate_of: []  # 8850
+    not_duplicate_of: []  # 8850
+    pr_ref:  # 8850
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). Adjacent findings. ContentRule.ecosystem (discovery.py:911-925, 'display label') holds ~45 values mixing package managers, build tools, detection mechanisms ('self-ignored output', 'cache directory (CACHEDIR.TAG)') and 'git submodule'; it is re-emitted as 'tool' for generated output (discovery.py:1861, supply_chain.py:1538) and branched on at discovery.py:1831; ADR-0041 section 3 owns 'ecosystem' for stdlib/third_party. Recommended: rename the field to tool. channel_kind (axis_meta_keys.py:564-566) declares example 'message_queue' while producers emit 'queue'; Phoenix Channels (WebSocket transport) carry 'ipc' (linkers/phoenix_ipc.py:357). KEEP with trigger: generic Edge.meta keys call_type / method (axis_meta_keys.py:1482-1487, 1590-1594) -- re-audit on their first reader."  # 8850
+    fields: {}  # 8850
+- op: discuss  # 5339
+  at: '2026-10-25T20:08:24Z'  # 5339
+  by: agent  # 5339
+  actor: jgstern_agent  # 5339
+  clock: 2  # 5339
+  nonce: '5339'  # 5339
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, refs drifted (code read). ContentRule.ecosystem discovery.py:925-939: 85 rules carry 41 distinct values plus the 'git submodule' rule, 42 in all (not ~45); branched on as a display label at :1845; re-emitted as tool at :1875 and supply_chain.py:1538. ADR-0041 §3 (:66-70) owns 'ecosystem' as stdlib/third_party, so the rename to tool stands. channel_kind's example 'message_queue' (axis_meta_keys.py:564-566) still has no producer -- producers emit exactly crdt, ipc, message_bus, queue, websocket; the spec (:1231, :1263) is already right, only the registry example is wrong; Phoenix 'ipc' at phoenix_ipc.py:358. The keep-with-trigger half (generic Edge.meta keys call_type axis_meta_keys.py:1488, method :1596) overlaps WI-kuhoh (open, owner decision pending) and defers to it; grep found no edge reader. P4 kept."  # 5339
+- op: discuss  # 4520
+  at: '2026-10-26T00:28:57Z'  # 4520
+  by: agent  # 4520
+  actor: jgstern_agent  # 4520
+  clock: 3  # 4520
+  nonce: '4520'  # 4520
+  message: "2026-10-25 (owner): WI-kosup now owns this item's keep-with-trigger on the generic Edge.meta keys call_type and method. 're-audit on their first reader' cannot fire on keys nothing reads, and WI-kosup does not accept that form; it gives a DELETE / WIRE / DECLARE EXTERNAL / fireable-KEEP verdict instead. This item's other parts (ContentRule.ecosystem -> tool; the channel_kind 'message_queue' example) are unaffected, but the latter is recorded in WI-kosup as an instance of a declared value with no producer."  # 4520
+- op: discuss  # f7f7
+  at: '2026-10-28T13:42:36Z'  # f7f7
+  by: agent  # f7f7
+  actor: jgstern_agent  # f7f7
+  clock: 4  # f7f7
+  nonce: f7f7  # f7f7
+  message: "WI-kosup sweep (2026-10-28): the call_type / method keep-with-trigger ('re-audit on their first reader') was the unfireable form the sweep refuses; replaced by DELETE (WI-dikum). The channel_kind 'message_queue' reader-without-producer example is in the sweep's §2 set (/home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md)."  # f7f7

@@ -20,6 +20,11 @@ This analyzer uses tree-sitter to parse Go files and extract:
   6) for an own-package function in another file or an import-qualified
   function, exactly 0.70 for a same-file hit or a method;
   ``_extract_function_reference_edges``)
+- A function named as an unkeyed composite-literal element
+  (``[]func(){a, b}``) or on the right side of a local binding
+  (``f := handler``, ``h = pkg.Fn``, a function-local ``var g = run``),
+  resolved as a keyed struct-literal field value is (``calls`` edges with
+  ``evidence_type="function_reference"``; ``_emit_value_reference``)
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
   package-attribute reads, and ``references`` edges for build-tag alternatives
@@ -67,8 +72,8 @@ How It Works
      a type outside the module fills the slot as a typed local's does. A
      receiver whose type is known to be outside the module -- that result, a
      stdlib package variable, a struct field -- is never looked up in-repo,
-     where a same-named method under a ``json`` / ``http`` directory took the
-     call (WI-vinuh).
+     where a same-named method under a ``json`` / ``http`` directory would
+     take the call (WI-vinuh).
    - An explicitly instantiated generic callee (``Map[int](x)``,
      ``pkg.Zero[int]()``) is read as its plain spelling
      (``_go_instantiated_callee``, WI-nulig).
@@ -82,10 +87,18 @@ How It Works
      (``resolution_quality: "chained_return_type"``, WI-vadin). A call-result
      receiver still untyped, with no package hint, gets an unresolved edge
      with ``meta["receiver"]="field_chain"`` (the chained-call ambiguity guard,
-     after ``c.CoreV1().Endpoints(ns).Update()`` bound a lone ``Manager.Update``).
+     so ``c.CoreV1().Endpoints(ns).Update()`` cannot bind a lone
+     ``Manager.Update``).
    - A qualified type whose package declares no such method takes one promoted
      through ONE level of embedding, when exactly one embedded type declares
      it (``_go_promoted_method``, the last step of ``_go_method_of_type``).
+   - A selector call's repo-wide lookup filters its candidates by the call's
+     SHAPE (``admit``) before choosing: a package-qualified ``pkg.F()`` admits
+     no method (``_go_package_member``, which also filters the dot-import and
+     selector-reference lookups), and a call on a value admits only a method
+     or a field whose declared type is a ``func`` (``_go_value_member``, read
+     from ``field_type_registry``, which records function-typed fields for
+     this). A same-file hit for a call on a value passes the same filter.
 6. Ambiguous method call guard:
    - When a method call ``x.Method()`` has no inferred receiver type and the
      method name has 2+ candidates in global symbols, creates an unresolved
@@ -113,8 +126,8 @@ How It Works
      placeholder, with
      ``meta={"call_construct": "method", "visibility": "unexported"}``: a
      package-private method cannot be called from another package, so global
-     resolution would only cross package boundaries (``recalcRequest.string``
-     drew 577 spurious callers).
+     resolution would only cross package boundaries and hand a common
+     lowercase name (``recalcRequest.string``) hundreds of spurious callers.
 8. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
@@ -165,7 +178,7 @@ How It Works
      (``"unix*"`` -> ``pipe``, ``"tcp*"`` / ``"udp*"`` / ``"ip*"`` ->
      ``net_stream``), or the name of ``net.DialUnix`` / ``net.ListenUnix``;
      ``ln.Accept()`` follows ``ln`` one binding back to its listener. A
-     network that is not a literal keeps today's ``net_stream``.
+     network that is not a literal stays ``net_stream``.
 
 Why This Design
 ---------------
@@ -178,50 +191,37 @@ Why This Design
 Population of ``is_exported`` follows Go's lexical case rule: identifiers
 starting with an uppercase letter are exported (public).
 
-A PACKAGE-QUALIFIED CALL IS STAMPED ``function`` (INV-tanom, 2026-09-26).
-Go writes a package-qualified free function with the same syntax as a
-value-receiver method, and until this date every selector call was stamped
-``call_construct="method"``: ``http.Get(u)`` and ``c.Get(u)`` were
-byte-identical in (name, module_hint, call_construct). The unresolved-selector
-emit now stamps ``function`` when the operand is an import alias, which is the
-same test that already fills the module slot with the package. ``base.py``
-defines ``method`` as a call on a receiver, and ADR-0059 files a call on the
-module itself as a function.
+A PACKAGE-QUALIFIED CALL IS STAMPED ``function`` (INV-tanom). Go writes a
+package-qualified free function with the same syntax as a value-receiver
+method, so ``http.Get(u)`` and ``c.Get(u)`` look alike. The unresolved-selector
+emit stamps ``call_construct="function"`` when the operand is an import alias,
+the same test that fills the module slot with the package. ``base.py`` defines
+``method`` as a call on a receiver, and ADR-0059 files a call on the module
+itself as a function. The distinction matters to consumers that count method
+call sites -- e.g. the ``unknown_receiver_scope`` caveat uses
+``call_construct == "method"`` as its denominator, which every ``fmt.Println``
+would otherwise inflate (WI-fuvaj).
 
-WHY IT WAS FIXED AFTER BEING PRICED AT ZERO. Sized 2026-09-09 over 14 Go
-repositories, the mis-stamp cost nothing at its only consumer then, io-boundary's
-no-module gate, which a package-qualified call never reaches (its slot is always
-fillable from the import block; ``tanom_sizing_09092026/RESULT.md``). 8.1.0's
-``unknown_receiver_scope`` caveat then used ``call_construct == "method"`` as
-its denominator, and every ``fmt.Println`` became a method call site whose
-receiver could have been typed (WI-fuvaj: alertmanager printed 18.5% untyped
-where the share over receiver calls is about 31%). A debt priced at zero
-expires when a new consumer arrives.
-
-A LOCAL THAT SHADOWS ITS IMPORT IS NOT THE PACKAGE (WI-kugap, 2026-10-03).
+A LOCAL THAT SHADOWS ITS IMPORT IS NOT THE PACKAGE (WI-kugap).
 ``url, _ := url.Parse(raw); url.String()`` and ``func f(os T) { os.Open(p) }``
 call on the LOCAL, so neither the construct nor the module slot names the
-package. The test is asked by POSITION (see below), which is what
-``var_types`` could not do: it is per function, so it would also have taken
-the ``url.Parse`` that DEFINES the local for a call on it. The same test keeps
-an attribute read on such a local (``os.Args`` on the parameter) out of the
-``module_attr_ref`` edges. Every resolved emit stamps the construct from how
-the call is written -- bare or on a package: ``function``; on a value:
-``method`` -- as the unresolved emit already did.
+package. The test is asked by POSITION (see below), which ``var_types`` cannot
+do: it is per function, so it would also take the ``url.Parse`` that DEFINES
+the local for a call on it. The same test keeps an attribute read on such a
+local (``os.Args`` on the parameter) out of the ``module_attr_ref`` edges.
+Every emit, resolved or unresolved, stamps the construct from how the call is
+written -- bare or on a package: ``function``; on a value: ``method``.
 
-A BARE IDENTIFIER RESOLVES IN THE CALLER'S OWN PACKAGE (WI-bivin, 2026-09-30).
+A BARE IDENTIFIER RESOLVES IN THE CALLER'S OWN PACKAGE (WI-bivin).
 Go scoping answers a bare name exactly: a declaration of the caller's own
 package, a builtin, a dot-imported name, or a local binding -- never another
-package's declaration. The bare-identifier arms (a call ``New()``, a function
-passed as an argument ``register(handler)``, a struct-literal field value
-``Command{Run: run}``) used to check the caller's own FILE and then ask the
-repo-wide resolver with no path hint, so a same-package callee in another file
-competed with every package's declaration of that name: three or more became
-the ``external`` placeholder, two bound the path-sorted first one at 0.57 (a
-wrong-package edge when the caller's package sorts later), and a sole
-candidate in another package was bound at 0.80 though Go cannot mean it.
+package's declaration. So the bare-identifier arms (a call ``New()``, a
+function passed as an argument ``register(handler)``, a struct-literal field
+value ``Command{Run: run}``) do not ask the repo-wide resolver, where a
+same-package callee in another file would compete with every package's
+declaration of that name and could bind a package Go cannot mean.
 
-``_go_package_scopes`` now groups the Pass-1 declarations by PACKAGE -- the
+``_go_package_scopes`` groups the Pass-1 declarations by PACKAGE -- the
 file's directory AND its ``package`` clause, so the external test package
 ``x_test`` is a different scope from ``x`` in the same directory -- and each
 file's bare identifiers are looked up in its own package's scope only, less
@@ -242,55 +242,56 @@ directory is one package (plus its ``_test`` twin) in every module layout.
 A bare call that still resolves nowhere -- no local symbol, nothing (or an
 ambiguity-withheld set) from the resolver, no dot import to claim it -- gets the
 ``external`` placeholder edge with ``call_construct="function"``
-(``make_unresolved_edge``, INV-guzuj). It used to emit nothing, so the call
-site vanished; every other analyzer mints the placeholder there.
+(``make_unresolved_edge``, INV-guzuj), so the call site is kept, as every other
+analyzer keeps it.
 
-A NAME IS LOCAL ONLY WHERE ITS BINDING IS IN SCOPE (WI-bopiv, 2026-10-03).
+A NAME IS LOCAL ONLY WHERE ITS BINDING IS IN SCOPE (WI-bopiv).
 ``_GoLocalScope`` records, per top-level declaration, the byte ranges over
 which each parameter and local is visible under Go's rules: a parameter for
 its function's body, ``x := ...`` / ``var x`` / ``const x`` from the END of
 the declaring statement to the end of the innermost block or clause. So the
 right side of ``nodeName, err := nodeName(o)`` calls the package function, a
 name bound in one ``if`` branch is not bound in the other, and a parameter of
-a function TYPE (``cb func(open string)``) binds nothing. The earlier set of
-every name bound anywhere in the declaration withheld all three. Every site
+a function TYPE (``cb func(open string)``) binds nothing. A flat set of every
+name bound anywhere in the declaration would withhold all three. Every site
 that asks "is this a local value here" asks it: the bare call, the bare and
 selector function references, the operand of ``pkg.F()`` and the
 attribute-read pass.
 
-A SELECTOR FUNCTION REFERENCE IS RESOLVED BY ITS OPERAND (WI-kibah,
-2026-10-03). ``register(pkg.Handler)``, ``r.Get("/x", h.GetAPI)`` and
-``Command{RunE: o.Run}`` used to ask the repo-wide resolver for the field name
-alone, so ``reg(http.NotFound)`` bound a repo function ``NotFound`` at 0.70.
-Now an import operand resolves in that package only, a typed operand to its
-type's method, a type or pointer-type operand to its method (a method
-expression, ``(*T).m``), a composite-literal operand (``(&T{}).M``) to its
-type's method, anything else to nothing. A package hint is also checked on the call arm's resolved
-emit (``_go_in_hinted_package``): among two or more same-named candidates the
-resolver falls back to the path-sorted first when the hint matches none, and
-``http.Get(u)`` bound a repo ``Get``. A typed local's or method value's
+A SELECTOR FUNCTION REFERENCE IS RESOLVED BY ITS OPERAND (WI-kibah).
+``register(pkg.Handler)``, ``r.Get("/x", h.GetAPI)`` and
+``Command{RunE: o.Run}`` are not resolved by the field name alone, which would
+let ``reg(http.NotFound)`` bind a repo function ``NotFound``. An import
+operand resolves in that package only, a typed operand to its type's method, a
+type or pointer-type operand to its method (a method expression, ``(*T).m``),
+a composite-literal operand (``(&T{}).M``) to its type's method, anything else
+to nothing. A package hint is also checked on the call arm's resolved emit
+(``_go_in_hinted_package``), so a resolver candidate the hint does not match
+(a repo ``Get`` for ``http.Get(u)``) is never bound. The repo-wide resolver
+withholds a tie of two or more same-named candidates as ``ambiguous``; only
+the own-package resolver binds a tie, whose candidates are build-constraint
+variants. A typed local's or method value's
 ``Type.Method`` is taken from the TYPE's package (``_go_method_of_type``):
 symbols are keyed with an unqualified type, so every package's
-``SDConfig.UnmarshalYAML`` shared one key and the first was bound whatever the
-receiver's package. The field-chain and chained-return-type arms do not use it
-yet: they still take the first global candidate for the bare key.
+``SDConfig.UnmarshalYAML`` shares one key and the first would be bound
+whatever the receiver's package. The field-chain and chained-return-type arms
+do not use it yet: they still take the first global candidate for the bare key.
 
-A PACKAGE-LEVEL FUNCTION ALIAS CONTINUES (WI-labik, 2026-10-03). ``var
+A PACKAGE-LEVEL FUNCTION ALIAS CONTINUES (WI-labik). ``var
 NewWebhook = testutils.NewWebhook`` gets ``calls`` variable -> function
 (evidence ``function_reference``); an alias of an outside package's function
-keeps its ``module_attr_ref``, now anchored on the variable rather than the
+keeps its ``module_attr_ref``, anchored on the variable rather than the
 file (``_emit_go_alias_edges``).
 
-Since a bare call resolved in its own package is never a method, INV-fahub's
-bare-method deferral (``defer_bare_method_call``) could no longer fire in Go and
-is no longer applied: a dot-import lookup accepts only exact / path-hint
-matches, and a hint-less selector reaches the resolver only with one candidate.
-With it went the ``enclosing_class`` stamp that let the inherited_calls Site-1
+Since a bare call resolved in its own package is never a method, the shared
+bare-method deferral (``defer_bare_method_call``, INV-fahub) is not applied in
+Go: a dot-import lookup accepts only exact / path-hint matches, and a hint-less
+selector reaches the resolver only with one candidate. Nor does Go stamp
+``enclosing_class`` on a bare call, which would let the inherited_calls Site-1
 walker bind a bare ``Process()`` inside ``func (c *Caller) Run()`` to an
-embedded type's ``Process`` method (dev 7a645c6c76: ``Caller.Run ->
-TypeA.Process`` at 0.9 in a package whose ``func Process()`` was the real
-callee). Go has no implicit receiver; a promoted method is reached only as
-``c.Process()``.
+embedded type's ``Process`` method when a package-level ``func Process()`` is
+the real callee. Go has no implicit receiver; a promoted method is reached only
+as ``c.Process()``.
 """
 from __future__ import annotations
 
@@ -301,7 +302,7 @@ from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Container, Final, Iterator, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Container, Final, Iterator, Mapping, Optional
 
 if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
@@ -342,6 +343,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.paths import normalize_path
+from hypergumbo_core.overload_arity import PARAMETERS_KEY, parameter_entry
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -511,6 +513,19 @@ def _extract_go_signature(
     Returns a signature string like "(x int, y string) error" or "(a, b int) (int, error)"
     for Go functions. None if extraction fails.
 
+    This one text is both the displayed ``Symbol.signature`` and the input
+    of :func:`normalize_go_signature`, whose output is hashed into the
+    typed ``stable_id``. Every parameter is written, whatever its type node:
+    a ``parameter_declaration`` as ``names type`` (or ``type`` when unnamed)
+    with the source text of its ``type`` field, and a
+    ``variadic_parameter_declaration`` as ``name ...type`` (or ``...type``).
+    Before, a type node outside a ten-kind list (a ``generic_type`` such as
+    ``List[int]``, a ``parenthesized_type``) dropped its parameter, and a
+    variadic parameter was dropped always, so ``f(xs ...int)`` and
+    ``f(xs ...string)`` hashed one text. The result is the source text of
+    the ``result`` field. The type parameter list is not part of this text
+    (see :func:`_go_type_parameters_text`).
+
     Args:
         node: A tree-sitter function_declaration or method_declaration node.
         source: Source bytes of the file.
@@ -530,26 +545,26 @@ def _extract_go_signature(
     # Extract parameters from parameter_list
     param_strs: list[str] = []
     for child in params_node.children:
-        if child.type == "parameter_declaration":
-            # Go parameters: can have multiple names sharing a type
-            # e.g., "a, b int" or "x string"
-            names: list[str] = []
-            type_str = ""
-            for param_child in child.children:
-                if param_child.type == "identifier":
-                    names.append(node_text(param_child, source))
-                elif param_child.type in ("type_identifier", "pointer_type",
-                                          "slice_type", "map_type", "array_type",
-                                          "interface_type", "struct_type",
-                                          "function_type", "channel_type",
-                                          "qualified_type"):
-                    type_str = node_text(param_child, source)
-
-            if names and type_str:
-                param_strs.append(f"{', '.join(names)} {type_str}")
-            elif type_str:  # pragma: no cover
-                # Unnamed parameter (rare but valid in Go interfaces)
-                param_strs.append(type_str)
+        if child.type not in (
+            "parameter_declaration", "variadic_parameter_declaration",
+        ):
+            continue
+        # Go parameters: can have multiple names sharing a type
+        # e.g., "a, b int" or "x string"; a variadic one has at most one.
+        names = [
+            node_text(n, source) for n in child.children_by_field_name("name")
+        ]
+        type_node = child.child_by_field_name("type")
+        if type_node is None:
+            continue  # pragma: no cover - the grammar requires a type
+        type_str = node_text(type_node, source)
+        if child.type == "variadic_parameter_declaration":
+            type_str = f"...{type_str}"
+        if names:
+            param_strs.append(f"{', '.join(names)} {type_str}")
+        else:
+            # Unnamed parameter: ``func(int, string)``
+            param_strs.append(type_str)
 
     sig = "(" + ", ".join(param_strs) + ")"
 
@@ -562,11 +577,70 @@ def _extract_go_signature(
     return sig
 
 
+def _go_type_parameters_text(
+    node: "tree_sitter.Node", source: bytes,
+) -> str:
+    """The type parameter list of a generic Go function, for its hashed text.
+
+    ``func Map[T any, U comparable](...)`` gives ``"[T any, U comparable]"``
+    (the source text with each run of whitespace written as one space); a
+    function with no type parameters gives ``""``. The function-declaration
+    site puts it in front of the normalized signature it hashes into the
+    typed ``stable_id``, so ``f[T any](x T)``, ``f[T comparable](x T)`` and a
+    plain ``f(x T)`` hash three texts. Names and constraints are kept as
+    written: no positional renaming (spec section 6 names it, but no analyzer
+    passes ``type_params``) and no package-prefix stripping. It is not shown
+    in ``Symbol.signature``, which stays ``(params) result``.
+
+    A method's receiver type parameters (``func (s *Stack[T]) Push(v T)``)
+    are not read here: Go has no method type parameters, and the receiver's
+    are declared on the type.
+    """
+    tp = find_child_by_field(node, "type_parameters")
+    if tp is None:
+        return ""
+    return " ".join(node_text(tp, source).split())
+
+
+def _go_parameters(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` for a Go func / method / interface-method spec.
+
+    The declared home of the parameter list (ADR-0058; ``overload_arity``
+    fixes the entry shape), so a consumer asking what a callable TAKES reads
+    it here and never re-parses ``Symbol.signature`` (WI-jonin: a
+    ``ServeHTTP`` taking a ``*http.Request``). ``a, b int`` is two entries of
+    type ``int``; ``func(int, string)`` has unnamed entries (name ``""``); a
+    ``rest ...string`` entry is ``variadic`` with element type ``string``. Go
+    has no default values. The receiver is not a parameter.
+    """
+    params_node = find_child_by_field(node, "parameters")
+    entries: list[dict[str, Any]] = []
+    if params_node is None:
+        return entries  # pragma: no cover - every callable node carries one
+    for child in params_node.children:
+        if child.type not in (
+            "parameter_declaration", "variadic_parameter_declaration",
+        ):
+            continue
+        type_node = child.child_by_field_name("type")
+        type_text = node_text(type_node, source) if type_node is not None else None
+        variadic = child.type == "variadic_parameter_declaration"
+        names = [
+            node_text(n, source) for n in child.children_by_field_name("name")
+        ] or [""]
+        entries.extend(
+            parameter_entry(name, type_text, variadic=variadic) for name in names
+        )
+    return entries
+
+
 def normalize_go_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Go signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a Go signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_go
     return normalize_signature_go(signature, type_params)
 
@@ -607,9 +681,9 @@ def _extract_dot_imports(
 ) -> list[str]:
     """Extract dot-imported package paths (``import . "strings"``).
 
-    Returns a list of package import paths brought into scope unprefixed.
-    Powers the WI-vovum / WI-mafik gap fix: a bare call whose name was
-    dot-imported gets an unresolved edge keyed to the source package.
+    Returns a list of package import paths brought into scope unprefixed,
+    so a bare call whose name was dot-imported gets an unresolved edge keyed
+    to the source package (WI-vovum, WI-mafik).
     """
     dot_imports: list[str] = []
     for node in iter_tree(root_node):
@@ -685,16 +759,15 @@ def _go_package_identifier(import_path: str) -> str:
       * **gopkg.in** — the version is a DOTTED SUFFIX on the last element, so
         ``gopkg.in/yaml.v2`` is imported as ``yaml``.
 
-    Taking the last element literally therefore bound ``v4`` and left ``echo``
-    unbound, which dropped the module hint from every call on that package and
-    sent the dst to the ``external`` placeholder. Since Go modules, ``/vN`` is
-    the standard for any library at v2+, so this was not an edge case.
+    Taking the last element literally would bind ``v4`` and leave ``echo``
+    unbound, dropping the module hint from every call on that package and
+    sending the dst to the ``external`` placeholder. ``/vN`` is the standard
+    for any Go-modules library at v2+, so this is not an edge case.
 
-    THIS IS A HEURISTIC AND SO WAS WHAT IT REPLACES. A package's real name is
+    THIS IS A HEURISTIC, AS ANY ANSWER HERE IS. A package's real name is
     declared in its own source (``package gin``) and can differ from its path;
     for an external dependency that source is not present, so the identifier
-    has to be inferred either way. The change is strictly a better inference,
-    not a move from exact to approximate.
+    has to be inferred either way.
 
     THE OVER-STRIPPING HAZARD IS THE ONE TO WATCH, because it would invent a
     defect while closing one. ``v2`` is a legal package name, and
@@ -851,12 +924,11 @@ def _go_lookup_through_dot_imports(
     in scope, so a bare ``Helper()`` that is not declared in the calling
     package is ``alias1.Helper`` -- Go rejects the file otherwise. The plain
     lookup has no package evidence for a bare name and, once several packages
-    declare a ``Helper``, its ambiguity guard returns nothing. That is exactly
-    what INV-nopoh's grouped-``var`` symbols exposed: a test-helper package
-    re-exporting ``testutils`` through ``var ( NewWebhook = testutils.NewWebhook )``
-    went from one global candidate (the function, resolved by luck) to three
-    (the function plus two alias variables) and 114 alertmanager call sites
-    fell to an unresolved placeholder. The dot import IS the evidence: each
+    declare a ``Helper``, its ambiguity guard returns nothing -- e.g. a
+    test-helper package re-exporting ``testutils`` through
+    ``var ( NewWebhook = testutils.NewWebhook )`` gives three global candidates
+    (the function plus two alias variables, INV-nopoh), and every call site
+    would fall to an unresolved placeholder. The dot import IS the evidence: each
     dot-imported in-module path is offered as the ``path_hint`` the qualified
     arm already uses, and the first package that narrows the name to ONE
     symbol wins (the alias variable in the dot-imported package, not the
@@ -869,7 +941,7 @@ def _go_lookup_through_dot_imports(
         hint = _strip_module_prefix(dot_path, module_path) if module_path else dot_path
         if not hint or "." in hint.split("/", 1)[0]:
             continue  # external (host-qualified) package: nothing in-repo to match
-        result = resolver.lookup(name, path_hint=hint)
+        result = resolver.lookup(name, path_hint=hint, admit=_go_package_member)
         if result.found and result.match_type in ("exact", "path_hint"):
             return result
     return LookupResult(symbol=None)
@@ -890,8 +962,8 @@ def _package_variable_import_path(
     readers downstream take the package NAME from it.
 
     ``http.DefaultClient.Do(req)``'s receiver is a package variable, not a local,
-    so no ``var_types`` entry types it and the call fell to the ``external`` slot,
-    out of reach of ``net/http.Client.Do``'s row. library_signatures/go.yaml's
+    so no ``var_types`` entry types it and the call would fall to the ``external``
+    slot, out of reach of ``net/http.Client.Do``'s row. library_signatures/go.yaml's
     ``package_variables`` holds each variable's type. The key is the package's
     own NAME, the import path's last element, so a renamed import
     (``nethttp "net/http"``) resolves too. The type's package is the variable's
@@ -935,17 +1007,16 @@ def _external_package_for_type(
     resulting edge points at the wrong function while claiming
     ``resolution_quality: typed_receiver``.
 
-    That collision is not hypothetical. go.py already carries a note that
-    ``q.Set("k","v")`` where ``q`` is a ``url.Values`` "absorbed 13 spurious in-edges
-    into one struct, poisoning the centrality ranking" on alertmanager. It was closed
-    then by a guard keyed on the receiver type being UNKNOWN — which held only for as
-    long as external composite literals stayed untyped.
+    That collision is not hypothetical: ``q.Set("k","v")`` where ``q`` is a
+    ``url.Values`` can pile spurious in-edges onto one same-named local struct and
+    poison the centrality ranking. A guard keyed on the receiver type being UNKNOWN
+    cannot catch it once external composite literals are typed.
 
     The discriminator is go.mod: an import path inside this module is a prefix match on
     the module path. Returns None when the type is unqualified, when its prefix is not
     an imported alias, when the package IS in this module, or when no module path is
     known — in that last case in-repo and external are genuinely indistinguishable
-    here, so the caller keeps its existing behaviour rather than guessing. That is a
+    here, so the caller takes its module-unaware path rather than guessing. That is a
     DISCLOSED gap for a Go tree analysed without a go.mod, not a silent one.
     """
     if "." not in type_name:
@@ -965,7 +1036,7 @@ def _go_path_outside_module(import_path: str, module_path: Optional[str]) -> boo
     The discriminator :func:`_external_package_for_type` documents: an import
     path inside the module is a prefix match on the module path. With no module
     path known the answer is False -- in-repo and external are indistinguishable
-    there, and the callers keep their pre-go.mod behaviour (a disclosed gap).
+    there, and the callers take their module-unaware path (a disclosed gap).
     """
     if not module_path:
         return False
@@ -1145,6 +1216,8 @@ def _extract_struct_field_types(
         integration Integration      → integration: Integration
         metrics     *Metrics         → metrics: Metrics
         cache       pkg.Cache        → cache: Cache (unqualified)
+        handler     func(string) err → handler: func(string) err (its text;
+                                        a callable field, WI-surid)
         data        map[string]int   → (skipped, not a named type)
 
     Built-in types (string, int, bool, error, etc.) are excluded because
@@ -1198,7 +1271,12 @@ def _extract_struct_field_types(
                 type_name = node_text(tid, source)
                 if type_name not in _GO_BUILTINS:
                     field_types[field_name] = full_text
-
+        elif actual_type.type == "function_type":
+            # WI-surid: a field holding a function is callable through a
+            # value's selector; its text starts with ``func``, which is what
+            # ``_go_value_member`` asks. No chain walks through it: the text
+            # is no registry key.
+            field_types[field_name] = node_text(actual_type, source)
     return field_types
 
 
@@ -1601,8 +1679,8 @@ def _extract_symbols_from_file(
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
-    WI-bokab (v7): ``file_stable_id`` is the file-identity anchor for this
-    file's symbols. ``_analyze_go_impl`` computes it once per file from the
+    ``file_stable_id`` is the file-identity anchor for this
+    file's symbols (WI-bokab). ``_analyze_go_impl`` computes it once per file from the
     REPO-RELATIVE path (``make_file_stable_id("go", normalize_path(rel_path))``)
     — ``file_path`` here is ABSOLUTE (``find_go_files`` yields absolute paths),
     so it cannot be folded directly. The anchor is threaded into every
@@ -1633,8 +1711,8 @@ def _extract_symbols_from_file(
         elif child.type == "package_clause":
             break  # past the preamble, no more build directives
 
-    # ADR-0032 Phase 4 PR4: extract package once for qualified_name population.
-    # WI-bivin: kept on the analysis too, as half of the package-scope key.
+    # Extract package once for qualified_name population (ADR-0032). Kept on
+    # the analysis too, as half of the package-scope key (WI-bivin).
     package_name = _extract_go_package(tree.root_node, source)
     analysis.package_name = package_name
 
@@ -1671,10 +1749,13 @@ def _extract_symbols_from_file(
                 signature = _extract_go_signature(node, source)
                 modifiers = _go_visibility_modifiers(func_name)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier); a generic
+                # function's type parameter list leads the hashed text.
                 norm_sig = normalize_go_signature(signature)
                 stable_id = make_typed_stable_id(
-                    "function", norm_sig, visibility_from_modifiers(modifiers),
+                    "function",
+                    _go_type_parameters_text(node, source) + norm_sig,
+                    visibility_from_modifiers(modifiers),
                     name=func_name,
                     qualified_name=_make_go_qualified_name(package_name, None, func_name),
                     file_stable_id=file_stable_id,
@@ -1703,6 +1784,7 @@ def _extract_symbols_from_file(
                     is_exported=bool(func_name) and func_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, None, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "go"),
+                    meta={PARAMETERS_KEY: _go_parameters(node, source)},
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -1736,7 +1818,7 @@ def _extract_symbols_from_file(
                 signature = _extract_go_signature(node, source)
                 modifiers = _go_visibility_modifiers(full_name)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_go_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
@@ -1768,6 +1850,7 @@ def _extract_symbols_from_file(
                     is_exported=bool(method_name) and method_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, receiver_type or None, method_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "go"),
+                    meta={PARAMETERS_KEY: _go_parameters(node, source)},
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -1878,13 +1961,19 @@ def _extract_symbols_from_file(
                                     ),
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    modifiers=m_modifiers,
+                                    # A spec has no body: ``abstract``, the
+                                    # marking cpp and kotlin give an abstract
+                                    # member (WI-jonin: an interface's own
+                                    # ServeHTTP is no handler). Visibility was
+                                    # read off m_modifiers above.
+                                    modifiers=[*m_modifiers, "abstract"],
                                     line_span=1,
                                     stable_id=m_stable_id,
                                     shape_id=_analyzer.compute_shape_id(iface_child),
                                     is_exported=bool(mname) and mname[0].isupper(),
                                     qualified_name=_make_go_qualified_name(package_name, type_name, mname),
                                     cyclomatic_complexity=compute_cyclomatic_complexity(iface_child, "go"),
+                                    meta={PARAMETERS_KEY: _go_parameters(iface_child, source)},
                                 )
                                 analysis.symbols.append(m_sym)
                                 analysis.symbol_by_name[qualified] = m_sym
@@ -2009,11 +2098,10 @@ def _extract_symbols_from_file(
             )
             # A grouped ``var ( a = ...; b = ... )`` block nests its specs
             # under a ``var_spec_list``; a single ``var a = ...`` does not.
-            # Until INV-nopoh every grouped spec was skipped here -- no
-            # symbol, no interface assertion -- although grouped blocks are
-            # where most package-level ``errors.New`` / ``regexp.MustCompile``
-            # / ``promauto.New*`` initializers live (cert-manager: 1,508
-            # such call sites in one corpus run).
+            # Both spellings get a symbol and an interface-assertion check:
+            # grouped blocks are where most package-level ``errors.New`` /
+            # ``regexp.MustCompile`` / ``promauto.New*`` initializers live
+            # (INV-nopoh).
             flattened = [
                 spec
                 for child in node.children
@@ -2240,10 +2328,10 @@ class _GoLocalScope:
     a local value -- a bare call (WI-bivin, WI-bopiv), a function passed as an
     argument or a struct-field value (WI-kibah), the operand of ``pkg.F()``
     (WI-kugap), an attribute read on an import (INV-dulum's Go twin) -- asks
-    it at a POSITION. The earlier answer, every name bound anywhere in the
-    declaration, withheld correct edges (the right side of a shadowing
+    it at a POSITION. A flat set of every name bound anywhere in the
+    declaration would withhold correct edges (the right side of a shadowing
     declaration, a sibling branch) and could not be applied to an import
-    operand at all, since it would have taken the ``url.Parse`` that defines a
+    operand at all, since it would take the ``url.Parse`` that defines a
     local ``url`` for a call on that local.
     """
 
@@ -2345,9 +2433,8 @@ def _get_enclosing_function(
     bound to a variable, a struct-field literal such as cobra's ``Run:
     func(...) {...}``, or a plain initializer ``var logger = log.New(...)`` --
     is anchored on that variable's own symbol, which the symbol pass already
-    emits (kind ``variable``). Before this arm every such call returned None
-    and emitted nothing: on beads 578 of 1,331 ``fmt.Fprintf`` sites, 43.4%,
-    all under cobra handlers. When the variable has no symbol (``var _ =
+    emits (kind ``variable``); in a cobra-style CLI these are a large share of
+    all call sites. When the variable has no symbol (``var _ =
     register()``, or a name a same-file method's short name has displaced in
     ``local_symbols``) the anchor is ``file_symbol`` -- the file's
     pseudo-symbol, the anchor Python gives module-level code -- so the call
@@ -2358,8 +2445,8 @@ def _get_enclosing_function(
         source: Source bytes for extracting text.
         local_symbols: Map of symbol names to Symbol objects for this file.
         file_symbol: The file's pseudo-symbol, the anchor of last resort for a
-            package-level site with no variable symbol. None keeps the
-            historical contract (return None) for callers without one.
+            package-level site with no variable symbol. When None, such a
+            site returns None.
 
     Returns:
         The Symbol for the enclosing function, method or package-level
@@ -2369,7 +2456,7 @@ def _get_enclosing_function(
     current = node.parent
     while current is not None:
         # INV-midag: a declaration is found by its POSITION first. Go lets a file
-        # declare ``func init()`` more than once, and the name lookup anchored
+        # declare ``func init()`` more than once, and a name lookup would anchor
         # every earlier init's calls to the last one. Position is exact; the
         # name paths below remain for callers without an index.
         if decl_index is not None and current.type in (
@@ -2503,12 +2590,10 @@ def _extract_go_var_types(
             # registry.  If the RHS is a method call on a receiver
             # whose type is already known, look up the return type.
             #
-            # WI-jolif: this used to test ``rhs.type == "call_expression"``
-            # directly, and ``rhs`` is the ``expression_list`` wrapper — a
-            # condition the node can NEVER satisfy, so the whole block was dead
-            # from the day it shipped. It now unwraps through the same helper
-            # ``_type_from_rhs`` uses, so the two consumers cannot disagree about
-            # what "the right-hand side" means. The stale
+            # ``rhs`` is the ``expression_list`` wrapper, never the call
+            # itself, so it is unwrapped through the same helper
+            # ``_type_from_rhs`` uses; the two consumers cannot disagree about
+            # what "the right-hand side" means (WI-jolif). The stale
             # ``# pragma: no cover - requires Go tree-sitter grammar`` that sat on
             # this branch is gone with it: the grammar IS installed, and the
             # pragma was excusing itself on the same false premise that kept the
@@ -2664,22 +2749,14 @@ def _unwrap_rhs_expression(
 ) -> "tree_sitter.Node | None":
     """Peel the ``expression_list`` wrapper off a short-var-declaration RHS.
 
-    THE SINGLE ANSWER to "what expression is actually on the right", because two
-    consumers need it and only one had it. ``short_var_declaration``'s last child
-    is an ``expression_list``, never the expression itself — so ``x := e.Query()``
-    presents as ``expression_list``, not ``call_expression``.
+    THE SINGLE ANSWER to "what expression is actually on the right", shared by
+    :func:`_type_from_rhs` and the return-type-registry lookup in
+    :func:`_extract_go_var_types_from_root`. ``short_var_declaration``'s last
+    child is an ``expression_list``, never the expression itself — so
+    ``x := e.Query()`` presents as ``expression_list``, not ``call_expression``,
+    and a consumer that tests the raw node's type never sees the call (WI-jolif).
 
-    :func:`_type_from_rhs` unwrapped this inline and worked. The WI-kuroj
-    return-type-registry lookup in :func:`_extract_go_var_types_from_root` did NOT,
-    and guarded on ``rhs.type == "call_expression"`` — a condition the node can
-    never satisfy. That guard was therefore DEAD CODE from the day it shipped: the
-    registry was built, threaded through three call layers, and consulted by a
-    branch nothing could reach, so ``result := e.Query(); result.Rows()`` emitted
-    ``go:external:0-0:Rows:unresolved`` (WI-jolif). Its three end-to-end tests
-    never ran to say so, because a vacuous fixture skipped them.
-
-    Returns ``None`` when the list holds no type-bearing expression, which is the
-    same answer the inline version gave.
+    Returns ``None`` when the list holds no type-bearing expression.
     """
     node = rhs_node
     if node.type == "expression_list":
@@ -2728,14 +2805,12 @@ def _type_from_rhs(
     # ``type_identifier`` child, because tree-sitter-go spells a package-qualified
     # name differently by SYNTACTIC POSITION: an expression gives
     # ``selector_expression`` (exec.Command(...)), a TYPE gives ``qualified_type``
-    # (&http.Client{}). Matching only ``type_identifier`` therefore bound in-repo
-    # struct literals and silently dropped every external one, so ``client.Do(req)``
-    # emitted the bare ``external`` module placeholder and the no-module gate
-    # (io-boundary:F3) correctly refused it — ``Do`` is in go.yaml's ambiguous_names.
-    # _type_identifier_from_node already answers this question for the ``var x T``
-    # spelling (its docstring calls returning the full ``http.Client`` "critical for
-    # IO boundary detection"); the copy here had drifted narrower, so the two
-    # spellings of one declaration disagreed.
+    # (&http.Client{}). Matching only ``type_identifier`` would drop every external
+    # struct literal, so ``client.Do(req)`` would get the bare ``external`` module
+    # placeholder and the no-module gate (io-boundary:F3) would refuse it — ``Do``
+    # is in go.yaml's ambiguous_names. _type_identifier_from_node answers the same
+    # question for the ``var x T`` spelling, so the two spellings of one
+    # declaration agree.
     if node.type == "composite_literal":
         type_node = find_child_by_field(node, "type")
         if type_node is not None and type_node.type in (
@@ -2761,21 +2836,18 @@ def _type_from_constructor_call(
     Go convention: ``NewFoo()`` returns ``*Foo`` or ``Foo``.  Also handles
     package-qualified calls: ``pkg.NewFoo()`` → ``pkg.Foo``.
 
-    THE QUALIFIER IS PART OF THE ANSWER, and this branch used to drop it. Its
-    sibling — the ``composite_literal`` branch of :func:`_type_from_rhs` — was
-    fixed to keep it because a bare ``Client`` resolves to no package and lands
-    in the ``external`` module slot, where the catalogue cannot match it and the
-    no-module gate (io-boundary:F3) correctly refuses it.
-    :func:`_type_identifier_from_node` states the contract outright: the full
-    ``http.Client`` is "critical for IO boundary detection". One branch honoured
-    it and its neighbour did not, so two spellings of one declaration disagreed:
+    THE QUALIFIER IS PART OF THE ANSWER, as it is in the ``composite_literal``
+    branch of :func:`_type_from_rhs` and in :func:`_type_identifier_from_node`:
+    a bare ``Client`` resolves to no package and lands in the ``external``
+    module slot, where the catalogue cannot match it and the no-module gate
+    (io-boundary:F3) refuses it. So both spellings of one declaration agree:
 
         var reader *bufio.Reader        -> "bufio.Reader"   (reaches the catalogue)
-        reader := bufio.NewReader(...)  -> "Reader"         (reached nothing)
+        reader := bufio.NewReader(...)  -> "bufio.Reader"
 
-    Measured on WI-vutav's fixtures: Go's whole catalogued stdin surface is three
-    rows and the calls that actually transfer bytes could not be catalogued at
-    all, because the dominant idiom emitted ``go:external:0-0:ReadString``.
+    ``bufio.NewReader`` is the dominant idiom for reading input, so without the
+    qualifier the calls that actually transfer bytes (``ReadString``) could
+    not be catalogued at all (WI-vutav).
 
     ``a.b.NewFoo()`` ABSTAINS rather than inventing ``a.b.Foo``. Go has no
     three-segment package selector in expression position, so the operand of that
@@ -2828,16 +2900,16 @@ def _go_registry_call_type(
       carry a BARE receiver, values are qualified (WI-doluf), hence the fold.
     - ``net.Listen(...)``, a PACKAGE-qualified producer -> ``net.Listen``
       (WI-lalot). ``net`` is a package, not a variable, so the receiver-type
-      lookup finds nothing and this shape never reached the registry before
-      WI-lalot: ``ln.Accept()`` and ``c.Start()`` stayed on the ``external``
-      sentinel. The registry itself is the gate: an ANALYSED go key is a bare
+      lookup finds nothing; without this shape ``ln.Accept()`` and
+      ``c.Start()`` would stay on the ``external`` sentinel. The registry
+      itself is the gate: an ANALYSED go key is a bare
       function name or ``Receiver.Method`` with a capitalised Go type, so a hit
       on a lowercase ``package.Func`` key can only come from a library row. The
       key is the package's name AS THIS FILE SPELLS IT, so a renamed import
       (``l "log/slog"``) misses -- a disclosed gap, not a guess.
     - ``makeConn()``, a PLAIN function call -> ``makeConn`` (WI-doluf: the
-      registry held standalone functions and was consulted only for methods,
-      so ``res := makeResult(); res.Rows()`` went to ``go:external``).
+      registry holds standalone functions too, so ``res := makeResult();
+      res.Rows()`` is typed rather than sent to ``go:external``).
 
     Shared by the binding typer (``x := f()``) and the chained-call branch
     (``f().M()``, WI-vinuh) so the two cannot answer differently.
@@ -2929,9 +3001,9 @@ def _bare_go_type(type_name: str) -> str:
 def _go_return_type_from_signature(signature: str | None) -> str | None:
     """Extract the primary return type from a Go function signature.
 
-    WI-kuroj / INV-dihos return-type registry: enables chained receiver
-    resolution by letting ``x := obj.Method()`` infer ``x``'s type from
-    the registry when ``obj``'s type is known.
+    Feeds the return-type registry (WI-kuroj, INV-dihos), which enables
+    chained receiver resolution by letting ``x := obj.Method()`` infer ``x``'s
+    type from the registry when ``obj``'s type is known.
 
     Handles three forms:
     - ``"(params) ReturnType"``  → ``"ReturnType"``
@@ -2942,20 +3014,16 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
     None.  Pointer-star prefixes are stripped.
 
     PACKAGE-QUALIFIED TYPES KEEP THEIR PACKAGE (``net.Conn`` stays
-    ``net.Conn``), and that is WI-doluf. They used to be stripped to the bare
-    name "because symbol names in the symbol registry are unqualified" -- true
-    of the SYMBOL LOOKUP and false of the io-boundary MODULE SLOT, which is the
-    one consumer that needs the package and was therefore served the
-    ``external`` placeholder forever. Measured consequence: a receiver typed
-    from a factory's return value could never match a method row, so on an
-    idiomatic accept loop go's entire reported network-input surface was setup
-    calls that receive nothing.
+    ``net.Conn``; WI-doluf). Symbol names in the symbol registry are
+    unqualified, but the io-boundary MODULE SLOT needs the package: a bare
+    type gets the ``external`` placeholder, so a receiver typed from a
+    factory's return value (``ln.Accept()``'s ``net.Conn``) could never match
+    a method row.
 
-    The bare form is now DERIVED where it is needed (:func:`_bare_go_type` at
-    the registry-key and symbol-lookup sites), rather than stored in the only
-    form one of two consumers wanted. Callers that build a registry key from a
-    type MUST fold it first -- the keys are ``Receiver.Method`` with a bare
-    receiver.
+    The bare form is DERIVED where it is needed (:func:`_bare_go_type` at
+    the registry-key and symbol-lookup sites). Callers that build a registry
+    key from a type MUST fold it first -- the keys are ``Receiver.Method``
+    with a bare receiver.
     """
     if not signature:
         return None
@@ -2997,17 +3065,14 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
 #:
 #: ``go.yaml`` files ``bufio.{NewScanner,NewReader}`` as ``ipc_recv`` on the
 #: note "When wrapping os.Stdin" -- a condition no catalogue row can enforce,
-#: because the row sees the callee and the answer is in the ARGUMENT. Measured
-#: on the ADR-0049 cohort's Go repositories, of the 83 bare-local sites whose
-#: origin the shipped reaching-def solver resolves, 63 wrap an ``os.Open``
-#: handle, 3 an HTTP body, 1 a buffer, and ZERO wrap ``os.Stdin`` (WI-lipis).
+#: because the row sees the callee and the answer is in the ARGUMENT. On the
+#: ADR-0049 cohort's Go repositories almost every resolved wrapper argument is
+#: an ``os.Open`` handle and none is ``os.Stdin`` (WI-lipis).
 #: Calls whose I/O TARGET is one of their arguments, and which one.
 #:
-#: WI-lipis started this as the two ``bufio`` wrappers (a frozenset; the
-#: argument was always the only one). WI-suhug made it a table because the
-#: WRITE side has the same shape one argument in: ``fmt.Fprintf(w, ...)`` and
-#: ``io.WriteString(w, s)`` cross whatever ``w`` is, and ``go.yaml`` had each
-#: at one fixed boundary (measurement 0012's vacuous class). The table serves
+#: The WRITE side has the same shape one argument in: ``fmt.Fprintf(w, ...)``
+#: and ``io.WriteString(w, s)`` cross whatever ``w`` is, which no fixed
+#: catalogue boundary can say (WI-suhug). The table serves
 #: THREE readers, which is why it is one table: the call site stamps
 #: ``io_target_kind`` from the named argument; a bare identifier whose last
 #: binding is a call to a member is followed INTO that member's argument
@@ -3035,7 +3100,7 @@ _GO_TARGET_HOP_LIMIT: Final[int] = 3
 
 #: Argument prefixes that prove the handle never left this process.
 #: Only the PROVABLE case is listed: anything unrecognised stamps nothing and
-#: classifies exactly as before, because a gate whose default silenced
+#: classifies as if unstamped, because a gate whose default silenced
 #: findings would be a false-negative generator on a security analysis.
 #: ``io.Pipe()`` is here on purpose: its far end is a goroutine, not a
 #: process (``os.Pipe()`` is the OS pipe and is in ``_GO_PIPE_PRODUCERS``).
@@ -3109,7 +3174,7 @@ _GO_ACCEPT_CALL: Final[re.Pattern[str]] = re.compile(r"(\w+)\.Accept\(\)")
 #: abstain (the wrapper's target is in the caller's scope). ``net.UnixConn``
 #: is a ``pipe``: a Unix-domain socket is process-local IPC, not a network
 #: stream -- WI-baran's answer for c's ``send``, applied by WI-potog. A
-#: ``net.Conn`` of unknown family stays ``net_stream``, today's answer.
+#: ``net.Conn`` of unknown family stays ``net_stream``.
 _GO_TYPED_TARGET_KINDS: Final[Mapping[tuple[str, str], str]] = {
     ("bytes", "Buffer"): "in_memory",
     ("strings", "Builder"): "in_memory",
@@ -3127,10 +3192,9 @@ _GO_TYPED_TARGET_KINDS: Final[Mapping[tuple[str, str], str]] = {
 #: source from -- the sensitivity of a file read depends on what is stored, so
 #: ``fs_read`` is absent from ``AUTO_SOURCE_LABEL_MAP`` by design.
 #:
-#: 63 of the 83 resolved bare-local ``bufio.New*`` sites in the ADR-0049 cohort
-#: wrap one of these (WI-lipis), which makes it the LARGEST false-source
-#: population the wrapper row creates -- larger than the in-memory case the
-#: first deliverable addressed, and omitted from that estimate.
+#: Most resolved bare-local ``bufio.New*`` sites in the ADR-0049 cohort wrap
+#: one of these (WI-lipis), which makes it the LARGEST false-source
+#: population the wrapper row would create -- larger than the in-memory case.
 _GO_FILE_HANDLE_PRODUCERS: Final[tuple[str, ...]] = (
     "os.Open(", "os.OpenFile(", "os.Create(", "os.CreateTemp(",
     "ioutil.TempFile(", "ioutil.OpenFile(",
@@ -3140,6 +3204,15 @@ _GO_FILE_HANDLE_PRODUCERS: Final[tuple[str, ...]] = (
 #: the receiver's own binding (``f, _ := os.Create(p)``) rather than through a
 #: wrapper's argument (WI-nunab). The module-slot spelling, as INV-vusum emits it.
 _GO_HANDLE_TYPES: Final[frozenset[str]] = frozenset({"os.File"})
+
+#: Connection types whose own Write / Read are DUAL rows (net_send + ipc_send,
+#: net_recv + ipc_recv): the family is fixed where the connection was made, so
+#: the receiver is resolved through :func:`_go_target_kind_from_expression`,
+#: whose binding hop follows ``c, _ := net.Dial("unix", p)`` and an
+#: ``ln.Accept()`` over a unix listener (WI-kalol, WI-potog's stamp). A
+#: parameter or field resolves by its declared type or not at all, and the
+#: rows abstain to the network boundary.
+_GO_CONN_TYPES: Final[frozenset[str]] = frozenset({"net.Conn"})
 
 #: Node types that BIND a name in a Go function body. ``var_spec`` covers
 #: ``var f = os.Open(p)``; the other two cover ``:=`` and ``=``.
@@ -3269,7 +3342,7 @@ def _go_socket_family_kind(text: str) -> Optional[str]:
 
     None means UNDECIDED, never "not a socket": a variable or a constant
     network, a name Go does not define, another package's ``Dial``. The
-    callers keep what they answered before this reader existed.
+    callers then keep their default (``net_stream`` for a connection).
     """
     match = _GO_SOCKET_CONSTRUCTOR.search(text)
     if match is None:
@@ -3474,8 +3547,7 @@ def _go_wrapped_handle_kind(
     Returns None for everything not provable: a parameter of an interface
     type, a struct field, a value from a function this file does not bind.
     INV-zumin's ruling is that a call site gets ONE answer or NONE, so an
-    unresolved origin stamps nothing and classifies exactly as it did before
-    this existed.
+    unresolved origin stamps nothing and classifies as an unstamped call.
     """
     index = _GO_TARGET_ARGUMENT_INDEX.get((module, callee))
     if index is None:
@@ -3549,11 +3621,11 @@ def _go_bare_reference_target(
     (score ``None``: ``Edge.create`` derives the pathway base), then
     ``own_package``, whose match quality is returned as the ADR-0039 ruling-6
     resolution score --
-    never the repo-wide resolver, whose sole candidate in ANOTHER package was
-    bound here at 0.70 and whose two-way tie bound the path-sorted first at
-    0.49. A method or field the file lists under its bare name is skipped, as
-    a bare identifier cannot name one. A non-function hit (a variable, a type)
-    and a self-reference name nothing, as before; so does a name in
+    never the repo-wide resolver, which could bind a sole candidate in ANOTHER
+    package, or the path-sorted first of a tie. A method or field the file
+    lists under its bare name is skipped, as a bare identifier cannot name
+    one. A non-function hit (a variable, a type) and a self-reference name
+    nothing; so does a name in
     ``bound_names`` (a local binding in scope at the reference, which Go finds
     before any package-level declaration: ``_GoLocalScope``).
     """
@@ -3574,14 +3646,15 @@ def _go_in_hinted_package(symbol: Symbol, path_hint: Optional[str]) -> bool:
     """Whether ``symbol`` sits in the package an import-path hint names.
 
     ``ListNameResolver.lookup`` treats a hint as a FILTER when one candidate
-    shares the name (no match, no symbol) but, among two or more, falls back
-    to the path-sorted first of ALL candidates when the hint matches none of
-    them. So ``http.Get(u)`` with two repo functions named ``Get`` bound one of
-    them at 0.57 although the import says ``net/http``. The resolver's own
-    weakest test is a match on the hint's last component against the
-    candidate's directory; a symbol it returns that fails even that test was
-    not chosen by the hint at all. An empty hint (the module's root package)
-    carries no directory to test, and the resolver's answer stands.
+    shares the name (no match, no symbol). Among two or more that the hint
+    matches none of, a resolver built without ``variants`` withholds the tie
+    as ``ambiguous``; this check still guards the call site, so ``http.Get(u)``
+    with two repo functions named ``Get`` binds neither, as the import says
+    ``net/http``. The resolver's own weakest test is a match on the hint's last component
+    against the candidate's directory; a symbol it returns that fails even
+    that test was not chosen by the hint at all. An empty hint (the module's
+    root package) carries no directory to test, and the resolver's answer
+    stands.
     """
     leaf = (path_hint or "").rstrip("/").rsplit("/", 1)[-1]
     if not leaf:
@@ -3619,10 +3692,10 @@ def _go_selector_reference_target(
       nothing for a type outside this module;
     - anything else (an untyped value, a field chain, a call result): nothing.
 
-    The field name was looked up repo-wide before, so a name declared once
-    anywhere bound there at 0.70 -- ``reg(http.NotFound)`` reached a repo
+    The field name alone is never looked up repo-wide, where a name declared
+    once anywhere would bind -- ``reg(http.NotFound)`` would reach a repo
     function ``NotFound`` in a package the caller never imports -- and two
-    candidates bound the path-sorted first at 0.49.
+    candidates would bind the path-sorted first.
     """
     operand = find_child_by_field(selector, "operand")
     field = find_child_by_field(selector, "field")
@@ -3665,7 +3738,7 @@ def _go_selector_reference_target(
     if alias in import_aliases and alias not in bound:
         path = import_aliases[alias]
         hint = _strip_module_prefix(path, module_path) if module_path else path
-        found = resolver.lookup(name, path_hint=hint)
+        found = resolver.lookup(name, path_hint=hint, admit=_go_package_member)
         if (
             found.symbol is not None
             and found.symbol.kind == "function"
@@ -3721,14 +3794,14 @@ def _go_method_of_type(
     """The ``Type.name`` symbol declared in the TYPE'S OWN package.
 
     Symbols are keyed ``Type.Method`` with an unqualified type, so every
-    package's ``SDConfig.UnmarshalYAML`` shares one key (prometheus: twenty),
-    and the first of them was taken whatever the receiver's package:
-    ``var config SDConfig`` in package consul bound eureka's method. The
-    caller's file wins first, as before. A QUALIFIED type (``record.Decoder``)
+    package's ``SDConfig.UnmarshalYAML`` shares one key (prometheus has
+    twenty), and taking the first of them whatever the receiver's package
+    would let ``var config SDConfig`` in package consul bind eureka's method.
+    The caller's file wins first. A QUALIFIED type (``record.Decoder``)
     names its package through the import, so only a candidate in that package
     (``_go_in_hinted_package``) answers, and none means none. An UNQUALIFIED
     type is the caller's own package's when one there declares it; otherwise
-    the historical first candidate stands, because an unqualified type can
+    the first candidate stands, because an unqualified type can
     also arrive from the return-type registry, which names a callee's type in
     the CALLEE's package without a qualifier. A qualified type whose package
     declares no such method may still have it by EMBEDDING
@@ -3819,9 +3892,9 @@ def _extract_function_reference_edges(
 
     A bare ``identifier`` resolves in the caller's own package
     (``own_package``, WI-bivin; ``_go_bare_reference_target``), unless a local
-    binding of it is in scope at the call (``bound_names``, WI-bopiv): that
-    test replaces the old skip of every name in ``scoped_vars``, which was
-    blind to position and withheld ``h := wrap(h)``'s argument. A selector is
+    binding of it is in scope at the call (``bound_names``, WI-bopiv). That
+    test is asked by position, so ``h := wrap(h)``'s argument still names the
+    package function. A selector is
     resolved by its operand (``_go_selector_reference_target``, WI-kibah);
     ``scoped_vars`` (``_extract_go_var_types``) types a value operand.
     """
@@ -3855,6 +3928,13 @@ def _extract_function_reference_edges(
 
 
 _GO_NO_LOCALS: Final[frozenset[str]] = frozenset()
+
+#: Local binding forms whose right side may name a function value (META-mino).
+#: A package-level ``var_spec`` never reaches the arm that reads this: WI-labik's
+#: alias arm takes it first.
+_GO_LOCAL_BINDINGS: Final[frozenset[str]] = frozenset({
+    "short_var_declaration", "assignment_statement", "var_spec",
+})
 
 #: What an attribute read on an import is anchored on: a callable, or the
 #: package-level variable whose initializer holds it (WI-labik).
@@ -3944,21 +4024,19 @@ def _registry_type_key(
     """The key ``field_type_registry`` holds ``type_name`` under, or ``None``.
 
     ``field_type_registry`` is built from ANALYSED declarations, so its keys are
-    BARE type names — ``Tester``, never ``caddytest.Tester``. Once receiver typing
-    started preserving the package qualifier (so that external types reach the I/O
-    catalogue at all), every qualified IN-REPO type stopped matching its own entry.
-    Measured on caddy: ``tester := caddytest.NewTester(t)`` then
-    ``tester.Client.Get(proxyURL)`` lost its ``net_send`` tag at two sites, because
-    the chain's first lookup asked for ``caddytest.Tester``.
+    BARE type names — ``Tester``, never ``caddytest.Tester``. Receiver typing
+    preserves the package qualifier (so that external types reach the I/O
+    catalogue at all), so a qualified IN-REPO type must be folded to match its
+    own entry: ``tester := caddytest.NewTester(t)`` then
+    ``tester.Client.Get(proxyURL)`` needs the chain's first lookup to find
+    ``Tester``, or the call loses its ``net_send`` tag.
 
     THE BARE FALLBACK IS GATED, and the gate is the whole point. Stripping a
     package prefix off an EXTERNAL type is the collision
     :func:`_external_package_for_type` exists to prevent: a bare ``Values`` from
-    ``url.Values`` once "absorbed 13 spurious in-edges into one struct, poisoning
-    the centrality ranking". So the bare key is tried only when the qualifier is
-    NOT a definitively out-of-module package — which is exactly the set of cases
-    where the pre-qualifier code looked the bare name up anyway, and leaves the
-    one case where doing so was the known bug.
+    ``url.Values`` can pile spurious in-edges onto one same-named struct and
+    poison the centrality ranking. So the bare key is tried only when the
+    qualifier is NOT a definitively out-of-module package.
     """
     if type_name in field_type_registry:
         return type_name
@@ -4043,6 +4121,48 @@ _GO_INSTANTIABLE_KINDS: Final[frozenset[str]] = frozenset(
     {"function", "struct", "interface", "type"})
 
 
+def _go_package_member(sym: Symbol) -> bool:
+    """A package-qualified ``pkg.F()`` reaches a package member, never a method.
+
+    The shared resolver's call-shape filter (WI-jomik): methods share the
+    short-name registry with package functions, so ``log.Err()`` would see both
+    ``func Err`` and ``(*Handler) Err`` in ``pkg/log`` -- a tie the resolver
+    does not guess -- though only one of them can be called that way.
+    """
+    return sym.kind != "method"
+
+
+def _go_value_member(
+    field_type_registry: "dict[str, dict[str, str]] | None",
+) -> Callable[[Symbol], bool]:
+    """``admit`` for a call on a VALUE (``x.F()``): a method, or a func-typed field.
+
+    Go reaches a method of the value's type, or a field of it that holds a
+    function, through a selector; never a package function, a struct or a
+    named type (WI-surid: otherwise cert-manager's ``corev1.SchemeGroupVersion
+    .WithResource("secrets")``, a method on an external package variable the
+    analyzer cannot type, binds ``func WithResource`` in ``pkg/logs``). Rust's
+    analyzer applies the same rule. A field's declared type is read from
+    ``field_type_registry`` (struct -> field -> type text), its declared home:
+    the field symbol's ``signature`` is display-only (ADR-0058). A data field
+    is refused: ``x.Name()`` cannot call a ``string``. Known gap, measured at
+    1 edge in 4 repos: a field typed by a NAMED function type (``Decode
+    PostingsDecoder``, ``type PostingsDecoder func(...)``) holds the name, not
+    ``func``, and is refused too.
+    """
+    registry = field_type_registry or {}
+
+    def admit(sym: Symbol) -> bool:
+        if sym.kind == "method":
+            return True
+        if sym.kind != "field":
+            return False
+        owner, _, field = sym.name.rpartition(".")
+        return registry.get(owner, {}).get(field, "").startswith("func")
+
+    return admit
+
+
 def _go_selector_parts(
     node: "tree_sitter.Node",
 ) -> "tuple[Optional[tree_sitter.Node], Optional[tree_sitter.Node]]":
@@ -4064,9 +4184,9 @@ def _go_instantiated_callee(
 ) -> "Optional[tree_sitter.Node]":
     """The node naming an explicitly instantiated generic callee, or None (WI-nulig).
 
-    tree-sitter-go spells ``F[T](args)`` in two shapes that the call arm, keyed
-    on ``call_expression.function`` being an identifier or a selector, never
-    read -- so the call site vanished from the graph:
+    tree-sitter-go spells ``F[T](args)`` in two shapes that a call arm keyed
+    on ``call_expression.function`` being an identifier or a selector would
+    never read -- so the call site would vanish from the graph:
 
     - ONE argument: ``type_conversion_expression`` whose ``type`` is a
       ``generic_type`` (``Map[int](x)``, ``pkg.Map[int](x)``), because
@@ -4076,7 +4196,7 @@ def _go_instantiated_callee(
 
     (A type argument that can only be a type, ``F[[]int](x, y)``, or several
     type arguments with several arguments, parse as a plain call_expression
-    with a ``type_arguments`` field and were always read.)
+    with a ``type_arguments`` field and are read as any call is.)
 
     BOTH SHAPES ALSO SPELL A CALL THROUGH A COLLECTION ELEMENT,
     ``handlers[k](x)``. Go instantiates only package-level functions and types,
@@ -4153,6 +4273,8 @@ def _extract_edges_from_file(
     declarations as the scope: what is known of its package, never another's.
     """
     # Every declaration of this file, by position (INV-midag).
+    # WI-surid: what a call on a value may reach (see _go_value_member).
+    _value_admit = _go_value_member(field_type_registry)
     own_decls = (
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
@@ -4163,7 +4285,9 @@ def _extract_edges_from_file(
     # No ambiguity threshold: every candidate is the caller's own package, so
     # several are build-constraint variants of ONE declaration, and binding the
     # path-sorted first at 1/sqrt(N) beats withholding a call Go scoping places.
-    own_package = ListNameResolver(package_scope)
+    # A package declares a name once per build: same-named entries are
+    # build-constraint variants of one function (WI-jomik), so a tie binds.
+    own_package = ListNameResolver(package_scope, variants=True)
     if import_aliases is None:
         import_aliases = {}
     if resolver is None:
@@ -4218,6 +4342,51 @@ def _extract_edges_from_file(
         if scope is None:
             scope = _scope_by_decl[key] = _GoLocalScope(decl, source)
         return scope.at(site)
+
+    def _emit_value_reference(
+        site: "tree_sitter.Node", value_node: "tree_sitter.Node", evidence: str,
+    ) -> None:
+        """A ``calls`` edge to the function a value-position expression names.
+
+        A bare identifier resolves in the caller's own package (WI-bivin), a
+        selector by its operand (WI-kibah); anything else (a call, a literal,
+        a closure) names nothing here. A name bound locally at ``site`` is
+        that local value. At package level the caller is the file.
+        """
+        current_function = _get_enclosing_function(
+            site, source, local_symbols, file_symbol=file_pseudo_symbol,
+            decl_index=decl_index,
+        )
+        if current_function is None:  # pragma: no cover - file symbol always exists
+            return
+        if value_node.type == "identifier":
+            target = _go_bare_reference_target(
+                node_text(value_node, source), local_symbols,
+                own_package, current_function, _bound_names(site),
+            )
+        elif value_node.type == "selector_expression":
+            target = _go_selector_reference_target(
+                value_node, source, bound=_bound_names(site),
+                import_aliases=import_aliases,
+                var_types=scoped_var_types.get(current_function.name, {}),
+                module_path=module_path,
+                local_symbols=local_symbols,
+                global_symbols=global_symbols, resolver=resolver,
+                caller_dir=caller_dir,
+            )
+        else:
+            return
+        if target is not None:
+            edges.append(Edge.create(
+                src=current_function.id,
+                dst=target[0].id,
+                edge_type="calls",
+                line=site.start_point[0] + 1,
+                evidence_type=evidence,
+                resolution_score=target[1],
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
@@ -4364,10 +4533,10 @@ def _extract_edges_from_file(
                                     full_import_path = _external
                                     import_path_hint = _external
                                     # INV-vusum: the slot names the TYPE, not
-                                    # only its package. ``net/http`` let the
-                                    # package function ``net/http.Get`` win
-                                    # over ``net/http.Client.Get`` by
-                                    # declaration order, and matched
+                                    # only its package. ``net/http`` alone would
+                                    # let the package function ``net/http.Get``
+                                    # win over ``net/http.Client.Get`` by
+                                    # declaration order, and match
                                     # ``Transport.Do`` to ``Client.Do``. Always
                                     # the full import path plus the type: a
                                     # bare leaf (``Client``) matches eight rows
@@ -4448,8 +4617,8 @@ def _extract_edges_from_file(
                         # WI-jikik: a method on a stdlib PACKAGE VARIABLE,
                         # ``http.DefaultClient.Do(req)``. The root is a
                         # package, so the field-chain walk below finds no
-                        # type, and the call fell to the ``external`` slot
-                        # where no catalogue row can reach it.
+                        # type, and the call would fall to the ``external``
+                        # slot where no catalogue row can reach it.
                         elif (
                             operand_node is not None
                             and operand_node.type == "selector_expression"
@@ -4550,12 +4719,13 @@ def _extract_edges_from_file(
                         # ``slog.New(h).Error`` takes ``log/slog.Logger``'s
                         # slot as ``l := slog.New(h); l.Error`` does, and not
                         # the bare package, where the package FUNCTION
-                        # ``Error`` won by declaration order (INV-vusum).
+                        # ``Error`` would win by declaration order (INV-vusum).
                         # A type from outside the module cannot be defined
                         # here, so no in-repo symbol is looked up for it
-                        # (``receiver_type_is_external``): ``internal/json``'s
-                        # ``Encode`` took ``json.NewEncoder(w).Encode`` through
-                        # the path hint's last component.
+                        # (``receiver_type_is_external``); otherwise
+                        # ``internal/json``'s ``Encode`` would take
+                        # ``json.NewEncoder(w).Encode`` through the path
+                        # hint's last component.
                         elif (
                             operand_node
                             and operand_node.type == "call_expression"
@@ -4696,15 +4866,15 @@ def _extract_edges_from_file(
                         # WI-jopar: receiver-type guard. When the operand is a
                         # simple identifier that the analyzer is tracking as a
                         # local variable (regardless of whether it inferred a
-                        # concrete type), the typed lookup at lines 2079-2108
+                        # concrete type), the typed lookup above
                         # already tried qualified resolution and failed.
                         # Falling through to the short-name dispatch guard
                         # would emit a wrong edge to a local Interface.Set or
                         # Alerts.Set just because the method names collide
                         # (e.g. ``q.Set("k", "v")`` where ``q`` is a
-                        # ``url.Values``). On alertmanager this single bug
-                        # absorbed 13 spurious in-edges into one struct,
-                        # poisoning the centrality ranking. Emit an unresolved
+                        # ``url.Values``), which can pile spurious in-edges
+                        # onto one struct and poison the centrality ranking.
+                        # Emit an unresolved
                         # external edge instead — cross-language linkers can
                         # still match it later, but no false intra-repo edge
                         # is created.
@@ -4717,15 +4887,12 @@ def _extract_edges_from_file(
                         # presence, not value truthiness.
                         #
                         # WHY THE CONDITION IS NOT ``import_path_hint is None``.
-                        # It used to be, and that worked only while a qualified
-                        # composite literal (``url.Values{}``) left the receiver
-                        # UNTYPED: no type meant no hint, so hint-absence was an
-                        # accidental proxy for "the receiver is a tracked local".
-                        # Once such a receiver types correctly the hint is set,
-                        # the proxy inverts, and this guard stops firing exactly
-                        # where it is most needed — the alertmanager
-                        # ``AlertStore.Set`` false edge came straight back. The
-                        # guard's real subject is the RECEIVER, so it now keys on
+                        # Hint-absence is no proxy for "the receiver is a tracked
+                        # local": a qualified composite literal (``url.Values{}``)
+                        # types its receiver and so sets the hint, and a guard
+                        # keyed on the hint would stop firing exactly where it is
+                        # most needed (a false ``AlertStore.Set`` edge). The
+                        # guard's real subject is the RECEIVER, so it keys on
                         # the receiver directly and terminates with the package it
                         # knows instead of the ``external`` placeholder.
                         if (
@@ -4758,6 +4925,13 @@ def _extract_edges_from_file(
                                     _bound = _go_last_binding(node, source, _alias)
                                     if _bound is not None:
                                         _handle_b = _go_classify_handle_text(_bound[0])
+                                if _handle_b is None and _slot in _GO_CONN_TYPES:
+                                    _handle_b = _go_target_kind_from_expression(
+                                        node, source, _alias,
+                                        import_aliases=import_aliases,
+                                        var_types=var_types,
+                                        use_line=node.start_point[0] + 1,
+                                    )
                                 if _handle_b:
                                     _meta_b["io_target_kind"] = _handle_b
                                 dst_id = (
@@ -4770,11 +4944,10 @@ def _extract_edges_from_file(
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
                                     # Stated, not inherited. Edge.create defaults
-                                    # is_resolved=True, so this guard was minting
-                                    # a "resolved" edge onto a dst whose kind slot
-                                    # reads ``unresolved`` — the same incoherence
-                                    # INV-fazim is filed for, latent here only
-                                    # because the guard seldom fired. It is an
+                                    # is_resolved=True, which would mint a
+                                    # "resolved" edge onto a dst whose kind slot
+                                    # reads ``unresolved`` — the incoherence
+                                    # INV-fazim is filed for. It is an
                                     # out-of-repo target by construction.
                                     is_resolved=False,
                                     origin=PASS_ID,
@@ -4789,10 +4962,10 @@ def _extract_edges_from_file(
                         # and index expressions (items[0].Close()).
                         # When receiver type is unknown and 2+ types define the
                         # method, produce an unresolved edge instead of picking
-                        # an arbitrary candidate.  Threshold was originally 3 but
-                        # lowered to 2 because 2-candidate collisions (e.g.
-                        # Close(), Error(), String()) cause widespread false
-                        # positives that inflate centrality rankings.
+                        # an arbitrary candidate.  The threshold is 2 because
+                        # 2-candidate collisions (e.g. Close(), Error(),
+                        # String()) cause widespread false positives that
+                        # inflate centrality rankings.
                         #
                         # Exception: if one of the ambiguous candidates is an
                         # interface method, prefer it.  The type hierarchy linker
@@ -4835,8 +5008,8 @@ def _extract_edges_from_file(
                                     # INV-tadup: the construct is a method call. The
                                     # interface-dispatch PATHWAY is already carried by
                                     # ``evidence_type="interface_dispatch"`` on this same
-                                    # edge, so naming it again here duplicated one value
-                                    # across two axes.
+                                    # edge, so naming it again here would duplicate one
+                                    # value across two axes.
                                     {"call_construct": "method", "disambiguation_fallback": True}
                                     if _is_iface_fallback
                                     else {"call_construct": "method"}
@@ -4867,9 +5040,9 @@ def _extract_edges_from_file(
                                     # Edge.create defaults the flag to True, and
                                     # under ADR-0037 ruling 4 that flag is
                                     # authoritative — a consumer may not re-derive
-                                    # the verdict from the dst string. Left silent,
-                                    # this minted a "resolved" edge that taint's
-                                    # propagation lookup takes into the ungated
+                                    # the verdict from the dst string. Left to the
+                                    # default, this would mint a "resolved" edge that
+                                    # taint's propagation lookup takes into the ungated
                                     # ``if not path_module: return hits[0]``
                                     # bare-name fallback, never reaching the F3 gate.
                                     is_resolved=False,
@@ -4891,8 +5064,8 @@ def _extract_edges_from_file(
                         # (package-private).  When receiver type is unknown and
                         # the callee starts with a lowercase letter, global
                         # resolution would cross package boundaries — producing
-                        # false positives (e.g. recalcRequest.string with 577
-                        # spurious callers).  Emit an unresolved edge instead.
+                        # false positives (e.g. hundreds of spurious callers for
+                        # recalcRequest.string).  Emit an unresolved edge instead.
                         if (
                             callee_name
                             and import_path_hint is None
@@ -4945,7 +5118,7 @@ def _extract_edges_from_file(
                                 # one fires when the receiver type is UNKNOWN and the
                                 # method name merely looks like a stdlib interface
                                 # method — the weakest evidence of the three, so
-                                # reporting it resolved was the least defensible.
+                                # reporting it resolved would be the least defensible.
                                 is_resolved=False,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
@@ -4957,9 +5130,9 @@ def _extract_edges_from_file(
                     # (a closure, a parameter, a range variable) is that local
                     # value -- Go looks in the function's own scope before the
                     # package's -- so it resolves to no declaration at all and
-                    # stays silent, by INV-foluz's rule. Checked FIRST: a local
-                    # ``open`` or ``wrapper`` used to bind to the package (or
-                    # the repo) declaration of that name. In scope is asked by
+                    # stays silent, by INV-foluz's rule. Checked FIRST, so a
+                    # local ``open`` or ``wrapper`` never binds to the package
+                    # (or the repo) declaration of that name. In scope is asked by
                     # POSITION (WI-bopiv, ``_GoLocalScope``): the right side of
                     # ``nodeName, err := nodeName(o)`` is the package function.
                     if (
@@ -4972,22 +5145,25 @@ def _extract_edges_from_file(
                     # WI-nulig: ``handlers[k](x)`` on a package VARIABLE calls an
                     # element, not ``handlers``; only a function or a type can be
                     # instantiated. Resolved as the binding below would resolve it,
-                    # and silent when it names a value -- as before.
+                    # and silent when it names a value.
                     if callee_name and instantiated is not None:
                         _named = (
                             own_package.lookup(callee_name)
                             if callee_shape == "identifier"
-                            else resolver.lookup(callee_name, path_hint=import_path_hint)
+                            else resolver.lookup(
+                                callee_name, path_hint=import_path_hint,
+                                admit=_go_package_member if package_qualified else _value_admit,
+                            )
                         ).symbol
                         if _named is not None and _named.kind not in _GO_INSTANTIABLE_KINDS:
                             callee_name = None
 
                     # WI-kugap: the construct is how the call is WRITTEN
                     # (ADR-0059): on the package itself, or bare, is a
-                    # function; on a value is a method. The resolved emits
-                    # below stamped ``function`` for every hit, so
-                    # ``xs[k].Frob()`` bound to ``Thing.Frob`` read as a
-                    # function call. The unresolved emit already asked this.
+                    # function; on a value is a method. The resolved and
+                    # unresolved emits below both use this stamp, so
+                    # ``xs[k].Frob()`` bound to ``Thing.Frob`` reads as a
+                    # method call.
                     call_construct = (
                         "function"
                         if callee_shape == "identifier" or package_qualified
@@ -5002,12 +5178,18 @@ def _extract_edges_from_file(
                         # for a BARE call, when the file's hit is a method or
                         # field listed under its bare name (WI-bivin): a bare
                         # identifier cannot name one.
+                        # WI-surid: nor, on a VALUE, when the file's hit is
+                        # not a method or a func-typed field.
                         if (
                             callee_name in local_symbols
                             and import_path_hint is None
                             and not (
                                 callee_shape == "identifier"
                                 and local_symbols[callee_name].kind in _GO_MEMBER_KINDS
+                            )
+                            and not (
+                                call_construct == "method"
+                                and not _value_admit(local_symbols[callee_name])
                             )
                         ):
                             callee = local_symbols[callee_name]
@@ -5031,7 +5213,10 @@ def _extract_edges_from_file(
                                 if receiver_type_is_external
                                 else own_package.lookup(callee_name)
                                 if callee_shape == "identifier"
-                                else resolver.lookup(callee_name, path_hint=import_path_hint)
+                                else resolver.lookup(
+                                callee_name, path_hint=import_path_hint,
+                                admit=_go_package_member if package_qualified else _value_admit,
+                            )
                             )
                             if (
                                 not lookup_result.found
@@ -5054,13 +5239,14 @@ def _extract_edges_from_file(
                             # no hint reaches this lookup only with one candidate
                             # (the ambiguity guard above takes two or more), an exact
                             # match. Go has no implicit receiver for Site 1 to
-                            # recover; on dev the stamp let it bind a bare
+                            # recover; the stamp would let it bind a bare
                             # ``Process()`` to an embedded type's method.
                             # WI-kibah: a hint is package EVIDENCE. A symbol the
-                            # resolver returns from outside the hinted package
-                            # (its fallback among 2+ candidates that the hint
-                            # matched none of) is not the callee: the call is to
-                            # the hinted package and stays unresolved below.
+                            # resolver returns from outside the hinted package is
+                            # not the callee: the call is to the hinted package
+                            # and stays unresolved below. (The resolver itself
+                            # withholds a tie of 2+ candidates the hint matched
+                            # none of.)
                             if (
                                 lookup_result.symbol is not None
                                 and _go_in_hinted_package(
@@ -5079,7 +5265,7 @@ def _extract_edges_from_file(
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": call_construct},
                                 ))
-                            # Bug #2 fix: Create edge for external/unresolved method calls
+                            # Create an edge for external/unresolved method calls
                             # This enables linkers to potentially match across languages
                             elif callee_shape == "selector_expression":
                                 # For s.Method() where Method is external, create unresolved edge
@@ -5158,10 +5344,10 @@ def _extract_edges_from_file(
                             # INV-guzuj: a bare name that is no local symbol, that
                             # the resolver placed nowhere (absent, or withheld by
                             # its ambiguity guard) and that no dot import can
-                            # claim still names a CALL. It used to emit nothing,
-                            # so the call site vanished; every other analyzer
-                            # mints the ``external`` placeholder here, as Python
-                            # has since INV-foluz. (A name bound in the enclosing
+                            # claim still names a CALL, so it gets the
+                            # ``external`` placeholder rather than vanishing, as
+                            # every other analyzer mints it here (Python:
+                            # INV-foluz). (A name bound in the enclosing
                             # declaration never gets here: see WI-bivin above.)
                             # ``callee_shape`` is ``identifier`` on this arm.
                             else:
@@ -5196,8 +5382,8 @@ def _extract_edges_from_file(
 
         # WI-labik: a package-level function ALIAS, ``var NewWebhook =
         # testutils.NewWebhook`` / ``var run = helper``, continues to what it
-        # holds. A call through it binds the variable (INV-nopoh), and the
-        # variable had no edge onward, so the walk stopped one hop short.
+        # holds. A call through it binds the variable (INV-nopoh); without an
+        # edge onward from the variable the walk would stop one hop short.
         elif (
             node.type == "var_spec"
             and _go_package_level_var_name(node, source) is not None
@@ -5215,60 +5401,42 @@ def _extract_edges_from_file(
         # AST: keyed_element -> literal_element (key) : literal_element (value)
         # The value's child may be an identifier or selector_expression.
         elif node.type == "keyed_element":
-            current_function = _get_enclosing_function(
-                node, source, local_symbols, file_symbol=file_pseudo_symbol,
-                decl_index=decl_index,
+            lit_elems = [c for c in node.children if c.type == "literal_element"]
+            if len(lit_elems) >= 2:
+                value_elem = lit_elems[-1]
+                # Unwrap literal_element to find the actual expression
+                value_node = value_elem.children[0] if value_elem.children else value_elem
+                _emit_value_reference(node, value_node, "struct_field_reference")
+
+        # META-mino: a function VALUE in the two other places Go writes one.
+        # An UNKEYED composite-literal element -- ``[]func(){a, b}``, the
+        # dispatch table -- and the right side of a LOCAL binding --
+        # ``f := handler``, ``h = pkg.Fn``, a function-local ``var g = run``
+        # (a package-level ``var`` is WI-labik's alias arm above). Resolved
+        # exactly as a keyed field is; a call on the right is the call arm's.
+        elif (
+            node.type == "literal_element"
+            and node.parent is not None
+            and node.parent.type == "literal_value"
+            and node.named_children
+        ):
+            _emit_value_reference(node, node.named_children[0], "function_reference")
+        elif node.type in _GO_LOCAL_BINDINGS:
+            right = find_child_by_field(
+                node, "value" if node.type == "var_spec" else "right",
             )
-            if current_function is not None:
-                # Get the value part: the last literal_element child
-                lit_elems = [c for c in node.children if c.type == "literal_element"]
-                if len(lit_elems) >= 2:
-                    value_elem = lit_elems[-1]
-                    # Unwrap literal_element to find the actual expression
-                    value_node = value_elem.children[0] if value_elem.children else value_elem
-                    if value_node.type == "identifier":
-                        # WI-bivin: the caller's own package, as for a call.
-                        field_ref = _go_bare_reference_target(
-                            node_text(value_node, source), local_symbols,
-                            own_package, current_function, _bound_names(node),
-                        )
-                    elif value_node.type == "selector_expression":
-                        # pkg.Handler or obj.Method as field value (WI-kibah:
-                        # resolved by its operand, as an argument is).
-                        field_ref = _go_selector_reference_target(
-                            value_node, source, bound=_bound_names(node),
-                            import_aliases=import_aliases,
-                            var_types=scoped_var_types.get(
-                                current_function.name, {},
-                            ),
-                            module_path=module_path,
-                            local_symbols=local_symbols,
-                            global_symbols=global_symbols, resolver=resolver,
-                            caller_dir=caller_dir,
-                        )
-                    else:
-                        field_ref = None
-                    if field_ref is not None:
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=field_ref[0].id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="struct_field_reference",
-                            resolution_score=field_ref[1],
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+            for value_node in right.named_children if right is not None else ():
+                _emit_value_reference(node, value_node, "function_reference")
 
     # WI-lozug: emit module_attr_ref edges for attribute reads on imported
     # Go packages (e.g. ``os.Stdout``, ``os.Stderr``).  These pair with the
     # ``attributes:`` entries in io_primitives/go.yaml — without them, the
-    # ipc_send / ipc_recv / env_read chains for attribute primitives were
-    # silently inert.  The src is a file-level pseudo-symbol (matching the
-    # convention used for ``imports`` edges earlier in this function),
-    # because Go does not carry a per-function caller through to the
-    # io_boundary pipeline's attribute matching — the dst encodes the
-    # primitive identity, which is what io_boundary tags against.  Skip
+    # ipc_send / ipc_recv / env_read chains for attribute primitives would be
+    # silently inert.  The src is the callable (or package-level variable)
+    # performing the read (``enclosing_symbols`` below), falling back to the
+    # file-level pseudo-symbol (the src of ``imports`` edges) outside any of
+    # them; the dst encodes the primitive identity, which is what io_boundary
+    # tags against.  Skip
     # blank/dot imports (``_`` and ``.``) because they don't introduce a
     # namespaced alias.
     attr_imports = {
@@ -5420,11 +5588,11 @@ def _maybe_create_wrapper_symbol(
     Returns ``(symbol, is_new)`` where ``is_new`` is True only when a
     new Symbol was created (False for cache hits and non-matches).
 
-    WI-bokab (v7): ``file_stable_id`` is the repo-relative file-identity anchor
+    ``file_stable_id`` is the repo-relative file-identity anchor
     (computed in ``_analyze_go_impl``, threaded through ``_extract_go_routes``)
     folded into the wrapper Symbol's ``make_typed_stable_id`` so same-named
-    closure wrappers in different files hash distinctly. Defaults to ``""``
-    (no-op fold) for legacy/test callers.
+    closure wrappers in different files hash distinctly (WI-bokab). Defaults
+    to ``""`` (no-op fold) for legacy/test callers.
     """
     if wrapper_name in wrapper_symbols_created:
         return wrapper_symbols_created[wrapper_name], False
@@ -5783,7 +5951,7 @@ def _extract_go_routes(
     - Group prefix composition (variable): api := r.Group("/api"); api.GET("/users", h) → /api/users
     - Mount points: r.Mount("/api/v1", apiRoutes()) → route_mount symbol + edge
 
-    Creates symbols with stable_id = sha256("route:{method}:{path}") per ADR-0014.
+    Creates symbols with stable_id = sha256("route:{method}:{path}") per ADR-0035 §3.
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
     Also detects closure wrapper patterns: when a route handler argument
@@ -6111,17 +6279,13 @@ def _extract_go_routes(
                                     start_line = n.start_point[0] + 1
                                     end_line = n.end_point[0] + 1
 
-                                    # WI-zugob: the FIFTH go minting site. The
-                                    # earlier go migration moved the four
-                                    # net/http + mux + chi Handle paths and
-                                    # missed this one, because the go
-                                    # route-parity fixture is net/http only and
-                                    # never exercised a Mount — so the gate
-                                    # could not see that it violated BOTH the id
-                                    # kind-slot (unregistered "route_mount") and
-                                    # the id name-slot (name was the handler,
-                                    # the slot was "MOUNT {prefix}"). The
-                                    # go-mount fixture case now covers it.
+                                    # WI-zugob: a mount is minted through
+                                    # make_route_symbol like the other go route
+                                    # sites, so its id kind-slot and name-slot
+                                    # ("MOUNT {prefix}", not the handler) follow
+                                    # the canonical route-key rules. The go
+                                    # route-parity fixture's go-mount case
+                                    # exercises this site.
                                     mount_sym = make_route_symbol(
                                         language="go",
                                         path=str(file_path),
@@ -6638,10 +6802,10 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     for go_file in find_go_files(repo_root):
         if max_files is not None and files_processed >= max_files:  # pragma: no cover
             break
-        # WI-bokab (v7): compute the file-identity anchor from the REPO-RELATIVE
-        # path. ``go_file`` is absolute (``find_go_files`` joins onto ``repo_root``),
-        # so folding ``str(go_file)`` directly would make stable_ids
-        # location-dependent — the regression the WI-bokab smoke test guards.
+        # Compute the file-identity anchor from the REPO-RELATIVE path
+        # (WI-bokab). ``go_file`` is absolute (``find_go_files`` joins onto
+        # ``repo_root``), so folding ``str(go_file)`` directly would make
+        # stable_ids location-dependent, which a smoke test guards against.
         rel_path = str(go_file.relative_to(repo_root))
         file_stable_id = make_file_stable_id("go", normalize_path(rel_path))
         analysis = _extract_symbols_from_file(go_file, parser, run, file_stable_id)
@@ -6739,8 +6903,8 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         try:
             source = go_file.read_bytes()
             tree = parser.parse(source)
-            # WI-bokab (v7): same repo-relative anchor as Pass 1 (``go_file``
-            # is absolute), threaded into closure-wrapper Symbol stable_ids.
+            # Same repo-relative anchor as Pass 1 (``go_file`` is absolute),
+            # threaded into closure-wrapper Symbol stable_ids (WI-bokab).
             route_file_stable_id = make_file_stable_id(
                 "go", normalize_path(str(go_file.relative_to(repo_root))),
             )

@@ -52,3 +52,19 @@
   set: {}  # de70
   add:  # de70
     tags: [awaits_bakeoff_validation]  # de70
+- op: update  # 815c
+  at: '2026-11-02T10:19:40Z'  # 815c
+  by: agent  # 815c
+  actor: jgstern_agent  # 815c
+  clock: 6  # 815c
+  nonce: 815c  # 815c
+  set: {}  # 815c
+  remove:  # 815c
+    tags: [awaits_bakeoff_validation]  # 815c
+- op: discuss  # c190
+  at: '2026-11-02T10:19:40Z'  # c190
+  by: agent  # c190
+  actor: jgstern_agent  # c190
+  clock: 7  # c190
+  nonce: c190  # c190
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). hls.js: measured bare calls bound to another file’s fn although the caller’s file declares the name: 0 (recorded 2,240 rebound -> ~0). Tag stripped."  # c190

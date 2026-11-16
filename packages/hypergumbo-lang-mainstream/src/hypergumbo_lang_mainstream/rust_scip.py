@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""SCIP → rust.py stable_id mapping helper (WI-bajuz, ADR-0014 §3).
+"""SCIP → rust.py stable_id mapping helper (WI-bajuz; typed tier, spec §6).
 
-ADR-0014 §3 governs this helper as amended by ADR-0035 §1: ``name`` and
-``qualified_name`` became mandatory stable_id inputs at v5, and the
-file anchor at v7. The amendment is what makes the input list below
-six items rather than the original three.
+The typed tier (spec §6, ADR-0035 §1) governs this helper: ``name`` and
+``qualified_name`` are mandatory stable_id inputs (since v5), and so is
+the file anchor (since v7), which is why the input list below has six
+items.
 
 How It Works
 ------------
@@ -25,7 +25,7 @@ The caller, ``reassign_rust_stable_ids``, passes the SCIP Definition-occurrence
 range, and rust-analyzer's definition range is the identifier TOKEN — line 14
 for a method whose ``function_item`` runs 14-17. The exact-match predicate below
 therefore abstains for every multi-line item and the SCIP symbol keeps its
-``sha256(moniker)`` id; measured on aardvark-dns, 0 of 52 functions emitted by
+path-and-moniker id (``scip/index.py::scip_stable_id``); measured on aardvark-dns, 0 of 52 functions emitted by
 both arms share a stable_id. The two arms carry independent identities today.
 This is stated rather than fixed because making parity hold would also require
 ``split_within_file_stable_id_collisions`` to spare cross-backend groups (it
@@ -86,6 +86,8 @@ from hypergumbo_lang_mainstream.rust import (
 if TYPE_CHECKING:
     import tree_sitter
 
+    from hypergumbo_core.ir import StableId
+
 
 def _parse_rust_source(source: bytes) -> Optional["tree_sitter.Tree"]:
     """Parse Rust source, returning None when tree-sitter-rust is unavailable."""
@@ -104,7 +106,7 @@ def compute_rust_stable_id_from_source(
     start_line: int,
     end_line: int,
     rel_path: str = "",
-) -> Optional[str]:
+) -> Optional[StableId]:
     """Derive rust.py-compatible stable_id for the function at the given span.
 
     Arguments are 1-based inclusive line numbers, matching the convention

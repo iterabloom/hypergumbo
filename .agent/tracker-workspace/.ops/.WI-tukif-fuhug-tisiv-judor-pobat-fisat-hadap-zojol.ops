@@ -55,3 +55,26 @@
   clock: 6  # 434e
   nonce: 434e  # 434e
   message: "Cross-ref backfill (2026-05-30, linked-pile L6 investigation): checklist is stale. Rust + Erlang shipped in PR #3893 (2026-05-24). python.yaml was already complete pre-filing. The remaining set is 10 catalogs (not 12). Decoupled from WI-bifih per L6 verdict — WI-bifih is an analyzer-wiring task, not a catalog-promotion task; python.yaml already declares stdlib_modules. Description retitle pending Phase C."  # 434e
+- op: discuss  # 15ff
+  at: '2026-11-01T22:22:28Z'  # 15ff
+  by: agent  # 15ff
+  actor: jgstern_agent  # 15ff
+  clock: 7  # 15ff
+  nonce: 15ff  # 15ff
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: PARTLY-STALE. Review 2026-11-01 at dev 9ae4abe13f. status 'complete' was renamed 'provenance_declared' (e6cb77fa15, 2026-08-16, INV-titih), and _validate_catalog_dict (io_boundary.py:482) now refuses 'complete'. Coverage claims moved to per-module module_completeness, so audit step (1) is no longer part of the status flip. provenance_declared today: python, rust, erlang (PR #3893), javascript (e31c29a124, 2026-09-06). Still in_progress from the 12-list: c, elixir, go, haskell, java, kotlin, objc, scala, swift. cpp and bash are also in_progress but were never on the list. MECHANISM: The catalog status axis was redefined: 'complete' is now refused, 'provenance_declared' is a citation check only, and coverage moved to per-module module_completeness."  # 15ff
+- op: update  # 04da
+  at: '2026-11-01T22:22:28Z'  # 04da
+  by: agent  # 04da
+  actor: jgstern_agent  # 04da
+  clock: 8  # 04da
+  nonce: 04da  # 04da
+  set:  # 04da
+    title: "Declare stdlib_provenance (status: provenance_declared) for the 9 remaining in_progress io_primitives catalogs: c, elixir, go, haskell, java, kotlin, objc, scala, swift"  # 04da
+- op: update  # 2c23
+  at: '2026-11-01T22:22:28Z'  # 2c23
+  by: agent  # 2c23
+  actor: jgstern_agent  # 2c23
+  clock: 9  # 2c23
+  nonce: 2c23  # 2c23
+  set:  # 2c23
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Review 2026-11-01 at dev 9ae4abe13f. status 'complete' was renamed 'provenance_declared' (e6cb77fa15, 2026-08-16, INV-titih), and _validate_catalog_dict (io_boundary.py:482) now refuses 'complete'. Coverage claims moved to per-module module_completeness, so audit step (1) is no longer part of the status flip. provenance_declared today: python, rust, erlang (PR #3893), javascript (e31c29a124, 2026-09-06). Still in_progress from the 12-list: c, elixir, go, haskell, java, kotlin, objc, scala, swift. cpp and bash are also in_progress but were never on the list. (Original text below; the review entry in the thread has the evidence.)\n\nPlan C, PR B catalog-completion umbrella. Promote the 12 remaining language YAML catalogs from status=in_progress to status=complete with stdlib_provenance. Per INV-pomir (parent), every catalog with status=complete must declare stdlib_provenance whose source_url hostname suffix-matches ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py.\n\nFor each catalog: (1) audit against official stdlib documentation to confirm complete IO-primitive coverage; (2) optionally enumerate non-IO stdlib symbols under stdlib_other (used by PR C's external_potential filter to drop stdlib non-IO calls from the bucket); (3) declare stdlib_provenance with source_url, version, and retrieved date. Hostnames absent from ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES need to be added to that allowlist via PR review with justification.\n\nChecklist with source-URL candidates per language (carried forward from the 12 individual items, all closed wont_do as superseded by this umbrella on 2026-04-27):\n\n  [ ] c        — cppreference.com or open-group POSIX docs\n  [ ] elixir   — hexdocs.pm/elixir or elixir-lang.org\n  [ ] erlang   — erlang.org\n  [ ] go       — pkg.go.dev or go.dev\n  [ ] haskell  — haskell.org or hackage (base/network/etc.)\n  [ ] java     — docs.oracle.com (java.se) or openjdk.org\n  [ ] javascript — nodejs.org and developer.mozilla.org\n  [ ] kotlin   — kotlinlang.org\n  [ ] objc     — developer.apple.com\n  [ ] rust     — doc.rust-lang.org/std/\n  [ ] scala    — scala-lang.org\n  [ ] swift    — swift.org or developer.apple.com\n\nSuggested execution: ship as 1-3 PRs, batched by per-language audit effort. The audit step is the bulk of the work; the YAML declaration itself is a few lines per catalog. As each language ships, append a discussion entry checking it off.\n\nThis umbrella replaces 12 individual P3 items (WI-ganid c, WI-tumor elixir, WI-gunur erlang, WI-honir go, WI-tusof haskell, WI-vikop java, WI-fobus javascript, WI-labiz kotlin, WI-pitot objc, WI-galaz rust, WI-puzoj swift, WI-vubil scala) all created 2026-04-24 from the same template with zero discussion entries each. Discrete tracking made tracker ready noisy with 11 misleading 'P3 ready' entries that conveyed no per-item priority information. Consolidated 2026-04-27 per human direction."  # 2c23

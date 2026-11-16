@@ -1,0 +1,21 @@
+- op: create  # 9fa3
+  at: '2026-10-27T04:08:33Z'  # 9fa3
+  by: agent  # 9fa3
+  actor: jgstern_agent  # 9fa3
+  clock: 1  # 9fa3
+  nonce: 9fa3  # 9fa3
+  data:  # 9fa3
+    kind: work_item  # 9fa3
+    title: "skip records carry no candidate-file presence, so dependency_unavailable / backend_disabled skips cannot be read as State A when the skipped analyzer had no files"  # 9fa3
+    status: todo_hard  # 9fa3
+    priority: 4  # 9fa3
+    parent:  # 9fa3
+    tags:  # 9fa3
+    - pass_silence  # 9fa3
+    - adr_0056  # 9fa3
+    isbefore: []  # 9fa3
+    duplicate_of: []  # 9fa3
+    not_duplicate_of: []  # 9fa3
+    pr_ref:  # 9fa3
+    description: "Skip records in limits.skipped_passes carry no candidate-file presence, so a dependency_unavailable or backend_disabled code is consistent with State A and State C (pass_silence.SILENCE_REASON_SPECS, WI-punod) and prerequisite_absent_clauses must read it as blocking even when the skipped analyzer had no files to read.\nMechanism: all_analyzers' file-presence pre-filter dispatches analyzers whose languages are outside the taxonomy (apex, twig, manifest_targets, play-routes, yaml_ansible, gitignore, requirements, ...) without a file check; with tree-sitter-language-pack absent they self-skip dependency_unavailable whatever the repo holds. The WI-punod premise re-check (2026-10-25) saw 29 such records on a python-only repo. A linker whose depends_on conjunct consists only of such literals would then be stamped prerequisite_absent (State C, an ordering defect) on a repo that has none of those files -- the axis asserting a defect about a repo that simply lacks the language.\nNOT REPRODUCED in-session: needs a venv without tree-sitter-language-pack. First step: that repro, listing which linkers (if any) get a false prerequisite_absent.\nFix direction: the skip record says whether the pass had candidate files -- in-taxonomy, the dispatcher already knows files > 0 when it retains an analyzer; out-of-taxonomy, the analyzer's own file discovery before the grammar check -- and pass_silence narrows {A, C} to {A} when it had none. Found doing WI-punod."  # 9fa3
+    fields: {}  # 9fa3

@@ -18,3 +18,18 @@
     pr_ref:  # 04b2
     description: "Found 2026-10-06 while fixing discovery.py docstrings (code-read only, not reproduced). discovery.find_files fast path checks only index.repo_root == repo_root and serves index.match_pattern, so a caller passing excludes stricter than the index's (FileIndex.build(..., excludes=combined_excludes) in cli.py ~:12175) gets them silently dropped. Callers that pass custom excludes: sketch.py ~:2683 (extra_excludes branch is pragma no-cover), sketch.py ~:4948 (DEFAULT_EXCLUDES), profile.py ~:939. Decide: compare excludes and fall back to rglob when they differ (what the old docstring said), or filter index results by the caller's excludes. Needs a repro first: a stricter-exclude call under an installed index."  # 04b2
     fields: {}  # 04b2
+- op: discuss  # 977c
+  at: '2026-11-01T22:22:30Z'  # 977c
+  by: agent  # 977c
+  actor: jgstern_agent  # 977c
+  clock: 2  # 977c
+  nonce: 977c  # 977c
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: CURRENT. P4 review 2026-11-01 at dev 9ae4abe13f: direct call on a fixture (keep/a.py, skipme/b.py). With no index, find_files(root,['*.py'],excludes=['skipme']) -> [keep/a.py]. After set_file_index(FileIndex.build(root, DEFAULT_EXCLUDES)) -> [keep/a.py, skipme/b.py]. The premise reproduces. Since filing, the docstring was corrected to state the behaviour (f590a68477/f78e4aff94), and the fast path now also serves sub-directories. Cited lines moved: cli.py FileIndex.build is ~12942, sketch.py callers ~2790 and ~5242, profile.py ~1015. No user-visible repro found: `hypergumbo sketch fx --exclude skipme` correctly omitted b.py. MECHANISM: find_files fast path tests only repo_root.is_relative_to(index.repo_root) and never applies the caller's excludes argument (discovery.py:2683-2711)."  # 977c
+- op: update  # b621
+  at: '2026-11-01T22:22:30Z'  # b621
+  by: agent  # b621
+  actor: jgstern_agent  # b621
+  clock: 3  # b621
+  nonce: b621  # b621
+  set:  # b621
+    description: "[REVIEW 2026-11-01, CURRENT] P4 review 2026-11-01 at dev 9ae4abe13f: direct call on a fixture (keep/a.py, skipme/b.py). With no index, find_files(root,['*.py'],excludes=['skipme']) -> [keep/a.py]. After set_file_index(FileIndex.build(root, DEFAULT_EXCLUDES)) -> [keep/a.py, skipme/b.py]. The premise reproduces. Since filing, the docstring was corrected to state the behaviour (f590a68477/f78e4aff94), and the fast path now also serves sub-directories. Cited lines moved: cli.py FileIndex.build is ~12942, sketch.py callers ~2790 and ~5242, profile.py ~1015. No user-visible repro found: `hypergumbo sketch fx --exclude skipme` correctly omitted b.py. (Original text below; the review entry in the thread has the evidence.)\n\nFound 2026-10-06 while fixing discovery.py docstrings (code-read only, not reproduced). discovery.find_files fast path checks only index.repo_root == repo_root and serves index.match_pattern, so a caller passing excludes stricter than the index's (FileIndex.build(..., excludes=combined_excludes) in cli.py ~:12175) gets them silently dropped. Callers that pass custom excludes: sketch.py ~:2683 (extra_excludes branch is pragma no-cover), sketch.py ~:4948 (DEFAULT_EXCLUDES), profile.py ~:939. Decide: compare excludes and fall back to rglob when they differ (what the old docstring said), or filter index results by the caller's excludes. Needs a repro first: a stricter-exclude call under an installed index."  # b621

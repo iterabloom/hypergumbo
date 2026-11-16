@@ -49,3 +49,19 @@
   set: {}  # fbb6
   add:  # fbb6
     tags: [awaits_bakeoff_validation]  # fbb6
+- op: update  # 00af
+  at: '2026-11-02T10:19:45Z'  # 00af
+  by: agent  # 00af
+  actor: jgstern_agent  # 00af
+  clock: 6  # 00af
+  nonce: 00af  # 00af
+  set: {}  # 00af
+  remove:  # 00af
+    tags: [awaits_bakeoff_validation]  # 00af
+- op: discuss  # 1cf8
+  at: '2026-11-02T10:19:46Z'  # 1cf8
+  by: agent  # 1cf8
+  actor: jgstern_agent  # 1cf8
+  clock: 7  # 1cf8
+  nonce: 1cf8  # 1cf8
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). ponyc (fresh shallow clone afb2dfb): measured pony call sites outside their src span 0 of 55,410; behaviour symbols 699 (recorded 4,420 -> 0; 0 -> 687). Tag stripped."  # 1cf8

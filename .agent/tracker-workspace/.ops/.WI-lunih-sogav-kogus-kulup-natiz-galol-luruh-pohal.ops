@@ -19,3 +19,10 @@
     pr_ref:  # e770
     description: "Residual of INV-fikoh (PR #1322). ADR-0061 ruling 5: '--no-default-overlays omits community rows from every family'. The verify step now honours it (io overlays, taint derivation, community taint files, community function summaries). The ANALYSIS stage does not: survey/sketch build the graph with the 99 community frameworks/ files, library_signatures/python-django.yaml, dataflow_patterns/python-pyyaml.yaml, and analyzers that build lookup tables from community io rows (py.py:683, haskell.py:699,813 per the original INV-fikoh note; not re-measured). The flag is not an option of the analysis commands, and verify-claims may read a cached graph, so this needs a design decision: an analysis-level flag that becomes part of the cache key, or a stated limit. Decide with WI-hipun (which measures whether frameworks/dataflow rows can make a verdict cleaner at all)."  # e770
     fields: {}  # e770
+- op: discuss  # fc37
+  at: '2026-11-01T10:55:31Z'  # fc37
+  by: agent  # fc37
+  actor: jgstern_agent  # fc37
+  clock: 2  # fc37
+  nonce: fc37  # fc37
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint2/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: run/survey/sketch --help expose no --no-default-overlays (only verify-claims and io-boundaries do); analyzers still call load_catalog(lang) with default include_defaults=True (py.py:744-747, haskell.py:750-752 and 863-866, lines moved from the item's 683/699/813); library_signatures, dataflow user-pattern and frameworks loaders take no community parameter. Spec implementation-status line 318 states the limit. Premise holds as written. MECHANISM: community/yours switch exists only in verify-step loaders; analysis loaders and the results-cache key carry no such flag. SHARES MECHANISM WITH: WI-nosuv,INV-hokuj."  # fc37

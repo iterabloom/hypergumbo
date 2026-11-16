@@ -1,0 +1,21 @@
+- op: create  # c4d6
+  at: '2026-11-07T02:12:12Z'  # c4d6
+  by: agent  # c4d6
+  actor: jgstern_agent  # c4d6
+  clock: 1  # c4d6
+  nonce: c4d6  # c4d6
+  data:  # c4d6
+    kind: work_item  # c4d6
+    title: "Concurrent eviction sweeps another run's in-flight .partial; the loser hard-deletes the entry with no archive and reports it soft-deleted"  # c4d6
+    status: todo_hard  # c4d6
+    priority: 3  # c4d6
+    parent:  # c4d6
+    tags:  # c4d6
+    - safety_zones  # c4d6
+    - cache  # c4d6
+    isbefore: []  # c4d6
+    duplicate_of: []  # c4d6
+    not_duplicate_of: []  # c4d6
+    pr_ref:  # c4d6
+    description: "Found by the 11-06 adversarial review of the safety_zones wrappers (lab: wrapper_review_11062026/REVIEW.md #6, probe b/p4/probe_partial_sweep.py).\n\nDefect: _prune_soft_deleted (cli.py) unlinks EVERY *.partial in a soft-delete folder through cache_unlink, with no pid or age check, including another run's in-flight partial. In _archive_entry the run that loses its partial meets FileNotFoundError at cache_rename(partial, final) and `continue`s; it then renames the entry to its .evicting- scratch name, cache_rmtree's it, and returns True.\n\nTrigger: two runs evicting at once (the INV-durin scenario), with one run's prune landing between the other's zip and its publication rename.\n\nConsequence: the entry is hard-deleted with no archive, yet the run reports it as soft-deleted (recoverable). The cache data is regenerable; what is lost is the undo window the soft-delete policy promises, silently.\n\nProbe output (deterministic interleaving): returned True, entry still exists False, both archive folders empty.\n\nFix direction: sweep only partials that are not live (pid in the name no longer running, or older than a bound), and on the publication-rename FileNotFoundError stop on the entry (return False) rather than deleting it unarchived."  # c4d6
+    fields: {}  # c4d6

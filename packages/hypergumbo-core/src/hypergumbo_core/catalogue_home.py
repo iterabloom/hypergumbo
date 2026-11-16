@@ -68,6 +68,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
+from .safety_zones import user_config_mkdir, user_config_write
 from .user_config import file_digest_token, user_config_path
 from .yaml_catalogs import CHANNEL_STAGE_ANALYSIS, YAML_CATALOGS
 
@@ -388,12 +389,12 @@ def materialize_catalogue_home(
     for name in ("",) + channel_directories():
         target = home / name if name else home
         if not target.is_dir():
-            target.mkdir(parents=True, exist_ok=True)
+            user_config_mkdir(target)
             created.append(target)
 
     readme = home / "README.md"
     if not readme.exists():
-        readme.write_text(_readme_text(channel_directories()), encoding="utf-8")
+        user_config_write(readme, _readme_text(channel_directories()))
 
     seeded: "list[Path]" = []
     skipped: "list[Path]" = []
@@ -402,7 +403,7 @@ def materialize_catalogue_home(
         if target.exists():
             skipped.append(target)
             continue
-        target.write_text(_seeded_text(source, version), encoding="utf-8")
+        user_config_write(target, _seeded_text(source, version))
         seeded.append(target)
 
     return MaterializeResult(

@@ -1,0 +1,21 @@
+- op: create  # 6b07
+  at: '2026-11-03T07:52:33Z'  # 6b07
+  by: agent  # 6b07
+  actor: jgstern_agent  # 6b07
+  clock: 1  # 6b07
+  nonce: 6b07  # 6b07
+  data:  # 6b07
+    kind: work_item  # 6b07
+    title: "framework_patterns: the parent_base_class + method_name arm ignores symbol_kind, so the key is decorative there (9 lit.yaml rules would match a free function named render / updated)"  # 6b07
+    status: todo_hard  # 6b07
+    priority: 3  # 6b07
+    parent:  # 6b07
+    tags:  # 6b07
+    - analysis_quality  # 6b07
+    - frameworks  # 6b07
+    isbefore: []  # 6b07
+    duplicate_of: []  # 6b07
+    not_duplicate_of: []  # 6b07
+    pr_ref:  # 6b07
+    description: "PROBLEM. framework_patterns.Pattern.matches_all: the `parent_base_class` + `method_name` arm (the last arm, ~line 562) checks only those two fields. A `symbol_kind:` written beside them is never consulted -- the arm does not call `_kind_and_role` the way the `parameter_type` arm (WI-jonin) and the `symbol_name` arm do -- so the key is decorative there: a free FUNCTION named like the method matches a rule that says `symbol_kind: ^method$`. (`language`, `symbol_path` and `modifiers` are fine: `_check_filters` runs before every arm. `is_test_file` is fine: applied by strip_test_file_only_concepts.)\n\nEVIDENCE (2026-11-03, found writing WI-losij's rules): 9 shipped rules combine `method_name` with `symbol_kind` and none has a `parent_base_class`, all in lit.yaml (lifecycle_hook: connectedCallback / disconnectedCallback / firstUpdated / updated / willUpdate; render_method: render; update_control: shouldUpdate / requestUpdate / performUpdate). Under the arm as written, a top-level JS function `render()` or `updated()` in a lit-detected repo carries `render_method` / `lifecycle_hook`. Not measured on a corpus repo (no lit repo checked). WI-losij's python-http-server.yaml and servlet.yaml rules deliberately omit `symbol_kind` for this reason (their producers stamp parent_base_classes on methods only), and their tests carry no \"function\" lookalike case.\n\nFIX. In the parent-base arm, require `_kind_and_role(symbol)` to pass when `symbol_kind` / `framework_role` is declared (the same AND the other arms apply); pin with a test: a `method_name` + `symbol_kind ^method$` rule does not match a function of that name. Measure lit.yaml's concept diff on one lit repo (find one; none checked), expected direction: fewer render_method / lifecycle_hook on functions, no method loses one. Also audit `_PATTERN_KEYS` docs (framework_patterns.py ~180-210) to say which keys each arm honours, so a YAML author can tell a filter from a decoration.\n\nNOT ASSERTED: that any corpus symbol is currently mislabelled; the arm's blindness is read from the code and the nine rules, the instance is not measured."  # 6b07
+    fields: {}  # 6b07

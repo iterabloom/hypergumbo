@@ -45,19 +45,18 @@ class TestTheyShipAndLoad:
         """docs/ is not in the wheel, so an installed hypergumbo cannot read it.
 
         ``pyproject.toml`` declares ``packages = ["src/hypergumbo_core"]``.
-        Overlays under ``docs/`` were unreachable from any installed copy —
-        they shipped to nobody.
+        Overlays under ``docs/`` would be unreachable from any installed copy —
+        they would ship to nobody.
         """
         import hypergumbo_core
 
         assert OVERLAY_DIR.is_dir()
         shipped = {p.name for p in OVERLAY_DIR.glob("*.yaml")}
         assert shipped, "no shipped overlay — the extension point ships to nobody again"
-        # THE INVARIANT, NOT THE INVENTORY (WI-surun). This used to name the two
-        # files that existed, which made it a hardcoded inventory: it failed the
-        # moment ADR-0047 ruling 1 relocated the third-party rows and added five
-        # more overlays, while testing nothing about the property it is named
-        # for. What matters is that the directory is INSIDE THE PACKAGED TREE —
+        # THE INVARIANT, NOT THE INVENTORY (WI-surun). Naming the files that
+        # exist would make this a hardcoded inventory that fails whenever an
+        # overlay is added or moved, while testing nothing about the property
+        # it is named for. What matters is that the directory is INSIDE THE PACKAGED TREE —
         # pyproject declares packages = ["src/hypergumbo_core"], so anything
         # outside it is unreachable from an installed copy.
         pkg = Path(hypergumbo_core.__file__).resolve().parent
@@ -68,9 +67,9 @@ class TestTheyShipAndLoad:
     def test_default_overlays_are_selected_per_language(self):
         """INV-lufib: a catalogue applied to EVERY language hard-fails.
 
-        A claims-file overlay was once applied to every language in the repo,
-        so a python overlay hard-failed any repo that also contained
-        javascript. Defaults must therefore be language-keyed, not global.
+        Applied to every language in the repo, a python overlay hard-fails
+        any repo that also contains javascript. Defaults must therefore be
+        language-keyed, not global.
         """
         by_lang: dict[str, list[str]] = {}
         for o in _scan_default_overlays():
@@ -106,7 +105,7 @@ class TestTheyShipAndLoad:
 
 class TestTheyAreDisclosable:
     @pytest.mark.parametrize(
-        "name", ["go-web-frameworks.yaml", "python-http-clients.yaml"],
+        "name", ["go-web-frameworks.yaml", "python-http-clients.yaml", "java-servlet.yaml"],
     )
     def test_each_declares_community_provenance_and_a_date(self, name: str):
         overlays = [o for o in _all_defaults() if o.path.name == name]
@@ -130,7 +129,7 @@ class TestTheGuardThatMattersMost:
     """
 
     @pytest.mark.parametrize(
-        "name", ["go-web-frameworks.yaml", "python-http-clients.yaml"],
+        "name", ["go-web-frameworks.yaml", "python-http-clients.yaml", "java-servlet.yaml"],
     )
     def test_no_shipped_default_grants_completeness(self, name: str):
         import yaml
@@ -178,6 +177,23 @@ class TestTheGuardThatMattersMost:
         with pytest.raises(DefaultOverlayError, match="provenance"):
             validate_default_overlays([unvouched])
 
+    @pytest.mark.parametrize("value", ["builtin", "Community", "pypi.org/requests"])
+    def test_a_default_declares_exactly_community(self, tmp_path: Path, value: str):
+        """WI-fuzat: the value is the ADR-0061 tier token, not a prose
+        citation. A shipped default is community by construction, so any
+        other value is refused rather than displayed."""
+        from hypergumbo_core.io_boundary import (
+            DefaultOverlayError, validate_default_overlays,
+        )
+
+        other = tmp_path / "other.yaml"
+        other.write_text(
+            f"language: python\nstatus: overlay\nprovenance: {value}\n"
+            "retrieved: 2026-01-01\n"
+        )
+        with pytest.raises(DefaultOverlayError, match="must be 'community'"):
+            validate_default_overlays([other])
+
     def test_the_shipped_set_passes_its_own_gate(self):
         from hypergumbo_core.io_boundary import validate_default_overlays
 
@@ -187,11 +203,11 @@ class TestTheGuardThatMattersMost:
 
 
 def _all_defaults():
-    return default_overlays("python") + default_overlays("go")
+    return default_overlays("python") + default_overlays("go") + default_overlays("java")
 
 
 def test_an_overlay_still_loads_standalone():
-    """Moving the files must not change what they are."""
+    """A shipped default is still an ordinary overlay file that loads on its own."""
     c = load_overlay_catalog(OVERLAY_DIR / "python-http-clients.yaml")
     assert c.language == "python"
 
@@ -218,9 +234,9 @@ class TestTheDisclosureTheRulingRequires:
     def test_a_language_with_no_default_overlay_says_nothing(self, capsys):
         from hypergumbo_core.cli import _warn_default_overlays
 
-        # Picked from the tree, not named: `haskell` was hardcoded here and
-        # acquired an overlay under ADR-0047 ruling 1, which turned a test
-        # about silence into a test about one language's inventory.
+        # Picked from the tree, not named: a hardcoded language can acquire an
+        # overlay, which turns a test about silence into a test about one
+        # language's inventory.
         silent = [lang for lang in ("rust", "javascript", "java", "kotlin",
                                     "scala", "c", "erlang", "objc", "bash")
                   if not default_overlays(lang)]
@@ -255,8 +271,8 @@ class TestTheDisclosureTheRulingRequires:
         """Same three call sites as the in_progress warning, so it is uniform.
 
         A disclosure wired into one consumer is a disclosure the other two
-        silently omit — the shape INV-karud recorded when an exclusion bucket
-        reached the dataclass and never the text renderer.
+        silently omit — the same shape as an exclusion bucket that reaches the
+        dataclass and never the text renderer (INV-karud).
         """
         import inspect
 
@@ -280,12 +296,12 @@ class TestADefaultDoesNotRestateTheCatalogueSStatus:
     explicitly outside that claim, so loading them must neither strengthen nor
     weaken it.
 
-    The failure this pins is concrete and was live in the first cut: ``merge``
-    is self-over-argument and the overlay is the receiver, so a default
-    overlay's own ``in_progress`` became the merged catalogue's status. Python
-    went ``provenance_declared`` -> ``in_progress``, which would have made
-    EVERY python run emit "io-boundary results may be incomplete" — a second,
-    different, and false disclosure riding along with the true one.
+    The failure this pins is concrete: ``merge`` is self-over-argument and
+    the overlay is the receiver, so a default overlay's own ``in_progress``
+    can become the merged catalogue's status. Python would go
+    ``provenance_declared`` -> ``in_progress``, making EVERY python run emit
+    "io-boundary results may be incomplete" — a second, different, and false
+    disclosure riding along with the true one.
     """
 
     def test_python_keeps_provenance_declared_with_defaults_loaded(self):
@@ -299,21 +315,31 @@ class TestADefaultDoesNotRestateTheCatalogueSStatus:
 
         assert "python" not in in_progress_languages(["python"])
 
-    def test_a_user_overlay_still_behaves_as_before(self, tmp_path: Path):
-        """The narrow fix must not silently change user-overlay semantics.
-
-        Whether a USER overlay should restate status is a separate question
-        with its own measurement; this change is scoped to shipped defaults.
+    @pytest.mark.parametrize("include_defaults", [False, True])
+    def test_a_user_overlay_leaves_the_catalogue_status_alone(
+        self, tmp_path: Path, include_defaults: bool,
+    ):
+        """An overlay adds third-party rows; it says nothing about how
+        completely the STDLIB was enumerated, so it may not lower that claim.
+        If it did, python would go provenance_declared -> in_progress and lose
+        its stdlib_provenance the moment a user overlay merged, and every
+        unrelated external_potential chain would then read
+        dst_classification_unreliable. (history: WI-donod)
         """
+        base = load_catalog("python", include_defaults=False)
         ov = tmp_path / "u.yaml"
         ov.write_text(
-            "language: python\nstatus: overlay\n"
-            "net_send:\n  - module: zzz\n    name: send\n    kind: function\n"
+            "language: python\n"
+            "net_send:\n  - module: zzz\n    functions: [send]\n"
         )
         with_user = load_catalog(
-            "python", overlay_paths=[ov], include_defaults=False,
+            "python", overlay_paths=[ov], include_defaults=include_defaults,
         )
-        assert with_user.status == "in_progress"
+        assert ("zzz", "send") in {
+            (p.module, p.name) for p in with_user.primitives
+        }, "reach: the user row must have merged"
+        assert with_user.status == "provenance_declared"
+        assert with_user.stdlib_provenance == base.stdlib_provenance
 
 
 class TestAnUnvouchedRowAddsFindingsButNeverLicensesTheAllClear:
@@ -326,8 +352,8 @@ class TestAnUnvouchedRowAddsFindingsButNeverLicensesTheAllClear:
     verdict — so the same rows, left unmarked, would silently convert
     ``inconclusive`` into ``confirmed`` for boundaries they say nothing about.
 
-    Concretely, and this was live before the fix: a repository calling
-    ``requests.post`` would have had "never writes to the host filesystem"
+    Concretely, without the marking: a repository calling
+    ``requests.post`` would have "never writes to the host filesystem"
     CONFIRMED, on the strength of rows describing only requests' NETWORK
     surface. That is INV-zubuh — "presence of SOME rows must not vouch for the
     rest" — arriving through a new door, and it is the false-all-clear
@@ -347,10 +373,10 @@ class TestAnUnvouchedRowAddsFindingsButNeverLicensesTheAllClear:
         unvouched = {p.qualified_name for p in cat.primitives if p.unvouched}
         assert unvouched, "no row was marked unvouched"
         # THE INVARIANT: a row is unvouched IF AND ONLY IF a default overlay
-        # supplied it. Asserting a module-name prefix list instead was a
-        # hardcoded inventory that broke when ADR-0047 ruling 1 moved django,
-        # flask, uvicorn and ujson into an overlay — and it never checked the
-        # direction that matters, which is that nothing ELSE acquired the flag.
+        # supplied it. Asserting a module-name prefix list instead would be a
+        # hardcoded inventory that breaks whenever rows move into an overlay —
+        # and it would not check the direction that matters, which is that
+        # nothing ELSE acquired the flag.
         from_overlays: set[str] = set()
         for o in default_overlays("python"):
             from_overlays |= {
@@ -418,7 +444,8 @@ class TestTheEnvelopeCarriesTheThirdState:
         assert prov["user_supplied"] is False
         # The envelope must report exactly what the loader loaded, with each
         # file's own `retrieved:` date — checked against the loader rather than
-        # against a transcribed filename and date, which decayed once already.
+        # against a transcribed filename and date, which decays whenever an
+        # overlay changes.
         expected = {(o.path.name, o.retrieved) for o in default_overlays("python")}
         assert expected, "python has no default overlay to disclose"
         assert {(r["file"], r["retrieved"]) for r in prov["shipped_default"]} == expected
@@ -431,8 +458,8 @@ class TestTheEnvelopeCarriesTheThirdState:
     def test_the_text_renderer_discloses_it_too(self):
         """A disclosure that exists only under --json is half shipped.
 
-        This file's own precedent (INV-karud a3), and here it is also the
-        ruling's explicit condition: a JSON field does not satisfy "loud".
+        The same gap as INV-karud, and here it is also the ruling's explicit
+        condition: a JSON field does not satisfy "loud".
         """
         from hypergumbo_core.verify_claims import (
             catalog_provenance, render_catalog_provenance_text,

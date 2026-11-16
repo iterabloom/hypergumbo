@@ -1,0 +1,22 @@
+- op: create  # 54cd
+  at: '2026-10-22T01:58:23Z'  # 54cd
+  by: agent  # 54cd
+  actor: jgstern_agent  # 54cd
+  clock: 1  # 54cd
+  nonce: 54cd  # 54cd
+  data:  # 54cd
+    kind: work_item  # 54cd
+    title: "Swift init chooser ignores access control: TCA's 458 'Reduce { }' calls pick init(internal:) over the public init(_:) (WI-sogof residual)"  # 54cd
+    status: todo_soft  # 54cd
+    priority: 4  # 54cd
+    parent:  # 54cd
+    tags:  # 54cd
+    - swift  # 54cd
+    - call_graph  # 54cd
+    - analysis_quality  # 54cd
+    isbefore: []  # 54cd
+    duplicate_of: []  # 54cd
+    not_duplicate_of: []  # 54cd
+    pr_ref:  # 54cd
+    description: "FOUND 2026-10-21 closing WI-sogof (PR #1796). _choose_init ranks admitted inits by exact-vs-defaulted binding, then by position. swift-composable-architecture's Reduce has init(internal reduce: @escaping (...)) and public init(_ reduce: @escaping (...)); both admit a trailing closure, so 458 'Reduce { state, action in ... }' calls are an ambiguous choice and land on the FIRST by position -- the internal init, which a caller in another module (every test target, every app) cannot see. Fix shape: when the caller's file is outside the init's module (Swift target), drop inits without public/open/package visibility from the admitted tier before ranking; needs the target of a file (Package.swift targets or the Sources/<Target>/ layout). Repro: analyze_swift on TCA, count calls edges into Reduce.init at its init(internal:) span with meta.resolution_quality=ambiguous (458 on the 2026-10-21 census)."  # 54cd
+    fields: {}  # 54cd

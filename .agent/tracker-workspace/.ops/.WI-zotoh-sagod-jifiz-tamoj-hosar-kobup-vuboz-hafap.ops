@@ -1,0 +1,21 @@
+- op: create  # 0cc2
+  at: '2026-10-31T21:28:12Z'  # 0cc2
+  by: agent  # 0cc2
+  actor: jgstern_agent  # 0cc2
+  clock: 1  # 0cc2
+  nonce: 0cc2  # 0cc2
+  data:  # 0cc2
+    kind: work_item  # 0cc2
+    title: "scss and svelte: a reference to a mixin or import declared later (a later-sorted .scss file, a <script> after the markup) is emitted unresolved, because the registry is filled during the walk that reads it"  # 0cc2
+    status: todo_hard  # 0cc2
+    priority: 3  # 0cc2
+    parent:  # 0cc2
+    tags:  # 0cc2
+    - analysis_quality  # 0cc2
+    - resolution  # 0cc2
+    isbefore: []  # 0cc2
+    duplicate_of: []  # 0cc2
+    not_duplicate_of: []  # 0cc2
+    pr_ref:  # 0cc2
+    description: "Found by the WI-vahun-fijuv-vojag-rogij-bujaf-lagam-vuhaf-logup sweep (2026-10-31, dev 217890b1aa): two more hypergumbo-lang-common analyzers fill a resolution registry during the same single walk that reads it, so whether a reference resolves depends on declaration or file order. Same mechanism as the Puppet include bug, which branch jgstern-agent/fix/vahun fixes by moving puppet onto TreeSitterAnalyzer's two-pass template methods (Pass 1 declares every file, the base registers all symbols, Pass 2 resolves).\n\n1. scss.py: mixin_definitions is filled by _extract_mixin (scss.py:271) and read by _extract_include (scss.py:432/445) in one walk over the sorted files (ScssAnalyzer.analyze, scss.py:493-506). Fixture: main.scss = '@use \"mixins\"; .btn { @include rounded; }' plus mixins.scss = '@mixin rounded { border-radius: 4px; }'. main.scss sorts first, so the include edge is dst scss:mixin:rounded:1-1:rounded:mixin, is_resolved=False, although the mixin exists. Rename mixins.scss to a_mixins.scss (sorts first) and the same include resolves to scss:a_mixins.scss:1-1:rounded:mixin, is_resolved=True. The registry is repo-wide, so this is file-order dependence. (A same-file include above the @mixin is also unresolved, but that order is a Sass compile error, so only the cross-file case is a real false negative.)\n\n2. svelte.py: current_imports is filled when the walk reaches the script_element (_extract_svelte_symbols, svelte.py:193-194) and read by _process_tag (svelte.py:269) for each component tag. A Svelte component may put its <script> after the markup. Fixture: App.svelte = '<Button />' followed by '<script> import Button from \"./Button.svelte\"; </script>' gives the imports edge dst svelte:component:Button:0-0:Button:component, is_resolved=False, meta import_path=''. With the <script> first (Ok.svelte, same content otherwise) it gives import_path './Button.svelte', is_resolved=True. vue.py does not have this problem: it runs a script pass before the template pass (vue.py:292/295).\n\nChecked and NOT order-dependent: vue, astro (frontmatter comes first by syntax, and the template pass is separate), robot, racket, purescript, meson, matlab, scheme, r_lang, starlark (explicit Pass 1 / Pass 2 loops); cuda, fortran, nix, erlang, hcl, elm (base template methods); graphql (type_registry is written and never read); rst (raw dst, no registry). Not checked: the other lang-* packages.\n\nFix shape: the same as puppet. Collect definitions for every file first (mixins across all files; the whole <script> before the markup), then resolve."  # 0cc2
+    fields: {}  # 0cc2

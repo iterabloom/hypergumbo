@@ -1,0 +1,22 @@
+- op: create  # 1317
+  at: '2026-10-28T11:29:09Z'  # 1317
+  by: agent  # 1317
+  actor: jgstern_agent  # 1317
+  clock: 1  # 1317
+  nonce: '1317'  # 1317
+  data:  # 1317
+    kind: work_item  # 1317
+    title: "go: in a whole-repo survey a receiver typed as a stdlib net type gets the PACKAGE slot (go:net:0-0:Read for a *net.UnixConn), though the same file alone gets the type; the read then classifies by package orthography"  # 1317
+    status: todo_hard  # 1317
+    priority: 3  # 1317
+    parent:  # 1317
+    tags:  # 1317
+    - go  # 1317
+    - io_boundary  # 1317
+    - module_key  # 1317
+    isbefore: []  # 1317
+    duplicate_of: []  # 1317
+    not_duplicate_of: []  # 1317
+    pr_ref:  # 1317
+    description: "FOUND 2026-10-28 by WI-kalol's corpus A/B (dev 3c53837bb5 vs the WI-kalol branch, ~/hg_meas/kalol/docker-cli).\n\nIn a WHOLE-REPO survey of docker-cli, a receiver typed as a stdlib net type gets the PACKAGE in its module slot, not the type:\n  cli-plugins/socket/socket.go:68   conn, err := pl.l.Accept()   (pl.l is a *net.UnixListener field)  -> go:net:0-0:Accept   (on dev too)\n  cli-plugins/socket/socket.go:162  conn.Read(b), conn from net.DialUnix                              -> go:net:0-0:Read   (branch; external on dev)\nThe SAME file surveyed alone (module github.com/docker/cli, nothing else) emits go:net.UnixListener:0-0:Accept and go:net.UnixConn:0-0:Read. So something present in the full repository (vendor/, another package, a type registry collision -- not investigated) folds the qualified type to its package.\n\nCONSEQUENCE: io_boundary matches the bare `net` slot against the net.Conn rows by name and package-vs-type orthography (WI-monul's question), so the unix connection's read classifies as net_recv (the network medium) where the typed slot classifies as ipc_recv. Both mint untrusted_input; a network-zone claim reads a crossing that is local IPC.\n\nRepro: survey ~/ALL_REPOS/whole_bunch_of_repos/docker-cli and read the edges at socket.go:68 / :162; then survey that file alone in a fresh dir with a go.mod naming github.com/docker/cli."  # 1317
+    fields: {}  # 1317

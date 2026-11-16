@@ -12,7 +12,7 @@ from hypergumbo_lang_extended1.solidity import (
 
 
 # INV-lapas: these tests select the callable they care about; they do not
-# assert its kind. A Solidity function inside a contract is now a ``method``
+# assert its kind. A Solidity function inside a contract is a ``method``
 # and a file-scope one stays a ``function``, so a selector pinned to either
 # literal would silently find nothing and the test would fail for a reason
 # unrelated to its subject. The kind contract itself is owned by
@@ -139,9 +139,9 @@ contract Token {
         ``node_for_symbol`` + the base-class auto-stamp loop (base.py) — so
         Solidity functions are visible to the ``repeat-finder`` structural-clone
         detector, which groups by ``(language, shape_id)`` and drops any
-        ``shape_id`` of None. Before this, Solidity never populated
-        node_for_symbol, so shape_id stayed None on 100% of body-bearing
-        symbols (invisible to clone detection)."""
+        ``shape_id`` of None. A body-bearing symbol missing from
+        node_for_symbol keeps shape_id None and is invisible to clone
+        detection."""
         (temp_repo / "C.sol").write_text("""
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
@@ -743,7 +743,7 @@ class TestSolidityEmitEdges:
     """
 
     def test_emit_creates_edge_to_event(self, temp_repo: Path) -> None:
-        """emit Transfer(...) creates an 'emits' edge from function to event."""
+        """emit Transfer(...) creates a 'references' edge from function to event."""
         (temp_repo / "Token.sol").write_text("""
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
@@ -867,17 +867,23 @@ class TestSoliditySuperCalls:
     """Tests for Solidity super.method() and this.method() call resolution."""
 
     def test_super_call_creates_edge(self, temp_repo: Path) -> None:
-        """super.transfer() should create a calls edge to the local transfer function."""
+        """super.transfer() creates a calls edge to the base's transfer.
+
+        ``super`` starts the search after the calling contract, so the edge
+        joins the override to the function it overrides, not to itself.
+        """
         (temp_repo / "Token.sol").write_text("""
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract Token {
-    function transfer(address to, uint256 amount) public returns (bool) {
+contract Base {
+    function transfer(address to, uint256 amount) public virtual returns (bool) {
         return true;
     }
+}
 
-    function safeTransfer(address to, uint256 amount) public returns (bool) {
+contract Token is Base {
+    function transfer(address to, uint256 amount) public override returns (bool) {
         super.transfer(to, amount);
         return true;
     }
@@ -885,25 +891,13 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        edges = result.edges
-
-        # Find the edge from safeTransfer → transfer
-        safe_transfer = next(
-            (s for s in result.symbols if "safeTransfer" in s.name and s.kind in _CALLABLE_DECL_KINDS),
-            None,
-        )
-        transfer = next(
-            (s for s in result.symbols if s.name.endswith("transfer") and "safe" not in s.name.lower() and s.kind in _CALLABLE_DECL_KINDS),
-            None,
-        )
-        assert safe_transfer is not None
-        assert transfer is not None
+        by_name = {s.name: s for s in result.symbols}
 
         call_edges = [
-            e for e in edges
-            if e.src == safe_transfer.id and e.dst == transfer.id and e.edge_type == "calls"
+            e for e in result.edges
+            if e.src == by_name["Token.transfer"].id and e.edge_type == "calls"
         ]
-        assert len(call_edges) == 1, f"Expected 1 edge from safeTransfer→transfer, found {len(call_edges)}"
+        assert [e.dst for e in call_edges] == [by_name["Base.transfer"].id]
 
     def test_this_call_creates_edge(self, temp_repo: Path) -> None:
         """this.transfer() should create a calls edge to the local transfer function."""
@@ -1205,9 +1199,9 @@ contract Token {
         """WI-jovur: `using X for Y;` at file scope applies to calls inside
         contracts in the same file.
 
-        The existing dispatcher keyed ``using_libraries`` only by the
-        *enclosing contract* of the call site. File-level ``using`` binds
-        to the source unit, not any contract — so when
+        File-level ``using`` binds to the source unit, not any contract.
+        A dispatcher that keys ``using_libraries`` only by the call site's
+        *enclosing contract* gets it wrong: when
         ``_get_enclosing_contract(using_node)`` returns an outer contract
         name (because of tree-sitter nesting quirks), the library is
         silently scoped to that contract and invisible elsewhere.
@@ -1452,10 +1446,9 @@ contract Test {
 
 
 class TestSolidityComplexityAndLoc:
-    """INV-loguk slice B: callable Solidity symbols carry non-null
-    cyclomatic_complexity and line_span (CC table relocated to
-    hypergumbo_core.analyze.cyclomatic). Real-grammar verification of the
-    solidity BRANCH_NODE_TYPES entry."""
+    """INV-loguk: callable Solidity symbols carry non-null
+    cyclomatic_complexity and line_span. Real-grammar verification of the
+    solidity BRANCH_NODE_TYPES entry in hypergumbo_core.analyze.cyclomatic."""
 
     def test_branchy_function_has_cc_and_loc(self, temp_repo: Path) -> None:
         (temp_repo / "C.sol").write_text("""
@@ -1599,8 +1592,9 @@ contract C {
 }
 """)
         names = {s.name for s in self._by_kind(analyze_solidity(temp_repo), "field")}
-        assert "Account.balance" in names
-        assert "Account.addr" in names
+        # Named under the contract and the struct, like every contract member.
+        assert "C.Account.balance" in names
+        assert "C.Account.addr" in names
 
     def test_file_level_constant_emitted_as_variable(self, temp_repo: Path) -> None:
         (temp_repo / "K.sol").write_text("""
@@ -1661,8 +1655,8 @@ contract A {
         assert any("helper" in e.dst for e in calls)
 
 
-# WI-vibad: callable-kind declarations (function / constructor / modifier /
-# event) must carry a typed producer stable_id. They are deliberately excluded
+# WI-vibad: callable-kind declarations (function / method / constructor /
+# modifier / event) must carry a typed producer stable_id. They are deliberately excluded
 # from the name-scoped WI-rihob backstop because a name-only key collides on
 # overloads, so the producer must mint the signature-bearing typed id.
 
@@ -1672,9 +1666,8 @@ def test_callable_kinds_carry_stable_id(tmp_path: Path) -> None:
         "// SPDX-License-Identifier: MIT\n"
         "pragma solidity ^0.8.0;\n"
         # INV-lapas: a file-scope free function AND a contract member, so this
-        # covers both callable kinds. Before the fixture carried only the
-        # member, and when contract members became ``method`` the ``function``
-        # arm silently had nothing to check.
+        # covers both callable kinds. With only the member (a ``method``), the
+        # ``function`` arm would silently have nothing to check.
         "function freeHelper(uint256 x) pure returns (uint256) { return x; }\n"
         "contract Token {\n"
         "    event Transfer(address indexed from, address indexed to, uint256 value);\n"
@@ -1689,7 +1682,7 @@ def test_callable_kinds_carry_stable_id(tmp_path: Path) -> None:
         assert syms, f"no {kind} symbols emitted"
         for s in syms:
             assert (
-                s.stable_id is not None and s.stable_id.startswith("sha256:")
+                s.stable_id is not None and s.stable_id.startswith("hgstableid15:")
             ), f"{kind} {s.name} has stable_id={s.stable_id!r}"
 
 
@@ -1714,8 +1707,8 @@ def test_function_overloads_get_distinct_stable_ids(tmp_path: Path) -> None:
 
 class TestSolidityImportDstIsCanonical:
     """INV-dulah, lang-slot limb: an ``import`` edge's dst is a canonical
-    5-slot id, not the bare path (which finalize's 4-part fallback put in the
-    LANG slot). Mirrors the js/ts import-edge shape."""
+    5-slot id, not the bare path (which finalize's 4-part fallback would put
+    in the LANG slot). Mirrors the js/ts import-edge shape."""
 
     def test_plain_and_named_import_dsts(self, temp_repo: Path) -> None:
         (temp_repo / "Token.sol").write_text("""
@@ -1737,10 +1730,9 @@ contract Token {}
 
 def test_library_has_a_producer_stable_id_not_the_floor(tmp_path: Path) -> None:
     """A ``library`` is no backstop table kind, so with no producer value it
-    rode the WI-motiz floor key (5 openzeppelin libraries on a corpus sample:
-    ``stable_id_stats.floor_cohort`` 5). It mints the producer formula now
-    (``overload_arity.scoped_stable_id``; a library cannot nest, so its scope
-    is empty), which no floor key equals."""
+    would fall to the floor key (WI-motiz). It mints the producer formula
+    instead (``overload_arity.scoped_stable_id``; a library cannot nest, so
+    its scope is empty), which no floor key equals."""
     from hypergumbo_core.analyze.base import floor_stable_id_key
     from hypergumbo_core.overload_arity import scoped_stable_id
     from hypergumbo_lang_extended1.solidity import analyze_solidity

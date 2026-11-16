@@ -1,31 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A C socket send/recv's boundary is a property of its descriptor's FAMILY.
 
-WI-baran, INV-nular's c member from measurement 0012. ``c.yaml`` had
-``sys/socket.{send,sendto,sendmsg}`` under ``net_send`` and
-``{recv,recvfrom,recvmsg}`` under ``net_recv`` unconditionally, and tmux --
-which opens no AF_INET socket anywhere (client.c:122 and server.c:123 are
-AF_UNIX, proc.c:364 is a socketpair) -- reported ``sendmsg`` over its
-client/server pair as a NETWORK send (0012, VACUOUS:KIND-MISDECLARED).
+``c.yaml`` rows ``sys/socket.{send,sendto,sendmsg}`` under ``net_send`` and
+``{recv,recvfrom,recvmsg}`` under ``net_recv``; without the descriptor's origin,
+a ``sendmsg`` over an AF_UNIX client/server pair (tmux's shape) would read as a
+NETWORK send (history: WI-baran, INV-nular).
 
 WHAT DECIDES IT is the socket family, fixed where the descriptor was created:
 ``socket(AF_UNIX, ..)`` / ``socketpair(..)`` is process-local (``pipe``),
 ``socket(AF_INET|AF_INET6, ..)`` is a network stream (``net_stream``). That is
 INV-vaduk's rule for ``unistd.read`` / ``write`` -- "an fd's nature is
 established where it was opened" -- applied one hop back through the fd
-variable, by the same last-binding helper WI-lipis wrote for ``fgets``'s
-stream argument. ONE ANSWER OR NONE: a parameter, a struct field, a kernel
-socket (``PF_NETLINK``, ``PF_PACKET`` -- neither another process nor the
-network) or a family this table does not know stamps nothing, and an
-unstamped call classifies exactly as before (``abstains_to: net_*``).
+variable, by the same last-binding lookup that reads ``fgets``'s stream
+argument. ONE ANSWER OR NONE: a parameter, a struct field, a kernel socket
+(``PF_NETLINK``, ``PF_PACKET`` -- neither another process nor the network) or a
+family this table does not know stamps nothing, and an unstamped call
+classifies by the catalogue row (``abstains_to: net_*``).
 
-MEASURED BEFORE BUILDING, on the twelve C repositories in the corpus that call
-these six functions (324 sites; ``~/hypergumbo_lab_notebook/baran_sockets_09062026``):
-the descriptor argument is a bare identifier at 222 sites, a struct field at
-77, an array element (``sv[0]`` after ``socketpair``) at 10. tmux's own two
-sites pass the descriptor as a PARAMETER (compat/imsg-buffer.c) and abstain
-here: the instance that filed the item needs the cross-function hop
-(WI-famig), and the item records that.
+The descriptor argument may be a bare identifier, a struct field, or an array
+element (``sv[0]`` after ``socketpair``). A descriptor passed in as a PARAMETER
+(tmux's ``msgbuf_write(int fd, ..)``) abstains here: it needs a cross-function
+hop (WI-famig).
 """
 from __future__ import annotations
 
@@ -123,11 +118,11 @@ class TestEveryTransferTakesItsDescriptorFirst:
 
 
 class TestUnprovableOriginsStampNothing:
-    """INV-zumin: one answer or none. Every case here classifies exactly as
-    it did before the stamp existed (the ``abstains_to: net_*`` row)."""
+    """INV-zumin: one answer or none. Every case here stamps nothing and
+    classifies by the catalogue's ``abstains_to: net_*`` row."""
 
     def test_a_parameter_descriptor_stamps_nothing(self, tmp_path):
-        """tmux's two live sites: ``msgbuf_write(int fd, ..)`` / ``recvmsg(fd, ..)``."""
+        """tmux's shape: ``msgbuf_write(int fd, ..)`` / ``recvmsg(fd, ..)``."""
         assert _kind(tmp_path, HDR + "void f(int fd, struct msghdr *m) {\n"
                      "  sendmsg(fd, m, 0);\n}\n", "sendmsg") is None
 
@@ -226,9 +221,8 @@ class TestOriginLookupEdgesThatReturnNothing:
         so there is no body for the origin lookup to search. The lookup runs per
         CALL and must survive that rather than raise, and it stamps nothing.
 
-        Since INV-bamij the call itself IS emitted, anchored on the file (it
-        used to be dropped, and this test asserted the empty edge set); what is
-        pinned now is that the edge carries no origin stamp.
+        The call itself IS emitted, anchored on the file (INV-bamij); what is
+        pinned is that the edge carries no origin stamp.
         """
         (tmp_path / "main.c").write_text(
             HDR + "int sv[2];\nchar b[1];\n"

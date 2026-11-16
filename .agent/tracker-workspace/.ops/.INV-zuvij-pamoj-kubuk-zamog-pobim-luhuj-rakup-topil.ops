@@ -20,3 +20,25 @@
     fields:  # 7716
       statement: "The per-PR CI pytest step never passes a run that executed zero tests"  # 7716
       root_cause: "the step trusts pytest's exit code alone; all-skipped exits 0 and the step counts no executed tests"  # 7716
+- op: discuss  # 9632
+  at: '2026-10-29T07:46:16Z'  # 9632
+  by: agent  # 9632
+  actor: jgstern_agent  # 9632
+  clock: 2  # 9632
+  nonce: '9632'  # 9632
+  message: "PREMISE CHECK 2026-10-29 (dev 4892851370). VERDICT: CURRENT; still violated, now reproduced behaviorally, not only read. The pytest step's manifest block was extracted from .woodpecker/woodpecker.yml and executed by tests/test_ci_pytest_selection_gate.py's own _sandbox/_run harness (real block, replaced PATH), with a stub pytest that prints a real all-skipped result line ('1 skipped in 0.01s') and exits 0, which is pytest's status for an all-skipped run (smart-test's own comment at scripts/smart-test:543 states the same). Result: pytest invoked, step exit 0 -- passed. The block still checks only TEST_EXIT == 5 (woodpecker.yml ~:623) and has no executed-test count (no --junit-xml, no result-line check). The dormant .github/workflows/ci.yml still exists with the same shape (not re-read in detail). Title, statement, root_cause and fix sketch stand. Proposed to the owner: P3 -> P2 (a per-PR gate that cannot fail on this input)."  # 9632
+- op: update  # 05f5
+  at: '2026-10-29T07:58:17Z'  # 05f5
+  by: agent  # 05f5
+  actor: jgstern_agent  # 05f5
+  clock: 3  # 05f5
+  nonce: 05f5  # 05f5
+  set:  # 05f5
+    status: satisfied  # 05f5
+- op: discuss  # 6b67
+  at: '2026-10-29T07:58:17Z'  # 6b67
+  by: agent  # 6b67
+  actor: jgstern_agent  # 6b67
+  clock: 4  # 6b67
+  nonce: 6b67  # 6b67
+  message: "Fixed in PR #1937 (dev e98c083991). The per-PR Woodpecker pytest step now passes --junit-xml and, on exit 0, counts executed testcases by smart-test's rule (skip excluded, xfail counted); zero -> exit 5 'ZERO TESTS EXECUTED', no readable report -> exit 1 (fail closed). Behavioral evidence: tests/test_ci_pytest_selection_gate.py EXECUTES the real block extracted from the YAML with a stub pytest that writes the given junit report: all-skipped (exit 0) -> step exit 5; one passed + one skipped -> exit 0 with '1 test(s) executed'; xfail only -> exit 0; no report -> fails. Before the fix the same harness gave step exit 0 on an all-skipped run (premise check 10-29). Mutation-checked: making either new branch pass reds exactly its own test. Production positive control: PR #1937's own CI pytest step (commit ed4b9305) ran the new block under xdist and passed, so the junit report is written and read in the real container. Not changed: the dormant .github/workflows/ci.yml pytest job (GitHub Actions runs only release.yml)."  # 6b67

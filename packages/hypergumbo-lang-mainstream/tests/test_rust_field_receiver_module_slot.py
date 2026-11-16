@@ -1,51 +1,38 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-dizag: a struct-field receiver's EXTERNAL type must reach the module slot.
+"""A struct-field receiver's EXTERNAL type must reach the module slot (WI-dizag).
 
-THE GAP, AND IT IS A DISCARD RATHER THAN A MISSING INFERENCE. Strategy 1.5 in
-``rust.py`` already resolves a ``self.field`` receiver chain to its type, through
-``analyzer.resolve_receiver_type`` + the struct field-type registry. It then uses
-that type ONLY to look up a FIRST-PARTY symbol (``File::write_all``). When the
-field's type is external the lookup misses, ``resolved`` stays False, and **the
-type it just computed is thrown away** — so the call falls through to the
-unresolved branch carrying the bare ``external`` placeholder, and every
-method-kind row in ``rust.yaml`` is unreachable through it.
+A DISCARD, NOT A MISSING INFERENCE. Strategy 1.5 in ``rust.py`` resolves a
+``self.field`` receiver chain to its type through
+``analyzer.resolve_receiver_type`` + the struct field-type registry, and
+``analyzer.resolve_var_field_chain`` does the same for a var-rooted chain
+(``h.f``). The type is used to look up a FIRST-PARTY symbol
+(``File::write_all``); when the field's type is external that lookup misses and
+``resolved`` stays False. Unless the computed type is carried to the unresolved
+branch (``field_receiver_type``), the call keeps the bare ``external``
+placeholder and every method-kind row in ``rust.yaml`` is unreachable through
+it -- the same hazard the ``_var_types`` recovery covers for plain identifier
+receivers (INV-linub L3).
 
-That is the same shape PR #595 fixed for ``_var_types`` (plain identifier
-receivers) and it is INV-linub's L3 residual.
+WHY IT MATTERS: ``write_all`` is ``fs_write``, an auto-derived SINK (whereas
+``fs_read`` is excluded from ``AUTO_SOURCE_LABEL_MAP`` by design), so this
+shape is on the sink side and can change a taint verdict.
 
-WHY IT MATTERS MORE THAN #595 DID: #595 moved io-boundaries 303 → 360 classified
-Rust call sites and moved ZERO taint flows, because the rows it unlocked were
-``host_info_read`` and ``fs_read``, and ``fs_read`` is excluded from
-``AUTO_SOURCE_LABEL_MAP`` by design. ``write_all`` is ``fs_write``, which IS an
-auto-derived SINK — so this shape is on the sink side and can change a verdict.
-Item measurement, 11 Rust repos: ``write_all`` matches 5 catalogued method sites
-and MISSES 125; ``lock`` is the largest single miss at 440.
+THE FIVE RECEIVER SHAPES, each of which must classify as ``fs_write``:
 
-THE FIVE RECEIVER SHAPES, measured on this fixture before the fix
-(``~/hypergumbo_lab_notebook/dizag_rust_08302026/``):
+    A  self.f.write_all(..)                    self-rooted field chain
+    B  h.f.write_all(..), h a typed param      var-rooted field chain
+    C  let c = File::create(..).unwrap()       producer's scoped path
+    D  fn f(d: &mut File)  d.write_all(..)     declared param   [CONTROL]
+    E  let e: File = ..;   e.write_all(..)     annotated let    [CONTROL]
 
-    A  self.f.write_all(..)                    -> external   MISS   <- fixed here
-    B  h.f.write_all(..), h a typed param      -> external   MISS   <- NOT fixed
-    C  let c = File::create(..).unwrap()       -> external   MISS   (WI-lalot)
-    D  fn f(d: &mut File)  d.write_all(..)     -> fs_write   works  [CONTROL]
-    E  let e: File = ..;   e.write_all(..)     -> fs_write   works  [CONTROL]
-
-D and E are PR #595's shapes and already pass; they are pinned so a regression
+D and E are the identifier-receiver shapes; they are pinned so a regression
 there is attributed here rather than discovered later.
 
-B IS DELIBERATELY OUT OF SCOPE AND IS NOT SILENTLY LEFT OUT.
-``resolve_receiver_type`` resolves "only ... chains rooted at a ``self_keywords``
-token. Non-self receivers return None" — so ``h.f`` needs a var-rooted chain
-walk, which Go already has (``_resolve_field_chain``) and Rust does not. That is
-a change in shared ``analyze/base.py`` with a wider blast radius, and it is
-recorded on the item rather than folded in here.
-
-A CAUTION FOR THE FIXTURE, learned by getting it wrong: Rust's ``_var_types`` is
-FILE-scoped and first-writer-wins, so a receiver named ``f`` in one function is
-typed by an annotation on a DIFFERENT function's ``f``. The first cut of this
-fixture used ``f`` everywhere and shape C appeared to pass, because D's
-``d: &mut File`` had already typed the name. Every receiver below has a distinct
-name for that reason.
+A CAUTION FOR THE FIXTURE: Rust's ``_var_types`` is FILE-scoped and
+first-writer-wins, so a receiver named ``f`` in one function is typed by an
+annotation on a DIFFERENT function's ``f``. Sharing a receiver name across
+shapes lets one shape type another (D's ``d: &mut File`` would make C pass
+spuriously). Every receiver below has a distinct name for that reason.
 """
 
 from __future__ import annotations
@@ -127,11 +114,10 @@ def _write_all_boundaries(tmp_path: Path) -> dict[int, str | None]:
 def _line_of(receiver: str) -> int:
     """1-indexed line of ``<receiver>.write_all`` in ``_SOURCE``.
 
-    DERIVED, NOT COUNTED. The first cut hardcoded five line numbers and got one
-    of them wrong by one, which surfaced as a CONTROL failing — indistinguishable
-    at a glance from the fix having broken the prior fix. A hardcoded inventory
-    decays the moment the fixture gains a line; each receiver name is unique
-    precisely so this lookup is unambiguous.
+    DERIVED, NOT COUNTED. A hardcoded line inventory decays the moment the
+    fixture gains a line, and an off-by-one surfaces as a CONTROL failing —
+    indistinguishable at a glance from a real regression. Each receiver name
+    is unique precisely so this lookup is unambiguous.
     """
     needle = f"{receiver}.write_all"
     for i, line in enumerate(_SOURCE.split("\n"), start=1):
@@ -150,9 +136,9 @@ LINE_ANNOTATED_LET = _line_of("e_var")
 class TestFieldReceiverReachesTheCatalogue:
     """Shapes A and B: a field receiver's type must not be discarded.
 
-    A is ``self.f`` (Strategy 1.5, self-rooted, shipped in the first WI-dizag
-    cut). B is ``h.f`` with ``h`` a typed PARAMETER — the var-rooted field
-    chain this change adds. Both resolve ``File`` through the struct
+    A is ``self.f`` (Strategy 1.5, self-rooted). B is ``h.f`` with ``h`` a
+    typed PARAMETER — the var-rooted field chain
+    (``resolve_var_field_chain``). Both resolve ``File`` through the struct
     field-type registry; the only difference is where the root's type comes
     from (``enclosing_type`` for self, ``_var_types`` for a variable).
     """
@@ -184,7 +170,7 @@ class TestFieldReceiverReachesTheCatalogue:
 
 
 class TestThePriorFixStillHolds:
-    """Shapes D and E: PR #595's identifier receivers, pinned as controls.
+    """Shapes D and E: identifier receivers, pinned as controls.
 
     A change that reaches the module slot from a new direction is exactly the
     kind that can disturb the old one. These fail loudly here rather than
@@ -206,22 +192,15 @@ class TestThePriorFixStillHolds:
 
 
 class TestTheShapeThisDidNotFix_NowFixed:
-    """Shape C was recorded as OPEN and is now CLOSED — by WI-papar, not WI-lalot.
+    """Shape C: a receiver typed from an external function's RETURN VALUE.
 
-    The original note read: a receiver typed from an external function's RETURN
-    VALUE (``let c = File::create(..).unwrap()``) is WI-lalot, because "the type
-    is never written down, so no field or var walk can recover it", and it
-    instructed a future editor to move the assertion here rather than delete it
-    when that landed.
-
-    The premise turned out to be wrong in a useful way. The type IS written down
-    — in the PRODUCER's own scoped path, ``File::create`` — and what was missing
-    was not a signature catalogue but the CARRY: Strategy 1.9 already inferred
-    the type and dropped it when the in-repo ``Type::method`` lookup missed, and
-    ``_infer_type_from_rust_rhs`` stripped the path to a bare ``File``. WI-papar
-    supplies both, so the shape closes without needing a row for
-    ``std::fs::File::create`` at all. WI-lalot shipped separately and is not what
-    moved this.
+    In ``let c = File::create(..).unwrap()`` the type IS written down — in the
+    PRODUCER's own scoped path, ``File::create``. ``_infer_type_from_rust_rhs``
+    strips the ``.unwrap()`` / ``?`` wrapper to reach it, and when the in-repo
+    ``Type::method`` lookup misses, the inferred type must be CARRIED into the
+    module slot, qualified as ``std::fs::File`` rather than the bare ``File``.
+    No catalogue row for ``std::fs::File::create`` is needed (history:
+    WI-papar; WI-lalot is a separate item).
     """
 
     def test_external_return_receiver_now_classifies(

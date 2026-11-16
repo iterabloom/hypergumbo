@@ -34,6 +34,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tui_pilot import click as _click
 
 from hypergumbo_tracker.models import (
     CompiledItem,
@@ -660,17 +661,14 @@ class TestLabelMarkup:
     def test_description_with_bracket_substring_does_not_raise(self) -> None:
         """Descriptions containing ``[ ... ]`` substrings render without error.
 
-        Regression for the WI-difij crash: when the user opened the
-        WI-difij detail view, the TUI raised
-        ``MarkupError: Expected markup value (found '--name-only
-        \\$sha)" ]')`` because Rich tried to parse a bracketed shell
-        snippet in the description as a markup tag.  ``Static.update``
-        calls ``visualize`` which in turn calls ``Text.from_markup``,
-        so any user-controlled text embedded in the joined detail
-        lines must be escaped.
+        ``Static.update`` calls ``visualize``, which calls
+        ``Text.from_markup``, so any user-controlled text embedded in the
+        joined detail lines must be escaped; otherwise Rich parses a
+        bracketed shell snippet as a markup tag and raises
+        ``MarkupError: Expected markup value``.
 
-        Uses the exact escape sequence from WI-difij to faithfully
-        reproduce the original parser failure.
+        The description is a shell snippet whose ``[ -z ... ]`` test
+        triggers that parser failure when left unescaped (WI-difij).
         """
         item = CompiledItem(
             id="WI-shellsnippet",
@@ -691,7 +689,7 @@ class TestLabelMarkup:
         lines = _format_detail_lines(item)
         raw = "\n".join(lines)
         # Round-trip through the same code path Static.update uses.
-        # Pre-fix this raises rich.errors.MarkupError.
+        # Without escaping this raises rich.errors.MarkupError.
         plain = Text.from_markup(raw).plain
         # The escaped substring still renders to the original text.
         assert "--name-only" in plain
@@ -891,7 +889,7 @@ class TestFormatActivityLines:
         assert "[/] Human decision" in line
 
     def test_tombstoned_entries_suppressed_with_footer(self) -> None:
-        """WI-zonur: tombstoned messages hidden; footer shows the count."""
+        """Tombstoned messages hidden; footer shows the count (WI-zonur)."""
         from hypergumbo_tracker.models import DiscussionEntry
 
         item = CompiledItem(
@@ -2158,7 +2156,7 @@ class TestStandardEdgeCases:
         # Width 80 (>= 80 for filter), height 18 (compact tier: < 20)
         async with app.run_test(size=(80, 18)) as pilot:
             await _wait_for_table(pilot, app)
-            # Activate text filter directly (f key now opens filter panel)
+            # Activate text filter directly (the f key opens the filter panel)
             app._filter_active = True
             app._apply_layout()
             await pilot.pause()
@@ -2625,30 +2623,25 @@ async def _wait_for_modal(
     This accounts for the asynchronous compose lifecycle when a ModalScreen is
     pushed from ``on_mount``.
 
-    TWO CHANGES, BOTH LEARNED FROM A CI FAILURE THIS HELPER MADE UNREADABLE
-    (INV-bozid). The 2026-08-20 13:00 full-suite cron went red on
-    ``TestLockScreenUnit::test_cancel_returns_none`` with
-    ``assert 'NOT_SET' is None`` -- the ``_ModalTestApp._capture`` sentinel,
-    meaning the dismiss callback never ran at all, so the click never landed on
-    a button. It is not reproducible locally (five consecutive runs of the
-    modal/screen classes pass, 60 each) and it turned a whole-codebase signal
-    carrying three other independent gates red, which is the masking INV-bozid
-    is about.
+    It enforces two rules, because a modal test that drives an unready DOM
+    fails later with an unreadable assertion about a RESULT (typically the
+    ``_ModalTestApp._capture`` ``'NOT_SET'`` sentinel, meaning the dismiss
+    callback never ran) that names neither the widget nor the wait
+    (INV-bozid):
 
-    1. IT NO LONGER GIVES UP SILENTLY. The old loop ran out of rounds and
-       ``return``ed as if it had succeeded, so every caller then drove a DOM
-       that was not ready and failed later with an assertion about a RESULT,
-       naming neither the widget nor the wait. A helper that gives up quietly
-       is a green tick over a hole -- the same note this repo writes about a
-       skip that can be reached by a typo. It now raises, naming what it waited
-       for and for how long.
-    2. IT WAITS FOR LAYOUT, NOT MERE PRESENCE. ``pilot.click(selector)``
-       resolves the widget's screen region and synthesises a mouse event at its
-       centre; a widget that is in the DOM but not yet laid out has a zero-sized
-       region, so the click lands nowhere and no button is pressed -- which is
-       exactly the observed symptom. Presence is necessary and not sufficient,
-       and this is the same presence-is-not-reachability distinction the
-       io-boundary work keeps paying for.
+    1. IT NEVER GIVES UP SILENTLY. When the rounds run out it raises, naming
+       what it waited for and for how long, rather than returning as though
+       it had succeeded. A helper that gives up quietly is a green tick over
+       a hole.
+    2. IT WAITS FOR THE DIALOG'S SIZE, NOT MERE PRESENCE. A widget in the
+       DOM but not laid out has a zero-sized region, and a click there lands
+       nowhere. Presence is necessary and not sufficient.
+
+    A sized dialog is still not a clickable one (WI-mumos): on a starved run
+    the dialog has a size while its buttons report a region where hit-testing
+    finds the dialog itself. That gap is closed at the click, not here --
+    ``tui_pilot.click`` waits until the target is what the compositor finds
+    at the click point, then checks the click landed.
     """
     from textual.css.query import NoMatches
 
@@ -2674,15 +2667,13 @@ async def _wait_for_dismissal(app: Any, timeout: float = 30.0) -> Any:
     is MouseDown/MouseUp/Click on the screen, forwarded to the Button, which
     posts ``Button.Pressed``; that bubbles to the screen's handler, which calls
     ``dismiss``; ``dismiss`` hands the callback to ``app.call_next``. Every
-    hop is a message on some pump's queue. The old shape -- one
-    ``pilot.pause()`` and then read ``app._result`` -- bet that a pause covers
-    all of them. It does not, under load: ``pause`` ends in Textual's
-    ``wait_for_idle``, which calls the process idle when its CPU time stops
-    advancing against wall-clock time, and a worker descheduled on a loaded
-    box looks exactly like an idle one. The read then sees the ``'NOT_SET'``
-    sentinel, which is the 2026-08-20 cron failure of
-    ``TestLockScreenUnit::test_cancel_returns_none`` (``assert 'NOT_SET' is
-    None``) that ``_wait_for_modal``'s layout fix did not cover.
+    hop is a message on some pump's queue. A single ``pilot.pause()``
+    followed by a read of ``app._result`` does not cover all of them under
+    load: ``pause`` ends in Textual's ``wait_for_idle``, which calls the
+    process idle when its CPU time stops advancing against wall-clock time,
+    and a worker descheduled on a loaded box looks exactly like an idle one.
+    The read then sees the ``'NOT_SET'`` sentinel (``assert 'NOT_SET' is
+    None``), a failure ``_wait_for_modal``'s layout wait does not prevent.
 
     So this waits on the CONDITION, not on a tick count: ``_capture`` sets
     ``app._dismissed``, and this awaits it. The timeout is generous because it
@@ -2711,7 +2702,7 @@ class TestDiscussScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#discuss-input").value = "Hello there"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result == "Hello there"
 
@@ -2720,7 +2711,7 @@ class TestDiscussScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2738,7 +2729,7 @@ class TestDiscussScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2751,7 +2742,7 @@ class TestConfirmScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#yes")
+            await _click(pilot, "#yes")
             await _wait_for_dismissal(app)
             assert app._result is True
 
@@ -2760,7 +2751,7 @@ class TestConfirmScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#no")
+            await _click(pilot, "#no")
             await _wait_for_dismissal(app)
             assert app._result is False
 
@@ -2817,7 +2808,7 @@ class TestTierMoveScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2835,7 +2826,7 @@ class TestTierMoveScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2844,7 +2835,7 @@ class TestTierMoveScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result == "demote"
 
@@ -2859,7 +2850,7 @@ class TestNewItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#title-input").value = "New Test Item"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["title"] == "New Test Item"
@@ -2871,7 +2862,7 @@ class TestNewItemScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2880,7 +2871,7 @@ class TestNewItemScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2892,7 +2883,7 @@ class TestNewItemScreenUnit:
             app.screen.query_one("#title-input").value = "Test"
             app.screen.query_one("#priority-input").value = "not-a-number"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["priority"] == 2
@@ -2914,7 +2905,7 @@ class TestNewItemScreenUnit:
             app.screen.query_one("#title-input").value = "With Desc"
             app.screen.query_one("#desc-input").value = "A description"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["description"] == "A description"
@@ -2943,7 +2934,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#title-input").value = "Changed Title"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["title"] == "Changed Title"
@@ -2958,7 +2949,7 @@ class TestEditItemScreenUnit:
             sel = app.screen.query_one("#status-select", Sel)
             sel.value = "in_progress"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["status"] == "in_progress"
@@ -3044,7 +3035,7 @@ class TestEditItemScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3054,7 +3045,7 @@ class TestEditItemScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3066,7 +3057,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#tags-input").value = "quality, new_tag"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert "new_tag" in app._result["add_fields"]["tags"]
@@ -3079,7 +3070,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#tags-input").value = ""
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert "quality" in app._result["remove_fields"]["tags"]
@@ -3092,7 +3083,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#priority-input").value = "5"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["priority"] == 5
@@ -3105,7 +3096,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#priority-input").value = "abc"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3127,7 +3118,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#desc-input").value = "New description"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["description"] == "New description"
@@ -3143,7 +3134,7 @@ class TestParentScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#parent-input").value = "NEW-PARENT"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result == "NEW-PARENT"
 
@@ -3154,7 +3145,7 @@ class TestParentScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#parent-input").value = ""
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result == ""
 
@@ -3163,7 +3154,7 @@ class TestParentScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3187,7 +3178,7 @@ class TestBeforeScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#add-input").value = "NEW-1, NEW-2"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["add"] == ["NEW-1", "NEW-2"]
@@ -3199,7 +3190,7 @@ class TestBeforeScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#remove-input").value = "EXISTING-1"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["remove"] == ["EXISTING-1"]
@@ -3209,7 +3200,7 @@ class TestBeforeScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3218,7 +3209,7 @@ class TestBeforeScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3235,13 +3226,12 @@ class TestBeforeScreenUnit:
 class TestWaitForModalHelper:
     """The helper every modal test depends on must FAIL when its wait fails.
 
-    INV-bozid: a full-suite cron went red on a modal test whose assertion named
-    the RESULT (``assert 'NOT_SET' is None``) rather than the wait, because
-    ``_wait_for_modal`` exhausted its rounds and returned as though it had
-    succeeded. One unreadable failure in one tracker test masked three other
-    independent gates in the same aggregate commit status for a day and a half.
-
-    These two tests are the ones that would have named the real cause.
+    A wait that exhausts its rounds and returns as though it had succeeded
+    lets the test fail later on an assertion about the RESULT (``assert
+    'NOT_SET' is None``) instead of naming the wait, and such an unreadable
+    failure can mask other independent gates sharing the same aggregate CI
+    status (INV-bozid). These tests pin that the helper raises on a missing
+    widget and still returns for a present one.
     """
 
     async def test_it_raises_when_the_widget_never_appears(self) -> None:
@@ -3283,7 +3273,7 @@ async def _one_event_loop_tick(self: Any, delay: float | None = None) -> None:
 class TestWaitForDismissalHelper:
     """A modal test must wait for the RESULT, not for a tick count (WI-ruhul).
 
-    Under the one-tick model the old ``click; pause(); assert app._result``
+    Under the one-tick model a ``click; pause(); assert app._result``
     shape reads the ``'NOT_SET'`` sentinel: a click travels Click -> Button ->
     Pressed (bubbling to the screen) -> ``dismiss`` -> ``app.call_next``,
     several queue hops after the read. ``_wait_for_dismissal`` waits on the
@@ -3304,7 +3294,7 @@ class TestWaitForDismissalHelper:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             monkeypatch.setattr(textual.pilot.Pilot, "pause", _one_event_loop_tick)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await pilot.pause()
             assert app._result == "NOT_SET"
             assert await _wait_for_dismissal(app) is None
@@ -3319,7 +3309,7 @@ class TestWaitForDismissalHelper:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             monkeypatch.setattr(textual.pilot.Pilot, "pause", _one_event_loop_tick)
-            await pilot.click(button)
+            await _click(pilot, button)
             assert await _wait_for_dismissal(app) is None
 
     async def test_it_raises_when_nothing_dismisses_the_modal(self) -> None:
@@ -3328,6 +3318,64 @@ class TestWaitForDismissalHelper:
             await _wait_for_modal(pilot, app)
             with pytest.raises(AssertionError, match="was never dismissed"):
                 await _wait_for_dismissal(app, timeout=0.2)
+
+
+async def _instant_idle(*args: Any, **kwargs: Any) -> None:
+    """A ``wait_for_idle`` that returns at once: the loaded-run model, faithfully.
+
+    Unlike :func:`_one_event_loop_tick`, which replaces all of
+    ``Pilot.pause``, this leaves the rest of ``pause`` running
+    (``_wait_for_screen`` before, ``_on_timer_update`` after), which is what
+    a loaded box does: only the idle check is fooled.
+    """
+    await asyncio.sleep(0)
+
+
+class TestClickWhenClickable:
+    """Click a button only once it is what the compositor finds there (WI-mumos).
+
+    ``_wait_for_modal`` returns once the dialog has a size, which can be
+    before its buttons are where hit-testing finds them; a click in that
+    window lands on ``#modal-dialog`` and the modal is never dismissed.
+    """
+
+    async def test_the_starved_model_reaches_the_hazard(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """REACH: under the model a plain ``pilot.click`` misses the button.
+
+        Without this the test below could pass on a model that starves
+        nothing, and it would prove nothing about loaded runs.
+        """
+        import textual.pilot
+
+        monkeypatch.setattr(textual.pilot, "wait_for_idle", _instant_idle)
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            assert await pilot.click("#cancel") is False
+            with pytest.raises(AssertionError, match="was never dismissed"):
+                await _wait_for_dismissal(app, timeout=0.5)
+
+    @pytest.mark.parametrize("button", ["#cancel", "#submit"])
+    async def test_it_lands_under_the_starved_model(
+        self, monkeypatch: pytest.MonkeyPatch, button: str,
+    ) -> None:
+        import textual.pilot
+
+        monkeypatch.setattr(textual.pilot, "wait_for_idle", _instant_idle)
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await _click(pilot, button)
+            assert await _wait_for_dismissal(app) is None
+
+    async def test_it_raises_when_the_target_never_becomes_clickable(self) -> None:
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            with pytest.raises(AssertionError, match="was not clickable"):
+                await _click(pilot, "#no-such-button", timeout=0.2)
 
 
 class TestLockScreenUnit:
@@ -3340,7 +3388,7 @@ class TestLockScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#lock-input").value = "status, priority"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert set(app._result["lock"]) == {"status", "priority"}
@@ -3352,7 +3400,7 @@ class TestLockScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#unlock-input").value = "status"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["unlock"] == ["status"]
@@ -3362,7 +3410,7 @@ class TestLockScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3371,7 +3419,7 @@ class TestLockScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3512,7 +3560,7 @@ class TestDiscussKeybinding:
                 modal_input = app.screen.query_one("#discuss-input")
                 modal_input.value = "Test discussion"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_discuss.assert_called_once_with(item_id, "Test discussion")
@@ -3527,7 +3575,7 @@ class TestDiscussKeybinding:
             with patch.object(tracker_set, "discuss") as mock_discuss:
                 app.action_discuss()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_discuss.assert_not_called()
 
@@ -3547,7 +3595,7 @@ class TestDiscussKeybinding:
                 modal_input = app.screen.query_one("#discuss-input")
                 modal_input.value = "Test"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 # Error notification shown (no crash)
@@ -3569,7 +3617,7 @@ class TestDiscussKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#discuss-input").value = "Test"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
     async def test_discuss_not_found_error(
@@ -3589,7 +3637,7 @@ class TestDiscussKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#discuss-input").value = "Test"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -3623,7 +3671,7 @@ class TestDiscussClearKeybinding:
             with patch.object(tracker_set, "discuss") as mock_discuss:
                 app.action_discuss_clear()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
                 await pilot.pause()
                 mock_discuss.assert_called_once_with(
@@ -3639,7 +3687,7 @@ class TestDiscussClearKeybinding:
             with patch.object(tracker_set, "discuss") as mock_discuss:
                 app.action_discuss_clear()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#no")
+                await _click(pilot, "#no")
                 await pilot.pause()
                 mock_discuss.assert_not_called()
 
@@ -3657,7 +3705,7 @@ class TestDiscussClearKeybinding:
             ):
                 app.action_discuss_clear()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
 
     async def test_clear_not_found_error(
@@ -3674,7 +3722,7 @@ class TestDiscussClearKeybinding:
             ):
                 app.action_discuss_clear()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
 
 
@@ -3707,7 +3755,7 @@ class TestTierMoveKeybinding:
             with patch.object(tracker_set, "promote") as mock_promote:
                 app.action_tier_move()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 # The mock should have been called (the item is workspace
@@ -3724,7 +3772,7 @@ class TestTierMoveKeybinding:
             with patch.object(tracker_set, "promote") as mock:
                 app.action_tier_move()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock.assert_not_called()
 
@@ -3749,7 +3797,7 @@ class TestTierMoveKeybinding:
             ):
                 app.action_tier_move()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
     async def test_tier_move_human_authority_error(
@@ -3769,7 +3817,7 @@ class TestTierMoveKeybinding:
             ):
                 app.action_tier_move()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -3797,7 +3845,7 @@ class TestNewItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "Brand New Item"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_add.assert_called_once()
@@ -3813,7 +3861,7 @@ class TestNewItemKeybinding:
             with patch.object(tracker_set, "add") as mock_add:
                 app.action_new_item()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_add.assert_not_called()
 
@@ -3831,7 +3879,7 @@ class TestNewItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "Bad Item"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -3867,7 +3915,7 @@ class TestEditItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "Changed Title"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -3881,7 +3929,7 @@ class TestEditItemKeybinding:
             with patch.object(tracker_set, "update") as mock_update:
                 app.action_edit_item()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_update.assert_not_called()
 
@@ -3901,7 +3949,7 @@ class TestEditItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "New Title"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -3922,7 +3970,7 @@ class TestEditItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "New Title"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 # App should still be running (no crash)
                 assert app.is_running
@@ -3966,7 +4014,7 @@ class TestSetParentKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#parent-input").value = "PARENT-ID"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -3987,7 +4035,7 @@ class TestSetParentKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#parent-input").value = ""
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -4003,7 +4051,7 @@ class TestSetParentKeybinding:
             with patch.object(tracker_set, "update") as mock_update:
                 app.action_set_parent()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_update.assert_not_called()
 
@@ -4024,7 +4072,7 @@ class TestSetParentKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#parent-input").value = "X"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -4064,7 +4112,7 @@ class TestEditBeforeKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#add-input").value = "ID-1, ID-2"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -4090,7 +4138,7 @@ class TestEditBeforeKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#remove-input").value = "OLD-ID"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -4108,7 +4156,7 @@ class TestEditBeforeKeybinding:
             with patch.object(tracker_set, "update") as mock_update:
                 app.action_edit_before()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_update.assert_not_called()
 
@@ -4129,7 +4177,7 @@ class TestEditBeforeKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#add-input").value = "X"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -4162,7 +4210,7 @@ class TestLockKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#lock-input").value = "status"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_lock.assert_called_once()
@@ -4178,7 +4226,7 @@ class TestLockKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#unlock-input").value = "priority"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_unlock.assert_called_once()
@@ -4196,7 +4244,7 @@ class TestLockKeybinding:
                 app.screen.query_one("#lock-input").value = "status"
                 app.screen.query_one("#unlock-input").value = "priority"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_lock.assert_called_once()
@@ -4211,7 +4259,7 @@ class TestLockKeybinding:
             with patch.object(tracker_set, "lock") as mock_lock:
                 app.action_toggle_lock()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_lock.assert_not_called()
 
@@ -4231,7 +4279,7 @@ class TestLockKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#lock-input").value = "status"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
     async def test_unlock_not_found_error(
@@ -4250,7 +4298,7 @@ class TestLockKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#unlock-input").value = "status"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -4398,9 +4446,9 @@ class TestOnEditItemCallbackBranches:
     async def test_invalid_tag_value_error_is_caught(
         self, tmp_path: Path,
     ) -> None:
-        """INV-pahoj: when ``trackerset.update`` rejects a kebab-case tag,
-        the TUI's edit-item handler must catch ``ValueError`` and surface
-        it as a user notification rather than letting it propagate."""
+        """When ``trackerset.update`` rejects a kebab-case tag, the TUI's
+        edit-item handler must catch ``ValueError`` and surface it as a
+        user notification rather than letting it propagate (INV-pahoj)."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set(tmp_path)
@@ -4747,7 +4795,7 @@ class TestRepairDriftKeybinding:
                  patch.object(tracker_set, "repair_drift") as mock_repair:
                 app.action_repair_drift()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
                 await pilot.pause()
                 mock_repair.assert_called_once()
@@ -4765,7 +4813,7 @@ class TestRepairDriftKeybinding:
                  patch.object(tracker_set, "repair_drift") as mock_repair:
                 app.action_repair_drift()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#no")
+                await _click(pilot, "#no")
                 await pilot.pause()
                 mock_repair.assert_not_called()
 
@@ -4787,7 +4835,7 @@ class TestRepairDriftKeybinding:
                  ):
                 app.action_repair_drift()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
 
     async def test_repair_drift_no_item_warns(self, tmp_path: Path) -> None:
@@ -5798,7 +5846,7 @@ class TestInlineChat:
             with patch.object(
                 tracker_set, "discuss", wraps=tracker_set.discuss,
             ) as mock_discuss:
-                await pilot.click("#chat-send")
+                await _click(pilot, "#chat-send")
                 await pilot.pause()
                 await pilot.pause()
                 mock_discuss.assert_called_once_with(
@@ -5818,7 +5866,7 @@ class TestInlineChat:
         async with app.run_test(size=(160, 45)) as pilot:
             await _wait_for_std_table(pilot, app)
             with patch.object(tracker_set, "discuss") as mock_discuss:
-                await pilot.click("#chat-send")
+                await _click(pilot, "#chat-send")
                 await pilot.pause()
                 mock_discuss.assert_not_called()
 
@@ -5836,7 +5884,7 @@ class TestInlineChat:
             text_area = app.query_one("#chat-input", TextArea)
             text_area.load_text("test message")
             await pilot.pause()
-            await pilot.click("#chat-send")
+            await _click(pilot, "#chat-send")
             await pilot.pause()
             # No crash; warning notification shown
 
@@ -5858,7 +5906,7 @@ class TestInlineChat:
                 tracker_set, "discuss",
                 side_effect=PermissionError("read-only"),
             ):
-                await pilot.click("#chat-send")
+                await _click(pilot, "#chat-send")
                 await pilot.pause()
                 await pilot.pause()
                 # Error notification shown, no crash
@@ -5911,7 +5959,7 @@ class TestInlineChat:
                 tracker_set, "discuss",
                 side_effect=LockedFieldError("discussion locked"),
             ):
-                await pilot.click("#chat-send")
+                await _click(pilot, "#chat-send")
                 await pilot.pause()
                 await pilot.pause()
                 # No crash; error notification shown
@@ -6104,22 +6152,16 @@ class TestTuiPreferences:
     def test_save_preserves_human_read_state_across_concurrent_writes(
         self, tmp_path: Path,
     ) -> None:
-        """Regression for the line-3307 + non-atomic-write incident
-        (2026-05-31): pressing Shift+< / Shift+> in the TUI used to
-        trigger a v1-schema save that dropped human_read_state from disk;
-        when paired with a non-atomic write that could fail under
-        concurrent activity in the same dir, this silently wiped the
-        user's read-state. The fix passes all v2 kwargs from
-        _move_selected AND uses atomic temp+rename. This test verifies
-        the first half: a save that takes hidden_statuses + display_order
-        as positional but doesn't pass human_read_state must NOT clobber
-        the on-disk human_read_state if a prior save established it.
+        """A positional-only (v1-schema) save drops human_read_state.
 
-        NB: this validates the new contract — callers like _move_selected
-        in the TUI now always pass human_read_state. The bare-positional
-        form documented by this test remains backward-compatible (v1
-        schema, no human_read_state field on disk) but the line-3307
-        call site no longer uses it.
+        Calling ``_save_tui_preferences`` with only hidden_statuses +
+        display_order writes a v1 file with no human_read_state field, so
+        a prior v2 save's read-state is lost. That is why TUI callers such
+        as ``_move_selected`` (Shift+< / Shift+>) always pass the v2 kwargs,
+        and why the write is atomic (temp+rename): together they keep the
+        user's read-state from being silently wiped. This test pins the
+        v1 behavior so anyone changing the v1/v2 boundary has to think
+        about the human_read_state implication.
         """
         p = tmp_path / "prefs.json"
         # First save: full v2 with human_read_state
@@ -6127,16 +6169,13 @@ class TestTuiPreferences:
             p, {"done"}, ["A"],
             human_read_state={"WI-foo": {"read": True, "discussion_len": 3}},
         )
-        # Second save: only positional (v1 schema). This is the call
-        # shape line 3307 used to use. The on-disk file will lose
-        # human_read_state on this write — this test pins that
-        # behavior so anyone changing the v1/v2 boundary thinks about
-        # the human_read_state implication.
+        # Second save: only positional (v1 schema). The on-disk file
+        # loses human_read_state on this write.
         assert _save_tui_preferences(p, {"done"}, ["A"])
         loaded = _load_tui_preferences(p)
         # After a v1-schema save, the load fills human_read_state with
-        # the {} default (the field is absent from disk). The new
-        # _move_selected call site avoids this by passing v2 kwargs.
+        # the {} default (the field is absent from disk). _move_selected
+        # avoids this by passing v2 kwargs.
         assert loaded["human_read_state"] == {}
 
     def test_v2_roundtrip_with_tags_and_sessions(self, tmp_path: Path) -> None:
@@ -6281,7 +6320,7 @@ def _make_tracker_set_with_resolved(tmp_path: Path) -> TrackerSet:
 
 
 class TestStatusToggles:
-    """Test status toggle via _toggle_status (previously c/w keybindings)."""
+    """Test status toggle via _toggle_status."""
 
     @pytest.fixture()
     def tracker_set(self, tmp_path: Path) -> TrackerSet:
@@ -6479,10 +6518,9 @@ class TestManualReorder:
     async def test_move_preserves_human_read_state_on_disk(
         self, tracker_set: TrackerSet,
     ) -> None:
-        """Regression for 2026-05-31 incident: Shift+< / Shift+> used to
-        trigger a v1-schema save that dropped human_read_state from
-        disk. Verifies that after a move action, the on-disk
-        human_read_state is preserved (not absent, not empty)."""
+        """A Shift+< / Shift+> move saves a v2-schema prefs file, so the
+        on-disk human_read_state survives (not absent, not empty). A
+        v1-schema save would drop it."""
         import json
         from hypergumbo_tracker.tui import TrackerApp
 
@@ -8303,7 +8341,7 @@ class TestFilterPanel:
             assert "tags hidden: 2" in str(plain)
 
     async def test_c_and_w_keys_removed(self, tmp_path: Path) -> None:
-        """The c and w keybindings no longer toggle done/wont_do directly."""
+        """The c and w keys do not toggle done/wont_do directly."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set_with_tags(tmp_path)
@@ -8552,7 +8590,8 @@ class TestFilterPanel:
             assert line_for_first is not None
             first_key = app._filter_entries[0][0]
             initial_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
-            await pilot.click(
+            await _click(
+                pilot,
                 "#std-filter-content", offset=(2, line_for_first),
             )
             await pilot.pause()
@@ -8578,7 +8617,7 @@ class TestFilterPanel:
             await pilot.pause()
             initial_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
             # Line 0 is the "Filters Active" header — not in mapping
-            await pilot.click("#std-filter-content", offset=(2, 0))
+            await _click(pilot, "#std-filter-content", offset=(2, 0))
             await pilot.pause()
             after_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
             assert initial_hidden == after_hidden
@@ -8672,7 +8711,8 @@ class TestFilterPanel:
             initial_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
             initial_hide_tagged = app._hide_tagged
             # Wide mode uses #filter-panel-content
-            await pilot.click(
+            await _click(
+                pilot,
                 "#filter-panel-content", offset=(2, beyond_9_line),
             )
             await pilot.pause()
@@ -8786,7 +8826,7 @@ class TestDisambiguateScreen:
             for _ in range(20):
                 await pilot.pause()
             # Click Cancel button via pilot
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await pilot.pause()
             assert result_holder == [None]
 
@@ -10099,11 +10139,11 @@ class TestCheckExternalWrites:
     async def test_scroll_offset_preserved_after_tui_initiated_write(
         self, tmp_path: Path,
     ) -> None:
-        """Regression test for the latent 'submit resets scroll to top' bug.
+        """A TUI-initiated write (e.g. submit) does not reset scroll to top.
 
-        _reload_after_write now captures and restores scroll offset, so
-        the same mechanism that fixes the background-reload case also
-        fixes the existing TUI-initiated-write case for free.
+        _reload_after_write captures and restores the scroll offset, so
+        the mechanism that covers background reloads covers TUI-initiated
+        writes too.
         """
         from hypergumbo_tracker.tui import TrackerApp
 
@@ -10209,6 +10249,19 @@ class TestCheckExternalWrites:
         # widget id raises NoMatches, which _capture_active_scroll catches.
         assert app._capture_active_scroll() is None
 
+    def test_cursor_helpers_handle_no_table_mounted(
+        self, tmp_path: Path,
+    ) -> None:
+        """Before mount there is no table: the cursor-row capture returns
+        None and the cursor counts as not visible, without raising."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        assert app._active_table() is None
+        assert app._capture_cursor_row() is None
+        assert app._cursor_in_view() is False
+
     def test_restore_active_scroll_noop_when_saved_is_none(
         self, tmp_path: Path,
     ) -> None:
@@ -10297,7 +10350,7 @@ class TestCheckExternalWrites:
 
 
 class TestEditModeBindingAndBanner:
-    """WI-zonur phase 3: Ctrl-E toggle binding and edit-mode banner widget."""
+    """Ctrl-E toggle binding and edit-mode banner widget (WI-zonur)."""
 
     @pytest.fixture()
     def tracker_set(self, tmp_path: Path) -> TrackerSet:
@@ -10364,3 +10417,589 @@ class TestEditModeBindingAndBanner:
             assert tracker_set.edit_mode_status()["on"] is False
             # And the failure must have been notified.
             assert any("failed" in m.lower() for m, _ in captured)
+
+
+# ---------------------------------------------------------------------------
+# Preferences live in the user's state home, end to end (INV-rugid)
+# ---------------------------------------------------------------------------
+
+
+async def test_the_app_reads_and_writes_the_user_location(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """End to end through TrackerApp: the in-repo file is picked up, and the
+    save lands in the user's state home, not the checkout."""
+    import json
+
+    from hypergumbo_tracker.tui import TrackerApp
+
+    state = tmp_path / "xdg-state"
+    monkeypatch.setenv("XDG_STATE_HOME", str(state))
+    tracker_set = _make_tracker_set(tmp_path)
+    legacy = tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps({"version": 1, "hidden_statuses": ["done"],
+                                  "display_order": []}), encoding="utf-8")
+    app = TrackerApp(tracker_set=tracker_set)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _wait_for_std_table(pilot, app)
+        assert app._hidden_statuses == {"done"}
+    assert app._prefs_path.is_relative_to(state)
+    assert app._prefs_path.is_file()
+
+
+# ---------------------------------------------------------------------------
+# In-place list rebuilds keep the viewport (Mark Read jumped to the top)
+# ---------------------------------------------------------------------------
+
+
+def _make_unread_tracker_set(
+    tmp_path: Path,
+    n_items: int,
+    *,
+    tagged_first: int = 0,
+    done_unread: bool = False,
+) -> TrackerSet:
+    """A tall TrackerSet whose items all carry an agent discussion entry,
+    so every row is human-unread and Mark Read has something to do.
+
+    ``tagged_first`` gives the first N items the tag ``batch_x`` and no
+    discussion, so they are read and hiding the tag really removes them
+    (an unread hidden item would be appended back at the end). ``done_unread`` adds one unread
+    ``done`` item, which a hidden ``done`` status appends as a ghost row at
+    the end and Mark Read then removes.
+    """
+    from helpers import make_test_config_dict
+    from unittest.mock import patch as _patch
+    from hypergumbo_tracker import store as _store_mod
+    import yaml as _yaml
+
+    root = tmp_path / ".agent"
+    for d in [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+    (root / "tracker" / "config.yaml").write_text(
+        _yaml.dump(make_test_config_dict()),
+    )
+    ts = TrackerSet(root, config=_make_config())
+    with _patch.object(
+        _store_mod, "resolve_actor", return_value=("agent", "test_agent"),
+    ):
+        for i in range(n_items):
+            extra: dict[str, Any] = (
+                {"tags": ["batch_x"]} if i < tagged_first else {}
+            )
+            item_id = ts.add(
+                kind="work_item",
+                title=f"Item {i:02d}",
+                status="todo_hard",
+                priority=2,
+                **extra,
+            )
+            if not extra:
+                ts.discuss(item_id, "agent note")
+        if done_unread:
+            item_id = ts.add(
+                kind="work_item", title="Closed but unread",
+                status="done", priority=2,
+            )
+            ts.discuss(item_id, "agent note")
+    return ts
+
+
+def _cursor_row_visible(table: Any) -> bool:
+    """True when the table's cursor row lies inside its viewport."""
+    region = table._get_row_region(table.cursor_row)
+    header = table.header_height if table.show_header else 0
+    top = table.scroll_y
+    bottom = top + table.scrollable_content_region.height - header
+    return top <= region.y - header < bottom
+
+
+async def _settle(pilot: Any, rounds: int = 4) -> None:
+    for _ in range(rounds):
+        await pilot.pause()
+
+
+def _move_to_row(table: Any, row: int) -> None:
+    table.move_cursor(row=row, scroll=False)
+
+
+class TestRebuildKeepsViewport:
+    """A rebuild of the item list in place (Mark Read / Mark Unread, filter
+    and display toggles, reorder) keeps the scroll offset and the cursor's
+    item, and keeps the cursor visible when the list changes under it."""
+
+    async def test_mark_read_button_keeps_scroll_offset(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp, _is_human_unread
+        from textual.widgets import Button
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=90)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=30, animate=False, immediate=True)
+            _move_to_row(table, 35)
+            await _settle(pilot)
+            captured_y = table.scroll_y
+            assert captured_y == 30
+            target = app._selected_item_id
+            app.query_one("#mark-read", Button).press()
+            await _settle(pilot)
+            item = next(i for i in app._items if i.id == target)
+            assert _is_human_unread(item, app._human_read_state) is False
+            table = app.query_one("#std-table")
+            assert table.scroll_y == captured_y
+            assert app._selected_item_id == target
+            assert table.cursor_row == 35
+
+    @pytest.mark.parametrize("rebuild", [
+        lambda app: app._mark_human_unread(app._selected_item_id),
+        lambda app: app.action_toggle_full_ids(),
+        lambda app: app._toggle_status("wont_do"),
+        lambda app: app._toggle_tag("no_such_tag"),
+        lambda app: app.action_toggle_edit_mode(),
+        lambda app: app._clear_all_filters(),
+        lambda app: app._restore_last_filters(),
+    ], ids=[
+        "mark_unread", "toggle_full_ids", "toggle_status", "toggle_tag",
+        "toggle_edit_mode", "clear_filters", "restore_filters",
+    ])
+    async def test_in_place_rebuild_keeps_scroll_offset(
+        self, tmp_path: Path, rebuild: Any,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=60)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=20, animate=False, immediate=True)
+            _move_to_row(table, 24)
+            await _settle(pilot)
+            captured_y = table.scroll_y
+            assert captured_y == 20
+            target = app._selected_item_id
+            rebuild(app)
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            assert table.scroll_y == captured_y
+            assert app._selected_item_id == target
+
+    async def test_reorder_keeps_scroll_offset(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=60)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=20, animate=False, immediate=True)
+            _move_to_row(table, 24)
+            await _settle(pilot)
+            target = app._selected_item_id
+            app.action_move_down()
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            assert table.scroll_y == 20
+            assert app._selected_item_id == target
+            assert table.cursor_row == 25
+
+    async def test_rebuild_brings_cursor_into_view_when_rows_above_vanish(
+        self, tmp_path: Path,
+    ) -> None:
+        """Hiding a tag that covers every row above the cursor moves the
+        cursor's item to row 0. The restored offset is clamped to the
+        shorter list, which can still leave row 0 above the viewport, so
+        the rebuild scrolls just far enough to show the cursor."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=100, tagged_first=60)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            first_untagged = next(
+                idx for idx, rk in enumerate(table.rows)
+                if "batch_x" not in next(
+                    i for i in app._items if i.id == str(rk.value)
+                ).tags
+            )
+            table.scroll_to(y=first_untagged - 2, animate=False, immediate=True)
+            _move_to_row(table, first_untagged)
+            await _settle(pilot)
+            target = app._selected_item_id
+            app._toggle_tag("batch_x")
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            assert app._selected_item_id == target
+            assert table.row_count == 40
+            assert table.cursor_row == 0
+            assert _cursor_row_visible(table)
+
+    async def test_mark_read_on_vanishing_row_keeps_cursor_position(
+        self, tmp_path: Path,
+    ) -> None:
+        """An unread item hidden by the status filter shows as an extra row
+        at the end; Mark Read removes it. The cursor stays at the same row
+        index (clamped to the shorter list) rather than jumping to row 0,
+        and the viewport does not jump to the top."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=60, done_unread=True)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_statuses = {"done"}
+            app._reload_after_write()
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            last = table.row_count - 1
+            assert str(list(table.rows)[last].value) in app._unread_override_ids
+            table.move_cursor(row=last)
+            await _settle(pilot)
+            captured_y = table.scroll_y
+            assert captured_y > 0
+            app._mark_human_read(app._selected_item_id)
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            assert table.row_count == last
+            assert table.cursor_row == last - 1
+            assert table.scroll_y > 0
+            assert _cursor_row_visible(table)
+
+
+# ---------------------------------------------------------------------------
+# Multi-select (Shift+click / Space) and batch Mark Read / Mark Unread
+# ---------------------------------------------------------------------------
+
+
+async def _click_row(
+    pilot: Any, table: Any, row: int, *, shift: bool = False,
+) -> None:
+    """Click the Title column of visible *row* in *table*."""
+    header = table.header_height if table.show_header else 0
+    y = header + row - int(table.scroll_y)
+    x = sum(
+        col.get_render_width(table) for col in table.ordered_columns
+        if col.key.value != "title"
+        and table.ordered_columns.index(col) < next(
+            i for i, c in enumerate(table.ordered_columns)
+            if c.key.value == "title"
+        )
+    ) + 2
+    await _click(pilot, table, offset=(x, y), shift=shift)
+    await _settle(pilot)
+
+
+def _row_id(table: Any, row: int) -> str:
+    return str(list(table.rows)[row].value)
+
+
+class TestMultiSelect:
+    """Shift+click (or Space) builds a multi-selection on the std table; the
+    right panel shows a generic message; Mark Read / Mark Unread apply to
+    every selected item at once."""
+
+    async def test_shift_click_seeds_with_highlighted_row_and_adds_clicked(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=12)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.move_cursor(row=1)
+            await _settle(pilot)
+            await _click_row(pilot, table, 4, shift=True)
+            assert app._multi_selected == {_row_id(table, 1), _row_id(table, 4)}
+            assert table.cursor_row == 4
+            detail = str(app.query_one("#std-detail-content", Static).render())
+            assert "2 items selected" in detail
+            await _click_row(pilot, table, 6, shift=True)
+            assert len(app._multi_selected) == 3
+            assert "3 items selected" in str(
+                app.query_one("#std-detail-content", Static).render(),
+            )
+
+    async def test_shift_click_on_selected_row_removes_it(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=12)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 3, shift=True)
+            await _click_row(pilot, table, 5, shift=True)
+            assert app._multi_selected == {
+                _row_id(table, 0), _row_id(table, 3), _row_id(table, 5),
+            }
+            await _click_row(pilot, table, 3, shift=True)
+            assert app._multi_selected == {_row_id(table, 0), _row_id(table, 5)}
+
+    async def test_shift_click_on_highlighted_row_selects_just_it(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=6)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 0, shift=True)
+            assert app._multi_selected == {_row_id(table, 0)}
+            assert "1 item selected" in str(
+                app.query_one("#std-detail-content", Static).render(),
+            )
+
+    async def test_selected_rows_carry_a_marker(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 2, shift=True)
+
+            def num(row: int) -> str:
+                cell = table.get_cell(list(table.rows)[row], "row_num")
+                return cell.plain if hasattr(cell, "plain") else str(cell)
+
+            assert num(0).startswith("✓")
+            assert num(2).startswith("✓")
+            assert not num(1).startswith("✓")
+            # The marker survives a cursor move (chain highlight rewrites
+            # the # column on every highlight) and a rebuild.
+            await pilot.press("down")
+            await _settle(pilot)
+            app._rebuild_in_place()
+            await _settle(pilot)
+            assert num(0).startswith("✓")
+            assert num(2).startswith("✓")
+
+    async def test_plain_click_clears_the_selection(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 2, shift=True)
+            assert app._multi_selected
+            await _click_row(pilot, table, 5)
+            assert app._multi_selected == set()
+            assert table.cursor_row == 5
+            detail = str(app.query_one("#std-detail-content", Static).render())
+            assert "selected" not in detail
+            assert app._selected_item_id == _row_id(table, 5)
+
+    async def test_escape_clears_the_selection(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 2, shift=True)
+            table.focus()
+            await pilot.press("escape")
+            await _settle(pilot)
+            assert app._multi_selected == set()
+            assert "selected" not in str(
+                app.query_one("#std-detail-content", Static).render(),
+            )
+
+    async def test_space_toggles_the_highlighted_row(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.focus()
+            await pilot.press("space")
+            await pilot.press("down", "down")
+            await pilot.press("space")
+            await _settle(pilot)
+            assert app._multi_selected == {_row_id(table, 0), _row_id(table, 2)}
+            await pilot.press("space")
+            await _settle(pilot)
+            assert app._multi_selected == {_row_id(table, 0)}
+
+    async def test_mark_read_applies_to_every_selected_item(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp, _is_human_unread
+        from textual.widgets import Button
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=12)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.move_cursor(row=1)
+            await _settle(pilot)
+            for row in (3, 7):
+                await _click_row(pilot, table, row, shift=True)
+            chosen = {_row_id(table, r) for r in (1, 3, 7)}
+            assert app._multi_selected == chosen
+            app._save_human_read_state = MagicMock(  # type: ignore[method-assign]
+                wraps=app._save_human_read_state,
+            )
+            app.query_one("#mark-read", Button).press()
+            await _settle(pilot)
+            by_id = {i.id: i for i in app._items}
+            for item_id, item in by_id.items():
+                assert _is_human_unread(item, app._human_read_state) is (
+                    item_id not in chosen
+                )
+            assert app._save_human_read_state.call_count == 1
+            # The selection stays, so Mark Unread can undo it in one click.
+            assert app._multi_selected == chosen
+            app.query_one("#mark-unread", Button).press()
+            await _settle(pilot)
+            for item in app._items:
+                assert _is_human_unread(item, app._human_read_state) is True
+
+    async def test_mark_read_with_selection_keeps_scroll_offset(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Button
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=90)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=30, animate=False, immediate=True)
+            table.move_cursor(row=35, scroll=False)
+            await _settle(pilot)
+            await _click_row(pilot, table, 38, shift=True)
+            assert table.scroll_y == 30
+            app.query_one("#mark-read", Button).press()
+            await _settle(pilot)
+            assert app.query_one("#std-table").scroll_y == 30
+
+    async def test_selection_drops_items_that_leave_the_list(
+        self, tmp_path: Path,
+    ) -> None:
+        """Mark Read on a selected unread row that a filter hides removes
+        that row; the selection keeps only what is still listed, so a later
+        batch never acts on something the user can no longer see."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Button, Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=5, done_unread=True)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_statuses = {"done"}
+            app._reload_after_write()
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            ghost = table.row_count - 1
+            ghost_id = _row_id(table, ghost)
+            assert ghost_id in app._unread_override_ids
+            await _click_row(pilot, table, ghost, shift=True)
+            assert ghost_id in app._multi_selected
+            app.query_one("#mark-read", Button).press()
+            await _settle(pilot)
+            assert ghost_id not in app._multi_selected
+            assert app._multi_selected == {_row_id(table, 0)}
+            assert "1 item selected" in str(
+                app.query_one("#std-detail-content", Static).render(),
+            )
+
+    async def test_shift_click_on_header_is_ignored(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=5)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click(pilot, table, offset=(10, 0), shift=True)
+            await _settle(pilot)
+            assert app._multi_selected == set()
+
+    async def test_space_outside_the_std_table_does_nothing(
+        self, tmp_path: Path,
+    ) -> None:
+        """Multi-select lives on the standard/wide table only: in compact
+        tier, and in tree view, Space is a no-op."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=5)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await pilot.pause()
+            app.action_toggle_select()
+            assert app._multi_selected == set()
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app.action_toggle_tree()
+            await _settle(pilot)
+            app.action_toggle_select()
+            assert app._multi_selected == set()
+
+    async def test_plain_click_without_selection_is_an_ordinary_click(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 3)
+            assert app._multi_selected == set()
+            assert table.cursor_row == 3
+            assert app._selected_item_id == _row_id(table, 3)
+
+    async def test_resize_to_compact_drops_the_selection(
+        self, tmp_path: Path,
+    ) -> None:
+        """Compact tier shows a different table with no multi-select, so a
+        tier change that rebuilds into it drops the selection."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 2, shift=True)
+            assert app._multi_selected
+            await pilot.resize_terminal(50, 18)
+            await _settle(pilot)
+            assert app._layout_tier == "compact"
+            assert app._multi_selected == set()

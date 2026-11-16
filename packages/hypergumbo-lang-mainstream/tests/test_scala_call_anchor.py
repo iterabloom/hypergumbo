@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-midag, scala: a call edge's src is the function whose span contains it.
 
-The enclosing lookup keyed on the short name, which the ``apply`` of every
-companion in a file shares, as does ``show`` across tapir's EndpointIO.scala
-classes. On a pinned 26-repo run, 964 of 16,531 scala call edges named a src
-whose span does not contain the call. Found by position now, like kotlin and
-elixir.
+The enclosing lookup finds the declaration by position, like kotlin and
+elixir. A lookup keyed on the short name -- which the ``apply`` of every
+companion in a file shares, as does a method like ``show`` defined in several
+classes of one file -- names a src whose span does not contain the call.
 """
 from __future__ import annotations
 

@@ -7,18 +7,18 @@ scope chain plus structural inputs), the backstop FLOOR key
 ``make_declaration_stable_id(kind, language, path, name)`` when no producer
 computed one and that key is unique in the file, or null when the floor key is
 shared. A floor value carries no arity, decorators or scope chain, and a null is
-an identity the run could not back. That is the WI-tusad defect: two same-name
-overloads, clauses or nested functions in one file null each other, and adding
-a sibling turns a floor value into a null. It is not confined to callables: the
-same ``ARG`` in two Dockerfile stages, ``.btn`` under two ``@media`` rules, a
-``[linux]`` and a ``[macos]`` just recipe did the same, and a symbol a linker
-mints with a language (a gRPC service, a view template) is minted after the
-backstop ran and was null outright (INV-fufij).
+an identity the run could not back. That is the defect this gate ratchets out
+(WI-tusad): two same-name overloads, clauses or nested functions in one file
+null each other, and adding a sibling turns a floor value into a null. It is
+not confined to callables: the same ``ARG`` in two Dockerfile stages, ``.btn``
+under two ``@media`` rules, a ``[linux]`` and a ``[macos]`` just recipe do the
+same, and a symbol a linker mints with a language (a gRPC service, a view
+template) is minted after the backstop ran, so it is null unless its minter
+stamps a stable_id (INV-fufij).
 
-:func:`floor_census` counts, per ``(language, kind)`` over EVERY kind (the gate
-began with the callable and member kinds; B8a widened it), the records riding
-the floor (``floor``: the id equals its recomputed floor key) and the records
-left null (``null``). It reads ``analyze.base.floor_stable_id_key``, the one
+:func:`floor_census` counts, per ``(language, kind)`` over EVERY kind, the
+records riding the floor (``floor``: the id equals its recomputed floor key)
+and the records left null (``null``). It reads ``analyze.base.floor_stable_id_key``, the one
 definition the backstop stamps with and ``spec_validator.compute_stable_id_stats``
 discloses with, so the gate cannot drift from either. A table kind (``file``,
 ``class``, ``template`` ...) has no floor key, so only its nulls count. ``null``
@@ -28,36 +28,33 @@ with ``include_docs``, because the default view drops the doc and config kinds
 (CSS selectors, TOML tables, LaTeX sections) the census must see.
 
 WHY A SECOND CHECK, ON DELETION. A zero on one sample says nothing about an
-overloading language until a same-name sibling exists (the 2026-10-03 audit:
-adding one overload turned cuda/glsl/julia/fortran from 0 nulls into 2). And a
-producer formula can still tie two siblings: the C-family ``parameter_list``
-sits under the declarator, so ``compute_stable_id`` on the definition hashes
-``param_count 0`` for both overloads, the per-file split pass then numbers them
-by emission order, and deleting the first renumbers the second. So each
-language's fixture carries an EARLIER same-name sibling, and
-:func:`sibling_deletion_moves` compares a run with it against a run without it:
-every symbol (of any kind) that survives the deletion must hold the same
-non-null stable_id in both, matched on its own position. A null in either run is reported as well, because the
-contract the campaign ratchets to is "no null", not "no change"; so is a
+overloading language until a same-name sibling exists: adding one overload can
+turn a language's 0 nulls into 2. And a producer formula can still tie two
+siblings: if a C-family producer hashes the definition, where
+``parameter_list`` does not sit (it sits under the declarator), both overloads
+hash ``param_count 0``, the per-file split pass then numbers them by emission
+order, and deleting the first renumbers the second. So each language's fixture
+carries an EARLIER same-name sibling, and :func:`sibling_deletion_moves`
+compares a run with it against a run without it: every symbol (of any kind)
+that survives the deletion must hold the same non-null stable_id in both,
+matched on its own position. A null in either run is reported as well, because
+the contract the gate ratchets to is "no null", not "no change"; so is a
 surviving symbol with no counterpart (an analyzer that drops a same-name
-sibling, or one whose span is wrong, as Twig's was). A producer that hashed
-LINE NUMBERS (the doc/markup family on ``make_doc_stable_id``) or an
-occurrence index failed here on ANY earlier deletion; fixing a value a producer
-already computes is a scheme bump (ADR-0035 §6), and the WI-tusad bump did it
-once for every language this check listed.
+sibling, or one whose span is wrong). A producer that hashes LINE NUMBERS or an
+occurrence index fails here on ANY earlier deletion; fixing a value a producer
+already computes is a scheme bump (ADR-0035 §6).
 
 WHY A THIRD RUN, IN ANOTHER DIRECTORY. ``stable_id`` must not depend on where
 the repository is checked out: ADR-0035 hashes the repo-relative path. A
-producer that folded the ABSOLUTE path (Solidity's every id, Kotlin's top-level
-``val``) gave the same file two identities in two clones, and the deletion
-check above only caught it by accident (its two runs sit in two directories).
-:func:`location_dependent_ids` compares the with-sibling run against the same
-files written under a deeper, differently named root, and must find nothing.
+producer that folds the ABSOLUTE path gives the same file two identities in two
+clones, which the deletion check above catches only incidentally (its two runs
+sit in two directories). :func:`location_dependent_ids` compares the
+with-sibling run against the same files written under a deeper, differently
+named root, and must find nothing.
 
 WHY A GUARD OVER THE FIXTURES THEMSELVES (INV-punig). The deletion check
-proves only the shapes the fixtures hold. After the scheme bump it passed
-while markdown, rst, scss, puppet, svelte, apex and fish hashed no parent:
-their fixtures deleted a sibling, never the first of two parents. So
+proves only the shapes the fixtures hold: a fixture that deletes a sibling but
+never the first of two parents passes a producer that hashes no parent. So
 :func:`test_every_language_has_a_two_parent_fixture_or_is_flat` requires,
 for every language a fixture emits, a TWO-PARENT fixture (``SiblingCase.
 nested``: one text, byte for byte, under two different parents, the first
@@ -67,17 +64,12 @@ producer that hashes the parent can do (two same-scope copies tie;
 nothing it emits can nest. "Nests" is not decided from the output alone:
 :func:`nesting_languages` (one symbol's span inside another's) misses a
 markdown section, which spans its heading line, and a Svelte element, which
-is no symbol, so it only catches a flat entry whose symbols do nest. Writing
-the two-parent fixtures found ten more producers that hashed no parent
-(astro slots, Blade sections, C block scopes, CMake functions, gnuplot
-blocks, HLSL namespaces and functions, JSON and TOML dependency groups,
-TOML 3-part table names, Meson branches, assembler local labels) and an
-``else`` labelled without its ``if`` (CMake, Meson, gnuplot); a Maven
-artifactId under two groupIds tied too (fixture ``xml-maven``), and so did a
-Perl sub in a block-form package, named under the package before it
-(``perl-blocks``); a SPARQL query was named by its ordinal
-(``sparql-queries``). :func:`test_every_registered_language_has_a_fixture`
-closes the last gap: a language with no fixture at all.
+is no symbol, so it only catches a flat entry whose symbols do nest. A few
+entries in :data:`PARENT_CASES` pin related shapes beside parent hashing (an
+``else`` labelled without its ``if``, a Maven artifactId under two groupIds, a
+Perl block-form package, a SPARQL query named by ordinal); their comments say
+what each holds. :func:`test_every_registered_language_has_a_fixture` closes
+the last gap: a language with no fixture at all.
 
 **The static companion.** :func:`pass_mints_without_stable_id` scans every
 ``Symbol(...)`` minted outside a language analyzer (core linkers and passes, the
@@ -96,7 +88,7 @@ failing the deletion check (``test_sibling_deletion_matches_baseline``).
 baseline (a regression, or a language the baseline does not list) AND on one
 below it (stale: ratchet the baseline down in the same change), the idiom of
 ``producer_coherence.ratchet_diff``. A language that fails is LISTED in the
-baseline, never skipped or xfailed: the campaign ends with both sections empty.
+baseline, never skipped or xfailed: the goal is both sections empty.
 
 WHY THE GATE LIVES IN THIS FILE. Its only caller is this test. Production code
 with test-only callers is what the WI-ratuv ratchet
@@ -118,10 +110,19 @@ fixtures their nesting (two stages, two ``@media`` rules, two branches of a
 conditional, two plays). :data:`SCOPE_CASES` adds a second fixture for the
 languages whose ids can tie across two same-name ENCLOSING scopes: nested
 types and their members (INV-fabih: ``A.Inner.go`` / ``B.Inner.go``), two
-namespace or module blocks, a local function in two functions. The forms are
-recorded per language in the WI-tusad ledger, with the census they produced.
+namespace or module blocks, a local function in two functions. (The
+per-language forms are recorded in the WI-tusad ledger.)
 Languages whose analyzer emits only file nodes (html, yaml) have no fixture:
 there is nothing for them to count.
+
+**The node id's kind slot, over the same corpus.** This is the one gate that
+runs EVERY registered analyzer on a fixture, so it also holds each node id to
+ADR-0036 Ruling 2: the last slot is ``Symbol.kind``, a registered kind
+(:func:`kind_slot_offenders`, :data:`KIND_SLOT_HOLES`). The static check
+(``check_id_construction``) reads a producer's literal words and cannot read a
+computed one; ``test_doc_family_id_parity`` runs fourteen doc-family producers.
+Ten analyzers wrote a role word (``fn``, ``proc``, ``model``, a ``datasource``
+keyword held in a variable) under both for as long as no gate ran them.
 
 **Why the corpus is written at runtime.** As for ``test_doc_family_id_parity``:
 the fixtures deliberately reproduce defects (nulls, moved ids), and committing
@@ -148,6 +149,12 @@ from hypergumbo_core.analyze.base import floor_stable_id_key, make_declaration_s
 from hypergumbo_core.analyze.registry import ensure_discovered, get_all_analyzers
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+# Every test here runs on ONE xdist worker, so the module fixture is built
+# once per run (smart-test and CI pass --dist=loadgroup; see
+# dist_args_for_run in scripts/smart-test).
+pytestmark = pytest.mark.xdist_group("test_stable_id_floor_gate")
 
 # -- the gate ------------------------------------------------------------------
 
@@ -265,7 +272,7 @@ class SiblingCase:
     byte for byte, once in ``earlier`` and once in ``tail``, each copy inside a
     different enclosing construct (two classes, two headings, two branches).
     :func:`nested_twin_kinds` finds the symbols each copy emits, and
-    :func:`two_parent_coverage` credits their languages. ``nested_lines``
+    :func:`two_parent_languages` credits their languages. ``nested_lines``
     gives those copies' ``(first, last)`` symbol lines instead, for a file
     whose symbol lines are not its text lines (a notebook numbers its cells'
     source, not the JSON holding them).
@@ -632,8 +639,19 @@ CASES: dict[str, SiblingCase] = {
         "  integer function area_i(x)\n    integer :: x\n    area_i = x\n  end function area_i\n",
         "  real function area_r(x)\n    real :: x\n    area_r = x\n  end function area_r\n"
         "  subroutine helper()\n  end subroutine helper\nend module demo\n"),
+    # Members: an earlier overload, an abstract slot beside its default, an
+    # additional constructor, one member under two interfaces. The same-name
+    # function in two modules is deleted in "fsharp-nested".
     "fsharp": SiblingCase(
-        "src/Demo.fs", "module Demo\n\n", "module A =\n    let run x = x\n\n",
+        "src/Demo.fs", "module Demo\n\ntype Shape(r: float) =\n",
+        "    member this.Scale(k: float) = r * k\n",
+        "    member this.Scale(k: float, j: float) = r * k * j\n"
+        "    abstract member Describe : unit -> string\n"
+        "    default this.Describe() = \"shape\"\n"
+        "    new() = Shape(1.0)\n"
+        "    interface IA with\n        member this.Go() = 1\n"
+        "    interface IB with\n        member this.Go() = 2\n\n"
+        "module A =\n    let run x = x\n\n"
         "module B =\n    let run x y = x + y\n\nlet helper x = x\n"),
     "gdscript": SiblingCase(
         "src/demo.gd", "extends Node\n", "class A:\n\tfunc run():\n\t\treturn 1\n\n",
@@ -997,14 +1015,14 @@ CASES: dict[str, SiblingCase] = {
 
 #: Second fixtures, keyed ``<language>-<shape>`` (the key is only the directory
 #: name; the census reads each record's own language). Each nests one
-#: same-name scope inside two outer scopes (INV-fabih and its cousins found by
-#: the WI-tusad sweep): members and types of two ``Inner`` classes, two
-#: namespace or module blocks, two functions holding a same-name local
-#: function, two macros, two instances. Every one of them failed the deletion
-#: check before the scheme bump (an id hashed the nearest owner only, or no
-#: owner at all, or a type took the bare-name table key), and the last three
-#: pin the F1 cousins: a Twig ``else`` emitting an ``if`` symbol, a PureScript
-#: class member with a bare type emitting nothing, a Scheme rest list.
+#: same-name scope inside two outer scopes (INV-fabih and related shapes;
+#: WI-tusad): members and types of two ``Inner`` classes, two namespace or
+#: module blocks, two functions holding a same-name local function, two
+#: macros, two instances. Each pins an id that must hash its full owner chain
+#: — not the nearest owner only, not no owner at all, and not, for a type,
+#: the bare-name table key. The last three pin related defects: a Twig
+#: ``else`` emitting an ``if`` symbol, a PureScript class member with a bare
+#: type emitting nothing, a Scheme rest list.
 SCOPE_CASES: dict[str, SiblingCase] = {
     # -- INV-fabih: members and types of two same-name nested owners ---------
     "scala-nested": SiblingCase(
@@ -1017,8 +1035,8 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "  def b(): Int = {\n    def local(): Int = 2\n    local()\n  }\n}\n",
         nested="  class Inner {\n    def go(): Int = 1\n    val v: Int = 1\n  }\n"
                "  object Obj {\n    def go(): Int = 1\n  }\n  trait T\n"),
-    # The one-line nested body is the tree-sitter-kotlin 1.1.0 shape that
-    # turned the whole class into an ERROR (kotlin._close_brace_repair).
+    # The one-line nested body is the shape tree-sitter-kotlin 1.1.0 parses
+    # as an ERROR over the whole class (kotlin._close_brace_repair).
     "kotlin-nested": SiblingCase(
         "src/Outer.kt", "",
         "class A {\n    class Inner {\n        fun go(): Int = 1\n        val v: Int = 1\n    }\n"
@@ -1045,8 +1063,8 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "    interface I { }\n    struct S { }\n}\n",
         nested="    class Inner {\n        int Go() { return 1; }\n        int f;\n    }\n"
                "    interface I { }\n    struct S { }\n"),
-    # A property hashed its qualified name, which held the innermost
-    # namespace only: ``Inner.C.P`` in namespaces A and B tied.
+    # A property's id must hash more than the innermost namespace, or
+    # ``Inner.C.P`` in namespaces A and B ties.
     "csharp-namespace-nested": SiblingCase(
         "src/Nested.cs", "",
         "namespace A {\n    namespace Inner {\n        class C {\n"
@@ -1067,8 +1085,9 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "    func local() -> Int { return 2 }\n    return local()\n}\n",
         nested="    class Inner {\n        func go() -> Int { return 1 }\n        var v: Int = 1\n    }\n"
                "    enum E {\n        case x\n    }\n"),
-    # Member classes were told apart by their dotted names; local classes in
-    # two methods (and an anonymous class's methods) were not.
+    # Member classes are told apart by their dotted names; local classes in
+    # two methods (and an anonymous class's methods) have no such name to
+    # tell them apart.
     "java-local": SiblingCase(
         "src/Outer.java", "class Outer {\n",
         "    int a() {\n        class Local {\n            int v;\n            int go() { return 1; }\n"
@@ -1235,7 +1254,7 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "  a: { inner(x):: x },\n",
         "  b: { inner(x):: x },\n}\n",
         nested="{ inner(x):: x }"),
-    # -- B4 table kinds named by their module/namespace ----------------------
+    # -- table kinds named by their module/namespace -------------------------
     "ocaml-nested": SiblingCase(
         "src/nested.ml", "",
         "module A = struct\n  type t = int\n  module C = struct\n    let v = 1\n  end\nend\n",
@@ -1246,8 +1265,9 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "namespace A\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend A\n",
         "namespace B\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend B\n",
         nested="structure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\n"),
-    # tree-sitter-agda 1.3.3 swallows the declarations after a ONE-constructor
-    # data type into it; the two-constructor Nat keeps the modules apart.
+    # A two-constructor Nat: the tree-sitter-agda 1.3.3 wheel, since replaced
+    # by the language pack's build, broke the declaration after a ONE-constructor
+    # data type.
     "agda-nested": SiblingCase(
         "src/Nested.agda",
         "module Nested where\n\ndata Nat : Set where\n  zero : Nat\n  suc : Nat -> Nat\n\n",
@@ -1257,12 +1277,23 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "  record R : Set where\n    field\n      x : Nat\n",
         nested="  module C where\n    v : Nat\n    v = zero\n"
                "  record R : Set where\n    field\n      x : Nat\n"),
+    # An anonymous module (``module _ (X : Set) where``) is not a declaration:
+    # its contents belong to the enclosing module. Two of them tied on the name
+    # ``_`` and were split by order, so deleting the first moved the second's id.
+    "agda-anonymous": SiblingCase(
+        "src/Anon.agda", "module Anon where\n\n",
+        "module _ (X : Set) where\n  f : Set\n  f = X\n\n",
+        "module _ (Y : Set) where\n  g : Set\n  g = Y\n\n"
+        "module Outer where\n  module _ {Z : Set} where\n    h : Set\n    h = Z\n"),
     "fsharp-nested": SiblingCase(
         "src/Nested.fs", "module Nested\n\n",
-        "module A =\n    let mutable x = 1\n\n",
-        "module B =\n    let mutable x = 1\n",
-        nested="    let mutable x = 1\n"),
-    # -- the F1 "noticed, not fixed" cousins ---------------------------------
+        "module A =\n    let mutable x = 1\n    let run y = y\n"
+        "    type Inner() =\n        member this.Go() = 1\n\n",
+        "module B =\n    let mutable x = 1\n    let run y = y\n"
+        "    type Inner() =\n        member this.Go() = 1\n",
+        nested="    let mutable x = 1\n    let run y = y\n"
+               "    type Inner() =\n        member this.Go() = 1\n"),
+    # -- related defects ------------------------------------------------------
     "twig-nested": SiblingCase(
         "templates/nested.twig", "",
         "{% macro first(a) %}{% if a %}x{% elseif b %}y{% else %}z{% endif %}{% endmacro %}\n",
@@ -1291,12 +1322,9 @@ def _two(
 
 
 #: Two-parent fixtures (INV-punig), keyed ``<language>-parents``: one text
-#: under two different parents, the first parent deleted. Before them the
-#: gate held this shape for some languages only (:data:`SCOPE_CASES`), and
-#: markdown, rst, scss, puppet, svelte, apex and fish, which hashed no parent,
-#: passed it; so did astro, blade, C block scopes, CMake functions, gnuplot
-#: blocks, HLSL namespaces, JSON and TOML dependency groups, Maven groupIds,
-#: Meson branches and assembler local labels, found by writing these.
+#: under two different parents, the first parent deleted. They hold this
+#: shape for every language that nests, not only those in :data:`SCOPE_CASES`,
+#: so a producer that hashes no parent fails the deletion check.
 #: :func:`test_every_language_has_a_two_parent_fixture_or_is_flat` requires
 #: one per language (or a reason in :data:`FLAT_LANGUAGES`).
 PARENT_CASES: dict[str, SiblingCase] = {
@@ -1409,8 +1437,9 @@ PARENT_CASES: dict[str, SiblingCase] = {
     "perl-parents": _two(
         "lib/Two.pm", "", "package A;\n", "package B;\n", "sub go { return 1; }\n",
         tail_extra="1;\n"),
-    # Block-form packages (Perl 5.14+): a sub in ``package B { }`` was named
-    # under the package before it, and a sub after the block kept it.
+    # Block-form packages (Perl 5.14+): a sub in ``package B { }`` must be
+    # named under B, not the package before it, and a sub after the block
+    # must not stay in B.
     "perl-blocks": _two(
         "lib/Blocks.pm", "", "package A {\n", "package B {\n", "  sub go { return 1; }\n",
         "}\n", "}\n", "sub top { return 2; }\n1;\n"),
@@ -1462,6 +1491,13 @@ PARENT_CASES: dict[str, SiblingCase] = {
     "toml-parents": _two(
         "rs/Cargo.toml", "[package]\nname = \"two\"\n", "[dependencies]\n", "[dev-dependencies]\n",
         "serde = \"1\"\n"),
+    # A task, a function and a net repeat under each module, and a net under
+    # each module's labelled generate block.
+    "verilog-parents": _two(
+        "rtl/two.sv", "", "module a;\n", "module b;\n",
+        "  task run; begin end endtask\n  function integer f; input x; f = x; endfunction\n"
+        "  wire w, z;\n  generate if (1) begin : g\n    wire w;\n  end endgenerate\n",
+        "endmodule\n", "endmodule\n"),
     "vhdl-parents": _two(
         "rtl/two.vhd", "library ieee;\nentity a is\nend entity a;\nentity b is\nend entity b;\n",
         "architecture rtl of a is\n", "architecture rtl of b is\n",
@@ -1472,7 +1508,7 @@ PARENT_CASES: dict[str, SiblingCase] = {
         "  </div>\n", "  </section>\n",
         "</template>\n<script>\nexport default { name: \"Two\" }\n</script>\n"),
     # The else branches of two different conditionals: an ``else`` label
-    # alone named both, and the definitions in them tied.
+    # alone would name both, and the definitions in them would tie.
     "cmake-else": _two(
         "else/CMakeLists.txt", "cmake_minimum_required(VERSION 3.10)\n",
         "if(WIN32)\n  set(a 1)\nelse()\n", "if(UNIX)\n  set(a 1)\nelse()\n",
@@ -1483,8 +1519,8 @@ PARENT_CASES: dict[str, SiblingCase] = {
     "meson-else": _two(
         "else/meson.build", "project('else', 'c')\n", "if get_option('a')\n  x = 1\nelse\n",
         "if get_option('b')\n  x = 1\nelse\n", "  executable('tool', 't.c')\n", "endif\n", "endif\n"),
-    # Anonymous queries were named by ordinal (``query_2``): deleting an
-    # earlier query renamed the later one, and moved its id.
+    # An anonymous query named by ordinal (``query_2``) would be renamed by
+    # deleting an earlier query, moving its id.
     "sparql-queries": SiblingCase(
         "queries/two.rq", "PREFIX ex: <http://example.org/>\n",
         "CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o . }\n",
@@ -1494,8 +1530,8 @@ PARENT_CASES: dict[str, SiblingCase] = {
         "src/two.wgsl", "", "#ifdef A\n", "#ifdef B\n",
         "fn run(x: f32) -> f32 { return x; }\n", "#endif\n", "#endif\n"),
     # Not a two-parent shape (the groupId is a discriminant beside the
-    # artifactId, not a parent), found while writing them: one artifactId
-    # under two groupIds tied on the backstop's table key.
+    # artifactId, not a parent): one artifactId under two groupIds must not
+    # tie on the backstop's table key.
     "xml-maven": SiblingCase(
         "pom.xml", "<project>\n  <dependencies>\n",
         "    <dependency>\n      <groupId>a</groupId>\n      <artifactId>x</artifactId>\n"
@@ -1539,7 +1575,6 @@ FLAT_LANGUAGES: dict[str, str] = {
            "are not emitted",
     "v": "no declaration nests; a method's owner is its receiver, written in the "
          "declaration itself (the v fixture deletes a same-name method of another receiver)",
-    "verilog": "only modules and interfaces are emitted",
     "xml": "Android components and permissions are named by their full name, and a Maven "
            "dependency sits under the one project (its groupId is a discriminant, fixture "
            "xml-maven)",
@@ -1566,14 +1601,14 @@ def test_census_counts_floor_and_null_per_language_and_kind() -> None:
     floor = make_declaration_stable_id("function", "x", "a.x", "f")
     records = [
         _sym("f", "function", floor),
-        _sym("g", "function", "sha256:producer00000000"),
+        _sym("g", "function", "hgstableid15:producer00000000"),
         _sym("h", "method", None),
         _sym("h", "method", None, line=2),
         {"name": "p", "kind": "property", "language": "y", "path": "b.y",
          "stable_id": make_declaration_stable_id("property", "y", "b.y", "p")},
         _sym("C", "class", None),            # a table kind: only a null counts
         _sym("D", "class", make_declaration_stable_id("class", "x", "a.x", "D")),
-        _sym("rule", "target", "sha256:producer00000001"),
+        _sym("rule", "target", "hgstableid15:producer00000001"),
         {"name": "s", "kind": "function", "language": None, "path": "c",
          "stable_id": None},                 # no language: a synthetic stand-in
         {"name": "k", "kind": None, "language": "x", "path": "c",
@@ -1586,7 +1621,7 @@ def test_census_counts_floor_and_null_per_language_and_kind() -> None:
 
 
 def test_census_of_producer_ids_only_is_empty() -> None:
-    assert floor_census([_sym("f", "function", "sha256:producer00000000")]) == {}
+    assert floor_census([_sym("f", "function", "hgstableid15:producer00000000")]) == {}
 
 
 def test_census_breaches_fail_on_growth_new_cells_and_stale_cells() -> None:
@@ -1628,10 +1663,10 @@ def test_case_variants_and_line_mapping() -> None:
 
 
 def test_deletion_that_moves_nothing_reports_nothing() -> None:
-    before = [_sym("f", "function", None, line=2), _sym("f", "function", "sha256:a", line=4),
-              _sym("g", "function", "sha256:b", line=5), _sym("C", "class", "sha256:c", line=1)]
-    after = [_sym("f", "function", "sha256:a", line=2), _sym("g", "function", "sha256:b", line=3),
-             _sym("C", "class", "sha256:c", line=1)]
+    before = [_sym("f", "function", None, line=2), _sym("f", "function", "hgstableid15:a", line=4),
+              _sym("g", "function", "hgstableid15:b", line=5), _sym("C", "class", "hgstableid15:c", line=1)]
+    after = [_sym("f", "function", "hgstableid15:a", line=2), _sym("g", "function", "hgstableid15:b", line=3),
+             _sym("C", "class", "hgstableid15:c", line=1)]
     assert sibling_deletion_moves(_CASE, before, after) == []
 
 
@@ -1641,12 +1676,12 @@ def test_deletion_matches_each_survivor_by_position() -> None:
     def at(sid, line, col):
         return {"kind": "block", "name": "if", "stable_id": sid,
                 "span": {"start_line": line, "start_col": col}}
-    before = [at("sha256:x", 4, 0), at("sha256:y", 4, 9), at("sha256:z", 5, 0),
-              at("sha256:w", 5, 0)]
-    after = [at("sha256:x", 2, 0), at("sha256:y", 2, 9), at("sha256:z", 3, 0),
-             at("sha256:moved", 3, 0), at("sha256:v", 3, 0)]
+    before = [at("hgstableid15:x", 4, 0), at("hgstableid15:y", 4, 9), at("hgstableid15:z", 5, 0),
+              at("hgstableid15:w", 5, 0)]
+    after = [at("hgstableid15:x", 2, 0), at("hgstableid15:y", 2, 9), at("hgstableid15:z", 3, 0),
+             at("hgstableid15:moved", 3, 0), at("hgstableid15:v", 3, 0)]
     assert sibling_deletion_moves(_CASE, before, after) == [
-        "block if (line 3): stable_id sha256:w -> sha256:moved (moved)",
+        "block if (line 3): stable_id hgstableid15:w -> hgstableid15:moved (moved)",
         "block if (line 3): no counterpart before the deletion",
     ]
 
@@ -1655,46 +1690,46 @@ def test_deletion_reports_moved_null_and_unmatched() -> None:
     before = [{"kind": "function", "name": "f", "span": {"start_line": 4},
                "stable_id": None},
               {"kind": "function", "name": "g", "span": {"start_line": 5},
-               "stable_id": "sha256:b"},
+               "stable_id": "hgstableid15:b"},
               {"kind": "method", "name": "m", "span": {"start_line": 1},
-               "stable_id": "sha256:m"}]
+               "stable_id": "hgstableid15:m"}]
     after = [{"kind": "function", "name": "f", "span": {"start_line": 2},
-              "stable_id": "sha256:f"},
+              "stable_id": "hgstableid15:f"},
              {"kind": "function", "name": "g", "span": {"start_line": 3},
-              "stable_id": "sha256:moved"},
+              "stable_id": "hgstableid15:moved"},
              {"kind": "method", "name": "m", "span": {"start_line": 1},
-              "stable_id": "sha256:m"},
+              "stable_id": "hgstableid15:m"},
              {"kind": "function", "name": "h", "span": None, "stable_id": "x"}]
     got = sibling_deletion_moves(_CASE, before, after)
     assert got == [
-        "function f (line 2): stable_id None -> sha256:f (null)",
-        "function g (line 3): stable_id sha256:b -> sha256:moved (moved)",
+        "function f (line 2): stable_id None -> hgstableid15:f (null)",
+        "function g (line 3): stable_id hgstableid15:b -> hgstableid15:moved (moved)",
         "function h (line 0): no counterpart before the deletion",
     ]
 
 
 def test_symbol_without_span_is_line_zero() -> None:
-    sym = _sym("f", "function", "sha256:a")
+    sym = _sym("f", "function", "hgstableid15:a")
     sym.span = None
     assert sibling_deletion_moves(_CASE, [], [sym]) == [
         "function f (line 0): no counterpart before the deletion"]
     assert _start(sym) == (0, 0)
     head_less = SiblingCase("a.x", "", "earlier\n", "later\n")
-    file_node = {"kind": "file", "name": "a.x", "stable_id": "sha256:f",
+    file_node = {"kind": "file", "name": "a.x", "stable_id": "hgstableid15:f",
                  "span": {"start_line": 1, "start_col": 0}}
     assert sibling_deletion_moves(head_less, [file_node], [file_node]) == []
-    assert _start(_sym("f", "function", "sha256:a", line=7)) == (7, 0)
+    assert _start(_sym("f", "function", "hgstableid15:a", line=7)) == (7, 0)
 
 
 def test_location_check_pairs_records_by_position() -> None:
-    here = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:b", line=2)]
-    same = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:b", line=2)]
+    here = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:b", line=2)]
+    same = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:b", line=2)]
     assert location_dependent_ids(here, same) == []
-    moved = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:z", line=2)]
+    moved = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:z", line=2)]
     assert location_dependent_ids(here, moved) == [
-        "a.x function f (line 2): sha256:b here, sha256:z elsewhere"]
+        "a.x function f (line 2): hgstableid15:b here, hgstableid15:z elsewhere"]
     assert location_dependent_ids(here, same[:1]) == [
-        "a.x function f (line 2): sha256:b here, (no counterpart) elsewhere"]
+        "a.x function f (line 2): hgstableid15:b here, (no counterpart) elsewhere"]
 
 
 # -- unit: the two-parent guard ---------------------------------------------------
@@ -1778,13 +1813,59 @@ def test_flat_languages_each_carry_a_reason() -> None:
     assert all(reason.strip() for reason in _NO_FIXTURE.values())
 
 
+# -- the node id's kind slot ---------------------------------------------------
+
+#: ``(language, id kind slot, Symbol.kind) -> why it stands``. Exact: a cell the
+#: corpus no longer produces fails the gate as much as a new one.
+KIND_SLOT_HOLES: dict[tuple[str, str, str], str] = {}
+
+
+def kind_slot_offenders(records: Iterable[Any]) -> set[tuple[str, str, str]]:
+    """``(language, id kind slot, kind)`` of every record whose id does not end
+    in its own kind, or ends in a kind the registry does not hold (ADR-0036
+    Ruling 2: both halves, since equality alone would bless an unregistered
+    kind). The language is the id's own first slot, which a linker stand-in
+    with ``language=None`` has too."""
+    known = all_symbol_kind_names()
+    out: set[tuple[str, str, str]] = set()
+    for record in records:
+        node_id, kind = _get(record, "id"), _get(record, "kind")
+        slot = node_id.rsplit(":", 1)[-1]
+        if slot != kind or kind not in known:
+            out.add((node_id.split(":", 1)[0], slot, kind))
+    return out
+
+
+def test_kind_slot_offenders_are_a_mismatch_or_an_unregistered_kind() -> None:
+    agreeing = _sym("f", "function", None)
+    role_word = Symbol(
+        id="x:a.x:1-1:f:fn", name="f", kind="function", language="x", path="a.x",
+        span=Span(1, 1, 0, 1),
+    )
+    unregistered = _sym("g", "no_such_kind_anywhere", None)
+    assert kind_slot_offenders([agreeing]) == set()
+    assert kind_slot_offenders([agreeing, role_word, unregistered]) == {
+        ("x", "fn", "function"),
+        ("x", "no_such_kind_anywhere", "no_such_kind_anywhere"),
+    }
+
+
 # -- live: the ratchet over the fixture corpus ---------------------------------
 
 
 @pytest.fixture(scope="module")
-def runs(tmp_path_factory) -> dict:
+def runs(tmp_path_factory, build_once) -> dict:
     """Both variants of every fixture through the full pipeline, nodes by file
-    (and the with-sibling variant once more, checked out elsewhere)."""
+    (and the with-sibling variant once more, checked out elsewhere).
+
+    Built ONCE PER SESSION, not once per xdist worker: three full pipeline
+    runs over the corpus are expensive, and under xdist's default
+    distribution this module's tests would land on several workers, each
+    building its own copy (WI-nupit)."""
+    return build_once("stable-id-floor-runs", lambda: _build_runs(tmp_path_factory))
+
+
+def _build_runs(tmp_path_factory) -> dict:
     ensure_discovered()
     base = tmp_path_factory.mktemp("stable-id-floor")
     out: dict = {}
@@ -1806,7 +1887,8 @@ def runs(tmp_path_factory) -> dict:
         nodes = json.loads(out_path.read_text())["nodes"]
         by_file: dict = defaultdict(list)
         for node in nodes:
-            by_file[node.get("path")].append(node)
+            # A str key: the result crosses workers as JSON (build_once).
+            by_file[str(node.get("path"))].append(node)
         out[variant] = by_file
     return out
 
@@ -1829,6 +1911,36 @@ def test_every_fixture_emits_a_symbol(runs) -> None:
                    for n in runs["with"].get(f"{lang}/{rel}", []))
     ]
     assert silent == []
+
+
+def test_every_fixture_stable_id_is_canonical(runs) -> None:
+    """A producer that sets ``stable_id`` to its node id (e.g.
+    ``bitbake:<path>:0-0:<name>:variable``) neither rides the floor nor is
+    null, and moves nothing when a sibling is deleted, so the census and the
+    deletion check both pass it (WI-banod). ``None`` is allowed (the
+    census owns nulls); any other value must be the canonical
+    ``hgstableid15:<16hex>`` the validator's stable_id format check requires."""
+    from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
+
+    bad = sorted(
+        (n.get("language"), n.get("kind"), n.get("stable_id"))
+        for n in _fixture_nodes(runs, "with")
+        if n.get("stable_id") is not None
+        and not _CANONICAL_STABLE_ID_PATTERN.match(n["stable_id"])
+    )
+    assert bad == []
+
+
+def test_every_fixture_node_id_names_its_own_kind(runs) -> None:
+    """ADR-0036 Ruling 2 for every analyzer that has a fixture here: each node
+    id ends in its Symbol's own, registered kind. Exact against
+    :data:`KIND_SLOT_HOLES`, so a corrected producer must drop its entry."""
+    live = kind_slot_offenders(_fixture_nodes(runs, "with"))
+    declared = set(KIND_SLOT_HOLES)
+    assert live == declared, (
+        f"id kind slot is not Symbol.kind (language, slot, kind): "
+        f"new {sorted(live - declared)}; declared but gone {sorted(declared - live)}"
+    )
 
 
 def test_floor_census_matches_baseline(runs) -> None:
@@ -1861,10 +1973,9 @@ def test_sibling_deletion_matches_baseline(runs) -> None:
 
 def test_every_language_has_a_two_parent_fixture_or_is_flat(runs) -> None:
     """INV-punig's structural guard. The deletion check above only sees the
-    shapes the fixtures hold, and before the two-parent fixtures it held a
-    same-name construct under two different parents for some languages only:
-    markdown, rst, scss, puppet, svelte, apex and fish hashed no parent and
-    passed. So every language that emits a symbol must either be proved by a
+    shapes the fixtures hold, so a language without a same-name construct
+    under two different parents passes it even when its producer hashes no
+    parent. So every language that emits a symbol must either be proved by a
     two-parent fixture (:func:`two_parent_languages`) or be listed in
     :data:`FLAT_LANGUAGES` with the reason nothing it emits can nest; a listed
     language whose symbols do nest (:func:`nesting_languages`), or that a
@@ -2032,10 +2143,10 @@ def pass_mints_without_stable_id(
 
 def test_every_pass_mint_with_a_language_stamps_a_stable_id() -> None:
     """INV-fufij: a linker's language-bearing mint (the gRPC services, the
-    view templates) and a format pass's (``manifest_targets``) shipped null or
-    on the floor. Each now mints through ``pass_minted_stable_id``; a new mint
-    of that shape without a stable_id fails here, whether or not a fixture
-    reaches it."""
+    view templates) and a format pass's (``manifest_targets``) run after the
+    floor, so without their own stable_id they are null or on the floor. Each
+    mints through ``pass_minted_stable_id``; a new mint of that shape without
+    a stable_id fails here, whether or not a fixture reaches it."""
     violations, seen, used = pass_mints_without_stable_id(REPO_ROOT)
     assert seen >= 10, f"matched only {seen} language-bearing mints: scanner broken?"
     assert set(_PASS_MINT_EXEMPT) - used == set(), "stale exemption: remove it"

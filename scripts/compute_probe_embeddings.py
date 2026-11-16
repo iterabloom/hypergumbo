@@ -3,14 +3,18 @@
 """Compute probe embeddings for sketch_embeddings.py.
 
 This script generates base64-encoded float16 embedding vectors for the probe
-patterns used in README description extraction, config file analysis, and
-additional files ordering.
+patterns used in README description extraction and config file analysis, and
+a digest of what each was computed from (the model name and the probe texts).
+``sketch_embeddings.probe_embeddings`` uses an array only when its digest
+matches the texts and model in the tree, so RE-RUN THIS after editing any
+probe list in sketch_embeddings.py or changing the model:
+``test_probe_embeddings.py`` fails until you do.
 
 Usage:
     python scripts/compute_probe_embeddings.py
 
 Output:
-    Writes src/hypergumbo/_embedding_data.py with updated embeddings.
+    Writes packages/hypergumbo-core/src/hypergumbo_core/_embedding_data.py.
 """
 import base64
 import logging
@@ -32,12 +36,7 @@ for _var in ("NO_PROXY", "no_proxy"):
                      if not _IPV6_CIDR_PATTERN.match(e.strip())]
         os.environ[_var] = ",".join(_filtered)
 
-from sentence_transformers import SentenceTransformer
-
-# Models used for embeddings
-UNIXCODER_MODEL_NAME = "microsoft/unixcoder-base"
-MODERNBERT_MODEL_NAME = "nomic-ai/modernbert-embed-base"
-MODERNBERT_TRUNCATE_DIM = 256
+from sentence_transformers import SentenceTransformer  # noqa: E402 - after the NO_PROXY fix above
 
 
 def encode_probes_b64(model: SentenceTransformer, probes: list[str]) -> str:
@@ -69,106 +68,75 @@ def main():
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "hypergumbo-core" / "src"))
 
-    from hypergumbo_core.sketch_embeddings import (
-        README_DESCRIPTION_PROBES,
-        ANSWER_PATTERNS,
-        BIG_PICTURE_QUESTIONS,
-        ADDITIONAL_FILES_PROBES,
-        NEGATIVE_PATTERNS,
-    )
+    from hypergumbo_core.sketch_embeddings import _EMBEDDING_MODEL, PROBE_SETS, probe_digest
 
-    # Part 1: UnixCoder embeddings (768 dim)
-    print(f"Loading model: {UNIXCODER_MODEL_NAME}")
-    unixcoder = SentenceTransformer(UNIXCODER_MODEL_NAME)
+    # UnixCoder embeddings (768 dim)
+    print(f"Loading model: {_EMBEDDING_MODEL}")
+    model = SentenceTransformer(_EMBEDDING_MODEL)
 
-    print(f"Encoding README probes ({len(README_DESCRIPTION_PROBES)})...")
-    readme_b64 = encode_probes_b64(unixcoder, README_DESCRIPTION_PROBES)
-
-    print(f"Encoding answer patterns ({len(ANSWER_PATTERNS)})...")
-    answer_b64 = encode_probes_b64(unixcoder, ANSWER_PATTERNS)
-
-    print(f"Encoding big picture questions ({len(BIG_PICTURE_QUESTIONS)})...")
-    bigpic_b64 = encode_probes_b64(unixcoder, BIG_PICTURE_QUESTIONS)
-
-    print(f"Encoding negative patterns ({len(NEGATIVE_PATTERNS)})...")
-    negative_b64 = encode_probes_b64(unixcoder, NEGATIVE_PATTERNS)
-
-    # Part 2: ModernBERT embeddings (256 dim truncated) for additional files
-    print(f"\nLoading model: {MODERNBERT_MODEL_NAME}")
-    modernbert = SentenceTransformer(
-        MODERNBERT_MODEL_NAME,
-        truncate_dim=MODERNBERT_TRUNCATE_DIM
-    )
-
-    print(f"Encoding 5W1H probes ({len(ADDITIONAL_FILES_PROBES)})...")
-    additional_files_embeddings = modernbert.encode(
-        ADDITIONAL_FILES_PROBES, convert_to_numpy=True
-    )
-    # Normalize
-    norms = np.linalg.norm(additional_files_embeddings, axis=1, keepdims=True)
-    additional_files_normalized = additional_files_embeddings / (norms + 1e-8)
-    # Convert to float16 and base64
-    additional_files_fp16 = additional_files_normalized.astype(np.float16)
-    additional_files_b64 = base64.b64encode(
-        additional_files_fp16.tobytes()
-    ).decode("ascii")
+    b64: dict[str, str] = {}
+    digests: dict[str, str] = {}
+    for name, (probes, _attr) in PROBE_SETS.items():
+        print(f"Encoding {name} probes ({len(probes)})...")
+        b64[name] = encode_probes_b64(model, probes)
+        digests[name] = probe_digest(_EMBEDDING_MODEL, probes)
+    count = {name: len(probes) for name, (probes, _attr) in PROBE_SETS.items()}
 
     # Write output file
     output_path = Path(__file__).parent.parent / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core" / "_embedding_data.py"
 
-    content = f'''"""Pre-computed probe embeddings for sketch_embeddings.py.
+    content = f'''# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-computed probe embeddings for sketch_embeddings.py.
 
 This module contains base64-encoded float16 embedding vectors for the probe
-patterns used in README description extraction, config file analysis, and
-additional files ordering.
+patterns used in README description extraction and config file analysis.
+The probe texts never change between runs, so they are embedded once, here,
+and decoded at runtime: encoding them takes the model about a second per
+sketch.
 
-README_PROBES_B64 (README description extraction) and
-ADDITIONAL_FILES_PROBES_B64 (5W1H additional-files ordering) are decoded at
-runtime instead of re-encoding the probes, which avoids the ~2-3 second
-startup cost of encoding them. ANSWER/BIGPIC/NEGATIVE_PROBES_B64 are generated
-for config analysis, but as of 2026-10 nothing reads NEGATIVE_PROBES_B64 and
-the ANSWER/BIGPIC getters in sketch_embeddings.py have no caller:
-sketch._extract_config_embedding encodes those three probe sets live on every
-call.
+``sketch_embeddings.probe_embeddings`` is the one reader. It uses an array
+only when ``PROBE_DIGESTS`` says the array was computed from the probe texts
+and the model now in the tree; otherwise it encodes the probes itself.
 
-Generated with:
-- UnixCoder (microsoft/unixcoder-base) for README/config probes (768 dim)
-- ModernBERT (nomic-ai/modernbert-embed-base) for 5W1H probes (256 dim)
+Generated with UnixCoder ({_EMBEDDING_MODEL}), 768 dimensions.
 
-To regenerate: python scripts/compute_probe_embeddings.py
+GENERATED FILE. To regenerate: python scripts/compute_probe_embeddings.py
 """
 
-# README description probes: {len(README_DESCRIPTION_PROBES)} probes, 768 dimensions
-# Used in extract_readme_description_embedding()
+# The model every array below was computed with.
+PROBE_MODEL = "{_EMBEDDING_MODEL}"
+
+# Per array: sha256 over the model name and the probe texts it was computed
+# from, in order (sketch_embeddings.probe_digest).
+PROBE_DIGESTS = {{
+    "readme": "{digests["readme"]}",
+    "answer": "{digests["answer"]}",
+    "bigpic": "{digests["bigpic"]}",
+    "negative": "{digests["negative"]}",
+}}
+
+# README description probes: {count["readme"]} probes, 768 dimensions
+# Read by extract_readme_description_embedding()
 README_PROBES_B64 = (
-    "{readme_b64}"
+    "{b64["readme"]}"
 )
 
-# Answer patterns: {len(ANSWER_PATTERNS)} probes, 768 dimensions
-# Intended for sketch._extract_config_embedding(); no live reader as of 2026-10
-# (that function encodes these probes live)
+# Answer patterns: {count["answer"]} probes, 768 dimensions
+# Read by sketch._extract_config_embedding()
 ANSWER_PROBES_B64 = (
-    "{answer_b64}"
+    "{b64["answer"]}"
 )
 
-# Big picture questions: {len(BIG_PICTURE_QUESTIONS)} probes, 768 dimensions
-# Intended for sketch._extract_config_embedding(); no live reader as of 2026-10
-# (that function encodes these probes live)
+# Big picture questions: {count["bigpic"]} probes, 768 dimensions
+# Read by sketch._extract_config_embedding()
 BIGPIC_PROBES_B64 = (
-    "{bigpic_b64}"
+    "{b64["bigpic"]}"
 )
 
-# Negative patterns: {len(NEGATIVE_PATTERNS)} probes, 768 dimensions
-# Intended for sketch._extract_config_embedding() to penalize non-config
-# content; no reader as of 2026-10 (that function encodes these probes live)
+# Negative patterns: {count["negative"]} probes, 768 dimensions
+# Read by sketch._extract_config_embedding() to penalize non-config content
 NEGATIVE_PROBES_B64 = (
-    "{negative_b64}"
-)
-
-# 5W1H probes for Additional Files ordering: {len(ADDITIONAL_FILES_PROBES)} probes, {MODERNBERT_TRUNCATE_DIM} dimensions
-# Used in _format_additional_files() for semantic ranking
-ADDITIONAL_FILES_PROBES_B64 = (
-    "{additional_files_b64}"
+    "{b64["negative"]}"
 )
 '''
 
@@ -178,17 +146,14 @@ ADDITIONAL_FILES_PROBES_B64 = (
     # Verify by decoding
     print("\nVerifying...")
 
-    def verify(name: str, b64: str, expected_count: int, dims: int = 768):
-        raw = base64.b64decode(b64)
-        arr = np.frombuffer(raw, dtype=np.float16).reshape(expected_count, dims)
+    def verify(name: str, dims: int = 768):
+        raw = base64.b64decode(b64[name])
+        arr = np.frombuffer(raw, dtype=np.float16).reshape(count[name], dims)
         fp32 = arr.astype(np.float32)
         print(f"  {name}: shape={fp32.shape}, norms={np.linalg.norm(fp32, axis=1)[:3]}...")
 
-    verify("README", readme_b64, len(README_DESCRIPTION_PROBES))
-    verify("ANSWER", answer_b64, len(ANSWER_PATTERNS))
-    verify("BIGPIC", bigpic_b64, len(BIG_PICTURE_QUESTIONS))
-    verify("NEGATIVE", negative_b64, len(NEGATIVE_PATTERNS))
-    verify("5W1H", additional_files_b64, len(ADDITIONAL_FILES_PROBES), dims=MODERNBERT_TRUNCATE_DIM)
+    for name in PROBE_SETS:
+        verify(name)
 
     print("\nDone!")
 

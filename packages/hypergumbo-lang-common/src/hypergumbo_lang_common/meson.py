@@ -23,7 +23,8 @@ Key constructs extracted:
 - custom_target/run_target('name', ...) - other build targets (emitted as kind 'target')
 - var = command(...) - variable assignments are tracked (not emitted as symbols) to resolve cross-target dependencies
 - subdir('path') - subdirectory includes
-- dependencies: [...] - target dependencies
+- dependencies: [...] - target dependencies (depends_on edges are emitted only for
+  targets assigned to a variable, ``x = executable(..., dependencies: [...])``)
 
 Identity (ADR-0035 §1, scheme v9; INV-punig): a target defined inside an
 ``if`` / ``elif`` / ``else`` branch or a ``foreach`` loop hashes the headers of

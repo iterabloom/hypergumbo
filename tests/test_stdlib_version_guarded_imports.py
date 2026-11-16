@@ -1,26 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Every import of a module that is stdlib only ABOVE our floor must be guarded.
 
-THE INSTANCE. ``packages/hypergumbo-core/.../user_config.py`` carried a bare
-top-level ``import tomllib``. ``tomllib`` entered the standard library in Python
-**3.11**; every package in this repo declares ``requires-python = ">=3.10"``.
-That module is imported broadly, so the failure was not graceful: the 2026-08-29
-nightly py3.10 leg recorded ``ModuleNotFoundError: No module named 'tomllib'``
-against **2905 failed** tests, 124 errors.
+THE HAZARD. ``tomllib`` entered the standard library in Python **3.11**; every
+package in this repo declares ``requires-python = ">=3.10"``. A bare top-level
+``import tomllib`` in a broadly imported module (``user_config.py`` is one)
+does not fail gracefully: on 3.10 it takes thousands of tests down with
+``ModuleNotFoundError: No module named 'tomllib'``.
 
-IT WAS THE ONLY UNGUARDED SITE IN THE TREE, which is what makes it a gate rather
-than a fix. ``profile.py``, ``linkers/subprocess_cli.py``, ``py_deps.py`` and
-``scripts/generate-architecture`` all already carry
-``try: import tomllib / except ImportError: import tomli as tomllib`` and
-comment it as the py3.10 path. Four authors followed the pattern and one did
-not, and nothing checked.
+A CONVENTION NEEDS A GATE. ``profile.py``, ``linkers/subprocess_cli.py``,
+``py_deps.py``, ``user_config.py`` and ``scripts/generate-architecture`` carry
+``try: import tomllib / except ImportError: import tomli as tomllib``; one
+author skipping the pattern is enough, and nothing else checks it.
 
-WHY IT WENT UNSEEN FOR A DAY. The py3.10 leg is one of four in a matrix whose
-verdict Woodpecker collapses into a single aggregate commit status, attached to
-whatever commit was ``dev``'s tip at 05:30 — never HEAD by the time anyone
-looks. That is INV-bozid, and this defect is what its masking was hiding:
-``ci-debug cron-status``, built for that item, surfaced the red leg on its first
-run.
+WHY A STATIC CHECK. Per-PR CI runs a single newer Python, so a 3.10-only
+failure shows up only on the nightly matrix's 3.10 leg, whose verdict can be
+masked by an aggregate status attached to an older commit (INV-bozid;
+``ci-debug cron-status`` shows the individual legs).
 
 THE RULE. An import of a FLOOR-EXCEEDING stdlib module must sit inside a ``try``
 whose handler catches ``ImportError`` (``ModuleNotFoundError`` is a subclass, and
@@ -82,11 +77,11 @@ def _python_sources() -> list[Path]:
         if "__pycache__" not in p.parts
     ]
     # scripts/ too: `generate-architecture` is an extensionless PYTHON script
-    # and it carries the guard, so the directory is in scope. The first cut wrote
-    # `A and B and C or D`, which binds as `(A and B and C) or D` and excluded
-    # every shebanged file -- i.e. exactly the python scripts it meant to add.
-    # A gate that silently covers nothing is the failure this file is about, so
-    # the shebang is READ rather than used to exclude.
+    # and it carries the guard, so the directory is in scope. The shebang is
+    # READ to include a file rather than folded into one exclusion expression:
+    # `A and B and C or D` binds as `(A and B and C) or D`, and a slip there
+    # excludes exactly the python scripts this means to add. A gate that
+    # silently covers nothing is the failure this file is about.
     for p in sorted(REPO_ROOT.glob("scripts/*")):
         if not p.is_file():
             continue

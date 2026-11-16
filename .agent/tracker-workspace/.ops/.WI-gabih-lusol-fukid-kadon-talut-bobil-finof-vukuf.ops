@@ -25,3 +25,18 @@
   clock: 2  # 5f7e
   nonce: 5f7e  # 5f7e
   message: "Dogfood finding (member F146.A3, independent), reproduces on the frozen substrate. Mechanism: the schema's $defs contains a FrameworkPatternDef definition, but the string FrameworkPatternDef appears exactly once in the whole schema (its own definition) with zero $ref pointing at it. Nothing in the document can resolve to it. Scope: 1 orphan definition in the published schema's $defs (1 occurrence, 0 $ref); affects consumers reading the schema. Exposure/consequence: a consumer or tooling author studying the schema to understand framework-pattern structure finds a definition that no part of the output actually uses, expecting a FrameworkPatternDef-shaped payload somewhere that never appears — wasted integration effort, no data corruption. Expectation: every $def is referenced by at least one $ref; orphan definitions are removed or wired in. Low severity (P4)."  # 5f7e
+- op: discuss  # 3bb7
+  at: '2026-11-01T22:22:29Z'  # 3bb7
+  by: agent  # 3bb7
+  actor: jgstern_agent  # 3bb7
+  clock: 3  # 3bb7
+  nonce: 3bb7  # 3bb7
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: MIS-PREMISED. Review 2026-11-01 at dev 9ae4abe13f. FrameworkPatternDef has 0 $ref in docs/schema.json by design: it is the root type for framework-pattern YAML files (schema.py:97-100), not an orphan of the behavior-map schema. The real defect: the def lists 'linkers', which from_dict does not read (test asserts its absence), and lacks provenance/retrieved, which _FILE_KEYS reads. Validating all 107 shipped frameworks/*.yaml against #/$defs/FrameworkPatternDef: 107 of 107 fail ('provenance' unexpected). No test validates YAML against it. MECHANISM: A hand-maintained schema def in scripts/generate-schema has drifted from the loader's key set, and nothing validates the shipped YAMLs against it. SHARES MECHANISM WITH: WI-nosuv."  # 3bb7
+- op: update  # bb96
+  at: '2026-11-01T22:22:29Z'  # bb96
+  by: agent  # bb96
+  actor: jgstern_agent  # bb96
+  clock: 4  # bb96
+  nonce: bb96  # bb96
+  set:  # bb96
+    description: "[REVIEW 2026-11-01, MIS-PREMISED] Review 2026-11-01 at dev 9ae4abe13f. FrameworkPatternDef has 0 $ref in docs/schema.json by design: it is the root type for framework-pattern YAML files (schema.py:97-100), not an orphan of the behavior-map schema. The real defect: the def lists 'linkers', which from_dict does not read (test asserts its absence), and lacks provenance/retrieved, which _FILE_KEYS reads. Validating all 107 shipped frameworks/*.yaml against #/$defs/FrameworkPatternDef: 107 of 107 fail ('provenance' unexpected). No test validates YAML against it. (Original text below; the review entry in the thread has the evidence.)"  # bb96

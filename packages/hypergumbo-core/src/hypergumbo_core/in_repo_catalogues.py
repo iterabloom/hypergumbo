@@ -42,7 +42,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
-from .safety_zones import repo_inspect_git
+from .safety_zones import repo_inspect_git, user_state_write
 
 GIT_COMMITTED = "committed"
 GIT_MODIFIED = "modified"
@@ -80,12 +80,10 @@ def record_in_repo_decision(
 ) -> Path:
     """Record a grant or a decline for ``repo_root``'s in-repo catalogue data."""
     path = _record_path(repo_root, environ)
-    path.parent.mkdir(parents=True, exist_ok=True)
     record = {"granted": granted, "repo_path": str(Path(repo_root).resolve())}
-    path.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
     # 0o600: which repositories an operator has agreed to take grading rules
     # from is theirs, like a trust grant.
-    path.chmod(0o600)
+    user_state_write(path, json.dumps(record, indent=2, sort_keys=True), private=True)
     return path
 
 

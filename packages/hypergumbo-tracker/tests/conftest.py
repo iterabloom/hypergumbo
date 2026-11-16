@@ -35,6 +35,20 @@ def _isolate_ops_journal(
 
 
 @pytest.fixture(autouse=True)
+def _isolate_user_state_home(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin ``$XDG_STATE_HOME`` to a per-test tmp dir.
+
+    TUI preferences live in the user's state home (INV-rugid). Every
+    ``TrackerApp`` test saves them, so without this the suite would write into
+    the developer's real ``~/.local/state/hypergumbo-tracker/`` -- and two
+    tests on clones at the same path would read each other's preferences.
+    """
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path_factory.mktemp("xdg-state")))
+
+
+@pytest.fixture(autouse=True)
 def _isolate_protected_config_root(
     tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:

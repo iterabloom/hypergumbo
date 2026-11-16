@@ -1,0 +1,60 @@
+- op: create  # 14da
+  at: '2026-10-22T05:14:17Z'  # 14da
+  by: agent  # 14da
+  actor: jgstern_agent  # 14da
+  clock: 1  # 14da
+  nonce: 14da  # 14da
+  data:  # 14da
+    kind: work_item  # 14da
+    title: "slice --io-boundary filters on the scalar meta.io_boundary, so a multi-boundary call (Popen.communicate, execSync, navigation_read rows) is invisible to the boundary it is listed second for"  # 14da
+    status: todo_hard  # 14da
+    priority: 3  # 14da
+    parent:  # 14da
+    tags:  # 14da
+    - slice  # 14da
+    - io_boundary  # 14da
+    - concept_audit_20261021  # 14da
+    isbefore: []  # 14da
+    duplicate_of: []  # 14da
+    not_duplicate_of: []  # 14da
+    pr_ref:  # 14da
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, verified by reading: cli.py:1845 keeps edges whose meta['io_boundary'] == category; the scalar is first-declared-wins (io_boundary.py:1614); io-boundaries itself iterates meta['io_boundaries'] (io_boundary.py:4354). --io-boundary subprocess misses the 23 ipc_recv+subprocess rows (child_process.execSync, subprocess.check_output, go Cmd.Output) and scala Process(cmd) (scalar fs_write); --io-boundary navigation_read matches 1 of its 7 rows. Fix: read io_boundaries like the io-boundaries command; repro through the CLI first."  # 14da
+    fields: {}  # 14da
+- op: update  # fa92
+  at: '2026-10-25T20:08:23Z'  # fa92
+  by: agent  # fa92
+  actor: jgstern_agent  # fa92
+  clock: 2  # fa92
+  nonce: fa92  # fa92
+  set:  # fa92
+    priority: 2  # fa92
+- op: discuss  # fc84
+  at: '2026-10-25T20:08:23Z'  # fc84
+  by: agent  # fc84
+  actor: jgstern_agent  # fc84
+  clock: 3  # fc84
+  nonce: fc84  # fc84
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, WIDER. Python: run_check() -> subprocess.check_output, run_plain() -> subprocess.run, main calls both; `slice --entry main --io-boundary subprocess` reports '1 edge(s) reach this boundary' (subprocess.run only), exit 0, no warning (reproduced independently twice); --io-boundary ipc_recv keeps only check_output; io-boundaries lists check_output under both. JS: --io-boundary navigation_read keeps window.name and drops document.location. Refs: filter cli.py:1844-1847; scalar written io_boundary.py:5938, list :5955; the io-boundaries command fans out over the list at :4372; first-declared-wins loop :1632 (rationale :266-271); the --help example (cli.py:10694-10702) uses subprocess, the failing case. Scope: 41 two-boundary primitives (24 ipc_recv+subprocess, 6 env_read+navigation_read, 3 host_info_read+subprocess, 3 fs_write+subprocess, 2 fs_read+fs_write, 2 net_send+net_recv, 1 fs_read+logging); --io-boundary subprocess misses 30; the fs_write, net_recv and logging filters are affected too. Fix: read meta io_boundaries the way io_boundary.py:4372 does. P3 -> P2: a user-facing filter silently drops results."  # fc84
+- op: discuss  # d6f3
+  at: '2026-10-26T00:31:44Z'  # d6f3
+  by: agent  # d6f3
+  actor: jgstern_agent  # d6f3
+  clock: 4  # d6f3
+  nonce: d6f3  # d6f3
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Neither WI-ziruv nor WI-kosup catches this shape: two consumers (slice --io-boundary, the io-boundaries command) answer one fact differently. It can be tested as a cross-consumer property (both consumers list the same edges per boundary). Does not wait for either audit."  # d6f3
+- op: update  # 9ad7
+  at: '2026-10-26T17:29:19Z'  # 9ad7
+  by: agent  # 9ad7
+  actor: jgstern_agent  # 9ad7
+  clock: 5  # 9ad7
+  nonce: 9ad7  # 9ad7
+  set:  # 9ad7
+    status: done  # 9ad7
+    pr_ref: '1883'  # 9ad7
+- op: discuss  # 33ab
+  at: '2026-10-26T17:29:19Z'  # 33ab
+  by: agent  # 33ab
+  actor: jgstern_agent  # 33ab
+  clock: 6  # 33ab
+  nonce: 33ab  # 33ab
+  message: "DONE in PR #1883 (merged, dev ac7df8ee2a). Root cause: _apply_io_boundary_filter compared the scalar meta['io_boundary'] (first-declared-wins) while io-boundaries fans out over meta['io_boundaries']. Fix: io_boundary.boundaries_of(meta) -- the list when present (it always contains the scalar: simultaneous_boundaries_for and mode_spanned_boundaries both return every row's boundary), else the scalar -- read by the slice filter, the io-boundaries fan-out and verify_claims' producer-opaque test (same answer there today; same question, now one reader).\nBEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev: python run_check() -> subprocess.check_output, run_plain() -> subprocess.run, main calls both; `hypergumbo slice map.json --entry main --io-boundary subprocess` -> \"2 edge(s) reach this boundary\", exit 0 (was 1). JS through the CLI on the branch: --io-boundary subprocess keeps execSync and spawn, ipc_recv keeps execSync, navigation_read keeps document.location and window.name (was window.name only). The cross-consumer property the earlier note proposed ships as test_slice_io_boundary.py::TestMultiBoundaryCall::test_the_filter_and_io_boundaries_agree_per_boundary (for every boundary compute_boundary_map lists, the slice filter keeps exactly those edges); production-path test test_slice_io_boundary_multi.py.\nNot changed: two ad-hoc measurement scripts (scripts/measure-go-composite-literal-ab.py, measure-blind-language-signal.py) count edges by the scalar's presence, which is unaffected."  # 33ab

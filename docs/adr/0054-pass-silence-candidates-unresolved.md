@@ -86,7 +86,7 @@ Bucket 1 is also correct on the rubric's own terms, independently of the mechani
 
 This document therefore uses one new term, **SPLIT** — *a residue value's population is heterogeneous and part of it is promoted to its own name* — defined as FOLD's inverse. It is used **descriptively, here only**: `VALID_VERDICTS` is closed and SPLIT is not a member, so no document under `docs/audits/` may use it until that enum is extended.
 
-ADR-0024's own refactor trigger (*"if a future axis declaration reveals that the verdict scheme genuinely varies per axis… promote this subsection into a standalone `docs/family-audit-methodology.md`"*) has now fired **once**, on a non-`Edge`/`Symbol` host dataclass. It should **not** promote on N=1. Threshold for promotion: a second non-`Edge`/`Symbol` axis needing a non-trichotomy verdict.
+ADR-0024's own refactor trigger (*"if a future axis declaration reveals that the verdict scheme genuinely varies per axis… promote this subsection into a standalone `docs/family-audit-methodology.md`"*) has now fired **once**, on a non-`Edge`/`Symbol` host dataclass. It should **not** promote on N=1. Threshold for promotion: a second non-`Edge`/`Symbol` axis needing a non-trichotomy verdict. *(That threshold was met by the io-boundary axis, audit-findings 0021/0022, and answered by the audits README's per-`kind:` block formats rather than a standalone file; ADR-0024's trigger now records the resolution and its replacement — WI-daruz, 2026-10-28.)*
 
 ## What would change this verdict
 

@@ -1,0 +1,24 @@
+- op: create  # 9282
+  at: '2026-11-14T21:39:10Z'  # 9282
+  by: agent  # 9282
+  actor: jgstern_agent  # 9282
+  clock: 1  # 9282
+  nonce: '9282'  # 9282
+  data:  # 9282
+    kind: invariant  # 9282
+    title: "smart-test narrowing treats a new def as no import-time change: a method that overrides an inherited one drops the only test that runs it"  # 9282
+    status: violated  # 9282
+    priority: 3  # 9282
+    parent:  # 9282
+    tags:  # 9282
+    - smart_test  # 9282
+    - ci_infrastructure  # 9282
+    - test_selection  # 9282
+    isbefore: []  # 9282
+    duplicate_of: []  # 9282
+    not_duplicate_of: []  # 9282
+    pr_ref:  # 9282
+    description: "Found 2026-11-14 while running the WI-falas soundness check on the smart-test bed. Evidence: ~/hypergumbo_lab_notebook/falas_measure_11142026 (bed_results_override.json, prototype/prototype.patch holds the bed scenario).\n\nOBSERVED ON THE BED, WITH TODAY'S CODE (dev b373512b77, no experiment switch set). Base: bedcore/shapes.py has class Square with area(); bedcore/solid.py has class Tile(Square) with no method of its own and a function unit(); test_solid.py asserts Tile(2).area() == 4; test_solid_unit.py calls unit(). Edit (override-new-method): add to Tile a method area() that overrides the inherited one.\n- unnarrowed selection: 5 test files, test_solid.py among them;\n- narrowed run set: 3 test files; narrowing dropped test_shapes.py and test_solid.py;\n- the mutation oracle (a raise as the first statement of the new block Tile.area) fails test_solid.py: it is MUST-select, and it is the only test that runs the new method.\nNarrowing did not refuse.\n\nWHY. block_hash removes nested defs and classes from the parent block's digest, so adding a method changes no existing block. selection_index reports it as a NEW block, and narrowing_blockers does not refuse on new blocks; the stated reason (scripts/measure-narrowing-headroom.py) is that the test covering new code is a changed test file. That does not hold for a def that existing callers reach without naming it. test_solid.py's coverage rows are all on shapes.py (it ran the inherited method), it has none on solid.py, so it is outside the file-touch keep set and is dropped.\n\nTHE FAMILY (only the first member was run):\n- a new method that overrides an inherited one (shown above);\n- a new function or class whose DECORATOR registers it (the decorator runs at import; this project fills analyzer, linker and extractor registries that way): a test that reads the registry and runs nothing in the changed file is in the same position. Not run on the bed;\n- a second def that shadows an earlier one at the same scope: block_hash's docstring already records this as a known false negative of selection.\nA new def is import-time code of its file in each case, and WI-falas's candidate (iii) (admit a new method only when no base class and no subclass defines the name) is the guard this path lacks: new methods and properties are admitted today without it.\n\nHOW OFTEN IT CAN BITE. It needs a changed file the index knows, a new def reached dynamically, and a test with rows elsewhere and none in that file. An analyzer subclass that gains a hook override is run by tests that also execute other lines of the same file, which the file-touch keep set retains; so the exposed case is a class whose tests run inherited code only. Not measured on real PRs.\n\nDIRECTIONS, NOT A PRESCRIPTION. Treat a new def as an import-time change of its enclosing block unless it is shown inert: undecorated, and (for a method) no class in the tree that is a base or subclass of its class defines the name. The measurement WI-falas asked for gives the cost side: how many PRs add a def to an existing class or module and would lose narrowing was not counted there, because such PRs are not refused today.\n\nDONE WHEN. The bed carries override-new-method (and a decorator-registration scenario) and scores no dropped MUST under narrow; the refusal message names the def; the share of source-changing PRs that newly refuse is reported."  # 9282
+    fields:  # 9282
+      statement: "Narrowing drops a test file only when the change cannot alter what that test executes; a new function, method or class in a changed file counts as import-time code of that file unless it is shown inert."  # 9282
+      root_cause: "block_hash removes nested defs from the parent digest, so a new def changes no existing block; narrowing_blockers does not refuse on new blocks on the reasoning that new code is covered by a changed test file, which does not hold for a def existing callers reach without naming it (an override of an inherited method, a decorator-registered function, a shadowing def)."  # 9282

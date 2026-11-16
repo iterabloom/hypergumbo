@@ -14,7 +14,8 @@ unrecognised falls back to "every identifier in the subtree is a use",
 which is the conservative direction: it can only add spurious *uses*
 (over-linking), never invent a definition that silently drops a real flow.
 
-Handled statement shapes, all of them children of a ``statement_list``:
+Handled statement shapes (``statement_list`` children, plus the loop and
+condition header parts that go.yaml's hooks record; see Scope):
 
 - ``a := expr`` / ``a, b := f()``           — short_var_declaration
 - ``var x T = expr`` / ``const c = expr``   — var_declaration, const_declaration
@@ -26,6 +27,12 @@ Handled statement shapes, all of them children of a ``statement_list``:
 - ``go f(x)``, bare calls                   — go_statement, expression_statement
 - ``k, v := range xs``                      — range_clause (loop header)
 
+The short-var and assignment handlers also report ``targets``: the left-hand
+side by position, ``None`` for each blank ``_``, given only when a blank is
+present and every other target names exactly one variable. The taint return
+lift uses it to map a callee's result positions onto the variables the call
+binds (WI-sitaf).
+
 Importing the module also calls ``register_ddg_language`` to make Go a DDG
 language: every ``function_declaration`` and ``method_declaration`` is a
 function, named and kinded exactly as ``go.py`` names them (``Recv.name``
@@ -33,6 +40,14 @@ for methods, via the analyzer's receiver-type helper) so the DDG ids match
 the Go analyzer's ids. The spec also walks the outermost function-literal
 bodies bound under a package-level ``var`` (cobra's ``Run: func(...)``,
 ``var h = func(...)``), anchored on that variable's symbol (WI-rovun).
+It names a declaration's parameters through ``params_for`` (``_go_params``):
+the receiver first, then every identifier of each parameter declaration.
+ddg_build gives them to the solver as entry definitions at the function's own
+line, so a parameter reaches its uses in the body, and records them in
+``RepoDdg.params``, from which taint seeds a request handler's
+``*http.Request`` parameter (WI-sosov). A literal bound under a ``var`` gets
+no parameter definitions: the spec's node there is the binding, not the
+callable.
 
 Why a Node Type Must Also Be Declared Atomic
 --------------------------------------------
@@ -170,6 +185,32 @@ def _names_from_expression_list(node: Any, source: bytes) -> list[str]:
     return names
 
 
+def _positional_targets(node: Any, source: bytes) -> list[str | None] | None:
+    """An ``expression_list`` target BY POSITION, ``None`` for the blank (WI-sitaf).
+
+    The return lift maps a callee's result positions onto the variables its
+    call binds, and ``defines`` drops the blank, so ``_, err := get()`` lists
+    one name against an arity of two. ``None`` as a whole -- no positions --
+    unless a blank is present and every other target names exactly one
+    variable: a target that names none (``*p``) has no name for its slot, and
+    guessing one would move the seed.
+    """
+    targets: list[str | None] = []
+    blank = False
+    for child in node.children:
+        if not child.is_named:
+            continue
+        if child.type == "identifier" and _node_text(child, source) == _BLANK:
+            targets.append(None)
+            blank = True
+            continue
+        names = _collect_pattern_names(child, source)
+        if len(names) != 1:
+            return None
+        targets.append(names[0])
+    return targets if blank else None
+
+
 @register_def_use_extractor("go")
 class GoDefUseExtractor:
     """Extracts variable definitions and uses from Go tree-sitter AST nodes."""
@@ -190,7 +231,8 @@ def _handle_short_var_declaration(node: Any, source: bytes) -> DefUseResult:
     right = node.child_by_field_name("right")
     defines = _names_from_expression_list(left, source) if left is not None else []
     uses = _collect_identifiers(right, source) if right is not None else []
-    return DefUseResult(defines=defines, uses=uses)
+    targets = _positional_targets(left, source) if left is not None else None
+    return DefUseResult(defines=defines, uses=uses, targets=targets)
 
 
 def _handle_spec_declaration(node: Any, source: bytes) -> DefUseResult:
@@ -238,7 +280,8 @@ def _handle_assignment_statement(node: Any, source: bytes) -> DefUseResult:
 
     if right is not None:
         uses.extend(_collect_identifiers(right, source))
-    return DefUseResult(defines=defines, uses=uses)
+    targets = _positional_targets(left, source) if left is not None else None
+    return DefUseResult(defines=defines, uses=uses, targets=targets)
 
 
 def _handle_inc_dec_statement(node: Any, source: bytes) -> DefUseResult:
@@ -352,8 +395,11 @@ def _go_bound_literal_bodies(node: Any, source: bytes) -> list[Any]:
     part of the outer body's CFG (as one nested in a declaration is), and
     walking it again would record its statements twice.
 
-    A literal's parameters are not definitions, exactly as a declaration's are
-    not: ``build_function_cfg`` is handed the body in both cases.
+    A literal's parameters are not statement definitions, exactly as a
+    declaration's are not: ``build_function_cfg`` is handed the body in both
+    cases. A declaration's parameters reach its body as the solver's ENTRY
+    definitions (``_go_params``, WI-sosov); a literal held by a ``var_spec``
+    gets none, since the spec's node is the binding, not the callable.
     """
     from .go import _go_package_level_var_name
 
@@ -372,6 +418,30 @@ def _go_bound_literal_bodies(node: Any, source: bytes) -> list[Any]:
     return bodies
 
 
+def _go_params(node: Any, source: bytes) -> list[str]:
+    """The parameter names of a Go function or method, in order (WI-sosov).
+
+    The receiver first (``func (s saver) ServeHTTP(w, r)`` names ``s``), then
+    each ``parameter_declaration`` / ``variadic_parameter_declaration`` of the
+    ``parameters`` list -- every identifier of a grouped declaration (``a, b
+    int`` names both), none of its type. A node that is not a function
+    declaration (a package-level ``var_spec`` holding a literal) has neither
+    field and yields nothing.
+    """
+    names: list[str] = []
+    for field_name in ("receiver", "parameters"):
+        params_node = node.child_by_field_name(field_name)
+        if params_node is None:
+            continue
+        for decl in params_node.children:
+            if decl.type not in ("parameter_declaration", "variadic_parameter_declaration"):
+                continue
+            for child in decl.children:
+                if child.type == "identifier":
+                    names.append(_node_text(child, source))
+    return names
+
+
 register_ddg_language(LanguageDdgSpec(
     language="go",
     function_node_types=frozenset({"function_declaration", "method_declaration"}),
@@ -380,4 +450,5 @@ register_ddg_language(LanguageDdgSpec(
     bound_callable_node_types=frozenset({"var_spec"}),
     bound_bodies_for=_go_bound_literal_bodies,
     bound_anchor_kinds=frozenset({"variable"}),
+    params_for=_go_params,
 ))

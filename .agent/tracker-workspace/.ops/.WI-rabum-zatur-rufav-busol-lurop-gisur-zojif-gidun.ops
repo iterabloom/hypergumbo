@@ -66,3 +66,19 @@
   set: {}  # a0e6
   add:  # a0e6
     tags: [awaits_bakeoff_validation]  # a0e6
+- op: update  # a3d9
+  at: '2026-11-02T10:19:47Z'  # a3d9
+  by: agent  # a3d9
+  actor: jgstern_agent  # a3d9
+  clock: 8  # a3d9
+  nonce: a3d9  # a3d9
+  set: {}  # a3d9
+  remove:  # a3d9
+    tags: [awaits_bakeoff_validation]  # a3d9
+- op: discuss  # 6707
+  at: '2026-11-02T10:19:47Z'  # 6707
+  by: agent  # 6707
+  actor: jgstern_agent  # 6707
+  clock: 9  # 6707
+  nonce: '6707'  # 6707
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). sbt / gatling: measured --include-tests scala PrintStream/System.in chains 190 / 21 (recorded 0 -> +96 / +4) ; okhttp: measured --include-tests kotlin PrintStream/System.in chains 143 (recorded 0 -> +31). Tag stripped."  # 6707

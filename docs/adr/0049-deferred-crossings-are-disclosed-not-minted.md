@@ -167,6 +167,93 @@ the two largest shapes, and Setup + Blocking serve loop together are under
 half the family.** The row counts are the register's, over the three
 boundaries adjudicated to completion.
 
+**A handle constructor's own configuration read mints no value (owner,
+2026-10-04, re-confirmed 2026-10-20; WI-patit).** Some constructors READ at the
+call -- `build_opener`, `ProxyHandler`, `URLopener` read the `*_proxy`
+variables, `xml.dom.getDOMImplementation` reads `PYTHON_DOM` -- and keep what
+they read inside the handle they return. The read is a real crossing at that
+call and stays classified (`env_read`), but the handle is not data: what the
+constructor read is not data sent through the handle, so a send through it
+carries no flow from that read, exactly as `urlopen(url)`, which performs the
+same read internally, never did. The row declares `returns_handle: true`; its
+auto-derived source taints no returned value and mints nothing. This is not a
+deferred crossing either: no data arrives later in a scope the program enters,
+because the crossing is complete at the call and its content never reaches
+program code. So Ruling 2's disclosure boundary, and its opacity gate (clause
+3), do not apply, and the row is not withheld from `confirmed`. Nor is this the
+receive-handle question above (`bufio.NewReader`, `sys.stdin`), where the
+crossing has not happened yet at the constructor: those rows are unmarked. A
+function that RETURNS what it read (`getproxies()`) is a transfer and keeps
+minting.
+
+**An exit status is not the child's message (owner, 2026-10-22; WI-lanos).**
+Ruling 1 asks whether a call returns a value whose *content* the far side chose.
+For a child process this was already answered when INV-lozat closed: a launch
+that hands back the child's bytes is a transfer, and the sibling forms that
+return only an exit status (`Run`, `call`, `system`) stay launch-only because
+"an exit status is not the child's message" (spec, §"Taint-flow analysis (ADR-0017)"). The child
+does pick the code, so this is a reading of "content", and it is the reading the
+tree already ships. `os.wait` / `waitpid` / `wait3` / `wait4` / `waitid` and
+Rust's `std::process::Child.wait` / `try_wait` were the rows that still gave the
+other answer for the same value; they no longer declare `ipc_recv` and mint
+nothing, so one value carries one verdict.
+
+The reason the reading is the right one is the question taint asks, not the size
+of the value. A finding needs the value to reach a sink's *argument*; a value
+that only decides a branch is not a flow (this ADR, on `bufio.NewReader`'s y/N
+case). An exit status is consumed as a branch condition — `if rc != 0`. A single
+bit can still matter (an auth helper's exit code), but it matters through control
+dependence, which hypergumbo's taint analysis does not model; a status row that
+mints therefore buys findings that cannot be true flows. That is what was
+measured in the opposite direction (minting a status at every status-returning
+call, 10-03 and 10-22): 0 of 120 sampled added findings carried an exit status to
+a sink argument (Wilson 95% upper bound 6.0% per sample of 60), 0 were useful, and
+the 5 verdicts that moved did not rest on an exit-status flow.
+
+**Re-evaluation trigger.** Revisit this ruling if a sampled exit-status flow to a
+sink argument is ever adjudicated real, or if the taint analysis comes to model
+control dependence.
+
+The limit, stated so the rule is not over-read: **an exit status read out of an
+output-carrying result still mints.** `Child.wait_with_output().status`,
+`subprocess.getstatusoutput`'s status half and Haskell's
+`readProcessWithExitCode`'s `ExitCode` stay `ipc_recv`, because the whole
+returned value is the source and the analysis is field-insensitive (ADR-0017
+§7a, implemented but unwired). That is the same value with a second verdict, so
+it violates the invariant this ruling restores; it is tracked as INV-sozak, it errs
+only toward extra findings (never a false all-clear), and it sits inside the
+cost ADR-0052 accepts ("false positives that a field-sensitive … analysis could
+refute stay in the output"). After this change those are the only ways an exit
+status mints in the four languages checked (python, rust, go, haskell): the
+post-change catalogue scan of `ipc_recv` rows named `*wait*` / `*status*` /
+`*exit*` / `*returncode*` / `*poll*` / `*system*` / `*call*` found only
+output-carrying rows.
+
+**The residual is accepted (owner, 2026-10-24).** INV-sozak stays open as an
+accepted residual (P4). It is not fixed. A census of the 273-repo corpus found
+no production site that sends such a status into a network or filesystem sink
+(lab notebook `sozak_10242026/CENSUS.md`). Fixing it would mean a field-clearing
+mechanism §7a does not have, and Haskell has no def-use extractor to host one.
+`test_exit_status_is_one_verdict.py` keeps pinning the disagreement. **The
+re-evaluation trigger above extends to it:** revisit if a sampled finding
+rooted at one of these three status reads is adjudicated real, or if a
+field-sensitive source model lands for another reason.
+
+Ruling 3 was run, not argued (lab notebook `lanos_removal_10222026/`,
+pre-registered in `PLAN.md`): 11 repos (5 rust, 6 python; ceph and virtualbox
+dropped by the plan's time rules, envoy replaced by a deterministic half-size
+copy that keeps both of its `os.waitpid` sites), BEFORE = dev 9b93a6396a, AFTER =
+the same tree with only these rows removed. Removed situations 0, added 0,
+verdict moves 0, true evidence counts unchanged in every claim. The output
+primitives (`check_output`, `Popen.communicate`, `Command.output`,
+`wait_with_output`) give the same verdict in both arms, and on fixtures the
+removal does flip the exit-status cases from `violated` to no rows, so the
+comparison could fail. **Ruling 3 holds here because the rows produced no finding
+to lose on that corpus**, not because lost findings were judged wrong; the
+correctness evidence is the measurement above. Part of the Rust zero is WI-rupah:
+a `Child` method on an unannotated binding mints no source, so those rows were
+already mostly inert.
+
 `accept` is not a member of the family and never was. WI-dosov had this right
 in Haskell; the shipped Go rows carry `Accept` alongside `Socket`/`Bind`/
 `Listen` as if they were the same thing, and they are not.
@@ -252,6 +339,8 @@ the rows that would survive are INV-misup-unreachable, so the move would
 relocate the receive to nothing. **`Phoenix.Router`** is held because step 3
 produced *no adjudicated findings* for the route-registration shape, which is
 absence of evidence rather than evidence of harmlessness.
+
+**Ruling 3's disclosure half also covers request handlers, read off the graph rather than the catalogue.** A route handler receives its request as a parameter or a framework global, so its arrival scope is never a source until request carriers are seeded. `verify_claims.unseeded_ingress_handlers` lists every entrypoint of a `REQUEST_INGRESS_KINDS` kind, and `_withhold_for_unseeded_ingress` withholds a clean `untrusted_input` taint verdict or `net_recv` boundary verdict while any exists, naming the handlers. It is keyed to the entrypoints because the deferred-crossing shadow is keyed to catalogue rows: a framework module declared complete in an overlay has no such row, and one completeness entry for `flask` was measured turning a route that writes `request.args` to disk into `confirmed_with_caveats`. Seeding a framework's request carrier as a source is what narrows the list.
 
 **Ruling 3's proof was run per language, not argued.** An idiomatic server
 probe in each affected language, before and after the move: go keeps
@@ -349,6 +438,23 @@ to `unshare.ExecRunnable`), never reaches a `Run` the forward-only taint walk
 can see. The rows stay until that return / heap flow is represented; rust's
 `Command::new` and java's `ProcessBuilder.command` are the same shape and were
 not measured.
+
+**Exit-status rows removed (WI-lanos).** python's `os` wait-family row
+(`wait`, `waitpid`, `wait3`, `wait4`, `waitid`) and `wait` / `try_wait` from
+rust's `std::process::Child` row (which keeps `wait_with_output`). Removing a
+row is not enough on its own where the module is only partly catalogued: an
+unrowed method is an unclassified call, and rust's `Child.wait` then read
+`inconclusive` where `Command::status` reads `confirmed_with_caveats`, one
+disagreement traded for another. A dated `module_completeness` entry for
+`std::process::Child`, enumerated from `impl Child` in the standard library
+source, keeps the two methods examined (python's `os` was already declared
+complete). The audit's exit-status family also leaves `choice_shaped_source`'s
+vocabulary, since no source carries those names. A test pins AGREEMENT — one
+value, one verdict — via `os.waitpid` and `subprocess.call`, and via
+`Child.wait` and `Command::status`; and it pins the residual DISAGREEMENT
+(`os.waitpid` vs `subprocess.getstatusoutput()[0]`, `Child.wait` vs
+`wait_with_output().status`) as today's state, so it goes red when INV-sozak
+lands and is re-pointed then.
 
 ## Open work — sequencing and the evidence bar
 

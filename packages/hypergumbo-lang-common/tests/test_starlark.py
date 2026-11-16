@@ -341,5 +341,178 @@ def caller():
         # Find the resolved edge from caller to internal_helper
         resolved_call = next((e for e in call_edges if "internal_helper" in e.dst and "external" not in e.dst), None)
         assert resolved_call is not None
-        # Resolved calls have confidence 0.85 * lookup confidence
+        # A resolved call's confidence is the ast_call pathway graded by the
+        # lookup's resolution score (Edge.create's resolution_score)
         assert resolved_call.confidence > 0.70
+
+
+class TestDependencyLabelsResolve:
+    """A deps label resolves to the target it names, or to a canonical
+    external ref when no target here declares it. Written into the dst raw
+    (``starlark:<BUILD path>:<label>``) it is no id: nothing resolves it, and
+    boundary synthesis collapses every such dependency onto one nameless
+    ``starlark:<unknown>:0-0::external_symbol`` (history: WI-pusan,
+    INV-kurup)."""
+
+    def _edges(self, temp_repo: Path) -> dict[str, tuple[str, bool]]:
+        (temp_repo / "lib").mkdir()
+        (temp_repo / "lib" / "BUILD").write_text(
+            'cc_library(name = "core", srcs = ["core.cc"])\n'
+            'cc_library(name = "lib", srcs = ["lib.cc"])\n'
+        )
+        (temp_repo / "BUILD").write_text(
+            'cc_library(name = "util", srcs = ["u.cc"])\n'
+            "cc_binary(\n"
+            '    name = "app",\n'
+            '    deps = [":util", "util", "//lib:core", "//lib", "//:util",\n'
+            '            "@abseil-cpp//absl/strings", "@zlib", "//missing:thing", "//lib:"],\n'
+            ")\n"
+        )
+        result = analyze_starlark(temp_repo)
+        app = next(s for s in result.symbols if s.name == "app")
+        return {
+            str((e.meta or {}).get("build_label")): (e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == "depends_on" and e.src == app.id
+        }
+
+    def test_in_repo_labels_reach_their_targets(self, temp_repo: Path) -> None:
+        deps = self._edges(temp_repo)
+        for label, (name, path) in {
+            ":util": ("util", "BUILD"), "util": ("util", "BUILD"), "//:util": ("util", "BUILD"),
+            "//lib:core": ("core", "lib/BUILD"), "//lib": ("lib", "lib/BUILD"),
+        }.items():
+            dst, resolved = deps[label]
+            assert resolved and dst.startswith(f"starlark:{path}:") and dst.endswith(f":{name}:target"), label
+
+    def test_other_labels_are_canonical_external_refs(self, temp_repo: Path) -> None:
+        from hypergumbo_core.ir import symbol_name_slot, symbol_path_slot
+
+        deps = self._edges(temp_repo)
+        for label, (module, name) in {
+            "@abseil-cpp//absl/strings": ("@abseil-cpp//absl/strings", "strings"),
+            "@zlib": ("@zlib//", "zlib"),
+            "//missing:thing": ("//missing", "thing"),
+        }.items():
+            dst, resolved = deps[label]
+            assert not resolved, label
+            assert (symbol_path_slot(dst), symbol_name_slot(dst)) == (module, name), label
+        # `//lib:` names no target, so it makes no edge.
+        assert "//lib:" not in deps
+
+
+class TestLoadEdgeEndpoints:
+    """A ``load`` edge joins the loading file's node to what it loads.
+
+    Both ends were hand-built strings (``starlark:<path>:file:`` and
+    ``starlark:<label>:<name>``) that named no node, so finalize folded every
+    loading file into one ``<unknown>`` placeholder and every loaded name into
+    a placeholder named after its ``.bzl`` file.
+    """
+
+    def _imports(self, repo: Path) -> list[tuple[str, str, bool]]:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        result = analyze_starlark(repo)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        return [
+            (e.src, e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == "imports"
+        ]
+
+    def test_load_of_a_file_of_the_run_reaches_its_symbol_or_the_file(
+        self, temp_repo: Path,
+    ) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        (temp_repo / "tools").mkdir()
+        (temp_repo / "app").mkdir()
+        (temp_repo / "tools" / "defs.bzl").write_text(
+            "def helper_macro(name):\n"
+            "    def nested(x):\n"
+            "        pass\n"
+            "    nested(name)\n"
+            "\n"
+            "LIMIT = 3\n"
+            "my_rule = rule(implementation = helper_macro)\n"
+        )
+        (temp_repo / "app" / "local.bzl").write_text("def local_macro(name):\n    pass\n")
+        (temp_repo / "app" / "BUILD.bazel").write_text(
+            'load("//tools:defs.bzl", "helper_macro", "LIMIT", "my_rule", "nested")\n'
+            'load(":local.bzl", lm = "local_macro")\n'
+            'load("//tools/defs.bzl", "helper_macro")\n'
+        )
+
+        result = analyze_starlark(temp_repo)
+        ids = {(s.path, s.name): s.id for s in result.symbols}
+        here = make_file_id("starlark", "app/BUILD.bazel")
+        defs_file = make_file_id("starlark", "tools/defs.bzl")
+        macro = ids[("tools/defs.bzl", "helper_macro")]
+        assert self._imports(temp_repo) == [
+            (here, macro, True),
+            (here, ids[("tools/defs.bzl", "LIMIT")], True),
+            # ``my_rule = rule(...)`` has no symbol: the edge reaches its file.
+            (here, defs_file, True),
+            # A ``def`` nested in a macro is not loadable: the file again.
+            (here, defs_file, True),
+            (here, ids[("app/local.bzl", "local_macro")], True),
+            # ``//tools/defs.bzl``, the label spelled without a colon.
+            (here, macro, True),
+        ]
+
+    def test_load_of_a_file_outside_the_run_is_a_stand_in(self, temp_repo: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.ir import ExternalRef
+
+        (temp_repo / "BUILD").write_text(
+            'load("@rules_cc//cc:defs.bzl", "cc_binary")\n'
+            'load("//gone:defs.bzl", "x")\n'
+        )
+        result = analyze_starlark(temp_repo)
+        imports = [e for e in result.edges if e.edge_type == "imports"]
+        assert [(e.src, e.dst, e.dst_ref) for e in imports] == [
+            (
+                make_file_id("starlark", "BUILD"),
+                "starlark:@rules_cc//cc:defs.bzl:0-0:cc_binary:unresolved",
+                ExternalRef(
+                    lang="starlark", module_path="@rules_cc//cc:defs.bzl",
+                    name="cc_binary",
+                ),
+            ),
+            (
+                make_file_id("starlark", "BUILD"),
+                "starlark://gone:defs.bzl:0-0:x:unresolved",
+                ExternalRef(lang="starlark", module_path="//gone:defs.bzl", name="x"),
+            ),
+        ]
+        assert [e[2] for e in self._imports(temp_repo)] == [False, False]
+
+
+class TestCallEdgeEndpoints:
+    """A call no file of the run defines ends at the fleet's stand-in.
+
+    It ended at ``starlark:external:<name>:function``, four slots and so no
+    id: finalize rendered it with the path slot ``<unknown>``.
+    """
+
+    def test_unresolved_call_is_a_stand_in(self, temp_repo: Path) -> None:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (temp_repo / "defs.bzl").write_text(
+            "def helper(name):\n"
+            "    pass\n"
+            "\n"
+            "def macro(name):\n"
+            "    helper(name)\n"
+            "    native.cc_library(name = name)\n"
+            "    print(name)\n"
+        )
+        result = analyze_starlark(temp_repo)
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert {by_id[e.src].name for e in calls} == {"macro"}
+        assert [(by_id[e.dst].name if e.dst in by_id else e.dst, e.is_resolved) for e in calls] == [
+            ("helper", True),
+            ("starlark:external:0-0:cc_library:unresolved", False),
+            ("starlark:external:0-0:print:unresolved", False),
+        ]
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []

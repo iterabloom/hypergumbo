@@ -114,6 +114,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^Route\\.group$"
-
-linkers:
-  - http

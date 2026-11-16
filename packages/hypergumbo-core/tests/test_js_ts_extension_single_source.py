@@ -278,7 +278,11 @@ class TestAnnotationLabels:
 #: candidate files an extensionless specifier tries, in order). Keyed by the
 #: assignment target or enclosing function, never a line number.
 _ALLOWED_PRIVATE_LISTS = {
-    ("js_module.py", "_PROBE_EXTENSIONS"),
+    ("js_package_entry.py", "PROBE_EXTENSIONS"),
+    # TypeScript's ESM convention (``./x.js`` names ``x.ts``): a probe rule
+    # mapping a JS extension to its TS twin, not a "which files are JS/TS"
+    # list (WI-dunab).
+    ("js_package_entry.py", "_JS_TO_TS"),
     ("tauri_ipc.py", "_resolve_import_path"),
 }
 
@@ -335,7 +339,10 @@ def grammar_lookup_callers(source: str) -> bool:
 
 
 def _scanned_modules() -> list[Path]:
-    return sorted(_LINKERS.glob("*.py")) + [_CORE / "ddg_build.py"]
+    # js_package_entry.py holds the import-probe order the js_module linker
+    # and js_ts share (WI-halol moved it out of linkers/); it is scanned so the
+    # move did not take the list outside the gate.
+    return sorted(_LINKERS.glob("*.py")) + [_CORE / "ddg_build.py", _CORE / "js_package_entry.py"]
 
 
 class TestGate:

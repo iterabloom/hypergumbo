@@ -1,0 +1,22 @@
+- op: create  # c6f5
+  at: '2026-11-07T02:12:21Z'  # c6f5
+  by: agent  # c6f5
+  actor: jgstern_agent  # c6f5
+  clock: 1  # c6f5
+  nonce: c6f5  # c6f5
+  data:  # c6f5
+    kind: work_item  # c6f5
+    title: "tmp_artifact_extract applies tar member modes unmasked (setuid, world-write) and its comment falsely claims more than filter=data"  # c6f5
+    status: todo_hard  # c6f5
+    priority: 3  # c6f5
+    parent:  # c6f5
+    tags:  # c6f5
+    - safety_zones  # c6f5
+    - security  # c6f5
+    - gitleaks  # c6f5
+    isbefore: []  # c6f5
+    duplicate_of: []  # c6f5
+    not_duplicate_of: []  # c6f5
+    pr_ref:  # c6f5
+    description: "Found by the 11-06 adversarial review of the safety_zones wrappers (lab: wrapper_review_11062026/REVIEW.md #7, probe b/p5/).\n\nDefect: safety_zones.tmp_artifact_extract's tar branch validates member names and types, then calls tf.extractall(dest) with the default filter, which on Python 3.10-3.13 is fully_trusted: member mode bits are applied as stored, including setuid/setgid and world-write, and a \".\" member re-modes the extraction directory itself (0700 -> 0777 in the probe). install_artifact_copy (shutil.copy2) carries the mode to ~/.local/bin/gitleaks, and install_artifact_chmod only ADDS execute bits.\n\nThe comment above the extractall says the validation gives \"more than filter=\\\"data\\\" would give\"; that is false for modes: filter=\"data\" would produce 0o755 where this produced 0o6777.\n\nTrigger: only a release archive with bad modes (hostile or a packaging mistake upstream). Consequence: a world-writable binary in ~/.local/bin, which any local user could replace and have run as the victim on the next sketch.\n\nFix direction: mask modes explicitly in the member loop (clear setuid/setgid/sticky and group/other write; keep the regular-or-dir check), install with an explicit 0o755, and correct the comment."  # c6f5
+    fields: {}  # c6f5

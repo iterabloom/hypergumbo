@@ -75,7 +75,3 @@ patterns:
   # Fastify WebSocket (@fastify/websocket)
   - concept: websocket_handler
     decorator: "^(fastify|app|server)\\.websocket$"
-
-linkers:
-  - http
-  - websocket

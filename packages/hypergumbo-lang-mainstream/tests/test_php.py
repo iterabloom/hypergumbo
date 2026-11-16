@@ -701,9 +701,9 @@ helper();
         result = analyze_php(tmp_path)
 
         assert result.run is not None
-        # INV-kokaj: top-level call is attributed to the file pseudo-node
-        # (kind="file", canonical file-id shape) instead of the legacy
-        # <module:filename> kind="module" wrapper.
+        # A top-level call is attributed to the file pseudo-node
+        # (kind="file", canonical file-id shape), not a <module:filename>
+        # kind="module" wrapper (INV-kokaj).
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
         assert call_edges[0].src.endswith(":1-1:file:file")
@@ -967,11 +967,11 @@ Route::any('/catchall', [CatchAllController::class, 'handle']);
     def test_match_route_recovers_verbs_path_and_controller(
         self, tmp_path: Path,
     ) -> None:
-        """WI-zunal: ``Route::match`` is no longer dropped.
+        """``Route::match`` yields its verbs, path and controller (WI-zunal).
 
         Its args[0] is the verb array, so reading the path from args[0]
-        found no string and skipped the route entirely — the whole route
-        vanished from the map, not merely its verb. Every positional
+        would find no string and skip the route entirely — the whole route
+        would vanish from the map, not merely its verb. Every positional
         argument shifts right by one.
         """
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -1144,7 +1144,11 @@ Route::post('/login', 'AuthController@login');
         assert get_route.meta["http_method"] == "GET"
         assert get_route.meta["route_path"] == "/users"
         assert get_route.meta["controller_action"] == "UserController@index"
-        assert get_route.language == "php"
+        # A route marker is a Class-B stand-in for the route (WI-mupal):
+        # no source language of its own, discovered in a php file.
+        assert get_route.language is None
+        assert get_route.discovery_language == "php"
+        assert get_route.protocol_origin == "http"
 
         post_route = next((s for s in route_symbols if "POST" in s.name), None)
         assert post_route is not None
@@ -1180,14 +1184,13 @@ Route::resource('photos', PhotoController::class);
 
 
 class TestLaravelApiResourceAndModifiers:
-    """WI-jorim: apiResource excludes HTML-form routes; .except()/.only() filter actions.
+    """apiResource excludes HTML-form routes; .except()/.only() filter actions (WI-jorim).
 
-    The historical bug: apiResource() was treated identically to resource(),
-    producing phantom GET /create and GET /{id}/edit endpoints. On koel, this
-    contributed 40 phantom routes (~19% of 207 total). .except() / .only()
-    modifiers were also silently ignored, so calls like
+    apiResource() is not resource(): it mounts no GET /create or
+    GET /{id}/edit HTML-form endpoints, and treating the two alike would emit
+    phantom routes. .except() / .only() modifiers filter the action set, so
         Route::resource('users', UserController::class)->except(['create'])
-    still emitted the create route.
+    must not emit the create route.
 
     Each test below reproduces a specific shape from real Laravel apps.
     """
@@ -1370,10 +1373,10 @@ def _php_literal(code: str):
 
 
 class TestLaravelDoubleQuotedRoutes:
-    """WI-fadip: a double-quoted PHP literal is an ``encapsed_string`` node,
-    a single-quoted one a ``string`` node. The route-path read accepted only
-    ``string``, so every double-quoted Laravel route was silently dropped, for
-    every ``Route::`` verb. An INTERPOLATED double-quoted path must be refused,
+    """A double-quoted PHP literal is an ``encapsed_string`` node, a
+    single-quoted one a ``string`` node (WI-fadip). The route-path read must
+    accept both, or every double-quoted Laravel route would be silently
+    dropped, for every ``Route::`` verb. An INTERPOLATED double-quoted path must be refused,
     never truncated to its leading literal prefix.
     """
 
@@ -1815,7 +1818,7 @@ readonly class Data {}
 
 
 class TestNormalizePhpSignature:
-    """Tests for PHP signature normalization (ADR-0014 §3)."""
+    """Tests for PHP signature normalization (spec §6 typed tier)."""
 
     def test_basic_method(self) -> None:
         from hypergumbo_lang_mainstream.php import normalize_php_signature
@@ -1831,7 +1834,7 @@ class TestNormalizePhpSignature:
 
 
 class TestPhpShapeId:
-    """Tests for shape_id computation in PHP (ADR-0014 §1)."""
+    """Tests for shape_id computation in PHP (spec §6 shape_id)."""
 
     def test_function_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -1842,7 +1845,7 @@ class TestPhpShapeId:
         result = analyze_php(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("sha256:")
+        assert func.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -1853,7 +1856,7 @@ class TestPhpShapeId:
         result = analyze_php(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 class TestPhpLinesOfCode:
@@ -1915,7 +1918,7 @@ class TestPhpIsExported:
 
 
 class TestPhpDocstring:
-    """INV-jahiv Phase 4 PR3: Symbol.docstring on PHP callable symbols."""
+    """Symbol.docstring on PHP callable symbols (INV-jahiv)."""
 
     def test_function_with_phpdoc(self, tmp_path: Path) -> None:
         """Function symbols populate docstring from preceding /** PHPDoc. */"""
@@ -1947,7 +1950,7 @@ class TestPhpDocstring:
 
 
 class TestPHPQualifiedName:
-    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on PHP symbols."""
+    """Symbol.qualified_name on PHP symbols (ADR-0032)."""
 
     def test_method_qualified_name_uses_namespace_and_scope_resolution(self, tmp_path: Path) -> None:
         """Methods carry Namespace\\Class::method with '\\' for namespace and '::' for class-to-method."""
@@ -1993,7 +1996,7 @@ class TestPHPQualifiedName:
 
 
 class TestPhpCyclomaticComplexity:
-    """Phase 4 PR5: cyclomatic_complexity populated on PHP callables."""
+    """cyclomatic_complexity populated on PHP callables."""
 
     def test_function_complexity_populated(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -2016,9 +2019,9 @@ class TestPhpCyclomaticComplexity:
 
 
 class TestPhpUseImports:
-    """INV-naguv: `use Namespace\\Class;` statements emit imports edges (php.py
-    previously emitted zero), so PHP framework namespaces reach the import-promote
-    phase and a manifest-less PHP app surfaces its framework."""
+    """`use Namespace\\Class;` statements emit imports edges, so PHP framework
+    namespaces reach the import-promote phase and a manifest-less PHP app
+    surfaces its framework (INV-naguv)."""
 
     def test_use_statement_emits_imports_edge(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -2034,9 +2037,9 @@ class TestPhpUseImports:
 
 
 class TestPHPFieldAndConstantEmission:
-    """WI-fosuh (WI-jusus slice): PHP class properties and constants emit as
-    kind='field' anchored to their type; top-level constants emit as
-    kind='variable'; method-body locals do NOT leak as fields."""
+    """PHP class properties and constants emit as kind='field' anchored to
+    their type; top-level constants emit as kind='variable'; method-body
+    locals do NOT leak as fields (WI-fosuh, WI-jusus)."""
 
     def test_class_properties_and_constants_emit_as_fields(
         self, tmp_path: Path
@@ -2094,6 +2097,128 @@ enum Suit {
         fields = {s.name for s in result.symbols if s.kind == "field"}
         assert "HasLimit.LIMIT" in fields, fields
         assert "Suit.WILD" in fields, fields
+
+
+class TestPhpClassConstantVisibility:
+    """A class constant's visibility modifier is read the way a property's and a
+    method's is (PHP 7.1+ accepts public/protected/private on ``const``). It was
+    never read: every constant came out modifiers=[], is_exported=True, and a
+    private constant hashed the empty (public) visibility into its stable_id."""
+
+    _SRC = """<?php
+namespace App;
+class A {
+    const PLAIN = 1;
+    public const OPEN = 2;
+    protected const GUARDED = 3;
+    private const SECRET = 4;
+    final public const FIN = 5;
+    final const FINPLAIN = 6;
+    private const int TYPED = 7;
+    const string TYPEDPLAIN = 'x';
+    private const MA = 1, MB = 2;
+}
+interface I { const IC = 1; public const IPC = 2; }
+trait T { private const TC = 1; protected const TP = 2; }
+enum E: int { private const EC = 1; case One = 1; }
+"""
+
+    @pytest.mark.parametrize("name, modifiers, exported", [
+        ("A.PLAIN", [], True),
+        ("A.OPEN", ["public"], True),
+        ("A.GUARDED", ["protected"], False),
+        ("A.SECRET", ["private"], False),
+        ("A.FIN", ["final", "public"], True),
+        ("A.FINPLAIN", ["final"], True),
+        ("A.TYPED", ["private"], False),
+        ("A.TYPEDPLAIN", [], True),
+        ("A.MA", ["private"], False),
+        ("A.MB", ["private"], False),
+        ("I.IC", [], True),
+        ("I.IPC", ["public"], True),
+        ("T.TC", ["private"], False),
+        ("T.TP", ["protected"], False),
+        ("E.EC", ["private"], False),
+    ])
+    def test_constant_modifiers_and_exportedness(
+        self, tmp_path: Path, name: str, modifiers: list[str], exported: bool,
+    ) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "a.php").write_text(self._SRC)
+        result = analyze_php(tmp_path)
+        sym = next(s for s in result.symbols if s.name == name)
+        assert sym.kind == "field"
+        assert sym.modifiers == modifiers
+        assert sym.is_exported is exported
+
+    def test_constant_reads_modifiers_like_a_property(self, tmp_path: Path) -> None:
+        """One reading for properties and constants: the same declaration
+        modifiers give the same ``modifiers`` and ``is_exported``."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "p.php").write_text(
+            "<?php\nclass P {\n"
+            "    private const C1 = 1; private $p1 = 1;\n"
+            "    protected const C2 = 1; protected $p2 = 1;\n"
+            "    public const C3 = 1; public $p3 = 1;\n"
+            "}\n"
+        )
+        result = analyze_php(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        for c, p in (("P.C1", "P.p1"), ("P.C2", "P.p2"), ("P.C3", "P.p3")):
+            assert by_name[c].modifiers == by_name[p].modifiers
+            assert by_name[c].is_exported is by_name[p].is_exported
+
+    def test_anonymous_class_constant_keeps_its_visibility(self, tmp_path: Path) -> None:
+        """An anonymous class has no type name, so its constant is emitted as a
+        ``variable`` like a top-level one; it still carries its modifier, and a
+        top-level constant (which takes none) stays public."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "m.php").write_text(
+            "<?php\nconst TOP = 1;\n"
+            "return new class {\n    private const HIDDEN = 1;\n"
+            "    public function up(): int { return self::HIDDEN; }\n};\n"
+        )
+        result = analyze_php(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["HIDDEN"].kind == "variable"
+        assert by_name["HIDDEN"].modifiers == ["private"]
+        assert by_name["HIDDEN"].is_exported is False
+        assert by_name["TOP"].modifiers == []
+        assert by_name["TOP"].is_exported is True
+
+    def _const_stable_id(self, root: Path, decl: str) -> str:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        root.mkdir()
+        (root / "C.php").write_text(f"<?php\nclass C {{\n    {decl} K = 1;\n}}\n")
+        result = analyze_php(root)
+        sym = next(s for s in result.symbols if s.name == "C.K")
+        assert sym.stable_id is not None
+        return sym.stable_id
+
+    def test_stable_id_carries_non_public_visibility_only(self, tmp_path: Path) -> None:
+        """``private`` and ``protected`` enter the stable_id's visibility slot;
+        an unmodified constant, an explicit ``public`` one and a ``final`` one
+        keep the empty slot every constant hashed before (PHP's default is
+        public, so ``public`` adds no information and moving those ids would
+        churn every public constant)."""
+        ids = {
+            decl: self._const_stable_id(tmp_path / f"r{i}", decl)
+            for i, decl in enumerate((
+                "const", "public const", "final const", "final public const",
+                "private const", "protected const", "final protected const",
+            ))
+        }
+        public_ids = {ids["const"], ids["public const"], ids["final const"],
+                      ids["final public const"]}
+        assert len(public_ids) == 1, ids
+        assert ids["private const"] not in public_ids
+        assert ids["protected const"] not in public_ids
+        assert ids["private const"] != ids["protected const"]
+        assert ids["final protected const"] == ids["protected const"]
 
 
 class TestPhpBareMethodMagnetGate:
@@ -2261,15 +2386,13 @@ class Controller {
 class TestPhpTypeContainerEmission:
     """interface / trait / enum declarations are symbols (INV-tihim).
 
-    The analyzer emitted ONLY `class_declaration`, so three of PHP's four
-    type containers were invisible: an `interface` declared in the same file
-    surfaced as an `external_symbol` (the boundary synthesizer's placeholder
-    for a name with no in-tree definition), and members declared inside an
-    interface or trait were emitted BARE — `area` rather than `Shape.area` —
-    because the enclosing-owner walk recognised `class_declaration` alone.
-
-    Measured consequence: PHP produced no interface->implementation
-    `dispatches_to` edge at all, while the byte-equivalent Java produced one.
+    All four of PHP's type containers are emitted, each with its own kind. An
+    `interface` declared in the same file must not surface as an
+    `external_symbol` (the boundary synthesizer's placeholder for a name with
+    no in-tree definition), and members declared inside an interface or trait
+    must be owner-qualified — `Shape.area`, not bare `area`. Otherwise PHP
+    gets no interface->implementation `dispatches_to` edge, where the
+    byte-equivalent Java gets one.
     """
 
     def test_interface_trait_enum_are_emitted_with_their_own_kinds(
@@ -2295,9 +2418,9 @@ class TestPhpTypeContainerEmission:
     ) -> None:
         """A bare member name cannot be matched against an implementor's.
 
-        This is what made PHP invisible to the shared dispatch linker even
-        once the interface existed: `area` has no owner, so no consumer can
-        tell which type declares it.
+        A bare member would leave PHP invisible to the shared dispatch linker
+        even with the interface emitted: `area` has no owner, so no consumer
+        can tell which type declares it.
         """
         from hypergumbo_lang_mainstream.php import analyze_php
 
@@ -2311,7 +2434,7 @@ class TestPhpTypeContainerEmission:
         assert "Loggable.log" in names, f"trait member not owner-qualified: {names}"
 
     def test_class_emission_is_unchanged(self, tmp_path: Path) -> None:
-        """Guard the path that already worked — abstract classes especially.
+        """Class emission keeps its kind and modifiers — abstract classes especially.
 
         PHP is one of five languages that correctly records abstract-ness in
         `modifiers`, which the type-family predicate reads.
@@ -2325,3 +2448,65 @@ class TestPhpTypeContainerEmission:
         assert by_name["Base"].kind == "class"
         assert "abstract" in by_name["Base"].modifiers
         assert by_name["Base.area"].kind == "method"
+
+
+class TestPhpTraitAndEnumCallers:
+    """A trait or enum method is the caller of the calls in its body (WI-fonaz).
+
+    The caller lookup's owner walk must recognise traits and enums, not just
+    ``class_declaration``: otherwise no trait or enum method is ever the
+    caller, ``$this->`` / ``static::`` / ``self::`` calls and ``new`` emit
+    nothing, and a bare call is credited to the file.
+    """
+
+    def test_trait_and_enum_methods_own_their_calls(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "a.php").write_text("""<?php
+function helper() {}
+class Widget {}
+trait T {
+    public function a() { $this->b(); static::c(); helper(); }
+    public function b() {}
+    public static function c() {}
+    public function d() { return new Widget(); }
+}
+enum E2 {
+    case X;
+    public function m() { $this->n(); self::k(); }
+    public function n() {}
+    public static function k() {}
+}
+""")
+
+        result = analyze_php(tmp_path)
+        names = {s.id: s.name for s in result.symbols}
+        pairs = {
+            (names.get(e.src), names.get(e.dst), e.edge_type) for e in result.edges
+        }
+
+        for expected in (
+            ("T.a", "T.b", "calls"), ("T.a", "T.c", "calls"),
+            ("T.a", "helper", "calls"), ("T.d", "Widget", "instantiates"),
+            ("E2.m", "E2.n", "calls"), ("E2.m", "E2.k", "calls"),
+        ):
+            assert expected in pairs, expected
+        file_callers = {
+            dst for src, dst, kind in pairs if kind == "calls" and src == "a.php"
+        }
+        assert "helper" not in file_callers
+
+
+def test_a_bare_base_records_the_use_it_came_through(tmp_path: Path) -> None:
+    """WI-pivap: ``class User extends Model`` under ``use ...\\Model`` records
+    the qualified import, so the inheritance linker can check it."""
+    from hypergumbo_lang_mainstream.php import analyze_php
+
+    (tmp_path / "User.php").write_text(
+        "<?php\nnamespace App;\nuse Illuminate\\Database\\Eloquent\\Model;\n"
+        "class User extends Model {}\n"
+    )
+    user = next(s for s in analyze_php(tmp_path).symbols if s.name == "User")
+    assert user.meta["base_class_imports"] == {
+        "Model": "Illuminate\\Database\\Eloquent\\Model",
+    }

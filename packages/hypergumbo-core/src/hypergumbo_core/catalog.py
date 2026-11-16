@@ -8,29 +8,34 @@ or linker; the catalog is built from ``_ANALYZER_REGISTRY`` +
 
 How It Works
 ------------
-1. :func:`build_catalog_from_registries` triggers entry-point discovery
-   (``ensure_discovered()``) so all language packages have a chance to
-   register their analyzers/linkers.
+1. :func:`build_catalog_from_registries` triggers analyzer entry-point
+   discovery (``ensure_discovered()``) so every language package registers
+   its analyzers. Linkers are not discovered this way: they register when
+   their modules are imported (``hypergumbo_core.cli`` imports them), so a
+   caller that has not imported them gets an analyzer-only catalog.
 2. For each registered pass it constructs a :class:`Pass` whose ``id`` is
-   the registration name (no ``-v1`` / ``-ts-v1`` suffix — INV-morag PR 2).
+   the bare registration name, with no version suffix (INV-morag).
 3. Catalog metadata (description, languages, availability, requires,
    backend) is taken from the registry entry when the analyzer/linker
    provides it via decorator kwargs; otherwise it falls back to
-   ``_PASS_METADATA`` below for entries that haven't migrated yet.
-   Exception: a registry availability of ``"core"`` (the decorator
+   the ``_PASS_METADATA`` fallback table below.
+   For an analyzer whose decorator leaves ``requires`` unset, ``requires``
+   is first taken from the grammar distribution of the module's single
+   ``TreeSitterAnalyzer`` subclass (WI-pakof), and only then from
+   ``_PASS_METADATA``; ``is_available`` checks that distribution is
+   importable as well as ``tree_sitter``. Exception: a registry availability of ``"core"`` (the decorator
    default) is overridden by an explicit ``_PASS_METADATA`` availability.
 
 Beyond the build, the module provides:
 
 - **``depends_on`` checks.** ``Pass.depends_on`` is CNF (an AND of
-  OR-clauses). ``validate_pass_name_resolution`` checks that every literal
-  names a known pass; ``validate_pass_dependencies`` raises when a clause
-  has no active member (forward-looking, no production caller yet).
-  ``find_falsified_dependencies`` instead reports, after the run, passes
-  that emitted edges while a clause had no producing member, which proves
-  the declaration wrong; ``emit_falsified_dependency_summary`` prints it as
-  a one-line stderr advisory on the survey path. It reports rather than
-  gates because a gate would abort surveys on stale declarations.
+  OR-clauses). The runtime never gates on it (ADR-0056): a gate would abort
+  surveys on stale declarations. ``validate_pass_name_resolution`` is the
+  static check, run in CI: every literal names a known pass and no clause is
+  empty. ``find_falsified_dependencies`` reports, after the run, passes that
+  emitted edges while a clause had no producing member, which proves the
+  declaration wrong; ``emit_falsified_dependency_summary`` prints it as a
+  one-line stderr advisory on the survey path.
 - **Axis resolvers.** ``all_known_pass_ids`` and ``all_known_languages``
   return the legal values of the ``pass-id`` and ``language`` field axes:
   the registered names, plus each linker's emitted ``PASS_ID`` when it
@@ -47,16 +52,16 @@ Beyond the build, the module provides:
 Why This Design
 ---------------
 - **Single source of truth.** Pass IDs come from the same registries that
-  runtime code uses, so catalog and runtime can no longer drift.
+  runtime code uses, so catalog and runtime cannot drift.
 - **Self-describing modules.** When an analyzer module specifies metadata
   on its ``@register_analyzer`` call, the data lives next to the function
   it describes — the natural location.
-- **Transitional fallback.** ``_PASS_METADATA`` lets PR 2 ship the rename
-  + invariant without requiring a simultaneous edit of every analyzer
-  package; follow-up PRs push entries into individual decorator sites.
+- **Fallback table.** ``_PASS_METADATA`` covers passes whose decorator does
+  not declare its metadata, so metadata can move into decorator sites one
+  package at a time instead of in one simultaneous edit.
 
-INV-morag PR 2 invariant
-------------------------
+Pass-id agreement invariant (INV-morag)
+---------------------------------------
 For every registered analyzer/linker ``name``,
 ``make_pass_id(name) == <some Pass.id in get_default_catalog()>``.
 Asserted at CI by :file:`scripts/check-pass-id-agreement`.
@@ -79,12 +84,11 @@ class Pass:
         availability: 'core' (always available) or 'extra' (requires deps)
         requires: Optional package requirement for extras
         languages: Languages this pass handles (for suggestions)
-        backend: Parsing backend tag (INV-morag PR 2). Optional for older
-            catalog entries; empty string when unknown.
+        backend: Parsing backend tag; empty string when unknown.
         pass_label: Human-friendly display name. Falls back to ``id`` when
             empty.
         depends_on: Pass-id dependencies expressed in Conjunctive Normal Form
-            (INV-hujog / WI-dilab; WI-hupaz shipped the flat-list precursor).
+            (INV-hujog / WI-dilab).
             Outer list = AND-conjunction; each inner list = OR-disjunction.
             Example: JNI bridges Java native methods to C/C++/Rust impls —
             ``[["java"], ["c", "cpp", "rust"]]`` reads as "java required, AND
@@ -93,24 +97,21 @@ class Pass:
             Infrastructure linkers like containment). Distinct from
             ``requires`` (package-availability label).
 
-            Two validators consume this field:
+            The runtime never gates a pass on this field (ADR-0056): raising
+            is the withholding direction, and the declarations have never been
+            enforced, so some are wrong and a gate would abort real surveys
+            over them. Three readers check or disclose it instead:
 
-            - :func:`validate_pass_name_resolution` is the static check:
-              every literal in every clause must resolve to a registered
-              pass-id. Catches typos at CI time, independent of any runtime
-              active-set decision.
-            - :func:`validate_pass_dependencies` is the forward-looking
-              runtime check: given an active subset of passes, every outer
-              AND-conjunct must contain at least one literal in the active
-              set. Still not wired into ``run_behavior_map`` and deliberately
-              so — it RAISES, and raising is the withholding direction
-              (WI-jijor measured 29% of surveys carrying a falsified
-              declaration, so a gate would abort more than it protected).
-            - :func:`find_falsified_dependencies` is the BACKWARD-looking twin
-              that IS wired (WI-jijor / ADR-0056 W1): the same CNF predicate
-              read against runs that already happened, reporting a pass that
-              emitted output despite an unsatisfied conjunct. It reports and
-              never raises, which is why it may run where the gate may not.
+            - :func:`validate_pass_name_resolution`, the static check in CI:
+              every literal resolves to a registered pass-id and no clause is
+              empty.
+            - :func:`find_falsified_dependencies`, after the run (WI-jijor /
+              ADR-0056 W1): a pass that emitted output despite an unsatisfied
+              conjunct proves its declaration wrong. It reports and never
+              raises.
+            - ``pass_silence.prerequisite_absent_clauses``, at the linker
+              chokepoint: a linker that fell silent because a prerequisite was
+              skipped for a toolchain reason is stamped ``prerequisite_absent``.
     """
 
     id: str
@@ -172,112 +173,94 @@ def is_available(p: Pass) -> bool:
     if p.availability == "core":
         return True
 
-    # Check for tree-sitter dependency based on the requires field
-    if p.requires and "tree-sitter" in p.requires:
-        return importlib.util.find_spec("tree_sitter") is not None
+    # A tree-sitter pass needs the base library AND the grammar distribution
+    # it names (WI-pakof). Checking only ``tree_sitter`` would report a pass
+    # available with its grammar package (e.g. tree_sitter_rust) missing.
+    if p.requires and p.requires.startswith("tree-sitter"):
+        return (
+            importlib.util.find_spec("tree_sitter") is not None
+            and importlib.util.find_spec(p.requires.replace("-", "_")) is not None
+        )
 
     return False
 
 
+def _declared_grammar_distribution(func: Any) -> Optional[str]:
+    """The grammar distribution the analyzer behind ``func`` loads, or ``None``.
+
+    An analyzer module defines one ``TreeSitterAnalyzer`` subclass and
+    registers a function that drives it; the class declares the grammar
+    (``grammar_module`` / ``language_pack_name``). ``None`` when the module
+    defines none, or more than one, such class.
+    """
+    from .analyze.base import TreeSitterAnalyzer
+
+    module = sys.modules.get(getattr(func, "__module__", "") or "")
+    if module is None:
+        return None
+    classes = {
+        value for value in vars(module).values()
+        if isinstance(value, type) and issubclass(value, TreeSitterAnalyzer)
+        and value is not TreeSitterAnalyzer and value.__module__ == module.__name__
+    }
+    if len(classes) != 1:
+        return None
+    return next(iter(classes)).grammar_distribution()
+
+
 def validate_pass_name_resolution(passes: List[Pass]) -> None:
-    """Static check: every literal in every ``depends_on`` clause names a known pass.
+    """Static check: every ``depends_on`` clause is non-empty and names known passes.
 
     ``Pass.depends_on`` is CNF (outer-AND of inner-OR clauses), per the WI-dilab
     schema. This validator iterates every literal across every clause and
     requires it to match the ``id`` of a registered pass. Independent of which
     passes are runtime-active — purely a typo / drift check.
 
-    **Where it actually runs, corrected (WI-jijor).** This docstring used to
-    claim it runs "at catalog-build time and in CI". It has never had a
-    production call site; the only thing that invokes it is
-    ``TestCatalogStaticConsistency`` — and until WI-jijor that test built the
-    catalog WITHOUT importing the linker modules, which register by import
-    side-effect, so it validated 118 analyzers and zero ``depends_on``
-    conjuncts. It is a CI check now because that test was repaired, not
-    because the catalog builder calls it.
+    **An empty clause is refused.** ``[[]]`` is an OR of nothing, a conjunct no
+    set of passes can satisfy; it is not the outer ``[]``, which declares no
+    dependency and stays legal. The two runtime readers disagree about it —
+    :func:`find_falsified_dependencies` reports it, while
+    ``pass_silence.prerequisite_absent_clauses`` skips it — so it is stopped
+    here, where every registered declaration is checked, before either sees it.
 
-    Distinct from :func:`validate_pass_dependencies` (which checks the OR-arm
-    runtime semantics: every outer-AND-conjunct must contain at least one
-    literal in the active-pass subset).
+    **Where it runs.** It has no production call site, deliberately: its reader
+    is ``TestCatalogStaticConsistency``, which builds the full catalog with the
+    linkers imported (they register by import side-effect; without that import
+    the check passes vacuously over zero conjuncts) and carries a floor and a
+    pinned declaration, so it can fail. A test-only validator is kept only when
+    its test can fail, which is why this one is on the test-only-reachability
+    baseline.
 
     Raises:
-        ValueError: At least one literal in some clause names a pass that is
-            not in ``passes``. The error message groups misspellings by
-            dependent pass-id, listing every (pass_id, [unknown_literals])
-            pair so callers see the full surface of the typo set, not just
-            the first offending name.
+        ValueError: At least one clause names a pass that is not in
+            ``passes``, or is empty. The error message groups the faults by
+            dependent pass-id, listing every unknown literal and every empty
+            clause so callers see the full surface, not just the first
+            offending name.
     """
     known_ids = {p.id for p in passes}
-    unknown_by_pass: List[tuple[str, List[str]]] = []
+    faults_by_pass: List[tuple[str, List[str]]] = []
     for p in passes:
+        faults: List[str] = []
         unknown: List[str] = []
         for clause in p.depends_on:
+            if not clause and "empty clause []" not in faults:
+                faults.append("empty clause []")
             for literal in clause:
                 if literal not in known_ids and literal not in unknown:
                     unknown.append(literal)
         if unknown:
-            unknown_by_pass.append((p.id, unknown))
-    if unknown_by_pass:
+            faults.insert(0, f"names unknown passes: {unknown}")
+        if faults:
+            faults_by_pass.append((p.id, faults))
+    if faults_by_pass:
         lines = [
-            f"Pass {pass_id!r} depends_on names unknown passes: {unknown}"
-            for pass_id, unknown in unknown_by_pass
+            f"Pass {pass_id!r} depends_on {fault}"
+            for pass_id, faults in faults_by_pass
+            for fault in faults
         ]
         raise ValueError(
             "Pass dependency name-resolution failed:\n  " + "\n  ".join(lines)
-        )
-
-
-def validate_pass_dependencies(active_passes: List[Pass]) -> None:
-    """Runtime CNF check: every AND-conjunct contains at least one active literal.
-
-    Forward-looking validator. Once :data:`hypergumbo_core.cli.run_behavior_map`
-    grows config-time pass-filtering (a Phase 2 WI), this validator will fire
-    on the filtered active-pass set to surface "linker X needs at least one
-    of [a, b, c] but none of them are active" before pipeline execution
-    produces silently-degraded output.
-
-    CNF semantics:
-
-    - ``depends_on=[]`` — no declared dependencies (vacuously satisfied).
-      Honest for Infrastructure linkers like containment that operate on any
-      symbol set.
-    - ``depends_on=[["x"]]`` — single conjunct, single literal. Equivalent to
-      plain "x must be active." Used for Framework linkers scoped to one
-      language.
-    - ``depends_on=[["x", "y", "z"]]`` — single conjunct, three-literal OR.
-      "At least one of x/y/z must be active." Used for Protocol linkers that
-      scan multiple language analyzers' output.
-    - ``depends_on=[["x"], ["a", "b"]]`` — two conjuncts. "x AND (a OR b)
-      must both hold." Used for Bridge linkers that bridge one anchor
-      language to multiple impl languages.
-
-    Pathological-but-defined: a pass listing itself in some clause is trivially
-    satisfied when that pass is in the active set. Cycle detection is a
-    separate scheduling concern, deferred.
-
-    Raises:
-        ValueError: At least one pass has an outer AND-conjunct with no
-            literal in the active-pass set. The error message groups by
-            dependent pass, listing every unsatisfied clause as a list so
-            callers see the full set of unmet "at least one of"
-            requirements, not just the first.
-    """
-    active_ids = {p.id for p in active_passes}
-    unsatisfied_by_pass: List[tuple[str, List[List[str]]]] = []
-    for p in active_passes:
-        unsatisfied_clauses: List[List[str]] = []
-        for clause in p.depends_on:
-            if not any(literal in active_ids for literal in clause):
-                unsatisfied_clauses.append(list(clause))
-        if unsatisfied_clauses:
-            unsatisfied_by_pass.append((p.id, unsatisfied_clauses))
-    if unsatisfied_by_pass:
-        lines = [
-            f"Pass {pass_id!r} unsatisfied depends_on clauses (need at least one literal in active set): {clauses}"
-            for pass_id, clauses in unsatisfied_by_pass
-        ]
-        raise ValueError(
-            "Pass dependency CNF validation failed:\n  " + "\n  ".join(lines)
         )
 
 
@@ -287,16 +270,16 @@ def find_falsified_dependencies(
 ) -> List[Tuple[str, List[List[str]]]]:
     """Report passes that EMITTED OUTPUT despite an unsatisfied ``depends_on`` conjunct.
 
-    The same CNF predicate as :func:`validate_pass_dependencies`, re-pointed
-    (WI-jijor / ADR-0056 W1). That one asks *"may these passes run
-    together?"* and RAISES; this one asks *"did a pass that already ran prove
-    its own declaration wrong?"* and REPORTS.
+    The CNF predicate read backwards (WI-jijor / ADR-0056 W1): not *"may these
+    passes run together?"*, which would have to RAISE before the run, but
+    *"did a pass that already ran prove its own declaration wrong?"*, which
+    REPORTS after it.
 
-    **Why not wire the gate instead.** Raising is the withholding direction:
-    a gate aborts the whole survey on any repo whose declarations are stale,
-    and the ~73 conjuncts across 59 passes have never been enforced, so some
-    of them are. Falsification never suppresses anything, so it cannot lose an
-    edge — which is exactly why it may be wired where a gate may not.
+    **Why not a gate.** Raising is the withholding direction: a gate aborts the
+    whole survey on any repo whose declarations are stale, and the
+    declarations have never been enforced, so some of them are.
+    Falsification never suppresses anything, so it cannot lose an edge — which
+    is exactly why it may be wired where a gate may not.
 
     **Why EMITTED is the proof and SILENCE is not.** A pass that emitted
     nothing proves nothing: its declaration may be perfectly correct and the
@@ -307,39 +290,35 @@ def find_falsified_dependencies(
     which the never-enforced declaration set can be audited from evidence
     rather than from reading it.
 
-    **Why it does not take an active-pass list.** :func:`validate_pass_dependencies`
-    is handed the active set because it runs *before* execution. Here the
-    active set is DERIVED from ``runs`` — the ground truth of what actually
-    ran — which is the whole difference between a forecast and a measurement.
-    ``passes`` therefore supplies only the declarations.
+    **Why it does not take an active-pass list.** A pre-run check would be
+    handed the active set as a forecast. Here the active set is DERIVED from
+    ``runs`` — the ground truth of what actually ran — which is the whole
+    difference between a forecast and a measurement. ``passes`` therefore
+    supplies only the declarations.
 
-    **A clause is satisfied by PRODUCTION, not by membership** (corrected
-    under WI-rasal; the first cut tested membership in ``analysis_runs``).
-    Membership is not a function of the fact it was standing in for. Under the
-    WI-jadig / INV-manov file-presence pre-filter an analyzer is short-circuited
-    into ``limits.skipped_passes`` only when EVERY language it declares is in
-    the taxonomy's ``LANGUAGE_EXTENSIONS``; every other analyzer runs anyway
-    and records a 0-file / 0-node row. So on caddy — a Go repository — ``apex``,
-    ``astro`` and ``pony`` are members and ``java``, ``ruby`` and ``python``
-    are not, for the identical fact that the repo contains no such files. The
-    same fact reached the predicate as both answers depending on the taxonomy.
+    **A clause is satisfied by PRODUCTION, not by membership** in
+    ``analysis_runs`` (WI-rasal). Membership does not track the fact it would
+    stand in for. Under the file-presence pre-filter (WI-jadig / INV-manov) an
+    analyzer is short-circuited into ``limits.skipped_passes`` only when EVERY
+    language it declares is in the taxonomy's ``LANGUAGE_EXTENSIONS``; every
+    other analyzer runs anyway and records a 0-file / 0-node row. So in a Go
+    repository ``apex``, ``astro`` and ``pony`` are members and ``java``,
+    ``ruby`` and ``python`` are not, though the repo contains files of none of
+    them: the same fact gives both answers depending on the taxonomy.
     Production collapses both representations onto the question actually being
     asked: did anything this pass declared it needs contribute?
 
-    **A pass falsifies its own declaration by emitting EDGES** (also corrected
-    under WI-rasal). The asymmetry with the paragraph above is deliberate. A
-    linker's product is edges — ADR-3bbb Tier-2 is edge recovery, and the
-    ``depends_on`` field is documented as what a linker needs to "produce its
-    intended edges at all" — while a *prerequisite* contributes nodes (an
-    analyzer) or edges (``inheritance-linker``). The first cut counted nodes
-    on both halves, on the precedent that keying on ``edges_emitted`` alone
-    once called a 91-node pass silent. That precedent belongs to SILENCE
-    ("did this pass say anything?"), and importing it here answered a different
-    question wrong: 68 of the first run's 261 falsifying surveys were
-    ``database-query-linker`` minting query nodes with ZERO edges because the
-    ``sql`` analyzer had not supplied the ``kind="table"`` symbols its dst side
-    needs — the declaration doing its job, read as the declaration being wrong,
-    on 26% of the hits. Every current declarer is a linker, pinned by
+    **A pass falsifies its own declaration by emitting EDGES** (WI-rasal). The
+    asymmetry with the paragraph above is deliberate. A linker's product is
+    edges — ADR-3bbb Tier-2 is edge recovery, and the ``depends_on`` field is
+    documented as what a linker needs to "produce its intended edges at all" —
+    while a *prerequisite* contributes nodes (an analyzer) or edges
+    (``inheritance-linker``). Counting nodes on the falsifying side would
+    answer the SILENCE question ("did this pass say anything?") instead of this
+    one: ``database-query-linker`` mints query nodes with ZERO edges when the
+    ``sql`` analyzer has not supplied the ``kind="table"`` symbols its dst side
+    needs, which is the declaration doing its job, and a node count would read
+    it as the declaration being wrong. Every current declarer is a linker, pinned by
     ``test_every_depends_on_declarer_is_a_linker``; if an analyzer ever
     declares ``depends_on`` this detector under-reports it rather than lying.
     Absent counters read as zero output, never as a falsification.
@@ -399,7 +378,7 @@ def format_falsified_dependencies(
 
     The count is of PASSES, not clauses: one pass with two unsatisfied
     conjuncts is one wrong declaration, and counting clauses would inflate the
-    headline the way ``edges_emitted``-only counting inflated the silence cost.
+    headline.
     """
     if not falsified:
         return None
@@ -418,13 +397,9 @@ def emit_falsified_dependency_summary(
 ) -> None:
     """Write the falsified-declaration advisory to stderr; silent when clean.
 
-    The CONSUMER half. A predicate with no reader is the defect this item was
-    filed against — ``validate_pass_dependencies`` has eleven call sites and
-    all eleven are tests, and its sibling
-    :func:`validate_pass_name_resolution` had none at all despite a docstring
-    claiming it "runs at catalog-build time and in CI". Wiring the reader here,
-    next to ``emit_silence_summary`` on the survey path, is what keeps this one
-    from joining them.
+    The CONSUMER half: it is wired on the survey path, next to
+    ``emit_silence_summary``, so the predicate has a production reader. A
+    predicate read only by tests is dead code and gets removed (WI-rihob).
 
     Advisory only: it never raises and never suppresses a pass.
     """
@@ -438,15 +413,15 @@ def emit_falsified_dependency_summary(
 CONFIG_LANGUAGES = {"json", "yaml", "toml", "xml", "css", "markdown", "just", "mermaid"}
 
 
-# INV-morag PR 2 transitional metadata table.
+# Fallback metadata table (INV-morag).
 #
-# Keyed by registration ``name`` (the post-rename pass_id). When an analyzer
+# Keyed by registration ``name`` (which is the pass_id). When an analyzer
 # or linker's @register_analyzer / @register_linker call doesn't specify
 # description / languages / availability / requires / backend explicitly,
 # the catalog falls back to the entries here.
 #
-# Follow-up PRs (tracked as a separate item) push each entry into the
-# corresponding decorator call site, eventually emptying this dict.
+# The intended direction is to move each entry into its decorator call site
+# and delete it here, until this dict is empty.
 _TS_REQUIRES = "tree-sitter-language-pack"
 
 
@@ -607,8 +582,8 @@ def build_catalog_from_registries() -> Catalog:
 
     Returns:
         A :class:`Catalog` whose ``passes`` list mirrors the registries.
-        Pass IDs are the registration names (no ``-v1`` suffix per
-        INV-morag PR 2); ordering is analyzers-first (sorted by priority,
+        Pass IDs are the bare registration names (INV-morag); ordering is
+        analyzers-first (sorted by priority,
         then name) then linkers (sorted by priority, then name).
     """
     # Local imports to avoid circular deps (analyze.registry imports from
@@ -624,7 +599,8 @@ def build_catalog_from_registries() -> Catalog:
     def _from_registered(name: str, reg_description: str, reg_languages: List[str],
                          reg_availability: str, reg_requires: Optional[str],
                          reg_backend: str, reg_pass_label: str,
-                         reg_depends_on: List[List[str]]) -> Pass:
+                         reg_depends_on: List[List[str]],
+                         reg_func: Any = None) -> Pass:
         # Registry default for availability is "core". For analyzers that
         # haven't yet moved their metadata into the decorator call, the
         # fallback dict knows better — most analyzers are actually "extra"
@@ -635,11 +611,17 @@ def build_catalog_from_registries() -> Catalog:
             availability = fallback["availability"]
         else:
             availability = reg_availability
+        # The analyzer's class declares its grammar; prefer it to the fallback,
+        # whose _ts() helper stamps the generic language pack on every pass
+        # (WI-pakof).
+        requires = reg_requires
+        if requires is None:
+            requires = _declared_grammar_distribution(reg_func) or fallback.get("requires")
         return Pass(
             id=name,
             description=reg_description or fallback.get("description", ""),
             availability=availability,
-            requires=reg_requires if reg_requires is not None else fallback.get("requires"),
+            requires=requires,
             languages=list(reg_languages) if reg_languages else list(fallback.get("languages", [])),
             backend=reg_backend or fallback.get("backend", ""),
             pass_label=reg_pass_label or name,
@@ -659,6 +641,7 @@ def build_catalog_from_registries() -> Catalog:
             reg_backend=reg.backend,
             reg_pass_label=reg.pass_label,
             reg_depends_on=reg.depends_on,
+            reg_func=reg.get_func(),
         ))
         seen.add(reg.name)
 
@@ -681,7 +664,7 @@ def build_catalog_from_registries() -> Catalog:
 
 
 def get_default_catalog() -> Catalog:
-    """Return the default catalog (registry-derived, INV-morag PR 2)."""
+    """Return the default catalog (registry-derived)."""
     return build_catalog_from_registries()
 
 
@@ -690,13 +673,12 @@ def get_default_catalog() -> Catalog:
 # steps the orchestrator runs after the registered linkers; their
 # pass_id values legitimately appear in ``AnalysisRun.pass_id``,
 # ``Symbol.origin``, and ``Edge.origin`` but are NOT registry entries.
-# Phase 6 PR5 (validator-driven cleanup tail) closes the corresponding
-# 411 ``axis_conformance`` violations on ``Edge.origin`` by accepting
-# these as legitimate pass-id values.
+# Listing them here is what keeps the pass-id axis check from reporting
+# their ``Edge.origin`` values as ``axis_conformance`` violations.
 _BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
-    # registry.py:774 — synthetic post-pass that connects synthetic
-    # linker-emitted nodes (grpc_stub, mq_publisher, etc.) to their
-    # enclosing functions for slice traversal.
+    # linkers/registry.py ``run_all_linkers`` — synthetic post-pass that
+    # connects synthetic linker-emitted nodes (grpc_stub, mq_publisher, etc.)
+    # to their enclosing functions for slice traversal.
     "enclosure-linker",
     # framework_patterns.py — two orchestrator-level route-materialization
     # post-passes that mint standalone route-marker Symbols from enriched
@@ -709,6 +691,10 @@ _BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
     # declared HTTP method.
     "route-materializer",
     "django-cbv-method-expander",
+    # framework_patterns.enrich_symbols — framework-pattern enrichment as a
+    # recorded pass (WI-tivif): it stamps concepts and emits no node, and its
+    # per-YAML counts are metrics.framework_patterns.
+    "framework-patterns",
     # analyze/merge_producers.py — ADR-0057 §3 (WI-kokiz): the merge pass at
     # the top of Phase C that folds two producers' records for one
     # declaration into one Symbol. Emits a real AnalysisRun (only when it
@@ -721,20 +707,15 @@ _BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
 # Synthetic-pass provenance IDs (ADR-0044). A few pipeline-level synthesis /
 # import passes emit Symbols (and Edges) whose ``origin`` names the pass that
 # synthesized them, but which are not ``@register_analyzer`` /
-# ``@register_linker`` call sites. Per synthetic:F1 (WI-dizir/WI-mosil/WI-sijut)
-# the two orchestrator-level synthesizers emit a real ``AnalysisRun`` whose
-# ``pass_id`` is the value below, and their nodes' ``origin_run_id`` joins to
-# it — so these ARE genuine pass IDs, not a separate "synthesis-mechanism"
-# axis. ADR-0044 records the decision to treat them as legitimate synthetic
-# pass IDs and WITHDRAW WI-kadop's proposed ``synthesis_mechanism`` field
-# split: synthetic:F1 collapsed the mechanism/pass distinction (a synthesized
-# Symbol's "how" IS "which pass synthesized it"), so the split would have
-# duplicated these values into a second field rather than removed a leak. The
-# stale ``inheritance`` value was dropped (zero producers — the
-# inheritance-linker stamps ``make_pass_id("inheritance-linker")``, not the bare
-# string). ``scip`` is the SCIP-index import pass (rust-analyzer); giving its
-# Symbol side a real ``AnalysisRun`` join (like the two orchestrator passes) is
-# the tracked follow-on (WI-zabus).
+# ``@register_linker`` call sites. The two orchestrator-level synthesizers
+# emit a real ``AnalysisRun`` whose ``pass_id`` is the value below, and their
+# nodes' ``origin_run_id`` joins to it — so these ARE genuine pass IDs, not a
+# separate "synthesis-mechanism" axis: a synthesized Symbol's "how" IS "which
+# pass synthesized it", and a ``synthesis_mechanism`` field would only
+# duplicate these values (ADR-0044). ``scip`` is the origin stamped by the
+# SCIP-index import (rust-analyzer); its records join to the rust_analyzer
+# ``AnalysisRun`` through ``origin_run_id`` but keep the bare ``scip`` origin,
+# so it must be listed here.
 _SYNTHETIC_PASS_IDS: frozenset[str] = frozenset({
     "boundary_external_symbol_synthesis",
     "orchestrator_file_symbol_synthesis",
@@ -758,17 +739,16 @@ def all_known_pass_ids() -> frozenset[str]:
     ``@register_*`` call sites — ``_SYNTHETIC_PASS_IDS`` (above) enumerates
     them (``orchestrator_file_symbol_synthesis`` /
     ``boundary_external_symbol_synthesis`` / ``scip``). Per ADR-0044 these
-    are genuine synthetic pass IDs, not a separate synthesis-mechanism axis
-    (WI-kadop's proposed field split was withdrawn — synthetic:F1 made the
-    two orchestrator synthesizers emit real ``AnalysisRun``s whose pass_id
-    is the origin value, collapsing the mechanism/pass distinction).
+    are genuine synthetic pass IDs, not a separate synthesis-mechanism axis:
+    the two orchestrator synthesizers emit real ``AnalysisRun``s whose
+    pass_id is the origin value.
     """
     from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
     from .linkers.registry import _LINKER_REGISTRY
     from .pass_metadata import _resolve_linker_pass_id
 
     ensure_discovered()
-    # WI-gobip: a linker's EMITTED pass_id is its module-level ``PASS_ID``, which
+    # A linker's EMITTED pass_id is its module-level ``PASS_ID``, which
     # can diverge from its registration ``name`` — the view_template family
     # registers under ``view_template`` / ``view_template_phoenix`` / … but all
     # emit ``view-template-linker`` via ``_view_template_core.PASS_ID``. The
@@ -778,7 +758,8 @@ def all_known_pass_ids() -> frozenset[str]:
     # is identity, so a non-divergent linker's emitted pass_id equals its
     # registration name (already covered by ``frozenset(_LINKER_REGISTRY)``) —
     # this union only adds the divergent ones, correct-by-construction and
-    # mirroring ``pass_metadata``'s ``_resolve_linker_pass_id`` keying rule.
+    # mirroring ``pass_metadata``'s ``_resolve_linker_pass_id`` keying rule
+    # (WI-gobip).
     emitted_linker_pass_ids = frozenset(
         _resolve_linker_pass_id(linker) for linker in _LINKER_REGISTRY.values()
     )
@@ -838,19 +819,19 @@ def all_known_languages() -> frozenset[str]:
         langs.update(analyzer.languages)
     for linker in _LINKER_REGISTRY.values():
         langs.update(linker.languages)
-    # WI-kunut: the language axis catalog is the analyzer/linker registration
-    # UNION the taxonomy's recognized LanguageSpecs. Discovery and the
+    # The language axis catalog is the analyzer/linker registration UNION the
+    # taxonomy's recognized LanguageSpecs (WI-kunut). Discovery and the
     # orchestrator file-anchor synthesis label file nodes with taxonomy
     # languages (a ``.adoc`` → ``asciidoc``, a ``Makefile`` → ``makefile``) that
-    # carry a LanguageSpec but no dedicated ``@register_analyzer`` — so a
-    # registration-only catalog wrongly rejected them (axis_conformance). The
+    # carry a LanguageSpec but no dedicated ``@register_analyzer``, so a
+    # registration-only catalog would reject them (axis_conformance). The
     # two sources genuinely diverge (gitignore/scss are registered under the
     # ``no_taxonomy_spec`` state but have no LanguageSpec — WI-futin; asciidoc
     # is the reverse), so the axis catalog is their union — the complete set
-    # of languages hypergumbo can label a symbol with. WI-juzig: the
-    # registration side is gated, so a pass NAME that is not a language
-    # (``rust_analyzer``, ``manifest_targets``) can no longer leak in here,
-    # and ``make`` registers as the taxonomy's ``makefile``.
+    # of languages hypergumbo can label a symbol with. The registration side
+    # is gated, so a pass NAME that is not a language (``rust_analyzer``,
+    # ``manifest_targets``) does not leak in here, and ``make`` registers as
+    # the taxonomy's ``makefile`` (WI-juzig).
     langs.update(LANGUAGES)
     return frozenset(langs)
 

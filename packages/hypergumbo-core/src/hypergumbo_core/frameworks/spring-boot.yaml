@@ -87,7 +87,3 @@ patterns:
   # Async method - @Async
   - concept: async
     decorator: "^Async$"
-
-linkers:
-  - http
-  - database_query

@@ -22,3 +22,18 @@
     pr_ref:  # 4129
     description: "Update AGENTS.md \"Required Checks\" / \"Pre-Commit Checklist\" sections to mention mypy as part of the standard gate. Document the type-design conventions: TypedDict for JSON-shaped data (W5), Protocol for language-analyzer interfaces (W6), NewType for identifier types (W7), Literal for axis-bearing fields (W8), @override decorator usage (W9). Reference dmypy IDE setup (W10). Add a short example showing how to add a new language analyzer with the type contract in place. Probably co-lands with W1 (small docs delta) or as a follow-up consolidation."  # 4129
     fields: {}  # 4129
+- op: discuss  # 746b
+  at: '2026-11-01T10:55:49Z'  # 746b
+  by: agent  # 746b
+  actor: jgstern_agent  # 746b
+  clock: 2  # 746b
+  nonce: 746b  # 746b
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at 100b6fbb6e: AGENTS.md:139 already documents the mypy strict ratchet as a mandatory pre-test gate (WI-vilaf, 0603296456), so that half is done. CONTRIBUTING.md still has 0 mypy mentions, and no type-design conventions section exists; the conventions depend on W5-W9 (WI-kobot/kibiz/tapak/fofud/najim), all still todo_soft, with 0 NewType uses in src. MECHANISM: docs deliverable trailing unadopted typing work (W5-W9 open). SHARES MECHANISM WITH: WI-porum,WI-kotog,WI-tapak,WI-kobot,WI-kibiz,WI-fofud,WI-najim."  # 746b
+- op: update  # b96b
+  at: '2026-11-01T10:55:49Z'  # b96b
+  by: agent  # b96b
+  actor: jgstern_agent  # b96b
+  clock: 3  # b96b
+  nonce: b96b  # b96b
+  set:  # b96b
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at 100b6fbb6e: AGENTS.md:139 already documents the mypy strict ratchet as a mandatory pre-test gate (WI-vilaf, 0603296456), so that half is done. CONTRIBUTING.md still has 0 mypy mentions, and no type-design conventions section exists; the conventions depend on W5-W9 (WI-kobot/kibiz/tapak/fofud/najim), all still todo_soft, with 0 NewType uses in src. (Original text below; the review entry in the thread has the evidence.)\n\nUpdate AGENTS.md \"Required Checks\" / \"Pre-Commit Checklist\" sections to mention mypy as part of the standard gate. Document the type-design conventions: TypedDict for JSON-shaped data (W5), Protocol for language-analyzer interfaces (W6), NewType for identifier types (W7), Literal for axis-bearing fields (W8), @override decorator usage (W9). Reference dmypy IDE setup (W10). Add a short example showing how to add a new language analyzer with the type contract in place. Probably co-lands with W1 (small docs delta) or as a follow-up consolidation."  # b96b

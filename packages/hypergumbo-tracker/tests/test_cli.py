@@ -1356,11 +1356,12 @@ class TestWriteCommands:
         """WI-foril: the gate-message points at the working arg order
         (`message`, then `--ack-thread`), not the argparse-rejected order.
 
-        Argparse subparsers with `nargs="?"` positional + a following
-        optional flag refuse to accept `--ack-thread "<msg>"` (flag before
-        positional) — the message gets parsed as extra args. The fix is
-        cosmetic: the printed re-run hint must show the working order so
-        users (and agents) don't follow the broken example.
+        Depending on the Python version, argparse subparsers with an
+        `nargs="?"` positional + a following optional flag may refuse
+        `--ack-thread "<msg>"` (flag before positional) — the message gets
+        parsed as extra args. The printed re-run hint must show the order
+        that works everywhere so users (and agents) don't follow an example
+        that fails on their interpreter.
         """
         tracker_root = _setup_tracker(tmp_path)
         ops_dir = tracker_root / "tracker-workspace" / ".ops"
@@ -1382,17 +1383,13 @@ class TestWriteCommands:
         # Anti-regression: must NOT show the broken order
         assert "--ack-thread \"<your reply>\"" not in out
 
-    # WI-foril: the sentinel test that asserted argparse rejects
-    # `--ack-thread "<msg>"` (flag-before-positional) was removed when
-    # Python 3.12's argparse refactor made the backtracking over
-    # `nargs="?"` positionals more aggressive and the "broken" order
-    # started parsing as `ack_thread=True, message="<msg>"`. Its own
-    # docstring anticipated this: "If a future Python or argparse
-    # change ever made the broken order work, this test would fail and
-    # we'd revisit the gate-message text." The gate-message
-    # (tests/test_cli.py::test_discuss_gate_message_shows_working_arg_order)
-    # still recommends the universally-working order (`"<msg>"` then
-    # `--ack-thread`), so no text change is needed.
+    # Whether argparse rejects `--ack-thread "<msg>"` (flag-before-positional)
+    # is version-dependent: Python 3.12+ backtracks over `nargs="?"`
+    # positionals and parses it as `ack_thread=True, message="<msg>"`. So no
+    # test asserts the rejection; the gate message (checked by
+    # test_discuss_gate_message_shows_working_arg_order) recommends the order
+    # that works on every version (`"<msg>"` then `--ack-thread`).
+    # (history: WI-foril)
 
     def test_discuss_no_warning_when_last_is_agent(
         self, tmp_path: Path, capsys: pytest.CaptureFixture,
@@ -1474,7 +1471,7 @@ class TestWriteCommands:
                 "--tracker-root", str(tracker_root),
                 "discuss", "WI-test", "Agent responds",
             ])
-        # Now blocks without --ack-thread (WI-zufuj)
+        # Blocks without --ack-thread (WI-zufuj)
         assert exc.value.code == EXIT_USER_ERROR
         out = capsys.readouterr().out
         assert "Human reply" in out
@@ -3227,8 +3224,8 @@ class TestUtilityCommands:
         assert exc.value.code == EXIT_SUCCESS
         assert "cache rebuilt" in capsys.readouterr().out
         # Verify the caches were actually rebuilt at the XDG-style path
-        # the dispatcher wired, NOT at the legacy ``.agent/.cache-*.db``
-        # path the old hardcoded subcommand used to write to.
+        # the dispatcher wired, NOT at ``.agent/.cache-*.db`` inside the
+        # tracker root.
         for tier_name in ("canonical", "workspace", "stealth"):
             assert (cache_dir / f"{tier_name}.cache.db").exists()
         assert not (tracker_root / ".cache-canonical.db").exists()
@@ -3548,11 +3545,11 @@ class TestTextconv:
     ) -> None:
         """Un-compilable content must NOT fail: git aborts diffs on stderr.
 
-        Changed deliberately from asserting exit 1. Git aborts the entire diff
-        when a textconv driver writes to stderr or exits non-zero, so a single
-        un-compilable blob anywhere in history broke `git log -p` for the whole
-        repo — and un-compilable blobs are normal in history (an op log moved
-        between tiers has pre-move segments with no `create` op).
+        Git aborts the entire diff when a textconv driver writes to stderr or
+        exits non-zero, so a single un-compilable blob anywhere in history
+        would break `git log -p` for the whole repo — and un-compilable blobs
+        are normal in history (an op log moved between tiers has pre-move
+        segments with no `create` op).
         """
         ops_file = tmp_path / ".WI-bad.ops"
         ops_file.write_text("{{{{bad yaml")
@@ -3698,7 +3695,7 @@ class TestGetCacheDir:
 
 
 # ---------------------------------------------------------------------------
-# D6: Four separate duplicate flags
+# Four separate duplicate flags
 # ---------------------------------------------------------------------------
 
 
@@ -4112,8 +4109,8 @@ class TestEditModeCLI:
             main(["--tracker-root", str(tracker_root), "init"])
         # add item with one discuss message
         ws = tracker_root / "tracker-workspace" / ".ops"
-        # We need to write through CLI to get a real nonce — but we'd have to
-        # then read it back. Easier: write directly with a known nonce.
+        # Write the ops file directly so the discuss message has a known
+        # nonce (writing through the CLI would generate a random one).
         textwrap_dedent = textwrap.dedent("""\
             - op: create
               at: "2026-06-03T00:00:00Z"
@@ -4134,18 +4131,17 @@ class TestEditModeCLI:
               nonce: d001
               message: "original message"
         """)
-        # build the nonce-on-every-line format
+        # `out` collects the stripped lines but is never used; the file below
+        # is written from `textwrap_dedent` as-is.
         out = []
         for line in textwrap_dedent.splitlines():
             stripped = line.rstrip()
             if not stripped:
                 out.append("")
                 continue
-            # Lines under create op use nonce a1b2; lines under discuss use d001.
-            # Cheap heuristic: track which op we're under.
             out.append(stripped)
-        # Easier: just write the helper-format file. We'll skip nonce-on-every
-        # line since the parser tolerates its absence in most paths.
+        # Written without per-line nonce comments: the YAML parser ignores
+        # those comments (they exist for merge=union), so they are not needed.
         (ws / ".WI-zonurcli-test-test-test-test-test-test-test.ops").write_text(
             textwrap_dedent,
         )
@@ -4971,25 +4967,18 @@ class TestAutoSync:
     ) -> None:
         """Auto-sync skips if tracker_root is not under the cwd-derived repo_root.
 
-        Regression test for the hang observed during pytest execution when
-        ``.git/PR_PENDING`` was set on the real repo but tests injected a
-        fake ``tracker_root`` under ``tmp_path``. Previously, ``_maybe_auto_sync``
-        would derive ``repo_root`` from cwd (the real repo), compute
-        ``pending_sync_lines`` against the real repo, trigger sync because
-        the real repo had accumulated ops above the threshold, and then
-        wait up to 15 minutes for the real ``.git/PR_PENDING`` to clear
-        — despite the test's ``tracker_root`` having nothing to do with the
-        real repo at all.
-
-        The fix: if ``tracker_root`` is not inside ``repo_root``, skip
-        auto-sync entirely — we are in a confused state (tests, cross-repo
-        CLI usage, stale cwd) and should not sync the wrong repo.
+        ``_maybe_auto_sync`` derives ``repo_root`` from cwd. When that is a
+        different repo from the one holding ``tracker_root`` (a test's fake
+        ``tracker_root`` under ``tmp_path``, cross-repo CLI usage, stale cwd),
+        counting ``pending_sync_lines`` there could trigger a sync of the
+        wrong repo and then block for up to 15 minutes on that repo's
+        ``.git/PR_PENDING``. So if ``tracker_root`` is not inside
+        ``repo_root``, auto-sync is skipped entirely.
         """
         monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
 
-        # Simulate the confused state: git rev-parse returns the REAL
-        # hypergumbo repo (via cwd), but tracker_root is under tmp_path
-        # which is NOT under the real repo.
+        # Simulate the confused state: git rev-parse (mocked) returns
+        # fake_other_repo, and tracker_root is NOT under it.
         fake_other_repo = tmp_path / "fake_other_repo"
         fake_other_repo.mkdir()
         fake_tracker_root = tmp_path / ".agent"
@@ -5022,7 +5011,7 @@ class TestAutoSync:
                 "hypergumbo_tracker.sync.pending_sync_lines",
                 return_value=10,
             ) as mock_psl:
-                # Default is 50, 10 < 50, so no sync
+                # Default is 80 (AUTO_SYNC_DEFAULT_THRESHOLD); 10 < 80, so no sync
                 _maybe_auto_sync(tmp_path)
                 mock_psl.assert_called_once()
 
@@ -5306,9 +5295,9 @@ class TestAutoSyncEarlyGateCheck:
     ) -> None:
         """auto-sync bails early when sync gate is held by an OS-level flock.
 
-        Post-WI-nutin: a bare TRACKER_SYNC_PENDING file with no flock holder
-        is treated as stale and auto-cleaned. To verify the skip path we
-        must hold the flock for the duration of the test.
+        A bare TRACKER_SYNC_PENDING file with no flock holder is treated as
+        stale and auto-cleaned (history: WI-nutin), so to verify the skip
+        path the test must hold the flock for its duration.
         """
         import fcntl
 
@@ -5782,20 +5771,20 @@ class TestSyncReminder:
 class TestModuleEntrypoint:
     """``python -m hypergumbo_tracker.cli`` must run ``main()`` (the __main__ guard).
 
-    Regression for a silent-failure bug: ``scripts/tracker``'s fallback path
-    ``exec python3 -m hypergumbo_tracker.cli "$@"`` (taken when the console
-    script is not on ``PATH``) silently did nothing — exit 0, no output, no
-    dispatch — because ``cli.py`` had no ``if __name__ == "__main__"`` guard, so
-    ``-m`` imported the module and exited without calling ``main()``. That made
-    the ``reference-transaction`` recovery hook a silent no-op in such
-    environments (and broke every tracker command routed through the fallback).
+    ``scripts/tracker``'s fallback path ``exec python3 -m
+    hypergumbo_tracker.cli "$@"`` (taken when the console script is not on
+    ``PATH``) depends on it. Without the ``if __name__ == "__main__"`` guard,
+    ``-m`` imports the module and exits 0 with no output and no dispatch,
+    making every tracker command routed through the fallback — including the
+    ``reference-transaction`` recovery hook — a silent no-op.
     """
 
     def test_dash_m_invocation_dispatches_recover(self, tmp_path: Path) -> None:
         """``python -m hypergumbo_tracker.cli recover`` reaches ``_cmd_recover``.
 
-        A real subprocess is required: the bug is in module-as-``__main__``
-        execution, which an in-process ``main()`` call cannot exercise.
+        A real subprocess is required: the behaviour under test is
+        module-as-``__main__`` execution, which an in-process ``main()`` call
+        cannot exercise.
         """
         import sys
 

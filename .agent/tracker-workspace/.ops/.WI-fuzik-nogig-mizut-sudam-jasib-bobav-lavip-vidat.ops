@@ -1,0 +1,60 @@
+- op: create  # 23a4
+  at: '2026-11-02T01:07:31Z'  # 23a4
+  by: agent  # 23a4
+  actor: jgstern_agent  # 23a4
+  clock: 1  # 23a4
+  nonce: 23a4  # 23a4
+  data:  # 23a4
+    kind: work_item  # 23a4
+    title: "verify-claims: measure, then disclose, the unseeded web ingress -- route handlers exist but no untrusted_input source is placed at them, and today the clean verdict is withheld only by an unrelated 'framework module unclassified' reason"  # 23a4
+    status: todo_hard  # 23a4
+    priority: 2  # 23a4
+    parent:  # 23a4
+    tags:  # 23a4
+    - taint  # 23a4
+    - verify_claims  # 23a4
+    - analysis_quality  # 23a4
+    isbefore: []  # 23a4
+    duplicate_of: []  # 23a4
+    not_duplicate_of: []  # 23a4
+    pr_ref:  # 23a4
+    description: "PRE-APPROVED BY THE OWNER (2026-11-01), END TO END. Both steps below, every design choice inside them, every PR (auto-pr, self-merge), any ADR edit or new ADR, and any re-scoping the evidence calls for are approved in advance. The owner's expectation: when the agent or a subagent is uncertain, it INVESTIGATES CAREFULLY — in light of docs/adr/, docs/hypergumbo-spec.md and the hypergumbo spirit (positive claims over inferred emptiness, never a false all-clear, measure before sizing, ship the scope you measured, structural over per-instance) — and DECIDES, recording the reasoning on this item. Do not interrupt work to ask the owner a question the owner would almost certainly answer with \"investigate carefully and come back with a recommended path forward\": do that investigation yourself and proceed on your recommendation. Escalate only what investigation genuinely cannot settle (e.g. two owner rulings that collide), and then bring a recommendation, not an open question.\n\nPROBLEM. verify-claims stays honest on web apps today, but partly BY ACCIDENT. Taint sources are minted only from catalogue rows matched on call edges at the caller (WI-ritog), so request data arriving as a route handler's parameter (Express req.query.p, a property read) or a framework global (Flask request.args) is never a source. The clean verdict is still withheld, but the stated reason is an unrelated one: \"framework module not classified\" plus unknown receivers. Nothing names the real gap: route entrypoints exist and no source was placed at them. If the framework module became classified (a community or claims-file overlay) and the receivers typed, the same run might return a false \"confirmed\". That flip is UNTESTED.\n\nEVIDENCE (dev fbff2b8a04, ~/hypergumbo_lab_notebook/taint_runnerup_11012026/, claims ~/hypergumbo_lab_notebook/p2_review_11012026/B1/claims_generic.yaml):\n- flask/app.py: @app.route handler opens a path from request.args.get and writes. untrusted-input-no-host-fs: inconclusive, withheld for \"1 module(s) the I/O catalog could not classify (flask)\" + unknown_receiver_scope (get). Every claim inconclusive, rc 2.\n- express/server.js: app.get handler fs.writeFileSync(req.query.p, ...). untrusted-input-no-host-fs: inconclusive, withheld for \"express\" unclassified + 3 of 3 receivers untyped. Every claim inconclusive, rc 2.\n- P2 review fixtures (~/hypergumbo_lab_notebook/p2_review_11012026/B1/fx_ritog_js, fx_ritog_py): exec(req.query.c) / subprocess.run(request.args...) inside a route: subprocess claim inconclusive (launch + unclassified framework). The Express run's only \"violated\" flow is anchored at http.createServer on the FILE node (WI-pimun's shape — owner-DEFERRED; out of scope here, do not act on it).\n\nSTEP 0 — MEASURE (no behaviour change).\n(a) The flip test: for each probe, classify the framework module in an overlay (claims-file extra_catalogs or $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/) so that withholding reason disappears, and, if needed, make the receivers typeable. Record whether untrusted-input-* goes to \"confirmed\". \"confirmed\" = a latent false all-clear, and step 1 becomes urgent. Still inconclusive = record which reason holds it, and whether that reason is a principled disclosure or another accident.\n(b) The verdict distribution on a few real web apps from ~/curriculum_repos (Express, Flask/Django, one more framework; find them, don't assume they exist): per untrusted_input claim, the verdict and every withholding reason. Pre-register the expectation before running. Respect the verify-claims OOM limit (at most 4 at once, never beside smart-test).\n\nSTEP 1 — DISCLOSE THE UNSEEDED INGRESS (tightens a withholding gate = the safe direction).\nWhen a run has route/handler entrypoints (entrypoints records, route concepts, or dispatches_to targets) and no untrusted_input source was placed at any of them, an untrusted_input claim must be withheld with THAT as its stated reason. Name the handlers, so the disclosure can be checked against the source. It must not depend on any framework module staying unclassified. Read first: ADR-0049 rulings 2-3, ADR-0016 §7, ADR-0046 (read it, don't paraphrase), and verify_claims.py's existing disclosure siblings (_opaque_launch_sites; the deferred-crossing shadow from INV-fogum / WI-nosah) — build next to them, keyed the same way. Watch the INV-fogum lesson: the boundary arm AND the taint arm must both read it.\n\nSCOPE LIMIT. Placing the sources (WI-ritog tier 1) is NOT this item. This item ships the measurement and the disclosure only; WI-ritog then narrows the disclosure framework by framework as seeding lands. That is why this item blocks WI-ritog.\n\nACCEPTANCE. Step-0 numbers and the flip-test result recorded on this item. A production-CLI test (cold cache): the flask and express probes read inconclusive with the unseeded-ingress reason naming the handler, AND still do so with the framework module classified in an overlay (the control that shows the accident no longer carries the verdict). A no-route control fixture shows no new disclosure. Corpus before/after verdict diff recorded."  # 23a4
+    fields: {}  # 23a4
+- op: update  # fe74
+  at: '2026-11-02T01:08:02Z'  # fe74
+  by: agent  # fe74
+  actor: jgstern_agent  # fe74
+  clock: 2  # fe74
+  nonce: fe74  # fe74
+  set: {}  # fe74
+  add:  # fe74
+    isbefore: [WI-ritog-riduj-filij-batul-tugid-jonuz-jatol-gifar]  # fe74
+- op: discuss  # 3eb0
+  at: '2026-11-02T01:08:03Z'  # 3eb0
+  by: agent  # 3eb0
+  actor: jgstern_agent  # 3eb0
+  clock: 3  # 3eb0
+  nonce: 3eb0  # 3eb0
+  message: "Precedent to read before designing step 1: INV-dabov (satisfied), the same false-CONFIRMED shape one level up -- a language with an analyzer but no io_primitives catalogue confirmed rc 0 until a disclosure named it. The step-1 disclosure is that cure applied to framework ingress. Filed together with WI-jomik on 2026-11-01 from the meta-analysis question in this session; the later steps (WI-ritog tier 1, the ADR-0017 4a summaries in WI-famig/WI-potan, globals in WI-zitul) are separate items and are NOT pre-approved by this entry."  # 3eb0
+- op: discuss  # 80e1
+  at: '2026-11-02T06:12:50Z'  # 80e1
+  by: agent  # 80e1
+  actor: jgstern_agent  # 80e1
+  clock: 4  # 80e1
+  nonce: '80e1'  # 80e1
+  message: "WI-fuzik STEP 0 RESULT (2026-11-02, dev ae02786fca; lab ~/hypergumbo_lab_notebook/fuzik_step0_11022026/).\n\n(a) FLIP TEST -- POSITIVE: A LATENT FALSE ALL-CLEAR. Probes ~/hypergumbo_lab_notebook/taint_runnerup_11012026/{flask,express} (a route handler writes a request value to disk; no subprocess), claims p2_review_11012026/B1/claims_generic.yaml. Base: every untrusted_input claim inconclusive (rc 2), withheld by \"1 module(s) the I/O catalog could not classify (flask|express)\". With ONE overlay entry declaring the framework module complete (`--io-primitives overlays/{flask,express}_complete.yaml`: language + module_completeness [module, completeness: complete]):\n- flask: untrusted-input-no-host-fs, -no-subprocess, -no-database -> confirmed_with_caveats (rc 3). The only caveat is unknown_receiver_scope (\"1 of 2 method call sites ... get\"). evidence_count 0. Over `open(request.args.get(\"p\"), \"w\")`.\n- express: -no-host-fs and -no-subprocess -> confirmed_with_caveats; -no-database inconclusive. Only caveat: unknown_receiver_scope (get, listen, send).\nNothing in either verdict names the real gap (route handler entrypoint present, no source placed at it). The existing deferred-crossing shadow (INV-fogum/WI-nosah) cannot fire: it is keyed to catalogue rows that declare a deferred crossing, and a module declared complete has none. Precedent: the self overlay's own header records the same mechanism for telnetlib (one completeness entry: inconclusive -> confirmed).\n-> Step 1 is urgent, per the item.\n\n(b) CORPUS DISTRIBUTION (pre-registered in PREREGISTER.md before the runs). express (examples/ apps), mitmproxy (tornado mitmweb), caddy (Go net/http):\n- express: all three untrusted_input claims inconclusive; reasons: 30 unclassified modules (accepts, body-parser, cookie, ...) + unknown_receiver_scope.\n- mitmproxy: no-subprocess VIOLATED (6), no-host-fs VIOLATED (2) (flows from minted sources, not route handlers); no-database inconclusive: deferred_crossing + untyped_receiver + unknown_receiver_scope + analyzer_method_call_blind.\n- caddy: no-subprocess VIOLATED (3), no-host-fs VIOLATED (14); no-database inconclusive: unclassified stdlib modules + deferred_crossing + unknown_receiver_scope.\nPre-registration HELD: no untrusted_input claim confirmed; every withholding reason is an unclassified module, a receiver gap or a catalogue deferred crossing; none names an unseeded handler (no such reason exists). The real-repo verdicts are safe for the same accidental reason as the probes."  # 80e1
+- op: update  # 38aa
+  at: '2026-11-02T08:51:41Z'  # 38aa
+  by: agent  # 38aa
+  actor: jgstern_agent  # 38aa
+  clock: 5  # 38aa
+  nonce: 38aa  # 38aa
+  set:  # 38aa
+    status: done  # 38aa
+- op: discuss  # ab55
+  at: '2026-11-02T08:52:37Z'  # ab55
+  by: agent  # ab55
+  actor: jgstern_agent  # ab55
+  clock: 6  # ab55
+  nonce: ab55  # ab55
+  message: "DONE: PR #2008 (merged; HEAD 888627d). Steps 0 and 1 both shipped; the later steps (WI-ritog tier 1, ADR-0017 4a summaries in WI-famig/WI-potan, globals in WI-zitul) were not in scope and are untouched.\n\nBEHAVIOURAL EVIDENCE (production CLI, cold cache, dev after #2008; re-runnable with ~/hypergumbo_lab_notebook/fuzik_step0_11022026/run_after.sh):\n- `hypergumbo verify-claims ~/hypergumbo_lab_notebook/taint_runnerup_11012026/flask --io-primitives overlays/flask_complete.yaml --claims p2_review_11012026/B1/claims_generic.yaml --json` -> rc 2; untrusted-input-no-host-fs / -no-subprocess / -no-database all `inconclusive` (were `confirmed_with_caveats`, rc 3, before #2008), details: \"1 request handler(s) receive network data that no taint source represents (save at app.py:7 (HTTP route /save)) ...\".\n- Same for express with overlays/express_complete.yaml: -no-host-fs and -no-subprocess `confirmed_with_caveats` -> `inconclusive`, naming `_GET_save_handler at server.js:6`.\n- Without the overlay (framework unclassified) both probes stay `inconclusive` and now ALSO state the ingress reason.\n- No-route control (tests/test_verify_claims_unseeded_ingress.py): no disclosure. Both arms: a `net_recv must_not_exist` boundary claim is withheld the same way.\nCORPUS BEFORE/AFTER (claims_generic.yaml): express repo (8 handlers) and mitmproxy (33) gain the stated reason on already-inconclusive untrusted_input verdicts; caddy unchanged; no `violated` verdict moved; no other claim changed. The 18 self-claims include no untrusted_input or net_recv claim.\n\nRESIDUAL, FILED SEPARATELY: the disclosure reads request-handler ENTRYPOINTS, so it is only as good as entrypoint detection. caddy has 31 non-test ServeHTTP methods (Go http.Handler implementations) and ZERO request-ingress entrypoints, so on caddy nothing fires."  # ab55

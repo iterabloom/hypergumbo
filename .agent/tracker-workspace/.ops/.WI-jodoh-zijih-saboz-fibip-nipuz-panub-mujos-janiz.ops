@@ -18,3 +18,10 @@
     pr_ref:  # 6c04
     description: "php.py `_extract_laravel_routes` refuses a route whose path literal is empty (`if not route_path: continue`), so `Route::get('', [HomeController::class, 'index'])` emits neither a UsageContext nor a route marker. Laravel trims slashes from a URI, so '' registers the same route as '/'. The idiom is common inside a prefix group (`Route::prefix('admin')->group(function () { Route::get('', ...); })`).\n\nLive repro (2026-10-01, ~/hg_wt/fadip with WI-fadip's fix): analyze_php on `Route::get('', [HomeController::class, 'index']);` emits 0 contexts and 0 route markers.\n\nSince WI-fadip, `_php_string_value` returns \"\" for an empty literal and None only for a non-literal or interpolated string, so the fix is to test `route_path is None` (refuse) separately from `route_path == \"\"` (normalize to \"/\"). This is ABSENT != EMPTY (LIVE section 5): the empty literal is a positive value, not an absent one.\n\nNot measured: frequency on a corpus.\nFound while fixing WI-fadip-tojup-fonug-hokoz-bomin-jarib-javik-vibud (not a quote-style defect, so filed separately)."  # 6c04
     fields: {}  # 6c04
+- op: discuss  # 38f1
+  at: '2026-11-01T10:56:02Z'  # 38f1
+  by: agent  # 38f1
+  actor: jgstern_agent  # 38f1
+  clock: 2  # 38f1
+  nonce: 38f1  # 38f1
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: analyze_php on a routes/web.php with Route::get('', [HomeController::class,'index']), Route::get('/about', ...) and a prefix('admin')->group containing Route::get('', ...) emits a context and route only for /about. Both empty-path routes are dropped. php.py:911 is still `if not route_path: continue`. MECHANISM: ABSENT vs EMPTY: `if not route_path: continue` refuses the empty literal that _php_string_value returns as ''. SHARES MECHANISM WITH: WI-sitag."  # 38f1

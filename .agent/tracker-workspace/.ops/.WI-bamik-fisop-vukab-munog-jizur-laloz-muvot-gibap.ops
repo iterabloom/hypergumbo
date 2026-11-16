@@ -1,0 +1,21 @@
+- op: create  # c5ad
+  at: '2026-10-25T11:06:01Z'  # c5ad
+  by: agent  # c5ad
+  actor: jgstern_agent  # c5ad
+  clock: 1  # c5ad
+  nonce: c5ad  # c5ad
+  data:  # c5ad
+    kind: work_item  # c5ad
+    title: "py_def_use: `del a, b` and `del (a)` define nothing (_handle_delete reads only direct identifier children)"  # c5ad
+    status: todo_hard  # c5ad
+    priority: 3  # c5ad
+    parent:  # c5ad
+    tags:  # c5ad
+    - docstring_audit  # c5ad
+    - analysis_quality  # c5ad
+    isbefore: []  # c5ad
+    duplicate_of: []  # c5ad
+    not_duplicate_of: []  # c5ad
+    pr_ref:  # c5ad
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- py_def_use.py: The docstring line \"Delete: ``del x`` -> defines [x]\" (L26) holds only for a single bare identifier. `_handle_delete` (L364-370) collects only direct `identifier` children (it is registered at L442 `\"delete_statement\": _handle_delete`). Repro (tree-sitter-language-pack python parser through `_handle_delete`):\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # c5ad
+    fields: {}  # c5ad

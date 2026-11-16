@@ -178,6 +178,3 @@ patterns:
   # OpenAPI parameter annotations
   - concept: api_param
     decorator: "^@(PathParam|QueryParam|FormParam|CookieParam|HeaderParam)$"
-
-linkers:
-  - http

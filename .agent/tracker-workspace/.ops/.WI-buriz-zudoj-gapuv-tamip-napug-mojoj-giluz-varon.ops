@@ -1,0 +1,21 @@
+- op: create  # db24
+  at: '2026-10-31T10:09:42Z'  # db24
+  by: agent  # db24
+  actor: jgstern_agent  # db24
+  clock: 1  # db24
+  nonce: db24  # db24
+  data:  # db24
+    kind: work_item  # db24
+    title: "just: quiet recipes (@name:) and exported variables (export NAME := value) are dropped"  # db24
+    status: todo_hard  # db24
+    priority: 3  # db24
+    parent:  # db24
+    tags:  # db24
+    - docstring_audit  # db24
+    - analysis_quality  # db24
+    isbefore: []  # db24
+    duplicate_of: []  # db24
+    not_duplicate_of: []  # db24
+    pr_ref:  # db24
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _BODY_LINE_RE r\"^[\\s@#]\" (just.py:68) treats a column-0 @ as a body line; export FOO := \"x\" fails _VAR_RE, then _RECIPE_RE matches the name export, skipped at just.py:180-181. Both reproduced. v11."  # db24
+    fields: {}  # db24

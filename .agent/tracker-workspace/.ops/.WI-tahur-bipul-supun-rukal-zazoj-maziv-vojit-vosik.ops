@@ -1,0 +1,37 @@
+- op: create  # c0f0
+  at: '2026-11-15T19:48:16Z'  # c0f0
+  by: agent  # c0f0
+  actor: jgstern_agent  # c0f0
+  clock: 1  # c0f0
+  nonce: c0f0  # c0f0
+  data:  # c0f0
+    kind: work_item  # c0f0
+    title: "test_doc_family_id_parity.py says robot's kind-slot fix is 'scheme-gated behind WI-talos v9/v10': that gate lapsed (v9 and v10 shipped as other bumps; dev is v14)"  # c0f0
+    status: todo_soft  # c0f0
+    priority: 4  # c0f0
+    parent:  # c0f0
+    tags:  # c0f0
+    - docs  # c0f0
+    - id_format  # c0f0
+    - stable_id  # c0f0
+    isbefore: []  # c0f0
+    duplicate_of: []  # c0f0
+    not_duplicate_of: []  # c0f0
+    pr_ref:  # c0f0
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT (stale reason text that is read as a blocker). packages/hypergumbo-core/tests/test_doc_family_id_parity.py:\nthe module docstring (lines 60-68) says the KIND_SLOT_HOLES residuals are \"stable_id-scheme-gated ... sequenced\nbehind WI-talos v9/v10\", and the `robot` entry of KIND_SLOT_HOLES (lines 318-327) says \"scheme-gated behind\nWI-talos v9/v10, the same gate WI-banod T1 waits on\". INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah's last discussion entry repeats it.\n\nWHAT IS TRUE TODAY. v9 shipped on 2026-10-13 as the WI-tusad bump and v10 on 2026-10-22 as the WI-banod T1 fix;\nneither was the WI-talos relabel, which has not shipped. dev is at stableid-v14 and v10-v14 are unreleased (the\nlast release, v9.2.0, carries v9). WI-banod T1 is done. Five scheme bumps have shipped since the text was written\nand none picked up the robot fix.\n\nWhat does still hold: the `kind` argument to make_doc_symbol_ids feeds make_doc_stable_id, so correcting robot's\nword changes those symbols' stable ids, and by the owner's rule (an input change to the hash is a scheme bump) the\nfix needs a bump. It needs A bump; it does not wait behind WI-talos.\n\nASK. Rewrite both passages to say that, and name INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil limb 1 as the item that carries the robot fix, so the next\nscheme bump is told to include it.\n\nACCEPTANCE. Neither passage names a gate that has cleared; the strict xfail for robot still XPASSes when the kind\nword is corrected.\n\nNOT CHECKED: other docstrings or comments citing the v9/v10 gate (ADR-0051:181-186 does; that one is recorded on\nthe module-key item)."  # c0f0
+    fields: {}  # c0f0
+- op: update  # cc0b
+  at: '2026-11-16T04:57:50Z'  # cc0b
+  by: agent  # cc0b
+  actor: jgstern_agent  # cc0b
+  clock: 2  # cc0b
+  nonce: cc0b  # cc0b
+  set:  # cc0b
+    status: done  # cc0b
+- op: discuss  # 5541
+  at: '2026-11-16T04:57:50Z'  # 5541
+  by: agent  # 5541
+  actor: jgstern_agent  # 5541
+  clock: 3  # 5541
+  nonce: '5541'  # 5541
+  message: "Fixed in PR #2198. Both passages of test_doc_family_id_parity.py now say the robot fix needs a stable-id scheme bump, any one, and waits on no other item; INV-dulah limb 1 is named as its carrier. The strict xfail still holds: 41 passed, 1 xfailed. Measured since: correcting the word moves 2 of 2 test symbols' stable ids on a two-test fixture."  # 5541

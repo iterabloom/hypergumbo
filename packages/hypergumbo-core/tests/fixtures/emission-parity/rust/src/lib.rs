@@ -2,8 +2,11 @@
 // See tests/fixtures/emission-parity/README.md.
 use std::cmp::min;
 
-/// Module-level value binding (variable kind).
+/// Module-level constant (kind `const`: it has no storage and no identity).
 const MAX_ITEMS: i32 = 5;
+
+/// Module-level value binding (variable kind): a `static` is one place in memory.
+static DEFAULT_STEP: i32 = 1;
 
 fn helper(value: i32) -> String {
     format!("{}", value)

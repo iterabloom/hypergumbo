@@ -2,20 +2,19 @@
 """A typed receiver whose type is EXTERNAL must keep its type (INV-linub L3).
 
 INV-linub's four-link chain is L1 catalogue → L2 emission → L3 receiver
-evidence → L4 the match gate. Rust passes L2 (it emits method-construct edges
-and populates ``call_construct``) and fails L3: measured on
-encrypted-dns-server, 203 of its 219 method-construct edges carry the bare
-``external`` placeholder in the module slot and NOT ONE carries a stdlib
-module, so ``_lookup_named_entry`` correctly refuses every one of them and the
-whole method-kind half of the Rust catalogue is unreachable.
+evidence → L4 the match gate. Rust emits method-construct edges and populates
+``call_construct`` (L2); L3 is whether their module slot names the receiver's
+type. A slot holding the bare ``external`` placeholder is correctly refused by
+``_lookup_named_entry``, so without L3 the whole method-kind half of the Rust
+catalogue is unreachable.
 
-The mechanism is not that the analyzer never knows the type. It KNOWS and then
-DISCARDS: the typed-receiver strategies resolve ``Type::method`` against
+The hazard is not that the analyzer never knows the type but that it KNOWS and
+then DISCARDS it: the typed-receiver strategies resolve ``Type::method`` against
 first-party symbols only, so when the receiver's type is external the lookup
 misses, ``resolved`` stays False, and control falls through to the unresolved
-path — which rebuilds ``module_hint`` from ``use_aliases`` alone. A method name
-is never in ``use_aliases``, so the slot stays ``external`` and the receiver
-type computed moments earlier is dropped on the floor.
+path. Rebuilding ``module_hint`` there from ``use_aliases`` alone would leave
+the slot ``external`` -- a method name is never in ``use_aliases`` -- and drop
+the receiver type computed moments earlier.
 
 WHY THIS TEST IS AT L3 AND NOT L4. It asserts on the MODULE SLOT rather than on
 a taint finding deliberately: INV-linub's rule is that an emission-side fix must
@@ -54,8 +53,8 @@ class TestExternalTypedReceiverKeepsItsType:
         ``_extract_use_aliases`` binds ``Path -> std::path::Path``, so both
         halves of the module path are already in hand when the edge is built.
         rust.yaml declares ``std::path::Path`` with ``methods: [exists, ...]``,
-        so this exact call is a catalogued ``fs_read`` primitive that the tool
-        cannot currently see.
+        so this exact call is a catalogued ``fs_read`` primitive, visible only
+        if the module path reaches the edge.
         """
         result = _analyze(tmp_path, (
             "use std::path::Path;\n"
@@ -75,8 +74,8 @@ class TestExternalTypedReceiverKeepsItsType:
         # READ dst_ref, NOT the dst STRING. A Rust module path contains "::",
         # so splitting the id on ":" shears `std::path::Path` at its first
         # colon and yields `std` — which is exactly the string-parsing ADR-0037
-        # removed by deriving `dst_ref` unconditionally. The first cut of this
-        # test made that mistake and reported a working fix as broken.
+        # removed by deriving `dst_ref` unconditionally. Parsing the string here
+        # would report a working emission as broken.
         slots = {e.dst_ref.module_path for e in exists if e.dst_ref}
         assert slots == {"std::path::Path"}, (
             f"module_path is {slots}, expected {{'std::path::Path'}}. A bare "
@@ -88,8 +87,8 @@ class TestExternalTypedReceiverKeepsItsType:
     def test_untyped_receiver_still_degrades(self, tmp_path: Path) -> None:
         """The negative control: an untyped receiver must STAY ``external``.
 
-        Without this the fix could 'pass' by stamping a module on everything,
-        which is precisely the false-match INV-linub's L4 gate exists to
+        Without this the test above could 'pass' by stamping a module on
+        everything, which is precisely the false-match INV-linub's L4 gate exists to
         prevent (``str.replace`` must not match ``Path.replace``).
         """
         result = _analyze(tmp_path, (
@@ -114,19 +113,15 @@ class TestExternalTypedReceiverKeepsItsType:
 class TestQualifiedReceiverTypeSurvivesNormalization:
     """A path the SOURCE WROTE must reach the edge (INV-linub L3, second half).
 
-    The first half of this fix recovers the module path through
-    ``use_aliases``, which works only when the receiver's type was imported
-    BY NAME. When the source spells the path out instead — a
-    ``std::fs::File`` parameter annotation, or a
+    Recovering the module path through ``use_aliases`` works only when the
+    receiver's type was imported BY NAME. When the source spells the path out
+    instead — a ``std::fs::File`` parameter annotation, or a
     ``std::time::Instant::now()`` construction with no ``use`` — the path is
-    right there in the text and is still dropped, because
-    ``_normalize_rust_type_to_bare_name`` reduces the annotation to its bare
-    identifier ("strip module paths", per its own docstring) and the bare name
-    is then absent from ``use_aliases``.
-
-    Measured on four repos (aardvark-dns, candle, didkit, loro) at 229
-    available catalogued trait-method call sites: ``elapsed`` matched 28 times
-    and missed 52, the SAME name resolving or not purely on receiver shape.
+    right there in the text, but ``_normalize_rust_type_to_bare_name`` reduces
+    the annotation to its bare identifier ("strip module paths", per its own
+    docstring) and the bare name is absent from ``use_aliases``. Without the
+    written-path map (``_extract_qualified_var_type_paths``), the SAME method
+    name resolves or not purely on receiver shape.
 
     THE RULE THIS CLASS PINS IS NARROW ON PURPOSE: a path is carried only when
     the source wrote one. Nothing is synthesized, so the negative control in
@@ -180,9 +175,8 @@ class TestQualifiedReceiverTypeSurvivesNormalization:
     ) -> None:
         """``let s = std::time::Instant::now(); s.elapsed()``.
 
-        The single largest miss bucket in the four-repo measurement: 52 of the
-        80 ``elapsed`` call sites. The constructing call already names the
-        type in full, so the binding's type is known without an annotation and
+        A common shape for ``elapsed`` call sites. The constructing call
+        already names the type in full, so the binding's type is known without an annotation and
         without an import.
         """
         result = _analyze(tmp_path, (

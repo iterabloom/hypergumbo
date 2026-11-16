@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A harmless call site must not erase a real one in the same function (INV-rajak).
 
-Two calls to one callee from one function collapse into one edge, and the edge
-used to remember only the per-site values sites HAD. Measured on the shipped
-CLI before this change, each pair differing by one added line:
+Two calls to one callee from one function collapse into one edge, so the edge
+must remember the sites that carried NO per-site value as well as the values
+sites had. An edge that keeps only the values lets one added harmless line erase
+a real crossing:
 
 * Go: ``bufio.NewScanner(r)`` over a parameter is an ``ipc_recv`` chain and an
-  ``untrusted_input`` source. Add ``bufio.NewScanner(strings.NewReader(s))``
-  above it and both are gone: the taint verdict went ``violated`` (2 flows) to
-  ``inconclusive`` (0 flows).
-* Python: ``json.load(open(p))`` reads a file. Add ``open(q, "w")`` and a
-  ``must_not_exist: fs_read`` claim CONFIRMED, exit 0.
+  ``untrusted_input`` source. Adding ``bufio.NewScanner(strings.NewReader(s))``
+  above it would remove both, taking the taint verdict from ``violated``
+  (2 flows) to ``inconclusive`` (0 flows).
+* Python: ``json.load(open(p))`` reads a file. Adding ``open(q, "w")`` would
+  let a ``must_not_exist: fs_read`` claim CONFIRM, exit 0.
 
 Each test runs the harmless-sibling file; the one-site file is the control.
 """

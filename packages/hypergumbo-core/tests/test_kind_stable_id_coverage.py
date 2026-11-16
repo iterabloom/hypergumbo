@@ -1,41 +1,33 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Property tests for INV-sotiv: kind-specific stable_id coverage.
 
-INV-sotiv reported a 6.1% gap (1,981 of 32,253 nodes) where
-``Symbol.stable_id`` was ``None`` on hypergumbo's own self-analysis,
-distributed as: 100% of ``kind="variable"`` (1,487), ``kind="module"``
-(385), ``kind="dependency"`` (81), ``kind="export"`` (18),
-``kind="project"`` (7), ``kind="interface"`` (2), ``kind="type"`` (1),
-and 99.4% of ``kind="file"`` (804 of 809). The Python AST analyzer
+Not every producer computes ``Symbol.stable_id``. The Python AST analyzer
 emits variable Symbols via a minimal builder that does not call
 ``_compute_stable_id``; module / file / project / dependency / export /
-interface / type Symbols are synthesized in ``ir.py``, in the
-orchestrator path, and across ~12 analyzers (``xml_config``,
-``toml_config``, ``bash``, ``csharp``, ``groovy``, ``wasm_bindgen``,
-etc.) without invoking the stable-id formula.
+interface / type Symbols are synthesized in ``ir.py``, in the orchestrator
+path, and across many analyzers (``xml_config``, ``toml_config``, ``bash``,
+``csharp``, ``groovy``, ``wasm_bindgen``, etc.) without invoking the
+stable-id formula. Left alone, those Symbols carry ``stable_id=None``.
 
-The fix lives at the orchestrator chokepoint
-(``analyze.all_analyzers``) after path normalisation. A
-``populate_kind_stable_ids`` backstop walks every Symbol and, for any
-Symbol whose ``stable_id`` is still ``None``, dispatches on
-``Symbol.kind`` to a kind-specific factory:
+The orchestrator chokepoint (``analyze.all_analyzers``) therefore runs a
+``populate_kind_stable_ids`` backstop after path normalisation. It walks
+every Symbol and, for any Symbol whose ``stable_id`` is still ``None``,
+dispatches on ``Symbol.kind`` to a kind-specific factory
+(``_KIND_STABLE_ID_FACTORIES``):
 
 * ``file``: ``sha256("file:{language}:{path}")[:16]``
-* ``module``: ``sha256("module:{language}:{name}")[:16]``
-* ``dependency``: ``sha256("dependency:{language}:{name}")[:16]``
-* ``variable``: ``sha256("variable:{language}:{path}:{name}")[:16]``
-* ``export``: ``sha256("export:{language}:{path}:{name}")[:16]``
 * ``project``: ``sha256("project:{name}")[:16]``
-* ``interface``: ``sha256("interface:{language}:{name}")[:16]``
-* ``type``: ``sha256("type:{language}:{name}")[:16]``
+* ``module`` / ``dependency`` / ``variable`` / ``export`` / ``interface`` /
+  ``type``: ``sha256("{kind}:{language}:{path}:{name}")[:16]``
+* the container kinds and ``template``: the same shape, via
+  ``make_declaration_stable_id``
 
-Each formula is the cheapest expression of identity for that kind:
-files are identified by path, modules / dependencies / interfaces /
-types by their lang-namespaced name, variables / exports by the
-file-scoped (path, name) pair, and projects by their bare name. The
-backstop never overrides an already-populated ``stable_id`` — producer-
-side formulas (e.g. the Python ``_compute_stable_id`` for functions /
-classes / methods) keep precedence.
+Files are identified by path, projects by their bare name, and every other
+kind by its kind-prefixed, file-scoped (path, name) pair. A kind outside the
+table takes that same shape as a FLOOR, stamped only when the key is unique
+in its file (``TestFloorWithAbstention``). The backstop never overrides an
+already-populated ``stable_id`` — producer-side formulas (e.g. the Python
+``_compute_stable_id`` for functions / classes / methods) keep precedence.
 
 These tests pin three invariants:
 
@@ -62,15 +54,14 @@ _KINDS_REQUIRING_STABLE_ID = frozenset({
     "project", "interface", "type",
 })
 
-# WI-rihob: container/declaration kinds the backstop must also cover. The
-# tree-sitter producers (js_ts and its csharp/rust/swift/solidity/wgsl analogues)
-# construct these Symbols with ``shape_id=`` but omit ``stable_id=``, so they fell
-# through the INV-sotiv backstop to ``stable_id=None`` (measured: 0/4 TS classes,
-# TS enum, csharp class/struct/enum, rust enum/struct/trait, swift class/enum/
-# protocol, solidity contract, wgsl struct all null). Callable kinds that were
-# also null (go method, solidity function/constructor) are deliberately NOT here:
-# they must receive the *typed* stable_id from their producers (a name-only key
-# would collide across overloads) — a distinct producer concern.
+# Container/declaration kinds the backstop must also cover. The tree-sitter
+# producers (js_ts and its csharp/rust/swift/solidity/wgsl analogues) construct
+# these Symbols with ``shape_id=`` but omit ``stable_id=``, so without a
+# backstop row they carry ``stable_id=None``. Callable kinds those producers
+# also leave null (go method, solidity function/constructor) are deliberately
+# NOT here: they must receive the *typed* stable_id from their producers (a
+# name-only key would collide across overloads) — a distinct producer concern.
+# (history: WI-rihob)
 _CONTAINER_KINDS = frozenset({
     "class", "struct", "enum", "trait", "protocol", "contract",
 })
@@ -220,10 +211,10 @@ class TestBackstopBehavior:
         """Backstop must not clobber a producer-computed stable_id."""
         from hypergumbo_core.analyze.base import populate_kind_stable_ids
         sym = self._make_symbol(
-            "variable", name="X", stable_id="sha256:custom_producer_value",
+            "variable", name="X", stable_id="hgstableid15:custom_producer_value",
         )
         populate_kind_stable_ids([sym])
-        assert sym.stable_id == "sha256:custom_producer_value"
+        assert sym.stable_id == "hgstableid15:custom_producer_value"
 
     def test_template_kind_gets_stable_id_distinct_from_file(self) -> None:
         """META-nomiz: view-template stand-ins (kind='template') are backstopped,
@@ -238,7 +229,7 @@ class TestBackstopBehavior:
             path="app/views/show.html.erb", language="ruby",
         )
         populate_kind_stable_ids([tmpl, file])
-        assert tmpl.stable_id is not None  # was None before the "template" factory
+        assert tmpl.stable_id is not None  # filled by the "template" factory row
         assert file.stable_id is not None
         assert tmpl.stable_id != file.stable_id  # kind folded into the hash
 
@@ -255,7 +246,7 @@ class TestBackstopBehavior:
 
 
 class TestKindSpecificFactories:
-    """Each ``make_*_stable_id`` factory returns a non-empty sha256:-prefixed string."""
+    """Each ``make_*_stable_id`` factory returns a non-empty hgstableid15:-prefixed string."""
 
     @pytest.mark.parametrize("factory_name,args", [
         ("make_file_stable_id", ("python", "src/main.py")),
@@ -274,8 +265,8 @@ class TestKindSpecificFactories:
         factory = getattr(base_mod, factory_name)
         result = factory(*args)
         assert isinstance(result, str)
-        assert result.startswith("sha256:")
-        assert len(result) > len("sha256:")
+        assert result.startswith("hgstableid15:")
+        assert len(result) > len("hgstableid15:")
 
     def test_factory_outputs_are_deterministic(self) -> None:
         """Calling each factory twice with the same args produces the same output."""
@@ -297,14 +288,14 @@ class TestKindSpecificFactories:
 
 
 class TestContainerKindStableId:
-    """WI-rihob: container/declaration kinds get a stable_id at the chokepoint.
+    """Container/declaration kinds get a stable_id at the chokepoint (WI-rihob).
 
-    Root-caused at the js_ts container sites (class/enum/interface/type) — they
-    pass ``shape_id=`` but omit ``stable_id=``. ``interface``/``type`` were already
-    in the INV-sotiv backstop; ``class``/``struct``/``enum``/``trait``/``protocol``/
-    ``contract`` were not, so they defaulted to ``None`` on every tree-sitter
-    analyzer. The fix extends the backstop factory map (one place, all analyzers),
-    routing them through :func:`make_declaration_stable_id`.
+    The js_ts container sites (class/enum/interface/type) pass ``shape_id=``
+    but omit ``stable_id=``. The backstop factory map covers
+    ``class``/``struct``/``enum``/``trait``/``protocol``/``contract`` alongside
+    ``interface``/``type`` — one place, all analyzers — routing them through
+    :func:`make_declaration_stable_id`; without those rows they would default
+    to ``None`` on every tree-sitter analyzer.
     """
 
     def _make_symbol(
@@ -328,8 +319,8 @@ class TestContainerKindStableId:
         populate_kind_stable_ids(syms)
         for s in syms:
             assert s.stable_id is not None, f"kind={s.kind} left at stable_id=None"
-            assert s.stable_id.startswith("sha256:"), s.stable_id
-            assert len(s.stable_id) > len("sha256:")
+            assert s.stable_id.startswith("hgstableid15:"), s.stable_id
+            assert len(s.stable_id) > len("hgstableid15:")
 
     def test_container_kinds_distinct_by_kind(self) -> None:
         """A class and a same-named struct in the same file get distinct ids —
@@ -361,9 +352,9 @@ class TestContainerKindStableId:
         is never clobbered by the container backstop."""
         from hypergumbo_core.analyze.base import populate_kind_stable_ids
         sym = self._make_symbol("class", name="Config")
-        sym.stable_id = "sha256:producer_typed_id"
+        sym.stable_id = "hgstableid15:producer_typed_id"
         populate_kind_stable_ids([sym])
-        assert sym.stable_id == "sha256:producer_typed_id"
+        assert sym.stable_id == "hgstableid15:producer_typed_id"
 
     def test_backstop_idempotent_for_container_kinds(self) -> None:
         from hypergumbo_core.analyze.base import populate_kind_stable_ids
@@ -376,8 +367,8 @@ class TestContainerKindStableId:
     def test_declaration_factory_is_prefixed_and_deterministic(self) -> None:
         from hypergumbo_core.analyze.base import make_declaration_stable_id
         r = make_declaration_stable_id("class", "typescript", "widget.ts", "ItemDetail")
-        assert r.startswith("sha256:")
-        assert len(r) > len("sha256:")
+        assert r.startswith("hgstableid15:")
+        assert len(r) > len("hgstableid15:")
         assert r == make_declaration_stable_id("class", "typescript", "widget.ts", "ItemDetail")
 
     def test_declaration_factory_kind_language_path_name_all_matter(self) -> None:
@@ -396,8 +387,8 @@ class TestContainerKindStableId:
 
 
 class TestContainerKindEndToEnd:
-    """WI-rihob behavioral evidence: container kinds carry a stable_id in real
-    orchestrated analysis output (the js_ts sites are the filed root cause)."""
+    """Container kinds carry a stable_id in real orchestrated analysis output
+    (a TypeScript fixture, exercising the js_ts container sites)."""
 
     def test_typescript_class_and_enum_get_stable_id(self, tmp_path: Path) -> None:
         (tmp_path / "widget.ts").write_text(
@@ -497,7 +488,7 @@ class TestFloorWithAbstention:
         from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
         kinds = sorted(all_symbol_kind_names()) + ["frobnicator"]
-        # Reach: the registry carries the kinds this row was filed on.
+        # Reach: the registry carries the floor kinds this test is about.
         assert {"function", "method", "property", "package", "message",
                 "alias"} <= set(kinds)
         syms = [self._sym(kind=k, line=i + 1) for i, k in enumerate(kinds)]
@@ -512,7 +503,7 @@ class TestFloorWithAbstention:
         identity passes, every null is a floor candidate whose (path, floor
         key) group has more than one member -- and every such member is null.
         Factory-table kinds are untouched by abstention (they keep their
-        table key and the occurrence pass splits them, as before)."""
+        table key and the occurrence pass splits them)."""
         from hypergumbo_core.analyze.base import (
             _KIND_STABLE_ID_FACTORIES,
             floor_stable_id_key,
@@ -585,9 +576,9 @@ class TestFloorWithAbstention:
 
     def test_producer_value_is_never_overridden(self) -> None:
         from hypergumbo_core.analyze.base import populate_kind_stable_ids
-        sym = self._sym(stable_id="sha256:0123456789abcdef")
+        sym = self._sym(stable_id="hgstableid15:0123456789abcdef")
         populate_kind_stable_ids([sym])
-        assert sym.stable_id == "sha256:0123456789abcdef"
+        assert sym.stable_id == "hgstableid15:0123456789abcdef"
 
     def test_language_none_stand_in_is_left_to_its_own_chokepoint(self) -> None:
         """A ``language=None`` Symbol is a Class-B / external stand-in whose

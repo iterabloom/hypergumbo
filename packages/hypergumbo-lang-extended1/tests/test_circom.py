@@ -396,3 +396,413 @@ class TestCircomCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+# -- lexical scope of signal references (WI-loviz) -----------------------------
+
+
+def _signal_scopes(result) -> dict[tuple[str, str], dict[str, set[str]]]:
+    """Map (path, template name) to {signal name: signal ids}, by span.
+
+    Ownership is read from the symbols' spans, not from the analyzer's own
+    bookkeeping, so the tests do not trust the code under test: a signal
+    belongs to the template whose span contains it.
+    """
+    templates = [s for s in result.symbols if s.kind == "class"]
+    scopes: dict[tuple[str, str], dict[str, set[str]]] = {
+        (t.path, t.name): {} for t in templates
+    }
+    for sig in result.symbols:
+        if sig.kind != "variable" or sig.name == "main":
+            continue
+        owner = next(
+            t for t in templates
+            if t.path == sig.path
+            and t.span.start_line <= sig.span.start_line <= t.span.end_line
+        )
+        scopes[(owner.path, owner.name)].setdefault(sig.name, set()).add(sig.id)
+    return scopes
+
+
+def _template(result, path: str, name: str):
+    return next(
+        s for s in result.symbols
+        if s.kind == "class" and s.path == path and s.name == name
+    )
+
+
+def _constraint_targets(result, src_id: str) -> set[str]:
+    return {
+        e.dst for e in result.edges
+        if e.edge_type == "references" and e.src == src_id
+        and e.evidence_type == "signal_constraint"
+    }
+
+
+def _ids(scope: dict[str, set[str]], *names: str) -> set[str]:
+    out: set[str] = set()
+    for n in names:
+        out |= scope[n]
+    return out
+
+
+class TestCircomSignalScope:
+    """A signal reference in template T resolves to T's own signal of that
+    name and to nothing else; only a component access ``c.in`` (with
+    ``component c = B()``) reaches another template's signal, and then only
+    B's (WI-loviz)."""
+
+    _TWO_TEMPLATES = """\
+pragma circom 2.0.0;
+template A() {
+    signal input in;
+    signal output out;
+    out <== in;
+}
+template B() {
+    signal input in;
+    signal output out;
+    out <== in;
+}
+"""
+
+    def test_same_file_templates_reference_their_own_signals(
+        self, tmp_path: Path
+    ) -> None:
+        _make_circom_file(tmp_path, "ab.circom", self._TWO_TEMPLATES)
+        result = analyze_circom(tmp_path)
+        scopes = _signal_scopes(result)
+        for name in ("A", "B"):
+            tpl = _template(result, "ab.circom", name)
+            own = _ids(scopes[("ab.circom", name)], "in", "out")
+            assert len(own) == 2
+            assert _constraint_targets(result, tpl.id) == own, name
+
+    def test_cross_file_templates_reference_their_own_signals(
+        self, tmp_path: Path
+    ) -> None:
+        a, b = self._TWO_TEMPLATES.split("template B")
+        _make_circom_file(tmp_path, "a.circom", a)
+        _make_circom_file(tmp_path, "b.circom", "template B" + b)
+        result = analyze_circom(tmp_path)
+        scopes = _signal_scopes(result)
+        for path, name in (("a.circom", "A"), ("b.circom", "B")):
+            tpl = _template(result, path, name)
+            own = _ids(scopes[(path, name)], "in", "out")
+            assert _constraint_targets(result, tpl.id) == own, name
+
+    def test_non_signal_names_bind_to_no_other_templates_signal(
+        self, tmp_path: Path
+    ) -> None:
+        """A parameter, a var and a loop index named like another
+        template's signals reference nothing."""
+        _make_circom_file(tmp_path, "p.circom", """\
+pragma circom 2.0.0;
+template Other() {
+    signal input n;
+    signal input k;
+    signal input i;
+    signal output o;
+    o <== n + k + i;
+}
+template User(n) {
+    signal input x;
+    signal output y[2];
+    var k = 3;
+    for (var i = 0; i < 2; i++) {
+        y[i] <== x * n * k * i;
+    }
+}
+""")
+        result = analyze_circom(tmp_path)
+        scopes = _signal_scopes(result)
+        user = _template(result, "p.circom", "User")
+        assert _constraint_targets(result, user.id) == _ids(
+            scopes[("p.circom", "User")], "x", "y",
+        )
+
+    def test_component_access_reaches_only_the_instantiated_template(
+        self, tmp_path: Path
+    ) -> None:
+        """``c.in`` / ``c[i].out`` reach B's signals, not A's (declared
+        last, so a last-wins bare-name lookup would pick A), and not C's."""
+        _make_circom_file(tmp_path, "c.circom", """\
+pragma circom 2.0.0;
+template B() {
+    signal input in;
+    signal output out;
+    out <== in;
+}
+template C() {
+    signal input in;
+    signal output out;
+    signal output w[2];
+    component c = B();
+    component d[2];
+    c.in <== in;
+    out <== c.out;
+    for (var i = 0; i < 2; i++) {
+        d[i] = B();
+        d[i].in <== in;
+        w[i] <== d[i].out * 2;
+    }
+    in === d[1].out;
+}
+template A() {
+    signal input in;
+    signal output out;
+    out <== in;
+}
+""")
+        result = analyze_circom(tmp_path)
+        scopes = _signal_scopes(result)
+        c = _template(result, "c.circom", "C")
+        expected = _ids(scopes[("c.circom", "C")], "in", "out", "w") | _ids(
+            scopes[("c.circom", "B")], "in", "out",
+        )
+        assert _constraint_targets(result, c.id) == expected
+
+    def test_member_access_on_a_non_component_is_an_own_reference(
+        self, tmp_path: Path
+    ) -> None:
+        """``in.x`` with ``in`` a signal (not a component) references the
+        template's own ``in``; ``(in).x`` has no named base and also only
+        references own signals."""
+        _make_circom_file(tmp_path, "e.circom", """\
+template E() {
+    signal input in;
+    signal output out;
+    out <== (in).x;
+    out <== in.x;
+}
+template F() {
+    signal input x;
+    signal output y;
+    y <== x;
+}
+""")
+        result = analyze_circom(tmp_path)
+        scopes = _signal_scopes(result)
+        e = _template(result, "e.circom", "E")
+        assert _constraint_targets(result, e.id) == _ids(
+            scopes[("e.circom", "E")], "in", "out",
+        )
+
+    def test_component_access_follows_the_included_definition(
+        self, tmp_path: Path
+    ) -> None:
+        """Two files define ``template B``; the user includes one of them.
+        The component's signals and the calls edge are the included B's."""
+        body = """\
+template B() {
+    signal input in;
+    signal output out;
+    out <== in;
+}
+"""
+        (tmp_path / "lib").mkdir()
+        (tmp_path / "vendor").mkdir()
+        (tmp_path / "app").mkdir()
+        _make_circom_file(tmp_path, "lib/b.circom", body)
+        _make_circom_file(tmp_path, "vendor/b.circom", body)
+        _make_circom_file(tmp_path, "app/main.circom", """\
+pragma circom 2.0.0;
+include "../lib/b.circom";
+template M() {
+    signal input x;
+    signal output y;
+    component c = B();
+    c.in <== x;
+    y <== c.out;
+}
+component main = M();
+""")
+        _make_circom_file(tmp_path, "app/other.circom", """\
+include "../vendor/b.circom";
+template N() {
+    signal input x;
+    component c = B();
+    c.in <== x;
+}
+""")
+        result = analyze_circom(tmp_path)
+        scopes = _signal_scopes(result)
+        lib_b = _template(result, "lib/b.circom", "B")
+        vendor_b = _template(result, "vendor/b.circom", "B")
+        for path, user, b_path, b in (
+            ("app/main.circom", "M", "lib/b.circom", lib_b),
+            ("app/other.circom", "N", "vendor/b.circom", vendor_b),
+        ):
+            tpl = _template(result, path, user)
+            targets = _constraint_targets(result, tpl.id)
+            assert _ids(scopes[(b_path, "B")], "in") <= targets, user
+            other = vendor_b if b is lib_b else lib_b
+            assert not (_ids(scopes[(other.path, "B")], "in", "out") & targets)
+            calls = {
+                e.dst for e in result.edges
+                if e.edge_type == "calls" and e.src == tpl.id
+            }
+            assert calls == {b.id}, user
+
+    def test_same_file_definition_wins_over_another_files(
+        self, tmp_path: Path
+    ) -> None:
+        """Each of two files defines and calls its own ``helper``; a
+        last-wins bare-name lookup sends one of the two calls astray,
+        whichever order the files are read in."""
+        for stem, k in (("x", 1), ("y", 2)):
+            _make_circom_file(tmp_path, f"{stem}.circom", f"""\
+function helper(v) {{ return v + {k}; }}
+template T{stem}() {{
+    signal input a;
+    signal output b;
+    var t = helper(a);
+    b <== t;
+}}
+""")
+        result = analyze_circom(tmp_path)
+        for stem in ("x", "y"):
+            path = f"{stem}.circom"
+            t = _template(result, path, f"T{stem}")
+            helper = next(
+                s for s in result.symbols
+                if s.name == "helper" and s.path == path
+            )
+            calls = {
+                e.dst for e in result.edges
+                if e.edge_type == "calls" and e.src == t.id
+            }
+            assert calls == {helper.id}, path
+
+    def test_signal_declaration_initializer_is_a_constraint(
+        self, tmp_path: Path
+    ) -> None:
+        """``signal output out <== in * 2;`` constrains like ``out <== in*2``."""
+        _make_circom_file(tmp_path, "d.circom", """\
+template D() {
+    signal input in;
+    signal output out <== in * 2;
+}
+""")
+        result = analyze_circom(tmp_path)
+        scopes = _signal_scopes(result)
+        d = _template(result, "d.circom", "D")
+        assert _constraint_targets(result, d.id) == _ids(
+            scopes[("d.circom", "D")], "in", "out",
+        )
+
+    def test_every_name_of_a_multi_name_declaration_is_a_signal(
+        self, tmp_path: Path
+    ) -> None:
+        _make_circom_file(tmp_path, "m.circom", """\
+template M() {
+    signal input a, b;
+    signal output c;
+    c <== a * b;
+}
+""")
+        result = analyze_circom(tmp_path)
+        scopes = _signal_scopes(result)
+        own = scopes[("m.circom", "M")]
+        assert set(own) == {"a", "b", "c"}
+        sigs = [s for s in result.symbols if s.kind == "variable"]
+        assert len({s.stable_id for s in sigs}) == len(sigs) == 3
+        m = _template(result, "m.circom", "M")
+        assert _constraint_targets(result, m.id) == _ids(own, "a", "b", "c")
+
+
+class TestCircomIncludeTargets:
+    """An include directive's edge points at the included file's node when
+    the file is in the repository (WI-loviz sweep)."""
+
+    def test_relative_include_targets_the_file_node(self, tmp_path: Path) -> None:
+        (tmp_path / "circuits").mkdir()
+        (tmp_path / "test").mkdir()
+        _make_circom_file(tmp_path, "circuits/bitify.circom", "template Num2Bits() {}\n")
+        _make_circom_file(
+            tmp_path, "test/t.circom",
+            'include "../circuits/bitify.circom";\ninclude "missing.circom";\n',
+        )
+        result = analyze_circom(tmp_path)
+        files = {s.path: s.id for s in result.symbols if s.kind == "file"}
+        dsts = {
+            e.dst for e in result.edges
+            if e.edge_type == "imports" and e.src == files["test/t.circom"]
+        }
+        assert files["circuits/bitify.circom"] in dsts
+        # An include the repository cannot satisfy keeps its unresolved target.
+        assert "circom:missing.circom:0-0:file:file" in dsts
+
+    def test_library_include_resolves_by_path_suffix(self, tmp_path: Path) -> None:
+        """``include "circomlib/circuits/x.circom"`` (a ``-l`` library path)
+        resolves to the repository file whose path ends with it."""
+        lib = tmp_path / "node_modules" / "circomlib" / "circuits"
+        lib.mkdir(parents=True)
+        _make_circom_file(
+            tmp_path, "node_modules/circomlib/circuits/poseidon.circom",
+            "template Poseidon() { signal input in; }\n",
+        )
+        _make_circom_file(
+            tmp_path, "node_modules/circomlib/circuits/bitify.circom",
+            "template Num2Bits() {}\n",
+        )
+        _make_circom_file(tmp_path, "poseidon2.circom", "template Poseidon2() {}\n")
+        _make_circom_file(
+            tmp_path, "main.circom",
+            'include "circomlib/circuits/poseidon.circom";\n'
+            'include "poseidon.circom";\n'
+            # Climbs past the repository root: resolved by its tail.
+            'include "../../circuits/bitify.circom";\n',
+        )
+        result = analyze_circom(tmp_path)
+        files = {s.path: s.id for s in result.symbols if s.kind == "file"}
+        dsts = {
+            e.dst for e in result.edges
+            if e.edge_type == "imports" and e.src == files["main.circom"]
+        }
+        # Both poseidon directives name the library file (the bare one by its
+        # tail); poseidon2.circom does not end in "/poseidon.circom".
+        assert dsts == {
+            files["node_modules/circomlib/circuits/poseidon.circom"],
+            files["node_modules/circomlib/circuits/bitify.circom"],
+        }
+
+
+class TestCircomResolutionFallbacks:
+    """A name no include makes visible: the only definition, else the
+    last registered at the ambiguity confidence, else nothing (WI-loviz)."""
+
+    def test_unique_ambiguous_and_unknown_names(self, tmp_path: Path) -> None:
+        (tmp_path / "lib1").mkdir()
+        (tmp_path / "lib2").mkdir()
+        _make_circom_file(tmp_path, "lib1/solo.circom", "template Solo() {}\n")
+        _make_circom_file(tmp_path, "lib1/dup.circom", "template Dup() {}\n")
+        _make_circom_file(tmp_path, "lib2/dup.circom", "template Dup() {}\n")
+        _make_circom_file(tmp_path, "user.circom", """\
+template U() {
+    signal input x;
+    component s = Solo();
+    component d = Dup();
+    var z = unknown(1);
+}
+""")
+        result = analyze_circom(tmp_path)
+        u = _template(result, "user.circom", "U")
+        solo = _template(result, "lib1/solo.circom", "Solo")
+        dups = {
+            s.id for s in result.symbols if s.kind == "class" and s.name == "Dup"
+        }
+        calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == u.id
+        ]
+        assert {e.dst for e in calls} <= {solo.id} | dups
+        solo_edges = [e for e in calls if e.dst == solo.id]
+        dup_edges = [e for e in calls if e.dst in dups]
+        assert solo_edges and dup_edges
+        # The ambiguous pick is marked as such on the component-declaration
+        # branch (the call_expression branch keeps its fixed 0.85; see
+        # WI-volat for that duplicate edge).
+        assert min(e.confidence for e in dup_edges) < min(
+            e.confidence for e in solo_edges
+        )

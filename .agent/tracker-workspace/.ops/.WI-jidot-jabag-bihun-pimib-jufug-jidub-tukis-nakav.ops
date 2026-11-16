@@ -1,0 +1,37 @@
+- op: create  # 9bc7
+  at: '2026-11-15T19:47:53Z'  # 9bc7
+  by: agent  # 9bc7
+  actor: jgstern_agent  # 9bc7
+  clock: 1  # 9bc7
+  nonce: 9bc7  # 9bc7
+  data:  # 9bc7
+    kind: work_item  # 9bc7
+    title: "cpp: a zero-argument call inside an in-class constructor binds a one-parameter member template instead of the zero-argument member overload"  # 9bc7
+    status: todo_hard  # 9bc7
+    priority: 3  # 9bc7
+    parent:  # 9bc7
+    tags:  # 9bc7
+    - analysis_quality  # 9bc7
+    - cpp  # 9bc7
+    - call_graph  # 9bc7
+    isbefore: []  # 9bc7
+    duplicate_of: []  # 9bc7
+    not_duplicate_of: []  # 9bc7
+    pr_ref:  # 9bc7
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT. REPRO, ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/new/cpp/src/a.hpp:\n\n    struct Mgr {};\n    struct Impl {\n      Impl() { Init(); }\n      void Init() { helper(); }\n      template <typename M>\n      void Init(M *m) { helper(); }\n      void helper() {}\n    };\n\n`hypergumbo run` emits `Impl` (function, line 3) -> `Init` (function, line 6): the constructor's zero-argument call\nis bound to the one-parameter template. `Impl::Init` (method, line 4), the overload the call selects, gets no edge\nfrom the constructor.\n\nSeen first on a real header: sherpa-onnx d7526c8, keyword-spotter-transducer-impl.h, line 77 `InitKeywords();` in\nthe in-class constructor binds the template at line 319, not the zero-argument overload at line 294.\n\nCAUSE, as far as checked. Both ends are the two shapes of WI-rugin-jopak-muhuv-fihod-tojuz-banod-gizid-dusur: the in-class constructor and the member template\nare emitted as free `function`s with bare names (`Impl`, `Init`), while the plain member is `method Impl::Init`.\nThe call from one bare-named function finds the other bare-named function by name; the parameter count (0 against\n1) does not exclude it. WI-hilum-robok-dokop-jofuj-losof-navuj-zitof-nurav (done) added an arity check for overloaded names; it did not apply here.\n\nDEPENDS ON WI-rugin-jopak-muhuv-fihod-tojuz-banod-gizid-dusur: once the constructor and the template are methods of Impl, this call has two same-name member\ncandidates of different arity. This item is then the check that the zero-argument one is chosen. WI-jutur-tonul-buloj-toson-mijum-jozot-havok-pipih covers\nsame-ARITY overloads, which is a different case.\n\nACCEPTANCE. On the fixture the constructor's edge goes to the zero-argument Init at line 4 and not to the template.\n\nNOT CHECKED: whether the arity check is skipped because the candidate is a template, or because caller and\ncandidate are both of kind function; a default argument on the template's parameter."  # 9bc7
+    fields: {}  # 9bc7
+- op: update  # 7d16
+  at: '2026-11-16T11:46:40Z'  # 7d16
+  by: agent  # 7d16
+  actor: jgstern_agent  # 7d16
+  clock: 2  # 7d16
+  nonce: 7d16  # 7d16
+  set:  # 7d16
+    status: done  # 7d16
+- op: discuss  # 522f
+  at: '2026-11-16T11:46:40Z'  # 522f
+  by: agent  # 522f
+  actor: jgstern_agent  # 522f
+  clock: 3  # 522f
+  nonce: 522f  # 522f
+  message: "Fixed in PR #2200. Re-ran the filed fixture and the sherpa-onnx header it came from: the zero-argument call inside the in-class constructor bound the one-parameter member template on dev (fixture line 6; header line 319) and binds the zero-argument `Init` now (line 4; line 294). Overloads and `new` choose by arity. RULE ADDED AND ITS LIMIT: on an arity tie with exactly one non-template candidate, that candidate is the pick and the record STAYS ambiguous. At keyword-spotter-transducer-impl.h:98 (`InitKeywords(mgr)` with a `Manager*`) the pick is therefore the `std::istream&` overload at line 283, which is the wrong one; dev picked the template at line 319. The record says ambiguous in both. Argument shapes are WI-jutur-tonul-buloj-toson-mijum-jozot-havok-pipih's scope; the reachability consequence is filed with the C++ residual. NOT CHECKED: a template with a default argument. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 522f

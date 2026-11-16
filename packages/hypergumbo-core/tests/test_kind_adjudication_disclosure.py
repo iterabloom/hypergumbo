@@ -1,30 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The catalogue tells the user how much of itself is unverified (INV-nular).
 
-WHAT THE ITEM SAYS AND WHY A COUNT CLOSES IT. A catalogue row asserts "this
-NAME crosses THIS BOUNDARY", and nothing checks that the named primitive
-performs that boundary operation -- ``newIORef`` was declared ``db_read``,
-``socket`` was declared ``net_recv``, ``Request`` was declared ``net_send``.
-Seven families of that shape were swept and fixed (F1 in-process cells, F2
-setup/handles, F3 query builders, F4 lifecycle callbacks, F5 responses,
-F6/F7 path adjacency), plus the named instances. The REMAINDER was never
-swept, and the owner ruled (2026-09-06) that it is disclosed rather than
-read: a sweep of ~2,300 names is not what the item is worth.
+WHAT A ROW ASSERTS, AND WHY A COUNT IS THE ANSWER. A catalogue row asserts
+"this NAME crosses THIS BOUNDARY", and nothing checks that the named primitive
+performs that boundary operation -- rows where it does not are a known failure
+shape (``newIORef`` declared ``db_read``, ``socket`` declared ``net_recv``, a
+constructor declared ``net_send``). The families of that shape (F1 in-process
+cells, F2 setup/handles, F3 query builders, F4 lifecycle callbacks, F5
+responses, F6/F7 path adjacency) have been swept; the REMAINDER, thousands of
+names, is disclosed to the user rather than read row by row.
 
-THE NUMBER IS COMPUTED AT RUN TIME, AND THAT IS THE POINT. The ruling was
-made against "622 entries / 2,312 names", and a check one day later returned
-2,312 names -- exactly -- with 773 entries. Counting ``(boundary, module)``
-groups through the production loader gives a third answer, 563. Three
-defensible definitions of "entry", three numbers, one day apart, on a
-catalogue that did not move. NAMES is the unit that survived, and a literal
-in a docstring would have shipped one of the other two. So the disclosure
+THE NUMBER IS COMPUTED AT RUN TIME, AND THAT IS THE POINT. "Entry" has
+several defensible readings (YAML entries, ``(boundary, module)`` groups
+through the production loader, ...) that give different numbers for one
+unchanged catalogue, so a literal in a docstring would encode whichever
+reading its author held. NAMES is the unambiguous unit. So the disclosure
 derives its count from the catalogues the run actually loaded, and this file
 pins that it is derived rather than restated.
 
-WHY COMMUNITY-OVERLAY ROWS ARE COUNTED SEPARATELY. ADR-0047 ruling 6 already
-established a THIRD provenance state: rows hypergumbo ships and does not
-vouch for. 426 of them carry ``notes``, 91% -- so folding them into "carries a
-written rationale" would credit, as evidence of adjudication, prose attached
+WHY COMMUNITY-OVERLAY ROWS ARE COUNTED SEPARATELY. ADR-0047 ruling 6 gives
+them a THIRD provenance state: rows hypergumbo ships and does not vouch for.
+Most of them carry ``notes`` -- so folding them into "carries a written
+rationale" would credit, as evidence of adjudication, prose attached
 to rows the tool explicitly declines to stand behind. They are reported as
 their own line and are unverified by construction, which is the same fact
 ADR-0047 states, counted.
@@ -81,9 +78,9 @@ class TestTheCensusCountsWhatTheRunLoaded:
     def test_the_count_is_derived_from_the_catalogue_not_restated(self) -> None:
         """THE ANTI-DRIFT TEST. The census must equal what the loader holds.
 
-        This is the check that would have caught the 622-vs-773 drift: it
-        compares the reported number against the live object rather than
-        against a number written down when the disclosure was designed.
+        It compares the reported number against the live object rather than
+        against a number written down when the disclosure was designed, so the
+        disclosed count cannot drift from the catalogue it describes.
         """
         catalog = load_catalog("python", include_defaults=False)
         expected = len({
@@ -156,8 +153,8 @@ class TestTheCensusCountsWhatTheRunLoaded:
 
 
 class TestTheDisclosureReachesBothSurfaces:
-    """INV-karud (a3): a disclosure that exists only under ``--json`` is half
-    shipped."""
+    """A disclosure that exists only under ``--json`` is half shipped
+    (INV-karud a3)."""
 
     def _prov(self, langs: list[str]) -> dict:
         return catalog_provenance({}, (), catalog_languages=langs)
@@ -186,18 +183,15 @@ class TestTheDisclosureReachesBothSurfaces:
     def test_the_text_names_all_three_enforced_guards(self) -> None:
         """Three guards, three reaches, and the text names all three.
 
-        A 2026-09-07 premise check for this re-scope concluded there was NO
-        direction check, having searched for the phrase "direction guard" and
-        for a ``scripts/check-*``. There is one, and it is neither: it is
-        ``test_inv_nular_false_sources.py::test_the_direction_sweep_is_otherwise_clean``.
-        The search failed the way its own subject fails -- a name-based lookup
-        over an incomplete vocabulary does not error, it returns clean -- which
-        is the same mechanism that let ``responseLBS`` past the sweep because
-        the vocabulary held ``respond`` and not ``response``.
+        The direction check is
+        ``test_inv_nular_false_sources.py::test_the_direction_sweep_is_otherwise_clean``
+        -- a name-based sweep, and a name-based lookup over an incomplete
+        vocabulary does not error, it returns clean: a name whose direction
+        word is missing from the vocabulary is never examined.
 
         So the text says direction IS checked, AND says the reach is partial,
-        because "every row's direction is checked" is the overstatement the
-        ruling made and a user acting on it would over-trust the catalogue."""
+        because "every row's direction is checked" overstates it and a user
+        acting on that would over-trust the catalogue."""
         text = "\n".join(render_catalog_provenance_text(self._prov(["python"])))
         assert "DIRECTION contradicts its boundary fails CI" in text
         assert "only for names that state a direction at all" in text
@@ -280,12 +274,12 @@ class TestTheCliPassesTheRunsOwnLanguages:
 
 
 class TestTheEnforcedGatesAreLiveAndNonVacuous:
-    """The statement this item is re-scoped ONTO names two mechanisms. A
-    statement is satisfied on its own terms, so both are asserted here rather
-    than taken from the prose that describes them."""
+    """INV-nular's statement names the mechanisms that enforce it. A
+    statement is satisfied on its own terms, so each is asserted here rather
+    than taken from the prose that describes it."""
 
     def test_no_shipped_multi_boundary_primitive_lacks_a_reason(self) -> None:
-        """The CI gate, restated at this item's own address so the re-scoped
+        """The CI gate, restated at this item's own address so INV-nular's
         statement has a control that fails if the gate is removed."""
         import collections
 
@@ -308,7 +302,7 @@ class TestTheEnforcedGatesAreLiveAndNonVacuous:
         assert sum(seen.values()) > 25, "population too small to be a check"
 
     def test_the_direction_sweep_catches_a_planted_mismatch(self) -> None:
-        """POSITIVE CONTROL for the guard the re-scoped statement leans on
+        """POSITIVE CONTROL for the guard INV-nular's statement leans on
         hardest, asserted here because a statement is satisfied ON ITS OWN
         TERMS and this one names the sweep by mechanism.
 
@@ -325,14 +319,12 @@ class TestTheEnforcedGatesAreLiveAndNonVacuous:
     def test_the_direction_sweep_does_not_examine_a_direction_silent_name(
         self,
     ) -> None:
-        """THE CONTROL'S CONTROL, and the reason this item closes with a known
-        defective row still shipped.
+        """THE CONTROL'S CONTROL: the sweep's stated limit.
 
-        ``urllib.request.Request`` is a constructor declared ``net_send``,
-        adjudicated wrong on 2026-08-27 and still present. It survived every
-        sweep because the sweep is name-based and "Request" states no
-        direction, so it was never examined. Pinning that here keeps the
-        limit from being quietly re-read as coverage."""
+        The sweep is name-based, and a name such as ``Request`` states no
+        direction, so a wrong boundary on it (a constructor declared
+        ``net_send``) is never examined. Pinning that here keeps the limit
+        from being quietly re-read as coverage."""
         from test_inv_nular_false_sources import (  # type: ignore[import-not-found]
             DIRECTION_RECVY,
             DIRECTION_SENDY,
@@ -345,8 +337,8 @@ class TestTheEnforcedGatesAreLiveAndNonVacuous:
     def test_a_primitive_gated_in_both_directions_is_refused_at_load(
         self,
     ) -> None:
-        """THE POSITIVE CONTROL for the closest real thing to the 'direction
-        guard' the 09-06 ruling described. It is not per-row and it is not
+        """THE POSITIVE CONTROL for the closest real thing to a per-primitive
+        'direction guard'. It is not per-row and it is not
         every row: it fires only when ONE primitive is stream-gated in both
         directions, which is the case no single ``io_target_kind`` stamp can
         resolve."""
@@ -365,7 +357,7 @@ class TestTheEnforcedGatesAreLiveAndNonVacuous:
     def test_the_refusal_does_not_fire_on_the_mode_shape(self) -> None:
         """The control's control. ``builtins.open`` is fs_read + fs_write --
         one boundary per direction -- and must pass, or the guard above would
-        be refusing the 14 legitimate keys the premise check enumerated."""
+        refuse every legitimate mode-shaped key."""
         from hypergumbo_core.io_boundary import (
             IoPrimitive,
             _target_kind_gated_directions,

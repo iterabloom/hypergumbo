@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Print the code around one I/O allowlist site, for a human reviewing the sheet.
+
+    scripts/show-site gitleaks:173 | safety_zones:535,551 | safety_zones:cache_rmtree | hypergumbo_tracker.cli:40 | scripts/score-readability:120
+
+(a line, lines, a name, a module, a path; every reference printed feeds back in). The module is the file under packages/*/src
+whose dotted name ends in the name given, hypergumbo_core first when several match (the header says so). Exit 2, reason on stderr, when nothing matches. Four blocks:
+1. What docs/hypergumbo.io-allowlist.yaml CLAIMS about the enclosing function, module defaults filled in, sites with the same fields grouped; a marked line without the primitive's last name (for a subscript write, the name subscripted) gets a note.
+2. The whole ENCLOSING FUNCTION (the outermost def, as the allowlist names it), decorators and docstring included, never truncated, the given lines marked ">".
+3. What it READS from its own module: constants in full (where a target lives), same-file defs as one
+   line with their length, imports as the name and its line. Module-level bindings only, less what the
+   function binds itself (parameter, assignment, local import; `global` exempts) and annotation-only names.
+4. Who CALLS OR REFERENCES it, one hop, by name (or a `from ... import name as alias` in that file): every load in packages/*/src and the scripts/ files
+   whose first line names python, tagged "call" or "ref" (handed around as a value), with the user's enclosing
+   function, in file and line order; a load the user binds by parameter or assignment is its own local (a local
+   import is a use). A call spanning lines prints whole on one line, regenerated from its syntax tree (no comments).
+"""
+import argparse
+import ast
+import re
+import sys
+from collections import namedtuple
+from pathlib import Path
+
+import yaml
+
+ALLOWLIST = "docs/hypergumbo.io-allowlist.yaml"
+DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
+Fn = namedtuple("Fn", "name start end node")
+
+
+def dotted(path: Path, root: Path) -> str:
+    parts = path.relative_to(root).parts
+    return "/".join(parts) if parts[0] != "packages" else ".".join(parts[3:])[:-3].removesuffix(".__init__")
+
+
+def resolve(root: Path, ref: str) -> tuple[Path, str, str]:
+    if "/" in ref:
+        if not (root / ref).is_file():
+            raise ValueError(f"no file {ref}")
+        return root / ref, ref, ""
+    found = {n: p for p in sorted(root.glob("packages/*/src/**/*.py")) if re.fullmatch(r"(.*\.)?" + re.escape(ref), (n := dotted(p, root)))}
+    core = [n for n in found if n.startswith("hypergumbo_core.")]
+    if not found:
+        raise ValueError(f"no module named {ref}")
+    if len(found) > 1 and len(core) != 1:
+        raise ValueError(f"{ref} is ambiguous: " + ", ".join(found))
+    name = (core + list(found))[0]
+    others = ", ".join(n for n in found if n != name)
+    return found[name], name, f"also matches {others}" if others else ""
+
+
+def defs(body: list, prefix: str = ""):
+    for node in body:
+        if isinstance(node, DEFS):
+            yield Fn(prefix + node.name, min([node.lineno] + [d.lineno for d in node.decorator_list]), node.end_lineno, node)
+        elif isinstance(node, ast.ClassDef):
+            yield from defs(node.body, prefix + node.name + ".")
+
+
+def enclosing(tree: ast.Module, where) -> Fn | None:  # the def containing line `where`, or the first def named `where`
+    for fn in defs(tree.body):
+        if (where in (fn.name, fn.name.rsplit(".", 1)[-1])) if isinstance(where, str) else (fn.start <= where <= fn.end):
+            return fn
+    return None
+
+
+def local_names(nodes: list, imports: bool = True) -> set:
+    local = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)} | {a.arg for a in nodes if isinstance(a, ast.arg)}
+    local |= {(al.asname or al.name).split(".")[0] for n in nodes if imports and isinstance(n, (ast.Import, ast.ImportFrom)) for al in n.names}
+    return local - {g for n in nodes if isinstance(n, ast.Global) for g in n.names}
+
+
+def bound_names(node: ast.stmt) -> list:  # what one module-level statement binds
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        return [(a.asname or a.name).split(".")[0] for a in node.names]
+    if isinstance(node, (*DEFS, ast.ClassDef)):
+        return [node.name]
+    if isinstance(node, (ast.Assign, ast.AnnAssign)):
+        return [t.id for t in ast.walk(node) if isinstance(t, ast.Name) and isinstance(t.ctx, ast.Store)]
+    return []
+
+
+def bindings(tree: ast.Module) -> dict:
+    """name -> the module-level statement that binds it (the first one)."""
+    out = {}
+    for node in tree.body:
+        for name in bound_names(node):
+            out.setdefault(name, node)
+    return out
+
+
+def gutter(n: int, width: int, text: str, mark: str = " ") -> str:
+    return f"{mark} {n:>{width}}  {text}".rstrip()
+
+
+def tail(primitive: str) -> str:  # the name a source line shows: os.environ[k] = v is spelled os.environ.__setitem__
+    names = primitive.split("[")[0].split(".")
+    return names[-2] if names[-1] in ("__setitem__", "__delitem__") else names[-1]
+
+
+def claims(root: Path, module: str, fn: str, marked: list, lines: list) -> list:
+    block = yaml.safe_load((root / ALLOWLIST).read_text(encoding="utf-8"))["modules"].get(module, {})
+    sites = [{**block, **s} for s in block.get("sites", []) if s["function"] == fn]
+    if not sites:
+        return [f"allowlist: no entry for {fn} in {module}"]
+    groups: dict = {}
+    for s in sites:
+        key = (s["family"], s.get("zone"), s.get("target"), "; ".join(s.get("commands") or []), s.get("purpose"), s.get("finding"))
+        groups.setdefault(key, []).append(f"{s['primitive']} x{s.get('count', 1)}")
+    out = [f"allowlist says ({ALLOWLIST}):"]
+    for (family, zone, target, commands, purpose, finding), prims in groups.items():
+        out.append(f"  {family}  {', '.join(prims)}  zone {zone}")
+        fields = (("target", target or "(none)"), ("commands", commands or "(none)"), ("purpose", purpose), ("FINDING", finding))
+        out += [f"    {label:<8}  {value}" for label, value in fields if value]
+    tails = sorted({tail(s["primitive"]) for s in sites})
+    stale = [n for n in marked if not any(re.search(rf"\b{re.escape(t)}\b", lines[n - 1]) for t in tails)]
+    return out + [f"  note: line {n} does not mention {' or '.join(tails)}; the line number may be stale" for n in stale]
+
+
+def reads(fn: Fn, tree: ast.Module, lines: list) -> list:
+    nodes = list(ast.walk(fn.node))
+    in_annotation = {id(x) for a in [getattr(n, "annotation", None) for n in nodes] + [n.returns for n in nodes if isinstance(n, DEFS)] if a for x in ast.walk(a)}
+    used = {n.id for n in nodes if isinstance(n, ast.Name) and id(n) not in in_annotation} - {fn.name} - local_names(nodes)
+    bound = sorted(((node, name) for name, node in bindings(tree).items() if name in used), key=lambda b: b[0].lineno)
+    width, out = len(str(len(lines))), ["reads from this module:"]
+    for node, name in bound:
+        text = lines[node.lineno - 1].strip()
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            out.append(gutter(node.lineno, width, f"{name}  <- {text}"))
+        elif isinstance(node, (*DEFS, ast.ClassDef)):
+            out.append(gutter(node.lineno, width, f"{text}  {node.end_lineno - node.lineno + 1} lines"))
+        else:
+            out.extend(gutter(n, width, lines[n - 1]) for n in range(node.lineno, node.end_lineno + 1))
+    return out if len(out) > 1 else out + ["  nothing"]
+
+
+def python_files(root: Path) -> list:
+    scripts = (p for p in root.glob("scripts/*") if p.is_file() and b"python" in p.read_bytes().split(b"\n", 1)[0])
+    return sorted(root.glob("packages/*/src/**/*.py")) + sorted(scripts)
+
+
+def is_load_of(node: ast.AST, name: str) -> bool:
+    return isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load) and getattr(node, "id", getattr(node, "attr", None)) == name
+
+
+def rendered(call: ast.Call | None, text: str, lineno: int) -> str:  # a call spanning lines prints whole
+    if call and call.end_lineno > call.lineno:
+        return ast.unparse(call)
+    return text.splitlines()[lineno - 1].strip()
+
+
+def uses_in(tree: ast.Module, text: str, name: str) -> list:  # (line, call|ref, enclosing def, rendered line) per load of `name`
+    calls = {id(n.func): n for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    aliases = {a.asname for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names if a.name == name and a.asname}
+    out = []
+    for node in ast.walk(tree):
+        used = node.id if isinstance(node, ast.Name) and node.id in aliases else name  # `from X import name as alias`
+        if not is_load_of(node, used):
+            continue
+        fn, call = enclosing(tree, node.lineno), calls.get(id(node))
+        if isinstance(node, ast.Name) and fn and used in local_names(list(ast.walk(fn.node)), imports=False):
+            continue
+        out.append((node.lineno, "call" if call else "ref", fn.name if fn else "<module>", rendered(call, text, node.lineno)))
+    return out
+
+
+def callers(root: Path, name: str) -> list:
+    out, notes, hits = ["called or referenced from (packages/*/src and scripts/, by name):"], [], []
+    for path in python_files(root):
+        text = path.read_text(encoding="utf-8")
+        try:
+            hits += [(dotted(path, root), *use) for use in uses_in(ast.parse(text), text, name)]
+        except SyntaxError:
+            notes.append(f"  note: {dotted(path, root)} does not parse; not searched")
+    out += [f"  {where}:{n}  {tag} in {fn}  {line}" for where, n, tag, fn, line in sorted(hits)]
+    return out + notes if hits else out + ["  none found"] + notes
+
+
+def report(root: Path, ref: str) -> list:
+    module, _, where = ref.rpartition(":")
+    if not module or not where:
+        raise ValueError(f"{ref}: expected module:line or module:function")
+    marked = [int(w) for w in where.split(",")] if where.replace(",", "").isdigit() else []
+    path, name, note = resolve(root, module)
+    try:
+        tree = ast.parse(text := path.read_text(encoding="utf-8"))
+    except SyntaxError:
+        raise ValueError(f"{name} does not parse as Python") from None
+    lines = text.splitlines()
+    fn = enclosing(tree, marked[0] if marked else where)
+    if fn is None:
+        raise ValueError(f"{ref} is not inside a function" if marked else f"no function named {where} in {name}")
+    out = [f"{ref}  {path.relative_to(root)}" + (f"  ({note})" if note else ""), f"in {fn.name}, lines {fn.start}-{fn.end}", ""]
+    out += claims(root, name, fn.name, marked, lines) + [""]
+    out += [gutter(n, len(str(fn.end)), lines[n - 1], ">" if n in marked else " ") for n in range(fn.start, fn.end + 1)]
+    out += [""] + reads(fn, tree, lines) + [""]
+    return out + callers(root, fn.name.rsplit(".", 1)[-1])
+
+
+def main(argv: list | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument("site", help="module:line[,line...] or module:function, as the reading sheet prints it")
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1], help="repository root")
+    args = parser.parse_args(argv)
+    try:
+        print("\n".join(report(args.root, args.site)))
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

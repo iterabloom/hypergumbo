@@ -3,8 +3,8 @@
 
 THE SHAPE OF THE THING. A run tells us which tests executed which lines; those
 lines resolve to AST blocks; the index stores ``block -> tests``. At commit time
-we re-hash the changed files, diff against the stored digests, and select the
-tests attached to blocks that moved.
+we re-hash the changed files, diff each against the base-commit source the
+caller supplies, and select the tests attached to blocks that moved.
 
 WHAT THESE TESTS ARE REALLY FOR. Selecting too many tests is merely slow;
 selecting too FEW is a missed regression, so every "is selected" assertion below
@@ -36,6 +36,7 @@ import pytest
 
 from hypergumbo_core.selection_index import (
     changed_blocks,
+    measured_tests,
     normalize_test_id,
     open_index,
     select_tests,
@@ -119,9 +120,9 @@ class TestPrecision:
     def test_reformatting_selects_nothing(self, indexed) -> None:
         """The property that motivated block hashing over line numbers.
 
-        Reformatting means WHITESPACE, not "prepend an import" — the first
-        version of this test did the latter and rightly selected everything,
-        because adding a module-level statement IS a module-level change.
+        Reformatting means WHITESPACE, not "prepend an import": adding a
+        module-level statement IS a module-level change and rightly selects
+        everything (the partner test below).
         """
         conn, mod = indexed
         mod.write_text(_SAMPLE.replace("return x + 1", "return x+1  # tidy"))
@@ -272,11 +273,12 @@ class TestPersistence:
         conn = open_index(tmp_path / "brand-new.sqlite")
         names = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {"block", "test_block", "unmeasured_test", "meta"} <= names
+        assert {"file", "block", "test", "test_block", "unmeasured_test",
+                "meta"} <= names
 
     def test_a_full_run_marker_is_recorded(self, tmp_path) -> None:
-        """Selection is only sound as of the last FULL run; the age of that
-        marker is what the dry-run reports as index_age."""
+        """Selection is only sound as of the last FULL run; this marker
+        records that run's sha so a caller can report the index's age."""
         db = _run(tmp_path, _SAMPLE)
         conn = open_index(tmp_path / "i.sqlite")
         update_from_run(conn, db, ran_tests=["test_a", "test_b"],
@@ -356,9 +358,10 @@ class TestNodeIdNormalisation:
         full run     -> packages/hypergumbo-core/tests/test_x.py::test_y
         targeted run -> tests/test_x.py::test_y
 
-    smart-test now pins ``--rootdir`` so this does not arise at the source, but
+    smart-test pins ``--rootdir`` so this does not arise at the source, but
     the index must survive being fed by a run that did not go through it.
-    Same class of defect as the ``|setup`` suffix that once matched 0 of 20,437.
+    Same class of defect as an unstripped ``|setup`` phase suffix, which
+    makes no context join at all.
     """
 
     def test_a_package_relative_id_is_rewritten_to_repo_relative(
@@ -402,7 +405,7 @@ class TestNodeIdNormalisation:
         pkg.mkdir(parents=True)
         (pkg / "test_a.py").write_text("")
         update_from_run(conn, db, repo_root=tmp_path)
-        stored = {r[0] for r in conn.execute("SELECT DISTINCT test_id FROM test_block")}
+        stored = measured_tests(conn)
         assert stored == {"test_a"}, stored
 
 
@@ -410,11 +413,11 @@ class TestUnmeasuredRequiresCompleteScope:
     """"Ran and produced nothing" is only meaningful if coverage was watching
     everything.
 
-    OBSERVED: smart-test's targeted path scopes ``--cov`` to the CHANGED SOURCE
-    FILES ONLY, so on an ordinary run most tests touch nothing in scope. Taken
-    at face value that marked 1,507 of 1,662 tests unmeasured in a single run —
+    smart-test's targeted path scopes ``--cov`` to the CHANGED SOURCE FILES
+    ONLY, so on an ordinary run most tests touch nothing in scope. Taken at
+    face value that would mark most of the suite unmeasured in a single run —
     and :func:`select_tests` EXCLUDES unmeasured tests, so most of the suite
-    would have become permanently unselectable with every unit test green.
+    would become permanently unselectable with every unit test green.
     """
 
     def test_a_partial_run_does_NOT_declare_tests_unmeasured(
@@ -428,7 +431,7 @@ class TestUnmeasuredRequiresCompleteScope:
 
     def test_a_full_run_does_declare_them(self, tmp_path) -> None:
         """The partner: with complete scope the claim IS meaningful, and losing
-        it would mean the 3,614-test unmeasured population is never recorded."""
+        it would mean the unmeasured population is never recorded."""
         db = _run(tmp_path, _SAMPLE, which="a")
         conn = open_index(tmp_path / "i.sqlite")
         update_from_run(conn, db, ran_tests=["test_a", "test_c"], full_run=True)
@@ -453,16 +456,15 @@ class TestUnmeasuredRequiresCompleteScope:
 
 
 class TestChangeIsMeasuredAgainstGitNotAgainstTheIndex:
-    """THE BASELINE BUG, observed end-to-end on 2026-08-14.
+    """THE BASELINE comes from git, not from the index.
 
-    ``changed_blocks`` originally diffed current source against the digests
-    STORED IN THE INDEX. But the index is rewritten after every run, so the
-    baseline moved every time: run 1 stored the working tree, run 2 compared the
-    working tree against itself and selected NOTHING, while smart-test — which
-    diffs against a GIT baseline (last-green-sha / merge-base) — selected 87
-    files. Measured: `coverage would select 0 files, actually selected 87,
-    trustworthy: True`. It answered "what changed since I last looked" when the
-    question is "what changed in this commit".
+    Diffing current source against the digests STORED IN THE INDEX is wrong:
+    the index is rewritten after every run, so the baseline moves every time —
+    once a run has stored the working tree, the next comparison is the working
+    tree against itself and selects NOTHING, while smart-test, which diffs
+    against a GIT baseline (last-green-sha / merge-base), selects the real
+    change. That answers "what changed since I last looked" when the question
+    is "what changed in this commit".
 
     So the caller supplies the BASE SOURCE per path and the index supplies only
     ``block -> tests``. Change detection is git's job; attribution is the
@@ -506,3 +508,58 @@ class TestChangeIsMeasuredAgainstGitNotAgainstTheIndex:
         mod.write_text(_SAMPLE.replace(
             "def alpha(x):\n    return x + 1\n\n\n", ""))
         assert "test_a" in select_tests(conn, {str(mod): _SAMPLE}).tests
+
+
+class TestImportTimeChanges:
+    """WI-zunug: which changed blocks run when the file is imported."""
+
+    _BASE = (
+        "import os\n"
+        "LIMIT = 1\n"
+        "class Holder:\n"
+        "    size = 1\n"
+        "    def method(self):\n"
+        "        return 1\n"
+        "def func():\n"
+        "    class Local:\n"
+        "        tag = 1\n"
+        "    return Local\n"
+    )
+
+    def _selection(self, tmp_path, new_source: str):
+        from hypergumbo_core.selection_index import open_index, select_tests
+
+        mod = tmp_path / "mod.py"
+        mod.write_text(new_source)
+        conn = open_index(tmp_path / "index.sqlite")
+        return str(mod), select_tests(conn, {str(mod): self._BASE})
+
+    def test_a_module_statement_is_import_time(self, tmp_path) -> None:
+        path, sel = self._selection(tmp_path, self._BASE.replace("LIMIT = 1", "LIMIT = 2"))
+        assert sel.import_time_changed == frozenset({(path, "<module>")})
+
+    def test_a_class_body_is_import_time(self, tmp_path) -> None:
+        path, sel = self._selection(tmp_path, self._BASE.replace("size = 1", "size = 2"))
+        assert sel.import_time_changed == frozenset({(path, "Holder")})
+
+    def test_a_function_or_method_body_is_not(self, tmp_path) -> None:
+        _path, sel = self._selection(tmp_path, self._BASE.replace("return 1", "return 2"))
+        assert sel.changed_blocks and sel.import_time_changed == frozenset()
+
+    def test_a_class_inside_a_function_is_not(self, tmp_path) -> None:
+        """Its body runs when the function is called, under a test's context."""
+        path, sel = self._selection(tmp_path, self._BASE.replace("tag = 1", "tag = 2"))
+        assert sel.changed_blocks == frozenset({(path, "func.Local")})
+        assert sel.import_time_changed == frozenset()
+
+    def test_a_deleted_class_counts(self, tmp_path) -> None:
+        """Its name is gone for every importer, and only the base knew it."""
+        gone = self._BASE.replace(
+            "class Holder:\n    size = 1\n    def method(self):\n        return 1\n", "")
+        path, sel = self._selection(tmp_path, gone)
+        assert (path, "Holder") in sel.import_time_changed
+        assert (path, "Holder.method") not in sel.import_time_changed
+
+    def test_a_comment_edit_changes_nothing(self, tmp_path) -> None:
+        _path, sel = self._selection(tmp_path, self._BASE + "# a comment\n")
+        assert sel.import_time_changed == frozenset()

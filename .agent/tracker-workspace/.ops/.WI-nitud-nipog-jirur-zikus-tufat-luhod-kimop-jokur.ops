@@ -1,0 +1,21 @@
+- op: create  # 0399
+  at: '2026-11-16T04:59:16Z'  # 0399
+  by: agent  # 0399
+  actor: jgstern_agent  # 0399
+  clock: 1  # 0399
+  nonce: '0399'  # 0399
+  data:  # 0399
+    kind: work_item  # 0399
+    title: "pyproject: a [project].dependencies name is cut at its first dot; a third reader has the old gap"  # 0399
+    status: todo_hard  # 0399
+    priority: 3  # 0399
+    parent:  # 0399
+    tags:  # 0399
+    - python  # 0399
+    - supply_chain  # 0399
+    isbefore: []  # 0399
+    duplicate_of: []  # 0399
+    not_duplicate_of: []  # 0399
+    pr_ref:  # 0399
+    description: "WHAT.\n1. A PEP 621 [project].dependencies entry zope.interface yields a node named zope. Fixing it moves that node's stable id (v15 material). The tables added in PR #2198 keep the whole name, so one package is named differently across tables of one manifest.\n2. profile.py::_parse_pyproject_deps (framework detection) reads pyproject by itself and misses [build-system], PDM, uv and Hatch tables.\n3. optional = true inside a Poetry LIST of constraints reads as runtime.\n4. The group or extra name is not in meta (needs a registered meta key).\n5. Unread: [tool.pixi.*] (conda ecosystem question), Pipfile, hatch.toml, legacy [tool.flit.metadata], Hatch build-hook dependencies.\n6. A comment in config-conventions.yaml says Poetry dev tables go through _extract_cargo_dependencies: false.\n7. Owner questions: optional is a new dependency_scope value; whether dev/build tables alone should open the directness manifest; supply_chain_summary counts declarations, not packages (poetry direct 161 -> 471 after PR #2198). Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 0399
+    fields: {}  # 0399

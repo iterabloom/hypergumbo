@@ -5,16 +5,16 @@ When ``sketch --input <survey.json>`` is given, :func:`generate_sketch` must
 summarize the MAP's file universe — deriving test-file counts, languages,
 source files, and the Structure tree from the loaded behavior map's node
 paths — instead of re-walking the current working directory via
-``repo_root.rglob()``. The re-walk caused two filed defects:
+``repo_root.rglob()``. A re-walk costs twice:
 
-* a 60+s wall-clock hang on populated repos (the ``_analyze_test_files`` ->
-  ``find_files`` -> ``rglob`` bottleneck), and
-* a wrong-universe bug: a package-scoped 902-node map fed from a larger repo
-  root produced a sketch of the ENTIRE surrounding repo (structure rooted at
-  the CWD), discarding the map's node universe.
+* a wall-clock hang of a minute or more on populated repos (the
+  ``_analyze_test_files`` -> ``find_files`` -> ``rglob`` bottleneck), and
+* the wrong universe: a package-scoped map fed from a larger repo root yields
+  a sketch of the ENTIRE surrounding repo (structure rooted at the CWD),
+  discarding the map's node universe.
 
-The fix synthesizes a :class:`FileIndex` from the map's node paths and scopes
-the read-path to it (``find_files`` and the Structure helpers are already
+So the read-path synthesizes a :class:`FileIndex` from the map's node paths
+and is scoped to it (``find_files`` and the Structure helpers are
 ``FileIndex``-aware). See INV-papuj (umbrella) / INV-jumim.
 """
 
@@ -277,7 +277,7 @@ class TestMapScopedReadPath:
     def test_test_count_from_map_not_disk(self, tmp_path: Path) -> None:
         """The Tests section must count only the test files NAMED BY THE MAP,
         proving _analyze_test_files used the map index rather than rglob-ing the
-        working tree (the 60s-hang short-circuit)."""
+        working tree (which is what avoids the slow walk)."""
         (tmp_path / "tests").mkdir()
         (tmp_path / "tests" / "test_in_map.py").write_text(
             "import pytest\n\n\ndef test_a():\n    assert True\n"
@@ -379,10 +379,11 @@ class TestMapScopedReadPath:
     ) -> None:
         """A cold cache gets the same map-scoped index as a warm one.
 
-        The survey used to run inside ``_generate_sketch_impl``, after the
-        wrapper had peeked the cache and found nothing, so the cold sketch
-        collected its source and test files with no index installed: one
-        filesystem walk per lookup, about a minute on hypergumbo itself.
+        The survey must run before the read-path is scoped. Running it inside
+        ``_generate_sketch_impl``, after the wrapper has peeked the cache and found
+        nothing, leaves the cold sketch collecting its source and test files with
+        no index installed: one filesystem walk per lookup, about a minute on a
+        repo of hypergumbo's size.
         """
         from hypergumbo_core import sketch as sketch_mod
 

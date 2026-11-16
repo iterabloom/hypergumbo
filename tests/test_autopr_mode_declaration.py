@@ -1,25 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """With no terminal, auto-pr refuses to start until the caller declares a mode.
 
-WHY (WI-hajak follow-up)
-------------------------
-WI-katap made an externally-killed run visible; WI-hajak gave it `--detach` so
-it need not be killed at all. Neither stops the caller FORGETTING. That is not
-hypothetical: the session that discovered `nohup` reverted to `timeout 590`
-within the same session, and 22 of 84 recorded runs died that way.
+WHY (history: WI-hajak)
+-----------------------
+`--detach` lets a non-tty caller avoid being killed mid-poll, but nothing
+makes the caller remember it; a caller that forgets is killed by its own
+`timeout` wrapper.
 
-The obvious fix — make `--detach` the default when stdout is not a tty — was
-considered and REJECTED on evidence. `scripts/prepare-release` does:
+The obvious fix — make `--detach` the default when stdout is not a tty — is
+wrong. `scripts/prepare-release` does:
 
-    if ./scripts/auto-pr; then
+    if ./scripts/auto-pr --foreground; then
         echo "✓ Release commit merged to dev via auto-pr"
 
 That reads exit 0 as *merged*, and AGENTS.md has an agent run `prepare-release`,
-so it is non-tty. Auto-detaching would make it return 0 immediately having
-merged nothing and then announce a merge that did not happen. Exit 0 would come
-to carry two facts — "merged" and "handed off, outcome unknown" — which is the
-exact conflation WI-katap and WI-hajak just spent two changes removing, re-made
-one level up at the exit code.
+so it is non-tty. Were a bare call auto-detached, it would return 0
+immediately having merged nothing and then announce a merge that did not
+happen. Exit 0 would carry two facts — "merged" and "handed off, outcome
+unknown" — the two-facts-in-one-value conflation that `terminated_by` keeps
+out of the ledger, re-made at the exit code.
 
 So the mode is not guessed. It is DECLARED, and an undeclared non-tty run is
 refused before it does anything. This is the same discipline `--tracker-id`
@@ -109,13 +108,12 @@ def test_the_refusal_happens_before_any_push(tmp_path: Path) -> None:
 def test_foreground_declared_gets_past_the_gate(tmp_path: Path) -> None:
     """Declaring foreground is honoured — the caller said it can block.
 
-    Run from ``dev``. The gate sits at auto-pr:1955 and the protected-branch
-    refusal at :2001, so a declared run gets PAST the gate and then stops
-    immediately, on a check that touches no network. That ordering is the
-    whole fixture: the first draft ran from a feature branch, sailed past the
-    gate into a real push, and timed out after 120s in CI while passing
-    locally in a second — a test that depended on the network failing FAST,
-    which is not a property any environment owes it.
+    Run from ``dev``. The mode gate precedes the protected-branch refusal in
+    do_pr, so a declared run gets PAST the gate and then stops immediately, on
+    a check that touches no network. That ordering is the whole fixture: from
+    a feature branch the run would sail past the gate into a real push, and
+    the test would depend on the network failing FAST, which is not a
+    property any environment owes it.
     """
     fake = _init_fake_repo(tmp_path, branch="dev")
     proc = _run(fake, "--foreground")
@@ -183,7 +181,7 @@ def test_prepare_release_declares_its_mode() -> None:
     """The caller that made auto-detach unsafe must itself be explicit.
 
     `prepare-release` reads auto-pr's exit 0 as "merged" and is run by an
-    agent, hence non-tty. It has to opt into blocking or it would now be
+    agent, hence non-tty. It has to opt into blocking or it would be
     refused — and it genuinely does want to block.
     """
     text = (REPO_ROOT / "scripts" / "prepare-release").read_text(encoding="utf-8")

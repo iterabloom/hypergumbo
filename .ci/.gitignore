@@ -7,3 +7,4 @@
 # smart-test runtime locks (process-local, never committed)
 .smart-test.lock
 .smart-test.lock.pid
+source-reads/

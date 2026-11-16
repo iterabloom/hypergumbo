@@ -176,9 +176,9 @@ class TestIsTestFile:
 class TestSemanticEntryDetection:
     """Tests for semantic entry detection from concept metadata.
 
-    ADR-3aaa v0.9.x introduces semantic entry detection: detecting entrypoints
-    based on enriched symbol metadata (meta.concepts) from the FRAMEWORK_PATTERNS
-    phase, rather than path-based heuristics.
+    Semantic detection finds entrypoints from enriched symbol metadata
+    (meta.concepts, stamped by the FRAMEWORK_PATTERNS phase) rather than
+    from path-based heuristics (ADR-3aaa).
 
     Semantic detection has:
     - Higher confidence (0.95) since it's based on actual decorator/pattern matching
@@ -466,9 +466,9 @@ class TestSemanticEntryDetection:
 
         route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
         # Both routes must survive label-dedup — they have distinct (method,
-        # path) but the concept dict is identical, so the fix must fall back
-        # to sym.meta.http_method / sym.meta.route_path when the concept dict
-        # is missing those keys.
+        # path) but the concept dict is identical, so entrypoint generation
+        # must fall back to sym.meta.http_method / sym.meta.route_path when the
+        # concept dict is missing those keys.
         assert len(route_eps) == 2
         labels = {ep.label for ep in route_eps}
         assert any("GET" in lbl and "/api/v1/users" in lbl for lbl in labels)
@@ -751,7 +751,7 @@ class TestSemanticEntryDetection:
         assert len(err_eps) == 1
 
     def test_detect_form_concept(self) -> None:
-        """Symbol with form concept is detected as FORM entrypoint (WI-gudob Phase 4)."""
+        """Symbol with form concept is detected as FORM entrypoint (WI-gudob)."""
         sym = make_symbol(
             "LoginForm",
             path="myapp/forms.py",
@@ -801,7 +801,7 @@ class TestSemanticEntryDetection:
         assert len(form_eps) == 1
 
     def test_detect_serializer_concept(self) -> None:
-        """Symbol with serializer concept is detected as SERIALIZER entrypoint (WI-gudob Phase 5)."""
+        """Symbol with serializer concept is detected as SERIALIZER entrypoint (WI-gudob)."""
         sym = make_symbol(
             "UserSerializer",
             path="myapp/serializers.py",
@@ -936,11 +936,11 @@ class TestSemanticEntryDetection:
         assert "schema" in gql_eps[0].label.lower()
 
     def test_multiple_different_concepts_first_wins(self) -> None:
-        """Symbol with multiple different concepts keeps only the first entrypoint.
+        """Symbol with multiple different concepts keeps only one entrypoint.
 
-        The detect_entrypoints() deduplication keeps one entry per symbol_id.
-        This prevents duplicate entries when both semantic and path-based
-        detection would match the same symbol. The first-detected entry wins.
+        The detect_entrypoints() deduplication keeps one entry per symbol_id:
+        the most confident, ties going to the earlier detector. Route and
+        controller both score 0.95 here, so the first-detected (route) wins.
         """
         # A symbol that is both a route AND a controller (unusual but possible)
         sym = make_symbol(
@@ -961,7 +961,7 @@ class TestSemanticEntryDetection:
         # Only one entrypoint per symbol due to deduplication
         sym_eps = [e for e in entrypoints if e.symbol_id == sym.id]
         assert len(sym_eps) == 1
-        # First concept (route) wins
+        # Tie on confidence: the first concept (route) wins
         assert sym_eps[0].kind == EntrypointKind.HTTP_ROUTE
 
     def test_duplicate_concept_types_deduplicated(self) -> None:
@@ -1361,9 +1361,9 @@ class TestSemanticEntryDetection:
         The concept detector fires ``library_export`` on a nested private
         closure (e.g. ``fold_string_interpolation._sub``, the callback passed
         to ``re.sub``), but such a symbol is not importable — no consumer can
-        reach it as public API. INV-jusot's canonical ``Symbol.visibility``
-        axis (computed in finalize, before ``detect_entrypoints``) lets the
-        gate reject it. ``visibility='private'`` -> no LIBRARY_EXPORT.
+        reach it as public API. The canonical ``Symbol.visibility`` axis
+        (computed in finalize, before ``detect_entrypoints``; INV-jusot) lets
+        the gate reject it. ``visibility='private'`` -> no LIBRARY_EXPORT.
         """
         sym = make_symbol(
             "fold._sub",
@@ -1584,10 +1584,10 @@ class TestSemanticEntryDetection:
     def test_main_guard_entrypoint_detection(self) -> None:
         """A guard-only script (if __name__, no main()) is a MAIN_GUARD entry (WI-tuvun).
 
-        INV-hojus: the carrier is the file-kind pseudo-node, not module-kind.
-        WI-tuvun: the ``main_guard`` concept produces the distinct MAIN_GUARD
-        kind (file target), NOT MAIN_FUNCTION (function target), so ``kind``
-        alone disambiguates the target type.
+        The carrier is the file-kind pseudo-node, not a module-kind node
+        (INV-hojus). The ``main_guard`` concept produces the distinct
+        MAIN_GUARD kind (file target), NOT MAIN_FUNCTION (function target), so
+        ``kind`` alone disambiguates the target type.
         """
         sym = Symbol(
             id="python:script.py:1-1:file:file",
@@ -1659,10 +1659,11 @@ class TestSemanticEntryDetection:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        # Should only have one MAIN_FUNCTION entry (first concept wins)
+        # Only one MAIN_FUNCTION entry: once the symbol has a MAIN_FUNCTION,
+        # its main_guard concept is skipped (a named main() supersedes the guard)
         main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
         assert len(main_eps) == 1
-        # main_function has lower confidence (0.80) than main_guard (0.85), but it's first
+        # So main_function's 0.80 is kept, even though main_guard scores 0.85
         assert main_eps[0].confidence == 0.80
 
     def test_controller_by_name_entrypoint_detection(self) -> None:
@@ -1710,8 +1711,8 @@ class TestSemanticEntryDetection:
 
         The naming-conventions YAML emits this concept for ``BrokerServer.startup``,
         ``KafkaApis.handleProduceRequest``, ``SocketServer.Acceptor.run``, etc.
-        — Kafka-style server lifecycle methods that the previous detector
-        missed because it only matched ``main()`` functions.
+        — Kafka-style server lifecycle methods that are real entrypoints even
+        though they are not ``main()`` functions.
         """
         sym = Symbol(
             id="scala:BrokerServer.scala:50-200:BrokerServer.startup:method",
@@ -1748,8 +1749,6 @@ class TestSemanticEntryDetection:
         packages dispatch to type-defined methods reflectively. Marking these
         methods as LIBRARY_EXPORT entrypoints makes them seeds for the
         dead-code BFS so they (and their transitive callees) become reachable.
-        On alertmanager this covers 82 functions / ~1540 LOC — the largest
-        WI-juhov dead-code-maybe triage category.
         """
         sym = Symbol(
             id="go:alert.go:50-80:Alert.UnmarshalYAML:method",
@@ -1812,14 +1811,12 @@ class TestSemanticEntryDetection:
     def test_broker_lifecycle_skipped_if_main_function_already_detected(
         self,
     ) -> None:
-        """WI-nazir: dedup — broker_lifecycle does not duplicate when MAIN_FUNCTION
-        was already added for the same symbol.
+        """broker_lifecycle_by_name adds no second CONTROLLER entry when a
+        framework controller concept already produced one for the symbol.
 
-        This guards against an outer ``Kafka.main`` being double-counted as
-        both MAIN_FUNCTION and CONTROLLER. The two kinds are distinct, so
-        the symbol gets MAIN_FUNCTION (which doesn't conflict). The dedup
-        is on CONTROLLER specifically — both broker_lifecycle and any prior
-        controller pattern produce CONTROLLER kind, so only one survives.
+        Both concepts map to the CONTROLLER kind, so the per-symbol kind
+        dedup skips the later naming-heuristic match and the 0.95 framework
+        entry is the one kept (WI-nazir).
         """
         sym = Symbol(
             id="scala:Kafka.scala:1-50:KafkaServer.startup:method",
@@ -1900,10 +1897,11 @@ class TestSemanticEntryDetection:
         assert "Controller (by name)" in ctrl_eps[0].label
 
     def test_service_by_name_not_treated_as_entrypoint(self) -> None:
-        """Classes ending in 'Service' are tracked but not made entrypoints (covers entrypoints.py:480).
+        """Classes ending in 'Service' produce no entrypoint.
 
-        Services are potential business logic entry points but we explicitly skip them
-        for now to avoid over-detecting entrypoints in codebases with many service classes.
+        The service_by_name concept is recognized but deliberately skipped:
+        services can be business-logic entry points, but making them
+        entrypoints over-detects in codebases with many service classes.
         """
         sym = Symbol(
             id="java:UserService.java:1-50:UserService:class",
@@ -2089,15 +2087,16 @@ class TestConnectivityBasedRanking:
         assert len(route_eps) == 3
 
         # Routes with edges should rank before route without edges
-        # Note: route_b and route_c both hit the 1.0 confidence cap, so they tie
+        # Note: route_b and route_c both hit the 1.0 rank_score cap, so they tie
         # The key behavior is that route_a (no edges) is last
         assert route_eps[2].symbol_id == route_a.id, "route_a with 0 edges should rank last"
-        # Both route_b and route_c should have higher confidence than route_a
+        # Detection confidence is the same base for all three; the boost
+        # changes only rank_score
         assert route_eps[0].confidence >= route_eps[2].confidence
         assert route_eps[1].confidence >= route_eps[2].confidence
 
     def test_connectivity_boost_increases_confidence(self) -> None:
-        """Entrypoints with more edges should have higher confidence scores."""
+        """Entrypoints with more edges get a higher rank_score."""
         route_isolated = make_symbol(
             "route_isolated", path="isolated.py", language="python",
             meta={"concepts": [{"concept": "route", "method": "GET", "path": "/isolated"}]},
@@ -2179,12 +2178,13 @@ class TestConnectivityBasedRanking:
         """A main() that delegates to a high-connectivity function should outrank
         a utility main with many direct calls but shallow transitive reach.
 
-        This mirrors the DMD pattern: compiler/src/dmd/main.d:main calls tryMain
-        (178 edges), while msvc-lib.d:main calls 10 small utility functions.
-        The compiler main should rank higher despite fewer direct edges.
+        Shape: a compiler's main() makes one call, to a tryMain that fans out
+        widely, while a build utility's main() calls ten small helpers
+        directly. The compiler main should rank higher despite fewer direct
+        edges.
 
-        Both may hit the 1.0 confidence cap, so the test checks rank order
-        (sorted position) rather than strict confidence inequality.
+        Both may hit the 1.0 rank_score cap, so the test checks rank order
+        (sorted position) rather than strict score inequality.
         """
         # Main function meta for D main() detection
         main_meta = {"concepts": [{"concept": "main_function", "language": "d"}]}
@@ -2236,8 +2236,8 @@ class TestConnectivityBasedRanking:
         ]
         assert len(main_eps) >= 2
 
-        # Entrypoints are sorted by confidence desc, then by effective
-        # out-degree desc.  The compiler main (1 direct + 0.5 * 50 transitive
+        # Entrypoints are sorted by rank_score desc, then language weight,
+        # then effective out-degree desc.  The compiler main (1 direct + 0.5 * 50 transitive
         # = 26 effective) should outrank the utility main (10 effective).
         compiler_idx = next(
             i for i, ep in enumerate(main_eps) if ep.symbol_id == compiler_main.id
@@ -2252,7 +2252,7 @@ class TestConnectivityBasedRanking:
 
 
 class TestLifecycleHookConceptDetection:
-    """Tests for lifecycle_hook concept-based entrypoint detection (ADR-3aaa v1.1.x).
+    """Tests for lifecycle_hook concept-based entrypoint detection (ADR-3aaa).
 
     The lifecycle_hook concept is used by android.yaml to match Android lifecycle
     methods like Activity.onCreate(), Application.onCreate(), etc.
@@ -2430,8 +2430,8 @@ class TestEntrypointSerialization:
     def test_to_dict(self) -> None:
         """Entrypoint.to_dict() returns correct dictionary structure.
 
-        WI-rukam: the record now carries a ``meta`` dict mirroring
-        ``Edge.meta``; ``meta.id`` is auto-stamped on every record.
+        The record carries a ``meta`` dict mirroring ``Edge.meta``;
+        ``meta.id`` is auto-stamped on every record (WI-rukam).
         """
         ep = Entrypoint(
             symbol_id="python:app.py:1-5:handler:function",
@@ -2448,7 +2448,8 @@ class TestEntrypointSerialization:
         assert result["symbol_id"] == "python:app.py:1-5:handler:function"
         assert result["kind"] == "http_route"
         assert result["confidence"] == 0.95
-        # ADR-0039 R3: rank_score mirrors confidence until adjustments relocate.
+        # ADR-0039 R3: rank_score starts equal to confidence; ranking
+        # adjustments change only rank_score.
         assert result["rank_score"] == 0.95
         assert result["label"] == "HTTP GET /users"
         # Direct construction stamps only the derived id (no source /
@@ -2496,7 +2497,7 @@ class TestEntrypointSerialization:
 class TestEntrypointProvenance:
     """WI-rukam: every Entrypoint carries id/source/evidence_type under meta.
 
-    The record grows a ``meta`` dict mirroring ``Edge.meta``: a stable
+    The record has a ``meta`` dict mirroring ``Edge.meta``: a stable
     content-hash ``id`` (auto-stamped), the producer-pass ``source``, and
     the inference-pathway ``evidence_type`` (both set by ``.create()``).
     """
@@ -2688,7 +2689,7 @@ class TestEntrypointRankingPenalties:
     """Tests for test/vendor penalty-based ranking.
 
     Entrypoints in test files or vendor code should be deprioritized
-    (lower confidence) rather than excluded entirely. This ensures:
+    (lower rank_score) rather than excluded outright. This ensures:
     - Production code entrypoints rank higher by default
     - Test/vendor entrypoints are still discoverable if needed
     - The full graph data is preserved
@@ -2697,8 +2698,8 @@ class TestEntrypointRankingPenalties:
     def test_aggressive_test_demotion_prevents_flooding(self) -> None:
         """Test entrypoints in test files are filtered out entirely.
 
-        In repos like DMD where 98% of main() functions are in test files,
-        the 90% test penalty (0.80 * 0.1 = 0.08) pushes them below the
+        In repos where nearly all main() functions are in test files, the
+        90% test penalty (0.80 * 0.1 = 0.08) pushes them below the
         MIN_ENTRYPOINT_CONFIDENCE threshold (0.10), so they are excluded
         from results. Only production mains survive.
         """
@@ -2712,7 +2713,7 @@ class TestEntrypointRankingPenalties:
             )
             for i in range(3)
         ]
-        # 50 test mains (simulating DMD-like flooding)
+        # 50 test mains (a repo flooded with test-file mains)
         test_mains = [
             make_symbol(
                 f"test_main_{i}",
@@ -2766,16 +2767,16 @@ class TestEntrypointRankingPenalties:
     def test_support_dir_entrypoint_penalized_via_broad_path_heuristic(
         self, tmp_path
     ) -> None:
-        """WI-popok KEEP verdict: the ranker penalizes on the BROAD
-        ``paths.is_test_file`` ("test-or-support" code), NOT the narrow
-        supply-chain ``Symbol.is_test_file`` role flag.
+        """The ranker penalizes on the BROAD ``paths.is_test_file``
+        ("test-or-support" code), NOT the narrow supply-chain
+        ``Symbol.is_test_file`` role flag (concept-audit KEEP verdict, WI-popok).
 
         A ``main()`` in a ``mocks/`` dir must stay deprioritized even though the
         canonical supply-chain verdict does NOT flag it as test code — otherwise
         mock/fixture/testdata entrypoints would flood the entry list on repos
         that have them. This guards against a naive "consume ``sym.is_test_file``"
-        swap (WI-popok): that field is ``False`` for ``mocks/``, so the swap
-        would drop the penalty and this test would go red.
+        swap: that field is ``False`` for ``mocks/``, so the swap would drop
+        the penalty and this test would go red.
 
         Executable re-evaluation trigger (per the fundamental-concept-audit KEEP
         rule): the divergence-pinning assertion below fails if canonical
@@ -2870,9 +2871,9 @@ class TestEntrypointRankingPenalties:
         demoted so they don't seed forward slices over the real API surface.
 
         A checked-in mvnw/gradlew sits at the repo root at tier 1, so NONE of
-        the existing penalties (test / utility-dir / vendor-tier) fire — its
-        0.85 base plus a large out-degree connectivity boost climbs to ~0.98,
-        outranking the actual controllers in ``--entry auto``. The build-wrapper
+        the other penalties (test / utility-dir / vendor-tier) fire — undemoted,
+        its 0.85 base plus a large out-degree connectivity boost climbs to
+        ~0.98, outranking the actual controllers in ``--entry auto``. The build-wrapper
         demotion (x0.1) plus a connectivity-boost skip pushes it below the noise
         floor.
         """
@@ -2898,7 +2899,7 @@ class TestEntrypointRankingPenalties:
         assert mvnw.id not in {e.symbol_id for e in entrypoints}
 
     def test_route_outranks_build_wrapper(self) -> None:
-        """WI-batit: after the demotion a real HTTP route (the API surface)
+        """WI-batit: with the demotion a real HTTP route (the API surface)
         outranks a mvnw/gradlew wrapper, so ``slice --entry auto`` seeds from
         the controller, not the build script."""
         gradlew = make_symbol(
@@ -2925,8 +2926,7 @@ class TestEntrypointRankingPenalties:
         ]
         entrypoints = detect_entrypoints(nodes, edges)
         # The wrapper is demoted below the floor and filtered out; the route
-        # survives and is the top-ranked auto-slice seed (was: gradlew at ~1.0
-        # outranked the route at 0.95 before the WI-batit demotion).
+        # survives and is the top-ranked auto-slice seed.
         assert gradlew.id not in {e.symbol_id for e in entrypoints}
         assert entrypoints[0].symbol_id == route.id
 
@@ -2947,7 +2947,7 @@ class TestEntrypointRankingPenalties:
         assert shell_ep.rank_score == pytest.approx(0.85, rel=0.01)
 
     def _vendored_js_export(self):
-        """A tier-3 vendored JS bundle export (pretix's pdf.worker.js)."""
+        """A tier-3 vendored JS bundle export (a bundled pdf.worker.js)."""
         return make_symbol(
             "getDocument",
             path="pretix/static/vendored/pdf.worker.js",
@@ -2980,8 +2980,8 @@ class TestEntrypointRankingPenalties:
         even when its language has no semantic entrypoints of its own.
 
         The per-language ``langs_with_semantic`` carve-out exists to protect
-        FIRST-PARTY API surface (the ArkLib case: Python helper scripts must not
-        suppress a Lean library's 163 exports).  Vendored third-party code is
+        FIRST-PARTY API surface (Python helper scripts must not suppress a
+        Lean library's exports).  Vendored third-party code is
         never this repo's API surface, so the carve-out must not extend to it —
         otherwise a Django repo (semantic entrypoints in python only) leaves its
         bundled JS at 0.75 * 0.3 = 0.225, comfortably above the 0.10 floor, and
@@ -2989,11 +2989,10 @@ class TestEntrypointRankingPenalties:
         """
         vendored = self._vendored_js_export()
         route = self._python_route()
-        # A well-connected bundle export: 13 callers is the real in-degree of
-        # zellij's vendored ``InputParser::parse``.  This is what makes the test
-        # non-vacuous — the x0.1 demotion alone leaves 0.0225, but the ADDITIVE
+        # A well-connected bundle export (13 callers).  This is what makes the
+        # test non-vacuous — the x0.1 demotion alone leaves 0.0225, but the ADDITIVE
         # connectivity boost (in-degree, cap +0.35) re-inflates that back over
-        # the 0.10 floor.  Suppressing the boost is the other half of the fix.
+        # the 0.10 floor, so the boost must be suppressed as well.
         callers = [
             make_symbol(f"caller{i}", path="pretix/api/callers.py",
                         language="python", start_line=10 + i, end_line=11 + i)
@@ -3012,8 +3011,8 @@ class TestEntrypointRankingPenalties:
         assert entrypoints[0].symbol_id == route.id
 
     def test_first_party_export_keeps_carve_out_protection(self) -> None:
-        """WI-batit precision (the ArkLib guard): the fix above narrows the
-        carve-out by SUPPLY-CHAIN TIER only.  A FIRST-PARTY export in a language
+        """WI-batit precision: the vendored-export rule
+        above narrows the carve-out by SUPPLY-CHAIN TIER only.  A FIRST-PARTY export in a language
         with no semantic entrypoints of its own keeps full ranking prominence —
         exactly what the carve-out was built to protect."""
         lean_export = make_symbol(
@@ -3157,10 +3156,10 @@ class TestEntrypointRankingPenalties:
     def test_test_file_main_no_connectivity_boost(self) -> None:
         """MAIN_FUNCTION in test files skips connectivity boost.
 
-        Without the fix, a test-file main with 10 outgoing edges would get
-        0.80 * 0.1 (test penalty) = 0.08 base + ~0.24 boost = 0.32,
-        passing the MIN_ENTRYPOINT_CONFIDENCE (0.10) filter.  With the fix,
-        the boost is skipped and 0.08 is below the threshold.
+        If the boost applied, a test-file main with 10 outgoing edges would
+        get 0.80 * 0.1 (test penalty) = 0.08 + ~0.24 boost = 0.32, passing
+        the MIN_ENTRYPOINT_CONFIDENCE (0.10) filter.  With the boost skipped,
+        0.08 stays below the threshold.
         """
         test_main = make_symbol(
             "main",
@@ -3189,8 +3188,8 @@ class TestEntrypointRankingPenalties:
 
         Test functions are entrypoints for test runners, not architectural
         entrypoints. Their connectivity should not lift them above the
-        confidence threshold. Without this fix, a test function with
-        0.80 * 0.1 = 0.08 base + 0.25 boost = 0.33 would pass the
+        confidence threshold. If the boost applied, a test function with
+        0.80 * 0.1 = 0.08 + 0.25 boost = 0.33 would pass the
         MIN_ENTRYPOINT_CONFIDENCE filter, flooding entries.txt with
         hundreds of test functions.
         """
@@ -3217,7 +3216,7 @@ class TestEntrypointRankingPenalties:
         assert len(entrypoints) == 0
 
     def test_ranking_order_respects_penalties(self) -> None:
-        """Final ranking correctly orders by penalized confidence.
+        """Final ranking correctly orders by penalized rank_score.
 
         test_main (0.80 * 0.1 = 0.08) is below threshold and filtered out.
         Remaining entries ordered: prod_route (0.95) > vendor_route (0.285).
@@ -3360,7 +3359,7 @@ class TestGoUtilityMainDemotion:
 
 
 class TestConnectivityFallback:
-    """Tests for centrality-based entrypoint fallback (DEEP mode).
+    """Tests for centrality-based entrypoint fallback.
 
     When no concept-based entrypoints are found (no routes, no main(), etc.),
     the system falls back to selecting the most-connected callable symbols.
@@ -3840,11 +3839,8 @@ class TestLanguageDominanceRanking:
         have a main() function. The Python main has higher connectivity
         (more outgoing edges), which would normally give it a higher rank.
         But because C is the dominant language, C main should still rank
-        first.
-
-        This simulates the git repo scenario: 95% C code but Python
-        scripts (git-p4.py) have higher connectivity in a single file,
-        causing them to outrank the C main().
+        first: a mostly-C repo's Python helper script must not outrank its
+        C main() just because the script is more connected.
         """
         from hypergumbo_core.ir import Edge
 
@@ -4006,17 +4002,15 @@ class TestApplicationLibraryExportDemotion:
     main functions), library_export entries are noise — they represent
     API visibility (e.g., Go uppercase symbols), not developer-facing
     entrypoints. These should be heavily demoted so routes/commands
-    dominate the entrypoint list.
-
-    This is the "forgejo problem": 7,474 library_export entrypoints
-    drowning out 772 meaningful HTTP routes.
+    dominate the entrypoint list; otherwise a large Go app's thousands of
+    exported symbols drown out its HTTP routes.
     """
 
     def test_library_export_demoted_when_routes_exist(self) -> None:
         """library_export entries are filtered out when HTTP routes exist.
 
-        With routes present, library_export demotion (90%) reduces confidence
-        from 0.80 to 0.08, which is below MIN_ENTRYPOINT_CONFIDENCE (0.10).
+        With routes present, library_export demotion (90%) reduces rank_score
+        from 0.75 to 0.075, which is below MIN_ENTRYPOINT_CONFIDENCE (0.10).
         Only routes survive.
         """
         route = make_symbol(
@@ -4042,13 +4036,13 @@ class TestApplicationLibraryExportDemotion:
         export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
 
         assert len(route_eps) == 1
-        # Exports filtered out (0.80 * 0.1 = 0.08 < 0.10 threshold)
+        # Exports filtered out (0.75 * 0.1 = 0.075 < 0.10 threshold)
         assert len(export_eps) == 0
 
     def test_library_export_demoted_when_commands_exist(self) -> None:
         """library_export filtered when same-language CLI commands exist.
 
-        Demotion (90%) drops from 0.80 to 0.08 < threshold.
+        Demotion (90%) drops from 0.75 to 0.075 < threshold.
         """
         command = make_symbol(
             "cmd_merge", path="builtin/merge.c", kind="function",
@@ -4070,7 +4064,7 @@ class TestApplicationLibraryExportDemotion:
     def test_library_export_demoted_when_main_exists(self) -> None:
         """library_export filtered when main() function exists.
 
-        Demotion (90%) drops from 0.80 to 0.08 < threshold.
+        Demotion (90%) drops from 0.75 to 0.075 < threshold.
         """
         main_fn = make_symbol(
             "main", path="cmd/server/main.go", kind="function",
@@ -4145,7 +4139,7 @@ class TestApplicationLibraryExportDemotion:
         """Same-language demotion applies in polyglot repos.
 
         A Python app with Flask routes and library_export entries should
-        see the demotion. Exports at 0.08 are filtered out.
+        see the demotion. Exports at 0.075 are filtered out.
         """
         route = make_symbol(
             "get_users", path="src/api/routes.py", kind="function",
@@ -4167,13 +4161,11 @@ class TestApplicationLibraryExportDemotion:
     def test_dominant_lang_exports_not_demoted_by_minority_semantic(self) -> None:
         """Dominant language library_export NOT demoted by minority language main().
 
-        ArkLib scenario: 95% Lean library (163 files) with 5% Python helper
-        scripts (6 files with main()). Python main() should NOT trigger
-        demotion of Lean library_export entries — Lean exports ARE the
-        real entrypoints for this repo.
-
-        Fix for WI-sirim: minority-language semantic entrypoints must not
-        suppress majority-language library exports.
+        A Lean library with a few Python helper scripts that have main():
+        the Python main() must NOT trigger demotion of Lean library_export
+        entries — Lean exports ARE the real entrypoints for this repo. The
+        demotion applies only when an export's own language has semantic
+        entrypoints (history: WI-sirim).
         """
         # Lean is the dominant language (many symbols)
         lean_exports = [
@@ -4214,10 +4206,9 @@ class TestApplicationLibraryExportDemotion:
             )
 
     def test_forgejo_scale_scenario(self) -> None:
-        """Simulate forgejo: 772 routes + 7474 library_exports.
+        """A Go app with many routes and several times more library exports.
 
         Top 20 entrypoints should be all routes (or main), not exports.
-        This is the primary motivation for this feature.
         """
         routes = [
             make_symbol(
@@ -4225,7 +4216,7 @@ class TestApplicationLibraryExportDemotion:
                 language="go", start_line=i,
                 meta={"route_path": f"/api/v1/r{i}", "http_method": "GET", "framework_role": "route"},
             )
-            for i in range(50)  # Subset of 772
+            for i in range(50)
         ]
         exports = [
             make_symbol(
@@ -4233,7 +4224,7 @@ class TestApplicationLibraryExportDemotion:
                 language="go", start_line=i + 100,
                 meta={"concepts": [{"concept": "library_export"}]},
             )
-            for i in range(200)  # Subset of 7474
+            for i in range(200)  # exports outnumber routes 4:1
         ]
         nodes = routes + exports
 
@@ -4250,8 +4241,8 @@ class TestApplicationLibraryExportDemotion:
     def test_example_routes_dont_trigger_library_export_demotion(self) -> None:
         """Routes from example/ directories should not trigger library_export demotion.
 
-        Library repos like livekit client-sdk-js have example code with HTTP
-        routes (e.g., examples/rpc/api.ts) that are NOT real application
+        A library repo can ship example code with HTTP routes (e.g.,
+        examples/rpc/api.ts) that are NOT real application
         entrypoints. These example routes should not cause library_export
         entries (e.g., Room class) to be demoted.
         """
@@ -4282,12 +4273,12 @@ class TestApplicationLibraryExportDemotion:
 
     def test_infrastructure_exports_dampened_more_than_api_exports(self) -> None:
         """Library exports from infrastructure paths (telemetry/, metrics/, logging/)
-        should be dampened more aggressively than API exports.
+        stay demoted where API exports can recover.
 
-        In gemini-cli, 77 of 111 entrypoints were telemetry exports from
-        packages/core/src/telemetry/*.ts. With connectivity boost, these
-        survive the standard 0.1x demotion at ~0.14 confidence. Infrastructure-
-        path exports get an additional dampening, dropping them below threshold.
+        Both get the standard 0.1x library-export demotion. The connectivity
+        boost can lift a demoted API export back over the threshold, but a
+        demoted infrastructure-path export skips the boost, so telemetry
+        plumbing stays below threshold instead of crowding the entry list.
         """
         route = make_symbol(
             "handle_mcp", path="src/server.ts", kind="function",
@@ -4312,7 +4303,7 @@ class TestApplicationLibraryExportDemotion:
         nodes = [route, telemetry_export, api_export, helper1, helper2]
 
         # Give both exports outgoing edges so they get connectivity boost
-        # (without boost, 0.80 * 0.1 = 0.08 < threshold and both are filtered)
+        # (without boost, 0.75 * 0.1 = 0.075 < threshold and both are filtered)
         edges = [
             Edge.create(src=telemetry_export.id, dst=helper1.id, edge_type="calls", line=1, origin="test", origin_run_id="test"),
             Edge.create(src=telemetry_export.id, dst=helper2.id, edge_type="calls", line=2, origin="test", origin_run_id="test"),
@@ -4330,9 +4321,9 @@ class TestApplicationLibraryExportDemotion:
 
         assert len(route_eps) == 1
 
-        # Both exports get standard demotion (0.1x) from semantic entrypoints.
-        # With connectivity boost, base 0.80 + boost -> ~1.0+, * 0.1 -> ~0.10+
-        # API export should survive, infra export should be dampened further.
+        # Both exports get standard demotion (0.1x) from semantic entrypoints:
+        # 0.75 * 0.1 = 0.075. The connectivity boost lifts the API export back
+        # over 0.10; the infra export skips the boost and stays below it.
         api_ep = export_eps.get(api_export.id)
         telemetry_ep = export_eps.get(telemetry_export.id)
 
@@ -4441,8 +4432,8 @@ class TestInvHosuhMainFunctionDedup:
     def test_main_guard_kept_when_no_main_function(self) -> None:
         """When the script has only the main_guard (no separate main() function),
         keep the module-level entry — the canonical entrypoint for
-        __main__.py-style scripts. WI-tuvun: this now carries the distinct
-        MAIN_GUARD kind (file target), not the overloaded MAIN_FUNCTION."""
+        __main__.py-style scripts. It carries the distinct MAIN_GUARD kind
+        (file target), not MAIN_FUNCTION (WI-tuvun)."""
         module_sym = make_symbol(
             "<module:scripts/bare.py>", path="scripts/bare.py", kind="module",
             start_line=1, end_line=10,
@@ -4499,10 +4490,9 @@ class TestInvTajapShellScriptEntrypoint:
     """INV-tajap: ``shell_script`` concept on a file-kind Symbol becomes a
     ``SHELL_SCRIPT`` entrypoint.
 
-    Pre-fix, entrypoint detection was Python-only: on hypergumbo self-analysis,
-    0 of ~50 bash scripts were detected as entrypoints, so all 153 bash
-    functions looked unreachable (a primary driver of WI-vuton's 92.6%
-    dead-code candidate rate with ``--seeds entrypoints``).
+    Without it, every bash function is unreachable from the entrypoint seeds,
+    inflating the dead-code candidate set under ``--seeds entrypoints``
+    (WI-vuton).
     """
 
     def test_shell_script_concept_emits_entrypoint(self) -> None:
@@ -4608,12 +4598,12 @@ class TestInvTajapShellScriptEntrypoint:
 
 
 class TestInvTajapHtmlEntryEntrypoint:
-    """INV-tajap PR 2: ``html_entry`` concept on a file-kind HTML Symbol
-    becomes a ``HTML_ENTRY`` entrypoint. Parallel to SHELL_SCRIPT (PR 1).
+    """INV-tajap: ``html_entry`` concept on a file-kind HTML Symbol
+    becomes a ``HTML_ENTRY`` entrypoint. Parallel to SHELL_SCRIPT.
 
-    Pre-fix: SPA roots (index.html files that bootstrap a JS bundle) were
-    not detected as entrypoints; all JS routes reachable only from a
-    `<script src=...>` reference looked unreachable.
+    SPA roots (index.html files that bootstrap a JS bundle) must be
+    entrypoints; otherwise JS reachable only from a `<script src=...>`
+    reference looks unreachable.
     """
 
     def test_html_entry_concept_emits_entrypoint(self) -> None:
@@ -4694,12 +4684,13 @@ class TestInvTajapHtmlEntryEntrypoint:
 
 
 class TestInvTajapScriptModuleEntrypoint:
-    """INV-tajap PR 3: TS/JS file Symbols with no inbound ``imports`` edges and
+    """INV-tajap: TS/JS file Symbols with no inbound ``imports`` edges and
     at least one outbound ``calls`` edge are SCRIPT_MODULE entrypoints.
 
-    Pre-fix: TS/JS standalone scripts like ``main.ts`` (SPA bootstrap) and
-    ``vite.config.ts`` (build-time config) were not entrypoints, so their
-    transitive callees looked unreachable. The two conditions together
+    TS/JS standalone scripts like ``main.ts`` (SPA bootstrap) and
+    ``vite.config.ts`` (build-time config) are run directly rather than
+    imported; without this their transitive callees would look
+    unreachable. The two conditions together
     express the spec rule: "top-level executable code (proxied by outbound
     calls) and no inbound imports edges". Unlike SHELL_SCRIPT / HTML_ENTRY
     which derive from analyzer-stamped concepts, SCRIPT_MODULE requires the
@@ -4873,14 +4864,14 @@ class TestRouteLabelDedup:
         assert len(quit_eps) == 2
 
     def test_route_dedup_keeps_highest_confidence(self) -> None:
-        """When deduplicating routes, the highest confidence entry is kept."""
-        # Non-test file route (high confidence)
+        """When deduplicating routes, the highest rank_score entry is kept."""
+        # Non-test file route (high rank_score)
         prod_sym = make_symbol(
             "POST /-/quit", path="web/web.go", kind="function",
             language="go", start_line=565,
             meta={"concepts": [{"concept": "route", "method": "POST", "path": "/-/quit"}]},
         )
-        # Test file route (will get confidence penalty)
+        # Test file route (will get the rank_score penalty)
         test_sym = make_symbol(
             "POST /-/quit", path="web/web_test.go", kind="function",
             language="go", start_line=100,
@@ -4891,7 +4882,7 @@ class TestRouteLabelDedup:
 
         quit_eps = [ep for ep in entrypoints if "/-/quit" in ep.label and "POST" in ep.label]
         assert len(quit_eps) == 1
-        # Should keep the production one (higher confidence)
+        # Should keep the production one (higher rank_score)
         assert quit_eps[0].symbol_id == prod_sym.id
 
 
@@ -4899,16 +4890,16 @@ class TestEntrypointConfidenceFiltering:
     """Tests for minimum confidence threshold and count cap.
 
     detect_entrypoints() should filter out entries below a minimum confidence
-    threshold (0.10) and cap the total number of returned entries. This
-    addresses the INV-mahap finding: 3100 library_export entries at 0.075
-    confidence flooding --list-entries output.
+    threshold (0.10) and cap the total number of returned entries, so heavily
+    demoted library_export entries (0.075) cannot flood --list-entries
+    output on large repos (INV-mahap).
     """
 
     def test_low_confidence_entries_filtered(self) -> None:
         """Entries below 0.10 confidence are excluded from results.
 
         library_export entries get 90% demotion when semantic entries exist,
-        dropping from 0.80 to 0.08 — below the 0.10 threshold.
+        dropping from 0.75 to 0.075 — below the 0.10 threshold.
         """
         # Create a route (semantic) + many library_exports
         route = make_symbol(
@@ -4930,7 +4921,7 @@ class TestEntrypointConfidenceFiltering:
                      if ep.kind == EntrypointKind.HTTP_ROUTE]
         assert len(route_eps) == 1
 
-        # Library exports should be filtered out (0.80 * 0.1 = 0.08 < 0.10)
+        # Library exports should be filtered out (0.75 * 0.1 = 0.075 < 0.10)
         export_eps = [ep for ep in entrypoints
                       if ep.kind == EntrypointKind.LIBRARY_EXPORT]
         assert len(export_eps) == 0, (
@@ -5009,7 +5000,7 @@ class TestEntrypointConfidenceFiltering:
             ))
 
         entrypoints = detect_entrypoints(exports, [])
-        # No demotion happens (no semantic entries), so all at 0.80
+        # No demotion happens (no semantic entries), so all stay at 0.75
         assert len(entrypoints) == 5
 
 
@@ -5136,8 +5127,8 @@ class TestEntrypointConceptDetection:
     """Tests for generic 'entrypoint' concept -> entrypoint mapping.
 
     The 'entrypoint' concept is used by electron.yaml, cli.yaml, cli-go.yaml,
-    cli-ruby.yaml, and akka-http.yaml but was previously silently ignored by
-    _detect_from_concepts(). These tests verify it is now handled.
+    cli-ruby.yaml, and akka-http.yaml. These tests verify that
+    _detect_from_concepts() maps it to an entrypoint.
     """
 
     def test_entrypoint_concept_electron(self) -> None:
@@ -5727,13 +5718,14 @@ class TestSwiftApplicationConcept:
 class TestPerSymbolDedupKeepsMostConfidentKind:
     """INV-liraj: one symbol, several entrypoint kinds -> the most confident wins.
 
-    ``detect_entrypoints`` collapses entrypoints that share a ``symbol_id``.
-    It used to keep the FIRST-EMITTED entry, so the outcome depended on the
-    order detectors happened to run in: a Phoenix route marker (kind=function,
-    meta.framework_role=route) also carries the Elixir ``library_export``
-    concept, the concept pass emits that LIBRARY_EXPORT (0.75) before the
-    route-marker pass emits HTTP_ROUTE (0.90), and every Phoenix route
-    vanished from the sketch's HTTP Routes section (thc: 377 routes, 0 shown).
+    ``detect_entrypoints`` collapses entrypoints that share a ``symbol_id``,
+    keeping the most confident one rather than the first emitted, so the
+    outcome does not depend on detector order. A Phoenix route marker
+    (kind=function, meta.framework_role=route) also carries the Elixir
+    ``library_export`` concept, and the concept pass emits that
+    LIBRARY_EXPORT (0.75) before the route-marker pass emits HTTP_ROUTE
+    (0.90); keeping the first would drop every Phoenix route from the
+    sketch's HTTP Routes section.
     """
 
     def test_route_marker_with_library_export_concept_is_http_route(self) -> None:

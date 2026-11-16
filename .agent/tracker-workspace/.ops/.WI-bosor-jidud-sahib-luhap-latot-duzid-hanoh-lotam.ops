@@ -1,0 +1,22 @@
+- op: create  # 4552
+  at: '2026-11-16T15:17:46Z'  # 4552
+  by: agent  # 4552
+  actor: jgstern_agent  # 4552
+  clock: 1  # 4552
+  nonce: '4552'  # 4552
+  data:  # 4552
+    kind: work_item  # 4552
+    title: "python: a call-expression base class gives base_classes == [''], and an attribute decorator on a call is named by its tail"  # 4552
+    status: todo_hard  # 4552
+    priority: 4  # 4552
+    parent:  # 4552
+    tags:  # 4552
+    - python  # 4552
+    - analyzer  # 4552
+    - analysis_quality  # 4552
+    isbefore: []  # 4552
+    duplicate_of: []  # 4552
+    not_duplicate_of: []  # 4552
+    pr_ref:  # 4552
+    description: "WHAT. Two forms that WI-dujor-papop-fupus-sutuf-bajaz-sivaj-salir-nivur's title named are left after its identity half shipped in PR #2200 (owner, 2026-11-16: close that item on the identity work and file these here). Both come from py.py `_format_annotation` called with its default `fill_holes=False`, which writes \"\" for an expression it has no case for.\n\n1. A call-expression base class. `class P(namedtuple(\"P\", \"x y\")): pass` gives `meta.base_classes == [\"\"]`: a consumer reads a base named nothing. WI-pusan (done) decided that no `extends` edge is emitted for such a base, because it names no class; it did not decide what `base_classes` should show. Options: omit the entry, or write the expression text (ast.unparse) so the list says what the source says.\n\n2. Decorator metadata. `_extract_decorator_info` names an attribute decorator with `_format_annotation`, so a decorator whose head is not a plain dotted name (`@a().b`) is named `.b`. Decorator ARGUMENT values the renderer cannot write become the placeholder `<complex>` / `<binop>` (a marker, not an empty string).\n\nNOT AN IDENTITY QUESTION. The stable id hashes decorator NAMES through a different function (`_extract_py_decorator_names`: plain names, module paths and arguments stripped), and base classes are not a hash input. Fixing either form here moves no stable id. (A note on WI-dujor dated 2026-11-16 said the decorator text is a hash input; that was wrong and is corrected on that item.)\n\nNOT MEASURED: how often either form occurs on a corpus.\n\nSeen on the WI-dujor repro fixture, dev 3da1f85b37 and PR #2200's code: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md section 7."  # 4552
+    fields: {}  # 4552

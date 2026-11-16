@@ -56,11 +56,12 @@ class TestGrammarSpec:
         assert "circom" in names
 
     def test_circom_grammar_spec_matches_shell_script(self) -> None:
-        """Circom GrammarSpec must match scripts/build-source-grammars:279.
+        """Circom GrammarSpec must match scripts/build-source-grammars.
 
-        Locks in the same repo URL, binding function name, and scanner type
-        the shell script uses, so the two build paths produce equivalent
-        installed packages.
+        Locks in the binding function name and scanner type the shell
+        script's ``build_grammar "circom" ...`` call uses, so the two build
+        paths produce equivalent installed packages, plus the documented
+        upstream repo URL.
         """
         by_name = {g.name: g for g in SOURCE_GRAMMARS}
         circom = by_name["circom"]
@@ -156,10 +157,10 @@ class TestBuildGrammar:
     ) -> None:
         """The missing-source error must tell an installed user what to do.
 
-        INV-bazoz: the old message pointed at ``docs/grammars/vendor-sync.md``,
-        a file that exists only in a source checkout. A user of a broken or
-        stripped install needs the path that was looked up and a remedy
-        that works for them (reinstall hypergumbo-core).
+        Pointing only at ``docs/grammars/vendor-sync.md`` does not help: that
+        file exists only in a source checkout. A user of a broken or stripped
+        install needs the path that was looked up and a remedy that works for
+        them (reinstall hypergumbo-core). (INV-bazoz)
         """
         spec = GrammarSpec(
             name="test",
@@ -264,12 +265,13 @@ class TestVendorLayout:
     def test_vendor_root_is_inside_the_installed_package(self) -> None:
         """``VENDOR_ROOT`` must live inside the ``hypergumbo_core`` package.
 
-        INV-bazoz: it used to be ``Path(__file__).parents[4] / "vendor"``,
-        the repo root of a source checkout. A wheel packages only
-        ``src/hypergumbo_core``, so from a pip/pipx install that path
-        landed at ``<venv>/vendor`` and ``build-grammars`` failed for
-        every grammar. Anything outside the package directory is not in
-        the wheel, so the property is "under the package dir".
+        A wheel packages only ``src/hypergumbo_core``. A path outside it,
+        such as the source checkout's repo-root ``vendor/``
+        (``Path(__file__).parents[4] / "vendor"``), lands at
+        ``<venv>/vendor`` in a pip/pipx install, and ``build-grammars`` then
+        fails for every grammar. Anything outside the package directory is
+        not in the wheel, so the property is "under the package dir".
+        (INV-bazoz)
         """
         import hypergumbo_core
         from hypergumbo_core.build_grammars import VENDOR_ROOT
@@ -283,8 +285,8 @@ class TestVendorLayout:
         The vendored C sources are package data, not Python modules, so
         they reach the wheel only because hatch's ``packages`` option
         copies the whole directory. An ``exclude`` / ``only-include`` /
-        ``artifacts`` filter added later could silently drop them again;
-        this pins the config shape the fix relies on. (The behavioural
+        ``artifacts`` filter could silently drop them; this pins the config
+        shape that ships them. (The behavioural
         check — build the wheel, install it in a fresh venv, run
         ``hypergumbo build-grammars`` — is recorded on INV-bazoz.)
         """
@@ -378,12 +380,43 @@ class TestBuildAllGrammars:
         assert results["lean"] is True
         assert results["wolfram"] is False
 
-    def test_build_all_grammars_uses_temp_dir(self) -> None:
-        """Test that build_all_grammars uses temp dir by default."""
-        with patch("hypergumbo_core.build_grammars.build_grammar", return_value=True):
+    def test_build_all_grammars_uses_a_fresh_private_temp_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The default build directory is new, private and removed afterwards.
+
+        A fixed path such as ``<tmp>/ts-grammar-build`` created with
+        ``exist_ok=True`` is unsafe on a shared host: whoever makes that
+        directory first owns it, so another user's leftover crashes the build,
+        and a hostile one can swap the generated ``setup.py`` before pip runs
+        it as the victim.
+        """
+        import os
+        import stat
+        import tempfile
+
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+        squatted = tmp_path / "ts-grammar-build"
+        squatted.mkdir()
+        squatted.chmod(0o777)
+        seen: list[tuple[Path, int, int]] = []
+
+        def record(spec, build_dir, quiet=False):
+            st = build_dir.stat()
+            seen.append((build_dir, stat.S_IMODE(st.st_mode), st.st_uid))
+            return True
+
+        with patch("hypergumbo_core.build_grammars.build_grammar", side_effect=record):
             results = build_all_grammars(quiet=True)
 
         assert len(results) == len(SOURCE_GRAMMARS)
+        dirs = {d for d, _, _ in seen}
+        assert len(dirs) == 1, dirs
+        build_dir = dirs.pop()
+        assert build_dir != squatted and build_dir.parent == tmp_path
+        assert all(mode == 0o700 and uid == os.getuid() for _, mode, uid in seen)
+        assert not build_dir.exists(), "the private build dir was left behind"
+        assert list(squatted.iterdir()) == []
 
 
 class TestCheckGrammarAvailability:

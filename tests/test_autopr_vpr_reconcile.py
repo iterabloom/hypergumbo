@@ -1,20 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tier-B behavioral tests for auto-pr's vPR reconciliation (WI-buniz).
 
-Three failure modes, all observed live 2026-08-01 while landing PR #144:
+Three failure modes the reconciliation must handle:
 
-1. A push rejected NON-FAST-FORWARD (the remote branch already held the
-   change from auto-pr's own hung-run re-push cycle) was classified as
-   "remote unavailable" and queued a duplicate vPR while the real PR sat
-   open on the remote.
-2. ``prune`` judged staleness by sha-ancestry only. A flush REBUILDS
+1. A push rejected NON-FAST-FORWARD (e.g. the remote branch already holds
+   the change from auto-pr's own hung-run re-push cycle) is not "remote
+   unavailable"; treating it so queues a duplicate vPR while the real PR
+   sits open on the remote.
+2. Staleness cannot be judged by sha-ancestry alone. A flush REBUILDS
    commits, so a merged change's queue entry carries a sha that never
-   appears in the base branch — measured: the queued commit differed from
-   the merged one ONLY in ``.ci/affected-tests.txt``'s timestamp header,
-   and prune called it "live" forever.
-3. A queue entry whose sha/branch became unresolvable (merged branch
-   deleted) made ``flush`` die with git's raw ``Needed a single
-   revision`` and made ``prune`` call the entry live.
+   appears in the base branch — it can differ from the merged commit ONLY
+   in ``.ci/affected-tests.txt``'s timestamp header — and an ancestry-only
+   ``prune`` calls it "live" forever.
+3. A queue entry whose sha/branch has become unresolvable (merged branch
+   deleted) must not make ``flush`` die with git's raw ``Needed a single
+   revision``, nor make ``prune`` call the entry live.
 
 Bash contributes no Python coverage (Tier B); these drive the real script.
 """
@@ -97,7 +97,7 @@ def _queue_entry(repo, sha, vpr=1, branch="q-branch", base="dev"):
 class TestPruneStaleness:
     def _repo_with_squash_merged_content(self, tmp_path):
         """Queue sha whose tree differs from origin/dev ONLY in the
-        regenerated-every-run manifest — the measured PR #144 shape."""
+        regenerated-every-run manifest — the flush-rebuild shape."""
         repo = fake_repo(tmp_path, "https://github.com/test/repo.git")
         (repo / ".ci").mkdir(exist_ok=True)
         (repo / "src.py").write_text("v1\n")

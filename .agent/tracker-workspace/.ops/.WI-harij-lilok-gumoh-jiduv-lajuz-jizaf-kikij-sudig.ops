@@ -1,0 +1,22 @@
+- op: create  # 563e
+  at: '2026-10-25T11:37:01Z'  # 563e
+  by: agent  # 563e
+  actor: jgstern_agent  # 563e
+  clock: 1  # 563e
+  nonce: 563e  # 563e
+  data:  # 563e
+    kind: work_item  # 563e
+    title: "ruby cyclomatic complexity misses ternaries and statement modifiers: the decision set lists 'ternary' (tree-sitter-ruby says 'conditional') and no *_modifier types, so `a > b ? a : b` is cc=1"  # 563e
+    status: todo_hard  # 563e
+    priority: 3  # 563e
+    parent:  # 563e
+    tags:  # 563e
+    - analysis_quality  # 563e
+    - ruby  # 563e
+    - parity  # 563e
+    isbefore: []  # 563e
+    duplicate_of: []  # 563e
+    not_duplicate_of: []  # 563e
+    pr_ref:  # 563e
+    description: "FOUND 2026-10-25 (premise check of INV-kobad), verified on fixtures and in the grammar.\n\nDEFECT. analyze/cyclomatic.py's Ruby decision-point set is {if, unless, while, until, for, when, in_clause, rescue, ternary}. tree-sitter-ruby has no 'ternary' node: `a > b ? a : b` parses as `conditional`. The statement-modifier forms `x if a`, `x unless a`, `x while a`, `x until a`, `x rescue nil` parse as if_modifier, unless_modifier, while_modifier, until_modifier, rescue_modifier, none of which is listed.\n\nMEASURED. `def m(a, b); a > b ? a : b; end` -> cyclomatic_complexity 1 in Ruby, 2 for the same ternary in java, rust, js, c and python. A method containing `return 1 if a; x unless a; y while a` -> cc=1.\n\nFIX. Replace 'ternary' with 'conditional' and add the five *_modifier types (each is a single-condition construct, counted once, consistent with the set's comment). Guard against recurrence: assert every name in each language's set is a node type the grammar can produce (node-types.json), so a misnamed entry fails a test instead of silently counting 0.\n\nINV-kobad matrix row 1 (ruby column)."  # 563e
+    fields: {}  # 563e

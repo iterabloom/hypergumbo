@@ -1,0 +1,22 @@
+- op: create  # 8e7c
+  at: '2026-11-02T00:01:54Z'  # 8e7c
+  by: agent  # 8e7c
+  actor: jgstern_agent  # 8e7c
+  clock: 1  # 8e7c
+  nonce: 8e7c  # 8e7c
+  data:  # 8e7c
+    kind: work_item  # 8e7c
+    title: "Apex and LaTeX both analyze every .cls file: no content disambiguation for the shared extension"  # 8e7c
+    status: todo_hard  # 8e7c
+    priority: 3  # 8e7c
+    parent:  # 8e7c
+    tags:  # 8e7c
+    - analyzer  # 8e7c
+    - discovery  # 8e7c
+    - analysis_quality  # 8e7c
+    isbefore: []  # 8e7c
+    duplicate_of: []  # 8e7c
+    not_duplicate_of: []  # 8e7c
+    pr_ref:  # 8e7c
+    description: "FOUND 2026-11-01 by the tracker-hygiene sweep (the investigator for WI-fovop; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z). Re-reproduced at dev e362b4ba4f.\n\nMECHANISM. apex.py:876 declares file_patterns [\"*.cls\", \"*.trigger\"]; latex.py:402 declares [\"*.tex\", \"*.sty\", \"*.cls\"] (taxonomy.py:454 lists *.cls for latex). discovery.py has content classifiers only for .m, .d and .php, and nothing forbids two analyzers claiming one glob without a classifier.\n\nREPRO (~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/unfiled_repros/fixtures/cls: Foo.cls = an Apex class, mycls.cls = a LaTeX class with \\ProvidesClass). analyze_apex reports files_analyzed=2 and analyze_latex reports files_analyzed=2, so each analyzer parses the other's file. In this fixture neither emitted a symbol from the foreign file.\n\nNOT MEASURED: whether either analyzer mints symbols, edges or partial-parse records from a foreign .cls on a real corpus (Salesforce repos; LaTeX class files).\n\nSAME MECHANISM as WI-fovop (.v: V and Verilog) and WI-namaj (.pp: Pascal and Puppet); sweep family F-shared-extension. Fix: a content classifier for .cls (a LaTeX class opens with \\NeedsTeXFormat or \\ProvidesClass; Apex opens with an access-modified class, interface or enum). Structural cure for the family: a registry-time check that any glob claimed by more than one analyzer has a registered classifier, which would catch .v, .pp and .cls together."  # 8e7c
+    fields: {}  # 8e7c

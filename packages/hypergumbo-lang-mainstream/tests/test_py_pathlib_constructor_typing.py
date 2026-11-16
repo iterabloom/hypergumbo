@@ -1,44 +1,36 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""``p = Path(x)`` types the receiver — and an UNBOUND constructor name no longer does.
+"""``p = Path(x)`` types the receiver — and an UNBOUND non-builtin constructor name does not.
 
-WHAT WAS MISSING. ``EXTERNAL_CONSTRUCTOR_TYPES`` held exactly two rows, ``open`` and
-``socket.socket``, so the single most common filesystem idiom in Python produced no
-boundary at all::
+The most common filesystem idiom in Python must reach the ``pathlib.Path`` rows
+(``fs_read`` / ``fs_write`` methods) in ``python.yaml``::
 
     from pathlib import Path
     p = Path(raw)
-    p.write_text(data)      # emitted python:external:...:write_text -> 0 boundaries
+    p.write_text(data)      # -> python:pathlib.Path:...:write_text, a boundary
 
-``pathlib.Path`` has been in ``python.yaml`` the whole time — 9 ``fs_read`` methods and
-10 ``fs_write`` — so the catalogue entry existed and nothing could reach it.
+TWO TABLE KEYS, NOT ONE. Bare ``Path`` (``from pathlib import Path``) and dotted
+``pathlib.Path`` (``import pathlib``) are both common, and they hit different branches
+of ``_external_constructor_type``, so each needs its own row; a single key would cover
+only part of the sites while looking complete.
 
-TWO TABLE KEYS, NOT ONE. Measured over the corpus: bare ``Path`` (``from pathlib import
-Path``) accounts for 103 of 136 constructor sites and 65 of the would-be reaches; dotted
-``pathlib.Path`` (``import pathlib``) accounts for 33 sites and 29 reaches. A bare-only
-patch delivers 65 of 94. The two forms hit different branches of
-``_external_constructor_module`` and each needs its own row.
+UNBOUND IS TRUSTED ONLY FOR A REAL BUILTIN. "An unbound bare name means the builtin" is
+true of ``open``. It is false of ``Path``, which is not a builtin — an unbound ``Path``
+is a locally defined class, a star-import, or a name from a module the analyzer did not
+read. Trusting it would mint an ``fs_write`` boundary and a ``host_fs`` taint sink for
+any class that happens to be called ``Path``, and constructor names that are also
+in-repo class names are common. So the permitting case is enumerated rather than
+assumed: a row is trusted while unbound only if it is named in
+:data:`BUILTIN_CONSTRUCTOR_NAMES`. Everything else must be POSITIVELY bound to the
+module it claims — "confirmed", not merely "not contradicted" (INV-kipor's default-deny
+binding check).
 
-THE RULE THAT CHANGED, AND WHY IT HAD TO. The bare-name branch trusted an UNBOUND name:
-"unbound stays trusted, because for a bare name that means the builtin." That is true of
-``open``. It is false of ``Path``, which is not a builtin — an unbound ``Path`` is a
-locally defined class, a star-import, or a name from a module the analyzer did not read.
-Trusting it would mint an ``fs_write`` boundary and a ``host_fs`` taint sink for any
-class in the corpus that happens to be called ``Path``, and 254 corpus sites have a
-constructor name that is also an in-repo class name.
-
-So the permitting case is now enumerated rather than assumed: a row is trusted while
-unbound only if it is named in :data:`BUILTIN_CONSTRUCTOR_NAMES`. Everything else must be
-POSITIVELY bound to the module it claims. ``open`` keeps its old behaviour by being in
-that set; ``Path`` must prove itself. This is the same default-deny shape as INV-kipor's
-binding check, tightened from "not contradicted" to "confirmed".
-
-DELIBERATELY NOT ADDED, each for a measured reason rather than caution:
-``io.StringIO`` / ``io.BytesIO`` — 160 corpus sites, but the catalogue's ``io`` module
-declares ZERO method-kind primitives, so typing them reaches nothing.
-``multiprocessing.Pipe`` and ``asyncio.open_connection`` — both return a TUPLE, not the
-type; they score zero here only because the corpus idiom is tuple unpacking, which the
-Name-target guard already refuses, so a row for either is a latent wrong-type source
-waiting for the first non-unpacked use.
+DELIBERATELY NOT TYPED: ``io.StringIO`` / ``io.BytesIO`` — the catalogue's ``io``
+module declares ZERO method-kind primitives, so typing them reaches nothing; and
+``asyncio.open_connection``, which returns a TUPLE, not the type. ``multiprocessing.Pipe``
+also returns a tuple but IS in the table, because the table is derived from the
+catalogue's receiver types. The usual tuple-unpacking idiom (``a, b = Pipe()``) is
+refused by the Name-target guard, so only a non-unpacked ``c = Pipe()`` is typed —
+as the pair, which is a latent wrong-type source.
 """
 
 from pathlib import Path
@@ -64,7 +56,7 @@ def _slot(edges: list, method: str) -> str:
 
 
 class TestBothConstructorFormsReachTheCatalogue:
-    """The recall gap. Each form enters a different branch of the resolver."""
+    """Recall: each form enters a different branch of the resolver."""
 
     def test_from_import_bare_name(self, tmp_path: Path) -> None:
         edges = _edges(
@@ -105,9 +97,8 @@ class TestBothConstructorFormsReachTheCatalogue:
     def test_constructor_result_feeds_the_derivation_allowlist(
         self, tmp_path: Path,
     ) -> None:
-        """A typed constructor result is a derivation ROOT, so PR #247's
-        ``TYPE_PRESERVING_MEMBERS`` propagation now has something to start from —
-        which is where a chunk of the measured payload actually comes from."""
+        """A typed constructor result is a derivation ROOT, so
+        ``TYPE_PRESERVING_MEMBERS`` propagation has something to start from."""
         edges = _edges(
             tmp_path / "chain",
             "from pathlib import Path\n"
@@ -121,9 +112,8 @@ class TestBothConstructorFormsReachTheCatalogue:
 
 
 class TestAnUnboundNameIsNoLongerTrusted:
-    """The rule this change tightened. Each of these would mint a false ``fs_write``
-    boundary AND a false ``host_fs`` taint sink under the old "unbound is the
-    builtin" assumption."""
+    """Each of these would mint a false ``fs_write`` boundary AND a false
+    ``host_fs`` taint sink if an unbound name were trusted as the builtin."""
 
     def test_locally_defined_class_named_path(self, tmp_path: Path) -> None:
         edges = _edges(
@@ -166,7 +156,8 @@ class TestAnUnboundNameIsNoLongerTrusted:
 
 class TestBuiltinRowsKeepTheirOldBehaviour:
     """REGRESSION GUARD. ``open`` genuinely is a builtin, so an unbound ``open`` must
-    stay trusted — the tightening above must not quietly narrow WI-fuvuj."""
+    stay trusted — the default-deny above must not quietly narrow the ``open`` ->
+    ``file`` typing. (history: WI-fuvuj)"""
 
     def test_unbound_open_is_still_trusted(self, tmp_path: Path) -> None:
         edges = _edges(
@@ -179,7 +170,8 @@ class TestBuiltinRowsKeepTheirOldBehaviour:
         assert _tagged(edges) >= 1
 
     def test_shadowed_open_is_still_refused(self, tmp_path: Path) -> None:
-        """INV-kipor's original defect, re-asserted at the new branch."""
+        """An ``open`` bound to another module is refused the ``file`` type.
+        (history: INV-kipor)"""
         edges = _edges(
             tmp_path / "openshadow",
             "from decoy_lib import open\n"
@@ -226,12 +218,10 @@ class TestRecordedNonGoals:
     """Pinned so a later PR that changes one argues with an assertion."""
 
     def test_aliased_from_import_binds_through_the_alias(self, tmp_path: Path) -> None:
-        """``from pathlib import Path as P`` WAS a recorded non-goal: it missed the
-        constructor table by key (a false negative, safe direction, 0 of 136 corpus
-        sites). The imported-class rule (WI-makij) asks the BINDING rather than the
-        table, and the alias binds to ``pathlib.Path`` exactly, so the non-goal is
-        closed as a side effect rather than argued around: the instance is typed
-        and the catalogued row is reached."""
+        """``from pathlib import Path as P`` misses the constructor table by key,
+        but the imported-class rule (WI-makij) asks the BINDING rather than the
+        table, and the alias binds to ``pathlib.Path`` exactly: the instance is
+        typed and the catalogued row is reached."""
         edges = _edges(
             tmp_path / "aliasfrom",
             "from pathlib import Path as P\n"
@@ -244,8 +234,8 @@ class TestRecordedNonGoals:
         assert _tagged(edges) >= 1
 
     def test_stringio_is_deliberately_absent(self, tmp_path: Path) -> None:
-        """160 corpus sites, and the catalogue's ``io`` module declares ZERO
-        method-kind primitives — typing them would reach nothing at all."""
+        """The catalogue's ``io`` module declares ZERO method-kind primitives —
+        typing ``StringIO`` would reach nothing at all."""
         edges = _edges(
             tmp_path / "sio",
             "import io\n"

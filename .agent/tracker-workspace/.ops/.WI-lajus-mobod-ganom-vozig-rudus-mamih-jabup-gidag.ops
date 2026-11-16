@@ -38,3 +38,19 @@
     status: done  # 1058
   add:  # 1058
     tags: [awaits_bakeoff_validation]  # 1058
+- op: update  # daf4
+  at: '2026-11-02T10:19:35Z'  # daf4
+  by: agent  # daf4
+  actor: jgstern_agent  # daf4
+  clock: 4  # daf4
+  nonce: daf4  # daf4
+  set: {}  # daf4
+  remove:  # daf4
+    tags: [awaits_bakeoff_validation]  # daf4
+- op: discuss  # cfc9
+  at: '2026-11-02T10:19:35Z'  # cfc9
+  by: agent  # cfc9
+  actor: jgstern_agent  # cfc9
+  clock: 5  # cfc9
+  nonce: cfc9  # cfc9
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). passt / libvfio-user / torsocks: measured total_io_edges 137 / 64 / 20; sys/socket accept/connect/recv*/send* classified from C (recorded 75/51/15 -> 119/58/16). Tag stripped."  # cfc9

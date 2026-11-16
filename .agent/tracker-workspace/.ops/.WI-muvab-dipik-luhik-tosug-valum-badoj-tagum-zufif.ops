@@ -1,0 +1,43 @@
+- op: create  # 6056
+  at: '2026-10-25T11:04:28Z'  # 6056
+  by: agent  # 6056
+  actor: jgstern_agent  # 6056
+  clock: 1  # 6056
+  nonce: '6056'  # 6056
+  data:  # 6056
+    kind: work_item  # 6056
+    title: "swift: init/deinit stable_ids hash only the enclosing type chain, so two function-local types' constructors share one stable_id"  # 6056
+    status: todo_hard  # 6056
+    priority: 3  # 6056
+    parent:  # 6056
+    tags:  # 6056
+    - docstring_audit  # 6056
+    - analysis_quality  # 6056
+    isbefore: []  # 6056
+    duplicate_of: []  # 6056
+    not_duplicate_of: []  # 6056
+    pr_ref:  # 6056
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- swift.py: Two function-local `struct Inner { init(x: Int) {} ; deinit {} ; func go() {} }`, one in `func f` and one in `func g` of one file, share their constructor AND deinit stable_ids, while their struct and `go` ids differ -- evidence: `analyze_swift` on a scratch repo printed\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 6056
+    fields: {}  # 6056
+- op: discuss  # bce8
+  at: '2026-11-15T19:25:53Z'  # bce8
+  by: agent  # bce8
+  actor: jgstern_agent  # bce8
+  clock: 2  # bce8
+  nonce: bce8  # bce8
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (stable-id v14). Reproduces. `analyze_swift` on two function-local `struct Inner { init(x: Int) {}; deinit {}; func go() {} }` (in `f` and `g`): both inits `sha256:15a05d39b08dc2a9`, both deinits `sha256:1340cad2708b809c`; struct and `go` ids differ. `_swift_lifecycle_symbol` (swift.py:1661) hashes `_get_swift_type_ancestors`, not `_swift_scope`. In `hypergumbo run` output the tie is split by `split_within_file_stable_id_collisions` (`:occ:1`), so no shared id is emitted, but deleting f's `Inner` moves g's `Inner.init` 365fa579… -> 15a05d39… and `Inner.deinit` ca92d0f5… -> 1340cad2…, while g's `Inner`/`go` ids stay. The description's evidence text is cut off after \"printed\". Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-muvab. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-muvab.md. No status or priority change made by this review."  # bce8
+- op: update  # 4a45
+  at: '2026-11-16T11:46:39Z'  # 4a45
+  by: agent  # 4a45
+  actor: jgstern_agent  # 4a45
+  clock: 3  # 4a45
+  nonce: 4a45  # 4a45
+  set:  # 4a45
+    status: done  # 4a45
+- op: discuss  # 10cf
+  at: '2026-11-16T11:46:39Z'  # 10cf
+  by: agent  # 10cf
+  actor: jgstern_agent  # 10cf
+  clock: 4  # 10cf
+  nonce: 10cf  # 10cf
+  message: "Fixed in PR #2200. Re-ran the filed repro: the init and deinit of two same-named types declared in two functions shared one id each on dev (init 15a05d39..., deinit 1340cad2...) and g's ids moved when f's type was deleted; now the four ids are distinct and g's stay put on deletion. The init / deinit of a function-local type hashes the enclosing function in its scope chain. swift-composable-architecture: 6 symbols moved by this fix alone, every one an init of a type inside a test function. NOT DONE: INV-fabih's wide statement still fails for five other same-name-sibling shapes (two blocks of one function, two getters, label-only overloads, two inits, two closures): filed with the Swift residual. The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 10cf

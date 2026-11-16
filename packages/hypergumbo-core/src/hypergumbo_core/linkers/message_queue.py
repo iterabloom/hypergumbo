@@ -472,7 +472,7 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
         protocol_origin="message_queue",
         # Phase 6 PR1 (INV-hunup): was ``f"{queue_type}:{topic}"`` (2-colon
         # form when topic contained ``:`` — e.g. SQS URLs and redis subject
-        # patterns). The factory hashes into ``sha256:<16hex>`` and lets the
+        # patterns). The factory hashes into ``hgstableid<N>:<16hex>`` and lets the
         # topic carry any embedded ``:`` without breaking the validator.
         # WI-misod: an unresolved identifier is not a topic, so its stable_id
         # carries a marker segment and cannot collide with a topic string.

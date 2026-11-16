@@ -1,0 +1,21 @@
+- op: create  # ba4f
+  at: '2026-11-09T05:46:28Z'  # ba4f
+  by: agent  # ba4f
+  actor: jgstern_agent  # ba4f
+  clock: 1  # ba4f
+  nonce: ba4f  # ba4f
+  data:  # ba4f
+    kind: work_item  # ba4f
+    title: "groovy: an enum with no ';' after its constants loses its methods to the top level (tree-sitter-groovy 0.1.2)"  # ba4f
+    status: todo_hard  # ba4f
+    priority: 3  # ba4f
+    parent:  # ba4f
+    tags:  # ba4f
+    - analyzer  # ba4f
+    - analysis_quality  # ba4f
+    isbefore: []  # ba4f
+    duplicate_of: []  # ba4f
+    not_duplicate_of: []  # ba4f
+    pr_ref:  # ba4f
+    description: "Repro (dev, 2026-11-08): enum Color { RED, GREEN <newline> String label() { helper() } <newline> String helper() {...} } -> the grammar closes enum_body after GREEN with a MISSING '}', and label/helper parse as top-level function_definition nodes, so they are emitted as unqualified kind function symbols and Color has no members. With 'RED, GREEN;' they are enum_body_declarations method_declarations and come out as Color.label / Color.helper (PR #2098). Consequence: such enums' methods are unowned functions; containment and qualified search miss them. Options: a newer grammar, or analyzer recovery that re-attaches function_definitions following an enum_declaration whose closing brace is MISSING (up to the stray '}' ERROR node). I have not checked whether Groovy itself requires the ';' in this position. Documented in groovy.py's module docstring."  # ba4f
+    fields: {}  # ba4f

@@ -23,13 +23,17 @@ A row makes a verdict *cleaner* when it can move it toward `confirmed`: a
 sanitizer, a summary that ends a taint branch, a `module_completeness` grant,
 an I/O row that makes a call count as examined, a library signature that
 types a receiver. A source, a sink, a framework pattern or an I/O detection
-only ever adds.
+only ever adds. A `module_completeness` grant names an owner path and vouches
+for that path and for the types defined at it, never for a child module or
+package: audit a module's classes before granting it (ADR-0016 §7).
 
 **What a community row may not do, exactly.** A community I/O row never makes
-a call count as examined, and its `module_completeness` grants are withheld; a
+a call count as examined, and its `module_completeness` grants and
+`stdlib_other` entries (calls it says are not I/O) are withheld; a
 community taint sanitizer is not a barrier (the flow is reported and names it,
 `withheld_community_sanitizer`); a community terminating summary never closes
-a taint branch (`withheld_community_summary`). Community `frameworks`,
+a taint branch (`withheld_community_summary`); a community sink's
+`trust_level: trusted` is withheld (`withheld_community_trust`). Community `frameworks`,
 `dataflow_patterns` and `library_signatures` rows are disclosed rather than
 withheld: measured with every one of them removed, they made no verdict
 cleaner, only added structure and flows (ADR-0061 ruling 2).
@@ -44,10 +48,10 @@ line is how you vouch for it, and it is then yours.
 
 | family | built-in files | community files | your channel | what it is for |
 |---|---|---|---|---|
-| `frameworks` | 8 | 99 | `frameworks.d/` | Without these, a symbol is just a function: decorators, annotations and naming conventions stop being read as routes, handlers or entrypoints, so reachability starts from less than it should. |
+| `frameworks` | 10 | 100 | `frameworks.d/` | Without these, a symbol is just a function: decorators, annotations and naming conventions stop being read as routes, handlers or entrypoints, so reachability starts from less than it should. |
 | `dataflow_patterns` | 20 | 1 | `dataflow_patterns.d/`, `library_patterns` only | Decides whether a call READS or MUTATES its receiver. Without them the taint walk cannot tell `x.append(secret)` from `len(x)`. |
 | `io_primitives` | 15 | 0 | `io_primitives.d/` | The rows that make a call count as I/O at all. Without them no boundary is recognised, every boundary claim goes inconclusive, and a repository looks clean because nothing was examined. |
-| `io_primitives_overlays` | 0 | 8 | none | Third-party I/O that hypergumbo ships but does NOT vouch for. Without them a call to `requests.post` is invisible, because hypergumbo analyses your repository and not site-packages. |
+| `io_primitives_overlays` | 0 | 9 | none | Third-party I/O that hypergumbo ships but does NOT vouch for. Without them a call to `requests.post` is invisible, because hypergumbo analyses your repository and not site-packages. |
 | `cfg_nodes` | 6 | 0 | none | Maps tree-sitter node types to control flow. Without them the CFG for that language is empty, and an empty CFG silently means an empty taint walk. |
 | `taint_sources` | 2 | 2 | `taint_sources.d/` | Declares which values arrive untrusted. Without them a flow has no beginning and nothing is reported, however far the value travels. |
 | `taint_sanitizers` | 1 | 1 | `taint_sanitizers.d/` | Declares what makes a tainted value safe. Without them real flows stay reported after they have been made harmless — noise, not risk. |
@@ -89,7 +93,6 @@ library_patterns:
 
 ```yaml
 language: python
-status: overlay
 retrieved: 2026-09-30        # when you last checked the library
 net_send:
   - module: inhouse_http

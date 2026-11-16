@@ -148,6 +148,3 @@ patterns:
       kind: "^call$"
       name: "^view$"
       position: "^args\\[0\\]$"
-
-linkers:
-  - http

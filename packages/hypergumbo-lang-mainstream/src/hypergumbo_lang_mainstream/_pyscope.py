@@ -51,12 +51,15 @@ from hypergumbo_core.ir import Symbol
 
 @dataclass(frozen=True, slots=True)
 class NestedDef:
-    """Short name -> a function lexically nested in an enclosing FUNCTION scope
-    (INV-mofav). The ONLY :class:`Binding` variant constructed in PR-0.
+    """Short name -> a function or class declared in an enclosing FUNCTION
+    scope (INV-mofav). The ONLY :class:`Binding` variant constructed in PR-0.
 
-    Invariant: ``symbol.kind == "function"`` (never ``"method"`` — methods are
-    excluded from the frames so a method never shadows an enclosing function's
-    nested helper of the same short name; the ``py.py`` builder enforces this).
+    Invariant: ``symbol.kind`` is ``"function"`` or ``"class"`` (never
+    ``"method"`` — methods are excluded from the frames so a method never
+    shadows an enclosing function's nested helper of the same short name; the
+    ``py.py`` builder enforces this). A class declared in a function body is
+    that function's local binding exactly as a nested ``def`` is; a class-body
+    frame binds the body's own nested classes the same way.
     """
 
     symbol: Symbol
@@ -181,15 +184,14 @@ class ScopeStack:
 
     def lookup_enclosing(self, name: str) -> Symbol | None:
         """The SOLE new resolution surface (step-4): resolve *name* to a nested
-        FUNCTION in an ENCLOSING scope (LEGB "E"), honoring local shadowing
-        (LEGB "L").
+        function or local class in an ENCLOSING scope (LEGB "E"), honoring
+        local shadowing (LEGB "L").
 
-        Returns a nested FUNCTION Symbol, or ``None`` when: the kill-switch is
+        Returns that def's Symbol, or ``None`` when: the kill-switch is
         off; the stack is empty; the CALLER binds *name* as a param / assignment
         / ``global`` (Python calls that local, not a resolvable def); a nearer
         enclosing scope binds *name* locally (shadowing a further-out def); or no
-        enclosing def binds it. Never returns a method (frames are function-only)
-        or a class (nested classes are not framed).
+        enclosing def binds it. Never returns a method (frames are function-only).
         """
         if not self.enclosing_lookup_enabled or not self.frames:
             return None

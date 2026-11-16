@@ -56,20 +56,29 @@ Design Rationale
   index instead of rebuilding it; ``clear_registry_index_cache`` resets it
   (tests, or a registry mutated without changing its length).
 - **Confidence tracking**: Fuzzy matches return lower confidence multipliers.
-  An ambiguous match scales as 1/sqrt(N) in the candidate count, so a name
+  Where a pick among N candidates is still made (a ``variants`` registry,
+  ``SymbolResolver``'s ``allow_ambiguous``) it scales as 1/sqrt(N), so a name
   defined on dozens of types scores far below a two-way tie.
 - **Disambiguation**: NameResolver prefers non-test candidates when
   ``caller_path`` is a non-test file. ListNameResolver matches path hints on
   whole trailing directory components (an import of ``.../api`` matches files
   directly in ``api/``, not in ``api/v2/client/``), can return unresolved
-  instead of guessing once a name reaches ``ambiguity_threshold`` candidates,
-  and with ``soft_hint`` treats the hint as a preference rather than a filter
-  (a Rust caller's directory versus a Go import path).
+  instead of guessing once a name reaches ``ambiguity_threshold`` candidates.
+- **No guessing among candidates** (WI-jomik): a lookup that would have to
+  PICK among two or more candidates (``ambiguous`` / ``suffix_ambiguous``) is
+  unresolved -- symbol ``None``, candidates kept -- unless exactly one
+  candidate is defined in the caller's own file (``caller_path``), which is
+  returned as ``match_type="caller_file"``. A path hint that matches is still
+  evidence (``path_hint``); with ``soft_hint`` a LONE candidate outside the hint
+  is still returned (see ``ListNameResolver.lookup``). Without in-file or
+  import evidence such a pick binds the wrong target far more often than the
+  right one, and sharing the caller's directory is not evidence enough. A
+  guess among candidates reads, to every consumer, as a real in-repo call, so
+  the resolver leaves it unresolved for the analyzer's unresolved path rather
+  than grading it lower (ADR-0039 ruling 6 grades a resolution; it does not
+  license a guess).
 - **Strategy composition**: Multiple strategies can be combined per lookup
 - **Language agnostic**: Core logic works for any language; strategies adapt
-
-This replaces per-analyzer implementations with a shared, tested, optimizable
-component.
 """
 
 from __future__ import annotations
@@ -78,8 +87,9 @@ import math
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
+from .paths import is_test_node
 from .selection.filters import is_test_path
 
 if TYPE_CHECKING:
@@ -93,8 +103,11 @@ class LookupResult:
     Attributes:
         symbol: The resolved symbol, or None if not found.
         confidence: Confidence multiplier (1.0 for exact, lower for fuzzy).
-        match_type: How the symbol was matched ("exact", "suffix", "path_hint").
-        candidates: For ambiguous matches, all candidates found.
+        match_type: How the symbol was matched ("exact", "suffix",
+            "path_hint", "caller_file", "soft_hint_fallback"), or why it was
+            not ("ambiguous", "suffix_ambiguous").
+        candidates: The candidates found, where the strategy records them
+            (an exact-key hit records none); an ambiguous lookup keeps all.
     """
 
     symbol: Symbol | None
@@ -111,6 +124,20 @@ class LookupResult:
     def is_ambiguous(self) -> bool:
         """Whether multiple candidates were found."""
         return len(self.candidates) > 1
+
+
+def _caller_file_pick(
+    candidates: list[Symbol], caller_path: str | None,
+) -> Symbol | None:
+    """The one candidate defined in the caller's own file, else None.
+
+    The in-file evidence a non-unique pick needs (see the module docstring):
+    two candidates in the caller's file are still a guess.
+    """
+    if not caller_path:
+        return None
+    own = [c for c in candidates if c.path == caller_path]
+    return own[0] if len(own) == 1 else None
 
 
 #: How many registries keep a cached index. One registry per analysis run is
@@ -141,6 +168,7 @@ class _RegistryIndexes:
     size: int
     suffix: dict[str, list[tuple[str, str]]] | None = None
     name: dict[str, list[tuple[str, str]]] | None = None
+    top_levels: frozenset[str] | None = None
 
 
 _INDEX_CACHE: "OrderedDict[int, _RegistryIndexes]" = OrderedDict()
@@ -214,6 +242,7 @@ class SymbolResolver:
         self.registry = registry
         self._suffix_index: dict[str, list[tuple[str, str]]] | None = None
         self._name_index: dict[str, list[tuple[str, str]]] | None = None
+        self._top_level_index: frozenset[str] | None = None
 
     def lookup(
         self,
@@ -306,12 +335,9 @@ class SymbolResolver:
                         candidates=candidates,
                     )
 
-        # Ambiguous — scale confidence by 1/sqrt(N) so that high-ambiguity
-        # names (e.g., Initialize() defined in 15 classes) get proportionally
-        # lower confidence than a two-way ambiguity.
+        # Ambiguous: no guess among candidates (module docstring).
         return LookupResult(
-            symbol=candidates[0],
-            confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
+            symbol=None,
             match_type="ambiguous",
             candidates=candidates,
         )
@@ -423,14 +449,12 @@ class SymbolResolver:
         if self._suffix_index is not None:
             return
 
-        # WI-bavuz: the index describes the REGISTRY, so it is cached against
-        # the registry rather than against this resolver. ``lookup_symbol``
-        # builds a fresh resolver per call, so a resolver-local index was
-        # rebuilt per lookup: O(lookups x registry), both factors growing with
-        # file count. Measured on pretix, N=300 -> N=600: this function's own
-        # time 40.1s -> 269.9s (6.73x for 2x the files), 61% of all growth,
-        # with SymbolResolver.__init__ called 5,827 -> 16,065 times tracking
-        # lookup_symbol to within the one legitimate resolver.
+        # The index describes the REGISTRY, so it is cached against the
+        # registry rather than against this resolver. ``lookup_symbol`` builds
+        # a fresh resolver per call, so a resolver-local index would be rebuilt
+        # per lookup: O(lookups x registry), both factors growing with file
+        # count, which dominates runtime on large repositories.
+        # (history: WI-bavuz)
         entry = _registry_indexes(self.registry)
         if entry.suffix is None:
             index: dict[str, list[tuple[str, str]]] = {}
@@ -462,6 +486,43 @@ class SymbolResolver:
             entry.name = index
         self._name_index = entry.name
 
+    def module_in_tree(self, module: str) -> bool:
+        """Whether an absolute import of *module* lands in the registry's tree (WI-gabak).
+
+        True when the module's TOP-LEVEL package is the top-level package of a
+        registered module. Root-anchored on purpose, the way Python resolves an
+        absolute import from a source root: ``mlflow.protos.x_pb2`` is in the
+        tree of a registry holding ``mlflow.entities.assessment`` although the
+        generated module defines no symbol of its own, while ``tensorflow`` is
+        NOT in it although the registry holds the flavour ``mlflow.tensorflow``
+        -- a suffix or substring match would have called every integration
+        mlflow mirrors as a flavour in-tree. A package rooted below a nested
+        layout counts when its modules were registered from their source root
+        (``clint.rules.k`` for ``dev/clint/src/clint/rules/k.py``); a layout
+        registered from the repository root (``dev.clint...``) is not found
+        here and is the caller's second test, the suffix-aware :meth:`lookup`.
+
+        Asked of an import before a path is minted under it; a top-level
+        package that shares its name with an external one (a repository with
+        its own ``mock`` package importing the external ``mock``) answers
+        in-tree, the conservative side, which keeps the placeholder it had.
+        Built once per registry beside the suffix index (WI-bavuz).
+        """
+        self._ensure_top_level_index()
+        assert self._top_level_index is not None
+        return module.split(".", 1)[0] in self._top_level_index
+
+    def _ensure_top_level_index(self) -> None:
+        """Build the top-level-package index lazily (see :meth:`module_in_tree`)."""
+        if self._top_level_index is not None:
+            return
+        entry = _registry_indexes(self.registry)
+        if entry.top_levels is None:
+            entry.top_levels = frozenset(
+                module.split(".", 1)[0] for module, _name in self.registry.keys()
+            )
+        self._top_level_index = entry.top_levels
+
     def clear_indexes(self) -> None:
         """Clear cached indexes.
 
@@ -470,6 +531,7 @@ class SymbolResolver:
         """
         self._suffix_index = None
         self._name_index = None
+        self._top_level_index = None
         # The indexes are shared per registry (WI-bavuz), so clearing only this
         # resolver's attributes would leave the next resolver over the same
         # registry reading the very index the caller asked to discard.
@@ -635,7 +697,7 @@ class NameResolver:
         ):
             non_test_pairs = [
                 (c, k) for c, k in zip(candidates, candidates_keys, strict=True)
-                if not is_test_path(c.path)
+                if not is_test_node(c.path, c.meta)
             ]
             if non_test_pairs:
                 candidates = [p[0] for p in non_test_pairs]
@@ -692,12 +754,18 @@ class NameResolver:
                 candidates=candidates,
             )
 
-        # Multiple — ambiguous, return first.  Scale confidence by
-        # 1/sqrt(N) so common method names (Initialize with 15 classes)
-        # get proportionally lower confidence than a two-way ambiguity.
+        # Multiple: no guess among candidates unless exactly one is in the
+        # caller's own file (module docstring).
+        own = _caller_file_pick(candidates, caller_path)
+        if own is not None:
+            return LookupResult(
+                symbol=own,
+                confidence=self.CONFIDENCE_PATH_HINT,
+                match_type="caller_file",
+                candidates=candidates,
+            )
         return LookupResult(
-            symbol=candidates[0],
-            confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
+            symbol=None,
             match_type="suffix_ambiguous",
             candidates=candidates,
         )
@@ -830,13 +898,15 @@ class ListNameResolver:
     # Confidence multipliers for different match types
     CONFIDENCE_EXACT = 1.0
     CONFIDENCE_PATH_HINT = 0.90
-    # Legacy constant; ambiguous confidence now scales as 1/sqrt(N)
+    # Not used by ``lookup``: a ``variants`` tie is graded 1/sqrt(N). Kept so
+    # the three resolvers expose the same constants.
     CONFIDENCE_AMBIGUOUS = 0.70
 
     def __init__(
         self,
         registry: dict[str, list[Symbol]],
         ambiguity_threshold: int | None = None,
+        variants: bool = False,
     ) -> None:
         """Initialize resolver with a list-valued symbol registry.
 
@@ -844,91 +914,36 @@ class ListNameResolver:
             registry: Dict mapping symbol_name -> list of Symbol objects.
             ambiguity_threshold: When set, if the candidate count for a name
                 meets or exceeds this value and no path_hint disambiguates,
-                return an unresolved result instead of picking an arbitrary
-                candidate. Set to 3 to guard against common method name
-                false positives (Get, Set, Close, String).
+                return an unresolved result even when one candidate is in the
+                caller's own file or ``variants`` would pick one. Set to 3 to
+                guard against common method name false positives (Get, Set,
+                Close, String).
+            variants: The registry's same-named entries are VARIANTS of one
+                declaration, not different symbols -- Go's package scope, where
+                two package-level ``func platform`` can only be build-constraint
+                alternatives (``p_linux.go`` / ``p_darwin.go``). Then a tie is
+                no guess between targets: the first by path is returned,
+                graded ``1/sqrt(N)`` (match_type ``ambiguous``).
         """
         self.registry = registry
         self.ambiguity_threshold = ambiguity_threshold
+        self.variants = variants
 
-    def lookup(
-        self,
-        name: str,
-        *,
-        path_hint: str | None = None,
-        soft_hint: bool = False,
-    ) -> LookupResult:
-        """Look up a symbol by name with disambiguation.
-
-        Ambiguous confidence scales as ``1/sqrt(N)`` where *N* is the number
-        of candidates.  This means common interface methods like ``Close()``,
-        ``String()``, or ``Name()`` that are defined on dozens of types get
-        proportionally lower confidence (e.g. 50 candidates → 0.14) than a
-        two-way ambiguity (0.71).
-
-        Args:
-            name: The symbol name to look up.
-            path_hint: Optional path substring to prefer among candidates.
-            soft_hint: When True, path_hint is treated as a preference rather
-                than a filter.  A single candidate that doesn't match the hint
-                is still returned (with reduced confidence) instead of rejected.
-                Use for Rust-style "prefer same-module" semantics where the hint
-                is the caller's directory, not Go-style import-path evidence.
-
-        Returns:
-            LookupResult with the found symbol and match metadata.
-        """
-        candidates = self.registry.get(name, [])
-
-        if not candidates:
-            return LookupResult(symbol=None)
-
-        if len(candidates) == 1:
-            # When a path_hint is provided, the caller has evidence that the
-            # call targets a specific import package.  If the sole candidate
-            # doesn't match the hint, the candidate is a different symbol
-            # that happens to share the name (e.g. local MarshalEncoder.Encode
-            # vs encoding/json Encode).  Return not-found so the caller can
-            # create an unresolved edge.
-            #
-            # With soft_hint=True, the hint is preference-level evidence (e.g.
-            # Rust caller directory), not filter-level evidence (e.g. Go import
-            # path).  Return the candidate with reduced confidence instead of
-            # rejecting it.
-            if path_hint:
-                path_parts = path_hint.rstrip("/").split("/")
-                matched = False
-                for i in range(len(path_parts) - 1, -1, -1):
-                    suffix_parts = path_parts[i:]
-                    if _path_component_suffix_match(
-                        candidates[0].path, suffix_parts,
-                    ):
-                        matched = True
-                        break
-                if not matched:
-                    if soft_hint:
-                        return LookupResult(
-                            symbol=candidates[0],
-                            confidence=self.CONFIDENCE_PATH_HINT,
-                            match_type="soft_hint_fallback",
-                            candidates=candidates,
-                        )
-                    return LookupResult(symbol=None)
-            return LookupResult(
-                symbol=candidates[0],
-                confidence=self.CONFIDENCE_EXACT,
-                candidates=candidates,
-            )
-
+    @staticmethod
+    def _narrow(
+        candidates: list[Symbol], path_hint: str | None,
+    ) -> tuple[Symbol | None, list[Symbol]]:
+        """(the one candidate a path hint selects, or None; the narrowed set)."""
         # Multiple candidates - try to disambiguate with path hint.
-        # Track the best (smallest) narrowed candidate set: even if no
-        # suffix yields a unique match, narrowing from 10 → 2 candidates
-        # is useful — it means only 2 symbols are in the matching package.
+        # Track the best (smallest) narrowed candidate set: narrowing from
+        # 10 -> 2 candidates means only 2 symbols are in the matching package,
+        # which is what the ambiguity guard in ``lookup`` / ``too_ambiguous``
+        # counts.
         #
         # Path matching is COMPONENT-ANCHORED: the hint must match a
         # path-component suffix of the candidate's containing directory,
         # not a free-form substring.  Substring matching admits false
-        # positives — e.g., hint ``api`` matched every file under
+        # positives — e.g., hint ``api`` would match every file under
         # ``api/v2/client/<x>/`` because the substring ``api`` appears
         # anywhere in the path.  Component anchoring requires the hint's
         # segments to be the LAST segments of the dirname.
@@ -950,20 +965,118 @@ class ListNameResolver:
                     if _path_component_suffix_match(c.path, suffix_parts)
                 ]
                 if len(matching) == 1:
-                    return LookupResult(
-                        symbol=matching[0],
-                        confidence=self.CONFIDENCE_PATH_HINT,
-                        match_type="path_hint",
-                        candidates=candidates,
-                    )
+                    return matching[0], matching
                 if 1 < len(matching) < len(narrowed):
                     narrowed = matching
 
+        return None, narrowed
+
+    def too_ambiguous(self, name: str, *, path_hint: str | None = None) -> bool:
+        """Whether the ambiguity guard alone refuses ``name``.
+
+        True when ``ambiguity_threshold`` is set and the candidates a path
+        hint leaves number at least the threshold. For callers that ask "is
+        this name defined on too many types to bind by spelling?" before
+        trying other binds (a local symbol, an exact key): ``lookup``'s own
+        unresolved result also covers a two-way tie with no in-file evidence,
+        which is not that question.
+        """
+        candidates = self.registry.get(name, [])
+        if self.ambiguity_threshold is None or len(candidates) < 2:
+            return False
+        unique, narrowed = self._narrow(candidates, path_hint)
+        return unique is None and len(narrowed) >= self.ambiguity_threshold
+
+    def lookup(
+        self,
+        name: str,
+        *,
+        path_hint: str | None = None,
+        soft_hint: bool = False,
+        caller_path: str | None = None,
+        admit: Callable[[Symbol], bool] | None = None,
+    ) -> LookupResult:
+        """Look up a symbol by name with disambiguation.
+
+        A single candidate is returned (``exact``) unless a ``path_hint`` names
+        another package. Among several, a path hint that narrows them to one
+        is evidence (``path_hint``); otherwise exactly one candidate in the
+        caller's own file is (``caller_file``). Anything else would be a
+        guess, and is unresolved with its candidates kept (module docstring).
+
+        Args:
+            name: The symbol name to look up.
+            path_hint: Optional import path. Candidates are matched on whole
+                trailing directory components; a lone candidate outside the
+                hint is a different symbol that happens to share the name.
+            soft_hint: The hint is a PREFERENCE (a Rust caller's directory),
+                not import evidence (a Go import path): a lone candidate
+                outside it is still returned, as ``soft_hint_fallback`` at
+                reduced confidence. Such a hit is right when the receiver is
+                of the candidate's type (``backend.lookup()`` on a parameter
+                typed ``DNSBackend``) and wrong when it is not; the resolver
+                cannot see the receiver's type, so it keeps the hit, marked
+                by its match type, rather than dropping it. (history: WI-jomik)
+            caller_path: The calling file, for the in-file evidence a pick
+                among several candidates needs.
+            admit: The call's SHAPE, as a filter on what it can reach
+                (WI-jomik): a package-qualified ``pkg.F()`` cannot call a
+                method, so its caller admits no methods. Candidates it refuses
+                are not candidates at all, before any other rule.
+
+        Returns:
+            LookupResult with the found symbol and match metadata.
+        """
+        candidates = self.registry.get(name, [])
+        if admit is not None:
+            candidates = [c for c in candidates if admit(c)]
+
+        if not candidates:
+            return LookupResult(symbol=None)
+
+        if len(candidates) == 1:
+            # When a path_hint is provided, the caller has evidence that the
+            # call targets a specific import package.  If the sole candidate
+            # doesn't match the hint, the candidate is a different symbol
+            # that happens to share the name (e.g. local MarshalEncoder.Encode
+            # vs encoding/json Encode).  Return not-found so the caller can
+            # create an unresolved edge.
+            if path_hint:
+                path_parts = path_hint.rstrip("/").split("/")
+                matched = any(
+                    _path_component_suffix_match(
+                        candidates[0].path, path_parts[i:],
+                    )
+                    for i in range(len(path_parts) - 1, -1, -1)
+                )
+                if not matched:
+                    if soft_hint:
+                        return LookupResult(
+                            symbol=candidates[0],
+                            confidence=self.CONFIDENCE_PATH_HINT,
+                            match_type="soft_hint_fallback",
+                            candidates=candidates,
+                        )
+                    return LookupResult(symbol=None)
+            return LookupResult(
+                symbol=candidates[0],
+                confidence=self.CONFIDENCE_EXACT,
+                candidates=candidates,
+            )
+
+        unique, narrowed = self._narrow(candidates, path_hint)
+        if unique is not None:
+            return LookupResult(
+                symbol=unique,
+                confidence=self.CONFIDENCE_PATH_HINT,
+                match_type="path_hint",
+                candidates=candidates,
+            )
+
         # Ambiguity guard: when the NARROWED candidate count meets or
-        # exceeds the threshold, return unresolved instead of picking an
-        # arbitrary candidate.  Using narrowed (not original candidates)
-        # means that suffix matching that filtered e.g. 10 → 2 candidates
-        # avoids the threshold.
+        # exceeds the threshold, return unresolved even if one candidate is
+        # in the caller's file: a name defined on this many types is not
+        # bound by its spelling (common method names: Get, Set, Close).
         if (
             self.ambiguity_threshold is not None
             and len(narrowed) >= self.ambiguity_threshold
@@ -974,14 +1087,23 @@ class ListNameResolver:
                 candidates=candidates,
             )
 
-        # Ambiguous — scale confidence by 1/sqrt(N) so that common interface
-        # methods (Close, String, Name) with dozens of implementations get
-        # proportionally lower confidence than a two-way ambiguity.
-        sorted_narrowed = sorted(narrowed, key=lambda s: s.path)
-        scaled_confidence = 1.0 / (len(narrowed) ** 0.5)
+        own = _caller_file_pick(narrowed, caller_path)
+        if own is not None:
+            return LookupResult(
+                symbol=own,
+                confidence=self.CONFIDENCE_PATH_HINT,
+                match_type="caller_file",
+                candidates=candidates,
+            )
+        if self.variants:
+            return LookupResult(
+                symbol=sorted(narrowed, key=lambda s: s.path)[0],
+                confidence=1.0 / (len(narrowed) ** 0.5),
+                match_type="ambiguous",
+                candidates=candidates,
+            )
         return LookupResult(
-            symbol=sorted_narrowed[0],
-            confidence=scaled_confidence,
+            symbol=None,
             match_type="ambiguous",
             candidates=candidates,
         )
@@ -997,8 +1119,9 @@ def lookup_symbol(
 ) -> Symbol | None:
     """Convenience function for one-off lookups.
 
-    For repeated lookups, prefer creating a SymbolResolver instance
-    to benefit from index caching.
+    Repeated calls over one registry share its suffix and name indexes
+    (``_INDEX_CACHE``), so they do not rebuild them; a long-lived
+    SymbolResolver instance still saves the per-call construction.
 
     Args:
         registry: The symbol registry.

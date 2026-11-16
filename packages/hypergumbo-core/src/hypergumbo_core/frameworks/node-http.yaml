@@ -76,5 +76,3 @@ patterns:
     extract:
       path: "literal:/"
       method: "literal:ALL"
-
-linkers: []

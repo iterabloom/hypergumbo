@@ -17,17 +17,22 @@ shrink-only baseline to meta KEYS: every key a producer writes to
 ``.meta`` after the fact (on some axis) must be registered in
 ``axis_meta_keys``. See ``hypergumbo_core.meta_key_coherence``.
 
-Behavior per axis:
+Behavior:
 
-- **Strict violations** (literal value not in registry) → exit 1.
-- **Advisories** (f-string emits) → printed to stdout but do NOT block.
-  These are Phase-3 fold candidates per the parent ADRs (ADR-0023 /
-  ADR-0027 / ADR-0028); the registry-based discipline is established
-  here, the per-cluster producer migration normalizes them later.
+- Each axis is a shrink-only ratchet against
+  ``.ci/producer-axis-coherence-baseline.json``. A NEW unregistered
+  literal value emitted by any producer (direct constructor,
+  module-level helper, or nested-closure helper; positional or keyword)
+  fails, and so does a baselined value that is no longer emitted.
+- An ``Edge`` producer site that does not pass ``evidence_type`` fails
+  too (see ``main``).
+- f-string emits are not reported here: only literal values (and names
+  that resolve to literals) reach the ratchet.
 
 Exit codes:
-    0 — no new leak and no stale baseline entry on any axis.
-    1 — at least one axis has strict violations; fix before committing.
+    0 — no new leak, no stale baseline entry on any axis, and no Edge
+        site without ``evidence_type``.
+    1 — any of those found; fix before committing.
     2 — could not import a registry (likely a packaging /
         editable-install problem; do not block commits on this).
 """
@@ -76,14 +81,14 @@ _AXES = (
 
 
 def main() -> int:
-    """WI-zipis producer-side ratchet gate (INV-numat closure mechanism).
+    """Producer-side ratchet gate (history: WI-zipis, INV-numat).
 
     Fails on a NEW unregistered axis value emitted by ANY producer — direct
     constructor, module-level helper, or nested-closure helper (positional
     or keyword) — or on a baselined value no longer emitted (shrink-only).
-    This replaces the raw strict-0 gate AND per-cohort validation_report
-    counting (which provably undercounts, missing positional-helper and
-    nested-closure producers) as the producer-side closure check.
+    It scans producers directly because counting values in a cohort's
+    validation_report undercounts: it misses positional-helper and
+    nested-closure producers.
     """
     baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
     failed = False

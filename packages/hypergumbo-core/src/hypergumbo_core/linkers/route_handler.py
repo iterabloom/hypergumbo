@@ -24,15 +24,46 @@ How It Works
      resolved by ID, not by name
    - Django: view_name = "list_users" or "accounts.views.list_users"
    - Go/Gin: handler_name = "listUsers" or "handlers.GetAPI"
-3. Resolve handler reference to actual method/function symbols
+3. Resolve handler reference to actual method/function symbols, among the
+   CANDIDATES of the route (see "Which symbols can be a route's handler")
 4. Create ``dispatches_to`` edges linking routes to handlers
 5. For React Router v6.4+ routes: resolve loader_ref/action_ref to function
    symbols and create additional ``dispatches_to`` edges with
    role=loader/action metadata
 6. Confidence: handler edges get 0.9 and loader/action edges 0.85. Either
-   drops to 0.5 with ``disambiguation_fallback=True`` when the resolved
-   symbol's name or qualified_name is shared by another non-route symbol
-   (the single-value name index may have picked the wrong one)
+   drops to 0.5 with ``disambiguation_fallback=True`` when the name the
+   handler was found under is shared by another candidate, so the pick among
+   them was made by position. A handler reached by its symbol id is never a
+   pick and is never flagged
+
+Which symbols can be a route's handler
+--------------------------------------
+The choice must be a function of the source, not of the order ``symbols``
+arrives in: the analyzers' results are collected in thread completion order,
+so a table filled "first write wins" over that list answered a Django route
+with the Python view in one run and with a same-named JavaScript class of a
+vendored library in the next. Three rules, applied in this order
+(``_NameTable``):
+
+* **Host language.** A route registered in a file of language L is handled
+  by code of language L: its candidates are the symbols whose ``language``
+  is the marker's host language (``Symbol.host_language``: the
+  ``discovery_language`` ADR-0031 gives a route stand-in). JavaScript and
+  TypeScript are one candidate set (``taxonomy.JS_TS_LANGUAGES``): one
+  analyzer emits both and a ``.ts`` router names a ``.js`` handler with no
+  bridge between them. A marker with no host language (fabricated by a
+  linker from a protocol definition, e.g. gRPC) keeps every symbol.
+* **A full name outranks a short one.** A reference that equals a
+  candidate's ``qualified_name`` is that candidate; ``name`` answers only
+  when no qualified name does. So ``LoginView`` is the module-level class,
+  not ``Outer.LoginView`` whose short name it also is, and ``users#index``
+  is ``UsersController#index``, not ``Admin::UsersController#index``.
+* **A total order among equals.** Candidates still tied (two views of one
+  name in two files) are ordered by path, then span, then id, and the first
+  is taken, flagged ``disambiguation_fallback`` at 0.5. The framework
+  resolvers' own preferences (Go's same-file rule, the Rails and Laravel
+  namespace matches) run over tables built in that order, so their scans
+  are deterministic too.
 
 Why This Design
 ---------------
@@ -71,6 +102,7 @@ from typing import TYPE_CHECKING
 
 from ..member_names import MEMBER_NAME_SEPARATORS
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+from ..taxonomy import JS_TS_LANGUAGES
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
@@ -411,7 +443,7 @@ def _resolve_express_handler(
 
     def is_handler(sym: Symbol) -> bool:
         """Check if symbol is a potential handler (not a route itself)."""
-        if (sym.meta or {}).get("framework_role") == "route":
+        if (sym.meta or {}).get("framework_role") == "route":  # pragma: no cover - defensive: the linker's tables hold no route marker
             return False
         return sym.kind in ("function", "method", "arrow_function")
 
@@ -558,7 +590,7 @@ def _resolve_go_handler(
 
     def is_handler(sym: Symbol) -> bool:
         """Check if symbol is a potential handler (not a route itself)."""
-        if (sym.meta or {}).get("framework_role") == "route":
+        if (sym.meta or {}).get("framework_role") == "route":  # pragma: no cover - defensive: the linker's tables hold no route marker
             return False
         return sym.kind in ("function", "method")
 
@@ -602,8 +634,16 @@ def _resolve_go_handler(
     return None
 
 
-def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
+def _extract_handler_ref(
+    route: Symbol, symbol_ids: "frozenset[str] | dict[str, Symbol] | None" = None,
+) -> dict[str, str] | None:
     """Extract handler reference info from route metadata.
+
+    ``symbol_ids`` are the ids of the run's symbols: a ``handler_ref`` that IS
+    one of them is a direct reference whatever it looks like. The shape test
+    alone asked for a ``/`` in the path and so read the id of a handler in a
+    root-level file (``python:app.py:8-10:Item:class``) as a NAME, which
+    matched nothing: the route got no edge.
 
     Returns dict with 'type' and relevant fields, or None.
     """
@@ -637,8 +677,10 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     # Full IDs contain "://" and should be resolved by ID, not by name.
     if meta.get("handler_ref"):
         href = meta["handler_ref"]
-        if ":" in href and href.split(":")[0].isalpha() and "/" in href:
-            # Looks like a symbol ID (language:/path:span:name:kind)
+        if (symbol_ids is not None and href in symbol_ids) or (
+            ":" in href and href.split(":")[0].isalpha() and "/" in href
+        ):
+            # A symbol ID (language:/path:span:name:kind)
             return {"type": "direct", "handler_id": href}
         return {"type": "express", "handler_ref": href}
 
@@ -651,6 +693,104 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
         return {"type": "go", "handler_name": meta["handler_name"]}
 
     return None
+
+
+def _order_key(symbol: Symbol) -> tuple[str, int, int, int, int, str]:
+    """The total order among candidates: path, then span, then id.
+
+    Read off the source, so it is the same in every run whatever order the
+    analyzers' results were collected in. The id closes the order for two
+    symbols at one span.
+    """
+    span = symbol.span
+    return (
+        symbol.path or "",
+        span.start_line if span is not None else 0,
+        span.start_col if span is not None else 0,
+        span.end_line if span is not None else 0,
+        span.end_col if span is not None else 0,
+        symbol.id,
+    )
+
+
+def _candidate_languages(route: Symbol) -> frozenset[str] | None:
+    """The languages a route's handler can be written in, or ``None`` for any.
+
+    The route's host language (ADR-0031: ``language`` for a marker that
+    carries one, else the ``discovery_language`` of the stand-in). JavaScript
+    and TypeScript are one set: one analyzer emits both, and a TypeScript
+    router imports a JavaScript handler by name. A marker with no host
+    language was fabricated from a protocol definition rather than found in a
+    host file, and any language may implement it.
+    """
+    host = route.host_language
+    if host is None:
+        return None
+    if host in JS_TS_LANGUAGES:
+        return frozenset(JS_TS_LANGUAGES)
+    return frozenset({host})
+
+
+@dataclass
+class _NameTable:
+    """The names one candidate set answers to, and which of them are ties.
+
+    Built from candidates in ``_order_key`` order, first write wins, in two
+    tiers: every candidate under its ``qualified_name``, then under its
+    ``name`` where no qualified name took the key. So a reference equal to a
+    full name is that declaration, a short name answers only when nothing is
+    fully named so, and among equals the first in source order is the one
+    kept. ``collisions`` holds the keys with two or more candidates at the
+    tier that answers them. A symbol whose ``name`` and ``qualified_name``
+    are the same string is one candidate for that key, not two.
+    """
+
+    symbol_by_name: dict[str, Symbol]
+    # Multi-valued lookup by short name (last segment of dotted name). Used by
+    # the Go resolver to disambiguate between same-named symbols (e.g. an
+    # unrelated ``query`` function and an ``API.query`` method) by preferring
+    # the candidate in the same file as the route.
+    symbols_by_short_name: dict[str, list[Symbol]]
+    collisions: frozenset[str]
+    _rails_index: _RailsIndex | None = None
+
+    @staticmethod
+    def build(candidates: list[Symbol]) -> _NameTable:
+        """Index ``candidates``, which must already be in ``_order_key`` order."""
+        qualified_count: dict[str, int] = {}
+        name_count: dict[str, int] = {}
+        symbol_by_name: dict[str, Symbol] = {}
+        symbols_by_short_name: dict[str, list[Symbol]] = {}
+        for s in candidates:
+            # ADR-0032: read typed Symbol.qualified_name field
+            if s.qualified_name:
+                qualified_count[s.qualified_name] = (
+                    qualified_count.get(s.qualified_name, 0) + 1
+                )
+                symbol_by_name.setdefault(s.qualified_name, s)
+            if s.name != s.qualified_name:
+                name_count[s.name] = name_count.get(s.name, 0) + 1
+            if s.kind in ("function", "method"):
+                short = s.name.rsplit(".", 1)[-1] if "." in s.name else s.name
+                symbols_by_short_name.setdefault(short, []).append(s)
+        for s in candidates:
+            symbol_by_name.setdefault(s.name, s)
+        collisions = {k for k, c in qualified_count.items() if c > 1}
+        collisions.update(
+            k for k, c in name_count.items()
+            if c > 1 and k not in qualified_count
+        )
+        return _NameTable(
+            symbol_by_name=symbol_by_name,
+            symbols_by_short_name=symbols_by_short_name,
+            collisions=frozenset(collisions),
+        )
+
+    def rails_index(self) -> _RailsIndex:
+        """The Rails suffix index over this table, built on first use."""
+        if self._rails_index is None:
+            self._rails_index = _RailsIndex.build(self.symbol_by_name)
+        return self._rails_index
 
 
 def link_routes_to_handlers(
@@ -666,66 +806,31 @@ def link_routes_to_handlers(
     Returns:
         RouteHandlerResult with new edges and run info
     """
-    # Build symbol lookup by name and by ID.
-    # Name lookup prefers handler-kind symbols over routes because in Go/JS/Django,
-    # route symbols often share the same name as their handler function. A naive
-    # overwrite would shadow the function with the route, causing resolution to fail.
-    # ID lookup is used for direct handler_ref resolution (Flask-RESTful, etc.).
-    symbol_by_name: dict[str, Symbol] = {}
-    symbol_by_id: dict[str, Symbol] = {}
-    # Multi-valued lookup by short name (last segment of dotted name).  Used by
-    # the Go resolver to disambiguate between same-named symbols (e.g. an unrelated
-    # ``query`` function and an ``API.query`` method) by preferring the candidate
-    # in the same file as the route.
-    symbols_by_short_name: dict[str, list[Symbol]] = {}
-    # WI-rusuh / INV-zuhub item 1: count non-route ``name`` and
-    # ``qualified_name`` occurrences. Names that appear >1 times among
-    # non-route symbols are unresolvable from the single-value
-    # ``symbol_by_name`` primary index alone — the dict overwrites
-    # silently (the partial route-vs-non-route mitigation below leaves
-    # non-route vs non-route collisions untouched). The post-resolution
-    # check downstream flags edges whose resolved handler carries a
-    # colliding name with ``disambiguation_fallback=True`` and drops
-    # confidence to 0.5.
-    non_route_name_count: dict[str, int] = {}
-    for s in symbols:
-        if (s.meta or {}).get("framework_role") == "route":
-            continue
-        non_route_name_count[s.name] = non_route_name_count.get(s.name, 0) + 1
-        # ADR-0032: read typed Symbol.qualified_name field
-        if s.qualified_name:
-            qn = s.qualified_name
-            non_route_name_count[qn] = non_route_name_count.get(qn, 0) + 1
-    name_collisions: frozenset[str] = frozenset(
-        k for k, c in non_route_name_count.items() if c > 1
-    )
-    for s in symbols:
-        symbol_by_id[s.id] = s
-        existing = symbol_by_name.get(s.name)
-        if existing is None or (existing.meta or {}).get("framework_role") == "route":
-            symbol_by_name[s.name] = s
-        # Also index by qualified name if available
-        # ADR-0032: read typed Symbol.qualified_name field
-        if s.qualified_name:
-            qn = s.qualified_name
-            existing_qn = symbol_by_name.get(qn)
-            if existing_qn is None or (existing_qn.meta or {}).get("framework_role") == "route":
-                symbol_by_name[qn] = s
-        # Index by short name for same-file disambiguation
-        if s.kind in ("function", "method") and (s.meta or {}).get("framework_role") != "route":
-            short = s.name.rsplit(".", 1)[-1] if "." in s.name else s.name
-            symbols_by_short_name.setdefault(short, []).append(s)
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
+    # Every symbol that can be a handler. Route markers cannot (ADR-0027: a
+    # route marker stands for the route, anchored at the registration).
+    declarations = [
+        s for s in symbols if (s.meta or {}).get("framework_role") != "route"
+    ]
+    tables: dict[frozenset[str] | None, _NameTable] = {}
+
+    def _table_for(route: Symbol) -> _NameTable:
+        """The name table of the route's candidate set, built once per set
+        from its members in ``_order_key`` order."""
+        languages = _candidate_languages(route)
+        table = tables.get(languages)
+        if table is None:
+            table = tables[languages] = _NameTable.build(sorted(
+                (
+                    s for s in declarations
+                    if languages is None or s.language in languages
+                ),
+                key=_order_key,
+            ))
+        return table
 
     # Find route symbols
     routes = [s for s in symbols if (s.meta or {}).get("framework_role") == "route"]
-
-    # Build Rails index once if there are any Rails routes
-    rails_index: _RailsIndex | None = None
-    for route in routes:
-        ref = _extract_handler_ref(route)
-        if ref and ref["type"] == "rails":
-            rails_index = _RailsIndex.build(symbol_by_name)
-            break
 
     # WI-higap: create the run BEFORE the edge loop so Edge.__post_init__
     # can validate origin_run_id at construction.
@@ -735,18 +840,22 @@ def link_routes_to_handlers(
     routes_linked = 0
 
     for route in routes:
-        handler_ref = _extract_handler_ref(route)
+        handler_ref = _extract_handler_ref(route, symbol_by_id)
         if not handler_ref:
             continue
 
         handler: Symbol | None = None
+        table = _table_for(route)
+        symbol_by_name = table.symbol_by_name
+        symbols_by_short_name = table.symbols_by_short_name
+        name_collisions = table.collisions
 
         if handler_ref["type"] == "direct":
             handler = symbol_by_id.get(handler_ref["handler_id"])
         elif handler_ref["type"] == "rails":
             handler = _resolve_rails_handler(
                 handler_ref["controller_action"], symbol_by_name,
-                rails_index=rails_index,
+                rails_index=table.rails_index(),
             )
         elif handler_ref["type"] == "laravel":
             handler = _resolve_laravel_handler(
@@ -778,17 +887,17 @@ def link_routes_to_handlers(
             # Route → handler dispatch via path matching. Canonical
             # 'dispatches_to' + meta['dispatch_kind']='route'.
             #
-            # WI-rusuh / INV-zuhub item 1: when the resolved handler's
-            # ``name`` (or ``meta['qualified_name']``) is in
-            # ``name_collisions`` (i.e. another non-route symbol in
-            # the codebase shares the same key), the single-value
-            # ``symbol_by_name`` primary index could have picked the
-            # wrong candidate at insertion time. Flag the edge and
+            # WI-rusuh / INV-zuhub item 1: when a name the resolved
+            # handler is indexed under is in ``name_collisions`` (another
+            # candidate of the route shares it at the tier that answers),
+            # the pick among them was made by position (``_order_key``),
+            # not by anything the route says. Flag the edge and
             # drop confidence per the INV-zuhub contract. Edges whose
-            # resolved name is unique stay at confidence=0.9.
+            # resolved name is unique stay at confidence=0.9, and so does a
+            # handler named by its symbol id: that is no pick.
             # ADR-0032: read typed Symbol.qualified_name field
             handler_qn = handler.qualified_name
-            handler_is_fallback = (
+            handler_is_fallback = handler_ref["type"] != "direct" and (
                 handler.name in name_collisions
                 or (handler_qn is not None and handler_qn in name_collisions)
             )

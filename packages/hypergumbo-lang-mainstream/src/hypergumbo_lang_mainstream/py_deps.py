@@ -18,12 +18,56 @@ project's own pinned deps from arbitrary externals (WI-nunuj).
 
 Sources parsed
 --------------
-1. ``[project].dependencies`` (PEP 621).
-2. ``[project.optional-dependencies]`` (PEP 621 extras — flattened, all
-   direct).
-3. ``[tool.poetry.dependencies]`` (Poetry convention; the special
-   ``python`` key is excluded — it's the interpreter constraint, not a
-   library dep).
+One list, :data:`PYPROJECT_DEPENDENCY_TABLES`, names every ``pyproject.toml``
+table that declares dependencies, with the shape of its entries and the role
+of the table. This module reads it from the parsed TOML to build the manifest,
+and ``toml_config`` reads the same list from the syntax tree to emit one
+``kind="dependency"`` node per entry, so the two readers cannot name different
+tables (they did: the node reader knew one table and this one three).
+
+==============================================  ============  =========
+Table                                           Entries       Role
+==============================================  ============  =========
+``[project].dependencies``                      requirements  (runtime)
+``[project.optional-dependencies].<extra>``     requirements  optional
+``[dependency-groups].<group>`` (PEP 735)       requirements  dev
+``[build-system].requires``                     requirements  build
+``[tool.poetry.dependencies]``                  names         (runtime)
+``[tool.poetry.dev-dependencies]``              names         dev
+``[tool.poetry.group.<g>.dependencies]``        names         dev
+``[tool.pdm.dev-dependencies].<group>``         requirements  dev
+``[tool.uv].dev-dependencies``                  requirements  dev
+``[tool.hatch.envs.<env>].dependencies``        requirements  dev
+``[tool.hatch.envs.<env>].extra-dependencies``  requirements  dev
+==============================================  ============  =========
+
+``requirements`` is an array of PEP 508 strings; an entry that is not a
+string (PEP 735 ``{include-group = "x"}``) or does not start with a
+distribution name (PDM ``-e file:///...``) names no package. ``names`` is a
+table whose keys are the distribution names, whatever the value (a version
+string, ``{version = ..., extras = [...]}``, ``{git = ...}``, ``{path =
+...}``, an array of constraints); the ``python`` key is the interpreter
+constraint, not a library. The role is ``meta["dependency_scope"]`` on the
+node: ``dev`` and ``build`` are the values ``json_config`` and the Cargo
+tables already use, ``optional`` is new with these tables.
+
+Not read, because the table declares no package of its own:
+``[tool.uv.sources]`` and ``[tool.poetry.extras]`` (each names packages
+another table declares), ``[tool.setuptools.dynamic]`` (the names are in the
+file it points to), ``[tool.uv].constraint-dependencies`` /
+``override-dependencies`` and ``[tool.pdm.resolution.overrides]`` (version
+constraints on packages declared elsewhere).
+
+Which tables open the manifest (:func:`parse_python_dependencies`)
+------------------------------------------------------------------
+An import that matches no entry is stamped ``undeclared`` only when the
+manifest has entries at all, so an entry is also a claim that the project's
+declarations were read. Only the published tables (the runtime ones and the
+extras) make that claim. A ``dev`` or ``build`` table adds its names when some
+published table produced one, and is otherwise left out: a ``setup.py``
+project whose ``pyproject.toml`` holds nothing but ``[build-system].requires``
+declares its runtime dependencies where this module does not look, and one
+``setuptools`` entry would stamp every import of that project ``undeclared``.
 
 Monorepo support (WI-zujip)
 ---------------------------
@@ -72,8 +116,12 @@ be a second, version-drifting source the §3 single-source constraint forbids).
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Iterator, Mapping, Optional, Sequence
 
+from hypergumbo_core.installed_env import kept_per_environment
 from hypergumbo_core.io_boundary import load_catalog
 from hypergumbo_core.supply_chain import DependencyManifest
 
@@ -97,44 +145,127 @@ def _load_pyproject(pyproject_path: Path) -> dict | None:
         return None
 
 
-# Specifier separators per PEP 440 / PEP 508. Order matters: longer
-# tokens first so ``>=`` is found before ``>``.
-_SPECIFIER_SEPS = (">=", "<=", "==", "~=", "!=", "===", ";", "[", "<", ">")
+#: Entry shape: an array of PEP 508 requirement strings.
+SHAPE_REQUIREMENTS = "requirements"
+#: Entry shape: a table whose keys are the distribution names (Poetry).
+SHAPE_NAMES = "names"
+
+#: A path element that matches any one key (an extra, a group, an environment).
+ANY_KEY = "*"
 
 
-def _strip_specifier(dep: str) -> str:
-    """Reduce a PEP 508 dep string like ``click>=8.0; python_version >= '3.10'``
-    to its bare distribution name (``click``).
+@dataclass(frozen=True)
+class DependencyTable:
+    """One ``pyproject.toml`` table that declares dependencies.
+
+    ``path`` is the key path from the document root, :data:`ANY_KEY` standing
+    for one key of any name. ``shape`` is :data:`SHAPE_REQUIREMENTS` or
+    :data:`SHAPE_NAMES`. ``scope`` is the role of the table, the value of
+    ``meta["dependency_scope"]`` on its nodes: ``None`` for a runtime
+    dependency, else ``optional`` / ``dev`` / ``build``.
     """
-    for sep in _SPECIFIER_SEPS:
-        if sep in dep:
-            dep = dep.split(sep, 1)[0]
-    return dep.strip()
+
+    path: tuple[str, ...]
+    shape: str
+    scope: Optional[str] = None
+
+    @property
+    def published(self) -> bool:
+        """Whether the entries are in the built distribution's metadata
+        (``Requires-Dist``): the runtime tables and the extras."""
+        return self.scope in (None, "optional")
+
+    def match(self, path: Sequence[str]) -> bool:
+        """Whether the first ``len(self.path)`` keys of ``path`` are this table."""
+        if len(path) < len(self.path):
+            return False
+        return all(
+            want in (ANY_KEY, got)
+            for want, got in zip(self.path, path, strict=False)
+        )
 
 
-def _extract_pep621_distribution_names(data: dict) -> set[str]:
-    """Read PEP 621 ``[project].dependencies`` and ``[project.optional-dependencies]``."""
-    out: set[str] = set()
-    project = data.get("project")
-    if not isinstance(project, dict):
-        return out
-    deps = project.get("dependencies")
-    if isinstance(deps, list):
-        for dep in deps:
-            if isinstance(dep, str):
-                name = _strip_specifier(dep)
-                if name:
-                    out.add(name)
-    optional = project.get("optional-dependencies")
-    if isinstance(optional, dict):
-        for dep_list in optional.values():
-            if isinstance(dep_list, list):
-                for dep in dep_list:
-                    if isinstance(dep, str):
-                        name = _strip_specifier(dep)
-                        if name:
-                            out.add(name)
-    return out
+#: Every table of a ``pyproject.toml`` that declares dependencies (see the
+#: module docstring for the forms left out and why). The single source for
+#: this module's manifest and for ``toml_config``'s dependency nodes.
+PYPROJECT_DEPENDENCY_TABLES: tuple[DependencyTable, ...] = (
+    DependencyTable(("project", "dependencies"), SHAPE_REQUIREMENTS),
+    DependencyTable(
+        ("project", "optional-dependencies", ANY_KEY), SHAPE_REQUIREMENTS, "optional"),
+    DependencyTable(("dependency-groups", ANY_KEY), SHAPE_REQUIREMENTS, "dev"),
+    DependencyTable(("build-system", "requires"), SHAPE_REQUIREMENTS, "build"),
+    DependencyTable(("tool", "poetry", "dependencies"), SHAPE_NAMES),
+    DependencyTable(("tool", "poetry", "dev-dependencies"), SHAPE_NAMES, "dev"),
+    DependencyTable(
+        ("tool", "poetry", "group", ANY_KEY, "dependencies"), SHAPE_NAMES, "dev"),
+    DependencyTable(
+        ("tool", "pdm", "dev-dependencies", ANY_KEY), SHAPE_REQUIREMENTS, "dev"),
+    DependencyTable(("tool", "uv", "dev-dependencies"), SHAPE_REQUIREMENTS, "dev"),
+    DependencyTable(
+        ("tool", "hatch", "envs", ANY_KEY, "dependencies"), SHAPE_REQUIREMENTS, "dev"),
+    DependencyTable(
+        ("tool", "hatch", "envs", ANY_KEY, "extra-dependencies"),
+        SHAPE_REQUIREMENTS, "dev"),
+)
+
+# PEP 508 ``name``: letters, digits, ``.``, ``_``, ``-``, starting and ending
+# with a letter or digit. Whatever follows (extras, a version specifier, a
+# marker, ``@ url``) is not part of the name.
+_PEP508_NAME_RE = re.compile(r"\s*([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)")
+
+
+def pep508_name(requirement: str) -> Optional[str]:
+    """The distribution name a PEP 508 requirement string starts with.
+
+    ``click>=8.0; python_version >= '3.10'`` -> ``click``;
+    ``uvicorn[standard]`` -> ``uvicorn``; ``pip @ git+https://...`` ->
+    ``pip``. ``None`` when the string does not start with a name (an empty
+    entry, PDM's ``-e file:///...``).
+    """
+    match = _PEP508_NAME_RE.match(requirement)
+    return match.group(1) if match else None
+
+
+def is_interpreter_constraint(name: str) -> bool:
+    """Whether a key of a :data:`SHAPE_NAMES` table is Poetry's ``python``
+    entry: the interpreter constraint, not a package."""
+    return name.lower() == "python"
+
+
+def _values_at(data: Any, path: Sequence[str]) -> Iterator[Any]:
+    """Every value of the parsed TOML ``data`` at ``path`` (:data:`ANY_KEY`
+    fans out over the keys of a table)."""
+    if not path:
+        yield data
+        return
+    if not isinstance(data, dict):
+        return
+    head, rest = path[0], path[1:]
+    children = list(data.values()) if head == ANY_KEY else (
+        [data[head]] if head in data else [])
+    for child in children:
+        yield from _values_at(child, rest)
+
+
+def declared_distributions(data: dict) -> Iterator[tuple[DependencyTable, str]]:
+    """Every ``(table, distribution name)`` a parsed ``pyproject.toml`` declares.
+
+    One pass over :data:`PYPROJECT_DEPENDENCY_TABLES`; a value of the wrong
+    type for its table's shape declares nothing.
+    """
+    for table in PYPROJECT_DEPENDENCY_TABLES:
+        for value in _values_at(data, table.path):
+            if table.shape == SHAPE_REQUIREMENTS:
+                if not isinstance(value, list):
+                    continue
+                for entry in value:
+                    name = pep508_name(entry) if isinstance(entry, str) else None
+                    if name:
+                        yield table, name
+            elif isinstance(value, dict):
+                for name in value:
+                    if isinstance(name, str) and not is_interpreter_constraint(name):
+                        yield table, name
 
 
 def _extract_distribution_name(data: dict) -> str | None:
@@ -166,26 +297,6 @@ def _extract_distribution_name(data: dict) -> str | None:
     return None
 
 
-def _extract_poetry_distribution_names(data: dict) -> set[str]:
-    """Read ``[tool.poetry.dependencies]``. The ``python`` key is the
-    interpreter constraint, not a library — skip it.
-    """
-    out: set[str] = set()
-    tool = data.get("tool")
-    if not isinstance(tool, dict):
-        return out
-    poetry = tool.get("poetry")
-    if not isinstance(poetry, dict):
-        return out
-    poetry_deps = poetry.get("dependencies")
-    if not isinstance(poetry_deps, dict):
-        return out
-    for name in poetry_deps:
-        if isinstance(name, str) and name.lower() != "python":
-            out.add(name)
-    return out
-
-
 _PEP503_NORMALIZE_RE = re.compile(r"[-_.]+")
 
 
@@ -196,24 +307,39 @@ def _normalize_dist_name(name: str) -> str:
     return _PEP503_NORMALIZE_RE.sub("-", name).lower()
 
 
-def _build_dist_to_import_map() -> dict[str, set[str]]:
+def _build_dist_to_import_map() -> Mapping[str, frozenset[str]]:
     """Invert ``importlib.metadata.packages_distributions()``.
 
     ``packages_distributions()`` returns ``{import_name: [dist_names]}``
     for installed distributions. We invert to ``{normalized_dist_name:
     {import_name, ...}}`` so a single PyPI dist (which can install
     multiple top-level import packages) maps to all of them.
+
+    BUILT ONCE PER ENVIRONMENT. The call reads the metadata of every
+    installed distribution (0.36 s for 250 of them on an idle machine, 0.86 s
+    a call in a loaded test run) and ``parse_python_dependencies`` reaches it
+    twice per run. The inverted map is kept by
+    :func:`hypergumbo_core.installed_env.kept_per_environment` until a
+    distribution is installed, upgraded or removed (checking that costs about
+    a millisecond). The slot names ``packages_distributions`` itself, so a
+    stand-in for it is never answered with the real environment's map, or
+    the reverse. The map is read-only, so no caller can change what the next
+    one gets.
     """
-    out: dict[str, set[str]] = {}
     try:
         from importlib.metadata import packages_distributions
-        mapping = packages_distributions()
-    except (ImportError, AttributeError):  # pragma: no cover  # Py <3.10 lacks the API
-        return out
-    for import_name, dists in mapping.items():
-        for dist in dists:
-            out.setdefault(_normalize_dist_name(dist), set()).add(import_name)
-    return out
+    except ImportError:  # pragma: no cover  # Py <3.10 lacks the API
+        return MappingProxyType({})
+
+    def build() -> Mapping[str, frozenset[str]]:
+        out: dict[str, set[str]] = {}
+        for import_name, dists in packages_distributions().items():
+            for dist in dists:
+                out.setdefault(_normalize_dist_name(dist), set()).add(import_name)
+        return MappingProxyType(
+            {dist: frozenset(names) for dist, names in out.items()})
+
+    return kept_per_environment(("dist-to-import", packages_distributions), build)
 
 
 def _resolve_import_names(dist_names: set[str]) -> set[str]:
@@ -302,16 +428,22 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
         return DependencyManifest(entries=entries)
 
     dist_names: set[str] = set()
+    unpublished_dist_names: set[str] = set()
     workspace_dist_names: set[str] = set()
     for pyproject in pyproject_files:
         data = _load_pyproject(pyproject)
         if not isinstance(data, dict):
             continue
-        dist_names |= _extract_pep621_distribution_names(data)
-        dist_names |= _extract_poetry_distribution_names(data)
+        for table, name in declared_distributions(data):
+            (dist_names if table.published else unpublished_dist_names).add(name)
         own_name = _extract_distribution_name(data)
         if own_name:
             workspace_dist_names.add(own_name)
+
+    # A dev or build table adds to a manifest; it does not open one (module
+    # docstring, "Which tables open the manifest").
+    if dist_names:
+        dist_names |= unpublished_dist_names
 
     import_names = _resolve_import_names(dist_names)
 

@@ -58,6 +58,3 @@ patterns:
   # Sinatra enable/disable settings
   - concept: config
     decorator: "^(enable|disable)$"
-
-linkers:
-  - http

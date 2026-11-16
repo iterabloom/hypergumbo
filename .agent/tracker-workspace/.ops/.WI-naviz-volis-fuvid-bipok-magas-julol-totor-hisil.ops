@@ -18,3 +18,46 @@
     pr_ref:  # 6fd0
     description: "FOUND by WI-tusad F3 (analogue sweep for \"qualified_name keeps only the innermost scope\", fixed for C#, TypeScript and Tcl in PR #1571). Python sets qualified_name equal to the emitted name: a method of a nested class is `B.go` with qualified_name `B.go`, not `A.B.go` (PEP 3155 __qualname__), and the nested class `B` has qualified_name `B`. py.py documents this as deliberate (\"v6 is a stable_id-only change; the field's scope-qualification (and its call-resolution effects) is separate work\"); stable_ids already hash the full chain. This item is that separate work: decide whether Python qualified_name follows __qualname__ (and module path), and measure the call-resolution effect first. Probe: scratchpad fixes/f3/qn/probe.py."  # 6fd0
     fields: {}  # 6fd0
+- op: discuss  # 1e0c
+  at: '2026-11-01T22:22:24Z'  # 1e0c
+  by: agent  # 1e0c
+  actor: jgstern_agent  # 1e0c
+  clock: 2  # 1e0c
+  nonce: 1e0c  # 1e0c
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f (fx_naviz: class A: class B: def go). Survey emits method 'B.go' with qualified_name 'B.go' and class B with qualified_name 'B'. The py.py:3542-3543 comment still calls the scope qualification separate work. A.B().go() calls from A.run and top resolve only to external_symbol go/B, so the call-resolution effect this item says to measure first is live. Premise holds. Changing name/qualified_name to the full chain would trigger WI-fazid's latent split('.')[0] bug. MECHANISM: python qualified_name is set to the emitted name (innermost class + member), not the full __qualname__ scope chain. SHARES MECHANISM WITH: WI-fazid."  # 1e0c
+- op: discuss  # b515
+  at: '2026-11-15T19:25:53Z'  # b515
+  by: agent  # b515
+  actor: jgstern_agent  # b515
+  clock: 3  # b515
+  nonce: b515  # b515
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Reproduces: `class A: class B: def go` gives class `B` (qualified_name `B`) and method `B.go` (qualified_name `B.go`); a doubly nested class is `C`. `A.B().go()` from a method and from a top-level function resolves to external_symbol `go` and `B` only. New fact: class-attribute fields already carry the full chain (`B.x` has qualified_name `A.B.x`, py.py:3620-3642), so one nested class emits two conventions. Two `B.go` methods under different outer classes share name and qualified_name and differ in stable_id. The py.py comment is now at 3551-3556 with different wording. `caller_symbol.name.split(\".\")[0]` is at py.py:7522 and 7560 (WI-fazid, open). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-naviz.md. No status or priority change made by this review."  # b515
+- op: discuss  # 6046
+  at: '2026-11-15T21:14:28Z'  # 6046
+  by: agent  # 6046
+  actor: jgstern_agent  # 6046
+  clock: 4  # 6046
+  nonce: '6046'  # 6046
+  message: "[INVESTIGATION 2026-11-15, owner-requested, dev 03068d3531; report ~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/README.md] RECORD: ADR-0032 defines qualified_name as the fully-qualified scoped identifier; linkers/inheritance.py (_qualified_fits) already describes Python's value as the in-module qualname (OrderSerializer.Meta), which Python does not emit for a nested class; ten other analyzers emit the full type chain (Java, C#, Swift, Ruby, Rust, Scala, C++, TypeScript, Go, PHP); none emits a path-derived module name. PROTOTYPE (two lines in py.py: the field takes the chain the stable id already hashes; name and hash inputs untouched), measured against the same tree: fixture 6 names change; hypergumbo's own source 199 of 63,849 Python nodes; pretix 367 of 24,597. STABLE IDS MOVED: 0 in all three, so no scheme bump. EDGES: containment edges of nested classes go from the span fallback (0.9) to the name match (0.95): 3, 2 and 290; on pretix one extends edge is corrected: class Meta(OrderPositionSerializer.Meta) at api/serializers/order.py:644 pointed at WebHook.Meta in api/models.py:122 and now points at OrderPositionSerializer.Meta at order.py:595. No edge lost; pretix routes and usage contexts identical. NOT FIXED BY IT: A.B().go() still resolves to external_symbol stand-ins; that is the call resolver, filed separately today. WI-fazid's name.split is not reached (name unchanged). RECOMMENDATION TO THE OWNER: yes to the chain; no to the module path (inferred from layout, carried by the module-key axis and the file anchor already); correct the three ADR-0032 examples that show a module path. NOT MEASURED: a third corpus; verify-claims and taint. No status change."  # 6046
+- op: discuss  # 4b87
+  at: '2026-11-15T21:27:44Z'  # 4b87
+  by: agent  # 4b87
+  actor: jgstern_agent  # 4b87
+  clock: 5  # 4b87
+  nonce: 4b87  # 4b87
+  message: "[OWNER RULING 2026-11-15] 'yes to the chain and no to the module path'. A nested Python class and its methods carry the full enclosing chain (classes and functions) in qualified_name, the chain the stable id already hashes; name and the hash inputs do not change; no module path is added. Measured: 0 stable ids move, so no scheme bump; planned in PR 1 of ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md. With it: the comment at py.py:3551-3556, and the three ADR-0032 examples that show a module path (Python, Rust, TypeScript), which the ruling makes wrong. The call-resolution defect is WI-tulas-gakah-mikit-biniz-bimod-satis-fulim-zohiz, a rider in the same PR."  # 4b87
+- op: update  # 607d
+  at: '2026-11-16T04:57:52Z'  # 607d
+  by: agent  # 607d
+  actor: jgstern_agent  # 607d
+  clock: 6  # 607d
+  nonce: 607d  # 607d
+  set:  # 607d
+    status: done  # 607d
+- op: discuss  # a56f
+  at: '2026-11-16T04:57:52Z'  # a56f
+  by: agent  # a56f
+  actor: jgstern_agent  # a56f
+  clock: 7  # a56f
+  nonce: a56f  # a56f
+  message: "Fixed in PR #2198. A nested Python class and its methods carry every enclosing class and function in qualified_name (A.B, A.B.go, outer.Local); no module path. name and every hash input are unchanged (a test pins the method's stable id formula). pretix src/pretix: 0 stable ids gone, 326 qualified names changed, 283 contains edges 0.90 -> 0.95, one extends edge corrected (class Meta(OrderPositionSerializer.Meta) at api/serializers/order.py:644). ADR-0032's Python, Rust, TypeScript and JavaScript examples now show what is emitted. NOT measured: verify-claims and taint, which read the field."  # a56f

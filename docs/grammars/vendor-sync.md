@@ -67,9 +67,37 @@ cp /tmp/tree-sitter-<name>/LICENSE $VENDOR/tree-sitter-<name>/LICENSE
 python3 -c "import tree_sitter_<name>; print(tree_sitter_<name>.language())"
 
 # 6. Bump SHAPE_ID_SCHEME if the parser produced different shape_id values
-#    on a representative test corpus (ADR-0014 §6 — shape IDs depend on
-#    CST structure; a grammar version change can shift them).
+#    on a representative test corpus (shape IDs depend on CST structure; a
+#    grammar version change can shift them: see "shape_id and grammar
+#    versions" below).
 ```
+
+## shape_id and grammar versions
+
+A tree-sitter `shape_id` is a hash of the grammar's CST
+(`TreeSitterAnalyzer.compute_shape_id`), which gives the contract below. The
+spec states it for consumers (`docs/hypergumbo-spec.md` §6, "Identity and
+provenance scheme versioning").
+
+- **Every grammar is pinned.** The three vendored grammars are pinned by
+  commit, recorded in each `$VENDOR/tree-sitter-<name>/UPSTREAM`. The grammars
+  installed from PyPI are pinned in each package's `pyproject.toml` with a
+  compatible-release constraint (`~=X.Y.Z`).
+- **`shape_id` is stable for a pinned grammar version.** Upgrading a grammar
+  may change hashes.
+- **`SHAPE_ID_SCHEME` names the algorithm, not the grammars.** It bumps when
+  the hashing algorithm changes computed values, and step 6 above bumps it
+  when a re-sync of a vendored grammar moves values. A patch release of a PyPI
+  grammar inside its constraint reaches a user with no change here, so it
+  moves values without a bump.
+- **The grammar versions are in the output.** A run records the grammars it
+  used and the hypergumbo version in `reproducibility_context.captured`
+  (`grammars`, `hypergumbo_version`). A consumer comparing `shape_id` values
+  across outputs treats `shape_id_scheme` together with those versions as
+  the identity context, not `shape_id` alone.
+- **No cross-version stability tests.** Hash identity across grammar versions
+  is not tested: it is impractical to maintain, and the scheme identifier and
+  the recorded versions are the mechanism a consumer has.
 
 ## License hygiene
 

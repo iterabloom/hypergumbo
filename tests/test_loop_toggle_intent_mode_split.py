@@ -1,17 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the intent/mode split in ``scripts/loop-toggle`` (WI-pobon).
 
-The split introduces two narrow flag forms so the circuit-breaker trip path
-can reset the current session mode without flipping the project-level
-``autonomous_intent.txt`` that the agent-supervisor daemon (WI-razub)
-consults:
+Two narrow flag forms let the circuit-breaker trip path reset the current
+session mode without flipping the project-level ``autonomous_intent.txt``
+that the agent-supervisor daemon consults:
 
 * ``--set-intent MODE``        — writes ``autonomous_intent.txt`` only.
 * ``--set-session-mode MODE``  — writes ``AUTONOMOUS_MODE.txt`` only.
 
-The existing bareword form (``./scripts/loop-toggle DEEP``) keeps its old
-behavior of writing BOTH files, preserving today's human UX where a single
-mode change updates both the project intent and the current session.
+The bareword form (``./scripts/loop-toggle DEEP``) writes BOTH files, so a
+human's single mode change updates both the project intent and the current
+session.
 """
 
 from __future__ import annotations
@@ -131,14 +130,14 @@ def test_set_session_mode_off_disables_loop_sentinel(tmp_path: Path) -> None:
     assert not (fake_root / ".agent" / "LOOP").exists()
 
 
-# --- Bareword form still writes BOTH files ---
+# --- Bareword form writes BOTH files ---
 
 
 @pytest.mark.parametrize("mode", ["OFF", "BROAD", "DEEP"])
 def test_bareword_mode_writes_both_files(tmp_path: Path, mode: str) -> None:
-    """The existing ``loop-toggle MODE`` bareword form must continue to write
-    BOTH ``AUTONOMOUS_MODE.txt`` AND ``autonomous_intent.txt`` so human UX is
-    preserved."""
+    """The ``loop-toggle MODE`` bareword form must write BOTH
+    ``AUTONOMOUS_MODE.txt`` AND ``autonomous_intent.txt``, so one human mode
+    change updates both."""
     fake_root = _isolated_repo(tmp_path)
     result = _run(fake_root, mode)
     assert result.returncode == 0, (
@@ -150,7 +149,7 @@ def test_bareword_mode_writes_both_files(tmp_path: Path, mode: str) -> None:
 
 
 def test_bareword_on_writes_intent_broad(tmp_path: Path) -> None:
-    """The ``on`` alias (backward-compatible for ``broad``) must also update
+    """The ``on`` alias (for ``broad``) must also update
     intent, not just the session mode."""
     fake_root = _isolated_repo(tmp_path)
     result = _run(fake_root, "on")
@@ -234,7 +233,7 @@ def test_set_session_mode_requires_mode_argument(tmp_path: Path) -> None:
 
 
 def test_help_text_mentions_set_intent_and_set_session_mode(tmp_path: Path) -> None:
-    """``--help`` must document the new flag forms so future agents / humans
+    """``--help`` must document the narrow flag forms so agents / humans
     discover them without having to read the script."""
     fake_root = _isolated_repo(tmp_path)
     result = _run(fake_root, "--help")

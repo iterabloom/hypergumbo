@@ -3,24 +3,23 @@
 
 WHY
 ---
-WI-katap made an externally-killed run VISIBLE — it records `terminated_sigterm`
-rather than INV-rahib's `unknown` violation signal. It did nothing about the
-cause. The arithmetic is unchanged and unfixable by tuning: `auto-pr` commits to
-2400s of CI polling plus a 300s soft-retry that is not optional, while an agent
-harness caps one foreground shell call at 600s. 22 of 84 post-instrumentation
-runs were killed by the caller's own `timeout` wrapper, and 14 of the 15 PRs
-behind them merged anyway — every one finished by hand afterwards.
+`auto-pr` commits to 2400s of CI polling plus a 300s soft-retry that is not
+optional, while an agent harness caps one foreground shell call at 600s. A
+foreground run inside an agent turn is therefore killed by the caller's own
+`timeout` wrapper, typically after its PR has merged, leaving the merge to be
+finished by hand. Signal handling makes such a kill VISIBLE — it records
+`terminated_sigterm` rather than INV-rahib's `unknown` violation signal
+(WI-katap) — but cannot prevent it, and no tuning of the poll budget can.
 
-`nohup ./scripts/auto-pr &` already works and is now written into AGENTS.md. It
-is still a workaround: the caller has to know to do it, has to invent a log
-path, and gets no declared state back. The prior session rediscovered it and
-reverted to `timeout 590` within the same session.
+`nohup ./scripts/auto-pr &` also avoids the kill, but it is a workaround: the
+caller has to know to do it, has to invent a log path, and gets no declared
+state back.
 
 THE SHAPE
 ---------
 The parent detaches BEFORE doing any work and re-execs itself without
-`--detach`. That is what keeps `do_pr` — 600 lines with the poll, the soft
-retry, Scenario B and the merge cascade threaded through it — completely
+`--detach`. That is what keeps `do_pr` — a long function with the poll, the
+soft retry, Scenario B and the merge cascade threaded through it — completely
 untouched: the child is an ordinary `auto-pr` run, not a resumed half of one.
 The push is idempotent for exactly this reason (an existing open PR for the
 branch is reused, not duplicated), which is already exercised in production.
@@ -33,8 +32,8 @@ ABSENT IS NOT EMPTY, AGAIN
 --------------------------
 A handle whose watcher is gone is NOT the same as a handle whose watcher is
 still polling, and neither is the same as no handle at all. If `wait` collapsed
-them it would re-commit — one level further out — the exact defect WI-katap
-just closed inside the ledger. A watcher that died mid-poll (machine sleep,
+them it would repeat, one level further out, the conflation the ledger avoids
+by recording `terminated_by` separately from `final_state`. A watcher that died mid-poll (machine sleep,
 session teardown, OOM) leaves a handle that looks identical to a live one
 unless someone checks the pid, so `wait` checks it and says `watcher_vanished`.
 """

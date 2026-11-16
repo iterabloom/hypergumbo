@@ -1,22 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-gotir: the DDG walk must not spend a Python stack frame per AST level.
 
-WHAT WAS WRONG. ``ddg_build._walk_functions`` was a pure pre-order traversal
-that recursed once per child::
+A walk that recurses once per child makes the Python stack depth the
+tree-sitter AST depth, one frame per level. Python's default recursion limit is
+1000, and machine-generated code exceeds it easily: a generated protobuf
+``const`` built as ``"..." + "..." + ...`` over a thousand times is a left spine
+that deep, because ``+`` is left-associative.
 
-    for child in node.children:
-        _walk_functions(child, ...)
-
-so the Python stack depth WAS the tree-sitter AST depth, one frame per level.
-Python's default recursion limit is 1000, and a machine-generated file exceeds
-it easily: measured on keda,
-``vendor/go.temporal.io/api/workflowservice/v1/request_response.pb.go``
-(725,832 bytes of generated protobuf) has an **AST depth of 1171**, because one
-``const`` is a string built as ``"..." + "..." + "..."`` **1,165 times** and
-``+`` is left-associative, yielding a 1,165-deep left spine.
-
-WHAT THE USER SAW, and why this is filed as an invariant rather than a bug:
-``verify-claims`` aborted with ``RecursionError`` and exited **1 with an empty
+THE HAZARD. A ``RecursionError`` makes ``verify-claims`` exit **1 with an empty
 stdout** — and exit 1 is also what VIOLATED returns. A CI gate written
 ``verify-claims ... || exit 1`` cannot tell "claims violated" from "the analysis
 crashed and examined nothing", and the JSON consumer gets a zero-byte file
@@ -25,21 +16,10 @@ instead of a verdict list.
 WHY AN EXPLICIT STACK RATHER THAN ``sys.setrecursionlimit``. Raising the limit
 trades a catchable ``RecursionError`` for a C-stack segfault, which is strictly
 worse for a tool whose failure mode here is already indistinguishable from a
-finding. The transformation is EXACTLY EQUIVALENT for this function precisely
-because there is no work after the children loop: the recursion carries no
-state a worklist cannot hold, and visit order is preserved by pushing children
-in reverse.
-
-SCOPE, MEASURED. An AST sweep finds 72 self-recursive child-loop walks in the
-tree, so this shape is a class. A corpus AST-depth census (files >= 60KB,
-measured iteratively so the instrument cannot hit the bug it measures) sizes
-the realized exposure narrowly: keda has 8 files at depth >= 500 and **7 at
->= 900**, all generated Go under ``vendor/``; dash.js, caddy and mitmproxy top
-out at 74, 37 and 79. Six of keda's seven are
-``golang.org/x/text/unicode/norm/tables*.go`` at 947-948 — within 5% of the
-limit, so this is not one pathological file. ``survey`` on the same input does
-NOT crash: only the DDG build did, which is why the fix is scoped here and the
-class is filed rather than rewritten wholesale.
+finding. The explicit stack is EXACTLY EQUIVALENT to recursion for
+``ddg_build._walk_functions`` because there is no work after the children loop:
+nothing needs state a worklist cannot hold, and visit order is preserved by
+pushing children in reverse.
 """
 
 from __future__ import annotations
@@ -78,8 +58,8 @@ def _deep_module(n: int = _TERMS) -> str:
     """A left-associative ``+`` chain followed by a function with a real
     def-use chain.
 
-    The chain is not contrived: it is the same construct as the protobuf
-    descriptor that produced the live crash. ``handler`` sits AFTER it as a
+    The chain is not contrived: it is the construct generated protobuf
+    descriptors use. ``handler`` sits AFTER it as a
     sibling, so a walk that lost its remaining work at the deep node would
     never reach it — which is what the second test below turns into an
     assertion rather than an assumption.
@@ -99,7 +79,7 @@ class TestADeepAstDoesNotCrashTheDdgWalk:
     def test_build_repo_ddg_survives_a_1200_deep_expression(
         self, tmp_path: Path,
     ) -> None:
-        """Pre-fix this raised ``RecursionError`` at ``ddg_build.py:206``."""
+        """A walk that recursed per AST level would raise ``RecursionError`` here."""
         (tmp_path / "deep.py").write_text(_deep_module())
         result = build_repo_ddg(tmp_path, ["python"])
         assert result is not None

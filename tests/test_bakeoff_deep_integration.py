@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Integration tests for WI-gutan: bakeoff-deep session/iteration tracking.
+"""Integration tests for bakeoff-deep session/iteration tracking.
 
-Bakeoff session organization (init → cohort → cycle → iter-NNN) was
-previously "tested in prod" rather than via unit/integration tests.
-This module exercises the orchestration logic of the deep bakeoff CLI
-end-to-end with ``_run_cohort_repos`` (and ``cmd_diagnose``) mocked
-out so the tests do not actually invoke ``hypergumbo`` on real repos.
+These tests exercise the session organization of the deep bakeoff CLI
+(init → cohort → cycle → iter-NNN) end-to-end, with
+``_run_cohort_repos`` (and ``cmd_diagnose``) mocked out so the tests do
+not actually invoke ``hypergumbo`` on real repos. ``scripts/bakeoff-deep``
+has no ``.py`` extension, so it is loaded via ``SourceFileLoader``.
 
-Covered scenarios (from the WI-gutan tracker item):
+Covered scenarios (WI-gutan):
 - (a) ``init`` creates a fresh timestamped session under the workdir
 - (b) ``cycle`` (and ``run``) increments ``state.iteration``
 - (c) ``cycle`` creates ``out/cohort-NNN/iter-NNN/`` subdirs in the
@@ -358,17 +358,18 @@ class TestRunWithoutPrerequisites:
 
 
 # ---------------------------------------------------------------------------
-# WI-zilar: an iteration that produced no files is not a completed one
+# An iteration that produced no files is not a completed one (WI-zilar)
 # ---------------------------------------------------------------------------
 
 
 class TestAnEmptyIterationIsNotAResult:
     """A crashed ``run`` leaves ``out/cohort-NNN/iter-NNN/<repo>/`` created and
-    empty, with the code hash already recorded. Both skip guards then read the
-    crash as a finished run and exit 0 pointing at "Previous results" that hold
-    zero files (reproduced 2026-09-10, downstream of WI-havit). The single-cohort
-    guard checked only the hash; the batch guard checked that the cohort
-    directory was non-empty, which an empty ``iter-001/`` satisfies.
+    empty, with the code hash already recorded. Both skip guards must treat
+    that as unfinished and run again, rather than exit 0 pointing at "Previous
+    results" that hold zero files. A matching code hash is not enough for the
+    single-cohort guard, and a non-empty cohort directory is not enough for the
+    batch guard, since an empty ``iter-001/`` satisfies it; both require at
+    least one file below the directory. The crashed iteration is kept as data.
     """
 
     def _session_after_a_crash(self, workdir: Path, pool: Path) -> Path:

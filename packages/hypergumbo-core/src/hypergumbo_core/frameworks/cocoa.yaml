@@ -86,5 +86,3 @@ patterns:
   - concept: lifecycle_hook
     parent_base_class: "^(NSView|NSControl|NSButton|NSTextField|NSTextView|NSScrollView|NSTableView)$"
     method_name: "^(layout|drawRect:|viewDidMoveToSuperview|viewDidMoveToWindow)$"
-
-linkers: []

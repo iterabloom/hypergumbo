@@ -9,12 +9,12 @@ axis declares is which NOTION the slot carries.
 Three groups:
 
 1. REGISTRY INVARIANTS over the six notions.
-2. THE FALSE DECLARATION IS GONE. ``ExternalRef.module_path`` carried
-   ``# axis: free-text — ... consumers display/lookup, never branch on the
-   value itself``, which is contradicted by ``_module_matches``. That the
-   linter accepted it is the point: a free-text justification is required to be
-   PRESENT, not TRUE. This group pins the retirement so it cannot silently
-   return.
+2. ``ExternalRef.module_path`` IS NOT FREE-TEXT. A ``# axis: free-text —
+   ... consumers display/lookup, never branch on the value itself``
+   declaration there would be false, because ``_module_matches`` branches on
+   the value — and the linter would accept it, since a free-text justification
+   is required to be PRESENT, not TRUE. This group pins the ``module-key``
+   declaration so the false one cannot silently return.
 3. THE AXIS IS WIRED, so a ``# axis: module-key`` annotation resolves.
 """
 from __future__ import annotations
@@ -60,7 +60,7 @@ def test_exactly_the_owner_path_notions_are_axiom_conformant():
     The axiom admits a namespace and a type — both name where the symbol is
     DEFINED — and rejects everything else. Storing a separate
     ``axiom_conformant`` flag beside the axis would be one fact in two homes,
-    which is the shape this whole campaign exists to remove.
+    which is the shape the axis registries exist to remove.
     """
     from hypergumbo_core.module_key_axis import (
         AXIS_OWNER_PATH,
@@ -132,7 +132,7 @@ def test_every_cited_emission_site_still_exists():
 
 
 # ---------------------------------------------------------------------------
-# 2. The false declaration is gone
+# 2. module_path is not free-text
 # ---------------------------------------------------------------------------
 
 def _module_path_declaration() -> str:
@@ -150,13 +150,13 @@ def _module_path_declaration() -> str:
 
 
 def test_module_path_no_longer_declares_free_text():
-    """The retirement, pinned.
+    """``module_path`` declares ``module-key``, and not ``free-text``.
 
-    The old declaration justified `free-text` with "consumers display/lookup,
-    never branch on the value itself" — while `_module_matches` branches on
-    the value's CAPITALISATION to tell a type from a sub-package. A test that
-    only asserted the new axis was present would still pass if someone
-    reinstated the old clause alongside it, so both halves are asserted.
+    A `free-text` justification of "consumers display/lookup, never branch
+    on the value itself" would be false: `_module_matches` branches on the
+    value's CAPITALISATION to tell a type from a sub-package. A test that
+    only asserted the module-key axis was present would still pass if someone
+    reinstated that clause alongside it, so both halves are asserted.
     """
     line = _module_path_declaration()
 
@@ -166,7 +166,7 @@ def test_module_path_no_longer_declares_free_text():
 
 
 def test_module_matches_still_branches_on_the_value():
-    """The premise behind the retirement, checked in the code rather than
+    """The premise behind the module-key declaration, checked in the code rather than
     assumed — if this ever stops being true, `free-text` becomes defensible
     again and this axis should be re-argued rather than silently kept.
     """
@@ -195,7 +195,7 @@ def test_module_key_axis_is_wired_into_known_axes():
 
 
 def test_live_tree_field_axis_declarations_still_pass():
-    """The gate that the ir.py edit has to satisfy.
+    """The gate an ir.py axis declaration has to satisfy.
 
     Changing `module_path`'s declaration to an axis name that is NOT in
     `_known_axes()` would fail here — which is what makes the wiring above

@@ -1,0 +1,59 @@
+- op: create  # a446
+  at: '2026-10-25T11:04:18Z'  # a446
+  by: agent  # a446
+  actor: jgstern_agent  # a446
+  clock: 1  # a446
+  nonce: a446  # a446
+  data:  # a446
+    kind: work_item  # a446
+    title: "fish, hack, D and bitbake start edges at a hand-built file id (fish:<path>:file:, d:<path>:file:, bitbake:<path>), not make_file_id's node"  # a446
+    status: todo_hard  # a446
+    priority: 3  # a446
+    parent:  # a446
+    tags:  # a446
+    - docstring_audit  # a446
+    - analysis_quality  # a446
+    isbefore: []  # a446
+    duplicate_of: []  # a446
+    not_duplicate_of: []  # a446
+    pr_ref:  # a446
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- fish.py: `sources` edges use non-canonical endpoint ids -- evidence: fish.py:262 `file_stable_id = f\"fish:{rel_path}:file:\"`, fish.py:307 `dst=f\"fish:{source_path}:file\"`; repro edge `fish:a.fish:file: -> fish:other.fish:file sources 0.9`. `make_file_id` (base.py:630) gives `fish:<path>:1-1:file:file`; jsonnet.py:337-339 records fixing this same shape (WI-bufar-pokam).\n- hack.py: calls in a standalone function are attributed to the file, and that src is a 3-slot id -- evidence: code hack.py:443-450; `make_file_id` would give `hack:a.hack:1-1:file:file`.\n- d_lang.py: (NEW) D import edges start at the malformed 3-slot id `d:<path>:file:` -- evidence: d_lang.py:919 `file_stable_id = f\"d:{rel_path}:file:\"`; repro edge `d:app.d:file: -> d:std.stdio:0-0:module:module imports`; `make_file_id` would give `d:app.d:1-1:file:file`.\n- bitbake.py: (NEW) `inherits` / `depends_on` edges start at a 2-slot id that is not the file-node shape -- evidence: bitbake.py:228 `src=f\"bitbake:{rel_path}\"` and L263 `src=f\"bitbake:{rel_p}\"`; repro edge `bitbake:a.bb -> bitbake:package:a depends_on`; `make_file_id` (hypergumbo_core/analyze/base.py:630) gives `bitbake:a.bb:1-1:file:file`. This is the shape jsonnet.py:337-339 records fixing under WI-bufar-pokam.\n\nOne mechanism in four producers: the edge src/dst is a string built by hand instead of make_file_id (base.py), so no file node carries it. hack also credits calls inside a standalone function to that file id instead of the function. Sweep the other lang packages for the same f\"{lang}:{path}:file\" shape before fixing.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # a446
+    fields: {}  # a446
+- op: discuss  # 2b04
+  at: '2026-11-15T19:25:53Z'  # 2b04
+  by: agent  # 2b04
+  actor: jgstern_agent  # 2b04
+  clock: 2  # 2b04
+  nonce: 2b04  # 2b04
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096: all four defects reproduce (fixture + `hypergumbo run`). Raw edges are as filed; in the survey each hand-built src becomes one per-language node (`d:<unknown>:0-0:file:external_symbol`, likewise fish/bitbake; `hack:<unknown>:0-0:a.hack:external_symbol`) while the real `:1-1:file:file` node has no such edge. Lines now: fish.py:263/308, hack.py:452-453, d_lang.py:919, bitbake.py:229/264, make_file_id base.py:640. Sweep done by grep and fixture: same shape in starlark.py:578/615, ada.py:469, nim.py:1316, luau.py:422, gdscript.py:339 (dst); apex.py:807 has the string, not exercised. Bitbake dsts `bitbake:package:<pkg>` fold to one node: 3 depends_on edges become 1. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-misus.md. No status or priority change made by this review."  # 2b04
+- op: update  # fb93
+  at: '2026-11-15T19:47:30Z'  # fb93
+  by: agent  # fb93
+  actor: jgstern_agent  # fb93
+  clock: 3  # fb93
+  nonce: fb93  # fb93
+  set:  # fb93
+    title: "fish, hack, D, bitbake, starlark, ada, nim, luau and gdscript (apex unverified) start or end edges at a hand-built file id, not make_file_id's node; finalize folds them into one placeholder per language"  # fb93
+    description: "[WIDENED 2026-11-15 by owner ruling, dev e2b6ab8096]\nThe same defect is in more analyzers than the four first named. An edge starts (or ends) at a file id spelled by\nhand instead of the node make_file_id (base.py:640) mints, so the edge does not touch the file's real node.\n\nProducers, by grep and by fixture run on 2026-11-15:\n  fish.py:263 / :308        src f\"fish:{rel_path}:file:\", dst f\"fish:{source_path}:file\"      reproduced\n  hack.py:452-453           3-slot src for calls in a standalone function                         reproduced\n  d_lang.py:919             src f\"d:{rel_path}:file:\"                                            reproduced\n  bitbake.py:229 / :264     2-slot src f\"bitbake:{rel_path}\"                                     reproduced\n  starlark.py:578 / :615    same shape                                                            reproduced\n  ada.py:469                same shape                                                            reproduced\n  nim.py:1316               same shape                                                            reproduced\n  luau.py:422               same shape                                                            reproduced\n  gdscript.py:339           same shape on the dst side                                            reproduced\n  apex.py:807               the string is present                                                 NOT exercised by a fixture\n\nWhat it does to the output: finalize turns each hand-built id into ONE per-language placeholder node\n(`d:<unknown>:0-0:file:external_symbol`, likewise fish and bitbake; `hack:<unknown>:0-0:a.hack:external_symbol`),\nso every file's imports of that language share a single source node and the real `:1-1:file:file` node has no such\nedge. Bitbake's package targets `bitbake:package:<pkg>` fold the same way: 3 depends_on edges become 1.\n\nFix direction: build both endpoints with make_file_id (jsonnet.py:337-339 records fixing this shape, WI-bufar-pokam).\nA source-level lint would catch the family: scripts/check-id-construction checks ids passed to Symbol(id=) and\nEdge(id=), not Edge src/dst strings.\n\nAcceptance: for each producer above, a fixture's file-level edges start at the file's `<lang>:<path>:1-1:file:file`\nnode, and no `<lang>:<unknown>:0-0:...:external_symbol` node stands in for a file of the repo. Fixtures:\n~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-misus. Corpus impact is not measured.\n\n--- text before the widening ---\nFound by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- fish.py: `sources` edges use non-canonical endpoint ids -- evidence: fish.py:262 `file_stable_id = f\"fish:{rel_path}:file:\"`, fish.py:307 `dst=f\"fish:{source_path}:file\"`; repro edge `fish:a.fish:file: -> fish:other.fish:file sources 0.9`. `make_file_id` (base.py:630) gives `fish:<path>:1-1:file:file`; jsonnet.py:337-339 records fixing this same shape (WI-bufar-pokam).\n- hack.py: calls in a standalone function are attributed to the file, and that src is a 3-slot id -- evidence: code hack.py:443-450; `make_file_id` would give `hack:a.hack:1-1:file:file`.\n- d_lang.py: (NEW) D import edges start at the malformed 3-slot id `d:<path>:file:` -- evidence: d_lang.py:919 `file_stable_id = f\"d:{rel_path}:file:\"`; repro edge `d:app.d:file: -> d:std.stdio:0-0:module:module imports`; `make_file_id` would give `d:app.d:1-1:file:file`.\n- bitbake.py: (NEW) `inherits` / `depends_on` edges start at a 2-slot id that is not the file-node shape -- evidence: bitbake.py:228 `src=f\"bitbake:{rel_path}\"` and L263 `src=f\"bitbake:{rel_p}\"`; repro edge `bitbake:a.bb -> bitbake:package:a depends_on`; `make_file_id` (hypergumbo_core/analyze/base.py:630) gives `bitbake:a.bb:1-1:file:file`. This is the shape jsonnet.py:337-339 records fixing under WI-bufar-pokam.\n\nOne mechanism in four producers: the edge src/dst is a string built by hand instead of make_file_id (base.py), so no file node carries it. hack also credits calls inside a standalone function to that file id instead of the function. Sweep the other lang packages for the same f\"{lang}:{path}:file\" shape before fixing.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # fb93
+- op: discuss  # 3579
+  at: '2026-11-15T19:47:30Z'  # 3579
+  by: agent  # 3579
+  actor: jgstern_agent  # 3579
+  clock: 4  # 3579
+  nonce: '3579'  # 3579
+  message: "OWNER RULING 2026-11-15: widened from four analyzers to the nine reproduced producers (apex has the string and was not exercised). Title and description rewritten. No status or priority change."  # 3579
+- op: update  # d26a
+  at: '2026-11-16T04:57:51Z'  # d26a
+  by: agent  # d26a
+  actor: jgstern_agent  # d26a
+  clock: 5  # d26a
+  nonce: d26a  # d26a
+  set:  # d26a
+    status: done  # d26a
+- op: discuss  # 7ef9
+  at: '2026-11-16T04:57:51Z'  # 7ef9
+  by: agent  # 7ef9
+  actor: jgstern_agent  # 7ef9
+  clock: 6  # 7ef9
+  nonce: 7ef9  # 7ef9
+  message: "Fixed in PR #2198. Nine of the ten named producers reproduced and are fixed (fish, hack, D, bitbake, starlark, ada, nim, luau, gdscript): file-level edges start at make_file_id and end on a looked-up node or a grammar-conformant stand-in (new analyze/edge_target.py). apex did NOT reproduce: its string sits in an unreachable branch; it now uses make_file_id. Measured: fixture non-id endpoints 48 of 71 edges -> 0; nitter (61 .nim) <unknown> 1 -> 0; no declared stable id gone on any tree. The file lookup asks discovery, not the disk alone: a git-ignored target gets a stand-in, not a file node. No real hack, luau, gdscript or apex source on this machine: those are measured on fixtures only. Residual filed: about 40 more hand-built endpoints in 23 files, none verified by fixture."  # 7ef9

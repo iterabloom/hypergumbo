@@ -1,0 +1,23 @@
+- op: create  # 429c
+  at: '2026-11-14T09:40:13Z'  # 429c
+  by: agent  # 429c
+  actor: jgstern_agent  # 429c
+  clock: 1  # 429c
+  nonce: 429c  # 429c
+  data:  # 429c
+    kind: work_item  # 429c
+    title: "sketch description from the embedding extractor is a table of contents on express and repeats the title on knex and mitmproxy"  # 429c
+    status: todo_hard  # 429c
+    priority: 3  # 429c
+    parent:  # 429c
+    tags:  # 429c
+    - outside_reader_review_20261113  # 429c
+    - dogfood  # 429c
+    - sketch  # 429c
+    - readme  # 429c
+    isbefore: []  # 429c
+    duplicate_of: []  # 429c
+    not_duplicate_of: []  # 429c
+    pr_ref:  # 429c
+    description: "Seen 2026-11-14 in the 20-repository measurement (~/hypergumbo_lab_notebook/outside_reader_review2_11142026, runs/ and runs_after/), unchanged by the README description fixes of WI-monuf-jikar-tumip-zokab-loviz-mubos-sofuv-dorav.\n\nOBSERVED. With sentence-transformers installed, the first line of a sketch is sometimes not a description:\n- express: \"Table of contents - Table of contents - Installation - Features - Docs & Community - Quick Start - Philosophy - Examples - Contributing - Security Issues - ...\" The README's table of contents, a heading and a list of links, was chosen as the description.\n- mitmproxy: \"mitmproxy ``mitmproxy`` is an interactive, SSL/TLS-capable intercepting proxy ...\" The title is repeated in front of the description (the extractor merges a heading with the paragraph under it), and reStructuredText inline literals keep their double backticks.\n- knex: \"knex.js A SQL query builder that is flexible ...\" The title is repeated in front of the tagline in the same way.\nThe heuristic extractor (no sentence-transformers) gives the first paragraph in all three; it was not compared line by line here.\n\nMECHANISM, read in sketch_embeddings.extract_readme_description_embedding, not traced by a run. Header lines are merged with the lines that follow them into one candidate, so a chosen window starts with the heading's text. A list of links scores as well as prose with the probes and the title-proximity bonus. The text is joined as it stands; plain_inline resolves Markdown markup only.\n\nASK. (1) A heading's text is not part of the description it introduces: score heading and paragraph together if that helps, print the paragraph. (2) A block that is a list of links (a table of contents) is not description prose, by its shape: every item a link or a bare anchor. State both in readme_prose, the one place both extractors read. (3) Resolve reStructuredText and AsciiDoc inline markup in plain_inline, or record that only Markdown is resolved. Measure on a corpus with the embedding extractor on: first lines that begin with the repository's own title, and first lines with no verb.\n\nGENERALITY (owner, 2026-11-13). The fix must be a rule that holds for any repository and any language. A fix keyed to one repository's paths or file names does not close this item."  # 429c
+    fields: {}  # 429c

@@ -18,3 +18,18 @@
     pr_ref:  # 2ab3
     description: "react_component.py (~line 268) emits `references` edges whose src is\n\n    src_id = f\"typescript:{rel_path}:0-0:{comp_name}:jsx_usage\"\n\n-- a FABRICATED id: the linker's result carries only edges, no Symbol is minted for it, so the src matches no node and dangles. It also hardcodes `typescript` regardless of the file's language (sibling of WI-komum's hardcoded-language class).\n\nFound by the WI-latup derived_from sweep (verdict group 4). derived_from there is now `[target_sym.id]` (the only consumed record) with an `endpoints` declaration.\n\nFIX SHAPE: either anchor src on the enclosing component/function (`ctx.find_enclosing_symbol`) -- the edge then says \"this component renders that one\" -- or mint a real usage Symbol. The first is the one other linkers use. Verify with the dangling-endpoint check."  # 2ab3
     fields: {}  # 2ab3
+- op: update  # 30f5
+  at: '2026-10-22T16:16:15Z'  # 30f5
+  by: agent  # 30f5
+  actor: jgstern_agent  # 30f5
+  clock: 2  # 30f5
+  nonce: 30f5  # 30f5
+  set:  # 30f5
+    status: done  # 30f5
+- op: discuss  # f325
+  at: '2026-10-22T16:16:15Z'  # f325
+  by: agent  # f325
+  actor: jgstern_agent  # f325
+  clock: 3  # f325
+  nonce: f325  # f325
+  message: "Fixed in 85ee2a03f7 (dev). _scan_file_for_jsx_usages returns (name, line). The edge's src is the innermost function/method/class whose span holds the usage, else the file node; the edge line is the usage line. No fabricated id, and no hardcoded typescript: the src comes from a real node, so it has that node's language. Live repro on dev dcc7d14b61: App.jsx renders <Button /> inside function App (line 4) and at module level (line 6), with Button defined in Button.jsx; hypergumbo run, survey.json. Results: references line 4 javascript:App.jsx:3-5:App:function -> javascript:Button.jsx:2-2:Button:function; references line 6 javascript:App.jsx:1-1:file:file -> same dst. Both endpoints are nodes, and there are 0 jsx_usage ids."  # f325

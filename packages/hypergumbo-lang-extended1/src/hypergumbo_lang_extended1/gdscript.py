@@ -39,6 +39,15 @@ class-level ``var`` initializer) are dropped, as are the logging builtins
 ``print``, ``push_error``, ``push_warning`` and ``printerr``. A callee the
 resolver cannot find still gets an edge, via ``make_unresolved_edge``.
 
+A ``preload`` / ``load`` is an ``imports`` edge from the script's file node.
+Its path is looked up (``edge_target.in_tree_file_id``): ``res://x`` under the
+Godot project root, which is the nearest directory at or above the script
+that holds ``project.godot`` (the repository root when none does), and a
+path with no scheme next to the script. A file found there that has a
+language is that file's node. Anything else (a scene or texture, which no
+analyzer gives a node, a ``user://`` path, a file that is not here) is the
+``make_module_import_dst`` stand-in for the path as written.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the GDScript-specific
 extraction logic.
@@ -61,6 +70,7 @@ GDScript-Specific Considerations
 """
 from __future__ import annotations
 
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -73,13 +83,15 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
     symbol_declared_by,
     symbols_at,
 )
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
@@ -188,7 +200,7 @@ def _make_gd_symbol(
     run_id: str,
     signature: Optional[str] = None,
     complexity: bool = False,
-    stable_id: Optional[str] = None,
+    stable_id: Optional[StableId] = None,
 ) -> Symbol:
     """Create a Symbol from a tree-sitter node.
 
@@ -230,6 +242,34 @@ def _make_gd_symbol(
 # ---------------------------------------------------------------------------
 # GDScriptAnalyzer: TreeSitterAnalyzer subclass
 # ---------------------------------------------------------------------------
+
+
+_RES_SCHEME = "res://"
+
+
+def _godot_project_dir(file_path: Path, rel_path: str) -> str:
+    """The repository-relative directory ``res://`` names for this script.
+
+    The nearest directory at or above the script that holds ``project.godot``;
+    the repository root (``""``) when none does.
+    """
+    directory, rel_dir = file_path.parent, posixpath.dirname(rel_path)
+    while rel_dir:
+        if (directory / "project.godot").is_file():
+            return rel_dir
+        directory, rel_dir = directory.parent, posixpath.dirname(rel_dir)
+    return ""
+
+
+def _resource_candidates(path_str: str, file_path: Path, rel_path: str) -> list[str]:
+    """The repository-relative paths a ``preload`` / ``load`` path can name."""
+    if path_str.startswith(_RES_SCHEME):
+        return [posixpath.join(
+            _godot_project_dir(file_path, rel_path), path_str[len(_RES_SCHEME):],
+        )]
+    if "://" in path_str:  # user://, uid://: not a path of the repository
+        return []
+    return [posixpath.join(posixpath.dirname(rel_path), path_str)]
 
 
 class GDScriptAnalyzer(TreeSitterAnalyzer):
@@ -334,13 +374,18 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                             for arg_child in args_node.children:
                                 if arg_child.type == "string":
                                     path_str = node_text(arg_child, source).strip().strip('"\'')
+                                    target = in_tree_file_id(
+                                        file_path, rel_path,
+                                        _resource_candidates(path_str, file_path, rel_path),
+                                    )
                                     edges.append(Edge.create(
                                         src=make_file_id("gdscript", rel_path),
-                                        dst=f"gdscript:{path_str}:file",
+                                        dst=target or make_module_import_dst("gdscript", path_str),
                                         edge_type="imports",
                                         evidence_type="import",
                                         line=node.start_point[0] + 1,
                                         confidence=0.9,
+                                        is_resolved=target is not None,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                     ))

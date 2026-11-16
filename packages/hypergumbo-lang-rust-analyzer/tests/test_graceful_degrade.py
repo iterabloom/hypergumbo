@@ -34,7 +34,7 @@ def _fake_source_reader(_p: str) -> bytes:  # pragma: no cover — unused path
 
 def _make_ok_translate(symbols: List[Symbol], edges: List[Edge]):
     def _translate(
-        _scip: bytes, _reader, *, run_id: str = "",
+        _scip: bytes, _reader, *, run_id: str = "", log=None,
     ) -> Tuple[List[Symbol], List[Edge]]:
         return symbols, edges
     return _translate
@@ -82,6 +82,20 @@ class TestInvokeFailureModes:
         assert "RustAnalyzerNotInstalled" in log_msgs[0]
         assert "falling through to rust.py" in log_msgs[0]
 
+    def test_not_installed_prints_the_install_steps_once_per_process(self, tmp_path: Path) -> None:
+        """Steps name the machine, not the workspace: one copy however many crates fall through."""
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerNotInstalled("missing")
+
+        log_msgs: list[str] = []
+        for name in ("a", "b"):
+            (tmp_path / name).mkdir()
+            try_analyze_with_rust_analyzer(tmp_path / name, _fake_source_reader,
+                                           invoke=_invoke, log=log_msgs.append)
+        assert len(log_msgs) == 2
+        assert "rustup component add rust-analyzer" in log_msgs[0]
+        assert "rustup component add rust-analyzer" not in log_msgs[1]
+
     def test_invocation_failed_returns_none(self, tmp_path: Path) -> None:
         def _invoke(workspace, *, cwd):
             raise RustAnalyzerInvocationFailed("exit 2", b"err")
@@ -93,6 +107,7 @@ class TestInvokeFailureModes:
         )
         assert result.failed is True  # WI-luvud: was `is None`
         assert "RustAnalyzerInvocationFailed" in log_msgs[0]
+        assert "rustup component add" not in log_msgs[0]
 
     def test_no_output_returns_none(self, tmp_path: Path) -> None:
         def _invoke(workspace, *, cwd):
@@ -145,7 +160,7 @@ class TestTranslateFailure:
         def _invoke(workspace, *, cwd):
             return b"truncated-bytes"
 
-        def _translate(_scip, _reader, *, run_id=""):
+        def _translate(_scip, _reader, *, run_id="", log=None):
             raise DecodeError("bad wire format")
 
         log_msgs: list[str] = []
@@ -161,7 +176,7 @@ class TestTranslateFailure:
         def _invoke(workspace, *, cwd):
             return b"x"
 
-        def _translate(_scip, _reader, *, run_id=""):
+        def _translate(_scip, _reader, *, run_id="", log=None):
             raise DecodeError("bad")
 
         log_msgs: list[str] = []
@@ -363,7 +378,7 @@ class TestRunIdForwarding:
         def _invoke(_workspace, *, cwd):
             return b"scip-bytes"
 
-        def _translate(_blob, _reader, *, run_id=""):
+        def _translate(_blob, _reader, *, run_id="", log=None):
             seen["run_id"] = run_id
             return ([], [])
 
@@ -380,7 +395,7 @@ class TestRunIdForwarding:
         def _invoke(_workspace, *, cwd):
             return b"scip-bytes"
 
-        def _translate(_blob, _reader, *, run_id=""):
+        def _translate(_blob, _reader, *, run_id="", log=None):
             seen["run_id"] = run_id
             return ([], [])
 
@@ -438,7 +453,7 @@ class TestOutcomeDiscrimination:
         def _invoke(_workspace, *, cwd):
             return b"not-a-scip-index"
 
-        def _translate(_blob, _reader, *, run_id=""):
+        def _translate(_blob, _reader, *, run_id="", log=None):
             raise DecodeError("bad wire format")
 
         got = try_analyze_with_rust_analyzer(
@@ -455,7 +470,7 @@ class TestOutcomeDiscrimination:
         def _invoke(_workspace, *, cwd):
             return b"scip"
 
-        def _translate(_blob, _reader, *, run_id=""):
+        def _translate(_blob, _reader, *, run_id="", log=None):
             return ([], [])
 
         got = try_analyze_with_rust_analyzer(

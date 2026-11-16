@@ -35,17 +35,14 @@ def test_excludes_node_modules(tmp_path: Path) -> None:
 def test_excludes_venv(tmp_path: Path) -> None:
     """Should not analyze files in venv directory.
 
-    THE FIXTURE GREW A ``pyvenv.cfg`` AND THAT IS THE POINT, NOT A WORKAROUND.
-    ``venv`` used to be a bare name in ``DEFAULT_EXCLUDES``, which also deleted every
-    first-party package that happened to be named ``env`` — 427 source files across
-    39 corpus repos, 99.5% first-party. Exclusion is now decided by content (PEP 405's
-    ``pyvenv.cfg``, or ``bin/activate``), so a directory called ``venv`` containing
-    nothing but a ``lib/`` tree is no longer a virtualenv as far as this tool is
-    concerned, and analyzing it is correct.
+    THE FIXTURE CARRIES A ``pyvenv.cfg`` AND THAT IS THE POINT, NOT A WORKAROUND.
+    Exclusion is decided by content (PEP 405's ``pyvenv.cfg``, or ``bin/activate``),
+    not by the name: a bare ``venv`` / ``env`` name in ``DEFAULT_EXCLUDES`` would
+    also delete every first-party package that happens to be named ``env``. So a
+    directory called ``venv`` containing nothing but a ``lib/`` tree is not a
+    virtualenv as far as this tool is concerned, and analyzing it is correct.
 
-    This test's PROPERTY — a virtualenv is not analyzed — is unchanged and still
-    asserted. Only the fixture had to become an actual virtualenv to state it.
-    Deleting the assertion instead would have removed the guard against the
+    The PROPERTY asserted — a virtualenv is not analyzed — guards against the
     regression that matters most here: dragging thousands of dependency files into
     every analysis.
     """

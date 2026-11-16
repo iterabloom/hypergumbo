@@ -1,59 +1,45 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A run that is KILLED must say so, instead of reporting the violation signal.
 
-WHY THIS EXISTS (WI-katap)
---------------------------
-INV-rahib's residual class is the run whose ``final_state`` still holds its
-``unknown`` initializer. Owner ruling 2026-08-03 makes that *the* violation
-signal: it is never written by a deliberate exit, so reaching it means the run
-fell off the end.
+WHY THIS EXISTS (history: WI-katap)
+-----------------------------------
+``final_state`` starts at ``unknown`` and no deliberate exit writes it, so a
+run that ends still holding ``unknown`` fell off the end — INV-rahib's
+violation signal.
 
-Measured on the ledger 2026-09-20, that class was 22 of 84 post-instrumentation
-runs (26%), up from 14 of 485 (2.9%) before. None of the 22 carried an
-``abort_site`` — WI-nazoj's ERR trap had never once attributed an abort. Its
-own docstring names the three causes it cannot see, and a surviving run log
-(PR #1091) identified which one::
-
-    CONVERGENCE VIOLATION (INV-rahib / WI-nazoj)
-       auto-pr is exiting 1 with no declared terminal state.
-       Abort site: not recorded. ...
-    Terminated
-
-``Terminated`` is the shell reporting SIGTERM. The source is the caller: the
-agent wraps auto-pr in ``timeout 590`` because its harness caps one foreground
-call at 600s, and auto-pr's own poll budget (2400s default, plus a soft-retry
-of 300s that is not optional) cannot fit inside that. 14 of the 15 PRs behind
-those rows are merged — the violation signal was firing on runs that succeeded.
+A run killed by a signal never reaches a declaration either, and the ERR
+trap cannot see a signal, so without signal handling it too reports
+``unknown`` with no ``abort_site``. The common source is the caller: an agent
+harness caps one foreground call (Claude Code: 600s), auto-pr's own poll
+budget (2400s default, plus a soft-retry of 300s that is not optional) cannot
+fit inside that, and a ``timeout`` wrapper SIGTERMs the run — often after its
+PR has merged. The violation signal then fires on runs that succeeded.
 
 THE DEFECT IS A CONFLATION, NOT A CRASH
 ---------------------------------------
-``final_state=unknown`` was carrying two facts:
+Without signal handling, ``final_state=unknown`` carries two facts:
 
 * the run reached its end without deciding — the convergence bug the invariant
   is about;
 * the run was **killed before it could decide** — not a convergence property at
   all, because the run never got to converge.
 
-That is this repository's recurring absent-versus-empty defect, one level up
-from where the audit script already guards it: ``json_field`` rendered a JSON
-null and a missing key identically (fixed by ``json_bool_state``), and
-``silence_reason`` separates *not applicable* from *cannot determine*. Here the
-criterion "zero rows carrying ``final_state`` unknown over a window" was
-UNSATISFIABLE while a legitimate external kill reported as its own violation.
-
-Underneath it was a plain structural gap: auto-pr trapped ``EXIT`` and ``ERR``
-and **no signals at all**, so a killed run had no code path that could name
-what happened to it.
+That is the absent-versus-empty defect again: ``json_field`` renders a JSON
+null and a missing key identically (hence ``json_bool_state``), and
+``silence_reason`` separates *not applicable* from *cannot determine*. With
+both facts in one value, the criterion "zero rows carrying ``final_state``
+unknown over a window" is UNSATISFIABLE while a legitimate external kill
+reports as its own violation. So auto-pr traps TERM, INT and HUP alongside
+``EXIT`` and ``ERR``, giving a killed run a code path that can name what
+happened to it.
 
 TWO FACTS, TWO FIELDS
 ---------------------
 ``terminated_by`` is recorded *independently* of ``final_state``, and is not
 redundant with it. A run that had already declared ``merged`` and is then
 SIGTERMed while cleaning up keeps ``merged`` — the run decided, and the kill
-only interrupted its housekeeping — but still records ``terminated_by``. That
-second fact is precisely what INV-rahib's Class 1 investigation (merged, then
-exit nonzero) had to reconstruct from a surviving terminal log, because nothing
-recorded it.
+only interrupted its housekeeping — but still records ``terminated_by``, a
+fact that would otherwise survive only in a terminal log.
 """
 
 from __future__ import annotations
@@ -159,8 +145,7 @@ def _run_and_signal(
 # on a foreground child — it defers until that child exits. A fixture that
 # slept once for 60s would therefore sit on the signal for 60s and read as
 # "the trap never fired", when production (polling on `sleep 10`) sees the
-# trap within one tick. The first draft of this file made exactly that mistake
-# and hung the SIGINT case.
+# trap within one tick.
 _ARM_AND_BLOCK = (
     '\ttouch "$REPO_ROOT/.git/armed"\n'
     "\tfor _ in $(seq 600); do sleep 0.1; done\n"
@@ -216,11 +201,11 @@ def test_a_signal_never_overwrites_a_state_the_run_already_declared(
 ) -> None:
     """The guard, and the reason `terminated_by` is a SEPARATE field.
 
-    INV-rahib's Class 1 was runs that merged and then exited nonzero because a
-    bare command aborted during post-merge housekeeping. A kill arriving in the
-    same window must not now rewrite the outcome to `terminated_sigterm`: the
-    merge landed, the run decided, and only the cleanup was interrupted. But
-    the kill is still a fact worth keeping, so it lands in its own field.
+    A run that merged and then exited nonzero is INV-rahib's Class 1
+    violation. A kill arriving during post-merge housekeeping must not
+    rewrite the outcome to `terminated_sigterm`: the merge landed, the run
+    decided, and only the cleanup was interrupted. But the kill is still a
+    fact worth keeping, so it lands in its own field.
     """
     body = '\t_autopr_state_final="merged"\n' + _ARM_AND_BLOCK
     code, payload = _run_and_signal(tmp_path, body)
@@ -292,19 +277,19 @@ def test_the_ledger_row_carries_the_termination_too(tmp_path: Path) -> None:
 
 
 def test_every_action_path_installs_traps_through_the_one_helper() -> None:
-    """A boundary, not N guards — the lesson the post-merge fix already paid for.
+    """A boundary, not N guards.
 
-    `_autopr_post_merge` was introduced as a boundary rather than three guards
-    precisely because a structural test found a FOURTH call site that reading
-    the code by hand had missed. The same argument applies here: an action
+    Per-site guards rely on finding every site by hand, and hand reading
+    misses sites — the reason `_autopr_post_merge` is one boundary rather
+    than a guard per call. The same argument applies here: an action
     subcommand that installs `_autopr_finalize` by hand would silently have no
     signal traps, and the only symptom would be a row in a ledger nobody reads.
     """
     text = AUTO_PR.read_text(encoding="utf-8")
     # The helper's OWN trap lines are the legitimate ones, so exclude its body
-    # rather than the string that names it — an earlier draft filtered on the
-    # helper's name appearing in the line, which no trap line inside it
-    # contains, so the helper reported itself as a violation.
+    # rather than the string that names it: no trap line inside the helper
+    # contains the helper's name, so filtering on the name would report the
+    # helper itself as a violation.
     helper = _extract_func("_autopr_install_traps")
     outside = text.replace(helper, "")
     bare = [

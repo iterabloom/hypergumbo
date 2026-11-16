@@ -298,8 +298,9 @@ class TestBackendBinaryGate:
         # still try to engage SCIP and fail less clearly.
         assert ENV_VAR not in os.environ
         err = capsys.readouterr().err
-        assert "rust-analyzer binary is not functional" in err
+        assert "--backend rust-analyzer needs the 'rust-analyzer' binary" in err
         assert "rustup component add rust-analyzer" in err
+        assert "rust-analyzer --version" in err and "Reference: https://" in err
 
     def test_backend_equals_form_also_gates_on_binary(
         self, capsys: pytest.CaptureFixture[str],
@@ -318,7 +319,7 @@ class TestBackendBinaryGate:
         assert exc_info.value.code != 0
         assert ENV_VAR not in os.environ
         err = capsys.readouterr().err
-        assert "rust-analyzer binary is not functional" in err
+        assert "--backend rust-analyzer needs the 'rust-analyzer' binary" in err
         assert ENV_VAR not in os.environ
 
     def test_backend_rust_analyzer_passes_when_integration_present(
@@ -439,14 +440,16 @@ class TestTheScipPythonArmOfTheFlag:
         err = capsys.readouterr().err
         assert "hypergumbo-lang-scip-python" in err and "not installed" in err
 
-    def test_missing_binary_exits_two_with_the_npm_line(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_missing_binary_exits_two_with_the_install_steps(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch("hypergumbo_core.scip_python_install.is_scip_python_integration_installed", return_value=True), \
              patch("hypergumbo_core.scip_python_install.is_scip_python_available", return_value=False):
             with pytest.raises(SystemExit) as exc_info:
                 main(["--backend", "scip-python", "cache-status", "--quiet"])
         assert exc_info.value.code == 2
         assert PY_ENV_VAR not in os.environ
-        assert "npm install -g @sourcegraph/scip-python@0.6.6" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert 'npm install -g --prefix "$HOME/.local" @sourcegraph/scip-python@0.6.6' in err
+        assert "scip-python --version" in err and "Reference: https://" in err
 
     def test_present_and_available_sets_the_transport(self) -> None:
         with patch("hypergumbo_core.scip_python_install.is_scip_python_integration_installed", return_value=True), \

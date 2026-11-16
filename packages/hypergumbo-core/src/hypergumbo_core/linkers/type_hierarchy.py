@@ -66,7 +66,7 @@ from ..edge_types import (
     is_inheritance_edge_record,
 )
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
-from ..paths import is_test_file
+from ..paths import is_test_node
 from ..member_names import member_owner, member_short_name
 from ..symbol_kinds import is_abstract_type, type_like_kind_names
 from .registry import (
@@ -95,17 +95,13 @@ PASS_ID = make_pass_id("type-hierarchy-linker")
 #   - go     — struct embedding is composition; calling a method on the
 #              embedded type always lands in the embedded type's method,
 #              never the embedder's same-named shadow method.
-#   - cpp    — only methods marked `virtual` dispatch polymorphically;
-#              non-virtual methods are statically resolved at the static
-#              type.  Pessimistic until per-method virtual tracking lands,
-#              except across a hop into an abstract base (WI-nizug).
 #   - rust   — no inheritance; struct/trait are separate concepts.  Trait
 #              dispatch flows through `implements` edges, which are
 #              unaffected by this gate.
 #
-# C# and C++ left this set in WI-digaj: their analyzers record which members
-# are virtual / overriding / static (C# per method, C++ per class), so the hop
-# is admitted and the per-METHOD rule (:func:`_method_pair_dispatches`)
+# C# and C++ are not in this set (WI-digaj): their analyzers record which
+# members are virtual / overriding / static (C# per method, C++ per class), so
+# the hop is admitted and the per-METHOD rule (:func:`_method_pair_dispatches`)
 # decides instead.
 #
 # Languages WITH virtual dispatch through `extends` (default behavior):
@@ -262,7 +258,8 @@ def build_inheritance_maps(
     """Build inheritance maps from extends/implements edges.
 
     Per WI-sukav A1, `extends` edges from no-virtual-dispatch languages
-    (Go, C++, Rust, C#) are filtered out of `parent_to_children` so the
+    (``NO_VIRTUAL_EXTENDS_LANGUAGES``: Go, Rust) are filtered out of
+    `parent_to_children` unless either endpoint is an abstract type, so the
     type-hierarchy linker does not create spurious dispatches_to edges
     from a parent's method to a child's shadow method.  `implements`
     edges are never filtered — interface dispatch is virtual in every
@@ -466,6 +463,15 @@ def _resolve_method_class_id(
     Go — always same package, usually same file), same-file matching
     is the correct disambiguation.
 
+    Within that file, the owner is the candidate whose span CONTAINS the
+    method -- by position, never by name (INV-mozas). A Scala / Kotlin class
+    and its companion ``object`` share a name AND a file; once ``object`` kinds
+    were indexed (WI-kipol), "first same-file namesake" credited the class's
+    methods to whichever was declared first, so an inherited call into the
+    class found nothing (WI-vidof: gatling's ``LogFileParser``). When no
+    candidate contains the method (an out-of-line definition), the first
+    same-file namesake stands, as before.
+
     Falls back to the first candidate if no same-file class exists, to
     preserve behavior for languages that allow methods in different
     files than their class.
@@ -476,11 +482,21 @@ def _resolve_method_class_id(
     candidate_ids = class_ids_by_name.get(class_name, [])
     if not candidate_ids:
         return None
-    # Prefer a class in the same file as the method
-    for cid in candidate_ids:
-        csym = class_symbols.get(cid)
-        if csym and csym.path == method_sym.path:
-            return cid
+    same_file = [
+        cid for cid in candidate_ids
+        if (csym := class_symbols.get(cid)) is not None and csym.path == method_sym.path
+    ]
+    mspan = method_sym.span
+    enclosing = [
+        (cid, cspan) for cid in same_file
+        if (cspan := class_symbols[cid].span) is not None
+        and mspan is not None and cspan.encloses(mspan)
+    ]
+    if enclosing:
+        # The TIGHTEST encloser: a nested namesake owns its own members.
+        return min(enclosing, key=lambda pair: pair[1].end_line - pair[1].start_line)[0]
+    if same_file:
+        return same_file[0]
     # Fallback: first candidate (historical behavior for cross-file cases)
     return candidate_ids[0]
 
@@ -813,8 +829,9 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 # edge to itself), so it is not exercised by tests.
                 if override.id == parent_method.id:  # pragma: no cover
                     continue
-                # Avoid duplicate edges (defensive - find_implementing_methods
-                # uses a set, so duplicates are rare)
+                # Avoid duplicate edges (defensive - the index lists each
+                # method symbol once, so a pair repeats only on duplicated
+                # input symbols)
                 pair = (parent_method.id, override.id)
                 if pair in seen_pairs:  # pragma: no cover - defensive for edge cases
                     continue
@@ -832,7 +849,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 # relocates to ``rank_score`` alongside the fan-out dampener,
                 # leaving detection confidence at the derived in-band base.
                 rank = dampened_rank
-                if override.path and is_test_file(override.path):
+                if override.path and is_test_node(override.path, override.meta):
                     rank = 0.30
 
                 edge = Edge.create(

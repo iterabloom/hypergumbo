@@ -110,6 +110,51 @@
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
+  "repo-content-no-dev-zone": {
+    "caveats": [
+      "opaque_boundary",
+      "unknown_receiver_scope"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "repo-content-no-host-fs": {
+    "caveats": [
+      "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver",
+      "user_supplied_sanitizer"
+    ],
+    "credited_flows": "nonzero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "repo-content-no-install-artifact": {
+    "caveats": [
+      "opaque_boundary",
+      "unknown_receiver_scope"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "repo-content-no-network": {
+    "caveats": [
+      "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "repo-content-no-subprocess": {
+    "caveats": [
+      "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver",
+      "user_supplied_sanitizer"
+    ],
+    "credited_flows": "nonzero",
+    "verdict": "confirmed_with_caveats"
+  },
   "runtime-cli-no-dev-zone": {
     "caveats": [
       "opaque_boundary",

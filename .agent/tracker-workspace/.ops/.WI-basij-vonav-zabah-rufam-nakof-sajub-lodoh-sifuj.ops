@@ -20,3 +20,18 @@
     pr_ref:  # ba39
     description: "FOUND while fixing WI-gabuv (fixture for owner_ancestry).\n\nSTATEMENT. In a JavaScript class method, `this.write('hi')` emits NO call edge at all. Fixture (2026-10-12, dev b89cc2e5a2):\n  const net = require('net');\n  class Conn extends net.Socket { hello() { this.write('hi'); } }\n  function main() { const c = new Conn(); c.connect(80); }\n  module.exports = { main };\n`hypergumbo survey` emits `calls main -> javascript:external:0-0:connect` (receiver_type_hint Conn) but nothing from `Conn.hello` -- no resolved edge, no unresolved stub with `enclosing_class`. So the Site-1 (`this.method()`) shape that inherited_calls and owner_ancestry both consume never reaches them for JS here; `this.write` on a net.Socket subclass is a net_send that is invisible. Not checked: TypeScript, `this.m()` where m IS an in-repo method of an in-repo base, or whether the drop is specific to methods whose name collides with something.\n\nFIX DIRECTION. Find where js_ts handles a `member_expression` call whose object is `this` and make it emit the unresolved stub with `enclosing_class` (make_unresolved_edge) when no in-repo method resolves, as the Python and Java analyzers do."  # ba39
     fields: {}  # ba39
+- op: update  # 5d1e
+  at: '2026-11-01T09:32:28Z'  # 5d1e
+  by: agent  # 5d1e
+  actor: jgstern_agent  # 5d1e
+  clock: 2  # 5d1e
+  nonce: 5d1e  # 5d1e
+  set:  # 5d1e
+    title: "js/ts: `this.m()` whose name no in-repo method shares emits nothing (the `not is_this_call` gate on the placeholder arm); a namesake elsewhere yields the Site-1 stub, so inherited calls on external bases are invisible"  # 5d1e
+- op: discuss  # 54f9
+  at: '2026-11-01T09:32:28Z'  # 54f9
+  by: agent  # 54f9
+  actor: jgstern_agent  # 54f9
+  clock: 3  # 54f9
+  nonce: 54f9  # 54f9
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: CURRENT, narrower than written. Fixture a.js: Conn.hello `this.write('hi')` emits only module_attr_ref -> net.Socket, no calls edge, no stub; `this.missing()` emits nothing; `this.ping()` with an in-repo Base.ping emits `calls Child.run -> external:ping {enclosing_class: Child}`. So the drop is specific to a this.m() whose name no in-repo method shares: Case 1 (js_ts.py ~6663) emits no stub on a miss, and the untyped-method placeholder arm (~7015) is gated `not is_this_call` (bf8e138dac, before filing). TypeScript identical. Title re-scoped. ROOT-CAUSE GROUP: receiver type not carried to the emission site (with WI-fihun, WI-mofil, WI-rupah, WI-vogip, INV-hovoj). Status unchanged."  # 54f9

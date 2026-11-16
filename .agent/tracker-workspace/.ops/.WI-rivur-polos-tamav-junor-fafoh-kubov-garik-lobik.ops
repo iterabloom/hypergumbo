@@ -63,3 +63,18 @@
   clock: 7  # efd6
   nonce: efd6  # efd6
   message: "Merged in PR #1417 (dev c5249c1aa1).\n\nRows 2, 4 and 5 fixed on branch jgstern-agent/fix/audit0021-rows, commit 38a2d7a731; row 1 was already fixed (4f463b6722).\n- objc removeObserver: / removeObserver:name:object: are deleted from ipc_recv, and swift NotificationCenter.removeObserver is swept with them.\n- sqlite3.Connection.backup is db_write, not db_read.\n- erlang ets:info / mnesia:table_info are deleted from db_read (elixir inherits).\n\nBehavioral evidence: `io-boundaries` on one-file objc, swift, python and erlang programs.\n- ipc_recv = {addObserver...} only; removeObserver* is external_potential.\n- db_write = {sqlite3.Connection.backup, sqlite3.Connection.commit}, and there is no db_read.\n- db_read = {ets.lookup}; ets.info / mnesia.table_info are external_potential.\n\nCorpus: the removeObserver chains left ipc_recv on 5 objc/swift repositories (ResearchKit 33). The ets.info / table_info sources left db_read on vernemq, ejabberd, emqx and phoenix-framework. The lost untrusted_input flows on ejabberd (dump_schema, dump_to_textfile) and vernemq (ets:info size to the query manager) were read: all table metadata. No verdict moved toward confirmed.\n\nSTILL OPEN: row 3 (python os.wait*), left for WI-lanos's exit-status reconciliation. This item should not close until that row is decided there.\n\nOWNER 2026-10-03: WI-lanos is HELD (re-scoped until after the DDG stage). Row 3 therefore stays open here with it; the lanos agent found row 3's premise (exit status is not IPC data) contradicts the WI-dozul ruling WI-lanos follows."  # efd6
+- op: update  # 37b0
+  at: '2026-10-23T21:59:26Z'  # 37b0
+  by: agent  # 37b0
+  actor: jgstern_agent  # 37b0
+  clock: 8  # 37b0
+  nonce: 37b0  # 37b0
+  set:  # 37b0
+    status: done  # 37b0
+- op: discuss  # 9a9e
+  at: '2026-10-23T21:59:26Z'  # 9a9e
+  by: agent  # 9a9e
+  actor: jgstern_agent  # 9a9e
+  clock: 9  # 9a9e
+  nonce: 9a9e  # 9a9e
+  message: "ROW 3 DECIDED by WI-lanos (PR #1825, dev 397f2242e2): python os.wait / waitpid / wait3 / wait4 / waitid are no longer ipc_recv -- the row is removed under the owner-approved ADR-0049 amendment (an exit status is not the child's message). This row's premise ('exit status is not IPC data') was the reading that prevailed, reversing the 2026-10-03 note that rejected it under WI-dozul. Live: os.waitpid -> subprocess.Popen reads confirmed_with_caveats with 0 evidence (was violated, ipc_recv). Rows 2, 4, 5 merged earlier (9f975763bf); row 1 earlier (4f463b6722). All four rows done."  # 9a9e

@@ -40,3 +40,10 @@
   clock: 3  # 37fc
   nonce: 37fc  # 37fc
   message: "From WI-silos (branch jgstern-agent/fix/silos, commit 41fd9834a6, not yet merged): WI-silos teaches the receiver walker that `x!` has x's type, which exposes this item's mechanism at 2 more sites: Kingfisher Tests/KingfisherTests/KingfisherTestHelper.swift:214-215 `context!.setFillColor` / `context!.fill` are now stamped `UIGraphicsGetCurrentContext` (a C function read as a constructor) where before they carried no type."  # 37fc
+- op: discuss  # b507
+  at: '2026-11-01T22:22:25Z'  # b507
+  by: agent  # b507
+  actor: jgstern_agent  # b507
+  clock: 4  # b507
+  nonce: b507  # b507
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f. The convention rule now lives in _swift_is_type_spelling (swift.py:560, WI-hojib) and is used by _swift_call_type. Fixture fx_vakar: UTTypeCreatePreferredIdentifierForTag(...)?.takeRetainedValue() emits swift:UTTypeCreatePreferredIdentifierForTag:0-0:takeRetainedValue:external_symbol. 'let context = UIGraphicsGetCurrentContext(); context!.fill(...)' emits swift:UIGraphicsGetCurrentContext:0-0:fill, and the direct optional chain UIGraphicsGetCurrentContext()?.setFillColor does the same. A function name reaches the module slot; the invariant is still violated. MECHANISM: a bare capitalised callee is treated as a constructor by spelling (_swift_is_type_spelling), so C functions' names become receiver types. SHARES MECHANISM WITH: WI-garol."  # b507

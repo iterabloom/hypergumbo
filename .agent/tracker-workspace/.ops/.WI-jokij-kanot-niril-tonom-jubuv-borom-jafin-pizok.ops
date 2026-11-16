@@ -82,3 +82,10 @@
   clock: 9  # c3bd
   nonce: c3bd  # c3bd
   message: "OWNER RULING 2026-09-06 (walk-through item 4): the 09-06 re-scope is ACCEPTED as recommended. Re-titled to the honest-cell statement; P2 -> P3 (owner-authorised). The 973 hinted-external edges (javascript 935, typescript 37, java 1) are per-analyzer follow-ups, not a family fix; not appended to the arc."  # c3bd
+- op: discuss  # cfee
+  at: '2026-11-01T10:55:31Z'  # cfee
+  by: agent  # cfee
+  actor: jgstern_agent  # cfee
+  clock: 10  # cfee
+  nonce: cfee  # cfee
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint1/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: _derive_dst_ref_from_id still returns None for the 'external' path (finalize.py:391-393). Survey of a JS fixture: const { Readable } = require(\"stream\"); new Readable().push(x) emits javascript:external:0-0:push:external_symbol with dst_ref None and receiver_type_hint=Readable, a live instance of the hinted-external residue (the module is named by the import); URL.toString (global) is the honest cell. Corpus counts not re-measured. MECHANISM: JS analyzer emits the external sentinel for a method call whose receiver hint names an imported external type. SHARES MECHANISM WITH: WI-bohih,WI-sabam,WI-fokuj."  # cfee

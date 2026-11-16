@@ -19,3 +19,10 @@
     pr_ref:  # 2095
     description: "Residual of INV-hamin (PR #1320). ADR-0061 ruling 1 places in-repo catalogue data in .hypergumbo.toml's catalogue keys AND <repo>/.hypergumbo/<family>.d/ (catalogue_home.repo_catalogue_home). The .toml keys now load only on opt-in (--in-repo-catalogues / trust-catalogues). The .d directories are read by nothing, so there is no hazard today -- but a user following the ADR and the registry docstring ('repo tier: <repo>/.hypergumbo/') gets no effect and no error, the io_primitives.d shape WI-talaz closed once. Work: read each wired channel's in-repo directory behind the same opt-in gate, list its files under catalog_provenance tiers.in_repo with git state, and decide per family whether in-repo rows get the yours treatment once opted in (ruling 2 says un-opted in-repo rows only add)."  # 2095
     fields: {}  # 2095
+- op: discuss  # 3f36
+  at: '2026-11-01T10:55:31Z'  # 3f36
+  by: agent  # 3f36
+  actor: jgstern_agent  # 3f36
+  clock: 2  # 3f36
+  nonce: 3f36  # 3f36
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint2/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: catalogue_home.repo_catalogue_home has no caller in packages/*/src. Live: a fixture with .hypergumbo/io_primitives.d/mynet.yaml rowing mynet.blast as net_send, run with io-boundaries --in-repo-catalogues, classifies the call only as external_potential, while the same file via --io-primitives gives net_send; no stderr notice or error about the ignored directory. Premise holds. MECHANISM: ADR-named in-repo location has no loader and no notice that it is ignored."  # 3f36

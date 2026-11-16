@@ -177,7 +177,7 @@ def _find_enclosing_context(
     if func_name and func_node is not None:
         qualified_name = f"{class_name}.{func_name}" if class_name else func_name
         rel_path = str(path.relative_to(repo_root))
-        func_id = make_symbol_id("haxe", rel_path, func_node.start_point[0] + 1, func_node.end_point[0] + 1, qualified_name, "fn")
+        func_id = make_symbol_id("haxe", rel_path, func_node.start_point[0] + 1, func_node.end_point[0] + 1, qualified_name, "function")
         return func_id, class_name
     return None, class_name  # pragma: no cover
 
@@ -294,7 +294,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                 signature = f"function {name}({', '.join(params)}): {type_str}"
 
                 sym = Symbol(
-                    id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "fn"),
+                    id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "function"),
                     stable_id=self.compute_stable_id(node, kind="fn", name=qualified_name, file_stable_id=file_stable_id),
                     name=qualified_name,
                     kind="function",

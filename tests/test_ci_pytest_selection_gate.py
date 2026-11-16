@@ -1,38 +1,44 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-modur: the per-PR pytest gate must run on SELECTION, not on changed source.
+"""The per-PR pytest gate must run on SELECTION, not on changed source (WI-modur).
 
-The bug this pins. The gate used to decide "should pytest run?" from the set of
-changed ``packages/*/src/**.py`` files. Anything else -- a test-only fix, a
-``scripts/*.py`` change, an ``.agent/hooks/**.py`` change -- produced an empty
-source set, so the step printed "No Python source files changed" and exited 0.
-The pipeline went GREEN having run nothing. It was caught on the WI-fodad PR,
-whose committed manifest carried **0 changed source files and 1 selected test**:
-smart-test had correctly selected the changed test, and CI threw that away.
+The Woodpecker ``pytest`` step decides "should pytest run?" from the tests the
+committed manifest selects. Keyed instead on changed ``packages/*/src/**.py``
+files, it would see an empty source set for a test-only fix, a ``scripts/*.py``
+change or an ``.agent/hooks/**.py`` change, print "No Python source files
+changed", exit 0, and go GREEN having run nothing -- discarding a selection
+smart-test made correctly (a manifest with **0 changed source files and 1
+selected test**).
 
 That is the L48 family one level up. The recorded lesson is "a test that cannot
-be SELECTED is indistinguishable from a test that passes"; this was an entire
-CLASS OF PULL REQUEST for which the suite never ran, reported as a pass.
+be SELECTED is indistinguishable from a test that passes"; here it would be an
+entire CLASS OF PULL REQUEST for which the suite never runs, reported as a pass.
 
 Why these tests drive the real shell instead of asserting on its text. A
-source-text assertion ("the string `SELECTED_TESTS` appears near the skip") is
-exactly the kind of test that passed while the behaviour was broken -- the old
-condition *also* mentioned the manifest. So the block is extracted from the YAML
-and EXECUTED against a fabricated manifest with stub binaries, and the assertion
-is on what actually happened: did pytest get invoked?
+source-text assertion ("the string `SELECTED_TESTS` appears near the skip") can
+pass while the behaviour is broken -- a source-keyed condition can mention the
+manifest too. So the block is extracted from the YAML and EXECUTED against a
+fabricated manifest with stub binaries, and the assertion is on what actually
+happened: did pytest get invoked?
 
 PATH handling follows L49: the stub directory REPLACES ``$PATH`` rather than
 being prepended, so "not stubbed" and "not findable" are the same statement and
 a forgotten stub cannot silently fall through to the real binary.
 
-WI-vilor: a SECOND fail-open hole in the same block. WI-modur fixed which
-*question* the gate asks; this covers what it does when it cannot get an answer.
-``git diff`` against a base that does not exist writes nothing to stdout, which
-is byte-identical to a successful diff finding no Python files -- so the gate
-skipped the suite and reported green. It was reached systematically, not by bad
-luck: ``CI_PREV_COMMIT_SHA`` is the previous *pipeline's* commit, and auto-pr
-merges by rebase, so on every post-merge push that SHA names a rewritten object
-absent from the clone. Both halves (fail-closed diff, validated base) are
-mutation-tested here.
+The block also fails closed when it cannot get an answer (WI-vilor). ``git
+diff`` against a base that does not exist writes nothing to stdout, which is
+byte-identical to a successful diff finding no Python files -- so a gate that
+trusted it would skip the suite and report green. A missing base is systematic,
+not bad luck: ``CI_PREV_COMMIT_SHA`` is the previous *pipeline's* commit, and
+auto-pr merges by rebase, so on every post-merge push that SHA names a
+rewritten object absent from the clone. Both halves (fail-closed diff,
+validated base) are mutation-tested here.
+
+Exit 0 is not a count of executed tests (INV-zuvij). pytest exits 0 when every
+collected test SKIPPED, so a step that read only the exit code would pass a run
+that executed nothing. The step hands pytest ``--junit-xml`` and, on exit 0,
+counts the testcases that ran by smart-test's rule (a skip does not count, an
+xfail does); zero, or no readable report, fails the step. The stub pytest
+writes whatever report a test gives it, so the count is driven, not assumed.
 """
 
 # covers: .woodpecker/woodpecker.yml
@@ -49,6 +55,26 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = REPO_ROOT / ".woodpecker" / "woodpecker.yml"
+
+
+def _junit(*cases: str) -> str:
+    return (
+        '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest">'
+        + "".join(cases)
+        + "</testsuite></testsuites>"
+    )
+
+
+PASSED_CASE = '<testcase classname="tests.test_something" name="test_a"/>'
+SKIPPED_CASE = (
+    '<testcase classname="tests.test_something" name="test_b">'
+    '<skipped type="pytest.skip" message="no grammar"/></testcase>'
+)
+XFAIL_CASE = (
+    '<testcase classname="tests.test_something" name="test_c">'
+    '<skipped type="pytest.xfail" message="known"/></testcase>'
+)
+JUNIT_ONE_PASSED = _junit(PASSED_CASE)
 
 
 def _pytest_step_script() -> str:
@@ -71,6 +97,7 @@ def _sandbox(
     committed_readable: bool = True,
     pytest_rc: int = 0,
     absent_tests: tuple[str, ...] = (),
+    junit: str | None = JUNIT_ONE_PASSED,
 ) -> tuple[Path, Path]:
     """A fake repo + a REPLACED PATH holding only the stubs we intend (L49).
 
@@ -80,14 +107,16 @@ def _sandbox(
     succeeds, which is how the block decides whether to trust
     CI_PREV_COMMIT_SHA.
     `committed_manifest` is what `git show HEAD:.ci/affected-tests.txt` returns
-    -- the blob the PR actually committed, which WI-fopuh showed is not always
-    the file sitting on disk. It defaults to the on-disk body (the ordinary
+    -- the blob the PR actually committed, which is not always the file
+    sitting on disk (WI-fopuh). It defaults to the on-disk body (the ordinary
     case, where nothing rewrote it). `committed_readable=False` makes that read
     FAIL instead, the way it would for a manifest untracked at HEAD.
     Every test the manifest selects is created in the fake repo, as it exists
     in a real checkout, except those named in `absent_tests` (INV-tazur: the
     step refuses a selection naming a path the commit does not contain).
     `pytest_rc` is the stub pytest's exit status.
+    `junit` is the report the stub writes to the path given as
+    ``--junit-xml=<path>``; None writes no report at all.
     """
     repo = tmp_path / "repo"
     (repo / ".ci").mkdir(parents=True)
@@ -110,10 +139,10 @@ def _sandbox(
     marker = tmp_path / "pytest-was-invoked"
 
     # `git` stub: merge-base resolves, diff --name-only yields the PR's files.
-    # NB: emit REAL newlines. A first draft used printf '%s' with a Python repr,
-    # which wrote a literal backslash-n, so `grep -E '\.py$'` never matched and
-    # every case fell into the earlier "no .py files" skip -- the harness, not
-    # the gate, was producing the result.
+    # NB: emit REAL newlines. A literal backslash-n (printf '%s' of a Python
+    # repr writes one) means `grep -E '\.py$'` never matches and every case
+    # falls into the earlier "no .py files" skip -- the harness, not the gate,
+    # would be producing the result.
     if diff_fails:
         diff_lines = (
             '    echo "fatal: bad object deadbeefdeadbeefdeadbeefdeadbeef" >&2\n'
@@ -146,12 +175,23 @@ def _sandbox(
         exit 0
     """).replace("__DIFF__", diff_lines).replace("__CATFILE_RC__", catfile_rc)
        .replace("__SHOW__", show_arm))
-    # `pytest` stub: records that it ran, and passes.
-    (bindir / "pytest").write_text(textwrap.dedent(f"""\
-        #!/usr/bin/env bash
-        echo "$@" > {str(marker)!r}
-        exit {pytest_rc}
-    """))
+    # `pytest` stub: records that it ran, writes the junit report it was given
+    # (INV-zuvij) to the --junit-xml path, and exits with `pytest_rc`.
+    junit_body = tmp_path / "junit-body.xml"
+    write_report = ""
+    if junit is not None:
+        junit_body.write_text(junit)
+        write_report = textwrap.dedent(f"""\
+            for arg in "$@"; do
+              case "$arg" in --junit-xml=*) cat {str(junit_body)!r} > "${{arg#--junit-xml=}}" ;; esac
+            done
+        """)
+    (bindir / "pytest").write_text(
+        "#!/usr/bin/env bash\n"
+        f"echo \"$@\" > {str(marker)!r}\n"
+        + write_report
+        + f"exit {pytest_rc}\n"
+    )
     for tool in ("git", "pytest"):
         (bindir / tool).chmod(0o755)
     # Real tools the block genuinely needs, symlinked in explicitly.
@@ -211,10 +251,10 @@ def test_extracted_block_is_the_real_thing() -> None:
 
 
 def test_test_only_change_still_runs_pytest(tmp_path: Path) -> None:
-    """THE regression: 0 changed source files + 1 selected test => pytest RUNS.
+    """0 changed source files + 1 selected test => pytest RUNS.
 
-    This is the exact manifest shape the WI-fodad PR committed, and the exact
-    case the old source-keyed condition skipped.
+    This is the manifest shape a test-only PR commits, and the exact case a
+    source-keyed condition would skip.
     """
     repo, marker = _sandbox(
         tmp_path,
@@ -242,13 +282,13 @@ def test_skip_only_when_nothing_is_selected(tmp_path: Path) -> None:
 
 
 def test_failed_diff_does_not_skip_the_suite(tmp_path: Path) -> None:
-    """WI-vilor: a git error must never read as "nothing changed".
+    """A git error must never read as "nothing changed" (WI-vilor).
 
-    Observed live on the dev push pipeline for 6e92792a34, which printed
-    `fatal: bad object 66737979de...` and then "PR changes no .py files —
-    skipping pytest", reporting SUCCESS having run nothing on a commit that
-    changed four Python files. A failed `git diff` writes nothing to stdout,
+    A failed `git diff` (`fatal: bad object ...`) writes nothing to stdout,
     which is byte-identical to a successful diff that found no Python files.
+    Read that way, the step would print "PR changes no .py files — skipping
+    pytest" and report SUCCESS having run nothing. It must run the suite and
+    report the failure instead.
     """
     repo, marker = _sandbox(
         tmp_path,
@@ -269,11 +309,12 @@ def test_failed_diff_does_not_skip_the_suite(tmp_path: Path) -> None:
 
 
 def test_push_event_falls_back_when_prev_sha_was_rewritten(tmp_path: Path) -> None:
-    """WI-vilor: CI_PREV_COMMIT_SHA is the previous PIPELINE's commit.
+    """CI_PREV_COMMIT_SHA is the previous PIPELINE's commit (WI-vilor).
 
     auto-pr merges by rebase, which rewrites the commit, so on every post-merge
-    push that SHA names an object absent from the clone. Trusting it produced a
-    guaranteed-failing diff on every rebase-merged push -- not intermittently.
+    push that SHA names an object absent from the clone. Trusting it would make
+    the diff fail on every rebase-merged push -- not intermittently -- so an
+    unresolvable SHA falls back to HEAD^.
     """
     repo, marker = _sandbox(
         tmp_path,
@@ -294,7 +335,7 @@ def test_push_event_falls_back_when_prev_sha_was_rewritten(tmp_path: Path) -> No
 def test_push_event_keeps_a_resolvable_prev_sha(tmp_path: Path) -> None:
     """The fallback is scoped: a valid previous commit is still used.
 
-    Without this the fix would be indistinguishable from "always diff HEAD^",
+    Without this the fallback would be indistinguishable from "always diff HEAD^",
     which silently undercounts a push that lands more than one commit.
     """
     repo, marker = _sandbox(
@@ -326,24 +367,23 @@ def test_no_skip_condition_keys_on_changed_source(tmp_path: Path) -> None:
     )
 
 
-# ── WI-fopuh: the file on disk is not necessarily the file the PR committed ──
+# ── The file on disk is not necessarily the file the PR committed (WI-fopuh) ──
 #
 # The Woodpecker steps share ONE workspace. `smart-test` resolves its manifest
-# path from its OWN location, never the caller's cwd, so any step that reaches
-# it rewrites the checked-out `.ci/affected-tests.txt`: `forge-arms` runs
+# path from its OWN location, never the caller's cwd, so a step that reaches it
+# can rewrite the checked-out `.ci/affected-tests.txt`: `forge-arms` runs
 # `tests/test_autopr_*.py`, those shell out to the real `scripts/auto-pr`, and
 # auto-pr regenerates the manifest before pushing. That container installs
-# pytest and nothing else, so the regen fell back to a FULL-SUITE manifest.
-# PR #1107's pytest step then announced `964 selected files` -- the full-suite
-# `find` count -- for a PR whose committed manifest listed 75, and ran the whole
-# tree. The root cause is fixed at the writer (scripts/smart-test now refuses a
-# foreign cwd); these tests pin the reader, so a second writer cannot make the
-# gate silently measure the wrong set again.
+# pytest and nothing else, so a regeneration there falls back to a FULL-SUITE
+# manifest, and a gate reading the workspace copy would measure the PR against
+# the whole tree. scripts/smart-test refuses a foreign cwd, which guards the
+# writer; these tests pin the reader, so another writer cannot make the gate
+# silently measure the wrong set.
 #
 # The gate DISCLOSES rather than fails. Measuring the committed artifact is the
 # safety property; turning an unexplained rewrite into a red PR is the
-# recall-loss direction, and the disclosure is what makes the next one
-# diagnosable in one look instead of five CI rounds.
+# recall-loss direction, and the disclosure is what makes a rewrite
+# diagnosable in one look.
 
 MANIFEST_CLOBBERED = (
     "# Mode: full-suite\n"
@@ -356,7 +396,7 @@ MANIFEST_CLOBBERED = (
 def test_the_gate_reads_the_committed_manifest_not_the_workspace_copy(
     tmp_path: Path,
 ) -> None:
-    """THE regression: a rewritten workspace manifest must not steer the gate."""
+    """A rewritten workspace manifest must not steer the gate."""
     repo, marker = _sandbox(
         tmp_path,
         manifest_body=MANIFEST_CLOBBERED,
@@ -414,10 +454,9 @@ def test_an_undisturbed_manifest_is_not_flagged(tmp_path: Path) -> None:
 
 
 def test_the_step_prints_the_header_of_the_manifest_it_read(tmp_path: Path) -> None:
-    """The filed ask: make the file observable, not just its cardinality.
+    """The manifest the step read is observable, not just its cardinality.
 
-    The whole investigation cost what it did because the step's only output
-    about selection was a COUNT, which cannot be traced back to a file.
+    A selection COUNT on its own cannot be traced back to a file.
     """
     repo, _ = _sandbox(
         tmp_path,
@@ -456,13 +495,14 @@ def test_an_unreadable_committed_blob_falls_back_and_says_so(tmp_path: Path) -> 
 
 
 def test_the_selection_count_reads_root_level_tests(tmp_path: Path) -> None:
-    """WI-kabaf control: the LIVE per-PR count is a section count, not a prefix.
+    """The LIVE per-PR count is a section count, not a prefix (WI-kabaf).
 
-    `.github/workflows/ci.yml` counted the manifest with `grep -c "^packages/"`,
-    which reads 0 for root-level `tests/...` selections (pinned in
-    tests/test_ci_workflow_manifest_count.py). That file is dormant; this is the
-    gate that runs per PR, and its announced count must equal what it hands
-    pytest for exactly that shape -- two root-level tests, no package tests.
+    A `grep -c "^packages/"` count of the manifest reads 0 for root-level
+    `tests/...` selections; the dormant `.github/workflows/ci.yml` counts the
+    section instead (pinned in tests/test_ci_workflow_manifest_count.py). This
+    is the gate that runs per PR, and its announced count must equal what it
+    hands pytest for exactly that shape -- two root-level tests, no package
+    tests.
     """
     manifest = (
         "# === CHANGED_SOURCE_FILES ===\n"
@@ -484,7 +524,7 @@ def test_the_selection_count_reads_root_level_tests(tmp_path: Path) -> None:
 def test_a_selected_path_missing_from_the_commit_stops_the_step(
     tmp_path: Path,
 ) -> None:
-    """INV-tazur, CI half: a manifest naming a deleted test must not reach pytest.
+    """A manifest naming a deleted test must not reach pytest (INV-tazur).
 
     Under `pytest -n` a dead path collects nothing and exits 5 with no message;
     the step has to name the path and fail before that happens.
@@ -520,3 +560,45 @@ def test_a_zero_collect_pytest_exit_fails_in_words(tmp_path: Path) -> None:
     assert marker.exists(), result.stdout + result.stderr
     assert result.returncode == 5, result.stdout + result.stderr
     assert "ZERO TESTS EXECUTED" in result.stdout, result.stdout
+
+
+# --- INV-zuvij: exit 0 is not a count of executed tests ----------------------
+
+def _run_with_report(tmp_path: Path, junit: str | None) -> subprocess.CompletedProcess:
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        changed_files=["tests/test_something.py"],
+        junit=junit,
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+    assert marker.exists(), result.stdout + result.stderr  # reach: pytest ran
+    assert "--junit-xml=" in marker.read_text(), marker.read_text()
+    return result
+
+
+def test_an_all_skipped_run_fails(tmp_path: Path) -> None:
+    """pytest exits 0 on an all-skipped run; the step does not pass it."""
+    result = _run_with_report(tmp_path, _junit(SKIPPED_CASE, SKIPPED_CASE))
+    assert result.returncode == 5, result.stdout + result.stderr
+    assert "ZERO TESTS EXECUTED" in result.stdout, result.stdout
+
+
+def test_a_run_that_executed_a_test_passes(tmp_path: Path) -> None:
+    """Positive control: one passed test beside a skip is a pass."""
+    result = _run_with_report(tmp_path, _junit(PASSED_CASE, SKIPPED_CASE))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 test(s) executed" in result.stdout, result.stdout
+
+
+def test_an_xfail_executed(tmp_path: Path) -> None:
+    """junit reports an xfail as a skip, but it ran (smart-test's rule)."""
+    result = _run_with_report(tmp_path, _junit(XFAIL_CASE))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_missing_report_fails_closed(tmp_path: Path) -> None:
+    """Exit 0 with no readable report: how many ran is unknown, not zero, not a pass."""
+    result = _run_with_report(tmp_path, None)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "no readable junit report" in result.stdout, result.stdout

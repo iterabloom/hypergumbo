@@ -23,19 +23,28 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, get_args, get_origin
 
-# Add src to path for imports
-REPO_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
+# Resolve hypergumbo_core from this checkout, as generate-concept-axes does,
+# so the pre-commit freshness check needs no installed package. This read
+# `REPO_ROOT / "src"`, the layout before packages/. That directory is gone, so
+# the import worked only with the venv active, and without it the hook
+# reported the schema "out of date" (WI-ziguk).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
-from hypergumbo_core.entrypoints import all_known_entrypoint_kinds
-from hypergumbo_core.evidence_types import EVIDENCE_TYPES
-from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.schema import SCHEMA_VERSION, VIEW_NAMES
+from generator_check import could_not_run, run
 
-from generate_schema_lib import build_all_defs
+try:
+    from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
+    from hypergumbo_core.entrypoints import REQUEST_INGRESS_KINDS, all_known_entrypoint_kinds
+    from hypergumbo_core.evidence_types import EVIDENCE_TYPES
+    from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
+    from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+    from hypergumbo_core.schema import SCHEMA_VERSION, VIEW_NAMES
+
+    from generate_schema_lib import build_all_defs
+except ImportError as exc:
+    sys.exit(could_not_run(exc))
 
 
 def python_type_to_json_schema(py_type: Any) -> Dict[str, Any]:
@@ -159,6 +168,14 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "hashing scheme"
                 )
             },
+            "scip_stable_id_scheme": {
+                "type": "string",
+                "description": (
+                    "Identifier for the algorithm the rust-analyzer (SCIP) "
+                    "arm computes its stable_id values with; those values "
+                    "carry the hgscipid<N>: label"
+                )
+            },
             "view": {
                 "type": "string",
                 "enum": list(VIEW_NAMES),
@@ -232,7 +249,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                     "description": (
                                         "How many of `files` are the "
                                         "project's own code: supply-chain "
-                                        "tier 1-2 by path "
+                                        "not tier 3 or 4 by path "
                                         "(supply_chain.tier_by_path; no file "
                                         "read). Committed vendored and "
                                         "derived files are still analysed "
@@ -355,6 +372,18 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             "histogram is then empty)"
                         )
                     },
+                    # WI-tivif: framework-pattern enrichment's per-YAML output.
+                    "framework_patterns": {
+                        "type": "object",
+                        "description": (
+                            "Framework-pattern enrichment (the framework-patterns "
+                            "pass, WI-tivif): pattern YAML id -> symbols that "
+                            "gained a concept from it. Every YAML loaded is "
+                            "listed, zeros included, so 'loaded and matched "
+                            "nothing' (0) is told apart from 'not loaded' (absent)"
+                        ),
+                        "additionalProperties": {"type": "integer", "minimum": 0},
+                    },
                     # WI-zimor: the distribution behind avg_confidence.
                     "edge_confidence": {
                         "type": "object",
@@ -390,7 +419,11 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     },
                     "languages": {
                         "type": "object",
-                        "description": "Per-language node/edge/file counts",
+                        "description": (
+                            "Per-language node/edge/file counts. A compact "
+                            "or tiered view has nodes and edges only: files "
+                            "counts file nodes, which a selection does not hold"
+                        ),
                         "additionalProperties": {"type": "object"}
                     },
                     "by_supply_chain_tier": {
@@ -398,9 +431,35 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                         "description": "Per-tier node/edge counts",
                         "additionalProperties": {"type": "object"}
                     },
+                    # WI-lokuj: a view's metrics describe the view; what
+                    # describes the repository sits under this one key.
+                    "repository": {
+                        "type": "object",
+                        "description": (
+                            "In a compact or tiered view only: figures about "
+                            "the whole repository, copied from the full map. "
+                            "Every other key of a view's metrics describes "
+                            "the view's own nodes and edges"
+                        ),
+                        "properties": {
+                            "framework_patterns": {
+                                "type": "object",
+                                "description": (
+                                    "The full map's metrics.framework_patterns"
+                                ),
+                                "additionalProperties": {
+                                    "type": "integer", "minimum": 0
+                                },
+                            },
+                        },
+                        "additionalProperties": False,
+                    },
                     "debug": {
                         "type": "object",
-                        "description": "Introspection counters (not a stable API)",
+                        "description": (
+                            "Introspection counters (not a stable API). "
+                            "Full map only"
+                        ),
                         "properties": {
                             "unique_paths_in_analysis": {"type": "integer"},
                             "analyzed_file_symbols": {"type": "integer"},
@@ -426,14 +485,16 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "Supply-chain classification summary, keyed by tier name "
                     "(first_party / internal_dep / external_dep) plus the "
                     "exclusion-disclosure buckets derived_skipped, "
-                    "installed_deps_skipped and generated_output_skipped, and "
+                    "installed_deps_skipped, generated_output_skipped and "
+                    "vcs_ignored_skipped, and "
                     "vendored_analysed (analysed tier-3 vendored directories, "
                     "ADR-0004 point 3a). Each "
                     "tier carries {files, symbols}; "
                     "external_dep also `ecosystem` and `directness` sub-buckets, "
                     "derived_skipped a {files, paths} shape, "
-                    "installed_deps_skipped a {dirs, packages, entries} shape "
-                    "and generated_output_skipped a {dirs, entries} shape "
+                    "installed_deps_skipped a {dirs, packages, entries} shape, "
+                    "generated_output_skipped a {dirs, entries} shape and "
+                    "vcs_ignored_skipped a {paths, entries} shape "
                     "(ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: "
                     "the producer emits these at the top level, not under a "
                     "by_tier wrapper."
@@ -535,6 +596,33 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             },
                         },
                     },
+                    "vcs_ignored_skipped": {
+                        "type": "object",
+                        "description": (
+                            "Files and directories left out because the "
+                            "repository's VCS ignores them and does not track "
+                            "them: local outputs, editor state, secrets files "
+                            "(ADR-0004 \u00a7\"Installed dependency source\" "
+                            "point 9). paths counts the entries the walk met (a "
+                            "pruned directory is one, whatever it holds); "
+                            "entries names them, a directory with a trailing "
+                            "slash, sorted and capped at 10. {paths: 0, "
+                            "entries: []} when nothing was left out, which is "
+                            "also the answer outside a git work tree."
+                        ),
+                        "required": ["paths", "entries"],
+                        "properties": {
+                            "paths": {"type": "integer", "minimum": 0},
+                            "entries": {
+                                "type": "array",
+                                "maxItems": 10,
+                                "items": {
+                                    "type": "string",
+                                    "description": "Repo-relative path.",
+                                },
+                            },
+                        },
+                    },
                     "vendored_analysed": {
                         "type": "object",
                         "description": (
@@ -607,6 +695,45 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "items": {"$ref": "#/$defs/Entrypoint"},
                 "description": "Detected program entrypoints"
             },
+            # WI-vumig: every request handler BEFORE the rank floor and the
+            # size cap `entrypoints` applies. verify-claims' unseeded-ingress
+            # disclosure is a completeness statement and reads this list (on
+            # mlflow the capped list held 200 of 302 route handlers).
+            "request_ingress": {
+                "type": "array",
+                "description": (
+                    "Every request-handler entrypoint candidate (a kind in "
+                    "entrypoints.REQUEST_INGRESS_KINDS) before the rank floor "
+                    "and the size cap applied to entrypoints, in rank order: "
+                    "the list verify-claims' unseeded-ingress disclosure "
+                    "reads. Stripped from the compact and tiered views"
+                ),
+                "items": {
+                    "type": "object",
+                    "required": ["symbol_id", "kind", "label"],
+                    "properties": {
+                        "symbol_id": {
+                            "type": "string",
+                            "description": "ID of the handler Symbol",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": sorted(REQUEST_INGRESS_KINDS),
+                            "description": (
+                                "The entrypoint kind, one of "
+                                "entrypoints.REQUEST_INGRESS_KINDS"
+                            ),
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": (
+                                "Human-readable label (the route when known)"
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
             "usage_contexts": {
                 "type": "array",
                 "items": {"$ref": "#/$defs/UsageContext"},
@@ -614,6 +741,24 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "Concept-tagged call/usage sites (per "
                     "ADR-3ccc usage_context_patterns)"
                 )
+            },
+            # INV-jahuf: a C/C++ module slot naming two or more headers is a
+            # `module-set-<16 hex>` handle; this table holds each list once.
+            "module_sets": {
+                "type": "object",
+                "description": (
+                    "Disjunctive module slots stored once (INV-jahuf): "
+                    "handle -> the modules a call could come from, in slot "
+                    "order. The handle is module-set- plus the first 16 hex "
+                    "digits of sha256 of the comma-joined list; only handles "
+                    "the edges reference are listed"
+                ),
+                "propertyNames": {"pattern": "^module-set-[0-9a-f]{16}$"},
+                "additionalProperties": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 2,
+                },
             },
             # WI-kutas PR2: reproducibility_context is built by
             # schema.build_reproducibility_context() (ad-hoc dict); its
@@ -742,6 +887,58 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             "from a producer formula. "
                             "Null on bare build_validation_report calls (unit "
                             "tests)."
+                        )
+                    },
+                    "name_slot_stats": {
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "ids_checked": {"type": "integer"},
+                                    "exempt_file_nodes": {"type": "integer"},
+                                    "not_parsed": {"type": "integer"},
+                                    "mismatched": {"type": "integer"},
+                                    "by_producer": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "producer": {"type": "string"},
+                                                "mismatched": {
+                                                    "type": "integer"
+                                                },
+                                                "checked": {"type": "integer"},
+                                                "example_id": {
+                                                    "type": "string"
+                                                },
+                                                "example_name": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "additionalProperties": False
+                                        }
+                                    },
+                                    "producers_cut": {"type": "integer"}
+                                },
+                                "additionalProperties": False
+                            },
+                            {"type": "null"}
+                        ],
+                        "description": (
+                            "ADR-0036 Ruling 1 name-slot round-trip, measured "
+                            "per run: of the node ids parsed from the right "
+                            "(ids_checked), how many have a name slot that is "
+                            "not sanitize_id_name_segment(name) (mismatched), "
+                            "by producer (the originating pass id, else the "
+                            "language), most mismatches first, each with its "
+                            "smallest mismatching id and that node's name; at "
+                            "most 20 producers, the rest counted in "
+                            "producers_cut. File pseudo-symbols "
+                            "(exempt_file_nodes) are exempt because the id "
+                            "grammar fixes their name slot to 'file'; ids with "
+                            "fewer than five slots are not_parsed. A statistic, "
+                            "not violations. Null on bare "
+                            "build_validation_report calls (unit tests)."
                         )
                     }
                 }
@@ -1094,4 +1291,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run(main)

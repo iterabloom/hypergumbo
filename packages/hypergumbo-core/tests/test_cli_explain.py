@@ -57,7 +57,7 @@ def test_cmd_explain_shows_symbol_details(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_shows_docstring(tmp_path: Path, capsys) -> None:
-    """WI-kipod: explain surfaces the captured docstring (human intent)."""
+    """Explain surfaces the captured docstring (human intent; WI-kipod)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -91,7 +91,7 @@ def test_cmd_explain_shows_docstring(tmp_path: Path, capsys) -> None:
 def test_cmd_explain_omits_docstring_line_when_absent(
     tmp_path: Path, capsys
 ) -> None:
-    """WI-kipod: no Docstring label emitted for a symbol without one."""
+    """No Docstring label emitted for a symbol without one (WI-kipod)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -249,8 +249,8 @@ def _multi_file_process_map() -> dict:
 
 
 def test_cmd_explain_multiple_matches(tmp_path: Path, capsys) -> None:
-    """INV-nogof: explain ERRORS on an ambiguous name (matches in >1 file),
-    matching slice's policy — it no longer silently dumps every match."""
+    """Explain ERRORS on an ambiguous name (matches in >1 file), matching
+    slice's policy, rather than silently dumping every match (INV-nogof)."""
     results_file = tmp_path / "hypergumbo.results.json"
     results_file.write_text(json.dumps(_multi_file_process_map()))
 
@@ -272,7 +272,7 @@ def test_cmd_explain_multiple_matches(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_first_resolves_ambiguity(tmp_path: Path, capsys) -> None:
-    """INV-nogof/WI-nanut: --first accepts the top match instead of erroring."""
+    """--first accepts the top match instead of erroring (INV-nogof, WI-nanut)."""
     results_file = tmp_path / "hypergumbo.results.json"
     results_file.write_text(json.dumps(_multi_file_process_map()))
 
@@ -292,7 +292,7 @@ def test_cmd_explain_first_resolves_ambiguity(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_language_resolves_ambiguity(tmp_path: Path, capsys) -> None:
-    """WI-nanut: --language narrows the match pool so the spec is unambiguous."""
+    """--language narrows the match pool so the spec is unambiguous (WI-nanut)."""
     results_file = tmp_path / "hypergumbo.results.json"
     results_file.write_text(json.dumps(_multi_file_process_map()))
 
@@ -312,7 +312,7 @@ def test_cmd_explain_language_resolves_ambiguity(tmp_path: Path, capsys) -> None
 
 
 def test_cmd_explain_file_resolves_ambiguity(tmp_path: Path, capsys) -> None:
-    """WI-nanut: --file narrows the match pool by path suffix."""
+    """--file narrows the match pool by path suffix (WI-nanut)."""
     results_file = tmp_path / "hypergumbo.results.json"
     results_file.write_text(json.dumps(_multi_file_process_map()))
 
@@ -331,7 +331,7 @@ def test_cmd_explain_file_resolves_ambiguity(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_limit_caps_same_file_sections(tmp_path: Path, capsys) -> None:
-    """WI-nanut: --limit caps sections for non-ambiguous same-file duplicates."""
+    """--limit caps sections for non-ambiguous same-file duplicates (WI-nanut)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2189,7 +2189,7 @@ def test_cmd_explain_shows_edge_type_in_callers(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_shows_edge_type_in_callees(tmp_path: Path, capsys) -> None:
-    """Callee edge type is surfaced — now via the per-type section header
+    """Callee edge type is surfaced via the per-type section header
     ("Calls" groups calls edges) rather than a per-entry [calls] annotation
     (INV-rarol)."""
     behavior_map = {
@@ -2244,13 +2244,12 @@ def test_cmd_explain_shows_edge_type_in_callees(tmp_path: Path, capsys) -> None:
 def test_cmd_explain_provenance_on_callees(tmp_path: Path, capsys) -> None:
     """--provenance shows derived_from on callee edges (Calls direction).
 
-    WI-latup: this test's subject is the DIRECTION — that a callee edge's
-    provenance surfaces at all, not just a caller's. Its fixture originally
-    carried a ``derived_from`` of exactly ``[src, dst]``, which is no longer
-    displayed as a derivation chain because restating an edge's own endpoints
-    tells the reader nothing. The fixture now carries a real consumed input so
-    it exercises the direction it is named for; the endpoints-only case has its
-    own dedicated tests at the end of this file.
+    This test's subject is the DIRECTION — that a callee edge's provenance
+    surfaces at all, not just a caller's. Its fixture's ``derived_from``
+    carries a real consumed input beyond ``[src, dst]``, because an
+    endpoints-only value is not displayed as a derivation chain (restating an
+    edge's own endpoints tells the reader nothing). The endpoints-only case
+    has its own dedicated tests at the end of this file (WI-latup).
     """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
@@ -2437,9 +2436,9 @@ def test_cmd_explain_provenance_off_by_default(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_provenance_no_derived_from(tmp_path: Path, capsys) -> None:
-    """INV-rarol: --provenance has a VISIBLE effect even on edges without a
+    """--provenance has a VISIBLE effect even on edges without a
     derivation chain — it prints a marker instead of being byte-identical to
-    the no-flag form."""
+    the no-flag form (INV-rarol)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2486,15 +2485,15 @@ def test_cmd_explain_provenance_no_derived_from(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     # No "Derived from:" line (that's only for edges that carry a chain)...
     assert "Derived from:" not in out
-    # ...but --provenance is no longer invisible: it marks the chainless edge.
+    # ...but --provenance is still visible: it marks the chainless edge.
     assert "(no derivation chain" in out
 
 
 def test_cmd_explain_sections_partition_by_edge_type(tmp_path: Path, capsys) -> None:
-    """INV-rarol: explain sections partition by edge TYPE, so a section's count
+    """Explain sections partition by edge TYPE, so a section's count
     matches its entries' relationship — 'Called by (N)' means callers (calls
     edges) only, NOT callers+instantiators+containers summed. Unmapped edge
-    types fall back to a direction-qualified canonical-name label."""
+    types fall back to a direction-qualified canonical-name label (INV-rarol)."""
     span = "python:s.py:1-9:Span:class"
 
     def node(nid: str, name: str, kind: str = "function") -> dict:
@@ -2542,7 +2541,7 @@ def test_cmd_explain_sections_partition_by_edge_type(tmp_path: Path, capsys) -> 
     assert "Instantiated by (1)" in out
     assert "Contained by (1)" in out
     assert "Incoming 'depends_on' (1)" in out   # fallback label, unmapped type
-    assert "Called by (4)" not in out      # the old conflated count is gone
+    assert "Called by (4)" not in out      # not the sum of all incoming types
     # Outgoing: per type.
     assert "Calls (1)" in out
     assert "Contains (1)" in out
@@ -2607,12 +2606,12 @@ def test_cmd_explain_provenance_unresolved_derived_from(tmp_path: Path, capsys) 
 
 
 def test_cmd_explain_summary_appears_before_source_dumps(tmp_path: Path, capsys) -> None:
-    """WI-dubum: 'Called by' and 'Calls' summaries must appear before all
+    """'Called by' and 'Calls' summaries must appear before all
     source dumps so users see the call graph before scrolling past code.
 
-    Previously --with-source put source-for-queried-symbol immediately
-    after metadata and interleaved caller/callee source between the two
-    summaries, pushing 'Calls (N):' to ~99% of the way through the output.
+    If --with-source printed the queried symbol's source right after the
+    metadata, or interleaved caller/callee source between the two summaries,
+    'Calls (N):' would end up near the end of the output (WI-dubum).
     """
     src_dir = tmp_path / "src"
     src_dir.mkdir()
@@ -2702,14 +2701,14 @@ def test_cmd_explain_summary_appears_before_source_dumps(tmp_path: Path, capsys)
 
 
 # =============================================================================
-# WI-dazob: field-presence + unknown-edge-type guards, registry label table
+# Field-presence + unknown-edge-type guards, registry label table (WI-dazob)
 # =============================================================================
 
 
 def test_cmd_explain_warns_on_schema_version_drift(tmp_path: Path, capsys) -> None:
-    """WI-dazob: a substrate whose schema_version differs from this build emits a
+    """A substrate whose schema_version differs from this build emits a
     field-presence drift warning to stderr (so absent consumer fields read as
-    schema drift, not silent inapplicability)."""
+    schema drift, not silent inapplicability; WI-dazob)."""
     behavior_map = {
         "schema_version": "0.0.1-ancient",  # deliberately != current SCHEMA_VERSION
         "nodes": [
@@ -2742,7 +2741,7 @@ def test_cmd_explain_warns_on_schema_version_drift(tmp_path: Path, capsys) -> No
 
 
 def test_cmd_explain_no_drift_warning_on_current_schema(tmp_path: Path, capsys) -> None:
-    """WI-dazob: no drift warning when the substrate matches this build."""
+    """No drift warning when the substrate matches this build (WI-dazob)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2773,8 +2772,9 @@ def test_cmd_explain_no_drift_warning_on_current_schema(tmp_path: Path, capsys) 
 
 
 def test_cmd_explain_flags_unrecognized_edge_type(tmp_path: Path, capsys) -> None:
-    """WI-dazob: an edge type registered NOWHERE is flagged 'unrecognized' rather
-    than presented as a legitimate relationship (old/renamed substrate signal)."""
+    """An edge type registered NOWHERE is flagged 'unrecognized' rather
+    than presented as a legitimate relationship (old/renamed substrate signal;
+    WI-dazob)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2822,8 +2822,8 @@ def test_cmd_explain_flags_unrecognized_edge_type(tmp_path: Path, capsys) -> Non
 
 
 def test_cmd_explain_surfaces_registry_description(tmp_path: Path, capsys) -> None:
-    """WI-dazob: a registered-but-unstyled edge type surfaces its registry
-    description (F80.A1) rather than a bare quoted type name."""
+    """A registered-but-unstyled edge type surfaces its registry
+    description (F80.A1) rather than a bare quoted type name (WI-dazob)."""
     from hypergumbo_core.edge_types import find_edge_type
 
     # module_exports is registered but absent from the friendly label table.
@@ -2878,24 +2878,19 @@ def test_cmd_explain_surfaces_registry_description(tmp_path: Path, capsys) -> No
 
 
 
-# WI-latup: an endpoints-only derived_from is not a derivation chain.
+# An endpoints-only derived_from is not a derivation chain (WI-latup).
 #
-# MEASURED on this repository before the change: of 190,109 edges, 45,204 carry
-# derived_from and 44,813 of those (99.1%) are EXACTLY the edge's own
-# [src, dst] -- 44,104 of them from containment-linker alone. Only 391 edges
-# (0.2% of all edges) name anything the linker actually consumed beyond its own
-# endpoints, from two passes (inherited-calls 329, method-call-recovery 62).
+# Most edges that carry derived_from (containment-linker's above all) hold
+# EXACTLY the edge's own [src, dst]; few name anything the linker actually
+# consumed beyond its endpoints. Printing the endpoints-only ones as
+# "Derived from: <src>, <dst>" would read as a recorded derivation, while
+# edges carrying nothing print the honest
+# "(no derivation chain -- analyzer-produced edge)": the uninformative rows
+# would look documented and the honest ones empty. Restating an edge's own
+# endpoints tells a reader nothing they did not already have from the edge.
 #
-# `explain --provenance` printed those 44,813 as "Derived from: <src>, <dst>",
-# which reads as a recorded derivation, while printing the honest
-# "(no derivation chain -- analyzer-produced edge)" for edges carrying nothing.
-# THE DISPLAY WAS INVERTED: the uninformative rows looked documented and the
-# honest ones looked empty. Restating an edge's own endpoints tells a reader
-# nothing they did not already have from the edge.
-#
-# This does NOT change what producers write; it stops the reader being told a
-# circular restatement is provenance. Populating the 86 endpoints-only
-# Edge.create sites with real consumed inputs is the separate, per-linker half.
+# This is a display rule only: it does not change what producers write, it
+# stops the reader being told a circular restatement is provenance.
 
 
 def _provenance_output(tmp_path: Path, capsys, derived_from: list[str]) -> str:
@@ -2937,7 +2932,7 @@ def _provenance_output(tmp_path: Path, capsys, derived_from: list[str]) -> str:
 def test_endpoints_only_derived_from_is_not_shown_as_a_chain(
     tmp_path: Path, capsys
 ) -> None:
-    """The 99.1% case: derived_from restates the edge's own endpoints."""
+    """The common case: derived_from restates the edge's own endpoints."""
     out = _provenance_output(
         tmp_path, capsys,
         ["python:src/main.py:1-5:main:function",
@@ -2979,7 +2974,7 @@ def test_a_real_consumed_input_still_prints_the_chain(
 def test_a_single_endpoint_is_also_not_a_chain(
     tmp_path: Path, capsys
 ) -> None:
-    """inheritance.py:350 passes a one-element list that is the edge's own
+    """The inheritance linker passes a one-element list that is the edge's own
     source. A subset of the endpoints carries no more than the whole pair."""
     out = _provenance_output(
         tmp_path, capsys, ["python:src/main.py:1-5:main:function"],
@@ -2991,9 +2986,10 @@ def test_a_single_endpoint_is_also_not_a_chain(
 def test_an_empty_derived_from_is_a_linker_that_consumed_nothing(
     tmp_path: Path, capsys
 ) -> None:
-    """INV-rukor: ``[]`` is a positive statement from a linker — it read no
+    """``[]`` is a positive statement from a linker — it read no
     existing graph record (a pure file scan that minted both ends) — and must
-    not fall into the ``None`` branch that says "analyzer-produced edge"."""
+    not fall into the ``None`` branch that says "analyzer-produced edge"
+    (INV-rukor)."""
     out = _provenance_output(tmp_path, capsys, [])
     assert "analyzer-produced edge" not in out
     assert "consumed no existing graph record" in out

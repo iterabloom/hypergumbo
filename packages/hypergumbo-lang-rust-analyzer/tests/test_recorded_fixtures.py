@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""ADR-0057 §12 / WI-romuh: the committed aardvark-dns recording is what it says.
+"""The committed aardvark-dns recording is what it says (ADR-0057 §12, WI-romuh).
 
 A recorded fixture is a claim about a producer; these tests keep the claim
 checkable. The index parses with the shipped ``scip_pb2``; its counts are
@@ -9,12 +9,16 @@ cannot drift apart silently); and — the number every later row builds on —
 under the anchors both Rust arms declare, the live tree-sitter arm run on
 the committed crate pairs exactly the SCIP definitions the module says it
 does. The pairing here is computed inline by the declared rule, not by the
-merge pass (WI-kokiz), which is what must later reproduce it.
+merge pass (WI-kokiz), so it is an independent reference for the merge pass
+to reproduce. Later classes run both arms through the merge pass, the
+backend-agreement instrument and same-site supersession, and pin their
+numbers to the recorded module's tallies.
 """
 from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -116,7 +120,7 @@ def _read_crate_file(path: str) -> bytes | None:
 
 class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
     def test_pairing_under_the_declared_rule(self) -> None:
-        """148 of 169, none ambiguous. The rule, spelled out once so the
+        """150 of 169, none ambiguous. The rule, spelled out once so the
         merge pass has a reference to reproduce: same path, equal declared
         name keys, SCIP token line inside the tree-sitter item span."""
         incumbent, scip_anchor = _anchors()
@@ -132,6 +136,7 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
         unpaired: Counter[str] = Counter()
         unpaired_names: list[str] = []
         kinds_agree: Counter[bool] = Counter()
+        const_on_both = 0
         disagreements: Counter[tuple[str, str]] = Counter()
         for symbol in scip_symbols:
             twins = [
@@ -142,6 +147,7 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
                 paired += 1
                 same = symbol.kind == twins[0].kind
                 kinds_agree[same] += 1
+                const_on_both += same and symbol.kind == "const"
                 if not same:
                     disagreements[(symbol.kind, twins[0].kind)] += 1
             elif twins:
@@ -159,21 +165,22 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
             "unpaired_type_alias": unpaired["type_alias"],
             "unpaired_variable": unpaired["variable"],
         } == AARDVARK_DNS_PAIRING
-        # The three non-namespace leftovers are constructs the tree-sitter arm
-        # emits no Symbol for (two `type` aliases, one `static`) — an incumbent
-        # gap (WI-bamar), not a disagreement between the anchors.
-        assert sorted(unpaired_names) == ["AardvarkResult", "DNSBACKEND", "ThreadHandleMap"]
-        # WI-gapup: the SCIP arm reads the producer's declared kind, so the
-        # paired records agree on kind except for `const` items, where SCIP's
-        # `constant` is the more precise claim and stays a contest.
+        # The one non-namespace leftover is a `static` inside a function body,
+        # which the tree-sitter arm emits no Symbol for by its module-level
+        # rule; the two `type` aliases pair through their `type_alias` Symbols
+        # (WI-bamar).
+        assert sorted(unpaired_names) == ["DNSBACKEND"]
+        # The SCIP arm reads the producer's declared kind (WI-gapup), and a
+        # Rust `const` item is `const` on both arms (stable-id v15), so the
+        # paired records agree on kind throughout.
         measured_kind = {
             "paired": paired,
             "agree": kinds_agree[True],
             "disagree": kinds_agree[False],
-            "disagree_constant_vs_variable": disagreements[("constant", "variable")],
+            "const_on_both": const_on_both,
         }
         assert measured_kind == {k: AARDVARK_DNS_AGREEMENT_TALLY[k] for k in measured_kind}
-        assert set(disagreements) == {("constant", "variable")}
+        assert set(disagreements) == set()
 
     def test_the_fixture_is_not_the_incumbents_output_in_disguise(self) -> None:
         """The recorded arm must carry something the incumbent does not, or a
@@ -189,9 +196,9 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
 
 class TestTheCallEdgesAgreeWithTheIncumbentWhereBothSeeTheCall:
     def test_call_site_tally(self) -> None:
-        """WI-zapuk: a SCIP reference whose target is a declared callable is
-        ``calls``; on paired endpoints those are the same edges the tree-sitter
-        arm emits, and now carry the same type. The 113 field-target edges
+        """A SCIP reference whose target is a declared callable is ``calls``
+        (WI-zapuk); on paired endpoints those are the same edges the
+        tree-sitter arm emits, and carry the same type. The 113 field-target edges
         keep ``references`` (the row's "field references keep a non-calls
         type"). Twins are found by pairing symbols through the declared
         anchors and then matching (src, dst)."""
@@ -275,13 +282,20 @@ def _two_arm_artifact(policy: "ArbitrationPolicy | None" = None) -> dict:
     committed ``docs/audits/0019`` table is this dict through
     ``hypergumbo backend-agreement``; regenerate it with
     ``scripts/regenerate-backend-agreement-table`` (which calls this).
-    ``policy`` is the WI-hukuf arbitration policy; None is the built-in."""
+    ``policy`` is the WI-hukuf arbitration policy; None is the built-in.
+
+    The dedup is the survey's own, self-loop removal included (WI-vosop):
+    without it three tree-sitter self-loops read as one-sided calls a live
+    survey never has. Two survey stages stay out by design, and bound what
+    the edge rows describe: the orchestrator's FILE nodes (so no ``imports``
+    edge and no module-level call has a source here) and the survey's
+    sorted file order (WI-lirik's order-dependent Rust binding)."""
     from hypergumbo_core.arbitration import BUILTIN_POLICY
 
     policy = policy or BUILTIN_POLICY
     symbols, edges, runs = _both_arms()
     merge_producer_records(symbols, edges, runs, policy=policy)  # appends its own run to ``runs``
-    edges = deduplicate_edges(edges)
+    edges = deduplicate_edges(edges, remove_self_loops=True)
     ids = {s.id for s in symbols}
     for edge in edges:
         edge.is_resolved = edge.dst in ids
@@ -294,12 +308,12 @@ def _two_arm_artifact(policy: "ArbitrationPolicy | None" = None) -> dict:
 
 
 class TestTheHarnessRunsWhatASurveyRunsBeforeTheMerge:
-    """WI-paluk: a survey fills a missing ``stable_id`` by kind at the
-    orchestrator chokepoint (``populate_kind_stable_ids``), BEFORE the merge
-    pass. While the harness skipped that step, the tree-sitter arm's 10
-    structs, 3 enums and 1 trait reached the merge with no ``stable_id``.
-    The committed 0019 table then read 14 one-sided to ``rust_analyzer``,
-    which a live survey of this crate does not reproduce (0 / 148 / 0 / 0)."""
+    """A survey fills a missing ``stable_id`` by kind at the orchestrator
+    chokepoint (``populate_kind_stable_ids``), BEFORE the merge pass, and the
+    harness must too. Without that step the tree-sitter arm's 10 structs,
+    3 enums and 1 trait would reach the merge with no ``stable_id``, and the
+    0019 table would read 14 one-sided to ``rust_analyzer``, which a live
+    survey of this crate does not reproduce (0 / 150 / 0 / 0) (WI-paluk)."""
 
     def test_the_declaration_kinds_carry_the_backstop_id(self) -> None:
         from hypergumbo_core.analyze.base import make_declaration_stable_id
@@ -317,10 +331,10 @@ class TestTheHarnessRunsWhatASurveyRunsBeforeTheMerge:
 
 
 class TestTheMergePassOnBothArms:
-    """WI-kokiz's acceptance, on committed input: the pass folds exactly the
-    148 declarations the anchors pair, leaves the 21 SCIP-only records and
+    """The merge pass on committed input (WI-kokiz): it folds exactly the
+    150 declarations the anchors pair, leaves the 19 SCIP-only records and
     no tree-sitter-only record, stamps both producers on every merged
-    record, and rewires the edges so the 121 shared call sites collapse."""
+    record, and rewires the edges so the 122 shared call sites collapse."""
 
     def test_the_pass_folds_the_paired_declarations(self) -> None:
         symbols, edges, runs = _both_arms()
@@ -338,9 +352,11 @@ class TestTheMergePassOnBothArms:
         assert runs[-1]["pass"] == "producer-merge"
 
     def test_merged_records_carry_the_provenance_slot(self) -> None:
-        """WI-binis: every merged record says who holds each value. On this
-        producer pair the span (token vs item) and stable_id (moniker hash vs
-        rust.py's) are contested on all 148; kind on the 15 const items."""
+        """Every merged record says who holds each value (WI-binis). On this
+        producer pair the span (token vs item) is contested on all but the 2
+        unit enum variants, the stable_id (moniker hash vs rust.py's) on all
+        150. Kind is contested on none: the 15 const items are ``const`` on
+        both arms (stable-id v15)."""
         symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         merged = [s for s in symbols if s.origin == ["rust", "scip"]]
@@ -357,14 +373,10 @@ class TestTheMergePassOnBothArms:
         id_contested = [s for s in merged if "stable_id" in s.alternatives]
         assert len(id_contested) == AARDVARK_DNS_AGREEMENT_TALLY["stable_id_alternatives"]
         assert all(s.attribution["stable_id"] == ["rust"] for s in id_contested)
-        kind_contests = [s for s in merged if "kind" in s.alternatives]
-        assert len(kind_contests) == AARDVARK_DNS_AGREEMENT_TALLY["disagree_constant_vs_variable"]
-        assert all(
-            s.kind == "variable" and s.alternatives["kind"] == [{"value": "constant", "origin": ["rust_analyzer"]}]
-            for s in kind_contests
-        )
-        agreed_kind = [s for s in merged if "kind" not in s.alternatives]
-        assert all(s.attribution["kind"] == ["rust", "rust_analyzer"] for s in agreed_kind)
+        assert [s for s in merged if "kind" in s.alternatives] == []
+        assert all(s.attribution["kind"] == ["rust", "rust_analyzer"] for s in merged)
+        consts = [s for s in merged if s.kind == "const"]
+        assert len(consts) == AARDVARK_DNS_AGREEMENT_TALLY["const_on_both"]
         assert all(s.attribution is None for s in symbols if s.origin == ["scip"])
 
     def test_merged_records_carry_the_item_span_and_the_moniker(self) -> None:
@@ -375,11 +387,52 @@ class TestTheMergePassOnBothArms:
         assert callables and any(s.span.end_line > s.span.start_line for s in callables)
         assert all("scip_symbol" in (s.meta or {}) for s in merged)
         assert all(s.origin_run_id == runs[-1]["execution_id"] for s in merged)
+        assert all("item_span" not in (s.meta or {}) for s in symbols)  # the carrier is spent
+
+    def test_a_scip_only_record_is_spanned_over_its_item(self) -> None:
+        """On committed input (INV-lodum): of the 19 SCIP-only records, the
+        three whose Definition encloses more than its name (two inline
+        ``mod tests`` and the function-local ``static DNSBACKEND``) take the
+        recorded ``enclosing_range``; the 16 file-level modules, whose name
+        already spans the file, are unchanged."""
+        symbols, edges, runs = _both_arms()
+        report = merge_producer_records(symbols, edges, runs)
+        left = [s for s in symbols if s.origin == ["scip"]]
+        assert len(left) == AARDVARK_DNS_PAIRING["scip_definitions"] - AARDVARK_DNS_PAIRING["paired"]
+        assert sorted(
+            (s.path, s.name, s.span.start_line, s.span.end_line) for s in left if s.id in report.respanned
+        ) == [
+            ("src/server/serve.rs", "DNSBACKEND", 289, 291),
+            ("src/server/serve.rs", "tests", 488, 619),
+            ("src/test/test.rs", "tests", 3, 476),
+        ]
+        assert len(report.respanned) == 3
+        # Rewired like a fold: the references reach the new ids, none the old.
+        old = {before for before, after in report.id_remap.items() if after in report.respanned}
+        assert sum(1 for e in edges if {e.src, e.dst} & set(report.respanned)) == 12
+        assert [e for e in edges if {e.src, e.dst} & old] == []
+
+    def test_no_two_records_share_a_stable_id_after_the_merge(self) -> None:
+        """On committed input (INV-kutid). The recording is the producer's own
+        evidence (rust-analyzer logs "Duplicate symbol: ... crate/"): the
+        lib, bin and build-script roots of aardvark-dns define ``crate/``
+        under one moniker. Hashed by moniker alone, the three SCIP-only roots
+        would share ``sha256:fe9021ce48cd040c`` -- one cross-file group, which
+        the within-file splitter cannot reach. Path-anchored, the run has none."""
+        from hypergumbo_core.spec_validator import compute_stable_id_stats
+
+        symbols, edges, runs = _both_arms()
+        merge_producer_records(symbols, edges, runs)
+        roots = sorted(s.path for s in symbols if s.origin == ["scip"] and s.name == "crate")
+        assert roots == ["build.rs", "src/lib.rs", "src/main.rs"]
+        assert len({s.stable_id for s in symbols if s.origin == ["scip"] and s.name == "crate"}) == 3
+        stats = compute_stable_id_stats(symbols)
+        assert (stats["collision_groups"], stats["collided_symbols"]) == (0, 0)
 
     def test_shared_call_sites_are_folded_and_corroborated(self) -> None:
         """WI-kokiz folds the endpoints; WI-binis folds the agreeing edges in
         the same pass (§11) and combines their confidence (§13): every one of
-        the 93 shared call keys becomes ONE edge, corroborated at 0.95 because
+        the 94 shared call keys becomes ONE edge, corroborated at 0.95 because
         the two arms reached it by distinct pathways, both originals kept."""
         symbols, edges, runs = _both_arms()
         tree_sitter_edges = [e for e in edges if e.origin == ["rust"]]
@@ -393,7 +446,7 @@ class TestTheMergePassOnBothArms:
         assert not any(e.src in dropped or e.dst in dropped for e in edges)
         shared = AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
         assert report.edges_folded == AARDVARK_DNS_CALL_SITE_TALLY["edges_absorbed_by_fold"]
-        assert report.corroborated == shared  # 93 survivors, each corroborated
+        assert report.corroborated == shared  # 94 survivors, each corroborated
         folded = [e for e in edges if e.origin == ["rust", "scip"]]
         assert len(folded) == shared
         assert all(e.edge_type == "calls" for e in folded)
@@ -431,34 +484,43 @@ class TestTheAgreementInstrumentOnBothArms:
         assert report.corroborated_edges == AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
         assert report.superseded_edges == AARDVARK_DNS_CALL_SITE_TALLY["superseded_stubs"]
         by_attr = {a.attribute: a for a in report.attributes}
-        assert by_attr["kind"].shapes == [("variable", "constant", 15)]
-        # INV-huboz: no shapes, because there is no contest left. The SCIP
-        # arm declares it computes no exportedness, so its dataclass-default
-        # False is not a candidate and the attribute is one-sided to the
-        # incumbent. (While the instrument read this nested attribute from the
-        # top level it pinned `("null", "false", 41)` — a value that never
-        # existed, WI-pofih; the true carried value was `true`.)
+        assert by_attr["kind"].shapes == []
+        # No shapes, because there is no contest. The SCIP arm declares it
+        # computes no exportedness, so its dataclass-default False is not a
+        # candidate and the attribute is one-sided to the incumbent (INV-huboz).
         assert by_attr["is_exported"].shapes == []
         assert (by_attr["is_exported"].agree, by_attr["is_exported"].disagree) == (0, 0)
-        assert by_attr["is_exported"].only == {"rust": 148, "rust_analyzer": 0}
+        assert by_attr["is_exported"].only == {"rust": 150, "rust_analyzer": 0}
 
-    def test_a_kind_preference_for_scip_moves_exactly_the_kind_row(self) -> None:
-        """WI-hukuf on the recorded fixture: prefer the SCIP arm for `kind`
-        and the 15 `const` items carry `constant`; every other attribute
-        row, the pairing and the edge overlap are the built-in numbers."""
+    def test_a_per_attribute_preference_for_scip_moves_only_its_row(self) -> None:
+        """On the recorded fixture, preferring the SCIP arm for one attribute
+        changes which value that attribute carries and nothing else
+        (WI-hukuf). `kind` is uncontested since stable-id v15, so preferring
+        SCIP for it moves nothing at all; `name` is contested on 65 records,
+        so preferring SCIP for it flips exactly that row's shapes. Every
+        count row, the pairing and the edge overlap stay the built-in numbers."""
         from hypergumbo_core.arbitration import ArbitrationPolicy
         from hypergumbo_core.backend_agreement import measure_backend_agreement
 
-        policy = ArbitrationPolicy(prefer_by_attribute={"kind": ("scip",)})
-        [report] = measure_backend_agreement(_two_arm_artifact(policy))
-        rows = {a.attribute: (a.agree, a.disagree, a.only["rust"], a.only["rust_analyzer"]) for a in report.attributes}
-        assert rows == AARDVARK_DNS_ATTRIBUTE_AGREEMENT  # counts do not move: only which value is carried
-        by_attr = {a.attribute: a for a in report.attributes}
-        assert by_attr["kind"].shapes == [("constant", "variable", 15)]
-        assert {k: row["paired"] for k, row in report.pairing.items() if row["paired"]} == {
-            **{k: v for k, v in AARDVARK_DNS_PAIRED_PER_CATEGORY.items() if k != "variable"}, "variable": 2, "constant": 15,
+        def report_for(attribute: str) -> Any:
+            policy = ArbitrationPolicy(prefer_by_attribute={attribute: ("scip",)})
+            [report] = measure_backend_agreement(_two_arm_artifact(policy))
+            rows = {a.attribute: (a.agree, a.disagree, a.only["rust"], a.only["rust_analyzer"]) for a in report.attributes}
+            assert rows == AARDVARK_DNS_ATTRIBUTE_AGREEMENT  # counts do not move: only which value is carried
+            assert {k: row["paired"] for k, row in report.pairing.items() if row["paired"]} == AARDVARK_DNS_PAIRED_PER_CATEGORY
+            assert {(e.edge_type, e.resolved): (e.both, e.only["rust"], e.only["rust_analyzer"]) for e in report.edges} == AARDVARK_DNS_EDGE_OVERLAP
+            return {a.attribute: a.shapes for a in report.attributes}
+
+        [builtin] = measure_backend_agreement(_two_arm_artifact())
+        builtin_shapes = {a.attribute: a.shapes for a in builtin.attributes}
+        assert report_for("kind") == builtin_shapes
+        by_name = report_for("name")
+        assert {k: v for k, v in by_name.items() if k != "name"} == {
+            k: v for k, v in builtin_shapes.items() if k != "name"
         }
-        assert {(e.edge_type, e.resolved): (e.both, e.only["rust"], e.only["rust_analyzer"]) for e in report.edges} == AARDVARK_DNS_EDGE_OVERLAP
+        assert builtin_shapes["name"] and sorted(by_name["name"]) == sorted(
+            (alternative, carried, n) for carried, alternative, n in builtin_shapes["name"]
+        )
 
     def test_the_committed_table_is_what_the_instrument_says(self) -> None:
         import re
@@ -478,14 +540,24 @@ class TestTheAgreementInstrumentOnBothArms:
             assert re.search(rf"^    {key}: {value}$", text, re.MULTILINE), f"{key}: {value} not in the committed table"
         for attribute, (agree, disagree, rust_only, scip_only) in AARDVARK_DNS_ATTRIBUTE_AGREEMENT.items():
             assert f"| `{attribute}` | {agree} | {disagree} | {rust_only} | {scip_only} |" in text
+        # The pairing and edge rows are checked too, so a stale row in the
+        # committed table fails here instead of drifting from what the
+        # instrument says (WI-vosop).
+        assert report.pairing and report.edges  # reach
+        for kind, row in report.pairing.items():
+            assert f"| `{kind}` | {row['paired']} | {row['rust']} | {row['rust_analyzer']} |" in text, kind
+        for edge in report.edges:
+            target = "in-repo" if edge.resolved else "external"
+            assert (f"| `{edge.edge_type}` | {target} | {edge.both} | {edge.only['rust']}"
+                    f" | {edge.only['rust_analyzer']} |") in text, edge.edge_type
 
 
 class TestSameSiteSupersessionOnBothArms:
     def test_only_the_same_callee_is_superseded(self) -> None:
-        """WI-lihis: the resolution verdict is imitated as finalize does it
+        """The resolution verdict is imitated as finalize does it
         (a dst that is a real node -> resolved, else a stub), then the rule
         runs. Three stubs are genuinely superseded; twenty-four share a line
-        and type with a resolved call to a DIFFERENT callee and stay."""
+        and type with a resolved call to a DIFFERENT callee and stay (WI-lihis)."""
         symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         edges = deduplicate_edges(edges)
@@ -530,7 +602,7 @@ class TestSameSiteSupersessionOnBothArms:
 
 class TestTheArmStampsWhatItDeclares:
     def test_every_translated_record_carries_the_declared_origin(self) -> None:
-        """INV-gabak: the declaration is checked against the emission.
+        """The declaration is checked against the emission (INV-gabak).
 
         This arm registers as ``rust_analyzer`` and declares
         ``emits_origin="scip"``, because the SCIP translation it delegates to

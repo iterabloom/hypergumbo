@@ -29,7 +29,6 @@
 # library's own stdlib call is not in your tree to be found.
 
 language: python
-status: overlay
 provenance: community
 retrieved: 2026-08-11
 

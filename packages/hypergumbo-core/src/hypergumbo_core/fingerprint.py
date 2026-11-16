@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Symbol-level content fingerprinting (WI-fanun; context-aware since WI-falum).
+"""Symbol-level structural content fingerprinting (WI-fanun).
 
 What this module does
 ---------------------
@@ -10,42 +10,36 @@ whitespace and comments — two symbols whose code text is identical
 except for blank lines, indentation choices, and comments produce the
 same fingerprint; renaming an identifier or changing a literal
 produces a different one. This is the "Shape + identifiers + literals"
-level documented in the WI-fanun design.
+level.
 
-Why this exists
----------------
-``Symbol.fingerprint`` is declared in the IR schema. Before WI-fanun it
-was null on 99.7% of source-code Symbols, which made the schema-level
-promise hollow and foreclosed consumer use-cases like symbol-level
-change detection, duplicate-code detection, and per-symbol cache
-invalidation. This module is the one place that knows how to compute a
-fingerprint, and a single orchestrator post-pass owns the field for
-source-code Symbols. It stamps every Symbol whose fingerprint is null,
+Who owns the field
+------------------
+``Symbol.fingerprint`` is declared in the IR schema and serves
+symbol-level change detection, duplicate-code detection, and per-symbol
+cache invalidation. This module is the one place that knows how to
+compute a fingerprint, and a single orchestrator post-pass owns the field
+for source-code Symbols. It stamps every Symbol whose fingerprint is null,
 and it recomputes any non-``hgfp2:`` value on a Symbol that has a
 ``language`` (WI-lisog), so a producer-side hash never reaches the
-output. ADR-0032 Phase 2 PR2 demolished the Format-1 hashes (toml / json
-/ cmake / css / sql / xml / wasm_bindgen) and this module's WI-falum
-revision demolished the wgsl ones. The one shape the post-pass leaves
-alone is the identity-derived fingerprint (a SHA-256 of the node id)
-that linkers stamp on synthetic ``language is None`` nodes, which have
-no source to hash.
+output. The one shape the post-pass leaves alone is the identity-derived
+fingerprint (a SHA-256 of the node id) that linkers stamp on synthetic
+``language is None`` nodes, which have no source to hash.
 
-Why the parse is context-aware (v2)
------------------------------------
-The v1 implementation sliced the span's lines out of the file and
-parsed the slice as a standalone document. Two silent failure modes
-followed:
+Why the parse is context-aware
+------------------------------
+Slicing the span's lines out of the file and parsing the slice as a
+standalone document fails silently in two ways:
 
 - A single-line TOML array element (``"rich~=14.3.2",``) does not parse
-  as standalone TOML; tree-sitter error recovery dropped the content and
-  every dependency hashed to the same constant (WI-falum — all 76 TOML
-  dependency nodes carried ONE fingerprint, a 6.0.0 regression).
-- A Python method embedding a column-0 triple-quoted fixture defeats the
+  as standalone TOML; tree-sitter error recovery drops the content, so
+  every dependency in the array hashes to the same constant (history:
+  WI-falum).
+- A Python method embedding a column-0 triple-quoted fixture defeats a
   ``textwrap.dedent`` retry (common prefix 0 leaves the ``def``
-  indented), so ``ast.parse`` raises and 3,911 test methods got
-  ``None`` (WI-lisog facet a).
+  indented), so ``ast.parse`` raises and the method gets ``None``
+  (history: WI-lisog).
 
-v2 parses the *whole file* once (cached per file by the post-pass),
+So the module parses the *whole file* once (cached per file by the post-pass),
 locates the parse-tree node covering the span, and hashes that subtree.
 The span content is therefore always seen in its real syntactic context.
 When the covering node extends beyond the span (the span points at part
@@ -65,7 +59,7 @@ attr / FunctionDef / etc.) additionally contributes its text
 (identifier name, literal value) so renames and literal changes affect
 the hash. Comments don't exist in the ``ast`` tree, so the filter is
 implicit. If the *file* doesn't parse (genuinely broken source), the
-legacy snippet path (parse the slice, retry dedented) is the fallback.
+snippet path (parse the slice, retry dedented) is the fallback.
 
 Tree-sitter languages use the language pack's grammar and a pre-order
 cursor walk of the located subtree. Internal nodes contribute their
@@ -82,11 +76,9 @@ languages we can't honestly fingerprint.
 Scheme tag
 ----------
 The returned string is prefixed ``hgfp2:`` so consumers can detect the
-version. v1 hashed snippet-rooted walks; v2's subtree-rooted walks
-change every emitted value, hence the bump (this is the versioning
-convention the v1 docstring promised). A future normalization change
-(e.g., a token-canonical walk that ignores renames) would bump to
-``hgfp3:``.
+scheme version; values under different tags are not comparable. Any change
+to the walk that alters emitted values must bump the tag (e.g., a
+token-canonical walk that ignores renames would be ``hgfp3:``).
 """
 from __future__ import annotations
 
@@ -106,9 +98,8 @@ if TYPE_CHECKING:
 # Symbol fingerprint scheme tag. Stored in
 # ``BehaviorMap.symbol_fingerprint_scheme`` for consumer-side
 # version detection. The canonical definition lives in
-# ``hypergumbo_core.schema`` (re-exported here for backwards
-# compatibility with consumers that imported from this module
-# pre-WI-fanun stabilization).
+# ``hypergumbo_core.schema`` (re-exported here for consumers that
+# import it from this module).
 from .schema import SYMBOL_FINGERPRINT_SCHEME  # noqa: F401
 
 _SCHEME_PREFIX = "hgfp2:"
@@ -230,16 +221,14 @@ def _py_effective_lines(node: ast.AST) -> tuple[int, int] | None:
 class _PyCoverIndex:
     """Per-tree index answering "smallest node covering [start, end]".
 
-    WHY THIS EXISTS (WI-balaf). The locator used to answer each query with a
-    fresh ``ast.walk`` over the whole module, so ``stamp_symbol_fingerprints``
-    cost ``symbols(file) x nodes(file)`` — quadratic in file size, because a big
-    file is expensive twice: once for having many AST nodes and again for having
-    many symbols that each rescan them. The tree cache one level up had removed
-    repeated PARSING but not repeated LOCATION. Measured on this monorepo, that
-    post-pass was 324s of a 517s cold ``run_survey`` (62.6% of wall) and, being
-    a post-pass, carried no AnalysisRun card — which is why the time was
-    invisible in ``analysis_runs[]`` and had only ever been derived by
-    subtraction.
+    WHY THIS EXISTS. Answering each query with a fresh ``ast.walk`` over the
+    whole module makes ``stamp_symbol_fingerprints`` cost
+    ``symbols(file) x nodes(file)`` — quadratic in file size, because a big
+    file is expensive twice: once for having many AST nodes and again for
+    having many symbols that each rescan them. The tree cache one level up
+    removes repeated PARSING but not repeated LOCATION. The post-pass carries
+    no AnalysisRun card, so a regression here does not show in
+    ``analysis_runs[]`` (history: WI-balaf).
 
     Nodes are bucketed by effective start line, with the ``ast.walk`` ordinal
     retained. A query bisects to the start lines at or before its own start and
@@ -252,9 +241,9 @@ class _PyCoverIndex:
     SEMANTICS ARE PRESERVED EXACTLY, which matters because a fingerprint is
     serialized output. The candidate set is identical (``n_start <= start_line``
     and ``n_end >= end_line``) and the winner is the lexicographic minimum of
-    ``(extent, walk_ordinal)``. Carrying the ordinal is what reproduces the old
-    strict ``extent < best_extent`` against breadth-first walk order: on an
-    equal-extent tie the OUTER node won, and it still does. Dropping the
+    ``(extent, walk_ordinal)``. Carrying the ordinal makes an equal-extent tie
+    go to the node met first in breadth-first walk order, i.e. the OUTER
+    node, as a strict ``extent < best_extent`` scan would. Dropping the
     tie-break — e.g. descending to the deepest covering node, which is the
     tempting rewrite — would hash a different subtree and silently change
     fingerprints. ``test_fingerprint_locate_index.py`` pins that rule.
@@ -352,13 +341,12 @@ def _fingerprint_from_index(
     """Hash the located subtree (or, failing that, the covered children)."""
     located = index.smallest_covering(start_line, end_line)
     # A miss means nothing but the Module covers the span, which is the
-    # container case below — the pre-index code expressed this by leaving its
-    # ``best`` initialized to the tree.
+    # container case below.
     best: ast.AST = tree if located is None else located
     if not isinstance(best, ast.Module):
         lines = _py_effective_lines(best)
         assert lines is not None  # covering candidates all had lines
-        # WI-guhas: _py_effective_lines extends a decorated def/class start up
+        # _py_effective_lines extends a decorated def/class start up
         # to its earliest decorator, but producers commonly span only the
         # declaration keyword .. body (decorator excluded). For def/class nodes
         # compare the lower bound against the raw declaration-keyword line
@@ -366,7 +354,7 @@ def _fingerprint_from_index(
         # declaration whose keyword+body lie in the span is hashed WHOLE (name +
         # signature + body) via the subtree path below — not degraded to a
         # name/signature-stripped container fragment that aliases distinct
-        # symbols onto one constant.
+        # symbols onto one constant (history: WI-guhas).
         decl_start = (
             best.lineno
             if isinstance(best, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
@@ -547,7 +535,7 @@ def _walk_tree_sitter(
             # those gaps (whitespace-stripped, so blank-line / indent
             # variants still hash identically); without this the walk
             # is blind to exactly the content the fingerprint exists to
-            # discriminate (the WI-falum collapse).
+            # discriminate (history: WI-falum).
             gap_texts = _child_gap_texts(node, source)
             if gap_texts:
                 parts.append("gaps:" + "\x1f".join(gap_texts))
@@ -641,10 +629,10 @@ def stamp_symbol_fingerprints(
     Walks *symbols* once, reads and parses each file at most once, and
     stamps the structural fingerprint on every Symbol whose
     ``fingerprint`` is None and whose span / path can be resolved against
-    the on-disk source. This post-pass solely owns the field: no analyzer
-    emits a producer-side fingerprint anymore (ADR-0032 Phase 2 PR2
-    demolished the seven config-analyzer Format-1 hashes; the WI-falum
-    revision demolished wgsl's).
+    the on-disk source. This post-pass owns the field for source nodes: a
+    producer-side value on a language-bearing Symbol is replaced (see the
+    first skip rule below), so no analyzer's own hash reaches the output
+    (ADR-0032).
 
     Skips (leaves the existing value):
     - Symbols whose ``fingerprint`` is already canonical (``hgfp2:`` prefix),
@@ -663,19 +651,16 @@ def stamp_symbol_fingerprints(
     tree_cache: dict[Any, Any] = {}
     for sym in symbols:
         if sym.fingerprint is not None:
-            # WI-lisog normalization: preserve an existing fingerprint ONLY if
-            # it is already canonical (``hgfp2:``) OR it is an identity-derived
-            # synthetic fingerprint on a ``language is None`` Class-B node (a
-            # documented second shape — the central pass cannot source-
-            # fingerprint a source-less synthetic). A non-canonical fingerprint
-            # on a real source node (``language is not None``) is a
-            # producer-side analyzer-internal-serialization leak — the bare
-            # 16-hex ``sha256(source[start:end])[:16]`` still emitted by several
-            # tree-sitter analyzers (cuda/glsl/fortran/… — WI-lisog facet c).
-            # The line-531 precedence guard used to let those leaks survive to
-            # the output; clear it instead so the recompute below replaces it
-            # with the canonical hgfp2: form (or an honest None when the
-            # language has no grammar). Bare hex must never reach the output.
+            # Preserve an existing fingerprint ONLY if it is already canonical
+            # (``hgfp2:``) OR it is an identity-derived synthetic fingerprint
+            # on a ``language is None`` Class-B node (a documented second
+            # shape — the central pass cannot source-fingerprint a source-less
+            # synthetic). A non-canonical fingerprint on a real source node
+            # (``language is not None``) is a producer-side leak, e.g. a bare
+            # 16-hex sha256 an analyzer computed itself. Clear it so the
+            # recompute below replaces it with the canonical hgfp2: form (or an
+            # honest None when the language has no grammar). Bare hex must
+            # never reach the output (history: WI-lisog).
             if (
                 sym.fingerprint.startswith(_SCHEME_PREFIX)
                 or getattr(sym, "language", None) is None

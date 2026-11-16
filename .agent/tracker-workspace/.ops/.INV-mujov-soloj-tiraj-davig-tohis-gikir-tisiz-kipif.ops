@@ -1,0 +1,24 @@
+- op: create  # cdfd
+  at: '2026-10-24T05:12:20Z'  # cdfd
+  by: agent  # cdfd
+  actor: jgstern_agent  # cdfd
+  clock: 1  # cdfd
+  nonce: cdfd  # cdfd
+  data:  # cdfd
+    kind: invariant  # cdfd
+    title: "A C/C++ external target gets one node per distinct #include list: identity depends on call-site context (INV-jahuf's identity half)"  # cdfd
+    status: violated  # cdfd
+    priority: 3  # cdfd
+    parent:  # cdfd
+    tags:  # cdfd
+    - cpp  # cdfd
+    - identity  # cdfd
+    - io_boundary  # cdfd
+    isbefore: []  # cdfd
+    duplicate_of: []  # cdfd
+    not_duplicate_of: []  # cdfd
+    pr_ref:  # cdfd
+    description: "SPLIT FROM INV-jahuf (owner ruling 2026-10-23: build the handle + side table and file the identity half on its own).\n\nAFTER INV-jahuf, a C/C++ unresolved call's module slot is a bounded `module-set-<16 hex>` handle, so size is fixed. Identity is not: the external symbol's id is still (handle, name), so one external target gets one node per distinct include list. Measured on envoy-half (lab notebook jahuf_10232026/census_envoy_half.txt): 52,571 cpp external nodes for 12,160 distinct names. `fopen` from <cstdio> has a different id in every file whose include set differs, and a call target's id changes when an unrelated header is added to the file.\n\nWHY IT IS NOT A ONE-LINE FIX. The header list is a property of the CALL SITE (the file's include set), not of the target. Name-only identity means one external node per name, with the list (or its handle) moved off dst_ref.module_path onto the edge, e.g. meta. That changes ADR-0037's dst_ref contract for cpp/c. Every reader of dst_ref.module_path or the dst path slot for those languages has to read the edge's handle instead: io_boundary classify (4188, 5685), the verify_claims coverage gate, taint's _extract_callee_module. It also merges nodes, which changes in-degree and ranking.\n\nACCEPTANCE. One external node per (lang, name) or per (lang, declaring header, name) for cpp/c unresolved calls. The INV-jahuf A/B reading holds (verdict envelopes identical on the jahuf_10232026 corpus). INV-valom's repro (fopen via a quoted include -> NO-FSWRITE violated) is unchanged."  # cdfd
+    fields:  # cdfd
+      statement: "The same external target has one id: no external symbol's identity depends on the include set of the file that calls it."  # cdfd
+      root_cause: "cpp.py / c.py put the call site's include set (since INV-jahuf, its module-set handle) in ExternalRef.module_path, which is part of the external symbol's id."  # cdfd

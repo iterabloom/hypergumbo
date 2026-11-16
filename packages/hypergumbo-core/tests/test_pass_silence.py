@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the pass-silence-reason axis (T6 / INV-bikaj).
+"""Tests for the pass-silence-reason axis (INV-bikaj).
 
-The axis exists to split an undifferentiated population: a pass that emitted
+The axis splits an otherwise undifferentiated population: a pass that emitted
 no edges is one of "saw no input", "saw input and found nothing", or "never
-really ran", and before this field a reader could not tell which.
+really ran", and ``silence_reason`` is what tells a reader which.
 """
 from pathlib import Path
 
@@ -22,13 +22,21 @@ from hypergumbo_core.pass_silence import (
     NO_CANDIDATE_FILES,
     PASS_CRASHED,
     PREREQUISITE_ABSENT,
+    ALL_STATES,
+    ROUTINE_SILENCE_REASONS,
+    SILENCE_REASON_SPECS,
     SILENCE_REASONS,
+    STATE_DID_NOT_RUN,
+    STATE_MISSED,
+    STATE_NOTHING_TO_FIND,
     UNREPORTED,
     all_pass_silence_reason_names,
     derive_silence_reason,
     emit_skip_summary,
     format_skip_summary,
     prerequisite_absent_clauses,
+    silence_states,
+    skip_record_code,
     summarize_skip_reasons,
 )
 
@@ -63,7 +71,7 @@ class TestDeriveSilenceReason:
             files_analyzed=10, nodes_emitted=0, edges_emitted=3) == ""
 
     def test_a_pass_that_emitted_only_nodes_is_not_silent(self):
-        """A node-only pass is not silent at all — 26 of the 48 in the sizing."""
+        """A node-only pass is not silent at all."""
         assert derive_silence_reason(
             files_analyzed=10, nodes_emitted=5, edges_emitted=0) == ""
 
@@ -73,8 +81,8 @@ class TestDeriveSilenceReason:
         ) == NO_CANDIDATE_FILES
 
     def test_saw_files_and_said_nothing_is_unreported_not_no_candidate_files(self):
-        """THE population T6 exists to explain. Claiming 'no candidate files'
-        here would be the field lying about exactly those pass-runs."""
+        """THE population this axis exists to explain. Claiming 'no candidate
+        files' here would be the field lying about exactly those pass-runs."""
         assert derive_silence_reason(
             files_analyzed=120, nodes_emitted=0, edges_emitted=0
         ) == UNREPORTED
@@ -95,9 +103,8 @@ class TestDeriveSilenceReason:
 class TestSilenceReasonForCandidates:
     """The PRODUCER helper. Both of its returns are positive claims.
 
-    It used to return ``""`` on the non-empty branch — asserting nothing while
-    holding the answer. That was the INV-bikaj complaint one level down, inside
-    the axis built to cure it: a producer that computes a fact and discards it.
+    Neither branch returns ``""``: a producer that has computed whether
+    candidates exist must report that fact rather than discard it.
     """
 
     def test_no_candidates_claims_the_construct_is_absent(self):
@@ -108,10 +115,9 @@ class TestSilenceReasonForCandidates:
     def test_candidates_found_claims_they_went_unresolved(self):
         """Found candidates, carried none through => CANDIDATES_UNRESOLVED.
 
-        Re-pointed, not deleted: this test previously pinned the ``""`` return
-        and is the reason the change is visible. The pass found its construct;
-        what failed is the RESOLUTION. Saying nothing here sent the run to
-        ``unreported`` -- "did not say why" -- about a pass that could say why.
+        The pass found its construct; what failed is the RESOLUTION. Returning
+        ``""`` here would send the run to ``unreported`` -- "did not say why" --
+        about a pass that can say why.
         """
         from hypergumbo_core.pass_silence import silence_reason_for_candidates
 
@@ -140,8 +146,8 @@ class TestAnalysisRunField:
         assert run.silence_reason == ""
 
     def test_to_dict_omits_when_empty(self):
-        """INV-virik: absence reads as 'nothing to report', not a misleading
-        always-present empty value on every one of the many runs."""
+        """Absence reads as 'nothing to report', not a misleading
+        always-present empty value on every one of the many runs (INV-virik)."""
         run = AnalysisRun(execution_id="e", pass_id="p", version="1")
         assert "silence_reason" not in run.to_dict()
 
@@ -191,13 +197,13 @@ class TestAnalyzerChokepointStamping:
         assert runs[0]["silence_reason"] == UNREPORTED
 
     def test_body_supplied_reason_survives_the_stamp(self):
-        """WI-finij question A: only a BODY can know it looked and found nothing.
+        """Only a BODY can know it looked and found nothing (WI-finij).
 
         The orchestrator refuses to infer NO_CANDIDATE_CONSTRUCT, and rightly —
         inventing a reason on the producer's behalf is a fabricated disclosure.
-        But the stamp assigned unconditionally, so a body that DID know was
-        overwritten with the orchestrator's weaker guess. The declared value was
-        therefore unreachable: a vocabulary entry with no possible producer.
+        So the stamp must not overwrite a body-supplied reason with the
+        orchestrator's weaker guess; otherwise NO_CANDIDATE_CONSTRUCT would be
+        a vocabulary entry with no possible producer.
         """
         runs = self._collect(self._result(
             files=42, symbols=[], edges=[], reason=NO_CANDIDATE_CONSTRUCT))
@@ -254,8 +260,8 @@ class TestLinkerChokepointStamping:
         # The chokepoint resolves the running linker's depends_on out of
         # _LINKER_REGISTRY, which is populated by @register_linker IMPORT
         # SIDE-EFFECT. Without these the registry is empty, every lookup
-        # misses, and every assertion below would pass for the wrong reason --
-        # the same vacuous-control shape WI-jijor found in the catalog tests.
+        # misses, and every assertion below would pass for the wrong reason
+        # (a vacuous control; see WI-jijor).
         import hypergumbo_core.linkers.pyffi
         import hypergumbo_core.linkers.tauri_ipc
 
@@ -263,8 +269,9 @@ class TestLinkerChokepointStamping:
         run.files_analyzed = files
         run.silence_reason = reason
         # A REAL LinkerContext, not a SimpleNamespace stand-in: the chokepoint
-        # now reads two more fields off it, and a hand-rolled double is exactly
-        # the kind of fake that passes while the production shape drifts.
+        # reads linker_pass_id and skipped_pass_codes off it, and a hand-rolled
+        # double is exactly the kind of fake that passes while the production
+        # shape drifts.
         ctx = LinkerContext(
             repo_root=Path("."),
             linker_pass_id=pass_id,
@@ -286,13 +293,13 @@ class TestLinkerChokepointStamping:
             files=0, symbols=[], edges=[]).silence_reason == NO_CANDIDATE_FILES
 
     def test_silent_linker_that_read_files_is_unreported(self):
-        """The 22 truly-silent pass-runs from the sizing land HERE, and they
-        must NOT be labelled no_candidate_files — they saw files."""
+        """Truly-silent pass-runs land HERE, and they must NOT be labelled
+        no_candidate_files — they saw files."""
         assert self._run(
             files=339, symbols=[], edges=[]).silence_reason == UNREPORTED
 
     def test_body_supplied_reason_survives_the_stamp(self):
-        """Same guard at the linker chokepoint — both sites clobbered."""
+        """Same guard at the linker chokepoint."""
         assert self._run(files=339, symbols=[], edges=[],
                          reason=NO_CANDIDATE_CONSTRUCT
                          ).silence_reason == NO_CANDIDATE_CONSTRUCT
@@ -311,10 +318,10 @@ class TestLinkerChokepointStamping:
                          reason=NO_CANDIDATE_CONSTRUCT).silence_reason == ""
 
     def test_blocked_prerequisite_replaces_the_DERIVED_reason(self):
-        """WI-dabup: the headline. no_candidate_files here is a FALSE claim.
+        """The headline case: no_candidate_files here is a FALSE claim (WI-dabup).
 
         tauri-ipc-linker declares [["javascript"], ["rust", "rust_analyzer"]]
-        (WI-juzig: rust has two producers). On a JS+Rust repo whose Rust
+        (rust has two producers). On a JS+Rust repo whose Rust
         grammar is missing AND whose SCIP backend is off, BOTH producers are
         absent for a toolchain reason — the linker reads zero files and the
         orchestrator derives no_candidate_files -- "nothing to find, and no
@@ -332,10 +339,10 @@ class TestLinkerChokepointStamping:
         ).silence_reason == PREREQUISITE_ABSENT
 
     def test_a_surviving_second_producer_satisfies_the_clause(self):
-        """WI-juzig: the SCIP backend ran and produced rust symbols while the
+        """The SCIP backend ran and produced rust symbols while the
         tree-sitter grammar was missing. The rust clause is satisfied by
         rust_analyzer, so the linker had real input and its silence is NOT a
-        prerequisite defect."""
+        prerequisite defect (WI-juzig)."""
         assert self._run(
             files=0, symbols=[], edges=[],
             pass_id="tauri-ipc-linker",
@@ -343,13 +350,13 @@ class TestLinkerChokepointStamping:
         ).silence_reason != PREREQUISITE_ABSENT
 
     def test_prerequisite_absent_does_NOT_override_a_BODY_claim(self):
-        """The #1008 guard is preserved, and this is not a formality.
+        """A body-supplied reason still outranks the chokepoint's stamp.
 
-        Measured on the same repository, pyffi-linker is silent with the SAME
-        blocked conjunct and its body truthfully claims no_candidate_construct:
-        it scanned the Python side and there are genuinely no FFI call sites,
-        so the missing Rust grammar is irrelevant to ITS silence. Overruling it
-        would replace a true claim with a plausible one.
+        pyffi-linker can be silent with the SAME blocked conjunct while its body
+        truthfully claims no_candidate_construct: it scanned the Python side and
+        there are genuinely no FFI call sites, so the missing Rust grammar is
+        irrelevant to ITS silence. Overruling it would replace a true claim with
+        a plausible one.
         """
         assert self._run(
             files=12, symbols=[], edges=[], reason=NO_CANDIDATE_CONSTRUCT,
@@ -407,8 +414,8 @@ class TestLinkerChokepointStamping:
 
 
 class TestSummariseSilence:
-    """The CONSUMER side. A disclosure nothing reads is not one — the field
-    shipped stamped but unread, and this is the half that makes it observable."""
+    """The CONSUMER side. A disclosure nothing reads is not one — this is the
+    half that makes the stamped field observable."""
 
     def _run(self, reason, **kw):
         d = {"pass": kw.get("name", "p"), "files_analyzed": 1,
@@ -453,7 +460,7 @@ class TestFormatSilenceSummary:
         assert line is not None
         assert "5 of 78" in line           # noteworthy silent / total
         assert "unreported=5" in line
-        # WI-vadom: routine reasons are counted, not named.
+        # Routine reasons are counted, not named (WI-vadom).
         assert "no_candidate_files" not in line
         assert "52 more routine" in line
         assert "silence_reason" in line    # tells the reader where to look
@@ -472,7 +479,7 @@ class TestFormatSilenceSummary:
         assert a == b
 
     def test_none_when_every_silence_is_routine(self):
-        """WI-vadom: nothing to find, at either level, asks nothing of anyone."""
+        """Nothing to find, at either level, asks nothing of anyone (WI-vadom)."""
         from hypergumbo_core.pass_silence import format_silence_summary
         assert format_silence_summary(
             {NO_CANDIDATE_FILES: 45, NO_CANDIDATE_CONSTRUCT: 8}, total_passes=103,
@@ -510,11 +517,10 @@ class TestEmitSilenceSummary:
 
 
 class TestSummarizeSkipReasons:
-    """WI-dukoh / ADR-0056 W2: skipped_passes gets a structured code AND a reader.
+    """skipped_passes carries a structured code AND has a reader.
 
-    ``skipped_passes`` has been serialized since the beginning and **nothing
-    has ever summarized it**. Landing a structured code with no reader would
-    repeat the defect this whole arc is about (LIVE.md §1.7).
+    ``summarize_skip_reasons`` is that reader: a structured code that nothing
+    summarizes would disclose nothing. (WI-dukoh; ADR-0056 W2.)
     """
 
     def test_empty_gives_empty_counts(self) -> None:
@@ -538,7 +544,7 @@ class TestSummarizeSkipReasons:
 
         A producer that did not classify its own skip has NOT said "the repo
         lacks the files" — it has said nothing. Bucketing a missing code under
-        the 98.94%-common value would manufacture the majority answer for
+        the overwhelmingly common value would manufacture the majority answer for
         every unconverted producer, which is the absent-versus-empty
         substitution this axis exists to cure.
         """
@@ -567,7 +573,7 @@ class TestFormatSkipSummary:
         assert line.index("dependency_unavailable=1") < line.index("pass_crashed=1")
 
     def test_none_when_every_skip_is_routine(self) -> None:
-        """WI-vadom: no files to run on, or an opt-in backend left off."""
+        """No files to run on, or an opt-in backend left off (WI-vadom)."""
         assert format_skip_summary(
             {NO_CANDIDATE_FILES: 67, BACKEND_DISABLED: 2}, total_passes=172,
         ) is None
@@ -603,15 +609,14 @@ class TestEmitSkipSummary:
 
 
 class TestPrerequisiteAbsentClauses:
-    """WI-dabup / ADR-0056 W3: the producer `prerequisite_absent` never had.
+    """The producer of `prerequisite_absent` (WI-dabup; ADR-0056 W3).
 
-    The discriminator is NOT "is the conjunct satisfied" — 98.94% of skip
+    The discriminator is NOT "is the conjunct satisfied" — nearly all skip
     records are `no files matched`, so an unsatisfied conjunct nearly always
     means the repository lacks that language, which is State A and a correct
-    no-op. Stamping THAT as an ordering defect would be the axis's founding sin
-    committed inside the axis built to cure it. The discriminator is "was the
-    missing literal skipped for a FILE reason or a TOOLCHAIN reason", which is
-    exactly what W2's structured code made askable.
+    no-op. Stamping THAT as an ordering defect would be a false disclosure.
+    The discriminator is "was the missing literal skipped for a FILE reason or
+    a TOOLCHAIN reason", which the skip record's structured code answers.
     """
 
     def test_no_declarations_gives_nothing(self) -> None:
@@ -627,7 +632,7 @@ class TestPrerequisiteAbsentClauses:
         """State A. The repo has no Rust; nothing is out of order.
 
         This is the case that makes the naive "unsatisfied conjunct" rule
-        wrong, and it is 98.94% of all skip records.
+        wrong, and it is by far the most common skip record.
         """
         assert prerequisite_absent_clauses(
             [["rust"]], {"rust": NO_CANDIDATE_FILES},
@@ -713,21 +718,120 @@ class TestPrerequisiteAbsentClauses:
         ) == []
 
 
-class TestSilenceCensus:
-    """WI-mamiv: the two hosts have never had a reader that unions them.
+class TestSilenceStates:
+    """The A/B/C states the axis exists to separate are data (WI-punod).
 
-    Measured on component-model-demo: **130 of 162 passes carry
-    ``no_candidate_files``** — 48 through ``AnalysisRun.silence_reason`` and 82
-    through ``limits.skipped_passes[].silence_reason``. Which host a pass
-    lands in is decided by ``taxonomy.LANGUAGE_EXTENSIONS`` membership and by
-    whether the analyzer returns a bare ``AnalysisResult()`` or a run with
+    ``SILENCE_REASON_SPECS`` records each value's states and routineness, and
+    both consumers read that one spec rather than partitioning the vocabulary
+    by hand: the prerequisite rule (a ``!= NO_CANDIDATE_FILES`` proxy would
+    misread ``no_candidate_construct`` -- State A -- and any value added later
+    as a toolchain reason) and the stderr summaries' ``ROUTINE_SILENCE_REASONS``."""
+
+    def test_every_value_has_exactly_one_spec_and_nothing_else_does(self) -> None:
+        names = [spec.name for spec in SILENCE_REASON_SPECS]
+        assert len(names) == len(set(names))
+        assert frozenset(names) == SILENCE_REASONS
+
+    def test_every_spec_names_a_nonempty_set_of_the_three_states(self) -> None:
+        for spec in SILENCE_REASON_SPECS:
+            assert spec.states, spec.name
+            assert spec.states <= ALL_STATES, spec.name
+
+    def test_the_states_each_value_is_consistent_with(self) -> None:
+        a, b, c = STATE_NOTHING_TO_FIND, STATE_MISSED, STATE_DID_NOT_RUN
+        assert {spec.name: spec.states for spec in SILENCE_REASON_SPECS} == {
+            NO_CANDIDATE_FILES: {a},
+            NO_CANDIDATE_CONSTRUCT: {a},
+            CANDIDATES_UNRESOLVED: {a, b},
+            # C when the pass had files to read, A when it had none; the
+            # value alone does not say which.
+            DEPENDENCY_UNAVAILABLE: {a, c},
+            BACKEND_DISABLED: {a, c},
+            PREREQUISITE_ABSENT: {c},
+            PASS_CRASHED: {a, b, c},
+            UNREPORTED: {a, b, c},
+        }
+
+    def test_a_string_outside_the_vocabulary_is_consistent_with_every_state(
+        self,
+    ) -> None:
+        """Cannot determine, never not applicable -- the empty string included."""
+        assert silence_states("a_value_added_later") == ALL_STATES
+        assert silence_states("") == ALL_STATES
+        assert silence_states(NO_CANDIDATE_CONSTRUCT) == {STATE_NOTHING_TO_FIND}
+
+    def test_the_routine_set_is_read_off_the_spec(self) -> None:
+        assert ROUTINE_SILENCE_REASONS == frozenset(
+            spec.name for spec in SILENCE_REASON_SPECS if spec.routine
+        )
+        assert ROUTINE_SILENCE_REASONS == frozenset({
+            NO_CANDIDATE_FILES, NO_CANDIDATE_CONSTRUCT, BACKEND_DISABLED,
+        })
+
+    def test_a_prerequisite_missing_for_a_construct_reason_is_state_a(self) -> None:
+        """A ``!= no_candidate_files`` proxy would call this a toolchain reason."""
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"rust": NO_CANDIDATE_CONSTRUCT},
+        ) == []
+
+    def test_a_value_added_later_counts_as_not_shown_to_be_state_a(self) -> None:
+        """The conservative direction, as for ``unreported``: only a value
+        that establishes State A lets a missing prerequisite through."""
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"rust": "a_value_added_later"},
+        ) == [["rust"]]
+
+
+class TestSkipRecordCode:
+    """One function reads a skip record's code, so the skip summary and the
+    linker dispatcher agree that a record with no code is ``unreported``
+    (WI-punod)."""
+
+    def test_a_missing_or_empty_code_is_unreported(self) -> None:
+        assert skip_record_code({"pass": "rust"}) == UNREPORTED
+        assert skip_record_code({"pass": "rust", "silence_reason": ""}) == UNREPORTED
+
+    def test_a_code_is_read_as_written(self) -> None:
+        assert skip_record_code(
+            {"pass": "rust", "silence_reason": DEPENDENCY_UNAVAILABLE},
+        ) == DEPENDENCY_UNAVAILABLE
+
+    def test_the_linker_dispatcher_reads_a_codeless_record_as_unreported(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The linker registry fills by import side-effect; without it no
+        # linker dispatches and ``seen`` stays empty for the wrong reason.
+        import hypergumbo_core.cli
+        from hypergumbo_core.limits import Limits
+        from hypergumbo_core.linkers import registry
+        from hypergumbo_core.linkers.registry import LinkerContext, run_all_linkers
+
+        seen: dict[str, str] = {}
+
+        def _capture(func, ctx):
+            seen.update(ctx.skipped_pass_codes)
+            return registry.LinkerResult()
+
+        monkeypatch.setattr(registry, "_run_linker_with_cache", _capture)
+        limits = Limits()
+        limits.skipped_passes.append({"pass": "rust", "reason": "no grammar"})
+        run_all_linkers(LinkerContext(repo_root=Path(".")), limits=limits)
+        assert seen == {"rust": UNREPORTED}
+
+
+class TestSilenceCensus:
+    """``census_silence`` is the one reader that unions the two hosts.
+
+    A silence reason lives either in ``AnalysisRun.silence_reason`` or in
+    ``limits.skipped_passes[].silence_reason``. Which host a pass lands in is
+    decided by ``taxonomy.LANGUAGE_EXTENSIONS`` membership and by whether the
+    analyzer returns a bare ``AnalysisResult()`` or a run with
     ``files_analyzed=0`` — producer registration and implementation detail,
     not a property of the silence.
 
-    A consumer asking "which passes had no input?" therefore has to know about
-    the WI-jadig pre-filter to get a right answer, and the two stderr lines
-    report ``64 of 79`` and ``83 of 162`` — different denominators over
-    overlapping populations, whose sum is not the answer.
+    A consumer asking "which passes had no input?" therefore needs both hosts,
+    and the two per-host stderr lines use different denominators over
+    overlapping populations, so their sum is not the answer. (WI-mamiv)
     """
 
     def _runs(self, *pairs):
@@ -766,17 +870,16 @@ class TestSilenceCensus:
 
     def test_a_skip_with_no_code_reads_as_unreported(self) -> None:
         """Matching summarize_skip_reasons: absence on the skip host means the
-        producer did not classify itself, never the 98.94%-common value."""
+        producer did not classify itself, never ``no_candidate_files``."""
         census = census_silence([], [{"pass": "lean"}])
         assert census.by_pass == {"lean": UNREPORTED}
 
     def test_a_catalog_pass_in_NEITHER_host_is_unaccounted(self) -> None:
-        """The third outcome, which the audit missed and WI-didag found.
+        """The third outcome: a registered pass with neither a run nor a skip.
 
-        ``rust_analyzer``'s success path returned output with no run, so it
-        appeared in neither list — the only one of 118 registered analyzers
-        for which that was true. A union built over ``runs + skips`` alone
-        cannot see it, which is exactly why this helper takes the catalog.
+        A pass whose success path returns output with no run appears in
+        neither list. A union built over ``runs + skips`` alone cannot see it,
+        which is exactly why this helper takes the catalog. (WI-didag)
         """
         census = census_silence(
             self._runs(("python", "")),
@@ -796,9 +899,8 @@ class TestUnaccountedReaderIsWiredUp:
     """An instrument with no reader is the same organic criterion in a costume.
 
     ``unaccounted`` is only worth computing if something prints it in the mode
-    the tool actually runs. This pins the wire-up, not just the function —
-    WI-didag sat unnoticed for a month precisely because nothing read the
-    signal that would have shown it.
+    the tool actually runs. This pins the wire-up, not just the function: a
+    signal nothing reads lets a missing pass go unnoticed (WI-didag).
     """
 
     def test_the_warning_names_the_offending_passes(self) -> None:
@@ -843,13 +945,11 @@ class TestUnaccountedReaderIsWiredUp:
         )
 
     def test_a_pass_that_EMITTED_is_accounted_for(self) -> None:
-        """Presence is not the same question as silence, and the first draft
-        of ``census_silence`` got this wrong: it built ``unaccounted`` from the
-        passes that had a REASON, so a pass that emitted — which has an
-        analysis_runs row and correctly no reason — was reported as missing
-        from the catalog. That is the same absent-vs-empty conflation this
-        module exists to stop, committed inside the helper written to expose
-        it."""
+        """Presence is not the same question as silence. ``unaccounted`` is
+        built from every pass with a row, not only the passes with a REASON:
+        a pass that emitted has an analysis_runs row and correctly no reason,
+        and reporting it as missing from the catalog would be the same
+        absent-vs-empty conflation this module exists to stop."""
         census = census_silence(
             [{"pass": "python", "silence_reason": ""}],
             [],
@@ -899,14 +999,13 @@ class TestUnaccountedReaderIsWiredUp:
 
 
 class TestOneFactOneName:
-    """WI-mamiv verdict A: both hosts spell the axis field ``silence_reason``.
+    """Both hosts spell the axis field ``silence_reason`` (WI-mamiv).
 
-    The axis was reachable under two names — ``AnalysisRun.silence_reason`` and
-    ``limits.skipped_passes[].skip_reason_code`` — and which name a consumer
-    saw was decided by taxonomy membership and the analyzer's return style,
-    never by anything about the silence. The ROUTING is unchanged and is still
-    not a function of the fact; what changed is that asking the question no
-    longer requires knowing which host will answer.
+    Which host a pass lands in is decided by taxonomy membership and the
+    analyzer's return style, never by anything about the silence. The routing
+    is still not a function of the fact, but because both hosts use one key,
+    asking the question does not require knowing which host will answer (no
+    ``skip_reason_code`` alias on skip entries).
     """
 
     def test_a_skip_entry_carries_silence_reason_and_not_the_old_key(

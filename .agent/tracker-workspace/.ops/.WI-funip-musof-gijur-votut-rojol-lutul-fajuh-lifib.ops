@@ -1,0 +1,20 @@
+- op: create  # e7a3
+  at: '2026-11-16T04:58:36Z'  # e7a3
+  by: agent  # e7a3
+  actor: jgstern_agent  # e7a3
+  clock: 1  # e7a3
+  nonce: e7a3  # e7a3
+  data:  # e7a3
+    kind: work_item  # e7a3
+    title: "Name-slot round-trip: solidity-abi stand-ins, Vue directives, Maven nodes, websocket and tsconfig entries"  # e7a3
+    status: todo_hard  # e7a3
+    priority: 3  # e7a3
+    parent:  # e7a3
+    tags:  # e7a3
+    - id_format  # e7a3
+    isbefore: []  # e7a3
+    duplicate_of: []  # e7a3
+    not_duplicate_of: []  # e7a3
+    pr_ref:  # e7a3
+    description: "WHAT. ADR-0036 Ruling 1: the id's name slot is the sanitized Symbol.name. PR #2198 records the mismatch count per producer on every run (validation_report.name_slot_stats). Besides JavaScript callbacks (own item) and event-sourcing raw colons (WI-dodom), these producers mismatch:\n- linkers/solidity_abi.py: slot func.<hash>, name abi_call:func (1,250 on openzeppelin). The hash is computed from path, line and function name, which the id already carries: an id-only fix.\n- vue.py directives: slot tag.directive, name the directive alone (255 on pretix). make_doc_symbol_ids mints the id and the stable id from one argument, so changing the id moves the stable id; setting name = tag:directive moves neither (not checked: whether a later pass recomputes ids from the name).\n- Maven xml dependency/module: slot groupId.artifactId, name artifactId. Changing the slot moves nothing; changing the name moves the stable id.\n- websocket linker: slot connection-endpoint, name ws:connection. Stable-id inputs not checked.\n- json tsconfig entry: slot is the path, name the basename.\n- js-module-linker json file node: name is the basename without extension (a file-node naming inconsistency).\n\nASK. Fix each where no stable id moves; list the rest for the v15 bump. Promote the statistic to an error at 0. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # e7a3
+    fields: {}  # e7a3

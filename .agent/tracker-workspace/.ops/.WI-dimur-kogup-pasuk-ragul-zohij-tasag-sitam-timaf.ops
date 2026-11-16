@@ -1,0 +1,23 @@
+- op: create  # 9157
+  at: '2026-11-01T09:55:59Z'  # 9157
+  by: agent  # 9157
+  actor: jgstern_agent  # 9157
+  clock: 1  # 9157
+  nonce: '9157'  # 9157
+  data:  # 9157
+    kind: work_item  # 9157
+    title: "io_primitives row schema has no per-row adjudication record, so kind_adjudication counts `notes` as a proxy for 'kind adjudicated against source'"  # 9157
+    status: todo_hard  # 9157
+    priority: 2  # 9157
+    parent:  # 9157
+    tags:  # 9157
+    - catalogue  # 9157
+    - io_boundary  # 9157
+    - taint  # 9157
+    - measurement  # 9157
+    isbefore: []  # 9157
+    duplicate_of: []  # 9157
+    not_duplicate_of: []  # 9157
+    pr_ref:  # 9157
+    description: "SPLIT 2026-11-01 from WI-vafad-vatos-fozos-pugol-fivak-hopif-bisoh-mijur (closed: the sweep's deliverable exists as docs/audits/0022 plus 11 filed fix items). WHAT. The loader's _ROW_KEYS are {abstains_to, attributes, boundary_ruling, functions, methods, module, notes, requires_target_kind, resource_naming, returns_handle, simultaneous}; none says 'this row's kind was adjudicated against the library's source, by whom, when'. io_boundary.py's kind_adjudication (docstring at :2728: 'does NOT record that the row was adjudicated ... not written per row anywhere') therefore reports names_with_rationale - rows with a `notes` string - as the adjudication figure (fixture run 2026-11-01: names 326, names_with_rationale 258, community_overlay_names 0). INV-nular's declared blindness ('the remainder name-bound and unverified, disclosed with its count') is thus disclosed with a proxy count: a note that says 'see issue' counts the same as a sourced ruling. ASK: add an explicit per-row key (e.g. adjudicated: {source: <url-or-path>, by: <sweep id>, on: <date>}; declare the axis before adding, per ADR-0024); since every loader rejects unknown keys, the schema change and the back-fill from docs/audits/0022 and the earlier tranches land together; make kind_adjudication count that key and keep names_with_rationale as a separate figure. ACCEPTANCE: the disclosure line distinguishes adjudicated rows from merely-annotated rows, and a row with notes but no adjudication no longer counts as adjudicated."  # 9157
+    fields: {}  # 9157

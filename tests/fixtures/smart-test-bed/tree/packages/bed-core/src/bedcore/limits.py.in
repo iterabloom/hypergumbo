@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""A constant other modules read. None of their functions calls into this file."""
+
+CAP = 4
+
+
+def ceiling():
+    return CAP

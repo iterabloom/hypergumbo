@@ -20,10 +20,11 @@ How It Works
    ``protocol A: B`` — so its edges are ``extends`` even to an interface
    target (WI-kalug). Only a concrete type *implements* an interface.
 4. When a base resolves to no in-tree symbol (an external/stdlib base), mints an
-   unresolved-external ``extends`` edge instead of dropping the relationship —
-   WI-jubag Approach C, the framework-agnostic chokepoint generalization of the
-   per-analyzer external-base fallbacks (py.py / js_ts) to EVERY OO language
-   (Kotlin, Ruby, Java, ...) and to Python dotted bases the analyzer defers. The
+   unresolved-external ``extends`` edge instead of dropping the relationship.
+   This is the framework-agnostic chokepoint form of the per-analyzer
+   external-base fallbacks (py.py / js_ts), covering EVERY OO language
+   (Kotlin, Ruby, Java, ...) and the Python dotted bases the analyzer defers
+   (history: WI-jubag Approach C). The
    external target uses the ``external`` sentinel module
    (``{lang}:external:0-0:{name}:unresolved``), which is INV-nuzas-safe by
    construction. A name-based dedup lets this coexist with the per-analyzer
@@ -31,8 +32,8 @@ How It Works
    A base an analyzer already classified as external THROUGH THE FILE'S
    IMPORTS (an unresolved edge with an ``ExternalRef``) is not looked up in
    the tree at all: this linker has no import context, and retrying such a
-   base's last segment bound Python's ``unittest.TestCase`` to Django's own
-   ``TestCase`` (WI-ratid).
+   base's last segment would bind Python's ``unittest.TestCase`` to Django's
+   own ``TestCase`` (history: WI-ratid).
    A QUALIFIED base (``System.Exception``, ``std::exception``, ``io.Writer``,
    ``java.util.ArrayList<T>``) binds its last segment only to an in-tree
    candidate whose ``qualified_name`` equals the written base or either ends
@@ -45,7 +46,7 @@ How It Works
    PHP ``use``, Groovy / Scala imports, C# ``using`` aliases), and a C# bare
    base is checked against ``meta["visible_namespaces"]`` (its namespace chain
    and ``using`` namespaces; ``_namespace_fit``). PHP ``\\Foo\\Bar`` bases
-   are split on ``\\`` (they were dropped before).
+   are split on ``\\``.
 5. Also emits ``includes`` edges (evidence_type=ast_includes) from
    ``included_modules`` metadata for Ruby mixins (WI-hatip), resolving module
    names via a dedicated module-name map
@@ -143,8 +144,7 @@ def resolve_target_symbol(
        FFI conformance is the territory of dedicated bridge linkers (PyO3,
        cffi, wasm_bindgen, jni). Without this filter, a Python
        ``class FooModule(nn.Module)`` collapses to ``base_classes=["Module"]``
-       and erroneously produces an ``implements`` edge to a Rust ``Module``
-       trait — see WI-zozuz BUG-03.
+       and would produce an ``implements`` edge to a Rust ``Module`` trait.
     2. Same-file match: prefer the candidate defined in the same file as the child
     3. Deterministic fallback: first by sorted symbol ID
 
@@ -188,8 +188,8 @@ def resolve_target_symbol(
     return candidates_sorted[0], True
 
 
-# Backward-compat alias for callers that imported the private name before
-# WI-gifar (PR-1 of INV-nilud) promoted it to the public surface.
+# Alias for callers that import the private name; ``resolve_target_symbol``
+# is the public one. (history: WI-gifar)
 _resolve_target_symbol = resolve_target_symbol
 
 
@@ -201,7 +201,7 @@ def _create_includes_edges(
 ) -> list[Edge]:
     """Create `includes` edges from ``included_modules`` metadata.
 
-    WI-hatip (PR-2 of INV-nilud): for every class/module Symbol whose
+    For every class/module Symbol whose
     ``meta["included_modules"]`` lists project-internal module names,
     emit an ``edge_type="includes"`` edge with
     ``evidence_type="ast_includes"``. The Ruby analyzer extracts the
@@ -209,8 +209,9 @@ def _create_includes_edges(
     the same disambiguation cascade as extends/implements.
 
     External module names (e.g., gem-provided ``Sidekiq::Worker``) yield
-    no edge — the same "no edge for external base classes" semantics as
-    ``_create_inheritance_edges`` follows for extends/implements.
+    no edge. Unlike extends/implements, where ``_create_inheritance_edges``
+    mints an unresolved-external edge for an external base, no external
+    ``includes`` edge is minted. (history: WI-hatip)
 
     Args:
         symbols: All symbols (to find candidates with included_modules meta).
@@ -366,7 +367,7 @@ def _external_base_edge(
     seed, ADR-0039): the extends DETECTION is AST-certain; ``is_resolved=False``
     carries the unresolved target. External bases cannot be classified
     implements-vs-extends without a resolved target, so they default to
-    ``extends`` (matching the merged py.py fallback).
+    ``extends`` (as py.py's fallback does).
     """
     canonical, is_qualified = _canonical_base_name(base_name)
 
@@ -466,10 +467,11 @@ def _qualifier_fit(
 ) -> tuple[list[Symbol], list[Symbol]] | None:
     """The class / interface candidates a qualified base's last segment may bind.
 
-    WI-pivap mechanism B. ``System.Exception`` used to bind any in-tree
+    Without this check ``System.Exception`` would bind any in-tree
     ``Exception``. Candidates whose qualified name fits the written base are
-    kept; failing those, candidates that record NO qualified name (the
-    pre-WI-pivap name binding, kept where the producer cannot be checked).
+    kept; failing those, candidates that record NO qualified name (a plain
+    name binding, kept where the producer cannot be checked). (history:
+    WI-pivap mechanism B)
     ``None`` -- the base is external -- when candidates exist and every one
     records a qualified name that does not fit. With no candidates at all the
     lists come back empty and the usual external fallback applies.
@@ -563,9 +565,10 @@ def _create_inheritance_edges(
     """
     # Pairs an analyzer already connected. Keyed WITHOUT the edge type: one
     # inheritance relation is one edge. Keyed with it, an analyzer that labels
-    # a pair differently from this linker (Kotlin labelled interface->interface
-    # ``implements`` until WI-kalug) got a second, contradicting edge for the
-    # same relation; the analyzer's edge stands, as for an external base.
+    # a pair differently from this linker (``implements`` where this linker
+    # says ``extends``) would get a second, contradicting edge for the same
+    # relation; the analyzer's edge stands, as for an external base.
+    # (history: WI-kalug)
     existing_pairs: set[tuple[str, str]] = {
         (e.src, e.dst)
         for e in existing_edges
@@ -591,7 +594,7 @@ def _create_inheritance_edges(
     # ``ExternalRef``. This linker has no import context, so it must not then
     # bind that base to an in-tree class that merely shares its last segment:
     # py.py classifies ``unittest.TestCase`` as external, and binding it to
-    # Django's own ``TestCase`` closed an inheritance cycle that disabled every
+    # Django's own ``TestCase`` closes an inheritance cycle that disables every
     # MRO walk under Django's test hierarchy. js_ts emits such an edge only
     # after its own name lookup found no in-tree class or interface, so this
     # lookup would find none either (read in js_ts.py, not measured).
@@ -644,7 +647,7 @@ def _create_inheritance_edges(
             if "::" in base_name:
                 lookup_names.append(base_name.split("::")[-1])
             if "\\" in base_name:
-                # PHP ``\Foo\Bar`` (WI-pivap: dropped before this split).
+                # PHP ``\Foo\Bar`` (history: WI-pivap).
                 lookup_names.append(base_name.split("\\")[-1])
 
             # Try to find the target symbol.
@@ -773,16 +776,13 @@ def _create_inheritance_edges(
     priority=15,  # Before type_hierarchy (priority 60)
     # CNF: the analyzers that actually write the two Symbol.meta keys this
     # linker reads — ``base_classes`` and ``included_modules`` — enumerated
-    # from their sources rather than from which languages have inheritance
-    # (WI-rasal; 18 surveys falsified the previous list, all of them Go repos).
-    #
-    # The old list was "every OO language with class/interface/trait/mixin
-    # constructs", which is a statement about programming languages. This is a
-    # statement about this tree: ``rust``, ``dart`` and ``elixir`` were declared
-    # and contribute NOTHING here — rust emits ``implements`` EDGES directly
-    # (so it is declared on ``type-hierarchy-linker``, which consumes those),
-    # and dart/elixir write neither key. ``apex``, ``cpp``, ``go``, ``groovy``
-    # and ``objc`` do write them and were missing.
+    # from their sources, not from which languages have inheritance: "every
+    # OO language with class/interface/trait/mixin constructs" is a statement
+    # about programming languages, and this list is a statement about this
+    # tree. ``rust``, ``dart`` and ``elixir`` are absent because they
+    # contribute nothing here — rust emits ``implements`` EDGES directly (so
+    # it is declared on ``type-hierarchy-linker``, which consumes those), and
+    # dart/elixir write neither key. (history: WI-rasal)
     depends_on=[
         [
             "apex", "cpp", "csharp", "go", "groovy", "java", "javascript",
@@ -818,7 +818,7 @@ def link_inheritance(ctx: LinkerContext) -> LinkerResult:
         ctx.symbols, class_by_name, interface_by_name, ctx.edges, run,
     )
 
-    # WI-hatip (PR-2 of INV-nilud): also emit `includes` edges from
+    # Also emit `includes` edges from
     # `included_modules` metadata so the inherited_calls linker can
     # walk through Ruby mixins.
     edges.extend(_create_includes_edges(

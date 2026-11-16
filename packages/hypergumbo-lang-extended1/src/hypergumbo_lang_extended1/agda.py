@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Agda analysis pass using tree-sitter-agda.
+"""Agda analysis pass on the language pack's tree-sitter-agda grammar.
 
 This analyzer uses tree-sitter to parse Agda files and extract:
 - Module declarations
-- Function definitions (including theorems, lemmas, postulates)
+- Function definitions (including theorems, lemmas, postulates, primitives)
 - Data type definitions
 - Record type definitions and record field declarations
 - Import statements (open import, import), including ``renaming (x to y)``
@@ -34,7 +34,8 @@ Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-agda package for grammar
+- The grammar is the language pack's build of tree-sitter-agda, not the
+  ``tree-sitter-agda`` 1.3.3 wheel (see "Grammar" below)
 - Two-pass allows cross-file resolution
 - References model fits proof languages better than calls
 
@@ -46,15 +47,42 @@ Agda-Specific Considerations
 - Records have fields and potentially a constructor
 - Postulates are axioms (functions without implementation)
 - Import can be `open import`, `import`, with using/hiding/renaming
+- A ``primitive`` block's entries are ``type_signature`` nodes (one
+  ``field_name`` per declared name), emitted as functions
+
+Grammar
+-------
+The grammar is the upstream tree-sitter-agda that tree-sitter-language-pack
+builds (``language_pack_name``), a later commit of the same repository than
+the ``tree-sitter-agda`` 1.3.3 wheel on PyPI (the wheel's only release). The
+two have the same node kinds and no fields, so this module reads either; the
+later commit carries an upstream fix to the layout scanner. Under 1.3.3 a
+layout block of one entry (``data Unit : Set where / tt : Unit``, a one-line
+``postulate``) split the next signature into two ``function`` nodes, so that
+declaration was not emitted (INV-vokir), and nested layout blocks lost or
+misplaced their scope chains (WI-molon). On agda-stdlib (1,248 files) the
+files parsed through error recovery go from 747 under 1.3.3 to 510.
+Neither grammar parses every file: a file parsed through error recovery is
+reported in ``limits.failed_files`` with a ``partial_parse`` reason.
 
 Scope and identity (INV-kagib, WI-tusad)
 ----------------------------------------
 A declaration's scope chain is the named blocks it sits in, outermost first:
-nested ``module M where`` blocks (an anonymous ``module _`` adds nothing), the
-``data`` type a constructor belongs to, the ``record`` a field belongs to, and,
-for a function bound in a ``where`` block, the function whose clause holds it.
-``private`` / ``postulate`` / ``mutual`` / ``abstract`` blocks are transparent,
-and the file's own ``module X where`` header encloses nothing in the grammar.
+nested ``module M where`` blocks, the ``data`` type a constructor belongs to,
+the ``record`` a field belongs to, and, for a function bound in a ``where``
+block, the function whose clause holds it. ``private`` / ``postulate`` /
+``mutual`` / ``abstract`` blocks are transparent, and the file's own
+``module X where`` header encloses nothing in the grammar.
+
+An anonymous module (``module _ (X : Set) where``, ``module _ where``) is
+transparent too, and is not a symbol (WI-bokud). It is a scoping device, not a
+declaration: Agda puts its contents in the enclosing module, each taking the
+telescope as extra parameters, so ``f`` in a ``module _`` inside ``module A``
+is ``A.f`` and is looked up as ``A.f``. The rule holds with or without
+parameters, nested in another anonymous module, inside a named module or a
+record, and inside or around a ``private`` block. Emitted as a module named
+``_`` (``A._`` when nested), two of them tied on that name and were split by
+order, so deleting the first moved the second's stable_id.
 
 Every declaration is emitted. Before, a per-file set of seen names kept only
 the first symbol of any name, so ``run`` in ``module B`` was dropped when
@@ -62,11 +90,12 @@ the first symbol of any name, so ``run`` in ``module B`` was dropped when
 (A forward ``data D : Set`` is a ``data_signature`` node, not emitted, so the
 later ``data D where`` is the one data symbol.) Two declarations with one
 chain (a ``go`` in the ``where`` block of each of two clauses of ``run``) are
-a same-scope tie the per-file occurrence pass orders. Known grammar gap: in
-every probe tried (two top-level functions, or two clauses of one function,
-each with a ``where`` block), the bundled tree-sitter-agda nested only the
-first block; the second one's functions come out at top level and are
-emitted without their owner in the chain. Names
+a same-scope tie the per-file occurrence pass orders. Every ``where`` block
+nests under the clause that owns it, later blocks included (two top-level
+functions, two clauses of one function, a block after a one-entry layout
+block); nested ``module`` / ``record`` / ``data`` blocks keep the chain of the
+module around them and of the code after them (WI-molon). Under the 1.3.3
+wheel both failed after a layout-scanner error (see "Grammar"). Names
 carry the chain where code outside the block uses it: ``A.run``, ``Pair.fst``
 (a field), ``A.Tree`` (a data type in a nested module). A constructor is in
 scope in its module under its bare name, so it is named ``zero`` (``A.zero``
@@ -256,7 +285,7 @@ def _extract_symbols_from_file(
 
     Detects:
     - module: Module declarations
-    - function: Function/theorem type signatures
+    - function: Function/theorem type signatures, primitives
     - data: Data type definitions
     - record: Record type definitions
     - field: Record field declarations
@@ -351,7 +380,10 @@ def _extract_symbols_from_file(
                     name = node_text(qid, source).strip()
                 else:  # pragma: no cover - fallback when no qid
                     name = node_text(name_node, source).strip()
-                add_symbol(node, name, "module")
+                # ``module _ ... where`` declares nothing (WI-bokud): its
+                # contents belong to the enclosing module. See the docstring.
+                if name != "_":
+                    add_symbol(node, name, "module")
 
         elif node.type == "function":
             # Function declaration (type signature or pattern clause)
@@ -384,6 +416,15 @@ def _extract_symbols_from_file(
             if name_node:
                 name = node_text(name_node, source).strip()
                 add_symbol(node, name, "record")
+
+        elif node.type == "type_signature":
+            # A ``primitive`` block's entry: one ``field_name`` per declared
+            # name (``primitive / primA primB : Set``), then ``:`` and the type.
+            expr_node = find_child_by_type(node, "expr")
+            sig = ": " + node_text(expr_node, source).strip() if expr_node else None
+            for child in node.children:
+                if child.type == "field_name":
+                    add_symbol(node, node_text(child, source).strip(), "function", signature=sig)
 
         elif node.type == "signature":
             # Record field declaration (inside fields block)
@@ -599,11 +640,11 @@ def _extract_edges_from_file(
 
 
 class AgdaAnalyzer(TreeSitterAnalyzer):
-    """Agda language analyzer using tree-sitter-agda."""
+    """Agda language analyzer on the language pack's tree-sitter-agda build."""
 
     lang = "agda"
     file_patterns: ClassVar[list[str]] = ["*.agda", "*.lagda", "*.lagda.md"]
-    grammar_module = "tree_sitter_agda"
+    language_pack_name = "agda"
     create_file_symbols = True
 
     def extract_symbols_from_file(

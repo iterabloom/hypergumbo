@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 """Tests for hypergumbo_tracker.setup — idempotent setup wizard.
 
-Covers all 22 checks in all reachable states (ok, fixed, warn, error),
+Covers the setup checks in their reachable states (ok, fixed, warn, error),
 the top-level run_setup() orchestration, and CLI integration via _cmd_setup.
+Check #22 (sync prerequisites) is tested in test_sync.py.
 """
 
 from __future__ import annotations
@@ -1054,8 +1055,8 @@ class TestConfigLockUnlock:
     def _as_human(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """These cases exercise the LEGITIMATE direction of the chmod fallback.
 
-        The fallback now refuses to run for an agent (INV-mizid), because it
-        rewrites the file and hands ownership to the caller. The suite runs as
+        The fallback refuses to run for an agent, because it rewrites the
+        file and hands ownership to the caller (history: INV-mizid). The suite runs as
         the agent account, so without this the fallback cases below would assert
         against the refusal instead of against the behaviour they cover. The
         refusal itself is tested in test_protected_config.py.
@@ -1130,8 +1131,7 @@ class TestConfigLockUnlock:
         copy+delete (which exposes a window where readers of config.yaml
         hit EACCES/ENOENT). Mirrors the analogous invariant enforced by
         `TestTakeOwnershipFallback::test_take_ownership_uses_same_directory_tmp`
-        in tests/test_store.py. Regression test for the class of bug
-        first observed on `.INV-rikis-…ops` (2026-04-19 TUI crash).
+        in tests/test_store.py (history: INV-rikis).
         """
         import tempfile as real_tempfile
 
@@ -1403,7 +1403,7 @@ class TestCheckHomeTraversable:
 
 
 class TestCheckGroupPermissions:
-    """Tests for _check_group_permissions (check #11)."""
+    """Tests for _check_group_permissions (check #12)."""
 
     def test_no_ops_dirs(self, tmp_path: Path) -> None:
         root = tmp_path / ".agent"
@@ -2225,12 +2225,12 @@ class TestCheckSharedRepository:
 
 
 # ---------------------------------------------------------------------------
-# Check #12: .ops/ writable
+# Check #13: .ops/ writable
 # ---------------------------------------------------------------------------
 
 
 class TestCheckOpsWritable:
-    """Tests for _check_ops_writable (check #12)."""
+    """Tests for _check_ops_writable (check #13)."""
 
     def test_all_writable(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
@@ -2253,12 +2253,12 @@ class TestCheckOpsWritable:
 
 
 # ---------------------------------------------------------------------------
-# Check #11: Git textconv
+# Check #14: Git textconv
 # ---------------------------------------------------------------------------
 
 
 class TestCheckTextconv:
-    """Tests for _check_textconv (check #11)."""
+    """Tests for _check_textconv (check #14)."""
 
     def test_no_git_repo(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
@@ -2433,11 +2433,10 @@ class TestCheckTextconv:
     ) -> None:
         """Local git config not writable — WARNS; must never write --global.
 
-        Rewritten from a test that asserted the opposite. The old ``--global``
-        fallback leaked a per-repo diff driver into the user's machine-wide
-        gitconfig, where it applied to every other repo and outlived this
-        checkout — and it did fire in practice. A per-repo concern stays
-        per-repo; if we cannot set it locally we say so.
+        A ``--global`` fallback would leak a per-repo diff driver into the
+        user's machine-wide gitconfig, where it applies to every other repo
+        and outlives this checkout. A per-repo concern stays per-repo; if it
+        cannot be set locally the check says so.
         """
         root = _make_full_agent_dir(tmp_path)
         for ops_dir in [
@@ -2478,10 +2477,10 @@ class TestCheckTextconv:
 class TestTextconvBehaviouralVerification:
     """_check_textconv must report a configured-but-broken driver as a problem.
 
-    The check previously asserted only that the config KEY was set, and so
-    reported "Git textconv driver ✓" for months while the configured command did
-    not exist — `git log -p` exited 128 repo-wide. Presence of configuration is a
-    proxy; running the driver is the behaviour.
+    Presence of the config KEY is only a proxy: a check that stops there
+    reports "Git textconv driver ✓" while the configured command does not
+    exist and `git log -p` exits 128 repo-wide. Running the driver is the
+    behaviour.
     """
 
     def test_broken_driver_is_reported_as_warn_not_ok(self, tmp_path: Path) -> None:
@@ -2672,12 +2671,12 @@ class TestEnsureSafeDirectory:
 
 
 # ---------------------------------------------------------------------------
-# Check #12: Existing data
+# Check #15: Existing data
 # ---------------------------------------------------------------------------
 
 
 class TestCheckExistingData:
-    """Tests for _check_existing_data (check #12)."""
+    """Tests for _check_existing_data (check #15)."""
 
     def test_no_ops_files(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
@@ -2765,12 +2764,12 @@ class TestCheckExistingData:
 
 
 # ---------------------------------------------------------------------------
-# Check #13: Tracker wrapper
+# Check #16: Tracker wrapper
 # ---------------------------------------------------------------------------
 
 
 class TestCheckTrackerWrapper:
-    """Tests for _check_tracker_wrapper (check #13): auto-install shims."""
+    """Tests for _check_tracker_wrapper (check #16): auto-install shims."""
 
     def test_no_repo(self) -> None:
         result = _check_tracker_wrapper(None)
@@ -2834,7 +2833,7 @@ class TestCheckTrackerWrapper:
 
 
 # ---------------------------------------------------------------------------
-# Check #14: AGENTS.md
+# Check #17: AGENTS.md
 # ---------------------------------------------------------------------------
 
 
@@ -2916,7 +2915,7 @@ class TestInjectManagedBlock:
 
 
 class TestCheckAgentsMd:
-    """Tests for _check_agents_md (check #16)."""
+    """Tests for _check_agents_md (check #17)."""
 
     def test_no_repo(self) -> None:
         result = _check_agents_md(None)
@@ -3052,12 +3051,12 @@ class TestCheckAgentsMd:
 
 
 # ---------------------------------------------------------------------------
-# Check #15: Stop hook
+# Check #18: Stop hook
 # ---------------------------------------------------------------------------
 
 
 class TestCheckStopHook:
-    """Tests for _check_stop_hook (check #15)."""
+    """Tests for _check_stop_hook (check #18)."""
 
     def test_no_repo(self) -> None:
         result = _check_stop_hook(None)
@@ -3132,12 +3131,12 @@ class TestCheckStopHook:
 
 
 # ---------------------------------------------------------------------------
-# Check #16: Pre-commit hook
+# Check #19: Pre-commit hook
 # ---------------------------------------------------------------------------
 
 
 class TestCheckPrecommitHook:
-    """Tests for _check_precommit_hook (check #16)."""
+    """Tests for _check_precommit_hook (check #19)."""
 
     def test_no_repo(self) -> None:
         result = _check_precommit_hook(None)
@@ -3292,12 +3291,12 @@ class TestCheckHooksPath:
 
 
 # ---------------------------------------------------------------------------
-# Check #19: Autonomous mode consistency
+# Check #20: Autonomous mode consistency
 # ---------------------------------------------------------------------------
 
 
 class TestCheckAutonomousMode:
-    """Tests for _check_autonomous_mode (check #19)."""
+    """Tests for _check_autonomous_mode (check #20)."""
 
     def test_no_repo(self) -> None:
         result = _check_autonomous_mode(None)
@@ -3360,12 +3359,12 @@ class TestCheckAutonomousMode:
 
 
 # ---------------------------------------------------------------------------
-# Check #20: Reflection state
+# Check #21: Reflection state
 # ---------------------------------------------------------------------------
 
 
 class TestCheckReflectionState:
-    """Tests for _check_reflection_state (check #20)."""
+    """Tests for _check_reflection_state (check #21)."""
 
     def test_no_repo(self) -> None:
         result = _check_reflection_state(None)
@@ -3876,13 +3875,12 @@ class TestGenerateHumanShim:
     def test_shim_never_points_the_human_at_a_venv_in_the_checkout(
         self, tmp_path: Path
     ) -> None:
-        """It used to, and that is how INV-hivog happened.
+        """The shim never emits ``source <venv>/bin/activate`` for any venv.
 
-        The three tests replaced here asserted the shim emitted
-        ``source <repo>/.venv/bin/activate`` -- they pinned the defect in
-        place. A repo-local venv is the AGENT's: telling the human to activate
-        it hands agent-writable code the authority the two-account split exists
-        to withhold.
+        A repo-local venv is the AGENT's: telling the human to activate it
+        hands agent-writable code the authority the two-account split exists
+        to withhold. The shim installs and invokes the human's own copy
+        instead (history: INV-hivog).
         """
         root = tmp_path / ".agent"
         (root / "tracker" / ".ops").mkdir(parents=True)
@@ -4133,7 +4131,7 @@ class TestDetectSharedGroupProbesTrackerDirs:
 
     The setup instructions chgrp ``.agent/tracker*`` and ``.git`` — not
     ``.agent/`` and not the checkout — so probing only ``root`` and
-    ``root.parent`` reported "single-user" on a correctly configured box.
+    ``root.parent`` would report "single-user" on a correctly configured box.
     """
 
     def test_shared_gid_on_tracker_dir_is_detected(self, tmp_path: Path) -> None:
@@ -4175,8 +4173,8 @@ class TestDetectSharedGroupProbesTrackerDirs:
 class TestGroupSweepLeavesConfigModeAlone:
     """#10b sets 0444; #12 must not put group-write back on the next line.
 
-    The two checks disagreed about the same file, so the wizard never
-    converged -- both reported "fixed" on every run -- and config.yaml settled
+    If the two checks disagree about the same file, the wizard never
+    converges -- both report "fixed" on every run -- and config.yaml settles
     at 0464. In a shared group that contains the agent, 0464 means the agent
     can write whichever config it does not own, which is the exact boundary
     #10b exists to hold.
@@ -4241,7 +4239,7 @@ class TestGroupSweepLeavesConfigModeAlone:
         assert ops_file.stat().st_mode & 0o060 == 0o060, "sweep stopped working"
 
     def test_permission_and_group_checks_converge(self, tmp_path: Path) -> None:
-        """Idempotence is the wizard's documented contract; it was false."""
+        """Idempotence is the wizard's documented contract: repeated runs keep 0444."""
         root = self._tree(tmp_path)
         config = root / "tracker-workspace" / "config.yaml"
         config.write_text("statuses: []\n")

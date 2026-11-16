@@ -9,20 +9,24 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Uses tree-sitter-svelte grammar from tree-sitter-language-pack
-2. Extracts component structure (script, style, template)
+2. Parses ``<script>`` import statements and walks the template (``<style>`` is not read)
 3. Identifies component references and event handlers
 4. Tracks control flow blocks (#if, #each, #await)
 
 Symbols Extracted
 -----------------
-- **Components**: Imported components used in template (capitalized tags)
 - **Slots**: Named and default slot definitions
 - **Blocks**: Control flow blocks (if, each, await)
 - **Events**: Event handlers on elements
 
 Edges Extracted
 ---------------
-- **imports**: Links component usage to imported component paths
+- **imports**: One edge per capitalized (component) tag, from the file to
+  the imported component. A relative import (``./Child.svelte``) of a file
+  in the tree ends on that file's node (``file_reference_dst``); an aliased
+  or missing one keeps the module-import placeholder
+  ``svelte:<path>:0-0:module:module``; a tag with no matching import is an
+  unresolved edge to ``svelte:component:<Tag>:0-0:<Tag>:component``
   (ADR-0023 §6 folded the former `imports_component` type into
   canonical `imports`)
 
@@ -54,13 +58,15 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
-    TreeSitterAnalyzer,
     ancestor_labels,
     html_element_tag,
     make_doc_symbol_ids,
     make_file_id,
+    make_module_import_dst,
     populate_docstrings_from_tree,
+    TreeSitterAnalyzer,
 )
+from hypergumbo_core.analyze.file_records import file_reference_dst
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -274,7 +280,13 @@ def _process_tag(
         # a 5-part dangling component id so the relationship keeps
         # representation in the graph.
         if import_path:
-            edge_dst = import_path
+            # A relative import of a file in the tree ends on that file's
+            # node. Anything else (an alias, a missing file) keeps the
+            # canonical module-import id (WI-bufar-pokam), never the bare
+            # path, which finalize would render with ``<unknown>``.
+            edge_dst = file_reference_dst(
+                "svelte", path, rel_path.as_posix(), import_path,
+            ) or make_module_import_dst("svelte", import_path)
         else:
             edge_dst = f"svelte:component:{tag_name}:0-0:{tag_name}:component"
         edge = Edge.create(

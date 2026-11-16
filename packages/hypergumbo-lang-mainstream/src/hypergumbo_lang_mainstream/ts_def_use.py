@@ -12,8 +12,17 @@ Each spec declares the callable node types the DDG walk will enter —
 ``function_declaration`` and ``method_definition`` (named and kinded by
 ``js_ts.py``'s ``jsts_method_name`` / ``jsts_method_kind``), plus the
 binding-named ``arrow_function`` / ``function_expression`` / ``function`` /
-``generator_function``, walked under the analyzer's own id — the scope
-limit that decides how much of a file the data-dependence graph can see.
+``generator_function``, walked under the analyzer's own id. Each spec also
+names ``program`` in ``module_node_types``, so a file's top-level code is
+walked as module code under the file pseudo-symbol (WI-nilir; ddg_build's
+"Module Code"). Together these node types decide how much of a file the
+data-dependence graph can see. Each spec also passes ``params_for``
+(``_jsts_params``): a callable's parameter names in order -- every leaf of a
+destructured, defaulted or rest parameter, plus the lone parameter of
+``req => ...``. ddg_build gives them to the solver as entry definitions at the
+function's own line, so a parameter reaches its uses in the body, and records
+them in ``RepoDdg.params``, from which taint seeds a request handler's request
+parameter (WI-sosov).
 
 Handles core patterns:
 
@@ -25,14 +34,17 @@ Handles core patterns:
 - ``for...of`` / ``for...in`` loops
 - ``return`` statements
 - Expression statements (bare function calls)
+- Assignments nested in an expression (``while ((m = re.exec(s)) !== null)``,
+  ``x = y = e``, ``h(m = g())``) and ``i++``: defined -- weakly where it may
+  not run, not at all inside a closure. The rule and its reasons are on
+  :class:`_Collector` (WI-tozar).
 
 Complex patterns (optional chaining, spread, computed properties, JSX) are
 handled by recursing into the node and collecting identifiers, with two
 deliberate exclusions: names in ``_TS_SKIP_NAMES`` (globals and builtins such
 as ``console``, ``JSON``, ``Promise``, ``parseInt``) never become uses, and
 the callee of a plain call is not a use — in ``foo(a)``, ``a`` is a use and
-``foo`` is not. This covers the majority of taint-relevant data flow in
-TypeScript code.
+``foo`` is not.
 """
 from __future__ import annotations
 
@@ -50,46 +62,234 @@ def _node_text(node: Any, source: bytes) -> str:
 
 
 def _collect_identifiers(node: Any, source: bytes) -> list[str]:
-    """Collect all identifier uses from an expression subtree."""
-    result: list[str] = []
-    _collect_ids_recursive(node, source, result)
-    return result
+    """Collect all identifier uses from an expression subtree.
+
+    The bindings nested in the subtree are dropped here; :func:`_reads`
+    keeps them.
+    """
+    collector = _Collector(source)
+    collector.walk(node)
+    return collector.uses
 
 
-def _collect_ids_recursive(node: Any, source: bytes, result: list[str]) -> None:
-    """Recursive identifier collector for TypeScript expressions."""
-    if node.type == "identifier":
-        name = _node_text(node, source)
-        if name not in _TS_SKIP_NAMES:
-            result.append(name)
-        return
+def _reads(node: Any, source: bytes) -> DefUseResult:
+    """The uses of an expression subtree AND the bindings nested inside it."""
+    collector = _Collector(source)
+    collector.walk(node)
+    return DefUseResult(defines=collector.defines, uses=collector.uses)
 
-    if node.type == "this":
-        result.append("this")
-        return
 
-    if node.type in ("type_identifier", "type_annotation", "type_parameters",
-                      "string", "template_string", "number", "true", "false",
-                      "null", "undefined", "regex", "comment"):
-        return
+#: Node types that carry no variable reference.
+_NON_USE_TYPES = frozenset({
+    "type_identifier", "type_annotation", "type_parameters", "string",
+    "template_string", "number", "true", "false", "null", "undefined", "regex",
+    "comment",
+})
 
-    if node.type == "call_expression":
-        func = node.child_by_field_name("function")
-        args = node.child_by_field_name("arguments")
-        if func:
-            if func.type == "member_expression":
-                obj = func.child_by_field_name("object")
-                if obj:
-                    _collect_ids_recursive(obj, source, result)
-            elif func.type != "identifier":
-                _collect_ids_recursive(func, source, result)
-        if args:
-            _collect_ids_recursive(args, source, result)
-        return
+#: Operators whose right operand runs only when the left does not decide.
+_SHORT_CIRCUIT_OPERATORS = frozenset({"&&", "||", "??"})
 
-    for child in node.children:
-        if child.is_named:
-            _collect_ids_recursive(child, source, result)
+#: Compound assignments that evaluate (and assign) only when the left side
+#: does not decide.
+_LOGICAL_ASSIGNMENT_OPERATORS = frozenset({"&&=", "||=", "??="})
+
+#: Bodies whose bindings are not this statement's: they run when the closure
+#: is CALLED, not where it is created. Walked for uses only, which is what the
+#: whole subtree was before (what a closure captures is read where it is made).
+_CLOSURE_TYPES = frozenset({
+    "arrow_function", "function_expression", "function", "generator_function",
+    "function_declaration", "generator_function_declaration",
+    "class_declaration", "class", "class_body", "method_definition",
+})
+
+#: How a grammar marks a ``?.`` link (see :func:`_short_circuited`).
+_OPTIONAL_CHAIN_MARKERS = frozenset({"optional_chain", "?."})
+
+#: The links of one member/call chain, and the field each continues through.
+_CHAIN_CONTINUES = {
+    "call_expression": "function",
+    "member_expression": "object",
+    "subscript_expression": "object",
+}
+
+
+def _short_circuited(node: Any) -> bool:
+    """True when ``?.`` sits on ``node``'s chain: ``o?.f(...)``, ``o?.p.f(...)``,
+    ``f?.(...)``. If the chain short-circuits, the rest of it -- the call's
+    arguments, a subscript's index -- is never evaluated. A parenthesis ends
+    the chain: ``(o?.p).f(x)`` always evaluates ``x``.
+
+    The marker is spelled two ways: a named ``optional_chain`` child, and --
+    in the typescript/tsx grammars, for an optional CALL (``f?.(x)``) only --
+    a bare anonymous ``?.`` token."""
+    while node is not None and node.type in _CHAIN_CONTINUES:
+        if any(child.type in _OPTIONAL_CHAIN_MARKERS for child in node.children):
+            return True
+        node = node.child_by_field_name(_CHAIN_CONTINUES[node.type])
+    return False
+
+
+class _Scope:
+    """Where a nested binding sits, as far as its definition cares.
+
+    ``conditional``: it may not execute (a weak update). ``in_closure``: it
+    binds when the closure is called, not here, so it defines nothing here.
+    Immutable; each narrowing returns a new scope.
+    """
+
+    __slots__ = ("conditional", "in_closure")
+
+    def __init__(self, conditional: bool, in_closure: bool) -> None:
+        self.conditional = conditional
+        self.in_closure = in_closure
+
+    @property
+    def binds(self) -> bool:
+        """A binding here defines its target."""
+        return not self.in_closure
+
+    def maybe(self) -> "_Scope":
+        return _Scope(True, self.in_closure)
+
+    def closure(self) -> "_Scope":
+        return _Scope(self.conditional, True)
+
+
+_ROOT = _Scope(conditional=False, in_closure=False)
+
+
+class _Collector:
+    """One expression's uses and nested bindings, in evaluation order.
+
+    THE JAVA/C RULE (WI-tozar): an assignment nested inside an expression --
+    in a condition (``while ((m = re.exec(s)) !== null)``), on the right side
+    of another assignment (``x = y = e``, ``const a = (b = e)``) -- DEFINES
+    its target. Before this only a statement-level assignment did, and a
+    nested target was read as a use, so the walk had no definition to chain
+    from. ``i++`` / ``--i`` likewise define ``i`` (and read it).
+
+    WHERE THE VALUE ALSO GOES DOES NOT MATTER: ``h(m = src())``, a receiver,
+    a return or a container literal define ``m`` like a condition does. It
+    shipped as a USE there (CONTAINED ONLY) while the §3a walk could follow
+    the heir on such a line without asking where the call took the value;
+    WI-jusoj and WI-tinav closed that, and the reasoning and measurement are
+    on the Python twin's ``_Collector`` (py_def_use.py).
+
+    Two refinements Java's walker does not make:
+
+    - CONDITIONAL = a WEAK update. A binding that may not execute (the right
+      operand of ``&&`` / ``||`` / ``??``, a ternary branch, the right side of
+      ``&&=``) is recorded as a define AND a use, the way ``x += e`` is: the
+      value bound before still reaches what follows when the binding is
+      skipped. A plain define would KILL that value on every path, and the
+      walk could then refute a flow that runs whenever the branch is not
+      taken.
+    - A binding inside a closure stays a USE (see ``_CLOSURE_TYPES``).
+    """
+
+    def __init__(self, source: bytes) -> None:
+        self.source = source
+        self.defines: list[str] = []
+        self.uses: list[str] = []
+
+    def bind(self, names: list[str], scope: _Scope) -> None:
+        """Record ``names`` as bound by this statement (see the class docstring)."""
+        if scope.binds:
+            self.defines.extend(names)
+        if not scope.binds or scope.conditional:
+            self.uses.extend(names)
+
+    def walk(self, node: Any, scope: Optional[_Scope] = None) -> None:
+        """Collect uses from ``node`` and the bindings nested in it.
+
+        ``scope`` is where ``node`` sits (see :class:`_Scope`); the default
+        is a statement root.
+        """
+        here = scope or _ROOT
+        kind = node.type
+        if kind == "identifier":
+            name = _node_text(node, self.source)
+            if name not in _TS_SKIP_NAMES:
+                self.uses.append(name)
+            return
+
+        if kind == "this":
+            self.uses.append("this")
+            return
+
+        if kind in _NON_USE_TYPES:
+            return
+
+        if kind == "call_expression":
+            # The callee NAME is not a use; a method call reads its receiver.
+            func = node.child_by_field_name("function")
+            args = node.child_by_field_name("arguments")
+            if func:
+                if func.type == "member_expression":
+                    obj = func.child_by_field_name("object")
+                    if obj:
+                        self.walk(obj, here)
+                elif func.type != "identifier":
+                    self.walk(func, here)
+            if args:
+                self.walk(args, here.maybe() if _short_circuited(node) else here)
+            return
+
+        if kind == "assignment_expression":
+            left = node.child_by_field_name("left")
+            right = node.child_by_field_name("right")
+            # A write INTO an object mutates it rather than replacing it, so
+            # it reads the object (and index) to find the slot: ``data[i] = v``
+            # always, and a NESTED field write (``this.a = this.b = v``) too,
+            # as Java models every field write and as this subtree read before
+            # it was a binding. (A statement-level ``this.a = v`` keeps its
+            # older, strong reading.)
+            mutation = left.type == "subscript_expression" or (
+                scope is not None and left.type == "member_expression"
+            )
+            if mutation:
+                self.walk(left, here)
+            self.walk(right, here)
+            names = _collect_pattern_names(left, self.source)
+            if not mutation:
+                self.bind(names, here)
+            elif here.binds:
+                self.defines.extend(names)
+            return
+
+        if kind in ("augmented_assignment_expression", "update_expression"):
+            # ``x += e`` / ``x ??= e`` / ``i++`` read the target before writing
+            # it, so the definition is weak by construction.
+            if kind == "update_expression":
+                target = node.child_by_field_name("argument")
+                self.walk(target, here)
+            else:
+                target = node.child_by_field_name("left")
+                operator = _node_text(node.child_by_field_name("operator"), self.source)
+                self.uses.extend(_collect_pattern_names(target, self.source))
+                right = here.maybe() if operator in _LOGICAL_ASSIGNMENT_OPERATORS else here
+                self.walk(node.child_by_field_name("right"), right)
+            if here.binds:
+                self.defines.extend(_collect_pattern_names(target, self.source))
+            return
+
+        if kind == "binary_expression":
+            operator = _node_text(node.child_by_field_name("operator"), self.source)
+            if operator in _SHORT_CIRCUIT_OPERATORS:
+                self.walk(node.child_by_field_name("left"), here)
+                self.walk(node.child_by_field_name("right"), here.maybe())
+                return
+
+        if kind == "ternary_expression":
+            self.walk(node.child_by_field_name("condition"), here)
+            self.walk(node.child_by_field_name("consequence"), here.maybe())
+            self.walk(node.child_by_field_name("alternative"), here.maybe())
+            return
+
+        inner = here.closure() if kind in _CLOSURE_TYPES else here
+        for child in node.children:
+            if child.is_named:
+                self.walk(child, inner)
 
 
 def _collect_pattern_names(node: Any, source: bytes) -> list[str]:
@@ -185,22 +385,23 @@ class TypeScriptDefUseExtractor:
         handler = _HANDLERS.get(node.type)
         if handler:
             return handler(node, source)
-        return DefUseResult(uses=_collect_identifiers(node, source))
+        # Every identifier is a use, and an assignment nested anywhere in the
+        # node (``if ((m = g()) > 0)``) a define.
+        return _reads(node, source)
 
 
 def _handle_lexical_declaration(node: Any, source: bytes) -> DefUseResult:
     """Handle const/let/var declarations."""
-    defines: list[str] = []
-    uses: list[str] = []
+    collector = _Collector(source)
     for child in node.children:
         if child.type == "variable_declarator":
             name_node = child.child_by_field_name("name")
             value_node = child.child_by_field_name("value")
-            if name_node:
-                defines.extend(_collect_pattern_names(name_node, source))
             if value_node:
-                uses.extend(_collect_identifiers(value_node, source))
-    return DefUseResult(defines=defines, uses=uses)
+                collector.walk(value_node)
+            if name_node:
+                collector.defines.extend(_collect_pattern_names(name_node, source))
+    return DefUseResult(defines=collector.defines, uses=collector.uses)
 
 
 def _handle_variable_declaration(node: Any, source: bytes) -> DefUseResult:
@@ -209,50 +410,40 @@ def _handle_variable_declaration(node: Any, source: bytes) -> DefUseResult:
 
 
 def _handle_assignment_expression(node: Any, source: bytes) -> DefUseResult:
-    """Handle assignment: x = expr, this.field = expr, data[idx] = expr."""
-    left = node.child_by_field_name("left")
-    right = node.child_by_field_name("right")
-    defines = _collect_pattern_names(left, source) if left else []
-    uses: list[str] = []
-    if left and left.type == "subscript_expression":
-        uses.extend(_collect_identifiers(left, source))
-    if right:
-        uses.extend(_collect_identifiers(right, source))
-    return DefUseResult(defines=defines, uses=uses)
+    """Handle assignment: x = expr, this.field = expr, data[idx] = expr.
+
+    The collector owns the rule, so a statement-level assignment and one
+    nested in an expression (``x = y = e``) cannot disagree.
+    """
+    return _reads(node, source)
 
 
 def _handle_augmented_assignment(node: Any, source: bytes) -> DefUseResult:
-    """Handle augmented assignment: x += expr."""
-    left = node.child_by_field_name("left")
-    right = node.child_by_field_name("right")
-    left_names = _collect_pattern_names(left, source) if left else []
-    uses = list(left_names)
-    if right:
-        uses.extend(_collect_identifiers(right, source))
-    return DefUseResult(defines=left_names, uses=uses)
+    """Handle augmented assignment: x += expr (defines and reads x)."""
+    return _reads(node, source)
 
 
 def _handle_return_statement(node: Any, source: bytes) -> DefUseResult:
-    """Handle return statement."""
-    uses: list[str] = []
+    """Handle return statement (the value leaves the function)."""
+    collector = _Collector(source)
     for child in node.children:
         if child.is_named:
-            uses.extend(_collect_identifiers(child, source))
-    return DefUseResult(uses=uses)
+            collector.walk(child, _ROOT)
+    return DefUseResult(defines=collector.defines, uses=collector.uses)
 
 
 def _handle_for_in_statement(node: Any, source: bytes) -> DefUseResult:
     """Handle for...of / for...in: for (const item of items)."""
     left = node.child_by_field_name("left")
     right = node.child_by_field_name("right")
-    defines: list[str] = []
+    reads = _reads(right, source) if right else DefUseResult()
+    defines = list(reads.defines)
     if left:
         if left.type == "identifier":
             defines.append(_node_text(left, source))
         else:
             defines.extend(_collect_pattern_names(left, source))
-    uses = _collect_identifiers(right, source) if right else []
-    return DefUseResult(defines=defines, uses=uses)
+    return DefUseResult(defines=defines, uses=reads.uses)
 
 
 def _handle_expression_statement(node: Any, source: bytes) -> DefUseResult:
@@ -262,7 +453,7 @@ def _handle_expression_statement(node: Any, source: bytes) -> DefUseResult:
             handler = _HANDLERS.get(child.type)
             if handler:
                 return handler(child, source)
-            return DefUseResult(uses=_collect_identifiers(child, source))
+            return _reads(child, source)
     return DefUseResult()
 
 
@@ -283,13 +474,10 @@ _HANDLERS: dict[str, Any] = {
 #
 # SCOPE, deliberately narrow and disclosed rather than implied:
 #
-#   * Only `function_declaration`. Class methods (`method_definition`) are NOT
-#     registered, because the analyzer's kind slot for them is getter/setter
-#     sensitive (js_ts.py decides "method" / "getter" / "setter" inline) and
-#     re-deriving that classification here would put a second copy of a
-#     production judgement in a consumer — the precise shape that has produced
-#     wrong numbers in this subsystem before. Reusing the analyzer's decision
-#     requires extracting it into a shared helper first; filed separately.
+#   * `function_declaration` and `method_definition` (named and kinded through
+#     js_ts.py's `jsts_method_name` / `jsts_method_kind`, WI-sakir / WI-jopuf),
+#     the binding-named callables (WI-mufag), and top-level `program` code
+#     (WI-nilir).
 #
 #   * TypeScript currently has ZERO catalogued taint sinks (6 sources, 0 sinks),
 #     so no TypeScript DDG edge can change a taint verdict today whatever this
@@ -360,6 +548,10 @@ _JSTS_BOUND_CALLABLE_NODE_TYPES = frozenset({
     "arrow_function", "function_expression", "function", "generator_function",
 })
 
+# WI-nilir: top-level code is anchored on the file pseudo-symbol and walked
+# under it (ddg_build's "Module Code").
+_JSTS_MODULE_NODE_TYPES = frozenset({"program"})
+
 # WI-fovus: neither spec names a glob. Each walks every extension
 # ``taxonomy.LANGUAGES`` files under its language -- javascript ``.js`` /
 # ``.mjs`` / ``.cjs`` / ``.jsx``, typescript ``.ts`` / ``.tsx`` / ``.mts`` /
@@ -373,19 +565,81 @@ _JSTS_BOUND_CALLABLE_NODE_TYPES = frozenset({
 # records, and its identifiers reach the def/use extractor through the generic
 # recursion. A name the extractor misses is caught by ``unaccounted_names``,
 # which withholds refutation rather than licensing it.
+_JSTS_PARAM_LEAF_TYPES = frozenset({
+    "identifier", "shorthand_property_identifier_pattern",
+})
+
+
+def _jsts_param_leaves(node: Any, source: bytes, out: list[str]) -> None:
+    """The binding names inside one parameter, in source order.
+
+    A plain ``identifier``; a TS ``required_parameter`` / ``optional_parameter``
+    (its ``pattern``, which may itself be a pattern); an ``assignment_pattern``
+    (its ``left``); a ``rest_pattern`` (its identifier); an ``object_pattern``
+    / ``array_pattern`` (every leaf it binds, so ``({ body }, [first])`` names
+    ``body`` and ``first``). A type annotation or default value is never a
+    binding and is not descended into.
+    """
+    if node.type in _JSTS_PARAM_LEAF_TYPES:
+        out.append(_node_text(node, source))
+        return
+    if node.type in ("required_parameter", "optional_parameter"):
+        pattern = node.child_by_field_name("pattern")
+        if pattern is not None:
+            _jsts_param_leaves(pattern, source, out)
+        return
+    if node.type == "assignment_pattern":
+        left = node.child_by_field_name("left")
+        if left is not None:
+            _jsts_param_leaves(left, source, out)
+        return
+    if node.type == "pair_pattern":
+        value = node.child_by_field_name("value")
+        if value is not None:
+            _jsts_param_leaves(value, source, out)
+        return
+    if node.type in ("rest_pattern", "object_pattern", "array_pattern"):
+        for child in node.children:
+            if child.is_named:
+                _jsts_param_leaves(child, source, out)
+
+
+def _jsts_params(node: Any, source: bytes) -> list[str]:
+    """The parameter names of a JS/TS callable, in order (WI-sosov).
+
+    ``formal_parameters`` for every callable shape; the single-identifier
+    arrow (``req => ...``) carries its one parameter in the ``parameter``
+    field instead. A node with neither (the ``program`` root walked for
+    top-level code) yields nothing.
+    """
+    params_node = node.child_by_field_name("parameters")
+    if params_node is None:
+        single = node.child_by_field_name("parameter")
+        return [_node_text(single, source)] if single is not None else []
+    names: list[str] = []
+    for child in params_node.children:
+        if child.is_named:
+            _jsts_param_leaves(child, source, names)
+    return names
+
+
 register_ddg_language(LanguageDdgSpec(
     language="typescript",
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
+    module_node_types=_JSTS_MODULE_NODE_TYPES,
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
     bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
+    params_for=_jsts_params,
 ))
 
 # Same function node types, the javascript grammar (which parses JSX itself).
 register_ddg_language(LanguageDdgSpec(
     language="javascript",
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
+    module_node_types=_JSTS_MODULE_NODE_TYPES,
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
     bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
+    params_for=_jsts_params,
 ))

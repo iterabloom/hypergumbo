@@ -1,0 +1,23 @@
+- op: create  # 97f0
+  at: '2026-11-03T07:52:39Z'  # 97f0
+  by: agent  # 97f0
+  actor: jgstern_agent  # 97f0
+  clock: 1  # 97f0
+  nonce: 97f0  # 97f0
+  data:  # 97f0
+    kind: work_item  # 97f0
+    title: "rust: a tower/hyper impl Service<Request<_>> for T { fn call } is a request handler reached through the trait, but rust.py stamps nothing on impl methods, so it is no request-ingress entrypoint (WI-losij rust half)"  # 97f0
+    status: todo_hard  # 97f0
+    priority: 3  # 97f0
+    parent:  # 97f0
+    tags:  # 97f0
+    - taint  # 97f0
+    - verify_claims  # 97f0
+    - entrypoints  # 97f0
+    - rust  # 97f0
+    isbefore: []  # 97f0
+    duplicate_of: []  # 97f0
+    not_duplicate_of: []  # 97f0
+    pr_ref:  # 97f0
+    description: "PROBLEM. The rust half of WI-losij: a tower/hyper `impl Service<Request<B>> for T { fn call(&mut self, req: Request<B>) -> Self::Future }` is the request handler, reached through the TRAIT, so no route, decorator or usage pattern sees it, it is no request-ingress entrypoint, and WI-fuzik's unseeded-ingress withhold cannot fire on it.\n\nPROBE (2026-11-03, analyze_rust on a one-file fixture with `impl Service<Request<Body>> for Saver` whose `call` writes `std::fs::write(req.uri().path(), ..)`): `Saver::call` is a method symbol with EMPTY meta -- no `parameters` (rust.py does not write meta[\"parameters\"]) and no `parent_base_classes` / trait on the method. The analyzer does emit an `implements` edge Saver -> Service. So no definition rule can be written today: the python/java shape (method_name + parent_base_class, WI-sorop / WI-losij) needs the impl's trait on the method.\n\nCAUTION BEFORE A RULE: a tower `Service` is also the CLIENT-side middleware abstraction. The corpus `impl Service<` sites are reqwest 6 files (an HTTP client), pants 4, deno 3 (non-test grep); a `call` that implements `Service` is not therefore a server handler. The rule's precision must be measured, not assumed, which is why this half is separate from the python/java PR.\n\nFIX CANDIDATES. (1) rust.py stamps `parent_base_classes=[<trait as written, generics stripped>]` on the methods of an `impl Trait for Type` block (the one analyzer gap; the java/objc/py shape). (2) A `tower.yaml` (community, detected from Cargo.toml `tower` / `hyper` / `axum`) with `method_name ^call$` + `parent_base_class ^(tower::)?Service$` -> route_handler (mapped to HTTP_ROUTE since WI-losij) -- OR a narrower trigger (the request type: `Request<` in the first parameter, once rust writes meta[\"parameters\"]) to keep client-side Service impls out. Flip test + the probe through verify-claims; A/B on reqwest (expected: client middleware must NOT become ingress) and on a server corpus repo (find one: axum/hyper server; none checked).\n\nNOT ASSERTED: that any corpus repo has a server-side tower Service impl; the three repos found are a client, a build tool and a runtime."  # 97f0
+    fields: {}  # 97f0

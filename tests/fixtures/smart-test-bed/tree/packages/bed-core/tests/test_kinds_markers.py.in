@@ -1,0 +1,10 @@
+"""TEXT reader: every KIND_ line in bedcore/kinds.py carries an axis marker."""
+from pathlib import Path
+
+KINDS = Path(__file__).resolve().parents[1] / "src" / "bedcore" / "kinds.py"
+
+
+def test_every_kind_has_an_axis_marker():
+    lines = [ln for ln in KINDS.read_text().splitlines() if ln.startswith("KIND_")]
+    assert lines
+    assert all("# axis:" in ln for ln in lines)

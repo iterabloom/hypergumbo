@@ -2,23 +2,19 @@
 """A DECLARED type is a receiver-typing source (INV-vugon), and the return-type
 registry is consumed rather than only built (WI-gajuh).
 
-INV-vugon. ``java.py`` typed a local only from its INITIALIZER — ``new T()``,
-or the return type of a resolved in-repo method — and never read the
-declaration itself. So ``OutputStream o = sock.getOutputStream(); o.write(b)``
-emitted ``java:external:0-0:o.write:unresolved``: the receiver's type sat in
-the source, one token to the left, and the analyzer glued the VARIABLE NAME
-into the callee instead. (The gluing is gone since WI-nakut and the assertions
-below read ``:write:``; what these tests pin is the MODULE slot, which is what
-INV-vugon is about. An untyped receiver still yields the ``external``
-placeholder -- it just no longer spells the variable into the name.)
-On guacamole-client that was 315 typed bindings out
-of ~2,180, with 1,210 call-initialised locals, 358 catch parameters and 163
-for-each variables never typed. Java DECLARES its types; every one of those
-declarations is stronger evidence than any inference.
+INV-vugon. Java DECLARES its types, and a declaration is stronger evidence
+than any inference: in ``OutputStream o = sock.getOutputStream(); o.write(b)``
+the receiver's type sits in the source, one token to the left. So ``java.py``
+types a local from its declaration, not only from its INITIALIZER (``new
+T()``, or the return type of a resolved in-repo method), and types
+call-initialised locals, catch parameters and for-each variables the same
+way. What these tests pin is the MODULE slot: a typed receiver puts its type
+there, and an untyped receiver yields the ``external`` placeholder. The name
+slot carries the method alone (``:write:``), never the variable (WI-nakut).
 
-WI-gajuh. ``method_return_type_registry`` was built from Pass 1 symbols and
-never passed to ``_extract_edges`` — write-only, the same defect WI-doluf
-found in Go. The registry is now the ONE interface a return type is read
+WI-gajuh. ``method_return_type_registry`` is built from Pass 1 symbols and
+passed to ``_extract_edges``, so it is read, not write-only (Go had the same
+defect, WI-doluf). The registry is the ONE interface a return type is read
 through, keyed ``<Owner>.<method>`` → returned type, where the value is
 qualified through the DECLARING file's imports (``java.io.FileWriter``) or is
 the bare name of an in-repo class. WI-lalot's library-signature loader feeds
@@ -77,7 +73,7 @@ class TestDeclaredLocalType:
     def test_call_initialised_local_names_the_declared_type(
         self, tmp_path: Path,
     ) -> None:
-        """The 1,210-site shape: ``Connection c = DriverManager.getConnection(u)``."""
+        """The call-initialised shape: ``Connection c = DriverManager.getConnection(u)``."""
         (tmp_path / "Db.java").write_text("""
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -166,9 +162,8 @@ public class V {
         The declaration is a baseline, not a ceiling: an initializer that
         names a subtype is more specific and is what the catalogue rows are
         written against (``java.io.FileOutputStream.write`` is catalogued;
-        ``java.io.OutputStream.write`` is not). This is the behaviour the
-        analyzer had before the declaration was read at all; pinned so
-        reading the declaration cannot regress it.
+        ``java.io.OutputStream.write`` is not). Pinned so reading the
+        declaration cannot override it.
         """
         (tmp_path / "W.java").write_text("""
 import java.io.OutputStream;
@@ -222,13 +217,13 @@ public class M {
     def test_a_chained_receiver_landing_on_a_same_named_method_cannot_retype_a_local(
         self, tmp_path: Path,
     ) -> None:
-        """Read back from guacamole-client: ``String s = x.attrs().get(k); s.trim()``.
+        """The guacamole-client shape: ``String s = x.attrs().get(k); s.trim()``.
 
         The chained ``.get(k)`` has no receiver name, so the analyzer's
         current-class lookup resolves it to the anonymous ``Supplier``'s
-        ``get()`` in the same class, whose return type is ``Future``; before
-        the declared-type rule that inference retyped ``s`` and ``s.trim()``
-        was emitted as ``java.util.concurrent.Future.trim``.
+        ``get()`` in the same class, whose return type is ``Future``; without
+        the declared-type rule that inference would retype ``s`` and emit
+        ``s.trim()`` as ``java.util.concurrent.Future.trim``.
         """
         (tmp_path / "K.java").write_text("""
 import java.util.Map;
@@ -256,7 +251,7 @@ public class K {
         assert edge.dst == "java:java.lang.String:0-0:trim:unresolved", edge.dst
 
     def test_var_declaration_binds_nothing_by_itself(self, tmp_path: Path) -> None:
-        """``var`` carries no type; only an inference can bind it (unchanged)."""
+        """``var`` carries no type; only an inference can bind it."""
         (tmp_path / "X.java").write_text("""
 import java.io.OutputStream;
 
@@ -314,9 +309,9 @@ public class C {
     def test_try_with_resources_declaration_is_typed(self, tmp_path: Path) -> None:
         """``try (RandomAccessFile f = new RandomAccessFile(p, "rw"))`` binds ``f``.
 
-        Read back from keycloak: every ``LDAPQuery`` and ``RandomAccessFile``
-        there is declared as a resource, and the old arm had typed them only
-        by a leak from another method's parameter.
+        The keycloak shape: every ``LDAPQuery`` and ``RandomAccessFile``
+        there is declared as a resource, so only the resource declaration
+        types it.
         """
         (tmp_path / "R.java").write_text("""
 import java.io.RandomAccessFile;
@@ -397,7 +392,7 @@ class TestFieldShapes:
     def test_a_generic_or_inline_qualified_field_binds_its_base_type(
         self, tmp_path: Path,
     ) -> None:
-        """Only a bare ``type_identifier`` field child was read before."""
+        """A generic or inline-qualified field type binds, not only a bare ``type_identifier``."""
         (tmp_path / "Fd.java").write_text("""
 import java.util.Map;
 
@@ -418,7 +413,7 @@ public class Fd {
         )
 
     def test_a_record_component_binds_like_a_field(self, tmp_path: Path) -> None:
-        """Read back from keycloak: ``record Connector(CountDownLatch latch, ..)``."""
+        """The keycloak shape: ``record Connector(CountDownLatch latch, ..)``."""
         (tmp_path / "Rec.java").write_text("""
 import java.util.concurrent.CountDownLatch;
 
@@ -440,9 +435,8 @@ public class Rec {
     ) -> None:
         """``protected Connection conn`` in Base, ``conn.commit()`` in Child.
 
-        Read back from keycloak: every provider subclass uses ``realm``,
-        ``session`` and ``event`` fields declared in an abstract parent, and
-        the old arm had typed them only by a leak from a sibling method. The
+        The keycloak shape: every provider subclass uses ``realm``,
+        ``session`` and ``event`` fields declared in an abstract parent. The
         child file does NOT import ``Connection``; the parent's imports are
         the ones that name it.
         """
@@ -462,8 +456,8 @@ public class Child extends Base {
 """)
         edge = _unresolved(analyze_java(tmp_path).edges, "commit")
         assert edge.dst == "java:java.sql.Connection:0-0:commit:unresolved", edge.dst
-        # Site 3 for the linker is untouched: the field name and the class
-        # are still handed over.
+        # Site 3 for the linker keeps its input: the field name and the
+        # class are handed over too.
         assert (edge.meta or {}).get("inherited_field_receiver") == "conn"
         assert (edge.meta or {}).get("enclosing_class") == "Child"
 
@@ -510,11 +504,11 @@ class TestLocalScope:
     def test_a_local_does_not_leak_into_the_next_method(self, tmp_path: Path) -> None:
         """A local named like a field must not retype the field elsewhere.
 
-        ``var_types`` is file-scoped. Before this, ``File f = new File(p)`` in
-        one method left ``f`` bound to ``File`` for every LATER method in the
-        file, so a sibling method's use of the ``Socket f`` FIELD was typed
-        ``java.io.File``. Locals (declared, constructed, or inferred from a
-        return) are now unbound when the next method begins; fields and
+        ``var_types`` is file-scoped, so unscoped, ``File f = new File(p)`` in
+        one method would leave ``f`` bound to ``File`` for every LATER method
+        in the file, typing a sibling method's use of the ``Socket f`` FIELD
+        as ``java.io.File``. Locals (declared, constructed, or inferred from a
+        return) are unbound when the next method begins; fields and
         parameters keep their file-wide binding.
         """
         (tmp_path / "S.java").write_text("""
@@ -547,10 +541,10 @@ public class S {
     ) -> None:
         """A method nested in a method (anonymous class body) is its own scope.
 
-        Found by reading the guacamole-client churn back: ``new
-        FilenameFilter() { public boolean accept(..) {..} }`` carries a
-        ``method_declaration``, and closing the enclosing scope there unbound
-        ``protocol_directory`` for the ``getAbsolutePath()`` call after it.
+        ``new FilenameFilter() { public boolean accept(..) {..} }`` carries a
+        ``method_declaration``, and closing the enclosing scope there would
+        unbind ``protocol_directory`` for the ``getAbsolutePath()`` call after
+        it.
         The inner method's own locals must also not leak into the outer one.
         """
         (tmp_path / "A.java").write_text("""
@@ -783,12 +777,12 @@ public class M3 {
     def test_in_repo_return_type_still_hands_the_project_class_to_the_linker(
         self, tmp_path: Path,
     ) -> None:
-        """An in-repo return type keeps chaining to the project class (unchanged).
+        """An in-repo return type keeps chaining to the project class.
 
-        The analyzer does not emit the resolved edge itself — WI-puvil lifted
-        Site-2 resolution into the ``inherited_calls`` linker — it stashes the
-        inferred type as ``receiver_type_hint`` and leaves the module slot
-        alone (a project class is not a module). Pinned so the registry
+        The analyzer does not emit the resolved edge itself — Site-2
+        resolution belongs to the ``inherited_calls`` linker (WI-puvil) — it
+        stashes the inferred type as ``receiver_type_hint`` and leaves the
+        module slot alone (a project class is not a module). Pinned so the registry
         consumer cannot start writing a bare project name into the slot.
         """
         (tmp_path / "F.java").write_text("""
@@ -850,9 +844,9 @@ public class M5 {
     ) -> None:
         """The WI-lalot interface: a library row keyed ``<fqn-owner>.<method>``.
 
-        The registry has no library rows today; this drives ``_extract_edges``
-        with one so the consumer's contract is pinned before the loader
-        exists. Both binding forms must read it: the assignment
+        This drives ``_extract_edges`` directly with one hand-written row, so
+        the consumer's contract is pinned independently of the rows the
+        loader supplies. Both binding forms must read it: the assignment
         (``var o = s.getOutputStream(); o.write(b)``) and the chain
         (``s.getOutputStream().write(b)``).
         """

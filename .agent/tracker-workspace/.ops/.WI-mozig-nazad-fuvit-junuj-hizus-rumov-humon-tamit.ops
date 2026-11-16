@@ -1,0 +1,61 @@
+- op: create  # f473
+  at: '2026-10-22T05:14:28Z'  # f473
+  by: agent  # f473
+  actor: jgstern_agent  # f473
+  clock: 1  # f473
+  nonce: f473  # f473
+  data:  # f473
+    kind: work_item  # f473
+    title: "overriding one label of a two-label source row drops both labels (override key has no label), disclosed only on claims naming the lost label"  # f473
+    status: todo_hard  # f473
+    priority: 3  # f473
+    parent:  # f473
+    tags:  # f473
+    - taint  # f473
+    - catalogue  # f473
+    - concept_audit_20261021  # f473
+    isbefore: []  # f473
+    duplicate_of: []  # f473
+    not_duplicate_of: []  # f473
+    pr_ref:  # f473
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, agent read: taint.py:2246-2253 keys the override on (module, name, kind) without the label, so a user source row for document.location removes both its host_secret and untrusted_input auto-sources; disclosure only on claims naming the lost label (verify_claims.py:5995-5999). Related name collision: IoPrimitive.requires_target_kind holds a target kind (std_stream, io_boundary.py:844) while TaintSource/TaintSink.requires_target_kind holds a BOUNDARY (taint.py:2153-2157, 2174, 2206, compared 1228-1233); TaintSink.requires_mode also holds a boundary (2190-2192) -- rename the taint-side fields."  # f473
+    fields: {}  # f473
+- op: update  # 2c0e
+  at: '2026-10-25T20:08:24Z'  # 2c0e
+  by: agent  # 2c0e
+  actor: jgstern_agent  # 2c0e
+  clock: 2  # 2c0e
+  nonce: 2c0e  # 2c0e
+  set:  # 2c0e
+    priority: 4  # 2c0e
+- op: discuss  # 65dd
+  at: '2026-10-25T20:08:24Z'  # 65dd
+  by: agent  # 65dd
+  actor: jgstern_agent  # 65dd
+  clock: 3  # 65dd
+  nonce: 65dd  # 65dd
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). MISPREMISED TODAY. The code is as described -- _merge_with_user_override keys on (module, name, kind) without the label (taint.py:2253-2262); disclosure filter verify_claims.py:5996-6001 -- but the stated repro cannot happen: every two-label source today is one of 12 JS/TS ATTRIBUTE rows (document.location, window.location...), and the user source loader _load_source_yaml (taint.py:1766-1815) builds only functions:/methods: entries (by design: WI-jojis wont_do chose auto-derivation). Live check: a user file with attributes: [location] (or functions: [location]) left both claims violated, identical to baseline. It becomes live when a function/method row gains two labels -- WI-zidam's argv change does exactly that (rust env::args, haskell getArgs, elixir System.argv, erlang init:get_argument*, argparse parse_args); even then the drop is disclosed (displaced_shipped_entry), not a silent false confirm. Hence isbefore WI-zidam. Split out: the requires_target_kind / requires_mode name collision -> WI-dinop; the silently-ignored attributes: key in user source files -> WI-rinaz. P3 -> P4."  # 65dd
+- op: update  # f665
+  at: '2026-10-25T20:08:25Z'  # f665
+  by: agent  # f665
+  actor: jgstern_agent  # f665
+  clock: 4  # f665
+  nonce: f665  # f665
+  set: {}  # f665
+  add:  # f665
+    isbefore: [WI-zidam-lilam-mufuk-dozup-dipoz-budik-sigas-fujop]  # f665
+- op: update  # a05a
+  at: '2026-10-26T04:31:11Z'  # a05a
+  by: agent  # a05a
+  actor: jgstern_agent  # a05a
+  clock: 5  # a05a
+  nonce: a05a  # a05a
+  set:  # a05a
+    status: done  # a05a
+- op: discuss  # c419
+  at: '2026-10-26T04:31:11Z'  # c419
+  by: agent  # c419
+  actor: jgstern_agent  # c419
+  clock: 6  # c419
+  nonce: c419  # c419
+  message: "DONE in PR #1871 (merged, dev 7997614804). Audit F6 verdict FIX, applied without breaking the two ruled overrides.\n\nPREMISE CORRECTION. The 10-25 re-check said the drop could not happen until a function row gains two labels (WI-zidam). It can today: a user I/O overlay gives a function two labels (`simultaneous` env_read + net_recv on mylib.fetch), and a --taint-sources file naming only untrusted_input for it dropped the host_secret source too. LIVE ON dev cd60932590 (before), production CLI: `verify-claims . --claims claims.yaml --io-primitives two-label-io.yaml --taint-sources user-src.yaml` on `os.remove(mylib.fetch())` -> host-secret-no-host-fs confirmed_with_caveats, evidence 0, caveat displaced_shipped_entry (baseline without the user file: violated, evidence 1).\n\nTHE RULE (taint._merge_with_user_override). A user entry whose label (sources: taint_label; sinks: zone) the function already carries replaces THAT entry only; siblings stay. A user entry naming a label/zone the function lacks re-labels/re-zones the whole function -- so INV-hukug's documented override (16 cmd_* sources moved to a new label) and INV-faput's (os.remove into a user dev_zone) are unchanged. Plain label keying would have broken both. Displaced entries are still returned and disclosed.\n\nSAME DEFECT, SINK SIDE (not in the filed title; same function): 26 shipped sink functions carry several zones (C/C++ unistd.write = host_fs + ipc + network); trusting one zone dropped the others. Fixed by the same rule.\n\nLIVE REPRO ON MERGED DEV 7997614804, production CLI, cold caches: (1) the shape above -> host-secret-no-host-fs violated, evidence 1, no caveat (identical to baseline); (2) C `write(3, getenv(\"API_KEY\"), 4)` with `--taint-sinks` trusting unistd.write zone network -> host-secret-no-host-fs violated, evidence 1 (the host_fs sink survives).\n\nMEASURED EFFECT ON DEFAULT RUNS: none (built-in YAML displaces 0 auto-derived entries; 0 of 15 community sources share a function with a built-in of another label). Tests: test_taint.py::TestAnOverrideReplacesOnlyWhatItRestates (restated label / new label / restated zone / new zone / production loader with a two-label overlay), red before the fix on the three restating cases. WI-zidam (which this item blocked) is now unblocked."  # c419

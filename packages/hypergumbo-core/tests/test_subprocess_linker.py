@@ -388,10 +388,10 @@ subprocess.run(cmd)
 
         Multi-binary projects (multiple [project.scripts] entries) can each
         declare a top-level subcommand with the same short name (e.g. both
-        ``myapp`` and ``myapp-helper`` define a ``list`` command). The pre-fix
-        single-value ``command_by_name`` dict overwrote silently and pointed
-        every ``["myapp", "list"]`` subprocess call at whichever symbol was
-        iterated last. Per INV-zuhub item 1, multi-candidate resolution drops
+        ``myapp`` and ``myapp-helper`` define a ``list`` command). A
+        single-value ``command_by_name`` dict would silently keep one and
+        point every ``["myapp", "list"]`` subprocess call at whichever symbol
+        was iterated last. Per INV-zuhub item 1, multi-candidate resolution drops
         confidence to 0.5 and sets ``meta["disambiguation_fallback"] = True``.
         Deterministic-by-id breaks the tie reproducibly.
         """
@@ -1003,17 +1003,16 @@ class TestFireSubcommandLinking:
 
 
 class TestMonorepoAndNonLiteralArgvBlockers:
-    """WI-gadus: three blockers that make the WI-lubap argparse join
-    unobservable on a real repository, each reproduced in the shape the
+    """Three blockers, any one of which makes the WI-lubap argparse join
+    unobservable on a real repository, each reproduced in the shape a
     PRODUCTION tree has rather than the shape a minimal fixture has.
 
-    The pre-existing ``TestArgparseSubcommandLinking`` fixture is green and has
-    been since the WI-lubap fix merged, yet hypergumbo's own pipeline emits ZERO
-    ``subprocess_calls`` edges. That fixture defeats all three blockers by
+    The ``TestArgparseSubcommandLinking`` fixture defeats all three by
     construction — it writes a root ``pyproject.toml`` WITH a ``[project]``
-    table, a fully-literal argv list, and passes exactly one candidate symbol.
-    Every clause below is the same scenario with one of those conveniences
-    removed.
+    table, a fully-literal argv list, and passes exactly one candidate symbol
+    — so it passes even when a real repository gets ZERO ``subprocess_calls``
+    edges. Every clause below is the same scenario with one of those
+    conveniences removed. (history: WI-gadus)
     """
 
     def test_detects_cli_name_declared_in_a_nested_package_pyproject(
@@ -1045,7 +1044,7 @@ class TestMonorepoAndNonLiteralArgvBlockers:
     def test_detects_cli_name_from_setup_py_entry_points(
         self, tmp_path: Path
     ) -> None:
-        """B1: setup.py entry_points are never read at all."""
+        """B1: setup.py ``console_scripts`` entry_points name a CLI too."""
         (tmp_path / "setup.py").write_text(
             "from setuptools import setup\n"
             "setup(name='legacyapp',\n"
@@ -1059,12 +1058,12 @@ class TestMonorepoAndNonLiteralArgvBlockers:
     def test_extracts_leading_literals_from_argv_containing_variables(self) -> None:
         """B2: one non-literal element must not discard the whole call site.
 
-        The single genuine self-invocation in hypergumbo's tree is
-        ``scripts/hypergumbo_diag.py:960``, whose argv holds five variables
-        after the executable and subcommand. ``ast.literal_eval`` over the
-        WHOLE list raises, so the call is dropped before matching even though
-        the executable and subcommand are plain string literals in positions
-        0 and 1.
+        A real self-invocation (e.g. in ``scripts/hypergumbo_diag.py``) can
+        hold variables after the executable and subcommand.
+        ``ast.literal_eval`` over the WHOLE list raises, so evaluating the list
+        as a unit would drop the call before matching even though the
+        executable and subcommand are plain string literals in positions 0
+        and 1.
         """
         args_str = (
             '["hypergumbo", "slice", "--input", in_path, "--entry", node_id_val, '
@@ -1082,7 +1081,7 @@ class TestMonorepoAndNonLiteralArgvBlockers:
     def test_scan_python_file_records_call_with_non_literal_argv(
         self, tmp_path: Path
     ) -> None:
-        """B2, at the scanner level: the regex matches but nothing is recorded."""
+        """B2, at the scanner level: a regex match whose argv holds variables is recorded."""
         code = (
             "import subprocess\n"
             "def go(in_path, out_path):\n"
@@ -1102,13 +1101,14 @@ class TestMonorepoAndNonLiteralArgvBlockers:
     def test_argparse_handler_lookup_ignores_external_placeholder(
         self, tmp_path: Path
     ) -> None:
-        """B3: bare-name handler lookup harvests an ``<external>`` placeholder.
+        """B3: bare-name handler lookup must skip an ``<external>`` placeholder.
 
-        On hypergumbo's tree the subcommand ``survey`` resolves to BOTH the real
-        ``cmd_run`` in cli.py and an ``external_symbol`` placeholder of the same
-        name whose path slot is the external sentinel. The INV-zuhub tie-break
-        picks ``min(candidates, key=id)``, and the sentinel path sorts first —
-        so fixing B1 and B2 alone would mint a confidently-wrong edge.
+        A subcommand's handler name can resolve to BOTH the real handler (e.g.
+        ``cmd_run`` in hypergumbo's cli.py) and an ``external_symbol``
+        placeholder of the same name whose path slot is the external sentinel.
+        The INV-zuhub tie-break picks ``min(candidates, key=id)``, and the
+        sentinel path sorts first — so with B1 and B2 handled but not this,
+        the join mints a confidently-wrong edge.
         """
         (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
         src = tmp_path / "myapp"
@@ -1158,9 +1158,9 @@ class TestMonorepoAndNonLiteralArgvBlockers:
     ) -> None:
         """All three blockers at once — the shape the real repository has.
 
-        This is the test that would have caught the live zero: nested-package
-        console script, an argv carrying variables, and a same-named external
-        placeholder competing with the real handler.
+        Nested-package console script, an argv carrying variables, and a
+        same-named external placeholder competing with the real handler; a
+        regression on any one of them yields zero edges here.
         """
         (tmp_path / "pyproject.toml").write_text(
             "[tool.ruff]\ntarget-version = \"py310\"\n"
@@ -1213,8 +1213,9 @@ class TestMonorepoAndNonLiteralArgvBlockers:
 
 
 class TestWiGadusEdgeCases:
-    """Fail-safe branches of the WI-gadus fixes. Each is a real reachable path
-    (no pragma): malformed input must contribute NOTHING rather than a guess.
+    """Fail-safe branches of the B1-B3 handling (history: WI-gadus). Each is
+    a real reachable path (no pragma): malformed input must contribute
+    NOTHING rather than a guess.
     """
 
     def test_unparseable_argv_yields_no_command(self) -> None:

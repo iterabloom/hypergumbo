@@ -1,0 +1,22 @@
+- op: create  # 6b4a
+  at: '2026-11-02T10:16:16Z'  # 6b4a
+  by: agent  # 6b4a
+  actor: jgstern_agent  # 6b4a
+  clock: 1  # 6b4a
+  nonce: 6b4a  # 6b4a
+  data:  # 6b4a
+    kind: work_item  # 6b4a
+    title: "javascript: a symbol named from an event-string key ('mouse:up': function) keeps the colon in its id name slot -- the 21 id_format violations left on pretix after WI-vodin"  # 6b4a
+    status: todo_soft  # 6b4a
+    priority: 3  # 6b4a
+    parent:  # 6b4a
+    tags:  # 6b4a
+    - javascript  # 6b4a
+    - identity  # 6b4a
+    - spec_compliance  # 6b4a
+    isbefore: []  # 6b4a
+    duplicate_of: []  # 6b4a
+    not_duplicate_of: []  # 6b4a
+    pr_ref:  # 6b4a
+    description: "Residual found by the 2026-11-02 awaits_bakeoff_validation drain while validating WI-vodin (record: ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md). WI-vodin's claim moved: pretix's id_format validation violations fell 118 -> 21. All 21 that remain are one shape: `colon_in_name_slot` on JavaScript symbols named from an event string, e.g. javascript:src/pretix/static/fabric/fabric.js:28516-28516:mouse:up:function and ...:28826-28826:mouse:move:function. The ':' in the name shifts the right-anchored id slots; the validator's own message says to route the name through sanitize_id_name_segment / make_symbol_id. Not yet traced to the emitting branch in the JS analyzer (a property key such as 'mouse:up': function() {...} is the likely source). Repro: hypergumbo survey on pretix (ALL_REPOS/repos_Apr12_2026/pretix), read validation_report.violations where validator_class == id_format."  # 6b4a
+    fields: {}  # 6b4a

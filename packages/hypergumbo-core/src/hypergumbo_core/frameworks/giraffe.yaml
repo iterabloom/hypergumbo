@@ -88,6 +88,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^controller$"
-
-linkers:
-  - http

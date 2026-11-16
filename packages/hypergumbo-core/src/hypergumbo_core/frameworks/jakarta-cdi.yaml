@@ -122,8 +122,3 @@ patterns:
 
   - concept: model
     decorator: "^jakarta\\.enterprise\\.inject\\.Model$"
-
-linkers:
-  - http
-  - database_query
-  - event-sourcing

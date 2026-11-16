@@ -29,3 +29,18 @@
   clock: 2  # 3bf7
   nonce: 3bf7  # 3bf7
   message: "PARTIAL 2026-09-29 (PR 1306, merged). (a) STILL NEEDED: warn_unused_ignores=true under strict, and the whole-tree run reports no unused-ignore, so every remaining suppression still suppresses something. (b) CODES: the last two bare ignores (sketch.py selected_key_symbols' deliberate None default -> [assignment]; lua.py fa.tree -> [arg-type]) now carry codes; ignore-without-code is 0. (c) NOT DONE: the per-site bug-or-justified review of the 37 coded ignores -- 17 union-attr (candidate None dereferences, WI-vokiz's class), 8 attr-defined, 5 assignment, 3 no-any-return, 2 valid-type, 2 arg-type, across cfg.py, verify_claims.py, sketch.py, analyzer_identity.py, cli.py, cyclomatic.py, taint.py, openapi.py, astro.py, py.py, lua.py, merge_producers.py, rust_analyzer invoke.py, tracker race_log.py / serve.py. Item stays open for (c)."  # 3bf7
+- op: discuss  # f723
+  at: '2026-11-01T10:55:50Z'  # f723
+  by: agent  # f723
+  actor: jgstern_agent  # f723
+  clock: 3  # f723
+  nonce: f723  # f723
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: CURRENT. Reviewed 2026-11-01 at 100b6fbb6e: grep finds 44 type-ignores in packages/*/src, all coded, 0 bare (was 37): 17 union-attr, 14 attr-defined (7 new in value_flow.py), 5 assignment, 3 no-any-return, 2 valid-type, 2 arg-type, 1 return-value (run_status.py:476); largest files serve.py 14, value_flow.py 7. warn_unused_ignores is still on (mypy not rerun). Part (c) remains open as narrowed on 2026-09-29. MECHANISM: no per-site review of whether coded suppressions hide real None-dereferences. SHARES MECHANISM WITH: INV-zogud,WI-vokiz."  # f723
+- op: update  # cdad
+  at: '2026-11-01T10:55:50Z'  # cdad
+  by: agent  # cdad
+  actor: jgstern_agent  # cdad
+  clock: 4  # cdad
+  nonce: cdad  # cdad
+  set:  # cdad
+    title: "mypy: per-site bug-or-justified review of the 44 coded # type: ignore in packages/*/src (codes + unused-ignore already clean)"  # cdad

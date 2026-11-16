@@ -1,0 +1,20 @@
+- op: create  # f1ff
+  at: '2026-10-22T19:36:26Z'  # f1ff
+  by: agent  # f1ff
+  actor: jgstern_agent  # f1ff
+  clock: 1  # f1ff
+  nonce: f1ff  # f1ff
+  data:  # f1ff
+    kind: work_item  # f1ff
+    title: "tracker reconcile on a feature branch reports 'flushed N file(s) via PR #<stale>' when nothing was flushed"  # f1ff
+    status: todo_hard  # f1ff
+    priority: 3  # f1ff
+    parent:  # f1ff
+    tags:  # f1ff
+    - tracker  # f1ff
+    isbefore: []  # f1ff
+    duplicate_of: []  # f1ff
+    not_duplicate_of: []  # f1ff
+    pr_ref:  # f1ff
+    description: "FOUND 2026-10-22, observed once, not reproduced on purpose.\n\nWHAT. `scripts/tracker reconcile` run from a FEATURE branch (jgstern-agent/fix/bamar-rust-type-alias @4dbba8ca44, no upstream) with 8 pending .ops files, ALL byte-identical to their committed copies on origin/dev (git hash-object vs git rev-parse origin/dev:<path>), printed:\n    sync: merged via rebase\n    reconcile: flushed 6 file(s) via PR #1683\n    reconcile: fast-forward did not run:\n    There is no tracking information for the current branch.\n    ...  git branch --set-upstream-to=<remote>/<branch> jgstern-agent/refactor/remove-htrac-frontend-scaffold\n    reconcile: nothing to restore\nand exited 1. Checked afterwards:\n  - origin/dev did not move (still e9382e877d); there is no new tracker commit, so nothing was flushed.\n  - PR #1683 is `tracker: 6 files (7 ops) — WI-manor, WI-popal, WI-pupod +3 more`, branch tracker-sync/20261017-011626, merged on 2026-10-17. The number is stale, from a sync five days earlier.\n  - The main checkout's reflog shows no checkout of any htrac branch, and no worktree has one checked out (git worktree list). Where git's pull message got that branch name is NOT CHECKED.\nSo the flush step reports success with a stale PR number when there is nothing new to flush, and the ops that blocked the checkout were left in place.\n\nWHY IT MATTERS. The output reads as \"flushed and merged\". An agent that trusts it then retries the checkout, which still fails, or concludes the ops are on dev when they might not be. Here they happened to be on dev already (the earlier auto-syncs #1814/#1816 carried them).\n\nCANDIDATES, NOT CHECKED. The 422 / title-fallback path of _find_open_pr (sync.py ~612) returns the first OPEN PR with an equal title. But #1683 is closed, so the stale number more likely comes from a result field that is never reset, or from a \"nothing to commit\" path that reuses a prior SyncResult. Also not checked: whether reconcile is meant to run off dev at all. AGENTS.md describes it for the post-auto-pr case, where the checkout is on dev.\n\nACCEPTANCE. A test: reconcile with pending ops identical to the base branch reports \"nothing to flush\" (no PR number) and does not claim a flush. Then a decision, written down, for the feature-branch case: refuse with a message, or flush and say why the fast-forward was skipped."  # f1ff
+    fields: {}  # f1ff

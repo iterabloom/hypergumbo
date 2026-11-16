@@ -21,7 +21,9 @@ THREE SETS::
     BLOCK-SELECT tests attached to the blocks that actually CHANGED — what
                  ``coverage-select`` already reports.
 
-    headroom  = speakable - FILE-TOUCH        safe to drop, gate survives
+    informed  = speakable files whose latest run measured the changed
+                sources, as part of a run that measured every package
+    headroom  = informed - FILE-TOUCH         safe to drop, gate survives
     overshoot = (speakable & FILE-TOUCH) - BLOCK-SELECT   the extra cut that
                                                           would cost the gate
 
@@ -80,7 +82,10 @@ import measure_code_tree
 
 _PIN = measure_code_tree.pin(__file__, "core")
 
-from hypergumbo_core.selection_index import open_index, select_tests  # noqa: E402
+from hypergumbo_core.selection_index import (  # noqa: E402
+    droppable_test_files, measured_tests, open_index, select_tests,
+    touching_tests,
+)
 
 ROOT = Path(
     subprocess.run(["git", "rev-parse", "--show-toplevel"],  # noqa: S607
@@ -145,14 +150,13 @@ def report(base: str) -> None:
     sel = select_tests(conn, base_sources)
 
     # Every test the index has observed executing ANY block of a changed file.
-    marks = ",".join("?" * len(abs_changed))
-    touch = {r[0] for r in conn.execute(
-        "SELECT DISTINCT test_id FROM test_block "  # noqa: S608 - marks are ?
-        f"WHERE path IN ({marks})", abs_changed)}
+    touch = touching_tests(conn, abs_changed)
     unmeasured = {r[0] for r in conn.execute(
         "SELECT test_id FROM unmeasured_test")}
-    known_test_files = _files(
-        r[0] for r in conn.execute("SELECT DISTINCT test_id FROM test_block"))
+    known_test_files = _files(measured_tests(conn))
+    # Files whose latest run measured the changed sources as part of a run
+    # that measured every package: the only ones narrowing drops.
+    droppable = droppable_test_files(conn, ROOT, abs_changed)
     conn.close()
 
     run_set = _manifest_run_set()
@@ -162,7 +166,8 @@ def report(base: str) -> None:
 
     speakable = {f for f in run_set
                  if f in known_test_files and f not in unmeasured_files}
-    headroom = speakable - touch_files
+    informed = speakable & droppable
+    headroom = informed - touch_files
     overshoot = (speakable & touch_files) - block_files
 
     # Only an unknown SOURCE file forbids dropping — see the module docstring.
@@ -175,6 +180,8 @@ def report(base: str) -> None:
     print(f"  RUN SET (manifest)          {len(run_set):>5}")
     print(f"    of which index-speakable  {len(speakable):>5}"
           f"   <- the CEILING; the rest are unmeasured or unseen, always kept")
+    print(f"    of which informed         {len(informed):>5}"
+          f"   <- latest run measured the change, every package measured")
     print(f"  FILE-TOUCH (gate-safe keep) {len(touch_files & run_set):>5}")
     print(f"  BLOCK-SELECT (changed only) {len(block_files & run_set):>5}")
     print("  --")

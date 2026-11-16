@@ -10,6 +10,7 @@ This module tests the secret scanning functionality, including:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from io import StringIO
@@ -29,7 +30,7 @@ from hypergumbo_core.gitleaks import (
     is_gitleaks_available,
     install_gitleaks,
     uninstall_gitleaks,
-    scan_content,
+    _scan,
     _get_platform_arch,
     _get_download_url,
 )
@@ -114,10 +115,10 @@ class TestScanContent:
     """Tests for scanning content for secrets."""
 
     def test_scan_content_returns_empty_when_gitleaks_unavailable(self) -> None:
-        """Returns empty list when gitleaks not installed."""
+        """Not scanned (None) when gitleaks is not installed."""
         with patch.object(gitleaks, "get_gitleaks_path", return_value=None):
-            result = scan_content("some content with API_KEY=secret123")
-            assert result == []
+            result = _scan("some content with API_KEY=secret123")
+            assert result is None
 
     def test_scan_content_parses_findings(self) -> None:
         """Parses gitleaks JSON output into findings."""
@@ -133,10 +134,11 @@ class TestScanContent:
 
         mock_result = MagicMock()
         mock_result.stdout = mock_output.encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("API_KEY=secret123")
+                findings = _scan("API_KEY=secret123")
 
         assert len(findings) == 1
         assert findings[0].file == "config.py"
@@ -147,10 +149,11 @@ class TestScanContent:
         """Returns empty list when no secrets found."""
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("safe content")
+                findings = _scan("safe content")
 
         assert findings == []
 
@@ -158,39 +161,41 @@ class TestScanContent:
         """Returns empty list when gitleaks outputs nothing."""
         mock_result = MagicMock()
         mock_result.stdout = b""
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("safe content")
+                findings = _scan("safe content")
 
         assert findings == []
 
     def test_scan_content_handles_timeout(self) -> None:
-        """Returns empty list on timeout."""
+        """Not scanned (None) on timeout."""
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("gitleaks", 30)):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
     def test_scan_content_handles_subprocess_error(self) -> None:
-        """Returns empty list on subprocess error."""
+        """Not scanned (None) on a subprocess error."""
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", side_effect=subprocess.SubprocessError("failed")):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
     def test_scan_content_handles_invalid_json(self) -> None:
-        """Returns empty list on invalid JSON output."""
+        """Not scanned (None) on output that is not JSON."""
         mock_result = MagicMock()
         mock_result.stdout = b"not valid json"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
 
 class TestFormatting:
@@ -244,70 +249,32 @@ class TestFormatting:
 
 
 class TestDownloadUrl:
-    """Tests for download URL determination."""
+    """The download is pinned to one release and carries that release's hash."""
 
-    def test_get_download_url_handles_network_error(self) -> None:
-        """Raises RuntimeError on network failure."""
-        with patch("hypergumbo_core.gitleaks.urlopen", side_effect=URLError("network error")):
-            with pytest.raises(RuntimeError, match="Failed to fetch"):
-                _get_download_url()
+    def test_the_url_names_the_pinned_release_without_asking_the_network(self) -> None:
+        """No "latest" lookup: the URL is built from the pinned version, so
+        nothing is fetched before the archive itself."""
+        with patch("hypergumbo_core.gitleaks.urlopen", side_effect=AssertionError("network")), \
+                patch("platform.system", return_value="Linux"), \
+                patch("platform.machine", return_value="x86_64"):
+            url, filename, sha256 = _get_download_url()
 
-    def test_get_download_url_handles_invalid_json(self) -> None:
-        """Raises RuntimeError on invalid JSON response."""
-        mock_response = MagicMock()
-        mock_response.read.return_value = b"not json"
-        mock_response.__enter__ = MagicMock(return_value=mock_response)
-        mock_response.__exit__ = MagicMock(return_value=False)
-
-        with patch("hypergumbo_core.gitleaks.urlopen", return_value=mock_response):
-            with pytest.raises(RuntimeError, match="Failed to fetch"):
-                _get_download_url()
-
-    def test_get_download_url_handles_missing_version(self) -> None:
-        """Raises RuntimeError when version not in response."""
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({"tag_name": ""}).encode()
-        mock_response.__enter__ = MagicMock(return_value=mock_response)
-        mock_response.__exit__ = MagicMock(return_value=False)
-
-        with patch("hypergumbo_core.gitleaks.urlopen", return_value=mock_response):
-            with pytest.raises(RuntimeError, match="Could not determine"):
-                _get_download_url()
-
-    def test_get_download_url_handles_missing_asset(self) -> None:
-        """Raises RuntimeError when expected asset not found."""
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "tag_name": "v8.30.0",
-            "assets": [{"name": "wrong_file.tar.gz"}]
-        }).encode()
-        mock_response.__enter__ = MagicMock(return_value=mock_response)
-        mock_response.__exit__ = MagicMock(return_value=False)
-
-        with patch("hypergumbo_core.gitleaks.urlopen", return_value=mock_response):
-            with pytest.raises(RuntimeError, match="No gitleaks release found"):
-                _get_download_url()
-
-    def test_get_download_url_success(self) -> None:
-        """Returns URL and filename on success."""
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
-            "tag_name": "v8.30.0",
-            "assets": [{
-                "name": "gitleaks_8.30.0_linux_x64.tar.gz",
-                "browser_download_url": "https://example.com/download"
-            }]
-        }).encode()
-        mock_response.__enter__ = MagicMock(return_value=mock_response)
-        mock_response.__exit__ = MagicMock(return_value=False)
-
-        with patch("hypergumbo_core.gitleaks.urlopen", return_value=mock_response):
-            with patch("platform.system", return_value="Linux"):
-                with patch("platform.machine", return_value="x86_64"):
-                    url, filename = _get_download_url()
-
-        assert url == "https://example.com/download"
         assert filename == "gitleaks_8.30.0_linux_x64.tar.gz"
+        assert url == ("https://github.com/gitleaks/gitleaks/releases/download/"
+                       "v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz")
+        # From gitleaks_8.30.0_checksums.txt, published with the release.
+        assert sha256 == "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
+
+    def test_a_platform_the_release_does_not_ship_is_refused(self) -> None:
+        with patch("platform.system", return_value="Windows"), \
+                patch("platform.machine", return_value="arm64"):
+            with pytest.raises(RuntimeError, match=r"No gitleaks 8\.30\.0 release for windows/arm64"):
+                _get_download_url()
+
+    def test_every_hash_belongs_to_the_pinned_version(self) -> None:
+        for name, digest in gitleaks.GITLEAKS_ARCHIVE_SHA256.items():
+            assert name.startswith(f"gitleaks_{gitleaks.GITLEAKS_VERSION}_"), name
+            assert len(digest) == 64 and int(digest, 16) >= 0, name
 
 
 class TestInstallGitleaks:
@@ -322,11 +289,102 @@ class TestInstallGitleaks:
 
     def test_install_handles_download_error(self) -> None:
         """Returns False when download fails."""
-        with patch.object(gitleaks, "_get_download_url", return_value=("https://example.com/file.tar.gz", "file.tar.gz")):
+        with patch.object(gitleaks, "_get_download_url", return_value=("https://example.com/file.tar.gz", "file.tar.gz", "0" * 64)):
             with patch("hypergumbo_core.gitleaks.urlopen", side_effect=URLError("download failed")):
                 result = install_gitleaks(quiet=True)
 
         assert result is False
+
+    def test_each_install_write_lands_in_the_zone_its_wrapper_names(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """verify-claims reads a write's zone from the wrapper's NAME, never its path.
+
+        So every wrapper the install calls must name the zone its path lands
+        in: tmp_artifact_* inside the extraction dir, install_artifact_*
+        inside the install dir. The downloaded archive lands in the
+        extraction dir, so it must go through a tmp_artifact wrapper, not an
+        install_artifact one.
+        """
+        import io
+        import tarfile
+        from contextlib import contextmanager
+
+        payload = b"#!/bin/sh\n"
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            info = tarfile.TarInfo(gitleaks.GITLEAKS_BINARY_NAME)
+            info.size = len(payload)
+            tf.addfile(info, io.BytesIO(payload))
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+        install_dir = tmp_path / ".local" / "bin"
+        monkeypatch.setattr(gitleaks, "GITLEAKS_INSTALL_DIR", install_dir)
+        monkeypatch.setattr(gitleaks, "GITLEAKS_PATH", install_dir / gitleaks.GITLEAKS_BINARY_NAME)
+
+        calls: list[tuple[str, Path]] = []
+        scratch: list[Path] = []
+        real_dir = gitleaks.tmp_artifact_dir
+
+        @contextmanager
+        def recording_dir(**kwargs):
+            with real_dir(**kwargs) as d:
+                scratch.append(Path(d))
+                yield d
+
+        def recording(name, real):
+            def wrapper(*args, **kwargs):
+                calls.append((name, Path(args[1] if name == "install_artifact_copy" else args[0])))
+                return real(*args, **kwargs)
+            return wrapper
+
+        monkeypatch.setattr(gitleaks, "tmp_artifact_dir", recording_dir)
+        for name in dir(gitleaks):
+            if name.startswith(("install_artifact_", "tmp_artifact_")) and name != "tmp_artifact_dir":
+                monkeypatch.setattr(gitleaks, name, recording(name, getattr(gitleaks, name)))
+
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = buf.getvalue()
+        digest = hashlib.sha256(buf.getvalue()).hexdigest()
+        with patch.object(gitleaks, "_get_download_url",
+                          return_value=("https://example.invalid/g.tar.gz",
+                                        "gitleaks_8.30.0_linux_x64.tar.gz", digest)), \
+                patch.object(gitleaks, "urlopen", return_value=response):
+            assert install_gitleaks(quiet=True) is True
+
+        assert (install_dir / gitleaks.GITLEAKS_BINARY_NAME).read_bytes() == payload
+        assert len(scratch) == 1 and calls, "the install never reached the wrappers"
+        for name, target in calls:
+            root = scratch[0] if name.startswith("tmp_artifact_") else install_dir
+            assert target == root or target.is_relative_to(root), (name, target, root)
+        assert ("tmp_artifact_write_bytes", scratch[0] / "gitleaks_8.30.0_linux_x64.tar.gz") in calls
+
+
+    def test_an_archive_whose_hash_does_not_match_is_never_written(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A tampered or truncated download stops before the first write: no
+        archive in the tmp zone, nothing extracted, nothing installed."""
+        install_dir = tmp_path / ".local" / "bin"
+        monkeypatch.setattr(gitleaks, "GITLEAKS_INSTALL_DIR", install_dir)
+        monkeypatch.setattr(gitleaks, "GITLEAKS_PATH", install_dir / gitleaks.GITLEAKS_BINARY_NAME)
+        writes: list[str] = []
+        for name in ("tmp_artifact_write_bytes", "tmp_artifact_extract",
+                     "install_artifact_mkdir", "install_artifact_copy"):
+            monkeypatch.setattr(gitleaks, name, lambda *a, _n=name, **k: writes.append(_n))
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b"not the release"
+
+        with patch.object(gitleaks, "_get_download_url",
+                          return_value=("https://example.invalid/g.tar.gz",
+                                        "gitleaks_8.30.0_linux_x64.tar.gz", "0" * 64)), \
+                patch.object(gitleaks, "urlopen", return_value=response):
+            assert install_gitleaks(quiet=True) is False
+
+        assert writes == []
+        assert not install_dir.exists()
+        err = capsys.readouterr().err
+        assert "SHA-256" in err and "0" * 64 in err
 
 
 class TestPlatformArchEdgeCases:
@@ -358,35 +416,36 @@ class TestScanContentEdgeCases:
     """Additional edge cases for content scanning."""
 
     def test_scan_content_handles_os_error(self) -> None:
-        """Returns empty list on OSError."""
+        """Not scanned (None) on OSError."""
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", side_effect=OSError("permission denied")):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
     def test_scan_content_handles_non_list_json(self) -> None:
-        """Returns empty list when JSON is not a list."""
+        """Not scanned (None) when the JSON is not a list."""
         mock_result = MagicMock()
         mock_result.stdout = json.dumps({"not": "a list"}).encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
-                findings = scan_content("content")
+                findings = _scan("content")
 
-        assert findings == []
+        assert findings is None
 
 
 class TestScanContentRealBinary:
     """Real-binary integration guard for the gitleaks invocation (INV-pirad).
 
-    Line coverage of ``scan_content`` is carried by the mocked
+    Line coverage of ``_scan`` is carried by the mocked
     ``TestScanContent`` suite. This class additionally runs the ACTUAL
     gitleaks binary to catch external-CLI *contract* drift that mocked
     ``subprocess.run`` tests structurally cannot — specifically the
     gitleaks 8.30+ regression where ``detect --pipe`` silently ignores
     stdin and scans the current working directory instead, turning
-    ``scan_content`` into a no-op that always returns ``[]`` (INV-pirad).
+    the scan into a no-op that always returns ``[]`` (INV-pirad).
 
     A mocked-args assertion would pass even against the broken invocation;
     only feeding a known secret through the real binary proves the scan
@@ -407,12 +466,12 @@ class TestScanContentRealBinary:
         reason="gitleaks binary not installed (opt-in extra)",
     )
     def test_real_gitleaks_detects_known_secret(self) -> None:
-        """The real binary must detect a known secret fed via scan_content.
+        """The real binary must detect a known secret fed via _scan.
 
-        An empty result here means the stdin contract broke again
-        (the INV-pirad regression).
+        An empty result here means the scan is not reading stdin (the
+        ``detect --pipe`` contract described on the class; INV-pirad).
         """
-        findings = scan_content(f"aws_access_key_id = {self._AWS_VECTOR}\n")
+        findings = _scan(f"aws_access_key_id = {self._AWS_VECTOR}\n")
         assert findings, (
             "real gitleaks returned no findings for a known AWS test "
             "vector — the secret scan is a no-op (INV-pirad regression: "
@@ -428,12 +487,158 @@ class TestScanContentRealBinary:
         """Secret-free content yields no findings — proves the scan ran and
         discriminated, rather than returning ``[]`` because it never read
         stdin."""
-        findings = scan_content("def hello():\n    return 'world'\n")
+        findings = _scan("def hello():\n    return 'world'\n")
         assert findings == []
+
+
+    @pytest.mark.skipif(
+        not is_gitleaks_available(),
+        reason="gitleaks binary not installed (opt-in extra)",
+    )
+    def test_real_gitleaks_ignores_a_config_in_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """INV-nihab: a ``.gitleaks.toml`` where hypergumbo runs (normally the
+        analysed repository) cannot allowlist a finding away."""
+        (tmp_path / ".gitleaks.toml").write_text(
+            '[extend]\nuseDefault = true\n[allowlist]\nregexes = ["AKIA[A-Z0-9]+"]\n'
+        )
+        monkeypatch.chdir(tmp_path)
+        findings = _scan(f"aws_access_key_id = {self._AWS_VECTOR}\n")
+        assert findings, "the working directory's .gitleaks.toml hid the finding"
+
+    @pytest.mark.skipif(
+        not is_gitleaks_available(),
+        reason="gitleaks binary not installed (opt-in extra)",
+    )
+    def test_real_gitleaks_that_fails_is_not_a_clean_result(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """WI-rapuh: a gitleaks that cannot load its config exits 1 with empty
+        stdout. That is a scan that did not run, not a clean one."""
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        monkeypatch.setenv("GITLEAKS_CONFIG", str(tmp_path / "no-such-config.toml"))
+        content = f"aws_access_key_id = {self._AWS_VECTOR}\n"
+        assert scan_content_cached(content, tmp_path) is None
+        assert not (tmp_path / "secret_scan_cache.json").exists()
+
+
+class TestScanRunsInADirectoryOfItsOwn:
+    """INV-nihab: gitleaks auto-discovers ``.gitleaks.toml`` / ``.gitleaksignore``
+    in its working directory, and removes and recreates its report path. Run
+    in the inherited cwd with ``--report-path /dev/stdout``, the analysed
+    repository could configure (and empty) the scan, and gitleaks would try to
+    unlink ``/dev/stdout`` -- which succeeds as root. So the scan reports on
+    ``-`` and runs in an empty scratch directory of its own."""
+
+    def _invoke(self, monkeypatch: pytest.MonkeyPatch, cwd: Path) -> dict:
+        (cwd / ".gitleaks.toml").write_text('[allowlist]\nregexes = [".*"]\n')
+        (cwd / ".gitleaksignore").write_text("<stdin>:generic-api-key:1\n")
+        monkeypatch.chdir(cwd)
+        seen: dict = {}
+
+        def fake_run(argv, **kwargs):
+            seen["argv"] = list(argv)
+            seen["cwd"] = kwargs.get("cwd")
+            seen["cwd_entries"] = (
+                sorted(p.name for p in Path(kwargs["cwd"]).iterdir())
+                if kwargs.get("cwd") else None
+            )
+            result = MagicMock()
+            result.stdout = b"[]"
+            result.returncode = 0
+            return result
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", side_effect=fake_run):
+                assert _scan("API_KEY=secret123") == []
+        assert "argv" in seen, "gitleaks was never invoked"  # reach
+        return seen
+
+    def test_the_report_goes_to_stdout_not_dev_stdout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        argv = self._invoke(monkeypatch, tmp_path)["argv"]
+        assert argv[argv.index("--report-path") + 1] == "-"
+        assert "/dev/stdout" not in argv
+
+    def test_the_scan_runs_in_an_empty_directory_that_is_not_the_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen = self._invoke(monkeypatch, tmp_path)
+        assert seen["cwd"] is not None, "gitleaks inherited the caller's cwd"
+        assert Path(seen["cwd"]).resolve() != tmp_path.resolve()
+        assert seen["cwd_entries"] == [], seen["cwd_entries"]
+        assert not Path(seen["cwd"]).exists(), "the scratch directory was left behind"
 
 
 class TestScanContentCached:
     """Tests for content-hash-keyed scan caching (WI-julir)."""
+
+    @pytest.mark.parametrize("failure", [
+        OSError(13, "Permission denied"),
+        subprocess.TimeoutExpired("gitleaks", 30),
+        "not json",
+    ])
+    def test_a_scan_that_did_not_run_is_not_cached_as_clean(
+        self, tmp_path: Path, failure,
+    ) -> None:
+        """No result is not a clean result.
+
+        A gitleaks that cannot run (a partial install), a scan that times out,
+        or output that is not JSON must not return ``[]``: that would be cached
+        as "no secrets" for that content, and sketch would keep saying "Secret
+        scan complete" even after gitleaks was fixed. Instead the scan reports
+        that it did not run (``None``) and nothing is cached.
+        """
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        found = MagicMock()
+        found.stdout = json.dumps([{"RuleID": "github-pat", "StartLine": 1}]).encode()
+        found.returncode = 0
+        broken = MagicMock()
+        broken.stdout = b"not json"
+        broken.returncode = 0
+        first = {"side_effect": failure} if not isinstance(failure, str) else {"return_value": broken}
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", **first):
+                assert scan_content_cached("ghp_secret", tmp_path) is None
+            with patch("subprocess.run", return_value=found) as mock_run:
+                again = scan_content_cached("ghp_secret", tmp_path)
+
+        assert mock_run.call_count == 1, "the failed scan was served from the cache"
+        assert [f.rule_id for f in again] == ["github-pat"]
+
+    @pytest.mark.parametrize("stdout", [b"", b"null", b"[]"])
+    def test_a_gitleaks_that_exits_non_zero_is_not_a_clean_result(
+        self, tmp_path: Path, stdout: bytes,
+    ) -> None:
+        """A non-zero exit is a failed scan, whatever stdout says.
+
+        The scan passes ``--exit-code 0``, so findings never make gitleaks
+        exit non-zero; any other exit means it failed. Gitleaks 8.30 given a
+        config it cannot load exits 1 with empty stdout; reading that as "no
+        secrets" would cache it as clean (WI-rapuh).
+        """
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        failed = MagicMock()
+        failed.stdout = stdout
+        failed.returncode = 1
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", return_value=failed):
+                assert scan_content_cached("content", tmp_path) is None
+        assert not (tmp_path / "secret_scan_cache.json").exists()
+
+    def test_no_gitleaks_is_not_a_clean_result(self, tmp_path: Path) -> None:
+        from hypergumbo_core.gitleaks import scan_content_cached
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=None):
+            assert scan_content_cached("ghp_secret", tmp_path) is None
+        assert not (tmp_path / "secret_scan_cache.json").exists()
 
     def test_cached_first_call_invokes_gitleaks(self, tmp_path: Path) -> None:
         """First call with a given content hash actually scans."""
@@ -450,6 +655,7 @@ class TestScanContentCached:
         ])
         mock_result = MagicMock()
         mock_result.stdout = mock_output.encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -474,6 +680,7 @@ class TestScanContentCached:
         ])
         mock_result = MagicMock()
         mock_result.stdout = mock_output.encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -490,6 +697,7 @@ class TestScanContentCached:
 
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -504,6 +712,7 @@ class TestScanContentCached:
 
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -518,6 +727,7 @@ class TestScanContentCached:
 
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
@@ -538,6 +748,7 @@ class TestScanContentCached:
 
         mock_result = MagicMock()
         mock_result.stdout = b"null"
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -561,6 +772,7 @@ class TestScanContentCached:
         ])
         mock_result = MagicMock()
         mock_result.stdout = mock_output.encode()
+        mock_result.returncode = 0
 
         with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
             with patch("subprocess.run", return_value=mock_result):
@@ -646,6 +858,29 @@ class TestSketchSecretScanning:
 
         captured = capsys.readouterr()
         assert "best-effort" in captured.err
+
+    def test_sketch_says_so_when_the_scan_did_not_run(self, tmp_path: Path, capsys) -> None:
+        """A scan that did not run must not be reported as complete."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_sketch
+
+        (tmp_path / "main.py").write_text("print('hello')")
+        args = Namespace(
+            path=str(tmp_path), tokens=100, exclude_tests=True,
+            first_party_priority=True, extra_excludes=[],
+            config_extraction_mode="heuristic", verbose=False, progress=False,
+            readme_debug=False, max_config_files=5, fleximax_lines=50,
+            max_chunk_chars=400, language_proportional=False, with_source=False,
+            input=None, no_secret_scan=False,
+        )
+
+        with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+            with patch("hypergumbo_core.cli.scan_content_cached", return_value=None):
+                cmd_sketch(args)
+
+        err = capsys.readouterr().err
+        assert "Secret scan complete" not in err
+        assert "NOT checked for secrets" in err
 
     def test_sketch_shows_warning_when_secrets_found(self, tmp_path: Path, capsys) -> None:
         """Sketch shows warning when gitleaks finds secrets."""
@@ -826,6 +1061,30 @@ class TestUninstallGitleaks:
         captured = capsys.readouterr()
         assert "Removed" in captured.out
 
+    def test_uninstall_refuses_a_symlink_out_of_the_zone_without_crashing(
+        self, tmp_path: Path, monkeypatch, capsys,
+    ) -> None:
+        """A ``~/.local/bin/gitleaks`` that links elsewhere is not ours to remove.
+
+        The wrapper refuses it with ``SafetyZoneViolation``, which is not an
+        ``OSError``, so uninstall-gitleaks must catch it explicitly or it exits
+        1 with "internal error".
+        """
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+        bindir = tmp_path / ".local" / "bin"
+        bindir.mkdir(parents=True)
+        theirs = tmp_path / "go" / "bin" / "gitleaks"
+        theirs.parent.mkdir(parents=True)
+        theirs.write_bytes(b"theirs")
+        link = bindir / "gitleaks"
+        link.symlink_to(theirs)
+        monkeypatch.setattr(gitleaks, "GITLEAKS_PATH", link)
+
+        assert uninstall_gitleaks(quiet=True) is False
+
+        assert link.is_symlink() and theirs.read_bytes() == b"theirs"
+        assert "install_artifact" in capsys.readouterr().err
+
     def test_uninstall_gitleaks_failure(self) -> None:
         """Returns False when removal fails."""
         with patch.object(gitleaks, "GITLEAKS_PATH") as mock_path:
@@ -875,7 +1134,8 @@ class TestInstallEmbeddingsCLI:
         args = Namespace(check=True, quiet=False)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"), \
+                    patch("hypergumbo_core.cli._embedding_models_cached", return_value=True):
                 result = cmd_install_embeddings(args)
 
         assert result == 0
@@ -900,7 +1160,8 @@ class TestInstallEmbeddingsCLI:
         args = Namespace(check=False, quiet=True)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"), \
+                    patch("hypergumbo_core.cli._embedding_models_cached", return_value=True):
                 result = cmd_install_embeddings(args)
 
         assert result == 0
@@ -1079,7 +1340,8 @@ class TestVerboseOutput:
         args = Namespace(check=False, quiet=False)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"), \
+                    patch("hypergumbo_core.cli._embedding_models_cached", return_value=True):
                 result = cmd_install_embeddings(args)
 
         assert result == 0

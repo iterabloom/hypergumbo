@@ -66,7 +66,7 @@ fn vs_main(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
     assert vs_main is not None
     assert vs_main.language == "wgsl"
     assert vs_main.stable_id is not None
-    assert len(vs_main.stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
+    assert len(vs_main.stable_id) == 29  # hgstableid15:<16hex> (ADR-0035 §3)
     assert vs_main.meta is not None
     assert vs_main.meta.get("entry_point") == "vertex"
 
@@ -85,7 +85,7 @@ fn fs_main() -> @location(0) vec4<f32> {
     fs_main = next((f for f in functions if f.name == "fs_main"), None)
     assert fs_main is not None
     assert fs_main.stable_id is not None
-    assert len(fs_main.stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
+    assert len(fs_main.stable_id) == 29  # hgstableid15:<16hex> (ADR-0035 §3)
     assert fs_main.meta.get("entry_point") == "fragment"
 
 def test_analyze_compute_shader(tmp_path):
@@ -103,7 +103,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     cs_main = next((f for f in functions if f.name == "cs_main"), None)
     assert cs_main is not None
     assert cs_main.stable_id is not None
-    assert len(cs_main.stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
+    assert len(cs_main.stable_id) == 29  # hgstableid15:<16hex> (ADR-0035 §3)
     assert cs_main.meta.get("entry_point") == "compute"
 
 def test_analyze_struct(tmp_path):
@@ -291,10 +291,10 @@ fn main() -> @builtin(position) vec4<f32> {
     main_fn = next((f for f in functions if f.name == "main"), None)
     assert main_fn is not None
     assert main_fn.stable_id is not None
-    assert len(main_fn.stable_id) == 23  # Has @vertex → sha256 entry stable_id
+    assert len(main_fn.stable_id) == 29  # Has @vertex → hgstableid15:<16hex> entry stable_id
 
 def test_entry_point_stable_id_no_collision(tmp_path):
-    """Different @vertex functions must have different stable_ids (ADR-0014 §4)."""
+    """Different @vertex functions must have different stable_ids (ADR-0035 §3)."""
     wgsl_file = tmp_path / "shader.wgsl"
     wgsl_file.write_text("""
 @vertex
@@ -381,8 +381,8 @@ fn vs_main(in: VertexInput) -> @builtin(position) vec4<f32> {
         )
 
 
-# --- INV-loguk slice B: cyclomatic_complexity + line_span -----------------
-# Real-grammar verification of the wgsl BRANCH_NODE_TYPES entry relocated to
+# --- INV-loguk: cyclomatic_complexity + line_span -------------------------
+# Real-grammar verification of the wgsl BRANCH_NODE_TYPES entry in
 # hypergumbo_core.analyze.cyclomatic.
 
 def test_branchy_function_has_cc_and_loc(tmp_path):
@@ -455,8 +455,7 @@ def test_functions_carry_shape_id(tmp_path):
     shape_id — populated via ``node_for_symbol`` + the base-class auto-stamp
     loop (base.py) — so WGSL functions are visible to the ``repeat-finder``
     structural-clone detector, which groups by ``(language, shape_id)`` and
-    drops any ``shape_id`` of None. Before this, WGSL hard-set shape_id=None on
-    every symbol (100% of body-bearing symbols invisible to clone detection)."""
+    drops any ``shape_id`` of None."""
     (tmp_path / "shader.wgsl").write_text("""
 @vertex
 fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
@@ -483,3 +482,29 @@ struct VertexOutput {
     assert structs
     for s in structs:
         assert s.shape_id, f"wgsl struct {s.name} has no shape_id"
+
+
+def test_unresolved_call_ends_at_a_stand_in(tmp_path) -> None:
+    """A callee no file of the run defines is the fleet's stand-in.
+
+    It was ``wgsl:builtin:<name>``, three slots and so no id: finalize folded
+    every such callee of a repository into one node named ``builtin``.
+    """
+    from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+    (tmp_path / "s.wgsl").write_text(
+        "fn helper(x: f32) -> f32 { return x * 2.0; }\n"
+        "@fragment\n"
+        "fn main() -> @location(0) vec4<f32> {\n"
+        "    let y = helper(sqrt(4.0));\n"
+        "    return vec4<f32>(y, 0.0, 0.0, 1.0);\n"
+        "}\n"
+    )
+    result = analyze_wgsl_files(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    calls = [e for e in result.edges if e.edge_type == "calls"]
+    assert {by_id[e.src].name for e in calls} == {"main"}
+    assert {by_id[e.dst].name if e.dst in by_id else e.dst for e in calls} >= {
+        "helper", "wgsl:external:0-0:sqrt:unresolved",
+    }
+    assert non_id_edge_endpoints(result.symbols, result.edges) == []

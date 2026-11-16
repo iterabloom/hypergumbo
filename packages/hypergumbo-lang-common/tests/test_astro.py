@@ -63,8 +63,8 @@ class TestAnalyzeAstro:
         assert result.run.files_analyzed == 0
 
     def test_extracts_component_ref(self, tmp_path: Path) -> None:
-        # Cluster F per audit-findings 0011: imports Edge with
-        # meta['component_name'] replaces the dropped component_ref Symbol.
+        # A component use is an imports Edge with meta['component_name'];
+        # there is no component_ref Symbol (audit-findings 0011, Cluster F).
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -120,10 +120,10 @@ import Footer from './Footer.astro';
         assert edges == []
 
     def test_extracts_import_edge(self, tmp_path: Path) -> None:
-        # ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010,
-        # WI-kunag): frontmatter `import …` now emits a companion `imports`
-        # Edge instead of a Symbol. The component-ref `imports` Edge from
-        # the JSX use-site is a separate (Cluster F) emission.
+        # Frontmatter `import …` emits an `imports` Edge, not a Symbol
+        # (ADR-0027 Cluster E sub-case (b) shape 3; audit-findings 0010,
+        # WI-kunag). The component-ref `imports` Edge from the JSX use-site
+        # is a separate (Cluster F) emission.
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -139,7 +139,7 @@ import Header from './Header.astro';
         ]
         assert len(frontmatter_edges) == 1
         assert frontmatter_edges[0].meta.get("import_path") == "./Header.astro"
-        # No `import`-kind Symbol after the fold.
+        # No `import`-kind Symbol is emitted.
         assert not any(s.kind == "import" for s in result.symbols)
 
     def test_extracts_variable(self, tmp_path: Path) -> None:
@@ -234,22 +234,24 @@ import Header from './Header.astro';
 <Header/>
 """)
         result = analyze_astro(tmp_path)
-        # Component-ref `imports` Edge (Cluster F audit-findings 0011, origin="test", origin_run_id="test") has
-        # meta.component_name and dst=import_path. WI-kunag adds a separate
-        # frontmatter `imports` Edge whose meta carries import_name; this
-        # test still asserts the component-ref edge specifically.
+        # The component-ref `imports` Edge (audit-findings 0011, Cluster F) has
+        # meta.component_name and dst = the module-import id of import_path.
+        # The frontmatter import emits a separate `imports` Edge whose meta
+        # carries import_name (WI-kunag); this test asserts the component-ref
+        # edge specifically.
         comp_edges = [
             e for e in result.edges
             if e.edge_type == "imports" and (e.meta or {}).get("component_name") == "Header"
         ]
         assert len(comp_edges) == 1
-        assert comp_edges[0].dst == "./Header.astro"
+        # WI-bufar-pokam: the canonical module-import id, not the bare path.
+        assert comp_edges[0].dst == "astro:./Header.astro:0-0:module:module"
 
     def test_component_ref_without_import(self, tmp_path: Path) -> None:
         """Unresolved component ref (no import) emits a dangling component
         Edge so the relationship keeps representation in the graph."""
-        # Cluster F per audit-findings 0011: shape-2 edge-endpoint redesign
-        # exercises the unconditional emission path.
+        # Exercises the unconditional component-edge emission path
+        # (audit-findings 0011, Cluster F, shape-2 edge endpoint).
         make_astro_file(tmp_path, "index.astro", """---
 ---
 
@@ -283,8 +285,8 @@ import Button from '../components/Button.astro';
         assert edge.meta.get("import_path") == "../components/Button.astro"
 
     def test_component_with_client_directive_in_meta(self, tmp_path: Path) -> None:
-        # Cluster F per audit-findings 0011: client_directive meta moved
-        # from the dropped component_ref Symbol to the imports Edge.
+        # client_directive meta rides the component imports Edge
+        # (audit-findings 0011, Cluster F).
         make_astro_file(tmp_path, "index.astro", """---
 import Counter from './Counter.astro';
 ---
@@ -317,8 +319,8 @@ import Counter from './Counter.astro';
         assert result.run.files_analyzed == 2
 
     def test_pass_id(self, tmp_path: Path) -> None:
-        # Cluster F per audit-findings 0011: component_ref Symbol dropped;
-        # verify the imports Edge origin instead.
+        # The component ref is an imports Edge, so the pass id is checked on
+        # its origin (audit-findings 0011, Cluster F).
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -335,7 +337,8 @@ import Header from './Header.astro';
         assert edge.origin == ["astro"]
 
     def test_stable_ids(self, tmp_path: Path) -> None:
-        # Cluster F per audit-findings 0011: edge src is now a file_id.
+        # The component edge's src is the file id (audit-findings 0011,
+        # Cluster F).
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -353,7 +356,8 @@ import Header from './Header.astro';
         assert edge.src.endswith("index.astro:1-1:file:file")
 
     def test_span_info(self, tmp_path: Path) -> None:
-        # Cluster F per audit-findings 0011: span info moved to Edge.line.
+        # The component ref's location is Edge.line (audit-findings 0011,
+        # Cluster F).
         make_astro_file(tmp_path, "index.astro", """---
 import Header from './Header.astro';
 ---
@@ -370,7 +374,8 @@ import Header from './Header.astro';
         assert edge.line >= 1
 
     def test_component_attributes_in_meta(self, tmp_path: Path) -> None:
-        # Cluster F per audit-findings 0011: attributes meta moved to Edge.
+        # Component attributes ride the imports Edge meta (audit-findings
+        # 0011, Cluster F).
         make_astro_file(tmp_path, "index.astro", """---
 import Card from './Card.astro';
 ---
@@ -434,7 +439,7 @@ const description = 'A test page';
 """)
         result = analyze_astro(tmp_path)
 
-        # Check frontmatter imports (Edges, post-WI-kunag fold)
+        # Check frontmatter imports (emitted as Edges; WI-kunag)
         frontmatter_imports = [
             e for e in result.edges
             if e.edge_type == "imports"
@@ -451,8 +456,8 @@ const description = 'A test page';
         var_names = {v.name for v in variables}
         assert var_names == {"title", "description"}
 
-        # Cluster F per audit-findings 0011: component refs ride imports
-        # Edge meta['component_name'] (Symbol dropped).
+        # Component refs ride imports Edge meta['component_name']; there is
+        # no component Symbol (audit-findings 0011, Cluster F).
         comp_edges = [
             e for e in result.edges if e.edge_type == "imports"
             and (e.meta or {}).get("component_name") is not None
@@ -478,7 +483,7 @@ const description = 'A test page';
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         # WI-rijup: stable_id must be the canonical sha256 form
-        # (``sha256:<16hex>``), produced by make_doc_stable_id — not the raw
+        # (``hgstableid15:<16hex>``), produced by make_doc_stable_id — not the raw
         # composite Symbol.id. Reuse the complete-component fixture so the
         # variable, slot, and directive sites are all exercised.
         make_astro_file(tmp_path, "Page.astro", """---
@@ -508,7 +513,7 @@ const description = 'A test page';
         result = analyze_astro(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1
-        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert canonical.match(symbol.stable_id), symbol.stable_id
 
@@ -524,10 +529,10 @@ const title = 'Hi'
 class TestPathRelativeToAnalysisRoot:
     """WI-pifus: astro paths are relative to the analysis root, like every sibling.
 
-    The analyzer used to rebuild the root from ``file_path.parent`` and then step
-    up once per part of ``rel_path``; the parts include the filename, so it
-    landed one directory above the root and every ``Symbol.path``, id path slot
-    and edge ``src`` carried the root's own name as an extra leading component.
+    Rebuilding the root from ``file_path.parent`` by stepping up once per part
+    of ``rel_path`` overshoots: the parts include the filename, so it lands one
+    directory above the root and every ``Symbol.path``, id path slot and edge
+    ``src`` gains the root's own name as an extra leading component.
     """
 
     @pytest.mark.parametrize("rel", ["Page.astro", "src/pages/Page.astro"])
@@ -565,3 +570,90 @@ class TestPathRelativeToAnalysisRoot:
         scss_dirs = {Path(s.path).parent for s in analyze_scss(tmp_path).symbols}
         assert scss_dirs == {Path("src")}  # control: the sibling's convention
         assert astro_dirs == scss_dirs
+
+
+class TestComponentImportResolution:
+    """A relative import of a component in the tree ends on that file's node.
+
+    Both edges an import yields did not: the frontmatter edge named
+    ``astro:../components/Hero.astro:1-1:file:file``, a file id whose path
+    slot is the raw import string, so the pipeline minted a file node for a
+    path that names no file; the tag edge named
+    ``astro:../components/Hero.astro:0-0:module:module``, a stand-in for a
+    file sitting in the repository.
+    """
+
+    _PAGE = """---
+import Hero from '../components/Hero.astro';
+import Gone from '../components/Gone.astro';
+import Aliased from '@components/Aliased.astro';
+---
+<Hero /><Gone /><Aliased /><Unimported />
+"""
+
+    def _edges(self, tmp_path: Path) -> list:
+        make_astro_file(tmp_path, "src/pages/index.astro", self._PAGE)
+        make_astro_file(tmp_path, "src/components/Hero.astro", "<h1>h</h1>")
+        make_astro_file(tmp_path, "src/components/Aliased.astro", "<p>a</p>")
+        return [e for e in analyze_astro(tmp_path).edges if e.edge_type == "imports"]
+
+    def test_both_edges_of_an_existing_target_end_on_its_file_node(
+        self, tmp_path: Path,
+    ) -> None:
+        hero = [
+            e for e in self._edges(tmp_path)
+            if "Hero" in ((e.meta or {}).get("import_name"), (e.meta or {}).get("component_name"))
+        ]
+        assert len(hero) == 2  # the frontmatter import and the <Hero /> use
+        for edge in hero:
+            assert edge.dst == "astro:src/components/Hero.astro:1-1:file:file"
+            assert edge.src == "astro:src/pages/index.astro:1-1:file:file"
+            assert edge.meta["import_path"] == "../components/Hero.astro"
+
+    def test_no_edge_names_a_file_id_with_a_raw_import_path(self, tmp_path: Path) -> None:
+        """A file id's path slot is a repo path, never ``../x`` or ``@alias/x``."""
+        for edge in self._edges(tmp_path):
+            if edge.dst.endswith(":1-1:file:file"):
+                path = edge.dst[: -len(":1-1:file:file")].partition(":")[2]
+                assert (tmp_path / path).is_file(), edge.dst
+
+    def test_a_missing_or_aliased_target_keeps_the_module_placeholder(
+        self, tmp_path: Path,
+    ) -> None:
+        by_name: dict[str, set[str]] = {}
+        for edge in self._edges(tmp_path):
+            meta = edge.meta or {}
+            by_name.setdefault(meta.get("import_name") or meta["component_name"], set()).add(edge.dst)
+        assert by_name["Gone"] == {"astro:../components/Gone.astro:0-0:module:module"}
+        assert by_name["Aliased"] == {"astro:@components/Aliased.astro:0-0:module:module"}
+        assert by_name["Unimported"] == {"astro:component:Unimported:0-0:Unimported:component"}
+
+    def test_the_use_sites_meta_is_on_the_edge_that_survives_dedup(
+        self, tmp_path: Path,
+    ) -> None:
+        """The frontmatter edge and the tag edge of one import now name the
+        same target, and edge dedup keeps the first of two identical
+        relations. The first must be the tag's: it carries the hydration
+        directive and the attributes, and its component name is the import's."""
+        make_astro_file(tmp_path, "src/pages/index.astro", """---
+import Counter from '../components/Counter.astro';
+import Gone from '../components/Gone.astro';
+import Unused from '../components/Unused.astro';
+---
+<Counter client:load start="1" /><Gone client:idle />
+""")
+        make_astro_file(tmp_path, "src/components/Counter.astro", "<p>c</p>")
+        edges = [e for e in analyze_astro(tmp_path).edges if e.edge_type == "imports"]
+        first_by_dst: dict[str, object] = {}
+        for edge in edges:
+            first_by_dst.setdefault(edge.dst, edge)
+        assert len(edges) == 5 and len(first_by_dst) == 3
+        counter = first_by_dst["astro:src/components/Counter.astro:1-1:file:file"]
+        assert counter.meta["component_name"] == "Counter"
+        assert counter.meta["client_directive"] == "client:load"
+        assert "start" in counter.meta["attributes"]
+        gone = first_by_dst["astro:../components/Gone.astro:0-0:module:module"]
+        assert gone.meta["client_directive"] == "client:idle"
+        # An import no tag uses keeps its frontmatter edge.
+        unused = first_by_dst["astro:../components/Unused.astro:0-0:module:module"]
+        assert unused.meta["import_name"] == "Unused"

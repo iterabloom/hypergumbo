@@ -77,6 +77,3 @@ patterns:
   # Grape desc (documentation)
   - concept: documentation
     decorator: "^desc$"
-
-linkers:
-  - http

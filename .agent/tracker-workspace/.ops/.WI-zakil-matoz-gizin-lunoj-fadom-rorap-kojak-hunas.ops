@@ -1,0 +1,72 @@
+- op: create  # 4738
+  at: '2026-10-22T05:12:24Z'  # 4738
+  by: agent  # 4738
+  actor: jgstern_agent  # 4738
+  clock: 1  # 4738
+  nonce: '4738'  # 4738
+  data:  # 4738
+    kind: work_item  # 4738
+    title: "choice_shaped_source caveat counts distinct source NAMES but says 'evidence rows', and tests the witness source_primitive instead of the source_primitives set"  # 4738
+    status: todo_hard  # 4738
+    priority: 3  # 4738
+    parent:  # 4738
+    tags:  # 4738
+    - verify_claims  # 4738
+    - taint  # 4738
+    - concept_audit_20261021  # 4738
+    isbefore: []  # 4738
+    duplicate_of: []  # 4738
+    not_duplicate_of: []  # 4738
+    pr_ref:  # 4738
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F5. Verified by reading verify_claims.py:6577-6581 (_choice_sources = sorted set of terminal names) vs :6624 ('{len(_choice_sources)} of this claim's evidence rows'): three rows rooted at socket.accept -> '1 of ...'. Agent probe: the comprehension tests v.source_primitive (the witness), not the authoritative source_primitives set (taint.py:743-767), so a collapsed (accept, recv) row with witness recv gets no caveat -- member-order dependent. NOTE: jgstern-agent/fix/lanos changes is_choice_shaped_source's signature; coordinate."  # 4738
+    fields: {}  # 4738
+- op: discuss  # 999d
+  at: '2026-10-25T20:08:23Z'  # 999d
+  by: agent  # 999d
+  actor: jgstern_agent  # 999d
+  clock: 2  # 999d
+  nonce: 999d  # 999d
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT. Three functions each pass s.accept() -> subprocess.*: verdict violated, evidence_count 3, text '3 unsanitized untrusted_input flow(s)' and directly below 'CAVEAT (choice_shaped_source): 1 of this claim's evidence rows are rooted at...: accept'. With recv called before accept, the collapsed ddg_mixed row has source_primitive=recv, source_primitives=[accept, recv], and gets no caveat; swap the calls and the same set gets it -- member-order dependent. Refs: verify_claims.py:6578-6582 (name set), :6625 (count text), :6634-6635 (the detail also points the reader at the witness source_primitive); taint.py:748-773 (source_primitives), :1026-1036 (collapse, witness grp[0]). The 'coordinate with lanos' note is retracted: WI-lanos (PR #1825) only removed wait* names from CHOICE_SHAPED_SOURCE_NAMES; is_choice_shaped_source(primitive) is unchanged (verify_claims.py:944). Part 2 duplicates WI-kufos part (2) (filed 2026-10-05); fix together. P3 kept."  # 999d
+- op: discuss  # 8d21
+  at: '2026-10-25T23:58:47Z'  # 8d21
+  by: agent  # 8d21
+  actor: jgstern_agent  # 8d21
+  clock: 3  # 8d21
+  nonce: 8d21  # 8d21
+  message: "PART 3, added 2026-10-25 from the WI-jivih premise re-check: CHOICE_SHAPED_SOURCE_NAMES (verify_claims.py:783-789) still lists gethostname / getservbyname / getservbyport, which WI-dozul moved from net_recv to host_info_read on 2026-09-08 (erlang.yaml:326-334, 4f463b6722); matching is last-segment and label-blind (:6578-6582). Live: python `name = socket.gethostname(); s.send(name.encode())` under host-description-no-network -> violated (2 rows) with a choice_shaped_source caveat claiming the far side CHOSE the value. Fix with parts 1-2 (same block): drop the three names, and restrict the caveat to rows whose source label is untrusted_input (the label the choice shape was defined on)."  # 8d21
+- op: discuss  # 5bdf
+  at: '2026-10-26T00:31:44Z'  # 5bdf
+  by: agent  # 5bdf
+  actor: jgstern_agent  # 5bdf
+  clock: 4  # 5bdf
+  nonce: 5bdf  # 5bdf
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output): the choice-shaped-source rule (the value is chosen by the far side; untrusted_input) is testable as 'every caveated row's source label is untrusted_input', and part 3 is its counterexample. (2) CHOICE_SHAPED_SOURCE_NAMES is a hand-written subset that missed WI-dozul's re-label, a named instance in WI-kosup section D. Neither blocks this item."  # 5bdf
+- op: discuss  # d16d
+  at: '2026-10-27T09:37:02Z'  # d16d
+  by: agent  # d16d
+  actor: jgstern_agent  # d16d
+  clock: 5  # d16d
+  nonce: d16d  # d16d
+  message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestChoiceShapedSource::test_the_caveat_is_only_on_an_untrusted_input_claim (strict xfail, part 3). It XPASSes when this item is fixed; remove the mark in the fix PR."  # d16d
+- op: discuss  # 093e
+  at: '2026-10-27T20:37:29Z'  # 093e
+  by: agent  # 093e
+  actor: jgstern_agent  # 093e
+  clock: 6  # 093e
+  nonce: 093e  # 093e
+  message: "2026-10-27: part 2 now has its own production-path closure test, shared with WI-kufos (2): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCollapsedRowIsItsGroup::test_the_choice_caveat_does_not_depend_on_the_witness (strict xfail, PR #1905)."  # 093e
+- op: update  # e937
+  at: '2026-10-28T03:20:54Z'  # e937
+  by: agent  # e937
+  actor: jgstern_agent  # e937
+  clock: 7  # e937
+  nonce: e937  # e937
+  set:  # e937
+    status: done  # e937
+- op: discuss  # 4b97
+  at: '2026-10-28T03:20:54Z'  # 4b97
+  by: agent  # 4b97
+  actor: jgstern_agent  # 4b97
+  clock: 8  # 4b97
+  nonce: 4b97  # 4b97
+  message: "Fixed in PR #1911 (802367974a), all three parts. (1) the caveat counts evidence ROWS ('3 of this claim's evidence rows' for three accept rows; test_it_counts_rows_not_names). (2) it tests source_primitives, not the witness (shared with WI-kufos; TestCollapsedRowIsItsGroup::test_the_choice_caveat_does_not_depend_on_the_witness now passes unmarked). (3) gethostname/getservbyname/getservbyport left CHOICE_SHAPED_SOURCE_NAMES and the caveat requires taint_label untrusted_input (CHOICE_SHAPED_SOURCE_LABEL): the production-path test TestChoiceShapedSource::test_the_caveat_is_only_on_an_untrusted_input_claim (python gethostname -> send under a host_description claim: violated, no choice_shaped_source caveat) was a strict xfail and now passes unmarked. Mutations: re-adding gethostname and dropping the label test each turned a test red."  # 4b97

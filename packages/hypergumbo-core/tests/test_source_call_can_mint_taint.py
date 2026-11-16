@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-lipis: a source that provably reads nothing must not mint taint.
+"""A source that provably reads nothing must not mint taint (WI-lipis).
 
-The sink side already refuses a call site that hands its value to nothing
+The sink side refuses a call site that hands its value to nothing
 (``> /dev/null``, INV-nular/INV-kosur). A SOURCE site that takes its value
-from nothing is the same argument pointed the other way, and nothing asked it.
+from nothing is the same argument pointed the other way.
 
-THE MEASURED CASE. ``go.yaml`` files ``bufio.{NewScanner,NewReader}`` as
+THE CASE. ``go.yaml`` files ``bufio.{NewScanner,NewReader}`` as
 ``ipc_recv`` — which is in ``AUTO_SOURCE_LABEL_MAP``, so every call site mints
 ``untrusted_input`` — on the note *"When wrapping os.Stdin"*, a condition no
 catalogue row can enforce because the row sees the callee and the answer is in
-the ARGUMENT. Measured on the shipped CLI before the fix::
+the ARGUMENT. Ungated, the shipped CLI reports::
 
     func leakBuffer(s string) {
         sc := bufio.NewScanner(strings.NewReader(s))
@@ -20,23 +20,20 @@ the ARGUMENT. Measured on the shipped CLI before the fix::
     untrusted-input-no-subprocess   violated
     1 flow [untrusted_input confidence: PRECISE] [origins: 1 ipc_recv]
 
-A fully-confident false positive: the DDG confirmed a real data dependence, and
-the *label on the source* was the lie. Confidence measures the walk, not the
+A fully-confident false positive: the DDG confirms a real data dependence, and
+the *label on the source* is the lie. Confidence measures the walk, not the
 catalogue, so a precise verdict over a wrong source reads as the strongest kind
 of finding the tool emits.
 
-WHY THE POPULATION MATTERS MORE THAN THIS FIXTURE. Of the 83 bare-local
-``bufio.New*`` sites whose origin the shipped reaching-def solver resolves
-across the ADR-0049 cohort's Go repositories: **63 wrap an ``os.Open`` handle**
-(``fs_read``, deliberately not a taint source), 3 an HTTP body, 1 a buffer, and
-**zero wrap ``os.Stdin``**. The row's own stated condition holds nowhere in
-that population.
+THE LARGER POPULATION IS A FILE HANDLE. Resolved ``bufio.New*`` arguments are
+mostly ``os.Open`` handles (``fs_read``, deliberately not a taint source) and
+almost never ``os.Stdin``, so the row's own stated condition rarely holds and
+``host_path`` must refuse as well as ``in_memory``.
 
-WHAT THIS DOES NOT FIX, and the docstring says it rather than implying
-completeness: a bare local is 64.8% of the measured sites, its boundary is the
-ORIGIN of a variable, and that is a dataflow question. It stamps nothing and is
-untouched. INV-zumin's ruling forbids resolving it by emitting BOTH boundaries,
-so the abstention stays an abstention.
+WHAT STAYS UNSTAMPED. A site whose argument the producer cannot classify --
+e.g. a bare local whose binding does not resolve -- stamps nothing and is
+untouched: the catalogue row decides. INV-zumin's ruling forbids resolving it by
+emitting BOTH boundaries, so the abstention stays an abstention.
 """
 
 from unittest import mock
@@ -105,13 +102,13 @@ def test_stdin_still_mints_a_source() -> None:
 
 
 def test_an_unstamped_site_is_untouched() -> None:
-    """SECOND FAIL-CLOSED CONTROL, and the 64.8% case.
+    """SECOND FAIL-CLOSED CONTROL: a site with no stamp.
 
-    A bare local stamps nothing, because its boundary is the origin of a
-    variable. Absence of the key must classify exactly as before — it is the
-    state of every Go edge in every behavior map written before this key was
-    stamped, and a gate whose default silenced findings would be a
-    false-negative generator.
+    A site whose argument the producer cannot classify (e.g. a bare local
+    whose binding does not resolve) stamps nothing. Absence of the key must
+    classify as the catalogue row says — it is also the state of every Go
+    edge in a behavior map written before this key existed, and a gate whose
+    default silenced findings would be a false-negative generator.
     """
     assert len(_flows(None)) == 1
 
@@ -126,10 +123,9 @@ def test_a_discarding_target_also_refuses_on_the_source_side() -> None:
 
 
 def test_a_file_handle_mints_no_source() -> None:
-    """WI-lipis's SECOND deliverable, and the LARGER of its two false-source
-    populations: 63 of the 83 resolved bare-local sites wrap an ``os.Open``
-    handle, against the 19.1% in-memory bucket the first deliverable's estimate
-    counted."""
+    """A file handle mints no source -- the LARGER of the two false-source
+    populations: resolved ``bufio.New*`` arguments are mostly ``os.Open``
+    handles, well ahead of in-memory readers."""
     assert _flows("host_path") == []
 
 
@@ -234,7 +230,7 @@ def _ddg_edge() -> list:
 
 
 def test_the_new_kinds_mint_in_the_read_direction() -> None:
-    """WI-suhug widened the vocabulary at its one home: a pipe from a child or a
-    network stream is a real receive, and the source arm follows the map."""
+    """A pipe from a child or a network stream is a real receive, and the
+    source arm follows the vocabulary's single home to say so (WI-suhug)."""
     assert len(_flows("pipe")) == 1
     assert len(_flows("net_stream")) == 1

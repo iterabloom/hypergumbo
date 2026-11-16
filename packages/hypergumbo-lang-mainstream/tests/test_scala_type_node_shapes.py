@@ -1,30 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-pokam: a Scala receiver's type survives a QUALIFIED or GENERIC type node.
+"""A Scala receiver's type survives a QUALIFIED or GENERIC type node (WI-pokam).
 
-WHAT WAS BROKEN. ``scala.py`` read a declared type with
-``find_child_by_type(node, "type_identifier")``, which names ONLY a bare type.
-Tree-sitter gives a qualified type its own node kind (``stable_type_identifier``)
-and a generic applied type another (``generic_type``), so both produced NO
-``receiver_type_hint`` at all and the receiver fell to the sentinel.
+Tree-sitter gives a bare type a ``type_identifier``, a qualified type its own
+node kind (``stable_type_identifier``) and a generic applied type another
+(``generic_type``). Reading a declared type with
+``find_child_by_type(node, "type_identifier")`` names ONLY the bare one, so the
+other two would produce no ``receiver_type_hint`` and the receiver would fall
+to the sentinel. The hazard is the same on every path that reads a type node --
+annotation, ``new`` and parameter -- so each shape is tested on each path:
 
-THE FILED ITEM NAMED ONE SHAPE; A PROBE FOUND THREE, AND THEY ARE ONE BUG
-(``~/hypergumbo_lab_notebook/pokam_scala_09102026/PROBE_RESULT.md``). Each pair
-below differs in exactly one thing:
+    val x: File                     hint File          slot java.io.File
+    val x: java.io.File             hint java.io.File  slot java.io.File
+    val x = new java.io.File("p")   hint java.io.File  slot java.io.File
+    val x: Buffer[String]           hint Buffer        slot scala.collection.mutable.Buffer
 
-    A1 val x: File            hint File     A2 val x: java.io.File     NONE
-    B1 val x = new File("p")  hint File     B2 val x = new java.io.File("p") NONE
-    C2 val x: Buffer          hint Buffer   C1 val x: Buffer[String]   NONE
+Generic applied types are pervasive in idiomatic Scala (``List[X]``,
+``Option[X]``, ``Future[X]``, ``Seq[X]``).
 
-So it is not the annotation path — ``new`` loses it identically (B2), though
-WI-pokam lists ``val x = new Foo()`` among the shapes that WORK. And a GENERIC
-APPLIED type (C1) is not mentioned in the filing at all, while being pervasive in
-idiomatic Scala (``List[X]``, ``Option[X]``, ``Future[X]``, ``Seq[X]``).
-
-WHAT THE SLOT DOES WITH EACH, and why they differ. WI-sigog's discipline is that
-the module slot only ever carries a path THE FILE ITSELF DECLARES — a bare name
-is looked up in ``import_aliases`` and left alone when it misses, because a
-simple name in the module slot asserts a module that does not exist (INV-fazim).
-That discipline is KEPT and extended by exactly one case:
+WHAT THE SLOT DOES WITH EACH, and why they differ. The module slot only ever
+carries a path THE FILE ITSELF DECLARES (WI-sigog) — a bare name is looked up
+in ``import_aliases`` and left alone when it misses, because a simple name in
+the module slot asserts a module that does not exist (INV-fazim). Both shapes
+keep that discipline:
 
 * a GENERIC type contributes its BASE name (``Buffer[String]`` → ``Buffer``),
   which then qualifies through ``import_aliases`` like any bare name — the
@@ -36,9 +33,10 @@ That discipline is KEPT and extended by exactly one case:
   catalogue at all — an inline qualification is precisely the case where there is
   NO import line to consult.
 
-NOT IN SCOPE, and not overlooked: ``val x = mk()``, where the type must come from
-the return type of ``mk``. That is the return-type-registry shape objc and swift
-already have and is WI-pokam's own harder half.
+NOT EXERCISED HERE: ``val x = mk()``, where the type must come from the return
+type of ``mk``. That shape is typed through the return-type registry
+(``method_return_type_registry``, WI-gokop), not from a type node, and the
+fixture's ``mk() = ???`` declares no return type.
 """
 
 from pathlib import Path
@@ -129,7 +127,8 @@ def _slot(edges: dict[int, object], needle: str) -> str:
 
 
 class TestTheControlsThatAlreadyWorked:
-    """If these ever go red the fix has broken the path it was extending."""
+    """Bare-type controls: if these go red, qualified/generic handling has
+    broken the bare-name path it extends."""
 
     def test_bare_annotation(self, tmp_path: Path) -> None:
         edges = _by_line(tmp_path)
@@ -153,9 +152,9 @@ class TestAQualifiedTypeIsThePath:
         assert _slot(edges, "b.createNewFile()") == "java.io.File"
 
     def test_qualified_new(self, tmp_path: Path) -> None:
-        """WI-pokam lists ``val x = new Foo()`` among the shapes that WORK; the
-        qualified form does not, and a fix scoped to the annotation branch would
-        leave this broken while looking like a fix."""
+        """``new`` reads its type node apart from an annotation, so handling
+        qualified types on the annotation path alone would leave this shape at
+        the sentinel while the annotation tests pass."""
         edges = _by_line(tmp_path)
         assert _hint(edges, "e.createNewFile()") == "java.io.File"
         assert _slot(edges, "e.createNewFile()") == "java.io.File"
@@ -211,23 +210,20 @@ class TestTheDisciplineIsKept:
 
 
 class TestTheImplicitImportDenylist:
-    """A generic base this change would INVENT is refused when it is a name
-    Scala imports implicitly.
+    """A generic base INVENTED from a type argument is refused when it is a
+    name Scala imports implicitly.
 
-    MEASURED, and the measurement is the whole justification. Without this,
-    `val m: Map[String, X]` contributes the base `Map`, which cannot qualify --
-    there is no import line to look it up in -- so it adds nothing to the module
-    slot and reaches only the bare short-name bind. On sbt that produced 44
-    bindings of a standard-library `Map[K,V]` to the PROJECT's `Map.get` in
-    `sbt/SessionVar.scala`: 24% of every edge the change newly resolved, and
-    exactly the "arbitrary same-named internal def" funnel this file's external
-    branch refuses for untyped receivers.
+    Without this, `val m: Map[String, X]` contributes the base `Map`, which
+    cannot qualify -- there is no import line to look it up in -- so it adds
+    nothing to the module slot and reaches only the bare short-name bind,
+    binding a standard-library `Map[K,V]` to a same-named PROJECT `Map.get`.
+    That is the "arbitrary same-named internal def" funnel `scala.py`'s
+    external branch refuses for untyped receivers.
 
-    THE COST IS ZERO WHERE IT COUNTS. Denying them drops the HINTED share
-    (28.07% -> 23.43% on sbt) and leaves the MODULE-SLOT share alone
-    (18.07% -> 18.19%, marginally up) -- because an unqualifiable name never
-    filled a slot in the first place. The item's own acceptance metric is the
-    hinted share, so that metric would have preferred the WORSE version.
+    The refusal costs nothing in the module slot, because an unqualifiable
+    name never fills one; it lowers only the share of edges carrying a hint.
+    Judge a change here by the module-slot share: the hinted share prefers the
+    WORSE version.
     """
 
     def test_a_generic_over_an_implicit_import_name_is_refused(
@@ -252,10 +248,9 @@ class TestTheImplicitImportDenylist:
     def test_an_explicitly_annotated_bare_name_is_untouched(
         self, tmp_path: Path,
     ) -> None:
-        """Scoped to the base this change INVENTS from a type argument. A bare
-        `val x: Map = ...` is the pre-existing INV-fahub / WI-bihit population --
-        the programmer wrote that name -- and narrowing it is a separate change
-        with its own measurement."""
+        """The denylist applies only to a base INVENTED from a type argument. A
+        bare `val x: Map = ...` names a type the programmer wrote, and keeps
+        its hint (INV-fahub, WI-bihit)."""
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "N.scala").write_text(

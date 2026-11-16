@@ -26,3 +26,10 @@
   clock: 2  # c5d9
   nonce: c5d9  # c5d9
   message: "Concrete instance from the 2026-10-06 docstring audit (hypergumbo self-survey, explain): .agent/hooks/_shared/stop_logic.sh:394-396 runs \"$REPO_ROOT/scripts/tracker\" guidance, which reaches hypergumbo_tracker/cli.py _cmd_guidance through the subcommand dispatch; explain _cmd_guidance shows only 'Referenced by main' (cli.py:3837) and no inbound edge from the hook, and generate_guidance shows no non-test production caller beyond _cmd_guidance/generate_guidance_safe. Two hops are missing: shell -> CLI subcommand (bash invoking a repo script by path with a subcommand literal), and subcommand name -> handler (this item). The docstring-staleness playbook (PR #1496) now tells reviewers to grep hooks/scripts/workflows for this reason; closing this item would let explain answer it directly."  # c5d9
+- op: discuss  # 3b9a
+  at: '2026-11-01T10:55:36Z'  # 3b9a
+  by: agent  # 3b9a
+  actor: jgstern_agent  # 3b9a
+  clock: 3  # 3b9a
+  nonce: 3b9a  # 3b9a
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint4/). VERDICT: CURRENT. Re-checked at dev 100b6fbb6e: no linker under hypergumbo_core/linkers handles dict-registry dispatch (argparse_dispatch, decorator_dispatch, subprocess_cli cover other shapes). Fixture HANDLERS={'sketch':cmd_sketch,'run':cmd_run}; HANDLERS[args.command](args): survey emits only references file->cmd_sketch/cmd_run (line 13), no dispatches_to/calls from main; TAINT_CALL_EDGE_TYPES already contains dispatches_to. Premise holds; the 10-06 shell->subcommand hop is a second, separate gap. MECHANISM: dict-literal handler registry recorded as plain references; no linker emits dispatches_to for dict-subscript dispatch. SHARES MECHANISM WITH: WI-ravav, WI-popij, WI-ritog."  # 3b9a

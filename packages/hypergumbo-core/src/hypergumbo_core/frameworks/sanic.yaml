@@ -56,7 +56,3 @@ patterns:
   # Static file serving - @app.static("/path", "/local/path")
   - concept: static_files
     decorator: "^(app|sanic|blueprint|bp)\\.static$"
-
-linkers:
-  - http
-  - websocket

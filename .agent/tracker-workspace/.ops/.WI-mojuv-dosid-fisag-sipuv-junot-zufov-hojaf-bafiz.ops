@@ -1,0 +1,21 @@
+- op: create  # 2cdd
+  at: '2026-11-01T22:23:32Z'  # 2cdd
+  by: agent  # 2cdd
+  actor: jgstern_agent  # 2cdd
+  clock: 1  # 2cdd
+  nonce: 2cdd  # 2cdd
+  data:  # 2cdd
+    kind: work_item  # 2cdd
+    title: "v: _recover_single_letter_type misses `struct S {}` for the letters C, E, F, G, S and X (tree-sitter-v gives ERROR('struct S') and a block with no type_placeholder child); A, B and T recover"  # 2cdd
+    status: todo_hard  # 2cdd
+    priority: 4  # 2cdd
+    parent:  # 2cdd
+    tags:  # 2cdd
+    - v  # 2cdd
+    - analysis_quality  # 2cdd
+    isbefore: []  # 2cdd
+    duplicate_of: []  # 2cdd
+    not_duplicate_of: []  # 2cdd
+    pr_ref:  # 2cdd
+    description: "FOUND 2026-11-01 during the P4 review (batch langs1, while re-checking WI-fuzaj-...) at dev 9ae4abe13f. Fixtures: ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/fx_fuzaj. For a one-letter struct name, the grammar's recovery differs by letter: for A/B/T the analyzer's single-letter recovery finds a type_placeholder and emits the struct; for C, E, F, G, S and X tree-sitter-v yields ERROR('struct S') followed by a block with no type_placeholder child, so no struct symbol is emitted. Sibling of WI-fuzaj (one-letter type alias). Same grammar mechanism: a lone capital is lexed as a type placeholder."  # 2cdd
+    fields: {}  # 2cdd

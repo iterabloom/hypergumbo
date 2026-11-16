@@ -22,3 +22,32 @@
     fields:  # 2f48
       statement: "Every member function defined inside a class body is registered under its owning class, including when the class is declared with a qualified name (class A::B { ... })."  # 2f48
       root_cause: "Class-name extraction and _get_enclosing_class read only a direct type_identifier child of class_specifier; a qualified_identifier name yields no class, so its methods get no owner."  # 2f48
+- op: discuss  # 8fd0
+  at: '2026-10-25T11:36:55Z'  # 8fd0
+  by: agent  # 8fd0
+  actor: jgstern_agent  # 8fd0
+  clock: 2  # 8fd0
+  nonce: 8fd0  # 8fd0
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: overlaps WI-rugin point 3 (same mechanism: _get_enclosing_class, cpp.py:1448, reads only a direct type_identifier; the class-symbol arm cpp.py:1016-1018 uses the same test, so _cpp_owner_class cpp.py:1680 finds nothing). Folded per owner 2026-10-25: THIS item now owns the qualified-name class-body defect; WI-rugin is re-scoped to its points 1-2. Still reproduces: method AcceptWaveform (a.cc:6) calls itself. Extra consequence: impl_->AcceptWaveform(n) in OnlineStream::AcceptWaveform goes to cpp:external:0-0:AcceptWaveform:unresolved (hint Impl), so the pimpl forward never reaches the Impl method; struct A::S { void f(){g();} } is hit the same way. CORRECTION to the description: 'the class itself is named Impl' is wrong -- a qualified class DEFINITION emits no class symbol at all and its fields are dropped; the Impl class seen is the forward declaration `class Impl;` inside the outer class. With no forward declaration the only symbol is the method. NOT checked: the sherpa-onnx 10-of-41 count."  # 8fd0
+- op: discuss  # c2ca
+  at: '2026-11-01T09:32:29Z'  # c2ca
+  by: agent  # c2ca
+  actor: jgstern_agent  # c2ca
+  clock: 3  # c2ca
+  nonce: c2ca  # c2ca
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: CURRENT. Direct analyze_cpp on the 9-line fixture: SYM a.cc:5-5:AcceptWaveform:method (bare), EDGE calls AcceptWaveform@5 -> AcceptWaveform@5 (self), OnlineStream::AcceptWaveform -> cpp:external:0-0:AcceptWaveform:unresolved {hint Impl}; no class symbol for `class OnlineStream::Impl {}` and no feat_extractor_ field; `struct A::S` gives bare f, g. Both cpp.py:1026-1027 (class arm) and :1458-1463 (_get_enclosing_class) use _find_child_by_type(node, 'type_identifier'), which a qualified_identifier name fails. The survey drops the self-loop; the direct call shows it. Only a pragma comment changed in cpp.py since 10-25. ROOT-CAUSE GROUP: owner/container read from the name node, not lexical position (with INV-dosoz, WI-sipoj). Status unchanged."  # c2ca
+- op: update  # 2973
+  at: '2026-11-16T11:46:41Z'  # 2973
+  by: agent  # 2973
+  actor: jgstern_agent  # 2973
+  clock: 4  # 2973
+  nonce: '2973'  # 2973
+  set:  # 2973
+    status: satisfied  # 2973
+- op: discuss  # f753
+  at: '2026-11-16T11:46:42Z'  # f753
+  by: agent  # f753
+  actor: jgstern_agent  # f753
+  clock: 5  # f753
+  nonce: f753  # f753
+  message: "Satisfied by PR #2200 for the statement as written. Re-ran the filed fixture: on dev the methods and field of `class OnlineStream::Impl { }` had bare names, the member forward was a self-call edge, and no class or field node existed; now the members are `OnlineStream::Impl::AcceptWaveform` etc., the forward binds `Impl::AcceptWaveform` and `FeatureExtractor::AcceptWaveform`, and `struct A::S` behaves the same. sherpa-onnx csrc: 82 `class X::Impl` definitions and 1,113 of their fields are new symbols, and their members are among the 1,218 of 5,963 that moved; whisper.cpp 74 new. NOT ASSERTED / SEEN: the nested forward declaration `class Impl;` is still its own class node named `Impl` beside the definition's `OnlineStream::Impl`; `OnlineStream::Impl x;` resolves by last segment; a union emits no container symbol (filed). NOT RE-COUNTED: the item's 10-of-41 figure, grpc, modsecurity. The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # f753

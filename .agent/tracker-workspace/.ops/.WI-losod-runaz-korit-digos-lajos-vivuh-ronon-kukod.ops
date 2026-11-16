@@ -79,3 +79,19 @@
   clock: 9  # 10ba
   nonce: 10ba  # 10ba
   message: "Fixed in PR #1469 (stage 9a), together with WI-faful. Loop headers (for-each variable, classic for init/update, Go range clause) and if/switch initializers (incl. Go 'if err := cmd.Run(); err != nil') are now CFG statements that define their bindings before the body, in all six DDG languages. Behavioural evidence (verify-claims fixtures, losod.md): Go if-initializer, Go range over os.Environ(), Go for-clause, Rust for, TS for-of/for, C for: structural -> ddg/confirmed; Python for and Java for-each/for: not_attempted -> ddg/confirmed; controls (header source, constant-fed sink) read escaped. Mutations (drop Go range header, drop body cut-off) revert them. Six-repo A/B: 2 evidence rows moved to ddg/confirmed, no verdict moved (branch run, not re-measured on dev): tagged awaits_bakeoff_validation. Residuals filed: WI-nohuv (except-as, match-case, type switch, select, catch), WI-sozob (switch without default), WI-nogil (C bare declaration)."  # 10ba
+- op: update  # 69db
+  at: '2026-11-02T10:19:42Z'  # 69db
+  by: agent  # 69db
+  actor: jgstern_agent  # 69db
+  clock: 10  # 69db
+  nonce: 69db  # 69db
+  set: {}  # 69db
+  remove:  # 69db
+    tags: [awaits_bakeoff_validation]  # 69db
+- op: discuss  # fbee
+  at: '2026-11-02T10:19:42Z'  # fbee
+  by: agent  # fbee
+  actor: jgstern_agent  # fbee
+  clock: 11  # fbee
+  nonce: fbee  # fbee
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). containers-storage: measured unshareFn row split: os/exec.Cmd.Run at ddg / reached (the verify-claims 3.x spelling of confirmed), exec.Command its own row (recorded 6 -> 7 ddg/confirmed). Tag stripped."  # fbee

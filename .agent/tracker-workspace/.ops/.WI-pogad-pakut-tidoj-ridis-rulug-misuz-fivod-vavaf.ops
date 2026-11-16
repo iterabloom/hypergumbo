@@ -1,0 +1,24 @@
+- op: create  # c79f
+  at: '2026-10-25T11:37:06Z'  # c79f
+  by: agent  # c79f
+  actor: jgstern_agent  # c79f
+  clock: 1  # c79f
+  nonce: c79f  # c79f
+  data:  # c79f
+    kind: work_item  # c79f
+    title: "kotlin *.kts and ruby *.rake / Rakefile / Gemfile are never discovered: analyzer file_patterns are narrower than taxonomy.LANGUAGES (more candidates enumerated, unverified)"  # c79f
+    status: todo_hard  # c79f
+    priority: 3  # c79f
+    parent:  # c79f
+    tags:  # c79f
+    - analysis_quality  # c79f
+    - discovery  # c79f
+    - taxonomy  # c79f
+    - kotlin  # c79f
+    - ruby  # c79f
+    isbefore: []  # c79f
+    duplicate_of: []  # c79f
+    not_duplicate_of: []  # c79f
+    pr_ref:  # c79f
+    description: "FOUND 2026-10-25 (premise check of INV-zopiz). taxonomy.LANGUAGES is documented as the single source of truth for which extensions belong to a language, but several analyzers' own file_patterns are narrower, so those files are never discovered by the analyzer at all.\n\nVERIFIED on fixtures: KotlinAnalyzer.file_patterns = ['*.kt'] (kotlin.py:2806, find_kotlin_files kotlin.py:224) while taxonomy declares *.kt, *.kts -- a .kts containing `fun f()` gives analyzed 0, skipped 0. RubyAnalyzer.file_patterns = ['*.rb'] (ruby.py:3477, find_ruby_files ruby.py:236) while taxonomy declares *.rb, *.rake -- and filename-only Ruby files (Rakefile, Gemfile, extensionless shebang bin/ scripts) are covered by neither.\n\nCANDIDATES, enumerated by comparing each analyzer class's file_patterns with taxonomy.LANGUAGES[lang].extensions, NOT verified per member (LIVE rule 3: each is its own question whether the file can carry what the analyzer reads, and some omissions may be deliberate): haskell *.lhs, ocaml *.mli, hcl *.tfvars, cpp *.hh, scala *.sc, bash *.zsh, groovy *.gvy, css *.less/*.sass/*.scss. Excluded as instrument artefacts: '**/*.x' vs '*.x' spellings (purescript, r, proto, rst) and *.d.ts (covered by *.ts). 15 registered analyzers expose no file_patterns class and were not compared (python, html, yaml, jupyter, ...).\n\nRELATED: WI-midik is the same mechanism for linker and DDG private extension lists (.rake, .kts among them); this item is the analyzer-discovery side. INV-zopiz's symbol gate is a different defect -- these files never reach it.\n\nFIX SHAPE. Derive each analyzer's patterns from taxonomy (taxonomy.extension_globs) or declare the narrowing explicitly with a reason, plus a gate comparing the two."  # c79f
+    fields: {}  # c79f

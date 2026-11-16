@@ -2,13 +2,12 @@
 """A constant is looked up through the call site's lexical nesting (WI-gomup).
 
 Ruby resolves ``Orchestrator`` inside ``module TestData`` by trying
-``Module.nesting`` first (``TestData::Orchestrator``), then the top level. The
-analyzer tried only the name as written, so a target declared compactly
-(``class TestData::Orchestrator``), which is registered under its full name,
-was never found and the in-repo call was reported external (chatwoot
-``lib/test_data.rb``). A class nested by blocks (``module Outer; class
-Helper``) already resolved, because it is also registered under its short
-name.
+``Module.nesting`` first (``TestData::Orchestrator``), then the top level. A
+target declared compactly (``class TestData::Orchestrator``) is registered
+under its full path, so trying just the name as written never finds it and
+the in-repo call is reported external. A class nested by blocks
+(``module Outer; class Helper``) is registered under the same full path
+(test_ruby_nested_declaration_registry.py).
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ruby.py
 from __future__ import annotations
@@ -61,9 +60,7 @@ def test_a_constant_resolves_through_the_enclosing_module(tmp_path: Path) -> Non
 def test_the_innermost_nesting_wins_and_a_compact_class_adds_one_level(tmp_path: Path) -> None:
     """``module A; module B; X.run`` tries ``A::B::X`` before ``A::X``. Inside a
     compact ``class A::C`` the nesting is ``[A::C]`` only -- Ruby does not add
-    ``A`` -- so ``Y.run`` there does NOT find ``A::Y``. (Block-nested
-    declarations are registered under their short names, so the targets here
-    are compact, the shape the lexical lookup is for.)"""
+    ``A`` -- so ``Y.run`` there does NOT find ``A::Y``."""
     calls = _calls(tmp_path, {
         "a.rb": (
             "module A\n"

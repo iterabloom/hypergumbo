@@ -18,3 +18,18 @@
     pr_ref:  # 2e0a
     description: "Structural hardening / durable end-state for vocab:F2 (WI-lojug). vocab:F2 fixed the genuine DEFAULT leaks (3 Solidity producers, dev 4bc2839170) but KEPT Edge.create's evidence_type='ast_call_direct' default (ir.py ~668 dataclass field / ~708 create classmethod). The call-specific default is a latent structural risk: any future producer emitting a non-call edge without an explicit evidence_type silently inherits a 'direct function call' label again (the 'N producers, no enforced contract' anti-pattern).\n\nThis item is the Option-2 fix the human chose to DEFER from vocab:F2 (Option 1 now + this as a P2 follow-up): remove the default entirely so evidence_type becomes a REQUIRED kwarg on Edge.create, forcing every producer to declare its inference pathway. Maximally structural (prevents the leak class forever; likely surfaces other latent mislabels).\n\nScope/cost: large mechanical sweep — every Edge.create call site across all analyzers + linkers (hundreds) must pass evidence_type explicitly (most legitimately ARE calls and just add evidence_type='ast_call_direct'). Many test updates. Best done as its own dedicated multi-PR effort, ideally after a producer_coherence-driven census of all current Edge.create sites lacking an explicit evidence_type. Consider a transitional sentinel default ('unspecified', registered) before flipping to required, to stage the migration."  # 2e0a
     fields: {}  # 2e0a
+- op: update  # afa9
+  at: '2026-11-01T09:32:33Z'  # afa9
+  by: agent  # afa9
+  actor: jgstern_agent  # afa9
+  clock: 2  # afa9
+  nonce: afa9  # afa9
+  set:  # afa9
+    title: "Remove the ast_call_direct default from Edge / Edge.create (production sites are 531/531 explicit under the INV-nudoj gate); the cost is about 432 test call sites"  # afa9
+- op: discuss  # 557b
+  at: '2026-11-01T09:32:33Z'  # 557b
+  by: agent  # 557b
+  actor: jgstern_agent  # 557b
+  clock: 3  # 557b
+  nonce: 557b  # 557b
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C2/). VERDICT: PARTLY-STALE: the default is still on both ir.py:1032 (dataclass) and ir.py:1079 (Edge.create), but the 'hundreds of call sites' cost premise is gone. AST census over packages/*/src: 531 Edge.create sites in 168 files, 0 omit evidence_type - enforced since ea4d53bb28 (2026-09-19, INV-nudoj, satisfied) by producer_coherence.edge_sites_without_evidence_type, asserted empty in test_producer_coherence.py::TestEveryProducerNamesItsPathway and scripts/check-producer-axis-coherence:111. Tests still lean on the default: 432 of 577 test-side Edge.create calls omit it. Residual = remove the two defaults and update about 432 test call sites (or give tests a helper). Title re-scoped. ROOT-CAUSE GROUP: open-by-default contract guarded only by an external checker (with INV-linan, INV-votoj, WI-kajip). Status unchanged."  # 557b

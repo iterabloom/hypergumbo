@@ -13,12 +13,11 @@ permissions, ``core.sharedRepository``, the textconv driver,
 Each check returns a CheckResult with status ok/fixed/warn/error. The wizard
 is idempotent: running it twice with no changes between runs produces no
 "fixed" result on the second run (advisory warnings, such as the
-host-protected-config opt-in, persist until a human acts on them). That claim
-was FALSE for config.yaml until 2026-09-12 — check
-#10b set it to 0444 and check #12's group sweep put group-write straight back,
-so both reported "fixed" forever and the file settled at 0464. Two checks that
-disagree about one file cannot converge; ``_MODE_MANAGED_FILENAMES`` is the
-arbitration.
+host-protected-config opt-in, persist until a human acts on them). Two checks
+that disagree about one file cannot converge — e.g. check #10b setting
+config.yaml to 0444 while check #12's group sweep puts group-write back, both
+reporting "fixed" on every run — so ``_MODE_MANAGED_FILENAMES`` arbitrates
+which check owns a file's mode.
 
 **Host-protected deployments.** When ``/etc/hypergumbo-tracker`` is in force
 the in-repo ``config.yaml`` is ignored by the loader entirely. Every check that
@@ -103,12 +102,11 @@ def _config_chmod_fallback(path: Path, mode: int) -> None:
     **REFUSES WHEN THE CALLER IS AN AGENT (INV-mizid).** This fallback exists so
     the HUMAN can reclaim a config the agent owns, and it works by writing a new
     file — which the caller then owns. Run in the other direction it silently
-    transfers the governance config TO the agent, which is exactly how this
-    deployment lost `.agent/tracker/config.yaml`: `tracker init` had no actor
-    guard, called ``config_lock`` on an already-existing human-owned config,
-    ``chmod`` raised PermissionError for the non-owner, and this fallback
-    "fixed" it by making the agent the owner. The guard lives here rather than
-    only at that call site so every future caller inherits it.
+    transfers the governance config TO the agent: any agent-run caller of
+    ``config_lock`` on an existing human-owned config (``chmod`` raises
+    PermissionError for the non-owner) would "fix" it by making the agent the
+    owner. The guard lives here rather than at each call site so every caller
+    inherits it.
 
     When the current user doesn't own config.yaml (e.g. human user vs agent
     user), path.chmod() raises PermissionError. This fallback writes a copy
@@ -117,15 +115,14 @@ def _config_chmod_fallback(path: Path, mode: int) -> None:
     current user).
 
     Same-directory tempfile + atomic rename is load-bearing, not incidental.
-    The earlier version used ``tempfile.mkstemp()`` (default dir=/tmp) plus
-    ``unlink`` + ``shutil.move``; because ``/tmp`` is typically a separate
-    tmpfs, ``shutil.move`` degraded to cross-filesystem ``copy2 + unlink``
-    and exposed a window where the target dentry was briefly absent or held
-    umask-respecting (not 0o644/0o444) mode before ``copystat`` normalised
-    it. Readers of ``config.yaml`` during ``config_lock`` / ``config_unlock``
-    flips could race that window. This mirrors the fix applied to
-    ``store.py::_take_ownership_via_tmp`` for the same class of bug
-    (2026-04-19 TUI crash on ``.INV-rikis-…ops``).
+    A tempfile in ``/tmp`` (``mkstemp()``'s default) moved with
+    ``shutil.move`` degrades to a cross-filesystem ``copy2 + unlink`` when
+    ``/tmp`` is a separate tmpfs, exposing a window where the target dentry is
+    briefly absent or carries a umask-respecting (not 0o644/0o444) mode before
+    ``copystat`` normalises it; readers of ``config.yaml`` during
+    ``config_lock`` / ``config_unlock`` flips can race that window.
+    ``store.py::_take_ownership_via_tmp`` uses the same pattern for the same
+    reason.
     """
     by, username = resolve_actor()
     if by == "agent":
@@ -192,7 +189,7 @@ def authoritative_config(
     wizard that kept editing ``.agent/tracker/config.yaml`` would let a human
     make governance changes that silently do nothing, and would validate a file
     with no bearing on what the tracker enforces. That is a worse failure than
-    the unprotected state it replaced, because it looks like it worked.
+    having no host protection at all, because it looks like it worked.
 
     Returns ``(path, protected)``. When protection is on but this repo has no
     config under the host root, the returned path is the one it SHOULD live at
@@ -218,9 +215,10 @@ def authoritative_config(
 def _agent_patterns_from(config_path: Path) -> list[str]:
     """``actor_resolution.agent_usernames`` from a config file, or the default.
 
-    Five checks needed this and each had its own copy of the same nine lines;
-    they have to agree, because a deployment that renames its agent account is
-    exactly the case where one stale copy silently resolves the agent as human.
+    Every check that resolves the actor goes through this one helper; they
+    have to agree, because a deployment that renames its agent account is
+    exactly the case where one divergent copy silently resolves the agent as
+    human.
     """
     patterns = ["*_agent"]
     # ``exists()`` rather than ``is_file()`` deliberately: several callers run
@@ -554,20 +552,19 @@ def _detect_shared_group(root: Path) -> int | None:
     Returns the gid of the first probed directory whose group is not the
     current user's primary group.
 
-    **It probes the TRACKER directories, not ``.agent/`` itself.** ``root`` here
-    is ``.agent/`` (see :func:`run_setup`), and the earlier version looked only
-    at ``root`` and ``root.parent`` — ``.agent/`` and the repo toplevel. Those
-    two are routinely left at the owning user's primary group even on a
-    correctly configured two-user box, because the setup instructions
-    ``chgrp`` the tracker directories and ``.git``, not the checkout. So the
-    check reported "single-user" on a genuine two-user deployment and the three
-    callers that gate on it silently did nothing. The one with teeth is
-    :func:`_check_directory_structure`, which then creates any missing tracker
-    directory WITHOUT the shared group or setgid bit — leaving a fresh ``.ops``
-    or ``stealth`` the other user cannot write.
+    **It probes the TRACKER directories first, not ``.agent/`` itself.**
+    ``root`` here is ``.agent/`` (see :func:`run_setup`). ``.agent/`` and the
+    repo toplevel are routinely left at the owning user's primary group even
+    on a correctly configured two-user box, because the setup instructions
+    ``chgrp`` the tracker directories and ``.git``, not the checkout. Probing
+    only those two would report "single-user" on a genuine two-user
+    deployment, and the callers that gate on it would silently do nothing.
+    The one with teeth is :func:`_check_directory_structure`, which would then
+    create any missing tracker directory WITHOUT the shared group or setgid
+    bit — leaving a fresh ``.ops`` or ``stealth`` the other user cannot write.
 
-    The old ``root`` / ``root.parent`` probes are kept as a trailing fallback:
-    a deployment that did ``chgrp`` the whole checkout is still two-user.
+    ``root`` / ``root.parent`` are still probed, last, as a fallback: a
+    deployment that did ``chgrp`` the whole checkout is still two-user.
     """
     current_primary_gid = pwd.getpwuid(os.getuid()).pw_gid
     candidates = [root / rel for rel in _SHARED_GROUP_PROBES]
@@ -1018,7 +1015,7 @@ def _check_actor_resolution(
     Running as the agent account is a WARNING on a single-user box (the user
     probably did not mean to be an agent) but the EXPECTED state on a two-user
     box, where the agent account exists precisely so it can run the tracker.
-    Warning unconditionally meant every agent-side run of the wizard carried a
+    Warning unconditionally would give every agent-side run of the wizard a
     permanent yellow line that no action could clear, which is how a report
     teaches people to stop reading it.
     """
@@ -1289,18 +1286,18 @@ def _writers_other_than(path: Path, uid: int) -> list[str]:
     other-writable, or owned by a different non-root user.
 
     **Ownership is the limb that matters here and a mode-only check misses it
-    entirely.** On the deployment that motivated this, the agent's package tree
-    is 0755 the whole way down — nothing is group-writable — yet every
-    component is owned by the agent account, so the agent may rewrite any of it
-    at will while a permissions-only audit reports all clear. root-owned
+    entirely.** An agent's package tree can be 0755 the whole way down —
+    nothing is group-writable — yet every component is owned by the agent
+    account, so the agent may rewrite any of it at will while a
+    permissions-only audit reports all clear. root-owned
     components are treated as safe: root is already trusted by anyone running
     ``sudo``, and ``/`` and ``/home`` would otherwise be flagged forever.
 
     A world-writable directory carrying the STICKY bit (``/tmp``, mode 1777) is
     likewise safe and must not be flagged: sticky restricts delete and rename
-    to the entry's owner, and replacing a file needs exactly those. Omitting
-    this reported a false positive for anything under ``/tmp`` — including the
-    fixtures this function's own tests build.
+    to the entry's owner, and replacing a file needs exactly those. Without
+    this exemption everything under ``/tmp`` is a false positive — including
+    the fixtures this function's own tests build.
     """
     problems: list[str] = []
     current = path.resolve()
@@ -1333,9 +1330,8 @@ def _check_install_provenance(
     not pedantic.** The check lives inside the artifact it is checking, so an
     agent that can rewrite the package can rewrite this function too. It cannot
     defend against a hostile agent and does not claim to. What it does is catch
-    the ordinary mistake the shipped guidance used to *cause*: a human running
-    human-authority commands out of the agent's virtualenv, which
-    ``generate_human_shim`` positively instructed them to do until 2026-09-12.
+    the ordinary mistake: a human running human-authority commands out of the
+    agent's virtualenv (history: INV-hivog).
 
     Why it matters at all: commands gated on human authority (``init``,
     ``lock``, ``stealth``, ``reconcile-reset``, ``fork-setup``, ``configure``)
@@ -1930,14 +1926,12 @@ def _resolve_textconv_command(repo_root: Path | None) -> str:
 def _verify_textconv_runs(repo_root: Path | None, ops_file: Path) -> str | None:
     """Execute the configured driver; return a failure reason, or None if healthy.
 
-    This exists because the previous check only asked whether the config key was
-    *set*, never whether the command *worked* — so it reported "Git textconv
-    driver ✓" for months while the configured command did not exist. Presence of
-    configuration is a proxy; running it is the behaviour.
+    Checking only that the config key is *set* is a proxy: it passes while the
+    configured command does not exist. Running the command is the behaviour.
 
     Two conditions, both required by git: exit 0 AND **empty stderr**. Git
     aborts the whole diff when a textconv driver writes to stderr even if it
-    exits 0, which is the failure mode that made ``git log -p`` exit 128.
+    exits 0, which makes ``git log -p`` exit 128.
     """
     command = subprocess.run(  # noqa: S603  # nosec B603, B607
         ["git", "config", _TEXTCONV_CONFIG_KEY],  # noqa: S607
@@ -1992,10 +1986,10 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
     # Check git config for the textconv driver.
     #
     # ONE attribute name, ``tracker``, matching ADR-0013 and the repo-root
-    # .gitattributes. A second name (``tracker-ops``) used to be configured
-    # here; because the nested .ops/.gitattributes files win over the root
-    # pattern by path specificity, that second name silently overrode the
-    # working driver and left `git log -p` exiting 128 across the repo.
+    # .gitattributes. Do not configure a second name: the nested
+    # .ops/.gitattributes files win over the root pattern by path
+    # specificity, so a second name there silently overrides the working
+    # driver, and a broken one makes `git log -p` exit 128 across the repo.
     try:
         result = subprocess.run(  # noqa: S603  # nosec B603, B607
             ["git", "config", _TEXTCONV_CONFIG_KEY],  # noqa: S607
@@ -2655,7 +2649,8 @@ def _check_autonomous_mode(repo_root: Path | None) -> CheckResult:
 def _check_reflection_state(repo_root: Path | None) -> CheckResult:
     """Check #21: Validate stop hook state file schema and freshness.
 
-    Reads stop_hook_state.json (hook-written only, post-INV-jofaf-facet-2).
+    Reads stop_hook_state.json (written only by the stop hook; history:
+    INV-jofaf).
     Parses the file, checks that it has the expected keys, validates the
     timestamp, and warns if the reflection is unreasonably stale (>7 days).
     Advisory only.
@@ -2704,7 +2699,7 @@ def _check_reflection_state(repo_root: Path | None) -> CheckResult:
             message=f"{state_file.name}: not a JSON object",
         )
 
-    # Post-split schema: `current_branch` is the canonical key.
+    # `current_branch` is the canonical key.
     missing: set[str] = set()
     if "last_completed_utc" not in raw:
         missing.add("last_completed_utc")
@@ -3076,10 +3071,10 @@ def generate_human_shim(root: Path) -> str:
     3. Fixing group permissions (if two-user setup detected)
     4. Ongoing TUI access from the human terminal
 
-    **It used to tell the human to ``source`` the agent's virtualenv**, which
-    is how this deployment came to run human-authority commands out of an
-    agent-writable install (INV-hivog). Every invocation it prints is now an
-    absolute path into the human's own copy; the agent's venv is not mentioned.
+    Every invocation it prints is an absolute path into the human's own copy;
+    the agent's venv is never mentioned. Telling the human to ``source`` the
+    agent's virtualenv would have them run human-authority commands out of an
+    agent-writable install (history: INV-hivog).
     """
     # Find repo root (git root or parent of .agent/)
     repo_root = root.parent.resolve()

@@ -1,29 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The adjudication packet builder, and the four defects 0006 filed against it.
+"""The adjudication packet builder, and the defects it is pinned against.
 
-WHY THIS FILE EXISTS AT ALL. Measurement 0006 adjudicated 112 situations and
-published 33.9% correctness / 24.1% useful precision. Its own section F names
-~12 reports against **the measurement's own packet builder, NOT hypergumbo**,
-and ends "Fix before reuse." The builder was a session artifact and was never
-committed, so the defects could not be fixed, only re-encountered. This is the
-builder, in-repo, with each named defect pinned as a test.
+``scripts/measure-taint-precision.py`` renders one packet per sampled taint
+flow: the flow's facts and the source behind them, which a human adjudicator
+reads to label the flow. A packet that prints an empty listing where the site
+is really present shows the adjudicator evidence of absence that the
+instrument manufactured, so each way the builder can do that is pinned here
+as a test. The defects keep the numbers measurement 0006 §F gave them, which
+the builder's own docstrings also use:
 
-THE FOUR DEFECTS, quoted from 0006 §F and reproduced from the real packets in
-``measurement_0006_08252026/packets2/``:
+  1. sink names matched as bare SUBSTRINGS (``inFORMATion`` matching
+     ``format``; ``-> `` inside a quoted pattern matching ``>``);
+  2. shell ``$VAR`` matches inside COMMENTS and on locally-assigned names;
+  3. literal call sites missed;
+  4. sink sites searched only inside the SOURCE symbol's span, which makes
+     the sink listing structurally empty for every multi-hop situation.
 
-  1. "candidate-line listings match sink names as bare SUBSTRINGS
-     (`inFORMATion` matched `format`; `-> ` inside a quoted pattern matched
-     `>`)"
-  2. "match any `$VAR` including shell COMMENTS and locals"
-  3. "miss literal call sites"
-  4. "search for sink sites only inside the SOURCE symbol's span — which makes
-     the sink listing structurally empty for every multi-hop situation"
-
-Defect 4 is the load-bearing one. ``ArkLib#3``'s path is ``main`` (201-255)
-then ``generate_dot_graph`` (110-137); ``open`` is called in the SECOND, so a
-search of the source span printed "(none found in span)" for a situation whose
-sink is plainly there. An adjudicator reading that packet is being shown
-evidence of absence that the instrument manufactured.
+Defect 4 is the load-bearing one. In the ``ArkLib#3`` shape the path is
+``main`` (201-255) then ``generate_dot_graph`` (110-137), and ``open`` is
+called in the SECOND, so a search of the source span alone prints "(none
+found in span)" for a situation whose sink is plainly there.
 """
 from __future__ import annotations
 
@@ -54,7 +50,7 @@ class TestScrub:
         assert "readFile" not in mtp.scrub("y = 1 -- readFile x", "haskell")
 
     def test_a_string_literal_is_blanked(self) -> None:
-        """``-> `` inside a quoted pattern matched the bash redirect ``>``."""
+        """``-> `` inside a quoted pattern must not match the bash redirect ``>``."""
         assert ">" not in mtp.scrub('grep "a -> b" file', "bash")
 
     def test_code_outside_the_string_survives(self) -> None:
@@ -132,7 +128,7 @@ class TestSinkSearchSpans:
         assert ("a.py", 201, 255, "main") in spans
 
     def test_the_arklib3_shape_reaches_the_second_symbol(self) -> None:
-        """The exact situation that printed "(none found in span)"."""
+        """The defect-4 shape: the sink lives in the SECOND path symbol."""
         flow = {
             "path": [
                 "python:s/g.py:201-255:main:function",
@@ -176,8 +172,8 @@ class TestSinkNames:
     """Defect 3: a collapsed situation stands for SEVERAL primitives."""
 
     def test_every_collapsed_primitive_is_searched(self) -> None:
-        """ArkLib#3 collapses ``open``, ``file.write`` and ``json.dump``; the
-        old packet searched only ``open`` and reported nothing found."""
+        """ArkLib#3 collapses ``open``, ``file.write`` and ``json.dump``;
+        searching only the headline ``open`` can report nothing found."""
         flow = {
             "sink_name": "open",
             "sink_primitives": ["builtins.open", "file.write", "json.dump"],
@@ -226,7 +222,7 @@ class TestRenderedPacket:
         }
 
     def test_the_sink_is_found_in_the_callee_not_the_source(self, repo: Path) -> None:
-        """THE REGRESSION. This is the situation 0006 printed as empty."""
+        """The defect-4 situation, end to end: the listing is not empty."""
         text = mtp.render_packet(self._flow(), repo)
         assert "none found" not in text
         assert "open(out" in text
@@ -238,8 +234,8 @@ class TestRenderedPacket:
 
     def test_a_genuinely_absent_sink_says_so_with_its_scope(self, repo: Path) -> None:
         """An honest empty must name WHAT was searched, or a reader cannot
-        tell "not there" from "not looked for" — the distinction that made
-        the original listing misleading rather than merely thin."""
+        tell "not there" from "not looked for" — without that distinction an
+        empty listing is misleading rather than merely thin."""
         flow = {**self._flow(), "sink_name": "socket", "sink_primitives": []}
         text = mtp.render_packet(flow, repo)
         assert "none found" in text
@@ -257,14 +253,14 @@ class TestRenderedPacket:
 
 
 class TestFileAnchoredSymbols:
-    """Found by running the fixed builder on 0006's own ArkLib flows.
+    """A file-anchored symbol covers the whole file, not its declared span.
 
     ``bash:scripts/lintWhitespace.sh:1-1:file:file`` declares span 1-1 for a
-    26-line script. Honouring that span literally searched ONE line and
-    reported "none found" for a redirect on line 10 — the same manufactured
-    absence as defect 4, arriving by another route. The unit fixtures all used
-    function-kind symbols, where the declared span is right, so no test caught
-    it; reading real output back against source did.
+    26-line script. Honouring that span literally would search ONE line and
+    report "none found" for a redirect on line 10 — the same manufactured
+    absence as defect 4, arriving by another route. Function-kind symbols,
+    whose declared span is right, cannot exercise this, so these tests use
+    file-kind ones.
     """
 
     def test_a_file_symbol_covers_the_whole_file(self) -> None:
@@ -289,8 +285,8 @@ class TestShellEnvSites:
     A bash ``environ`` source names no literal token — there is no ``environ``
     in the script — so name matching finds nothing and an adjudicator is shown
     an empty listing for a source that is really there. The evidence for an
-    ambient read is the EXPANSION, and the two things the old builder got
-    wrong are comments and locally-assigned names.
+    ambient read is the EXPANSION, and the two things that must not count as
+    one are comments and locally-assigned names.
 
     Strings are deliberately NOT excluded here, unlike everywhere else: the
     shell expands inside double quotes, so ``"$HOME/x"`` is a real read.
@@ -321,9 +317,9 @@ class TestShellEnvSites:
         assert mtp.shell_env_sites(["export FOO=1", 'echo "$FOO"']) == []
 
     def test_a_read_bound_name_is_a_local(self) -> None:
-        """ArkLib's lintWhitespace.sh binds ``file`` with ``read -r file``;
-        ``$file`` was listed as an environment read on four lines. Found by
-        reading the rendered packet back against source, not by a fixture."""
+        """A name bound by ``read`` is a local, not an environment read --
+        ArkLib's lintWhitespace.sh binds ``file`` with ``read -r file`` and
+        then expands ``$file``."""
         lines = ["while IFS=: read -r line_num line; do", '    echo "$line"']
         assert mtp.shell_env_sites(lines) == []
 
@@ -337,23 +333,23 @@ class TestShellEnvSites:
 
 
 class TestExtensionlessScripts:
-    """Defect 5, found by running the FIXED builder on the 0007 draw.
+    """Defect 5: an extensionless script is still read as its language.
 
     ``shellcheck`` carries two bash scripts named ``.github_deploy`` and
     ``.multi_arch_docker``. ``Path(name).suffix`` is ``""`` for both — a
-    leading dot is not an extension — so the builder called them an unknown
-    language, skipped the bash branch that lists ambient parameter
-    expansions, and printed
+    leading dot is not an extension — so by suffix alone the builder would
+    call them an unknown language, skip the bash branch that lists ambient
+    parameter expansions, and print
 
         (none found; searched .github_deploy 1-28)
 
     for a file whose line 11 reads ``for tag in $TAGS``. That is defect 2's
-    failure mode returning through a different door: the listing is empty not
-    because the read is absent but because the instrument never looked, and
-    an adjudicator is handed manufactured evidence of absence pointing at FP.
+    failure mode through a different door: the listing is empty not because
+    the read is absent but because the instrument never looked, and an
+    adjudicator is handed manufactured evidence of absence pointing at FP.
 
-    The shebang is the fact the extension is missing, and both files carry
-    ``#!/bin/bash`` on line 1.
+    The shebang supplies the fact the extension is missing, and both files
+    carry ``#!/bin/bash`` on line 1.
     """
 
     def test_a_suffixless_path_alone_is_unknown(self) -> None:
@@ -397,7 +393,7 @@ class TestExtensionlessScripts:
     def test_the_packet_lists_the_expansion_in_a_suffixless_script(
         self, tmp_path: Path,
     ) -> None:
-        """THE REGRESSION, in the shellcheck shape."""
+        """Defect 5 end to end, in the shellcheck shape."""
         (tmp_path / ".github_deploy").write_text(
             "\n".join([
                 "#!/bin/bash",          # 1
@@ -425,8 +421,8 @@ class TestExtensionlessScripts:
         source_block = text.split("-- SINK")[0]
         assert "for tag in $TAGS" in source_block
         assert "none found" not in source_block
-        # Defect 2 must not return with it: the commented expansion is not a
-        # site, which is the property the bash branch exists to provide.
+        # Defect 2 still holds here: the commented expansion is not a site,
+        # which is the property the bash branch exists to provide.
         assert "COMMENTED" not in source_block
 
     def test_a_suffixless_sink_file_is_scrubbed_as_its_language(
@@ -486,20 +482,20 @@ class TestExtensionlessScripts:
 
 
 class TestOverlappingPathSpans:
-    """WI-binod defect 1: a whole-file pseudo-symbol double-attributed sites.
+    """A site is listed once, under the narrowest path symbol (WI-binod).
 
-    Measurement 0012's ArkLib :3 and :5 packets listed the same ``open()``
-    sites twice: once under ``revert_nav`` (5-84), where they are, and once
-    under the module-level symbol printed as ``in file (scripts/revert_nav.py
-    1-93)``. Module-level execution never reaches those calls; the widened
-    whole-file span contains them TEXTUALLY, not as a body. In :3 the
-    pseudo-symbol's name ``file`` also collided with a loop variable called
-    ``file`` on line 26, so the header read like a claim about that variable.
+    Path symbols can NEST -- a closure and its enclosing function both on the
+    path -- and a whole-file pseudo-symbol is the widest instance. In the
+    ArkLib :5 shape, the ``open()`` sites in ``revert_nav`` also lie inside
+    the module-level symbol's widened whole-file span, but only TEXTUALLY:
+    module-level execution never reaches them. Listing a site under every
+    span that contains it would show it twice, once as though module level
+    called it. Each site is therefore listed ONCE, under the narrowest path
+    symbol whose span contains it.
 
-    The mechanism is general -- any two path symbols whose spans NEST (a
-    closure and its enclosing function both on the path) -- and the file
-    symbol is its widest instance. Each site is therefore listed ONCE, under
-    the narrowest path symbol whose span contains it.
+    The module-level entry is labelled "at module level" rather than by the
+    pseudo-symbol's name ``file``, which reads like a claim about a variable
+    called ``file`` when the script has one (ArkLib :3 does).
     """
 
     @pytest.fixture()
@@ -547,7 +543,7 @@ class TestOverlappingPathSpans:
     )
 
     def test_a_site_inside_a_path_function_is_listed_once(self, repo: Path) -> None:
-        """THE REGRESSION, in the ArkLib :5 shape."""
+        """The ArkLib :5 shape: one listing per site."""
         block = self._sink_block(repo, list(self._ARKLIB5))
         assert block.count("with open(d, 'w') as f:") == 1
         assert block.count("f.write('x')") == 1
@@ -579,7 +575,8 @@ class TestOverlappingPathSpans:
     def test_the_file_symbol_is_labelled_module_level_not_by_its_name(
         self, repo: Path,
     ) -> None:
-        """``in file (...)`` read as a claim about a variable named ``file``."""
+        """``in file (...)`` would read as a claim about a variable named
+        ``file``."""
         block = self._sink_block(repo, list(self._ARKLIB5))
         assert "in file (" not in block
         assert "at module level (s/nav.py 1-12)" in block
@@ -600,8 +597,8 @@ class TestOverlappingPathSpans:
     def test_an_empty_search_names_the_widened_file_span(
         self, repo: Path,
     ) -> None:
-        """The empty-result scope used the UNWIDENED sentinel and printed
-        ``file s/nav.py 1--1`` as what was searched."""
+        """The empty-result scope names the WIDENED file span, never the
+        unwidened ``1--1`` sentinel."""
         flow = {**self._flow(list(self._ARKLIB5)), "sink_name": "socket",
                 "sink_primitives": []}
         text = mtp.render_packet(flow, repo)
@@ -635,17 +632,15 @@ class TestOverlappingPathSpans:
 
 
 class TestShellParametersBashAssigns:
-    """WI-binod defect 2: BASH_SOURCE was listed as an environment read.
+    """Names bash assigns itself are not environment reads (WI-binod).
 
-    cert-manager's checkhash.sh:21 (``SCRIPT_DIR="$( cd "$( dirname
-    "${BASH_SOURCE[0]}" )" ...)"``) was listed among the SOURCE sites of an
-    ``environ`` source. bash sets BASH_SOURCE itself; nothing inherits it.
-    hypergumbo stopped emitting it as an env read (INV-nular, PR #541), but the
-    builder kept its own list of non-environment names, so the instrument
-    asserted something the tool under measurement no longer does.
-
-    The cure is ONE home for the fact: the builder reads bash.py's own sets,
-    and these tests enumerate them rather than sample them.
+    bash sets ``BASH_SOURCE`` itself; nothing inherits it, so cert-manager's
+    checkhash.sh:21 (``SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"
+    ...)"``) is not a SOURCE site of an ``environ`` source. hypergumbo's bash
+    analyzer does not emit it as an env read (INV-nular), and a builder
+    keeping its own list of such names could drift from the tool it measures.
+    So the fact has ONE home: the builder reads bash.py's own sets, and these
+    tests enumerate them rather than sample them.
     """
 
     _CHECKHASH = (
@@ -654,7 +649,7 @@ class TestShellParametersBashAssigns:
     )
 
     def test_bash_source_is_not_an_environment_read(self) -> None:
-        """THE REGRESSION, on cert-manager's line."""
+        """cert-manager's line yields no environment site."""
         assert mtp.shell_env_sites([self._CHECKHASH]) == []
 
     def test_a_real_read_on_the_same_line_is_still_a_site(self) -> None:
@@ -664,7 +659,8 @@ class TestShellParametersBashAssigns:
 
     def test_every_bash_assigned_name_is_excluded(self) -> None:
         """Enumerated over bash.py's set, so a name added there is covered
-        here with no second edit -- the property a second list lacked."""
+        here with no second edit -- which a second, hand-kept list would
+        not give."""
         from hypergumbo_lang_mainstream import bash
 
         assert "BASH_SOURCE" in bash._SHELL_STATE_NAMES
@@ -691,7 +687,7 @@ class TestShellParametersBashAssigns:
 
     def test_a_hostinfo_source_lists_host_description_expansions(self) -> None:
         """The other half of the split. A ``hostinfo`` source names no literal
-        token either, so name matching printed "(none found)" for a
+        token either, so name matching would print "(none found)" for a
         ``$HOSTNAME`` read sitting in the span."""
         lines = ['echo "$HOSTNAME" > h', 'echo "$API_KEY" > k',
                  'echo "${BASH_SOURCE[0]}"']

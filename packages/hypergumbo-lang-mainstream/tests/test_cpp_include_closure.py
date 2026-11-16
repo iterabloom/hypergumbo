@@ -2,15 +2,17 @@
 """C++'s include stamp names every header the unit can see (INV-zikul).
 
 cpp.py stamps EVERY unresolved call with the file's include set (WI-rupik),
-not only the ambiguous names C stamps, so the defect c.py had was wider
-here. Live on the shipped CLI before this change:
+not only the ambiguous names C stamps, so a stamp naming only the file's own
+direct includes misleads more calls here than in C. Two shapes show it:
 
 * pq2: only ``#include "net.h"`` (net.h includes ``<sys/socket.h>``), then
-  ``send()``. Placeholder slot; NO-NET-SEND CONFIRMED.
+  ``send()``. Without the headers net.h reaches, the slot is the placeholder
+  and a NO-NET-SEND claim is falsely CONFIRMED.
 * pq4: ``#include <cstdint>`` + ``#include "util.h"`` (util.h includes
-  ``<cstdio>``), then ``fopen(p, "w")``. Slot ``cstdint``; the module filter
-  refused the stdio row, cstdint is granted, and NO-FSWRITE read CONFIRMED.
-  ``fopen`` is not an ambiguous name, so C never had this half.
+  ``<cstdio>``), then ``fopen(p, "w")``. Stamped ``cstdint`` alone, the module
+  filter refuses the stdio row, cstdint is granted, and a NO-FSWRITE claim is
+  falsely CONFIRMED. ``fopen`` is not an ambiguous name, so C has no such
+  case.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.cli import main
+from hypergumbo_core.module_sets import expand_module_slot
 from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
 _SEND = 'int run(int fd) { return (int)send(fd, "x", 1, 0); }\n'
@@ -42,7 +45,7 @@ def _slots(repo: Path, name: str) -> list[list[str]]:
     for edge in analyze_cpp(repo).edges:
         parts = edge.dst.split(":")
         if edge.edge_type == "calls" and len(parts) >= 4 and parts[3] == name:
-            out.append(parts[1].split(","))
+            out.append(expand_module_slot(parts[1]).split(","))
     return out
 
 
@@ -73,7 +76,7 @@ def test_an_angled_header_found_in_the_repository(tmp_path: Path) -> None:
 
 
 def test_a_file_with_no_include_keeps_the_placeholder(tmp_path: Path) -> None:
-    """The short-name fallback the sentinel enables is unchanged."""
+    """With no include, the slot keeps the sentinel and its short-name fallback."""
     repo = _repo(tmp_path, {"main.cpp": _FOPEN})
     assert _slots(repo, "fopen") == [["external"]]
 
@@ -181,6 +184,39 @@ def test_a_direct_call_outside_analyze_reads_the_file_s_own_directory(
         "main.cpp", {}, {}, AnalysisRun.create(pass_id="t", version="t"), {},
         NameResolver({}),
     )
-    slots = [e.dst.split(":")[1].split(",") for e in edges
+    slots = [expand_module_slot(e.dst.split(":")[1]).split(",") for e in edges
              if e.edge_type == "calls" and e.dst.split(":")[3] == "fopen"]
     assert slots == [["util.h", "cstdio"]]
+
+
+def test_a_wide_include_set_is_a_bounded_handle_stored_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """INV-jahuf. A file can see a hundred or more headers; carried inline, the
+    list would ride in every unresolved call's id, label, dst and dst_ref,
+    kilobytes each. The slot is a handle, the behavior map stores the list
+    once, and the verdict read back from the written map is pq4's violation,
+    200 headers wider."""
+    many = "".join(f'#include "h{i}.h"\n' for i in range(200))
+    files = {f"h{i}.h": "" for i in range(200)}
+    files["main.cpp"] = '#include <cstdint>\n#include "util.h"\n' + many + _FOPEN
+    files["util.h"] = "#include <cstdio>\n"
+    repo = _repo(tmp_path, files)
+    calls = [e for e in analyze_cpp(repo).edges
+             if e.edge_type == "calls" and e.dst.split(":")[3] == "fopen"]
+    assert len(calls) == 1
+    assert len(calls[0].dst) < 80
+    assert calls[0].dst_ref is not None
+    slot = calls[0].dst_ref.module_path
+    homes = expand_module_slot(slot).split(",")
+    assert len(homes) == 203 and {"cstdint", "util.h", "cstdio"} <= set(homes)
+
+    out = tmp_path / "map.json"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    with contextlib.redirect_stdout(io.StringIO()), \
+            contextlib.redirect_stderr(io.StringIO()):
+        main(["run", str(repo), "--out", str(out)])
+    doc = json.loads(out.read_text())
+    assert doc["module_sets"][slot] == expand_module_slot(slot).split(",")
+    assert all(len(e["dst"]) < 200 for e in doc["edges"])
+    assert _verdicts(repo, tmp_path, monkeypatch)["NO-FSWRITE"] == "violated"

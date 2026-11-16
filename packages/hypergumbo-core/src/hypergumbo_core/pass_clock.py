@@ -9,19 +9,18 @@ and ``run_all_linkers`` dispatches each linker priority cohort into another.
 A pass's wall time therefore includes every moment its worker spent waiting
 for the GIL while a sibling ran Python bytecode, so:
 
-1. cards OVERLAP: the 96 cards of one measured survey summed to 157.7 s
-   inside a 93.9 s wall span, and any "share of wall" computed from card sums
-   is inflated;
-2. a card INFLATES WITH CONTENTION: the same 43 bash files billed 2.3 s
-   beside a one-file python analysis and 49.9 s beside a 1121-file one. The
-   bash analyzer did identical work both times.
+1. cards OVERLAP: a survey's cards can sum to well over its wall span, so
+   any "share of wall" computed from card sums is inflated;
+2. a card INFLATES WITH CONTENTION: an analyzer doing identical work bills
+   far more wall time beside a large concurrent analysis than beside a small
+   one.
 
 ``cpu_ms`` is the CPU time consumed by the thread that ran the pass
 (``time.thread_time_ns``). Waiting on the GIL, on I/O or on a sleep does not
 advance it, so it measures what the pass cost rather than the machine's load,
 and ``duration_ms - cpu_ms`` is how long the pass waited. Both are recorded:
-wall stays what the schema has always called it, and the difference is what
-lets a reader SEE contention.
+wall keeps its schema name, and the difference is what lets a reader SEE
+contention.
 
 What ``cpu_ms`` does not count
 ------------------------------
@@ -50,8 +49,7 @@ use the same clock directly.
 
 Rounding
 --------
-``wall_ms`` truncates, matching how every pass body has always computed
-``duration_ms``. ``cpu_ms`` rounds UP, and is at least 1: a measured pass
+``wall_ms`` truncates, matching how pass bodies compute ``duration_ms``. ``cpu_ms`` rounds UP, and is at least 1: a measured pass
 executed code, and a 0 would read as "cost nothing". The bias is under 1 ms
 per pass on a clock with sub-millisecond resolution. A run that
 nobody measured carries ``cpu_ms=None`` (serialized ``null``): the field
@@ -85,10 +83,9 @@ class PassCost:
         A body's timer covers a SUB-span of the pass (the python analyzer
         stops its clock before parsing pyproject dependencies, and work done
         before a body starts its timer is outside it too), so keeping it
-        beside a ``cpu_ms`` read over the whole call made the two disagree
-        about what they measure: measured on this repository, the python
-        card read ``duration_ms=663`` beside ``cpu_ms=1086``, which no single
-        span can produce. With both from one span, ``duration_ms - cpu_ms``
+        beside a ``cpu_ms`` read over the whole call would let the two
+        disagree about what they measure — a wall figure below the CPU
+        figure, which no single span can produce. With both from one span, ``duration_ms - cpu_ms``
         is the time the pass waited.
         """
         run.duration_ms = self.wall_ms

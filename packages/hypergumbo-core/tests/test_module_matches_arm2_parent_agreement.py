@@ -1,36 +1,35 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Arm 2 of ``_module_matches`` decides by PARENT AGREEMENT, not by case value.
 
-THE DEFECT (WI-zozun). When one module path is a strict component-prefix of
-the other, the first extra component is either a TYPE inside the matched
-module (``os/exec`` + ``Cmd`` -> match) or a SIBLING module that merely shares
-the prefix (``net/http`` + ``fcgi`` -> no match). Arm 2 decided that with
-``extra[:1].isupper()`` -- Go's "capitals mean types" convention -- in a
-predicate that takes no language and serves fifteen catalogues. Where module
-names are themselves capitalised that test is CONSTANT-TRUE and therefore
-information-free: haskell 195/195 catalogue rows, swift 106/107, objc 126/131,
-elixir 250/529.
+THE QUESTION. When one module path is a strict component-prefix of the
+other, the first extra component is either a TYPE inside the matched module
+(``os/exec`` + ``Cmd`` -> match) or a SIBLING module that merely shares the
+prefix (``net/http`` + ``fcgi`` -> no match).
 
-MEASURED, not argued (WI-zozun, 2026-09-02): across eight repos in exactly
-those languages arm 2 fired nine times and named a type ZERO times. Every
-firing was a sub-module. Two were confirmed false positives read back against
-source -- livebook's ``IO.ANSI.format`` builds chardata and performs no I/O,
-tagged ``logging`` via the ``io`` row; ``Req.Request.merge_options`` is pure
-struct manipulation, tagged ``net_send`` via ``Req.new``.
+WHY NOT "CAPITALS MEAN TYPES". ``extra[:1].isupper()`` -- Go's convention --
+in a predicate that takes no language and serves fifteen catalogues is
+CONSTANT-TRUE, and therefore information-free, wherever module names are
+themselves capitalised: every or nearly every haskell, swift and objc
+catalogue row, and about half of elixir's. In those languages the extra
+component is a sub-module, not a type, and calling it a type yields false
+positives: livebook's ``IO.ANSI.format`` builds chardata and performs no I/O,
+yet would be tagged ``logging`` via the ``io`` row; ``Req.Request.merge_options``
+is pure struct manipulation, yet would be tagged ``net_send`` via ``Req.new``.
+(history: WI-zozun)
 
 THE RULE. A component that names a TYPE is spelled differently from the module
 it sits in; a component that names a SIBLING MODULE is spelled the same way.
 So the extra component decides by whether its case DISAGREES with the
 component it FOLLOWS within the longer path. For a lowercase parent (go, rust,
-java, python, kotlin) this is identical to the old test, so every documented
-match survives. For a capitalised parent it always rejects, which is the
-information the old test threw away.
+java, python, kotlin) this agrees with capitals-mean-types, so every documented
+match holds. For a capitalised parent it always rejects, which is the
+information capitals-mean-types throws away.
 
-WHAT IT COSTS, and why the catalogue absorbs it rather than the predicate. The
-haskell firings were BENIGN: ``Data.ByteString.Lazy.readFile`` really is a file
-read, because the sibling is a parallel API with identical I/O semantics. This
-rule rejects them, so those siblings are given their OWN catalogue rows and
-arm 1 (exact) carries them. That is the only route to removed=0 in haskell:
+WHAT IT COSTS, and why the catalogue absorbs it rather than the predicate. Some
+capitalised siblings are BENIGN matches: ``Data.ByteString.Lazy.readFile``
+really is a file read, because the sibling is a parallel API with identical I/O
+semantics. This rule rejects them, so those siblings have their OWN catalogue
+rows and arm 1 (exact) carries them. That is the only way to keep them:
 ``Data.ByteString + Lazy`` and ``Req + Response`` are orthographically
 identical, and the difference between them -- does the sibling re-export the
 same I/O surface? -- is semantic. No spelling rule can see it.
@@ -76,7 +75,7 @@ class TestTheHelperIsTheOneHome:
     def test_a_capitalised_child_of_a_capitalised_parent_is_a_sibling(
         self, parent: str, extra: str,
     ) -> None:
-        """THE CHANGE. Under the old test every one of these was a type."""
+        """Capitals-mean-types would call every one of these a type."""
         assert not _extra_component_names_a_type(parent, extra)
 
     def test_an_empty_component_is_not_a_type(self) -> None:
@@ -85,9 +84,9 @@ class TestTheHelperIsTheOneHome:
 
 
 class TestTheNineMeasuredFirings:
-    """Every (catalogue, hint) pair arm 2 was measured deciding, 2026-09-02.
+    """Capitalised-sibling (catalogue, hint) pairs that occur in real repos.
 
-    All nine are sub-modules and all nine now reject. The haskell ones are
+    All nine are sub-modules and all nine reject. The haskell ones are
     benign and are re-admitted THROUGH THE CATALOGUE (their own rows, matched
     by arm 1) -- asserted separately below -- not through this predicate.
     """
@@ -115,7 +114,7 @@ class TestTheNineMeasuredFirings:
         )
 
     def test_the_two_confirmed_false_positives_by_name(self) -> None:
-        """The pair the item's ruling was made on, read back against source."""
+        """The two confirmed false positives, each read back against source."""
         # livebook lib/livebook/runtime/evaluator/formatter.ex:238
         assert _module_matches("io", "IO.ANSI") is False
         # livebook lib/livebook/teams/requests.ex:344
@@ -123,11 +122,12 @@ class TestTheNineMeasuredFirings:
 
 
 class TestEveryDocumentedTypeMatchSurvives:
-    """Non-vacuity floor (L17): the fix must not be 'reject arm 2'.
+    """Non-vacuity floor (L17): arm 2 must not simply reject everything.
 
     These are the docstring's own canonical cases plus the rows
     ``test_legitimate_matches_survive`` already pins. A lowercase parent
-    followed by a capitalised child is a type under BOTH rules.
+    followed by a capitalised child is a type under both parent agreement and
+    capitals-mean-types.
     """
 
     @pytest.mark.parametrize(
@@ -161,9 +161,8 @@ class TestEveryDocumentedTypeMatchSurvives:
 class TestTheHaskellSiblingsAreCarriedByTheCatalogue:
     """The benign firings re-enter through arm 1, which is exact.
 
-    This is the removed=0 half of the change. If a row here is missing the
-    predicate change has silently deleted a true boundary in postgrest, stack,
-    hls or servant.
+    If a row here is missing, parent agreement silently loses a true boundary
+    that real code (postgrest, stack, hls, servant) uses.
     """
 
     def test_bytestring_sibling_modules_have_their_own_rows(self) -> None:
@@ -178,7 +177,7 @@ class TestTheHaskellSiblingsAreCarriedByTheCatalogue:
     @pytest.mark.parametrize(
         ("name", "module", "boundary"),
         [
-            # the measured losses, one per shape
+            # one true boundary per sibling shape
             ("readFile", "Data.ByteString.Lazy", "fs_read"),        # stack x4
             ("writeFile", "Data.ByteString.Lazy", "fs_write"),      # stack, hls
             ("readFile", "Data.ByteString.Char8", "fs_read"),       # stack, hls
@@ -209,7 +208,7 @@ class TestTheHaskellSiblingsAreCarriedByTheCatalogue:
     def test_the_hackage_siblings_are_carried_by_the_default_overlay(
         self, name: str, module: str, boundary: str,
     ) -> None:
-        """hls's 8 lost boundaries; Hackage packages, so an overlay row."""
+        """Siblings from Hackage packages (used by hls), so an overlay row."""
         from hypergumbo_core.io_boundary import load_catalog
         cat = load_catalog("haskell")
         assert cat is not None

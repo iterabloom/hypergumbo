@@ -213,7 +213,7 @@ class TestPromptGeneration:
         assert "symbols.txt" in prompt
 
     def test_prompt_contains_stratified_questions(self, broad_session, bakeoff_reflect):
-        """Prompt contains exactly 8 stratified questions (one per stratum)."""
+        """Prompt contains a stratified question for every stratum."""
         session_dir, state = broad_session
         args = mock.Mock()
         args.workdir = str(session_dir)
@@ -225,7 +225,7 @@ class TestPromptGeneration:
             session_dir / "reflect" / "cohort-001" / "iter-001" / "repo-a.prompt.md"
         ).read_text()
 
-        # Each stratum label appears exactly once in the prompt
+        # Each stratum label appears in the prompt
         for stratum_name in bakeoff_reflect.STRATUM_NAMES:
             label = stratum_name.replace("_", " ").title()
             assert f"[{label}]" in prompt, f"Missing stratum label: {label}"
@@ -283,7 +283,7 @@ class TestStratifiedSampling:
     """Test that stratified sampling guarantees theme coverage."""
 
     def test_all_strata_represented_every_run(self, bakeoff_reflect):
-        """Run sampling 20 times; all 8 strata must be represented each time."""
+        """Run sampling 20 times; every stratum must be represented each time."""
         for _ in range(20):
             sampled = bakeoff_reflect.sample_stratified_questions()
             strata_seen = {name for name, _ in sampled}

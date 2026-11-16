@@ -2416,3 +2416,79 @@ class TestTheSyntheticSymbolsCarryTheHostFileLanguage:
         for sym in result.symbols:
             assert sym.id.split(":", 1)[0] == "typescript", sym.id
             assert sym.discovery_language == "typescript"
+
+
+class TestStandInIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. The
+    four stand-ins ended in ``ipc_publisher`` / ``ipc_caller`` /
+    ``event_emitter`` / ``event_listener`` on ``kind="function"`` Symbols."""
+
+    def _result(self, tmp_path: Path):
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        src = tmp_path / "src"
+        src.mkdir()
+        rust_dir = tmp_path / "src-tauri" / "src"
+        rust_dir.mkdir(parents=True)
+        (rust_dir / "lib.rs").write_text(
+            "fn take_screenshot(window: tauri::Window) {\n"
+            '    window.emit("sync", 1).unwrap();\n'
+            "}\n"
+        )
+        (src / "bindings.ts").write_text(
+            "export function takeScreenshot() {\n"
+            '  return TAURI_INVOKE("take_screenshot");\n'
+            "}\n"
+        )
+        # One file that calls the wrapper, invokes a command named `sync`
+        # itself and listens for the event `sync`: three roles, two of them
+        # under one name, all keyed by this file with a 0-0 span.
+        (src / "editor.ts").write_text(
+            "import { takeScreenshot } from './bindings';\n"
+            "import { listen } from '@tauri-apps/api/event';\n"
+            "invoke('sync');\n"
+            "function handleClick() {\n"
+            "  takeScreenshot();\n"
+            "}\n"
+            "listen('sync', (e) => console.log(e));\n"
+        )
+        rust_syms = [
+            _make_rust_symbol("take_screenshot", annotations=[_tauri_command_annotation()]),
+            _make_rust_symbol("sync", annotations=[_tauri_command_annotation()], start_line=11, end_line=12),
+        ]
+        ts_syms = [
+            _make_ts_symbol("bindings", path=str(src / "bindings.ts")),
+            _make_ts_symbol("editor", path=str(src / "editor.ts")),
+        ]
+        result = link_tauri_ipc(repo_root=tmp_path, ts_js_symbols=ts_syms, rust_symbols=rust_syms)
+        return result, {s.id for s in rust_syms}
+
+    def test_the_fixture_reaches_all_four_roles(self, tmp_path: Path) -> None:
+        result, _ = self._result(tmp_path)
+        roles = sorted(s.meta["framework_role"] for s in result.symbols)
+        assert roles == [
+            "event_publisher", "event_subscriber", "ipc_caller",
+            "ipc_publisher", "ipc_publisher",
+        ], roles
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result, _ = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_every_edge_endpoint_is_a_symbol(self, tmp_path: Path) -> None:
+        result, rust_ids = self._result(tmp_path)
+        ids = {s.id for s in result.symbols} | rust_ids
+        assert len(result.edges) == 4
+        assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []
+
+    def test_two_roles_of_one_name_in_one_file_are_two_nodes(self, tmp_path: Path) -> None:
+        """editor.ts invokes command ``sync`` and listens for event ``sync``.
+        Both stand-ins are keyed by the file with a 0-0 span; the role in the
+        name slot is what keeps them apart now that the kind slot is one word."""
+        result, _ = self._result(tmp_path)
+        ids = [s.id for s in result.symbols]
+        assert len(ids) == len(set(ids)), sorted(ids)
+        sync = sorted(s.id.rsplit(":", 2)[1] for s in result.symbols
+                      if s.name == "sync" and s.path.endswith("editor.ts"))
+        assert sync == ["sync-event_listener", "sync-ipc_publisher"], sync

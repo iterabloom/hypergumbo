@@ -73,6 +73,3 @@ patterns:
   # Flask-Appbuilder security manager
   - concept: security
     base_class: "^(flask_appbuilder\\.security\\.)?BaseSecurityManager$"
-
-linkers:
-  - http

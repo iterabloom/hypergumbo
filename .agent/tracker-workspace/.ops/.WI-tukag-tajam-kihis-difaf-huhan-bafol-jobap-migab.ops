@@ -1,0 +1,52 @@
+- op: create  # 466a
+  at: '2026-11-13T22:19:35Z'  # 466a
+  by: agent  # 466a
+  actor: jgstern_agent  # 466a
+  clock: 1  # 466a
+  nonce: 466a  # 466a
+  data:  # 466a
+    kind: work_item  # 466a
+    title: "Sketch Entry Points lists a route twice (handler function and route marker) and prints a raw symbol id as the marker's handler"  # 466a
+    status: todo_hard  # 466a
+    priority: 3  # 466a
+    parent:  # 466a
+    tags:  # 466a
+    - sketch  # 466a
+    - dogfood  # 466a
+    isbefore: []  # 466a
+    duplicate_of: []  # 466a
+    not_duplicate_of: []  # 466a
+    pr_ref:  # 466a
+    description: "Seen 2026-11-13 in this repository's sketch (8k), HTTP Routes group of Entry Points, while verifying WI-johuv. Not caused by that change (present before it).\n\nOBSERVED.\n  - `_api_add_item` (HTTP route /api/items) — POST /api/items — create a new item.\n  - `POST /api/items` → `python:packages/hypergumbo-tracker/src/hypergumbo_tracker/serve.py:170-197:_api_add_item:function` — `packages/hypergumbo-tracker/src/hypergumbo_tracker/serve.py`\n1. One route is listed twice: once as its handler function (entry point kind http_route on the function) and once as the route marker symbol.\n2. The route marker's line shows a raw symbol id where the handler's name belongs. sketch._route_handler_hint prints meta.handler_ref as it is; this producer stores a symbol id there, others a name (alertmanager shows `api.limitHandler`).\n\nASK. One line per route in the section: the route, the handler's name, the file. Decide which of the two entry points stands for the route, and resolve a handler_ref that is a symbol id to the symbol's name. Check every producer of handler_ref / handler_name for what it stores.\n\nGENERALITY. Any framework whose routes produce both a route marker and a handler entry point, in any language; the rule is about the two records of one route, not about this repository's tracker server."  # 466a
+    fields: {}  # 466a
+- op: update  # f4ec
+  at: '2026-11-13T22:35:25Z'  # f4ec
+  by: agent  # f4ec
+  actor: jgstern_agent  # f4ec
+  clock: 2  # f4ec
+  nonce: f4ec  # f4ec
+  set:  # f4ec
+    status: in_progress  # f4ec
+- op: discuss  # ba6f
+  at: '2026-11-13T22:35:25Z'  # ba6f
+  by: agent  # ba6f
+  actor: jgstern_agent  # ba6f
+  clock: 3  # ba6f
+  nonce: ba6f  # ba6f
+  message: "Owner 2026-11-13: tackle together with WI-jolov in one PR (one commit each, tested together)."  # ba6f
+- op: update  # 3b7a
+  at: '2026-11-14T02:24:09Z'  # 3b7a
+  by: agent  # 3b7a
+  actor: jgstern_agent  # 3b7a
+  clock: 4  # 3b7a
+  nonce: 3b7a  # 3b7a
+  set:  # 3b7a
+    status: done  # 3b7a
+    pr_ref: '#2179'  # 3b7a
+- op: discuss  # 44a4
+  at: '2026-11-14T02:24:09Z'  # 44a4
+  by: agent  # 44a4
+  actor: jgstern_agent  # 44a4
+  clock: 5  # 44a4
+  nonce: 44a4  # 44a4
+  message: "DONE in PR #2179, commit 2603e837b0 (\"fix(sketch): Entry Points lists a route once and names its handler\").\n\nWHAT EACH PRODUCER STORES (the item's \"check every producer\"): Starlette and Flask-RESTful (py.py) store a SYMBOL ID in handler_ref; Express and the other JS routers (js_ts.py), Go (go.py) and the framework patterns store a NAME; Go also stores handler_name; Phoenix and Rails store controller and action. The route-handler linker adds a dispatches_to edge from the marker to the handler where it can resolve one.\n\nTHE RULE. _route_handlers pairs a route marker with the symbol that serves it by identity only: handler_ref when it is the id of a symbol in the map, else the marker's dispatches_to edge when it has exactly one. Where that symbol is an entry of the same group, the marker's line stands for both: the route, the handler's name, the handler's file, the handler's docstring, at the better of the two ranks; the group's cut and \"and N more\" count the route once. A handler name alone, or several dispatch targets, pairs nothing (a name is not an identity). A symbol id is printed as the symbol's name; an id the map does not hold prints its name segment.\n\nBEHAVIOURAL EVIDENCE.\n1. THE FILED REPRO, re-run: `hypergumbo sketch . -t 8000` on packages/hypergumbo-tracker. Before (dev 8b33e522b9): 13 lines under HTTP Routes, 7 of them with a raw id, e.g. \"- `POST /api/items` → `python:src/hypergumbo_tracker/serve.py:170-197:_api_add_item:function` — `src/hypergumbo_tracker/serve.py`\" beside \"- `_api_add_item` (HTTP route /api/items) — POST /api/items — create a new item.\". After: 7 lines, one per route, e.g. \"- `POST /api/items` → `_api_add_item` — `src/hypergumbo_tracker/serve.py` — POST /api/items — create a new item.\"; no id in any.\n2. Another framework and language, end to end: a Go net/http program (mux.HandleFunc) gives \"- `ANY /metrics` → `serveMetrics` — `main.go` — serveMetrics writes the metrics page.\", paired through the linker's edge (a test in test_sketch.py).\n3. Corpus: of the 401 cached surveys of the local clones, 13 have an HTTP Routes group; with no cut applied they print 202 route lines before and 197 after.\n4. Tests: 15 added to test_sketch.py (TestARouteIsListedOnce). Mutation controls: 13, each turned a test red. Full local suite: 33,250 passed. CI: green on PR #2179. The repro ran on the tree that merged (ec52ba5e27).\n\nGENERAL CLAIM, AND ITS LIMIT. The rule holds for any framework whose map carries one of the two identities. Where a producer stores only a handler NAME and the linker draws no edge, the two entries are still listed separately; that is deliberate. I did not measure how many routes in the corpus are in that state."  # 44a4

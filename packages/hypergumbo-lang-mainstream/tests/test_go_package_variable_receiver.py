@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-jikik: a method called on a stdlib PACKAGE VARIABLE reaches its catalogued row.
+"""A method called on a stdlib PACKAGE VARIABLE reaches its catalogued row (WI-jikik).
 
 ``http.DefaultClient.Do(req)`` names no local variable: its receiver is a package
-variable whose type the analyzer did not know. The call was emitted as
-``go:external:0-0:Do`` and ``net/http.Client.Do``'s net_send row was never
-reached. The same call on a typed local (``client := &http.Client{}``) reached
-it. So the false ``net/http.NewRequest`` send row was compensating: a secret
-sent through ``http.DefaultClient`` was reported only because the request
-CONSTRUCTOR was rowed as the send (INV-gujoh).
+variable. Without that variable's type the call is emitted as
+``go:external:0-0:Do`` and misses ``net/http.Client.Do``'s net_send row, which
+the same call on a typed local (``client := &http.Client{}``) reaches. A send
+through ``http.DefaultClient`` must be reported by that client send row, not by
+rowing the request CONSTRUCTOR ``net/http.NewRequest`` as a send (INV-gujoh).
 
 The package variables' types are catalogued in library_signatures/go.yaml under
 ``package_variables``. Each test asserts reach (the call edge exists) before
@@ -53,8 +52,8 @@ def test_default_resolver_lookup_is_a_dns_receive(tmp_path: Path) -> None:
     assert edge.dst == "go:net.Resolver:0-0:LookupHost:unresolved"
     primitive = classify_call(_CATALOGS, edge.dst, edge.meta)
     assert primitive is not None and primitive.boundary == "net_recv"
-    # The Resolver METHOD row, not the package function net.LookupHost that
-    # declaration order used to pick (INV-vusum).
+    # The Resolver METHOD row, not the same-named package function
+    # net.LookupHost, which a match by declaration order would pick (INV-vusum).
     assert primitive.module == "net.Resolver"
 
 

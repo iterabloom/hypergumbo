@@ -22,3 +22,10 @@
     fields:  # 8e39
       statement: "A linker's depends_on clause names exactly the languages whose producers feed it."  # 8e39
       root_cause: "router_routes depends_on is a hand-written list that drifted from the concept: router YAMLs."  # 8e39
+- op: discuss  # be06
+  at: '2026-11-01T10:56:10Z'  # be06
+  by: agent  # be06
+  actor: jgstern_agent  # be06
+  clock: 2  # be06
+  nonce: be06  # be06
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: router_routes.py:148 still depends_on [[python, javascript, ruby, java, go, csharp, elixir, php]]. A scan of frameworks/*.yaml for concept: router lists 16 YAMLs in python, javascript, java, elixir, php, scala, kotlin, haskell, fsharp, clojure, erlang, r, exactly as filed; there is no ruby/go/csharp router YAML. A behavioural repro on an http4s fixture emitted no router concept at all, so this is verified by reading only. MECHANISM: depends_on CNF hand-listed in the linker module instead of derived from the framework YAMLs that emit the consumed concept. SHARES MECHANISM WITH: INV-tukig."  # be06

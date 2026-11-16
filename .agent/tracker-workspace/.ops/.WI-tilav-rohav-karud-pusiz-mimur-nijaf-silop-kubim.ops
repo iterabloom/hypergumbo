@@ -1,0 +1,22 @@
+- op: create  # 58ea
+  at: '2026-10-28T13:41:43Z'  # 58ea
+  by: agent  # 58ea
+  actor: jgstern_agent  # 58ea
+  clock: 1  # 58ea
+  nonce: 58ea  # 58ea
+  data:  # 58ea
+    kind: work_item  # 58ea
+    title: "gate: every consumer-side subset of a registered vocabulary must be a declared, complete partition (269 hand-written literals today, none checked) -- WI-kosup deliverable D"  # 58ea
+    status: todo_hard  # 58ea
+    priority: 3  # 58ea
+    parent:  # 58ea
+    tags:  # 58ea
+    - concept_audit  # 58ea
+    - kosup_sweep  # 58ea
+    - axis  # 58ea
+    isbefore: []  # 58ea
+    duplicate_of: []  # 58ea
+    not_duplicate_of: []  # 58ea
+    pr_ref:  # 58ea
+    description: "From the WI-kosup subset census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/E_subsets.md). DELIVERABLE D: a gate requiring every consumer-side subset of a registered vocabulary to be a DECLARED, COMPLETE partition (red when a value is added to the vocabulary unplaced). 269 hand-written literals across packages/*/src list two or more values of one registered vocabulary (119 core outside the registry modules, 11 inside, 139 in language packages); none of the six existing subset linkers flags any of them. Proposed design: a '# subset-of: <axis> complete-with= | excludes= | default= | scope=' comment checked against the live vocabulary, extending _literal_scan.py (collector), folding the two family linkers into one parameterized scan, reusing the '# axis:' comment parser and _known_axes() from multi_value_field_axis. Prerequisites: register ~8 missing vocabularies in _known_axes(), a producer-derived freshness check for language tables, a callable family in the symbol-kind registry (~50 core literals use at least 5 definitions of 'callable'). Day-one flags: ~109 core literals plus 11 one-line declarations in the registry modules. The concrete probable misses are filed separately; this item is the gate."  # 58ea
+    fields: {}  # 58ea

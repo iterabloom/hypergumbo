@@ -101,3 +101,22 @@ def test_supply_chain_summary_carries_it() -> None:
     assert summary["vendored_analysed"] == {
         "dirs": 1, "entries": [{"path": "vendor", "languages": ["c"], "files": 1}],
     }
+
+
+def test_the_sketch_overview_carries_it(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The Overview says what was analysed but left out of the language
+    line, read from the map's own summary. Tested here so this package
+    covers the line without another package's end-to-end run."""
+    from hypergumbo_core.sketch import generate_sketch
+
+    (tmp_path / "app.py").write_text("def run():\n    return 1\n")
+    summary = {"dirs": 1, "entries": [
+        {"path": "pkg/vendor", "languages": ["c"], "files": 7}]}
+    sketch = generate_sketch(tmp_path, max_tokens=2000, cached_results={
+        "nodes": [], "edges": [],
+        "supply_chain_summary": {"vendored_analysed": summary}})
+    overview = sketch.split("## Structure")[0]
+    assert format_vendored_disclosure(summary) in overview
+    without = generate_sketch(tmp_path, max_tokens=2000, cached_results={
+        "nodes": [], "edges": [], "supply_chain_summary": {}})
+    assert "Vendored third-party code" not in without

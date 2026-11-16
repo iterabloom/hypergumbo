@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Estimate how likely a piece of text is substantially historical exegesis.
+
+A code comment should state what is true of the code beside it: a constraint,
+a hazard, why the obvious alternative is wrong. Historical exegesis tells how
+the code came to be instead: what it used to do, the bug that changed it, what
+a run on some corpus measured, which PR or audit did it. That account belongs
+in the tracker and the commit history, which keep it whole; in a comment it
+describes a moment, and the code moves on without it. A tracker ID on its own
+is a pointer, not history, and scores nothing.
+
+HOW IT SCORES. Six families of regular expressions each count their matches
+per 100 words (capped at :data:`CAP`):
+
+* ``change_narrative`` -- a past state set against the present one ("used
+  to", "previously", "the first draft", "was replaced");
+* ``provenance`` -- where and when the change was made: a date, a PR number,
+  "in commit", a phase, batch or audit, "caught", "discovered". Not "found",
+  a present-passive "is reported", or a bare "commit": searching, reporting
+  and committing are things code DOES, so those words describe the code;
+* ``measurement`` -- a figure taken once on some corpus ("measured", "52 of
+  52", "63.9%", "on 12 repos");
+* ``numbers`` -- figures of three or more digits, comma-grouped or decimal
+  (an ID such as ``ADR-0061`` or ``0018``, or a date's year, does not count,
+  and nor does a fraction below 1, which is a threshold or a confidence);
+* ``past_tense`` -- narrative auxiliaries ("was", "were", "had");
+* ``rule_voice`` -- the conditional and normative voice of a rule ("if",
+  "when", "unless", "must", "cannot", "does not"), the one family that lowers
+  the score. Not "never", "only", "always" or "because": a story uses them
+  as often as a rule does ("it never fired", "only because the old code").
+
+A logistic model turns the densities into a probability:
+``1 / (1 + exp(-(BIAS + sum(WEIGHTS[f] * density[f]))))``. Densities rather
+than counts, because "substantially" is a share: a long block that states its
+rule and mentions one date is not history, and a short one that is all
+anecdote is. Length itself is deliberately not a feature, since a long comment
+that states rules is long, not historical.
+
+WHERE THE WEIGHTS COME FROM. They are fitted (L2-regularised logistic
+regression, scikit-learn's ``LogisticRegression(C=0.18)`` on the capped
+densities) to every labelled COMMENT block in
+``tests/fixtures/archaeology-corpus.json``. Each row names its ``sample``:
+the ``curated`` comments were picked by hand, about half of them history,
+for the contrast; the ``random`` ones are a random sample of comment blocks
+of 40 or more words, labelled blind to these scores, about one in six of
+them history. The random sample is what real code looks like, so it sets
+the base rate: a score is the chance that a substantial comment in a
+codebase like this one is history, which is why a curated block, drawn from
+a half-history pool, often scores under 0.5 while still ranking near the
+top. Cross-validated, the fit ranks the curated comments with AUC 0.93 and
+the random ones with 0.84; most misses are mixed blocks, a rule wrapped in
+an incident story. The probability is a calibrated heuristic over that
+corpus, not a judgement: read a high-scoring block before cutting it. When
+the families change, refit against all the comment rows and update
+:data:`WEIGHTS` and :data:`BIAS`; the corpus test fails if the fit no longer
+separates them, sample by sample.
+
+A DOCSTRING SCORE IS WEAKER EVIDENCE: USE IT TO PICK WHAT TO READ. The
+corpus's docstring rows, a random sample of docstrings of 100 or more words
+labelled blind to these scores, are held out of the fit. History is rarer
+there, about one docstring in eight, and it is usually woven into a
+present-tense rule ("the previous code did X, measured on Y" as the reason
+for the rule) rather than set apart, so the densities under-read it: at 0.5
+about half the docstrings flagged are history, and those are under a third
+of the historical ones. Ranked, they do better (AUC 0.88), so sort by score
+and read from the top. The limit is the families, not the weights:
+refitting on the docstring rows themselves ranks them no better
+(cross-validated AUC 0.87-0.88). Neither sample has a block under 40 words
+(comments) or 100 words (docstrings), so a short block's score is
+unmeasured, and there one word (a "was", a version number, an array's
+dimension) can saturate it.
+
+BLOCKS. Score a Python file one block at a time, not as one text: a whole
+file's score is diluted by its code and by the rules around a historical
+paragraph. A block is a run of comment-only lines or one docstring (module,
+class or function). The two never share text: a ``#`` comment beside a
+docstring is not part of it, and a ``#`` line inside a docstring is docstring
+text. ``--kind all`` lists both kinds, each scored on its own and labelled.
+
+USAGE.
+  archaeology_heuristic.py [FILE ...]           score each file's text (stdin if none)
+  archaeology_heuristic.py --blocks FILE.py ... score each comment-only block
+  --kind comments|docstrings|all                which blocks to score; implies --blocks
+  --min-words N   skip blocks under N words (default 10; 0 keeps all): not
+                  listed with --blocks/--kind, and cut from a .py file scored
+                  whole (code and comments sharing a line with code stay)
+  --threshold P   list only results scoring at least P
+  --json          machine-readable output
+Exit 0, or 2 when a file cannot be read, or a .py file (or any file with
+--blocks/--kind) cannot be tokenised or parsed.
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import io
+import json
+import math
+import re
+import sys
+import tokenize
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable, Optional, Sequence
+
+_I = re.IGNORECASE
+
+#: The signal families, in the order the output lists them.
+FAMILIES: dict[str, re.Pattern[str]] = {
+    "change_narrative": re.compile(
+        r"\bused to\b|\bpreviously\b|\bformerly\b|\boriginally\b|\bno longer\b"
+        r"|\buntil (?:now|recently|then)\b|\buntil (?:WI|INV|PR|ADR)\b"
+        r"|\bthe (?:old|earlier|previous|original|prior|legacy) (?!value|mode\b)\w+"
+        r"|\bfirst (?:draft|cut|version|design|attempt|pass)\b"
+        r"|\bpre-(?:fix|fold|change|refactor|#\d+)\b|\bpost-#\d+\b"
+        r"|\bbefore (?:this|the) (?:fix|change|PR|rewrite)\b"
+        r"|\bwas (?:changed|renamed|removed|dropped|replaced|added|introduced|moved|wrong"
+        r"|missing|stale|ungated|unbounded|deleted|rewritten)\b"
+        r"|\bthis (?:comment|docstring|note|line) (?:here )?"
+        r"(?:used to|read|said|named|claimed|previously)\b"
+        r"|\b(?:fossil|restored|re-?measured|landed|merged|lacked|regressed|reverted)\b"
+        r"|\b(?:this|that|it) replaced\b|\bthe \w+ (?:this|it) replaced\b|\ba hand-written copy\b",
+        _I,
+    ),
+    "provenance": re.compile(
+        r"\b20\d\d-[01]\d-[0-3]\d\b"
+        r"|\bPR ?#?\d+\b|(?<![\w/])#\d{3,}\b|\b(?:in|at|by) commit\b|\bon dev\b"
+        r"|\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,40}\b"
+        r"|\bPhase[- ]?\d\w*\b|\bslice [A-Z0-9]\b|\bbatch \d+\b|\bWave[- ]?\d+\b|\bPR\d\b"
+        r"|\bdogfood\w*|\bsession\b|\bnotebook\w*\b|\bround \d+\b"
+        r"|\bthe owner (?:ruled|granted|said|asked|decided|approved|chose)\b"
+        r"|\bowner's (?:ruling|decision|call)\b|\bthe audit\b|\baudited\b"
+        r"|(?<!\bis )(?<!\bare )(?<!\bbe )(?<!\bbeen )\breported\b(?! (?:as|by)\b)"
+        r"|\b(?:caught|discovered|noticed)\b",
+        _I,
+    ),
+    "measurement": re.compile(
+        r"\bmeasured\b|\bmeasurement\b|\bcensus\b|\binstrumented\b|\bbakeoff\b|\bcohort\b"
+        r"|\b\d[\d,]* of (?:the |its |their )?\d[\d,]*\b|\b\d+(?:\.\d+)?%"
+        r"|\b\d[\d,]* ?(?:->|→) ?\d[\d,]*\b"
+        r"|\b(?:on|across|in) (?:the )?\d[\d,]* "
+        r"(?:repos|repositories|surveys|maps|files|passes|runs)\b",
+        _I,
+    ),
+    "numbers": re.compile(
+        r"(?<![\w.\-#:])(?:[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d{2,}|[1-9]\d*\.\d*[1-9]\d*)(?![\w.\-])"
+    ),
+    "past_tense": re.compile(r"\b(?:was|were|had|did|became)\b", _I),
+    "rule_voice": re.compile(
+        r"\b(?:if|when|unless|whenever|otherwise|must|cannot"
+        r"|do not|does not|is not|are not)\b",
+        _I,
+    ),
+}
+
+#: Fitted log-odds per unit of density (matches per 100 words); see the module docstring.
+WEIGHTS: dict[str, float] = {
+    "change_narrative": 0.81,
+    "provenance": 0.49,
+    "measurement": 0.62,
+    "numbers": 0.91,
+    "past_tense": 0.60,
+    "rule_voice": -0.33,
+}
+BIAS = -1.83
+#: Density ceiling per family, so one repeated phrase cannot decide the score alone.
+CAP = 20.0
+#: A tracker or ADR ID is a pointer, not prose: it is not counted as a word, so
+#: citing one neither dilutes nor adds to any family's density.
+_TRACKER_ID = re.compile(r"\b(?:WI|INV|BUG|ADR)-[\w-]+")
+#: A word holds at least one letter or digit; bare punctuation is not one.
+_WORD = re.compile(r"\S*\w\S*")
+
+
+@dataclass(frozen=True)
+class Assessment:
+    """One text's score: the probability, its word count, and what matched."""
+
+    probability: float
+    words: int
+    matches: dict[str, tuple[str, ...]]
+
+
+#: What ``--kind`` may select: comment blocks, docstrings, or both.
+BLOCK_SELECTIONS = ("comments", "docstrings", "all")
+#: Blocks shorter than this many words are skipped unless ``--min-words`` says otherwise.
+DEFAULT_MIN_WORDS = 10
+
+
+@dataclass(frozen=True)
+class Block:
+    """One scoreable block of Python source and the lines it spans.
+
+    ``kind`` is ``"comment"`` for a run of consecutive comment-only lines
+    (``#`` and leading space stripped) or ``"docstring"`` for one docstring
+    (indentation cleaned, as ``inspect.cleandoc`` does).
+    """
+
+    start: int
+    end: int
+    text: str
+    kind: str = "comment"
+
+
+def assess(text: str) -> Assessment:
+    """Score ``text``; empty text scores the prior, ``sigmoid(BIAS)``."""
+    words = len(_WORD.findall(_TRACKER_ID.sub(" ", text)))
+    matches: dict[str, tuple[str, ...]] = {}
+    z = BIAS
+    for family, pattern in FAMILIES.items():
+        found = tuple(m.group(0) for m in pattern.finditer(text))
+        if found:
+            matches[family] = found
+            z += WEIGHTS[family] * min(len(found) * 100.0 / max(words, 1), CAP)
+    return Assessment(1.0 / (1.0 + math.exp(-z)), words, matches)
+
+
+def probability(text: str) -> float:
+    """The probability that ``text`` is substantially historical exegesis."""
+    return assess(text).probability
+
+
+_NOT_CODE = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
+             tokenize.DEDENT, tokenize.ENDMARKER}
+
+
+def comment_blocks(source: str) -> list[Block]:
+    """The comment-only blocks of Python ``source``, each a run of adjacent lines.
+
+    A comment that shares its line with code is not comment-only, and a ``#``
+    inside a string is not a comment; tokenising, not a line regex, is what
+    tells those apart. Raises ``tokenize.TokenError`` on source it cannot read.
+    """
+    comments: dict[int, str] = {}
+    code: set[int] = set()
+    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        if tok.type == tokenize.COMMENT:
+            comments[tok.start[0]] = tok.string
+        elif tok.type not in _NOT_CODE:
+            code.update(range(tok.start[0], tok.end[0] + 1))
+    blocks: list[list[int]] = []
+    for line in sorted(set(comments) - code):
+        if blocks and line == blocks[-1][-1] + 1:
+            blocks[-1].append(line)
+        else:
+            blocks.append([line])
+    return [
+        Block(b[0], b[-1], "\n".join(comments[n].lstrip("#:").strip() for n in b))
+        for b in blocks
+    ]
+
+
+_HAS_DOCSTRING = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def docstring_blocks(source: str) -> list[Block]:
+    """The docstrings of Python ``source``: module, class and function, nested too.
+
+    A docstring is a string literal and a comment is a separate token, so the
+    two never share text: a ``#`` comment beside a docstring is not part of it,
+    and a ``#`` line inside one (a heading, an example) is docstring text, not
+    a comment. Only the FIRST statement of a body is its docstring; a later
+    bare string is not. Raises ``SyntaxError`` or ``ValueError`` on source it
+    cannot parse.
+    """
+    found = [Block(literal.lineno, literal.end_lineno or literal.lineno, text, "docstring")
+             for literal, text in _docstrings(source)]
+    return sorted(found, key=lambda b: b.start)
+
+
+def _docstrings(source: str) -> Iterable[tuple[ast.expr, str]]:
+    """Each docstring's string literal node and its cleaned text."""
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, _HAS_DOCSTRING):
+            text = ast.get_docstring(node, clean=True)
+            if text is not None:
+                yield node.body[0].value, text  # type: ignore[attr-defined]
+
+
+def without_short_blocks(source: str, min_words: int) -> str:
+    """``source`` with its comment blocks and docstrings under ``min_words`` cut out.
+
+    What a whole Python file is scored on: a short block's score says little
+    (one matched word saturates its density), so it should not tip the file's
+    either. Code stays, and so does a comment that shares its line with code,
+    which is not a comment-only block. Words are counted as :func:`assess`
+    counts them. ``min_words`` of 0 or less returns ``source`` unchanged.
+    Raises what :func:`comment_blocks` and :func:`docstring_blocks` raise.
+    """
+    if min_words <= 0:
+        return source
+    lines = source.splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line))
+
+    def offset(lineno: int, byte_col: int) -> int:
+        # ast columns count UTF-8 bytes, not characters
+        return starts[lineno - 1] + len(lines[lineno - 1].encode("utf-8")[:byte_col].decode("utf-8"))
+
+    cuts: list[tuple[int, int]] = []
+    for block in comment_blocks(source):
+        if assess(block.text).words < min_words:
+            for n in range(block.start, block.end + 1):
+                cuts.append((starts[n - 1], starts[n - 1] + len(lines[n - 1].rstrip("\r\n"))))
+    for literal, text in _docstrings(source):
+        if assess(text).words < min_words:
+            end_line = literal.end_lineno or literal.lineno
+            cuts.append((offset(literal.lineno, literal.col_offset),
+                         offset(end_line, literal.end_col_offset or 0)))
+    for start, end in sorted(cuts, reverse=True):
+        source = source[:start] + source[end:]
+    return source
+
+
+def blocks_of(source: str, kind: str) -> list[Block]:
+    """The blocks of ``source`` that ``kind`` (one of :data:`BLOCK_SELECTIONS`) selects, in line order.
+
+    ``all`` lists both kinds side by side, each scored on its own: merging a
+    docstring with the comments around it would dilute a historical paragraph
+    with the rules beside it, as scoring a whole file does.
+    """
+    chosen: list[Block] = []
+    if kind in ("comments", "all"):
+        chosen += comment_blocks(source)
+    if kind in ("docstrings", "all"):
+        chosen += docstring_blocks(source)
+    return sorted(chosen, key=lambda b: b.start)
+
+
+@dataclass(frozen=True)
+class _Scored:
+    """One scored input: a whole file or stdin, or one comment block of a file."""
+
+    source: str
+    assessment: Assessment
+    block: Optional[Block] = None
+
+    def as_json(self) -> dict[str, object]:
+        where: dict[str, object] = {"source": self.source}
+        if self.block is not None:
+            where.update(start=self.block.start, end=self.block.end,
+                         kind=self.block.kind, text=self.block.text)
+        return {
+            **where,
+            "probability": round(self.assessment.probability, 4),
+            "words": self.assessment.words,
+            "matches": {f: list(m) for f, m in self.assessment.matches.items()},
+        }
+
+    def render(self) -> str:
+        if self.block is not None:
+            first = self.block.text.splitlines()[0][:100] if self.block.text else ""
+            return (f"{self.assessment.probability:.2f}  "
+                    f"{self.source}:{self.block.start}-{self.block.end}  "
+                    f"{self.block.kind}  {first}")
+        head = f"{self.assessment.probability:.2f}  {self.source}"
+        detail = [f"  {f}: {', '.join(m)}" for f, m in self.assessment.matches.items()]
+        return "\n".join([head, *detail])
+
+
+class _Unreadable(Exception):
+    """A named input could not be read or tokenised; the message names it."""
+
+
+def _score(files: Sequence[str], kind: Optional[str], min_words: int) -> Iterable[_Scored]:
+    if not files:
+        yield _Scored("<stdin>", assess(sys.stdin.read()))
+        return
+    for name in files:
+        try:
+            text = Path(name).read_text(encoding="utf-8")
+            found = blocks_of(text, kind) if kind else []
+            if not kind and Path(name).suffix in (".py", ".pyi"):
+                text = without_short_blocks(text, min_words)
+        except (OSError, UnicodeDecodeError, tokenize.TokenError, SyntaxError,
+                ValueError) as exc:
+            raise _Unreadable(f"{name}: {exc}") from exc
+        if not kind:
+            yield _Scored(name, assess(text))
+        for block in found:
+            assessment = assess(block.text)
+            if assessment.words >= min_words:
+                yield _Scored(name, assessment, block)
+
+
+def _non_negative(value: str) -> int:
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be 0 or more")
+    return number
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Estimate how likely text is substantially historical exegesis."
+    )
+    parser.add_argument("files", nargs="*", help="files to score (stdin when none)")
+    parser.add_argument("--blocks", action="store_true",
+                        help="treat each file as Python and score its blocks one by one "
+                             "(comment blocks unless --kind says otherwise)")
+    parser.add_argument("--kind", choices=BLOCK_SELECTIONS,
+                        help="which blocks to score: comments, docstrings or all; implies --blocks")
+    parser.add_argument("--min-words", type=_non_negative, default=DEFAULT_MIN_WORDS,
+                        help="skip comment blocks and docstrings of fewer words, counted as the "
+                             "score counts them: listed blocks with --blocks/--kind, or cut from "
+                             f"a .py file scored whole (default {DEFAULT_MIN_WORDS}; 0 keeps all)")
+    parser.add_argument("--threshold", type=float, default=0.0,
+                        help="list only results scoring at least this probability")
+    parser.add_argument("--json", action="store_true", help="emit a JSON list")
+    args = parser.parse_args(argv)
+    try:
+        kind = args.kind or ("comments" if args.blocks else None)
+        scored = [s for s in _score(args.files, kind, args.min_words)
+                  if s.assessment.probability >= args.threshold]
+    except _Unreadable as exc:
+        print(f"archaeology_heuristic: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps([s.as_json() for s in scored], indent=1, ensure_ascii=False))
+    else:
+        for s in scored:
+            print(s.render())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

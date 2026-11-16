@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Entry point that reaches bedcore across the package boundary."""
+from bedcore.chain_a import run_a
+from bedcore.misc import help_text
+
+
+def main(argv):
+    if not argv:
+        return help_text()
+    return str(run_a(int(argv[0])))

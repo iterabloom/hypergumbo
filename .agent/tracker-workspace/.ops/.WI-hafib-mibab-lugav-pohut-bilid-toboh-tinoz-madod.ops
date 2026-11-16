@@ -1,0 +1,21 @@
+- op: create  # e809
+  at: '2026-11-03T09:32:21Z'  # e809
+  by: agent  # e809
+  actor: jgstern_agent  # e809
+  clock: 1  # e809
+  nonce: e809  # e809
+  data:  # e809
+    kind: work_item  # e809
+    title: "Java framework detection never reads a Gradle version catalog (gradle/libs.versions.toml): iceberg detects only grpc, its servlet dependency invisible"  # e809
+    status: todo_hard  # e809
+    priority: 3  # e809
+    parent:  # e809
+    tags:  # e809
+    - analysis_quality  # e809
+    - java  # e809
+    isbefore: []  # e809
+    duplicate_of: []  # e809
+    not_duplicate_of: []  # e809
+    pr_ref:  # e809
+    description: "PROBLEM. `profile._detect_java_frameworks` parses pom.xml and build.gradle(.kts) dependency strings, but a Gradle VERSION CATALOG (`gradle/libs.versions.toml`, referenced from build files as `libs.<alias>`) is never read, so a repo that declares every dependency through the catalog detects almost nothing. Instance (2026-11-03, measuring WI-losij on iceberg, ~/whole_bunch_of_repos/iceberg): `_detect_java_frameworks` returns ['grpc'] only. Its root build.gradle names `libs.jakarta.servlet`, and gradle/libs.versions.toml line 204 has `jakarta-servlet = {module = \"jakarta.servlet:jakarta.servlet-api\", ...}` (and jetty, flink, spark, hadoop, ... the same way), so the new `servlet` key (javax.servlet / jakarta.servlet / servlet-api) never fired and S3SignerServlet.doGet/doHead/doPost/doDelete (aws/src/integration/java) gained no route_handler: 0 of the 4 pre-registered. The import-based path did not add it either: refine_frameworks matches imports to VALIDATE manifest-detected frameworks (demote phase), it does not detect from imports alone (the one-file servlet probe with NO manifest did detect `servlet`, so some import-only path exists for the no-manifest case; iceberg has manifests, so it took the manifest path and the catalog was invisible).\n\nFIX. Read `gradle/libs.versions.toml` ([libraries] `module = \"group:artifact\"` and `group`/`name` forms; [plugins] ids) into the dep set beside `_parse_gradle_deps`, honouring the same 3-level search (`gradle/` dir of each module). Pin with a fixture repo whose build.gradle says `implementation libs.jakarta.servlet` and whose catalog maps it. Measure: iceberg (expect servlet, jetty, flink, spark, hadoop, ... to appear), one Kotlin KTS repo with a catalog, and a control without one. Corpus count of repos with gradle/libs.versions.toml: not measured.\n\nNOT ASSERTED: how many corpus repos use a catalog; that import-only detection should replace manifest detection."  # e809
+    fields: {}  # e809

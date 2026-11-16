@@ -296,3 +296,108 @@ class TestUnresolvedRelations:
         # Should have lower confidence for unresolved target
         assert relation_edges[0].confidence == 0.6
         assert "unresolved:Unknown" in relation_edges[0].dst
+
+
+def test_same_model_in_two_schemas_keeps_its_relations(tmp_path: Path) -> None:
+    """WI-jusah (WI-kosar family): a relation's SOURCE is the model whose
+    block contains the field, found by POSITION (``symbol_declared_by``), and
+    its target binds THIS schema's model before the run-wide registry.
+
+    Resolving either end by ``global_symbols.get(<name>)`` (one symbol per
+    name, last wins) would, when two apps' schemas each declare ``model
+    User``, make one app's relations come out of, or point into, the other
+    app's model.
+    """
+    for app, target in (("app1", "Alpha"), ("app2", "Beta")):
+        d = tmp_path / app
+        d.mkdir()
+        (d / "schema.prisma").write_text(
+            "model User {\n"
+            "  id Int @id\n"
+            f"  thing {target} @relation(fields: [thingId], references: [id])\n"
+            "  thingId Int\n"
+            "}\n\n"
+            f"model {target} {{\n"
+            "  id Int @id\n"
+            "  owner User @relation(fields: [ownerId], references: [id])\n"
+            "  ownerId Int\n"
+            "}\n"
+        )
+    result = analyze_prisma(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    refs = [e for e in result.edges if e.edge_type == "references"]
+    # Reach: per schema, User -> target and target -> User, all resolved.
+    assert len(refs) == 4
+    assert all(e.dst in by_id for e in refs)
+    pairs = set()
+    for e in refs:
+        src, dst = by_id[e.src], by_id[e.dst]
+        assert src.path == dst.path, (e.src, e.dst)
+        pairs.add((src.path.split("/")[0], src.name, dst.name))
+    assert pairs == {
+        ("app1", "User", "Alpha"), ("app1", "Alpha", "User"),
+        ("app2", "User", "Beta"), ("app2", "Beta", "User"),
+    }
+
+
+_KIND_SLOT_SOURCE = """\
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id    Int    @id
+  role  Role
+  posts Post[]
+}
+
+model Post {
+  id       Int  @id
+  author   User @relation(fields: [authorId], references: [id])
+  authorId Int
+}
+"""
+
+
+def _kind_slot_result(tmp_path: Path):
+    (tmp_path / "schema.prisma").write_text(_KIND_SLOT_SOURCE)
+    return analyze_prisma(tmp_path)
+
+
+def test_the_prisma_id_fixture_reaches_every_kind(tmp_path: Path) -> None:
+    result = _kind_slot_result(tmp_path)
+    got = sorted((s.kind, s.name) for s in result.symbols)
+    assert got == [('block', 'client'), ('block', 'db'), ('class', 'Post'), ('class', 'User'), ('enum', 'Role')], got
+
+
+def test_every_prisma_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``.
+    The id of a model said ``model``, and the id of a ``datasource`` or
+    ``generator`` block said that keyword, on Symbols of kind ``class`` and
+    ``block``. The keyword is a variable there, which a reader of the source
+    text cannot compare; only a run shows it."""
+    result = _kind_slot_result(tmp_path)
+    wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+    assert wrong == []
+
+
+def test_a_prisma_references_edge_starts_and_ends_on_a_symbol(tmp_path: Path) -> None:
+    """The analyzer builds the edge's source id a second time, from the
+    enclosing declaration. It must be the id the Symbol carries, or the edge
+    starts on no node."""
+    result = _kind_slot_result(tmp_path)
+    ids = {s.id for s in result.symbols}
+    edges = [e for e in result.edges if e.edge_type == "references"]
+    assert edges
+    assert [e.src for e in edges if e.src not in ids] == []
+    assert any(e.dst in ids for e in edges)

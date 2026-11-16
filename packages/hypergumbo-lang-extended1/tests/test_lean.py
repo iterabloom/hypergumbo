@@ -149,8 +149,8 @@ def foo := 42
         When file A imports module Foo.Bar and Foo/Bar.lean exists in the
         repo, the import edge dst should use the file ID format
         (lean:Foo/Bar.lean:1-1:file:file), NOT the module format
-        (lean:Foo.Bar:0-0:module:module). This fixes 440+ dangling edges
-        in repos like ArkLib where intra-repo imports were unreachable.
+        (lean:Foo.Bar:0-0:module:module): no node carries the module ID, so
+        the edge would dangle and the intra-repo import would be unreachable.
         """
         # Create two files: Lib/Utils.lean and Main.lean importing it
         (tmp_path / "Lib").mkdir()
@@ -341,7 +341,6 @@ theorem natId (x : MyNat) : MyNat :=
         Lean instance declarations like `instance myAdd : Add Nat` reference
         symbols in their body. Without scanning instance nodes for references,
         instance symbols become orphans.
-        In the clean repo, 23 instance symbols were orphaned.
         """
         make_lean_file(tmp_path, "Example.lean", """\
 def double (n : Nat) : Nat :=
@@ -391,7 +390,6 @@ instance : Add Nat where
         When a structure's field types reference other defined symbols,
         the structure symbol should have outgoing reference edges.
         Without scanning structure nodes, structure symbols become orphans.
-        In the clean repo, 22 structure symbols were orphaned.
         """
         make_lean_file(tmp_path, "Example.lean", """\
 structure Config where
@@ -427,8 +425,8 @@ structure AppState where
 
         When file A defines ``pSpec`` and file B uses the identifier ``pSpec``
         without importing A, no reference edge should be created. This
-        prevents massive false-positive cross-file edges (e.g., pSpec with
-        119 false in-edges in ArkLib from name collisions with local vars).
+        prevents massive false-positive cross-file edges from name collisions
+        with same-named local variables in unrelated files.
         """
         (tmp_path / "Lib").mkdir()
         make_lean_file(tmp_path, "Lib/Defs.lean", """\
@@ -474,7 +472,7 @@ def user := pSpec
 
 
 class TestLeanCyclomaticComplexity:
-    """INV-loguk slice C: callable lean symbols carry non-null CC + LOC.
+    """INV-loguk: callable lean symbols carry non-null CC + LOC.
     Real-grammar verification (if_then_else/match_alt + &&/||)."""
 
     def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:

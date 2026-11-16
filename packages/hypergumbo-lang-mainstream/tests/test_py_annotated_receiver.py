@@ -1,43 +1,39 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-zilag: a parameter's type annotation is receiver evidence, once binding-checked.
+"""A parameter's type annotation is receiver evidence, once binding-checked.
 
-WHAT WAS MISSING. A fully annotated, unambiguous receiver produced no I/O boundary at
-all::
+A fully annotated, unambiguous receiver must reach its catalogue row::
 
     import pathlib
     def h(p: pathlib.Path, x):
-        return p.write_text(x)      # emitted python:external:...:write_text -> 0 boundaries
+        return p.write_text(x)      # -> python:pathlib.Path:...:write_text, a boundary
 
 The annotation names the receiver's type exactly, and the catalogue holds
-``pathlib.Path.write_text`` as ``fs_write``. But the analyzer never routed the annotation
-into the symbol id's module slot, so the edge arrived carrying the ``external`` placeholder
-and ``gate_named_entry`` correctly refused it as an untyped method call.
+``pathlib.Path.write_text`` as ``fs_write``. Unless the annotation is routed into the
+symbol id's module slot, the edge carries the ``external`` placeholder and
+``gate_named_entry`` correctly refuses it as an untyped method call. (history: WI-zilag)
 
-SCOPE, AND WHY IT IS THIS NARROW. Measured over six Python repos: 95,245 method-call edges
-carry the ``external`` placeholder; 4,160 of those have a receiver with a resolvable
-annotation; **63** actually hit the catalogue. 96% of that payload comes from ONE shape —
-an annotated *parameter*. ``AnnAssign`` (``p: Path = raw``), return-annotated factories,
-attribute reads and generics contribute exactly **zero**, so they are deliberately not
-routed. Excluding them is scope, not oversight.
+SCOPE, AND WHY IT IS THIS NARROW. This route reads an annotated *parameter*, the shape
+that carries nearly all the catalogue-reaching payload of annotations. Return-annotated
+factories, attribute reads and generics are deliberately not routed — scope, not
+oversight. (An annotated assignment, ``p: Path = raw``, IS typed, because it can seed a
+derivation chain; see ``test_py_receiver_recall_tail.py``.)
 
-WHY THE BINDING CHECK IS LOAD-BEARING RATHER THAN DEFENSIVE. This change ADDS
-classifications, which is the opposite direction from the rest of this subsystem, and a
-minted hint is trusted: it bypasses both ``gate_named_entry`` and the ``ambiguous_names``
-net by design (measured — routing the hinted path through that gate destroys 61.5-87.2% of
-all reported boundaries for zero gain, so it is not an option). So a wrong hint is a
+WHY THE BINDING CHECK IS LOAD-BEARING RATHER THAN DEFENSIVE. Routing an annotation ADDS
+classifications, and a minted hint is trusted: it bypasses both ``gate_named_entry`` and
+the ``ambiguous_names`` net by design (routing the hinted path through that gate destroys
+most reported boundaries for no gain, so it is not an option). So a wrong hint is a
 confident false boundary AND a false taint sink, never silence.
 
-Putting the *raw annotation text* in the module slot — which is what the existing
-tree-sitter-side resolver does for dotted annotations — was measured to produce confirmed
-false boundaries: ``conn: Connection`` in sqlalchemy matched ``sqlite3.Connection.execute``
-and minted a database-zone taint sink, with 174 such annotations in the corpus. The cause
-is that ``_module_matches`` accepts an unqualified reference as a component suffix, so the
-bare text ``Connection`` matches ``sqlite3.Connection``. Resolving the annotation through
-its import binding first yields ``sqlalchemy.engine.Connection``, which does not match —
-verified directly. Every negative below is one of those measured FP classes.
+Putting the *raw annotation text* in the module slot produces confirmed false
+boundaries: ``conn: Connection`` from sqlalchemy matches ``sqlite3.Connection.execute``
+and mints a database-zone taint sink, because ``_module_matches`` accepts an unqualified
+reference as a component suffix, so the bare text ``Connection`` matches
+``sqlite3.Connection``. Resolving the annotation through its import binding first yields
+``sqlalchemy.engine.Connection``, which does not match. Every negative below is one of
+those false-positive classes.
 
-The resolution reuses ``_import_binding_for`` (INV-kipor, PR #244), so "does an import in
-this file rebind this name, and to what?" now has one answer serving three callers.
+The resolution reuses ``_import_binding_for``, so "does an import in this file rebind
+this name, and to what?" has one answer shared by every caller. (history: INV-kipor)
 """
 
 from pathlib import Path
@@ -64,7 +60,7 @@ def _slot(edges: list, method: str) -> str:
 
 
 class TestAnnotatedParameterIsRoutedWhenBindingChecked:
-    """The recall gap: a resolvable parameter annotation must reach the module slot."""
+    """Recall: a resolvable parameter annotation must reach the module slot."""
 
     def test_dotted_annotation_with_module_import(self, tmp_path: Path) -> None:
         edges = _edges(
@@ -116,17 +112,17 @@ class TestAnnotatedParameterIsRoutedWhenBindingChecked:
 
 
 class TestMeasuredFalsePositiveClassesStayRefused:
-    """Each of these was measured to produce a CONFIRMED false boundary under naive
-    routing of the raw annotation text. Each must stay at zero."""
+    """Each of these produces a CONFIRMED false boundary if the raw annotation text
+    is routed into the module slot. Each must stay at zero."""
 
     def test_unrelated_library_sharing_a_catalogued_class_name(
         self, tmp_path: Path,
     ) -> None:
         """sqlalchemy's ``Connection`` is not ``sqlite3.Connection``.
 
-        Naive routing put the bare text ``Connection`` in the module slot, which
-        ``_module_matches`` accepts as a component suffix of ``sqlite3.Connection`` —
-        4 confirmed false db boundaries, 174 such annotations in the corpus.
+        Routing the bare text ``Connection`` into the module slot would let
+        ``_module_matches`` accept it as a component suffix of
+        ``sqlite3.Connection`` — a false db boundary.
         """
         edges = _edges(
             tmp_path / "sqla",
@@ -202,7 +198,7 @@ class TestMeasuredFalsePositiveClassesStayRefused:
 
 
 class TestTaintSeesTheSameProducerDecision:
-    """One producer fix serves both consumers, and one producer refusal binds both."""
+    """One producer decision serves both consumers, and one producer refusal binds both."""
 
     def test_routed_annotation_reaches_the_taint_sink_matcher(
         self, tmp_path: Path,
@@ -231,18 +227,14 @@ class TestTaintSeesTheSameProducerDecision:
 
 
 class TestDeliberatelyUnroutedShapes:
-    """Measured to contribute ZERO payload, so deliberately out of scope.
+    """Shapes that reach no catalogue payload, so deliberately out of scope.
 
-    Pinned so the exclusion is a recorded decision rather than an accident, and so a
-    later PR that routes them has to change a test that says why.
+    Pinned so the exclusion is a recorded decision rather than an accident: routing
+    one means changing a test that says why.
 
-    ``AnnAssign`` USED TO BE PINNED HERE AND IS NOT ANY MORE. Its zero-payload
-    measurement was taken before derivations propagated; once a derivation from a
-    typed receiver kept its type, an annotated assignment began seeding a whole
-    chain and the payload stopped being zero. The exclusion was re-priced rather
-    than re-asserted, and this test failed — as designed — to force that argument
-    instead of allowing a silent widening. It now lives in
-    ``test_py_receiver_recall_tail.py``, which asserts the opposite and says why.
+    ``AnnAssign`` is NOT among them. A derivation from a typed receiver keeps its
+    type, so an annotated assignment seeds a whole chain;
+    ``test_py_receiver_recall_tail.py`` asserts that it is typed.
     """
 
     def test_return_annotated_factory_is_not_routed(self, tmp_path: Path) -> None:

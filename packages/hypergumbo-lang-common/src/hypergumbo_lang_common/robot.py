@@ -26,12 +26,15 @@ Symbols Extracted
 Edges Extracted
 ---------------
 - **calls**: Keyword invocations from test cases and keywords. Invocations
-  of names in ``RobotAnalyzer.BUILTIN_KEYWORDS`` (BuiltIn-library keywords
-  such as ``Log``) emit no edge. An invocation outside any keyword or test
-  case uses the file-level ``robot:<path>`` id as its source. The target is
-  looked up by exact name in the cross-file keyword/test registry
-  (confidence 1.0); a name not found there gets the synthetic
-  ``robot:unresolved:<keyword>`` dst at confidence 0.6
+  of names in ``_RobotExtractor.BUILTIN_KEYWORDS`` (keywords of the BuiltIn,
+  Collections and String libraries, such as ``Log``) emit no edge. An
+  invocation outside any keyword or test case uses the file-level
+  ``robot:<path>`` id as its source. The target is looked up by exact name
+  in the cross-file keyword/test registry; a name not found there gets the
+  synthetic ``robot:unresolved:<keyword>`` dst. The analyzer sets no
+  confidence itself: ``Edge.create`` derives it from
+  ``evidence_type="ast_call_direct"`` and ``is_resolved`` (0.85 resolved,
+  0.5 unresolved)
 - **imports**: Resource settings only (file -> resource); Library settings
   create a ``library`` symbol but no edge
 
@@ -238,9 +241,9 @@ class _RobotExtractor:
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: node.id and canonical stable_id minted together from one arg
-        # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
-        # start_line here (was line-less), disambiguating same-name siblings.
+        # node.id and canonical stable_id are minted together from one arg set
+        # (make_doc_symbol_ids) so they can never drift (INV-dulah). node.id
+        # carries the start_line, disambiguating same-name siblings.
         symbol_id, stable_id = make_doc_symbol_ids(
             "robot", rel_path, "keyword", name,
             span.start_line, span.end_line,
@@ -309,11 +312,14 @@ class _RobotExtractor:
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: node.id and canonical stable_id minted together from one arg
-        # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
-        # start_line here (was line-less), disambiguating same-name siblings.
+        # node.id and canonical stable_id are minted together from one arg set
+        # (make_doc_symbol_ids) so they can never drift (INV-dulah). node.id
+        # carries the start_line, disambiguating same-name siblings. The kind
+        # word is the Symbol's own kind, ``test`` (ADR-0036 Ruling 2); it also
+        # feeds the stable id, which hashed the role word ``test_case`` before
+        # the v15 stable-id scheme.
         symbol_id, stable_id = make_doc_symbol_ids(
-            "robot", rel_path, "test_case", name,
+            "robot", rel_path, "test", name,
             span.start_line, span.end_line,
         )
 
@@ -365,9 +371,9 @@ class _RobotExtractor:
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: node.id and canonical stable_id minted together from one arg
-        # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
-        # start_line here (was line-less), disambiguating same-name siblings.
+        # node.id and canonical stable_id are minted together from one arg set
+        # (make_doc_symbol_ids) so they can never drift (INV-dulah). node.id
+        # carries the start_line, disambiguating same-name siblings.
         symbol_id, stable_id = make_doc_symbol_ids(
             "robot", rel_path, "variable", var_name,
             span.start_line, span.end_line,
@@ -413,9 +419,10 @@ class _RobotExtractor:
                 end_line=node.end_point[0] + 1,
                 end_col=node.end_point[1],
             )
-            # INV-dulah: node.id and canonical stable_id minted together from one
-            # arg set (make_doc_symbol_ids) so they can never drift. node.id GAINS
-            # the start_line here (was line-less), disambiguating same-name siblings.
+            # node.id and canonical stable_id are minted together from one arg
+            # set (make_doc_symbol_ids) so they can never drift (INV-dulah).
+            # node.id carries the start_line, disambiguating same-name
+            # siblings.
             symbol_id, stable_id = make_doc_symbol_ids(
                 "robot", rel_path, "library", setting_value,
                 span.start_line, span.end_line,
@@ -441,9 +448,10 @@ class _RobotExtractor:
                 end_line=node.end_point[0] + 1,
                 end_col=node.end_point[1],
             )
-            # INV-dulah: node.id and canonical stable_id minted together from one
-            # arg set (make_doc_symbol_ids) so they can never drift. node.id GAINS
-            # the start_line here (was line-less), disambiguating same-name siblings.
+            # node.id and canonical stable_id are minted together from one arg
+            # set (make_doc_symbol_ids) so they can never drift (INV-dulah).
+            # node.id carries the start_line, disambiguating same-name
+            # siblings.
             symbol_id, stable_id = make_doc_symbol_ids(
                 "robot", rel_path, "resource", setting_value,
                 span.start_line, span.end_line,
@@ -532,10 +540,9 @@ class _RobotExtractor:
         # Try to resolve the target
         resolved_id = self._symbol_registry.get(keyword_name)
 
-        # A keyword invocation is a direct call (ast_call_direct; it was
-        # labelled ``static``, a static-linkage declaration). ADR-0039: a
-        # registry hit derives the base and a miss is unresolved (ADR-0037),
-        # deriving the unresolved base; the old 1.0 was over the ceiling.
+        # A keyword invocation is a direct call (ast_call_direct). A registry
+        # hit is resolved and a miss is unresolved; Edge.create derives the
+        # confidence from that, so none is set here (ADR-0039, ADR-0037).
         if resolved_id:
             dst = resolved_id
         else:

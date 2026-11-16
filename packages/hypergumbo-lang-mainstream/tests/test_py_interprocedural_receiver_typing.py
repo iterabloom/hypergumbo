@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-fibis residual: a receiver that arrives as a bare parameter is typed
-from the call sites that pass it.
+"""A receiver that arrives as a bare parameter is typed from the call sites
+that pass it.
 
-WHAT WAS MISSING. WI-zilag routed an ANNOTATED parameter's type into the module
-slot, so ``def h(p: pathlib.Path, x): p.write_text(x)`` reaches the catalogue.
-The residual INV-fibis pinned is the same shape without the annotation::
+An ANNOTATED parameter's type reaches the module slot on its own, so
+``def h(p: pathlib.Path, x): p.write_text(x)`` reaches the catalogue. This
+covers the same shape without the annotation::
 
     import socket
 
@@ -15,22 +15,19 @@ The residual INV-fibis pinned is the same shape without the annotation::
         s = socket.socket()
         send(s, b"hi")              # <- the type is RIGHT HERE
 
-``sock`` names no module, so the edge carried the ``external`` placeholder and
-every consumer refused it as an untyped method call. Measured on the merged
-tree before this change, with a two-arm fixture differing only in the
-annotation: ANNOTATED -> ``violated``, 1 net_send chain; UNANNOTATED ->
-``inconclusive``, no chain. Exactly one of the two shapes was seen, and the
-call site carried the answer for the other.
+``sock`` names no module, so without the call site the edge carries the
+``external`` placeholder and every consumer refuses it as an untyped method
+call — while the call site carries the answer. (history: INV-fibis)
 
 WHY IT IS THE CALL SITE AND NOT A GUESS. A parameter's type is not inferable
 from its body — that is what makes this interprocedural. What IS available is
 every argument the repository passes at that position. This types the parameter
 only when EVERY observed call site agrees on one module, because a minted hint
 is TRUSTED downstream: it bypasses both ``gate_named_entry`` and the
-``ambiguous_names`` net by design (routing the hinted path through that gate was
-measured to destroy 61.5-87.2% of all reported boundaries for zero gain). So a
-wrong hint is a confident false boundary AND a false taint sink, never silence
-— the same reason WI-zilag's annotation route is binding-checked.
+``ambiguous_names`` net by design (routing the hinted path through that gate
+destroys most reported boundaries for no gain). So a wrong hint is a confident
+false boundary AND a false taint sink, never silence — the same reason the
+annotation route is binding-checked.
 
 SCOPE, STATED AS SCOPE RATHER THAN LEFT TO BE DISCOVERED:
 
@@ -46,8 +43,8 @@ SCOPE, STATED AS SCOPE RATHER THAN LEFT TO BE DISCOVERED:
 * The argument expression must itself name an external type through an import
   binding — a constructor call (``socket.socket()``, ``requests.Session()``) or
   a local already typed by one. NOT catalogue-gated: ``requests.Session`` has
-  zero rows in python.yaml (INV-fotav), and refusing to type it would keep the
-  precise case this residual was filed for invisible.
+  zero rows in python.yaml (INV-fotav), and refusing to type it would keep
+  exactly that third-party case invisible.
 * ONE HOP. A parameter typed by this pass does not itself become evidence for
   a further parameter; that would need a fixed point, and no measurement
   justifies one.
@@ -77,13 +74,14 @@ def _tagged(edges: list) -> int:
 
 
 class TestTheRepro:
-    """The shape INV-fibis pinned, measured on the pre-change tree."""
+    """The base shape: an unannotated parameter typed from its call site."""
 
     def test_a_call_site_types_an_unannotated_receiver(
         self, tmp_path: Path,
     ) -> None:
-        """Pre-change this emitted ``python:external:0-0:sendall:unresolved``
-        and produced ZERO net_send boundaries."""
+        """Without the call-site route this emits
+        ``python:external:0-0:sendall:unresolved`` and tags ZERO net_send
+        boundaries."""
         edges = _edges(
             tmp_path / "repro",
             app=(
@@ -189,7 +187,7 @@ class TestItRefusesWhereItCouldBeWrong:
     ) -> None:
         """A first-party class carries no catalogue meaning, and minting its
         name into the module slot would invite a suffix collision with a
-        library type of the same name — the measured WI-zilag failure."""
+        library type of the same name. (history: WI-zilag)"""
         edges = _edges(
             tmp_path / "firstparty",
             app=(
@@ -207,18 +205,16 @@ class TestItRefusesWhereItCouldBeWrong:
         assert _slot(edges, "post") in ("", "external")
 
     def test_a_function_result_is_not_a_type(self, tmp_path: Path) -> None:
-        """THE CORPUS FOUND THIS, NOT REVIEW, and the first cut shipped it
-        wrong. ``x = json.dumps(y)`` has the identical AST shape to
+        """``x = json.dumps(y)`` has the identical AST shape to
         ``s = socket.socket()`` — ``module.attr(...)`` — so resolving the
-        argument through import bindings alone asserted ``json.dumps`` is a
-        TYPE. Measured on poetry: **7 of 19 agreed hints (37%) were function
-        results** (``json.dumps``, ``typing.cast``, ``tomlkit.inline_table``,
-        ``parse_constraint``, two ``get_*`` helpers).
+        argument through import bindings alone would assert ``json.dumps`` is
+        a TYPE. Function results are a common argument in real code
+        (``json.dumps``, ``typing.cast``, ``tomlkit.inline_table``, ``get_*``
+        helpers).
 
-        Not merely useless: ``io_boundary._module_matches`` does bidirectional
-        SUBSTRING matching, so ``json.dumps`` in the module slot can match a
-        catalogue module ``json`` — a confident false boundary and a false
-        taint sink. An argument must be shown to name a type, either by the
+        Not merely useless: the module slot asserts a TYPE, and a function's
+        dotted name there is a false type claim that every consumer of the
+        slot inherits. An argument must be shown to name a type, either by the
         receiver-type catalogue (which knows ``socket.socket``) or by PEP 8's
         PascalCase class convention (which is what admits
         ``requests.Session``).
@@ -347,13 +343,14 @@ class TestItRefusesWhereItCouldBeWrong:
 
 
 class TestNonDestruction:
-    """A recall widening must not disturb what already worked (L7)."""
+    """Call-site typing must not disturb the routes that type a receiver
+    without it."""
 
     def test_a_repo_with_no_such_shape_is_unchanged(
         self, tmp_path: Path,
     ) -> None:
-        """Positive control: the annotated route still resolves, and nothing
-        here depends on the new pass."""
+        """Positive control: the annotated route resolves, and nothing here
+        depends on the call-site pass."""
         edges = _edges(
             tmp_path / "unchanged",
             app=(
@@ -369,7 +366,8 @@ class TestNonDestruction:
     def test_a_local_constructor_receiver_still_resolves(
         self, tmp_path: Path,
     ) -> None:
-        """WI-fuvuj's own shape, untouched."""
+        """A locally constructed receiver resolves without the call-site
+        pass. (history: WI-fuvuj)"""
         edges = _edges(
             tmp_path / "local",
             app=(

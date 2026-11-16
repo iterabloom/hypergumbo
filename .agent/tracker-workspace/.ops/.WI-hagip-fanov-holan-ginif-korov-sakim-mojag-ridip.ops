@@ -41,3 +41,26 @@
   clock: 4  # db82
   nonce: db82  # db82
   message: "Cross-ref backfill (2026-05-30, linked-pile L7 investigation, direction fix): WI-hagip blocks WI-botol (the corrected direction). DCM OOM/crash fix is prerequisite for the 200-repo prospecting run; 3 corpus repos (trino, envoy, vscode) will OOM until WI-hagip closes."  # db82
+- op: discuss  # ad4f
+  at: '2026-11-01T22:22:29Z'  # ad4f
+  by: agent  # ad4f
+  actor: jgstern_agent  # ad4f
+  clock: 5  # ad4f
+  nonce: ad4f  # ad4f
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: MIS-PREMISED. Review 2026-11-01 at dev 9ae4abe13f; corpus not run. The contemporaneous notebook (notebookjournal_04112026_0935.md:76) records '3 timed out (>10m per-repo): trino, envoy, vscode'. That matches _run_hypergumbo's timeout=600 (scripts/dead-code-prospector-run.py:520-531), which is unchanged since f86a22d3ed. No OOM was observed. The aggregate.json just lists them in repos_failed. The repos are present (248M/217M/186M). The script passes neither --minimal nor a cached --input. A real check is /usr/bin/time -v hypergumbo dead-code-maybe --minimal on each repo. MECHANISM: The prospector's subprocess timeout (600s, dead-code-prospector-run.py:528) kills the largest repos; the OOM story was a guess. SHARES MECHANISM WITH: WI-botol,WI-vivof."  # ad4f
+- op: update  # a738
+  at: '2026-11-01T22:22:29Z'  # a738
+  by: agent  # a738
+  actor: jgstern_agent  # a738
+  clock: 6  # a738
+  nonce: a738  # a738
+  set:  # a738
+    title: "Dead-code prospector: trino/envoy/vscode exceed the script's hard 600s per-repo subprocess timeout (not OOM); measure today's runtime/RSS and raise or cache"  # a738
+- op: update  # b2c4
+  at: '2026-11-01T22:22:29Z'  # b2c4
+  by: agent  # b2c4
+  actor: jgstern_agent  # b2c4
+  clock: 7  # b2c4
+  nonce: b2c4  # b2c4
+  set:  # b2c4
+    description: "[REVIEW 2026-11-01, MIS-PREMISED] Review 2026-11-01 at dev 9ae4abe13f; corpus not run. The contemporaneous notebook (notebookjournal_04112026_0935.md:76) records '3 timed out (>10m per-repo): trino, envoy, vscode'. That matches _run_hypergumbo's timeout=600 (scripts/dead-code-prospector-run.py:520-531), which is unchanged since f86a22d3ed. No OOM was observed. The aggregate.json just lists them in repos_failed. The repos are present (248M/217M/186M). The script passes neither --minimal nor a cached --input. A real check is /usr/bin/time -v hypergumbo dead-code-maybe --minimal on each repo. (Original text below; the review entry in the thread has the evidence.)\n\nWI-tubot full-corpus run (2026-04-11) failed on 3 repos: trino (209 MB), envoy (181 MB), vscode (161 MB) — all above the 95 MB kafka threshold that succeeded. Per WI-tubot discussion (2026-04-10T22:01:00Z), kafka alone was 10+ min; these 3 are each 1.7×-2.2× larger. Most likely OOM in the behavior-map generation phase. Investigation: re-run each with memory profiling (/usr/bin/time -v hypergumbo run <repo>) to capture peak RSS, identify which stage spikes (analyzer, linker, ranking, sketch). If confirmed OOM, either (a) add streaming/batching to the offending stage, (b) expose a --max-files limit that's honoured through the full pipeline, or (c) document a size ceiling in CHANGELOG. Artifact for follow-up: ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/."  # b2c4

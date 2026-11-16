@@ -64,6 +64,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import (
     js_ts_language_from_path,
@@ -332,13 +333,18 @@ def link_crypto_flow(
             # .js site and gave a .ts read the write's language.
             pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "webcrypto" else "rust"
             sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "webcrypto" else "rust"
-            pub_id = (
-                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
-                f":{write.channel}:crypto_producer"
+            # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The role
+            # used to sit there; it rides as a name-segment suffix (as in the
+            # websocket and grpc linkers), so a producer and a consumer on one
+            # line, or a stand-in and a one-line ``encrypt`` function the
+            # analyzer declared, keep distinct ids.
+            pub_id = make_symbol_id(
+                pub_lang, write.file_path, write.line, write.line,
+                f"{write.channel}-crypto_producer", "function",
             )
-            sub_id = (
-                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
-                f":{read.channel}:crypto_consumer"
+            sub_id = make_symbol_id(
+                sub_lang, read.file_path, read.line, read.line,
+                f"{read.channel}-crypto_consumer", "function",
             )
 
             if pub_id not in seen_sym_ids:

@@ -1,0 +1,30 @@
+- op: create  # fe98
+  at: '2026-11-04T08:51:52Z'  # fe98
+  by: agent  # fe98
+  actor: jgstern_agent  # fe98
+  clock: 1  # fe98
+  nonce: fe98  # fe98
+  data:  # fe98
+    kind: work_item  # fe98
+    title: "taint: argument-position attribution in the DDG arm (sink_arg_index on the finding, T9 resource/content/argv roles on zone-sink rows, prohibited_argument_role on a claim) — the half of 'repo content never chooses a path or argv' no claim can state today"  # fe98
+    status: todo_hard  # fe98
+    priority: 3  # fe98
+    parent:  # fe98
+    tags:  # fe98
+    - security  # fe98
+    - verify_claims  # fe98
+    - taint  # fe98
+    - analysis_quality  # fe98
+    isbefore: []  # fe98
+    duplicate_of: []  # fe98
+    not_duplicate_of: []  # fe98
+    pr_ref:  # fe98
+    description: "**Context.** Measurement `docs/measurements/0032-analysed-repository-as-taint-source.md` (WI-pakag, 2026-11-04). \"The analysed repository never chooses a host_fs path, a subprocess argument or a network destination\" splits in two. The ZONE half shipped as five `repo-content-no-*` claims. The POSITION half — did repo content arrive as the PATH or as the CONTENT of a permitted-zone write, as an ARGV element or as STDIN of a declared launch — is not expressible: no part of the pipeline carries which argument a tainted value reached. The def-use records are `(variable, line)` (`ddg_build`, no `arg_index`), `TaintFlowFinding` records the sink primitive and symbol (`io_boundary.py` ~909: \"The walk carries NO argument identity\"), and the one argument-aware mechanism, the T9 `resource_naming: {names, content, danger}` annotation (WI-bulag), lives on `io_primitives` rows only — the self-catalogue's zone-sink schema admits `module` / `functions` / `methods` / `notes` — and was built for the inverse question (suppress a content flow that merely names a resource) with the soundness guard that a MIXED sink can never be attributed. Measured: a name-in-path fixture and a content-in-content fixture produce byte-identical evidence; on the self tree the permitted-zone flows (user_cache 6, user_out 2, tmp_artifact 1, repo_inspection 117 pairs) had to be adjudicated by reading each sink call (0032 §4), and the three real path/argv rows (`git ls-tree HEAD -- <dir>`, the sanitized route path in a handler-slice filename, hashed git metadata in cache directory names) rest on code facts no claim watches.\n\n**Work.** (1) Each DDG def-use extractor (python, javascript, typescript, go; `LanguageDdgSpec`) records, for a use that is a call argument, the argument index (and keyword name where the language has one). (2) `TaintFlowFinding` gains `sink_arg_index` (None = not attributed), filled by the DDG arm where the chain ends in a call argument; the structural arm leaves it None. (3) Zone-sink rows accept the T9 vocabulary (`resource_naming:` with `names` / `content` / `danger` per function) — extend `_SINK_ENTRY_KEYS` and the loader, reusing `io_boundary`'s parsing — and the ~30 `safety_zones` wrappers are annotated (path-only: `cache_mkdir`, `cache_rmtree`, `cache_unlink`, `user_out_mkdir`, `tmp_artifact_rmtree`, `install_artifact_unlink`, …; mixed: every `*_write*`; argv: `repo_inspect_*`, `backend_index_*`). (4) A claim gains `prohibited_argument_role: resource | content | argv`; the matcher reports a flow against it only when `sink_arg_index` lands in a position the row names for that role, and reports UNATTRIBUTED flows as a caveat, never as clean. (5) Measure on the self tree: the §4 table of 0032 reproduced by the instrument, then the position-half claims added.\n\n**What it is not.** Not a change to the structural arm's reachability semantics; not the T9 suppression rule (which stays as is, soundness guard included).\n\n**Verification.** The two 0032 fixtures read differently (F1 `violated` under `prohibited_argument_role: resource`, F2 not reported but disclosed as a content flow); on the self tree the `_ls_tree_head` row is reported under `argv` and the `cache_write` rows are not; every flow the DDG arm cannot attribute is counted in a caveat. Pre-registered: unmeasured; the self tree's position-half claims may read violated on the handler-slice filename until its sanitisation is declared."  # fe98
+    fields: {}  # fe98
+- op: discuss  # ea25
+  at: '2026-11-04T08:53:24Z'  # ea25
+  by: agent  # ea25
+  actor: jgstern_agent  # ea25
+  clock: 2  # ea25
+  nonce: ea25  # ea25
+  message: "Similarity warnings at add time reviewed 2026-11-04: WI-biguz (ExternalRef.name free-text justification) and WI-gidob (swift-nio overlay row) are unrelated. Real prior art: WI-bulag / WI-gajir / WI-mubak (the T9 resource_naming annotation on io_primitives rows and its soundness guard: a MIXED sink cannot be attributed because the walk carries no argument identity — this item supplies that identity); WI-lunav (done: request/command builders 'need argument-position adjudication'); WI-gohok / WI-jivih (the source-side value_shape sizing, declined under 5%). Measurement 0032 §7 is the design; §4 is the self-tree table the instrument must reproduce."  # ea25

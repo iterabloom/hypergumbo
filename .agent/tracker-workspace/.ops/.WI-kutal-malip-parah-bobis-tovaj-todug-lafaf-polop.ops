@@ -99,3 +99,19 @@
   set: {}  # aa89
   add:  # aa89
     tags: [awaits_bakeoff_validation]  # aa89
+- op: update  # 8fb3
+  at: '2026-11-02T10:19:42Z'  # 8fb3
+  by: agent  # 8fb3
+  actor: jgstern_agent  # 8fb3
+  clock: 13  # 8fb3
+  nonce: 8fb3  # 8fb3
+  set: {}  # 8fb3
+  remove:  # 8fb3
+    tags: [awaits_bakeoff_validation]  # 8fb3
+- op: discuss  # 61c8
+  at: '2026-11-02T10:19:42Z'  # 61c8
+  by: agent  # 61c8
+  actor: jgstern_agent  # 61c8
+  clock: 14  # 61c8
+  nonce: 61c8  # 61c8
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). pretix: measured resolved self.<m>() edges whose dst class is unrelated to self’s class: 0 of 1,912 (recorded 349 retargeted -> ~0) ; django: measured resolved self.<m>() to an unrelated class: 4 of 12,979 (recorded 539 retargeted). Tag stripped."  # 61c8

@@ -60,3 +60,19 @@
   clock: 6  # ed79
   nonce: ed79  # ed79
   message: "Merged as PR #851, dev SHA 71c31e8c75e8."  # ed79
+- op: update  # 82d2
+  at: '2026-11-02T10:19:44Z'  # 82d2
+  by: agent  # 82d2
+  actor: jgstern_agent  # 82d2
+  clock: 7  # 82d2
+  nonce: 82d2  # 82d2
+  set: {}  # 82d2
+  remove:  # 82d2
+    tags: [awaits_bakeoff_validation]  # 82d2
+- op: discuss  # ae41
+  at: '2026-11-02T10:19:44Z'  # ae41
+  by: agent  # ae41
+  actor: jgstern_agent  # ae41
+  clock: 8  # ae41
+  nonce: ae41  # ae41
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). pretix: measured distinct (src,dst) pairs to django.db.models 9,633 (recorded ~6,105 -> ~6,861). Tag stripped."  # ae41

@@ -209,9 +209,9 @@ database.name=mydb
         result = analyze_properties(tmp_path)
         prop = next((s for s in result.symbols if s.kind == "property"), None)
         assert prop is not None
-        # WI-banod: stable_id is now the canonical sha256:<16hex> (not the
+        # WI-banod: stable_id is now the canonical hgstableid15:<16hex> (not the
         # composite node.id); node.id remains the location key.
-        assert prop.stable_id.startswith("sha256:")
+        assert prop.stable_id.startswith("hgstableid15:")
         assert prop.id != prop.stable_id
         assert "properties:" in prop.id
         assert "test.properties" in prop.id
@@ -356,3 +356,27 @@ app.version=1.0
         assert greeting.meta.get("value") is not None
         name_prop = next(p for p in props if p.name == "name")
         assert name_prop.meta.get("value") is not None
+
+
+class TestMaskingCoversEveryPasswordSpelling:
+    """INV-puvoh: properties listed five keywords, so ``passwd`` and ``pwd``
+    printed raw; and it matched substrings, so ``keyboard`` was hidden."""
+
+    def test_passwd_and_pwd_values_are_masked(self, tmp_path: Path) -> None:
+        make_properties_file(
+            tmp_path, "app.properties", "db.passwd=hunter23\nauth.pwd=hunter24\n",
+        )
+        result = analyze_properties(tmp_path)
+        props = {s.name: s for s in result.symbols if s.kind == "property"}
+        for name in ("db.passwd", "auth.pwd"):
+            assert props[name].meta["is_sensitive"] is True, name
+            assert props[name].meta["value"] == "***", name
+            assert props[name].signature == f"{name}=***", name
+
+    def test_a_key_that_merely_contains_a_keyword_stays_visible(self, tmp_path: Path) -> None:
+        make_properties_file(tmp_path, "app.properties", "ui.keyboard=dvorak\n")
+        result = analyze_properties(tmp_path)
+        prop = next(s for s in result.symbols if s.kind == "property")
+        assert prop.meta["is_sensitive"] is False
+        assert prop.signature == "ui.keyboard=dvorak"
+

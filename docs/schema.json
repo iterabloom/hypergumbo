@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.15"
+      "const": "0.21.0"
     },
     "confidence_model": {
       "type": "string",
@@ -29,6 +29,10 @@
     "symbol_fingerprint_scheme": {
       "type": "string",
       "description": "Identifier for the Symbol.fingerprint structural hashing scheme"
+    },
+    "scip_stable_id_scheme": {
+      "type": "string",
+      "description": "Identifier for the algorithm the rust-analyzer (SCIP) arm computes its stable_id values with; those values carry the hgscipid<N>: label"
     },
     "view": {
       "type": "string",
@@ -79,7 +83,7 @@
               "own_files": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "How many of `files` are the project's own code: supply-chain tier 1-2 by path (supply_chain.tier_by_path; no file read). Committed vendored and derived files are still analysed but leave this count, and the sketch's language line and totals read it (WI-kojul, ADR-0004 point 3a). Omitted when not measured; absent is not 0."
+                "description": "How many of `files` are the project's own code: supply-chain not tier 3 or 4 by path (supply_chain.tier_by_path; no file read). Committed vendored and derived files are still analysed but leave this count, and the sketch's language line and totals read it (WI-kojul, ADR-0004 point 3a). Omitted when not measured; absent is not 0."
               },
               "own_loc": {
                 "type": "integer",
@@ -159,6 +163,14 @@
           "type": "number",
           "description": "Mean of edge confidence over edges carrying a confidence value (3 decimal places). EDGES ONLY: nodes carry no confidence. Edge confidence is a few per-evidence-type spikes, so this mean can sit between spikes on a value no edge carries -- read edge_confidence for the shape. 0.0 when no edge carries confidence (edge_confidence.histogram is then empty)"
         },
+        "framework_patterns": {
+          "type": "object",
+          "description": "Framework-pattern enrichment (the framework-patterns pass, WI-tivif): pattern YAML id -> symbols that gained a concept from it. Every YAML loaded is listed, zeros included, so 'loaded and matched nothing' (0) is told apart from 'not loaded' (absent)",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
         "edge_confidence": {
           "type": "object",
           "description": "Distribution of edge confidence over the same edges avg_confidence averages (edges only)",
@@ -187,7 +199,7 @@
         },
         "languages": {
           "type": "object",
-          "description": "Per-language node/edge/file counts",
+          "description": "Per-language node/edge/file counts. A compact or tiered view has nodes and edges only: files counts file nodes, which a selection does not hold",
           "additionalProperties": {
             "type": "object"
           }
@@ -199,9 +211,24 @@
             "type": "object"
           }
         },
+        "repository": {
+          "type": "object",
+          "description": "In a compact or tiered view only: figures about the whole repository, copied from the full map. Every other key of a view's metrics describes the view's own nodes and edges",
+          "properties": {
+            "framework_patterns": {
+              "type": "object",
+              "description": "The full map's metrics.framework_patterns",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "debug": {
           "type": "object",
-          "description": "Introspection counters (not a stable API)",
+          "description": "Introspection counters (not a stable API). Full map only",
           "properties": {
             "unique_paths_in_analysis": {
               "type": "integer"
@@ -223,7 +250,7 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped and generated_output_skipped, and vendored_analysed (analysed tier-3 vendored directories, ADR-0004 point 3a). Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape and generated_output_skipped a {dirs, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped, generated_output_skipped and vcs_ignored_skipped, and vendored_analysed (analysed tier-3 vendored directories, ADR-0004 point 3a). Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape, generated_output_skipped a {dirs, entries} shape and vcs_ignored_skipped a {paths, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
       "properties": {
         "installed_deps_skipped": {
           "type": "object",
@@ -314,6 +341,28 @@
             }
           }
         },
+        "vcs_ignored_skipped": {
+          "type": "object",
+          "description": "Files and directories left out because the repository's VCS ignores them and does not track them: local outputs, editor state, secrets files (ADR-0004 \u00a7\"Installed dependency source\" point 9). paths counts the entries the walk met (a pruned directory is one, whatever it holds); entries names them, a directory with a trailing slash, sorted and capped at 10. {paths: 0, entries: []} when nothing was left out, which is also the answer outside a git work tree.",
+          "required": [
+            "paths",
+            "entries"
+          ],
+          "properties": {
+            "paths": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entries": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "string",
+                "description": "Repo-relative path."
+              }
+            }
+          }
+        },
         "vendored_analysed": {
           "type": "object",
           "description": "Committed vendored code (tier 3 by an EXTERNAL_DEP path pattern: a nested vendor/, third_party/, node_modules/ ...) that was analysed but left out of the language breakdown and LOC totals (ADR-0004 point 3a, WI-pasan). One entry per vendored directory, from tier-3 file nodes; entries is capped at 10. {dirs: 0, entries: []} when there is none.",
@@ -394,12 +443,83 @@
       },
       "description": "Detected program entrypoints"
     },
+    "request_ingress": {
+      "type": "array",
+      "description": "Every request-handler entrypoint candidate (a kind in entrypoints.REQUEST_INGRESS_KINDS) before the rank floor and the size cap applied to entrypoints, in rank order: the list verify-claims' unseeded-ingress disclosure reads. Stripped from the compact and tiered views",
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol_id",
+          "kind",
+          "label"
+        ],
+        "properties": {
+          "symbol_id": {
+            "type": "string",
+            "description": "ID of the handler Symbol"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "aiohttp_view",
+              "aspnet_controller",
+              "controller",
+              "django_view",
+              "error_handler",
+              "express_route",
+              "fastify_route",
+              "go_handler",
+              "grape_api",
+              "graphql_server",
+              "hapi_route",
+              "http_route",
+              "koa_route",
+              "ktor_route",
+              "laravel_controller",
+              "micronaut_controller",
+              "middleware_handler",
+              "nestjs_controller",
+              "phoenix_controller",
+              "plug_route",
+              "rails_controller",
+              "rust_handler",
+              "sinatra_route",
+              "slim_route",
+              "spring_controller",
+              "tornado_handler",
+              "vapor_route",
+              "websocket_handler"
+            ],
+            "description": "The entrypoint kind, one of entrypoints.REQUEST_INGRESS_KINDS"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label (the route when known)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "usage_contexts": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/UsageContext"
       },
       "description": "Concept-tagged call/usage sites (per ADR-3ccc usage_context_patterns)"
+    },
+    "module_sets": {
+      "type": "object",
+      "description": "Disjunctive module slots stored once (INV-jahuf): handle -> the modules a call could come from, in slot order. The handle is module-set- plus the first 16 hex digits of sha256 of the comma-joined list; only handles the edges reference are listed",
+      "propertyNames": {
+        "pattern": "^module-set-[0-9a-f]{16}$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 2
+      }
     },
     "reproducibility_context": {
       "type": "object",
@@ -531,6 +651,59 @@
             }
           ],
           "description": "ADR-0035 \u00a75 corpus stable_id population/collision/None-cohort disclosure over an all-Symbols denominator; always present so a clean non-null rate can never hide a None-cohort. floor_cohort counts ids equal to their recomputed ADR-0035 \u00a71 backstop floor key and floor_abstained the nulls whose floor key is shared in their file, so none_cohort=0 is not read as every id coming from a producer formula. Null on bare build_validation_report calls (unit tests)."
+        },
+        "name_slot_stats": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "ids_checked": {
+                  "type": "integer"
+                },
+                "exempt_file_nodes": {
+                  "type": "integer"
+                },
+                "not_parsed": {
+                  "type": "integer"
+                },
+                "mismatched": {
+                  "type": "integer"
+                },
+                "by_producer": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "producer": {
+                        "type": "string"
+                      },
+                      "mismatched": {
+                        "type": "integer"
+                      },
+                      "checked": {
+                        "type": "integer"
+                      },
+                      "example_id": {
+                        "type": "string"
+                      },
+                      "example_name": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "producers_cut": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0036 Ruling 1 name-slot round-trip, measured per run: of the node ids parsed from the right (ids_checked), how many have a name slot that is not sanitize_id_name_segment(name) (mismatched), by producer (the originating pass id, else the language), most mismatches first, each with its smallest mismatching id and that node's name; at most 20 producers, the rest counted in producers_cut. File pseudo-symbols (exempt_file_nodes) are exempt because the id grammar fixes their name slot to 'file'; ids with fewer than five slots are not_parsed. A statistic, not violations. Null on bare build_validation_report calls (unit tests)."
         }
       }
     },
@@ -680,6 +853,8 @@
             "call_site": "language_construct",
             "arrow_function": "language_construct",
             "object": "language_construct",
+            "actor": "language_construct",
+            "primitive": "language_construct",
             "prop": "language_construct",
             "slot": "language_construct",
             "template": "language_construct",
@@ -838,7 +1013,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural identity hash within a (qualified_name, module_path) scope (ADR-0014 as amended by Phase 6 / INV-bazij): survives body edits, NOT rename or move. Serialized as sha256:<16hex> and shares this exact surface with shape_id; the two are discriminated by field name (and the top-level stable_id_scheme / shape_id_scheme descriptors), NOT by an in-value prefix, and their value-spaces are disjoint. Do not join on bare hash values across the two axes (WI-tisar)."
+          "description": "Structural identity hash within a (qualified_name, module_path) scope (ADR-0035 \u00a71; INV-bazij): survives body edits, NOT rename or move. Serialized as <label><16hex>: hgstableid<N>: from the tree-sitter / ast factories (stable_id_scheme hypergumbo-stableid-v<N>), hgscipid<N>: from the rust-analyzer (SCIP) arm (scip_stable_id_scheme). The label names the value and its scheme, so a stable_id never equals a shape_id (hgshapeid<N>:) or an id from the other algorithm; it is a label only, and the digest after it is what stableid-v14 wrote after sha256: (ADR-0035 'Value labels')."
         },
         "shape_id": {
           "oneOf": [
@@ -849,7 +1024,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural *skeleton* hash \u2014 the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (ADR-0014 \u00a71), so same-shape / different-name symbols collide. Within-language only. Contrast fingerprint, which KEEPS identifiers/literals; shape_id is a strict coarsening of it. Serialized as sha256:<16hex>, the same surface as stable_id (see WI-tisar). (Currently a serialized output-boundary field with no internal consumer.)"
+          "description": "Structural *skeleton* hash \u2014 the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (spec \u00a76 shape_id), so same-shape / different-name symbols collide. Within-language only. Contrast fingerprint, which KEEPS identifiers/literals; shape_id is a strict coarsening of it. Serialized as hgshapeid<N>:<16hex> (shape_id_scheme hypergumbo-shapeid-v<N>; ADR-0035 'Value labels'). Read by repeat-finder, which groups symbols by (language, shape_id)."
         },
         "fingerprint": {
           "oneOf": [
@@ -914,7 +1089,7 @@
               "description": "Dependency scope on dependency Symbols (e.g. 'dev'). Fold residue for the ``devDependency`` \u2192 ``dependency`` migration."
             },
             "directness": {
-              "description": "Declaration relationship between the project's manifests and an external dependency (ADR-0041 \u00a72): 'direct' (declared in a project manifest), 'transitive' (in the manifest but not declared direct), or 'undeclared' (imported but declared nowhere \u2014 a phantom dependency, and the bucket stdlib falls into). Stamped once at classification time on boundary/dependency Symbols by ``ir.create_boundary_nodes`` via ``DependencyManifest.directness_for`` (go.mod, Gradle/Maven, pyproject.toml, mix.exs/mix.lock, package.json + lockfiles); absent when the manifest cannot tell. A SEPARATE axis from supply-chain ``tier`` (distance) and from the ``ecosystem`` provenance axis (stdlib vs third_party, ADR-0041 \u00a73)."
+              "description": "Declaration relationship between the project's manifests and an external dependency (ADR-0041 \u00a72): 'direct' (declared in a project manifest), 'transitive' (in the manifest but not declared direct), or 'undeclared' (imported but declared nowhere \u2014 a phantom dependency, and the bucket stdlib falls into). Stamped once at classification time: on boundary Symbols by ``ir.create_boundary_nodes`` via ``DependencyManifest.directness_for`` (go.mod, Gradle/Maven, pyproject.toml, mix.exs/mix.lock, package.json + lockfiles), absent when the manifest cannot tell; and 'direct' on every external dependency DECLARATION (kind=dependency) by ``cli._classify_symbols`` (INV-fuhin) -- an in-tree sibling's declaration is not external and carries neither key. A SEPARATE axis from supply-chain ``tier`` (distance) and from the ``ecosystem`` provenance axis (stdlib vs third_party, ADR-0041 \u00a73)."
             },
             "display_name": {
               "description": "Human-readable display name overriding the default. Set by analyzers where the source name is mechanical (e.g. ``__call__`` displayed as the containing class)."
@@ -923,7 +1098,7 @@
               "description": "Docstring / leading-comment text on documented Symbols. Extracted by analyzers that parse docstrings."
             },
             "ecosystem": {
-              "description": "Provenance class of an external dependency's distribution channel (ADR-0041 \u00a73): 'stdlib' (shipped with the language runtime) vs 'third_party' (fetched from a package registry). Stamped on tier-3 boundary Symbols by ``ir.create_boundary_nodes`` from the single-source language stdlib catalog (``io_boundary.IoBoundaryCatalog.is_stdlib_module``); where that catalog is silent, 'third_party' is also stamped when the project's manifest resolves the module to a declared or locked package (``directness`` direct/transitive -- registry-fetched by definition, WI-juzaj). Absent otherwise. A SEPARATE axis from supply-chain ``tier`` (distance), ``directness`` (declaration relationship), and \u2014 crucially \u2014 from ``package_ecosystem`` (which names the package-MANAGER registry, e.g. 'npm'/'composer', of package-shaped Symbols; this key names provenance CLASS, a different question)."
+              "description": "Provenance class of an external dependency's distribution channel (ADR-0041 \u00a73): 'stdlib' (shipped with the language runtime) vs 'third_party' (fetched from a package registry). Stamped on tier-3 boundary Symbols by ``ir.create_boundary_nodes`` from the single-source language stdlib catalog (``io_boundary.IoBoundaryCatalog.is_stdlib_module``); where that catalog is silent, 'third_party' is also stamped when the project's manifest resolves the module to a declared or locked package (``directness`` direct/transitive -- registry-fetched by definition, WI-juzaj). An external dependency DECLARATION (kind=dependency) is stamped by ``cli._classify_symbols`` via ``supply_chain.declaration_ecosystem``: 'third_party', or 'stdlib' for composer's platform requirements (INV-fuhin). Absent otherwise. A SEPARATE axis from supply-chain ``tier`` (distance), ``directness`` (declaration relationship), and \u2014 crucially \u2014 from ``package_ecosystem`` (which names the package-MANAGER registry, e.g. 'npm'/'composer', of package-shaped Symbols; this key names provenance CLASS, a different question)."
             },
             "entry_role": {
               "description": "Entry-point role on file-shape Symbols (e.g. 'main', 'script'). Fold residue for the ``main_entry`` / ``script`` \u2192 ``file`` migration."
@@ -990,6 +1165,9 @@
             },
             "is_recursive": {
               "description": "True on recursive function / method Symbols. Detected by call-graph self-loop analysis."
+            },
+            "item_span": {
+              "description": "A token-spanned producer's item extent (the SCIP Definition's ``enclosing_range``; Span fields, 1-indexed). Producer input to the merge pass, which applies it to a record it does not fold and drops it from every record (INV-lodum)."
             },
             "module_system": {
               "description": "Module system on synthetic file-shape Symbols (e.g. 'esm', 'commonjs'). Fold residue for the ``module_file`` \u2192 ``file`` migration per audit-findings 0005."
@@ -1422,10 +1600,9 @@
           "enum": [
             "evidence_derived",
             "emitter_constant",
-            "composite",
             "corroborated"
           ],
-          "description": "Provenance of the confidence value (ADR-0039 ruling 2): evidence_derived (from the evidence_type registry base), emitter_constant (a declared hardcoded producer value), composite (still fuses a ranking adjustment ruling 3 relocates to rank_score), or corroborated (ADR-0057 \u00a713: two producers reached this edge by DISTINCT inference pathways, so the value is the declared corroboration level, not either producer's; both originals are in alternatives.confidence)."
+          "description": "Provenance of the confidence value (ADR-0039 ruling 2): evidence_derived (from the evidence_type registry base), emitter_constant (a declared hardcoded producer value), or corroborated (ADR-0057 \u00a713: two producers reached this edge by DISTINCT inference pathways, so the value is the declared corroboration level, not either producer's; both originals are in alternatives.confidence)."
         },
         "attribution": {
           "oneOf": [
@@ -1496,6 +1673,9 @@
             "bridge_kind": {
               "description": "FFI / native-bridge mechanism on ``calls`` edges that absorb the bridge family (e.g. 'cgo', 'napi', 'wasm', 'ffi'). Value vocabulary tracked at ``edge_types.BRIDGE_KINDS``."
             },
+            "build_label": {
+              "description": "starlark depends_on edge: the deps label as written (':util', '//pkg:name', '@repo//pkg'), beside the dst it resolved to (WI-pusan)."
+            },
             "call_arg_shape": {
               "description": "What the arguments at this call site CAN carry. One value today: 'literal_only' -- every positional and keyword argument is a literal constant, or there are no arguments at all. INV-fubag, and it exists to be a PROOF rather than a heuristic: taint models a flow as the tainted value being an argument to the sink call or its receiver, so a call passing only literals has nothing that could be the tainted value. Measured cost of not having it (docs/measurements/0003): 24 of 34 adjudicated false positives were sink calls with no arguments at all -- tempfile.TemporaryDirectory(), TemporaryFile(), NamedTemporaryFile(delete=True). ABSENCE IS THE CONSERVATIVE READING and is load-bearing: producers stamp this ONLY when they can prove the argument list is all-literal, so every un-stamped call -- including every edge in every behavior map written before this key existed -- keeps flowing. A default that silenced findings would make this a false-negative generator on a security analysis. Sparse by convention for the same reason: stamping 'dynamic' on every call edge would say nothing absence does not already say, at the cost of a key on every edge of every map. Scoped to the CALL FAMILY -- the question does not arise for an edge that is not an invocation."
             },
@@ -1533,7 +1713,7 @@
               "description": "ipc event_publishes edge: what the sender/receiver join compared (``_name_args`` join kind: 'literal', 'constant', 'variable' or 'unresolved')."
             },
             "class_name": {
-              "description": "Puppet includes edge: the included class's name."
+              "description": "Puppet includes / inherits edge: the named class's full name."
             },
             "client_directive": {
               "description": "Astro component edge: the ``client:*`` hydration directive on the tag, '' when none."
@@ -1575,7 +1755,7 @@
               "description": "Short name of the class that lexically owns an unresolved call site (Site 1: a bare / ``self`` / ``this`` call; Site 3 beside ``inherited_field_receiver``). Written by ``analyze.base.make_unresolved_edge`` for every language that passes it, and by py.py's Site-3 branch; read by the ``inherited_calls`` linker to walk the ancestor chain and by py.py's Django-ORM instance check."
             },
             "enclosing_class_id": {
-              "description": "Symbol id of the class that lexically owns the call site, stamped by py.py beside ``enclosing_class`` when the id is known (WI-supat D3) so ``inherited_calls`` can start the ancestor walk from exactly that class and skip its same-short-name ambiguity guard."
+              "description": "Symbol id of the class that lexically owns the call site, stamped by py.py (WI-supat D3) and java.py (WI-gikuk: the class found by position) beside ``enclosing_class`` when the id is known so ``inherited_calls`` can start the ancestor walk from exactly that class and skip its same-short-name ambiguity guard."
             },
             "env_var": {
               "description": "The variable name behind a synthesized environment read \u2014 the `API_KEY` in `$API_KEY`. Carried for the READER rather than for matching: bash's env_read catalogue is ONE row on the os.environ precedent, so the name never participates in the lookup. PER CALL SITE (INV-vukiv): `$HOME` then `$API_KEY` in one function collapsed to `env_var='HOME'`, which named the harmless read and dropped the secret one."
@@ -1734,7 +1914,7 @@
               "description": "Message-queue family/pattern that produced a publish/subscribe edge, from the message_queue linker's queue classification."
             },
             "receiver": {
-              "description": "Call-site receiver classification: a per-language fold-residue label (audit-findings 0012) emitted only by analyzers whose call syntax carries receiver flavor (Ruby / Go / C# / Rust / C++), hence ABSENT on corpora that lack those languages (e.g. a pure-Python tree). Complete current producer vocabulary (no consumer branches on it yet): 'bare' (implicit / self receiver), 'external' / 'constant_external' / 'stdlib' (receiver resolves outside the module), 'typed_field' / 'typed_var' (receiver has a known type), 'field_chain' (chained field-access receiver), 'generic' (receiver present but unclassified). NOTE: this key mixes a resolution CLASS (bare / external / typed / generic) with an expression SHAPE (field_chain); kept as one key because no consumer distinguishes them \u2014 re-evaluate (split into receiver_class + receiver_shape) if one ever needs to query them independently. Disambiguates ``ast_call`` + ``call_construct=method`` edges."
+              "description": "Call-site receiver classification: a per-language fold-residue label (audit-findings 0012) emitted only by analyzers whose call syntax carries receiver flavor (Ruby / Go / C# / Rust / C++ / Swift), hence ABSENT on corpora that lack those languages (e.g. a pure-Python tree). Producer vocabulary: 'bare' (implicit receiver), 'self' (Ruby self.m), 'external' / 'constant_external' / 'stdlib' (receiver resolves outside the module), 'typed_field' / 'typed_var' (receiver has a known type), 'declared_type' (C++: the receiver's declaration names its class), 'qualified' (Type::method named at the call site), 'field_chain' (chained field-access receiver), 'generic' (receiver present but unclassified). The one consumer that branches on it is the magnet detector, which places every value in receiver_blind_magnets.RECEIVER_IDENTIFIES_TARGET (test_receiver_vocabulary_partition fails on an unplaced value). NOTE: this key mixes a resolution CLASS (bare / external / typed / generic) with an expression SHAPE (field_chain). Its old trigger -- split if a consumer queries the two independently -- fired (method_call_recovery branches on field_chain alone) and was re-verdicted OK in the WI-kosup sweep (WI-mujug, 2026-10-28): both readers' value sets match the producers' and the partition test guards it. Re-evaluate (split into receiver_class + receiver_shape) when a consumer needs the CLASS of a field_chain receiver, which one value cannot carry (WI-daruz). Disambiguates ``ast_call`` + ``call_construct=method`` edges."
             },
             "receiver_type_hint": {
               "description": "Inferred type of a call edge's receiver, stamped by the analyzer receiver-type inference to aid cross-file method resolution (e.g. an external constructor's return type)."
@@ -2055,7 +2235,7 @@
               "type": "null"
             }
           ],
-          "description": "Git state hash for cache invalidation"
+          "description": "Content hash of the analyzed tree, serialized hgrepofp<N>:<64hex> (repo_fingerprint_scheme hypergumbo-repofp-v<N>)"
         },
         "toolchain": {
           "type": "object",

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Tests that read a file's CONTENT rather than (or as well as) importing it.
+# An edit to any matching file makes the reader MUST-select, whatever the edit
+# is: these are the edges no import graph and no coverage trace can see, and
+# the mutation oracle cannot either, because a mutation that keeps a reader
+# green says nothing about the next edit. Globs are bed-relative; `**` spans
+# directories.
+packages/bed-core/tests/test_kinds_markers.py:
+  - packages/bed-core/src/bedcore/kinds.py
+packages/bed-core/tests/test_citations.py:
+  - packages/bed-core/src/bedcore/chain_c.py
+packages/bed-core/tests/test_docstrings.py:
+  - packages/bed-core/src/bedcore/**/*.py
+packages/bed-core/tests/test_fixture_data.py:
+  - packages/bed-core/tests/fixtures/expected.json
+tests/test_tree_gate.py:
+  - packages/*/src/**/*.py

@@ -18,6 +18,7 @@ Key design decisions:
 - Path comparisons handle mixed formats gracefully
 """
 
+import itertools
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -190,9 +191,8 @@ def is_utility_file(path: str) -> bool:
     # contrib/foo.py, hack/release.sh), but inside a package they are
     # legitimate modules: django/utils/html.py is core HTML rendering,
     # django/contrib/admin/ is the bundled admin app, requests/utils.py
-    # is the canonical HTTP utility module, etc. WI-gigib (2026-05-12)
-    # closed a class of false-positive prod-rslice emptiness on Django
-    # by tightening this check to root-only.
+    # is the canonical HTTP utility module, etc. So they count as utility
+    # only at the repo root (history: WI-gigib).
     _AMBIGUOUS_UTILITY_DIRS = {
         "dev", "tools", "bin", "utils", "utilities",
         "contrib", "hack",
@@ -203,14 +203,14 @@ def is_utility_file(path: str) -> bool:
         if lower in utility_dirs:
             return True
         # Ambiguous dirs are utility only at the repo root (depth 0).
-        # WI-gigib: previously the check was "ambiguous AND haven't seen
-        # a known source root yet", which falsely flagged any path whose
-        # top-level dir wasn't one of {src, lib, app, crates, packages}
-        # — e.g. django/utils/html.py, django/contrib/admin/options.py,
-        # requests/utils.py, urllib3/contrib/socks.py. Root-only is a
-        # tighter rule that matches the Kubernetes-style "contrib/ at
-        # the repo root means community add-ons" convention while keeping
-        # nested same-named directories as production code.
+        # The looser rule "ambiguous and no known source root (src, lib,
+        # app, crates, packages) seen yet" is wrong: it flags any package
+        # whose top-level dir is its own name — django/utils/html.py,
+        # django/contrib/admin/options.py, requests/utils.py,
+        # urllib3/contrib/socks.py — and empties production slices there.
+        # Root-only matches the Kubernetes-style "contrib/ at the repo root
+        # means community add-ons" convention while keeping nested
+        # same-named directories as production code.
         if lower in _AMBIGUOUS_UTILITY_DIRS and i == 0:
             return True
         # devel-common/, devel-tools/, etc. — CI/dev tooling directories.
@@ -254,9 +254,9 @@ def is_infrastructure_path(path: str) -> bool:
 
     Infrastructure directories contain internal plumbing (telemetry, logging,
     metrics, tracing) that is production code but not developer-facing API.
-    In gemini-cli, 77 of 111 entrypoints were telemetry exports from
-    packages/core/src/telemetry/*.ts — internal infrastructure that dominated
-    the entrypoint list over actual API classes.
+    Left undampened, the many exports of a directory such as
+    ``packages/core/src/telemetry/`` can crowd actual API classes out of the
+    entrypoint list.
 
     Args:
         path: File path to check
@@ -321,21 +321,20 @@ def classify_test_file(path: str) -> Optional[str]:
     This is the IMPLEMENTATION; :func:`is_test_file` is ``reason is not None``.
     One classifier with two consumers, deliberately — a second predicate that
     re-derived the categories beside the boolean would drift from it on the
-    first edit, and "when a production classification exists for the thing you
-    are counting, counting it yourself IS the bug" (L53) is a lesson this
-    codebase has already paid for repeatedly.
+    first edit: "when a production classification exists for the thing you
+    are counting, counting it yourself IS the bug" (L53).
 
     Why the reason exists at all: ``is_test_file`` is BROAD on purpose, and
     that breadth is right for its callers (deprioritize as a non-production
     entrypoint) but wrong for any *disclosure* keyed on it. A taint verdict
     reporting "3 flows excluded as test_sourced" when the real cause is a
-    ``benches/`` directory tells the reader something false. The owner ruling
-    (2026-08-03) was to keep the breadth and disclose which rule fired.
+    ``benches/`` directory tells the reader something false. So the breadth
+    stays, and the reason discloses which rule fired.
 
     Returns one of ``test`` / ``mock`` / ``fixture`` / ``benchmark`` /
     ``test_support``, or ``None`` when the path is production code. Filename
-    rules are checked before directory rules, matching the original order, so
-    ``mocks/db_test.py`` reports ``test`` exactly as it always returned True.
+    rules are checked before directory rules, so ``mocks/db_test.py`` reports
+    ``test``, not ``mock``.
 
     Args:
         path: File path to check
@@ -346,7 +345,7 @@ def classify_test_file(path: str) -> Optional[str]:
     filename = get_filename(path)
     filename_lower = filename.lower()
 
-    # Test patterns with _test suffix or test- prefix (any language)
+    # Test patterns with test_ prefix, test- prefix or _test suffix (any language)
     if filename.startswith("test_"):
         return TEST_FILE_REASON_TEST
     # Hyphen-separated test prefix: test-reach.c, test-date.c, test-parse.c
@@ -372,6 +371,21 @@ def classify_test_file(path: str) -> Optional[str]:
     if filename_lower in ("tests.rs", "testonly.rs"):
         return TEST_FILE_REASON_TEST
 
+    # A Python single-file test module, TypeScript type tests, Xcode's
+    # ``*Tests.swift`` (``RouteTests.swift``, not ``TestHelpers.swift``), and
+    # JVM test naming: ``*Test`` / ``*Tests`` / ``*IT`` (Maven Failsafe).
+    # ``selection.filters.is_test_path`` delegates here, so shapes like these
+    # belong in this classifier only (history: WI-dibuf).
+    if filename_lower == "tests.py" or filename_lower.endswith((".test-d.ts", ".test-d.tsx")):
+        return TEST_FILE_REASON_TEST
+    if filename.endswith("Tests.swift"):
+        return TEST_FILE_REASON_TEST
+    # A ``Test`` PREFIX is deliberately not matched: ``TestConfig.java`` is as
+    # often test support or production config (test_sketch pins it).
+    stem, _, ext = filename.rpartition(".")
+    if ext in ("java", "kt", "scala") and stem.endswith(("Test", "Tests", "IT")):  # JUnit / Failsafe FooIT
+        return TEST_FILE_REASON_TEST
+
     # Mock/fake filename patterns (any language)
     name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
     if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
@@ -394,6 +408,14 @@ def classify_test_file(path: str) -> Optional[str]:
             return TEST_FILE_REASON_MOCK
         if part_lower.startswith("test-") or part_lower.startswith("testsuite"):
             return TEST_FILE_REASON_TEST
+
+    # Gradle's integration-test source sets (``intTest/``,
+    # ``integrationTest/``, ``unitTest/``) and Maven's ``src/integration/``.
+    lowered = [p.lower() for p in path_parts[:-1]]
+    if "inttest" in lowered or "integrationtest" in lowered or "unittest" in lowered:
+        return TEST_FILE_REASON_TEST
+    if any(a == "src" and b == "integration" for a, b in itertools.pairwise(lowered)):
+        return TEST_FILE_REASON_TEST
 
     # spec/ only matches as the first path component (Ruby RSpec convention).
     # Nested spec/ dirs (e.g., airflow/listeners/spec/) are often production
@@ -454,8 +476,8 @@ def is_migration_file(path: str) -> bool:
     (WI-bifob).
 
     DECLARED SCOPE, because a predicate's silence is not the same as its
-    absence (L23). This matches the directory conventions of the four
-    migration frameworks the cohort and catalogs actually exercise:
+    absence (L23). This matches the directory conventions of four migration
+    frameworks:
 
     - ``**/migrations/`` — Django, and the general Python convention
     - ``db/migrate/`` — Rails / ActiveRecord
@@ -503,24 +525,43 @@ _TEST_ANNOTATION_NAMES = frozenset({
 })
 
 
-def _has_test_annotation(decorators: list[Dict[str, Any]]) -> bool:
+def _has_test_annotation(decorators: list[Any]) -> bool:
     """Check if any decorator/annotation indicates a test function.
 
     Matches exact annotation names (e.g., ``#[test]``, ``@Test``) and also
     the Rust ``#[cfg(test)]`` pattern where ``cfg`` has ``"test"`` as an arg.
     """
     for dec in decorators:
-        name = dec.get("name", "")
+        if isinstance(dec, str):
+            # The text form some maps carry (``"@Test"``, ``"#[cfg(test)]"``),
+            # which ``dead-code-maybe --exclude-annotated`` already reads; a
+            # node predicate every view calls must not crash on it (WI-dibuf).
+            text = dec.strip().lstrip("@").removeprefix("#[").removesuffix("]")
+            name, _, rest = text.partition("(")
+            args = [a.strip() for a in rest.rstrip(")").split(",")] if rest else []
+        elif isinstance(dec, dict):
+            name, args = dec.get("name", ""), dec.get("args", [])
+        else:
+            continue
         if name in _TEST_ANNOTATION_NAMES:
             return True
         # Rust #[cfg(test)] — "cfg" with "test" in args
-        if name == "cfg" and "test" in dec.get("args", []):
+        if name == "cfg" and "test" in args:
             return True
     return False
 
 
 def is_test_node(path: str, meta: Optional[Dict[str, Any]]) -> bool:
     """Check if a node is test code, using both file path and annotations.
+
+    THE NODE PREDICATE (WI-dibuf): every consumer deciding whether a NODE is
+    test code -- dead-code, test-coverage, explain / symbols ``-x``, sketch,
+    compact, slice, io-boundaries, ranking, entrypoints, routes, the linkers,
+    the test-only ratchet -- calls this; a FILE's test-ness (discovery, file
+    counts) is :func:`is_test_file`. A view that checks the path alone
+    disagrees with the rest about annotation-marked tests in source files:
+    Rust ``#[test]`` functions in ``src/`` would read as dead production
+    code to it while slice calls them tests.
 
     Extends ``is_test_file`` by also consulting the node's metadata for
     language-specific test annotations. This catches:
@@ -568,18 +609,15 @@ def names_no_source_file(path: str | None) -> bool:
     evidence about what the repository CONTAINS — an ``<external>`` node
     exists precisely because some other file referenced it.
 
-    INV-sarum's second measurement is why this is shared rather than
-    re-derived. The taint language census first scoped itself by asking
-    whether a node's path classified as a test; ``<external>`` does not, so
-    on the real self-survey go, java, rust, swift and elixir stayed in the
-    census on the strength of 9, 9, 8, 4 and 1 ``<external>`` nodes with zero
-    production source files between them — the exact five languages the fix
-    was meant to drop. Reading a reference target as evidence of presence
-    inverts its meaning.
+    Use this rather than a test-path check to scope by "real source files":
+    ``<external>`` does not classify as a test, so a language census scoped
+    that way keeps languages that appear only as reference targets, with no
+    source files at all. Reading a reference target as evidence of presence
+    inverts its meaning (history: INV-sarum).
 
-    ``sketch._map_source_paths`` has needed the same predicate since
-    INV-jumim and carried a private copy of it; this is that copy's one home
-    (L53: a second home for one fact drifts immediately).
+    ``sketch._map_source_paths`` uses the same predicate; this is its one
+    home (L53: a second home for one fact drifts immediately; history:
+    INV-jumim).
     """
     if not path:
         return True

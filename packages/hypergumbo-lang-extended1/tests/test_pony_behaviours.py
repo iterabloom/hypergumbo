@@ -1,20 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-rokus: a Pony behaviour (``be``) is a symbol, and its calls are its own.
 
-The member walk handled ``constructor`` and ``method`` nodes only. The grammar
-parses ``be`` as a ``behavior`` node, which was skipped, so an actor's
-asynchronous message handlers were not symbols and a call inside one was
-credited to the actor.
+The grammar parses ``be`` as a ``behavior`` node, so a member walk that
+handles only ``constructor`` and ``method`` nodes leaves an actor's
+asynchronous message handlers out of the symbols and credits a call inside
+one to the actor.
 
 A behaviour is emitted as ``kind="method"`` (the registry has no behaviour
 kind, and a behaviour is a method an actor runs asynchronously) with
 ``meta["is_behaviour"] = True`` and a ``be name(params)`` signature.
 
-The enclosing callable was also looked up by NAME in the repository-wide
-registry, which keeps one symbol per name. Every Pony program has an
-``actor Main`` with ``new create``, so a second program's ``Main.create``
-calls were credited to the first one's. Found by the declaration's POSITION
-in its own file now (INV-midag).
+The enclosing callable is found by the declaration's POSITION in its own
+file, not by NAME in the repository-wide registry, which keeps one symbol per
+name: every Pony program has an ``actor Main`` with ``new create``, so a name
+lookup would credit a second program's ``Main.create`` calls to the first
+one's (history: INV-midag).
 """
 
 from __future__ import annotations
@@ -97,8 +97,9 @@ def test_a_bare_call_resolves_to_its_actors_behaviour(tmp_path: Path) -> None:
 
 def test_same_named_types_in_two_files_keep_their_own_calls(tmp_path: Path) -> None:
     """INV-midag. Both files declare ``actor Main`` with ``new create`` and
-    ``fun helper``; the name registry kept the last file's symbols, and the
-    first file's calls were credited to (and resolved into) the other file."""
+    ``fun helper``; the name registry keeps the last file's symbols, so a
+    name lookup would credit the first file's calls to (and resolve them
+    into) the other file."""
     (tmp_path / "a.pony").write_text(
         "actor Main\n  new create(env: Env) =>\n    helper()\n\n  fun helper() => None\n")
     (tmp_path / "b.pony").write_text(
@@ -133,9 +134,8 @@ def test_a_bare_call_never_resolves_into_another_files_same_named_type(tmp_path:
 
 def test_this_files_field_is_found_as_the_registry_finds_it(tmp_path: Path) -> None:
     """The same-file table holds every symbol the registry holds, fields too:
-    ``table(i)`` (``table.apply(i)``) bound to the field before, and still does,
-    now to this file's own ``Updater.table`` rather than whichever file's the
-    registry kept."""
+    ``table(i)`` (``table.apply(i)``) binds to the field, and to this file's
+    own ``Updater.table`` rather than whichever file's the registry kept."""
     src = "actor Updater\n  let table: Array[U64] = Array[U64]\n\n  be run() =>\n    table(0)\n"
     (tmp_path / "a.pony").write_text(src)
     (tmp_path / "b.pony").write_text(src)

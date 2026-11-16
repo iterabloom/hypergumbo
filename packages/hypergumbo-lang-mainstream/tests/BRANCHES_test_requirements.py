@@ -167,7 +167,8 @@ requests>=2.0
         dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
 
         assert len(dep_edges) >= 1
-        assert any("pypi:package:requests" in e.dst for e in dep_edges)
+        requests = next(s for s in result.symbols if s.name == "requests")
+        assert any(e.dst == requests.id for e in dep_edges)
 
 
 class TestFindRequirementsFiles:

@@ -22,3 +22,32 @@
     fields:  # bf78
       statement: "The LaTeX analyzer produces the same run bookkeeping as TreeSitterAnalyzer analyzers and canonical edge endpoints."  # bf78
       root_cause: "latex.py ~412 replaces analyze() with its own loop, skipping the base loop's pass_version stamping, record_partial_parse and warnings; the labels set (~463) is never read, \\ref dst is the raw label (`sec:intro`) and src is `{rel_path}:file` instead of make_file_id."  # bf78
+- op: discuss  # b952
+  at: '2026-11-01T10:56:09Z'  # b952
+  by: agent  # b952
+  actor: jgstern_agent  # b952
+  clock: 2  # b952
+  nonce: b952  # b952
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: latex.py:449 still overrides analyze() wholesale. analyze_latex() on a 2-file fixture (one file with tree.has_error=True) gives run.pass_version='' and failed_files=[]; \\ref{sec:intro} edge is 'a.tex:file -> sec:intro'; the labels arg of _extract_edges_from_file is never read. Premise holds. The edge-endpoint half is the same defect INV-zipaj (filed 10-17) describes in more detail; suggest this item keep the run-bookkeeping half. MECHANISM: analyzer overrides TreeSitterAnalyzer.analyze() with a private loop, skipping base bookkeeping (pass_version stamping, record_partial_parse) and canonical id helpers. SHARES MECHANISM WITH: INV-zipaj."  # b952
+- op: update  # 6ca8
+  at: '2026-11-01T10:56:09Z'  # 6ca8
+  by: agent  # 6ca8
+  actor: jgstern_agent  # 6ca8
+  clock: 3  # 6ca8
+  nonce: 6ca8  # 6ca8
+  set:  # 6ca8
+    title: "latex: analyze() is overridden wholesale, so runs lack pass_version and failed_files (partial parses unrecorded); edge endpoints tracked in INV-zipaj"  # 6ca8
+- op: discuss  # b95f
+  at: '2026-11-01T23:36:20Z'  # b95f
+  by: agent  # b95f
+  actor: jgstern_agent  # b95f
+  clock: 4  # b95f
+  nonce: b95f  # b95f
+  message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): INV-habit's partial-parse half is covered by WI-tikul (latex is on its 23-analyzer custom-analyze-loop list) and its pass_version half is fixed by the same move onto the base loop; its edge-endpoint half belongs to INV-zipaj."  # b95f
+- op: discuss  # c251
+  at: '2026-11-03T17:28:12Z'  # c251
+  by: agent  # c251
+  actor: jgstern_agent  # c251
+  clock: 5  # c251
+  nonce: c251  # c251
+  message: "Design record 2026-11-03 (lab stash_archaeology_11032026/): latex.py was on the TreeSitterAnalyzer hooks (extract_symbols_from_file, extract_edges_from_file, _find_source_files) in the Phase 4 draft of 2026-02-19, and ca20c7c5f1 the same morning replaced that with the wholesale analyze() override this invariant is about, citing 'single-pass or custom-flow' and no failure. draft_files/latex.py holds that version."  # c251

@@ -19,3 +19,18 @@
     pr_ref:  # 9e12
     description: "Reported by the WI-hidit fix agent (PR #1555, 2026-10-12); not independently reproduced. The imports edge emitted for -behaviour(X) points at a synthesized placeholder id rather than the in-repo module symbol; left unchanged because the dependency linker parses that placeholder format. The new implements edge does resolve to the in-repo module, so the type relationship is correct; this is only the imports edge. Fix direction: resolve to the in-repo module when present and teach the dependency linker the resolved form, or document why the placeholder is the contract."  # 9e12
     fields: {}  # 9e12
+- op: discuss  # 54f6
+  at: '2026-11-01T22:22:24Z'  # 54f6
+  by: agent  # 54f6
+  actor: jgstern_agent  # 54f6
+  clock: 2  # 54f6
+  nonce: 54f6  # 54f6
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f (fx_hodor: my_behaviour.erl + impl.erl with -behaviour(my_behaviour)). erlang.py:719 still mints erlang:<X>:0-0:module:module. In survey output the imports edge dst is erlang:my_behaviour:0-0:module:external_symbol with is_resolved=False, while the implements edge resolves to erlang:src/my_behaviour.erl:1-1:my_behaviour:module. Premise holds; only the rendered placeholder form differs from the title. MECHANISM: behaviour import edge minted with a synthetic module placeholder id instead of the in-repo module symbol id."  # 54f6
+- op: update  # a0c4
+  at: '2026-11-01T22:22:24Z'  # a0c4
+  by: agent  # a0c4
+  actor: jgstern_agent  # a0c4
+  clock: 3  # a0c4
+  nonce: a0c4  # a0c4
+  set:  # a0c4
+    title: "erlang: -behaviour(X) imports edge targets placeholder erlang:X:0-0:module:module (unresolved external_symbol) even when module X is in the repo"  # a0c4

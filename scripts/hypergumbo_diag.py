@@ -45,11 +45,6 @@ PREFERRED_REPO_ORDER = [
 # Repos where we expect HTTP routes
 ROUTE_EXPECTED_REPOS = ["fastapi", "nestjs", "socketio", "microservices", "express", "flask", "django"]
 
-# Test path detection
-TEST_PAT = re.compile(
-    r"(^|/)(test|tests|__tests__|spec|specs)(/|$)|(_test\.py$)|(\.spec\.)|(_spec\.rb$)|(/testdata/)",
-    re.I
-)
 
 # Node ID line-span pattern (e.g., ":44:" or ":44-46:")
 ID_SPAN_RE = re.compile(r":\d+(?:-\d+)?:")
@@ -75,8 +70,10 @@ def pct(numerator: int, denominator: int) -> float:
 
 
 def is_test_path(p: str) -> bool:
-    """Check if path looks like a test file."""
-    return bool(TEST_PAT.search(p or ""))
+    """Whether *p* is a test file, by hypergumbo's own path predicate (a
+    private regex here would drift from it; history: WI-dibuf)."""
+    from hypergumbo_core.paths import is_test_file
+    return bool(p) and is_test_file(p)
 
 
 def preview_file(path: str, n: int = 12) -> list[str]:
@@ -145,7 +142,7 @@ def node_path(n: dict) -> str:
     """
     Extract file path from a node, trying multiple locations.
     
-    FIXED: Includes fallback to parse path from node ID when structured
+    Falls back to parsing the path from the node ID when structured
     span/path fields are not populated.
     """
     # Try structured span locations
@@ -364,10 +361,9 @@ def analyze_behavior_map(json_path: str, repo_name: str) -> tuple[dict, dict]:
     for e in edges:
         u, v = edge_src(e), edge_dst(e)
         t = e.get("type", "")
-        # Per ADR-0023 §6 Phase 3 (WI-vasik-jofiv) routes_to folded to
-        # 'dispatches_to' + meta['dispatch_kind']='route'. Check both
-        # canonical+meta and the deprecated form (Phase 4 prunes
-        # the producer-side dead value).
+        # A route edge is 'dispatches_to' + meta['dispatch_kind']='route'
+        # (ADR-0023 §6); the deprecated 'routes_to' form is accepted too, so
+        # maps that still carry it are scored the same.
         is_route_edge = (
             t == "routes_to"
             or (
@@ -481,7 +477,7 @@ def analyze_slice(slice_path: str) -> Optional[dict]:
     """
     Analyze a slice artifact.
     
-    FIXED: Handles both inline nodes (dicts) and node_ids (strings).
+    Handles both inline nodes (dicts) and node_ids (strings).
     """
     if not os.path.exists(slice_path):
         return None
@@ -512,7 +508,7 @@ def analyze_slice(slice_path: str) -> Optional[dict]:
     else:
         edge_count = len(edge_ids)
     
-    # Count files (FIXED: handle both formats)
+    # Count files (either format)
     files = set()
     calls_count = 0
     

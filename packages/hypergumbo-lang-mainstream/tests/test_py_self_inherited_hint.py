@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-hiziz PR-2 (Site 1): py.py stamps an ``enclosing_class`` hint on the
+"""Site 1: py.py stamps an ``enclosing_class`` hint on the
 final unresolved method-call edge for a ``self.method()`` call that Case 2a
 could not resolve in-file (a cross-file INHERITED method, or an absent one).
 
 The hint lets the ``inherited_calls`` linker's Site-1 resolver walk the method
-up the enclosing class's C3 MRO (the Python walker landed in PR-1) and mint a
-resolved ``calls`` edge to the ancestor's method — closing the deadness-FP
-where a production method inherited from a cross-file base looked unreachable.
+up the enclosing class's C3 MRO and mint a resolved ``calls`` edge to the
+ancestor's method, so a production method inherited from a cross-file base is
+not reported as unreachable. (history: WI-hiziz)
 
 Invariants locked here (producer side):
 
@@ -16,7 +16,7 @@ Invariants locked here (producer side):
 * **Site-1, not Site-2** — the ``self`` receiver is *lexical* (the enclosing
   class), so it is stamped as ``enclosing_class`` ONLY, never
   ``receiver_type_hint``. ``_try_resolve`` checks ``receiver_type_hint`` before
-  ``enclosing_class``, so a double-stamp would mis-route to Site-2 (FM4).
+  ``enclosing_class``, so a double-stamp would mis-route to Site-2.
 * **Crash guard + precision gate** — the branch fires only for
   ``caller_symbol.kind == "method"`` (guarantees a dotted ``qualified_name`` so
   ``split(".")[-2]`` cannot ``IndexError``) AND ``"self" in _caller_locals``
@@ -125,7 +125,7 @@ class TestSelfMethodEnclosingClassHint:
 
 class TestSelfMethodHintNegativeCases:
     """The crash-guard and precision-gate branches. Line-only coverage cannot
-    enforce their protective value (FM6), so these negatives are mandatory —
+    enforce their protective value, so these negatives are mandatory —
     do NOT delete them."""
 
     def test_self_call_from_non_method_caller_emits_no_hint(
@@ -164,7 +164,7 @@ class TestSelfMethodHintNegativeCases:
     def test_staticmethod_with_self_param_emits_no_hint(
         self, tmp_path: Path
     ) -> None:
-        # The review-caught anti-pattern: a @staticmethod that DECLARES a param
+        # The anti-pattern: a @staticmethod that DECLARES a param
         # named `self` passes the `"self" in _caller_locals` gate (self IS a
         # param), but its `self` is an arbitrary argument — an under-determined
         # receiver. The `"staticmethod" not in _caller_decos` gate is the SOLE
@@ -226,7 +226,7 @@ class TestSelfMethodHintNegativeCases:
         self, tmp_path: Path
     ) -> None:
         # self.helper() inside a nested function of a method is emitted twice
-        # (pre-existing double-walk): once attributed to the enclosing METHOD
+        # (the nested-function double-walk): once attributed to the enclosing METHOD
         # (kind "method" — the closure-captured self IS a C instance, correctly
         # hinted enclosing_class="C") and once to the nested FUNCTION itself
         # (kind "function", qualified_name "run.inner"). The function-attributed
@@ -251,12 +251,12 @@ class TestSelfMethodHintNegativeCases:
 
 
 class TestSelfMethodCase2aBoundary:
-    """FM2: the feature fires only when Case 2a misses. Since WI-kutal Case 2a
-    reads the OWN body of the class ``self`` denotes (not the file-global
-    short-name table), so a method of that body is intercepted and resolves
-    directly, while any other same-file namesake -- another class's method, a
-    module-level function -- no longer intercepts: the call reaches the
-    terminal else and carries the hint."""
+    """The feature fires only when Case 2a misses. Case 2a reads the OWN body
+    of the class ``self`` denotes (not the file-global short-name table), so a
+    method of that body is intercepted and resolves directly, while any other
+    same-file namesake -- another class's method, a module-level function --
+    does not intercept: the call reaches the terminal else and carries the
+    hint. (history: WI-kutal)"""
 
     def test_self_sameclass_method_resolved_no_hint(self, tmp_path: Path) -> None:
         # helper is on the SAME class → Case 2a resolves it directly → a
@@ -285,9 +285,9 @@ class TestSelfMethodCase2aBoundary:
         self, tmp_path: Path
     ) -> None:
         # A module-level `def save()` is not an attribute of a Sub instance.
-        # Pre-WI-kutal the file-global short-name table let it answer
-        # self.save() (last-write-wins); now the call reaches the else and is
-        # hinted for the Site-1 walk.
+        # Answering self.save() from the file-global short-name table
+        # (last-write-wins) would bind it to that function; instead the call
+        # reaches the else and is hinted for the Site-1 walk.
         src = (
             "def save():\n"
             "    return 0\n"
@@ -304,9 +304,8 @@ class TestSelfMethodCase2aBoundary:
 class TestSelfInheritedEndToEnd:
     """Full pipeline (producer emit → inheritance-linker extends recovery →
     inherited_calls Site-1 C3 walk): a cross-file INHERITED ``self.method()``
-    resolves to the ancestor's method. This is the deadness-FP fix — a
-    production method inherited from a cross-file base is no longer flagged
-    unreachable."""
+    resolves to the ancestor's method, so a production method inherited from
+    a cross-file base is not flagged unreachable."""
 
     def test_self_inherited_crossfile_resolves(self, tmp_path: Path) -> None:
         import json
@@ -352,7 +351,7 @@ class TestSelfInheritedEndToEnd:
     def test_annotated_self_resolves_via_site2_not_site1(
         self, tmp_path: Path
     ) -> None:
-        # Review regression lock: an explicit `self: Widget` annotation (a class
+        # Regression lock: an explicit `self: Widget` annotation (a class
         # NOT in the enclosing Handler's MRO) must resolve to Widget.render via
         # Site-2 on the annotation — NOT be preempted by a Site-1 walk of
         # Handler's MRO (which contains no `render`, losing the edge / risking a
@@ -402,8 +401,8 @@ class TestSelfInheritedEndToEnd:
     ) -> None:
         # Site-3 end-to-end: `log` is declared on a cross-file PARENT Base
         # (self.log = log, log: Logger); the child Sub's self.log.info()
-        # resolves to Logger.info via the parent-field walk. This is the
-        # dependency-injection deadness-FP fix.
+        # resolves to Logger.info via the parent-field walk, so a method reached
+        # only through an injected dependency is not flagged unreachable.
         import json
 
         from hypergumbo_core.cli import run_behavior_map
@@ -458,7 +457,7 @@ class TestSelfInheritedEndToEnd:
         # confidently-wrong resolution). NOTE: evidence_type is nested UNDER
         # meta in the serialized edge (Edge.to_dict), so the filter must read
         # (e.get("meta") or {}).get("evidence_type") — a top-level lookup is
-        # always None and would make this lock vacuous (review finding).
+        # always None and would make this lock vacuous.
         import json
 
         from hypergumbo_core.cli import run_behavior_map
@@ -486,7 +485,7 @@ class TestSelfInheritedEndToEnd:
     def test_own_field_shadowing_parent_field_no_wrong_edge(
         self, tmp_path: Path
     ) -> None:
-        # Review regression lock (own-field under-exclusion): Child re-declares
+        # Regression lock (own-field under-exclusion): Child re-declares
         # an inherited field name via an UNTYPED factory assignment
         # (self.handle = make_conn()), so class_field_types (typed-only) misses
         # it — but class_own_field_names captures the NAME. The Site-3 gate's
@@ -553,7 +552,7 @@ def _class_meta(res, class_name: str) -> dict:
 
 
 class TestClassFieldsMetaAttach:
-    """WI-hiziz PR-3 part (a): each class symbol carries
+    """Each class symbol carries
     meta["fields"] = {field_name: type_short_name} (from the __init__
     field-type scan), mirroring java.py — the single source of truth the
     inherited_calls Site-3 resolver's parent-walk reads."""
@@ -626,12 +625,12 @@ class TestClassFieldsMetaAttach:
         assert _class_meta(res, "C").get("fields") == {"a": "A", "b": "B"}
 
     def test_annassign_self_field_captured(self, tmp_path: Path) -> None:
-        # WI-sajub: an annotated ``self.x: T = param`` (AnnAssign) is scanned
-        # like the plain ``self.x = param`` (Assign) form. The __init__ scan
-        # previously matched only ast.Assign, so an annotated own field was
-        # captured neither into meta["fields"] nor into own_field_names (leaving
-        # it eligible for a confidently-wrong Site-3 hint to a same-named parent
-        # field of a different type).
+        # An annotated ``self.x: T = param`` (AnnAssign) is scanned like the
+        # plain ``self.x = param`` (Assign) form. A scan matching only
+        # ast.Assign would leave an annotated own field out of both
+        # meta["fields"] and own_field_names, making it eligible for a
+        # confidently-wrong Site-3 hint to a same-named parent field of a
+        # different type. (history: WI-sajub)
         src = (
             "class Foo:\n"
             "    pass\n"
@@ -644,7 +643,7 @@ class TestClassFieldsMetaAttach:
 
 
 class TestSelfFieldMethodHint:
-    """WI-hiziz PR-3 part (b): self.field.method() that Case 2f could not
+    """self.field.method() that Case 2f could not
     resolve (an INHERITED field) gets inherited_field_receiver + enclosing_class
     hints (Site 3). The linker walks the enclosing class's parents for the
     field's type and resolves the method there."""
@@ -817,21 +816,21 @@ class TestSelfFieldMethodHint:
 
 
 class TestOwnFieldExternalReceiverEmit:
-    """INV-jujoh: ``self.<own field>.method()`` where the field's type is
-    EXTERNAL or UNKNOWN must still emit the bare external placeholder edge.
+    """``self.<own field>.method()`` where the field's type is EXTERNAL or
+    UNKNOWN must still emit the bare external placeholder edge.
 
-    Before this class, that call emitted **no edge at all**: the field is in
-    ``own_field_names`` (so the Site-3 inherited emit correctly excludes it --
-    an own field is never inherited) and absent from ``var_types`` (so Case 2f
-    cannot resolve it, because ``class_field_types`` is Symbol-valued and can
-    only hold an IN-REPO class). Falling between the two sites meant silence,
-    and silence is upstream of every honesty mechanism: no edge for the
-    ``untyped_receiver`` caveat to name, none for the uncovered-module gate to
-    disclose, none for taint to walk. A ``net_send`` claim over
-    ``self.sock.sendall(payload)`` -- a CATALOGUED stdlib primitive -- returned
-    a bare ``confirmed`` at exit 0.
+    Such a call falls between two sites: the field is in ``own_field_names``
+    (so the Site-3 inherited stamp correctly excludes it -- an own field is
+    never inherited) and absent from ``var_types`` (so Case 2f cannot resolve
+    it, because ``class_field_types`` is Symbol-valued and can only hold an
+    IN-REPO class). Emitting nothing there is the hazard, because silence is
+    upstream of every honesty mechanism: no edge for the ``untyped_receiver``
+    caveat to name, none for the uncovered-module gate to disclose, none for
+    taint to walk. A ``net_send`` claim over ``self.sock.sendall(payload)`` --
+    a CATALOGUED stdlib primitive -- would come back a bare ``confirmed`` at
+    exit 0. (history: INV-jujoh)
 
-    The fix emits the placeholder WITHOUT the ``inherited_field_receiver``
+    The placeholder is emitted WITHOUT the ``inherited_field_receiver``
     stamp. That distinction is the whole safety argument and is pinned below:
     the stamp routes to ``inherited_calls``, which walks PARENT classes, so
     stamping an own field would invite exactly the shadow FP the Site-3
@@ -840,7 +839,7 @@ class TestOwnFieldExternalReceiverEmit:
     """
 
     def test_untyped_param_field_emits_placeholder(self, tmp_path: Path) -> None:
-        # THE ITEM'S OWN FIXTURE. ``sock`` is an UNANNOTATED __init__ param, so
+        # The base case. ``sock`` is an UNANNOTATED __init__ param, so
         # class_field_types never captures it; own_field_names does.
         src = (
             "class A:\n"
@@ -858,22 +857,16 @@ class TestOwnFieldExternalReceiverEmit:
     def test_external_ctor_field_now_carries_its_module(
         self, tmp_path: Path,
     ) -> None:
-        """UPDATED, NOT DELETED, and the distinction is the point (L13: a test
-        that pins a defect is a contract).
+        """An own field built by an external constructor emits an edge that
+        names the constructor's module.
 
-        As written for INV-jujoh this asserted a BARE PLACEHOLDER edge, and its
-        own comment said why that was unsatisfying: "the type IS known to the
-        receiver-constructor table (socket.socket), which is why this is an EMIT
-        gap and not a type-inference gap -- the identical LOCAL,
-        ``s = socket.socket(); s.sendall(b)``, already emits." The placeholder
-        was the best available answer then, not the desired one.
-
-        INV-fibis's recall half closes that asymmetry, so the PREMISE is kept
-        verbatim -- an edge MUST exist, which is INV-jujoh's whole guarantee and
-        is asserted first below -- and only the CONCLUSION moves: the edge now
-        names ``socket.socket`` instead of ``external``. Weakening this to "some
-        edge exists" would have discarded a real contract; deleting it would
-        have discarded INV-jujoh's."""
+        Two contracts, asserted in order. First, an edge MUST exist (the
+        own-field emit guarantee of this class). Second, the receiver-constructor
+        table knows ``self.sock = socket.socket()`` -- just as it types the
+        equivalent local ``s = socket.socket(); s.sendall(b)`` -- so the edge
+        names ``socket.socket`` rather than the anonymous ``external``
+        placeholder. Weakening this to "some edge exists" would discard the
+        second contract. (history: INV-jujoh, INV-fibis)"""
         src = (
             "import socket\n"
             "class A:\n"
@@ -894,10 +887,10 @@ class TestOwnFieldExternalReceiverEmit:
         )
 
     def test_factory_field_emits_placeholder(self, tmp_path: Path) -> None:
-        # The factory shape from test_self_field_untyped_own_field_no_hint,
-        # which asserted only the ABSENCE of the stamp and so passed VACUOUSLY
-        # (there was no edge at all). This asserts the edge exists; that test
-        # keeps asserting the stamp is absent, and is now non-vacuous.
+        # The factory shape from test_self_field_untyped_own_field_no_hint.
+        # That test asserts only the ABSENCE of the stamp, which passes
+        # vacuously if no edge is emitted; this one asserts the edge exists,
+        # which keeps that test meaningful.
         src = (
             "class C:\n"
             "    def __init__(self):\n"
@@ -913,8 +906,8 @@ class TestOwnFieldExternalReceiverEmit:
     ) -> None:
         # THE SAFETY HALF. With the stamp, inherited_calls walks the enclosing
         # class's PARENTS for a field of this name -- a walk whose premise is
-        # false for an own field. Route (a) of the item (relaxing the Site-3
-        # guard) would have shipped exactly that.
+        # false for an own field. Relaxing the Site-3 own-field guard to get the
+        # edge would produce exactly that.
         src = (
             "class A:\n"
             "    def __init__(self, sock):\n"
@@ -947,11 +940,10 @@ class TestOwnFieldExternalReceiverEmit:
         assert all(e.is_resolved is False for e in edges)
 
     def test_inherited_field_still_stamped(self, tmp_path: Path) -> None:
-        # NON-DESTRUCTION POSITIVE CONTROL, and the discriminating arm of the
-        # item's demonstration: the SAME call, with the field assigned OUTSIDE
-        # __init__, is not an own field -- it keeps the Site-3 stamp and its
-        # parent walk. If this ever goes quiet, the new branch has swallowed
-        # the inherited population.
+        # NON-DESTRUCTION POSITIVE CONTROL: the SAME call, with the field
+        # assigned OUTSIDE __init__, is not an own field -- it keeps the Site-3
+        # stamp and its parent walk. If this ever goes quiet, the own-field
+        # placeholder branch has swallowed the inherited population.
         src = (
             "class B:\n"
             "    def attach(self, sock):\n"
@@ -970,8 +962,9 @@ class TestOwnFieldExternalReceiverEmit:
     def test_typed_own_field_still_resolves_via_case_2f(
         self, tmp_path: Path
     ) -> None:
-        # The new branch must not steal a Case-2f hit: an own field with an
-        # IN-REPO type resolves to the real method and emits NO placeholder.
+        # The own-field placeholder branch must not steal a Case-2f hit: an
+        # own field with an IN-REPO type resolves to the real method and emits
+        # NO placeholder.
         src = (
             "class Dep:\n"
             "    def process(self):\n"
@@ -999,11 +992,12 @@ def _class_id(res, class_name: str, *, prefer: str = "first") -> str:
 
 
 class TestWiSupatProducerIds:
-    """WI-supat (D3) producer: py.py threads a CONCRETE class id alongside the
-    Site name hints. The enclosing-class id comes from an AUTHORITATIVE
-    method->class map (immune to the bare-name last-write-wins clobber); the
-    receiver-type id is stamped only when the type's short name is UNIQUE within
-    the file. Every stamped edge stays is_resolved=False (taint-safe)."""
+    """Producer: py.py threads a CONCRETE class id alongside the Site name
+    hints. The enclosing-class id comes from an AUTHORITATIVE method->class
+    map (immune to the bare-name last-write-wins clobber); the receiver-type
+    id is stamped only when the type's short name is UNIQUE within the file.
+    Every stamped edge stays is_resolved=False (taint-safe).
+    (history: WI-supat)"""
 
     # ---- Site-1 enclosing_class_id ----
 
@@ -1022,7 +1016,7 @@ class TestWiSupatProducerIds:
         assert (e.meta or {}).get("enclosing_class_id") == _class_id(res, "Sub")
 
     def test_nested_class_enclosing_id_is_direct_class(self, tmp_path: Path) -> None:
-        # THE REFUTATION LOCK: a top-level `Inner` + a nested `Outer.Inner`. A
+        # THE CLOBBER LOCK: a top-level `Inner` + a nested `Outer.Inner`. A
         # method of the TOP-LEVEL Inner must stamp the TOP-LEVEL Inner's id — a
         # bare-name local_symbols.get('Inner') would return the BFS-last NESTED
         # Inner (the clobber), so this pins the authoritative method->class map.
@@ -1171,7 +1165,7 @@ def _mk_cls(name: str, path: str = "/a.py") -> Symbol:
 
 
 class TestReceiverTypeIdTrustworthy:
-    """WI-supat (D3) review blocker: the receiver-type id is trustworthy only
+    """The receiver-type id is trustworthy only
     when its short name is file-unique AND (when the resolved type is the in-file
     class) not shadowed by a same-name import."""
 
@@ -1208,9 +1202,8 @@ class TestReceiverTypeIdTrustworthy:
 
 
 class TestWiSupatReceiverIdProducerOmissions:
-    """WI-supat (D3) review should_fix: the uniqueness-gate OMIT branch is
-    behaviorally locked for all three receiver_type_id producers (not just
-    var_types)."""
+    """The uniqueness-gate OMIT branch is behaviorally locked for all three
+    receiver_type_id producers (not just var_types)."""
 
     def test_property_read_id_omitted_on_collision(self, tmp_path: Path) -> None:
         # A @property receiver type with a same-name nested twin -> count>1 -> the
@@ -1256,7 +1249,7 @@ class TestWiSupatReceiverIdProducerOmissions:
 
 
 class TestWiSupatImportShadowBlocker:
-    """WI-supat (D3) review BLOCKER repro: a local class shadowed by a same-name
+    """A local class shadowed by a same-name
     in-tree import must NOT mint a confidently-wrong resolved edge through the
     (wrong) local class's MRO."""
 
@@ -1279,8 +1272,9 @@ class TestWiSupatImportShadowBlocker:
         )
         # a.py defines a LOCAL `class Foo(LocalBase)` then shadows the name with
         # `from b import Foo`. The runtime receiver of `c: Foo` is b.Foo, but the
-        # local-first annotation resolution picks a.Foo. WI-supat must NOT stamp
-        # a.Foo's id (import-shadowed) -- else the linker binds LocalBase.compute.
+        # local-first annotation resolution picks a.Foo. The producer must NOT
+        # stamp a.Foo's id (import-shadowed) -- else the linker binds
+        # LocalBase.compute.
         (tmp_path / "a.py").write_text(
             "from base import LocalBase\n"
             "class Foo(LocalBase):\n"
@@ -1319,7 +1313,7 @@ class TestWiSupatImportShadowBlocker:
 
 
 class TestWiSupatFieldTypeIdsProducer:
-    """WI-supat (D3) PR-B producer: each class symbol carries a parallel
+    """Producer: each class symbol carries a parallel
     meta['field_type_ids'] = {field: type_id} alongside meta['fields'], so the
     inherited_calls Site-3 resolver can disambiguate a same-short-name field
     TYPE. Per-field gated by the same trustworthiness check as receiver_type_id
@@ -1387,7 +1381,7 @@ class TestWiSupatFieldTypeIdsProducer:
 
 
 class TestWiSupatFieldTypeImportShadow:
-    """WI-supat (D3) PR-B review should_fix: a FIELD type that is a local class
+    """A FIELD type that is a local class
     shadowed by a same-name in-tree import must be OMITTED from
     meta['field_type_ids'] at the producer, so the linker never treats the
     (wrong, shadowed) local class as the authoritative field type.
@@ -1443,16 +1437,16 @@ class TestWiSupatFieldTypeImportShadow:
 
 
 class TestWiSupatEndToEndRecall:
-    """WI-supat (D3) e2e RECALL: the concrete-id collision-recovery actually
-    FIRES through the full pipeline. These lock the fix for the finalize
-    relativization gap — before it, the producer-stamped ids kept their
-    absolute-path form while the linker's class_symbols index was relativized, so
-    every concrete id silently fell back to the name path and the recovery never
-    fired (the negative e2e tests passed regardless via that same fallback, which
-    is why this class exists: a POSITIVE recall assertion end-to-end)."""
+    """e2e RECALL: the concrete-id collision-recovery actually FIRES through
+    the full pipeline. finalize must relativize the producer-stamped ids the
+    same way it relativizes the linker's class_symbols index; an id left in
+    absolute-path form matches nothing, so every concrete id silently falls
+    back to the name path and the recovery never fires. The negative e2e tests
+    pass under that same fallback, so only a POSITIVE recall assertion
+    end-to-end catches it. (history: WI-supat)"""
 
     def test_field_type_id_recall_fires_e2e(self, tmp_path: Path) -> None:
-        # PR-B: a Base field typed to log1.Logger; a same-name log2.Logger makes
+        # field_type_ids: a Base field typed to log1.Logger; a same-name log2.Logger makes
         # the field-type NAME collide -> without field_type_ids the linker biases
         # to unresolved. With it, Sub.run's self.log.info() resolves to
         # log1.Logger.info.
@@ -1502,7 +1496,7 @@ class TestWiSupatEndToEndRecall:
         )
 
     def test_enclosing_class_id_recall_fires_e2e(self, tmp_path: Path) -> None:
-        # PR-A (activated by the same finalize fix): two same-name Worker classes;
+        # enclosing_class_id: two same-name Worker classes;
         # w1.Worker inherits greet from a cross-file BaseA. Without a concrete
         # enclosing_class_id the "Worker" name collision biases self.greet() to
         # unresolved; with it, w1.Worker.run resolves to BaseA.greet.

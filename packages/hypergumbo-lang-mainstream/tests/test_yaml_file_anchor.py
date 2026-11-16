@@ -39,6 +39,8 @@ class TestYamlFileAnchor:
         assert node.path.endswith("conf/app.yaml")
         assert node.id == make_file_id("yaml", node.path)
         assert node.id.startswith("yaml:") and node.id.endswith(":1-1:file:file")
+        # The run counts the file it read (WI-fomid): it used to say 0.
+        assert result.run is not None and result.run.files_analyzed == 1
 
     def test_yml_extension_also_anchored(self, tmp_path: Path) -> None:
         (tmp_path / "ci").mkdir()

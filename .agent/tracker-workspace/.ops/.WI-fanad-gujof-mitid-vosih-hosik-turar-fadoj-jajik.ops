@@ -1,0 +1,21 @@
+- op: create  # 68d7
+  at: '2026-10-27T09:13:23Z'  # 68d7
+  by: agent  # 68d7
+  actor: jgstern_agent  # 68d7
+  clock: 1  # 68d7
+  nonce: 68d7  # 68d7
+  data:  # 68d7
+    kind: work_item  # 68d7
+    title: "ruby: a method call on a local typed to an EXTERNAL class (http = Net::HTTP.new; http.get) emits no edge at all; the chained form and an in-repo-typed local both do"  # 68d7
+    status: todo_hard  # 68d7
+    priority: 3  # 68d7
+    parent:  # 68d7
+    tags:  # 68d7
+    - call_graph  # 68d7
+    - ruby  # 68d7
+    isbefore: []  # 68d7
+    duplicate_of: []  # 68d7
+    not_duplicate_of: []  # 68d7
+    pr_ref:  # 68d7
+    description: "Found 2026-10-27 in passing during WI-ziruv (production `hypergumbo survey`, dev 7207fb0ecf).\n    def stdlib_local\n      http = Net::HTTP.new(\"x\")\n      http.get(\"/\")\n    end\nemits `calls -> ruby:Net::HTTP:0-0:new` and NO edge at all for `http.get` (line 14). Controls in the same file: a local typed to an IN-REPO class (`c = Client.new; c.get(\"/\")`) emits `calls -> Client#get` (resolved), and the chained form `Net::HTTP.new(\"x\").get(\"/\")` emits `calls -> ruby:external:0-0:get`. An untyped local (`m = make; m.fire`) emits `calls -> ruby:external:0-0:fire`. So a method call on a local whose type the analyzer knows to be an EXTERNAL class is dropped: every external client object used through a variable (Net::HTTP, File, a gem client) vanishes from the call graph and from io-boundaries. Check the analogue in the other analyzers' typed-receiver arms (the in-repo lookup succeeds or the call is dropped, with no external fallback) before fixing one. Related, distinct: WI-jubag (external constructors), WI-gaduf (in-repo Local.new)."  # 68d7
+    fields: {}  # 68d7

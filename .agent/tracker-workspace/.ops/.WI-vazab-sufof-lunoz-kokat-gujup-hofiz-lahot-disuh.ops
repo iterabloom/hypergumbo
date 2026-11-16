@@ -18,3 +18,18 @@
     pr_ref:  # 33cf
     description: "FOUND 2026-10-13 by WI-tusad F4 while probing two-parent shapes; not fixed there.\n\nREPRO: a .robot file with a `*** Tasks ***` section:\n  *** Test Cases ***\n  Case A\n      Log    a\n  *** Tasks ***\n  Case B\n      Log    a\n`hypergumbo run --include-docs` emits a `test` symbol named `*** Tasks ***` (the section header) and no symbol for `Case B`.\n\nEXPECTED: `*** Tasks ***` (Robot Framework 3.1+) is a section header like `*** Test Cases ***`; `Case B` is a task/test symbol."  # 33cf
     fields: {}  # 33cf
+- op: discuss  # 363d
+  at: '2026-11-01T10:55:54Z'  # 363d
+  by: agent  # 363d
+  actor: jgstern_agent  # 363d
+  clock: 2  # 363d
+  nonce: 363d  # 363d
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: the fixture emits test '*** Tasks ***' and Case A, with no Case B, with or without --include-docs. Direct tree-sitter-robot parse: the Tasks header becomes test_case_definition(name='*** Tasks ***') and Case B becomes ERROR nodes (has_error True). The grammar does not know the Tasks section; robot is also not wired for partial-parse disclosure (WI-tikul). MECHANISM: analyzer trusts a tree-sitter-robot error-recovered test_case_definition; robot is unwired from partial-parse disclosure so the loss is silent. SHARES MECHANISM WITH: WI-tikul."  # 363d
+- op: update  # bb66
+  at: '2026-11-01T10:55:54Z'  # bb66
+  by: agent  # bb66
+  actor: jgstern_agent  # bb66
+  clock: 3  # bb66
+  nonce: bb66  # bb66
+  set:  # bb66
+    description: "[REVIEW 2026-11-01, CURRENT] 2026-11-01 review on dev 100b6fbb6e: the fixture emits test '*** Tasks ***' and Case A, with no Case B, with or without --include-docs. Direct tree-sitter-robot parse: the Tasks header becomes test_case_definition(name='*** Tasks ***') and Case B becomes ERROR nodes (has_error True). The grammar does not know the Tasks section; robot is also not wired for partial-parse disclosure (WI-tikul). (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-10-13 by WI-tusad F4 while probing two-parent shapes; not fixed there.\n\nREPRO: a .robot file with a `*** Tasks ***` section:\n  *** Test Cases ***\n  Case A\n      Log    a\n  *** Tasks ***\n  Case B\n      Log    a\n`hypergumbo run --include-docs` emits a `test` symbol named `*** Tasks ***` (the section header) and no symbol for `Case B`.\n\nEXPECTED: `*** Tasks ***` (Robot Framework 3.1+) is a section header like `*** Test Cases ***`; `Case B` is a task/test symbol."  # bb66

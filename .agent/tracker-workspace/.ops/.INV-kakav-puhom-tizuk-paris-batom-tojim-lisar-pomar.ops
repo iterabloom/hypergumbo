@@ -1,0 +1,55 @@
+- op: create  # 0a50
+  at: '2026-11-05T00:04:32Z'  # 0a50
+  by: agent  # 0a50
+  actor: jgstern_agent  # 0a50
+  clock: 1  # 0a50
+  nonce: 0a50  # 0a50
+  data:  # 0a50
+    kind: invariant  # 0a50
+    title: "python CFG: an if-statement with two or more alternatives (elif/elif, elif/else) walks only the first; later arms are absent from the CFG, so def/use, DDG edges and the taint walk never see them (3-10% of Python functions forfeit)"  # 0a50
+    status: violated  # 0a50
+    priority: 2  # 0a50
+    parent:  # 0a50
+    tags:  # 0a50
+    - taint  # 0a50
+    - analysis_quality  # 0a50
+    - python  # 0a50
+    - ddg  # 0a50
+    isbefore: []  # 0a50
+    duplicate_of: []  # 0a50
+    not_duplicate_of: []  # 0a50
+    pr_ref:  # 0a50
+    description: "**Found 2026-11-04** while measuring the DDG edge count of django's `regex_helper.normalize` (dev 007be3f02e) for the readability panel (`~/hypergumbo_lab_notebook/readability_panel_11042026/`): 106 lines, seven state variables, and `solve_reaching_defs` returned 14 edges over 6 variables; `cfg.uncovered_semantic_lines` listed lines 86-182, the whole if/elif chain after its first `elif` arm.\n\n**Minimal repro** (`readability_panel_11042026/elif_repro.py`, probe `probe_ddg.py` there; both run with the installed checkout):\n\n```\ndef plain_chain(ch, out):\n    if ch == \"a\":\n        out.append(\"A\")\n    elif ch == \"b\":\n        out.append(\"B\")\n    elif ch == \"c\":      # line 6: not in the CFG\n        out.append(\"C\")  # line 7: not in the CFG\n    else:\n        out.append(\"Z\")  # line 9: not in the CFG\n    return out\n```\n\n`uncovered_semantic_lines` = {6, 7, 9}. The same for a chain whose second arm raises, and for a chain inside `while True` inside `try` (arms 3, 4 and the else lost). The FIRST `elif` is walked, but as straight-line code: its condition and body are recorded as sequential statements on the `false` edge of the `if`, with no branch between them.\n\n**Root cause.** tree-sitter-python puts every `elif_clause` and the `else_clause` under the `if_statement`'s REPEATED `alternative` field. `cfg_nodes/python.yaml` maps `conditional: if_statement` with `false_child: \"field:alternative\"`, and `CfgBuilder._process_conditional` (cfg.py ~1360) reads it through `_find_child`, which returns the first alternative only; the mapping has no `elif_clause` conditional, so even that one alternative is handed to `_process_node` and decomposed as sequential statements. Every other DDG language (c, go, java, rust, typescript) nests `else if` as an `if_statement` inside a single `alternative`, so the one-child read is correct there and this is Python-only among the shipped mappings.\n\n**Blast radius** (`elif_census.py`, `elif_census.txt`; a function counts when an `if_statement` in its body has two or more `alternative` children):\n\n| tree | functions | with a 2+-alternative chain | chains | arms never walked |\n|---|---|---|---|---|\n| packages/hypergumbo-core/src | 3093 | 104 (3.4%) | 118 | 213 |\n| packages/hypergumbo-lang-mainstream/src | 1556 | 159 (10.2%) | 207 | 420 |\n| django/django | 9484 | 326 (3.4%) | 353 | 581 |\n| httpx/httpx | 446 | 21 (4.7%) | 22 | 39 |\n\n**Consequences.** (1) Every such function has uncovered call nodes, so it lands in `RepoDdg.forfeit_refutation` (WI-joluk): the taint walk may never return False over it, and every same-function sink reads approximate under ADR-0017 mixed mode. That is disclosed, not hidden, but it is 3-10% of Python functions forfeited for a builder gap. (2) Definitions and uses in the lost arms produce no DDG edges, so a flow through an `elif` arm beyond the first is invisible to the walk (a seed used only there reads `source_not_tracked`). (3) The first `elif`'s body is unconditional on the false path, so a definition there kills an earlier one without a branch, which can hide a reaching definition from a later use.\n\n**Fix shape (structural).** In `_process_conditional`, read `_find_children(node, mapping.false_child)` and chain the alternatives: an alternative whose type has its own `ConditionalMapping` (add `elif_clause` to python.yaml with `condition_child: field:condition`, `true_child: field:consequence`, no `false_child`) becomes a condition block with a `true` edge to its consequence and a `false` edge to the NEXT alternative; the last alternative (an `else_clause`, or any type without a mapping) is processed as today. For the five nesting grammars `_find_children` returns one child and nothing changes; pin that with a test per language. Sibling sweep NOT done yet: Python `try_statement` (repeated `except_clause`) and `match_statement` (repeated `case_clause`) are also repeated-child shapes; check they are read with `_find_children` before closing.\n\n**Pre-registered verification.** After the fix: `plain_chain` and the two variants have no uncovered lines and the expected true/false edges; `normalize` gains edges over `result`, `ch`, `escaped`, `non_capturing_groups`, `num_args`, `consume_next`, `terminal_char`, `name`, `count`, `start`, `inner` (expected well above 14); the self-tree `forfeit_refutation` set shrinks by about the 104 core + 159 mainstream functions that have no OTHER uncovered construct (measure before/after with `build_repo_ddg` over packages/*/src); the self-claims gate (`scripts/check-self-claims`) stays at 23 `confirmed_with_caveats` with the same or fewer approximate sinks. Corpus delta on the io-manifest / bakeoff repos: not measured, to be measured as an A/B on the DDG edge-producing function count (never the total)."  # 0a50
+    fields:  # 0a50
+      statement: "Every arm of a Python if/elif/else chain is a CFG branch: each elif_clause is a condition block with a true edge to its consequence and a false edge to the next alternative, and the else_clause is the last false branch."  # 0a50
+      root_cause: "tree-sitter-python puts every elif_clause and the else_clause under the if_statement's REPEATED alternative field; CfgBuilder._process_conditional reads mapping.false_child through _find_child, which returns the first alternative only, and cfg_nodes/python.yaml maps no elif_clause conditional, so the one alternative that is walked is decomposed as sequential statements."  # 0a50
+- op: update  # 4ee6
+  at: '2026-11-05T00:07:13Z'  # 4ee6
+  by: agent  # 4ee6
+  actor: jgstern_agent  # 4ee6
+  clock: 2  # 4ee6
+  nonce: 4ee6  # 4ee6
+  set:  # 4ee6
+    status: violated  # 4ee6
+- op: discuss  # bde7
+  at: '2026-11-05T00:07:13Z'  # bde7
+  by: agent  # bde7
+  actor: jgstern_agent  # bde7
+  clock: 3  # bde7
+  nonce: bde7  # bde7
+  message: "Independently reproduced by four blinded readability-panel judges on 2026-11-04 (reports under ~/hypergumbo_lab_notebook/readability_panel_11042026/judges/): sample_C judges 1-3 found normalize's 14 edges all on lines 68-85 and 184-193 (every elif arm after the first dropped; rewriting every elif as else-if gives ~219 edges over 14 variables, walk_to_end 7 -> 17), and sample_B judge 1 found the same loss on an if/elif/return chain followed by a statement (format_address 12 edges, true count 14; six-line repro: if x.a: return / elif x.b: return / return x loses the final use). Judge C1 traced it to cfg.py's single alternative read, the same root cause as filed. Two of them also found a SEPARATE over-count: late_capture_edges emits duplicate (variable, def_line, use_line) triples at a nested def's line (_lazy_re_compile reports 10 edges, 7 unique), so 'under-counts, never over' is false for the raw edge list; not this item, noted for the script's dedup."  # bde7
+- op: update  # 48e0
+  at: '2026-11-05T01:50:35Z'  # 48e0
+  by: agent  # 48e0
+  actor: jgstern_agent  # 48e0
+  clock: 4  # 48e0
+  nonce: '48e0'  # 48e0
+  set:  # 48e0
+    status: satisfied  # 48e0
+- op: discuss  # 8fd0
+  at: '2026-11-05T01:50:35Z'  # 8fd0
+  by: agent  # 8fd0
+  actor: jgstern_agent  # 8fd0
+  clock: 5  # 8fd0
+  nonce: 8fd0  # 8fd0
+  message: "SATISFIED on the filed instance (the Python if/elif/else chain). Fix merged in PR #2053 (dev fba763f432, rebase-merged 2026-11-05; tree 1119eff00f): cfg_nodes/python.yaml gains an elif_clause conditional, CfgBuilder._process_conditional resolves every alternative with _find_children and _process_alternatives chains them (each elif a condition block whose false edge is the rest of the list); the five nesting grammars resolve one alternative and are pinned (go, typescript, rust). Tests: packages/hypergumbo-core/tests/test_cfg.py::TestIfElifChain, red before (4 failed) and green after. BEHAVIOURAL EVIDENCE, the item's own repro re-run on the merged tree (kakav_fix_11042026/repro_merged_1119eff00f.txt, probe_function.py over elif_repro.py): plain_chain uncovered [] (was {6,7,9}), 8 edges over ch/out across 9 blocks; chain_with_raise uncovered [], 7 edges; chain_in_while_try uncovered [], 17 edges over 3 vars. django regex_helper.normalize (readability panel sample_C): 219 edges, 214 distinct, 14 variables, uncovered [] (was 14 edges over 6 variables with lines 86-182 uncovered). Pre-registered measurements (RESULT.md, before at 603af28925 / after with the fix): self-tree forfeit_refutation core 99 -> 2 of 3115 edged functions, mainstream 150 -> 3 of 1566; DDG edges core 167,947 -> 173,662, mainstream 119,322 -> 150,439; self-claims gate 23 confirmed_with_caveats unchanged (check-self-claims-drift OK); affected-test run 12,644 passed, changed files at 100% coverage. SIBLING SWEEP (required by this item before closing): multiple except_clauses ARE iterated by type (cfg.py _process_try) and match arms ARE iterated over the body container, both probed clean on the merged tree (sibling_repro_merged_1119eff00f.txt: two_excepts and three_cases, except-arm lines all recorded). The try/for/while else_clause is NOT walked (a missing child mapping, a different mechanism): filed as INV-rotol-nobok-huhak-kijaj-tupit-fulub-bohir-pulup with its own repros and census (0.1-1.9% of functions). The general claim that every clause of every Python compound statement is in the CFG is NOT asserted here. NOT measured: the corpus A/B on the io-manifest / bakeoff repos (to be a diff of DDG-edge-producing functions and forfeit sets, never totals). Known unfiled side-finding: late_capture_edges emits duplicate (variable, def_line, use_line) triples at a nested def line (harmless to the walk; score-readability dedupes)."  # 8fd0

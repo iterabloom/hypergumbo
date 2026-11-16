@@ -38,3 +38,10 @@
   set: {}  # 56cd
   add:  # 56cd
     isbefore: [WI-divug-misob-buhoh-toloh-janam-fisod-hopih-lorom]  # 56cd
+- op: discuss  # 1138
+  at: '2026-10-29T19:49:03Z'  # 1138
+  by: agent  # 1138
+  actor: jgstern_agent  # 1138
+  clock: 4  # 1138
+  nonce: '1138'  # 1138
+  message: "ADR-0062 (PR #1943) decided this item's open branch: on a CLI-vs-live conflict the op wins and the uncommitted live text is DROPPED with an awareness notice to the editor, not re-applied (re-applying would overwrite a change the editor cannot see). Commit points: title/description after 5 s idle per field; a draft on its explicit post flag -- never per keystroke (every op is an .ops line, which drives auto-sync). Refusals also cover locked_fields and frozen items."  # 1138

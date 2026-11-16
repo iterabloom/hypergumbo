@@ -1,0 +1,66 @@
+- op: create  # 3280
+  at: '2026-10-22T19:36:20Z'  # 3280
+  by: agent  # 3280
+  actor: jgstern_agent  # 3280
+  clock: 1  # 3280
+  nonce: '3280'  # 3280
+  data:  # 3280
+    kind: work_item  # 3280
+    title: "rust: module-level const is emitted as kind variable, not the registry's const kind (needs its own stable-id scheme bump)"  # 3280
+    status: todo_hard  # 3280
+    priority: 3  # 3280
+    parent:  # 3280
+    tags:  # 3280
+    - rust  # 3280
+    - analysis_quality  # 3280
+    - stable_id  # 3280
+    isbefore: []  # 3280
+    duplicate_of: []  # 3280
+    not_duplicate_of: []  # 3280
+    pr_ref:  # 3280
+    description: "FOUND by WI-gapup (WI-bamar discussion, 2026-09-19) and left NOT DONE by WI-bamar's fix (b7b25f0041, commit body: \"realigning module-level const from variable to the registry's constant kind ... must ride a scheme bump of its own\").\n\nWHAT. rust.py emits kind=\"variable\" for a module-level `const` item (15 on the recorded aardvark-dns fixture, packages/hypergumbo-lang-rust-analyzer/recorded/). The symbol-kind registry defines `const` (\"Const declaration (C / C++ / Rust / JS const)\"), and the SCIP arm declares `constant`. It is the only kind disagreement left between the arms on paired records (15 of 150 after WI-bamar).\n\nWHY ITS OWN SCHEME BUMP. The kind is hashed into stable_id (make_typed_stable_id), so changing it changes every const's stable_id. That needs the stable-id scheme version bumped and the migration note recorded, as WI-banod's v10 bump did for the config-family analyzers. Riding WI-banod's v10 was not done: that branch was suite-tested without it.\n\nFIX SHAPE. In rust.py's item walk (the const_item arm next to static_item / let), emit kind \"const\" (the registry value; check which of `const` / `constant` the registry and the other analyzers actually use before choosing, since the SCIP arm's `constant` may be its own vocabulary). Bump the scheme, re-measure the agreement instrument (not hand-edit), and update docs/audits/0019's table.\n\nACCEPTANCE. A unit test: `pub const N: u32 = 1;` at module level gives one Symbol of the registry's const kind. The recorded agreement instrument shows 0 kind disagreements on paired records. Scheme version bumped, with the change named in its migration note.\n\nNOT CHECKED: whether any consumer branches on kind == \"variable\" for Rust consts (dead-code, slice anchoring); whether `static` should also move off `variable`."  # 3280
+    fields: {}  # 3280
+- op: discuss  # 3d64
+  at: '2026-11-15T19:25:54Z'  # 3d64
+  by: agent  # 3d64
+  actor: jgstern_agent  # 3d64
+  clock: 2  # 3d64
+  nonce: 3d64  # 3d64
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096 (stable-id v14). Reproduces: `pub const N: u32 = 1;` -> `rust:src/lib.rs:1-1:N:variable`. The arm is rust.py:1668, shared by `const_item` and `static_item`. Pinned tally unchanged: 150 paired, 135 agree, 15 `constant` vs `variable`. Token facts: the registry has both `constant` (symbol_kinds.py:231) and `const` (:233); the SCIP arm emits `constant` (scip/index.py:241), so only `constant` gives 0 disagreements. No mainstream analyzer emits either token for a const (C++/JS/TS/Kotlin emit `variable`; only julia and thrift emit `const`, tlaplus `constant`). SCIP maps statics to `variable`. Scheme bumps v11-v14 shipped since filing without this. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-zigup.md. No status or priority change made by this review."  # 3d64
+- op: discuss  # 3728
+  at: '2026-11-15T20:24:17Z'  # 3728
+  by: agent  # 3728
+  actor: jgstern_agent  # 3728
+  clock: 3  # 3728
+  nonce: '3728'  # 3728
+  message: "[OWNER RULING 2026-11-15] Every fix that moves an existing stable id shares ONE scheme bump, v14 to v15 (ADR-0035 section 6; no scheme after v9 has been released). This item's const-kind change therefore rides in that bump with the others and does not get a bump of its own, which the title still says. Plan: stable_id_items_review_11152026/PLAN.md."  # 3728
+- op: update  # bc03
+  at: '2026-11-15T21:27:44Z'  # bc03
+  by: agent  # bc03
+  actor: jgstern_agent  # bc03
+  clock: 4  # bc03
+  nonce: bc03  # bc03
+  set:  # bc03
+    title: "rust: module-level const is emitted as kind variable, not the registry's const kind"  # bc03
+- op: discuss  # 1435
+  at: '2026-11-15T21:27:44Z'  # 1435
+  by: agent  # 1435
+  actor: jgstern_agent  # 1435
+  clock: 5  # 1435
+  nonce: '1435'  # 1435
+  message: "[OWNER RULING 2026-11-15] Title: the clause '(needs its own stable-id scheme bump)' is dropped at the owner's word ('yes'). It contradicted the ruling of the same day that every id-moving fix shares the one bump to v15. The change still moves stable ids and still needs a bump; it rides the v15 bump PR."  # 1435
+- op: update  # d97c
+  at: '2026-11-16T11:46:39Z'  # d97c
+  by: agent  # d97c
+  actor: jgstern_agent  # d97c
+  clock: 6  # d97c
+  nonce: d97c  # d97c
+  set:  # d97c
+    status: done  # d97c
+- op: discuss  # 7913
+  at: '2026-11-16T11:46:39Z'  # 7913
+  by: agent  # 7913
+  actor: jgstern_agent  # 7913
+  clock: 7  # 7913
+  nonce: '7913'  # 7913
+  message: "Fixed in PR #2200. Re-ran the filed repro: `pub const N` was rust:lib.rs:1-1:N:variable on dev and is rust:lib.rs:1-1:N:const now; rust-analyzer's `constant` is refined to `const` for Rust, and the recorded two-backend agreement artifact went from 135 agree / 15 disagree to 150 / 0 on kind. ripgrep: 45 of 4,149 Rust symbols moved (1.08%), every one a module-level const; nothing else moved. `static` stays kind variable. Visible change: Rust consts now appear in compact output and `hypergumbo symbols` (+45 rows on ripgrep), because `const` was added to the containment linker's containable kinds and to selection's key kinds. NOT DONE (filed): associated, trait, macro-generated and fn-local consts and extern statics emit nothing; a non-`pub` const reads visibility=public (present before this PR too); the effect of the shared `const` change on Julia, Thrift and Cap'n Proto output was not measured. NOT CHECKED: whether any consumer branches on `variable` for a Rust const. The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 7913

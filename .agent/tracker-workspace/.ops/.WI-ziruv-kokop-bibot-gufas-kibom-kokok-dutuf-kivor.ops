@@ -1,0 +1,57 @@
+- op: create  # 4289
+  at: '2026-10-25T23:14:40Z'  # 4289
+  by: agent  # 4289
+  actor: jgstern_agent  # 4289
+  clock: 1  # 4289
+  nonce: '4289'  # 4289
+  data:  # 4289
+    kind: work_item  # 4289
+    title: "for each declared axis, try to falsify its one-sentence axiom on real survey output with a property test (or record why it needs per-row judgment): registries stop new spellings, not meaning drift"  # 4289
+    status: todo_hard  # 4289
+    priority: 3  # 4289
+    parent:  # 4289
+    tags:  # 4289
+    - axis  # 4289
+    - concept_audit  # 4289
+    isbefore: []  # 4289
+    duplicate_of: []  # 4289
+    not_duplicate_of: []  # 4289
+    pr_ref:  # 4289
+    description: "Proposed 2026-10-25 from a review of all 19 recorded Fundamental Concept Audits; filed on the owner's request.\n\nFINDING. Declared axes (ADR-0024: axiom + registry + drift linter + property test) stop new SPELLINGS: an unregistered value written as a literal by a producer the linter can read. They do not stop the MEANING drifting. Every axis's ADR has a one-sentence falsifiable axiom (ADR-0024 requires one), and nothing ever runs the falsification. Evidence that this is where verdicts flip:\n- 2026-10-21 audit #19 F6: the io-boundary axis (ADR-0050, fully declared) had its axiom applied three ways (medium, content, chooser); the owner amended it 2026-10-25 (WI-rutup).\n- #19 F3: calls.src had no contract under ADR-0023, the oldest declared axis (fixed as WI-fazup).\n- WI-higik / WI-totam: pony emits unregistered Symbol.kind values via node.type.replace(...); ADR-0027's static drift linter cannot see a computed emit, only the runtime validator flags it.\n- WI-fuzat: a field's '# axis:' comment says 'never parsed' while it is parsed -- the declaration linter checks a declaration is PRESENT, not TRUE.\n- ADR-0041's tier axiom was falsified against output in minutes on 2026-10-25 (three tiny workspace surveys: one package, three tiers), three months after an audit said its frame was ambiguous.\nVerdicts that stayed fixed had a test of MEANING, not vocabulary: INV-zivah (every I/O boundary has a taint mapping or a documented exclusion), audit 0018's type-family predicate plus a consumer linter, INV-suhob (activation/depends_on drift test).\n\nDO.\n1. Enumerate the declared axes and their axiom sentences: the heavyweight registry axes (edge-type ADR-0023, symbol-kind ADR-0027, evidence-type ADR-0028, io-boundary ADR-0050, module-key ADR-0051, io-primitive-kind ADR-0059) and the lightweight catalog-derived ones in multi_value_field_axis._known_axes (language, pass-id, protocol-origin, qualified-name, callable-signature, entrypoint-kind, visibility, pass-silence-reason), plus axiom-bearing ADRs that are not registry axes but state a one-sentence rule over output (ADR-0039 confidence, ADR-0041 supply_chain_tier, ADR-0061 catalogue tiers).\n2. For each, classify the axiom (a few minutes each): MECHANICALLY TESTABLE on survey output (e.g. ADR-0041 'nodes standing for one package carry one tier'; ADR-0023 'edge_type names the relationship', testable at least as 'no two edges with the same (src kind, relationship, dst kind) shape carry different edge_types'); PARTLY TESTABLE (a necessary condition can be checked); or NEEDS PER-ROW JUDGMENT (e.g. ADR-0050's medium reading). Record the classification and the reason in one table.\n3. For each testable axiom, write a property test that tries to FALSIFY it on real output: small committed fixtures through the production survey path (per-language where the axis varies by language), plus a mutation control proving the test can go red. A falsification found while writing it is filed, not fixed in the same PR. INV-kutub's planned 'every node standing for one package has one tier' test is the model and counts as ADR-0041's.\n4. For the per-row-judgment axioms, record that they are not mechanically testable and what a reviewer would sample instead, so the gap is declared, not silent.\nDELIVERABLE: the classification table (a docs/audits/ or docs/surveys/ document per docs/audits/README.md scope rules), the tests, and filed items for any falsification found. Does not touch governance files. Related: the write-only sweep filed beside this item; INV-kutub; WI-sufon; WI-rutup."  # 4289
+    fields: {}  # 4289
+- op: discuss  # 1e9e
+  at: '2026-10-25T23:15:12Z'  # 1e9e
+  by: agent  # 1e9e
+  actor: jgstern_agent  # 1e9e
+  clock: 2  # 1e9e
+  nonce: 1e9e  # 1e9e
+  message: "Companion: WI-kosup (sweep for write-only fields, knobs and functions; re-check every keep-with-trigger verdict for fireability). Model test for ADR-0041: INV-kutub. Axes whose axiom was amended or ruled 2026-10-25 and should be classified against the NEW wording: ADR-0050 (WI-rutup, medium + simultaneous reading) and ADR-0041 (WI-sufon, project frame)."  # 1e9e
+- op: discuss  # 54d5
+  at: '2026-10-26T00:31:42Z'  # 54d5
+  by: agent  # 54d5
+  actor: jgstern_agent  # 54d5
+  clock: 3  # 54d5
+  nonce: 54d5  # 54d5
+  message: "Review on the owner's request: about 17 open rows are counterexamples this item would find, already filed. Per rule: ADR-0039 ruling 6 -> WI-sakum; ADR-0041 -> INV-kutub (model test; WI-lidig first; WI-sufon gives the wording), INV-fuhin; INV-nuzas's acceptance property -> WI-lovun, WI-rilof; ADR-0061 -> WI-dagun (ruling 1), WI-savoh (ruling 2), WI-fuzat; ADR-0027 -> WI-higik, WI-totam(a); ADR-0050 -> WI-rutup (the amendment; classify against it), WI-kalol, WI-foloh, WI-zidam; ADR-0059 -> WI-ziviv (its shrink-only ledger is already a falsification test, a second model beside INV-kutub); pass-silence reasons -> WI-punod (the A/B/C states are prose only, so that row cannot be tested until WI-punod makes them data); choice-shaped sources -> WI-zakil part 3, WI-kufos. CONSEQUENCE: those tests fail on day one, so ship each as a strict xfail naming its item (the pony kind-slot precedent); each flips when its fix lands and becomes that item's production-path closure evidence. PREREQUISITES for single rows: WI-rutup (ADR-0050), WI-lidig -> INV-kutub -> WI-sufon (ADR-0041), WI-punod (pass silence). OUT OF THIS ITEM'S REACH: free-text field declarations shown false (WI-fuzat) -> WI-kosup section C; consumer-side subsets of a vocabulary (WI-sibup and four others) -> WI-kosup section D; consumers disagreeing about one fact (WI-votat, WI-fakuh, WI-bobuf); contracts never written, so nothing to falsify (when anchored code runs: WI-fakuh, WI-tibib, WI-kakup)."  # 54d5
+- op: update  # a231
+  at: '2026-10-27T09:37:00Z'  # a231
+  by: agent  # a231
+  actor: jgstern_agent  # a231
+  clock: 4  # a231
+  nonce: a231  # a231
+  set:  # a231
+    status: done  # a231
+- op: discuss  # b018
+  at: '2026-10-27T09:37:00Z'  # b018
+  by: agent  # b018
+  actor: jgstern_agent  # b018
+  clock: 5  # b018
+  nonce: b018  # b018
+  message: "DONE in PR #1902 (merged 0cb6bd3f16). Deliverables:\n- The classification table: docs/surveys/axiom-falsifiability.md. All 19 declared axioms are classed as testable, partly testable or needing per-row judgment, with the reason. For the judgment ones it records what a reviewer samples.\n- The tests: packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py and packages/hypergumbo-lang-extended1/tests/test_axiom_falsification_extended1.py.\n- Filed falsifications: WI-sukug (evidence label set by resolution in 8 of 12 languages) and WI-gisip (visibility defaults to public in every language).\n- Filed rulings: WI-mupal (what a route marker represents) and WI-kuzoh (ADR-0050 does not cover two-crossing simultaneous rows).\n- Found in passing: WI-fanad (ruby drops a call on an externally typed local).\n- A note on INV-fuhin (the ecosystem half).\n\nBEHAVIOURAL EVIDENCE, re-run on merged dev 0cb6bd3f16 via smart-test: 84 passed, 18 xfailed, 102 collected. All 18 are strict xfails naming an item, so each fix makes its test XPASS and fail the suite until the mark is removed:\n- 8 WI-sukug;\n- 5 WI-gisip;\n- 1 each WI-higik, INV-fuhin, WI-dagun, WI-savoh, WI-zakil.\n\nMutation controls, before merge, in a detached worktree with a pinned PYTHONPATH: eight production mutations turned 43 tests red. They were visibility default, post-pass reason, directness stamp, unresolved label, .ts language, java receiver key, kind rewrite and a tier listed twice. The checker controls and the verify-claims reach controls stayed green. Two mutations left one test each green: Python's own unresolved emitter is not the shared one, and TS's kind concept is analyzer-stamped, not enrichment-stamped. The survey and commit say so.\n\nNot done here:\n- ADR-0050 'same medium across catalogues', which needs a hand-written medium map (judgment).\n- An entrypoint-kind metamorphic test, which needs one entrypoint detectable two ways.\n- ADR-0061 ruling 7.\n- Reproducing WI-kufos on a fixture.\nEach is recorded as a gap in the survey."  # b018
+- op: discuss  # 0dc3
+  at: '2026-10-27T20:37:30Z'  # 0dc3
+  by: agent  # 0dc3
+  actor: jgstern_agent  # 0dc3
+  clock: 6  # 0dc3
+  nonce: 0dc3  # 0dc3
+  message: "2026-10-27 follow-up, PR #1905 (2fe7978820): the survey's four recorded gaps are closed. (a) Cross-catalogue medium check, packages/hypergumbo-core/tests/test_medium_families.py: 11 media, 99 members, 13 catalogues; 91 agree; 8 strict xfails: WI-sofam (2), WI-vogos (3), WI-jofud (3, new). (b) Entrypoint kind: route twins hold (click vs [project.scripts], flask decorator vs add_url_rule, express named vs inline); Flask app variable as main_function is a strict xfail, WI-dofiz (new). (c) ADR-0061 ruling 7: already covered by test_taint_channels_are_read.py (WI-mimap), now cited; a new test checks that one taint_sinks.d file serves two repos as yours, and it holds. (d) WI-kufos: both parts reproduced end to end, 2 strict xfails. Seven mutations: each targeted test went red, or its xfail XPASSed under the fix shape. On merged dev the two test files give 186 passed, 28 xfailed. Survey, README row and CHANGELOG updated."  # 0dc3

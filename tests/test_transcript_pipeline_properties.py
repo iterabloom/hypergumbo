@@ -25,11 +25,12 @@ import shutil
 import subprocess
 import tempfile
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 
@@ -112,11 +113,33 @@ def transcript_sequence(draw: st.DrawFn) -> list[dict]:
 # filter_new_lines tests
 # ---------------------------------------------------------------------------
 
+# Every property here runs under these settings. Both relaxations are about
+# the MACHINE, not the hook code; neither changes a property or its example
+# count (WI-lotig).
+#   * deadline=None. Hypothesis times each EXAMPLE against 200 ms; one example
+#     stalled by a descheduled worker exceeds it, the replay runs fast, and the
+#     run fails with a FlakyFailure wrapping DeadlineExceeded.
+#   * HealthCheck.too_slow is suppressed. Its budget for drawing the first
+#     inputs is max(1 s, 5 x deadline), so deadline=None alone already widens it
+#     to 30 s (hypothesis 6.151.6, engine.py); the suppression removes it, so no
+#     stall length fails a property. Under parallel load, input generation
+#     (test_output_never_exceeds_input in particular) can stall past the
+#     budget even though the same property passes quickly when run alone.
+# TestPropertiesSurviveALoadedMachine pins both; the guard in
+# tests/test_hypothesis_properties_are_load_tolerant.py makes every property in
+# the repo carry them.
+_LOAD_TOLERANT = settings(
+    max_examples=50,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+
+
 class TestFilterNewLines:
     """Property tests for filter-transcript.py's filter_new_lines."""
 
     @given(data=transcript_sequence())
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_output_never_exceeds_input(
         self, data: list[dict], filter_mod: Any,
     ) -> None:
@@ -143,7 +166,7 @@ class TestFilterNewLines:
             shutil.rmtree(d)
 
     @given(data=transcript_sequence())
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_offset_advances_monotonically(
         self, data: list[dict], filter_mod: Any,
     ) -> None:
@@ -163,7 +186,7 @@ class TestFilterNewLines:
             shutil.rmtree(d)
 
     @given(data=transcript_sequence())
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_idempotent_on_second_call(
         self, data: list[dict], filter_mod: Any,
     ) -> None:
@@ -188,7 +211,7 @@ class TestFilterNewLines:
             shutil.rmtree(d)
 
     @given(data=transcript_sequence())
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_snapshots_never_in_output(
         self, data: list[dict], filter_mod: Any,
     ) -> None:
@@ -213,7 +236,7 @@ class TestFilterNewLines:
             shutil.rmtree(d)
 
     @given(data=transcript_sequence())
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_non_progress_lines_preserved(
         self, data: list[dict], filter_mod: Any,
     ) -> None:
@@ -244,7 +267,7 @@ class TestFilterNewLines:
             shutil.rmtree(d)
 
     @given(data=st.lists(bash_progress_line(), min_size=2, max_size=20))
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_empty_bash_progress_dropped(
         self, data: list[dict], filter_mod: Any,
     ) -> None:
@@ -369,8 +392,8 @@ class TestRecentlyInjected:
 
     Per-session isolation (ADR-0018 amendment / Option 2): each test
     uses an explicit session_id and a per-session injection-state file
-    path. The legacy global session-token mechanism has been removed
-    because per-session paths already encode session identity.
+    path. No separate session token is involved, because the per-session
+    path already encodes session identity.
     """
 
     SESSION_ID = "test-session-12345"
@@ -423,7 +446,7 @@ class TestRecentlyInjected:
         pb_count=st.integers(min_value=1, max_value=5),
         transcript_growth=st.integers(min_value=0, max_value=100),
     )
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_recent_injections_within_window_are_skipped(
         self, pb_count: int, transcript_growth: int, hook_mod: Any,
     ) -> None:
@@ -608,7 +631,7 @@ class TestSelectRecentEntries:
         line_count=st.integers(min_value=1, max_value=100),
         content_size=st.integers(min_value=1, max_value=50),
     )
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_output_within_token_budget(
         self, line_count: int, content_size: int, hook_mod: Any,
     ) -> None:
@@ -632,7 +655,7 @@ class TestSelectRecentEntries:
     @given(data=st.lists(
         st.integers(min_value=0, max_value=999), min_size=2, max_size=30,
     ))
-    @settings(max_examples=50)
+    @_LOAD_TOLERANT
     def test_preserves_line_order(
         self, data: list[int], hook_mod: Any,
     ) -> None:
@@ -741,7 +764,7 @@ class TestTruncateToBudget:
 
 
 # ---------------------------------------------------------------------------
-# Session token tests for filter-transcript.py
+# Per-session state tests for filter-transcript.py
 # ---------------------------------------------------------------------------
 
 class TestFilterPerSessionState:
@@ -749,9 +772,9 @@ class TestFilterPerSessionState:
 
     Under per-session isolation (ADR-0018 amendment / Option 2), each
     session has its own state file path keyed by session_id, so cross-
-    session state contamination is structurally impossible. The legacy
-    session_token validation has been removed because the per-session
-    path itself is the identity check.
+    session state contamination is structurally impossible. The state
+    carries no session token: the per-session path itself is the
+    identity check.
     """
 
     def test_load_returns_state_when_present(
@@ -812,13 +835,13 @@ class TestFilterPerSessionState:
 class TestInjectionHistory:
     """Verify on_transcript_change.py's log_injection_history sidecar writer.
 
-    The sidecar fixes ADR-0018's "retrospective blindness" gap: previously,
-    Claude Code's `additionalContext` injection mechanism never round-tripped
+    Claude Code's `additionalContext` injection mechanism does not round-trip
     playbook content into the session transcript JSONL, so a retrospective on
-    `.last_session_transcript.jsonl` could not see which playbooks were
-    injected, when, or why. The sidecar records every poll's metadata
-    (including dedup-skipped and zero-selection polls) so that retrospective
-    analysis has a real signal to compute precision against.
+    `.last_session_transcript.jsonl` alone cannot see which playbooks were
+    injected, when, or why (ADR-0018's "retrospective blindness" gap). The
+    sidecar records every poll's metadata (including dedup-skipped and
+    zero-selection polls) so that retrospective analysis has a real signal
+    to compute precision against.
 
     Per-session isolation (ADR-0018 amendment / Option 2): the sidecar
     file path is per-session, keyed by session_id. Rotation into the
@@ -1077,10 +1100,8 @@ class TestPerSessionNamingInvariants:
           (.last_*/.second_to_last_*) or be persistent (training data,
           archive directory).
 
-    There is NO glob-based session reset anymore: the previous global
-    .transcript-* glob in sync-transcript.sh's per-session reset block
-    has been removed because per-session paths make the reset
-    unnecessary by construction.
+    No glob-based session reset is needed: per-session paths keep each
+    session's files separate by construction.
     """
 
     # Per-session files are created with these stem patterns. Each must
@@ -1123,8 +1144,8 @@ class TestPerSessionNamingInvariants:
         """Global slot filenames don't accidentally encode a session id."""
         # A real session_id is a UUID-shaped string with hex+dashes. The
         # check is that no GLOBAL_FILE looks like it has a per-session
-        # tail. We approximate by ensuring no GLOBAL_FILE name contains a
-        # dot-separated component longer than 'second_to_last'.
+        # tail. We approximate by flagging any dot-separated component
+        # longer than 20 characters that contains a hyphen but no underscore.
         suspicious = []
         for name in self.GLOBAL_FILES:
             parts = name.split(".")
@@ -1135,3 +1156,82 @@ class TestPerSessionNamingInvariants:
             f"global filenames look like they encode a session id: "
             f"{suspicious}"
         )
+
+
+class TestPropertiesSurviveALoadedMachine:
+    """A slow example or a slow draw must not fail a property here (WI-lotig).
+
+    Each case stalls deterministically, the way a descheduled worker does once,
+    and runs under ``_LOAD_TOLERANT``. Each control runs the SAME stall under
+    the strict timers and must fail, or the stall never reached the timer and
+    the passing case proved nothing.
+
+    THE CONTROLS SPELL OUT THE STRICT TIMERS rather than inherit them. When the
+    ``CI`` variable is set, Hypothesis loads its built-in ``ci`` profile, which
+    already has ``deadline=None`` and suppresses ``too_slow`` (hypothesis
+    6.151.6, ``_settings.py``), so an inherited "default" is tolerant there and
+    a control that inherits it cannot fail. Conversely, local runs get the
+    strict defaults, because smart-test and check-package-coverage do not set
+    ``CI``; that is where the load-induced failures appear.
+    """
+
+    _STRICT = {"deadline": timedelta(milliseconds=200), "suppress_health_check": ()}
+
+    @staticmethod
+    def _stalled_example(chosen: settings) -> list[bool]:
+        stalled: list[bool] = []
+
+        @given(st.integers())
+        @chosen
+        def prop(_value: int) -> None:
+            if not stalled:
+                stalled.append(True)
+                time.sleep(0.3)  # 1.5 x the 200 ms default deadline
+
+        prop()
+        return stalled
+
+    @staticmethod
+    def _slow_draws(chosen: settings) -> int:
+        drawn = [0]
+
+        def slow(value: int) -> int:
+            if drawn[0] < 12:
+                drawn[0] += 1
+                time.sleep(0.12)  # 12 x 0.12 s: past the ~1 s too_slow budget
+            return value
+
+        @given(st.integers().map(slow))
+        @chosen
+        def prop(_value: int) -> None:
+            pass
+
+        prop()
+        return drawn[0]
+
+    def test_a_stalled_example_passes(self) -> None:
+        assert self._stalled_example(_LOAD_TOLERANT), "REACH: the stall never ran"
+
+    def test_control_the_default_deadline_fails_the_same_stall(self) -> None:
+        from hypothesis.errors import DeadlineExceeded, FlakyFailure
+
+        with pytest.raises((FlakyFailure, DeadlineExceeded)):
+            self._stalled_example(settings(max_examples=50, **self._STRICT))
+
+    def test_slow_input_generation_passes(self) -> None:
+        """The SUPPRESSION alone survives the draws.
+
+        deadline=None by itself widens the draw budget to 30 s, which these
+        1.4 s of draws never reach, so this case puts the default 200 ms
+        deadline back (a 1 s budget) to show the suppression doing the work.
+        max_examples is lowered for speed only.
+        """
+        tolerant_draws = settings(
+            _LOAD_TOLERANT, max_examples=15, deadline=timedelta(milliseconds=200))
+        assert self._slow_draws(tolerant_draws) == 12
+
+    def test_control_the_default_health_check_fails_the_same_draws(self) -> None:
+        from hypothesis.errors import FailedHealthCheck
+
+        with pytest.raises(FailedHealthCheck):
+            self._slow_draws(settings(max_examples=15, **self._STRICT))

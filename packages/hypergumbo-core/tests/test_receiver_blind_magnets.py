@@ -412,3 +412,79 @@ def test_demote_survey_json_dict_shape():
     assert len(demoted) == 1
     assert edges[0]["dst"] == "go:external:0-0:Add:unresolved"
     assert edges[0]["meta"]["resolution_quality"] == "ambiguous"
+
+
+# ---- WI-sibup: every receiver value is placed, not only the listed ones ----
+
+def test_declared_type_receiver_skipped():
+    # C++ ``Logger lg; lg.Close();`` binds on the class the declaration names
+    # (WI-lamij), so the bind is typed and must not read as receiver-blind.
+    nodes, edges = _graph_with_magnet(meta={"receiver": "declared_type"})
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
+def test_self_receiver_skipped():
+    # Ruby ``self.m`` binds only the enclosing class's own method (WI-misir).
+    nodes, edges = _graph_with_magnet(meta={"receiver": "self"})
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
+def test_unplaced_receiver_value_reads_as_blind():
+    # A value the partition does not place is treated as receiver-blind, the
+    # conservative side; the vocabulary gate is what stops one shipping.
+    nodes, edges = _graph_with_magnet(meta={"receiver": "not_a_receiver_value"})
+    assert len(find_receiver_blind_magnets(nodes, edges)) == 1
+
+
+def test_declared_type_close_is_not_demoted():
+    nodes, edges = _prod_to("Logger.Close", "app/logger.go")
+    edges[0].meta = {"receiver": "declared_type"}
+    assert demote_harmful_magnets(nodes, edges) == []
+    assert edges[0].dst == "dst"
+
+
+# ---- WI-nafif: a type anchor owns its own methods -------------------------
+
+def test_class_anchor_calling_its_own_method_not_flagged():
+    # ``class P { static int X = Parse("1"); }`` -- the caller is the class.
+    nodes = [_node("P", "P", "class"), _node("P.Parse", "P.Parse", "method")]
+    edges = [_edge(src="P", dst="P.Parse")]
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
+def test_nested_class_anchor_owns_its_full_name():
+    # owner_of("Outer.Inner") is "Outer", but the anchor owns "Outer.Inner".
+    nodes = [
+        _node("I", "Outer.Inner", "class"),
+        _node("C", "Outer.Inner.Close", "method"),
+    ]
+    edges = [_edge(src="I", dst="C")]
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
+def test_generic_class_anchor_owns_its_stripped_name():
+    nodes = [_node("B", "Box<T>", "class"), _node("M", "Box.Parse", "method")]
+    edges = [_edge(src="B", dst="M")]
+    assert find_receiver_blind_magnets(nodes, edges) == []
+
+
+def test_class_anchor_calling_another_class_method_still_flagged():
+    nodes = [_node("Q", "Q", "class"), _node("P.Parse", "P.Parse", "method")]
+    edges = [_edge(src="Q", dst="P.Parse")]
+    assert find_receiver_blind_magnets(nodes, edges) == edges
+
+
+def test_outer_class_anchor_calling_nested_class_method_still_flagged():
+    nodes = [_node("O", "Outer", "class"), _node("C", "Outer.Inner.Close", "method")]
+    edges = [_edge(src="O", dst="C")]
+    assert find_receiver_blind_magnets(nodes, edges) == edges
+
+
+def test_class_anchor_dict_shape():
+    nodes = [
+        {"id": "P", "name": "P", "kind": "class"},
+        {"id": "M", "name": "P.Parse", "kind": "method"},
+    ]
+    edges = [{"type": "calls", "src": "P", "dst": "M", "is_resolved": True,
+              "confidence": 0.85, "meta": {"evidence_type": "ast_call"}}]
+    assert find_receiver_blind_magnets(nodes, edges) == []

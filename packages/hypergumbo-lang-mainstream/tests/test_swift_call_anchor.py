@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-midag, swift: a call edge's src is the declaration whose span contains it.
 
-The enclosing lookup keyed on the qualified name, which every overload of a
-method shares: Alamofire's ``Session.webSocketRequest`` and ``HTTPHeaders.add``.
-On a pinned 26-repo run, 261 of 8,343 swift call edges were anchored to an
-overload that does not contain the call. Found by position now.
+Every overload of a method shares one qualified name (``Headers.add`` below),
+so an enclosing lookup keyed on that name can anchor a call to an overload
+that does not contain it. The enclosing declaration is found by position.
 """
 from __future__ import annotations
 
@@ -44,5 +43,37 @@ class Headers {
 }
 """)
     assert {a[3] for a in anchors} >= {6, 10, 14}, anchors  # reach: all three calls
+    for name, start, end, line in anchors:
+        assert start <= line <= end, (name, start, end, line)
+
+
+def test_initialiser_deinitialiser_and_observer_bodies(tmp_path: Path) -> None:
+    """Each of these bodies is its own symbol, so a call in one anchors on it
+    rather than on the class (WI-sogof)."""
+    anchors = _anchors(tmp_path, """\
+func one() -> Int { return 1 }
+
+class Box {
+    init(a: Int) {
+        _ = one()
+    }
+
+    init(b: String) {
+        _ = one()
+    }
+
+    deinit {
+        _ = one()
+    }
+
+    var v: Int = 0 {
+        didSet { _ = one() }
+    }
+}
+""")
+    got = sorted((a[3], a[0], a[1]) for a in anchors)
+    assert got == [
+        (5, "Box.init", 4), (9, "Box.init", 8), (13, "Box.deinit", 12), (17, "Box.v", 16),
+    ], got
     for name, start, end, line in anchors:
         assert start <= line <= end, (name, start, end, line)

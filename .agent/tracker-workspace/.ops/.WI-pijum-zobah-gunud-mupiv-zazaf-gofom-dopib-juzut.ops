@@ -1,0 +1,22 @@
+- op: create  # 6493
+  at: '2026-11-16T11:46:56Z'  # 6493
+  by: agent  # 6493
+  actor: jgstern_agent  # 6493
+  clock: 1  # 6493
+  nonce: '6493'  # 6493
+  data:  # 6493
+    kind: work_item  # 6493
+    title: "scala: methods, functions, fields, objects, instances and constructors carry no qualified_name"  # 6493
+    status: todo_hard  # 6493
+    priority: 2  # 6493
+    parent:  # 6493
+    tags:  # 6493
+    - scala  # 6493
+    - stable_id  # 6493
+    - analysis_quality  # 6493
+    isbefore: []  # 6493
+    duplicate_of: []  # 6493
+    not_duplicate_of: []  # 6493
+    pr_ref:  # 6493
+    description: "WHAT. The Scala analyzer sets qualified_name on no method, function, field, object, given instance or constructor. cats `core`: 0 of 5,448 methods carry one.\n\nCONSEQUENCE. qualified_name is a hash input, so the id leans on the scope chain alone; every consumer that reads qualified_name (display, lookup by dotted path) gets nothing for Scala.\n\nMOVES IDS: setting it changes the hashed input of every Scala member. The v15 bump already moved 57.40% of cats `core` and 17.03% of lila `modules` (the parameterless `def f: T` return type alone 1,317 and 656); this would move most of the rest. Left out of PR #2200 for the owner to decide. Fixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nALSO LEFT in Scala (each seen on a fixture): type-parameter clauses and bounds are not hashed; a structural type's `def` is emitted as a spurious method; givens hash an empty signature; anonymous givens and constructor parameters are not emitted.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 6493
+    fields: {}  # 6493

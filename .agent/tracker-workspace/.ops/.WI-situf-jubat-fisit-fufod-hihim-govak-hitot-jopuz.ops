@@ -21,3 +21,10 @@
     pr_ref:  # e5f0
     description: "Add a canonical content digest (sha256 over the volatile-stripped / `--reproducible` survey) to the top-level survey envelope. An `# axis: identity` field: two runs on identical code share a digest; any semantic change flips it. Gives O(1) \"same survey?\" plus the natural diff / cache key.\n\nProcedurally lightweight per ADR-0024 / ADR-0033: it is an `identity` field, so no new registry / axis machinery is required. Must hash a stable, volatile-stripped form -> requires the `--reproducible` byte-repro mode first.\n\nBeyond G8 / WI-pifaj scope: new aijo-layer work; no canonical digest exists today (2026-07-21 G8 verification). Demand-gated on aijo. Blocks: survey diff. Blocked-by: the `--reproducible` mode."  # e5f0
     fields: {}  # e5f0
+- op: discuss  # 5786
+  at: '2026-11-01T10:55:48Z'  # 5786
+  by: agent  # 5786
+  actor: jgstern_agent  # 5786
+  clock: 2  # 5786
+  nonce: '5786'  # 5786
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e. Not built: the survey envelope keys (analysis_runs ... view) contain no digest/hash field; `hypergumbo survey --help` has no --reproducible flag; two surveys of the same fixture differ byte-wise (generated_at, uuid execution_id). Blocker WI-sazap (P2 todo_soft) is still open and holds isbefore [WI-situf, WI-vufad, WI-madut]. Premise unchanged. MECHANISM: no canonical survey digest; blocked on the unbuilt --reproducible mode (WI-sazap). SHARES MECHANISM WITH: WI-sazap, WI-zomuk, WI-vufad."  # 5786

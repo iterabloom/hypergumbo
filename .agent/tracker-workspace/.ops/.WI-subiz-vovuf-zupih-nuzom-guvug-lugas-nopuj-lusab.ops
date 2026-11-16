@@ -19,3 +19,26 @@
     pr_ref:  # 80d3
     description: "Two open items share the WI-fukut prefix: WI-fukut-godin-gidil-filif-dajob-kulik-luvud-total (INV-dihos Phase 5) and WI-fukut-tisot-visuz-mugaf-jibak-timin-monit-mukus (dogfooding playbook staleness). Any reference resolving items by first-two-segment short form collides on WI-fukut. Convention: always use the full eight-segment ID for WI-fukut references, and prefer full IDs in tooling. Strategy Wave-0 B6."  # 80d3
     fields: {}  # 80d3
+- op: discuss  # 5478
+  at: '2026-11-01T22:22:31Z'  # 5478
+  by: agent  # 5478
+  actor: jgstern_agent  # 5478
+  clock: 2  # 5478
+  nonce: '5478'  # 5478
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/tool1/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at dev 9ae4abe13f. 'tracker show WI-fukut' still errors 'ambiguous' and lists both items, but WI-fukut-tisot is now done, so the 'two open items' framing is stale. The collision is not specific to WI-fukut: across 3,036 items, 47 two-segment prefixes collide, e.g. WI-rijoj: AGENTS.md:239, cursor/session-start.sh:24,63 and session_id_helpers.sh:17,96 cite 'WI-rijoj', and 'tracker show WI-rijoj' is ambiguous. The resolver behaves per ADR-0013 (ambiguous prefix -> error), so the remaining work is citation hygiene, not a resolver defect. MECHANISM: two-segment proquint prefixes collide by birthday arithmetic (3,036 items); the resolver correctly fails loud on ambiguity, but prose/doc references written in 2-segment form become unresolvable. SHARES MECHANISM WITH: WI-rijoj."  # 5478
+- op: update  # acc2
+  at: '2026-11-01T22:22:31Z'  # acc2
+  by: agent  # acc2
+  actor: jgstern_agent  # acc2
+  clock: 3  # acc2
+  nonce: acc2  # acc2
+  set:  # acc2
+    title: "Two-segment tracker IDs collide (47 prefixes incl. WI-fukut, WI-rijoj); AGENTS.md and hooks cite ambiguous WI-rijoj; use 3+ segment IDs in refs"  # acc2
+- op: update  # 74dc
+  at: '2026-11-01T22:22:31Z'  # 74dc
+  by: agent  # 74dc
+  actor: jgstern_agent  # 74dc
+  clock: 4  # 74dc
+  nonce: 74dc  # 74dc
+  set:  # 74dc
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 9ae4abe13f. 'tracker show WI-fukut' still errors 'ambiguous' and lists both items, but WI-fukut-tisot is now done, so the 'two open items' framing is stale. The collision is not specific to WI-fukut: across 3,036 items, 47 two-segment prefixes collide, e.g. WI-rijoj: AGENTS.md:239, cursor/session-start.sh:24,63 and session_id_helpers.sh:17,96 cite 'WI-rijoj', and 'tracker show WI-rijoj' is ambiguous. The resolver behaves per ADR-0013 (ambiguous prefix -> error), so the remaining work is citation hygiene, not a resolver defect. (Original text below; the review entry in the thread has the evidence.)\n\nTwo open items share the WI-fukut prefix: WI-fukut-godin-gidil-filif-dajob-kulik-luvud-total (INV-dihos Phase 5) and WI-fukut-tisot-visuz-mugaf-jibak-timin-monit-mukus (dogfooding playbook staleness). Any reference resolving items by first-two-segment short form collides on WI-fukut. Convention: always use the full eight-segment ID for WI-fukut references, and prefer full IDs in tooling. Strategy Wave-0 B6."  # 74dc

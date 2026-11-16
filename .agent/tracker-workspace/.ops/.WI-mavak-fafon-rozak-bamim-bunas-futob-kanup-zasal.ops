@@ -1,0 +1,21 @@
+- op: create  # e6bd
+  at: '2026-10-31T10:07:43Z'  # e6bd
+  by: agent  # e6bd
+  actor: jgstern_agent  # e6bd
+  clock: 1  # e6bd
+  nonce: e6bd  # e6bd
+  data:  # e6bd
+    kind: work_item  # e6bd
+    title: "cpp: a dispatch table whose element type is a typedef or a class name is emitted as two variable symbols (one id twice on a one-line table)"  # e6bd
+    status: todo_hard  # e6bd
+    priority: 3  # e6bd
+    parent:  # e6bd
+    tags:  # e6bd
+    - docstring_audit  # e6bd
+    - analysis_quality  # e6bd
+    isbefore: []  # e6bd
+    duplicate_of: []  # e6bd
+    not_duplicate_of: []  # e6bd
+    pr_ref:  # e6bd
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. Pass 1 (cpp.py:1296-1346) and _table_symbol (cpp.py:2615-2642) each emit one; static fn table[] and Cmd cmds[] give duplicate node ids in survey output, while an array of function pointers or struct Cmd t[] gives one. v07."  # e6bd
+    fields: {}  # e6bd

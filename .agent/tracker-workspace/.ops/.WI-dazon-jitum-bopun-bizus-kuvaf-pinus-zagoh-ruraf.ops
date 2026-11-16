@@ -1,0 +1,21 @@
+- op: create  # 51ed
+  at: '2026-11-16T04:58:47Z'  # 51ed
+  by: agent  # 51ed
+  actor: jgstern_agent  # 51ed
+  clock: 1  # 51ed
+  nonce: 51ed  # 51ed
+  data:  # 51ed
+    kind: work_item  # 51ed
+    title: "Verilog: a module with a task enable in a begin block yields no module symbol; task and signal have no containment kind"  # 51ed
+    status: todo_hard  # 51ed
+    priority: 3  # 51ed
+    parent:  # 51ed
+    tags:  # 51ed
+    - verilog  # 51ed
+    - analysis_quality  # 51ed
+    isbefore: []  # 51ed
+    duplicate_of: []  # 51ed
+    not_duplicate_of: []  # 51ed
+    pr_ref:  # 51ed
+    description: "WHAT.\n1. tree-sitter-verilog 1.0.3 reads a user task enable with arguments (check(8'd1);) as a syntax error, and a module containing one yields no module_declaration: no module symbol, no instantiation edge from it, and a function called in it is credited to the file (so it stays a dead-code candidate although the source calls it).\n2. The containment linker's CONTAINABLE_KINDS holds function and neither task nor signal, for every language; the Verilog analyzer emits those contains edges itself.\n3. Not symbols today: reg/logic/integer variables (data_declaration, the same node a bare task enable parses as), nets of a user-defined type, out-of-block methods, packages, classes, programs, checkers.\n4. PR #2198 marks every module that nothing instantiates as an entrypoint so that a function called from a module body is reachable. On an IP library every standalone module is then an entry. NOT measured: no Verilog repository is cloned on the build machine. Revert = delete VerilogAnalyzer.post_process.\n5. bind was not checked. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 51ed
+    fields: {}  # 51ed

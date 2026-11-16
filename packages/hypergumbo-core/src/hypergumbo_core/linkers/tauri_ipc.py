@@ -4,10 +4,8 @@
 This linker creates ``calls`` edges (tagged ``meta.protocol="ipc"``) between
 TypeScript/JavaScript code that calls Rust functions via Tauri's IPC bridge
 (``invoke('command_name', ...)``) and the Rust functions annotated with
-``#[tauri::command]``. (The bespoke ``ipc_calls``/``caller_invokes`` edge
-types were folded onto the canonical ``calls`` per the audit-findings
-0002/0014 relationship-axis consolidation; the IPC/specta distinction now
-lives in ``meta``.)
+``#[tauri::command]``. The IPC / specta distinction lives in ``meta``, not
+in the edge type (audit-findings 0002/0014).
 
 How It Works
 ------------
@@ -27,25 +25,30 @@ Four-phase detection:
    - ``__TAURI_INVOKE__('cmd')`` — older specta / internal Tauri API
 
 3. **TS/JS side (specta wrapper resolution)**: Detects tauri-specta generated
-   wrapper files — files that export functions wrapping TAURI_INVOKE calls
+   wrapper files — files that export functions, or const objects with methods,
+   whose bodies call ``invoke`` / ``TAURI_INVOKE`` / ``__TAURI_INVOKE__``
    (e.g., ``export function takeScreenshot() { return TAURI_INVOKE("take_screenshot") }``).
-   Scans other TS/JS files for imports from these wrapper files, and creates
-   ``calls`` edges (tagged ``meta.framework_dispatch="specta_wrapper"``) from
-   the import site to the synthetic ``ipc_publisher`` node. This closes the "last mile" gap: TS components
-   calling ``commands.startRecording()`` are now linked through to Rust
+   Scans other TS/JS files for relative (``./`` / ``../``) imports from these
+   wrapper files (path-alias imports are not followed), and creates ``calls``
+   edges (tagged ``meta.framework_dispatch="specta_wrapper"``) from a synthetic
+   ``ipc_caller`` node minted per (importing file, imported wrapper name) to
+   the synthetic ``ipc_publisher`` node. This closes the "last mile" gap: TS components
+   calling ``commands.startRecording()`` are linked through to Rust
    handlers.
 
 4. **Rust→TS events**: Scans Rust files for ``emit`` / ``emit_all`` /
    ``emit_to`` and TS/JS files for ``listen`` / ``once``, then creates
    ``event_publishes`` edges (tagged ``meta.channel_kind="ipc"``,
    ``meta.framework_dispatch="tauri_emit_listen"``) between matching event
-   channel names, along with synthetic event-subscriber nodes.
+   channel names, along with synthetic event-subscriber nodes. This phase
+   runs only when step 1 found at least one ``#[tauri::command]`` function;
+   with no commands the linker returns before scanning for events.
 
 After building both maps, the linker creates ``calls`` edges
 (``meta.protocol="ipc"``) from synthetic TS/JS-side sources to the matching
 Rust command functions, and ``calls`` edges
-(``meta.framework_dispatch="specta_wrapper"``) from TS/JS files that import
-specta wrappers to the ipc_publisher nodes.
+(``meta.framework_dispatch="specta_wrapper"``) from synthetic ``ipc_caller``
+nodes in TS/JS files that import specta wrappers to the ipc_publisher nodes.
 
 Why This Design
 ---------------
@@ -57,8 +60,11 @@ Why This Design
 - The ``#[tauri::command]`` attribute is captured by the Rust analyzer's
   annotation extraction, so no additional Rust source scanning is needed.
 - Specta wrapper resolution uses a two-pass approach: first identify wrapper
-  files (files containing TAURI_INVOKE), then scan imports pointing at those
-  files and resolve imported names to command names.
+  files (files with an ``export function`` whose body, or an
+  ``export const X = {...}`` object whose method bodies, call ``invoke`` /
+  ``TAURI_INVOKE`` / ``__TAURI_INVOKE__`` with a literal command), then scan
+  relative imports pointing at those files and resolve imported names to
+  command names.
 """
 from __future__ import annotations
 
@@ -69,6 +75,7 @@ from pathlib import Path
 
 import hashlib
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -562,6 +569,19 @@ def _scan_ts_js_file_for_listen(file_path: Path) -> list[str]:
     return events
 
 
+def _stand_in_id(lang: str, path: str, name: str, role: str) -> str:
+    """The node id of a stand-in this linker mints for a file.
+
+    ADR-0036 Ruling 2: the kind slot is the Symbol's kind, ``function``. The
+    role (``ipc_publisher`` / ``ipc_caller`` / ``event_emitter`` /
+    ``event_listener``) used to sit there, a word no symbol kind has. It rides
+    as a name-segment suffix, as in the websocket and grpc linkers: these ids
+    are keyed by file with a ``0-0`` span, so without it a file that invokes
+    command ``sync`` and listens for event ``sync`` would mint one id twice.
+    """
+    return make_symbol_id(lang, path, 0, 0, f"{name}-{role}", "function")
+
+
 def link_tauri_ipc(
     repo_root: Path,
     ts_js_symbols: list[Symbol],
@@ -637,11 +657,12 @@ def link_tauri_ipc(
             except ValueError:
                 pass
 
-            # WI-dovog: the host file's language, not a literal -- ADR-0031
-            # Class B via js_ts_language_from_path; a .js frontend minted
-            # `typescript:` ids with no typescript node behind them.
+            # The host file's language, not a literal (ADR-0031 Class B via
+            # js_ts_language_from_path): a fixed `typescript:` prefix would
+            # give a .js frontend ids with no typescript node behind them
+            # (WI-dovog).
             host_language = js_ts_language_from_path(Path(rel_path))
-            src_id = f"{host_language}:{rel_path}:0-0:{cmd_name}:ipc_publisher"
+            src_id = _stand_in_id(host_language, rel_path, cmd_name, "ipc_publisher")
 
             # Create synthetic Symbol node for the IPC publisher so the
             # slicer's BFS can traverse through it. Without this node,
@@ -657,8 +678,8 @@ def link_tauri_ipc(
                     shape_id=None,
                     display_label=f"invoke('{cmd_name}')",  # ADR-0032
                     fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
-                    # ADR-0027 Phase 3 / audit-findings 0013: framework-role
-                    # leak. Fold to canonical kind="function" + meta key.
+                    # Canonical kind="function"; the role is carried in
+                    # meta["framework_role"] (ADR-0027, audit-findings 0013).
                     kind="function",
                     name=cmd_name,
                     path=rel_path,
@@ -672,22 +693,18 @@ def link_tauri_ipc(
                         "tauri_command": cmd_name,
                         "framework_role": "ipc_publisher",
                     },
-                    # INV-bonup / ADR-0041 §1: NO supply_chain_tier stamp — this
-                    # node used to borrow tier 2 purely to make _classify_symbols
-                    # skip host-path reclassification (e.g. tauri.ts → tier 4 →
-                    # filtered out), leaking a skip mechanism into the distance
-                    # axis. The skip now keys on this node's protocol_origin marker,
-                    # so it keeps its honest first-party default distance.
+                    # NO supply_chain_tier stamp: the tier names supply-chain
+                    # distance only. _classify_symbols recognizes this node as
+                    # a protocol stand-in by its protocol_origin marker and
+                    # gives it its file's distance (INV-bonup, ADR-0041 §1).
                     supply_chain_reason="synthetic IPC bridge node",
                 ))
 
-            # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
-            # Tauri's invoke IS a call; "ipc" is the mechanism.
-            # Canonical 'calls' + meta['protocol']='ipc'.
-            #
-            # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
-            # Fold evidence_type to canonical ast_call_direct
-            # + meta["framework_dispatch"]="tauri_invoke".
+            # Tauri's invoke IS a call and "ipc" is the mechanism: canonical
+            # 'calls' + meta['protocol']='ipc' (ADR-0023 §6, audit-findings
+            # 0002). evidence_type is the canonical ast_call_direct; the
+            # dispatching framework is named in
+            # meta["framework_dispatch"]="tauri_invoke" (ADR-0028).
             result_edges.append(Edge.create(
                 src=src_id,
                 dst=target_sym.id,
@@ -708,7 +725,8 @@ def link_tauri_ipc(
             ))
 
     # Phase 4: Specta wrapper resolution
-    # Files that contain TAURI_INVOKE are wrapper files. Build wrapper maps,
+    # Files exporting functions/const-object methods that call invoke /
+    # TAURI_INVOKE / __TAURI_INVOKE__ are wrapper files. Build wrapper maps,
     # then scan other files for imports from those wrappers.
     wrapper_file_paths: set[str] = set()  # absolute paths of wrapper files
     wrapper_maps: dict[str, dict[str, str]] = {}  # abs_path → {func: cmd}
@@ -730,8 +748,8 @@ def link_tauri_ipc(
         # Build publisher_id lookup: cmd_name → ipc_publisher src_id
         publisher_id_by_cmd: dict[str, str] = {}
         for sym in result_symbols:
-            # Post-fold: ipc_publisher symbols carry kind="function" +
-            # meta["framework_role"]="ipc_publisher" per audit-findings 0013.
+            # ipc_publisher symbols carry kind="function" +
+            # meta["framework_role"]="ipc_publisher" (audit-findings 0013).
             if (sym.meta or {}).get("framework_role") == "ipc_publisher":
                 cmd = (sym.meta or {}).get("tauri_command", "")
                 if cmd:
@@ -771,8 +789,8 @@ def link_tauri_ipc(
                 seen_caller_edges.add(dedup_key)
 
                 caller_language = js_ts_language_from_path(Path(rel_path))
-                caller_id = (
-                    f"{caller_language}:{rel_path}:0-0:{func_name}:ipc_caller"
+                caller_id = _stand_in_id(
+                    caller_language, rel_path, func_name, "ipc_caller",
                 )
 
                 if caller_id not in seen_caller_ids:
@@ -787,8 +805,8 @@ def link_tauri_ipc(
                         fingerprint=hashlib.sha256(
                             caller_id.encode(),
                         ).hexdigest()[:16],
-                        # ADR-0027 Phase 3 / audit-findings 0013: framework-role
-                        # leak. Fold to canonical kind="function" + meta key.
+                        # Canonical kind="function"; the role is carried in
+                        # meta["framework_role"] (ADR-0027, audit-findings 0013).
                         kind="function",
                         name=func_name,
                         path=rel_path,
@@ -808,10 +826,10 @@ def link_tauri_ipc(
                         supply_chain_reason="synthetic IPC caller node",
                     ))
 
-                # ADR-0028 Phase 3 / audit-findings 0014: specta_wrapper_import
-                # is a framework-dispatch leak — the underlying inference is an
-                # import. Fold to canonical ast_import +
-                # meta["framework_dispatch"]="specta_wrapper".
+                # The underlying inference is an import: canonical ast_import
+                # evidence, with the dispatching framework named in
+                # meta["framework_dispatch"]="specta_wrapper" (ADR-0028,
+                # audit-findings 0014).
                 result_edges.append(Edge.create(
                     src=caller_id,
                     dst=publisher_id,
@@ -878,9 +896,11 @@ def link_tauri_ipc(
                         continue
                     seen_event_edges.add(dedup)
 
-                    src_id = f"rust:{rust_path}:0-0:{event_name}:event_emitter"
+                    src_id = _stand_in_id("rust", rust_path, event_name, "event_emitter")
                     listener_language = js_ts_language_from_path(Path(ts_path))
-                    dst_id = f"{listener_language}:{ts_path}:0-0:{event_name}:event_listener"
+                    dst_id = _stand_in_id(
+                        listener_language, ts_path, event_name, "event_listener",
+                    )
 
                     # Create synthetic symbols for emitter and listener
                     if src_id not in seen_publisher_ids:
@@ -893,8 +913,8 @@ def link_tauri_ipc(
                             shape_id=None,
                             display_label=f"emit('{event_name}')",  # ADR-0032
                             fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
-                            # ADR-0027 Phase 3 / audit-findings 0013:
-                            # framework-role leak.
+                            # Role in meta["framework_role"], not the kind
+                            # (ADR-0027, audit-findings 0013).
                             kind="function",
                             name=event_name,
                             path=rust_path,
@@ -922,8 +942,8 @@ def link_tauri_ipc(
                             shape_id=None,
                             display_label=f"listen('{event_name}')",  # ADR-0032
                             fingerprint=hashlib.sha256(dst_id.encode()).hexdigest()[:16],
-                            # ADR-0027 Phase 3 / audit-findings 0013:
-                            # framework-role leak.
+                            # Role in meta["framework_role"], not the kind
+                            # (ADR-0027, audit-findings 0013).
                             kind="function",
                             name=event_name,
                             path=ts_path,
@@ -940,14 +960,12 @@ def link_tauri_ipc(
                             supply_chain_reason="synthetic Tauri event listener",
                         ))
 
-                    # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
-                    # Tauri emit/listen IS publish; "ipc" is the
-                    # channel kind. Canonical 'event_publishes' +
-                    # meta['channel_kind']='ipc'.
-                    #
-                    # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
-                    # leak. Fold evidence_type to canonical ast_call_direct
-                    # + meta["framework_dispatch"]="tauri_emit_listen".
+                    # Tauri emit/listen IS publish and "ipc" is the channel
+                    # kind: canonical 'event_publishes' +
+                    # meta['channel_kind']='ipc' (ADR-0023 §6, audit-findings
+                    # 0002). evidence_type is the canonical ast_call_direct;
+                    # the dispatching framework is named in
+                    # meta["framework_dispatch"]="tauri_emit_listen" (ADR-0028).
                     result_edges.append(Edge.create(
                         src=src_id,
                         dst=dst_id,
@@ -1038,7 +1056,7 @@ TAURI_IPC_REQUIREMENTS = [
     ),
     # CNF: javascript (JS/TS share the analyzer pass id) AND rust — both
     # required for Tauri's invoke() ↔ #[command] bridge.
-    # WI-juzig: rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``).
+    # rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``) (WI-juzig).
     depends_on=[["javascript"], ["rust", "rust_analyzer"]],
 )
 def tauri_ipc_linker(ctx: LinkerContext) -> LinkerResult:

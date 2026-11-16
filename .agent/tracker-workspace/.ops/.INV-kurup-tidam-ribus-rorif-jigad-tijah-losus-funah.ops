@@ -150,3 +150,38 @@
   clock: 18  # b786
   nonce: b786  # b786
   message: "OWNER RULING 2026-09-25 (P2 review follow-up): NOT P2. The 09-06 reason for P2 (\"WI-vodin is SCHEDULED\") is spent: WI-vodin shipped as #915. What remains is WI-popak / WI-dipim (P3 todo_soft), the linker's three-hop reach limit, and INV-dulah's release-gated limbs. Priority 2 -> 3. Status stays violated."  # b786
+- op: discuss  # 96ff
+  at: '2026-10-24T10:28:06Z'  # 96ff
+  by: agent  # 96ff
+  actor: jgstern_agent  # 96ff
+  clock: 19  # 96ff
+  nonce: 96ff  # 96ff
+  message: "STAGE 10 PASS 2026-10-24 (dev a7115a1eea). What closing this META needs, re-verified today: (1) WI-vodin: DONE (#915). (2) WI-popak (flip the id-format:F3 round-trip advisories to error): its named blockers WI-pubiv and WI-kugaj are DONE, and the schema-coverage corpus has 0 violations on default and include_docs (VALIDATION_BASELINES are stale at 11). But real-repo surveys still carry the advisory class from producers not named before: role-in-kind-slot (cuda, AndroidManifest, message-dispatch linker; filed WI-lusoh) and empty name slots (starlark raw dep labels x479 on grpc, python call-expression bases, a ruby call, a cpp anonymous enum; filed WI-pusan). Both are now isbefore WI-popak. (3) WI-dipim (sentinel enumeration sub-check) todo_soft. (4) INV-dulah: WI-banod's bitbake limb shipped as stable_id v10 on 10-22; pony/robot kind-slot holes remain, gated behind WI-talos. Order: WI-lusoh, WI-pusan, then WI-popak plus the baseline ratchet, then WI-dipim."  # 96ff
+- op: discuss  # a113
+  at: '2026-10-24T15:08:02Z'  # a113
+  by: agent  # a113
+  actor: jgstern_agent  # a113
+  clock: 20  # a113
+  nonce: a113  # a113
+  message: "STAGE 10 PROGRESS 2026-10-24. Landed: WI-lusoh #1832 (kind-slot roles), WI-pusan #1833 (empty name slots, starlark label resolution), WI-popak #1834 (round-trip checks are errors, baselines 11 -> 0). Remaining before this META can close: (a) WI-dipim. Ruling 3 as written flags real ids (grpc census: 1,904 C++ include targets named 'file', 18 real 1-1 spans, 7 angle-bracket headers) and catches real defects (220 cmake <unknown> path slots). Awaiting an owner ruling on narrowing the check and amending the table (~/hypergumbo_lab_notebook/dipim_10242026/RULING3_CENSUS.md). (b) INV-dulah's pony/robot kind-slot holes, behind WI-talos. (c) The id-construction linker's three-hop reach. (d) The full Ruling-1 name-slot round-trip (not filed separately)."  # a113
+- op: discuss  # 982f
+  at: '2026-10-24T19:50:21Z'  # 982f
+  by: agent  # 982f
+  actor: jgstern_agent  # 982f
+  clock: 21  # 982f
+  nonce: 982f  # 982f
+  message: "STAGE 10 DONE for what is actionable now (2026-10-24): WI-lusoh #1832, WI-pusan #1833, WI-popak #1834, WI-dipim #1836 (all closed with live repros on merged dev). This META stays VIOLATED. Its remaining limbs are each tracked or gated: WI-zihij (six producers emit non-id dsts that render as <unknown>; the check promotes to error after); INV-dulah's pony/robot kind-slot holes (behind WI-talos); the id-construction linker's three-hop reach; the full Ruling-1 name-slot round-trip (name slot == sanitized Symbol.name, not filed). Next: stage 11."  # 982f
+- op: discuss  # 5d75
+  at: '2026-11-15T19:25:52Z'  # 5d75
+  by: agent  # 5d75
+  actor: jgstern_agent  # 5d75
+  clock: 22  # 5d75
+  nonce: 5d75  # 5d75
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Still violated. Fixture run: 6 id_format errors from INV-dulah's three producers (robot `test_case`, JSX route marker `route`, BitBake `python_task`, 2 each) and 4 `<unknown>`-path warnings from cmake `links` and starlark `calls` (WI-zihij, todo_hard; check still a warning). `scripts/check-id-construction` exits 0 on the same tree: the linter does not check kind-slot == Symbol.kind. WI-vodin, WI-popak-gugoz, WI-dipim, WI-lusoh, WI-pusan are done. The 2026-06-02 markdown/gitignore mechanisms produce 0 violations under --include-docs. No name-slot == sanitized(name) check exists (spec_validator.py:2040-2056) and no item is filed for it. test_doc_family_id_parity.py KIND_SLOT_HOLES holds robot only. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-kurup.md. No status or priority change made by this review."  # 5d75
+- op: discuss  # b4cb
+  at: '2026-11-16T04:57:51Z'  # b4cb
+  by: agent  # b4cb
+  actor: jgstern_agent  # b4cb
+  clock: 23  # b4cb
+  nonce: b4cb  # b4cb
+  message: "PR #2198, 2026-11-15: members done here: WI-zihij, WI-mamip, WI-dakas. INV-dulah is still violated on two producers (robot, twig; the v15 bump), so this umbrella stays open. The static check now compares an id's kind word with Symbol.kind; the validator records the name-slot round-trip per producer on every run (not an error: 14,056 of 97,574 nodes mismatch on six maps, 5,919 of them file nodes that are exempt by rule)."  # b4cb

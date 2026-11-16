@@ -6,7 +6,10 @@ between sender and handler code. Creates ``event_publishes`` edges (tagged
 ``meta.channel_kind="message_bus"``) between send sites and receive/dispatch
 sites matched by message type name. (The bespoke ``message_dispatch`` edge
 type was folded onto ``event_publishes`` per the audit-findings 0001
-cross-family consolidation.)
+cross-family consolidation.) Both ends are synthetic nodes minted per site
+(``meta.framework_role`` ``message_sender`` / ``message_handler``), edges
+carry confidence 0.70, and a write and a read in the same file are never
+paired.
 
 Two API surfaces are covered:
 
@@ -16,10 +19,13 @@ Two API surfaces are covered:
 - Read (dispatch): ``case 'MSG_TYPE':`` in switch statements, or
   ``msg.type === 'MSG_TYPE'`` / ``msg.type == 'MSG_TYPE'`` comparisons
 
-**Rust (serde-tagged enums):**
-- Write (type def): ``#[serde(rename = "msg_type")]`` on enum variants
-  inside ``#[serde(tag = "...")]`` enums
-- Read (match): ``EnumName::Variant { ... } =>`` match arms
+**Rust (serde enums):**
+- Write (type def): any ``#[serde(rename = "msg_type")]`` attribute line,
+  with the rename string as the channel; the enclosing
+  ``#[serde(tag = "...")]`` enum is not checked, so struct-field renames
+  also count
+- Read (match): every ``EnumName::Variant`` on a line that contains
+  ``=>``, with the variant name (not its serde rename) as the channel
 
 Why This Design
 ---------------
@@ -39,6 +45,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -268,13 +275,18 @@ def link_message_dispatch(
             # .js site and gave a .ts read the write's language.
             pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "js_dispatch" else "rust"
             sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "js_dispatch" else "rust"
-            pub_id = (
-                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
-                f":{write.channel}:message_sender"
+            # WI-lusoh: canonical ids whose kind slot is the node's kind. The
+            # role (sender / handler) is meta.framework_role; it was the kind
+            # slot, which id-format:F3's round-trip flags. A sender and a
+            # handler share an id only if one line is both a send and a handle
+            # site for the same channel.
+            pub_id = make_symbol_id(
+                pub_lang, write.file_path, write.line, write.line,
+                write.channel, "function",
             )
-            sub_id = (
-                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
-                f":{read.channel}:message_handler"
+            sub_id = make_symbol_id(
+                sub_lang, read.file_path, read.line, read.line,
+                read.channel, "function",
             )
 
             if pub_id not in seen_sym_ids:

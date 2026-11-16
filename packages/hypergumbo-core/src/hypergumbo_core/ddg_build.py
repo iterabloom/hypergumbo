@@ -6,20 +6,18 @@ knows how to turn *one* function body into a control-flow graph and solve
 reaching definitions; this module knows how to find every function in a
 repository, do that to each of them, and aggregate the result into the
 :class:`RepoDdg` that taint propagation consumes: ``ddg_edges``,
-``ddg_symbols`` and ``hints_by_caller``, plus the per-function statement
-def/use, forfeit-refutation, unaccounted-name and return-span indexes.
+``ddg_symbols`` and ``hints_by_caller``, plus the per-function parameter,
+statement def/use, forfeit-refutation, unaccounted-name and return-span
+indexes.
 
 Why This Module Exists
 ----------------------
-The logic lived in ``cli.py`` as ``_build_python_ddg_for_verify_claims``,
-which is two problems in one name. ``cli.py`` scopes itself to "argument
-parsing and dispatching to command handlers", and a repo-walking analysis
-pipeline is not that — it had grown to ~200 lines inside a 10,000-line
-module. More importantly the name encoded a hardcoded *language* and a
-single *consumer*, and both were load-bearing: the sole call site passed
-the literal string ``"python"`` to ``populate_def_use_for_cfg``, so the
-Rust and TypeScript def/use extractors — registered, tested, and covered —
-were never invoked by any production path at all.
+``cli.py`` scopes itself to "argument parsing and dispatching to command
+handlers", and a repo-walking analysis pipeline is not that. Keeping the
+pipeline here, keyed by language rather than by consumer, also keeps it
+from hardcoding one language: a call site that passes a literal
+``"python"`` to ``populate_def_use_for_cfg`` leaves every other language's
+def/use extractor registered and tested but never invoked in production.
 
 How It Works
 ------------
@@ -38,6 +36,14 @@ language packages register into it; the caller force-imports them.
 ``build_repo_ddg()`` then does the same thing for every requested
 language: glob the files, parse, walk for function nodes, build the CFG,
 populate def/use **with that language's extractor**, and solve.
+
+A spec may also name a function's parameters (``params_for``; the Python,
+Go, JavaScript and TypeScript specs do, WI-sosov). The solver gets them as
+entry definitions at the function's own line, never as statements, so a
+parameter reaches its uses in the body while no statement-level reader sees
+it. They are recorded in ``RepoDdg.params`` whether or not any use follows;
+``taint.parameter_seeds`` seeds only a parameter a use reads. A node that is
+not a callable -- a module root, a Go ``var_spec`` binding -- has none.
 
 Symbol Identity
 ---------------
@@ -60,10 +66,9 @@ types in ``bound_callable_node_types``, and such a node is walked ONLY under
 the id the analyzer emitted at exactly its span -- ``analyzer_symbols``,
 passed in by the caller that already holds the survey. Re-deriving the names
 here would be a second copy of the analyzer's naming that drifts; a node the
-analyzer did not name is not walked. Before this, dash.js had 3,981 of 7,592
-callable symbols the DDG never walked, and a flow inside one read
-``structural`` -- a FALSE ``violated`` where the same body as a declaration
-was refuted by the walk.
+analyzer did not name is not walked. A callable the DDG does not walk leaves
+a flow inside it at ``structural``, which reads as a FALSE ``violated`` where
+the same body written as a declaration is refuted by the walk.
 
 Bindings That Hold Callables (WI-rovun)
 ---------------------------------------
@@ -89,6 +94,37 @@ available in both cases: a dependence the walk FINDS is real.
 A plain data variable (``var logger = log.New(...)``) is indexed but holds no
 body, so it is never walked: the index admits the kind, the hook decides.
 
+Module Code (WI-nilir)
+----------------------
+Code at module scope -- a Python module body, a JS/TS program's top level --
+is anchored by the analyzer on the FILE pseudo-symbol
+(``python:app.py:1-1:file:file``). A spec that names its root node type in
+``module_node_types`` has that root walked as one more function under the file
+id when the module has at least one call outside every nested function (a
+definitions-and-imports-only module is skipped), so a flow written at module
+scope is adjudicated like the same lines in a function rather than by
+call-graph reachability alone.
+
+The module's top-level ``def`` / ``function`` / ``class`` are its nested
+functions: may-run regions, never statements in sequence (the cfg mappings'
+``nested_function``), so a class attribute does not kill the module name it
+shadows and a method's ``if`` is not module control flow. Module names are
+globals, and a top-level function is usually DEFINED before the code that reads
+the secret it uses; "Nested Functions Read Late" is what keeps that flow from
+being refuted.
+
+Nested Functions Read Late (WI-lokok)
+-------------------------------------
+The CFG hangs a nested function's body off its definition as a region that
+may run there (WI-faful), and reaching definitions follow CFG order. A closure
+reads what it captures when it RUNS, though, so ``function setup() { u = u +
+k; }`` written before ``const k = process.env.K`` and called after it does put
+the secret into ``u``, and the solve has no edge for it. After each solve
+:func:`cfg.late_capture_edges` adds one from every definition placed after a
+nested function to each read of that name inside it. The edges are a may
+relation and only add paths: a walk over them can lose a ``False``, never
+gain one.
+
 Return Statements (INV-komoj)
 -----------------------------
 Taint follows a value a function RETURNS into that function's callers, and
@@ -100,8 +136,14 @@ closure's ``return`` sits in its enclosing function's CFG, and a statement
 carries only its start line. :func:`return_statement_spans` therefore reads the
 AST, stopping at every node that opens a callable scope of its own, and
 records ``(start line, end line)``. It runs for EVERY walked function, with or
-without DDG edges: ``def get(): return os.getenv("K")`` defines nothing, has
-no edges, and is the filed instance.
+without DDG edges: ``def get(): return os.getenv("K")`` defines nothing and
+has no edges, yet returns the source's value. Two bodies with no return statement still
+return a value and are recorded as one (WI-sodoj): an expression body (a JS /
+TS arrow ``() => process.env.K``) spans as a single return. A Python
+``lambda`` body would too, but the Python spec does not walk lambdas, so none
+is recorded. And where the cfg mapping sets ``block_tail_returns`` (Rust), a
+block's tail expression -- its last named child that is not a statement,
+declaration or item -- does too.
 
 It also records the identifiers in each RESULT POSITION (``return v, nil`` ->
 ``({"v"}, {})``). A caller's ``name, err := get()`` defines one variable per
@@ -109,7 +151,15 @@ position, in order (``stmt_defuse`` keeps that order), so the lift can seed
 the caller on ``name`` alone. Without it every variable a multi-value call
 defines is seeded, and a Go caller that propagates the helper's ``err``
 "returns the value" -- which, lifted again, climbs every error chain above a
-source.
+source. ``defines`` drops Go's blank, so a statement the extractor reports by
+position also lands in ``stmt_targets`` (``_, err := get()`` -> ``(None,
+"err")``, WI-sitaf), where the lift reads a value received into the blank as
+received by nothing. The identifiers place a VARIABLE; a source CALL written
+directly in a result position (``return os.Getenv("K"), nil``) is placed by
+its name instead, so each position also records every name token it mentions
+(``names``: ``Getenv`` is a ``field_identifier``, not an identifier), kept
+apart from the identifiers so a field spelled like a variable never places
+the variable (WI-kikar).
 
 Refinement Hook
 ---------------
@@ -125,7 +175,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Sequence, cast
 
-from .analyze.base import make_symbol_id
+from .analyze.base import make_file_id, make_symbol_id
 from .taxonomy import extension_globs, grammar_for_path
 
 logger = logging.getLogger(__name__)
@@ -173,12 +223,18 @@ class LanguageDdgSpec:
         bound_anchor_kinds: Symbol kinds, beyond the callable ones, that the
             analyzer anchors such a binding's calls on (Go: ``variable``).
             Admitted into :func:`analyzer_symbol_index` for this language only.
+        module_node_types: The root node types whose top-level code the
+            language's analyzer anchors on the FILE pseudo-symbol (python
+            ``module``, javascript/typescript ``program``). The root is walked
+            as one more function under that file id (WI-nilir); see "Module
+            Code". Empty means module code is not walked.
         file_globs: ``rglob`` patterns for source files, or ``None`` (the
             default) for the extensions ``taxonomy.LANGUAGES`` declares for
             ``language`` -- the list discovery classifies files by and the
             language's analyzer reads. A spec that sets it is NARROWING its
-            language, and must be able to say why (WI-fovus): a private glob
-            is how the JS/TS specs came to walk ``*.js`` / ``*.ts`` only.
+            language, and must be able to say why: a private glob silently
+            skips extensions the analyzer reads, as a JS/TS glob of ``*.js`` /
+            ``*.ts`` alone skips ``.jsx`` / ``.tsx`` (history: WI-fovus).
     """
 
     language: str
@@ -189,7 +245,13 @@ class LanguageDdgSpec:
     bound_callable_node_types: frozenset[str] = frozenset()
     bound_bodies_for: Optional[Callable[[Any, bytes], list[Any]]] = None
     bound_anchor_kinds: frozenset[str] = frozenset()
+    module_node_types: frozenset[str] = frozenset()
     file_globs: Optional[tuple[str, ...]] = None
+    #: ``(node, source) -> [name, ...]``: the parameter names of a function
+    #: node, in declaration order, for the solver's entry definitions and
+    #: ``RepoDdg.params`` (WI-sosov). ``None`` (and a node that is not a
+    #: function: a module root, a Go ``var_spec``) means no parameters.
+    params_for: Optional[Callable[[Any, bytes], list[str]]] = None
 
     def globs(self) -> tuple[str, ...]:
         """The ``rglob`` patterns this spec walks (see ``file_globs``)."""
@@ -247,6 +309,13 @@ class RepoDdg:
     ddg_edges: list["DdgEdge"] = field(default_factory=list)
     ddg_symbols: set[str] = field(default_factory=set)
     hints_by_caller: dict[str, dict[tuple[int, str], str]] = field(default_factory=dict)
+    #: ``symbol_id -> (name, ...)``: each walked function's parameters in
+    #: declaration order (WI-sosov), the names its entry definitions carry.
+    #: Recorded for every function the spec's ``params_for`` names, whether
+    #: or not the solve produced an edge: a handler that never reads its
+    #: request parameter is still a handler WITH that parameter, and the
+    #: taint stage decides what that means (no use, no seed).
+    params: dict[str, tuple[str, ...]] = field(default_factory=dict)
     #: ``symbol_id -> [(line, defines, uses), ...]`` for every statement the
     #: def/use pass annotated.
     #:
@@ -256,22 +325,37 @@ class RepoDdg:
     #: §3a walk has to know. ``keep = str(server); path = name`` defines both
     #: ``keep`` and ``path`` at the same line, and only the first derives from
     #: the tainted ``server``; the edge set alone is equally consistent with
-    #: either. Statement-level ``defines``/``uses`` resolves it, and the CFG
-    #: already carries them — ``populate_def_use_for_cfg`` fills them in one
-    #: line above where this is collected, and they were simply discarded.
+    #: either. Statement-level ``defines``/``uses`` resolves it: the CFG
+    #: carries them once ``populate_def_use_for_cfg`` has run, and this index
+    #: keeps them.
     stmt_defuse: dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]] = field(
+        default_factory=dict,
+    )
+    #: ``symbol_id -> [(line, targets), ...]`` for each statement whose
+    #: def/use extractor reported its left-hand side BY POSITION
+    #: (``CfgStatement.targets``; ``None`` marks a slot that binds nothing).
+    #: Kept apart from ``stmt_defuse`` on purpose (WI-sitaf): every consumer
+    #: of a statement's ``defines`` reads its entries as variables, and Go's
+    #: blank ``_`` is none -- folded in, it would become an heir with no
+    #: recorded use and a seed with no definition, two false ``escaped``
+    #: walks. Only the return lift's received-position seeds read this.
+    #: Collected on the same terms as ``stmt_defuse``.
+    stmt_targets: dict[str, list[tuple[int, tuple[Optional[str], ...]]]] = field(
         default_factory=dict,
     )
     #: Symbol ids whose §3a walk may NOT return ``False`` (WI-joluk).
     #:
     #: A function lands here when the CFG's recorded statement extents do not
-    #: cover every call node in its AST body — the def/use extractor
+    #: cover every call node and semantic leaf in its AST body
+    #: (:func:`cfg.uncovered_semantic_lines`) — the def/use extractor
     #: demonstrably did not see part of it — or when the language declares no
-    #: ``call_node_types`` and coverage is unknowable. Both are the same fact
-    #: for this purpose: the walk's picture is incomplete, so an exhausted walk
-    #: over it is not evidence the flow is absent.
+    #: ``call_node_types`` and coverage is unknowable. A binding whose walk
+    #: cannot see all of it lands here too (see "Bindings That Hold
+    #: Callables"). All are the same fact for this purpose: the walk's picture
+    #: is incomplete, so an exhausted walk over it is not evidence the flow is
+    #: absent.
     #:
-    #: Populated for every function with DDG edges, INCLUDING the unknowable
+    #: Checked for every function with DDG edges, INCLUDING the unknowable
     #: case, because the permitting case is the one being enumerated: a
     #: language nobody configured must forfeit rather than silently qualify.
     forfeit_refutation: set[str] = field(default_factory=set)
@@ -347,36 +431,26 @@ def _walk_functions(
 ) -> None:
     """Walk an AST collecting per-function DDG edges and refinement hints.
 
-    ITERATIVE, NOT RECURSIVE, AND THAT IS THE WHOLE POINT (INV-gotir). This was
-    a per-child recursion, so the Python stack depth WAS the tree-sitter AST
-    depth — one frame per level — and CPython's default limit is 1000. Machine
-    generated code exceeds that without being pathological: keda's
-    ``vendor/go.temporal.io/api/workflowservice/v1/request_response.pb.go``
-    (725,832 bytes of generated protobuf) measures an **AST depth of 1171**,
-    because one ``const`` is a string built as ``"..." + "..." + "..."`` 1,165
-    times and ``+`` is left-associative. ``verify-claims`` aborted with
-    ``RecursionError`` and exited 1 with an empty stdout — and exit 1 is also
-    what VIOLATED returns, so a CI gate could not tell a crash from a finding.
+    ITERATIVE, NOT RECURSIVE, AND THAT IS THE WHOLE POINT (INV-gotir). A
+    per-child recursion makes the Python stack depth the tree-sitter AST
+    depth — one frame per level — and CPython's default limit is 1000.
+    Machine-generated code exceeds that without being pathological: a
+    generated protobuf ``const`` built as a long ``"..." + "..." + ...`` chain
+    nests one level per ``+``, because ``+`` is left-associative. A
+    ``RecursionError`` here aborts ``verify-claims`` with exit 1 and an empty
+    stdout — and exit 1 is also what VIOLATED returns, so a CI gate cannot
+    tell a crash from a finding.
 
-    THE TRANSFORMATION IS EXACTLY EQUIVALENT, and it is worth saying why rather
-    than asserting it: there is no work after the child loop. The recursion
-    carried no state a worklist cannot hold, no accumulator unwound on the way
-    back up, and no post-order step. Children are pushed REVERSED so ``pop()``
+    The iterative walk is exactly equivalent to a recursive one because there
+    is no work after the child loop: no accumulator unwound on the way back
+    up and no post-order step. Children are pushed REVERSED so ``pop()``
     yields them left to right, preserving pre-order visit order — which matters
     because ``out`` accumulates in visit order and a consumer diffing two runs
     would otherwise see a spurious reordering.
 
-    ``sys.setrecursionlimit`` was rejected: it trades a catchable
+    ``sys.setrecursionlimit`` is not a fix: it trades a catchable
     ``RecursionError`` for a C-stack segfault, which is strictly worse for a
     failure mode already indistinguishable from a verdict.
-
-    SCOPE. An AST sweep finds 72 self-recursive child-loop walks in this tree,
-    so the shape is a class rather than one bug. A corpus depth census sizes
-    the realized exposure narrowly — keda has 7 files at depth >= 900, all
-    generated Go under ``vendor/``, while dash.js, caddy and mitmproxy top out
-    at 74/37/79 — and ``survey`` over the same input does not crash. So the
-    class is filed (INV-gotir) rather than rewritten wholesale, and this is the
-    one walk with a measured failure.
     """
     stack = [node]
     while stack:
@@ -495,11 +569,20 @@ class ReturnStatement(NamedTuple):
     mentions: ``return v, nil`` is ``(frozenset({"v"}), frozenset())`` and a
     single-valued ``return f(x)`` is ``(frozenset({"f", "x"}),)``. A bare
     ``return`` has none.
+
+    ``names`` holds, per result position, EVERY name token the expression
+    mentions -- identifiers plus field, property and scoped names -- so a
+    source CALL can be placed in its position: ``return os.Getenv("K"), nil``
+    is ``(frozenset({"os", "Getenv"}), frozenset())`` where ``results`` has
+    only ``os`` (``Getenv`` is a ``field_identifier``). The two are kept
+    apart because the walk matches a VARIABLE against ``results``, and a
+    field spelled like a variable must not place it (WI-kikar).
     """
 
     start: int
     end: int
     results: tuple[frozenset[str], ...]
+    names: tuple[frozenset[str], ...] = ()
 
 
 #: Node types that hold a return statement's results as a LIST of positions:
@@ -509,24 +592,42 @@ class ReturnStatement(NamedTuple):
 _RESULT_LIST_NODE_TYPES = frozenset({"expression_list", "tuple"})
 
 
-def _identifiers_in(node: Any, source: bytes) -> frozenset[str]:
+def _identifiers_in(
+    node: Any, source: bytes, *, every_name: bool = False,
+) -> frozenset[str]:
+    """The ``identifier`` tokens under *node*; with *every_name*, every token
+    whose node type ends in ``identifier`` (``field_identifier``,
+    ``property_identifier``, ``scoped_identifier``, ...) as well."""
     names: set[str] = set()
     stack = [node]
     while stack:
         current = stack.pop()
-        if current.type == "identifier":
+        kind = current.type
+        if kind == "identifier" or (every_name and kind.endswith("identifier")):
             names.add(source[current.start_byte:current.end_byte].decode(
                 "utf-8", errors="replace"))
         stack.extend(current.children)
     return frozenset(names)
 
 
-def _return_results(node: Any, source: bytes) -> tuple[frozenset[str], ...]:
-    """The identifiers in each result position of return statement *node*."""
+def _return_values(node: Any) -> list[Any]:
+    """The expression node of each result position of return statement *node*."""
     values = [c for c in node.named_children if c.type != "comment"]
     if len(values) == 1 and values[0].type in _RESULT_LIST_NODE_TYPES:
         values = [c for c in values[0].named_children if c.type != "comment"]
-    return tuple(_identifiers_in(v, source) for v in values)
+    return values
+
+
+def _return_results(node: Any, source: bytes) -> tuple[frozenset[str], ...]:
+    """The identifiers in each result position of return statement *node*."""
+    return tuple(_identifiers_in(v, source) for v in _return_values(node))
+
+
+def _return_names(node: Any, source: bytes) -> tuple[frozenset[str], ...]:
+    """Every name token in each result position of return statement *node*."""
+    return tuple(
+        _identifiers_in(v, source, every_name=True) for v in _return_values(node)
+    )
 
 
 def return_statement_spans(
@@ -552,6 +653,7 @@ def return_statement_spans(
         return [ReturnStatement(
             body_node.start_point[0] + 1, body_node.end_point[0] + 1,
             (_identifiers_in(body_node, source),),
+            (_identifiers_in(body_node, source, every_name=True),),
         )]
     spans_from_tail = _block_tail_return(body_node, mapping, source)
     scopes = (
@@ -567,6 +669,7 @@ def return_statement_spans(
             spans.append(ReturnStatement(
                 node.start_point[0] + 1, node.end_point[0] + 1,
                 _return_results(node, source),
+                _return_names(node, source),
             ))
             continue
         if node.type in scopes:
@@ -588,8 +691,8 @@ def _block_tail_return(block: Any, mapping: Any, source: bytes) -> list[ReturnSt
 
     WI-sodoj. Rust returns a block's last expression when it carries no ``;``:
     ``fn get() -> String { env::var("TOOL").unwrap() }`` is its idiomatic
-    return, so most Rust helpers had no return statement for the INV-komoj
-    lift to see. A language opts in with ``block_tail_returns: true`` in its
+    return, so without this most Rust helpers have no return statement for
+    the INV-komoj lift to see. A language opts in with ``block_tail_returns: true`` in its
     cfg mapping. The tail is the last named child that is not a statement
     (``*_statement``, ``*_declaration``, ``*_item``) -- in tree-sitter-rust a
     ``;`` makes an ``expression_statement``. Comments are skipped.
@@ -605,6 +708,7 @@ def _block_tail_return(block: Any, mapping: Any, source: bytes) -> list[ReturnSt
     return [ReturnStatement(
         tail.start_point[0] + 1, tail.end_point[0] + 1,
         (_identifiers_in(tail, source),),
+        (_identifiers_in(tail, source, every_name=True),),
     )]
 
 
@@ -620,19 +724,38 @@ def _solve_one_function(
     refine_ctx: dict[str, Any],
 ) -> None:
     """Build one function's CFG, solve reaching defs, record the result."""
-    # INV-komoj: before the solve, and whatever it yields -- the filed helper
-    # has no definitions, so no edges, and is still what returns the value.
+    # Before the solve, and whatever it yields: a helper like ``return
+    # os.getenv("K")`` has no definitions, so no edges, and still returns the
+    # value (INV-komoj).
     spans = return_statement_spans(body_node, mapping, spec, source)
     if spans:
         out.return_spans.setdefault(sym_id, []).extend(spans)
+    # WI-sosov: the parameters are reaching definitions at the function's own
+    # line, handed to the solver as entry definitions (never as statements,
+    # so every statement-level reader is untouched); the names are recorded
+    # whether or not any use follows.
+    params = tuple(spec.params_for(node, source)) if spec.params_for is not None else ()
+    entry_defs: list[tuple[str, int]] = []
+    if params:
+        out.params[sym_id] = params
+        entry_defs = [(p, node.start_point[0] + 1) for p in params]
     try:
         cfg = deps["build_function_cfg"](body_node, source, mapping, sym_id)
         deps["populate_def_use_for_cfg"](cfg, body_node, source, spec.language)
-        result = deps["solve_reaching_defs"](cfg)
+        result = (
+            deps["solve_reaching_defs"](cfg, entry_defs)
+            if entry_defs else deps["solve_reaching_defs"](cfg)
+        )
     except Exception:  # pragma: no cover - defensive; skip this function
         return
     if result.bailed_out:
         return
+    # WI-lokok: a nested function reads what it captures when it runs, so a
+    # definition placed after it reaches its reads too. See "Nested Functions
+    # Read Late".
+    result.ddg_edges.extend(deps["late_capture_edges"](
+        cfg, body_node, mapping, result.ddg_edges,
+    ))
     if result.ddg_edges:
         out.ddg_edges.extend(result.ddg_edges)
         out.ddg_symbols.add(sym_id)
@@ -651,10 +774,18 @@ def _solve_one_function(
             if s.defines or s.uses
         ]
         # EXTEND, never assign: a binding's bodies share one id (WI-rovun), and
-        # an assignment kept only the last body's statements while every
-        # body's edges stayed in ``ddg_edges``.
+        # an assignment would keep only the last body's statements while every
+        # body's edges stay in ``ddg_edges``.
         if stmts:
             out.stmt_defuse.setdefault(sym_id, []).extend(stmts)
+        positional = [
+            (s.line, tuple(s.targets))
+            for block in cfg.blocks.values()
+            for s in block.statements
+            if s.targets is not None
+        ]
+        if positional:
+            out.stmt_targets.setdefault(sym_id, []).extend(positional)
         # INV-lupav L4. Collected on the same terms as ``stmt_defuse`` and for
         # the same reason: a function with no edges is never walked, and the
         # empty answer this returns for an unpopulated CFG would be a lie about
@@ -687,11 +818,10 @@ def build_repo_ddg(
         repo_root: Repository root to walk.
         languages: Language keys to process. Unregistered keys and
             languages with no cfg mapping are skipped silently — the
-            caller falls back to structural taint propagation, which is
-            the pre-existing behaviour when DDG data is unavailable.
+            caller falls back to structural taint propagation.
         analyzer_symbols: The analyzer's callable symbols by exact span
             (:func:`analyzer_symbol_index`). Without it no binding-named
-            callable is walked, which is the behaviour before WI-mufag.
+            callable is walked.
 
     Returns:
         A :class:`RepoDdg`. Empty when tree-sitter is unavailable.
@@ -703,6 +833,7 @@ def build_repo_ddg(
 
         from .cfg import (
             build_function_cfg,
+            late_capture_edges,
             load_cfg_mapping,
             populate_def_use_for_cfg,
             solve_reaching_defs,
@@ -718,6 +849,7 @@ def build_repo_ddg(
         "solve_reaching_defs": solve_reaching_defs,
         "uncovered_semantic_lines": uncovered_semantic_lines,
         "unaccounted_names": unaccounted_names,
+        "late_capture_edges": late_capture_edges,
     }
 
     parsers = _ParserCache(tree_sitter, get_language)
@@ -812,10 +944,38 @@ def _walk_language(
         tree = parser.parse(source)
         rel_path = path.relative_to(repo_root).as_posix()
         refine_ctx = _refine_context(spec, tree, source)
+        root = tree.root_node
+        if root.type in spec.module_node_types and _has_module_call(root, mapping):
+            _solve_one_function(
+                root, root, source, spec, make_file_id(spec.language, rel_path),
+                out, deps, mapping, refine_ctx,
+            )
         _walk_functions(
             tree.root_node, source, spec, rel_path, out, deps, mapping, refine_ctx,
             analyzer_symbols,
         )
+
+
+def _has_module_call(root: Any, mapping: Any) -> bool:
+    """Whether any call in ``root`` sits outside every nested function.
+
+    Only such a call is anchored on the file pseudo-symbol, so a module with
+    none -- definitions and imports only, the common library file -- has no
+    finding the module walk could adjudicate, and walking it would store a
+    file key no analyzer symbol answers to. A language that declares no
+    ``call_node_types`` cannot be asked, and is walked.
+    """
+    call_types = frozenset(mapping.call_node_types or ())
+    if not call_types:
+        return True
+    stack = list(root.named_children)
+    while stack:
+        node = stack.pop()
+        if node.type in call_types:
+            return True
+        if mapping.get_nested_function(node.type) is None:
+            stack.extend(node.named_children)
+    return False
 
 
 def _refine_context(spec: LanguageDdgSpec, tree: Any, source: bytes) -> dict[str, Any]:
@@ -899,10 +1059,10 @@ def _python_function_name(node: Any, source: bytes) -> str:
         method                  ``Outer.meth``
         method of nested class  ``Inner.deep``   (not ``Outer.Inner.deep``)
 
-    Without this the default bare-``name`` fallback stored every method under a
-    key the taint walk never constructs, so ``fn_has_ddg`` was false for 68.5%
-    of python callables and their findings degraded to ``structural`` by
-    construction. Nested FUNCTIONS were mis-keyed by the same fallback.
+    The default bare-``name`` fallback would store every method and nested
+    function under a key the taint walk never constructs, so ``fn_has_ddg``
+    would be false for them and their findings would degrade to
+    ``structural`` by construction.
     """
     name_node = node.child_by_field_name("name")
     if name_node is None:  # pragma: no cover - grammar always supplies a name
@@ -924,14 +1084,42 @@ def _python_symbol_kind(node: Any) -> str:
     return "method" if scope is not None and scope.type == "class_definition" else "function"
 
 
-# ``*.py`` only: LANGUAGES also lists ``*.pyi``, and whether walking stub files
-# is wanted was not measured when the JS/TS specs moved to the shared list
-# (WI-fovus) -- a declared narrowing, not an oversight.
+def _python_params(node: Any, source: bytes) -> list[str]:
+    """The parameter names of a python ``function_definition``, in order (WI-sosov).
+
+    One name per parameter whatever its spelling -- bare, annotated
+    (``typed_parameter``), defaulted (``default_parameter``,
+    ``typed_default_parameter``, which carry a ``name`` field), ``*args`` /
+    ``**kw`` (the splat patterns wrap an identifier). ``self`` and ``cls``
+    are names like the others. A node that is not a function (the module
+    root walked for top-level code) has no ``parameters`` field and yields
+    nothing.
+    """
+    params_node = node.child_by_field_name("parameters")
+    if params_node is None:
+        return []
+    names: list[str] = []
+    for child in params_node.children:
+        if child.type == "identifier":
+            names.append(source[child.start_byte:child.end_byte].decode("utf-8"))
+            continue
+        named = child.child_by_field_name("name")
+        if named is None:
+            named = next((c for c in child.children if c.type == "identifier"), None)
+        if named is not None:
+            names.append(source[named.start_byte:named.end_byte].decode("utf-8"))
+    return names
+
+
+# ``*.py`` only, a declared narrowing: LANGUAGES also lists ``*.pyi``, and
+# whether walking stub files is wanted is undecided (history: WI-fovus).
 register_ddg_language(LanguageDdgSpec(
     language="python",
     file_globs=("*.py",),
     function_node_types=frozenset({"function_definition"}),
+    module_node_types=frozenset({"module"}),
     name_for=_python_function_name,
     kind_for=_python_symbol_kind,
     refine=_python_refine,
+    params_for=_python_params,
 ))

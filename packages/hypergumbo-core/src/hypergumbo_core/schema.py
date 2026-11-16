@@ -60,6 +60,15 @@ This module defines several versioned schemes:
 - **symbol_fingerprint_scheme**: How Symbol.fingerprint values are computed
   (context-aware whole-file subtree hashing; populated by the
   `hypergumbo_core.fingerprint` post-pass)
+- **scip_stable_id_scheme**: How the rust-analyzer (SCIP) arm computes the
+  stable_id values it mints (a second algorithm under one field, so a
+  scheme and a value label of its own)
+
+Every identity value carries the label of the scheme that produced it
+(`hgstableid15:`, `hgshapeid4:`, `hgrepofp3:`, `hgscipid1:`, `hgfp2:`):
+`value_label()` derives each label from its scheme constant, so a scheme
+bump is one edit. The labels name the value and its scheme version; the
+digest after the label is what the algorithm computed.
 
 new_behavior_map() returns an empty structure with all top-level fields
 initialized, ensuring consistent output even for empty analyses. It also
@@ -104,34 +113,22 @@ from __future__ import annotations
 
 import importlib.metadata
 import platform
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.20.15"  # 0.20.15: additive only -- every artifact valid under 0.20.14 stays valid. ``profile.languages[*].own_files`` / ``own_loc`` give the tier 1-2 share of ``files`` / ``loc``, omitted when not measured (WI-kojul); ``supply_chain_summary.vendored_analysed`` ({dirs, entries}) names the analysed tier-3 vendored directories (WI-pasan, ADR-0004 point 3a). 0.20.14: additive only -- every artifact valid under 0.20.13 stays valid. ``metrics.edge_confidence`` ({histogram, median}) publishes the distribution behind ``avg_confidence`` (WI-zimor); ``profile.languages[*].test_files`` counts each language's test/fixture files beside ``files`` (WI-ritaf); ``AnalysisRun.cpu_ms`` records the pass thread's own CPU time beside wall-clock ``duration_ms``, ``null`` = not measured (WI-nuvam); slice features gain ``limits_detail``, one entry per limit hit sizing what it omitted (WI-mibuj); Edge.meta gains ``topic_identifier`` / ``channel_identifier`` / ``event_identifier``, and ``topic`` is ``null`` when an identifier did not resolve (WI-misod); ``supply_chain_summary`` gains ``installed_deps_skipped`` ({dirs, packages, entries}), the installed dependency source a run did not parse (WI-bapal, ADR-0004), and ``generated_output_skipped`` ({dirs, entries: [{path, tool}]}), the generated output it pruned on its tool's evidence (INV-hagof, ADR-0004 point 7). 0.20.13: ``Edge.derived_from`` drops ``minItems: 1``. A linker that builds both ends of an edge from a file scan consumed no graph record, and now says so with ``[]`` -- a positive statement, distinct from ``null`` (no statement, analyzer edges). Ids a producer minted in the same run are no longer listed as consumed (INV-rukor, WI-latup). Widening only: every artifact valid under 0.20.12 stays valid. 0.20.12: ``supply_chain.is_exported`` widens from ``boolean`` to ``boolean|null``. It was ``bool = False`` with no absent value, so the ninety-odd analyzer modules that compute no exportedness emitted "not part of the public API" for every record they produced -- 36,659 of 52,728 on this repository's own survey, 29,505 of them with no visibility signal at all -- and no consumer could tell a measured negative from a missing rule (INV-kubup). ``null`` now means nobody looked; only a positive input fills the field (an analyzer's own rule, an export modifier, or a language signal that the symbol is not public). Readers that test truthiness are unaffected; a reader distinguishing False from absent must now do so explicitly. 0.20.11: Symbol and Edge gain the ADR-0057 §6 provenance slot -- ``attribution`` ({field: [pass_id, ...]}, who holds the arbitrated value) and ``alternatives`` ({field: [{value, origin}]}, the other producers' values), both OMITTED unless the merge pass folded two producers' records for one declaration (WI-binis), so single-producer artifacts are byte-identical; ``Edge.confidence_source`` gains ``corroborated`` (§13: two distinct inference pathways reached one edge, confidence set to the declared 0.95). 0.20.10: ``limits.skipped_passes[].skip_reason_code`` is RENAMED to ``silence_reason`` -- the name AnalysisRun already uses for the same question on the same closed axis. One fact had two names, and which name a consumer saw was decided by taxonomy membership and the analyzer's return style rather than by anything about the silence (WI-mamiv). Breaking for readers of the old key, which shipped one version ago in 0.20.9. The ROUTING is unchanged and still not a function of the fact: use ``pass_silence.census_silence()`` to union the two hosts. 0.20.9: limits.skipped_passes entries gain ``skip_reason_code`` -- the same pass-silence-reason axis, re-hosted for the three values a pass that DID NOT RUN could never carry on AnalysisRun (dependency_unavailable / backend_disabled / pass_crashed); the prose ``reason`` stays as detail, one channel two fields (WI-dukoh, docs/adr/0056). 0.20.8: pass-silence-reason axis gains ``candidates_unresolved`` -- the pass found its construct and carried none through resolution, split out of ``unreported`` which is declared to mean "did not say why" (WI-bivim, docs/adr/0054). 0.20.7: AnalysisRun gains ``silence_reason`` -- why a pass emitted nothing, on the closed pass-silence-reason axis; omitted when the pass emitted something (INV-bikaj, arc T6). 0.20.6: TaintFlowFinding gains ``walk_verdict`` + ``walk_blocked_by`` (INV-zidur). 0.20.5: Edge.meta gains ``io_target_kind`` (INV-nular). 0.20.4: Edge.meta gains the bash per-call-site keys (``redirect_target``, ``redirect_target_resolved``, ``env_var``) and the ``<key>_values`` collapse companions (INV-vukiv). 0.20.3: Edge.meta gains ``callee_name``
-# (INV-divuf) — an ADDITION, hence a patch bump, same shape as 0.20.2 below.
-# The full-fidelity callee name, stamped unconditionally by
-# ``make_unresolved_edge``. Every artifact written before this version stays
-# valid: consumers fall back to the id's (lossy) name slot when the key is
-# absent, which is exactly what they did before it existed. NOT sparse and NOT
-# opt-in, unlike ``call_arg_shape`` — ADR-0036 Ruling 1 tells consumers never to
-# re-derive the exact name from the id, so a key present only sometimes would
-# leave them re-deriving it the rest of the time.
-# 0.20.2: Edge.meta gains ``call_arg_shape``
-# (INV-fubag) — an ADDITION, hence a patch bump. Sparse and opt-in: a producer
-# stamps it only where it can prove the call passes no tainted value, so its
-# ABSENCE is the conservative reading and every artifact written before this
-# version is valid and unchanged under it.
-# 0.20.1: Symbol.span nullable in the schema (WI-hafap
-# Optional[Span] flip). Relaxation only — no producer emits a span-less symbol
-# today, so emitted artifacts are unchanged; consumers that assumed presence
-# should treat span as optional going forward.
+from .installed_env import kept_per_environment
+
+SCHEMA_VERSION = "0.21.0"
+# Breaking output changes bump MINOR and additions bump PATCH (spec "Breaking
+# output changes bump minor"; the one exception is noted in the module
+# docstring). The per-version record of what changed is CHANGELOG.md.
 # Canonical ``view`` field values a behavior map (or its budget-limited
 # projections) may carry: the base analysis emits ``behavior_map``; the compact
 # and tiered projections emit their own view name. Single-sourced here so the
 # schema generator enumerates them in one place — future projection views append
 # here (WI-tagaj). The published schema pins ``view`` to this enum, so every
-# projected view validates (it previously pinned a ``const`` of "behavior_map",
-# which rejected the compact/tiered projections).
+# projected view validates.
 VIEW_NAMES = ("behavior_map", "compact", "tiered")
 # Wire-format version carried by the CLI *read-view* JSON envelopes that project
 # or summarize a behavior map without BEING the behavior map (routes /
@@ -146,72 +143,95 @@ VIEW_NAMES = ("behavior_map", "compact", "tiered")
 # tool version). See the "Version Distinction" module docstring for the three
 # version axes.
 READ_VIEW_SCHEMA_VERSION = "0.1.0"
-# ``dead-code-maybe`` PROMOTED OUT of the shared placeholder at 0.2.0 (WI-jozah),
-# which is the escape hatch the paragraph above describes: a view that evolves its
-# wire shape gets its own constant rather than dragging five unrelated views'
-# versions with it. 0.2.0 adds a per-candidate ``reachability`` cohort
-# (``test_only`` / ``unreachable``, null under non-default seed modes) and the
-# ``test_only_reachable_candidates`` summary denominator. Additive.
-#
-# The alternative — bumping the shared placeholder — was tried first and is
-# WRONG on two counts. It ASSERTS A FALSEHOOD, since a reader of the ``routes``
-# or ``cache-status`` envelope would see a new version for a view that did not
-# change. And it is measurably expensive: four separate test sites pin this
-# value (``test_cli_config``, ``test_cli_commands``, ``test_cli_cache``,
-# ``test_cli_test_coverage``), so every bump of the shared constant is a
-# four-file edit in views that have nothing to do with the change. That cost is
-# the signal that the placeholder had stopped fitting.
-# 0.3.0 (INV-hugit): ADDITIVE. A new top-level ``cross_language_demoted``
-# listing -- the candidates the cross-language demoter removed, disclosed
-# rather than published as a bare count -- and a new ``config_name_hits``
-# field on every ``dead_candidates`` row, carrying the manifest-substring
-# tally that no longer demotes on its own. Nothing is removed or renamed, so
-# a 0.2.0 reader keeps working; the MINOR bump announces the two additions.
+# Version of the ``dead-code-maybe`` envelope. It has its own constant rather
+# than READ_VIEW_SCHEMA_VERSION because its wire shape evolves on its own;
+# bumping the shared placeholder instead would announce a new version for
+# views that did not change, and force an edit at every test that pins the
+# placeholder (history: WI-jozah). Additions bump MINOR; the per-version record
+# is CHANGELOG.md.
 DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.3.0"
-# WI-huhin: spec Appendix C mandates `hypergumbo-evidence-vMAJOR.MINOR`. This
-# emitted a bare `v2`, which did not match that grammar and left MINOR
-# unexpressible — so ADR-0039's refinement (new evidence types, precisely what
-# MINOR is defined to signal) had no way to announce itself, and the next
-# refinement would have had to pick between a misleading MAJOR bump and silence.
-# `v2.0` is the first CONFORMING rendering of the SAME model: MAJOR unchanged,
-# no scoring behaviour differs. Bump MINOR for a refinement, MAJOR for an
-# incompatible change. `test_confidence_model_matches_documented_grammar` pins
-# the format.
-CONFIDENCE_MODEL = "hypergumbo-evidence-v2.2"  # v2.2 (ADR-0039 rulings 6-7): a name resolver's grade interpolates inside its pathway band (low + (base - low) x grade) instead of multiplying a private base, and the out-of-band literals derive -- so single-producer scores change (JS/TS scope-bound 0.90 -> 0.85), still detection reliability on 0.0-1.0 in the same bands, hence MINOR; spec_validator judges all-linker edges by the 0.40-0.95 linker range. v2.1 (ADR-0057 §13): a new confidence_source, ``corroborated``, and its declared 0.95 level for an edge two distinct pathways reached -- a MINOR refinement (new evidence handling), no change to any single-producer score
-STABLE_ID_SCHEME = "hypergumbo-stableid-v9"
-# v9 (WI-tusad / INV-fabih; ADR-0035 §6 "Follow-on v8 -> v9"): every producer
-# hashes every enclosing scope that can repeat within one file (types,
-# functions, block namespaces/modules/packages, template blocks and
-# branches), no line number or ordinal, repo-relative paths only, and the
-# declared parameters (an Ada function also its result type) where callables
-# overload on them; every kind is covered. A top-level declaration and a member
-# of a top-level type keep their v8 value unless one of those inputs changed.
-# The per-transition record is the spec's stable_id_scheme version history.
-# v3 (WI-linon): the Python shape_id hash now folds the symbol kind
-# (class/method/function) and the concrete AST node type into its prefix, so
-# structurally-trivial symbols of different kinds no longer collide — a
-# module-level function vs a class method (both ``ast.FunctionDef``), and an
-# ``async def`` vs a ``class`` (``ast.AsyncFunctionDef`` had mis-branched into
-# the ClassDef path). Every Python shape_id value changed relative to v2; the
-# global scheme bumps because the spec mandate is "any change that alters
-# computed values bumps the scheme" (§6), the tree-sitter path is unchanged.
-SHAPE_ID_SCHEME = "hypergumbo-shapeid-v3"
-# v2 (WI-bosog): the AnalysisRun ``repo_fingerprint`` FIELD is now rendered
-# with the ``sha256:`` scheme prefix (``sha256:<64hex>``), matching its sibling
-# identity fields run_signature / config_fingerprint instead of the former bare
-# 64-hex. The hashing algorithm is unchanged; only the field rendering changed,
-# but the emitted value changed, so the scheme bumps per the spec §6 mandate.
-# The bare digest is unchanged where it is used as the colon-free cache-dir
-# path segment (compute_repo_fingerprint); only compute_repo_fingerprint_field
-# gained the prefix.
-REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v2"
-# WI-fanun: scheme tag for Symbol.fingerprint, populated by the
-# orchestrator post-pass in ``hypergumbo_core.fingerprint`` (the sole
-# producer — the former producer-side manifest hashes were demolished
-# by ADR-0032 Phase 2 PR2 and the WI-falum revision). v2 = the
-# context-aware rewrite (whole-file parse + subtree hash, WI-falum);
-# every emitted value changed relative to v1's snippet-rooted walks.
+# Format is ``hypergumbo-evidence-vMAJOR.MINOR`` (spec Appendix C): bump MINOR
+# for a refinement (new evidence types, new evidence handling, re-derived
+# scores in the same bands), MAJOR for an incompatible change.
+# ``test_confidence_model_matches_documented_grammar`` pins the format; the
+# per-version record is the spec's §12 / Appendix C (history: WI-huhin).
+CONFIDENCE_MODEL = "hypergumbo-evidence-v2.2"
+STABLE_ID_SCHEME = "hypergumbo-stableid-v15"
+# Any change that alters computed stable_id values bumps the scheme (spec §6),
+# even when only one language's values move: the scheme names the whole
+# output, and there is no in-place migration. The per-transition record
+# (driver, hash-basis change, which values moved) is the spec's
+# "stable_id_scheme version history"; record a transition there before bumping.
+# Every value carries the label STABLE_ID_PREFIX derived below, so a bump
+# also relabels every value (ADR-0035 §"Value labels").
+# shape_id: the Python hash folds the symbol kind (class/method/function) and
+# the concrete AST node type into its prefix, so structurally-trivial symbols
+# of different kinds do not collide — a module-level function vs a class method
+# (both ``ast.FunctionDef``), an ``async def`` vs a ``class``. The scheme is
+# global: a change to the Python or the tree-sitter path that alters computed
+# values bumps it (spec §6). A change to the label alone is a change to the
+# emitted value, so it bumps too (v3 -> v4 was the label).
+SHAPE_ID_SCHEME = "hypergumbo-shapeid-v4"
+# The AnalysisRun ``repo_fingerprint`` FIELD is rendered
+# ``REPO_FINGERPRINT_PREFIX<64hex>`` (compute_repo_fingerprint_field). The
+# bare digest is used only as the colon-free cache-dir path segment
+# (compute_repo_fingerprint). A rendering change alters the emitted value, so
+# it bumps the scheme like an algorithm change (spec §6; v2 -> v3 was the
+# label).
+REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v3"
+# The rust-analyzer (SCIP) arm's stable_id: a digest of the defining
+# document's path and the SCIP moniker (scip/index.py ``scip_stable_id``), a
+# different algorithm from the tree-sitter factories, so it is a scheme of
+# its own with a label of its own (ADR-0035 §"Value labels"). A record the
+# SCIP arm emits whose id the rust.py parity pass replaced carries the
+# tree-sitter label: that value was computed by the tree-sitter formula.
+SCIP_STABLE_ID_SCHEME = "hypergumbo-scip-stableid-v1"
+# Scheme tag for Symbol.fingerprint, whose sole producer is the orchestrator
+# post-pass in ``hypergumbo_core.fingerprint`` (whole-file parse + subtree
+# hash). v2 corresponds to the ``hgfp2:`` prefix on every value; a change that
+# alters emitted values bumps both (history: WI-fanun, WI-falum).
 SYMBOL_FINGERPRINT_SCHEME = "hypergumbo-symbol-fp-v2"
+
+#: ``-v<N>`` at the end of a scheme constant: the number a value label carries.
+_SCHEME_NUMBER = re.compile(r"-v(\d+)$")
+
+
+def value_label(word: str, scheme: str) -> str:
+    """The in-value label ``hg<word><N>:`` of a scheme whose constant ends ``-v<N>``.
+
+    The one place a label's number is read (ADR-0035 §"Value labels"): each
+    identity value starts with the label of the scheme that produced it, and
+    the number is the scheme constant's, so bumping the constant relabels
+    every value with no second edit. ``word`` names the value (``stableid``,
+    ``shapeid``, ``repofp``, ``scipid``); it is what tells a stable id from a
+    shape id when the value is read without its field.
+    """
+    match = _SCHEME_NUMBER.search(scheme)
+    if match is None:
+        raise ValueError(f"scheme {scheme!r} does not end in -v<N>")
+    return f"hg{word}{match.group(1)}:"
+
+
+#: The label of every tree-sitter (and Python ``ast``) ``Symbol.stable_id``.
+STABLE_ID_PREFIX = value_label("stableid", STABLE_ID_SCHEME)
+#: The label of every ``Symbol.shape_id``.
+SHAPE_ID_PREFIX = value_label("shapeid", SHAPE_ID_SCHEME)
+#: The label of ``AnalysisRun.repo_fingerprint``.
+REPO_FINGERPRINT_PREFIX = value_label("repofp", REPO_FINGERPRINT_SCHEME)
+#: The label of a ``Symbol.stable_id`` the rust-analyzer (SCIP) arm minted.
+SCIP_STABLE_ID_PREFIX = value_label("scipid", SCIP_STABLE_ID_SCHEME)
+
+
+def identity_digest(value: str) -> str:
+    """The digest of an identity value: the text after its label.
+
+    For a consumer comparing digests across a label-only change (the
+    stableid-v14 ``sha256:<hex>`` and stableid-v15 ``hgstableid15:<hex>``
+    forms of one symbol's id share the hex). A digest says nothing about
+    which algorithm produced it; compare digests only where the scheme
+    history says the algorithm did not change.
+    """
+    return value.rpartition(":")[2]
 
 
 def _now_iso_utc() -> str:
@@ -230,6 +250,7 @@ def new_behavior_map() -> Dict[str, Any]:
         "shape_id_scheme": SHAPE_ID_SCHEME,
         "repo_fingerprint_scheme": REPO_FINGERPRINT_SCHEME,
         "symbol_fingerprint_scheme": SYMBOL_FINGERPRINT_SCHEME,
+        "scip_stable_id_scheme": SCIP_STABLE_ID_SCHEME,
         "view": "behavior_map",
         "generated_at": _now_iso_utc(),
         "analysis_incomplete": False,
@@ -237,16 +258,18 @@ def new_behavior_map() -> Dict[str, Any]:
         "profile": {},
         "nodes": [],
         "edges": [],
+        "module_sets": {},
         "usage_contexts": [],
         "features": [],
         "metrics": {},
         "limits": {},
         "entrypoints": [],
+        "request_ingress": [],
         "reproducibility_context": build_reproducibility_context(),
     }
 
 
-# INV-morag option B: L2 reproducibility context.
+# L2 reproducibility context (history: INV-morag).
 #
 # Reproducibility is a spectrum, not a yes/no claim. This block captures
 # the L2 level — direct dependencies and runtime identity — and explicitly
@@ -285,7 +308,26 @@ def _detect_tree_sitter_versions() -> tuple[str | None, Dict[str, str]]:
     The hypergumbo behavior map is honest about absence: an empty
     ``grammars`` block means "no tree-sitter-* packages were found on the
     PYTHONPATH at run time" — not "this analysis didn't use any grammars".
+
+    READ ONCE PER ENVIRONMENT. Finding the grammars means parsing the
+    metadata of every installed distribution (33 ms for 260 of them, a third
+    of a run on a one-file repository), and the answer is a fact about the
+    environment, so it is kept by :func:`installed_env.kept_per_environment`
+    until a distribution is installed, upgraded or removed. The slot names
+    the two ``importlib.metadata`` functions read, so a stand-in for either
+    is never answered with the real environment's versions. Each caller gets
+    its own dictionary.
     """
+    version, grammars = kept_per_environment(
+        ("tree-sitter-versions", importlib.metadata.version,
+         importlib.metadata.distributions),
+        _read_tree_sitter_versions,
+    )
+    return version, dict(grammars)
+
+
+def _read_tree_sitter_versions() -> tuple[str | None, tuple[tuple[str, str], ...]]:
+    """The walk behind :func:`_detect_tree_sitter_versions`, as immutable pairs."""
     try:
         tree_sitter_version: str | None = importlib.metadata.version("tree-sitter")
     except importlib.metadata.PackageNotFoundError:  # pragma: no cover - tree-sitter is installed in dev/CI; defensive for non-tree-sitter installs
@@ -299,11 +341,11 @@ def _detect_tree_sitter_versions() -> tuple[str | None, Dict[str, str]]:
         if name.startswith("tree-sitter-") or name == "tree-sitter-language-pack":
             grammars[name] = dist.version
 
-    return tree_sitter_version, grammars
+    return tree_sitter_version, tuple(grammars.items())
 
 
 def build_reproducibility_context() -> Dict[str, Any]:
-    """Build the top-level ``reproducibility_context`` block (INV-morag B).
+    """Build the top-level ``reproducibility_context`` block (INV-morag).
 
     Captures the L2 reproducibility level (hypergumbo version, Python
     interpreter version, tree-sitter library + grammar versions when

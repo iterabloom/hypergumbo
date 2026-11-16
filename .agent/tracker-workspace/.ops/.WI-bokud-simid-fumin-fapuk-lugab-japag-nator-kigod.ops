@@ -1,0 +1,44 @@
+- op: create  # 3db1
+  at: '2026-11-15T19:48:04Z'  # 3db1
+  by: agent  # 3db1
+  actor: jgstern_agent  # 3db1
+  clock: 1  # 3db1
+  nonce: 3db1  # 3db1
+  data:  # 3db1
+    kind: work_item  # 3db1
+    title: "agda: an anonymous module (module _ (X : Set) where) is emitted as a module named '_'; two in one file are split by occurrence, so deleting the first moves the second's stable_id"  # 3db1
+    status: todo_hard  # 3db1
+    priority: 4  # 3db1
+    parent:  # 3db1
+    tags:  # 3db1
+    - analysis_quality  # 3db1
+    - agda  # 3db1
+    - stable_id  # 3db1
+    isbefore: []  # 3db1
+    duplicate_of: []  # 3db1
+    not_duplicate_of: []  # 3db1
+    pr_ref:  # 3db1
+    description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT. REPRO, ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/new/agda2/src/T.agda:\n\n    module T where\n\n    module _ (X : Set) where\n      f : Set\n      f = X\n\n    module _ (Y : Set) where\n      g : Set\n      g = Y\n\n`hypergumbo run` emits two `module` symbols named `_` (lines 3 and 7) with stable ids sha256:e603c60723cfdfde and\nsha256:83d2945312d70398, plus `f` and `g`. With the first anonymous module removed and the second left on line 7\n(work/new/agda3), the remaining `_` has stable id sha256:e603c60723cfdfde: its id moved to the value the deleted\none had.\n\nTWO THINGS WRONG. (1) An anonymous module is a scoping device, not a declaration with a name; `_` is not something\na reader can look up, and its members belong to the enclosing module. (2) Identity: the two tie on name and are\ntold apart by order, so an edit above changes the id of the one below. That is the property INV-fabih-nusus-sozad-zozor-sosiz-fazoh-mazoh-ponat's statement\ndescribes (\"deleting an earlier same-name sibling scope never moves another symbol's stable_id\"), here for Agda;\nINV-fabih-nusus-sozad-zozor-sosiz-fazoh-mazoh-ponat was fixed and closed for Scala, Kotlin, C# and Swift members.\n\nDECISION NEEDED before the fix: emit no symbol for an anonymous module (members attach to the enclosing module), or\nemit one whose identity comes from something that does not depend on order (its telescope text, for instance).\n\nACCEPTANCE. Deleting the first anonymous module of the fixture leaves every remaining stable id unchanged.\n\nNOT CHECKED: whether the members' own ids or scope chains include the `_` (on the fixture `f` and `g` are emitted\nwith bare names); how many anonymous modules agda-stdlib has."  # 3db1
+    fields: {}  # 3db1
+- op: discuss  # 22fa
+  at: '2026-11-15T21:14:29Z'  # 22fa
+  by: agent  # 22fa
+  actor: jgstern_agent  # 22fa
+  clock: 2  # 22fa
+  nonce: 22fa  # 22fa
+  message: "2026-11-15: this item does not depend on the Agda grammar choice. Its three fixtures (stable_id_items_review_11152026/work/new/agda, agda2, agda3) give the same symbols under tree-sitter-agda 1.3.3 and under the language pack's revision (~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/README.md section 2, agda/probe_out.txt). The fix is in agda.py's naming of anonymous modules. It moves stable ids, so it rides the v15 bump."  # 22fa
+- op: update  # d99e
+  at: '2026-11-16T11:46:42Z'  # d99e
+  by: agent  # d99e
+  actor: jgstern_agent  # d99e
+  clock: 3  # d99e
+  nonce: d99e  # d99e
+  set:  # d99e
+    status: done  # d99e
+- op: discuss  # 7e28
+  at: '2026-11-16T11:46:42Z'  # 7e28
+  by: agent  # 7e28
+  actor: jgstern_agent  # 7e28
+  clock: 4  # 7e28
+  nonce: '7e28'  # 7e28
+  message: "Fixed in PR #2200. Re-ran the item's agda2 and agda3 fixtures: dev emitted two modules named `_` split by occurrence, and deleting the first moved the second's id (to e603c607...); now an anonymous module is not a symbol, its members belong to the enclosing module, and the remaining ids do not change on deletion. THE ITEM LEFT THE RULE OPEN; the choice (no symbol) was made in the package and is the owner's to overrule. Consequence: 1,085 `_` module symbols are gone on agda-stdlib and an anonymous module's parameters are in no scope chain. SEEN, not fixed (filed): a module's span is its header line, so `f` and `g` of the fixture are contained by the file node, not by `module T` (the same on dev). The change moves stable ids, so it shipped in the stableid v14 -> v15 bump; the spec's history row lists the rule and the measured share. Repro record (both arms, commands and copied outputs): ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/tracker/repros.md; per-package detail: pr2/STATUS.md; churn: pr2/final_measure.txt."  # 7e28

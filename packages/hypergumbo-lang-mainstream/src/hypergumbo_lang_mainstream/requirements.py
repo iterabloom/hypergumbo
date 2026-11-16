@@ -27,6 +27,16 @@ Edges Extracted
 - **constrains**: References to constraints files (-c)
 - **depends_on**: Package dependency edges
 
+Every edge starts at the file's own id (``make_file_id``). A ``depends_on``
+ends at the requirement symbol the same line declares, as package.json's
+project depends on its dependency symbols; an ``includes`` / ``constrains``
+ends at the named file's id, its path resolved against the including file's
+directory as pip resolves it (``meta.include_file`` keeps the path as
+written). Both endpoints must be real ids: a hand-built string
+(``requirements:<path>``, ``pypi:package:<name>``) is not one, and finalize
+mints such a dst as an ``<unknown>``-path external stand-in, even when it
+names an in-tree manifest (history: WI-tikon).
+
 Why This Design
 ---------------
 - requirements.txt is ubiquitous in Python projects
@@ -37,6 +47,7 @@ Why This Design
 
 from __future__ import annotations
 
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -48,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_doc_symbol_ids,
+    make_file_id,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -189,13 +201,10 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: both ids minted together by the shared factory, so node.id
-        # carries the canonical ADR-0036 grammar instead of the local
-        # "requirements:{path}:{kind}:{name}" composite (four segments, no span,
-        # kind in the span slot — it did not parse, and the comment below used to
-        # note it could not distinguish same-named requirements on different
-        # lines). stable_id is byte-identical: the factory calls
-        # make_doc_stable_id with exactly these arguments.
+        # Both ids are minted together by the shared factory, so node.id
+        # carries the canonical ADR-0036 grammar -- span included, so
+        # same-named requirements on different lines stay distinct -- and
+        # stable_id is derived from the same arguments (history: INV-dulah).
         symbol_id, stable_id = make_doc_symbol_ids(
             "requirements", str(rel_path), "requirement", package_name,
             span.start_line, span.end_line,
@@ -227,8 +236,8 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         analysis.symbols.append(symbol)
 
         edge = Edge.create(
-            src=f"requirements:{rel_path}",
-            dst=f"pypi:package:{package_name}",
+            src=make_file_id("requirements", str(rel_path)),
+            dst=symbol_id,
             edge_type="depends_on",
             line=node.start_point[0] + 1,
             origin=PASS_ID,
@@ -270,12 +279,9 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: as the requirement site above. This site additionally
-        # dropped a ROLE fossil — the local id put "url_requirement" in the kind
-        # slot while Symbol.kind is "requirement" (and make_doc_stable_id was
-        # already passed "requirement", so stable_id is unchanged). The role is
-        # not lost: it stays in meta["source_type"] below, the same lossless fold
-        # the three manifest analyzers used for their entry_role fossils.
+        # As the requirement site above. The id's kind slot is "requirement",
+        # matching Symbol.kind, not a role such as "url_requirement"; the role
+        # lives in meta["source_type"] below (history: INV-dulah).
         symbol_id, stable_id = make_doc_symbol_ids(
             "requirements", str(rel_path), "requirement",
             package_name or url_text[:40],
@@ -312,8 +318,8 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
 
         if package_name:
             edge = Edge.create(
-                src=f"requirements:{rel_path}",
-                dst=f"vcs:package:{package_name}",
+                src=make_file_id("requirements", str(rel_path)),
+                dst=symbol_id,
                 edge_type="depends_on",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
@@ -347,10 +353,15 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         # Handle -r (requirements) and -c (constraints)
         if option in ("-r", "--requirement", "-c", "--constraint") and option_path:
             edge_type = "includes" if option in ("-r", "--requirement") else "constrains"
+            # pip reads the path relative to the file naming it.
+            target = posixpath.normpath(
+                posixpath.join(posixpath.dirname(str(rel_path)), option_path)
+            )
             edge = Edge.create(
-                src=f"requirements:{rel_path}",
-                dst=f"requirements:file:{option_path}",
+                src=make_file_id("requirements", str(rel_path)),
+                dst=make_file_id("requirements", target),
                 edge_type=edge_type,
+                meta={"include_file": option_path},
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
@@ -368,10 +379,9 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 end_col=node.end_point[1],
             )
 
-            # INV-dulah: as above. This site also dropped an "editable" ROLE
-            # fossil from the id kind slot (Symbol.kind is "requirement", and
-            # make_doc_stable_id already received "requirement"); the role stays
-            # in meta["editable"] / meta["install_mode"] below.
+            # As above: the id's kind slot is "requirement" (Symbol.kind), not
+            # an "editable" role; the role lives in meta["editable"] /
+            # meta["install_mode"] below (history: INV-dulah).
             symbol_id, stable_id = make_doc_symbol_ids(
                 "requirements", str(rel_path), "requirement", option_path,
                 span.start_line, span.end_line,

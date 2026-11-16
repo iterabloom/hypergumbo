@@ -19,3 +19,10 @@
     pr_ref:  # 030a
     description: "The ObjC analyzer emits an imports edge only for #import, never for #include (objc.py, the preproc_include arm: \"Check if it's #import (not #include)\"). The restriction dates from the analyzer's first commit (d8252de120) with no reason recorded.\n\nFound by WI-somod. Before it, the C or C++ grammar also parsed every ObjC header and recorded its #include lines, so the gap was hidden for headers. Now each ObjC header is parsed by the ObjC grammar only, and its #include lines produce no import edge: whisper.cpp's coreml headers lost 4 (<stdint.h>, <os/log.h>). In .m / .mm files the gap has always been there: every #include in ObjC source produces no import edge.\n\nTo measure before changing: the import-edge delta on the ObjC corpus (AFNetworking, CocoaLumberjack, SDWebImage, fmdb, GPUImage, ResearchKit) and on mixed repos (whisper.cpp, sherpa-onnx), and whether any consumer (module linker, supply-chain tiers) keys on objc import edges."  # 030a
     fields: {}  # 030a
+- op: discuss  # 4b0f
+  at: '2026-11-01T10:56:16Z'  # 4b0f
+  by: agent  # 4b0f
+  actor: jgstern_agent  # 4b0f
+  clock: 2  # 4b0f
+  nonce: 4b0f  # 4b0f
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs2/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: fixture a.h/a.m with #import plus #include <stdint.h>, #include <os/log.h>, #include \"b.h\": survey emits imports edges only for the two #import lines; no #include in either the .h or the .m produces an edge. objc.py L971-973 still reads 'Check if it's #import (not #include)'. The asked-for corpus delta and consumer check were not done in this review. MECHANISM: objc preproc_include arm emits an imports edge only when the node has an #import child."  # 4b0f

@@ -38,11 +38,50 @@
 #   ./scripts/smart-test --raw        # Stream full pytest output (no summary)
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
+#   ./scripts/smart-test --no-narrow  # Keep the tests coverage narrowing would drop
+#   ./scripts/smart-test --no-read-union  # Leave out tests added for reading a changed file by path
+#   ./scripts/smart-test --no-import-union  # Leave out tests added for importing a file whose import-time code changed
+#   ./scripts/smart-test --no-stale-shadow  # Do not also walk an older stored graph for comparison
+#   ./scripts/smart-test --no-run-record    # Do not append this run to the run records
 #   ./scripts/smart-test --background # Kick off full suite in background
+#
+# TARGET MODE (WI-damom): SMART_TEST_TARGET_ROOT=<dir> runs THIS script and its
+# helpers against ANOTHER repo laid out like this one (packages/<pkg>/src,
+# packages/<pkg>/tests, tests/). It exists for scripts/smart-test-bed, which
+# scores selection on a small repo in seconds instead of on this one's ~30k
+# tests. Two roots, never confused: TOOLS_ROOT is where the helpers live (this
+# checkout, so the scripts under change are what gets measured), REPO_ROOT is
+# the repo being selected for. Unset, they are the same directory and nothing
+# below behaves differently. Set, four things change, each because it belongs
+# to this repo rather than the target: the mypy ratchet is skipped (it gates
+# TOOLS_ROOT's types), coverage roots are the target's packages/*/src, the
+# no-embeddings coverage config is used only if the target has one, and test
+# timings are not ingested into this machine's leaderboard.
+# SMART_TEST_SELECTION_OUT=<dir> writes manifest.txt, after-union.txt, local.txt and
+# run-order.txt there once the local run set is final, so a
+# caller can read every stage of one selection without parsing the log.
+#
+# FAILURE-FIRST, AND A RED RUN STOPS EARLY (WI-fipuf). A targeted run hands
+# pytest the likeliest failures first (changed tests, tests that executed a
+# changed block, tests citing a changed file) and stops 15 seconds after its
+# first failure. Nothing is dropped from the run set; a green run is
+# unchanged. SMART_TEST_FAIL_GRACE=<seconds> changes the wait, =0 (or
+# `--fail-grace=0`) runs everything; --full and explicitly named test files
+# always run everything.
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TOOLS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$TOOLS_ROOT"
+TARGET_MODE=false
+if [[ -n "${SMART_TEST_TARGET_ROOT:-}" ]]; then
+    REPO_ROOT="$(cd "$SMART_TEST_TARGET_ROOT" && pwd)"
+    # Pointing it at this checkout is not target mode: every repo-specific
+    # gate (the mypy ratchet first) must still apply.
+    if [[ "$(cd "$REPO_ROOT" && pwd -P)" != "$(cd "$TOOLS_ROOT" && pwd -P)" ]]; then
+        TARGET_MODE=true
+    fi
+fi
 
 # ── WI-fopuh: this script writes the manifest of the repo it LIVES in ────────
 # Everything below is relative to REPO_ROOT (the `cd` at the end of this block)
@@ -108,6 +147,10 @@ trap _cleanup_lock EXIT
 # Signal that we're running through smart-test (ADR-0010)
 # This prevents infinite recursion when the pytest wrapper calls smart-test
 # and smart-test subsequently calls pytest.
+# A smart-test started BY a test of smart-test inherits the variable. It is
+# remembered here so that such a run leaves nothing in the developer's own
+# evidence logs (the two recorders below).
+STARTED_UNDER_SMART_TEST="${SMART_TEST_ACTIVE:-}"
 export SMART_TEST_ACTIVE=1
 
 # Manifest location (committed with PR for CI validation)
@@ -135,11 +178,66 @@ SELECT_SHADOW=true
 # disable in isolation when a run looks wrong. Opt out with --no-select-union.
 SELECT_UNION=true
 
-# PHASE 3 (WI-bolot): NARROWING, and the default is the opposite of the other
-# two for a reason. Phase 2 can only add tests, so its worst case is wasted
-# time; narrowing REMOVES them, and between full runs the index can be short a
-# test that covers part of a changed file. Opt in per run with --narrow.
-SELECT_NARROW=false
+# PHASE 3 (WI-bolot): NARROWING, ON BY DEFAULT (owner ruling 2026-11-12,
+# WI-zirus). It REMOVES tests, so it is the one selection step whose worst case
+# is a missed failure rather than wasted time: between full runs the index can
+# be short a test that covers part of a changed file. It narrows the MANIFEST,
+# so merge CI runs the narrowed set; the full-suite cron never reads the
+# manifest and is never narrowed. Opt out per run with --no-narrow.
+SELECT_NARROW=true
+
+# THE PROSE-ONLY RULE: a changed .py file whose code is unchanged (comments
+# and docstrings only) selects just the tests recorded seeing its text, its
+# docstrings or its line numbers, not every test that imports it. It leaves a
+# test out only on a complete, current record that the test sees none of them
+# (see hypergumbo_core.prose_only for the evidence and its limits). It is part
+# of the MANIFEST selection, so the merge-gating CI runs the same short list
+# (owner instruction, 2026-11-11: a docstring change must not cost a
+# thousand test files, locally or in CI). Opt out per run with --no-prose-rule.
+SELECT_PROSE=true
+
+# THE READ-RECORD UNION (WI-nifif): a test that checks source files by reading
+# them from disk imports none of them, so the import-graph slice does not
+# select it when one of those files changes. The read record the prose-only
+# rule keeps already says which tests read which files; a code change adds the
+# test files recorded reading a changed file. It only adds, and it is part of
+# the MANIFEST selection, because the failure it exists for is a PR whose own
+# CI was green. Opt out per run with --no-read-union.
+SELECT_READERS=true
+
+# THE IMPORT-CLOSURE UNION (INV-mikag): the slice follows CALL edges. It lists
+# a module that imports a changed file, and reaches a test of that module only
+# through a call into the changed file. A module that reads a constant of the
+# changed file, an attribute of its module object, or a value it computed at
+# import has no such call, so its tests were left out: one constant changed
+# in schema.py, 252 test files selected, and the test that fails was not
+# among them. When a source file's IMPORT-TIME code changes (a module or class
+# body), every test file whose imports reach that file is added, through any
+# number of files. An import inside a function body counts in a test file, a
+# conftest.py or a test helper, and not in a source module (owner, 2026-11-15:
+# counting those put cli's whole closure under every test file).
+# It only adds, and it is part of the MANIFEST selection: the
+# failure it exists for is a PR whose own CI was green. A changed function
+# body does not trigger it. Opt out per run with --no-import-union.
+SELECT_IMPORTERS=true
+
+# TWO RECORDERS. Neither changes which tests run; both only append to a log
+# beside the selection index (selection_log.py says what each row holds).
+#
+# STALE-GRAPH SHADOW. The reverse slice analyses the whole repository first,
+# which is nearly all of the time selection takes; walking a graph that is
+# already on disk takes seconds. Whether a graph recorded at an OLDER tree
+# names the same test files is a question only evidence answers, so every time
+# a fresh slice is computed the same walk is also run on the newest older
+# graph and both answers are stored. Opt out with --no-stale-shadow.
+STALE_SHADOW=true
+#
+# RUN RECORDS. Every run that reaches pytest stores which commit and change it
+# ran against, which test files ran and which tests did not pass, so that a
+# selector written later can be replayed against failures that really
+# happened. Explicit-path runs are recorded too: they are most of the runs made
+# while a change is being written. Opt out with --no-run-record.
+RUN_RECORDS=true
 
 # LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:
 #
@@ -183,6 +281,12 @@ for arg in "$@"; do
         --no-select-shadow) SELECT_SHADOW=false ;;
         --no-select-union) SELECT_UNION=false ;;
         --narrow) SELECT_NARROW=true ;;
+        --no-narrow) SELECT_NARROW=false ;;
+        --no-prose-rule) SELECT_PROSE=false ;;
+        --no-read-union) SELECT_READERS=false ;;
+        --no-import-union) SELECT_IMPORTERS=false ;;
+        --no-stale-shadow) STALE_SHADOW=false ;;
+        --no-run-record) RUN_RECORDS=false ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
@@ -199,15 +303,40 @@ for arg in "$@"; do
     esac
 done
 
-# NARROWING IS OFF IN CI UNCONDITIONALLY, and this guard sits AFTER argument
-# parsing on purpose — the shadow/union guards run before it and can be placed
-# earlier because no flag turns those ON. `--narrow` does, so a guard above the
-# parse loop would be overridden by the flag it exists to override. Not even
-# HG_SELECT_SHADOW re-enables this: reason 1 above (CI IS THE GATE) is absolute
-# for an operation that REMOVES tests, and that escape hatch exists to exercise
-# wiring, not to let a selector shrink the merge gate.
+# NO SELECTION RUNS IN CI: it consumes the committed manifest, which a
+# developer's smart-test narrowed against the coverage index on that machine;
+# CI has no index. This guard sits AFTER argument parsing on purpose -- the
+# shadow/union guards run before it and can be placed earlier because no flag
+# turns those ON. `--narrow` does, so a guard above the parse loop would be
+# overridden by the flag it exists to override.
+if [[ -n "${CI:-}" ]] || [[ -n "$STARTED_UNDER_SMART_TEST" ]] || [[ "$TARGET_MODE" == "true" ]]; then
+    # The recorders write a developer's evidence. CI has no such log to keep,
+    # a smart-test run by a test is not a developer's run, and a run against
+    # another repository (target mode) is not about this one.
+    STALE_SHADOW=false
+    RUN_RECORDS=false
+fi
 if [[ -n "${CI:-}" ]]; then
     SELECT_NARROW=false
+    # The prose-only rule's evidence is recorded on a developer's machine;
+    # there is none here, and CI consumes the manifest rather than selecting.
+    SELECT_PROSE=false
+    # The read-record union reads the same evidence.
+    SELECT_READERS=false
+fi
+
+# --fail-grace (WI-fipuf): a TARGETED run stops this many seconds after its
+# first failure (scripts/pytest_plugins/pytest_fail_grace.py). Default 15;
+# SMART_TEST_FAIL_GRACE=0 or `--fail-grace=0` on the command line runs
+# everything. Not applied to --full or to explicitly named test files: those
+# runs exist to see every failure, and a cut-short full run must not fold a
+# partial coverage picture into the selection index as if it were complete.
+# A --fail-grace given on the command line comes later in pytest's argv than
+# this default, so it wins.
+FAIL_GRACE_ARGS=()
+if [[ "${SMART_TEST_FAIL_GRACE:-15}" != "0" ]] \
+        && [[ -f "${TOOLS_ROOT:-$REPO_ROOT}/scripts/pytest_plugins/pytest_fail_grace.py" ]]; then
+    FAIL_GRACE_ARGS=("--fail-grace=${SMART_TEST_FAIL_GRACE:-15}")
 fi
 
 # Auto-add -n auto for parallel execution unless:
@@ -283,12 +412,19 @@ fi
 #
 # HG_SKIP_MYPY_GATE exists for the ratchet's OWN test suite, which must be
 # able to run without recursion. It is not a workaround for a red ratchet.
-if [[ "${HG_SKIP_MYPY_GATE:-}" != "1" ]]; then
+#
+# TARGET MODE skips it, said out loud: the ratchet measures TOOLS_ROOT's
+# packages, and a target-mode run tests none of them, so the gate has nothing
+# to protect there. It cannot be used to test THIS repo ungated: pointing
+# SMART_TEST_TARGET_ROOT at this checkout leaves TARGET_MODE false.
+if [[ "$TARGET_MODE" == "true" ]]; then
+    echo "mypy ratchet: not run -- it gates $TOOLS_ROOT, and this run tests $REPO_ROOT (target mode)"
+elif [[ "${HG_SKIP_MYPY_GATE:-}" != "1" ]]; then
     echo "Checking mypy strict ratchet (INV-zogud) before running tests..."
     MYPY_GATE_LOG="$REPO_ROOT/.ci/mypy-gate.log"
     mkdir -p "$REPO_ROOT/.ci" 2>/dev/null || true
     set +e
-    "$REPO_ROOT/scripts/check-mypy-ratchet" --mode=strict > "$MYPY_GATE_LOG" 2>&1
+    "$TOOLS_ROOT/scripts/check-mypy-ratchet" --mode=strict > "$MYPY_GATE_LOG" 2>&1
     MYPY_GATE_RC=$?
     set -e
     if [[ $MYPY_GATE_RC -eq 1 ]]; then
@@ -333,7 +469,15 @@ fi
 # Output file for full pytest log
 PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
-# Coverage paths for the modular package structure
+# Coverage paths for the modular package structure.
+#
+# COV_SCOPE_COMPLETE says whether COV_PATHS names EVERY package. The selection
+# index is told (fold_selection_index): only a run that measured every package
+# lets a test be narrowed away later, because a test's having no coverage row
+# on a file means "did not run it" only when the file was measured, and a new
+# path from measured code into unmeasured code leaves no row at all. Any place
+# that makes COV_PATHS smaller must set this to false in the same breath.
+COV_SCOPE_COMPLETE=true
 COV_PATHS=(
     "--cov=packages/hypergumbo-core/src"
     "--cov=packages/hypergumbo-lang-mainstream/src"
@@ -342,6 +486,14 @@ COV_PATHS=(
     "--cov=packages/hypergumbo-lang-rust-analyzer/src"
     "--cov=packages/hypergumbo-lang-scip-python/src"
 )
+# Target mode measures the TARGET's packages. The list above is this repo's,
+# and naming paths the target lacks would measure nothing and say nothing.
+if [[ "$TARGET_MODE" == "true" ]]; then
+    COV_PATHS=()
+    for _src in "$REPO_ROOT"/packages/*/src; do
+        [[ -d "$_src" ]] && COV_PATHS+=("--cov=${_src#"$REPO_ROOT"/}")
+    done
+fi
 
 # Detect if embedding dependencies are available
 # If either sentence-transformers or onnxruntime is missing, use reduced
@@ -351,7 +503,9 @@ if python3 -c "import sentence_transformers" 2>/dev/null && \
     EMBEDDINGS_AVAILABLE=true
 else
     EMBEDDINGS_AVAILABLE=false
-    COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
+    if [[ "$TARGET_MODE" != "true" ]] || [[ -f "$REPO_ROOT/.coveragerc.no-embeddings" ]]; then
+        COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
+    fi
 fi
 
 log() {
@@ -503,9 +657,10 @@ get_baseline() {
     echo "$merge_base"
 }
 
-# Build coverage paths for affected-only mode
-# Returns --cov arguments for the package source directories containing changed files
-# Also returns --cov-fail-under=100 since we're scoping to affected packages
+# Which packages hold a changed source file. Prints FULL when no source file
+# changed, else one --cov argument per such package. Only the FULL answer is
+# acted on now: the targeted run measures every package (see "THE GATE IS
+# SCOPED; THE MEASUREMENT IS NOT" below), and the list is kept for the log.
 build_affected_cov_paths() {
     local changed_files="$1"
 
@@ -535,7 +690,7 @@ build_affected_cov_paths() {
     local file_count
     file_count=$(echo "$source_files" | wc -l)
 
-    log "Scoping coverage to $pkg_count package(s) containing $file_count changed source file(s)"
+    log "$file_count changed source file(s) in $pkg_count package(s); every package is measured, the 100% gate reads the changed files"
     echo "${cov_paths[*]}"
 }
 
@@ -549,6 +704,8 @@ build_affected_cov_paths() {
 # With no readable report, fall back to the counts on pytest's result line, and
 # print "unknown" when neither says -- the caller then trusts the exit code
 # rather than inventing a zero.
+# The per-PR Woodpecker pytest step applies the same rule inline (INV-zuvij);
+# change both together.
 # `python3 -c`, not a heredoc: a heredoc inside $() is the WI-ginuj trap noted
 # at disclose_full_suite_scope.
 count_executed_tests() {
@@ -705,17 +862,134 @@ fold_selection_index() {
     # `set -u` makes a bare $1 an unbound-variable abort AFTER the suite
     # has already passed -- a green run reported as a failure.
     [[ "${1:-}" == "full" ]] && full_flag=(--full)
-    "$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+    [[ "$COV_SCOPE_COMPLETE" == "true" ]] && full_flag+=(--scope-complete)
+    "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
         --junit "$JUNIT_XML" update \
         --coverage-db "$REPO_ROOT/.coverage" \
         --sha "$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)" \
+        --source-reads "$REPO_ROOT/.ci/source-reads" \
         "${full_flag[@]}" || true
+}
+
+# THE WORKER COUNT THIS RUN ASKS FOR: the value of the last -n /
+# --numprocesses in the arguments, as pytest reads it, or nothing when there is
+# none. smart-test adds its own -n before the caller's, so the caller's wins.
+xdist_workers_of() {
+    local workers="" expect_value=false arg
+    for arg in "$@"; do
+        if [[ "$expect_value" == "true" ]]; then
+            workers="$arg"
+            expect_value=false
+        elif [[ "$arg" == "-n" ]] || [[ "$arg" == "--numprocesses" ]]; then
+            expect_value=true
+        elif [[ "$arg" == --numprocesses=* ]]; then
+            workers="${arg#--numprocesses=}"
+        elif [[ "$arg" == -n?* ]]; then
+            workers="${arg#-n}"
+        fi
+    done
+    echo "$workers"
+}
+
+# ONE OpenMP THREAD PER PARALLEL WORKER (WI-zuzoz). Prints 1 when this run
+# should be capped, nothing when it should not.
+#
+# When the embedding model is in the local cache, a pipeline run inside a test
+# performs torch inference, and torch sizes its OpenMP pool to every core. Each
+# xdist worker starts its own pool, so six workers put up to 36 compute threads
+# on six cores and each worker's pipeline work slows about eightfold. Measured
+# on one commit and machine: the full suite 45:49 as it was, 35:16 capped;
+# test_route_concept_parity.py alone 401 s and 61 s. OPENBLAS_NUM_THREADS did
+# nothing; the pool is OpenMP's.
+#
+# PARALLEL RUNS ONLY: one uncontended process is SLOWER capped (17 pipeline
+# runs: 26 s with the pool, 44 s without). A value the caller exported is
+# left alone.
+omp_threads_for_run() {
+    if [[ -n "${OMP_NUM_THREADS:-}" ]]; then
+        return 0
+    fi
+    local workers
+    workers=$(xdist_workers_of "$@")
+    if [[ -n "$workers" ]] && [[ "$workers" != "0" ]] && [[ "$workers" != "1" ]]; then
+        echo 1
+    fi
+}
+
+# ONE WORKER PER EXPENSIVE MODULE FIXTURE. Prints `--dist=loadgroup` for a run
+# that uses xdist at all, nothing otherwise.
+#
+# xdist's default `load` mode hands tests out one at a time, so one module's
+# tests land on several workers and each of those builds the module's fixture
+# again. Measured: test_route_concept_parity.py's fixture (one full pipeline run
+# per case, 57-84 s) was built in all six workers when the file ran alone, and
+# in two in a full suite. A module that marks itself
+# `pytestmark = pytest.mark.xdist_group("<its own name>")` is sent to ONE worker
+# under `loadgroup`, which builds once while the other workers keep running
+# other tests; unmarked tests are scheduled exactly as under `load`. That last
+# part is why this is not the build_once fixture's job alone: build_once also
+# builds once, but a second worker that needs the result waits on its lock
+# instead of working. Measured on the three marked pipeline modules plus 18
+# other core test files, -n 6, twice each: 99 s / 99 s with load, 65 s / 67 s
+# with loadgroup, 1827 passed both ways.
+#
+# Grouped tests carry an `@<group>` suffix on their node id. Selection keys on
+# the FILE part of an id, which the suffix does not touch.
+#
+# Given before the caller's arguments, so a --dist the caller passes wins.
+# -n 0 needs nothing; without any -n, xdist may not even be installed.
+dist_args_for_run() {
+    local workers
+    workers=$(xdist_workers_of "$@")
+    if [[ -n "$workers" ]] && [[ "$workers" != "0" ]]; then
+        echo "--dist=loadgroup"
+    fi
 }
 
 run_pytest() {
     local test_targets="$1"
     shift
     local extra_args=("$@")
+
+    # --fail-grace (WI-fipuf): load the plugin on every run so the option is
+    # always understood; whether a run USES it is the caller's choice (see
+    # FAIL_GRACE_ARGS). The plugin directory goes on PYTHONPATH for pytest
+    # alone. ${…:-} because tests extract this function and drive it bare.
+    local omp_cap dist_arg
+    omp_cap=$(omp_threads_for_run "${extra_args[@]}")
+    dist_arg=$(dist_args_for_run "${extra_args[@]}")
+    if [[ -n "$dist_arg" ]]; then
+        extra_args=("$dist_arg" "${extra_args[@]}")
+    fi
+    local plugin_dir="${TOOLS_ROOT:-${REPO_ROOT:-$PWD}}/scripts/pytest_plugins"
+    local plugin_path="${PYTHONPATH:-}"
+    if [[ -f "$plugin_dir/pytest_fail_grace.py" ]]; then
+        plugin_path="$plugin_dir${PYTHONPATH:+:$PYTHONPATH}"
+        extra_args=("-p" "pytest_fail_grace" "${extra_args[@]}")
+    fi
+    # Prose-only rule: record which tests read a repository .py file as data
+    # (scripts/pytest_plugins/pytest_source_reads.py). Local evidence like the
+    # selection index, so it follows SELECT_SHADOW and is off in CI.
+    # fold_selection_index reads the directory after the run.
+    if [[ "${SELECT_SHADOW:-false}" == "true" ]] \
+            && [[ -f "$plugin_dir/pytest_source_reads.py" ]]; then
+        local reads_dir="${REPO_ROOT:-$PWD}/.ci/source-reads"
+        mkdir -p "$reads_dir"
+        # A record still here was never stored: the run that wrote it was
+        # killed (the recorder writes as it goes, and every stored record is
+        # removed). Store it before this run replaces it. The fold skips any
+        # test file edited since that run collected it.
+        "${TOOLS_ROOT:-${REPO_ROOT:-$PWD}}/scripts/coverage-select" \
+            --repo-root "${REPO_ROOT:-$PWD}" fold-reads --announce \
+            --source-reads "$reads_dir" || true
+        rm -f "$reads_dir"/*.json
+        plugin_path="$plugin_dir${PYTHONPATH:+:$PYTHONPATH}"
+        # compute_pass_version reads a pass module's source and returns only
+        # its hash; see the plugin's docstring for why that is not a read.
+        extra_args=("-p" "pytest_source_reads" "--source-reads-dir=$reads_dir"
+                    "--source-reads-hash-only=hypergumbo_core.ir:compute_pass_version"
+                    "${extra_args[@]}")
+    fi
 
     mkdir -p "$MANIFEST_DIR"
 
@@ -730,7 +1004,7 @@ run_pytest() {
     # reports `configfile: packages/hypergumbo-core/pyproject.toml`), so
     # per-package filterwarnings and asyncio settings still apply.
     # ALWAYS ON, and applied HERE rather than in COV_PATHS because COV_PATHS
-    # is REBUILT FROM SCRATCH on the targeted path -- `COV_PATHS=($AFFECTED_COV)`
+    # was once REBUILT FROM SCRATCH on the targeted path
     # near "Running N affected test files with scoped coverage" -- which silently
     # discarded this flag. Measured before the move: a full run recorded 20,519
     # contexts while an ordinary no-args run recorded ONE, empty. That is the
@@ -756,7 +1030,7 @@ run_pytest() {
     if [[ "$RAW_OUTPUT" == "true" ]]; then
         # Stream output directly (old behavior)
         # shellcheck disable=SC2086
-        exec pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}"
+        exec env PYTHONPATH="$plugin_path" ${omp_cap:+OMP_NUM_THREADS=$omp_cap} pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}"
     else
         # Capture output, then summarize
         echo "Running tests... (output saved to $PYTEST_LOG)"
@@ -784,7 +1058,7 @@ run_pytest() {
         # INV-tazur: the junit report is how the verdict below counts what ran,
         # so the previous run's report must not survive to answer for this one.
         rm -f "$JUNIT_XML"
-        env -u FORCE_COLOR -u COLORTERM pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
+        env -u FORCE_COLOR -u COLORTERM PYTHONPATH="$plugin_path" ${omp_cap:+OMP_NUM_THREADS=$omp_cap} pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
         # Corrective re-derivation: these may only ESCALATE to failure, never
         # de-escalate to success. An affirmative-green clause (`N passed` && !
         # `N failed` -> 0) used to live here; it was a no-op while exit_code
@@ -814,10 +1088,45 @@ run_pytest() {
         fi
         summarize_pytest_output "$PYTEST_LOG" "$exit_code" "$zero_run"
 
-        # Ingest test timings into leaderboard (non-fatal)
-        if [[ -f "$JUNIT_XML" ]]; then
+        # Ingest test timings into leaderboard (non-fatal). Not in target
+        # mode: the leaderboard is THIS repo's, and a target's test ids would
+        # sit in it as rows for tests that do not exist here. ${…:-false}
+        # because test_smart_test_coverage_gate.py drives this function alone.
+        if [[ -f "$JUNIT_XML" ]] && [[ "${TARGET_MODE:-false}" != "true" ]]; then
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
             "$SCRIPT_DIR/test-leaderboard" ingest "$JUNIT_XML" 2>/dev/null || true
+        fi
+
+        # THE RUN RECORD (see RUN_RECORDS above). Here because every run that
+        # reaches pytest passes through this function, red or green. A --raw
+        # run replaces this shell with pytest and leaves none. ${…:-} because
+        # tests drive this function alone, and then nothing is recorded.
+        if [[ "${RUN_RECORDS:-false}" == "true" ]]; then
+            local run_kind="selected"
+            if [[ "${HAS_EXPLICIT_TESTS:-false}" == "true" ]]; then
+                run_kind="explicit"
+            elif [[ -n "${FULL_SUITE_PYTEST_TARGETS:-}" ]] && [[ "$test_targets" == "$FULL_SUITE_PYTEST_TARGETS" ]]; then
+                run_kind="full"
+            fi
+            "${TOOLS_ROOT:-${REPO_ROOT:-$PWD}}/scripts/coverage-select" \
+                --repo-root "${REPO_ROOT:-$PWD}" --junit "$JUNIT_XML" run-record \
+                --kind "$run_kind" --exit "$exit_code" \
+                --base-branch "${BASE_BRANCH:-origin/dev}" || true
+        fi
+
+        # A RED RUN STILL LEAVES ITS READ RECORD. The caller folds the
+        # selection index after a green run. A red one ends the script at
+        # this return (set -e), so a long run with one failing test used to
+        # record nothing about the thousands that passed. The tests that
+        # FAILED are left out: a failed test may have stopped before a read
+        # it would have made. Coverage is not folded here; that stays a
+        # green-run matter.
+        local reads_root="${REPO_ROOT:-$PWD}"
+        if [[ $exit_code -ne 0 ]] && [[ "${SELECT_SHADOW:-false}" == "true" ]] \
+                && [[ -d "$reads_root/.ci/source-reads" ]]; then
+            "${TOOLS_ROOT:-$reads_root}/scripts/coverage-select" \
+                --repo-root "$reads_root" --junit "$JUNIT_XML" fold-reads \
+                --source-reads "$reads_root/.ci/source-reads" || true
         fi
 
         return $exit_code
@@ -941,7 +1250,12 @@ run_full_suite() {
 
     disclose_full_suite_scope
     run_pytest "$FULL_SUITE_PYTEST_TARGETS" -n 2 "${PYTEST_ARGS[@]}"
-    exit $?
+    _full_rc=$?
+    # WI-damom: this path never folded. It is where `--full` on a clean tree
+    # lands ("no changed files detected"), so verifying dev after a merge -- a
+    # full-scope run, the kind the index most needs -- recorded nothing.
+    fold_selection_index full
+    exit $_full_rc
 }
 
 kick_off_background_suite() {
@@ -1059,6 +1373,57 @@ if [[ "$VERBOSE" == "true" ]]; then
     echo "$CHANGED_FILES" | sed 's/^/  /' >&2
 fi
 
+# THE STATIC SELECTION, AS A FUNCTION OF $CHANGED_FILES. Everything from here
+# to the manifest seam turns the changed-file list into $AFFECTED_TESTS. It is
+# a function so the prose-only rule (below the seam) can ask it a second
+# question in a subshell: "what do the changed files OTHER than the prose-only
+# ones select?" Its variables are deliberately global -- the code after the
+# seam reads them -- and the main flow calls it exactly once, right after its
+# closing brace.
+# === STALE-GRAPH SHADOW ===
+# Runs the walk the fresh slice just made on the newest OLDER graph, and stores
+# both answers (see STALE_SHADOW above). It reports and acts on nothing, and it
+# must never fail the run it rides on: every step degrades to a stored reason.
+#
+# The fresh graph is found as the one survey.json written under the cache since
+# $STALE_MARK was created. None means the slice answered from a cached survey
+# (the tree did not change since an earlier run); more than one means another
+# analysis finished meanwhile and the two cannot be told apart. Either way no
+# comparison is made, and the row says which.
+stale_graph_shadow() {
+    local helper="$TOOLS_ROOT/scripts/coverage-select"
+    local cache_base="${XDG_CACHE_HOME:-$HOME/.cache}/hypergumbo"
+    local written count fresh_survey="" older="" why="" stale_out stale_seconds=""
+    written=$(find "$cache_base" -mindepth 5 -maxdepth 5 -name survey.json -newer "$STALE_MARK" 2>/dev/null || true)
+    count=$(printf '%s\n' "$written" | sed '/^$/d' | wc -l | tr -d ' ')
+    stale_out=$(mktemp)
+    if [[ "$count" -ne 1 ]]; then
+        why="the fresh slice left $count new surveys in the cache; exactly 1 identifies its graph (0: it answered from a cached survey)"
+    else
+        fresh_survey="$written"
+        older=$("$helper" --repo-root "$REPO_ROOT" stale-pick --fresh-survey "$fresh_survey" 2>/dev/null || true)
+        if [[ -z "$older" ]]; then
+            why="no older graph from this analyzer build is registered and still on disk"
+        else
+            local stale_start=$SECONDS
+            if $STABLE_HG slice --files "$CHANGED_FILE_LIST" --input "$older" --output "$stale_out" 2>/dev/null; then
+                stale_seconds=$((SECONDS - stale_start))
+            else
+                why="the slice on the older graph failed"
+                older=""
+            fi
+        fi
+    fi
+    "$helper" --repo-root "$REPO_ROOT" stale-record \
+        --changed-files <(echo "$CHANGED_FILES") --fresh-out "$SLICE_OUTPUT" \
+        --fresh-seconds "$SLICE_DURATION_S" \
+        ${fresh_survey:+--fresh-survey "$fresh_survey"} \
+        ${older:+--older-survey "$older" --stale-out "$stale_out" --stale-seconds "$stale_seconds"} \
+        ${why:+--why "$why"} || true
+    rm -f "$stale_out"
+}
+
+select_static() {
 # Write changed files to temp file for slice query.
 # WI-zufij: `hypergumbo slice --files` only reaches packages/*/src/** (see the
 # WI-jozan comment below). Passing NON-source paths (docs/*, .ci/*,
@@ -1103,6 +1468,7 @@ fi
 # can record them on either fallback path. The diagnostic string carries the
 # probed flag too, so a fallback report shows the command actually run.
 SLICE_CMD="$STABLE_HG slice --files $CHANGED_FILE_LIST ${SLICE_MINIMAL[@]+${SLICE_MINIMAL[@]}} --output $SLICE_OUTPUT"
+STALE_MARK=$(mktemp)
 SLICE_START_S=$SECONDS
 # WI-tolil: `set -euo pipefail` would abort the WHOLE script HERE on a non-zero
 # slice exit — before SLICE_EXIT is captured and before the slice-failure
@@ -1136,6 +1502,11 @@ if [[ $SLICE_EXIT -ne 0 ]]; then
     run_full_suite "slice command failed" "$CHANGED_FILES"
 fi
 
+if [[ "$STALE_SHADOW" == "true" ]] && [[ -s "$CHANGED_FILE_LIST" ]]; then
+    stale_graph_shadow || true
+fi
+rm -f "$STALE_MARK"
+
 # Filter to only test files in package directories
 # Convert absolute paths to relative (slice may output absolute paths)
 # Matches test_*.py and BRANCHES_test_*.py (for branch coverage tests)
@@ -1150,7 +1521,7 @@ AFFECTED_TESTS=$(grep -E 'packages/.*/tests/(test_|BRANCHES_test_).*\.py$' "$SLI
 # ("tests/test_<basename>.py"), so false negatives for sub-directory helpers
 # are acceptable (they still get full-suite coverage under WI-javan's
 # test-agent-infra job).
-TOP_LEVEL_MAP_HELPER="$REPO_ROOT/.agent/hooks/_shared/top_level_test_map.py"
+TOP_LEVEL_MAP_HELPER="$TOOLS_ROOT/.agent/hooks/_shared/top_level_test_map.py"
 TOP_LEVEL_TESTS=""
 if [[ -f "$TOP_LEVEL_MAP_HELPER" ]] && command -v python3 &>/dev/null; then
     TOP_LEVEL_TESTS=$(echo "$CHANGED_FILES" | python3 "$TOP_LEVEL_MAP_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
@@ -1359,7 +1730,7 @@ fi
 # predicate here is how a widening lands in one home and not the other. The
 # fallback below is the only duplicate, it is narrower on purpose, and a test
 # pins that the two agree on the live tree.
-CATALOGUE_TERMS_HELPER="$REPO_ROOT/scripts/catalogue_gate_terms.py"
+CATALOGUE_TERMS_HELPER="$TOOLS_ROOT/scripts/catalogue_gate_terms.py"
 CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/[^/]+/src/[^/]+/[^/]+/' | grep -vE '\.pyi?$' || echo "")
 if [[ -n "$CHANGED_CATALOGUE_FILES" ]]; then
     CATALOGUE_GATE_TERMS=""
@@ -1432,9 +1803,9 @@ fi
 # repaired two firings later by a PR that happened to touch a core file.
 #
 # The helper's docstring carries the two-hop argument and the measurement that
-# rules out keying on a bare basename. Its cost is 0.1s here and 2s with every
-# source in the tree changed.
-CITATION_GATE_HELPER="$REPO_ROOT/scripts/citation_gate_tests.py"
+# rules out keying on a bare basename. Its cost is 0.5s for one changed file and
+# 11s with every source in the tree changed (it parses Python citers: #2126).
+CITATION_GATE_HELPER="$TOOLS_ROOT/scripts/citation_gate_tests.py"
 if [[ -f "$CITATION_GATE_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_FILES" ]]; then
     CITATION_GATE_TESTS=$(echo "$CHANGED_FILES" \
         | python3 "$CITATION_GATE_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
@@ -1453,6 +1824,15 @@ if [[ -f "$REPO_ROOT/$CONFIDENCE_GATE_TEST" ]] \
         && echo "$CHANGED_FILES" | grep -qE '^packages/[^/]+/src/.*\.py$'; then
     log "Producer edit - unioning the confidence-site gate (WI-vosif)"
     AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CONFIDENCE_GATE_TEST" | sed '/^$/d' | sort -u)
+fi
+
+# The prose-only files were taken out of $CHANGED_FILES before this function
+# ran (see THE PROSE-ONLY RULE below it); their tests come from recorded
+# evidence. Unioned before the emptiness check, so a change that is ALL prose
+# reaches the manifest writer with those tests instead of the nothing-to-run
+# exit.
+if [[ -n "${PROSE_TESTS:-}" ]]; then
+    AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$PROSE_TESTS" | sed '/^$/d' | sort -u)
 fi
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
@@ -1481,6 +1861,9 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
             # success -- but "docs/config only" would misdescribe it, so it gets
             # its own words, naming what was removed.
             NOTHING_TO_RUN_REASON="no test-relevant files changed (docs/config only)"
+            if [[ -n "${PROSE_ONLY_FILES:-}" ]]; then
+                NOTHING_TO_RUN_REASON="the change is comments and docstrings only, and no test is recorded seeing the changed files (--no-prose-rule uses the import graph)"
+            fi
             if [[ -n "$DELETED_TEST_FILES" ]]; then
                 NOTHING_TO_RUN_REASON="the only test-relevant change deletes test file(s): $(echo "$DELETED_TEST_FILES" | tr '\n' ' ' | sed 's/ $//')"
             fi
@@ -1635,7 +2018,7 @@ fi
 # alphabetically-first test from any unrepresented affected package's
 # tests/ directory. Same lightweight-test rule the version-only branch
 # above already uses.
-PER_PKG_HELPER="$REPO_ROOT/scripts/per_package_fallback.py"
+PER_PKG_HELPER="$TOOLS_ROOT/scripts/per_package_fallback.py"
 if [[ -f "$PER_PKG_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
     PER_PKG_TESTS_FILE=$(mktemp)
     echo "$AFFECTED_TESTS" > "$PER_PKG_TESTS_FILE"
@@ -1657,7 +2040,7 @@ fi
 # runs INSIDE smart-test, the manifest auto-pr regenerates via
 # `smart-test --manifest` includes them too, so the fix persists across the
 # commit-diff-driven regeneration (the manual-add workaround did not).
-COV_DEPS_HELPER="$REPO_ROOT/scripts/coverage_only_deps.py"
+COV_DEPS_HELPER="$TOOLS_ROOT/scripts/coverage_only_deps.py"
 COV_DEPS_MAP="$REPO_ROOT/.ci/coverage-only-deps.txt"
 if [[ -f "$COV_DEPS_HELPER" && -f "$COV_DEPS_MAP" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
     COV_DEPS_TESTS_FILE=$(mktemp)
@@ -1669,6 +2052,54 @@ if [[ -f "$COV_DEPS_HELPER" && -f "$COV_DEPS_MAP" ]] && command -v python3 &>/de
         AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$COV_DEPS_ADDS" | sed '/^$/d' | sort -u)
     fi
 fi
+
+}
+
+# ── THE PROSE-ONLY RULE ──────────────────────────────────────────────────────
+# A changed .py file is PROSE-ONLY when its AST with docstrings removed, and
+# its machine-read comments, equal the baseline's. Such a change cannot alter
+# what a test executes. The only tests it can affect are those that see the
+# file's TEXT: a read of the file as data, a docstring or line number read at
+# runtime, a spawned process, or a test with no usable record. Those are
+# listed from recorded evidence alone (hypergumbo_core.prose_only; recorded on
+# every local run by scripts/pytest_plugins/pytest_source_reads.py), over
+# every test file in the repository.
+#
+# SO THE PROSE-ONLY FILES NEVER REACH THE IMPORT-GRAPH SLICE. They are taken
+# out of $CHANGED_FILES here, select_static runs on what is left, and their
+# tests ($PROSE_TESTS) are unioned in inside it. A change that is all prose
+# therefore skips the slice, which costs minutes on this repository, and its
+# manifest is the short list. They also leave the coverage gate, here and in
+# CI (which re-checks from the diff that their code is unchanged): their
+# executable lines are the baseline's.
+#
+# IT REFUSES RATHER THAN GUESSES: if the helper fails or declines, nothing is
+# taken out and the import graph selects for every changed file, as before.
+ALL_CHANGED_FILES="$CHANGED_FILES"
+PROSE_ONLY_FILES=""
+PROSE_TESTS=""
+if [[ "$SELECT_PROSE" == "true" ]]; then
+    _prose_dir=$(mktemp -d)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_prose_dir/changed" || true
+    if [[ -s "$_prose_dir/changed" ]]; then
+        "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+            ${VERBOSE:+--verbose} prose-select \
+            --changed-files "$_prose_dir/changed" --base "${BASELINE:-HEAD}" \
+            --files-out "$_prose_dir/files" --tests-out "$_prose_dir/tests" \
+            2>"$_prose_dir/err" || true
+        if [[ -s "$_prose_dir/err" ]]; then log "$(cat "$_prose_dir/err")"; fi
+    fi
+    if [[ -s "$_prose_dir/files" ]] && [[ -e "$_prose_dir/tests" ]]; then
+        PROSE_ONLY_FILES=$(sed '/^$/d' "$_prose_dir/files")
+        PROSE_TESTS=$(sed '/^$/d' "$_prose_dir/tests" | sort -u)
+        CHANGED_FILES=$(echo "$CHANGED_FILES" | grep -vxFf <(echo "$PROSE_ONLY_FILES") || true)
+        echo "Prose-only rule: $(echo "$PROSE_ONLY_FILES" | wc -l) changed file(s) differ only in comments or docstrings;" \
+             "recorded evidence selects $(echo "$PROSE_TESTS" | sed '/^$/d' | wc -l) test file(s) for them (--no-prose-rule uses the import graph)"
+    fi
+    rm -f "$_prose_dir"/* 2>/dev/null || true
+    rmdir "$_prose_dir" 2>/dev/null || true
+fi
+select_static
 
 # ─── THE MANIFEST SET AND THE LOCAL RUN SET PART COMPANY HERE ──────────────
 #
@@ -1682,20 +2113,149 @@ fi
 # coverage-selected tests in and Phase 3 narrows; with one variable, Phase 2
 # would silently make CI slower and Phase 3 would silently narrow the merge gate.
 #
-# So: everything ABOVE this line is the static import-graph slice plus its
-# declarative augmentations, and that is what the manifest publishes. Everything
-# BELOW may widen or narrow `AFFECTED_TESTS` for THIS machine only. The two are
-# byte-identical today — no phase has landed — which is the point: the seam is
-# cut before there is anything to misuse it.
+# So: everything ABOVE this line is what the manifest publishes, and everything
+# BELOW may widen `AFFECTED_TESTS` for THIS machine only. Above the line: the
+# static import-graph slice plus its declarative augmentations; the prose-only
+# rule (owner, 2026-11-11), which selects a comments-and-docstrings-only file's
+# tests from recorded evidence; and coverage NARROWING (owner, 2026-11-12,
+# WI-zirus), so merge CI runs the narrowed set. The manifest header names both
+# ("Prose-only files", "Narrowed"), so neither is silent. The Phase 2 union
+# stays below (owner, 2026-08-16): it only adds, so locally its worst case is
+# wasted time, and above the line it would widen the merge gate as well.
 #
 # Pinned by packages/hypergumbo-core/tests/test_smart_test_manifest_split.py,
 # because a future edit that "simplifies" these back into one variable would
 # reintroduce the coupling silently and pass every existing test.
+# ── Coverage-directed selection, PHASE 3: NARROW (WI-bolot, WI-zirus) ──────────
+# ON BY DEFAULT, ABOVE THE SEAM: the narrowed set is what the manifest publishes,
+# so merge CI runs it too (owner ruling 2026-11-12). `--no-narrow` keeps every
+# selected test. The full-suite cron does not read the manifest and is never
+# narrowed.
+#
+# THE RISK, AND WHAT CATCHES IT. The index knows "tests I have OBSERVED
+# executing block B", which is a subset of "tests that execute B" until every
+# test has run since B appeared. Between full runs the keep set can therefore be
+# short a test that covers part of a changed file. The local run executes this
+# same narrowed set under the whole-file coverage gate before anything is
+# pushed, so a short keep set shows up there as uncovered lines first.
+#
+# IT REFUSES WHENEVER IT CANNOT BE SOUND. A change to import-time code (a module
+# or class body), a new or deleted file, or an unindexed source file keeps the
+# whole selection (`narrowing_blockers`); measured on 200 recent source-changing
+# commits, that is about 4 in 5 (WI-zirus). Only about 55% of test wall-clock is
+# index-speakable at all (scripts/measure-narrowing-headroom.py), and the rest is
+# kept unconditionally.
+NARROWED_OUT_COUNT=0
+if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _nar_changed=$(mktemp); _nar_run=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_nar_changed" || true
+    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_nar_run" || true
+    NARROWED=$("$TOOLS_ROOT/scripts/coverage-select" \
+        --repo-root "$REPO_ROOT" ${VERBOSE:+--verbose} narrow \
+        --changed-files "$_nar_changed" --run-set "$_nar_run" \
+        --base "${BASELINE:-HEAD}" || echo "")
+    rm -f "$_nar_changed" "$_nar_run"
+    # A failed or refusing narrow prints the run set back unchanged; an EMPTY
+    # answer means the helper died, and then the run set must stand rather than
+    # collapse to nothing (pytest exits 5 — green — on an empty collection).
+    if [[ -n "$NARROWED" ]]; then
+        _before_narrow="$AFFECTED_TESTS"
+        # Narrowing judges tests against $CHANGED_FILES, which the prose-only
+        # files are not in; the tests they selected stay.
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$NARROWED" "$PROSE_TESTS" | sed '/^$/d' | sort -u)
+        NARROWED_OUT_COUNT=$(comm -23 \
+            <(echo "$_before_narrow" | sed '/^$/d' | sort -u) \
+            <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) | grep -c . || true)
+        if [[ "$NARROWED_OUT_COUNT" -gt 0 ]]; then
+            echo "Coverage narrowing removed $NARROWED_OUT_COUNT test file(s) the index shows never run the changed code (--no-narrow keeps them)"
+        fi
+    fi
+fi
+
+# ── THE READ-RECORD UNION (WI-nifif) ─────────────────────────────────────────
+# ABOVE THE SEAM: what it adds is in the manifest, so merge CI runs it. The
+# case it exists for is a PR that changed one analyzer, passed its own CI, and
+# broke on dev a gate that reads every analyzer from disk: a local-only step
+# would have left that PR's CI exactly as green.
+#
+# AFTER NARROWING: narrowing drops a test the index has coverage rows for and
+# none on the changed file, which describes a test that READS the file and
+# never runs it. Adding the readers afterwards is what keeps them.
+#
+# ADDITIVE, AND NEVER ABLE TO FAIL THE RUN. The helper exits 0 whatever
+# happens and prints only files that exist; an empty answer adds nothing.
+# $CHANGED_FILES no longer holds the prose-only files, whose readers the
+# prose-only rule has already listed.
+READ_UNION_COUNT=0
+if [[ "$SELECT_READERS" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _rd_changed=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_rd_changed" || true
+    READ_TESTS=$("$TOOLS_ROOT/scripts/coverage-select" \
+        --repo-root "$REPO_ROOT" readers \
+        --changed-files "$_rd_changed" 2>/dev/null || echo "")
+    rm -f "$_rd_changed"
+    if [[ -n "$READ_TESTS" ]]; then
+        # Only what the selection did not already hold: the count is this
+        # step's own contribution, not its overlap with the import graph.
+        READ_NEW=$(comm -13 \
+            <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) \
+            <(echo "$READ_TESTS" | sed '/^$/d' | sort -u))
+        if [[ -n "$READ_NEW" ]]; then
+            READ_UNION_COUNT=$(echo "$READ_NEW" | grep -c . || true)
+            echo "Read-record union added $READ_UNION_COUNT test file(s) recorded reading a changed file by path (--no-read-union leaves them out)"
+            log "Read-record union adding: $(echo "$READ_NEW" | tr '\n' ' ')"
+            AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$READ_NEW" | sed '/^$/d' | sort -u)
+        fi
+    fi
+fi
+
+# ── THE IMPORT-CLOSURE UNION (INV-mikag) ─────────────────────────────────────
+# ABOVE THE SEAM, like the read-record union and for its reason: what it adds
+# is in the manifest, so merge CI runs it. See SELECT_IMPORTERS above for the
+# case.
+#
+# AFTER NARROWING. Narrowing refuses on the very changes this step answers
+# (import-time code), so today the order changes nothing; it is placed here so
+# that a narrowing rule admitting some import-time change later cannot take
+# these tests back out.
+#
+# ADDITIVE, AND NEVER ABLE TO FAIL THE RUN. The helper exits 0 whatever
+# happens and prints only test files of the tree it read; an empty answer adds
+# nothing. It parses every Python file of the repository, and only when the
+# change holds import-time code.
+IMPORT_UNION_COUNT=0
+if [[ "$SELECT_IMPORTERS" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _ic_changed=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_ic_changed" || true
+    _ic_verbose=()
+    [[ "$VERBOSE" == "true" ]] && _ic_verbose=(--verbose)
+    IMPORT_TESTS=$("$TOOLS_ROOT/scripts/coverage-select" \
+        --repo-root "$REPO_ROOT" ${_ic_verbose[@]+"${_ic_verbose[@]}"} import-closure \
+        --changed-files "$_ic_changed" --base "${BASELINE:-HEAD}" || echo "")
+    rm -f "$_ic_changed"
+    if [[ -n "$IMPORT_TESTS" ]]; then
+        # Only what the selection did not already hold.
+        IMPORT_NEW=$(comm -13 \
+            <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) \
+            <(echo "$IMPORT_TESTS" | sed '/^$/d' | sort -u))
+        if [[ -n "$IMPORT_NEW" ]]; then
+            IMPORT_UNION_COUNT=$(echo "$IMPORT_NEW" | grep -c . || true)
+            echo "Import-closure union added $IMPORT_UNION_COUNT test file(s) that import a file whose import-time code changed (--no-import-union leaves them out)"
+            log "Import-closure union adding: $(echo "$IMPORT_NEW" | tr '\n' ' ')"
+            AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$IMPORT_NEW" | sed '/^$/d' | sort -u)
+        fi
+    fi
+fi
+
 MANIFEST_TESTS="$AFFECTED_TESTS"
 MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
 # INV-tazur: CI runs this list verbatim, so a dead path here reddens (or, in a
 # less careful consumer, empties) the merge gate. Refuse before it is written.
 require_selection_on_disk "the manifest (.ci/affected-tests.txt)" "$MANIFEST_TESTS"
+
+# The prose-only files are already out of $CHANGED_FILES, so the local coverage
+# gate and the coverage union below do not see them.
+LOCAL_CHANGED_FILES="$CHANGED_FILES"
 
 # ── Coverage-directed selection, PHASE 2: UNION (WI-kuliv) ───────────────────
 # BELOW THE SEAM ON PURPOSE. This widens the LOCAL run only; the manifest above
@@ -1719,10 +2279,10 @@ require_selection_on_disk "the manifest (.ci/affected-tests.txt)" "$MANIFEST_TES
 # broadly and exits 0, and its output is filtered to files that exist — the index
 # is persistent and remembers tests that have since been renamed away, which
 # pytest would treat as a collection error rather than a skip.
-if [[ "$SELECT_UNION" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+if [[ "$SELECT_UNION" == "true" ]] && [[ -n "$LOCAL_CHANGED_FILES" ]]; then
     _union_changed=$(mktemp)
-    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_union_changed" || true
-    COVERAGE_UNION_ADDS=$("$REPO_ROOT/scripts/coverage-select" \
+    echo "$LOCAL_CHANGED_FILES" | grep -E '\.py$' > "$_union_changed" || true
+    COVERAGE_UNION_ADDS=$("$TOOLS_ROOT/scripts/coverage-select" \
         --repo-root "$REPO_ROOT" select \
         --changed-files "$_union_changed" \
         --base "${BASELINE:-HEAD}" 2>/dev/null || echo "")
@@ -1740,44 +2300,46 @@ if [[ "$SELECT_UNION" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
     fi
 fi
 
-# ── Coverage-directed selection, PHASE 3: NARROW (WI-bolot) ──────────────────
-# OPT-IN, never the default, never in CI — the item's own constraint, and the
-# right one: this is the first operation in the family that can REMOVE a test.
-# Below the seam like the union, so the committed manifest is untouched.
-#
-# WHY IT IS NOT DEFAULT-ON EVEN THOUGH THE RULES ARE SOUND. The index knows
-# "tests I have OBSERVED executing block B", which is a subset of "tests that
-# execute B" until every test has run since B appeared. Between full runs the
-# keep set can therefore be short a test that covers part of a changed file, and
-# the whole-file coverage gate below would report that as a coverage regression
-# when it is really a stale index. Opt-in means whoever accepts that accepts it
-# knowingly.
-#
-# MEASURED CEILING, so nobody expects more of this than it can give
-# (scripts/measure-narrowing-headroom.py): across the timed suite only 55.3% of
-# wall-clock is index-speakable at all — the other 44.7% is unmeasured or unseen
-# and is kept unconditionally. On a small change the run set is already ~20s of
-# tests, so the saving is seconds; the win is on large selections.
-if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
-    _nar_changed=$(mktemp); _nar_run=$(mktemp)
-    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_nar_changed" || true
-    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_nar_run" || true
-    NARROWED=$("$REPO_ROOT/scripts/coverage-select" \
-        --repo-root "$REPO_ROOT" ${VERBOSE:+--verbose} narrow \
-        --changed-files "$_nar_changed" --run-set "$_nar_run" \
-        --base "${BASELINE:-HEAD}" || echo "")
-    rm -f "$_nar_changed" "$_nar_run"
-    # A failed or refusing narrow prints the run set back unchanged; an EMPTY
-    # answer means the helper died, and then the run set must stand rather than
-    # collapse to nothing (pytest exits 5 — green — on an empty collection).
-    if [[ -n "$NARROWED" ]]; then
-        AFFECTED_TESTS=$(echo "$NARROWED" | sed '/^$/d' | sort -u)
-    fi
-fi
+UNION_RUN_SET="$AFFECTED_TESTS"
 
-# INV-tazur: the union and the narrowing above may change the local run set;
+# INV-tazur: the union above may change the local run set;
 # hold it to the same rule as the manifest before pytest sees it.
 require_selection_on_disk "the local run set" "$AFFECTED_TESTS"
+
+# ── FAILURE-FIRST RUN ORDER (WI-fipuf) ───────────────────────────────────────
+# ORDERS, NEVER REMOVES. The run set is exactly $AFFECTED_TESTS; only the
+# order pytest receives it in changes, so nothing here can drop a test, and
+# the manifest (snapshotted above) is untouched.
+#
+# First the tests most likely to fail on this change: the changed test files,
+# then the tests the coverage index saw executing a changed block, then the
+# tests that cite a changed file by path. Then everything else, as before.
+# pytest collects its arguments in the order given, and xdist's `load` mode
+# hands tests out from the front, so the order survives -n (measured on 41
+# files, 4 workers: a failing file listed first ended the run in 3.7s with
+# --fail-grace=1, listed last in 11.4s).
+#
+# The point is --fail-grace below: a red run stops soon after its first
+# failure, so the sooner the likely failure runs, the less of a red run is
+# waited for. A green run takes as long as it did.
+RUN_ORDER=$( {
+    printf '%s\n' "${CHANGED_TEST_FILES:-}" "${COVERAGE_UNION_ADDS:-}" "${CITATION_GATE_TESTS:-}" \
+        | awk 'NR==FNR { run[$0]; next } ($0 in run) && !seen[$0]++' \
+              <(echo "$AFFECTED_TESTS") -
+    echo "$AFFECTED_TESTS"
+} | awk 'NF && !seen[$0]++')
+
+# SMART_TEST_SELECTION_OUT (see the header): every stage of this selection,
+# for scripts/smart-test-bed. Written only on this path; an early exit (a
+# full-suite fallback, nothing to run) leaves the directory empty, and the
+# caller reads the manifest's Mode line for those.
+if [[ -n "${SMART_TEST_SELECTION_OUT:-}" ]]; then
+    mkdir -p "$SMART_TEST_SELECTION_OUT"
+    echo "$MANIFEST_TESTS" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/manifest.txt"
+    echo "$UNION_RUN_SET" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/after-union.txt"
+    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/local.txt"
+    echo "$RUN_ORDER" | sed '/^$/d' > "$SMART_TEST_SELECTION_OUT/run-order.txt"
+fi
 
 # Count affected tests
 TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -l)
@@ -1804,9 +2366,21 @@ mkdir -p "$MANIFEST_DIR"
     echo "# Generated by smart-test at $(date -Iseconds)"
     echo "# Mode: targeted"
     echo "# Baseline: $BASELINE"
-    echo "# Changed files: $(echo "$CHANGED_FILES" | wc -l)"
+    echo "# Changed files: $(echo "$ALL_CHANGED_FILES" | wc -l)"
     echo "# Changed source files: $SOURCE_COUNT"
     echo "# Selected tests: $MANIFEST_TEST_COUNT"
+    if [[ -n "$PROSE_ONLY_FILES" ]]; then
+        echo "# Prose-only files: $(echo "$PROSE_ONLY_FILES" | wc -l) (comments and docstrings only; their tests come from recorded evidence, not the import graph)"
+    fi
+    if [[ "$NARROWED_OUT_COUNT" -gt 0 ]]; then
+        echo "# Narrowed: $NARROWED_OUT_COUNT test file(s) removed by coverage narrowing (smart-test --no-narrow keeps them)"
+    fi
+    if [[ "$READ_UNION_COUNT" -gt 0 ]]; then
+        echo "# Read-record tests: $READ_UNION_COUNT added (recorded reading a changed file by path; the import graph does not reach them)"
+    fi
+    if [[ "$IMPORT_UNION_COUNT" -gt 0 ]]; then
+        echo "# Import-closure tests: $IMPORT_UNION_COUNT added (they import a file whose import-time code changed; the call-edge slice does not reach them)"
+    fi
     echo "#"
     echo "# === CHANGED_SOURCE_FILES ==="
     if [[ -n "$CHANGED_SOURCE_FILES" ]]; then
@@ -1836,8 +2410,12 @@ if [[ "$FULL_RUN" == "true" ]]; then
     exit $_full_rc
 fi
 
+# The source files the LOCAL coverage gate answers for: the changed ones whose
+# code changed.
+LOCAL_CHANGED_SOURCE_FILES=$(echo "$CHANGED_SOURCE_FILES" | grep -vxFf <(echo "$PROSE_ONLY_FILES") || true)
+
 # Build scoped coverage for affected source files only
-AFFECTED_COV=$(build_affected_cov_paths "$CHANGED_FILES")
+AFFECTED_COV=$(build_affected_cov_paths "$LOCAL_CHANGED_FILES")
 
 if [[ "$AFFECTED_COV" == "FULL" ]]; then
     # No source files changed (maybe only tests or configs)
@@ -1847,7 +2425,7 @@ if [[ "$AFFECTED_COV" == "FULL" ]]; then
     TARGETED_TEST_COUNT=$TEST_COUNT
     TARGETED_SOURCE_COUNT=0
     echo "Running $TEST_COUNT affected test files (use --full for complete suite)"
-    run_pytest "$AFFECTED_TESTS" "${PYTEST_ARGS[@]}"
+    run_pytest "$RUN_ORDER" "${FAIL_GRACE_ARGS[@]}" "${PYTEST_ARGS[@]}"
     exit $?
 fi
 
@@ -1862,19 +2440,24 @@ TARGETED_SOURCE_COUNT=$SOURCE_COUNT
 echo "Running $TEST_COUNT affected test files with scoped coverage"
 echo "  (enforcing 100% coverage for changed source files only)"
 
-# Override COV_PATHS with affected-only paths
-# shellcheck disable=SC2206
-COV_PATHS=($AFFECTED_COV)
-
+# THE GATE IS SCOPED; THE MEASUREMENT IS NOT. COV_PATHS stays the full list
+# (every package), and only the report below is limited to the changed files.
+# This used to rebuild COV_PATHS from the packages that hold a changed file.
+# The selection index is folded from this run's coverage, and a run that
+# measured one package (a) deleted every test's recorded edges into the other
+# packages and (b) left each test with rows that say nothing about them, which
+# narrowing read as "does not run that code". The index no longer loses the
+# edges, and narrowing now drops a test only on a run that measured every
+# package, so a narrower COV_PATHS here would switch narrowing off for every
+# test this run touches. Cost of the full list, measured 2026-11-14 on two
+# selections run twice each way: 5,127 tests selected for a core file, 780 s
+# either way; 7,084 tests selected for a mainstream file, 951 s with that
+# package measured and 993 s with all six (+4.4%).
+#
 # Suppress pytest-cov's terminal report - we'll show targeted coverage below
 # The misleading package-level percentage (e.g., "4%") is noise when running
 # a subset of tests. Only the targeted file-level check matters.
 COV_PATHS+=("--cov-report=")
-
-# Add no-embeddings config if needed
-if [[ "$EMBEDDINGS_AVAILABLE" == "false" ]]; then
-    COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
-fi
 
 # Strip --cov-fail-under from PYTEST_ARGS when running scoped mode
 # We'll do our own scoped coverage check below instead of using pytest-cov's
@@ -1921,7 +2504,7 @@ except Exception:
 fi
 
 # Run tests and collect coverage (don't enforce threshold yet)
-run_pytest "$AFFECTED_TESTS" "${SCOPED_PYTEST_ARGS[@]}"
+run_pytest "$RUN_ORDER" "${FAIL_GRACE_ARGS[@]}" "${SCOPED_PYTEST_ARGS[@]}"
 TEST_EXIT=$?
 
 # ── Coverage-directed selection, SHADOW PHASE ────────────────────────────────
@@ -1955,7 +2538,7 @@ if [[ "$SELECT_SHADOW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
     _sel_changed=$(mktemp); _sel_actual=$(mktemp)
     echo "$CHANGED_FILES" | grep -E '\.py$' > "$_sel_changed" || true
     echo "$MANIFEST_TESTS" | sed '/^$/d' > "$_sel_actual" || true
-    "$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+    "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
         --junit "$JUNIT_XML" shadow \
         --changed-files "$_sel_changed" --actual-tests "$_sel_actual" \
         --base "${BASELINE:-HEAD}" \
@@ -1967,14 +2550,14 @@ fi
 fold_selection_index
 
 # If tests passed, check coverage for just the changed source files
-if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
+if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$LOCAL_CHANGED_SOURCE_FILES" ]]; then
     echo ""
     echo "Checking 100% coverage for changed source files..."
 
     # Skip auto-generated files (e.g. scripts/build-scip-proto output under
     # */scip/_generated/). --include bypasses coverage omit lists, so we
     # have to filter here too.
-    COVERABLE_CHANGED_FILES=$(echo "$CHANGED_SOURCE_FILES" | grep -v '/_generated/' || echo "")
+    COVERABLE_CHANGED_FILES=$(echo "$LOCAL_CHANGED_SOURCE_FILES" | grep -v '/_generated/' || echo "")
     if [[ -z "$COVERABLE_CHANGED_FILES" ]]; then
         _cov_verdict="✅ No coverable changed source files (all are auto-generated)"
         echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"

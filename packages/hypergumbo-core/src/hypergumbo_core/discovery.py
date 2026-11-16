@@ -16,8 +16,8 @@ respecting exclude patterns. Also provides:
   requested root equals or lies under the installed index's ``repo_root`` (a
   sub-directory request is answered from the index, filtered to that
   sub-directory), ``find_files`` matches patterns against the index (applying
-  only ``max_files`` and the size limit -- the ``excludes`` argument is not
-  re-checked) and never walks the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
+  only ``max_files``, the size limit and the running analyzer's file budget --
+  the ``excludes`` argument is not re-checked) and never walks the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
   (``FileIndex.build``) and clears it on every exit path; ``sketch`` installs
   a map-scoped ``FileIndex.from_paths`` for the ``--input`` / warm-map case
   (INV-jumim), so ``find_files`` then yields only the map's files. With no
@@ -26,6 +26,15 @@ respecting exclude patterns. Also provides:
   with a directory segment (``requirements/*.txt``) against the path, not the
   bare name, and both match a pure ``*.ext`` pattern case-insensitively
   (INV-kalaj).
+
+- **Per-analyzer file budget (WI-fomid):** ``run_all_analyzers`` opens
+  ``analyzer_file_budget(limit)`` (a ``ContextVar``, so it binds only that
+  worker thread; linkers are never charged) around each analyzer run, and
+  ``find_files`` admits each file through its ``FileBudget`` on both the index
+  and ``rglob`` paths -- by file, not by yield, so a two-pass analyzer sees the
+  same files in both passes. Finders that bypass ``find_files`` (a shebang
+  scan, the root ``.gitignore``, YAML/Ansible discovery) call
+  ``within_file_budget()``.
 
 - **Test-file gate for content-scanning linkers:** ``find_non_test_files()``
   wraps ``find_files`` (same signature, every argument forwarded) and
@@ -58,14 +67,13 @@ respecting exclude patterns. Also provides:
 - **Content-conditioned virtualenv exclusion:** ``venv`` / ``.venv`` / ``env``
   are deliberately NOT in ``DEFAULT_EXCLUDES``. A directory is a virtualenv
   because of what it CONTAINS, not what it is called — ``env/`` is just as
-  often an application's config or environment package, and name-matching it
-  silently deleted real source from the analysis. ``VENV_DIR_NAMES`` selects
-  which names are even eligible for the test; ``_looks_like_virtualenv`` then
-  requires one of ``_VENV_MARKERS`` (``pyvenv.cfg`` — PEP 405's specified
+  often an application's config or environment package, and matching it by
+  name silently deletes real source from the analysis. ``VENV_DIR_NAMES``
+  selects which names are even eligible for the test; ``_looks_like_virtualenv``
+  then requires one of ``_VENV_MARKERS`` (``pyvenv.cfg`` — PEP 405's specified
   marker — or ``bin/activate`` / ``Scripts/activate`` for older and Windows
-  tooling) at the directory root. Disclosed limit: the Windows arm has no
-  real-world positive control (zero hits across the 467-repo corpus), so it
-  is asserted by fixture only and is not claimed to be validated.
+  tooling) at the directory root. Limit: the Windows arm is checked by a
+  fixture only, never against a real Windows virtualenv.
 
 - **Installed dependency source, recognised by content (ADR-0004
   §"Installed dependency source").** The virtualenv rule generalised to every
@@ -113,14 +121,13 @@ respecting exclude patterns. Also provides:
   entry point, a ``tsconfig`` ``outDir`` or an ``action.yml`` names, a
   ``coverage``-family directory holding a coverage report -- plus two
   tool-agnostic declarations inside the directory (``CACHEDIR.TAG``; a
-  ``.gitignore`` that ignores everything). These names used to be bare
-  ``DEFAULT_EXCLUDES`` entries matched at ANY depth, which deleted source:
-  measured over the 273-repo local corpus, 354 directories were pruned; 25
-  of them carry their tool's evidence and 329 (5,224 files, 2,796 source) do
-  not -- qemu's ``target/`` (653 source files), next.js's ``packages/next/src/build`` (259), grafana's
-  ``pkg/build`` (350), gitlab's ``lib/gitlab/ci/build`` and ``.../coverage``,
-  plausible's ``lib/plausible/site/``. Hugo's ``public/`` was the first
-  instance (removed in v2.1.0). Build output is always pruned (no opt-in) and
+  ``.gitignore`` that ignores everything). Matching these names as bare
+  excludes at ANY depth deletes source, because most directories carrying an
+  output name are not output: qemu's ``target/``, next.js's
+  ``packages/next/src/build``, grafana's ``pkg/build``, gitlab's
+  ``lib/gitlab/ci/build`` and ``.../coverage``, plausible's
+  ``lib/plausible/site/``, and the ``public/`` of Airflow, Laravel and
+  Symfony are all source. Build output is always pruned (no opt-in) and
   COMMITTED output is still output (a GitHub Action commits the
   ``dist/index.js`` it runs), so git status does not exempt a directory that
   tool evidence claims. Git is consulted in two places, each where the marker
@@ -134,13 +141,16 @@ respecting exclude patterns. Also provides:
   ``_sibling_output`` (the producing tool's manifest beside the candidate) never
   claims a directory that holds a project manifest of its own (a subproject named
   ``build``); the ``_sibling_file`` rules (``cover``, ``.dart_tool``,
-  ``.stack-work``, ``elm-stuff``), the Sphinx split-layout ``build/`` rule,
-  sbt's ``project/target`` arm, setuptools ``build/`` and Python ``dist/`` do
+  ``.stack-work``, ``elm-stuff``), Phoenix ``priv/static/assets``, the Sphinx
+  split-layout ``build/`` rule, sbt's ``project/target`` arm, setuptools
+  ``build/``, Python ``dist/`` and declared JS output (a ``dist``/``build``/
+  ``out`` that a ``package.json``, ``tsconfig`` or ``action.yml`` names --
+  deliberately, since declared output may carry its own ``package.json``) do
   not apply that check; MkDocs ``site/`` and untracked JS output check only
   for their own manifest inside the directory.
 
   THE FALLBACK: a directory with an output NAME and no tool evidence is
-  ANALYSED. A wrong exclusion is silent and removes findings (every instance
+  ANALYSED. A wrong exclusion is silent and removes findings (every example
   above); a wrong inclusion is visible -- extra symbols, extra time -- and
   ``--exclude <name>`` removes it for a run. ``FileIndex.build`` records each
   pruned output directory (``generated_output_roots``);
@@ -159,6 +169,26 @@ respecting exclude patterns. Also provides:
   ``lcov.info``, ``package-lock.json``, ...) and hypergumbo's own outputs.
   Each is dot-prefixed or a name a tool coined for itself; no project names a
   source directory ``__pycache__``, so the name IS the evidence.
+
+- **What the VCS ignores and does not track (ADR-0004 §"Installed dependency
+  source" point 9).** The rules above claim DIRECTORIES; nothing asked about
+  a single file. A working tree holds files a clean checkout does not --
+  local outputs, editor state, ``.env``, ``credentials.json`` -- and a sketch
+  quoted them. ``_vcs_prunes`` is the rule: left out when the work tree's
+  ignore rules match AND HEAD does not hold it. Both halves are git's own
+  answer (``VcsIgnored``): ``git check-ignore --no-index --stdin``, one call
+  per directory LEVEL so an ignored ``node_modules/`` is never walked, and
+  HEAD's tree for "tracked" -- never the index, for the reason
+  ``_head_entries`` gives. ``FileIndex.build`` asks afresh
+  (``refresh_vcs_ignored``) and records what it left out
+  (``vcs_ignored_skipped`` -> ``vcs_ignored_summary`` /
+  ``format_vcs_ignored_disclosure``); ``_is_excluded_classified`` and
+  ``walks_into`` reuse the answer a run already has; and a walk that is
+  neither asks ``vcs_ignored``. NO ANSWER, NO EXCLUSION: outside a git work
+  tree, with git missing or failing, or when the analysed directory is
+  itself ignored (the user named it), nothing is left out. Installed
+  dependency source keeps its own rules: an ignored ``node_modules/`` under
+  ``--trace-deps`` is analysed.
 """
 from __future__ import annotations
 
@@ -166,6 +196,8 @@ import functools
 import os
 import json
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
@@ -578,13 +610,12 @@ DEFAULT_EXCLUDES = [
     # names) are NOT here. A directory is generated output because a TOOL
     # writes it -- Cargo writes target/ beside Cargo.toml, MkDocs writes site/
     # beside mkdocs.yml -- not because of its name: matched by name at any
-    # depth they deleted qemu's target/ (653 source files), next.js's
-    # packages/next/src/build (259), gitlab's ci/build and every
-    # plausible .../site/ module from the analysis. They are recognised per
-    # tool through BUILD_OUTPUT_RULES (ADR-0004 §"Installed dependency
-    # source" point 7) and disclosed when skipped. Hugo's public/ left this
-    # list in v2.1.0 for the same reason (Airflow routes/public/, 109 API
-    # handlers; Laravel/Symfony public/).
+    # depth they delete source (qemu's target/, next.js's
+    # packages/next/src/build, gitlab's ci/build, plausible's .../site/).
+    # They are recognised per tool through BUILD_OUTPUT_RULES (ADR-0004
+    # §"Installed dependency source" point 7) and disclosed when skipped.
+    # Hugo's public/ is absent for the same reason: Airflow's routes/public/
+    # and Laravel/Symfony public/ are source.
     ".elixir_ls",  # ElixirLS language-server build/cache dir (ADR-0004 §7)
     # VCS and IDE
     ".git",
@@ -640,9 +671,8 @@ VENV_DIR_NAMES: frozenset[str] = frozenset({"venv", ".venv", "env"})
 
 #: Files whose presence identifies a directory as a virtualenv root. ``pyvenv.cfg`` is
 #: PEP 405's specified marker; older tooling wrote only ``bin/activate``, and Windows
-#: writes ``Scripts/activate``. The Windows arm has NO real-world positive control —
-#: zero hits across the 467-repo corpus and no Windows virtualenv was available — so it
-#: is asserted by fixture and is not claimed to be validated.
+#: writes ``Scripts/activate``. The Windows arm is checked by a fixture only, never
+#: against a real Windows virtualenv.
 _VENV_MARKERS: tuple[str, ...] = ("pyvenv.cfg", "bin/activate", "Scripts/activate")
 
 
@@ -650,27 +680,24 @@ _VENV_MARKERS: tuple[str, ...] = ("pyvenv.cfg", "bin/activate", "Scripts/activat
 def _looks_like_virtualenv(directory: str) -> bool:
     """Whether ``directory`` is a virtualenv ROOT, decided by content.
 
-    WHY CONTENT AND NOT NAME. ``venv``/``.venv``/``env`` used to sit in
-    :data:`DEFAULT_EXCLUDES` as bare names, and the matcher applies an exact name to
-    EVERY component of the relative path at any depth — so every directory named
-    ``env`` in every repository was deleted. Measured across 467 corpus repos that is
-    **427 source files in 77 directories across 39 repos, 425 of them (99.5%)
-    first-party**: RocksDB's entire POSIX I/O layer (``env_posix.cc``, ``fs_posix.cc``,
-    ``io_posix.cc``), U-Boot's environment storage subsystem, poetry's virtualenv
-    manager. The deleted code is systematically I/O-dense, which is the worst possible
-    thing for an exclusion list to remove from a boundary analysis.
+    WHY CONTENT AND NOT NAME. The exclude matcher applies an exact name to EVERY
+    component of the relative path at any depth, so a bare ``env`` entry in
+    :data:`DEFAULT_EXCLUDES` would delete every directory named ``env`` in every
+    repository — almost all of them first-party source: RocksDB's POSIX I/O layer
+    (``env_posix.cc``, ``fs_posix.cc``, ``io_posix.cc``), U-Boot's environment storage
+    subsystem, poetry's virtualenv manager. That code is I/O-dense, the worst thing
+    for an exclusion list to remove from a boundary analysis.
 
-    WHY NOT ROOT-ANCHOR IT. ``env/*`` is already expressible in this matcher and needs
-    no new machinery, but it recovers only 379 of 427 (88.8%) and **structurally
-    cannot** recover the two worst cases — rocksdb's and U-Boot's ``env/`` are both AT
-    the repo root, exactly where a virtualenv would be. Only content separates them.
-    Conversely a virtualenv is not always at the root (``backend/venv`` is idiomatic),
-    so this test stays depth-agnostic.
+    WHY NOT ROOT-ANCHOR IT. ``env/*`` is expressible in this matcher, but it cannot
+    spare rocksdb's or U-Boot's ``env/``: both sit AT the repo root, exactly where a
+    virtualenv would be. Only content separates them. Conversely a virtualenv is not
+    always at the root (``backend/venv`` is idiomatic), so this test stays
+    depth-agnostic.
 
     DIRECTION: this ADDS analyzable source. It cannot delete a finding. The mirror
     risk — re-including a real virtualenv and dragging in thousands of dependency
-    files — is what the markers prevent; this repo's own ``.venv`` (26,882 source
-    files) is a live positive control in the test suite.
+    files — is what the markers prevent; this repo's own ``.venv`` is a live positive
+    control in the test suite.
 
     This is the Python entry of :data:`INSTALLED_DEP_RULES`; the other ecosystems
     follow the same shape (a candidate name selects the test, content decides).
@@ -1116,8 +1143,7 @@ _MKDOCS_SITE_DIR_RE = re.compile(r"^site_dir\s*:\s*['\"]?([^'\"#\n]+?)['\"]?\s*(
 def _mkdocs_site(d: Path) -> bool:
     """MkDocs ``site/``: a ``mkdocs.yml`` beside it whose ``site_dir`` is
     unset (default ``site``) or names this directory. A custom ``site_dir``
-    with another name is not followed (that directory was never excluded;
-    it is analysed)."""
+    with another name is not followed: that directory is analysed."""
     for cfg in ("mkdocs.yml", "mkdocs.yaml"):
         text = _read_small(d.parent / cfg)
         if not text and not (d.parent / cfg).is_file():
@@ -1355,8 +1381,8 @@ def _head_entries(directory: str) -> tuple[str, ...] | None:
 
     Backs :func:`_is_committed_dir` and :func:`_is_untracked_dir`.
 
-    THE DECISION (owner, 2026-10-06; ADR-0004 §"Installed dependency source"
-    point 3): a directory whose files are committed is vendored code, never
+    THE RULE (ADR-0004 §"Installed dependency source" point 3): a directory
+    whose files are committed is vendored code, never
     "installed" -- even when it carries a package manager's marker, as a
     committed ``go mod vendor`` tree carries ``vendor/modules.txt``. It is
     analysed and classified tier 3. A fresh clone holds the same files, which
@@ -1366,9 +1392,9 @@ def _head_entries(directory: str) -> tuple[str, ...] | None:
     <name>/`` per marker-positive candidate (a handful per repository, zero in
     most), cached. ``ls-tree`` reads tree objects only. ``ls-files`` reads the
     INDEX, and reading the index with ``core.fsmonitor`` configured runs a
-    program the analysed repository names -- the same class of hazard that
-    removed ``git status`` from ``repo_fingerprint`` (see its module
-    docstring). Consequence: "committed" means present in HEAD; a tree that is
+    program the analysed repository names -- the same hazard that keeps
+    ``git status`` out of ``repo_fingerprint`` (see its module docstring).
+    Consequence: "committed" means present in HEAD; a tree that is
     only staged counts as not committed. Children that are all dot-files
     (``.gitkeep``, ``.gitignore``) do not count -- a placeholder that keeps an
     empty ``vendor/`` in the tree does not make the installed contents
@@ -1392,11 +1418,14 @@ def _head_entries(directory: str) -> tuple[str, ...] | None:
     )
 
 
-def _ls_tree_head(cwd: Path, args: list[str]) -> str | None:
-    """``git ls-tree HEAD <args...> --`` style query run in ``cwd``: stdout,
-    or ``None`` when git cannot say. The hazards and the environment
-    scrubbing are :func:`_head_entries`'s; this is the one place they live."""
-    import os
+def _repo_git(
+    cwd: Path, args: list[str], stdin: bytes | None = None,
+) -> tuple[int, bytes] | None:
+    """``git <args...>`` run in ``cwd``: ``(returncode, stdout)``, or ``None``
+    when git could not be run at all. The one place a discovery query to git
+    is launched; the hazards and the environment scrubbing are
+    :func:`_head_entries`'s. No caller may pass a command that reads the
+    INDEX (see there)."""
     import shutil
     import subprocess  # nosec B404 - only for SubprocessError; the call goes through repo_inspect_git
 
@@ -1411,18 +1440,24 @@ def _ls_tree_head(cwd: Path, args: list[str]) -> str | None:
                      "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR")
     }
     env["GIT_NO_LAZY_FETCH"] = "1"
-    *opts, target = args
     try:
         proc = repo_inspect_git(
-            [git, "ls-tree", *opts, "HEAD", "--", target],
-            cwd=cwd, capture_output=True, text=True, check=False,
-            env=env, timeout=30,
+            [git, *args], cwd=cwd, input=stdin, capture_output=True,
+            check=False, env=env, timeout=30,
         )
     except (OSError, subprocess.SubprocessError):  # pragma: no cover - defensive
         return None
-    if proc.returncode != 0:
+    return proc.returncode, bytes(proc.stdout)
+
+
+def _ls_tree_head(cwd: Path, args: list[str]) -> str | None:
+    """``git ls-tree HEAD <args...> --`` style query run in ``cwd``: stdout,
+    or ``None`` when git cannot say."""
+    *opts, target = args
+    answer = _repo_git(cwd, ["ls-tree", *opts, "HEAD", "--", target])
+    if answer is None or answer[0] != 0:
         return None
-    return str(proc.stdout)
+    return answer[1].decode("utf-8", "replace")
 
 
 def _is_committed_dir(directory: str) -> bool:
@@ -1437,6 +1472,259 @@ def _is_untracked_dir(directory: str) -> bool:
     the opposite failure direction from :func:`_is_committed_dir`, because
     here "untracked" is evidence FOR a prune and must not be assumed."""
     return _head_entries(directory) == ()
+
+
+# ---------------------------------------------------------------------------
+# Files the VCS ignores and does not track (ADR-0004 point 9)
+# ---------------------------------------------------------------------------
+
+
+class VcsIgnored:
+    """What the work tree of one analysis root ignores, and what its HEAD
+    holds: the two facts :meth:`ignores` needs.
+
+    ``ignored`` holds root-relative POSIX paths of the ignored entries the
+    scan met, files and directories alike; a directory entry stands for
+    everything below it, because git cannot re-include a path under an
+    excluded directory. ``tracked`` is HEAD's files (empty when nothing is
+    ignored: it is only read to exempt an ignored path).
+    """
+
+    __slots__ = ("_prefix", "ignored", "root", "tracked", "tracked_dirs")
+
+    def __init__(self, root: Path, ignored: set[str], tracked: set[str]) -> None:
+        #: Absolute, so a walker's own spelling of a path (relative, or
+        #: under another remembered root) still finds its place below it.
+        self.root = Path(os.path.abspath(root))
+        self._prefix = str(self.root).rstrip(os.sep) + os.sep
+        self.ignored = frozenset(ignored)
+        self.tracked = frozenset(tracked)
+        dirs: set[str] = set()
+        for rel in tracked:
+            while "/" in rel:
+                rel = rel.rpartition("/")[0]
+                if rel in dirs:
+                    break
+                dirs.add(rel)
+        self.tracked_dirs = frozenset(dirs)
+
+    def ignores_rel(self, rel: str) -> bool:
+        """Is the root-relative POSIX path ``rel`` ignored and not in HEAD?
+        For a directory: ignored, with no file of HEAD below it."""
+        if not self.ignored or rel in self.tracked or rel in self.tracked_dirs:
+            return False
+        while rel:
+            if rel in self.ignored:
+                return True
+            rel = rel.rpartition("/")[0]
+        return False
+
+    def rel_of(self, path: Path) -> str | None:
+        """``path`` as a POSIX path below :attr:`root`; ``None`` when it is
+        the root itself or lies outside it."""
+        text = os.path.abspath(path)
+        if not text.startswith(self._prefix):
+            return None
+        return text[len(self._prefix):].replace(os.sep, "/")
+
+
+def _work_tree_top(directory: Path) -> Path | None:
+    """The nearest ancestor-or-self of absolute ``directory`` holding a ``.git``: the
+    top of the git work tree it belongs to, found without launching git."""
+    for d in (directory, *directory.parents):
+        if os.path.lexists(d / ".git"):
+            return d
+    return None
+
+
+#: The one ignore query. Paths go in on stdin, NUL-separated, never in argv;
+#: ``--no-index`` keeps git off the index (:func:`_head_entries` says why).
+_CHECK_IGNORE = ["check-ignore", "--no-index", "-z", "--stdin"]
+
+
+def _scan_vcs_ignored(root: Path) -> tuple[set[str], set[str]] | None:
+    """``(ignored entries, HEAD's files)`` under ``root``, root-relative, or
+    ``None`` when git cannot say.
+
+    One ``git check-ignore --no-index --stdin`` per directory LEVEL, never
+    one per directory or per file: level N's entries are asked together, and
+    only the directories git did not ignore are listed for level N+1, so an
+    ignored ``node_modules/`` or ``target/`` is never walked. ``--no-index``
+    keeps the query off the index (:func:`_head_entries` says why); the
+    tracked half of the question is HEAD's tree, read once and only when
+    something is ignored. A repository with no commits has an empty HEAD:
+    nothing is exempt there.
+
+    A directory below ``root`` that holds its own ``.git`` is another work
+    tree (a submodule, a nested clone). Its files are asked of ITS git, with
+    its ignore rules and its HEAD; when that git cannot say, nothing in it
+    is excluded.
+    """
+    ignored: set[str] = set()
+    tracked: set[str] = set()
+    nested: list[str] = []
+    pending = [""]
+    while pending:
+        batch: list[str] = []
+        dirs: list[str] = []
+        for d in pending:
+            try:
+                entries = sorted(os.scandir(root / d), key=lambda e: e.name)
+            except OSError:  # pragma: no cover - a directory unreadable or gone mid-walk
+                continue
+            for entry in entries:
+                if entry.name == ".git":
+                    continue
+                rel = f"{d}/{entry.name}" if d else entry.name
+                batch.append(rel)
+                if entry.is_dir(follow_symlinks=False):
+                    dirs.append(rel)
+        if not batch:
+            break
+        answer = _repo_git(
+            root, _CHECK_IGNORE,
+            b"".join(os.fsencode(rel) + b"\0" for rel in batch),
+        )
+        if answer is None or answer[0] not in (0, 1):
+            return None
+        now = {os.fsdecode(raw) for raw in answer[1].split(b"\0") if raw}
+        ignored |= now
+        pending = []
+        for d in dirs:
+            if d in now:
+                continue
+            if os.path.lexists(root / d / ".git"):
+                nested.append(d)
+            else:
+                pending.append(d)
+    if ignored:
+        head = _repo_git(root, ["ls-tree", "-r", "-z", "--name-only", "HEAD"])
+        if head is not None and head[0] == 0:
+            tracked = {os.fsdecode(raw) for raw in head[1].split(b"\0") if raw}
+    for d in nested:
+        inner = _scan_vcs_ignored(root / d)
+        if inner is not None:
+            ignored |= {f"{d}/{rel}" for rel in inner[0]}
+            tracked |= {f"{d}/{rel}" for rel in inner[1]}
+    return ignored, tracked
+
+
+#: Analysis root (as the walker spelled it) -> its answer, ``None`` when the
+#: VCS has none to give. ``FileIndex.build`` always asks afresh; the per-path
+#: walkers reuse what a run already asked.
+_vcs_ignored_cache: dict[str, "VcsIgnored | None"] = {}
+
+
+def refresh_vcs_ignored(root: Path) -> "VcsIgnored | None":
+    """Ask ``root``'s VCS what it ignores and does not track, and remember
+    the answer for the per-path walkers. ``None`` -- nothing is excluded --
+    when there is no answer to act on:
+
+    - ``root`` is in no git work tree (no VCS, or a VCS other than git), or
+      git cannot be run or fails;
+    - ``root`` is itself ignored by the work tree it sits in. The user named
+      that directory as the thing to analyse, and an explicit request
+      outranks the rule (as ``--trace-deps`` does for installed source).
+    """
+    answer: VcsIgnored | None = None
+    here = Path(os.path.abspath(root))
+    top = _work_tree_top(here)
+    if top is not None:
+        named_ignored = False
+        if here != top:
+            asked = _repo_git(
+                top, [*_CHECK_IGNORE, "-q"],
+                os.fsencode(here.relative_to(top).as_posix()) + b"\0",
+            )
+            named_ignored = asked is None or asked[0] != 1
+        scan = None if named_ignored else _scan_vcs_ignored(here)
+        if scan is not None:
+            answer = VcsIgnored(here, *scan)
+    if len(_vcs_ignored_cache) >= 256:
+        _vcs_ignored_cache.clear()
+    _vcs_ignored_cache[str(here)] = answer
+    return answer
+
+
+def _vcs_ignored_for(path: Path, root: Path | None = None) -> "VcsIgnored | None":
+    """The remembered answer covering ``path``: ``root``'s own when a walker
+    names its root and it was asked, else that of the nearest ancestor a run
+    already got an answer for. Asked now when there is none (of ``root``, or
+    of ``path``'s directory: a top-down walk's first question is about its
+    root's children)."""
+    start = Path(os.path.abspath(path if root is None else root / "_"))
+    if root is not None and str(start.parent) in _vcs_ignored_cache:
+        return _vcs_ignored_cache[str(start.parent)]
+    for anc in start.parents:
+        known = _vcs_ignored_cache.get(str(anc))
+        if known is not None:
+            return known
+    # An ancestor with no answer says nothing about a work tree below it.
+    if root is None and str(start.parent) in _vcs_ignored_cache:
+        return None
+    return refresh_vcs_ignored(start.parent)
+
+
+def _vcs_prunes(vcs: "VcsIgnored | None", rel: str, path: Path) -> bool:
+    """THE rule (ADR-0004 point 9): ``path`` (``rel`` under ``vcs.root``) is
+    not analysed when its VCS ignores it and HEAD does not hold it -- unless
+    it lies in installed dependency source, where points 2 and 5 decide: an
+    ignored ``node_modules/`` the user opted into with ``--trace-deps`` is
+    analysed."""
+    if vcs is None or not vcs.ignores_rel(rel):
+        return False
+    rule = match_content_rule(path)
+    if rule is not None and rule.is_installed_dep:
+        return False
+    return _nearest_installed_root(path) is None
+
+
+def vcs_ignored(path: Path, root: Path | None = None) -> bool:
+    """Does the VCS of ``path``'s work tree ignore ``path`` and not track it
+    (ADR-0004 point 9)? For walks that are neither :meth:`FileIndex.build`
+    nor :func:`is_excluded`, which apply the rule themselves."""
+    vcs = _vcs_ignored_for(path, root)
+    rel = None if vcs is None else vcs.rel_of(path)
+    return rel is not None and _vcs_prunes(vcs, rel, path)
+
+
+def vcs_ignored_summary(
+    skipped: "Iterable[tuple[Path, bool]]", repo_root: Path,
+) -> dict[str, Any]:
+    """``supply_chain_summary.vcs_ignored_skipped`` for the entries a walk
+    left out under ADR-0004 point 9 (``FileIndex.vcs_ignored_skipped``):
+    ``{paths, entries}``. ``paths`` counts the entries the walk MET -- a
+    pruned directory is one entry, whatever it holds, because counting its
+    files walks the tree the prune exists to avoid. ``entries`` names them
+    (a directory with a trailing ``/``), sorted and capped at 10."""
+    names: list[str] = []
+    for path, is_dir in skipped:
+        try:
+            rel = path.relative_to(repo_root).as_posix()
+        except ValueError:  # pragma: no cover - the walk only yields children
+            rel = path.as_posix()
+        names.append(f"{rel}/" if is_dir else rel)
+    names.sort()
+    return {"paths": len(names), "entries": names[:10]}
+
+
+def format_vcs_ignored_disclosure(summary: "dict[str, Any] | None") -> str | None:
+    """The one-line disclosure, or ``None`` when nothing was left out.
+
+    ``Not analysed, because git ignores them and does not track them:
+    config/secrets.yml, out/, slice.json, 4 more (ADR-0004).`` -- naming at
+    most three, like the two lines beside it. Names only: the point of the
+    rule is that the content is not read."""
+    if not summary or not summary.get("paths"):
+        return None
+    parts = list((summary.get("entries") or [])[:3])
+    more = int(summary["paths"]) - len(parts)
+    if more > 0:
+        parts.append(f"{more} more")
+    return (
+        "Not analysed, because git ignores them and does not track them: "
+        f"{', '.join(parts)} (ADR-0004)."
+    )
 
 
 @functools.lru_cache(maxsize=8192)
@@ -1458,7 +1746,7 @@ def _match_content_rule(directory: str, name: str) -> ContentRule | None:
 
 
 # ---------------------------------------------------------------------------
-# Git submodules (ADR-0004 point 2 table, amended 2026-10-15; WI-tiril)
+# Git submodules (ADR-0004 point 2 table; history: WI-tiril)
 # ---------------------------------------------------------------------------
 
 #: The disclosure label of a submodule.
@@ -1505,7 +1793,7 @@ def _match_submodule(directory: str) -> ContentRule | None:
     When git cannot say (no git, no commits), a ``.git`` FILE is the
     evidence: that is what ``git submodule`` leaves in a checkout. An
     unpopulated submodule is an empty directory with no ``.git`` and is a
-    no-op; an undeclared nested repository is analysed as before.
+    no-op; an undeclared nested repository is analysed.
     """
     path = Path(directory)
     dotgit = path / ".git"
@@ -1890,19 +2178,22 @@ def walks_into(entry: Path, skip: "Iterable[str]" = ()) -> bool:
 
     A real directory whose name is neither in ``skip`` nor dot-prefixed -- and
     NEVER a directory SYMLINK. ``os.walk`` (``followlinks=False``) and
-    ``Path.rglob`` already refuse to follow one; the iterative ``iterdir()``
-    walks that read a repository's own manifests and source roots did not,
-    because ``Path.is_dir()`` follows the link. A link back to an ancestor --
-    arti's ``maint/rust-maint-common/{maint,common} -> .``, two self-links per
-    level -- then makes the walk exponential, and ``verify-claims`` sat at 100%
-    CPU for 30+ minutes before any analysis ran. Every such walk asks this, so
-    the rule cannot be fixed in one walker and forgotten in the next.
+    ``Path.rglob`` refuse to follow one, but an iterative ``iterdir()`` walk
+    (the kind that reads a repository's own manifests and source roots)
+    follows it, because ``Path.is_dir()`` follows the link. A link back to an
+    ancestor -- arti's ``maint/rust-maint-common/{maint,common} -> .``, two
+    self-links per level -- then makes the walk exponential, stalling the run
+    before any analysis. Every such walk asks this, so the rule cannot be
+    fixed in one walker and forgotten in the next.
 
     Nor into a directory a content rule claims (:func:`match_content_rule`) --
     installed dependency source or tool build output -- whatever
     ``--trace-deps`` says. These walks read the PROJECT's own manifests and
     source roots; a dependency's ``mix.exs`` or ``pyproject.toml`` names a
     third-party package, never the project.
+
+    Nor into a directory the VCS ignores and does not track (ADR-0004 point
+    9): a manifest there is not the project's either.
     """
     return (
         entry.is_dir()
@@ -1910,16 +2201,16 @@ def walks_into(entry: Path, skip: "Iterable[str]" = ()) -> bool:
         and entry.name not in set(skip)
         and not entry.name.startswith(".")
         and match_content_rule(entry) is None
+        and not vcs_ignored(entry)
     )
 
 
 #: Names hand-written PROJECT-manifest walks skip on top of
 #: :data:`DEFAULT_EXCLUDES` and :func:`walks_into`'s content test.
-#: ``node_modules`` and ``vendor`` left ``DEFAULT_EXCLUDES`` when installed
-#: dependency source became content-conditioned; for analysis that is right (a
-#: committed ``vendor/`` is analysed as tier 3), but a manifest under either --
-#: committed or not -- describes a dependency, never the project, so these
-#: walks keep skipping them by name.
+#: ``node_modules`` and ``vendor`` are not in ``DEFAULT_EXCLUDES``, because
+#: installed dependency source is content-conditioned (a committed ``vendor/``
+#: is analysed as tier 3); but a manifest under either -- committed or not --
+#: describes a dependency, never the project, so these walks skip them by name.
 DEPENDENCY_DIR_NAMES: frozenset[str] = frozenset({"node_modules", "vendor"})
 
 
@@ -1938,14 +2229,12 @@ def is_pruned_dir(
 
     ONE RULE, ONE PLACE, EVERY WALKER. This repository has two independent tree
     walkers — :meth:`FileIndex.build`'s ``os.walk`` prune loop (the fast path every
-    real run takes) and :func:`_is_excluded_classified` (the per-path check) — and
-    they each carried their own copy of the membership test. When the venv rule below
-    was first added to only one of them, ``find_files`` excluded a virtualenv
-    correctly while a full ``run_behavior_map`` still analysed it: the same input,
-    two answers. N places that should share one rule WILL drift, so they now call
-    this. Parity is asserted behaviourally across all three public entry points by
-    ``test_all_three_walkers_agree`` — structure-free, so it cannot be satisfied by a
-    fourth copy that merely looks right.
+    real run takes) and :func:`_is_excluded_classified` (the per-path check). A rule
+    added to only one of them gives the same input two answers (``find_files``
+    excludes a virtualenv while a full ``run_behavior_map`` analyses it), so both
+    call this. Parity is asserted behaviourally across all three public entry points
+    by ``test_all_three_walkers_agree`` — structure-free, so it cannot be satisfied
+    by a fourth copy that merely looks right.
 
     ``abs_dir`` is the absolute path of the directory named ``name``; it is only
     consulted for the content-rule arm (:func:`content_rule_prunes` --
@@ -1959,8 +2248,7 @@ def is_pruned_dir(
         return True
     # Content-conditioned names. Skipped when the caller already listed the name
     # in ``exact`` — an explicit ``--exclude env`` is a direct instruction and is
-    # obeyed literally; second-guessing it would be a different bug from the DEFAULT
-    # this rule fixes.
+    # obeyed literally, with no content test to second-guess it.
     if content_rule_prunes(name, abs_dir):
         return True
     return any(fnmatch(name, pattern) for pattern in globs)
@@ -2021,10 +2309,10 @@ def _normalize_exclude_pattern(pattern: str) -> str:
 
         ui            ui/           ui/**         **/ui/**         **/ui
 
-    The pre-WI-zirik implementation matched patterns against each path part
-    independently, so anything containing a '/' silently matched nothing.
-    This helper collapses the four "directory under any depth" forms above
-    into the bare name "ui" so per-part fnmatch handles them.
+    Per-part fnmatch compares a pattern with one path component at a time,
+    so a pattern containing a '/' would silently match nothing. This helper
+    collapses the four "directory under any depth" forms above into the
+    bare name "ui" so per-part fnmatch handles them (history: WI-zirik).
 
     For path-anchored patterns (e.g. ``cmd/server.go``), the leading and
     trailing decorations are stripped but the remaining ``/`` is preserved
@@ -2161,7 +2449,9 @@ def _is_excluded_classified(
             if fnmatch(rel_str, pattern):
                 return True
 
-    return False
+    # ADR-0004 point 9, the same rule FileIndex.build applies: one question
+    # for the whole path, since an ignored directory covers what is below it.
+    return rel_path is not path and vcs_ignored(path, repo_root)
 
 
 def is_excluded(path: Path, repo_root: Path, excludes: list[str] | None = None) -> bool:
@@ -2184,6 +2474,76 @@ def is_excluded(path: Path, repo_root: Path, excludes: list[str] | None = None) 
 
     exact, globs, paths = _classify_excludes(excludes)
     return _is_excluded_classified(path, repo_root, exact, globs, paths)
+
+
+# ---------------------------------------------------------------------------
+# Per-analyzer file budget (WI-fomid)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FileBudget:
+    """At most ``limit`` distinct files for one analyzer run.
+
+    ``run_survey``'s ``max_files`` promises a cap per language analyzer, and
+    most registered analyzers take ``repo_root`` alone, so the cap cannot
+    travel as an argument. It is enforced where every analyzer finds
+    its files instead: :func:`find_files` admits a file through the budget of
+    the analyzer running in this thread.
+
+    Admission is by FILE, not by yield. A file admitted once is admitted again,
+    so a two-pass analyzer (symbols, then edges) sees the same files in both
+    passes; once ``limit`` files are admitted, every other file is refused.
+    Every file an analyzer finds this way counts, a manifest or a header
+    lookup included. Files an analyzer walks without :func:`find_files` are
+    not bounded.
+    """
+
+    limit: int
+    admitted: set[Path] = field(default_factory=set)
+    refused: set[Path] = field(default_factory=set)
+
+    def admit(self, path: Path) -> bool:
+        if path in self.admitted:
+            return True
+        if len(self.admitted) < self.limit:
+            self.admitted.add(path)
+            return True
+        self.refused.add(path)
+        return False
+
+
+_analyzer_budget: ContextVar["FileBudget | None"] = ContextVar(
+    "analyzer_file_budget", default=None,
+)
+
+
+def within_file_budget(path: Path) -> bool:
+    """Whether the running analyzer's budget admits ``path`` (True with none).
+
+    For a finder that cannot go through :func:`find_files` -- a shebang scan
+    of extensionless files, an unconditional root ``.gitignore``. Call it once
+    the path is known to be the analyzer's, so a rejected candidate is not
+    charged.
+    """
+    budget = _analyzer_budget.get()
+    return budget is None or budget.admit(path)
+
+
+@contextmanager
+def analyzer_file_budget(limit: int | None) -> Iterator["FileBudget | None"]:
+    """Bound :func:`find_files` to ``limit`` files for the enclosed analyzer run.
+
+    ``None`` means no cap. The budget is a context variable, so it binds the
+    thread that opened it: analyzers run in parallel worker threads, each
+    under its own, and a linker or another analyzer is never charged.
+    """
+    budget = FileBudget(limit) if limit is not None else None
+    token = _analyzer_budget.set(budget)
+    try:
+        yield budget
+    finally:
+        _analyzer_budget.reset(token)
 
 
 # ---------------------------------------------------------------------------
@@ -2216,8 +2576,8 @@ class FileIndex:
 
     Built from a single os.walk() pass at startup. Provides O(1)
     extension and filename lookups, and fnmatch-based glob matching
-    against cached paths. Used by find_files() to avoid 80+ redundant
-    directory walks per analysis run.
+    against cached paths. Used by find_files() so analyzers share one
+    directory walk per analysis run instead of each walking the tree.
 
     Internal data structures:
     - _by_ext: maps lowercase extension (e.g. '.py') to list of Paths
@@ -2231,6 +2591,7 @@ class FileIndex:
     __slots__ = (
         "_all_files", "_by_ext", "_by_name", "_children",
         "_generated_output_roots", "_installed_dep_roots", "_repo_root",
+        "_vcs_ignored_skipped",
     )
 
     def __init__(
@@ -2241,6 +2602,7 @@ class FileIndex:
         all_files: list[Path],
         installed_dep_roots: "list[tuple[Path, ContentRule]] | None" = None,
         generated_output_roots: "list[tuple[Path, ContentRule]] | None" = None,
+        vcs_ignored_skipped: "list[tuple[Path, bool]] | None" = None,
     ) -> None:
         self._repo_root = repo_root
         self._by_ext = by_ext
@@ -2248,6 +2610,7 @@ class FileIndex:
         self._all_files = all_files
         self._installed_dep_roots = installed_dep_roots or []
         self._generated_output_roots = generated_output_roots or []
+        self._vcs_ignored_skipped = vcs_ignored_skipped or []
         self._children: "dict[Path, dict[str, bool]] | None" = None
 
     def children(self, dir_path: Path) -> "dict[str, bool] | None":
@@ -2292,6 +2655,14 @@ class FileIndex:
         :func:`generated_output_summary`."""
         return self._generated_output_roots
 
+    @property
+    def vcs_ignored_skipped(self) -> "list[tuple[Path, bool]]":
+        """``(path, is_dir)`` for each entry the walk left out because the
+        VCS ignores it and does not track it (ADR-0004 point 9; never one
+        nested inside a pruned directory) -- the input to
+        :func:`vcs_ignored_summary`."""
+        return self._vcs_ignored_skipped
+
     @classmethod
     def build(
         cls,
@@ -2324,6 +2695,12 @@ class FileIndex:
         all_files: list[Path] = []
         installed_roots: list[tuple[Path, ContentRule]] = []
         generated_roots: list[tuple[Path, ContentRule]] = []
+        # ADR-0004 point 9. Asked afresh for every index: a file ignored
+        # since the last one must not ride in on a remembered answer.
+        vcs = refresh_vcs_ignored(repo_root)
+        if vcs is not None and not vcs.ignored:
+            vcs = None
+        vcs_skipped: list[tuple[Path, bool]] = []
         # Per-package --trace-deps is the one mode in which a FILE can be
         # pruned by the content-rule arm (a stray file beside the traced
         # packages); every other mode skips that per-file check entirely.
@@ -2331,6 +2708,8 @@ class FileIndex:
 
         for dirpath_str, dirnames, filenames in os.walk(repo_root):
             dirpath = Path(dirpath_str)
+            rel_here = None if vcs is None else vcs.rel_of(dirpath)
+            rel_prefix = f"{rel_here}/" if rel_here else ""
 
             # Prune excluded directories in-place (prevents os.walk
             # from descending into them). Path-anchored patterns are
@@ -2357,8 +2736,11 @@ class FileIndex:
                     # disclosure so a wrong exclusion is visible.
                     generated_roots.append((dirpath / d, rule))
                 # Shared with _is_excluded_classified — see is_pruned_dir for why
-                # this is not an inline membership test any more.
+                # this is not an inline membership test.
                 if is_pruned_dir(d, dirpath / d, exact_exc, glob_exc):
+                    continue
+                if _vcs_prunes(vcs, rel_prefix + d, dirpath / d):
+                    vcs_skipped.append((dirpath / d, True))
                     continue
                 kept_dirs.append(d)
             dirnames[:] = kept_dirs
@@ -2385,6 +2767,9 @@ class FileIndex:
                         continue
                 if per_package and content_rule_prunes(fname, dirpath / fname):
                     continue
+                if vcs is not None and _vcs_prunes(vcs, rel_prefix + fname, dirpath / fname):
+                    vcs_skipped.append((dirpath / fname, False))
+                    continue
 
                 fpath = dirpath / fname
                 all_files.append(fpath)
@@ -2403,18 +2788,19 @@ class FileIndex:
 
         return cls(
             repo_root, by_ext, by_name, all_files, installed_roots, generated_roots,
+            vcs_skipped,
         )
 
     @classmethod
     def from_paths(cls, repo_root: Path, paths: Iterable[Path]) -> "FileIndex":
         """Build a FileIndex from an explicit list of files (no os.walk).
 
-        INV-jumim: the sketch read-path uses this to scope filesystem
-        discovery to a behavior map's own node paths. When ``sketch --input``
-        summarizes a frozen behavior map, ``find_files`` and the Structure
-        helpers must see the MAP's universe — not a re-walk of the current
-        working directory, which both hung for 60+s on populated repos and
-        produced a whole-repo sketch from a package-scoped map. Paths are
+        The sketch read-path uses this to scope filesystem discovery to a
+        behavior map's own node paths (history: INV-jumim). When ``sketch
+        --input`` summarizes a frozen behavior map, ``find_files`` and the
+        Structure helpers must see the MAP's universe — a re-walk of the
+        current working directory is slow on a populated repo and yields a
+        whole-repo sketch from a package-scoped map. Paths are
         deduplicated; ``by_ext`` / ``by_name`` mirror :meth:`build` so
         :meth:`match_pattern` (extension / filename / glob) behaves identically
         on a synthesized index. Excludes are NOT re-applied: the map's node
@@ -2484,8 +2870,8 @@ class FileIndex:
         - Directory segment ('requirements/*.txt', 'src/**/*.py') → each
           file's path relative to ``root`` (default: the index root) is
           matched segment by segment, anchored at the end, as rglob does.
-          Matching on the bare file name, which never holds a '/', found
-          nothing, so every survey dropped such files (INV-kalaj).
+          Matching on the bare file name, which never holds a '/', would
+          find nothing (INV-kalaj).
         - Pure extension ('*.py') → O(1) dict lookup, case-insensitive
           (``_pure_extension``, shared with the rglob fallback)
         - Exact filename ('Makefile') → O(1) dict lookup
@@ -2556,14 +2942,11 @@ def find_files(
     instead of calling rglob() per pattern; for a sub-directory the index's
     paths are filtered to those under it, and a pattern with a directory
     segment is matched relative to ``repo_root``, as rglob would. Both paths
-    return the same files for every pattern (INV-kalaj; the index used to
-    match file names only, so ``requirements/*.txt`` found nothing in a
-    survey), and both match a pure ``*.ext`` pattern case-insensitively
-    (``_pure_extension``). Before the sub-directory
-    case, the sketch's walk of ``src/`` (``_collect_source_files``) fell
-    back to rglob() even with an index installed. The index was built with its own
-    excludes, and in that case the ``excludes`` argument is NOT applied:
-    only ``repo_root`` is compared (WI-duhih).
+    return the same files for every pattern, ``requirements/*.txt`` included
+    (INV-kalaj), and both match a pure ``*.ext`` pattern case-insensitively
+    (``_pure_extension``). The index was built with its own excludes, and in
+    that case the ``excludes`` argument is NOT applied: only ``repo_root`` is
+    compared (WI-duhih).
     Falls back to rglob() when no index is installed for this root.
 
     Exclude patterns are classified once per call into exact names
@@ -2591,6 +2974,8 @@ def find_files(
     # Use global callback if no explicit callback provided
     if on_file_skipped is None:
         on_file_skipped = _global_on_file_skipped
+
+    budget = _analyzer_budget.get()
 
     # Fast path: use the global file index if available.
     # The index was built with its own excludes and locale filtering (the
@@ -2620,6 +3005,8 @@ def find_files(
                                 f"exceeds {max_file_bytes} bytes",
                             )
                         continue
+                if budget is not None and not budget.admit(path):
+                    continue
                 yield path
                 count += 1
         return
@@ -2661,6 +3048,8 @@ def find_files(
                             f"exceeds {max_file_bytes} bytes",
                         )
                     continue
+            if budget is not None and not budget.admit(path):
+                continue
             yield path
             count += 1
 
@@ -2679,12 +3068,10 @@ def find_non_test_files(
     graphql, grpc, websocket, …) regex-match framework patterns in file
     *content* and synthesize Symbols/Edges from the matches. A matching string
     literal sitting in a TEST file — a fixture, an assertion, an example in a
-    regression test — would otherwise yield a phantom *production* edge:
-    WI-nitob (the message-queue linker synthesized 103 ``event_publishes`` from
-    MQ pattern strings in test-file bodies, cross-linking 26 unrelated test
-    files by topic) and WI-rilin (the database-query linker emitted phantom
-    cross-package table ``references`` sourced entirely from its own test
-    files) are two filed P1 instances of the same class.
+    regression test — would otherwise yield a phantom *production* edge, such
+    as ``event_publishes`` that cross-link unrelated test files by topic, or
+    cross-package table ``references`` sourced from a linker's own tests
+    (history: WI-nitob, WI-rilin).
 
     This wrapper drops test-classified paths at the single discovery
     chokepoint via :func:`hypergumbo_core.paths.is_test_file` — the canonical
@@ -2695,8 +3082,8 @@ def find_non_test_files(
     place — instead of each linker carrying (or omitting) its own private
     copy. Swapping a linker's ``find_files`` call for this one is therefore a
     no-new-branch change: the skip decision lives here, exercised by this
-    module's own tests. Linkers that genuinely need to read test files (none
-    today) should keep calling :func:`find_files` directly.
+    module's own tests. A linker that genuinely needs to read test files
+    calls :func:`find_files` directly.
 
     The signature mirrors :func:`find_files` exactly and forwards every
     argument; only test-classified paths are additionally withheld.

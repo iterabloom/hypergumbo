@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from hypergumbo_core.ir import AnalysisRun, Symbol, Span
+from hypergumbo_core.linkers.ipc import _bridge_function_sends, _bridge_wrapper_sends
 
 
 class TestIpcPatternDetection:
@@ -708,7 +709,7 @@ ipcMain.on('OPEN_CHANNEL', handler);
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.dst.endswith("main.js:3-3:receive:OPEN_CHANNEL")
+        assert edge.dst.endswith("main.js:3-3:OPEN_CHANNEL-receive:function")
         assert edge.evidence_type == "variable_match"
         assert edge.confidence == 0.65
         assert edge.meta["channel_type"] == "unresolved"
@@ -910,6 +911,24 @@ mainWindow.webContents.send(CHANNEL_NAME, payload);
         assert wc_sends[0]["channel_type"] == "unresolved"
         assert wc_sends[0]["channel_identifier"] == "CHANNEL_NAME"
 
+def _wrapper_map(source: bytes) -> list[tuple[str, dict[str, tuple[str, str]]]]:
+    """The namespace -> {method: (channel, ipc_method)} view of the preload's
+    object-literal bridges, read through the internal the linker itself calls
+    (the public wrapper was retired as test-only, WI-puvom)."""
+    return [
+        (ns, {name: (b.channel, b.ipc_method) for name, b in methods.items()})
+        for ns, methods in _bridge_wrapper_sends(source.decode("utf-8"))
+    ]
+
+
+def _function_exposures(source: bytes) -> list[tuple[str, str, str]]:
+    """(func_name, channel, ipc_method) for each single-function bridge
+    exposure, read through the internal the linker itself calls."""
+    return [
+        (name, b.channel, b.ipc_method)
+        for name, b in _bridge_function_sends(source.decode("utf-8"))
+    ]
+
 
 class TestContextBridgeDetection:
     """Tests for contextBridge.exposeInMainWorld wrapper resolution.
@@ -928,8 +947,6 @@ class TestContextBridgeDetection:
 
     def test_detect_context_bridge_wrapper(self) -> None:
         """Detects contextBridge.exposeInMainWorld wrapper definitions."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -938,7 +955,7 @@ contextBridge.exposeInMainWorld('api', {
     saveFile: (data) => ipcRenderer.send('save-file', data),
 });
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         ns, methods = wrappers[0]
@@ -948,8 +965,6 @@ contextBridge.exposeInMainWorld('api', {
 
     def test_detect_multiple_namespaces(self) -> None:
         """Detects multiple exposeInMainWorld calls."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 contextBridge.exposeInMainWorld('api', {
     getData: () => ipcRenderer.invoke('get-data'),
@@ -958,7 +973,7 @@ contextBridge.exposeInMainWorld('store', {
     saveItem: (item) => ipcRenderer.send('store-save', item),
 });
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 2
         ns_names = {w[0] for w in wrappers}
@@ -966,14 +981,12 @@ contextBridge.exposeInMainWorld('store', {
 
     def test_detect_sendsync_in_bridge(self) -> None:
         """Detects ipcRenderer.sendSync in bridge wrappers."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 contextBridge.exposeInMainWorld('electron', {
     getConfig: () => ipcRenderer.sendSync('get-config'),
 });
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         ns, methods = wrappers[0]
@@ -981,27 +994,23 @@ contextBridge.exposeInMainWorld('electron', {
 
     def test_no_bridge_in_regular_code(self) -> None:
         """Returns empty for code without contextBridge patterns."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 const api = {
     openFile: (path) => fetch('/api/open', { body: path }),
 };
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
         assert len(wrappers) == 0
 
     def test_bridge_with_arrow_and_regular_functions(self) -> None:
         """Detects both arrow functions and regular function shorthand."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 contextBridge.exposeInMainWorld('myApi', {
     method1: (...args) => ipcRenderer.invoke('chan-1', ...args),
     method2(...args) { return ipcRenderer.invoke('chan-2', ...args) },
 });
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         _, methods = wrappers[0]
@@ -1254,8 +1263,6 @@ window.api.getData();
 
     def test_bridge_multiline_object(self) -> None:
         """Detects bridge wrappers spanning multiple lines."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b"""
 contextBridge.exposeInMainWorld(
     'electronAPI',
@@ -1265,7 +1272,7 @@ contextBridge.exposeInMainWorld(
     }
 );
 """
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         ns, methods = wrappers[0]
@@ -1275,14 +1282,12 @@ contextBridge.exposeInMainWorld(
 
     def test_bridge_double_quoted_namespace(self) -> None:
         """Detects bridge with double-quoted namespace."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_wrappers
-
         source = b'''
 contextBridge.exposeInMainWorld("myApi", {
     doStuff: () => ipcRenderer.invoke("do-stuff"),
 });
 '''
-        wrappers = detect_context_bridge_wrappers(source)
+        wrappers = _wrapper_map(source)
 
         assert len(wrappers) == 1
         assert wrappers[0][0] == "myApi"
@@ -1306,36 +1311,30 @@ class TestContextBridgeFunctionExposure:
 
     def test_detect_individual_function_exposure(self) -> None:
         """Detects contextBridge exposing a single function with ipcRenderer."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('clearTasks', async (): Promise<void> => {
     return ipcRenderer.invoke('tasks:clear-all');
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 1
         assert funcs[0] == ("clearTasks", "tasks:clear-all", "invoke")
 
     def test_detect_ipc_invoke_wrapper(self) -> None:
         """Detects custom ipcInvoke wrapper (common in podman-desktop)."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('listContainers', async (): Promise<ContainerInfo[]> => {
     return ipcInvoke('container-provider-registry:listContainers');
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 1
         assert funcs[0] == ("listContainers", "container-provider-registry:listContainers", "invoke")
 
     def test_detect_multiple_individual_functions(self) -> None:
         """Detects multiple individual function exposures."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('clearTasks', async () => {
     return ipcInvoke('tasks:clear-all');
@@ -1347,7 +1346,7 @@ contextBridge.exposeInMainWorld('listContainers', async () => {
     return ipcRenderer.invoke('container-provider-registry:listContainers');
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 3
         names = {f[0] for f in funcs}
@@ -1355,27 +1354,23 @@ contextBridge.exposeInMainWorld('listContainers', async () => {
 
     def test_ignores_object_exposure(self) -> None:
         """Does not match object-based exposures (handled by existing code)."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('api', {
     openFile: () => ipcRenderer.invoke('open-file'),
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 0
 
     def test_ipc_send_variant(self) -> None:
         """Detects ipcRenderer.send in function body."""
-        from hypergumbo_core.linkers.ipc import detect_context_bridge_functions
-
         source = b"""
 contextBridge.exposeInMainWorld('sendLog', (msg) => {
     ipcRenderer.send('log:write', msg);
 });
 """
-        funcs = detect_context_bridge_functions(source)
+        funcs = _function_exposures(source)
 
         assert len(funcs) == 1
         assert funcs[0] == ("sendLog", "log:write", "send")
@@ -1439,3 +1434,213 @@ ipcMain.handle('container-provider-registry:listContainers', async () => {
             e.meta.get("channel") == "container-provider-registry:listContainers"
             for e in bridge_edges
         )
+
+
+class TestContextBridgeChainConnectivity:
+    """WI-kokuv: renderer -> preload -> main is ONE connected path.
+
+    The contextBridge ``calls`` edge used to target a freshly minted
+    ``<preload>:0-0:send:<channel>`` stand-in while the channel join's
+    ``event_publishes`` edge left the send detected at its real line, so the
+    0-0 node had no outgoing edge and the chain never connected. The
+    invariant asserted here is structural: every bridge ``calls`` edge's dst
+    is a send node at a real (non-zero) line, and a directed path exists from
+    the renderer's bridge caller to the main-process receiver.
+    """
+
+    @staticmethod
+    def _reaches(edges: list, src_pred, dst_pred) -> bool:
+        adjacency: dict[str, set[str]] = {}
+        for edge in edges:
+            adjacency.setdefault(edge.src, set()).add(edge.dst)
+        frontier = [e.src for e in edges if src_pred(e.src)]
+        seen = set(frontier)
+        while frontier:
+            node = frontier.pop()
+            if dst_pred(node):
+                return True
+            for nxt in adjacency.get(node, ()):
+                if nxt not in seen:
+                    seen.add(nxt)
+                    frontier.append(nxt)
+        return False
+
+    def _assert_chain(self, tmp_path: Path, preload_src: str, renderer_src: str,
+                      main_src: str, renderer_name: str = "renderer.js") -> None:
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "preload.js").write_text(preload_src)
+        (tmp_path / renderer_name).write_text(renderer_src)
+        (tmp_path / "main.js").write_text(main_src)
+
+        result = link_ipc(tmp_path)
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and (e.meta or {}).get("bridge_kind") == "context_bridge"
+        ]
+        # Reach: the fixture really exercises the bridge path.
+        assert bridge_edges, "fixture did not produce a contextBridge edge"
+
+        sym_by_id = {s.id: s for s in result.symbols}
+        for edge in bridge_edges:
+            dst = sym_by_id[edge.dst]
+            assert dst.span.start_line > 0, f"line-0 stand-in: {edge.dst}"
+            # The bridge's send node is the one the channel join publishes from.
+            assert any(
+                e.src == edge.dst and e.edge_type == "event_publishes"
+                for e in result.edges
+            ), f"bridge dst {edge.dst} has no outgoing event_publishes edge"
+
+        # No symbol the linker emits sits at line 0.
+        assert all(s.span.start_line > 0 for s in result.symbols)
+
+        assert self._reaches(
+            result.edges,
+            lambda n: n.endswith("-bridge_caller:function") and renderer_name in n,
+            lambda n: "main.js" in n and n.endswith("-receive:function"),
+        ), "renderer -> preload -> main path is disconnected"
+
+    def test_object_bridge_send_connects_to_main(self, tmp_path: Path) -> None:
+        self._assert_chain(
+            tmp_path,
+            "const { contextBridge, ipcRenderer } = require('electron');\n"
+            "contextBridge.exposeInMainWorld('api', {\n"
+            "  openFile: () => ipcRenderer.send('open-file'),\n"
+            "});\n",
+            "function onClick() {\n  window.api.openFile();\n}\n",
+            "const { ipcMain } = require('electron');\n"
+            "ipcMain.on('open-file', (event) => {\n  console.log('open');\n});\n",
+        )
+
+    def test_object_bridge_shorthand_multiline_connects(self, tmp_path: Path) -> None:
+        """Method shorthand, ipcRenderer on a later line than the method name."""
+        self._assert_chain(
+            tmp_path,
+            "contextBridge.exposeInMainWorld('api', {\n"
+            "  getData(id) {\n"
+            "    return ipcRenderer\n"
+            "      .invoke('get-data', id)\n"
+            "  },\n"
+            "  saveFile: (d) =>\n"
+            "    ipcRenderer.send('save-file', d),\n"
+            "});\n",
+            "window.api.getData(1);\nwindow.api.saveFile('x');\n",
+            "ipcMain.handle('get-data', async () => 1);\n"
+            "ipcMain.on('save-file', () => {});\n",
+        )
+
+    def test_function_bridge_connects_to_main(self, tmp_path: Path) -> None:
+        self._assert_chain(
+            tmp_path,
+            "contextBridge.exposeInMainWorld('getVersion', async () => {\n"
+            "  return ipcRenderer.invoke('app:version');\n"
+            "});\n",
+            "const v = await window.getVersion();\n",
+            "ipcMain.handle('app:version', async () => '1.0');\n",
+            renderer_name="app.ts",
+        )
+
+    def test_custom_wrapper_bridge_connects_to_main(self, tmp_path: Path) -> None:
+        """``ipcInvoke('ch')`` wrapper: no ipcRenderer.* site names the channel,
+        so the bridge's own send site must join the receiver itself."""
+        self._assert_chain(
+            tmp_path,
+            "const ipcInvoke = (channel, ...a) => ipcRenderer.invoke(channel, ...a);\n"
+            "contextBridge.exposeInMainWorld('listContainers', async () => {\n"
+            "  return ipcInvoke('registry:listContainers');\n"
+            "});\n",
+            "const c = await window.listContainers();\n",
+            "ipcMain.handle('registry:listContainers', async () => []);\n",
+            renderer_name="app.ts",
+        )
+
+    def test_bridge_dst_is_the_detected_send_node(self, tmp_path: Path) -> None:
+        """The stand-in IS the detected send: same id, one send node per site."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "preload.js").write_text(
+            "contextBridge.exposeInMainWorld('api', {\n"
+            "  openFile: () => ipcRenderer.send('open-file'),\n"
+            "});\n"
+        )
+        (tmp_path / "renderer.js").write_text("window.api.openFile();\n")
+        result = link_ipc(tmp_path)
+        sends = [
+            s for s in result.symbols
+            if (s.meta or {}).get("framework_role") == "ipc_send"
+        ]
+        assert [s.span.start_line for s in sends] == [2]
+        bridge = [e for e in result.edges if e.edge_type == "calls"]
+        assert [e.dst for e in bridge] == [sends[0].id]
+
+
+class TestStandInIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``.
+
+    A bridge caller's id ended in ``bridge_caller``, and a send or receive
+    site's id ended in the CHANNEL (``ipc:<file>:<l>-<l>:send:<channel>``): a
+    channel name in the kind slot, and a channel with a colon shifted every
+    slot. All are ``kind="function"`` Symbols."""
+
+    def _result(self, tmp_path: Path):
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "preload.js").write_text(
+            "const { contextBridge, ipcRenderer } = require('electron');\n"
+            "contextBridge.exposeInMainWorld('api', {\n"
+            "  openFile: (...args) => ipcRenderer.invoke('open-file', ...args),\n"
+            "});\n"
+            "contextBridge.exposeInMainWorld('ping', async () => {\n"
+            "  return ipcRenderer.invoke('ping-main');\n"
+            "});\n"
+        )
+        (tmp_path / "main.js").write_text(
+            "ipcMain.handle('open-file', async () => 1);\n"
+            "ipcMain.handle('ping-main', async () => 2);\n"
+            "ipcMain.on('user:login', (event, data) => 3);\n"
+        )
+        (tmp_path / "renderer.js").write_text(
+            "window.api.openFile('a.txt');\n"
+            "window.ping();\n"
+            "ipcRenderer.send('user:login', {});\n"
+        )
+        return link_ipc(tmp_path)
+
+    def test_the_fixture_reaches_every_role(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        roles = sorted(s.meta["framework_role"] for s in result.symbols)
+        assert roles == [
+            "ipc_bridge_caller", "ipc_bridge_caller",
+            "ipc_receive", "ipc_receive", "ipc_receive",
+            "ipc_send", "ipc_send", "ipc_send",
+        ], roles
+        # Both bridge-caller sites: the namespace method and the bare function.
+        assert sorted(s.name for s in result.symbols if s.name.startswith("window.")) == [
+            "window.api.openFile", "window.ping",
+        ]
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_a_channel_with_a_colon_keeps_five_slots(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        login = [s for s in result.symbols if s.meta.get("channel") == "user:login"]
+        assert len(login) == 2
+        for sym in result.symbols:
+            span, name, kind = sym.id.rsplit(":", 3)[1:]
+            assert span == f"{sym.span.start_line}-{sym.span.end_line}", sym.id
+            assert ":" not in name and kind == "function", sym.id
+
+    def test_every_edge_endpoint_is_a_symbol(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        ids = {s.id for s in result.symbols}
+        types = sorted(e.edge_type for e in result.edges)
+        assert types == ["calls", "calls", "event_publishes", "event_publishes", "event_publishes"], types
+        assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []
+
+    def test_no_two_symbols_share_an_id(self, tmp_path: Path) -> None:
+        ids = [s.id for s in self._result(tmp_path).symbols]
+        assert len(ids) == len(set(ids)), sorted(ids)

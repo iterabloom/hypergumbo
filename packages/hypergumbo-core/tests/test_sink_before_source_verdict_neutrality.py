@@ -3,24 +3,19 @@
 carry a verdict on its own (INV-muhij remedy 3).
 
 `walk_blocked_by: sink_before_source` means every sink call site precedes its source in
-the same function, so the walk had no route to demonstrate. ADR-0017 §3a records the
-field and acts on nothing, which was ratified when the shape was 0.6% of rows; a
-primitive that is both a source and a sink raised it to 25% of the rows INV-lozat adds,
-and the census behind this rule read all 14 such rows on a 16-repository cohort against
-source: **1 was true (7.1%)**, and **both** verdict moves that rested on such a row alone
-were false.
+the same function, so the walk had no route to demonstrate. Rows of this shape are
+predominantly false positives — a primitive that is both a source and a sink produces
+them in bulk — so a verdict move resting on such a row alone is not trustworthy.
 
-THE REMEDY IS VERDICT-NEUTRALITY, NOT REMOVAL, and the distinction is the whole point. A
-loop can make a textually-earlier sink genuinely reachable, so the marker means "the walk
-could not run", not "the flow is impossible". The census refuted the loop defence
-empirically — 0 of 14 rows had a loop enclosing both calls — but the walk cannot check
-enclosure per row: the decision in `taint.py` is line-based (`sink_line > source_line`)
-and the DDG exposes no loop spans there. So the rows are reported, carry a caveat, and
-do not hold a claim at `violated`.
+THE REMEDY IS VERDICT-NEUTRALITY, NOT REMOVAL. A loop can make a textually-earlier sink
+genuinely reachable, so the marker means "the walk could not run", not "the flow is
+impossible", and the walk cannot check loop enclosure per row: the decision in
+`taint.py` is line-based (`sink_line > source_line`) and the DDG exposes no loop spans
+there. So the rows are reported, carry a caveat, and do not hold a claim at `violated`.
 
 THE RULE READS `walk_blocked_by_values`, NEVER THE SCALAR. On a collapsed row the scalar
-is `grp[0]`'s and says nothing about the other members — measured on beads, 133 of 208
-groups containing such a member are NOT unanimous. The field's own docstring states the
+is `grp[0]`'s and says nothing about the other members, and a group containing a
+`sink_before_source` member need not be unanimous. The field's own docstring states the
 constraint, and the mixed-group test below is what enforces it.
 """
 from __future__ import annotations
@@ -117,8 +112,8 @@ class TestThroughTheProductionPath:
         assert CAVEAT_SINK_BEFORE_SOURCE_ONLY in _kinds_d(v)
 
     def test_but_it_is_STILL_REPORTED(self, tmp_path, capsys) -> None:
-        """Verdict-neutrality, not removal. A row that vanished would be the
-        removal §3a did not license and the census did not support."""
+        """Verdict-neutrality, not removal. §3a removes a flow only when the walk
+        ran and refuted it; here the walk did not run, so the row must stay."""
         v = _verify(tmp_path / "rep", SINK_FIRST, capsys)
         assert v["evidence_count"] == 1, v
         assert len(v.get("evidence") or []) == 1, v
@@ -135,12 +130,11 @@ def _kinds_d(verdict_dict) -> set:
     return {c.get("kind") for c in (verdict_dict.get("caveats") or [])}
 
 class TestTheBlindnessDisclosureRidesTheTaintArmToo:
-    """INV-nuhun's rule: a run that discloses declared analyzer blindness on the
-    boundary arm and stays silent on the taint arm about the same unseen call is the
-    asymmetry that item names. Both language declarations are `True` (sighted) since
-    WI-nasuf and INV-misup closed them, so the branch has no live input on the shipped
-    tree — it is exercised by RE-DECLARING kotlin blind exactly as it stood on
-    2026-08-23, which is what the sibling suite's `blind_kotlin` fixture does."""
+    """INV-nuhun's rule: a run must not disclose declared analyzer blindness on the
+    boundary arm while staying silent on the taint arm about the same unseen call.
+    Every shipped language declaration is `True` (sighted), so the branch has no live
+    input on the shipped tree; it is exercised by RE-DECLARING kotlin blind, as the
+    sibling suite's `blind_kotlin` fixture does (history: WI-nasuf, INV-misup)."""
 
     def test_a_declared_blind_language_present_in_the_repo_is_named(
         self, tmp_path, capsys, monkeypatch,

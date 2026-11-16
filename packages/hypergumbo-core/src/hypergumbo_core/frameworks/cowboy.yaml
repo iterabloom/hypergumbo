@@ -80,6 +80,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^cowboy_req:(reply|stream_reply|set_resp_header|set_resp_body)$"
-
-linkers:
-  - http

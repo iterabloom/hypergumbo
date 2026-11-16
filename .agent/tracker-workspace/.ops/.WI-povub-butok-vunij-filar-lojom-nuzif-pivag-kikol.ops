@@ -1,0 +1,51 @@
+- op: create  # 0763
+  at: '2026-11-01T09:56:15Z'  # 0763
+  by: agent  # 0763
+  actor: jgstern_agent  # 0763
+  clock: 1  # 0763
+  nonce: '0763'  # 0763
+  data:  # 0763
+    kind: work_item  # 0763
+    title: "js/ts: the namespace-import path_hint does not override the bare-name symbol table, so `import * as u from './a_early/utils'; u.process()` binds to whichever same-named function was indexed last in directory-enumeration order"  # 0763
+    status: todo_hard  # 0763
+    priority: 2  # 0763
+    parent:  # 0763
+    tags:  # 0763
+    - javascript  # 0763
+    - analysis_quality  # 0763
+    - call_resolution  # 0763
+    isbefore: []  # 0763
+    duplicate_of: []  # 0763
+    not_duplicate_of: []  # 0763
+    pr_ref:  # 0763
+    description: "SPLIT 2026-11-01 from WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum (which keeps the test-order limb). Confirmed a product bug, not a local-vs-CI difference (dev 24d0b860ee; ~/hypergumbo_lab_notebook/p2_review_11012026/C1/fx_sipoj, sipoj_direct.log): with a_early/utils.js and z_late/utils.js both defining process(), and main.js importing the a_early one by namespace, the call binds to a_early when the directory enumerates a_early last and to z_late/utils.js:1-1:process:function when z_late enumerates last. MECHANISM: js_ts.py:7442 and :7771 fill global_symbols[sym.name] = sym (last-writer-wins) in find_js_ts_files order (:286, unsorted readdir); the namespace path_hint lookup at :7191 consults the name-keyed table and does not prefer the imported file. Same family as INV-dosoz / INV-tohuj (identity keyed by bare name) and the WI-kosar principle (resolve by position, not by name). ACCEPTANCE: the call binds to a_early/utils.js in BOTH creation orders (the test must create z_late first - see the sibling test item WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum); a same-named function in an unrelated file never wins over the file the import names."  # 0763
+    fields: {}  # 0763
+- op: discuss  # 87ba
+  at: '2026-11-01T09:57:48Z'  # 87ba
+  by: agent  # 87ba
+  actor: jgstern_agent  # 87ba
+  clock: 2  # 87ba
+  nonce: 87ba  # 87ba
+  message: "Sibling: WI-pagoj-guviv-miton-zupaj-dipub-bupuf-pirur-lijoz (llvm, same bare-name last-writer-wins shape); test limb: WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum."  # 87ba
+- op: discuss  # 5aed
+  at: '2026-11-02T06:06:57Z'  # 5aed
+  by: agent  # 5aed
+  actor: jgstern_agent  # 5aed
+  clock: 3  # 5aed
+  nonce: 5aed  # 5aed
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_C/povub_drive.py: 8 dir-name pairs, each with two <dir>/utils.js defining process() and main.js ’import * as correct from ./<good>/utils; correct.process()’; analyze_javascript with find_js_ts_files order printed (ext4). Observed: a_early__z_late enum [main.js, a_early/utils.js, z_late/utils.js] -> z_late/utils.js:2-4:process:function WRONG; good/bad, one/two, src/other, alpha/beta also WRONG (last-enumerated file); lib/vendor, x1/y2, core/extra CORRECT only because the imported file enumerated last. Note: 4/8 pairs bind to the file the import does not name. In all 8 the bound file is the one enumerated last. find_js_ts_files output is unsorted. Commit a6f7c1aabc (bare-call tie deferral) does not change the namespace-import path. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # 5aed
+- op: update  # 20d1
+  at: '2026-11-03T01:45:30Z'  # 20d1
+  by: agent  # 20d1
+  actor: jgstern_agent  # 20d1
+  clock: 4  # 20d1
+  nonce: 20d1  # 20d1
+  set:  # 20d1
+    status: done  # 20d1
+- op: discuss  # 0424
+  at: '2026-11-03T01:45:31Z'  # 0424
+  by: agent  # 0424
+  actor: jgstern_agent  # 0424
+  clock: 5  # 0424
+  nonce: '0424'  # 0424
+  message: "DONE in PR #2021 (merged; dev 21f8147afa). Cause confirmed in code: js_ts Case 2 (namespace / require-object member call) consulted _disambiguate_by_import -- which resolves a relative specifier to its file over the list-valued symbols_by_name -- only for BARE specifiers, so a relative one fell to the name-keyed global table holding the same-named function enumerated LAST. Fix: relative specifiers take that route too; no candidate in the named file falls through unchanged. BEHAVIOURAL EVIDENCE on merged dev, cold caches: (1) ext4, the re-check's own driver jomik_member_recheck_11022026/scratch_C/povub_drive.py (wrong dir created first, 8 name pairs, both enumeration orders occur): 8/8 CORRECT (the 11-02 re-check: 4/8 wrong); (2) tmpfs, a_early/z_late created in both orders: a_early both times (dev before: a_early / z_late). Production-path tests: test_js_ts.py TestNamespaceImports, test_namespace_import_disambiguates_same_name_functions and a new test_relative_require_object_disambiguates_same_name_functions, each parametrized over creation order; the z_late-first cases go red with the fix reverted. A/B (pre-registered, lab ~/hypergumbo_lab_notebook/lwr_11022026/): express, jotai 0 moved; knex 2 moved, 0 lost (Knex.js ColumnBuilder.extend / TableBuilder.extend from viewbuilder.js's extend to the columnbuilder.js / tablebuilder.js that Knex.js:10-11 require). Not asserted: other name-keyed tables in js_ts (the general last-write-wins claim); the relative-specifier route does not resolve a directory index (./dir -> dir/index.js), which falls back as before."  # 0424

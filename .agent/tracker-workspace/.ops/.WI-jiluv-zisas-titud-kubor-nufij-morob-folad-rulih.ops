@@ -1,0 +1,37 @@
+- op: create  # 64ad
+  at: '2026-11-15T21:14:29Z'  # 64ad
+  by: agent  # 64ad
+  actor: jgstern_agent  # 64ad
+  clock: 1  # 64ad
+  nonce: 64ad  # 64ad
+  data:  # 64ad
+    kind: work_item  # 64ad
+    title: "database_query linker: a SQL call site naming two or more tables gets a name and node id that depend on PYTHONHASHSEED (tables joined from a set, unsorted)"  # 64ad
+    status: todo_hard  # 64ad
+    priority: 3  # 64ad
+    parent:  # 64ad
+    tags:  # 64ad
+    - determinism  # 64ad
+    - reproducibility  # 64ad
+    - linkers  # 64ad
+    isbefore: []  # 64ad
+    duplicate_of: []  # 64ad
+    not_duplicate_of: []  # 64ad
+    pr_ref:  # 64ad
+    description: "FOUND 2026-11-15 while comparing two analyses of one tree (dev e2b6ab8096 source, same analyzer apart from an unrelated two-line change in py.py).\n\nWHAT. linkers/database_query.py collects the tables of a SQL statement in a set (line 170) and builds the call-site symbol's name by joining them unsorted (line 362: tables_str = \", \".join(pattern.tables)). The name is part of the node id. So the name and the id of a call site whose statement names two or more tables depend on set iteration order, which changes from process to process.\n\nOBSERVED. packages/hypergumbo-core/src/hypergumbo_core/selection_index.py:793 and :1165 (SELECT ... FROM file f JOIN block b ...): one run names the call sites \"SELECT file, block\", the other \"SELECT block, file\". Two node ids and four uses edges differ between the two surveys for this reason alone (~/hypergumbo_lab_notebook/naviz_agda_investigation_11152026/naviz/self_cmp.txt). The stable_id is not affected: line 388 sorts the tables.\n\nFIX DIRECTION. Sort the tables where the name is built (as line 388 does), or keep them in statement order by collecting into a list. Then sweep the other linkers for a name or id built by joining a set.\n\nDONE WHEN. Two runs of one tree under different PYTHONHASHSEED values give the same name and id for a multi-table statement (a test that runs the linker in two subprocesses with fixed, different seeds), and the sweep's result is recorded.\n\nRELATED. Same family: WI-fopug-* (validator message iterates a str set), WI-rumuv-* (napi export map filled in set order); both open."  # 64ad
+    fields: {}  # 64ad
+- op: update  # 32a6
+  at: '2026-11-16T04:57:54Z'  # 32a6
+  by: agent  # 32a6
+  actor: jgstern_agent  # 32a6
+  clock: 2  # 32a6
+  nonce: 32a6  # 32a6
+  set:  # 32a6
+    status: done  # 32a6
+- op: discuss  # 0acd
+  at: '2026-11-16T04:57:55Z'  # 0acd
+  by: agent  # 0acd
+  actor: jgstern_agent  # 0acd
+  clock: 3  # 0acd
+  nonce: 0acd  # 0acd
+  message: "Fixed in PR #2198. Reproduced first: the linker alone under PYTHONHASHSEED 0..4 gave three spellings of one 3-table site. Tables are now in statement order (first mention); the stable id still sorts, so no stable id moves. mastodon sub-tree across seeds 0/1/2: base 7 node ids not in every run, fixed 0. The same set order also decided meta.tables and the references edge order. Two sibling linkers with the same mechanism are fixed with a test each: ruby_ffi (which C file's registration is kept) and di_resolution (which binding is kept). napi.py:255 has it too and is left to WI-rumuv."  # 0acd

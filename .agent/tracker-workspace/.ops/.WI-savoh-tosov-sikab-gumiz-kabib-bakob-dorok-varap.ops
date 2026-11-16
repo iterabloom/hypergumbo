@@ -1,0 +1,59 @@
+- op: create  # f972
+  at: '2026-10-22T05:12:13Z'  # f972
+  by: agent  # f972
+  actor: jgstern_agent  # f972
+  clock: 1  # f972
+  nonce: f972  # f972
+  data:  # f972
+    kind: work_item  # f972
+    title: "TaintSink.trust_level is never validated, and a community sink file's trust_level: trusted is honoured though excluding a sink makes a verdict cleaner"  # f972
+    status: todo_hard  # f972
+    priority: 3  # f972
+    parent:  # f972
+    tags:  # f972
+    - taint  # f972
+    - catalogue  # f972
+    - adr_0061  # f972
+    - concept_audit_20261021  # f972
+    isbefore: []  # f972
+    duplicate_of: []  # f972
+    not_duplicate_of: []  # f972
+    pr_ref:  # f972
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F4, agent read: taint.py:1819 accepts any trust_level; only an exact 'trusted' has an effect (taint.py:313), so 'Trusted' or YAML true silently does nothing. TaintSink has no community flag, so a provenance: community sink file with trust_level: trusted is honoured and the disclosure credits 'the project's catalogue' (verify_claims.py:6229); spec docs/hypergumbo-spec.md:1045 says only --taint-sinks / extra_catalogs count; ADR-0061 ruling 2 says a community row may never make a verdict cleaner. Fix: validate the value (bounded enum); withhold trusted from community files and name it. Repro end to end first (agent did not)."  # f972
+    fields: {}  # f972
+- op: discuss  # 087a
+  at: '2026-10-25T20:08:22Z'  # 087a
+  by: agent  # 087a
+  actor: jgstern_agent  # 087a
+  clock: 2  # 087a
+  nonce: 087a  # 087a
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, EFFECT RE-STATED. getenv -> mylib.ship with a provenance: community --taint-sinks file declaring mylib.ship trust_level: trusted: the trust is honoured (trusted_sink_flows=1) and the details credit 'a sink the project's catalogue declares trusted' (verify_claims.py:6229) while the file is listed under tiers.community and user_supplied is false. A community trusted builtins.eval row is dropped (the community taint layer only adds, taint.py:2593-2603). 'Trusted' and YAML true are inert -- deliberate per WI-lukoz (spec ~:1049); a typo fails strict. OWNER RULING 2026-10-25: withhold trust_level: trusted from community files and name the withheld rows, as community sanitizers are. Ground: ADR-0061 ruling 2 ('the test is what a row can do'); trusted can only take flows out of evidence_count (verify_claims.py:6131-6132), so it is purely the removing half, in the sanitizer column; the spec counts only --taint-sinks / extra_catalogs: as project sink catalogues. The comparison is the same row with vs without its removing effect, as ruling 2's crypto-sanitizer consequence uses -- not file vs no file. Cost today zero: no shipped sink file is community or declares trusted; the case arises when a user copies a community file, which ruling 3 keeps community. Fix: a community flag on TaintSink; withhold and name (mirror withheld_sanitizers); fix the misattributed 'project's catalogue' clause. trust_level validation stays optional polish. Minor: spec ~:1049 omits the taint_sinks.d/ yours channel (honoured correctly; spec update only). Refs: taint.py:1825 (no validation), :319 (TRUST_LEVEL_TRUSTED). P3 kept."  # 087a
+- op: discuss  # a51a
+  at: '2026-10-26T00:31:43Z'  # a51a
+  by: agent  # a51a
+  actor: jgstern_agent  # a51a
+  clock: 3  # a51a
+  nonce: a51a  # a51a
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0061 row: ruling 2 can be tested as a metamorphic property: adding a community file never moves any verdict toward clean. This item (community trust honoured) is its counterexample, and that test is a natural closure test."  # a51a
+- op: discuss  # a3a5
+  at: '2026-10-27T09:37:02Z'  # a3a5
+  by: agent  # a3a5
+  actor: jgstern_agent  # a3a5
+  clock: 4  # a3a5
+  nonce: a3a5  # a3a5
+  message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCatalogueTiers::test_a_community_trusted_sink_does_not_make_the_verdict_cleaner (strict xfail; its control is test_control_a_vouched_trusted_sink_does_clear_the_flow). It XPASSes when this item is fixed; remove the mark in the fix PR."  # a3a5
+- op: update  # 64ce
+  at: '2026-10-28T04:38:27Z'  # 64ce
+  by: agent  # 64ce
+  actor: jgstern_agent  # 64ce
+  clock: 5  # 64ce
+  nonce: 64ce  # 64ce
+  set:  # 64ce
+    status: done  # 64ce
+- op: discuss  # d777
+  at: '2026-10-28T04:38:27Z'  # d777
+  by: agent  # d777
+  actor: jgstern_agent  # d777
+  clock: 6  # d777
+  nonce: d777  # d777
+  message: "Fixed in PR #1913. Community sinks are stamped TaintSink.community at the community-layer merge; TaintSink.trusted (trust_level == trusted and not community) is what the three finding sites read, so a community row's trust is withheld; a violated verdict names each withheld sink in a new withheld_community_trust caveat (TaintCatalog.withheld_community_trust). Behavioural evidence: test_axiom_falsification.py::TestCatalogueTiers::test_a_community_trusted_sink_does_not_make_the_verdict_cleaner (mylib.ship via a provenance: community --taint-sinks file: trusted and untrusted both violated) was a strict xfail and now passes unmarked; its control test_control_a_vouched_trusted_sink_does_clear_the_flow still passes; core test_trusted_sink_is_disclosed.py::test_a_community_files_trust_is_withheld_and_named (violated, trusted_sink_flows 0, caveat entries [mylib.ship]) and its vouched control. Mutating TaintSink.trusted to ignore community turned both red. Not changed: the bounded-enum half of the filing; per the 10-25 re-check 'Trusted'/YAML true are inert by design (WI-lukoz)."  # d777

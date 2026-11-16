@@ -1,0 +1,20 @@
+- op: create  # 7b7b
+  at: '2026-11-01T03:16:40Z'  # 7b7b
+  by: agent  # 7b7b
+  actor: jgstern_agent  # 7b7b
+  clock: 1  # 7b7b
+  nonce: 7b7b  # 7b7b
+  data:  # 7b7b
+    kind: work_item  # 7b7b
+    title: "ipc linker: an Electron IPC call written in a comment (vscode ipcMain.ts:57 JSDoc) is detected as a site; site regexes scan unmasked text"  # 7b7b
+    status: todo_hard  # 7b7b
+    priority: 3  # 7b7b
+    parent:  # 7b7b
+    tags:  # 7b7b
+    - analysis_quality  # 7b7b
+    isbefore: []  # 7b7b
+    duplicate_of: []  # 7b7b
+    not_duplicate_of: []  # 7b7b
+    pr_ref:  # 7b7b
+    description: "Found during WI-pumit-kunob-hoboh-hogam-hiraz-hituk-buhak-kokuk (branch jgstern-agent/fix/pumit). linkers/ipc.py detect_ipc_patterns runs the Electron site regexes (ELECTRON_SEND_PATTERN etc.) over the RAW file text, so an IPC call written inside a comment or JSDoc is a site. Live example: ~/whole_bunch_of_repos/vscode src/vs/base/parts/ipc/electron-main/ipcMain.ts:57, a JSDoc line \"renderer calls `ipcRenderer.invoke(channel, ...args)`\", is detected as an unresolved send site with identifier \"channel\". On dev it joined four real receive sites by identifier (variable_match edges to ipcMain.ts:36/72 and preload.ts:127/135). After the pumit fix those four are parameter forwards and are dropped, so the comment site no longer joins anything there, but the site is still minted and joins any unresolved receiver whose identifier is \"channel\". Invariant: a site is code, never a comment or string. The pumit branch adds _mask_js (comment/string masking that keeps offsets) to ipc.py; the wrapper scan uses it, the base site scan does not. Fix shape: skip a site match whose start is masked (the same check _wrapper_call_sites does). Analogues not checked: postMessage / addEventListener patterns in the same function, and phoenix_ipc.py / tauri_ipc.py regex scans."  # 7b7b
+    fields: {}  # 7b7b

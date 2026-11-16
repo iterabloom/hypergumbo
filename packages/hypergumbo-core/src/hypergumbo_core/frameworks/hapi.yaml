@@ -85,7 +85,3 @@ patterns:
   # Boom error responses (commonly used with Hapi)
   - concept: error_handler
     decorator: "^Boom\\.(badRequest|unauthorized|forbidden|notFound|internal|boomify)$"
-
-linkers:
-  - http
-  - websocket

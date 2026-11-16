@@ -34,8 +34,11 @@ is not itself emitted as a Symbol.
 Why This Design
 ---------------
 - CSS analysis helps understand theming and styling patterns
-- @import edges record cross-file dependencies (the target is a module
-  placeholder, not resolved to the imported file)
+- @import edges record cross-file dependencies: an import of a file the
+  repository holds (resolved against the importing file's directory) lands
+  on that file's file node; a URL, a protocol-relative URL, a path outside
+  the repository or a missing file keeps the module placeholder
+  ``css:<path>:0-0:module:module`` (WI-popak-mopad)
 - Variable detection helps identify design system patterns
 - Useful for frontend-heavy applications
 - Identity (ADR-0035, WI-tusad): keyframes, media, font-face and selector
@@ -43,22 +46,24 @@ Why This Design
   as the scope chain: each at-rule (``@media print``, ``@supports (...)``)
   and the selector list of the rule a selector sits in (``.btn:hover,
   #main``; :func:`_css_scope_label`). ``.btn`` in a rule under ``@media
-  print`` and again under ``@media (max-width: 600px)`` is two symbols that
-  the floor key ``(kind, path, name)`` nulled. The same selector twice in one
+  print`` and again under ``@media (max-width: 600px)`` is two symbols,
+  which the floor key ``(kind, path, name)`` alone would tie and null. The same selector twice in one
   rule list (``.btn, .btn .icon``) remains a same-scope tie. Variables keep
   the backstop's ``variable`` table formula.
 """
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id,
+    AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, make_pass_id,
     sanitize_id_name_segment,
 )
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_file_id,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -70,14 +75,36 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
     """Generate a unique symbol ID.
 
-    WI-vodin: this returned ``css:sha256:<digest>`` -- three segments, which
-    ADR-0036's five-slot grammar cannot parse at all, so a css symbol's id
-    carried no language, path, span, name or kind a reader or a linker could
-    recover. The digest was buying uniqueness that the location-based form
-    already provides; the name slot is sanitized because a css selector may
-    contain a colon (``a:hover``) and a colon there shifts every anchor.
+    Location-based, in ADR-0036's five-slot grammar, so a reader or a linker
+    can recover the language, path, span, name and kind from the id; the
+    location already makes it unique, so a digest would only hide them. The
+    name slot is sanitized because a css selector may contain a colon
+    (``a:hover``) and a colon there shifts every anchor (WI-vodin).
     """
     return f"css:{path}:{line}-{line}:{sanitize_id_name_segment(name)}:{kind}"
+
+
+def _local_import_resolver(
+    repo_root: Path, css_file: Path,
+) -> Callable[[str], Optional[str]]:
+    """``@import`` path -> the file node id of the repository file it names.
+
+    Resolved against the importing file's directory, as a browser does for a
+    relative URL; ``None`` for a URL with a scheme, a protocol-relative URL, a
+    path outside the repository or a file that is not there.
+    """
+    def resolve(import_path: str) -> Optional[str]:
+        if "://" in import_path or import_path.startswith("//"):
+            return None
+        target = (css_file.parent / import_path).resolve()
+        try:
+            rel = target.relative_to(repo_root.resolve())
+        except ValueError:
+            return None
+        if not target.is_file():
+            return None
+        return make_file_id("css", str(rel))
+    return resolve
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -188,7 +215,7 @@ def _css_scope_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 
 def _css_stable_id(
     node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
-) -> str:
+) -> StableId:
     """The ADR-0035 stable_id of a CSS symbol (see the module docstring)."""
     return scoped_stable_id(
         kind=kind, lang="css", path=rel_path, name=name,
@@ -205,25 +232,34 @@ def _process_css_tree(
     file_symbol_id: str,
     *,
     run_id: str,
+    local_import_id: Callable[[str], Optional[str]] | None = None,
 ) -> None:
-    """Process a CSS AST tree and extract symbols using iterative traversal."""
+    """Process a CSS AST tree and extract symbols using iterative traversal.
+
+    ``local_import_id`` maps an ``@import`` path to the file node id of the
+    repository file it names, or ``None`` (WI-popak-mopad).
+    """
     for node in iter_tree(root_node):
         if node.type == "import_statement":
             import_path = _extract_import_path(node, source)
             if import_path:
                 start_line = node.start_point[0] + 1
-                # Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010:
-                # the per-import Symbol was redundant with the imports Edge.
-                # Producer now emits only the Edge (src=file_symbol_id is
-                # independent of any dropped Symbol id).
-                # INV-dulah (lang-slot limb): a bare ``@import`` path is not
-                # an id -- finalize's 4-part fallback put it in the LANG slot.
-                # Same shape as the js/ts import edge (module name in the path
-                # slot, the ``module`` name/kind pair).
+                # Only the imports Edge is emitted; a per-import Symbol would
+                # duplicate it (audit-findings 0010). src is the file node id.
+                # An import of a file this repository holds lands on that
+                # file's node (WI-popak-mopad); a URL or a missing file gets
+                # a module placeholder shaped like the js/ts import edge's
+                # dst (module name in the path slot, the ``module`` name/kind
+                # pair). The bare ``@import`` path is not an id, and
+                # finalize's 4-part fallback would put it in the LANG slot
+                # (INV-dulah).
+                dst = (local_import_id(import_path) if local_import_id else None) or (
+                    f"css:{import_path}:0-0:module:module"
+                )
                 edges.append(
                     Edge.create(
                         src=file_symbol_id,
-                        dst=f"css:{import_path}:0-0:module:module",
+                        dst=dst,
                         edge_type="imports",
                         evidence_type="ast_import",
                         line=start_line,
@@ -244,7 +280,7 @@ def _process_css_tree(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="variable",
                         name=var_name,
                         path=rel_path,
@@ -271,7 +307,7 @@ def _process_css_tree(
                         id=symbol_id,
                         stable_id=_css_stable_id(node, source, rel_path, "keyframes", name),
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="keyframes",
                         name=name,
                         path=rel_path,
@@ -297,7 +333,7 @@ def _process_css_tree(
                     id=symbol_id,
                     stable_id=_css_stable_id(node, source, rel_path, "media", query),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind="media",
                     name=query,
                     path=rel_path,
@@ -333,7 +369,7 @@ def _process_css_tree(
                         id=symbol_id,
                         stable_id=_css_stable_id(node, source, rel_path, "font_face", name),
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="font_face",
                         name=name,
                         path=rel_path,
@@ -362,7 +398,7 @@ def _process_css_tree(
                         id=symbol_id,
                         stable_id=_css_stable_id(node, source, rel_path, "class_selector", class_name),
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="class_selector",
                         name=class_name,
                         path=rel_path,
@@ -390,7 +426,7 @@ def _process_css_tree(
                         id=symbol_id,
                         stable_id=_css_stable_id(node, source, rel_path, "id_selector", id_name),
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="id_selector",
                         name=id_name,
                         path=rel_path,
@@ -476,14 +512,17 @@ class CSSAnalyzer(TreeSitterAnalyzer):
                     css_file.relative_to(repo_root) if repo_root.is_dir() else css_file.name
                 )
 
-                # Create a file symbol for import edges
-                file_symbol_id = _make_symbol_id(rel_path, 1, rel_path, "file")
+                # Import edges start at the file node the pipeline keeps
+                # (``css:<path>:1-1:file:file``); an id with the path in the
+                # name slot would match no node, and finalize would turn it
+                # into a phantom external_symbol src (WI-popak-mopad).
+                file_symbol_id = make_file_id("css", rel_path)
 
                 # Process the tree
                 _process_css_tree(
-                    tree.root_node, symbols, edges, rel_path, source, file_symbol_id
-                ,
+                    tree.root_node, symbols, edges, rel_path, source, file_symbol_id,
                     run_id=run.execution_id,
+                    local_import_id=_local_import_resolver(repo_root, css_file),
                 )
 
             except (OSError, IOError) as e:  # pragma: no cover

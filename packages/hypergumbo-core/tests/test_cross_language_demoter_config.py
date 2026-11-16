@@ -1,41 +1,35 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-hugit: a manifest is not a dispatcher, and a demotion is not a secret.
 
-WHAT WAS WRONG. ``dead-code-maybe``'s cross-language demoter hard-excluded any
-candidate whose short name appeared as a SUBSTRING in at least
-``--cross-lang-threshold`` (default 3) files of a *different* language. Its
-``_EXT_TO_LANG`` mapped ``.json`` / ``.yaml`` / ``.yml`` / ``.toml`` / ``.xml``
-/ ``.html`` to a pseudo-language ``"config"``, so a manifest counted as another
-language. The demoter's stated rationale is cross-language DISPATCH -- an HTTP
-route, an RPC method, an FFI name -- and a YAML file mentioning a Python symbol
-is a manifest, not a dispatcher.
+THE RULE. ``dead-code-maybe``'s cross-language demoter excludes any candidate
+whose short name appears as a SUBSTRING in at least ``--cross-lang-threshold``
+(default 3) files of a *different* language. Its rationale is cross-language
+DISPATCH -- an HTTP route, an RPC method, an FFI name -- and a YAML file
+mentioning a Python symbol is a manifest, not a dispatcher. So the
+config-family extensions (``.json`` / ``.yaml`` / ``.yml`` / ``.toml`` /
+``.xml`` / ``.html``, the pseudo-language ``"config"``) do not count toward the
+threshold. Counted, they demote common names like ``extract`` or ``matches``,
+and even a leading-underscore private helper like ``_label`` -- which has no
+cross-language dispatch story at all -- on manifest substrings alone.
 
-MEASURED ON THIS REPOSITORY before the change: 207 of 2,489 candidates demoted,
-of which **112 (54.1%) had fewer than three hits in any real other-language
-file** and were removed on manifest substrings alone. The shape of the worst
-ones is the argument: ``extract`` (66 config hits, 1 code), ``matches`` (30, 1),
-and ``_label`` (24, **0**) -- a leading-underscore private helper, which has no
-cross-language dispatch story at all, deleted from the report by substring
-collisions in YAML.
+WHY IT IS THE FAIL-OPEN DIRECTION. The demoter REMOVES findings, so a demotion
+published only as a count is unreviewable: a reader cannot tell "reachable"
+from "suppressed by a string collision", and any sizing claim built on the
+filtered list (such as "no dead candidate is ``__init__``") inherits the error
+(history: INV-rolok).
 
-WHY IT IS THE FAIL-OPEN DIRECTION. The demoter REMOVES findings and published
-only a count, so a wrongly demoted candidate was unreviewable: a reader could
-not tell "reachable" from "suppressed by a string collision". INV-rolok's own
-sizing claim -- *"0 of 2,152 dead candidates are ``__init__``, so Python
-constructors are not currently mis-flagged"* -- was manufactured by this bug.
-
-THE TWO HALVES, WHICH ARE ONE CHANGE. (A) Config-family files stop counting
-toward the threshold, because ``config`` is not a language; this is what the
-invariant's own statement compels rather than a judgement made here. (D) The
-demotions that remain -- the ones resting on real other-language code -- are
-DISCLOSED as a bucket instead of silently dropped, matching how
-``entrypoint_only_dead`` and ``test_only_reachable_candidates`` are already
-handled in the same summary. Shipping (A) alone would be a one-directional
-loosening; shipping (D) alone would leave the statement violated.
+TWO HALVES OF ONE RULE. (A) Config-family files do not count toward the
+threshold, because ``config`` is not a language; this is what the invariant's
+own statement compels rather than a judgement made here. (D) The demotions that
+remain -- the ones resting on real other-language code -- are DISCLOSED as a
+bucket instead of silently dropped, matching how ``entrypoint_only_dead`` and
+``test_only_reachable_candidates`` are handled in the same summary. (A) alone
+would be a one-directional loosening; (D) alone would leave the statement
+violated.
 
 NOTHING IS DISCARDED. The config hit count is still computed and is carried on
-every candidate as ``config_name_hits``, so a reviewer who wants the old signal
-can still read it -- it simply no longer makes the decision by itself.
+every candidate as ``config_name_hits``, so a reviewer who wants that signal
+can read it -- it simply does not make the decision by itself.
 """
 
 from __future__ import annotations
@@ -110,7 +104,8 @@ class TestConfigIsNotALanguage:
     def test_a_private_dunder_name_is_not_dispatched_from_yaml(
         self, tmp_path: Path,
     ) -> None:
-        """``_label`` and ``__init__``: the shapes that made this visible."""
+        """``_label`` and ``__init__``: private and dunder names have no
+        cross-language dispatch story, so YAML mentions must not demote them."""
         for name in ("_label", "__init__"):
             cand = _candidate(name)
             hits = _compute_cross_language_hits(
@@ -166,7 +161,7 @@ def _dead_fixture(tmp_path: Path, name: str, *, config_files: int,
 
 
 class TestTheCandidateSurvivesAManifestCollision:
-    """End to end: the 112-candidate cohort comes back."""
+    """End to end: a candidate colliding only with manifests stays listed."""
 
     def test_a_config_only_collision_no_longer_demotes(
         self, tmp_path: Path,
@@ -188,8 +183,8 @@ class TestTheCandidateSurvivesAManifestCollision:
     def test_a_real_cross_language_collision_still_demotes(
         self, tmp_path: Path,
     ) -> None:
-        """The control. Without this the change is an unconditional loosening
-        and every assertion above would pass on a demoter that does nothing."""
+        """The control. Without this, every assertion above would pass on a
+        demoter that does nothing -- an unconditional loosening."""
         nodes = _dead_fixture(tmp_path, "extract", config_files=0, go_files=4)
         out = _run(tmp_path, nodes)
         assert [d["name"] for d in out["dead_candidates"]

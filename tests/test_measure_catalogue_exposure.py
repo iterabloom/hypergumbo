@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The exposure census must not repeat the mistake it exists to correct.
 
-INV-linub's 2026-08-06 exposure table ranked languages by METHOD-KIND SHARE
-alone and concluded ``c/cpp/elixir/erlang/haskell: 0% method-kind -- NOT at
-risk from this class``. WI-lajus falsified that for C a month later: 156 of 324
-corpus socket sites classify as nothing, through ambiguous names carrying no
-module slot from ``#include`` — a route needing no method-kind rows at all.
+METHOD-KIND SHARE alone does not measure exposure. A language with no
+method-kind rows can still have socket sites that classify as nothing, through
+ambiguous names carrying no module slot (C's arrive from ``#include``) — a
+route needing no method-kind rows at all. Ranked on method-kind share alone,
+c / cpp / elixir / erlang / haskell would read as not at risk.
+(history: INV-linub, WI-lajus)
 
-These tests pin the two properties that failure came from. A census that
-reports only ``R1`` regresses to the falsified table; a census whose ``R2``
-silently reads zero for a catalogue that declares no ``ambiguous_names`` hides
-the same gap behind a passing number.
+These tests pin the two properties that prevent that misreading. A census that
+reports only ``R1`` regresses to the method-kind-only view; a census whose
+``R2`` silently reads zero for a catalogue that declares no
+``ambiguous_names`` hides the same gap behind a passing number.
 """
 from __future__ import annotations
 
@@ -67,24 +68,21 @@ measure_catalogue_exposure = _load()
 
 class TestTheFalsifiedTableCannotComeBack:
     def test_c_is_reported_at_risk_despite_zero_method_kind_rows(self) -> None:
-        """The exact cell the old table got wrong."""
+        """Zero method-kind rows, yet at risk through ambiguous names."""
         row = measure_catalogue_exposure.exposure("c")
         assert row.r1_method == 0, "premise moved: C now has method-kind rows"
         assert row.r2_ambiguous > 0
         assert row.at_risk > 0, "C must not read as not-at-risk"
 
     def test_kotlin_reproduces_the_receiver_syntax_exposure(self) -> None:
-        """The old table's own control. Kotlin is the language whose exposure
-        really does come through method-kind rows, so R1 must be its MAJORITY
-        route. The census must not read it as a C-shaped zero.
+        """The control. Kotlin is the language whose exposure really does come
+        through method-kind rows, so R1 must be its MAJORITY route. The census
+        must not read it as a C-shaped zero.
 
-        The threshold used to be 0.8, under the old table's "95% method-kind".
-        ADR-0059 re-kinded the JDK statics that Kotlin loads through java.yaml
-        (INV-zikab step 6) as function-kind, since they are called on the TYPE.
-        That took Kotlin from 190/195 to 156/195, exactly 0.8, and the cron went
-        red. The kind rule moved the number, not a census defect, and more
-        ledgered re-kinds are planned (WI-ziviv), so this pins the property
-        instead of the old share."""
+        The bound is a majority, not a fixed share: re-kinding catalogue rows
+        legitimately moves the share without any census defect (ADR-0059 kinds
+        the JDK statics Kotlin loads through java.yaml as function-kind, since
+        they are called on the TYPE). (history: INV-zikab, WI-ziviv)"""
         row = measure_catalogue_exposure.exposure("kotlin")
         assert row.r1_method / row.total > 0.5
 
@@ -113,9 +111,9 @@ class TestBothCountsAreNamed:
     def test_row_and_distinct_counts_are_reported_separately(self) -> None:
         """One fact, one home: the dedup discrepancy is disclosed, not hidden.
 
-        The lab-notebook prototype counted C's R2 as 16 in one script and 22 in
-        another — deduped by ``qualified_name`` vs raw rows. Both are true of
-        different things. Reporting only one recreates the second silent home.
+        R2 deduped by ``qualified_name`` and R2 counted as raw rows are
+        different numbers, both true of different things. Reporting only one
+        leaves the other to be recomputed somewhere else and silently disagree.
         """
         row = measure_catalogue_exposure.exposure("c")
         assert row.r2_ambiguous >= row.r2_distinct
@@ -151,15 +149,15 @@ class TestTheCensusIsCompleteAndRunnable:
 
 
 class TestTheCodeUnderTestIsChosenNotInherited:
-    """WI-tumog: an explicit PYTHONPATH must never be SILENTLY overridden.
+    """An explicit PYTHONPATH must never be SILENTLY overridden.
 
-    This script used to insert its own tree's ``hypergumbo-core/src`` at
-    ``sys.path[0]`` unconditionally, so a PYTHONPATH naming another tree was
-    ignored and the census printed the script tree's numbers, exit 0. These
-    tests put a fake ``hypergumbo_core`` on PYTHONPATH -- one that announces
-    itself and exits 97 on import -- and pin the three outcomes that replace
-    the silent one: refuse when the two signals disagree, honour an explicit
-    choice either way, and name the tree that ran before any number.
+    Inserting the script's own ``hypergumbo-core/src`` at ``sys.path[0]``
+    unconditionally ignores a PYTHONPATH naming another tree, and the census
+    prints the script tree's numbers with exit 0. These tests put a fake
+    ``hypergumbo_core`` on PYTHONPATH -- one that announces itself and exits
+    with ``FAKE_EXIT`` on import -- and pin three outcomes: refuse when the two
+    signals disagree, honour an explicit choice either way, and name the tree
+    that ran before any number. (history: WI-tumog)
     """
 
     def test_a_foreign_pythonpath_is_refused_not_silently_ignored(
@@ -202,10 +200,10 @@ class TestTheCodeUnderTestIsChosenNotInherited:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """ONE HOME FOR THE FACT. ``load_catalog`` reads ``_CATALOG_DIR``
-        beside the IMPORTED ``io_boundary``; the language list used to be read
-        from beside the SCRIPT. Under a PYTHONPATH arm those are two trees,
-        and the census would list one tree's languages while loading the
-        other's rows."""
+        beside the IMPORTED ``io_boundary``, so the language list must come
+        from there too. Read from beside the SCRIPT, under a PYTHONPATH arm
+        the two are different trees, and the census would list one tree's
+        languages while loading the other's rows."""
         from hypergumbo_core import io_boundary
 
         (tmp_path / "only.yaml").write_text("", encoding="utf-8")

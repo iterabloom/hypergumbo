@@ -45,3 +45,10 @@
   clock: 4  # c5d8
   nonce: c5d8  # c5d8
   message: "BEARS ON THIS ITEM (2026-10-04, branch jgstern-agent/fix/lopus, commit 57d10d835f, not integrated; WI-vidof-rokim-dodog-bunuv-lizav-nidav-zotin-vakoz): the row choice now withholds the short-name (gate) arm from any unresolved stub carrying meta.superseded_by -- a stub that a resolved edge to an in-repo symbol superseded (ADR-0057 §14) -- through io_boundary.short_name_fallback_withheld(dst, meta), asked by classify_call_in_catalog and by taint's _match_propagation_entry. So an `external` / `:unresolved` placeholder from any language reaches a function row by short name ONLY when nothing in the graph bound that call in-repo. This is consistent with the ruby note above (a project definition of `system` resolves first and now also refuses the stub), and it is NOT the \"bound by no import\" marker this item asks for: an unbound placeholder with no superseder still takes the gate exactly as before. The scala analogue of this item's shape is filed as WI-nusol-rohih-zurus-votul-korus-zupoj-zutav-vunor."  # c5d8
+- op: discuss  # aadf
+  at: '2026-11-01T10:55:32Z'  # aadf
+  by: agent  # aadf
+  actor: jgstern_agent  # aadf
+  clock: 5  # aadf
+  nonce: aadf  # aadf
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint2/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: unbound readFileSync(p) emits javascript:external:0-0:readFileSync and io-boundaries tags it fs_read; exec(c) through a parameter and fetch(u) through a local emit no edge. short_name_fallback_withheld (io_boundary.py:5583, WI-vidof) is integrated but covers only superseded stubs, not this unbound case. Premise holds. MECHANISM: unresolved placeholder carries no 'bound by no import / bound in scope' marker gate_named_entry could refuse on. SHARES MECHANISM WITH: WI-nusol,WI-jokij."  # aadf

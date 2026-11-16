@@ -5,7 +5,7 @@
 - Date: 2026-05-30
 - Supersedes: —
 - Superseded by: —
-- Related: ADR-0014 (Generalized Symbol Identity — stable_id factories that hash `Symbol.language`), ADR-0023 (Edge Type Names the Relationship — the worked example for axis-declaration), ADR-0024 (Axis Declaration Template — the four-part template this ADR instantiates, plus §"Fold-residue discipline" promotion-gating rule applied here), ADR-0027 (Symbol.kind axis — the sibling axis on Symbol whose Phase 3 fold this ADR mirrors), ADR-0028 (Edge.evidence_type axis — another sibling using the canonical-value + meta pattern); tracker items WI-zadot (the dogfood finding this ADR closes), INV-tofun (still violated — its 4 named linkers `event_sourcing.py`, `ipc.py`, `database_query.py`, `graphql_resolver.py` hardcode `language="javascript"` for synthetic stand-ins on .ts/.tsx/.mts/.cts files; this ADR's Phase 1 producer migration closes it when those 4 linkers move to Class B), INV-numat (META: vocabulary fields mix axes — this ADR closes the language-axis expression), INV-kovob and INV-fogum (sister cluster members under INV-kurup — not addressed here; separate reshape work); lab-notebook companions `/tmp/symbol_audit_output.md` (the main audit), `~/hypergumbo_lab_notebook/audit-supplement-linker-language-provenance-05302026.md` (the supplement), `~/hypergumbo_lab_notebook/three-policies-pros-cons-05302026.md` (the per-policy analysis).
+- Related: ADR-0035 (stable_id identity contract, which superseded ADR-0014; with `docs/hypergumbo-spec.md` §6 the home of the stable_id factories that hash `Symbol.language`), ADR-0023 (Edge Type Names the Relationship — the worked example for axis-declaration), ADR-0024 (Axis Declaration Template — the four-part template this ADR instantiates, plus §"Fold-residue discipline" promotion-gating rule applied here), ADR-0027 (Symbol.kind axis — the sibling axis on Symbol whose Phase 3 fold this ADR mirrors), ADR-0028 (Edge.evidence_type axis — another sibling using the canonical-value + meta pattern); tracker items WI-zadot (the dogfood finding this ADR closes), INV-tofun (still violated — its 4 named linkers `event_sourcing.py`, `ipc.py`, `database_query.py`, `graphql_resolver.py` hardcode `language="javascript"` for synthetic stand-ins on .ts/.tsx/.mts/.cts files; this ADR's Phase 1 producer migration closes it when those 4 linkers move to Class B), INV-numat (META: vocabulary fields mix axes — this ADR closes the language-axis expression), INV-kovob and INV-fogum (sister cluster members under INV-kurup — not addressed here; separate reshape work); lab-notebook companions `/tmp/symbol_audit_output.md` (the main audit), `~/hypergumbo_lab_notebook/audit-supplement-linker-language-provenance-05302026.md` (the supplement), `~/hypergumbo_lab_notebook/three-policies-pros-cons-05302026.md` (the per-policy analysis).
 
 ## Context
 
@@ -127,6 +127,46 @@ Per-linker migration target (Class B unless noted):
 | `wasm_bindgen.py::_create_wasm_load_edges` (WASM module) | LITERAL-SENTINEL `"wasm"` | `language=None`, `discovery_language=None`, `protocol_origin="wasm"` |
 | `websocket.py` | INHERIT-EMITTER via `_language_for_file` | Class B; `protocol_origin="websocket"` |
 | `yjs_crdt.py` | LITERAL `"typescript"` | Class B; `discovery_language="typescript"`, `protocol_origin="yjs_crdt"` |
+
+### 2a. Route markers are Class B (owner ruling 2026-10-27, WI-mupal)
+
+The table above lists linkers. It did not list the route markers that language
+analyzers and the route materializer mint through `make_route_symbol`, and those
+stayed Class A: `language=<host>`, `protocol_origin=None`. The factory drew its
+line at "fabricated from a protocol definition rather than a real source
+declaration", which put the grpc and annotation markers in Class B. But
+`app.get('/a', handler)`, `http.HandleFunc`, a Rails `get` and a Spring
+`@GetMapping` do not declare the route in any source language either:
+
+- the marker is named for the route (`GET /a`), never for the handler;
+- it is anchored at the registration, and one handler can get several markers
+  at one span;
+- the handler is a separate node, reached by a `dispatches_to` edge;
+- ADR-0035 types `route` as LOGICAL identity, and its v8 ruling calls routing a
+  method through the route factory "a category error".
+
+**Every route marker is a Class B synthetic stand-in for the route.**
+`language=None`; `discovery_language` is the language of the file the
+registration was found in; `protocol_origin` is the route's transport
+(`routes.route_protocol_origin`: `http`, `websocket`, `phoenix_ipc` for
+LiveView, `grpc`), unless a linker passes its own. `kind` stays `function`,
+the ADR-0027 Phase 3 fold that every Class B stand-in shares. Whether that
+fold is honest for stand-ins at all is a family-wide ADR-0027 question, not a
+route one.
+
+A consumer asking "which language's code is this about" reads
+`Symbol.host_language` (`language`, else `discovery_language`), as the
+per-language metrics already did. Four did not, and now do: the route-marker
+id widening (`widen_route_stable_ids`, so no analyzer route id moves);
+entrypoint ranking's language weight, and its library-export demotion (go and
+rails put the `http_route` entrypoint on the marker); and the node-bearing
+file-anchor pass, without which a Rails `config/routes.rb` holding only
+markers lost its file node. Measured on five repositories, 916 markers: no
+stable id moved, and entrypoint ranks shifted by at most 0.002, because
+language dominance counts declarations. `dead-code-maybe` no longer counts
+markers as functions, as the INV-disin `protocol_origin` filter already did
+for every other stand-in; on spring-petclinic, 17 dead "functions" were
+route markers.
 
 ### 3. The protobuf collapse (separate fix folded into this ADR)
 
@@ -294,7 +334,7 @@ The `language="protobuf"` outlier in `grpc.py::_scan_proto_file` / `grpc.py::lin
 
 ## References
 
-- ADR-0014 (Generalized Symbol Identity): the stable_id factories whose `language=` hash inputs change at SCHEMA_VERSION 0.12.0.
+- ADR-0035 and `docs/hypergumbo-spec.md` §6 (where the rules of ADR-0014, Generalized Symbol Identity, now live): the stable_id factories whose `language=` hash inputs change at SCHEMA_VERSION 0.12.0.
 - ADR-0023 (Edge Type Names the Relationship): worked example for axis-declaration template; same shape as the language-axis migration here.
 - ADR-0024 (Axis Declaration Template): the four-part template this ADR instantiates, plus §"Fold-residue discipline" promotion-gating rule that prescribes typed-field promotion for `discovery_language` and `protocol_origin`.
 - ADR-0027 (Symbol.kind = source-language syntactic construct): the sibling-axis ADR on Symbol whose Phase 3 fold this ADR mirrors. WI-zadot's kind= half was closed by ADR-0027 Phase 3; this ADR closes the language= half.

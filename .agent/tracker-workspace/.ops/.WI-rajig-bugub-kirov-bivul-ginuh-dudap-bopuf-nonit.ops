@@ -26,3 +26,11 @@
   clock: 2  # e223
   nonce: e223  # e223
   message: "From WI-silos (branch jgstern-agent/fix/silos, commit 41fd9834a6, not yet merged): tuple names, `case let` payloads (switch, if/guard case) and `catch` names are now RECORDED as untyped declarations that shadow (`_declare` in swift.py's binding pass, names from `_swift_pattern_names`). Typing them is now a matter of passing a type at those `_declare` sites instead of None. NOT done by WI-silos: the implicit accessor names `newValue` / `oldValue` and a bare `catch`'s `error` are still not declared at all, so they still fall through to a same-named outer binding or field."  # e223
+- op: update  # 5264
+  at: '2026-11-01T09:57:47Z'  # 5264
+  by: agent  # 5264
+  actor: jgstern_agent  # 5264
+  clock: 3  # 5264
+  nonce: '5264'  # 5264
+  set:  # 5264
+    parent: WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid  # 5264

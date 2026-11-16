@@ -1,0 +1,51 @@
+- op: create  # bef4
+  at: '2026-10-25T23:56:09Z'  # bef4
+  by: agent  # bef4
+  actor: jgstern_agent  # bef4
+  clock: 1  # bef4
+  nonce: bef4  # bef4
+  data:  # bef4
+    kind: work_item  # bef4
+    title: "C++ calls on a declared-type receiver are demoted by the magnet pass: Logger lg; lg.Close() becomes cpp:external:Close:unresolved because _RECEIVER_MARKERS lacks receiver=declared_type"  # bef4
+    status: todo_hard  # bef4
+    priority: 2  # bef4
+    parent:  # bef4
+    tags:  # bef4
+    - call_graph  # bef4
+    - cpp  # bef4
+    isbefore: []  # bef4
+    duplicate_of: []  # bef4
+    not_duplicate_of: []  # bef4
+    pr_ref:  # bef4
+    description: "Found 2026-10-25 by the WI-mujug premise re-check; reproduced independently by the orchestrator on dev 9245df71d6 through the production CLI. Fixture: `class Logger { public: void Close() {} void Flush() {} }; class App { public: void run() { Logger lg; lg.Close(); lg.Flush(); } };` -> `hypergumbo survey`: run->`cpp:external:0-0:Close:unresolved` (confidence 0.4, resolution_quality 'ambiguous', receiver 'declared_type') while run->`cpp:app.cpp:1-1:Logger..Flush:method` stays at 0.85 (same receiver value; the positive control). In-process, before finalize, BOTH bind correctly to Logger's methods, and find_harmful_magnets returns Logger..Close.\nMECHANISM. receiver_blind_magnets._RECEIVER_MARKERS (receiver_blind_magnets.py:92-98) is a hand-written subset of the Edge.meta['receiver'] vocabulary that lacks 'declared_type' (cpp.py ~2056, WI-lamij 2026-10-19), and also 'self' (ruby ~567, WI-misir), 'bare' and 'generic'. An edge whose receiver marker is not in the set is treated as receiver-blind, so finalize's magnet demotion (finalize.py ~391-410, _STDLIB_INTERFACE_METHODS names) replaces a correctly typed bind with an unresolved external stub. Affects every C++ declared-type call to a method named in _STDLIB_INTERFACE_METHODS (Close, Read, Write, Lock, String, Len, Parse, ...): a wrong edge, and the real method then reads dead.\nFIX (structural): derive the marker set from the declared receiver vocabulary (register Edge.meta['receiver']'s values -- see WI-mujug, whose registry prose at axis_meta_keys.py:498-515 is stale) rather than a hand list, or classify each receiver value as receiver-evidence yes/no beside its declaration. Test: the fixture above keeps Logger..Close; control: a genuinely receiver-blind call is still demoted; and a property test that every emitted receiver value is classified. Check ruby 'self' (likely saved by the same-class exemption) and 'bare'/'generic' while there. Measure: count C++ edges with receiver=declared_type demoted on the corpus."  # bef4
+    fields: {}  # bef4
+- op: discuss  # bd26
+  at: '2026-10-26T00:31:44Z'  # bd26
+  by: agent  # bd26
+  actor: jgstern_agent  # bd26
+  clock: 2  # bd26
+  nonce: bd26  # bd26
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section D: _RECEIVER_MARKERS is a hand-written subset of meta['receiver'] that did not grow with it. The fix here does NOT wait for the sweep. The structural fix (structural-fix protocol) places EVERY receiver value in or out of the set, with a test that fails when a new value is unplaced, not only adding declared_type. The proposed partition gate WI-kosup files is the general form."  # bd26
+- op: update  # 7822
+  at: '2026-10-26T09:10:48Z'  # 7822
+  by: agent  # 7822
+  actor: jgstern_agent  # 7822
+  clock: 3  # 7822
+  nonce: '7822'  # 7822
+  set:  # 7822
+    status: done  # 7822
+- op: discuss  # 5980
+  at: '2026-10-26T09:10:48Z'  # 5980
+  by: agent  # 5980
+  actor: jgstern_agent  # 5980
+  clock: 4  # 5980
+  nonce: '5980'  # 5980
+  message: "DONE in PR #1874 (merged, dev 1b50a90482). Root cause: the magnet detector read \"was the target type identified\" from a hand-written subset of meta['receiver'] values that never gained declared_type. Fix: the subset is now RECEIVER_IDENTIFIES_TARGET, a mapping that places all 11 written values (identified: typed_var, typed_field, field_chain, declared_type, self, external, constant_external, stdlib, qualified; receiver-blind: bare, generic). test_receiver_vocabulary_partition walks every analyzer source (AST) and fails on a written value the mapping does not place and on a placed value nothing writes, with a positive control. Ruby checked: 'self' binds only the enclosing class's own method (identified); 'generic' binds Const.m but also Const.other(..).m (kept blind); 'bare' kept blind.\nBEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev: `hypergumbo survey` on `class Logger { public: void Close() {} void Flush() {} }; class App { public: void run() { Logger lg; lg.Close(); lg.Flush(); } };` exit 0 -> App::run -> cpp:app.cpp:1-1:Logger..Close:method 0.85 (was cpp:external:0-0:Close:unresolved 0.4), Flush unchanged at 0.85. Production-path test: test_magnet_demotion_keeps_typed_binds.py::test_cpp_declared_type_receiver_keeps_its_bind.\nMEASURED (published graph re-checked under the old rule): bento4 251 published C++ binds the old rule demoted, all declared_type; spot-checked WriteAdtsHeader's output->Write on an AP4_ByteStream* parameter -> AP4_ByteStream::Write, correct. Registry and spec prose for the receiver key corrected (8 of 11 values listed, Swift missing as a producer, 'no consumer branches on it' false); the key's two-axes leak stays WI-mujug's."  # 5980
+- op: update  # 7439
+  at: '2026-10-26T09:11:05Z'  # 7439
+  by: agent  # 7439
+  actor: jgstern_agent  # 7439
+  clock: 5  # 7439
+  nonce: '7439'  # 7439
+  set:  # 7439
+    pr_ref: '1874'  # 7439

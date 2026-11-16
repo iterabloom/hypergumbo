@@ -7,26 +7,19 @@ field carries a ``# axis: <category>`` annotation. This module checks the
 *emitted IR at runtime* — that every value populated into those axis-tagged
 fields conforms to the axis the annotation declares.
 
-The pipeline (``cli.run_behavior_map``) constructs ``Symbol`` / ``Edge`` /
+The pipeline (``cli.run_survey``) constructs ``Symbol`` / ``Edge`` /
 ``AnalysisRun`` records through ordered passes (analyzers → linkers →
 fingerprint stamping → supply-chain classification → route promotion →
 tier filtering → boundary synthesis → finalize (validate) → metrics →
-write). Each pass is a writer;
-no pass is a reader. Until this module, nothing read the emitted records
-and checked them against the schema axioms, axis catalogs, or producer
-contracts. That gap is INV-sugat — "no spec-vs-data validator stage exists
-in the pipeline" — the super-META this ADR closes.
+write). Each pass is a writer; no pass is a reader. This module is the
+reader: it checks the emitted records against the schema axioms, axis
+catalogs, and producer contracts (INV-sugat).
 
-The validator classes (ADR-0033 §"Validator classes") shipped incrementally:
-the Phase-0 module landed the scaffolding (the ``ValidationViolation``
-dataclass, the public ``validate_ir`` entry point, the pipeline wire-up at
-``cli.py``'s end-of-pipeline post-pass slot) with every class off, and the
-campaign's Phase-3/5/6 PRs then turned each on. ``validate_ir`` now runs
-inside ``finalize()`` as sub-step 10, structurally last (ADR-0043 §6);
-``cli.py`` keeps only the stderr summary. All of the classes below are
-now ACTIVE — ``validate_ir`` runs each, and the corpus surfaces real
-violations (see "The gate's realized form" below for how the CI ratchet
-holds those counts shrink-only):
+``validate_ir`` runs inside ``finalize()`` as sub-step 10, structurally
+last (ADR-0043 §6); ``cli.py`` keeps only the stderr summary. It runs every
+validator class below (ADR-0033 §"Validator classes"), and the corpus
+surfaces real violations (see "The gate's realized form" below for how the
+CI ratchet holds those counts shrink-only):
 
 1. **Axis-conformance** — every axis-tagged ``str`` field's values must be
    in the catalog (union ``{None}`` for ``Optional`` fields). The four
@@ -34,63 +27,75 @@ holds those counts shrink-only):
    *known-axis-name* uses the registry accessor; *identity* is a
    uniqueness invariant; *bounded-enum* is a fixed-list check;
    *free-text* skips value-level checks (the justification was the gate
-   at source-write time).
+   at source-write time). The class also carries one structural check: a
+   populated ``Symbol.qualified_name`` must not use another language's
+   separator in place of its own language's declared one (ADR-0032
+   per-language separator policy, ``warning``).
 2. **Writer-contract** — partitions by (record class, field): sub-pattern 2
    (default-only initializer) for ``AnalysisRun.config_fingerprint``; a
    sub-pattern-1 never-populated table (currently empty); and a
    kind-conditioned (language, kind, field) population contract.
    Sub-patterns 3 and 4 (of INV-luhur's META description) are codified
-   producer-side, not detected. Folds in WI-rolol sub-task B.
+   producer-side, not detected. (WI-rolol sub-task B.)
 3. **Cross-field coherence** — documented field-pair invariants:
    ``Edge.dst_ref ↔ Edge.dst``; non-file Symbols with both ``language``
-   and ``protocol_origin`` populated are flagged (the both-None half is
-   deferred); ``Symbol.display_label`` populated on synthetic stand-ins
+   and ``protocol_origin`` populated are flagged (the both-None case is
+   not); ``Symbol.display_label`` populated on synthetic stand-ins
    only. The
    ``cross_field`` class also carries several other wired checks: the
    ADR-0037 ``is_resolved ↔ dst`` FK, ``origin_run_id`` FK integrity,
    dangling-endpoint detection, edge ``confidence`` range, route-marker
-   single-home, the receiver-blind-magnet gate, the ADR-0035 §5 per-file
+   single-home, one file pseudo-symbol per path
+   (``_check_one_file_node_per_path``), the receiver-blind-magnet gate, the
+   ADR-0035 §5 per-file
    ``stable_id`` uniqueness error (``_check_stable_id_per_file_uniqueness``),
    and the Class-B identity-stamp canary (a synthetic stand-in missing
    ``stable_id`` / ``fingerprint`` / ``discovery_language`` / ``origin`` /
    ``display_label`` is flagged, one umbrella violation per field).
 4. **Verdict-enum completeness** — verdict-emitting code paths must enumerate
    an ``inconclusive`` (or equivalent) branch for missing-data cases.
-   Folds in WI-rolol sub-task A (``ClaimVerdict.inconclusive``).
+   (WI-rolol sub-task A; ``ClaimVerdict.inconclusive``.)
 5. **ID-format conformance** — every ``Symbol.id`` matches the canonical
    ``<language>:<path>:<start>-<end>:<name>:<kind>`` schema with single-colon
-   separators. Lands in Phase 5 PR1 alongside the INV-sadiv six-site migration
-   to ``make_symbol_id(...)``. Phase 6 PR1 (INV-hunup closure) extends the
-   same ``id_format`` validator class with a ``Symbol.stable_id`` sub-check
-   pinning the canonical ``sha256:<16hex>`` shape that every
-   ``make_*_stable_id`` factory produces. See ADR-0034 for the discipline
-   rationale. id-format:F3 (``_check_id_roundtrip``) extends the class once
-   more with the ADR-0036 Ruling-2 *round-trip* canary: the id kind-slot must
-   be a registered symbol-kind and equal ``Symbol.kind`` (advisory ``warning``
-   until the v6 kind-slot folds clear the WI-pubiv/WI-kugaj/tsconfig backlog),
-   the name-slot must be non-empty (advisory), and the span must satisfy
-   ``start <= end`` (``error``). The class also pins ``Edge.id`` to
-   ``edge:sha256:<16hex>`` (``_check_edge_id_format``) and requires the
-   ``hgfp2:`` prefix on every non-null real-source ``Symbol.fingerprint``
-   (``_check_fingerprint_format``).
+   separators, the shape ``make_symbol_id(...)`` produces (INV-sadiv). A
+   ``Symbol.stable_id`` sub-check pins the canonical ``<label><16hex>`` shape,
+   where the label is the tree-sitter scheme's ``hgstableid<N>:`` (every
+   ``make_*_stable_id`` factory) or the SCIP scheme's ``hgscipid<N>:``, both
+   derived from their scheme constants (INV-hunup; ADR-0035 §"Value
+   labels"). See
+   ADR-0034 for the discipline rationale. ``_check_id_roundtrip`` adds the
+   ADR-0036 Ruling-2 *round-trip* canary: the id kind-slot must be a
+   registered symbol-kind and equal ``Symbol.kind``, the name-slot must be
+   non-empty, the span must satisfy ``start <= end``, and the file
+   pseudo-symbol must be ``1-1:file:file`` (WI-dipim), all at ``error``; a
+   ``<unknown>`` path slot, finalize's fallback for a dst that is not an
+   id, is flagged at ``warning``. The class
+   also pins ``Edge.id`` to ``edge:sha256:<16hex>``
+   (``_check_edge_id_format``) and requires the ``hgfp2:`` prefix on every
+   non-null real-source ``Symbol.fingerprint`` (``_check_fingerprint_format``).
 
 Besides ``violations`` and ``violations_by_class``, the
 ``validation_report`` that ``build_validation_report`` emits carries a
 ``wired_checks`` manifest (``_WIRED_CHECKS``: each predicate wired into
 ``validate_ir`` and the class it feeds, so a class count of 0 means "these
-named checks found nothing", not "no defects") and ``stable_id_stats``
+named checks found nothing", not "no defects"), ``stable_id_stats``
 (``compute_stable_id_stats``: the ALL-Symbols stable_id population,
-collision rate, None cohort and backstop floor cohort).
+collision rate, None cohort and backstop floor cohort) and
+``name_slot_stats`` (``compute_name_slot_stats``: how many node ids have a
+name slot that is not the sanitized ``Symbol.name``, ADR-0036 Ruling 1, by
+producer). The last two are measurements, not checks: they emit no
+``ValidationViolation`` and are not in ``_WIRED_CHECKS``. The name-slot
+round-trip is measured rather than checked because its mismatches number in
+the thousands on a JavaScript repository; the count by producer is what each
+family is driven to zero against before it becomes a check.
 
-Why scaffold first
-------------------
-The stage was landed with no checks enabled first (Phase 0), by design. The
-module's presence and the pipeline wire-up established (a) the artifact's
-``validation_report`` section as a stable surface that consumers and CI
-can rely on, (b) the ``ValidationViolation`` dataclass as the structured
-shape that every check class emits, and (c) the warn-not-fail default
-behavior the campaign committed to. Subsequent PRs then turned on one check
-class each on that already-smoke-tested wire-up; all five are now live.
+One output shape
+----------------
+Every check class emits the same structured ``ValidationViolation`` record
+into the artifact's ``validation_report`` section, a stable surface that
+consumers and CI rely on, under the warn-not-fail default described below.
+A new check therefore plugs into the existing wire-up rather than adding an
+output path of its own.
 
 Default failure behavior
 ------------------------
@@ -102,29 +107,29 @@ The validator does NOT fail ``hypergumbo run`` by default. Violations are:
   artifact"``).
 * CI-gated by a separate test (``tests/test_validation_report_empty.py``).
 
-The gate's realized form (validator:F1 / G1, WI-kafar + WI-himoj). The
-file is named "…_empty" for its aspiration, but the corpus is not at zero
-violations and an "assert empty" gate would be permanently red, so the
-gate is a SHRINK-ONLY per-substrate RATCHET over a four-substrate matrix
-(default / ``--frameworks all`` / ``--include-docs`` / ``--max-tier 4``)
+The gate's realized form. The file is named "…_empty" for its goal, but
+the corpus is not at zero violations and an "assert empty" gate would be
+permanently red, so the gate is a SHRINK-ONLY per-substrate RATCHET over a
+four-substrate matrix (default / ``--frameworks all`` / ``--include-docs`` / ``--max-tier 4``)
 run against the multi-language ``schema-coverage-corpus`` fixture tree.
 Each substrate's violation count may shrink below its committed baseline
 (ratchet it down when it does) but never grow — a regression that adds a
 violation trips CI. ``--include-docs`` exercises the flag-gated writer
-paths a default-only gate would let escape (WI-himoj). The gate also
+paths a default-only gate would let escape. The gate also
 co-ratchets the ADR-0023 §3 ``runtime_coherence`` offender count per
 substrate as a separate dimension; per substrate, the fixture gate ratchets
 the lumped total, each (validator_class, severity) cell, and
 runtime_coherence. A full-suite ``self-tree-validation`` job ratchets the
 same per-(validator_class, severity) matrix on hypergumbo's own tree
 (``scripts/check-self-tree-validation`` vs
-``.ci/self-tree-validation-baselines.json``, WI-jigup).
+``.ci/self-tree-validation-baselines.json``). (history: WI-kafar,
+WI-himoj, WI-jigup)
 
-This soft-introduction posture lets the validator land cleanly: users see
-violations as informational warnings; CI catches regressions; downstream
-producer fixes ratchet each substrate's baseline toward zero.
+Under this posture users see violations as informational warnings, CI
+catches regressions, and producer fixes ratchet each substrate's baseline
+toward zero.
 
-WI-niluv denominator disclosure: the cross-field collision/degeneracy
+Denominator disclosure (WI-niluv): the cross-field collision/degeneracy
 umbrellas both disclose their keyless cohort so a clean non-null rate can
 never silently hide a large no-key cohort, but they treat the denominator
 oppositely. The stable_id collision umbrella INCLUDES the no-stable_id cohort
@@ -144,8 +149,14 @@ from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, Optional
 
 from .receiver_blind_magnets import find_harmful_magnets
+from .ir import (
+    CONFIDENCE_SOURCE_CORROBORATED,
+    VALID_CONFIDENCE_SOURCES,
+    sanitize_id_name_segment,
+)
+from .schema import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
-VALIDATION_REPORT_SCHEMA_VERSION = "0.4"  # 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
+VALIDATION_REPORT_SCHEMA_VERSION = "0.5"  # 0.5: name_slot_stats (ADR-0036 Ruling 1 round-trip, additive); 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
 # Stable enum-like sets. Mirrored in the ADR-0033 §"Output format" table
 # and in `ValidationViolation.severity` / `validator_class` axis annotations.
@@ -158,20 +169,20 @@ _VALIDATOR_CLASSES = (
     "id_format",
 )
 
-# validator:F2 (WI-moriz) — the wired-checks disclosure manifest.
+# The wired-checks disclosure manifest (WI-moriz).
 #
 # A class count of 0 in ``violations_by_class`` is ambiguous between "the
 # substrate is clean on that dimension" and "no wired predicate covers that
-# dimension" — and the counter alone cannot tell them apart. That ambiguity
-# IS the WI-moriz false-all-clear: a reader treats 0 as a clean bill of health
-# when whole defect classes may simply be unchecked. ``build_validation_report``
+# dimension" — and the counter alone cannot tell them apart, so a reader can
+# take 0 as a clean bill of health when whole defect classes are simply
+# unchecked (a false all-clear). ``build_validation_report``
 # embeds this manifest so a consumer can map each class count to the named
 # predicates that produced it; an un-listed defect class is, by absence, NOT
 # yet validated. The ``check`` stems here are pinned to the ``_check_*``
 # functions actually wired into ``validate_ir`` by
 # ``test_wired_checks_manifest_matches_validate_ir`` — you cannot wire a new
 # check without disclosing it, nor disclose one you did not wire, so the
-# manifest can never drift back into a silent false-all-clear.
+# manifest cannot drift into a silent false all-clear.
 _WIRED_CHECKS: tuple[dict[str, str], ...] = (
     {"check": "axis_conformance", "validator_class": "axis_conformance",
      "description": "Every axis-tagged Symbol/Edge/AnalysisRun field value is "
@@ -197,7 +208,8 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "scheme -- its OWN grammar, not Symbol.id's five-slot one "
                     "(WI-vodin)."},
     {"check": "stable_id_format", "validator_class": "id_format",
-     "description": "Symbol.stable_id matches the sha256:<16hex> scheme."},
+     "description": "Symbol.stable_id is a stable-id label (the tree-sitter "
+                    "or the SCIP scheme's) followed by 16 lowercase hex."},
     {"check": "id_roundtrip", "validator_class": "id_format",
      "description": "Symbol.id kind-slot matches Symbol.kind and is a "
                     "registered kind; span/name well-formed."},
@@ -228,6 +240,13 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "carries no redundant path-less concept=route alongside it "
                     "(INV-vokak dual-carry root; the framework belongs on "
                     "route_framework, not orphaned in a second home)."},
+    {"check": "one_file_node_per_path", "validator_class": "cross_field",
+     "description": "A path carries exactly one file pseudo-symbol (kind "
+                    "'file', id <lang>:<path>:1-1:file:file) across every "
+                    "producer (INV-movor): two producers' file nodes for one "
+                    "path, each in its own language slot, split the file's "
+                    "edges between them. Manifest entries of kind 'file' "
+                    "(meta.entry_role) are not file pseudo-symbols."},
     {"check": "no_harmful_receiver_blind_magnets", "validator_class": "cross_field",
      "description": "No un-demoted CLEANLY-harmful receiver-blind method magnet "
                     "survives finalization (INV-fahub): a high-confidence calls "
@@ -268,7 +287,7 @@ def validate_ir(
 ) -> list[ValidationViolation]:
     """Run all enabled validator classes against the emitted IR.
 
-    Each Phase-3 PR adds one class's checks to this function. The
+    Runs every wired check (each is listed in ``_WIRED_CHECKS``). The
     argument types are deliberately ``Iterable[Any]`` rather than typed
     `Symbol`/`Edge`/`AnalysisRun` to keep this module decoupled from
     the IR module — `validate_ir` reads attributes by name and is
@@ -296,6 +315,7 @@ def validate_ir(
     violations.extend(_check_fingerprint_format(symbols, edges, analysis_runs))
     violations.extend(_check_confidence_range(edges))
     violations.extend(_check_route_marker_single_home(symbols))
+    violations.extend(_check_one_file_node_per_path(symbols))
     violations.extend(_check_no_harmful_receiver_blind_magnets(symbols, edges))
     return violations
 
@@ -309,13 +329,13 @@ def _check_route_marker_single_home(
     'route'``) must not ALSO carry a redundant *path-less* ``concept ==
     'route'`` entry in ``meta['concepts']``. That dual-carry state orphans the
     concept's framework from the marker — ``routes.route_of`` merely tolerates
-    it by unioning the framework at read time (WI-tosul Phase-1b-alpha), but
-    the emitted data is incoherent (one route fact in two homes). The
-    producer-side fix (``framework_patterns._dedup_route_marker_concepts``)
-    lifts such a concept's framework onto the marker's ``route_framework`` home
-    and drops the concept; this predicate is the standing corpus-wide guard
-    that the fix holds — a regression here, or a new route producer that
-    re-introduces the shape, re-fires it and the ratchet gate blocks.
+    it by unioning the framework at read time (WI-tosul), but the emitted
+    data is incoherent (one route fact in two homes). The producer side
+    (``framework_patterns._dedup_route_marker_concepts``) lifts such a
+    concept's framework onto the marker's ``route_framework`` home and drops
+    the concept; this predicate is the corpus-wide guard that the dedup
+    holds — a regression there, or a new route producer that emits the
+    shape, fires it and the ratchet gate blocks.
     """
     violations: list[ValidationViolation] = []
     for sym in symbols:
@@ -347,6 +367,58 @@ def _check_route_marker_single_home(
     return violations
 
 
+def _check_one_file_node_per_path(
+    symbols: Iterable[Any],
+) -> list[ValidationViolation]:
+    """INV-movor: a path carries exactly one file pseudo-symbol.
+
+    The file pseudo-symbol is the ``kind="file"`` Symbol whose id is
+    ``make_file_id(lang, path)`` (``<lang>:<path>:1-1:file:file``, ADR-0036
+    Ruling 3). ``make_file_id`` takes a language and each producer chooses it
+    itself, so two producers of one file (the JavaScript analyzer reading a
+    Vue component's ``<script>``, the Vue analyzer reading its template) mint
+    two ids that id-equality dedup keeps apart, and the file's edges are split
+    between the two nodes. ``analyze.file_records.unify_file_pseudo_symbols``
+    folds them after the linkers; this predicate is the guard that it did, and
+    that no pass after it mints a second one. Two records sharing one id
+    count as two: that is the same split under one name (an absolute-path id
+    and a repo-relative one that relativization made equal), and the stable-id
+    split pass gives the pair two ``stable_id`` values. A manifest entry of
+    kind ``file`` with
+    ``meta["entry_role"]`` (an npm script, a pyproject script; audit-findings
+    0005) has another id shape and is not counted. One violation per path.
+    """
+    ids_by_path: dict[str, list[str]] = {}
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        path = getattr(sym, "path", None)
+        if (
+            getattr(sym, "kind", None) != "file"
+            or not isinstance(sym_id, str)
+            or not sym_id.endswith(":1-1:file:file")
+            or not path
+        ):
+            continue
+        ids_by_path.setdefault(path, []).append(sym_id)
+    return [
+        ValidationViolation(
+            severity="error",
+            validator_class="cross_field",
+            message=(
+                f"path {path!r} carries {len(ids)} file pseudo-symbols; a "
+                "path has exactly one, in the file's own language, with every "
+                "producer's edges on it (INV-movor)"
+            ),
+            field_name="id",
+            record_id=ids[0],
+            observed=", ".join(ids),
+            expected="exactly one <lang>:<path>:1-1:file:file node per path",
+        )
+        for path, ids in ids_by_path.items()
+        if len(ids) > 1
+    ]
+
+
 def _check_no_harmful_receiver_blind_magnets(
     symbols: Iterable[Any], edges: Iterable[Any],
 ) -> list[ValidationViolation]:
@@ -360,9 +432,8 @@ def _check_no_harmful_receiver_blind_magnets(
     ``external:unresolved`` id BEFORE the ADR-0037 edge-resolution verdict, so on
     the finalized graph ``find_harmful_magnets`` should return nothing. A survivor
     means the demotion ran out of order, a new producer path emitted one the pass
-    missed, or the shared detector has a gap — this corpus-wide gate is the
-    standing durable teeth that keeps the flip honest (it fires and the ratchet
-    blocks). The refined criterion is deliberate: the correct-but-unprovable
+    missed, or the shared detector has a gap — this corpus-wide gate fires
+    and the ratchet blocks. The narrow criterion is deliberate: the correct-but-unprovable
     trait-dispatch residual (Rust ``x.next()`` → ``Red::next``) needs real type
     resolution (ADR-0012) and is a KEPT bind, so it is NOT flagged here.
     """
@@ -389,16 +460,15 @@ def _check_no_harmful_receiver_blind_magnets(
 
 
 def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
-    """WI-nurun step 4: advisory range-validation of `Edge.confidence`.
+    """Advisory range-validation of `Edge.confidence` (WI-nurun).
 
     Per ADR-0039, an analyzer edge's confidence is *derived* from its
     inference pathway (`evidence_type`). This check flags any edge whose
     confidence falls outside the derived ``[low, base_confidence]`` band for
     its pathway — a per-emitter value that no longer tracks the pathway (a
     derivation regression, or an over-claim such as the reserved-ceiling 1.0).
-    It is a forward regression guard: the post-migration corpus is fully
-    in-band (0 violations), and edges whose evidence_type is unregistered or
-    not-yet-seeded carry no band (treated in-band). Emitted as advisory
+    It is a forward regression guard; edges whose evidence_type is
+    unregistered or not-yet-seeded carry no band (treated in-band). Emitted as advisory
     ``info`` under the existing ``cross_field`` class (confidence cohering with
     evidence_type is a cross-field property).
 
@@ -407,12 +477,11 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
     (0.40-0.95), not against the analyzer band of the evidence_type it
     declares. An edge with any analyzer among its origins keeps the band.
 
-    INV-pijij: an edge whose ``confidence_source`` is ``corroborated`` is not
-    judged at all. Two distinct pathways reached it, and its confidence is the
-    declared corroboration level (ADR-0057 s13, configurable under
+    An edge whose ``confidence_source`` is ``corroborated`` is not judged at
+    all (INV-pijij). Two distinct pathways reached it, and its confidence is
+    the declared corroboration level (ADR-0057 s13, configurable under
     ``[merge]``), by definition not on the band of the evidence_type the merge
-    kept. Before this, a scip-enabled self-map reported every one of its
-    109,622 corroborated edges out of band.
+    kept, so judging it against that band would flag every corroborated edge.
     """
     from hypergumbo_core.catalog import all_linker_pass_ids
     from hypergumbo_core.confidence import (
@@ -428,7 +497,7 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
         conf = getattr(edge, "confidence", None)
         if ev is None or conf is None:
             continue
-        if getattr(edge, "confidence_source", None) == "corroborated":
+        if getattr(edge, "confidence_source", None) == CONFIDENCE_SOURCE_CORROBORATED:
             continue
         origin = getattr(edge, "origin", None) or []
         origins = [origin] if isinstance(origin, str) else list(origin)
@@ -479,20 +548,20 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
 
 
 # ----------------------------------------------------------------------
-# Phase 3 PR1 — Axis-conformance validator class
+# Axis-conformance validator class
 # ----------------------------------------------------------------------
 #
-# For every (record_class, field, axis) tuple in _AXIS_TAGGED_FIELDS,
-# verify the emitted value is in the axis catalog (or None for Optional
-# fields). The (record, field, axis) mapping is hand-maintained: when
-# a new axis-tagged field lands on Symbol / Edge / AnalysisRun in
-# ir.py, the developer adding it MUST extend this table — the same
+# For every axis-tagged (record_class, field, axis), verify the emitted
+# value is in the axis catalog (or None for Optional fields). The checks
+# are hand-written calls in ``_check_axis_conformance``: when a new
+# axis-tagged field lands on Symbol / Edge / AnalysisRun in ir.py, the
+# developer adding it MUST add a check there — the same
 # forcing function the static-AST validator at
 # multi_value_field_axis.py has at PR-review time.
 #
 # Categories from ADR-0024 are NOT all checked here:
-#   - "identity" — uniqueness invariant; checked by cross-field
-#     coherence (Phase 3 PR3) or by ID-format validator (Phase 5 PR1).
+#   - "identity" — uniqueness invariant; checked by the cross-field
+#     coherence or ID-format validator classes.
 #   - "bounded-enum" — small fixed list; checked here ad-hoc when the
 #     field's enum is documented in this module's bounded-enum dict.
 #   - "free-text" — no value check (the justification was the gate at
@@ -502,7 +571,7 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
 #     separators (not a value set). Verified separately: the value
 #     must use the separator declared for the Symbol's language.
 #
-# The "edge_lang" / "discovery_language" fields share the language
+# The "evidence_lang" / "discovery_language" fields share the language
 # axis with Symbol.language. The "origin" lists carry pass-id values
 # per element; that's a per-element membership check.
 
@@ -512,9 +581,7 @@ _BOUNDED_ENUMS: dict[tuple[str, str], frozenset[str]] = {
     # ADR-0039 ruling 2: Edge.confidence_source provenance discriminator.
     # Kept in lockstep with ir.VALID_CONFIDENCE_SOURCES by
     # test_spec_validator's drift guard.
-    ("Edge", "confidence_source"): frozenset({
-        "evidence_derived", "emitter_constant", "composite", "corroborated",
-    }),
+    ("Edge", "confidence_source"): VALID_CONFIDENCE_SOURCES,
 }
 
 
@@ -612,7 +679,7 @@ def _check_axis_conformance(
     # AnalysisRuns reach validate_ir as dicts (cli.py accumulates
     # ``linker_result.run.to_dict()`` rather than the dataclass), so
     # use ``_read`` to handle both shapes. The serialized form names
-    # ``pass_id`` as ``"pass"`` (ir.py:to_dict line 275) — check both.
+    # ``pass_id`` as ``"pass"`` (``ir.py::AnalysisRun.to_dict``) — check both.
     for run in analysis_runs:
         run_id = _read(run, "execution_id", None)
         pass_id_value = _read(run, "pass_id", None)
@@ -767,11 +834,13 @@ def _check_qualified_name_separator(
 
 
 # ----------------------------------------------------------------------
-# Phase 3 PR2 — Writer-contract validator class (folds in WI-rolol sub-task B)
+# Writer-contract validator class (WI-rolol sub-task B)
 # ----------------------------------------------------------------------
 #
-# Per ADR-0033 §"Validator classes" #2 and INV-luhur META, four
-# symptom sub-patterns of the writer-contract gap are checked:
+# Per ADR-0033 §"Validator classes" #2 and INV-luhur META, the
+# writer-contract gap has four symptom sub-patterns. Only #1 and #2 are
+# checked here; #3 and #4 are codified on the producer side (see
+# ``_check_writer_contract``):
 #
 #   1. **Schema-declares-no-writer.** Field declared on the dataclass +
 #      serialized via to_dict(), but no producer populates it — value
@@ -783,19 +852,12 @@ def _check_qualified_name_separator(
 #   3. **Same-name two-definitions.** Two metrics with the same name
 #      disagree across serialization paths (e.g., `total_io_edges`
 #      meaning `tagged_count` in one place and `sum(len(.chains))` in
-#      another). Cross-checked via a small explicit allowlist of
-#      "names that should agree."
+#      another). Not checked at runtime; the canonical definitions are
+#      recorded above ``_check_writer_contract``.
 #   4. **Writer-writes-constant.** Schema reserves an evidence-derived
-#      slot but the writer ships a constant. Detected like #2 — single-
-#      value-across-corpus signature — but flagged with a different
-#      severity since the field IS populated.
+#      slot but the writer ships a constant.
 #
-# Phase 3 PR2 lands the framework + ONE concrete sub-pattern-2 check
-# (AnalysisRun.config_fingerprint constant-default detection). Each of
-# the 10 INV-luhur member items closes via a downstream PR that adds
-# its specific assertion to the table below (per WI-rolol sub-task B's
-# trial procedure). The validator framework is the gate; each writer-
-# side fix is its own small per-producer PR.
+# Each new writer-side assertion registers in one of the tables below.
 
 
 # (record_class_name, field_name) -> default-sentinel callable.
@@ -823,14 +885,13 @@ _WRITER_CONTRACT_DEFAULT_SENTINELS: dict[
 }
 
 
-# Phase 6 PR2 sub-pattern-1 "schema-declares-no-writer" table.
+# Sub-pattern-1 "schema-declares-no-writer" table.
 #
-# Each entry: (record_class_name, field_name, getter, expected_message).
-# When ALL records of that class have the field empty/None/default-list,
-# the validator emits a single umbrella violation. ``getter`` is a
-# callable that returns the field's truthy presence (False = empty).
-# Distinct from sub-pattern-2: this is about a field NEVER being
-# populated, not about being populated to a literal default value.
+# Each entry: (record_class_name, field_name, contract description).
+# When ALL records of that class have the field empty/None/default-list
+# (``_is_truthy`` is False for every one), the validator emits a single
+# umbrella violation. Distinct from sub-pattern-2: this is about a field
+# NEVER being populated, not about being populated to a literal default value.
 def _is_truthy(record: Any, field_name: str) -> bool:
     val = _read(record, field_name, None)
     if val is None:
@@ -842,30 +903,25 @@ def _is_truthy(record: Any, field_name: str) -> bool:
 
 # (record_class_name, field_name, sub-pattern-1 contract description)
 #
-# WI-lonoz (Edge.quality) is closed at construction time by
-# ``Edge.__post_init__`` (ir.py): ``quality`` is auto-derived from
-# evidence signals when the producer doesn't set it. The Phase 6 PR2
-# closure left this table EMPTY because every previously-unpopulated
-# field on the corpus is now wired by a producer; future
-# sub-pattern-1 candidates register here.
+# The table is EMPTY: no field is currently registered as never-populated
+# (every such field on the corpus has a producer). Future sub-pattern-1
+# candidates register here.
 _WRITER_CONTRACT_NEVER_POPULATED: tuple[tuple[str, str, str], ...] = ()
 
 
-# Phase 6 PR2 sub-pattern-3 "same-name two-definitions" cross-checks
-# (documentation-only).
+# Sub-pattern-3 "same-name two-definitions" contracts (documentation-only).
 #
-# The two members closed in Phase 6 PR2 (INV-pubom: total_io_edges;
-# INV-mozaf: total_files) were resolved at the *producer* layer by
-# codifying ONE canonical definition for each name and updating every
-# write site to use it. The validator does not run a runtime
-# cross-check because the boundary/metrics-builder layer doesn't have
-# a record stream to inspect — but the contract is recorded here:
+# Each name below has ONE canonical definition that every write site uses;
+# the contract is enforced at the *producer* layer (INV-pubom, INV-mozaf).
+# The validator does not run a runtime cross-check because the
+# boundary/metrics-builder layer doesn't have a record stream to inspect —
+# but the contract is recorded here:
 #
 # - total_io_edges canonical = sum(len(e.chains) for k, e in entries.items()
 #   if k != "external_potential") — the real/verified I/O surface, EXCLUDING
 #   the external_potential bucket (disclosed separately as
-#   external_potential_edges). INV-pubom amended 2026-06-30 (WI-huhit/WI-foduh);
-#   see io_boundary.py.
+#   external_potential_edges); see io_boundary.py (INV-pubom; WI-huhit,
+#   WI-foduh).
 # - total_files canonical = len({n.path for n in nodes if n.path})
 #   (node-distinct-path count); see metrics.py:compute_metrics.
 
@@ -880,20 +936,19 @@ def _check_writer_contract(
 
     See ADR-0033 §"Validator classes" #2 and INV-luhur META.
 
-    Phase 3 PR2 scope: sub-pattern 2 (default-only initializer) for
+    Sub-pattern 2 (default-only initializer) is checked for
     ``AnalysisRun.config_fingerprint``.
 
-    Phase 6 PR2 extension: sub-pattern 1 (schema-declares-no-writer)
-    table. The sub-pattern-1 checks fire when ALL records of a class
-    leave a field empty/None, signalling a structural gap (no producer
-    writes to that slot) rather than a missing value on one record.
-    Sub-patterns 3 (same-name two-definitions) and 4 (writer-writes-
-    constant) are codified at the producer side rather than detected
-    by the validator — the cross-checks would fire at the boundary
+    Sub-pattern 1 (schema-declares-no-writer) is table-driven. Its checks
+    fire when ALL records of a class leave a field empty/None, signalling a
+    structural gap (no producer writes to that slot) rather than a missing
+    value on one record. Sub-patterns 3 (same-name two-definitions) and 4
+    (writer-writes-constant) are codified at the producer side rather than
+    detected by the validator — the cross-checks would fire at the boundary
     (orchestrator) layer, which doesn't have a record stream to inspect.
 
-    WI-libib/WI-hudug extension: a **kind-conditioned population contract**.
-    The sub-patterns above partition only by ``(record_class, field)``, so a
+    A **kind-conditioned population contract** (WI-libib, WI-hudug) covers
+    what the sub-patterns cannot. The sub-patterns above partition only by ``(record_class, field)``, so a
     field populated on one Symbol *kind* masks a 100%-NULL partition on
     another kind (``qualified_name`` on ``function`` symbols hides a fully-
     NULL ``method`` partition behind the shared Symbol class). A registered
@@ -961,7 +1016,7 @@ def _check_writer_contract(
                 ),
             ))
 
-    # Sub-pattern 1 (Phase 6 PR2): schema-declares-no-writer. For each
+    # Sub-pattern 1: schema-declares-no-writer. For each
     # registered (record_class, field) pair, check if every record of
     # that class has the field empty/None/default-list. If so, no
     # producer is wiring the field at all. Distinguishes from the
@@ -988,10 +1043,8 @@ def _check_sub_pattern_1_never_populated(
 ) -> list[ValidationViolation]:
     """Sub-pattern 1 helper extracted for explicit testability.
 
-    The ``_WRITER_CONTRACT_NEVER_POPULATED`` table is currently empty
-    (Phase 6 PR2 closes every previously-registered case at the producer
-    layer). When the table is empty the loop body is unreachable; future
-    registrations re-exercise it.
+    The ``_WRITER_CONTRACT_NEVER_POPULATED`` table is currently empty, so
+    the loop body is unreachable until a field registers there.
     """
     violations: list[ValidationViolation] = []
     for record_class, field_name, contract_msg in _WRITER_CONTRACT_NEVER_POPULATED:  # pragma: no cover — table currently empty
@@ -1038,14 +1091,13 @@ def _check_sub_pattern_1_never_populated(
 # symbols matching ``(language, kind)`` populate ``field_name`` — a 100%-NULL
 # partition on that cell is a writer regression that the ``(record_class,
 # field)``-level sub-patterns above cannot see (a field populated on one kind
-# keeps the class-level partition non-empty). Rather than enforce the full
-# (kind, field) matrix — rejected by WI-libib's own author as over-broad, since
-# most NULL cells are legitimately NULL (a ``variable`` has no meaningful
-# ``qualified_name``) — the contract is registered cell by cell: each entry is a
-# deliberate "this cell MUST stay populated" assertion, the sound-by-
-# construction population ratchet WI-libib was reframed to. The producer half of
-# the first entries is done (WI-fagab / ADR-0032), so on current output these
-# emit no violation and serve as a regression guard; a future producer that
+# keeps the class-level partition non-empty). The full (kind, field) matrix is
+# not enforced because most NULL cells are legitimately NULL (a ``variable`` has
+# no meaningful ``qualified_name``); instead the contract is registered cell by
+# cell, each entry a deliberate "this cell MUST stay populated" assertion. The
+# registered entries are populated by their producer (WI-fagab / ADR-0032), so
+# on current output they emit no violation and serve as a regression guard; a
+# future producer that
 # drops ``qualified_name`` on Python callables/classes trips them, and the
 # resulting ``writer_contract|warning`` cell (unbaselined → ceiling 0) breaks
 # the validation_ratchet self-tree gate.
@@ -1113,25 +1165,29 @@ def _check_kind_conditioned_population(
 
 
 # ----------------------------------------------------------------------
-# Phase 3 PR3 — Cross-field coherence validator class
+# Cross-field coherence validator class
 # ----------------------------------------------------------------------
 #
 # Per ADR-0033 §"Validator classes" #3. Documented field-pair
 # invariants the producer pipeline is expected to honor; the validator
 # scans every record and reports records that violate one.
 #
-# Invariants checked in Phase 3 PR3:
+# Invariants checked:
 #
 #   - **dst_ref ↔ dst**: When `Edge.dst_ref` is populated, the legacy
 #     `Edge.dst` string must also be populated (the two carry the same
 #     external-target identity in different shapes per the
 #     `make_unresolved_edge` docstring).
-#   - **Class B language/protocol_origin coherence (ADR-0031)**: A
-#     Symbol with `language=None` is a synthetic linker stand-in and
-#     must have `protocol_origin` populated (and vice versa: a Symbol
-#     with `protocol_origin` populated must have `language=None`).
-#     File-Symbol Class A exceptions: `kind="file"` skips the check
+#   - **is_resolved FK (ADR-0037 ruling 5, error)**: an edge with
+#     `is_resolved=True` must not point at an `external_symbol` node.
+#   - **Class B language/protocol_origin coherence (ADR-0031)**: a
+#     Symbol must not carry both `language` and `protocol_origin`.
+#     `language=None` with no `protocol_origin` is NOT flagged (it may
+#     be a legitimate boundary node). `kind="file"` skips the check
 #     because file Symbols have language but no protocol identity.
+#   - **Class B stamping canary (WI-kufib)**: every Class B stand-in
+#     carries stable_id, fingerprint, discovery_language, display_label
+#     and a non-empty origin; one umbrella violation per missing field.
 #   - **display_label scope (ADR-0032)**: `Symbol.display_label`
 #     should appear on synthetic stand-ins (Class B) only —
 #     real-source declarations (Class A: kind="function" / "class" /
@@ -1139,11 +1195,11 @@ def _check_kind_conditioned_population(
 #     `None`. The cleanest heuristic: a Symbol with `display_label`
 #     populated AND `language` non-None AND `protocol_origin` None is
 #     a Class-A symbol with a display label — that's the smell.
+#   - **Corpus umbrellas**: stable_id collisions (INV-bazij) and
+#     fingerprint degeneracy (WI-falum), one violation each.
 #
-# Sub-pattern future-extension hook: this validator's table is the
-# WI-mafik / WI-huzuv / WI-nigah-style coherence assertion family.
-# Each future cross-field invariant adds a row to the per-record
-# checks below.
+# A new cross-field invariant adds a check to the per-record loops
+# below (the WI-mafik / WI-huzuv / WI-nigah coherence-assertion family).
 
 
 def _check_cross_field_coherence(
@@ -1157,23 +1213,21 @@ def _check_cross_field_coherence(
     """
     violations: list[ValidationViolation] = []
 
-    # Class B stamping canary (WI-kufib / META-niguz): before schema
-    # 0.14.0 relaxed Symbol.language to nullable, the 262 whole-document
-    # `language: None is not of type 'string'` validation errors were
-    # the de-facto signal that the synthetic stand-in population is
-    # under-stamped. The schema fix silences that signal, so the canary
-    # moves onto the fields that SHOULD be non-null on a Class B
-    # stand-in. Collected per-field; emitted as one umbrella violation
-    # per field (writer-contract style) after the loop.
+    # Class B stamping canary (WI-kufib / META-niguz): the schema allows
+    # Symbol.language to be null, so an under-stamped synthetic stand-in
+    # passes whole-document schema validation. The canary therefore
+    # checks the fields that SHOULD be non-null on a Class B stand-in.
+    # Collected per-field; emitted as one umbrella violation per field
+    # (writer-contract style) after the loop.
     class_b_missing: dict[str, list[str]] = {
         "Symbol.stable_id": [],
         "Symbol.fingerprint": [],
         "Symbol.discovery_language": [],
         "Symbol.origin": [],
-        # META-huvuh (synthetic:F2): the affirmative half of the display_label
-        # biconditional — Class-A real-source declarations must NOT carry a
-        # display_label (the contrapositive check below), and Class-B synthetic
-        # stand-ins MUST. ADR-0032 reserves display_label for Class B.
+        # The affirmative half of the display_label biconditional —
+        # Class-A real-source declarations must NOT carry a display_label
+        # (the contrapositive check below), and Class-B synthetic stand-ins
+        # MUST. ADR-0032 reserves display_label for Class B. (META-huvuh)
         "Symbol.display_label": [],
     }
 
@@ -1211,7 +1265,7 @@ def _check_cross_field_coherence(
                 # Class-B-without-protocol-origin: ambiguous. Either the
                 # producer forgot to set protocol_origin, or this is a
                 # legitimate boundary node (e.g., external-symbol synth).
-                # Skip to avoid false positives during the migration.
+                # Skip to avoid false positives.
                 pass
             elif language is not None and protocol_origin is not None:
                 violations.append(ValidationViolation(
@@ -1239,13 +1293,13 @@ def _check_cross_field_coherence(
         # synthetic linker stand-ins.
         #
         # Exemptions:
-        # - kind="file": file pseudo-symbols have a synthesized
-        #   display_label as part of their boundary identity (per
-        #   ir.py:synthesize_file_symbols_for_dangling_edges).
+        # - kind="file": file symbols may carry their path as
+        #   display_label (json_config.py's tsconfig symbol does).
         # - kind="external_symbol": dangling-edge boundary nodes
-        #   (ir.py:1285) use display_label as the canonical printable
-        #   form (``f"{language}:{path}:{name}:{kind}"``); this is the
-        #   ADR-0032 typed-sibling pattern applied to externals, not a
+        #   (ir.py::create_boundary_nodes) use display_label as the
+        #   canonical printable form
+        #   (``{language}:{key_path}:{name}:{reference_syntax}``); this is
+        #   the ADR-0032 typed-sibling pattern applied to externals, not a
         #   Class A leak.
         if (
             display_label is not None
@@ -1312,14 +1366,14 @@ def _check_cross_field_coherence(
         # (first-party) symbol node. The single edge-finalization verdict
         # (finalize sub-step 7) derives is_resolved from exactly this fact,
         # so a surviving violation means a producer/linker wrote is_resolved
-        # independently — the WI-kukuk contradiction (resolved flag on an
-        # external_symbol placeholder), now a CI failure not a latent defect.
+        # independently (a resolved flag on an external_symbol placeholder;
+        # WI-kukuk).
         #
         # Scoped to the external_symbol case: the bare "dst ∈ nodes" half of
         # the FK is satisfied by construction post-boundary-synthesis (every
         # external dst is materialized as a placeholder node), so the only
         # enforceable discriminator is the dst node's KIND. The dst-absent
-        # ("dangling") case is owned by the sibling endpoint-closure work
+        # ("dangling") case is owned by ``_check_dangling_endpoint``
         # (INV-jukok family), not this predicate — keeping it out also means
         # isolated unit fixtures that point an edge outside their symbol set
         # don't trip it.
@@ -1364,21 +1418,18 @@ def _check_cross_field_coherence(
                 ),
             ))
 
-    # ---- INV-bazij / ADR-0035 §5 umbrella: corpus stable_id collision ----
-    # Phase 6 PR3 (INV-bazij P0): stable_id was documented as carrying
-    # per-symbol structural identity but the original hash inputs collided
-    # at ~60% on the dogfood corpus. v6 (ADR-0035 §1) makes stable_id
-    # unique WITHIN A RUN by design, so §5 drops this corpus threshold from
-    # 5% to effectively ZERO: any collision is a not-yet-migrated producer
-    # to surface, never a rate tolerated below an alarm line. Two changes
-    # from the 5%-era check:
+    # ---- Corpus stable_id collision umbrella (ADR-0035 §5, INV-bazij) ----
+    # stable_id is unique WITHIN A RUN by design (ADR-0035 §1), so the
+    # corpus collision threshold is ZERO: any collision is a producer
+    # whose hash inputs are too coarse, never a rate tolerated below an
+    # alarm line.
     #   * Threshold 0.0 — fire whenever collided > 0.
     #   * Denominator INCLUDES the None-stable_id cohort (WI-niluv): the
     #     rate is over ALL Symbols and the None cohort is disclosed in the
     #     same line, so a clean non-null rate can never silently hide a
-    #     large no-stable_id cohort (the 2026-06-01 false all-clear shape).
-    # This is the SOFT (warning) cross-file signal for the migration
-    # backlog; the HARD per-file uniqueness guarantee is a separate error
+    #     large no-stable_id cohort.
+    # This is the SOFT (warning) cross-file signal; the HARD per-file
+    # uniqueness guarantee is a separate error
     # check (_check_stable_id_per_file_uniqueness). One umbrella violation
     # naming the top-3 groups, not one-per-Symbol. (The fingerprint twin
     # below keeps the non-null denominator — WI-falum, out of §5 scope.)
@@ -1416,10 +1467,10 @@ def _check_cross_field_coherence(
                     f"{', '.join(sample_names)})"
                 )
             top_str = "; ".join(top_descriptions) if top_descriptions else "(none)"
-            # WI-niluv disclosure: the rate is over the full population
-            # (None included); the None cohort is named in the same line so
-            # the encoding stays biconditional (reader can recover both the
-            # collision count and the None count from population).
+            # The rate is over the full population (None included); the
+            # None cohort is named in the same line so the encoding stays
+            # biconditional (reader can recover both the collision count
+            # and the None count from population). (WI-niluv)
             none_frac = none_cohort / population
             none_disclosure = (
                 f"; none_cohort={none_cohort}/{population} "
@@ -1450,16 +1501,15 @@ def _check_cross_field_coherence(
                 ),
             ))
 
-    # ---- WI-falum umbrella: fingerprint degeneracy ----------------------
+    # ---- Fingerprint degeneracy umbrella (WI-falum) --------------------
     # The structural fingerprint hashes shape + identifiers + literals,
     # so symbols with DISTINCT names should virtually never share one
     # value en masse — sharing under the SAME name is legitimate
     # duplicate code (the design intent), but a single value spread
-    # across many names means the producer lost content discrimination.
-    # The motivating regression: all 76 TOML dependency nodes (67
-    # distinct package names) collapsed to ONE fingerprint because the
-    # v1 snippet parse saw only an ERROR tree (WI-falum, 6.0.0). One
-    # umbrella violation per run names the top-3 degenerate values.
+    # across many names means the producer lost content discrimination
+    # (e.g. a parse that sees only an ERROR tree, so every span hashes
+    # alike). One umbrella violation per run names the top-3 degenerate
+    # values.
     #
     # Threshold: 10 distinct names under one value. Same-shape code
     # bodies carry their identifiers in the hash, so even pathological
@@ -1478,9 +1528,9 @@ def _check_cross_field_coherence(
     for sym in symbols:
         fp = getattr(sym, "fingerprint", None)
         if fp is None:
-            # WI-niluv (twin): count the None-fingerprint cohort instead of
-            # silently dropping it, so the firing violation can disclose how
-            # large a population the degeneracy scan excluded.
+            # Count the None-fingerprint cohort instead of silently
+            # dropping it, so the firing violation can disclose how large a
+            # population the degeneracy scan excluded (WI-niluv).
             fp_none += 1
             continue
         name = getattr(sym, "name", None) or "?"
@@ -1506,7 +1556,7 @@ def _check_cross_field_coherence(
                 f"names, e.g. {sample})"
             )
         worst_fp, worst_names = degenerate[0]
-        # WI-niluv denominator disclosure (twin of the stable_id umbrella).
+        # Denominator disclosure, twin of the stable_id umbrella's (WI-niluv).
         fp_total = sum(fp_counts.values())
         fp_population = fp_total + fp_none
         fp_none_disclosure = (
@@ -1546,7 +1596,7 @@ def _check_cross_field_coherence(
 # ADR-0035 §5 — per-file stable_id uniqueness (HARD check) + corpus stats
 # ----------------------------------------------------------------------
 #
-# v6 (ADR-0035 §1) makes stable_id unique within a run by design. §5 turns
+# ADR-0035 §1 makes stable_id unique within a run by design. §5 turns
 # that contract into two enforcement surfaces:
 #   * Per-file uniqueness — a HARD (error) check below: within ONE file's
 #     emitted Symbols a duplicated stable_id is an error, zero tolerance.
@@ -1555,8 +1605,8 @@ def _check_cross_field_coherence(
 #     coherence is the SOFT/warning cross-file companion.)
 #   * Honest disclosure — compute_stable_id_stats below surfaces the
 #     None-cohort + collision rate over an ALL-Symbols denominator into the
-#     report ALWAYS (not only when an umbrella fires), so the 2026-06-01
-#     false all-clear (a hidden None-cohort) cannot recur.
+#     report ALWAYS (not only when an umbrella fires), so a large None
+#     cohort can never hide behind a clean non-null rate.
 
 
 def _check_stable_id_per_file_uniqueness(
@@ -1621,11 +1671,11 @@ def compute_stable_id_stats(symbols: Iterable[Any]) -> dict[str, Any]:
     Corpus-level stable_id population stats over an ALL-Symbols denominator,
     surfaced in ``validation_report.stable_id_stats`` so the None-cohort and
     collision rate are ALWAYS visible — independent of whether the collision
-    umbrella fired. This is the structural guard against the 2026-06-01
-    false all-clear (a hidden None-cohort behind a clean non-null rate).
+    umbrella fired. This is the structural guard against a false all-clear
+    (a hidden None-cohort behind a clean non-null rate).
 
-    WI-motiz adds the ADR-0035 §1 backstop floor beside the None cohort, so
-    ``none_cohort = 0`` is never read as "every id came from a producer
+    The ADR-0035 §1 backstop floor is reported beside the None cohort
+    (WI-motiz), so ``none_cohort = 0`` is never read as "every id came from a producer
     formula". Both counts are RECOMPUTED from the emitted records through
     ``analyze.base.floor_stable_id_key`` (the one definition the backstop
     stamps with), so a consumer can re-derive them:
@@ -1695,28 +1745,27 @@ def compute_stable_id_stats(symbols: Iterable[Any]) -> dict[str, Any]:
 
 
 # ----------------------------------------------------------------------
-# Phase 3 PR4 — Verdict-enum completeness validator class (folds in WI-rolol sub-task A)
+# Verdict-enum completeness validator class (WI-rolol sub-task A)
 # ----------------------------------------------------------------------
 #
-# Per ADR-0033 §"Validator classes" #4. Generalizes the silent-confirm
-# fall-through that drove WI-rolol sub-task A: any verdict-emitting
-# code path must enumerate an "inconclusive" (or equivalent) branch
-# for the missing-data / malformed-input / broken-binary cases —
+# Per ADR-0033 §"Validator classes" #4. Any verdict-emitting code path
+# must enumerate an "inconclusive" (or equivalent) branch for the
+# missing-data / malformed-input / broken-binary cases — silently
 # falling through to the positive verdict ("confirmed" / "ok" /
 # "pass") is a security false-positive class.
 #
-# This validator runs at **import time** rather than per-record: it
-# introspects the verdict-emitting dataclasses (currently only
-# ClaimVerdict) and confirms each has an "inconclusive" value in its
-# documented enum. Per-record violations would emit one per claim;
-# the structural absence is one violation total.
+# This validator runs once per ``validate_ir`` call rather than
+# per-record: it introspects the verdict-emitting dataclasses
+# (currently only ClaimVerdict) and confirms each has an
+# "inconclusive" value in its documented enum. Per-record violations
+# would emit one per claim; the structural absence is one violation
+# total.
 #
 # The validator's table _VERDICT_DATACLASSES is hand-maintained. Each
 # entry: (module_path, class_name, field_name, allowed_inconclusive_values).
 # New verdict-emitting dataclasses register here; the validator checks
-# the documented enum (read from the field's # axis: comment in the
-# dataclass declaration via the same static-AST machinery the
-# multi_value_field_axis validator uses).
+# that each required value appears (case-insensitive substring) in the
+# class ``__doc__``.
 
 
 _VERDICT_DATACLASSES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
@@ -1779,35 +1828,34 @@ def _check_verdict_enum_completeness() -> list[ValidationViolation]:
 
 
 # ----------------------------------------------------------------------
-# Phase 5 PR1 — ID-format validator class (ADR-0034)
+# ID-format validator class (ADR-0034)
 # ----------------------------------------------------------------------
 #
 # Every ``Symbol.id`` is required to follow the canonical schema
 # ``<language>:<path>:<start>-<end>:<name>:<kind>`` with **single-colon**
 # separators. This is the identity contract documented at
-# ``analyze/base.py:make_symbol_id`` — the same factory ten language
-# analyzers call.
+# ``analyze/base.py:make_symbol_id`` — the factory analyzers and linkers
+# call.
 #
-# Historically, five linker passes (http, message-queue, database-query,
-# subprocess-cli, graphql-resolver, graphql) emitted call_site Symbols
-# via an ad-hoc f-string schema ``<path>::<role>::<line>`` with
-# **double-colon** separators and no language prefix. INV-sadiv
-# documented 218 such nodes; they break cross-language edge detection
-# because the path-prefix gets parsed as ``language=packages/...``.
+# An ad-hoc f-string id such as ``<path>::<role>::<line>`` (**double-colon**
+# separators, no language prefix) breaks cross-language edge detection
+# because the path prefix gets parsed as ``language=packages/...``;
+# ``_classify_id_format_problem`` tags that shape explicitly (INV-sadiv).
 #
 # The check below pins the canonical shape at runtime. A non-conforming
 # ``Symbol.id`` produces one ``id_format`` violation with the observed
 # value and the inferred problem (double colons / wrong field count /
 # malformed span).
 #
-# Out of scope for this PR (Phase 6 PR1/PR3 territory):
-# - ``Symbol.stable_id`` format checks (``sha256:<16hex>`` schema).
-# - ``Edge.id`` format checks.
-# - Stable-id collision counting (INV-bazij P0).
-# - Stable-id multiplicity (one stable_id per logical symbol — INV-hunup).
+# Sibling checks live elsewhere in this module: ``Symbol.stable_id``
+# format (``_check_stable_id_format``), ``Edge.id`` format
+# (``_check_edge_id_format``), and stable_id collision counting
+# (INV-bazij, in ``_check_cross_field_coherence``). Stable-id
+# multiplicity (one stable_id per logical symbol, INV-hunup) is not
+# part of this check.
 
-# Canonical ID pattern matching the IR's last-3-tokens parser (ir.py
-# ``_parse_dangling_id`` line 1093 — "the path slot may itself contain
+# Canonical ID pattern matching the IR's last-3-tokens parser
+# (``ir.py::_parse_dangling_id`` — "the path slot may itself contain
 # colons"). The shape is fixed at five colon-separated segments where
 # the LAST THREE (span, name, kind) are colon-free; the path may
 # contain ``:`` (Windows drive prefixes, Rust ``::``-namespaced module
@@ -1833,23 +1881,23 @@ _CANONICAL_ID_PATTERN = re.compile(
 def _classify_id_format_problem(id_str: str) -> str:
     """Return a short tag identifying why the ID is non-canonical.
 
-    Order matters: the most specific (and historically common) failure
-    mode is checked first so the validator's violation messages point
-    operators at the right fix. The IR's permissive parser
-    (``_parse_dangling_id`` last-3-tokens shape) is the source of truth
-    for "valid"; this classifier explains why the value falls outside.
+    Order matters: the most specific failure mode is checked first so
+    the validator's violation messages point operators at the right fix.
+    The IR's permissive parser (``_parse_dangling_id`` last-3-tokens
+    shape) is the source of truth for "valid"; this classifier explains
+    why the value falls outside.
 
-    INV-sadiv detection: the legacy path-prefix shape
-    ``<path>::<role>::<line>`` produces an ID whose FIRST segment is
-    not a valid language identifier and which contains ``::``. Tag
+    The path-prefix shape ``<path>::<role>::<line>`` (INV-sadiv)
+    produces an ID whose FIRST segment is not a valid language
+    identifier and which contains ``::``. Tag
     these explicitly so reviewers know to migrate to ``make_symbol_id``
     even though the surface-level failure (non_canonical_language_prefix
     or wrong_field_count) would also fire.
     """
     parts = id_str.split(":")
     if "::" in id_str:
-        # INV-sadiv pre-dates the canonical schema; surface the migration
-        # hint before the more-generic shape diagnostics. Note: legitimate
+        # Surface the make_symbol_id migration hint (INV-sadiv) before the
+        # more-generic shape diagnostics. Note: legitimate
         # canonical IDs with Rust ``::`` in the path slot do NOT reach
         # here because they pass _CANONICAL_ID_PATTERN.match in
         # _check_id_format before _classify_id_format_problem fires.
@@ -1865,12 +1913,12 @@ def _classify_id_format_problem(id_str: str) -> str:
     if not re.match(r"^[a-z][a-z0-9_]*$", lang):
         return f"non_canonical_language_prefix ({lang!r})"
     if not re.match(r"^\d+-\d+$", span):
-        # INV-dulah: when there are MORE than 5 segments and the span slot is
-        # not a span, the cause is almost always a colon in the NAME slot —
-        # the right-anchored parse shifts every slot left by one, so the span
+        # When there are MORE than 5 segments and the span slot is not a
+        # span, the cause is almost always a colon in the NAME slot — the
+        # right-anchored parse shifts every slot left by one, so the span
         # position holds a fragment of the name. Reporting "malformed span"
-        # here names the symptom and sends the reader to the span code; it
-        # cost one real investigation, so the diagnosis is separated out.
+        # here would name the symptom and send the reader to the span code,
+        # so the name-slot diagnosis is reported separately (INV-dulah).
         if len(parts) > 5:
             return (
                 f"colon_in_name_slot (span slot resolved to {span!r}; a ':' in "
@@ -1886,9 +1934,9 @@ def _classify_id_format_problem(id_str: str) -> str:
 def _check_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]:
     """ID-format conformance class: every Symbol.id matches the canonical schema.
 
-    See ADR-0034 §"ID-format validator". The Phase 5 PR1 closure of
-    INV-sadiv ensures the six linker passes that previously emitted
-    ``<path>::<role>::<line>`` IDs now use ``make_symbol_id(...)``.
+    See ADR-0034 §"ID-format validator". IDs are built with
+    ``make_symbol_id(...)``, not f-strings such as
+    ``<path>::<role>::<line>`` (INV-sadiv).
     """
     violations: list[ValidationViolation] = []
     for sym in symbols:
@@ -1925,15 +1973,13 @@ _CANONICAL_EDGE_ID_PATTERN = re.compile(r"^edge:sha256:[0-9a-f]{16}$")
 
 
 def _check_edge_id_format(edges: Iterable[Any]) -> list[ValidationViolation]:
-    """ID-format conformance for ``Edge.id`` (WI-vodin, Phase 6 PR1 carry-over).
+    """ID-format conformance for ``Edge.id`` (WI-vodin).
 
-    THE DEFERRED ITEM ASKED FOR THE WRONG GRAMMAR AND THIS IS THE CORRECTION.
-    Its wording was to scan ``Edge.id`` "for the same canonical shape it
-    enforces on ``Symbol.id``". Measured against a live survey before
-    implementing: every one of apollo-server's 18,283 edge ids is
-    ``edge:sha256:<16hex>``, so the five-slot node grammar would have reported
-    a 100% violation rate on every repository hypergumbo has ever analysed —
-    a validator that fires on everything says nothing.
+    ``Edge.id`` has its own grammar, ``edge:sha256:<16hex>``, not
+    ``Symbol.id``'s five-slot one. Every edge id the factory mints is that
+    content digest, so checking against the node grammar would flag every
+    edge of every repository — and a validator that fires on everything
+    says nothing.
 
     ``Edge.id`` and ``Symbol.id`` are counterparts in ROLE (per-instance
     identity, as against the structural ``edge_key`` / ``stable_id`` pair) and
@@ -1964,56 +2010,76 @@ def _check_edge_id_format(edges: Iterable[Any]) -> list[ValidationViolation]:
 
 
 # ----------------------------------------------------------------------
-# Phase 6 PR1 — Stable-ID-format sub-check (INV-hunup closure)
+# Stable-ID-format sub-check (INV-hunup)
 # ----------------------------------------------------------------------
 #
 # The ``id_format`` validator class extends to ``Symbol.stable_id`` to
-# enforce the canonical ``sha256:<16hex>`` shape produced by the
-# ``make_*_stable_id`` factory family in ``analyze/base.py``. Pre-Phase-6,
-# the same self-analysis run that surfaced 25 ``id_format`` violations
-# also surfaced ~130 ``stable_id`` violations across five escape
-# categories (raw 64-char hex, bare-name, 1-/2-/3-colon composites). The
-# fixes ride alongside the validator extension; see ADR-0034 for the
-# discipline rationale and the Phase 6 PR1 commit message for the
-# per-category source map.
+# enforce the canonical ``<label><16hex>`` shape. The label is one of the two
+# stable-id labels, each derived from its scheme constant in ``schema``:
+# ``STABLE_ID_PREFIX`` (``hgstableid<N>:``, the ``make_*_stable_id`` factory
+# family in ``analyze/base.py``) or ``SCIP_STABLE_ID_PREFIX``
+# (``hgscipid<N>:``, the rust-analyzer arm). Any other label fails: the
+# shape-id label (a shape id in the wrong field) and the ``sha256:`` label
+# every stable id carried through stableid-v14. The classifier below names
+# the escape categories (raw 64-char hex, bare name, a stable-id label with a
+# bad suffix, a foreign label, colon composites). See ADR-0034 for the
+# discipline rationale and ADR-0035 §"Value labels" for the labels.
 #
-# Canonical pattern: ``sha256:`` literal prefix + 16 lowercase hex chars.
-# Total length 23. The 16-char window comes from
-# ``_short_sha256`` (analyze/base.py:_short_sha256), which truncates the
-# 64-char hexdigest to 16 chars for footprint reasons documented at
-# ADR-0014 §4.
+# The 16-char window comes from ``_digest16`` (analyze/base.py), which
+# truncates the 64-char hexdigest to 16 chars.
 
-_CANONICAL_STABLE_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{16}$")
+_STABLE_ID_LABELS = (STABLE_ID_PREFIX, SCIP_STABLE_ID_PREFIX)
+_CANONICAL_STABLE_ID_PATTERN = re.compile(
+    "^(?:" + "|".join(re.escape(label) for label in _STABLE_ID_LABELS)
+    + ")[0-9a-f]{16}$"
+)
+#: The label every stable id carried through stableid-v14. Read here only to
+#: name the failure; nothing mints it.
+_SUPERSEDED_STABLE_ID_LABEL = "sha256:"
+_EXPECTED_STABLE_ID = (
+    f"{STABLE_ID_PREFIX}<16hex> or {SCIP_STABLE_ID_PREFIX}<16hex>"
+)
 
 
 def _classify_stable_id_format_problem(stable_id: str) -> str:
     """Return a short tag identifying why the stable_id is non-canonical.
 
     Mirrors ``_classify_id_format_problem``'s shape. Order matters: the
-    most specific (and historically common) failure mode is checked
-    first so the violation messages point operators at the right fix.
+    most specific failure mode is checked first so the violation
+    messages point operators at the right fix.
     The category names are stable enough to be referenced by issue
     titles and tracker discussion entries.
     """
     if re.match(r"^[0-9a-f]{64}$", stable_id):
-        return "raw_hex_no_prefix (64-char hexdigest without sha256: prefix)"
+        return "raw_hex_no_prefix (64-char hexdigest without a label)"
     if ":" not in stable_id:
         return "bare_name_no_prefix"
-    if stable_id.startswith("sha256:"):
-        suffix = stable_id[len("sha256:"):]
-        if not re.match(r"^[0-9a-f]+$", suffix):
-            return f"sha256_prefix_with_non_hex_suffix ({suffix!r})"
-        return f"sha256_prefix_wrong_length (expected 16 chars, got {len(suffix)})"
+    for label in _STABLE_ID_LABELS:
+        if stable_id.startswith(label):
+            suffix = stable_id[len(label):]
+            if not re.match(r"^[0-9a-f]+$", suffix):
+                return f"stable_id_label_with_non_hex_suffix ({suffix!r})"
+            return (
+                f"stable_id_label_wrong_length (expected 16 chars, "
+                f"got {len(suffix)})"
+            )
+    if stable_id.startswith(SHAPE_ID_PREFIX):
+        return f"shape_id_label ({SHAPE_ID_PREFIX!r} labels a shape_id)"
+    if stable_id.startswith(_SUPERSEDED_STABLE_ID_LABEL):
+        return (
+            f"superseded_label ({_SUPERSEDED_STABLE_ID_LABEL!r} is the "
+            f"stableid-v14 form; this scheme labels values {STABLE_ID_PREFIX!r})"
+        )
     colon_count = stable_id.count(":")
     return f"composite_no_sha_prefix (colon_count={colon_count})"
 
 
 def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]:
     """Stable-ID-format conformance: every Symbol.stable_id matches the
-    canonical ``sha256:<16hex>`` schema.
+    canonical ``<stable-id label><16hex>`` schema.
 
-    See ADR-0034 §"ID-format validator" + Phase 6 PR1 (INV-hunup
-    closure). ``None`` is treated as pass: some Symbols legitimately
+    See ADR-0034 §"ID-format validator" (INV-hunup). ``None`` is
+    treated as pass: some Symbols legitimately
     have no stable_id (e.g., the message_dispatch sender/handler stand-
     ins explicitly set it to ``None`` per their docstrings). The
     ``axis_conformance`` validator owns required-field presence.
@@ -2035,7 +2101,7 @@ def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]
             field_name="Symbol.stable_id",
             record_id=sym_id,
             observed=stable_id,
-            expected="sha256:<16hex>",
+            expected=_EXPECTED_STABLE_ID,
             message=(
                 f"Symbol.stable_id does not match the canonical schema: "
                 f"{problem}. Use a make_*_stable_id factory from "
@@ -2048,7 +2114,7 @@ def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]
 
 
 # ----------------------------------------------------------------------
-# id-format:F3 — Symbol.id round-trip canary (ADR-0036 Rulings 1-3)
+# Symbol.id round-trip canary (ADR-0036 Rulings 1-3)
 # ----------------------------------------------------------------------
 #
 # The shape-only ``_CANONICAL_ID_PATTERN`` proves an id has the 5-segment
@@ -2057,25 +2123,15 @@ def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]
 # colon-free tokens (span, name, kind) per ADR-0036 Ruling 1 and assert
 # they round-trip to the Symbol's own fields and the symbol-kind registry.
 #
-# Severity gating (scope A of the Wave-2 identity train): the kind-slot
-# membership, kind-slot==Symbol.kind, and non-empty-name checks land at
-# ADVISORY (``_ID_ROUNDTRIP_ADVISORY``) because a strict pass red-flags a
-# known, id-CHANGING (T1) backlog that cannot clear before the v6 stable_id
-# bump:
-#   * the ~1645 external_symbol kind-slot disagreements (WI-pubiv),
-#   * the route/event role-disagreement cohort (WI-kugaj), and
-#   * the tsconfig id kind-slot (DEPRECATE-NO-FOLD per audit-findings 0005;
-#     the producer folded Symbol.kind->"file" but left "tsconfig" in the id).
-# Those folds change node.id, so they ride the v6 migration. Advisory
-# severity makes the violations visible/measurable now; the gating tracker
-# item promotes them to error once the backlog clears. The span start<=end
-# check has no such backlog and lands at error directly.
-
-_ID_ROUNDTRIP_ADVISORY = "warning"
+# Severity: ERROR. No producer is expected to emit an id that fails the
+# kind-slot membership, kind-slot==Symbol.kind or non-empty-name checks,
+# so any violation is a producer defect and reports as one. (history:
+# WI-pubiv, WI-kugaj, WI-lusoh, WI-pusan, WI-popak)
+_ID_ROUNDTRIP_SEVERITY = "error"
 
 
 def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
-    """Round-trip conformance for canonical Symbol.ids (id-format:F3).
+    """Round-trip conformance for canonical Symbol.ids.
 
     Runs only on ids that already pass ``_CANONICAL_ID_PATTERN`` — shape
     failures are owned by ``_check_id_format`` and a non-canonical id
@@ -2084,20 +2140,23 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
     last-3-tokens grammar; the path slot may itself contain colons) and
     check:
 
-    * **kind-slot registry membership** (advisory) — the kind token is a
+    * **kind-slot registry membership** (error) — the kind token is a
       registered symbol-kind. Net value over the shape-only pattern: it
       catches divergences like ``tsconfig`` that ``axis_conformance`` is
       blind to (the *Symbol.kind* field carries the registered ``file``
-      while the id slot kept the stale ``tsconfig``).
-    * **kind-slot == Symbol.kind** (advisory) — the id round-trips to the
+      while the id slot carries ``tsconfig``).
+    * **kind-slot == Symbol.kind** (error) — the id round-trips to the
       Symbol's own kind. Skipped when ``Symbol.kind`` is absent / None
       (required-field presence is ``axis_conformance``'s job).
-    * **name-slot non-empty** (advisory).
-    * **span start <= end** (error) — a genuine malformation with no
-      id-changing backlog.
+    * **name-slot non-empty** (error).
+    * **span start <= end** (error) — a genuine malformation.
+    * **the file pseudo-symbol is 1-1:file:file** (error, WI-dipim) — an id
+      named ``file`` of kind ``file`` with another span.
+    * **no <unknown> path slot** (warning, WI-dipim) — finalize's fallback
+      for a non-id dst, i.e. a producer defect.
 
-    See ADR-0036 Rulings 1-3 and the module comment above for the
-    advisory-vs-error severity gating.
+    See ADR-0036 Rulings 1-3 and the module comment above for the severity
+    choice.
     """
     from .symbol_kinds import all_symbol_kind_names
 
@@ -2116,7 +2175,7 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 
         if kind_slot not in registered:
             violations.append(ValidationViolation(
-                severity=_ID_ROUNDTRIP_ADVISORY,
+                severity=_ID_ROUNDTRIP_SEVERITY,
                 validator_class="id_format",
                 field_name="Symbol.id",
                 record_id=sym_id,
@@ -2132,7 +2191,7 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
         node_kind = getattr(sym, "kind", None)
         if node_kind is not None and kind_slot != node_kind:
             violations.append(ValidationViolation(
-                severity=_ID_ROUNDTRIP_ADVISORY,
+                severity=_ID_ROUNDTRIP_SEVERITY,
                 validator_class="id_format",
                 field_name="Symbol.id",
                 record_id=sym_id,
@@ -2147,7 +2206,7 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 
         if name_slot == "":
             violations.append(ValidationViolation(
-                severity=_ID_ROUNDTRIP_ADVISORY,
+                severity=_ID_ROUNDTRIP_SEVERITY,
                 validator_class="id_format",
                 field_name="Symbol.id",
                 record_id=sym_id,
@@ -2156,6 +2215,45 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
                 message=(
                     "Symbol.id name-slot is empty; make_symbol_id(...) requires "
                     "a non-empty name (file pseudo-symbols use the literal 'file')."
+                ),
+            ))
+
+        # The file pseudo-symbol (name ``file``, kind ``file``) has span
+        # ``1-1`` (ADR-0036 Ruling 3; WI-dipim). Neither half of the
+        # converse is a rule. A one-line definition on line 1 is ``1-1``. Kind
+        # ``file`` also carries manifest entries, an npm script or ``main`` or a
+        # pyproject script, with the role in meta["entry_role"] (audit-findings
+        # 0005). A C++ include target is an external_symbol named ``file``.
+        if kind_slot == "file" and name_slot == "file" and span_slot != "1-1":
+            violations.append(ValidationViolation(
+                severity="error",
+                validator_class="id_format",
+                field_name="Symbol.id",
+                record_id=sym_id,
+                observed=span_slot,
+                expected="1-1",
+                message=(
+                    f"Symbol.id {sym_id!r} is the file pseudo-symbol (name and "
+                    f"kind 'file') with span {span_slot!r}; it is 1-1:file:file "
+                    "(make_file_id(...))."
+                ),
+            ))
+        # ``<unknown>`` is finalize's fallback for a dst that names no path,
+        # never a producer's intent (INV-dulah, WI-bufar-pokam). Advisory
+        # until the cmake producer that still emits it is fixed.
+        if _lang_path.split(":", 1)[-1] == "<unknown>":
+            violations.append(ValidationViolation(
+                severity="warning",
+                validator_class="id_format",
+                field_name="Symbol.id",
+                record_id=sym_id,
+                observed="<unknown>",
+                expected="a path, a module qualifier, or <external>",
+                message=(
+                    f"Symbol.id {sym_id!r} has the path slot '<unknown>', "
+                    "finalize's fallback for an edge dst that is not an id; the "
+                    "producer of that dst should build a canonical one "
+                    "(ADR-0036 Ruling 3)."
                 ),
             ))
 
@@ -2177,19 +2275,113 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 
 
 # ----------------------------------------------------------------------
-# validator:F2 — referential-integrity FK predicate (WI-moriz keystone;
-# regression guard for WI-mosil + synthetic:F1)
+# Name-slot round-trip measurement (ADR-0036 Ruling 1)
+# ----------------------------------------------------------------------
+#
+# Ruling 1: the id's name slot is ``sanitize_id_name_segment(Symbol.name)``.
+# Producers that mint ids outside ``make_symbol_id`` still break it by the
+# thousand (a JavaScript anonymous callback's slot carries an ``@<col>``
+# suffix its name does not), so a violation per node would bury the report.
+# The round-trip is therefore a per-run STATISTIC in
+# ``validation_report.name_slot_stats`` -- no ValidationViolation, no entry in
+# ``_WIRED_CHECKS`` -- until its count reaches zero and it can become a check.
+
+#: How many producers ``name_slot_stats.by_producer`` lists; the rest are
+#: counted in ``producers_cut``, never dropped silently.
+_NAME_SLOT_PRODUCER_CAP = 20
+
+
+def _name_slot_producer(sym: Any) -> str:
+    """The originating pass id (``origin``'s first element), else the language."""
+    origin = getattr(sym, "origin", None)
+    if isinstance(origin, list):
+        origin = origin[0] if origin else None
+    if isinstance(origin, str) and origin:
+        return origin
+    language = getattr(sym, "language", None)
+    return language if isinstance(language, str) and language else "<none>"
+
+
+def compute_name_slot_stats(symbols: Iterable[Any]) -> dict[str, Any]:
+    """ADR-0036 Ruling 1 round-trip, measured: name slot == sanitized name.
+
+    The id is parsed from the right as Ruling 1 prescribes: the name slot is
+    the second-to-last ``:``-separated token. An id with fewer than five slots
+    is not parsed (``not_parsed``; ``_check_id_format`` reports it). A raw
+    colon in a name shifts the right-anchored slots, so the slot read is the
+    name's last fragment and the node counts as a mismatch.
+
+    One rule exempts a node: the file pseudo-symbol
+    (``analyze.file_records.is_file_pseudo_symbol``), whose id grammar fixes
+    the name slot to the literal ``file`` (Ruling 3's ``1-1:file:file``) while
+    ``Symbol.name`` holds the path. No other sentinel defines a name slot.
+
+    ``by_producer`` groups the mismatches by the node's originating pass id
+    (its language when ``origin`` is empty): mismatches, ids checked for that
+    producer, and the lexicographically smallest mismatching id with its name.
+    Ordered by mismatches descending, then producer name, and capped at
+    ``_NAME_SLOT_PRODUCER_CAP`` entries with the remainder in
+    ``producers_cut``. Nothing depends on the order of ``symbols``.
+    """
+    from .analyze.file_records import is_file_pseudo_symbol
+
+    checked = 0
+    exempt = 0
+    not_parsed = 0
+    checked_by: dict[str, int] = {}
+    mismatched_by: dict[str, int] = {}
+    example_by: dict[str, tuple[str, str]] = {}
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        if not isinstance(sym_id, str):
+            continue
+        if sym_id.count(":") < 4:
+            not_parsed += 1
+            continue
+        if is_file_pseudo_symbol(sym):
+            exempt += 1
+            continue
+        checked += 1
+        producer = _name_slot_producer(sym)
+        checked_by[producer] = checked_by.get(producer, 0) + 1
+        name = getattr(sym, "name", None)
+        name = name if isinstance(name, str) else ""
+        if sym_id.rsplit(":", 2)[1] == sanitize_id_name_segment(name):
+            continue
+        mismatched_by[producer] = mismatched_by.get(producer, 0) + 1
+        example = example_by.get(producer)
+        if example is None or (sym_id, name) < example:
+            example_by[producer] = (sym_id, name)
+    ranked = sorted(mismatched_by, key=lambda p: (-mismatched_by[p], p))
+    return {
+        "ids_checked": checked,
+        "exempt_file_nodes": exempt,
+        "not_parsed": not_parsed,
+        "mismatched": sum(mismatched_by.values()),
+        "by_producer": [
+            {
+                "producer": p,
+                "mismatched": mismatched_by[p],
+                "checked": checked_by[p],
+                "example_id": example_by[p][0],
+                "example_name": example_by[p][1],
+            }
+            for p in ranked[:_NAME_SLOT_PRODUCER_CAP]
+        ],
+        "producers_cut": max(0, len(ranked) - _NAME_SLOT_PRODUCER_CAP),
+    }
+
+
+# ----------------------------------------------------------------------
+# origin_run_id referential-integrity FK predicate (WI-moriz, WI-mosil)
 # ----------------------------------------------------------------------
 #
 # Every Symbol and Edge carries an ``origin_run_id`` naming the AnalysisRun
 # that produced it (ir.py Symbol.origin_run_id / Edge.origin_run_id). The
-# provenance join node -> AnalysisRun is only sound if that id resolves:
-# WI-mosil fixed ~96 direct-constructor analyzer symbols left with an EMPTY
-# origin_run_id, and synthetic:F1 stamped AnalysisRun provenance for the
-# orchestrator/boundary synthesis producers. This predicate is the matching
-# regression guard — it re-derives the FK at validation time so a producer
-# regression that drops provenance (empty) or names a non-existent run
-# (dangling) trips CI instead of silently breaking the join. Both sub-cases
+# provenance join node -> AnalysisRun is only sound if that id resolves, so
+# this predicate re-derives the FK at validation time: a producer that drops
+# provenance (empty) or names a non-existent run (dangling) trips CI instead
+# of silently breaking the join. Both sub-cases
 # emit ``cross_field`` (the existing home of FK-style predicates, e.g. the
 # ADR-0037 is_resolved<->dst check).
 #
@@ -2210,8 +2402,8 @@ def _check_origin_run_id_fk(
 ) -> list[ValidationViolation]:
     """Referential integrity: origin_run_id must reference a real AnalysisRun.
 
-    See ADR-0033 §"Validator classes" #3 (cross-field) and the validator:F2
-    family. Content-gated on ``analysis_runs`` being non-empty.
+    See ADR-0033 §"Validator classes" #3 (cross-field). Content-gated on
+    ``analysis_runs`` being non-empty.
     """
     from .ir import LEGACY_DESERIALIZED_SENTINEL
 
@@ -2269,23 +2461,19 @@ def _check_origin_run_id_fk(
 
 
 # ----------------------------------------------------------------------
-# WI-mujor — dangling-endpoint referential-integrity predicate
+# Dangling-endpoint referential-integrity predicate (WI-mujor)
 # ----------------------------------------------------------------------
 #
 # Every Edge.src / Edge.dst must reference a node id present in the symbol
 # set. Post-boundary-synthesis the graph is endpoint-closed by construction:
 # every unresolved dst is materialised as an external_symbol placeholder node
-# (the ~27% placeholder-dst cohort; the dst slot carries that placeholder's
-# id), and the ADR-0037 edge-finalization train closed the src side — the 23
-# tier-filtered src-dangling edges WI-mujor was filed against (substrate
-# a32c4a31) no longer reproduce: 0 dangling on default / --max-tier 1 /
-# --include-docs as re-measured 2026-06-17. This predicate is the standing
-# regression guard the Wave-2 gate requires: a producer/filter regression that
-# drops a referenced node (so an edge points at a now-absent id) trips CI
-# instead of silently passing the validator (the WI-moriz false-all-clear
-# class). It is exactly the dst-absent ("dangling") half deliberately left out
-# of the is_resolved<->dst FK check (see _check_cross_field_coherence's edge
-# loop), now its own predicate covering both endpoints.
+# (the dst slot carries that placeholder's id), and ADR-0037 edge
+# finalization closes the src side. This predicate is the regression guard
+# for that closure: a producer/filter regression that drops a referenced node
+# (so an edge points at a now-absent id) trips CI instead of silently passing
+# the validator (a false all-clear, WI-moriz). It covers the dst-absent
+# ("dangling") half deliberately left out of the is_resolved<->dst FK check
+# (see _check_cross_field_coherence's edge loop), on both endpoints.
 #
 # CONTENT-GATED on a non-empty run set, identically to _check_origin_run_id_fk:
 # every isolated unit fixture calls validate_ir with analysis_runs=[] and
@@ -2304,8 +2492,8 @@ def _check_dangling_endpoint(
 ) -> list[ValidationViolation]:
     """Referential integrity: every non-empty Edge.src/Edge.dst resolves to a
     node in the symbol set. Content-gated on ``analysis_runs`` being non-empty
-    (WI-mujor; the dst-absent half deferred from the ADR-0037 is_resolved<->dst
-    FK check)."""
+    (WI-mujor; the dst-absent half the ADR-0037 is_resolved<->dst FK check
+    leaves out)."""
     runs = list(analysis_runs)
     if not runs:
         return []
@@ -2340,15 +2528,14 @@ def _check_dangling_endpoint(
 
 
 # ----------------------------------------------------------------------
-# WI-vudul — fingerprint output-boundary format guard
+# Fingerprint output-boundary format guard (WI-vudul)
 # ----------------------------------------------------------------------
 #
 # Symbol.fingerprint is contractually the canonical ``hgfp2:<16hex>`` scheme on
 # real source nodes (a whitespace/comment-invariant structural-subtree hash).
-# WI-lisog made the central post-pass (``stamp_symbol_fingerprints``) NORMALIZE
-# producer-side non-canonical values, and WI-vudul deleted the ~29 dead
-# producer bare-hex computations the normalizer was overwriting. This is the
-# matching OUTPUT-boundary guard: it asserts the contract holds on the emitted
+# The central post-pass (``stamp_symbol_fingerprints``) NORMALIZES
+# producer-side non-canonical values (WI-lisog). This is the matching
+# OUTPUT-boundary guard: it asserts the contract holds on the emitted
 # substrate, so a future normalization-pass regression (or a producer path the
 # normalizer doesn't reach) that lets a bare hex fingerprint survive to output
 # trips CI instead of silently shipping a non-canonical identity value
@@ -2412,6 +2599,7 @@ def build_validation_report(
     violations: list[ValidationViolation],
     *,
     stable_id_stats: Optional[dict[str, Any]] = None,
+    name_slot_stats: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Construct the ``validation_report`` section for the artifact dict.
 
@@ -2419,12 +2607,11 @@ def build_validation_report(
     ``edges``, etc. The ``violations_by_class`` counter is computed here
     so consumers can read summary counts without iterating ``violations``.
 
-    ``wired_checks`` (validator:F2, schema_version 0.3) discloses the set of
-    predicates actually wired into ``validate_ir``, mapped to the
-    ``validator_class`` each contributes to. It makes a 0 count interpretable:
-    "0 instances of these named checks" rather than "0 defects of any kind".
-    A defect class absent from this manifest is, by absence, not yet validated
-    (WI-moriz: the false-all-clear is now structurally diagnosable).
+    ``wired_checks`` (schema_version 0.3+) discloses the set of predicates
+    actually wired into ``validate_ir``, mapped to the ``validator_class``
+    each contributes to. It makes a 0 count interpretable: "0 instances of
+    these named checks" rather than "0 defects of any kind". A defect class
+    absent from this manifest is, by absence, not yet validated (WI-moriz).
 
     ``stable_id_stats`` (ADR-0035 §5, schema_version 0.2): the corpus
     stable_id population/collision/None-cohort disclosure (from
@@ -2432,6 +2619,11 @@ def build_validation_report(
     it is ALWAYS present, independent of whether the collision umbrella
     fired. ``None`` on bare calls (unit tests); the production finalize
     path always supplies it.
+
+    ``name_slot_stats`` (ADR-0036 Ruling 1, schema_version 0.5): the
+    name-slot round-trip measured over every node id, by producer (from
+    ``compute_name_slot_stats``). A statistic, not violations; ``None`` on
+    bare calls like ``stable_id_stats``.
     """
     by_class: dict[str, int] = dict.fromkeys(_VALIDATOR_CLASSES, 0)
     for v in violations:
@@ -2443,6 +2635,7 @@ def build_validation_report(
         "violations_by_class": by_class,
         "wired_checks": [dict(c) for c in _WIRED_CHECKS],
         "stable_id_stats": stable_id_stats,
+        "name_slot_stats": name_slot_stats,
     }
 
 

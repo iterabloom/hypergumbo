@@ -56,9 +56,8 @@ class TestNonStringGrammarGuard:
     stamping pass cannot exercise this branch through synthetic nodes, because it
     span-filters zero-span synthetics (``span.start_line <= 0`` at
     fingerprint.py:540) before ever calling ``_compute_fingerprint``; the guard is
-    nonetheless reachable legitimate code via the public one-shot API. It surfaced
-    as the lone uncovered line while validating the WI-pozur Phase D/E reorder, so
-    it gets a direct unit test here.
+    nonetheless reachable legitimate code via the public one-shot API, so it
+    needs a direct unit test here.
     """
 
     def test_none_language_returns_none(self) -> None:
@@ -149,10 +148,11 @@ class TestPythonFingerprint:
         """WI-guhas: a decorated function whose producer-span starts at the
         `def` line (decorator excluded) must still hash its NAME.
 
-        Before the fit-check fix, _py_effective_lines pulled the FunctionDef
-        start up to the decorator line (above the span); the fit-check failed
-        and the path degraded to a body-only container hash that dropped the
-        name. Two decorated functions differing only by name then collided.
+        _py_effective_lines pulls the FunctionDef start up to the decorator
+        line (above the span). A fit check against that extended start fails,
+        and the path degrades to a body-only container hash that drops the
+        name, so two decorated functions differing only by name collide; the
+        fit check therefore compares against the ``def`` line.
         """
         a = b"@deco\ndef alpha(x):\n    return None\n"
         b = b"@deco\ndef omega(x):\n    return None\n"
@@ -167,9 +167,9 @@ class TestPythonFingerprint:
         """WI-guhas: the SIGNATURE (parameter list) of a decorated function
         whose span excludes the decorator must be in the fingerprint.
 
-        The container path skipped the ``arguments`` node (it carries no
-        lineno), so a decorated fn's params were dropped — same-name/different-
-        arity decorated fns with identical bodies collided.
+        The container path skips the ``arguments`` node (it carries no
+        lineno), so a decorated fn routed through it loses its params —
+        same-name/different-arity decorated fns with identical bodies collide.
         """
         a = b"@deco\ndef f(x):\n    return None\n"
         b = b"@deco\ndef f(x, y):\n    return None\n"
@@ -181,7 +181,7 @@ class TestPythonFingerprint:
 
     def test_decorated_class_name_is_part_of_fingerprint(self) -> None:
         """WI-guhas: a decorated class whose span excludes the decorator must
-        still hash its name (ClassDef, same root cause as the function case)."""
+        still hash its name (ClassDef, same hazard as the function case)."""
         a = b"@reg\nclass Alpha:\n    pass\n"
         b = b"@reg\nclass Beta:\n    pass\n"
         fp_a = compute_symbol_fingerprint("python", _span(2, 3), a)
@@ -195,8 +195,7 @@ class TestPythonFingerprint:
         (not the def keyword) leaves the FunctionDef as a non-fitting covering
         node, so its in-span children are hashed individually. This exercises
         the lineno-less-child skip (``ast.arguments`` carries no lineno) — the
-        path the WI-guhas fix deliberately stopped routing whole decorated defs
-        through.
+        path whole decorated defs must not be routed through (WI-guhas).
         """
         # def line 1; body statements lines 2-3. Span covers only the body.
         source = b"def f(a, b):\n    x = 1\n    y = 2\n"
@@ -256,9 +255,8 @@ class TestStampOrchestrator:
     ) -> None:
         """WI-lisog: a non-canonical (bare-hex / legacy) fingerprint on a real
         source node (language is not None) is a producer-side leak — it is
-        RECOMPUTED in the canonical hgfp2: scheme, not preserved. This inverts
-        the old line-531 precedence trap that let producer bare-hex survive to
-        output."""
+        RECOMPUTED in the canonical hgfp2: scheme, not preserved. Preserving it
+        would let producer bare-hex survive to output."""
         f = tmp_path / "a.py"
         f.write_text("def f(): pass\n")
         sym = _sym("python", "a.py", 1, 1)
@@ -381,21 +379,20 @@ class TestStampOrchestrator:
 
 
 class TestContextAwareFingerprint:
-    """WI-falum / WI-lisog: spans are fingerprinted in their file's parse
-    context, not as out-of-context snippets.
+    """Spans are fingerprinted in their file's parse context, not as
+    out-of-context snippets.
 
-    The v1 implementation sliced the span out of the file and parsed the
-    slice standalone. Two failure modes followed: a single-line TOML
-    array element parses to an ERROR tree whose leaf walk drops the
-    content (all 76 TOML dependency nodes collapsed to ONE fingerprint —
-    WI-falum, a 6.0.0 regression), and a Python method containing a
-    column-0 triple-quoted fixture defeats the dedent fallback
-    (3,911 test methods fingerprint=None — WI-lisog facet a).
+    Slicing the span out of the file and parsing the slice standalone fails
+    two ways: a single-line TOML array element parses to an ERROR tree whose
+    leaf walk drops the content (every dependency line in a manifest
+    collapses to ONE fingerprint), and a Python method containing a column-0
+    triple-quoted fixture defeats the dedent fallback (fingerprint=None).
+    (history: WI-falum, WI-lisog)
     """
 
     def test_toml_single_line_dep_spans_get_distinct_fingerprints(self) -> None:
-        """The WI-falum regression case: distinct dependency lines must
-        hash distinctly."""
+        """Distinct single-line dependency entries must hash distinctly
+        (WI-falum)."""
         source = (
             b'[project]\n'
             b'name = "fixture"\n'
@@ -512,7 +509,7 @@ class TestFallbackAndEdgePaths:
 
     def test_broken_file_falls_back_to_snippet_parse(self) -> None:
         """When the whole file fails ast.parse, a span over a valid
-        region still fingerprints via the legacy snippet path."""
+        region still fingerprints via the snippet-parse fallback."""
         fp = compute_symbol_fingerprint("python", _span(1, 2), self.BROKEN_TAIL)
         assert fp is not None
         assert fp.startswith("hgfp2:")
@@ -556,10 +553,9 @@ class TestFallbackAndEdgePaths:
 
         assert _slice_source(b"x = 1\n", _span(0, 0)) == b""
 
-    # The three cases below cover tree-sitter walk branches that this
-    # package's own suite reached only through OTHER packages' end-to-end
-    # tests. CI runs each package in isolation, so those branches counted as
-    # uncovered the moment fingerprint.py became a changed file — the
+    # The three cases below cover tree-sitter walk branches in this package's
+    # own suite. CI runs each package in isolation, so coverage reached only
+    # through OTHER packages' end-to-end tests does not count — the
     # cross-package gap `check-package-coverage` exists to catch. Real toml
     # parses, no stubs: each input is chosen because it lands the walk on a
     # specific structural shape.
@@ -601,9 +597,9 @@ class TestFallbackAndEdgePaths:
 def test_scheme_constant_is_stable() -> None:
     """The scheme tag string is part of the on-disk contract; pin it.
 
-    v2 (WI-falum): the context-aware rewrite changes every emitted value
-    (subtree-rooted walks replace snippet-rooted walks), so the scheme
-    tag and prefix bump per the module's own versioning convention.
+    Any change to emitted values bumps the scheme tag and prefix, per the
+    module's own versioning convention; v2 is the context-aware,
+    subtree-rooted walk (WI-falum).
     """
     assert SYMBOL_FINGERPRINT_SCHEME == "hypergumbo-symbol-fp-v2"
 
@@ -618,11 +614,10 @@ def test_prefix_is_hgfp2() -> None:
     assert len(fp) == len("hgfp2:") + 16
 
 
-# WI-tubuv: close hypergumbo-core's per-package isolation coverage gap on
-# fingerprint.py (lines 310, 361). These paths were exercised cross-package in
-# the combined suite but not by core's OWN tests, so `core` measured 99% in
-# isolation — which kept the full-suite ALL_100 gate (and thus the last-green-sha
-# marker) from ever firing. Covering them in isolation lets that gate work.
+# These cover fingerprint.py paths (lines 310, 361) in core's OWN tests.
+# Coverage from other packages' suites does not count when core is measured in
+# isolation, and anything under 100% there keeps the full-suite ALL_100 gate
+# (and thus the last-green-sha marker) from firing. (history: WI-tubuv)
 
 
 def test_content_byte_range_whitespace_only_span_returns_none() -> None:

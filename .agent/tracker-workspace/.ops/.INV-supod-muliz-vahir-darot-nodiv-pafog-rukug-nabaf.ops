@@ -1,0 +1,21 @@
+- op: create  # 5af4
+  at: '2026-11-06T04:07:23Z'  # 5af4
+  by: agent  # 5af4
+  actor: jgstern_agent  # 5af4
+  clock: 1  # 5af4
+  nonce: 5af4  # 5af4
+  data:  # 5af4
+    kind: invariant  # 5af4
+    title: "run_survey writes into the results cache through user_out wrappers when no --out is given"  # 5af4
+    status: violated  # 5af4
+    priority: 3  # 5af4
+    parent:  # 5af4
+    tags: []  # 5af4
+    isbefore: []  # 5af4
+    duplicate_of: []  # 5af4
+    not_duplicate_of: []  # 5af4
+    pr_ref:  # 5af4
+    description: "Found 2026-11-05 while correcting user_out_write's stale docstring (WI-satih sheet pass, row 28 / safety_zones:366).\n\nrun_survey(out_path=None) defaults out_path to the results cache dir (_get_results_cache_dir(...) / CANONICAL_SURVEY_FILENAME, cli.py ~12975). _get_or_run_analysis calls it that way (cli.py ~788), so every command that runs an analysis on a cache miss reaches these writes into the user_cache zone, all through user_out_* wrappers:\n- user_out_mkdir(out_path.parent) (~13559)\n- user_out_open_json_dump / _gzip of the budget maps (~13606-13609)\n- user_out_open_json_dump / _gzip of the behavior map (~13704-13706)\n- _emit_handler_slices: user_out_mkdir(out_dir), user_out_open_json_dump per slice, user_out_write of slice.handler.index.json (out_dir = <stem>.slices next to out_path). _get_or_run_analysis passes enable_handler_slices=False only under minimal.\n\nThe taint pass bins sinks by callee name (safety_zones module docstring), so verify-claims sees these as user_out writes; a claim permitting user_out but prohibiting user_cache (or the reverse) is adjudicated on the wrong zone. Same family as WI-satih row 39 (install_artifact_write_bytes writing the gitleaks archive into the tmp zone; fixed in the same pass by routing it through a tmp_artifact wrapper).\n\nCure sketch: run_survey picks the wrapper family from where out_path came from (caller-supplied = user_out, defaulted = user_cache), once, and passes it down; not re-derived from the path. Sweep the other run_survey-shaped writers (cli.py 2243, 5617) by the same question: who chose the path?"  # 5af4
+    fields:  # 5af4
+      statement: "Every write reaches its zone's wrapper: a write landing in the hypergumbo cache goes through a user_cache wrapper, never a user_out one"  # 5af4
+      root_cause: "run_survey defaults out_path to the cache dir but writes through user_out_* unconditionally; the wrapper is chosen by the code path, not by who supplied the path"  # 5af4

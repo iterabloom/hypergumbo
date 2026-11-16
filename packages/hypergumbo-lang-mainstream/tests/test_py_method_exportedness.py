@@ -1,40 +1,30 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Every Python method gets an exportedness verdict, and it is conjunctive
-(WI-kohah).
+"""Every Python method gets an exportedness verdict, and it is conjunctive.
 
-INV-kubup made ``Symbol.is_exported`` tri-state, so ``null`` now honestly means
-"no producer computed this". py.py sets it at four sites -- module-level
-variable, class, class attribute, module-level function -- and at NONE for a
-method, so Python methods were the largest single ``null`` population.
+``Symbol.is_exported`` is tri-state, so ``null`` means "no producer computed
+this" (INV-kubup). A method left at ``null`` is unmeasured, and the gap falls
+the unsafe way: a PRIVATE-by-name method gets ``False`` downstream from the
+``private`` modifier py.py stamps regardless, so the methods that depend on
+an explicit verdict are the PUBLIC ones -- the only ones that might be
+exported, and the ones that need the enclosing class's verdict. For the
+dead-code seed set (WI-zimum) an unmeasured public method is unmeasured
+exactly where exportedness changes the answer. (history: WI-kohah)
 
-MEASURED BEFORE THE FIX, and this corrected the row's own repro: it was NOT
-"all of them". On this repository's survey, 23,063 of 23,731 python methods
-(97.2%) carried ``null`` and 668 carried ``False`` -- and the split was exact,
-with zero exceptions in either direction: every PRIVATE-by-name method already
-had ``False`` (derived downstream from the ``private`` modifier py.py stamps),
-every other method had ``null``. So the half that was missing is the PUBLIC
-half -- which is precisely the half that needs the enclosing class's verdict.
-
-THE ASYMMETRY RAN THE UNSAFE WAY. The methods that HAD a verdict were the ones
-that could never be exported; the ones with NO verdict were the only ones that
-might be. For the WI-zimum dead-code seed set that means the seeds were
-unmeasured exactly where exportedness changes the answer.
-
-THE RULE IS CONJUNCTIVE, per the row: a public method of an exported class is
+THE RULE IS CONJUNCTIVE: a public method of an exported class is
 reachable from outside the package; a public method of a PRIVATE class is not.
 ``__all__`` does not list methods, so the class's own membership is the
 authority, not the method's.
 
 DUNDERS ARE PUBLIC PROTOCOL, not private -- ``__init__`` of an exported class is
-reachable by constructing it. This is the one verdict that CHANGES a downstream
-population rather than merely filling it in, so it is asserted here explicitly
-rather than left to follow from the helper.
+reachable by constructing it. Treating dunders as private would flip a
+downstream population rather than merely leave it unfilled, so this is asserted
+here explicitly rather than left to follow from the helper.
 
 REUSE, NOT RE-DERIVATION: the private-name convention comes from py.py's own
 ``_python_visibility_modifiers``, the same call that already fills this symbol's
 ``modifiers``, so the two facts cannot disagree. (``visibility.py``'s
-``_is_python_private_name`` encodes the identical rule; that duplication is
-pre-existing and is not resolved here.)
+``_is_python_private_name`` encodes the identical rule separately; the two
+must be kept in step.)
 """
 from __future__ import annotations
 

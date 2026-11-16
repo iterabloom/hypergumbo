@@ -56,3 +56,18 @@
     tags: [dogfood]  # bdf4
   remove:  # bdf4
     tags: [dogfooding]  # bdf4
+- op: discuss  # 4f82
+  at: '2026-11-01T10:55:58Z'  # 4f82
+  by: agent  # 4f82
+  actor: jgstern_agent  # 4f82
+  clock: 6  # 4f82
+  nonce: 4f82  # 4f82
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e (9.2.0): hypergumbo catalog lists 54 of 119 core passes with empty descriptions (47 of 61 analyzers, 7 of 58 linkers), 0 of 63 extra; the Suggested header also prints scip_python/svelte/vue blank. Core descriptions come from a catalog.py table (e.g. blade at catalog.py:461), not only a register_analyzer description= kwarg (no call passes one). MECHANISM: catalogue row lacks a description; empty-string default with no gate."  # 4f82
+- op: update  # c787
+  at: '2026-11-01T10:55:58Z'  # c787
+  by: agent  # c787
+  actor: jgstern_agent  # c787
+  clock: 7  # c787
+  nonce: c787  # c787
+  set:  # c787
+    title: "Backfill catalog descriptions: 54 of 119 core passes (47 analyzers, 7 linkers) print blank in `hypergumbo catalog`"  # c787

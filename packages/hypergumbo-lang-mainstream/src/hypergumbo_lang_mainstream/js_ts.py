@@ -16,14 +16,13 @@ extract:
   ``enum``, and the members of interfaces and enums
 - stable_ids over the FULL scope chain (``_jsts_scope``: classes, TypeScript
   namespaces/modules, named functions and methods, the variable a function or
-  object literal is bound to; INV-fabih). Members and callables hashed the
-  class chain alone and classes/interfaces/enums/type aliases the backstop's
-  bare-name table key, so two ``class Inner`` in two namespaces or functions
-  tied and deleting the first moved the second; the table kinds now mint
-  ``overload_arity.scoped_table_stable_id``. Top-level declarations and
-  members of top-level classes keep their values. The emitted
-  ``qualified_name`` carries the enclosing classes and TypeScript namespaces
-  (``A.B.C.go``; it held the class chain alone)
+  object literal is bound to; INV-fabih), so two ``class Inner`` in two
+  namespaces or functions get distinct ids and deleting the first does not
+  move the second. Classes, interfaces, enums and type aliases mint
+  ``overload_arity.scoped_table_stable_id``. A top-level declaration's scope
+  is empty, and a member of a top-level class has its class as its scope.
+  The emitted ``qualified_name`` carries the enclosing classes and
+  TypeScript namespaces (``A.B.C.go``)
 - ``field`` symbols for class properties and ``variable`` for module-level
   bindings
 - One ``file`` symbol per module, anchoring top-level calls
@@ -49,7 +48,7 @@ extract:
 - Decorator application: ``decorated_by`` (edges); an unresolved or
   non-callable decorator gets an unresolved ``decorated_by`` edge to
   ``typescript:unresolved:0-0:<name>:unresolved``
-- ``references`` edges for functions passed rather than called:
+- ``references`` edges for functions passed or stored rather than called:
   ``callback_argument_reference`` (a named function, or an inline anonymous
   callback, given as a call argument), ``object_field_reference``
   (``{onClick: handleClick}`` and the shorthand ``{handleClick}``), and a
@@ -59,18 +58,26 @@ extract:
   property (``obj.h = fn``, ``module.exports = fn``) is an
   ``object_field_reference`` too, except where the write is a catalogued
   handler registration (``ws.onmessage = fn``, below), which is a
-  ``callback_argument_reference`` like its ``addEventListener`` twin (WI-vubal)
+  ``callback_argument_reference`` like its ``addEventListener`` twin (WI-vubal).
+  A function stored as a value (``f = handler``, ``const f = handler``, or an
+  element of an array dispatch table ``[a, b]``) is a ``function_reference``;
+  storing a function is not calling it, so taint does not walk that edge
 - Handler registration by assignment (``ws.onmessage = h``): an unresolved
   ``calls`` edge with ``call_construct="assignment"``, emitted only when the
   receiver has a catalogue module and the property is one of its rows in
   ``JS_ASSIGNABLE_ROWS``
 - ``module_attr_ref`` edges (``emit_module_attribute_refs``) for member reads
   on imported modules and on ``process`` / ``window`` / ``document`` /
-  ``navigator``, anchored to the enclosing callable rather than the file
+  ``navigator``, anchored to the enclosing callable rather than the file. A
+  read through an in-tree module object (``const b = require('@ws/b');
+  new b.Engine()``) is rewritten to a ``references`` edge to the in-tree
+  symbol with ``evidence_type="ast_name_read"``
+  (``_retarget_in_tree_module_attrs``); any other read, such as an external
+  module's, keeps its ``module_attr_ref``
 - TypeScript type references — type alias / interface signatures —
   emitted as ``references`` edges carrying
-  ``evidence_type="ast_type_ref"`` (refactoring blast radius). The
-  bespoke ``type_ref`` edge type was folded onto ``references``.
+  ``evidence_type="ast_type_ref"`` (refactoring blast radius); there is no
+  separate ``type_ref`` edge type.
 
 ``Edge.dst_ref`` on UNRESOLVED call edges is populated only on some
 paths. A call to a named import sets it explicitly to the canonical
@@ -96,13 +103,22 @@ Call-Site Resolution
   grade, ``resolution_score`` 1.0, which is the ast_call_direct ceiling); a
   parameter or local value is a callee nothing can name and emits nothing;
   only a name bound by an import, or by nothing in the file, reaches the
-  import, same-package and repo-wide name lookups (WI-sofuh). A called module binding
+  import, same-package and repo-wide name lookups (WI-sofuh). A name
+  imported from a module shown external (a Node core module, or a declared
+  registry dependency the repo does not define;
+  ``_bare_specifier_is_external``) skips all three and takes the named-import unresolved edge, so an in-repo
+  namesake never claims it. A called module binding
   (``import m from 'x'; m()``) emits ``x``'s ``default``; a name nothing binds
   and nothing in the repo carries emits the ``external`` placeholder
   (WI-fahod).
 - **Member-call cascade** (``obj.m()``): ``this.m()`` against the enclosing
   class; a typed ``this.prop`` receiver; a
-  namespace-import alias; a variable typed by ``var_types``; a bare
+  namespace-import alias (an external module's alias makes no name lookup
+  and goes straight to its module's unresolved edge); a variable whose
+  ``var_types`` type is a named import from an external module, which gets an
+  unresolved edge to that module with ``receiver_type_hint`` and
+  ``call_construct="method"`` unless a catalogued constructor types it; a
+  variable typed by ``var_types``; a bare
   ``JS_KNOWN_GLOBALS`` receiver (``console``, ``process``, ...); a receiver
   whose catalogue module is in ``var_ctor_modules`` (filled from
   ``new X()`` or a TypeScript-declared type when ``X`` is in
@@ -116,7 +132,11 @@ Call-Site Resolution
 - **INV-fahub deferral** (``defer_bare_method_call``): a bare ``foo()`` or
   untyped ``obj.m()`` whose only match is a weak short-name hit on a
   DIFFERENT class's method is not bound; an unresolved edge stamped with the
-  enclosing class is emitted instead for inherited-call recovery.
+  enclosing class is emitted instead for inherited-call recovery. A lookup
+  that ties between two or more same-named candidates, at least one of them
+  a method, binds nothing and is deferred the same way
+  (``defer_unresolved_tie``); unlike the weak-hit rule, this has no
+  same-class exemption.
 - **Enclosing function**: ``_get_enclosing_function`` finds the caller by
   ``symbol_by_position`` (path, line, column), so duplicate names across
   files do not collide. The function-declaration and method branches still
@@ -183,7 +203,21 @@ Svelte / Vue Support
 --------------------
 Svelte and Vue files contain <script> blocks with TypeScript or JavaScript.
 We extract these blocks, preserving line numbers for accurate spans,
-and analyze them using the appropriate tree-sitter grammar.
+and analyze them using the appropriate tree-sitter grammar. One extractor
+(``_extract_sfc_scripts``) serves both hosts. The grammar is read from the
+tag's ``lang`` attribute wherever it sits among the attributes, in any HTML
+quoting (WI-zakij): ``ts`` / ``typescript`` take the TypeScript grammar,
+``tsx`` its TSX variant, anything else (or no ``lang``) the JavaScript
+grammar. The tag scan is quote-aware, so Vue's ``generic="T extends A<B>"``
+does not end the tag at its ``>``; a self-closing ``<script src=... />`` has
+no body and is skipped.
+
+A component yields ONE file symbol however many blocks it has (WI-rolub;
+``_parse_sfc_blocks``): its language is ``typescript`` when any block is
+TypeScript, else ``javascript``, and its span covers every block. Each block
+is still parsed and walked on its own (its members keep their block's
+language), but all blocks fold that one file symbol's identity anchor, and
+pass 2 anchors every block's file-level edges (imports, requires) on it.
 
 Why This Design
 ---------------
@@ -200,13 +234,14 @@ Why This Design
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.discovery import find_files
@@ -215,13 +250,20 @@ from hypergumbo_core.ir import (
     make_pass_id,
 )
 from hypergumbo_core.paths import normalize_path
+from hypergumbo_core.supply_chain import own_package_name
+from hypergumbo_core.js_package_entry import is_node_core_module, package_entry, probe_file
 from hypergumbo_core.qualified_name_axis import separator_for_language
-from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
+from hypergumbo_core.symbol_resolution import (
+    ListNameResolver,
+    LookupResult,
+    NameResolver,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     emit_module_attribute_refs,
     stamp_io_mode_from_call,
     symbols_by_path_index,
@@ -239,6 +281,7 @@ from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
     make_variable_stable_id,
     node_text as _node_text,
+    declares_async,
 )
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -265,7 +308,7 @@ def find_js_ts_files(
 
     Includes the module-variant extensions ``.mjs``/``.cjs`` (ES-module /
     CommonJS JavaScript) and ``.mts``/``.cts`` (their TypeScript counterparts);
-    omitting them left whole CommonJS service files undiscovered (WI-zavad)."""
+    without them whole CommonJS service files go undiscovered (WI-zavad)."""
     yield from find_files(
         repo_root,
         ["*.js", "*.jsx", "*.ts", "*.tsx", "*.mjs", "*.cjs", "*.mts", "*.cts"],
@@ -287,111 +330,92 @@ def find_vue_files(
     yield from find_files(repo_root, ["*.vue"], max_files=max_files)
 
 
-# Regex to extract <script> blocks from Svelte files
-# Captures: lang attribute (if present) and script content
-_SVELTE_SCRIPT_RE = re.compile(
-    r'<script(?:\s+lang=["\']?(ts|typescript)["\']?)?[^>]*>(.*?)</script>',
+# One ``<script ...>`` element of a Svelte / Vue single-file
+# component (WI-zakij). Group 1 is the opening tag's attribute text, group 2 the body
+# (None for a self-closing ``<script ... />``, which has no body to parse and
+# must not pair with the NEXT block's ``</script>``). The attribute text is
+# quote-aware, so a ``>`` inside a quoted value -- Vue 3.3's
+# ``generic="T extends Record<string, unknown>"`` -- does not end the tag. The
+# grammar is decided from the attributes afterwards (``_script_block_lang``),
+# never by the position of ``lang`` in the tag, so ``<script context="module"
+# lang="ts">``, ``<script type="module" lang="ts">`` and ``<script setup
+# generic="T" lang="ts">`` all take the TypeScript grammar.
+_SFC_SCRIPT_RE = re.compile(
+    r"<script(?=[\s/>])((?:[^>\"'/]|/(?!>)|\"[^\"]*\"|'[^']*')*)"
+    r"(?:/>|>(.*?)</script\s*>)",
     re.DOTALL | re.IGNORECASE,
 )
 
-# Regex to extract <script> blocks from Vue SFC files
-# Handles both regular <script> and <script setup> variants
-# Captures: lang attribute (if present) and script content
-_VUE_SCRIPT_RE = re.compile(
-    r'<script(?:\s+setup)?(?:\s+lang=["\']?(ts|typescript)["\']?)?'
-    r'(?:\s+setup)?[^>]*>(.*?)</script>',
-    re.DOTALL | re.IGNORECASE,
+# One attribute of an opening tag: its name, then an optional value in any of
+# HTML's three spellings (double-quoted, single-quoted, unquoted). Scanning
+# whole attributes, rather than searching for ``lang=``, keeps a ``lang=``
+# inside another attribute's quoted value (``title="lang=ts"``) or a
+# ``data-lang`` attribute from deciding the grammar.
+_TAG_ATTR_RE = re.compile(
+    r"""([^\s"'=<>/`]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?"""
 )
+
+# ``lang`` values read with the TypeScript grammar. ``tsx`` takes the TSX
+# variant (TypeScript plus JSX), as a ``.tsx`` file does; any other value
+# (absent, ``js``, ``jsx``, ...) takes the JavaScript grammar, which reads JSX.
+_TS_SCRIPT_LANGS = frozenset({"ts", "typescript", "tsx"})
+
+
+def _script_block_lang(attr_text: str) -> str:
+    """The lowercased ``lang`` value of a ``<script>`` tag's attributes.
+
+    ``""`` when the tag has no ``lang``. The first ``lang`` wins, as in an
+    HTML parser's handling of a duplicated attribute.
+    """
+    for match in _TAG_ATTR_RE.finditer(attr_text):
+        if match.group(1).lower() == "lang":
+            value = next((g for g in match.group(2, 3, 4) if g is not None), "")
+            return value.strip().lower()
+    return ""
 
 
 @dataclass
-class SvelteScriptBlock:
-    """Extracted script block from a Svelte file."""
+class SfcScriptBlock:
+    """One ``<script>`` block extracted from a Svelte or Vue file."""
 
     content: str
     start_line: int  # 1-indexed line where script content starts
     is_typescript: bool
+    is_tsx: bool = False  # lang="tsx": the TSX grammar, not plain TypeScript
 
 
-def extract_svelte_scripts(source: str) -> list[SvelteScriptBlock]:
-    """Extract <script> blocks from Svelte file content.
+# Both hosts share one block type; the per-host names are aliases kept for
+# callers that import them.
+SvelteScriptBlock = SfcScriptBlock
+VueScriptBlock = SfcScriptBlock
 
-    Returns list of script blocks with their content and line offsets.
-    Handles both TypeScript (lang="ts") and JavaScript scripts.
+
+def _extract_sfc_scripts(source: str) -> list[SfcScriptBlock]:
+    """Extract the ``<script>`` blocks of a single-file component.
+
+    Svelte and Vue spell a script block the same way (Vue's ``setup``,
+    Svelte's ``context="module"`` and either host's ``generic`` / ``type``
+    are just more attributes), so one extractor serves both. Each block
+    carries the line its content starts on and the grammar its ``lang``
+    attribute selects, wherever that attribute sits in the tag.
     """
-    blocks: list[SvelteScriptBlock] = []
-
-    # Find all script tags with their positions
-    for match in _SVELTE_SCRIPT_RE.finditer(source):
-        lang = match.group(1)
+    blocks: list[SfcScriptBlock] = []
+    for match in _SFC_SCRIPT_RE.finditer(source):
         content = match.group(2)
-        is_ts = lang is not None and lang.lower() in ("ts", "typescript")
-
-        # Calculate line number where content starts
-        # Count newlines before the match start
-        prefix = source[: match.start()]
-        tag_start_line = prefix.count("\n") + 1
-
-        # Find where the actual content starts (after the opening tag)
-        tag_text = match.group(0)
-        opening_tag_end = tag_text.find(">") + 1
-        opening_tag_lines = tag_text[:opening_tag_end].count("\n")
-        content_start_line = tag_start_line + opening_tag_lines
-
+        if content is None:
+            continue  # self-closing <script src=... />: no body
+        lang = _script_block_lang(match.group(1))
+        # The content starts on the line of the opening tag's closing ``>``
+        # (the tag may span lines).
+        content_start_line = source.count("\n", 0, match.start(2)) + 1
         blocks.append(
-            SvelteScriptBlock(
+            SfcScriptBlock(
                 content=content,
                 start_line=content_start_line,
-                is_typescript=is_ts,
+                is_typescript=lang in _TS_SCRIPT_LANGS,
+                is_tsx=lang == "tsx",
             )
         )
-
-    return blocks
-
-
-@dataclass
-class VueScriptBlock:
-    """Extracted script block from a Vue SFC file."""
-
-    content: str
-    start_line: int  # 1-indexed line where script content starts
-    is_typescript: bool
-
-
-def extract_vue_scripts(source: str) -> list[VueScriptBlock]:
-    """Extract <script> blocks from Vue SFC file content.
-
-    Returns list of script blocks with their content and line offsets.
-    Handles both TypeScript (lang="ts") and JavaScript scripts.
-    Also handles <script setup> blocks.
-    """
-    blocks: list[VueScriptBlock] = []
-
-    # Find all script tags with their positions
-    for match in _VUE_SCRIPT_RE.finditer(source):
-        lang = match.group(1)
-        content = match.group(2)
-        is_ts = lang is not None and lang.lower() in ("ts", "typescript")
-
-        # Calculate line number where content starts
-        # Count newlines before the match start
-        prefix = source[: match.start()]
-        tag_start_line = prefix.count("\n") + 1
-
-        # Find where the actual content starts (after the opening tag)
-        tag_text = match.group(0)
-        opening_tag_end = tag_text.find(">") + 1
-        opening_tag_lines = tag_text[:opening_tag_end].count("\n")
-        content_start_line = tag_start_line + opening_tag_lines
-
-        blocks.append(
-            VueScriptBlock(
-                content=content,
-                start_line=content_start_line,
-                is_typescript=is_ts,
-            )
-        )
-
     return blocks
 
 
@@ -464,6 +488,16 @@ class _ParsedFile:
     # sees ``Bar(...)`` but the canonical name for downstream
     # consumers is ``Foo``. Same key set as named_imports.
     named_import_originals: dict[str, str] | None = None
+    # WI-halol: the name this file's ``export default`` declaration binds
+    # (``export default function cDefault``, ``export default class X``,
+    # ``export default x``), or None. In memory only; read by
+    # ``_InTreeDefaultExports`` to resolve a default import of a workspace
+    # sibling to the entry's default export, whatever the local name.
+    default_export: str | None = None
+    # WI-halol: the namespace_imports aliases that ARE the module object
+    # (``import * as m``, ``const m = require(...)``); see
+    # ``_extract_namespace_imports``.
+    module_objects: frozenset[str] = frozenset()
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
@@ -526,9 +560,8 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
 #: exist, which is exactly what INV-fazim refuses: a slot must name a path that
 #: is real, not one assembled from whatever property happened to be written.
 #: Every name here has a real ``<mod>/promises`` twin, so the slot is TRUE
-#: whether or not the catalogue currently carries rows for it (today: ``fs`` 31,
-#: ``dns`` 16; the other three have none and are included because the SLOT is
-#: correct regardless, and rows added later then work with no further change).
+#: whether or not the catalogue currently carries rows for it, and rows added
+#: later work with no further change.
 _JS_PROMISES_SUBMODULE_PARENTS = frozenset({
     "fs", "dns", "stream", "readline", "timers",
 })
@@ -541,16 +574,16 @@ def _promises_submodule(
 ) -> "str | None":
     """``<mod>/promises`` for a receiver spelled ``<mod>.promises``, else ``None``.
 
-    WI-vihop. Node's promise API has two spellings and only the direct one
-    worked: ``require('fs/promises').readFile`` reached the catalogue while
-    ``fs.promises.readFile`` -- the documented pre-ESM form, still common -- fell
-    to the ``external`` placeholder, because ``obj_name`` upstream is set only
-    for a bare ``identifier`` and ``fs.promises`` is a ``member_expression``.
+    Node's promise API has two spellings: ``require('fs/promises').readFile``
+    and ``fs.promises.readFile`` (the documented pre-ESM form, still common).
+    The direct one reaches the catalogue through its import binding; the
+    dotted one needs this, because ``obj_name`` upstream is set only for a
+    bare ``identifier`` and ``fs.promises`` is a ``member_expression``
+    (WI-vihop).
 
     THREE BINDINGS, ONE ANSWER, because ``_extract_namespace_imports`` already
     binds all three the same way: ``const fs = require('fs')``, ``import fs from
-    'fs'`` and ``import * as fs from 'node:fs'``. The ESM default form is NOT in
-    WI-vihop's filed list and was equally broken. The inline
+    'fs'`` and ``import * as fs from 'node:fs'``. The inline
     ``require('fs').promises`` is read straight off the call.
 
     THE SLOT SPELLING IS THE ONE THE DIRECT REQUIRE ALREADY EMITS
@@ -616,12 +649,12 @@ def _strip_import_scheme(module: str) -> str:
 
     THE ONE HOME for the scheme half of :func:`_normalize_import_module_hint`,
     which the CALL path uses. The IMPORT edge and the ``module_attr_ref`` edges
-    read off the same binding used the raw specifier, so one
-    ``require('node:path')`` spelled ``path`` on its calls and ``node:path`` on
-    its import and its attribute reads -- and the coverage gate, which asks
-    ``module_io_is_enumerated`` EXACTLY, reported express's ``node:path`` /
-    ``node:http`` / ``node:querystring`` as modules it could not classify while
-    the ``path`` grant covered the calls.
+    read off the same binding go through it too, so one
+    ``require('node:path')`` is spelled ``path`` on its calls, its import and
+    its attribute reads alike. The coverage gate asks
+    ``module_io_is_enumerated`` EXACTLY, so a raw ``node:path`` on the import
+    would read as a module it cannot classify while the ``path`` grant covers
+    the calls.
 
     ``node:`` names a Node built-in and nothing else, and ``require`` returns a
     core module ahead of any same-named ``node_modules`` package, so the bare
@@ -673,6 +706,7 @@ def _require_module_string(
 def _extract_namespace_imports(
     tree: "tree_sitter.Tree",
     source: bytes,
+    module_objects: "set[str] | None" = None,
 ) -> dict[str, str]:
     """Extract namespace imports from a parsed tree.
 
@@ -681,7 +715,11 @@ def _extract_namespace_imports(
     - import alias from 'module' (default import) -> alias: module
     - CommonJS ``const alias = require('module')`` -> alias: module (WI-zavad)
 
-    Returns dict mapping alias -> module name.
+    Returns dict mapping alias -> module name. When ``module_objects`` is
+    given, the aliases that ARE the module object -- ``import * as`` and a
+    plain ``require`` -- are added to it (WI-halol). A default import's
+    alias is the default export's VALUE, so ``x.m`` on it is a property of
+    that value, not a member of the module, and it is not added.
     """
     namespace_imports: dict[str, str] = {}
 
@@ -703,6 +741,8 @@ def _extract_namespace_imports(
                         for ns_child in clause_child.children:
                             if ns_child.type == "identifier":
                                 alias = _node_text(ns_child, source)
+                                if module_objects is not None:
+                                    module_objects.add(alias)
                     elif clause_child.type == "identifier":
                         # import alias from 'module' (default import)
                         alias = _node_text(clause_child, source)
@@ -714,8 +754,8 @@ def _extract_namespace_imports(
     # ``var http = require('http')`` binds a module to a name exactly like an
     # ESM default/namespace import (WI-zavad). Registering it here lets member
     # calls (``fs.readFileSync()``) route through the same namespace resolution
-    # (Case 2 / WI-vurop) in _extract_edges instead of vanishing — the gap that
-    # left CommonJS Node I/O invisible to the io-boundaries layer.
+    # (Case 2 / WI-vurop) in _extract_edges; without it CommonJS Node I/O is
+    # invisible to the io-boundaries layer.
     for node in iter_tree(tree.root_node):
         if node.type != "variable_declarator":
             continue
@@ -736,6 +776,8 @@ def _extract_namespace_imports(
         # the whole module as a namespace alias.
         if name_node is not None and name_node.type == "identifier":
             namespace_imports[_node_text(name_node, source)] = module
+            if module_objects is not None:
+                module_objects.add(_node_text(name_node, source))
 
     return namespace_imports
 
@@ -860,15 +902,21 @@ def _disambiguate_by_import(
 
     Resolves the import path relative to the importing file's directory and
     matches against candidate symbol file paths (with extension stripped).
-    Only handles relative imports (starting with '.').
+
+    A bare specifier that names a package the tree defines (an npm workspace
+    sibling, ``require('@ws/b')``) is answered by
+    :func:`_in_tree_package_candidate` instead, even for a single candidate:
+    that bind is the one the cross-package guard downstream would otherwise
+    refuse (WI-rilof).
 
     Returns the matching Symbol, or None if disambiguation fails.
     """
-    if not import_path.startswith("."):
-        return None  # Non-relative imports can't be disambiguated this way
-
     candidates = symbols_by_name.get(full_name)
-    if not candidates or len(candidates) < 2:
+    if not candidates:
+        return None
+    if not import_path.startswith("."):
+        return _in_tree_package_candidate(import_path, file_path, candidates)
+    if len(candidates) < 2:
         return None  # No disambiguation needed
 
     # Resolve import path relative to importing file's directory
@@ -886,6 +934,233 @@ def _disambiguate_by_import(
     return None
 
 
+def _in_tree_package_candidate(
+    specifier: str, file_path: Path, candidates: list["Symbol"],
+) -> "Symbol | None":
+    """The candidate a bare ``specifier`` imports from a package in the tree.
+
+    ``require('@ws/b')`` in an npm workspace names a package whose source is
+    analysed: its ``package.json`` declares ``"name": "@ws/b"``. The candidate
+    is the one whose nearest ``package.json`` is that package's, and, for a
+    subpath (``@ws/b/util``), whose file is the one the subpath names. Without
+    this, the name lookup finds b's function and ``_is_cross_package`` refuses
+    it, so the call lands on a ``javascript:@ws/b:0-0:helper`` stub and b's
+    real function reads as uncalled (WI-rilof).
+
+    A specifier no in-tree ``package.json`` names, more than one match, or a
+    package importing itself by name returns None, leaving the call to the
+    existing routes.
+    """
+    package = _js_package_name(specifier)
+    own_root = _find_package_root(file_path)
+    matches = []
+    for candidate in candidates:
+        root = _find_package_root(Path(candidate.path))
+        if root is not None and root != own_root and _package_json_name(root) == package:
+            matches.append((root, candidate))
+    subpath = specifier[len(package):].lstrip("/")
+    if subpath:
+        # The subpath's file, or its directory's index, at the package root or
+        # under ``src/`` -- the same places the js_module linker probes.
+        matches = [
+            (root, c) for root, c in matches
+            if Path(c.path).with_suffix("") in {
+                (root / subpath).with_suffix(""),
+                (root / "src" / subpath).with_suffix(""),
+            }
+            or Path(c.path).parent in {root / subpath, root / "src" / subpath}
+        ]
+    return matches[0][1] if len(matches) == 1 else None
+
+
+def _default_export_name(tree: "tree_sitter.Tree", source: bytes) -> str | None:
+    """The name a file's top-level ``export default`` binds, or None.
+
+    A declaration (``export default function f`` / ``class C``) binds its own
+    name; ``export default f;`` re-exports a binding by name. An anonymous
+    default (``export default () => 1``) binds nothing nameable here.
+    """
+    for node in tree.root_node.named_children:
+        if node.type != "export_statement":
+            continue
+        if not any(child.type == "default" for child in node.children):
+            continue
+        for child in node.named_children:
+            if child.type in (
+                "function_declaration", "generator_function_declaration",
+                "class_declaration", "abstract_class_declaration",
+            ):
+                return _find_name_in_children(child, source)
+            if child.type == "identifier":
+                return _node_text(child, source)
+    return None
+
+
+_MODULE_MEMBER_KINDS = frozenset({"function", "class", "variable"})
+
+
+def _in_tree_module_member(
+    module: str, file_path: Path, attr: str, symbols_by_name: dict[str, list["Symbol"]],
+) -> "Symbol | None":
+    """The in-tree symbol ``module.attr`` reads, or None (WI-halol).
+
+    ``module`` is the specifier an import binding names. A bare one names an
+    in-tree package only through ``_in_tree_package_candidate`` (exact package,
+    and subpath file when given); a relative one names the file it resolves
+    to, or that directory's ``index``. Exact matches only, never a suffix: a
+    coincidentally named in-tree file is not an external module's member
+    (INV-fahub, the reason python's WI-huhum retarget is exact too).
+    """
+    candidates = [
+        s for s in symbols_by_name.get(attr, []) if s.kind in _MODULE_MEMBER_KINDS
+    ]
+    if not candidates:
+        return None
+    if not module.startswith("."):
+        return _in_tree_package_candidate(module, file_path, candidates)
+    resolved = (file_path.parent / module).resolve()
+    matches = [
+        c for c in candidates
+        if Path(c.path).with_suffix("") == resolved
+        or (Path(c.path).parent == resolved and Path(c.path).stem == "index")
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _module_object_reads(pf: "_ParsedFile") -> frozenset[tuple[int, str, str]]:
+    """``(line, module, attribute)`` of each member read made THROUGH a module object.
+
+    The attribute emitter keys its edges by module, not by the alias the read
+    went through, and one file may bind a module both ways
+    (``const { helper } = require('@ws/b'); const b = require('@ws/b')``).
+    ``b.Engine`` is the module's ``Engine``; ``W.Builder`` after ``import { W }
+    from './w'`` is a property of the exported OBJECT ``W``. So the alias is
+    read here, per read: a key some other binding also produces is ambiguous
+    and left out.
+    """
+    namespace = pf.namespace_imports or {}
+    named = pf.named_imports or {}
+    through_object: set[tuple[int, str, str]] = set()
+    through_other: set[tuple[int, str, str]] = set()
+    for node in iter_tree(pf.tree.root_node):
+        if node.type != "member_expression":
+            continue
+        obj = node.child_by_field_name("object")
+        prop = node.child_by_field_name("property")
+        if obj is None or prop is None or obj.type != "identifier":
+            continue
+        alias = _node_text(obj, pf.source)
+        module = namespace.get(alias) or named.get(alias)
+        if module is None:
+            continue
+        key = (node.start_point[0] + 1, _strip_import_scheme(module), _node_text(prop, pf.source))
+        (through_object if alias in pf.module_objects else through_other).add(key)
+    return frozenset(through_object - through_other)
+
+
+def _retarget_in_tree_module_attrs(
+    edges: list[Edge], start: int, file_path: Path,
+    symbols_by_name: dict[str, list["Symbol"]], run_id: str,
+    module_object_reads: frozenset[tuple[int, str, str]],
+) -> None:
+    """Turn ``module_attr_ref`` reads of an in-tree module into ``references``.
+
+    The shared emitter (``emit_module_attribute_refs``) knows imports, not the
+    tree, so ``new b.Engine()`` after ``const b = require('@ws/b')`` comes out
+    of it as a ``module_attr_ref`` to ``javascript:@ws/b:0-0:@ws/b.Engine`` --
+    an external stand-in named by an in-tree package (INV-nuzas) beside the
+    real instantiation. A read of an in-tree module OBJECT's member (a read made
+    through a module-object alias, ``_module_object_reads``) is a
+    ``references`` edge to it
+    (evidence ``ast_name_read``, as python's WI-huhum retarget emits); that is
+    not a taint call edge, so no taint frontier moves. Edges from ``start`` on
+    are the ones this file's emitter call appended; an external module's read
+    (``net.Socket``, ``process.env``) is left for the io-boundary rows.
+    """
+    for i in range(start, len(edges)):
+        edge = edges[i]
+        if edge.edge_type != "module_attr_ref":  # pragma: no cover - the emitter appends only these
+            continue
+        _lang, _, rest = edge.dst.partition(":")
+        module, _, tail = rest.partition(":0-0:")
+        qname = tail.rsplit(":", 1)[0]
+        attr = qname[len(module) + 1:]
+        if (edge.line, module, attr) not in module_object_reads:
+            continue
+        target = _in_tree_module_member(module, file_path, attr, symbols_by_name)
+        if target is None:
+            continue
+        edges[i] = Edge.create(
+            src=edge.src,
+            dst=target.id,
+            edge_type="references",
+            line=edge.line,
+            evidence_type="ast_name_read",
+            origin=PASS_ID,
+            origin_run_id=run_id,
+        )
+
+
+class _InTreeDefaultExports:
+    """A default import of an in-tree package is its entry's default export (WI-halol).
+
+    ``import x from '@ws/c'; x()`` calls whatever ``@ws/c``'s entry file
+    exports as default -- the local name ``x`` says nothing about it. The
+    entry is the file Node loads (``js_package_entry.package_entry``, the same
+    rule the js_module linker resolves the import edge with), or for a subpath
+    the file it names; the callee is that file's ``export default``
+    declaration; a relative specifier names the file its path does. A package
+    the tree does not define, a package importing itself, an absolute path, or
+    an entry with no named default declaration answers None.
+    """
+
+    def __init__(
+        self, parsed_files: "list[_ParsedFile]", symbols_by_name: dict[str, list["Symbol"]],
+    ) -> None:
+        self._default_by_path = {
+            str(pf.path): pf.default_export for pf in parsed_files if pf.default_export
+        }
+        self._symbols_by_name = symbols_by_name
+        self._roots: dict[str, Path | None] = {}
+        for pf in parsed_files:
+            root = _find_package_root(pf.path)
+            name = _package_json_name(root) if root is not None else None
+            if name is not None:
+                # Two roots declaring one name: no way to choose.
+                self._roots[name] = root if self._roots.get(name, root) == root else None
+
+    def __call__(self, specifier: str, importer: Path) -> "Symbol | None":
+        entry: Path | None
+        if specifier.startswith("."):
+            # A relative default import names the file the path does.
+            entry = probe_file((importer.parent / specifier).resolve())
+        elif specifier.startswith("/"):
+            return None
+        else:
+            package = _js_package_name(specifier)
+            root = self._roots.get(package)
+            if root is None or root == _find_package_root(importer):
+                return None
+            subpath = specifier[len(package):].lstrip("/")
+            entry = (
+                (probe_file(root / subpath) or probe_file(root / "src" / subpath))
+                if subpath else package_entry(root)
+            )
+        name = self._default_by_path.get(str(entry)) if entry is not None else None
+        if name is None:
+            return None
+        return next(
+            (s for s in self._symbols_by_name.get(name, []) if s.path == str(entry)),
+            None,
+        )
+
+
+@functools.lru_cache(maxsize=4096)
+def _package_json_name(root: Path) -> str | None:
+    """The ``name`` a directory's ``package.json`` declares, or None."""
+    return own_package_name(root / "package.json")
+
+
 def _find_package_root(file_path: Path) -> Path | None:
     """Walk up from *file_path* to find the nearest directory containing package.json."""
     current = file_path.parent if file_path.is_file() else file_path
@@ -896,16 +1171,6 @@ def _find_package_root(file_path: Path) -> Path | None:
     return None
 
 
-# Node core modules: an import of one is external, with no manifest needed.
-_NODE_CORE_MODULES = frozenset({
-    "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
-    "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain",
-    "events", "fs", "http", "http2", "https", "inspector", "module", "net",
-    "os", "path", "perf_hooks", "process", "punycode", "querystring",
-    "readline", "repl", "stream", "string_decoder", "timers", "tls",
-    "trace_events", "tty", "url", "util", "v8", "vm", "wasi",
-    "worker_threads", "zlib",
-})
 
 # A dependency whose version spec points INTO the repo, not at a registry.
 _IN_REPO_DEP_PROTOCOLS = ("workspace:", "file:", "link:", "portal:")
@@ -971,11 +1236,9 @@ def _bare_specifier_is_external(
     """
     if specifier.startswith((".", "/")):
         return False
-    if specifier.startswith("node:"):
+    if is_node_core_module(specifier):
         return True
     package = _js_package_name(specifier)
-    if package in _NODE_CORE_MODULES:
-        return True
     if package in index.in_repo_names:
         return False
     spec = index.declared(file_path, package)
@@ -1099,19 +1362,18 @@ JS_BUILTIN_NAMES: set[str] = {
 # unresolved-call edges. Constructor-style globals (WebSocket, XMLHttpRequest,
 # EventSource, BroadcastChannel) are deliberately absent: they are ``new``'d
 # first and reach io-boundaries through the instance path (INV-misup).
-# See WI-pinop / WI-banaf / WI-vurop (UAT 2026-04-13 BUG-09a).
+# See WI-pinop / WI-banaf / WI-vurop.
 #
-# THIS SET IS HAND-MAINTAINED AND HAS DRIFTED FROM THE CATALOGUE BEFORE.
-# It once claimed to "mirror the module names used in javascript.yaml"; it did
-# not, and WI-kikar is what that cost — ``process`` carries 33 catalogue rows
-# and every ``process.<m>()`` call landed on the ``external`` sentinel, which
-# is ADR-0051's marker for *unreachable to the catalogue*. The neighbouring
+# THIS SET IS HAND-MAINTAINED AND CAN DRIFT FROM THE CATALOGUE. A catalogued
+# global missing here sends every ``<global>.<m>()`` call to the ``external``
+# sentinel, ADR-0051's marker for *unreachable to the catalogue* -- for
+# ``process``, 33 catalogue rows (WI-kikar). The neighbouring
 # ``_derive_js_constructor_types`` derives its set FROM the catalogue for
 # exactly this reason, and this one cannot yet do the same: the catalogue does
 # not record which of its modules are GLOBALS (``process``, ``performance``)
 # and which require an import (``fs``, ``dns``, ``os``, ``child_process``),
-# and that distinction is the whole content of this set. Filed as a residual.
-# Until then: ADDING A ROW FOR A NEW GLOBAL MEANS ADDING THE NAME HERE TOO.
+# and that distinction is the whole content of this set.
+# ADDING A ROW FOR A NEW GLOBAL MEANS ADDING THE NAME HERE TOO.
 JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
     "console",        # logging (console.log/info/warn/error/debug/trace)
     "localStorage",   # fs_read/fs_write (getItem, setItem, removeItem, clear)
@@ -1125,19 +1387,19 @@ JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
     # Node globals — no import required, which is what Case 3b is for (WI-kikar).
     "process",        # ipc_recv/ipc_send (on, send), host_info_read (hrtime,
                       # uptime, getuid, memoryUsage), env_write (chdir),
-                      # ipc_recv (openStdin) — 33 rows, all previously external
+                      # ipc_recv (openStdin) — 33 rows
     "performance",    # host_info_read (now); Node 16+ and browsers
 })
 
 def _derive_js_constructor_types() -> dict[str, str]:
     """``{constructor name: catalogue module}`` for every ``new``-able receiver type.
 
-    INV-misup. A receiver bound by construction (``ws = new WebSocket(u)``)
-    landed the bare constructor name in ``var_types`` and nothing carried it
-    to the io-boundary layer, so every row keyed on ``WebSocket``,
-    ``XMLHttpRequest``, ``EventSource`` and ``BroadcastChannel`` -- and the
-    whole XHR egress surface -- was inert. Derived from the catalogue rather
-    than listed here, the way ``py.py`` derives ``EXTERNAL_CONSTRUCTOR_TYPES``,
+    A receiver bound by construction (``ws = new WebSocket(u)``) holds only
+    the bare constructor name in ``var_types``; this map is what carries it
+    to the io-boundary layer, so the rows keyed on ``WebSocket``,
+    ``XMLHttpRequest``, ``EventSource`` and ``BroadcastChannel`` -- the whole
+    XHR egress surface among them -- are reachable (INV-misup). Derived from
+    the catalogue rather than listed here, the way ``py.py`` derives ``EXTERNAL_CONSTRUCTOR_TYPES``,
     so a row added tomorrow is reachable without a code change.
 
     A bare PascalCase module (``WebSocket``) keys on its own name; a dotted one
@@ -1174,9 +1436,9 @@ JS_CONSTRUCTOR_TYPES: dict[str, str] = _derive_js_constructor_types()
 def _derive_js_assignable_rows() -> dict[str, frozenset[str]]:
     """``{catalogue module: property names it rows}`` for method-kind rows.
 
-    WI-dosuh. A handler REGISTRATION (``ws.onmessage = h``) is a property
-    assignment, and the emitter needs to know which properties on a
-    catalogued receiver are worth an edge. Emitting for every property write
+    A handler REGISTRATION (``ws.onmessage = h``) is a property assignment,
+    and the emitter needs to know which properties on a catalogued receiver
+    are worth an edge (WI-dosuh). Emitting for every property write
     would put plain data assignments (``ws.binaryType = 'arraybuffer'``) into
     the graph as ``calls`` edges, asserting a call that never happens; asking
     the catalogue instead means the emitted set IS the matchable set, so the
@@ -1184,17 +1446,16 @@ def _derive_js_assignable_rows() -> dict[str, frozenset[str]]:
 
     DERIVED, NOT LISTED, for the reason :func:`_derive_js_constructor_types`
     is: a row added to ``javascript.yaml`` tomorrow becomes reachable with no
-    code change here, and a row REMOVED stops being emitted. ``onopen`` and
-    ``onerror`` were removed from ``WebSocket`` deliberately (INV-nular --
-    connection-lifecycle callbacks carrying no peer data), and a hand-listed
-    set would have quietly re-added them.
+    code change here, and a row REMOVED stops being emitted. ``WebSocket``
+    deliberately has no ``onopen`` / ``onerror`` rows (connection-lifecycle
+    callbacks carrying no peer data; INV-nular), and a hand-listed set could
+    quietly re-add them.
 
     THE SHIPPED CATALOGUE, THOUGH, NOT A RUNTIME ONE. This is evaluated once
     at import, so a project-local OVERLAY row (ADR-0047) is not emitted for,
     even though ``io-boundaries`` would classify it if an edge existed. The
     same is true of ``_derive_js_constructor_types`` beside it, so the two
-    agree; it is a limit of both, recorded rather than left to be discovered.
-    Filed as WI-gajat.
+    agree; it is a limit of both (WI-gajat).
 
     NOT FILTERED TO HANDLER-SHAPED NAMES. ``WebSocket.send`` is method-kind
     and assignable in principle (``ws.send = wrapper``), which is
@@ -1222,12 +1483,11 @@ def _named_receiver_module(
 ) -> str | None:
     """The catalogue module a NAMED receiver carries, or ``None``.
 
-    THE ONE PLACE THIS LOOKUP LIVES, because two constructs now need it: the
+    THE ONE PLACE THIS LOOKUP LIVES, because two constructs need it: the
     member-call cascade (``ws.send(x)``) and the handler-assignment branch
-    (``ws.onmessage = h``). They were about to hold two copies of the same
-    two-step rule, and a copy that drifted would let a receiver resolve for a
-    call and not for an assignment on the very next line -- the "one fact, two
-    homes" shape this codebase has paid for repeatedly.
+    (``ws.onmessage = h``). Two copies of the same two-step rule could drift
+    and let a receiver resolve for a call and not for an assignment on the
+    very next line.
 
     THE TWO STEPS, in order. A receiver bound by construction is already in
     ``var_ctor_modules`` (INV-misup). A receiver whose type was DECLARED --
@@ -1252,15 +1512,15 @@ def _named_receiver_module(
 # ``fetch()`` reaches this set (WI-zavad / emission-parity F2).
 JS_KNOWN_GLOBAL_CALLS: frozenset[str] = frozenset({
     "fetch",          # net_send (catalog: module fetch, functions [fetch])
-    # WI-nokab / ADR-0060: code_execution sink (taint_sinks/code_execution.yaml,
-    # module eval, functions [eval]). Not an I/O primitive; io-boundaries has no
-    # row for it, so this edge changes taint and call-graph coverage only.
+    # code_execution sink (taint_sinks/code_execution.yaml, module eval,
+    # functions [eval]; WI-nokab, ADR-0060). Not an I/O primitive; io-boundaries
+    # has no row for it, so this edge changes taint and call-graph coverage only.
     "eval",
 })
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
 # Note: Express-style route detection uses function calls (app.get, router.post) rather
-# than decorators. These are now matched via UsageContext (ADR-3aaa v1.1.x) which
+# than decorators. These are matched via UsageContext (ADR-3aaa), which
 # enables YAML patterns for call-based frameworks.
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
@@ -1362,7 +1622,7 @@ def normalize_jsts_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a JS/TS signature for typed stable_id (ADR-0014 §3)."""
+    """Normalize a JS/TS signature for typed stable_id (spec §6 typed tier)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     return normalize_signature_names_first(signature, type_params, return_sep=":")
 
@@ -1462,24 +1722,18 @@ def _extract_param_types(
     return param_types
 
 
-def _build_jsx_route_meta(
-    route_path: str,
+def _jsx_route_extra_meta(
     component_name: str | None,
     lazy_import_map: dict[str, str],
-) -> dict[str, object]:
-    """Build metadata dict for a JSX Route symbol.
+) -> dict[str, Any]:
+    """What a JSX Route marker carries beyond the route factory's own keys.
 
-    If the component is a React.lazy() wrapper, adds lazy_import metadata
-    so the route can be traced through to the actual module.
+    If the component is a React.lazy() wrapper, ``lazy_import`` names the
+    module it loads, so the route can be traced through to it.
     """
-    meta: dict[str, object] = {
-        "route_path": route_path,
-        "http_method": "GET",
-        "handler_ref": component_name,
-    }
     if component_name and component_name in lazy_import_map:
-        meta["lazy_import"] = lazy_import_map[component_name]
-    return meta
+        return {"lazy_import": lazy_import_map[component_name]}
+    return {}
 
 
 def _collect_react_lazy_declaration(
@@ -1620,7 +1874,7 @@ def _detect_jsx_route(
 
         attr_name = None
         attr_value = None
-        # INV-dogif gap (4): only accept path values from string literals.
+        # Only accept path values from string literals (INV-dogif gap 4).
         # `<Route path={someVar}>` resolves the JSX expression to the identifier
         # *name*, not its runtime value — emitting that as route_path produces
         # a junk entry in routes.txt. Track the source so we can keep accepting
@@ -1647,9 +1901,9 @@ def _detect_jsx_route(
 
         if attr_name == "path" and attr_value is not None and attr_value_from_string:
             route_path = attr_value
-        # INV-dogif gap (3): React Router v5 render-prop is a component-shaped
-        # attr alongside element/component (and v6 dropped render but legacy
-        # codebases still ship it).
+        # React Router v5's render-prop is a component-shaped attr alongside
+        # element/component (v6 dropped render, but legacy codebases still
+        # ship it; INV-dogif gap 3).
         elif attr_name in ("element", "component", "render") and attr_value is not None:
             component_name = attr_value
 
@@ -1782,8 +2036,8 @@ def _extract_route_objects(
 
             key = _node_text(key_node, source).strip("'\"")
             if key == "path":
-                # INV-dogif gap (5): only accept path values from string
-                # literals. {path: someVar, ...} would otherwise emit a Route
+                # Only accept path values from string literals (INV-dogif
+                # gap 5). {path: someVar, ...} would otherwise emit a Route
                 # node whose route_path is the variable's identifier text — a
                 # junk entry in routes.txt. Dynamic paths can't be resolved
                 # statically; skip emission to match the JSX-side behavior.
@@ -2779,10 +3033,10 @@ def _extract_app_bootstrap_contexts(
 # The framework_patterns YAML in graphql.yaml and node-http.yaml target
 # these names via ``usage: kind: "^call$"`` (WI-tisam).
 #
-# INV-rolul scope: this set closes the WI-tisam end-to-end gap. Other
-# JS/TS framework YAMLs whose kind=call patterns are still not reachable
-# from the analyzer's UC-emission pipeline (adonisjs, mcp, restify,
-# fastify.route, web_audio.*) remain documented as INV-rolul follow-ups.
+# This set covers only those two YAMLs. Other JS/TS framework YAMLs whose
+# kind=call patterns are not reachable from the analyzer's UC-emission
+# pipeline (adonisjs, mcp, restify, fastify.route, web_audio.*) are not fed
+# by it (INV-rolul).
 _HTTP_HANDLER_NAMES: frozenset[str] = frozenset({
     # Apollo Server v4 standalone HTTP listener
     "startStandaloneServer",
@@ -2821,9 +3075,7 @@ def _extract_http_handler_contexts(
     ``kind="call"`` UsageContext whose ``context_name`` matches the
     source-text callee form. ``graphql.yaml`` and ``node-http.yaml`` then
     route these UCs through ``match_usage_patterns`` to assign route
-    concepts to the calling module.
-
-    Closes the WI-tisam end-to-end gap (INV-rolul scope).
+    concepts to the calling module (WI-tisam, INV-rolul).
     """
     contexts: list[UsageContext] = []
     seen_names: set[str] = set()  # dedupe repeated calls in one file
@@ -2945,7 +3197,7 @@ def _pick_inheritance_target(
     """Choose the resolved base and its edge type for one base name.
 
     A CLASS source prefers a class base (``extends``) over an interface base
-    (``implements``) — the pre-WI-kalug order. An INTERFACE source prefers an
+    (``implements``). An INTERFACE source prefers an
     interface base and falls back to a class (TypeScript lets an interface
     extend a class); either way the edge is ``extends``, because an interface
     never implements anything. A candidate that is the source itself is
@@ -2983,6 +3235,7 @@ def _extract_inheritance_edges(
     classes_by_name: dict[str, list[Symbol]],
     parsed_files: list["_ParsedFile"],
     run: AnalysisRun,
+    package_index: _JsPackageIndex,
 ) -> list[Edge]:
     """Extract extends/implements edges from class and interface inheritance.
 
@@ -3043,8 +3296,6 @@ def _extract_inheritance_edges(
                         n.split("<")[0].split(".")[-1] for n in impls
                     )
 
-    package_index = _JsPackageIndex([pf.path for pf in parsed_files])
-
     def external_edge(sym: Symbol, base_name: str, canonical: str, raw_module: str | None) -> Edge:
         sym_path = sym.path or ""
         # An interface's bases are all ``extends`` bases (WI-kalug); the
@@ -3094,10 +3345,11 @@ def _extract_inheritance_edges(
             qualifier = de_generic.split(".")[0] if "." in de_generic else None
             base_name = de_generic.split(".")[-1] if "." in de_generic else de_generic
 
-            # WI-pivap: a base imported from an EXTERNAL package (react, a Node
-            # core module) is external even when the repo defines a class of
-            # the same name; resolving by name first bound ``import {Component}
-            # from 'react'`` to the repo's own ``Component``.
+            # A base imported from an EXTERNAL package (react, a Node core
+            # module) is external even when the repo defines a class of the
+            # same name; resolving by name first would bind ``import
+            # {Component} from 'react'`` to the repo's own ``Component``
+            # (WI-pivap).
             ni = named_imports_by_path.get(sym_path, {})
             nsi = namespace_imports_by_path.get(sym_path, {})
             raw_module = (
@@ -3366,10 +3618,9 @@ def _extract_decorator_edges(
             # interface, or type named "Post" is not the @Post() decorator.
             # This prevents name collision false positives (e.g., NestJS @Post()
             # resolving to a GraphQL Post data class).
-            # ADR-0027 Phase-2 audit (WI-jukav): all members are
-            # AXIS_LANGUAGE_CONSTRUCT (Cluster A) and stable across
-            # Phase 3. JS/TS decorators only resolve to callable
-            # source-language constructs. Forward-compatible.
+            # Every kind in the set is an AXIS_LANGUAGE_CONSTRUCT kind
+            # (ADR-0027): JS/TS decorators only resolve to callable
+            # source-language constructs (WI-jukav).
             _DECORATOR_KINDS = {"function", "method", "arrow_function"}
             decorator_sym = global_symbols.get(dec_name)
             if decorator_sym and decorator_sym.kind not in _DECORATOR_KINDS:
@@ -3558,9 +3809,9 @@ def _jsts_qualified_ancestors(
     of ``node``, outermost first: the chain its ``qualified_name`` carries.
 
     A ``namespace A { namespace B { class C`` is a source-level namespace, so
-    ``C``'s qualified name is ``A.B.C``; it was the class chain alone
-    (:func:`_get_jsts_class_ancestors`, still the implicit-``this`` owner
-    lookup), ``C``. Functions are not namespaces and stay out, as does an
+    ``C``'s qualified name is ``A.B.C``, not the class chain alone
+    (:func:`_get_jsts_class_ancestors`, which serves the implicit-``this``
+    owner lookup). Functions are not namespaces and stay out, as does an
     ambient ``declare module "m"``, whose string names a module specifier.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
@@ -3588,12 +3839,10 @@ def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
 
     What every JS/TS stable_id hashes beside the symbol's own name. The
     emitted ``qualified_name`` carries classes and namespaces but no
-    functions (:func:`_jsts_qualified_ancestors`), which two ``class Inner``
-    in functions ``a`` and ``b`` share (and before the scheme bump it held
-    the class chain alone, shared by two namespaces ``A`` and ``B``); their
-    ids tied and deleting the first moved the second. A top-level symbol has an
-    empty scope and keeps its value; so does a member of a top-level class
-    (the scope is its class chain).
+    functions (:func:`_jsts_qualified_ancestors`), so two ``class Inner`` in
+    functions ``a`` and ``b`` share it; hashing it alone would tie their ids,
+    and deleting the first would move the second. A top-level symbol has an
+    empty scope; a member of a top-level class has its class chain.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type in _JSTS_NAMED_SCOPES:
@@ -3612,7 +3861,7 @@ def _jsts_chain(node: "tree_sitter.Node", source: bytes, name: str, lang: str) -
 
 
 def _jsts_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """INV-fahub: the innermost enclosing class name of a call site, or None.
+    """The innermost enclosing class name of a call site, or None (INV-fahub).
 
     Used by the bare-/untyped-receiver -> method magnet gate
     (``defer_bare_method_call``) to decide whether a weak short-name resolver
@@ -3852,11 +4101,12 @@ def _constructed_module(
 ) -> str | None:
     """The catalogue module a ``new`` expression's instance belongs to, or ``None``.
 
-    INV-misup. ``new WebSocket(u)`` -> ``WebSocket`` (a catalogued global
-    constructor keys on its own name); ``new net.Socket()`` under
+    ``new WebSocket(u)`` -> ``WebSocket`` (a catalogued global constructor
+    keys on its own name); ``new net.Socket()`` under
     ``const net = require('net')`` -> ``net.Socket`` (the namespace import
     supplies the module and the catalogue keys the dotted form). A class the
-    catalogue does not know yields ``None``: nothing is asserted for it.
+    catalogue does not know yields ``None``: nothing is asserted for it
+    (INV-misup).
     """
     if ns_import_path is not None:
         dotted = f"{_normalize_import_module_hint(ns_import_path)}.{class_name}"
@@ -3871,7 +4121,7 @@ def _new_expression_module(
 ) -> str | None:
     """The catalogue module of an INLINE ``new X(...)`` receiver, or ``None``.
 
-    INV-misup, chained form: ``new net.Socket().write(d)`` /
+    The chained form (INV-misup): ``new net.Socket().write(d)`` /
     ``new XMLHttpRequest().open(..)``. Reads the constructor the same way the
     ``new_expression`` branch does (bare identifier, or ``ns.Class`` under a
     namespace import) and asks :func:`_constructed_module` -- one rule for the
@@ -4169,8 +4419,8 @@ def _extract_implements_names(
 
 # The type nodes a heritage TYPE list (``implements A, B<T>, ns.C`` or an
 # interface's ``extends A, ns.B<T>``) can name. ``nested_type_identifier`` is
-# the namespace-qualified form (``ng.OnInit``); it was missing from the
-# implements reader, which silently dropped ``implements ng.OnInit``.
+# the namespace-qualified form (``ng.OnInit``); without it the reader would
+# silently drop ``implements ng.OnInit``.
 _HERITAGE_TYPE_NODES: frozenset[str] = frozenset({
     "identifier", "type_identifier", "generic_type", "nested_type_identifier",
 })
@@ -4201,10 +4451,10 @@ def _extract_interface_bases(
     """Return the bases of an ``interface_declaration`` (WI-kalug).
 
     ``interface Child<T> extends Base, Observer<number>`` carries an
-    ``extends_type_clause``. Before WI-kalug no reader looked at it, so
-    interface symbols had no ``base_classes`` meta and ``interface Child
-    extends Base`` produced zero inheritance edges in the analyzer and in the
-    core inheritance linker alike. Every base here is an ``extends`` base:
+    ``extends_type_clause``. Reading it is what gives interface symbols their
+    ``base_classes`` meta; without it ``interface Child extends Base`` would
+    produce no inheritance edges in the analyzer or in the core inheritance
+    linker. Every base here is an ``extends`` base:
     TypeScript has no ``implements`` for an interface.
     """
     names: list[str] = []
@@ -4246,8 +4496,8 @@ def _classify_anon_function(
 ) -> Optional[tuple[str, str]]:
     """Classify an anonymous arrow / function-expression / generator node.
 
-    WI-zavad anonymous-callback function-node slice (emission-parity F2,
-    Option 1 — documented-idiom scope). Returns ``(category, name)``:
+    Only documented callback idioms are classified (WI-zavad,
+    emission-parity F2). Returns ``(category, name)``:
 
     * ``("call_arg", "_cb_<callee>")`` — the function is passed as an argument
       to a call (``arr.forEach(x => {})``, ``el.addEventListener('x', cb)``).
@@ -4256,9 +4506,9 @@ def _classify_anon_function(
 
     Returns ``None`` for any other position — variable-bound (extracted by the
     ``lexical_declaration`` path), object property, or return / ternary /
-    template-substitution position — which is out of scope for this slice (those
-    have no call-site anchor for a companion incoming edge, so extracting them
-    would inflate dead-code false-positives; an explicitly-deferred follow-up).
+    template-substitution position — which is not extracted here (those have
+    no call-site anchor for a companion incoming edge, so extracting them
+    would inflate dead-code false-positives).
     """
     parent = node.parent
     if parent is None:  # pragma: no cover - defensive: root is always 'program'
@@ -4299,6 +4549,7 @@ def _extract_symbols(
     run: AnalysisRun,
     line_offset: int = 0,
     repo_root: Optional[Path] = None,
+    file_lang: Optional[str] = None,
 ) -> list[Symbol]:
     """Extract symbols from a parsed tree (pass 1).
 
@@ -4315,15 +4566,21 @@ def _extract_symbols(
             the file pseudo-node Symbol's ``name`` is the repo-relative
             path (INV-kokaj mirror of INV-vaguj). Tests calling this
             helper directly may pass ``None``.
+        file_lang: Language of the FILE this tree is part of, when it differs
+            from the tree's own ``lang``: a JavaScript ``<script>`` block in a
+            component whose other block is TypeScript (WI-rolub). The file
+            pseudo-node and the members' file-identity anchor take it; the
+            members keep ``lang``. Defaults to ``lang``.
     """
     symbols: list[Symbol] = []
+    if file_lang is None:
+        file_lang = lang
 
-    # INV-kokaj: emit the file pseudo-node as kind="file" with the
-    # canonical file-id shape so the orchestrator file-symbol synthesizer
-    # dedups against it (existing_ids check). Before this fix, every
-    # JS/TS file emitted both a kind="module" Symbol (here) and a
-    # kind="file" Symbol (from the synthesizer when edges targeted the
-    # file id). File-kind is the cross-language canonical for "this file"
+    # Emit the file pseudo-node as kind="file" with the canonical file-id
+    # shape so the orchestrator file-symbol synthesizer dedups against it
+    # (existing_ids check) instead of adding a second file Symbol when edges
+    # target the file id (INV-kokaj). File-kind is the cross-language
+    # canonical for "this file"
     # (see analyze.base.make_file_id). The Symbol provides an enclosing
     # scope for module-level edges (route calls, bootstrap calls,
     # attribute reads on ``process``/``window``/``document``) so files
@@ -4341,7 +4598,7 @@ def _extract_symbols(
             file_name = str(file_path.relative_to(repo_root))
         except ValueError:  # pragma: no cover - defensive
             pass
-    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_name``
+    # File-identity anchor for this file's symbols (WI-bokab). ``file_name``
     # is the repo-relative path (``file_path`` is ABSOLUTE here — it comes from
     # ``find_js_ts_files(repo_root)`` etc.; the absolute-path trap), so we fold
     # the relativized form, NOT ``str(file_path)``. Folded into
@@ -4349,12 +4606,12 @@ def _extract_symbols(
     # functions/methods in different files hash distinctly. Keyed on the per-file
     # runtime ``lang`` to match the file Symbol's ``language=lang`` and the
     # orchestrator's make_file_stable_id(s.language, s.path) backstop.
-    file_stable_id = make_file_stable_id(lang, normalize_path(file_name))
+    file_stable_id = make_file_stable_id(file_lang, normalize_path(file_name))
     module_symbol = Symbol(
-        id=make_file_id(lang, str(file_path)),
+        id=make_file_id(file_lang, str(file_path)),
         name=file_name,
         kind="file",
-        language=lang,
+        language=file_lang,
         path=str(file_path),
         span=module_span,
         origin=PASS_ID,
@@ -4379,7 +4636,7 @@ def _extract_symbols(
             continue
 
         # Express-style route handler detection: app.get('/path', handler)
-        # This also emits UsageContext records (v1.1.x) for YAML pattern matching.
+        # This also emits UsageContext records for YAML pattern matching.
         if node.type == "call_expression":
             http_method, route_path = _detect_route_call(node, source)
             if http_method:
@@ -4396,10 +4653,11 @@ def _extract_symbols(
                             start_col=handler_node.start_point[1],
                             end_col=handler_node.end_point[1],
                         )
-                        # WI-zugob: Symbol.name changes from the handler name
-                        # to "{METHOD} {path}". Handler identity is preserved in
-                        # meta["handler_ref"] — the key linkers/route_handler
-                        # already resolved against; it never read Symbol.name.
+                        # The route marker's Symbol.name is "{METHOD} {path}",
+                        # not the handler name. Handler identity lives in
+                        # meta["handler_ref"], the key linkers/route_handler
+                        # resolves against; it does not read Symbol.name
+                        # (WI-zugob).
                         symbols.append(make_route_symbol(
                             language=lang,
                             path=str(file_path),
@@ -4429,11 +4687,11 @@ def _extract_symbols(
                             start_col=handler_node.start_point[1],
                             end_col=handler_node.end_point[1],
                         )
-                        # INV-golap: the inline handler IS a real function node
-                        # (arrow / function / function_expression), so extract
-                        # its signature like any other function symbol — the
-                        # earlier omission left route handlers as the lone
-                        # null-signature function|method nodes vs TS parity.
+                        # The inline handler IS a real function node (arrow /
+                        # function / function_expression), so extract its
+                        # signature like any other function symbol; otherwise
+                        # route handlers would be the lone null-signature
+                        # function|method nodes (INV-golap).
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -4455,31 +4713,28 @@ def _extract_symbols(
         if node.type in ("jsx_self_closing_element", "jsx_element"):
             route_path, component_name = _detect_jsx_route(node, source)
             if route_path is not None:
-                handler_name = component_name or f"_route{route_path.replace('/', '_').replace(':', '').replace('*', 'splat')}_handler"
                 span = Span(
                     start_line=node.start_point[0] + 1 + line_offset,
                     end_line=node.end_point[0] + 1 + line_offset,
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                jsx_route_meta = _build_jsx_route_meta(
-                    route_path, component_name, lazy_import_map,
-                ) or {}
-                jsx_route_meta["framework_role"] = "route"
-                symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
-                    name=handler_name,
-                    kind="function",
+                # Through the shared factory, like the router-config routes
+                # below: the marker is named for the ROUTE and carries the
+                # component in ``handler_ref``. Named after the component it
+                # was a second ``function`` of that name, and a call that
+                # reached the name without an import bound to the marker.
+                symbols.append(make_route_symbol(
                     language=lang,
                     path=str(file_path),
                     span=span,
+                    method="GET",
+                    route_path=route_path,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=make_route_stable_id("GET", route_path),
-                    meta=jsx_route_meta,
-                    line_span=span.end_line - span.start_line + 1,
-                )
-                symbols.append(symbol)
+                    handler_ref=component_name,
+                    extra_meta=_jsx_route_extra_meta(component_name, lazy_import_map),
+                ))
                 # Don't continue — let tree walk also process child nodes
 
         # React Router v6.4+ createBrowserRouter/createHashRouter/createMemoryRouter
@@ -4505,9 +4760,8 @@ def _extract_symbols(
                     extra_meta=dict(extra_meta),
                 ))
 
-        # Function declarations, incl. generators ``function* g() {}`` (WI-zavad
-        # named function-node slice — ``generator_function_declaration`` was
-        # never matched, so generators emitted zero function symbols).
+        # Function declarations, incl. generators ``function* g() {}``
+        # (``generator_function_declaration``; WI-zavad).
         # (skip if inside an export_statement - handled below)
         if node.type in ("function_declaration", "generator_function_declaration"):
             # Check if parent is export_statement - if so, skip (handled in export_statement case)
@@ -4523,13 +4777,14 @@ def _extract_symbols(
                 )
                 signature = _extract_jsts_signature(node, source)
 
-                # Typed stable_id (ADR-0014 §3)
+                # Typed stable_id (spec §6 typed tier)
                 norm_sig = normalize_jsts_signature(signature)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig,
                     name=name,
                     qualified_name=_jsts_chain(node, source, name, lang),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -4566,10 +4821,10 @@ def _extract_symbols(
                             "arrow_function", "function_expression",
                             "generator_function",
                         ):
-                            # WI-zavad named function-node slice: ``const f =
-                            # function () {}`` (function_expression) and
-                            # ``const g = function* () {}`` (generator_function)
-                            # reach parity with the existing arrow-function path.
+                            # ``const f = function () {}`` (function_expression)
+                            # and ``const g = function* () {}``
+                            # (generator_function) take the same path as an
+                            # arrow function (WI-zavad).
                             value_node = grandchild
                         elif grandchild.type == "call_expression":
                             # Pattern: const handler = catchAsync(async (req, res) => {})
@@ -4595,13 +4850,14 @@ def _extract_symbols(
                         )
                         signature = _extract_jsts_signature(value_node, source)
 
-                        # Typed stable_id (ADR-0014 §3)
+                        # Typed stable_id (spec §6 typed tier)
                         norm_sig = normalize_jsts_signature(signature)
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
                             name=name,
                             qualified_name=_jsts_chain(node, source, name, lang),
                             file_stable_id=file_stable_id,
+                            is_async=declares_async(value_node),
                         ) if norm_sig else None
 
                         symbol = Symbol(
@@ -4624,21 +4880,21 @@ def _extract_symbols(
                             cyclomatic_complexity=compute_cyclomatic_complexity(value_node, lang),
                         )
                         symbols.append(symbol)
-                        # WI-zavad anon-callback slice: this arrow/function-
-                        # expression is already extracted (named after its
-                        # variable), so mark it processed to keep the bare
-                        # anonymous-callback branch below from re-emitting it.
+                        # This arrow/function-expression is already extracted
+                        # (named after its variable), so mark it processed to
+                        # keep the bare anonymous-callback branch below from
+                        # re-emitting it.
                         processed_handlers.add(id(value_node))
                     elif _is_module_level_declaration(node):
-                        # WI-jusus F5 slice 2: a module-level value declaration
-                        # (const/let/var X = ...; or a bare `let s;`) that is NOT
-                        # a function emits a kind='variable' symbol so module
-                        # constants / module state are visible to search,
-                        # centrality, and io-boundaries. Use the declarator's
+                        # A module-level value declaration (const/let/var X =
+                        # ...; or a bare `let s;`) that is NOT a function emits
+                        # a kind='variable' symbol so module constants / module
+                        # state are visible to search, centrality, and
+                        # io-boundaries (WI-jusus F5). Use the declarator's
                         # `name` FIELD (not the loop's name_node, which catches a
                         # destructuring RHS identifier): only a simple identifier
                         # name is emitted — object/array destructuring patterns
-                        # are a follow-up. Function-valued declarations are
+                        # emit nothing. Function-valued declarations are
                         # handled by the branch above (value_node set), so they
                         # never reach here.
                         var_name_node = child.child_by_field_name("name")
@@ -4698,11 +4954,11 @@ def _extract_symbols(
                     if base_classes:
                         meta["base_classes"] = base_classes
 
-                # audit-findings 0018: the grammar hands us a distinct
-                # `abstract_class_declaration`, so abstractness needs no
-                # inference — but modifiers was left empty, making TS abstract
-                # classes indistinguishable from concrete ones to
-                # `is_abstract_type`. Five other languages record it here.
+                # The grammar hands us a distinct `abstract_class_declaration`,
+                # so abstractness needs no inference. Recording it in
+                # `modifiers` is what lets `is_abstract_type` tell a TS
+                # abstract class from a concrete one, as other languages'
+                # analyzers do (audit-findings 0018).
                 class_modifiers = (
                     ["abstract"]
                     if node.type == "abstract_class_declaration"
@@ -4871,7 +5127,7 @@ def _extract_symbols(
 
                 signature = _extract_jsts_signature(node, source)
 
-                # Typed stable_id for non-route methods (ADR-0014 §3)
+                # Typed stable_id for non-route methods (spec §6 typed tier)
                 if stable_id is None:
                     norm_sig = normalize_jsts_signature(signature)
                     if norm_sig:
@@ -4880,6 +5136,7 @@ def _extract_symbols(
                             name=name,
                             qualified_name=_jsts_chain(node, source, name, lang),
                             file_stable_id=file_stable_id,
+                            is_async=declares_async(node),
                         )
 
                 symbol = Symbol(
@@ -4904,11 +5161,10 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # WI-jusus (emission-parity F5): class FIELD symbols. Class fields parse
-        # as public_field_definition (TS) / field_definition (JS); before this
-        # they emitted no symbol, so module/class state had no anchor and field
-        # decorators (lit @property/@state) had nothing to attach a decorated_by
-        # edge to. Mirrors the method_definition branch (fields are class members
+        # Class FIELD symbols (WI-jusus, emission-parity F5). Class fields
+        # parse as public_field_definition (TS) / field_definition (JS); the
+        # symbol gives class state an anchor and gives field decorators (lit
+        # @property/@state) something to attach a decorated_by edge to. Mirrors the method_definition branch (fields are class members
         # too): class-scoped identity via qualified_name, modifiers, and a
         # type-annotation signature. Decorators flow into _extract_decorator_edges
         # through meta["decorators"], exactly like classes/methods.
@@ -4962,8 +5218,8 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Export default function - extract the function symbol
-        # (incl. ``export function* g() {}`` — WI-zavad: the direct branch
-        # above skips export children, so generators must be matched here too)
+        # (incl. ``export function* g() {}``: the direct branch above skips
+        # export children, so generators must be matched here too; WI-zavad)
         elif node.type == "export_statement":
             for child in node.children:
                 if child.type in ("function_declaration", "generator_function_declaration"):
@@ -4977,13 +5233,14 @@ def _extract_symbols(
                         )
                         signature = _extract_jsts_signature(child, source)
 
-                        # Typed stable_id (ADR-0014 §3)
+                        # Typed stable_id (spec §6 typed tier)
                         norm_sig = normalize_jsts_signature(signature)
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
                             name=name,
                             qualified_name=_jsts_chain(child, source, name, lang),
                             file_stable_id=file_stable_id,
+                            is_async=declares_async(child),
                         ) if norm_sig else None
 
                         symbol = Symbol(
@@ -5008,16 +5265,14 @@ def _extract_symbols(
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export
 
-        # WI-zavad anonymous-callback function-node slice (emission-parity F2,
-        # Option 1 — documented-idiom scope): anonymous arrow / function-
-        # expression / generator callbacks passed as call arguments, and IIFEs,
-        # emit function symbols so body-calls attribute to them (not the file
-        # pseudo-node) and linkers anchor on a real call-site symbol (the
-        # F159.A2-c WS-linker file-anchor facet). Route-handler and variable-
-        # bound callbacks are already extracted (and added to
+        # Anonymous arrow / function-expression / generator callbacks passed
+        # as call arguments, and IIFEs, emit function symbols so body-calls
+        # attribute to them (not the file pseudo-node) and linkers anchor on a
+        # real call-site symbol (WI-zavad, emission-parity F2). Route-handler
+        # and variable-bound callbacks are already extracted (and added to
         # ``processed_handlers``), so the skip at the top of this loop prevents
         # double-emission. ``_classify_anon_function`` returns ``None`` for
-        # return / ternary / template-substitution arrows (deferred follow-up).
+        # return / ternary / template-substitution arrows, which emit nothing.
         elif node.type in (
             "arrow_function", "function_expression", "generator_function",
         ):
@@ -5040,6 +5295,7 @@ def _extract_symbols(
                     name=anon_name,
                     qualified_name=_jsts_chain(node, source, anon_name, lang),
                     file_stable_id=file_stable_id,
+                    is_async=declares_async(node),
                 ) if norm_sig else None
                 symbols.append(Symbol(
                     id=_make_symbol_id(
@@ -5069,8 +5325,8 @@ def _extract_symbols(
                 ))
                 processed_handlers.add(id(node))
 
-    # WI-nimug / WI-zimum Phase 2b: mark symbols as is_exported=True when
-    # their defining declaration sits under a top-level export_statement.
+    # Mark symbols as is_exported=True when their defining declaration sits
+    # under a top-level export_statement (WI-nimug / WI-zimum).
     _mark_exported_symbols(tree.root_node, source, symbols)
 
     return symbols
@@ -5081,9 +5337,9 @@ def _collect_exported_names(
 ) -> set[str]:
     """Return the set of identifier names reachable via top-level exports.
 
-    WI-nimug / WI-zimum Phase 2b: finds names brought into the module's
-    public API by any of these TypeScript / JavaScript ``export``
-    syntaxes under the root node:
+    Finds names brought into the module's public API by any of these
+    TypeScript / JavaScript ``export`` syntaxes under the root node
+    (WI-nimug / WI-zimum):
 
     - ``export function foo() {}`` / ``export class Bar {}`` —
       named export of a declaration
@@ -5137,9 +5393,9 @@ def _extract_commonjs_export_names(
 ) -> None:
     """Populate *out* with the local names a CommonJS assignment exports.
 
-    WI-tavag: before this, a CommonJS export set nothing, and since INV-kubup
-    reads an absent name as a MEASURED ``is_exported=False``, every CommonJS
-    export was positively claimed private. Recognised (the shapes Node's own
+    An absent name reads as a MEASURED ``is_exported=False`` (INV-kubup), so
+    a CommonJS export missed here is positively claimed private (WI-tavag).
+    Recognised (the shapes Node's own
     CJS named-export detection, cjs-module-lexer, recognises, minus the ones
     that bind no local declaration):
 
@@ -5201,14 +5457,15 @@ def _extract_export_names_from_statement(
         if ctype in (
             "function_declaration", "class_declaration",
             "generator_function_declaration",
-            # WI-sinol: the TypeScript declaration forms. Absent here, an
-            # ``export abstract class`` / ``export interface`` / ``export
-            # enum`` / ``export type`` read as a measured "not exported".
+            # The TypeScript declaration forms. Absent here, an ``export
+            # abstract class`` / ``export interface`` / ``export enum`` /
+            # ``export type`` would read as a measured "not exported"
+            # (WI-sinol).
             "abstract_class_declaration", "interface_declaration",
             "enum_declaration", "type_alias_declaration",
         ):
-            # WI-zavad: ``export function* g(){}`` must mark its symbol
-            # is_exported=True like ``export function f(){}`` does.
+            # ``export function* g(){}`` must mark its symbol
+            # is_exported=True like ``export function f(){}`` does (WI-zavad).
             name = _find_name_in_children(child, source)
             if name:
                 out.add(name)
@@ -5222,9 +5479,9 @@ def _extract_export_names_from_statement(
         elif ctype == "export_clause" and not reexport_from:
             # export { foo, bar } or export { foo as bar }: collect the LOCAL
             # name. The set is matched against declarations, and the alias
-            # ``bar`` names no declaration -- collecting it left ``foo``
-            # measured "not exported" and could mark an unrelated local
-            # ``bar`` (WI-sinol).
+            # ``bar`` names no declaration -- collecting it would leave
+            # ``foo`` measured "not exported" and could mark an unrelated
+            # local ``bar`` (WI-sinol).
             for clause_child in child.children:
                 if clause_child.type == "export_specifier":
                     name_node = clause_child.child_by_field_name("name")
@@ -5242,7 +5499,7 @@ def _mark_exported_symbols(
 ) -> None:
     """Decide ``Symbol.is_exported`` for every declaration in this file.
 
-    WI-nimug: match by short name (split on the last dot) so ``Class.method``
+    Match by short name (split on the last dot; WI-nimug) so ``Class.method``
     style symbols created for TypeScript class members do not accidentally
     get flagged when only the class is exported — class members stay
     un-exported unless the class was the only thing exported, in which case
@@ -5255,8 +5512,8 @@ def _mark_exported_symbols(
     no exports at all, which is a measurement that nothing is exported and
     not an absence of one. The file pseudo-node is left UNDECIDED (``None``):
     the field is about individual declarations, not the per-file anchor
-    (INV-kokaj renamed kind from "module" to "file"), so this analyzer has
-    no rule for it and must not invent one.
+    (kind ``file``; INV-kokaj), so this analyzer has no rule for it and must
+    not invent one.
     """
     exported_names = _collect_exported_names(root, source)
     for sym in symbols:
@@ -5268,8 +5525,8 @@ def _mark_exported_symbols(
 
 _JS_IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
 
-#: WI-vipos. The name slot of a call through a computed property whose key no
-#: literal spells (``obj[k](x)``). Never a valid identifier, so it can never
+#: The name slot of a call through a computed property whose key no literal
+#: spells (``obj[k](x)``; WI-vipos). Never a valid identifier, so it can never
 #: collide with a real method name.
 JS_COMPUTED_CALLEE = "<computed>"
 
@@ -5279,8 +5536,8 @@ def _literal_property_key(
 ) -> str | None:
     """The property a computed member names, when a LITERAL spells it.
 
-    WI-vipos. ``ws['send']`` / ``ws["send"]`` / ``ws[`send`]`` name ``send``
-    exactly as ``ws.send`` does. A key built at run time (``ws[k]``,
+    ``ws['send']`` / ``ws["send"]`` / ``ws[`send`]`` name ``send`` exactly as
+    ``ws.send`` does (WI-vipos). A key built at run time (``ws[k]``,
     ``ws['se' + k]``, a template with a substitution) names nothing, and
     neither does a literal that is not an identifier (``o['a-b']``): such a
     key cannot be a catalogue row, and a ``:`` in it would corrupt the
@@ -5296,8 +5553,8 @@ def _literal_property_key(
     return key if _JS_IDENTIFIER_RE.match(key) else None
 
 
-#: WI-sofuh. What a bare identifier is bound to, read off the scopes that
-#: enclose it. ``symbol``: a declaration in this file that minted a Symbol (a
+#: What a bare identifier is bound to, read off the scopes that enclose it
+#: (WI-sofuh). ``symbol``: a declaration in this file that minted a Symbol (a
 #: function, class, function-valued declarator or module-level variable).
 #: ``local``: a value bound in scope that has no symbol (a parameter, a local
 #: variable, a destructured name, a ``catch`` or loop binding). ``import``: an
@@ -5311,9 +5568,7 @@ _BOUND_IMPORT = "import"
 #: exact. The same-package preference is a path hint, graded as the resolver
 #: grades one (0.90). The repo-wide resolver fallback runs only after those
 #: routes failed, so its own grade is discounted by the same 0.90 and an exact
-#: fallback hit never outranks a same-package match. Before ruling 6 these
-#: routes set 0.90 / 0.90 / 0.85 / ``0.85 * grade`` directly; the first two
-#: were over the ast_call_direct ceiling of 0.85.
+#: fallback hit never outranks a same-package match.
 _JS_ROUTE_SCORE_EXACT = 1.0
 _JS_ROUTE_SCORE_SAME_PACKAGE = 0.90
 _JS_ROUTE_SCORE_RESOLVER = 0.90
@@ -5377,11 +5632,12 @@ class _ScopeBinder:
 
     THE RULE, under every JavaScript module system: the innermost binding wins
     -- a parameter or local, then each enclosing function's declarations, then
-    the file's module scope (its declarations and imports), then a global. The
-    analyzer resolved a bare name with none of that: named-import
-    disambiguation, then the first same-package candidate, then the repo-wide
-    resolver, so ``helper(p)`` in a file that declares ``helper`` bound to
-    another file's ``helper`` whenever one sorted first.
+    the file's module scope (its declarations and imports), then a global.
+    The name-keyed routes (named-import disambiguation, the first
+    same-package candidate, the repo-wide resolver) know none of that, and
+    alone would bind ``helper(p)`` in a file that declares ``helper`` to
+    another file's ``helper`` whenever one sorted first; this binder runs
+    before them.
 
     A DECLARATION IS FOUND BY POSITION, NEVER BY NAME (INV-mozas, INV-midag).
     The walk finds the declaring NODE; the symbol is the one of that name
@@ -5565,26 +5821,22 @@ class _ScopeBinder:
         return _BOUND_SYMBOL, min(inside)[2]
 
 
-#: WI-punar. Event listeners whose catalogue row matches the method NAME while
-#: only some EVENTS carry data from outside the process. Keyed by the dst's
+#: Event listeners whose catalogue row matches the method NAME while only
+#: some EVENTS carry data from outside the process (WI-punar). Keyed by the dst's
 #: (module, name); each value is ``(events, carries)``: when ``carries`` the set
 #: lists the events that DO receive outside data (every other literal crosses
 #: nothing), otherwise it lists the ones that do NOT (custom events still do).
 #:
-#: ``process.on``: only ``message`` is the IPC channel from a parent. Across
-#: 1,230 literal-event ``process.on`` / ``once`` sites in ~/ALL_REPOS, 90 were
-#: ``message`` / ``disconnect``; ``exit``, ``uncaughtException``, the signals
-#: and the rest hand the handler an in-process value. ``WebSocket``: the
+#: ``process.on``: only ``message`` is the IPC channel from a parent;
+#: ``exit``, ``uncaughtException``, the signals and the rest hand the handler
+#: an in-process value. ``WebSocket``: the
 #: catalogue note already rules that ``open`` and ``error`` carry nothing and
 #: ``message`` / ``close`` do; ``EventSource`` likewise for ``open`` / ``error``,
 #: with custom named events still carrying data.
 #:
 #: The third element is the target kind a CROSSING site is stamped with.
-#: Every site of a listed listener is stamped, crossing or not. That began as a
-#: workaround: until INV-rajak the per-site collapse (INV-vukiv) dropped an
-#: unstamped site, so a silent ``open`` sibling erased a ``message`` receive.
-#: The collapse now records that site as ``None``; the crossing stamp stays
-#: because it names the kind. A non-literal event is stamped ``unresolved``.
+#: Every site of a listed listener is stamped, crossing or not; a crossing
+#: site's stamp names its kind. A non-literal event is stamped ``unresolved``.
 _LISTENER_EVENTS: dict[tuple[str, str], tuple[frozenset[str], bool, str]] = {
     ("process", "on"): (frozenset({"message"}), True, "pipe"),
     ("WebSocket", "addEventListener"): (frozenset({"message", "close"}), True, "net_stream"),
@@ -5597,10 +5849,12 @@ def _stamp_listener_event_crossing(
 ) -> None:
     """Stamp ``io_target_kind: in_memory`` on a listener whose event crosses nothing.
 
-    WI-punar. ``process.on("uncaughtException", h)`` matched the ``ipc_recv``
-    row written for ``process.on("message", h)``, and every ``ipc_recv`` mints
+    ``process.on("uncaughtException", h)`` matches the ``ipc_recv`` row
+    written for ``process.on("message", h)``, and every ``ipc_recv`` mints
     ``untrusted_input``. The row sees the callee; the event is the FIRST
-    ARGUMENT, so only the call site can say. ``in_memory`` is the existing
+    ARGUMENT, so only the call site can say (WI-punar). A crossing event is
+    stamped with the crossing kind ``_LISTENER_EVENTS`` gives it; for one
+    that crosses nothing, ``in_memory`` is the existing
     vocabulary for "this site crosses nothing" (WI-lipis): the tagger skips
     the chain while the call still counts as examined, and taint mints no
     source there, so no consumer needs a new field. A non-literal event is
@@ -5708,17 +5962,16 @@ def _get_enclosing_function(
                     # outer arrow of ``const f = (a) => g(a, (x) => h(x))``, the
                     # callback of ``var server = make(function () {...})``, the
                     # IIFE of ``var Typeahead = (function () {...})()``. It is
-                    # found by that POSITION. It used to be found by the
-                    # declarator's NAME in the name-keyed global registry, so a
-                    # name bound twice in a file (``var server`` in two test
-                    # blocks) or an IIFE sharing the name of the constructor it
-                    # returns resolved to the wrong function: 135 javascript and
-                    # 33 typescript call edges on a 26-repo run.
+                    # found by that POSITION, not by the declarator's NAME in
+                    # the name-keyed global registry: by name, a name bound
+                    # twice in a file (``var server`` in two test blocks) or
+                    # an IIFE sharing the name of the constructor it returns
+                    # would resolve to the wrong function.
                     if symbol_by_position:
                         # The declarator's own symbol first: a module object
                         # (``const logger = { info: (m) => ... }``) is a
-                        # ``variable`` positioned at the declarator, and the name
-                        # lookup credited every call inside it there.
+                        # ``variable`` positioned at the declarator, and every
+                        # call inside it is credited there.
                         key = (file_path_str, parent.start_point[0] + 1 + line_offset, parent.start_point[1])
                         if key in symbol_by_position:
                             return symbol_by_position[key]
@@ -5744,10 +5997,11 @@ def _get_enclosing_function(
 
             # If not assigned to variable, try position-based lookup
             # This handles callback arrow functions like route handlers.
-            # WI-pizan: the key carries ``line_offset`` like every other branch.
-            # Without it a .vue/.svelte callback's key named a line ``offset``
-            # lines above, so its calls went to whatever callback started there,
-            # or, when none did, to the enclosing function or the file.
+            # The key carries ``line_offset`` like every other branch. Without
+            # it a .vue/.svelte callback's key would name a line ``offset``
+            # lines above, so its calls would go to whatever callback started
+            # there, or, when none did, to the enclosing function or the file
+            # (WI-pizan).
             if symbol_by_position:
                 arrow_line = current.start_point[0] + 1 + line_offset
                 arrow_col = current.start_point[1]
@@ -5775,7 +6029,7 @@ def _emit_anon_callback_reference_edges(
 ) -> None:
     """Emit a companion ``references`` edge from *current_function* to each
     inline anonymous-callback argument of *call_node* (WI-zavad anon-callback
-    slice) so the new callback symbols are not dead-code false-positives.
+    slice) so the anonymous callback symbols are not dead-code false-positives.
 
     The bare-identifier callback-reference path covers only *named* callbacks;
     inline anonymous ones (``foo(() => {})``, ``new Promise(cb)``) need this.
@@ -5836,6 +6090,9 @@ def _extract_edges(
     module_symbol: Symbol | None = None,
     named_import_originals: dict[str, str] | None = None,
     file_symbols: list[Symbol] | None = None,
+    default_export_of: "Callable[[str, Path], Symbol | None] | None" = None,
+    module_objects: frozenset[str] = frozenset(),
+    package_index: "_JsPackageIndex | None" = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -5862,6 +6119,16 @@ def _extract_edges(
     ``named_imports`` and ``symbols_by_name`` are used to pick the correct
     symbol by matching the relative import path against candidate file paths.
     This applies to Cases 1b (this.property.method()) and 3 (variable.method()).
+
+    External bindings (WI-jomik): a callee reached through a binding of a
+    module ``package_index`` positively shows external (a Node core module or a
+    declared registry package, ``_bare_specifier_is_external``) is that
+    module's and never an in-repo symbol: a namespace or default import's
+    member (``path.join``), a named or destructured import (``const {resolve}
+    = require('node:path')``), and a method on a receiver whose type is a named
+    import from one (``new Subject()`` from ``rxjs``). Each gets the
+    unresolved edge with the module as hint that the module's unmatched
+    members already got. Without the index nothing is shown external.
     """
     if namespace_imports is None:
         namespace_imports = {}
@@ -5872,6 +6139,23 @@ def _extract_edges(
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     _caller_path = str(file_path)
+
+    def _external_module(specifier: str | None) -> bool:
+        return (
+            specifier is not None and package_index is not None
+            and _bare_specifier_is_external(specifier, file_path, package_index)
+        )
+
+    # File-anchored edges (imports, requires) start at the file symbol the
+    # caller hands in (WI-rolub). Minting ``make_file_id(lang, ...)`` here
+    # instead would name a ``javascript:`` file for a JavaScript ``<script>``
+    # block of a component whose one file symbol is ``typescript:``, and the
+    # orchestrator would then synthesize a second file node for that dangling
+    # src.
+    file_id = (
+        module_symbol.id if module_symbol is not None
+        else make_file_id(lang, str(file_path))
+    )
     # WI-sofuh: this file's own symbols by name, for the scope binder. The
     # multi-file pass hands them in; a single-file caller's registry IS the file.
     _file_symbols_by_name: dict[str, list[Symbol]] = {}
@@ -5915,6 +6199,38 @@ def _extract_edges(
                 target = lookup_result.symbol
         return target
 
+    def _emit_value_reference(
+        site: "tree_sitter.Node", value_node: "tree_sitter.Node", evidence: str,
+    ) -> None:
+        """A ``references`` edge to the function a bare identifier in value
+        position names, from the enclosing function or the module.
+
+        Shared by the object-literal arms and the META-mino bindings and
+        arrays. A name that resolves to no function, to the referencing
+        function itself, or across an npm package boundary names nothing.
+        """
+        target = _resolve_value_ref(value_node, _node_text(value_node, source))
+        if (
+            target is None
+            or target.kind not in ("function", "method")
+            or _is_cross_package(file_path, target.path)
+        ):
+            return
+        current_function = _get_enclosing_function(
+            site, source, file_path, global_symbols,
+            symbol_by_position, line_offset,
+        ) or module_symbol
+        if current_function is not None and target.id != current_function.id:
+            edges.append(Edge.create(
+                src=current_function.id,
+                dst=target.id,
+                edge_type="references",
+                line=site.start_point[0] + 1 + line_offset,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type=evidence,
+            ))
+
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -5931,7 +6247,6 @@ def _extract_edges(
                     # WI-fiham: the call path's spelling, scheme dropped.
                     module_name = _strip_import_scheme(
                         _node_text(child, source).strip("'\""))
-                    file_id = make_file_id(lang, str(file_path))
                     dst_id = f"{lang}:{module_name}:0-0:module:module"
                     edge = Edge.create(
                         src=file_id,
@@ -6019,7 +6334,6 @@ def _extract_edges(
                             # WI-fiham: the call path's spelling, scheme dropped.
                             module_name = _strip_import_scheme(
                                 _node_text(arg, source).strip("'\""))
-                            file_id = make_file_id(lang, str(file_path))
                             dst_id = f"{lang}:{module_name}:0-0:module:module"
                             edge = Edge.create(
                                 src=file_id,
@@ -6034,7 +6348,6 @@ def _extract_edges(
                             break
                         elif arg.type == "identifier":
                             var_name = _node_text(arg, source)
-                            file_id = make_file_id(lang, str(file_path))
                             dst_id = f"{lang}:<dynamic:{var_name}>:0-0:module:module"
                             edge = Edge.create(
                                 src=file_id,
@@ -6096,7 +6409,18 @@ def _extract_edges(
                         # specific module).  Falls back to resolver if no named
                         # import exists for this function name.
                         import_module = (named_imports or {}).get(func_name)
-                        if callee is None and import_module and symbols_by_name:
+                        # WI-jomik: a name imported from an external module is
+                        # that module's; no name lookup may hand it a same-named
+                        # in-repo symbol (``const {resolve} =
+                        # require('node:path')`` -> express's ``var resolve``).
+                        # It falls to the named-import unresolved edge below.
+                        _import_external = (
+                            callee is None and _external_module(import_module)
+                        )
+                        if (
+                            callee is None and import_module and symbols_by_name
+                            and not _import_external
+                        ):
                             callee = _disambiguate_by_import(
                                 import_module, file_path, func_name, symbols_by_name,
                             )
@@ -6106,7 +6430,7 @@ def _extract_edges(
                         # Try same-package preference (avoids cross-package
                         # false positives for common names like error,
                         # resolve, reject when there's no import).
-                        if callee is None and symbols_by_name:
+                        if callee is None and symbols_by_name and not _import_external:
                             callee = _same_package_candidate(
                                 file_path, func_name, symbols_by_name,
                             )
@@ -6120,7 +6444,7 @@ def _extract_edges(
                         # recover a genuine inherited implicit-``this`` call; free
                         # functions, same-class methods, and exact matches bind.
                         magnet_deferred = False
-                        if callee is None:
+                        if callee is None and not _import_external:
                             lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: the resolver fallback
@@ -6149,6 +6473,16 @@ def _extract_edges(
                                             _JS_ROUTE_SCORE_RESOLVER
                                             * lookup_result.confidence
                                         )
+                            elif defer_unresolved_tie(lookup_result):
+                                # A tie among methods (WI-jomik: no guess) is
+                                # deferred exactly as a weak pick is.
+                                edges.append(make_unresolved_edge(
+                                    lang, current_function.id, func_name,
+                                    node.start_point[0] + 1 + line_offset,
+                                    PASS_ID, run.execution_id,
+                                    enclosing_class=_jsts_enclosing_class(node, source),
+                                ))
+                                magnet_deferred = True
                         if (
                             callee is not None
                             and _called_module is not None
@@ -6159,6 +6493,14 @@ def _extract_edges(
                             # rather than a function: that is the import
                             # binding itself, not a callee.
                             callee = None
+                        if (
+                            callee is None and _called_module is not None
+                            and default_export_of is not None
+                        ):
+                            # WI-halol: a called default binding of an
+                            # in-tree package is its entry's default export.
+                            callee = default_export_of(_called_module, file_path)
+                            resolution_score = _JS_ROUTE_SCORE_EXACT
                         if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -6240,8 +6582,8 @@ def _extract_edges(
                             )
                             edges.append(edge)
                         elif _called_module is not None:
-                            # WI-fahod: a called module binding emitted nothing.
-                            # ``default`` is the export a call on the binding
+                            # A called module binding names its module's
+                            # ``default`` (WI-fahod), the export a call on it
                             # reaches under ES-module semantics (a CommonJS
                             # ``module.exports`` surfaces as ``default`` there
                             # too), so ``import exec from 'child_process';
@@ -6256,11 +6598,11 @@ def _extract_edges(
                                 ),
                             ))
                         elif _binding is None:
-                            # WI-fahod: a name no scope in this file binds, not
-                            # imported, and carried by no in-repo symbol. It
-                            # emitted NOTHING, so the ADR-0017 walk recorded an
-                            # escape where a call stood (no ``callees_at``
-                            # entry). The ``external`` placeholder is python's
+                            # A name no scope in this file binds, not imported,
+                            # and carried by no in-repo symbol (WI-fahod).
+                            # Emitting nothing would make the ADR-0017 walk
+                            # record an escape where a call stands (no
+                            # ``callees_at`` entry). The ``external`` placeholder is python's
                             # INV-foluz residual, emitted for the same reason:
                             # the callee is genuinely unknown, and the call is
                             # still a call.
@@ -6310,11 +6652,10 @@ def _extract_edges(
                             # terminal placeholder emits for the rest.
                             obj_node = child
                     if _computed:
-                        # WI-vipos: a computed-property call emitted NOTHING --
-                        # this cascade keyed on ``member_expression`` alone. A
-                        # literal key IS the dotted call and runs the same
-                        # cascade; any other key still records the call, on
-                        # the ``external`` placeholder with the method
+                        # A computed-property call is a member call too
+                        # (WI-vipos). A literal key IS the dotted call and runs
+                        # the same cascade; any other key still records the
+                        # call, on the ``external`` placeholder with the method
                         # construct, which both catalogue gates refuse
                         # without a module.
                         obj_node = func_node.child_by_field_name("object")
@@ -6399,36 +6740,70 @@ def _extract_edges(
                             # Resolve via global symbols using import path as hint
                             # to disambiguate when same name exists in multiple modules
                             import_path = namespace_imports[obj_name]
-                            lookup_result = resolver.lookup(method_name, path_hint=import_path, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
+                            # WI-jomik: a member of an external module is the
+                            # module's; a lone same-named in-repo symbol is a
+                            # namesake (knex ``path.join`` -> ``Builder.join``:
+                            # NameResolver applies a hint only AMONG candidates).
+                            _ns_external = _external_module(import_path)
+                            # WI-halol: a member of an in-tree package's module
+                            # object (``const b = require('@ws/b'); b.helper()``,
+                            # ``import * as C from '@ws/c'; C.shout()``) takes
+                            # the answer a named binding of it takes (WI-rilof),
+                            # before the cross-package guard below refuses it.
+                            # WI-povub: a RELATIVE one names the file, so of
+                            # several same-named functions the call is that
+                            # file's; the name-keyed table keeps only the one
+                            # enumerated last.
+                            ns_target = (
+                                _disambiguate_by_import(
+                                    import_path, file_path, method_name, symbols_by_name,
+                                )
+                                if symbols_by_name and not _ns_external
+                                and (import_path.startswith(".") or obj_name in module_objects)
+                                else None
+                            )
+                            lookup_result = (
+                                LookupResult(symbol=None) if _ns_external
+                                else resolver.lookup(
+                                    method_name, path_hint=import_path,
+                                    caller_path=_caller_path,
+                                )
+                            )
+                            if ns_target is None and lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: block resolution when
                                 # the target lives in a different npm package.
-                                if _is_cross_package(file_path, lookup_result.symbol.path):
-                                    pass  # suppress cross-package namespace call
-                                else:
-                                    is_class = lookup_result.symbol.kind == "class"
-                                    edge = Edge.create(
-                                        src=current_function.id,
-                                        dst=lookup_result.symbol.id,
-                                        edge_type="instantiates" if is_class else "calls",
-                                        line=node.start_point[0] + 1 + line_offset,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        evidence_type="ast_new" if is_class else "ast_call_namespace",
-                                        resolution_score=(
-                                            lookup_result.confidence if is_class else None
-                                        ),
-                                        # ADR-0039 caller-valued: ast_call_namespace is a
-                                        # pending-classification placeholder with no seeded
-                                        # band (its cluster-D audit may fold it into
-                                        # ast_call_direct), so it keeps this value until then.
-                                        confidence=(
-                                            None if is_class
-                                            else 0.90 * lookup_result.confidence
-                                        ),
-                                    )
-                                    edges.append(edge)
-                                    edge_added = True
+                                if not _is_cross_package(file_path, lookup_result.symbol.path):
+                                    ns_target = lookup_result.symbol
+                            if ns_target is not None:
+                                # The in-tree candidate is an exact package
+                                # match; the resolver's grade is for its own.
+                                ns_conf = (
+                                    lookup_result.confidence
+                                    if lookup_result.symbol is ns_target else 1.0
+                                )
+                                is_class = ns_target.kind == "class"
+                                edge = Edge.create(
+                                    src=current_function.id,
+                                    dst=ns_target.id,
+                                    edge_type="instantiates" if is_class else "calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_new" if is_class else "ast_call_namespace",
+                                    resolution_score=(
+                                        ns_conf if is_class else None
+                                    ),
+                                    # ADR-0039 caller-valued: ast_call_namespace is a
+                                    # pending-classification placeholder with no seeded
+                                    # band (its cluster-D audit may fold it into
+                                    # ast_call_direct), so it keeps this value until then.
+                                    confidence=(
+                                        None if is_class
+                                        else 0.90 * ns_conf
+                                    ),
+                                )
+                                edges.append(edge)
+                                edge_added = True
                             if not edge_added:
                                 # WI-vurop: fall back to an unresolved-call
                                 # edge so io-boundaries can match the catalog
@@ -6449,6 +6824,34 @@ def _extract_edges(
                                 )
                                 edges.append(edge)
                                 edge_added = True
+
+                        # WI-jomik: a receiver whose TYPE is a named import
+                        # from an external module (``new Subject()`` from
+                        # ``rxjs``, ``s: Subject``) calls that module's method,
+                        # not a same-named in-repo one (jotai: rxjs
+                        # ``subject.subscribe`` -> a test object's
+                        # ``subscribe``). A catalogued constructor keeps its
+                        # own route below (``_named_receiver_module``).
+                        elif (
+                            obj_name and obj_name in var_types
+                            and _external_module(
+                                (named_imports or {}).get(var_types[obj_name]),
+                            )
+                            and _named_receiver_module(
+                                obj_name, var_types, var_ctor_modules,
+                            ) is None
+                        ):
+                            edges.append(make_unresolved_edge(
+                                lang, current_function.id, method_name,
+                                node.start_point[0] + 1 + line_offset,
+                                PASS_ID, run.execution_id,
+                                module_hint=_normalize_import_module_hint(
+                                    (named_imports or {})[var_types[obj_name]],
+                                ),
+                                receiver_type_hint=var_types[obj_name],
+                                call_construct="method",
+                            ))
+                            edge_added = True
 
                         # Case 3: variable.method() via type inference
                         elif obj_name and obj_name in var_types:
@@ -6529,10 +6932,9 @@ def _extract_edges(
                         # annotation types already land) only when the bare
                         # name IS a catalogued constructor, so a project class
                         # never lands a module here.
-                        # WI-dosuh: the two-step lookup moved into
+                        # The two-step lookup lives in
                         # ``_named_receiver_module`` so the handler-assignment
-                        # branch resolves receivers by the SAME rule; the
-                        # behaviour here is unchanged.
+                        # branch resolves receivers by the SAME rule (WI-dosuh).
                         _ctor_module: str | None = None
                         _ctor_hint: str | None = None
                         if not edge_added and obj_name:
@@ -6551,14 +6953,14 @@ def _extract_edges(
                             ))
                             edge_added = True
 
-                        # WI-vihop: node's ``promises`` sub-namespace reached
-                        # as a member CHAIN (``fs.promises.readFile(p)``). The
+                        # Node's ``promises`` sub-namespace reached as a member
+                        # CHAIN (``fs.promises.readFile(p)``; WI-vihop). The
                         # cases above all key on ``obj_name``, which is set only
-                        # for a bare identifier, so a two-hop receiver skipped
-                        # every one of them and landed on the placeholder --
-                        # leaving 31 catalogued ``fs.promises`` rows and 16
-                        # ``dns.promises`` rows unreachable through the spelling
-                        # node's own documentation uses.
+                        # for a bare identifier, so a two-hop receiver skips
+                        # every one of them; without this branch it would land
+                        # on the placeholder, leaving the catalogued
+                        # ``fs.promises`` / ``dns.promises`` rows unreachable
+                        # through the spelling node's own documentation uses.
                         if (
                             not edge_added
                             and obj_node is not None
@@ -6611,7 +7013,7 @@ def _extract_edges(
                         # that exist on Array/Map/Set/Object — resolving these
                         # to user-defined classes inflates in-degree.
                         if not edge_added and method_name not in JS_BUILTIN_METHODS:
-                            lookup_result = method_resolver.lookup(method_name)
+                            lookup_result = method_resolver.lookup(method_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: low-confidence method
                                 # inference should not cross npm packages.
@@ -6649,19 +7051,28 @@ def _extract_edges(
                                         )
                                         edges.append(edge)
                                         edge_added = True
+                            elif defer_unresolved_tie(lookup_result):
+                                # A tie among methods (WI-jomik: no guess) is
+                                # deferred exactly as a weak pick is.
+                                edges.append(make_unresolved_edge(
+                                    lang, current_function.id, method_name,
+                                    node.start_point[0] + 1 + line_offset,
+                                    PASS_ID, run.execution_id,
+                                    enclosing_class=_jsts_enclosing_class(node, source),
+                                ))
+                                edge_added = True
 
-                        # WI-nasuf (javascript): an instance-method call on a
-                        # receiver nothing above could type or resolve --
-                        # ``obj.write(x)`` -- emitted NOTHING, while ``helper(x)``,
-                        # ``fs.readFileSync(x)`` and ``console.log(x)`` in the
-                        # same function all emitted. python, java, go, rust,
-                        # scala and swift emit the ``external`` placeholder with
-                        # ``call_construct: method`` for exactly this case; the
-                        # taint gates read that stamp (a bare-name sanitizer match
-                        # is refused ONLY on it), the io-boundary coverage gate
+                        # An instance-method call on a receiver nothing above
+                        # could type or resolve (``obj.write(x)``) emits the
+                        # ``external`` placeholder with ``call_construct:
+                        # method``, as python, java, go, rust, scala and swift
+                        # do for exactly this case (WI-nasuf). The taint gates
+                        # read that stamp (a bare-name sanitizer match is
+                        # refused ONLY on it), the io-boundary coverage gate
                         # counts the site, and ``verify_claims`` discloses it as
-                        # an ``untyped_receiver`` -- so this is the edge that lets
-                        # ``analyzer_disclosure`` stop declaring javascript blind.
+                        # an ``untyped_receiver`` -- this edge is what keeps
+                        # ``analyzer_disclosure`` from declaring javascript
+                        # blind to such calls.
                         # It reaches no catalogue row (``gate_named_entry`` refuses
                         # a method-kind hit with no module hint), so it is
                         # disclosure and walk coverage, not recall. ``this`` and a
@@ -6706,20 +7117,15 @@ def _extract_edges(
                         # Route symbols can shadow function symbols in
                         # global_symbols (last-one-wins).
                         #
-                        # WI-zugob: a route-marker disambiguation used to live
-                        # here — when this name lookup returned a route rather
-                        # than the handler, it preferred the function with the
-                        # same name. That collision was only possible because
-                        # route markers were NAMED AFTER THEIR HANDLER, which is
-                        # the defect the make_route_symbol migration removed: a
-                        # marker built by make_route_symbol is "{METHOD} {path}",
-                        # which is never a valid identifier, so an identifier
-                        # lookup cannot return it. The branch was removed. This
-                        # does NOT hold for JSX <Route> markers: they are still
+                        # A route marker built by make_route_symbol is named
+                        # "{METHOD} {path}", which is never a valid identifier,
+                        # so an identifier lookup cannot return it and no
+                        # route-marker disambiguation is needed here (WI-zugob).
+                        # This does NOT hold for JSX <Route> markers: they are
                         # hand-built in _extract_symbols and named after their
                         # component, so a name lookup outside the binder's reach
-                        # (no import, no in-scope declaration) can still return
-                        # the route marker in place of the component function.
+                        # (no import, no in-scope declaration) can return the
+                        # route marker in place of the component function.
                         if (
                             target is not None
                             and target.kind in ("function", "method", "route")
@@ -6770,10 +7176,9 @@ def _extract_edges(
                         resolved: Symbol | None = None
                         if arg.type == "identifier":
                             arg_name = _node_text(arg, source)
-                            # WI-zugob: the sibling route-marker
-                            # disambiguation is gone for the same reason as
-                            # above — "{METHOD} {path}" cannot collide with an
-                            # identifier.
+                            # No route-marker disambiguation, for the same
+                            # reason as above — "{METHOD} {path}" cannot
+                            # collide with an identifier (WI-zugob).
                             resolved = global_symbols.get(arg_name)
                         elif arg.type == "call_expression":
                             # Factory call like need('txt') — resolve the
@@ -6842,8 +7247,29 @@ def _extract_edges(
                         ns_import_path = namespace_imports[ns_name]
                     break
 
-            # Resolve class via class_resolver, using import path for disambiguation
-            if class_name:
+            # A RELATIVE import names the file, so of several same-named
+            # classes the instantiation is that file's: ``new ns.Client()``
+            # under a namespace import, or ``new Client()`` under a named import
+            # or destructured require (``import { Client as C }`` looks up the
+            # original name). The name-keyed class table keeps only the one
+            # enumerated last, so a path hint on it alone cannot pick the other
+            # (as for calls, WI-povub).
+            import_hint = ns_import_path
+            imported_name = class_name
+            if class_name and ns_import_path is None:
+                import_hint = (named_imports or {}).get(class_name)
+                imported_name = (named_import_originals or {}).get(class_name, class_name)
+            if (
+                imported_name and import_hint and import_hint.startswith(".")
+                and symbols_by_name
+            ):
+                target_sym = _disambiguate_by_import(
+                    import_hint, file_path, imported_name,
+                    {imported_name: [s for s in symbols_by_name.get(imported_name, ())
+                                     if s.kind == "class"]},
+                )
+            # Otherwise resolve via class_resolver, using the import path as a hint
+            if class_name and target_sym is None:
                 lookup_result = class_resolver.lookup(class_name, path_hint=ns_import_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     target_sym = lookup_result.symbol
@@ -6894,16 +7320,14 @@ def _extract_edges(
                                 var_ctor_modules.pop(var_name, None)
                             break
 
-        # WI-dosuh: handler REGISTRATION by property assignment.
+        # Handler REGISTRATION by property assignment (WI-dosuh).
         #
         # ``ws.onmessage = h`` is the browser receive surface short of
-        # ``addEventListener``, and it is not a call, so every branch of the
-        # member-call cascade above -- all of which key on a
-        # ``call_expression`` -- missed it and the catalogue rows
-        # ``WebSocket.onmessage``, ``WebSocket.onclose`` and
-        # ``EventSource.onmessage`` were unreachable. The limitation was
-        # DECLARED (``analyzer_disclosure.CONSTRUCT_BLIND_ROWS``) rather than
-        # fixed; this branch is the fix, and that declaration goes with it.
+        # ``addEventListener``, and it is not a call, so the member-call
+        # cascade above -- every branch of which keys on a
+        # ``call_expression`` -- cannot see it. This branch is what makes the
+        # catalogue rows ``WebSocket.onmessage``, ``WebSocket.onclose`` and
+        # ``EventSource.onmessage`` reachable.
         #
         # ``augmented_assignment_expression`` covers ``||=`` and ``??=``,
         # which register a handler by the same mechanism under a different
@@ -6917,10 +7341,11 @@ def _extract_edges(
         # and it cannot become a finding, because the taint walk enters a
         # handler through the handler symbol and ``null`` has none.
         #
-        # WHAT THIS DOES NOT DO: produce a security finding. Classification is
-        # half; taint must also ENTER the handler, and the
-        # enclosing-function-to-callback edge is ``references``, which is not
-        # in ``TAINT_CALL_EDGE_TYPES``. That half is WI-nisud.
+        # This edge only classifies the boundary; taint must also ENTER the
+        # handler. It does so through the ``references`` edge emitted below
+        # for a named handler, which the taint walk crosses as a callback
+        # registration (``edge_types.is_callback_registration``; WI-nisud)
+        # even though ``references`` is not in ``TAINT_CALL_EDGE_TYPES``.
         elif node.type in (
             "assignment_expression", "augmented_assignment_expression",
         ):
@@ -6978,10 +7403,10 @@ def _extract_edges(
                         ))
                         _registered = True
 
-            # WI-vubal: the FUNCTION handed over by a property write. The row
-            # edge above names the boundary; nothing named the handler, so a
-            # forward slice from ``setup`` never reached ``handle`` and a
-            # reverse slice from ``handle`` never found who registered it.
+            # The FUNCTION handed over by a property write (WI-vubal). The row
+            # edge above names the boundary, not the handler; this edge names
+            # the handler, so a forward slice from ``setup`` reaches ``handle``
+            # and a reverse slice from ``handle`` finds who registered it.
             # This is the third spelling of a relationship js_ts already
             # records for an object-literal value and a callback argument.
             #
@@ -7025,6 +7450,16 @@ def _extract_edges(
                             ),
                         ))
 
+            # META-mino: ``f = handler`` -- a plain name bound to a function.
+            if (
+                node.type == "assignment_expression"
+                and _lhs is not None
+                and _lhs.type == "identifier"
+                and _rhs is not None
+                and _rhs.type == "identifier"
+            ):
+                _emit_value_reference(node, _rhs, "function_reference")
+
         # Object literal function references: {onClick: handleClick}
         # AST: pair → property_identifier : identifier
         # When the value is a bare identifier that resolves to a function,
@@ -7038,56 +7473,28 @@ def _extract_edges(
                 elif seen_colon and pair_child.type == "identifier":
                     value_node = pair_child
                     break
-
+            # Cross-package guard: object field refs should not
+            # cross npm package boundaries (inside the helper).
             if value_node is not None:
-                ref_name = _node_text(value_node, source)
-                target = _resolve_value_ref(value_node, ref_name)
-                # Cross-package guard: object field refs should not
-                # cross npm package boundaries.
-                if (
-                    target is not None
-                    and target.kind in ("function", "method")
-                    and not _is_cross_package(file_path, target.path)
-                ):
-                    current_function = _get_enclosing_function(
-                        node, source, file_path, global_symbols,
-                        symbol_by_position, line_offset,
-                    ) or module_symbol
-                    if current_function is not None and target.id != current_function.id:
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=target.id,
-                            edge_type="references",
-                            line=node.start_point[0] + 1 + line_offset,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="object_field_reference",
-                        ))
+                _emit_value_reference(node, value_node, "object_field_reference")
 
         # Shorthand property: {handleClick} — equivalent to {handleClick: handleClick}
         elif node.type == "shorthand_property_identifier":
-            ref_name = _node_text(node, source)
-            target = _resolve_value_ref(node, ref_name)
-            # Cross-package guard: shorthand props should not cross packages
-            if (
-                target is not None
-                and target.kind in ("function", "method")
-                and not _is_cross_package(file_path, target.path)
-            ):
-                current_function = _get_enclosing_function(
-                    node, source, file_path, global_symbols,
-                    symbol_by_position, line_offset,
-                ) or module_symbol
-                if current_function is not None and target.id != current_function.id:
-                    edges.append(Edge.create(
-                        src=current_function.id,
-                        dst=target.id,
-                        edge_type="references",
-                        line=node.start_point[0] + 1 + line_offset,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="object_field_reference",
-                    ))
+            _emit_value_reference(node, node, "object_field_reference")
+
+        # META-mino: a function VALUE stored in a declaration or an array --
+        # ``const f = handler`` (module level or local), ``[a, b]`` (a
+        # dispatch table). The plain-assignment twin, ``f = handler``, is in
+        # the assignment arm above. Not a callback registration, so taint does
+        # not walk it: storing a function is not calling it.
+        elif node.type == "variable_declarator":
+            value_node = node.child_by_field_name("value")
+            if value_node is not None and value_node.type == "identifier":
+                _emit_value_reference(node, value_node, "function_reference")
+        elif node.type == "array":
+            for element in node.named_children:
+                if element.type == "identifier":
+                    _emit_value_reference(node, element, "function_reference")
 
     return edges
 
@@ -7134,8 +7541,15 @@ def _extract_symbols_and_edges(
     return symbols, edges
 
 
-def _get_parser_for_lang(is_typescript: bool) -> Optional["tree_sitter.Parser"]:
-    """Get tree-sitter parser for TypeScript or JavaScript."""
+def _get_parser_for_lang(
+    is_typescript: bool, tsx: bool = False,
+) -> Optional["tree_sitter.Parser"]:
+    """Get tree-sitter parser for TypeScript or JavaScript.
+
+    ``tsx`` selects the TSX variant of the TypeScript grammar (a ``<script
+    lang="tsx">`` block), which reads JSX that the plain TypeScript grammar
+    parses as broken type assertions.
+    """
     try:
         import tree_sitter
         import tree_sitter_javascript
@@ -7148,7 +7562,10 @@ def _get_parser_for_lang(is_typescript: bool) -> Optional["tree_sitter.Parser"]:
         try:
             import tree_sitter_typescript
 
-            lang_ptr = tree_sitter_typescript.language_typescript()
+            lang_ptr = (
+                tree_sitter_typescript.language_tsx() if tsx
+                else tree_sitter_typescript.language_typescript()
+            )
             parser.language = tree_sitter.Language(lang_ptr)
             return parser
         except ImportError:
@@ -7160,11 +7577,89 @@ def _get_parser_for_lang(is_typescript: bool) -> Optional["tree_sitter.Parser"]:
         return parser
 
 
-def _analyze_svelte_file(
+def _parse_sfc_blocks(
+    file_path: Path,
+    blocks: list[SfcScriptBlock],
+    run: AnalysisRun,
+    repo_root: Optional[Path] = None,
+) -> tuple[list[_ParsedFile], list[Symbol]]:
+    """Parse a single-file component's ``<script>`` blocks (pass 1).
+
+    Returns one ``_ParsedFile`` per parsed block (each keeps its own grammar,
+    language and line offset, so pass 2 walks each block on its own) and the
+    file's symbols, among which there is exactly ONE ``kind="file"`` symbol
+    (WI-rolub). ``_extract_symbols`` mints the file pseudo-node for every tree
+    it is given, so extracting each block independently would make ``<script
+    lang="ts">`` plus ``<script setup lang="ts">`` two symbols with one id,
+    and a JavaScript ``context="module"`` block beside a TypeScript instance
+    block a ``javascript:`` and a ``typescript:`` file node for one file.
+
+    The file symbol's language is ``typescript`` when any block is TypeScript
+    (the superset: a component with a TypeScript block is type-checked as
+    TypeScript), else ``javascript``; every block is extracted with that
+    ``file_lang`` so all blocks' copies of the pseudo-node share its id, the
+    first copy is kept, and its span is widened to cover every block. Members
+    keep their own block's language.
+    """
+    file_lang = (
+        "typescript" if any(b.is_typescript for b in blocks) else "javascript"
+    )
+    parsed: list[_ParsedFile] = []
+    symbols: list[Symbol] = []
+    file_symbol: Optional[Symbol] = None
+    for block in blocks:
+        parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
+        if parser is None:
+            continue
+        source_bytes = block.content.encode("utf-8")
+        tree = parser.parse(source_bytes)
+        lang = "typescript" if block.is_typescript else "javascript"
+        line_offset = block.start_line - 1
+        ns_imports = _extract_namespace_imports(tree, source_bytes)
+        nm_imports, nm_originals = _extract_named_imports(tree, source_bytes)
+        parsed.append(_ParsedFile(
+            path=file_path, tree=tree, source=source_bytes,
+            lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
+            named_imports=nm_imports,
+            named_import_originals=nm_originals,
+        ))
+        block_symbols = _extract_symbols(
+            tree, source_bytes, file_path, lang, run, line_offset,
+            repo_root=repo_root, file_lang=file_lang,
+        )
+        populate_docstrings_from_tree(tree.root_node, source_bytes, block_symbols)
+        for sym in block_symbols:
+            if sym.kind != "file":
+                symbols.append(sym)
+            elif file_symbol is None:
+                file_symbol = sym
+            else:
+                # Same id by construction; keep the first and cover this block.
+                assert file_symbol.span is not None and sym.span is not None
+                file_symbol.span = Span(
+                    start_line=min(file_symbol.span.start_line, sym.span.start_line),
+                    end_line=max(file_symbol.span.end_line, sym.span.end_line),
+                    start_col=0,
+                    end_col=0,
+                )
+                file_symbol.line_span = (
+                    file_symbol.span.end_line - file_symbol.span.start_line + 1
+                )
+    if file_symbol is not None:
+        symbols.insert(0, file_symbol)
+    return parsed, symbols
+
+
+def _analyze_sfc_file(
     file_path: Path,
     run: AnalysisRun,
 ) -> tuple[list[Symbol], list[Edge], bool]:
-    """Analyze a Svelte file by extracting and parsing <script> blocks.
+    """Analyze one Svelte / Vue file on its own (legacy single-file path).
+
+    Pass 1 is :func:`_parse_sfc_blocks`, so the file has one file symbol;
+    pass 2 resolves every block against the whole file's symbols (a ``<script
+    setup>`` call to a function of the plain ``<script>`` resolves) and
+    anchors file-level edges on that one file symbol.
 
     Returns (symbols, edges, success).
     """
@@ -7173,52 +7668,40 @@ def _analyze_svelte_file(
     except (OSError, IOError):
         return [], [], False
 
-    script_blocks = extract_svelte_scripts(source_text)
-    if not script_blocks:
-        # No script blocks found - not an error, just empty
-        return [], [], True
+    parsed, symbols = _parse_sfc_blocks(
+        file_path, _extract_sfc_scripts(source_text), run,
+    )
+    local_symbols: dict[str, Symbol] = {}
+    local_methods: dict[str, list[Symbol]] = {}
+    local_classes: dict[str, Symbol] = {}
+    for sym in symbols:
+        local_symbols[sym.name] = sym
+        if sym.kind == "method":
+            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            local_methods.setdefault(method_name, []).append(sym)
+        elif sym.kind == "class":
+            local_classes[sym.name] = sym
+    file_symbol = next((s for s in symbols if s.kind == "file"), None)
 
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
+    edges: list[Edge] = []
+    for pf in parsed:
+        edges.extend(_extract_edges(
+            pf.tree, pf.source, pf.path, pf.lang, run,
+            local_symbols, local_methods, local_classes, pf.line_offset,
+            module_symbol=file_symbol,
+        ))
+    return symbols, edges, True
 
-    for block in script_blocks:
-        parser = _get_parser_for_lang(block.is_typescript)
-        if parser is None:
-            continue
 
-        source_bytes = block.content.encode("utf-8")
-        tree = parser.parse(source_bytes)
+def _analyze_svelte_file(
+    file_path: Path,
+    run: AnalysisRun,
+) -> tuple[list[Symbol], list[Edge], bool]:
+    """Analyze a Svelte file by extracting and parsing <script> blocks.
 
-        lang = "typescript" if block.is_typescript else "javascript"
-        line_offset = block.start_line - 1
-
-        symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
-        populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
-
-        # Build local symbol registry for this block
-        local_symbols: dict[str, Symbol] = {}
-        local_methods: dict[str, list[Symbol]] = {}
-        local_classes: dict[str, Symbol] = {}
-
-        for sym in symbols:
-            local_symbols[sym.name] = sym
-            if sym.kind == "method":
-                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-                if method_name not in local_methods:
-                    local_methods[method_name] = []
-                local_methods[method_name].append(sym)
-            elif sym.kind == "class":
-                local_classes[sym.name] = sym
-
-        edges = _extract_edges(
-            tree, source_bytes, file_path, lang, run,
-            local_symbols, local_methods, local_classes, line_offset
-        )
-
-        all_symbols.extend(symbols)
-        all_edges.extend(edges)
-
-    return all_symbols, all_edges, True
+    Returns (symbols, edges, success).
+    """
+    return _analyze_sfc_file(file_path, run)
 
 
 def _analyze_vue_file(
@@ -7229,61 +7712,11 @@ def _analyze_vue_file(
 
     Returns (symbols, edges, success).
     """
-    try:
-        source_text = file_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, IOError):
-        return [], [], False
-
-    script_blocks = extract_vue_scripts(source_text)
-    if not script_blocks:
-        # No script blocks found - not an error, just empty
-        return [], [], True
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for block in script_blocks:
-        parser = _get_parser_for_lang(block.is_typescript)
-        if parser is None:
-            continue
-
-        source_bytes = block.content.encode("utf-8")
-        tree = parser.parse(source_bytes)
-
-        lang = "typescript" if block.is_typescript else "javascript"
-        line_offset = block.start_line - 1
-
-        symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
-        populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
-
-        # Build local symbol registry for this block
-        local_symbols: dict[str, Symbol] = {}
-        local_methods: dict[str, list[Symbol]] = {}
-        local_classes: dict[str, Symbol] = {}
-
-        for sym in symbols:
-            local_symbols[sym.name] = sym
-            if sym.kind == "method":
-                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-                if method_name not in local_methods:
-                    local_methods[method_name] = []
-                local_methods[method_name].append(sym)
-            elif sym.kind == "class":
-                local_classes[sym.name] = sym
-
-        edges = _extract_edges(
-            tree, source_bytes, file_path, lang, run,
-            local_symbols, local_methods, local_classes, line_offset
-        )
-
-        all_symbols.extend(symbols)
-        all_edges.extend(edges)
-
-    return all_symbols, all_edges, True
+    return _analyze_sfc_file(file_path, run)
 
 
-# ADR-0057 §10 (WI-hohuh): this analyzer shares ``vue`` and ``svelte`` with the
-# component analyzers but never a record — it reads a component file's
+# This analyzer shares ``vue`` and ``svelte`` with the component analyzers
+# but never a record (ADR-0057 §10, WI-hohuh) — it reads a component file's
 # <script> block (functions, classes, variables), they read its template
 # (slots, events, blocks, directives). Declared, not inferred: a rule keyed
 # on "two backends for one language" would misfire on exactly this pair.
@@ -7364,12 +7797,15 @@ def _analyze_javascript_impl(
             tree = parser.parse(source)
             record_partial_parse(run, str(file_path.relative_to(repo_root)), tree)  # WI-bulaz
             lang = _get_language_for_file(file_path)
-            ns_imports = _extract_namespace_imports(tree, source)
+            module_objects: set[str] = set()
+            ns_imports = _extract_namespace_imports(tree, source, module_objects)
             nm_imports, nm_originals = _extract_named_imports(tree, source)
             parsed_files.append(_ParsedFile(
                 path=file_path, tree=tree, source=source, lang=lang,
                 namespace_imports=ns_imports, named_imports=nm_imports,
                 named_import_originals=nm_originals,
+                default_export=_default_export_name(tree, source),
+                module_objects=frozenset(module_objects),
             ))
             symbols = _extract_symbols(tree, source, file_path, lang, run, repo_root=repo_root)
             populate_docstrings_from_tree(tree.root_node, source, symbols)
@@ -7379,77 +7815,23 @@ def _analyze_javascript_impl(
             files_skipped += 1
             run.record_failed_file(str(file_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")
 
-    # Analyze Svelte files
-    for file_path in find_svelte_files(repo_root, max_files=max_files):
-        try:
-            source_text = file_path.read_text(encoding="utf-8", errors="replace")
-            script_blocks = extract_svelte_scripts(source_text)
-            if not script_blocks:
+    # Analyze Svelte and Vue single-file components: one extractor and one
+    # pass-1 helper serve both hosts, and each file yields one file symbol
+    # however many <script> blocks it has (WI-rolub).
+    for find_sfc_files in (find_svelte_files, find_vue_files):
+        for file_path in find_sfc_files(repo_root, max_files=max_files):
+            try:
+                source_text = file_path.read_text(encoding="utf-8", errors="replace")
+                sfc_parsed, sfc_symbols = _parse_sfc_blocks(
+                    file_path, _extract_sfc_scripts(source_text), run,
+                    repo_root=repo_root,
+                )
+                parsed_files.extend(sfc_parsed)
+                all_symbols.extend(sfc_symbols)
                 files_analyzed += 1
-                continue
-
-            for block in script_blocks:
-                parser = _get_parser_for_lang(block.is_typescript)
-                if parser is None:
-                    continue
-
-                source_bytes = block.content.encode("utf-8")
-                tree = parser.parse(source_bytes)
-                lang = "typescript" if block.is_typescript else "javascript"
-                line_offset = block.start_line - 1
-                ns_imports = _extract_namespace_imports(tree, source_bytes)
-                nm_imports, nm_originals = _extract_named_imports(tree, source_bytes)
-
-                parsed_files.append(_ParsedFile(
-                    path=file_path, tree=tree, source=source_bytes,
-                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
-                    named_imports=nm_imports,
-                    named_import_originals=nm_originals,
-                ))
-                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset, repo_root=repo_root)
-                populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
-                all_symbols.extend(symbols)
-
-            files_analyzed += 1
-        except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
-            files_skipped += 1
-            run.record_failed_file(str(file_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")
-
-    # Analyze Vue SFC files
-    for file_path in find_vue_files(repo_root, max_files=max_files):
-        try:
-            source_text = file_path.read_text(encoding="utf-8", errors="replace")
-            script_blocks = extract_vue_scripts(source_text)
-            if not script_blocks:
-                files_analyzed += 1
-                continue
-
-            for block in script_blocks:
-                parser = _get_parser_for_lang(block.is_typescript)
-                if parser is None:
-                    continue
-
-                source_bytes = block.content.encode("utf-8")
-                tree = parser.parse(source_bytes)
-                lang = "typescript" if block.is_typescript else "javascript"
-                line_offset = block.start_line - 1
-                ns_imports = _extract_namespace_imports(tree, source_bytes)
-                nm_imports, nm_originals = _extract_named_imports(tree, source_bytes)
-
-                parsed_files.append(_ParsedFile(
-                    path=file_path, tree=tree, source=source_bytes,
-                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
-                    named_imports=nm_imports,
-                    named_import_originals=nm_originals,
-                ))
-                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset, repo_root=repo_root)
-                populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
-                all_symbols.extend(symbols)
-
-            files_analyzed += 1
-        except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
-            files_skipped += 1
-            run.record_failed_file(str(file_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")
+            except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
+                files_skipped += 1
+                run.record_failed_file(str(file_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")
 
     # Build global symbol registries
     global_symbols: dict[str, Symbol] = {}
@@ -7459,7 +7841,7 @@ def _analyze_javascript_impl(
     # INV-fafol: path -> that file's symbols, built once. Symbols carry a
     # repo-relative ``path`` and ``pf_name`` is computed the same way, so the
     # keys agree; a mismatch would yield an empty list and silently make the
-    # anchoring inert, which is the failure mode this fix exists to remove.
+    # anchoring inert.
     _symbols_by_path = symbols_by_path_index(all_symbols)
     symbols_by_name: dict[str, list[Symbol]] = {}
     # Position-based lookup for inline route handlers: (file_path, start_line, start_col) -> Symbol
@@ -7488,10 +7870,12 @@ def _analyze_javascript_impl(
     resolver = NameResolver(global_symbols)
     method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     class_resolver = NameResolver(global_classes)
+    default_export_of = _InTreeDefaultExports(parsed_files, symbols_by_name)
+    package_index = _JsPackageIndex([pf.path for pf in parsed_files])
     all_edges: list[Edge] = []
     for pf in parsed_files:
-        # INV-kokaj: look up the file pseudo-node by its new canonical
-        # name (the repo-relative path the Pass 1 emitter stamped). Fall
+        # Look up the file pseudo-node by its canonical name (the
+        # repo-relative path the Pass 1 emitter stamped; INV-kokaj). Fall
         # back to absolute path for repo_root-less callers.
         try:
             pf_name = str(pf.path.relative_to(repo_root))
@@ -7509,20 +7893,23 @@ def _analyze_javascript_impl(
             module_symbol=file_mod_sym,
             named_import_originals=pf.named_import_originals or {},
             file_symbols=symbols_for_path(_symbols_by_path, str(pf.path), pf_name),
+            default_export_of=default_export_of,
+            module_objects=pf.module_objects,
+            package_index=package_index,
         )
-        # WI-lozug: emit module_attr_ref edges for attribute reads on
-        # imported modules and well-known JS/Node globals (``process``,
-        # ``window``, ``document``, ``navigator``).  Pairs with the
+        # Emit module_attr_ref edges for attribute reads on imported modules
+        # and well-known JS/Node globals (``process``, ``window``,
+        # ``document``, ``navigator``; WI-lozug).  Pairs with the
         # ``attributes:`` entries in io_primitives/javascript.yaml —
         # without this emission, env_read / ipc_send / ipc_recv chains
-        # that target ``process.env`` / ``process.stdout`` / etc. were
+        # that target ``process.env`` / ``process.stdout`` / etc. would be
         # silently inert.  The src is the innermost callable containing the
         # read (``enclosing_symbols`` below, INV-fafol); a read outside any
         # callable falls back to the file pseudo-symbol ``file_mod_sym``
         # registered by Pass 1.
-        # WI-fiham: the binding's module in the CALL path's spelling, scheme
-        # dropped (``node:path`` -> ``path``), so a read and a call through one
-        # require name one module. Relative leaders are kept (INV-juvul).
+        # The binding's module in the CALL path's spelling, scheme dropped
+        # (``node:path`` -> ``path``; WI-fiham), so a read and a call through
+        # one require name one module. Relative leaders are kept (INV-juvul).
         combined_imports = {
             **{name: _strip_import_scheme(module) for name, module in {
                 **(pf.namespace_imports or {}),
@@ -7537,6 +7924,7 @@ def _analyze_javascript_impl(
         # parsed_files (see the INV-kokaj file pseudo-node emission in
         # ``_extract_symbols``), so it is non-None here.  A
         # defensive ``is not None`` check is omitted intentionally.
+        attr_start = len(edges)
         emit_module_attribute_refs(
             pf.tree.root_node,
             pf.source,
@@ -7553,22 +7941,25 @@ def _analyze_javascript_impl(
             call_function_field_names=("function",),
             # INV-hopib: record the call a stream is handed to.
             carrier_call_kinds=("call_expression", "new_expression"),
-            # INV-fafol: anchor each read to the callable that performs it,
-            # not to the file. Propagation pairs a source and a sink that
+            # Anchor each read to the callable that performs it, not to the
+            # file (INV-fafol). Propagation pairs a source and a sink that
             # share a caller, so a file-anchored source can never reach any
-            # sink -- measured: process.env.API_KEY -> fs.writeFileSync was
-            # missed while os.hostname() -> fs.writeFileSync in the sibling
-            # function was found.
+            # sink: a file-anchored ``process.env.API_KEY`` read would never
+            # pair with an ``fs.writeFileSync`` in the function that reads it.
             enclosing_symbols=symbols_for_path(
                 _symbols_by_path, str(pf.path), pf_name,
             ),
+        )
+        _retarget_in_tree_module_attrs(
+            edges, attr_start, pf.path, symbols_by_name, run.execution_id,
+            _module_object_reads(pf),
         )
         # ADR-0015 Tier 1: automatic dataflow annotation from AST context
         if _df_config is not None:
             annotate_dataflow(edges, pf.tree, pf.source, _df_config)
         all_edges.extend(edges)
 
-    # Pass 3: Extract usage contexts for call-based frameworks (v1.1.x)
+    # Pass 3: Extract usage contexts for call-based frameworks
     all_usage_contexts: list[UsageContext] = []
     for pf in parsed_files:
         # Express-style route calls (app.get, router.post, etc.)
@@ -7608,11 +7999,10 @@ def _analyze_javascript_impl(
             )
             all_usage_contexts.extend(bootstrap_contexts)
 
-            # INV-rolul: HTTP/GraphQL server-handler calls
-            # (startStandaloneServer, runHttpQuery, executeHTTPGraphQLRequest,
-            # http.createServer family, bare createServer). Closes the
-            # WI-tisam end-to-end gap where graphql.yaml / node-http.yaml
-            # YAML usage:kind:call patterns had no UC producer feeding them.
+            # HTTP/GraphQL server-handler calls (startStandaloneServer,
+            # runHttpQuery, executeHTTPGraphQLRequest, http.createServer
+            # family, bare createServer). These UCs feed the usage:kind:call
+            # patterns in graphql.yaml / node-http.yaml (WI-tisam, INV-rolul).
             http_handler_contexts = _extract_http_handler_contexts(
                 pf.tree, pf.source, pf.path, file_mod_sym, pf.line_offset,
             )
@@ -7627,7 +8017,7 @@ def _analyze_javascript_impl(
                 classes_by_name[sym.name] = []
             classes_by_name[sym.name].append(sym)
     inheritance_edges = _extract_inheritance_edges(
-        all_symbols, classes_by_name, parsed_files, run
+        all_symbols, classes_by_name, parsed_files, run, package_index,
     )
     all_edges.extend(inheritance_edges)
 

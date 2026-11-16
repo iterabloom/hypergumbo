@@ -1,0 +1,21 @@
+- op: create  # 13e3
+  at: '2026-11-04T04:16:39Z'  # 13e3
+  by: agent  # 13e3
+  actor: jgstern_agent  # 13e3
+  clock: 1  # 13e3
+  nonce: '13e3'  # 13e3
+  data:  # 13e3
+    kind: work_item  # 13e3
+    title: "Observed I/O manifest on macOS: produce docs/io-manifest/expected-macos.txt from the PyPI wheels with eslogger (strace manifest is Linux-only; the owner's machine is a mac)"  # 13e3
+    status: todo_hard  # 13e3
+    priority: 3  # 13e3
+    parent:  # 13e3
+    tags:  # 13e3
+    - security  # 13e3
+    - ci_infrastructure  # 13e3
+    isbefore: []  # 13e3
+    duplicate_of: []  # 13e3
+    not_duplicate_of: []  # 13e3
+    pr_ref:  # 13e3
+    description: "**Context.** Owner's audit sentence (session 2026-11-03, ~/hypergumbo_lab_notebook/self_audit_11032026/), step 4. The observed I/O manifest (`scripts/io-manifest`, docs/io-manifest/expected.txt, 15 lines, release run 39068691320 on 2026-10-17) is the only check that sees what a dependency or a C extension does, and it is strace on GitHub ubuntu-latest. The owner's daily driver is a macOS mac mini: different native wheels (tree-sitter, tree-sitter-language-pack and the per-language grammar wheels ship platform binaries), no strace, and the manifest has never been produced there. The Linux lines therefore do not describe the machine the owner would install on.\n\n**Work.** (1) Pick the macOS tracer: `eslogger` (Endpoint Security, macOS 13+, needs root and Full Disk Access; emits exec, open-for-write, unlink, rename, connect events as JSON), or `fs_usage` + a connect tracer; dtrace/dtruss is not an option with SIP on. (2) Reduce its output to the manifest's line vocabulary (`op<TAB>target`, zone tokens <repo>/<cache>/<tmp>/<out>/<home>) so expected.txt is comparable; a `--tracer eslogger` arm on scripts/io-manifest, or a sibling script, with the reducer unit-tested on a captured sample. (3) Produce the macOS manifest from the PyPI wheels (not the editable checkout) over docs/io-manifest/corpus.txt, diff against expected.txt, and record every macOS-only line with its cause (e.g. a native wheel's dlopen path, a Darwin cache dir). (4) Decide whether a macos-latest leg of the release.yml io-manifest job is feasible (eslogger availability and TCC on hosted runners is unverified).\n\n**Verification.** A committed docs/io-manifest/expected-macos.txt (or the decision not to, with the blocker named) and the diff. Pre-registered: unmeasured. Needs a mac: the owner's machine or a hosted macOS runner; the agent cannot run step (3) in this sandbox."  # 13e3
+    fields: {}  # 13e3

@@ -19,3 +19,10 @@
     pr_ref:  # 9fa0
     description: "The two CI pip-audit ignores treated as permanent, CVE-2025-71176 (pytest TOCTOU) and CVE-2026-3219 (pip archive confusion), matched nothing in the two audit environments rebuilt on 2026-09-27 for WI-totak (~/hypergumbo_lab_notebook/totak_09272026/{ci,rel}_noign.json). There, an audit with NO ignores exits 0: pytest resolves to 9.0.3 (core[dev] pins pytest~=9.0.2; the syrupy <9 cap that motivated the ignore no longer holds it back) and pip to 26.2.1. Both exit plans in ci.yml's comments are met in those envs.\n\nNOT CHECKED: the self-hosted runner's actual audit env (setup-python toolcache, which can carry packages from other jobs). That is the env the ignores protect, so it is the one to measure.\n\nTo do: drop both ids from the four lists (tests/test_audit_ignore_lists.py keeps them in step) and let the PR's own CI audit job be the measurement; if it fails, the failure names what the runner still carries."  # 9fa0
     fields: {}  # 9fa0
+- op: discuss  # 70ca
+  at: '2026-11-01T10:55:46Z'  # 70ca
+  by: agent  # 70ca
+  actor: jgstern_agent  # 70ca
+  clock: 2  # 70ca
+  nonce: 70ca  # 70ca
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: CURRENT. At dev 100b6fbb6e both ids are still in all four lists (ci.yml:437, release.yml:88, woodpecker.yml:166, release-check:278). Local env has pytest 9.0.3 and pip 26.2.2 (not affected), and syrupy 4.8.0 sits beside pytest 9.0.3, so the ci.yml comment 'pinned below 9.0.0 by syrupy' is stale. The runner-env measurement (the PR's CI audit job) still needs CI/network and was not run. MECHANISM: a vulnerability ignore outlives its cause and would hide the next advisory under the same id. SHARES MECHANISM WITH: WI-totak."  # 70ca

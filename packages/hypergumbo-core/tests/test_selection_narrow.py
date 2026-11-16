@@ -1,30 +1,30 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Narrowing the run set: what may be dropped, and what forbids dropping it.
 
-PHASE 3 (WI-bolot) is the first operation in this family that can REMOVE a test,
-so it is the first one where being wrong costs something. The three rules below
+Narrowing is the only operation in this family that can REMOVE a test, so it is
+the one where being wrong costs more than time (history: WI-bolot). The three
+rules below
 are the whole safety argument, and each is a separate test because each has a
 distinct way of being silently violated.
 
 RULE 1 — DROP ONLY WITH POSITIVE EVIDENCE. A run-set file may be dropped only if
 the index can actually speak about it: it has coverage rows, and none of its
-tests are recorded as ``unmeasured``. 3,605 node ids in this suite produce no
-coverage rows at all (the tracker package is outside COV_PATHS; subprocess and
-``scripts/`` tests leave no in-process trace), and any test never yet run locally
-is simply absent from the index. Absence of evidence is not evidence of absence,
-so everything the index cannot speak about is kept unconditionally. This is the
-``unmeasured`` precondition WI-bolot names as the one a careless implementation
-breaks.
+tests are recorded as ``unmeasured``. Thousands of node ids in this suite
+produce no coverage rows at all (the tracker package is outside COV_PATHS;
+subprocess and ``scripts/`` tests leave no in-process trace), and any test never
+yet run locally is simply absent from the index. Absence of evidence is not
+evidence of absence, so everything the index cannot speak about is kept
+unconditionally. The ``unmeasured`` precondition is the one a careless
+implementation breaks.
 
 RULE 2 — KEEP THE WHOLE FILE-TOUCH SET, NOT JUST THE CHANGED BLOCKS. After the
 suite, smart-test runs ``coverage report --include=<changed files>
 --fail-under=100``, and that gate is WHOLE-FILE. Narrowing to the tests attached
 to changed BLOCKS leaves the rest of each changed file uncovered and exits 1 — a
-red run on every commit, which is worse than a slow one. Measured on this repo:
-at one base the block-selected set was 3 files while the file-touch set was 13,
-so the naive narrowing would have dropped 10 files that were covering the
-changed files. The keep set is therefore every test observed executing ANY block
-of a changed file.
+red run on every commit, which is worse than a slow one. The block-selected set
+can be a small fraction of the file-touch set, so the naive narrowing drops
+files that are covering the changed files. The keep set is therefore every test
+observed executing ANY block of a changed file.
 
 RULE 3 — SOME CHANGES FORBID NARROWING OUTRIGHT, and the distinction here decided
 the design. An unknown *coverable source* file — one under ``packages/*/src/``
@@ -32,12 +32,12 @@ that the index has never seen — means no test has been observed touching it, s
 any droppable test could be its real cover. That forbids dropping. But three
 things that LOOK like the same problem are not:
 
-* **new blocks** are not a refusal. The first version of the measuring script
-  made them one and reported "narrowing refused" on every commit examined,
-  because ordinary development adds blocks. The reason new blocks look dangerous
-  is that coverage cannot know which test covers new code — but the test that
-  covers a developer's new code is a CHANGED TEST FILE, and changed test files
-  enter the run set through a different selector that narrowing never touches.
+* **new blocks** are not a refusal. Ordinary development adds blocks, so
+  refusing on them would refuse on nearly every commit. The reason new blocks
+  look dangerous is that coverage cannot know which test covers new code — but
+  the test that covers a developer's new code is a CHANGED TEST FILE, and
+  narrowing never drops a changed file that is in the run set
+  (``narrow_run_set``'s ``changed``).
 * **unknown test files** are not a refusal: a new test file is unknown to the
   index by definition, and it is its own cover.
 * **unknown files outside the coverage scope** (``scripts/``, docs, config) are
@@ -48,7 +48,9 @@ things that LOOK like the same problem are not:
 
 A missing path — a changed file that no longer exists — always forbids
 narrowing: its tests exercised code that is now gone, and those are worth
-running.
+running. So does a changed import-time block (a module or class body) in a
+coverable source file: every importer runs it, and no coverage row says who
+the importers are.
 """
 from __future__ import annotations
 
@@ -60,6 +62,7 @@ from hypergumbo_core.selection_index import (
     narrowing_blockers,
     open_index,
     speakable_test_files,
+    store_edges,
     touching_test_files,
 )
 
@@ -78,6 +81,7 @@ def _sel(**kw) -> Selection:
         unknown_paths=frozenset(kw.get("unknown", ())),
         unmeasured=frozenset(kw.get("unmeasured", ())),
         missing_paths=frozenset(kw.get("missing", ())),
+        import_time_changed=frozenset(kw.get("import_time", ())),
     )
 
 
@@ -126,8 +130,26 @@ class TestNarrowRunSet:
         assert got.kept == frozenset(_RUN)
         assert got.dropped == frozenset()
 
+    def test_a_changed_test_file_is_never_dropped(self) -> None:
+        """A test file the change edits runs, whatever the index says.
+
+        Its own lines are not in the coverage scope, so no row ties it to the
+        change, and if it does not execute the changed SOURCE it would look
+        irrelevant. It is the developer's newest evidence; dropping it would
+        merge a PR whose edited tests never ran.
+        """
+        got = narrow_run_set(
+            _RUN,
+            keep={_RUN[0]},
+            droppable=set(_RUN),
+            forbidden=(),
+            changed={_RUN[2], "packages/hypergumbo-core/src/hypergumbo_core/x.py"},
+        )
+        assert got.kept == frozenset({_RUN[0], _RUN[2]})
+        assert got.dropped == frozenset({_RUN[1]})
+
     def test_keep_entries_outside_the_run_set_do_not_join_it(self) -> None:
-        """Narrowing may only SHRINK. Adding is Phase 2's job, above."""
+        """Narrowing may only SHRINK. Adding tests is the union's job."""
         got = narrow_run_set(
             _RUN,
             keep={_RUN[0], "packages/hypergumbo-core/tests/test_delta.py"},
@@ -139,8 +161,8 @@ class TestNarrowRunSet:
     def test_narrowing_to_nothing_is_refused(self) -> None:
         """An empty run set makes pytest exit 5 — green while running nothing.
 
-        This project has been bitten by that exact shape before, so a narrowing
-        that would leave no tests at all keeps the original set instead.
+        So a narrowing that would leave no tests at all keeps the original set
+        instead.
         """
         got = narrow_run_set(
             _RUN, keep=set(), droppable=set(_RUN), forbidden=(),
@@ -184,6 +206,28 @@ class TestNarrowingBlockers:
             _sel(unknown={"/repo/scripts/measure-thing.py"}), self._ROOT,
         ) == ()
 
+    def test_changed_import_time_code_forbids_narrowing(self) -> None:
+        """An import is not a coverage row (WI-zunug).
+
+        A module body runs at import, under no test's coverage context, so a
+        test that only IMPORTS the file has no row for it, and reading "no row"
+        as "irrelevant" would drop a test that runs the changed code. Every importer
+        runs a changed module or class body, and the index does not know the
+        importers, so the run set stays whole.
+        """
+        got = narrowing_blockers(
+            _sel(import_time={("/repo/packages/p/src/p/a.py", "<module>")}),
+            self._ROOT,
+        )
+        assert got == ("import-time code changed: packages/p/src/p/a.py (<module>)",)
+
+    def test_a_changed_test_module_body_does_not_forbid(self) -> None:
+        """A test file's importers are not tests; it is its own cover."""
+        assert narrowing_blockers(
+            _sel(import_time={("/repo/packages/p/tests/test_a.py", "<module>")}),
+            self._ROOT,
+        ) == ()
+
     def test_a_clean_change_forbids_nothing(self) -> None:
         assert narrowing_blockers(_sel(), self._ROOT) == ()
 
@@ -198,18 +242,19 @@ class TestNarrowingBlockers:
 
 # ── The two index queries the rules are computed from ────────────────────────
 #
-# These were shipped once WITHOUT unit tests, on the reasoning that
-# ``coverage-select`` exercises them. It does — by subprocess, which contributes
-# no coverage — so the whole-file gate caught them at 95% and was right to.
-# Recorded because "a script calls it" is a recurring excuse for an untested
-# branch in this repo.
+# These need in-process unit tests even though ``coverage-select`` exercises
+# them: it does so by subprocess, which contributes no coverage, so without
+# these tests the whole-file gate fails. "A script calls it" does not cover a
+# branch.
 
 
 def _index(tmp_path: Path, *, blocks=(), unmeasured=()):
     """A real index with the given ``(test_id, path, name)`` rows."""
     conn = open_index(tmp_path / "index.sqlite")
-    conn.executemany("INSERT INTO test_block (test_id, path, name) VALUES (?,?,?)",
-                     blocks)
+    edges: dict[str, list[tuple[str, str]]] = {}
+    for test_id, path, name in blocks:
+        edges.setdefault(test_id, []).append((path, name))
+    store_edges(conn, edges)
     conn.executemany("INSERT INTO unmeasured_test (test_id) VALUES (?)",
                      [(t,) for t in unmeasured])
     conn.commit()
@@ -238,7 +283,7 @@ class TestTestsTouching:
         })
 
     def test_no_paths_is_no_query(self, tmp_path) -> None:
-        """An empty IN () is a SQL syntax error, so the empty case short-circuits."""
+        """No paths means no query: the empty case short-circuits to an empty set."""
         conn = _index(tmp_path)
         assert touching_test_files(conn, [], tmp_path) == frozenset()
         conn.close()
@@ -267,8 +312,8 @@ class TestSpeakableTestFiles:
         """The conservative half of RULE 1, and the one worth seeing fail.
 
         ``test_a`` has 1 unmeasured test beside 1 measured one, and the whole
-        file becomes undroppable. On the real index this is what holds 44.7% of
-        wall-clock: ``test_profile.py`` is kept by 1 unmeasured test of 283.
+        file becomes undroppable. On a real index this keeps a large test file
+        in the run for the sake of a single unmeasured test.
         """
         conn = _index(
             tmp_path,

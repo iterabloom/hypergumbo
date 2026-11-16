@@ -54,5 +54,3 @@ patterns:
   # argh Subcommand derive
   - concept: command
     annotation: "^argh::Subcommand$"
-
-linkers: []

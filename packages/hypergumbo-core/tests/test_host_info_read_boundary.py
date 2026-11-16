@@ -2,33 +2,31 @@
 """A boundary that auto-derives a taint label must mean what the label means
 (INV-tutar).
 
-WHAT WAS WRONG. ``AUTO_SOURCE_LABEL_MAP`` derived ``host_secret`` from the
-``env_read`` boundary, and ``env_read`` catalogued two different things:
-ambient CONFIGURATION reads, whose values may carry a credential
-(``os.getenv``, ``System.getProperty``, ``std::env::var``), and host
+THE SPLIT. ``AUTO_SOURCE_LABEL_MAP`` derives one taint label per boundary, so
+one boundary must not catalogue two kinds of read. Ambient CONFIGURATION reads,
+whose values may carry a credential (``os.getenv``, ``System.getProperty``,
+``std::env::var``), are ``env_read`` and derive ``host_secret``. Host
 DESCRIPTION reads, which are not secrets in any ordinary sense
 (``runtime.GOOS``, ``os.uname``, ``navigator.platform``, ``platform.system``,
-``pwd.getpwnam``). Census over the shipped catalogues: **134 of 195 rows** were
-the second kind. Every ``host-secret-*`` claim therefore counted description
-reads as secret flows -- 48 of 85 adjudicated flows at 22.9% precision, the
-weakest family in measurement 0001, and 51 of 59 situations in 0004.
+``pwd.getpwnam``), are ``host_info_read`` and derive ``host_description``.
+Description reads are the majority of the shipped rows, so filing them under
+``env_read`` makes every ``host-secret-*`` claim count them as secret flows, at
+very low precision (measurements 0001 / 0004).
 
-THE CATALOGUE WAS ALREADY DISTORTING ITSELF TO COPE, which is the strongest
-evidence the vocabulary was wrong rather than merely imprecise.
-``io_primitives/python.yaml`` deliberately withheld ``getpid`` / ``cpu_count``
-/ ``times`` -- not because they are not environment reads, but because
-"env_read rows auto-derive host_secret TAINT SOURCES ... and a pid is not a
-secret". ``go.yaml`` meanwhile rowed ``GOOS``, ``Getwd`` and ``Executable``.
-One boundary value, two membership rules, two shipped files: the apex/peer hit
-in the fundamental-concept audit, which alone is grounds to deprecate.
+A SHARED BOUNDARY DISTORTS THE CATALOGUE, which is the evidence that the
+vocabulary is wrong rather than merely imprecise: a catalogue protecting the
+derived label withholds description reads it would otherwise row ("a pid is not
+a secret"), while another catalogue rows the same kind of read anyway. One
+boundary value, two membership rules: the apex/peer hit in the
+fundamental-concept audit, which alone is grounds to deprecate.
 
 WHY THE BOUNDARY SPLIT AND NOT A LABEL RENAME OR A PER-ROW OVERRIDE.
-A rename keeps one boundary meaning both things and breaks three shipped
-example claims for nothing. A per-row ``taint_label`` would let the row AND the
+A rename keeps one boundary meaning both things and breaks shipped example
+claims for nothing. A per-row ``taint_label`` would let the row AND the
 boundary each decide the label -- one fact, two homes. The boundary vocabulary
 (``CATALOG_BOUNDARY_TYPES``) is the registry-backed thing, so it is where the
-distinction belongs. Owner-ratified 2026-08-25; full audit at
-``~/hypergumbo_lab_notebook/campaign_p0_08252026/P2_env_read_concept_audit.md``.
+distinction belongs. (Owner-ratified; audit:
+``~/hypergumbo_lab_notebook/campaign_p0_08252026/P2_env_read_concept_audit.md``.)
 """
 
 from collections import Counter
@@ -51,8 +49,8 @@ _CATALOG_DIR = Path(iob.__file__).parent / "io_primitives"
 
 
 class TestTheTwoVocabulariesArePinnedToEachOther:
-    """The contract that keeps this from happening again: a boundary cannot be
-    added without deciding what, if anything, it derives."""
+    """The contract: a boundary cannot be added without deciding what, if
+    anything, it derives."""
 
     def test_every_auto_labelled_boundary_is_a_real_boundary(self) -> None:
         unknown = set(AUTO_SOURCE_LABEL_MAP) - set(CATALOG_BOUNDARY_TYPES)
@@ -80,8 +78,8 @@ class TestTheTwoVocabulariesArePinnedToEachOther:
         assert AUTO_SOURCE_LABEL_MAP["host_info_read"] == "host_description"
 
 
-#: Rows named in INV-tutar and in measurements 0001 / 0004 as the ones calling
-#: a description read a secret. Each is asserted at the DERIVED-SOURCE layer,
+#: Description reads a shared boundary would call secrets (INV-tutar;
+#: measurements 0001 / 0004). Each is asserted at the DERIVED-SOURCE layer,
 #: not by reading the YAML, because the YAML is not what the taint arm consumes.
 _MUST_BE_DESCRIPTION = [
     ("go", "runtime", "GOOS"),
@@ -97,9 +95,8 @@ _MUST_BE_DESCRIPTION = [
     ("java", "java.lang.Runtime", "availableProcessors"),
 ]
 
-#: The other arm. A one-arm test of the wrong arm generalises to a falsehood
-#: (LIVE.md rule 12), and "everything is host_description now" would pass every
-#: assertion above.
+#: The other arm. A one-arm test of the wrong arm generalises to a falsehood,
+#: and "everything is host_description" would pass every assertion above.
 _MUST_STAY_SECRET = [
     ("go", "os", "Getenv"),
     ("go", "os", "Environ"),
@@ -153,10 +150,9 @@ class TestThePopulationMoved:
         )
 
     def test_a_csprng_read_is_not_an_environment_read_at_all(self) -> None:
-        """``os.getrandom`` was filed under ``env_read`` and derived a
-        ``host_secret`` source. It is neither, and the same file already keeps
-        ``os.urandom`` out for its own reason. Removed by the split rather than
-        moved."""
+        """``os.getrandom`` is neither an environment read nor a ``host_secret``
+        source, so it has no row at all; the same file keeps ``os.urandom`` out
+        for its own reason."""
         assert _label_of("python", "os", "getrandom") is None
 
     def test_the_browser_credential_rows_stayed_put(self) -> None:

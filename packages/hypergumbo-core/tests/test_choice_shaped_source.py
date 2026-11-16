@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The choice-shaped source blindness, DECLARED rather than fixed (WI-jivih, arc T8).
 
-WI-jivih pre-registered its own decision rule before any number existed: if the
-finding-weighted share of choice-shaped sources is under 5%, the source half is
-not worth a per-row `value_shape` field and the honest output is a dated
-declared blindness. A 23-repository cohort sampled deliberately for socket
-ownership — chosen to be maximally favourable to the property — measured
-**2 of 568 findings, 0.35%**, while plainly seeing the population (87% of it
-reached a choice-shaped chain). So the field is not built, and this is the
-disclosure instead.
+A choice-shaped source is one whose value the far side merely CHOSE from a
+constrained set (an accepted peer, a DNS answer) rather than authored. The
+analysis does not model that distinction and emits no per-row ``value_shape``
+field: the finding-weighted share of such sources fell below the 5% line that
+decides whether the field is worth building. Instead, a violated taint verdict
+rooted at one carries a dated caveat with that measurement
+(``CAVEAT_CHOICE_SHAPED_SOURCE`` in ``verify_claims``). These tests pin the
+name registry, when the caveat fires, and that it is a disclosure, not a filter.
 """
 import pytest
 
@@ -23,29 +23,32 @@ from hypergumbo_core.verify_claims import (
 )
 
 
-def _finding(source_primitive, source_module="socket"):
+def _finding(source_primitive, source_module="socket", *, label="untrusted_input",
+             group=()):
     return TaintFlowFinding(
-        taint_label="untrusted_input",
+        taint_label=label,
         source_symbol="s", source_primitive=source_primitive,
         source_module=source_module, sink_symbol="k",
         sink_primitive="run", sink_module="subprocess",
         sink_zone="subprocess", sanitized=False,
         confidence="approximate", analysis_method="structural",
+        source_primitives=tuple(group),
     )
 
 
-def _claim():
+def _claim(label="untrusted_input"):
     return Claim(id="C1", text="untrusted input never reaches a subprocess",
                  constraint_taint_flow=TaintFlowConstraint(
-                     source_taint="untrusted_input",
+                     source_taint=label,
                      prohibited_sink_zone="subprocess"))
 
 
 class TestTheRegistry:
-    def test_the_three_families_are_declared(self):
-        """accept (a peer the far side did not author), the erlang inet DNS
-        answers, and the exit status collected by wait*."""
-        for name in ("accept", "gethostbyname", "waitpid"):
+    def test_the_two_families_are_declared(self):
+        """accept (a peer the far side did not author) and the erlang inet DNS
+        answers. An exit status is not listed: the catalogue mints no source
+        for it (WI-lanos; test_exit_status_is_one_verdict.py)."""
+        for name in ("accept", "gethostbyname"):
             assert name in CHOICE_SHAPED_SOURCE_NAMES
 
     def test_matching_is_on_the_last_segment(self):
@@ -58,6 +61,12 @@ class TestTheRegistry:
     def test_a_content_shaped_source_is_not_matched(self):
         assert not is_choice_shaped_source("builtins.input")
         assert not is_choice_shaped_source("socket.socket.recv")
+
+    def test_local_table_reads_are_not_listed(self):
+        """WI-zakil: erlang's gethostname / getservbyname / getservbyport read
+        local tables and are host_info_read, not a value the far side chose."""
+        for name in ("gethostname", "getservbyname", "getservbyport"):
+            assert name not in CHOICE_SHAPED_SOURCE_NAMES
 
     def test_a_bare_name_still_resolves(self):
         assert is_choice_shaped_source("accept")
@@ -91,10 +100,10 @@ class TestTheCaveat:
 
     def test_it_names_which_sources_it_is_about(self):
         v = verify_taint_claim(_claim(), [_finding("accept"),
-                                          _finding("waitpid")])
+                                          _finding("gethostbyname")])
         entry = next(c for c in v.caveats
                      if c["kind"] == CAVEAT_CHOICE_SHAPED_SOURCE)
-        assert sorted(entry["entries"]) == ["accept", "waitpid"]
+        assert sorted(entry["entries"]) == ["accept", "gethostbyname"]
 
     def test_the_verdict_VALUE_is_unchanged(self):
         """P3: this is a DISCLOSURE, not a filter. Nothing moves between
@@ -109,3 +118,27 @@ class TestTheCaveat:
         v = verify_taint_claim(_claim(), [])
         kinds = {c["kind"] for c in v.caveats}
         assert CAVEAT_CHOICE_SHAPED_SOURCE not in kinds
+
+
+class TestTheCaveatReadsTheRow:
+    """WI-zakil / WI-kufos: the caveat is about evidence ROWS, each row is its
+    whole collapsed group, and the shape is defined on untrusted_input."""
+
+    def _entry(self, findings, label="untrusted_input"):
+        v = verify_taint_claim(_claim(label), findings)
+        assert v.verdict == "violated"  # reach
+        return next((c for c in v.caveats if c["kind"] == CAVEAT_CHOICE_SHAPED_SOURCE), None)
+
+    def test_it_counts_rows_not_names(self):
+        entry = self._entry([_finding("accept"), _finding("accept"), _finding("accept")])
+        assert entry["entries"] == ["accept"]
+        assert entry["detail"].startswith("3 of this claim's evidence rows")
+
+    def test_a_group_whose_witness_is_not_choice_shaped_is_caveated(self):
+        row = _finding("recv", "socket.socket",
+                       group=("socket.socket.accept", "socket.socket.recv"))
+        entry = self._entry([row])
+        assert entry is not None and entry["entries"] == ["accept"]
+
+    def test_another_label_gets_no_caveat(self):
+        assert self._entry([_finding("accept", label="host_description")], "host_description") is None

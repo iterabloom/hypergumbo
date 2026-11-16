@@ -51,3 +51,19 @@
   set: {}  # c4cf
   add:  # c4cf
     tags: [awaits_bakeoff_validation]  # c4cf
+- op: update  # c5e5
+  at: '2026-11-02T10:19:48Z'  # c5e5
+  by: agent  # c5e5
+  actor: jgstern_agent  # c5e5
+  clock: 6  # c5e5
+  nonce: c5e5  # c5e5
+  set: {}  # c5e5
+  remove:  # c5e5
+    tags: [awaits_bakeoff_validation]  # c5e5
+- op: discuss  # 056f
+  at: '2026-11-02T10:19:48Z'  # 056f
+  by: agent  # 056f
+  actor: jgstern_agent  # 056f
+  clock: 7  # 056f
+  nonce: 056f  # 056f
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). prometheus / otel-collector / coredns / cert-manager: measured generic instantiation call sites with an edge: 22/24, 154/160, 106/107, 44/44 (recorded +10 / +84). Tag stripped."  # 056f

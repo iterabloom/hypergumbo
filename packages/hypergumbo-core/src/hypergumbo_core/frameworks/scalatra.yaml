@@ -170,6 +170,3 @@ patterns:
   # CORS support
   - concept: cors
     base_class: "^CorsSupport$"
-
-linkers:
-  - http

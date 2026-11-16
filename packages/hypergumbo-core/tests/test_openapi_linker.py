@@ -723,3 +723,44 @@ class TestYamlFallback:
             assert result is None
             # Reload again to restore yaml
             importlib.reload(openapi_module)
+
+
+class TestOperationIdsNameTheirOwnKind:
+    """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``. An
+    operation stand-in ended in ``operation`` on a ``kind="function"`` Symbol."""
+
+    def _result(self, tmp_path: Path):
+        (tmp_path / "openapi.yaml").write_text(
+            "openapi: '3.0.0'\n"
+            "info: {title: Demo, version: '1.0'}\n"
+            "paths:\n"
+            "  /users:\n"
+            "    get:\n"
+            "      operationId: listUsers\n"
+            "      responses: {'200': {description: ok}}\n"
+            "    post:\n"
+            "      responses: {'201': {description: created}}\n"
+        )
+        route = Symbol(
+            id="python:app.py:1-3:list_users:function", name="list_users",
+            kind="function", language="python", path="app.py",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="uuid:test",
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        return link_openapi(tmp_path, [route]), route
+
+    def test_the_fixture_emits_operations_and_an_edge(self, tmp_path: Path) -> None:
+        result, route = self._result(tmp_path)
+        assert sorted(s.signature for s in result.symbols) == ["GET /users", "POST /users"]
+        assert [e.dst for e in result.edges] == [route.id]
+
+    def test_every_id_ends_in_its_symbols_kind(self, tmp_path: Path) -> None:
+        result, _ = self._result(tmp_path)
+        wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
+        assert wrong == []
+
+    def test_every_edge_starts_on_an_operation(self, tmp_path: Path) -> None:
+        result, _ = self._result(tmp_path)
+        ids = {s.id for s in result.symbols}
+        assert [e.src for e in result.edges if e.src not in ids] == []

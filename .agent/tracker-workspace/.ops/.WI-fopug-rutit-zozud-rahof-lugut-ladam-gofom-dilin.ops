@@ -1,0 +1,21 @@
+- op: create  # 04e8
+  at: '2026-10-25T11:04:38Z'  # 04e8
+  by: agent  # 04e8
+  actor: jgstern_agent  # 04e8
+  clock: 1  # 04e8
+  nonce: '04e8'  # 04e8
+  data:  # 04e8
+    kind: work_item  # 04e8
+    title: "spec_validator qualified-name separator message iterates a str set, so the separator it names depends on PYTHONHASHSEED"  # 04e8
+    status: todo_hard  # 04e8
+    priority: 3  # 04e8
+    parent:  # 04e8
+    tags:  # 04e8
+    - docstring_audit  # 04e8
+    - analysis_quality  # 04e8
+    isbefore: []  # 04e8
+    duplicate_of: []  # 04e8
+    not_duplicate_of: []  # 04e8
+    pr_ref:  # 04e8
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- spec_validator.py: `_check_qualified_name_separator` iterates a str set, so the separator named in the message depends on PYTHONHASHSEED (breaks byte-determinism of the validation_report) -- evidence: spec_validator.py:746-747 `wrong = {\".\", \"::\", \"\\\\\"} - {separator}` / `for w in wrong:` with the message at :760 naming `{w!r}`. Repro: `_check_qualified_name_separator(\"id\", \"a.b::c\", \"php\", lambda l: \"\\\\\")` run under PYTHONHASHSEED=0..7 printed \"with separator '.'\" for seeds 0,1,2,3,6 and \"with separator '::'\" for seeds 4,5,7. Fix: iterate a fixed tuple, e.g. `tuple(s for s in (\".\", \"::\", \"\\\\\") if s != separator)`.\n\nADR-0043 section 6 byte-determinism.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 04e8
+    fields: {}  # 04e8

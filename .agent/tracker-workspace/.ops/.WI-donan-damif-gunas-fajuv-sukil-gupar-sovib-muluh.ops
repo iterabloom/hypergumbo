@@ -32,3 +32,10 @@
   clock: 3  # 9dd9
   nonce: 9dd9  # 9dd9
   message: "Correction to my previous entry's last sentence: the separate defect (let binding pairs emitted as calls) is WI-vapip, not WI-furid (that one is the SQL CREATE PROCEDURE item). The lambda-bound define shape belongs here."  # 9dd9
+- op: discuss  # ad3b
+  at: '2026-11-02T00:04:10Z'  # ad3b
+  by: agent  # ad3b
+  actor: jgstern_agent  # ad3b
+  clock: 4  # ad3b
+  nonce: ad3b  # ad3b
+  message: "PREMISE CORRECTION, with a live repro at dev e362b4ba4f (~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/unfiled_repros/fixtures/fnl/a.fnl: (fn outer [] (fn inner [] (h2)) (inner)) plus (fn h2 [] 1)). The nested definition gets NO symbol (analyze_fennel symbols: h2, outer), but its call IS emitted, with a dangling src: fennel:a.fnl:2-2:inner:fn -> h2, whose src is not an emitted symbol, so it is dropped or unreachable downstream. The outer call is outer -> fennel:external:0-0:inner:unresolved. The 2026-11-01 sweep investigator saw the same dangling-src shape in scheme and janet. So the title claim \"emits no calls edge\" is wrong in mechanism (a dangling src, not a missing edge) though right in effect. Cause: _find_enclosing_function hand-builds make_symbol_id for a fn that has no symbol. Shared cure in core: base.enclosing_declared_symbol(node, symbols_at(...), node_types), which walks past symbol-less ancestors to the outermost containing function. The sweep listed this as an unfiled fennel defect; it is this item, so no new item was filed."  # ad3b

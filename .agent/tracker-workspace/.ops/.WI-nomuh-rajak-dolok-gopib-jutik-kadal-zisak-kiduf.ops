@@ -20,3 +20,10 @@
     pr_ref:  # 1b5c
     description: "Found by the 2026-10-20 docstring-staleness audit (verifier confirmed by reading every caveat builder). verify_claims.py ~L6424-6438 builds the CAVEAT_SINK_BEFORE_SOURCE_ONLY dict with kind/flow_count/detail and no `entries`; all 16 other caveat builders set `entries`. The contract is stated in the module docstring (~L87-88), the schema-version comment (\"AT LEAST kind / entries / detail\", ~L343-345) and the ClaimVerdict.caveats field doc (~L1555). In-repo `_merge_caveat` tolerates it (`cav.get(\"entries\") or []`), so the break is external: a JSON consumer indexing caveat[\"entries\"] raises KeyError. Fix: add `entries` (the blocked flows) to that caveat."  # 1b5c
     fields: {}  # 1b5c
+- op: discuss  # 2d8e
+  at: '2026-10-31T10:09:59Z'  # 2d8e
+  by: agent  # 2d8e
+  actor: jgstern_agent  # 2d8e
+  clock: 2  # 2d8e
+  nonce: 2d8e  # 2d8e
+  message: "2026-10-31 docstring audit re-reproduced this: the sink_before_source_only caveat (verify_claims.py:6621-6624) carries flow_count and no entries; it is the only one of 18 caveat literals without entries. No new item filed."  # 2d8e

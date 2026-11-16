@@ -29,15 +29,12 @@ The `pytest` row is stronger than it looks: a `conftest.py` executes at **collec
 
 ### Independent check: the I/O allowlist
 
-The verdicts below are hypergumbo grading itself, and every one carries caveats naming what the analysis could not see. ``scripts/check-io-allowlist`` is a second check that shares none of that machinery: a stdlib-only AST walk of ``packages/*/src`` that finds every call site — and every non-call reference, such as a primitive handed to a callback — of a risky primitive family (filesystem writes and deletes, process launch, network clients and model downloads, servers, ``eval``/``exec``/``compile``, unsafe deserialization, native-library loading, dynamic import of a non-literal name) and requires each one to be listed in ``docs/hypergumbo.io-allowlist.yaml`` with its zone, the program it launches, its purpose and the commands that reach it. An unlisted site or a stale entry fails CI. It proves nothing about a site — an entry is a reviewed statement — only that no site exists that nobody reviewed. It covers ``hypergumbo-tracker`` too, which the claims below do not. What it cannot see is listed in the script's docstring.
+The verdicts below are hypergumbo grading itself, and every one carries caveats naming what the analysis could not see. ``scripts/check-io-allowlist`` is a second check that shares none of that machinery: an AST walk of ``packages/*/src`` built on the standard library and PyYAML, importing nothing from hypergumbo, that finds every call site — and every non-call reference, such as a primitive handed to a callback — of a risky primitive family (filesystem writes and deletes, raw-descriptor writes included; process launch and signals by pid; network clients and model downloads; servers; ``eval``/``exec``/``compile``; unsafe deserialization; native-library loading; dynamic import of a non-literal name; writes to the process environment, working directory, umask or identity) and requires each one to be listed in ``docs/hypergumbo.io-allowlist.yaml`` with its zone, the program it launches, its purpose and the commands that reach it. An unlisted site or a stale entry fails CI. It proves nothing about a site — an entry is a reviewed statement — only that no site exists that nobody reviewed. It covers ``hypergumbo-tracker`` too, which the claims below do not. What it cannot see is listed in the script's docstring.
 
 Families with no site in the tree today (adding one fails the gate until it is reviewed): ``code_exec``, ``native``.
 
 **Sites the allowlist records as findings rather than as reviewed-and-fine** — each names an open tracker item:
 
-- ``INV-gujus-fahub-pusip-dugoz-hidaj-vulav-higop-jihuf``: ``hypergumbo_core.sketch_embeddings._load_embedding_model``, ``hypergumbo_core.sketch_embeddings._load_modernbert_model``
-- ``INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz``: ``hypergumbo_core.backend_trust.record_decision``, ``hypergumbo_core.catalogue_home.materialize_catalogue_home``, ``hypergumbo_core.in_repo_catalogues.record_in_repo_decision``, ``hypergumbo_core.repo_tier_offer.record_offer_decision``, ``hypergumbo_core.repo_tier_offer.write_repo_tier_examples``
-- ``INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad``: ``hypergumbo_lang_rust_analyzer.invoke.run_rust_analyzer_scip``, ``hypergumbo_lang_scip_python.analyzer.analyze_python_with_scip_impl``, ``hypergumbo_lang_scip_python.invoke.run_scip_python_index``
 - ``WI-puban-modig-mifip-mazov-dakas-jufot-bokob-vodut``: ``hypergumbo_tracker.stop_hook._call_openrouter``
 
 ### Independent check: the observed I/O manifest
@@ -51,7 +48,7 @@ Both checks above read the Python. ``scripts/io-manifest`` watches the process i
 | **violated** | 0 | the tool found flows contradicting the claim |
 | **inconclusive** | 0 | the analysis could not see enough to confirm |
 | **confirmed** | 0 | checked and held |
-| **confirmed_with_caveats** | 18 | held, but on the strength of an entry this repository supplied about itself |
+| **confirmed_with_caveats** | 23 | held, but on the strength of an entry this repository supplied about itself |
 
 A ``confirmed_with_caveats`` verdict is the qualified form of confirmed: the claim held everywhere the analysis could see, and every caveat names something it could NOT see — control leaving the process at a subprocess launch, a sanitizer this repository declared about itself and the tool takes on trust, a method the sink catalogue declares reached through a receiver whose type could not be determined, or the verdict's own closed-world SCOPE over the receivers that could be typed.
 
@@ -72,6 +69,36 @@ Prohibited zones (claim: zero unsanitized reach):
 do not perform writes outside the wrapper functions themselves.
 
 **add-extras-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — add-extras / remove-extras do not transitively reach dev-zone code paths.
+
+### Entry-point category: ``analysed_repo_content``
+
+Prohibited zones (claim: zero unsanitized reach):
+
+- ``dev_zone``
+- ``host_fs``
+- ``install_artifact``
+- ``network``
+- ``subprocess``
+
+**repo-content-no-host-fs** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose (file names from discovery, and
+the contents read from them where the def-use chain follows) does not
+reach a filesystem write outside the safety_zones wrappers. Inside the
+permitted zones the wrappers resolve every path and raise on escape;
+the three sites where a repo-chosen value does sit in a path or argv
+position are enumerated by reading, not by this claim (0032 §5).
+
+**repo-content-no-network** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose does not reach a network send.
+
+**repo-content-no-subprocess** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose does not reach a process launch
+outside the declared repo_inspection and analyser_backend zones. The
+one repo-chosen value that does enter an argv is a directory name
+passed to `git ls-tree HEAD -- <dir>` after the `--` separator, in the
+superproject, with the GIT_* environment scrubbed (discovery._ls_tree_head).
+
+**repo-content-no-install-artifact** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose does not reach an install-artifact
+write (no analysed repository can install or replace a tool binary).
+
+**repo-content-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Data the analysed repository chose does not reach dev-zone code paths.
 
 ### Entry-point category: ``build_grammars_entry``
 
@@ -149,29 +176,59 @@ Prohibited zones (claim: zero unsanitized reach):
 cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact,
 cmd_io_boundaries, cmd_verify_claims, cmd_catalog,
 cmd_test_coverage, cmd_dead_code_maybe, cmd_config,
-cmd_cache_status, cmd_cache_clear) do not write to arbitrary
-filesystem paths. All writes go through the safety_zones wrappers
-(cache_write / user_out_write / tmp_artifact_write) in their
-respective peer zones.
+cmd_cache_status, cmd_cache_clear, cmd_trust_backend,
+cmd_trust_catalogues, cmd_init_catalogs, cmd_backend_agreement,
+cmd_repeat_finder, cmd_catalog_inventory, and the one-time repo-tier
+offer main() makes after any of them) do not write to arbitrary
+filesystem paths. All writes go through the safety_zones wrappers in
+their respective peer zones: cache_write (user_cache), user_out_write
+(user_out), tmp_artifact_write (tmp_artifact), user_state_write (trust
+grants and the offer's answer under $XDG_STATE_HOME/hypergumbo),
+user_config_mkdir / user_config_write (the catalogue home
+init-catalogs seeds), and developer_checkout_write (the offer's
+example tree in ~/hypergumbo, never written while the analysed path
+overlaps that checkout).
 
-**runtime-cli-no-network** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands do not initiate network sends. Embeddings
-downloads happen only via the install-embeddings extras subcommand
-and downstream library calls — never from the analyze-my-code path.
+**runtime-cli-no-network** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands do not initiate network sends. Embedding
+model weights are downloaded only by install-embeddings (and by
+add-extras when it installs embeddings); analysis loads them from
+the local cache only, and when they are absent it runs without
+embeddings rather than fetching them (INV-gujus). Installing the
+embeddings extra with pip installs the library, not the weights.
 
-**runtime-cli-no-subprocess** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands shell out ONLY through the declared
-repo_inspection zone. Every such invocation is local, read-only, and
-executes no code originating in the analysed repository:
+**runtime-cli-no-subprocess** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands shell out ONLY through two declared zones.
+By default, only through repo_inspection, where every invocation is
+local, read-only, and executes no code originating in the analysed
+repository:
 
   - git, for cache-key fingerprinting and repo identity
     (rev-parse HEAD, rev-list --max-parents=0 HEAD,
     config --get remote.origin.url). No fetch, no push, no network.
   - gitleaks, for the best-effort secret scan. Reads content on
-    stdin, reports findings on stdout. Runs only when the optional
-    binary is installed.
-  - rust-analyzer --version, a capability probe that reads nothing.
-    NOT an indexing request: rust-analyzer executes a project's
-    build.rs and proc macros when it indexes, and a default run
-    never asks it to.
+    stdin, reports findings on stdout, and runs in an empty scratch
+    directory, so it reads no .gitleaks.toml or .gitleaksignore from
+    the analysed repository. Runs only when the optional binary is
+    installed.
+  - rust-analyzer --version and scip-python --version, capability
+    probes that read nothing. NOT indexing requests: rust-analyzer
+    executes a project's build.rs and proc macros when it indexes,
+    and a default run never asks it to.
+
+When an analyser backend is ENABLED, analysis subcommands also launch
+its indexer through the declared analyser_backend zone (INV-tusos):
+
+  - rust-analyzer scip <workspace>. EXECUTES the analysed project's
+    build.rs and proc macros. Enabled by --backend rust-analyzer, by
+    HYPERGUMBO_RUST_ANALYZER=1, or by a trust-backend grant for the
+    repository; any one of the three suffices.
+  - scip-python index. Static inference; runs none of the
+    project's code. It launches its own pip and python, found on
+    PATH and run in the project directory, to list installed
+    packages, with pip's upgrade check turned off so it makes no
+    network request. Enabled by --backend scip-python, by
+    HYPERGUMBO_SCIP_PYTHON, or by [backends] scip_python in the
+    user's config.toml or the analysed repository's own
+    .hypergumbo.toml, so a repository can turn it on for itself.
 
 Anything else — curl, pip, rustup, or an unwrapped subprocess call —
 is prohibited. The previous wording of this claim ("Runtime CLI
@@ -226,7 +283,7 @@ Short-name sink matching is necessarily over-approximate at receivers the DDG ca
 
 **This paragraph used to end “the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly”. That phrasing is retired** — the measured verdicts for those two claims are ``confirmed_with_caveats`` and ``confirmed_with_caveats``, and the honest reading is the verdict table above, with its caveats, not an adjective.
 
-Two further limitations bound EVERY ``confirmed`` verdict this tool emits, here or in a user's repository. Receiver typing is incomplete: a method call on a receiver the analysis cannot type (a parameter, a call result it has no chain rule for, a closure capture) may miss the catalogue even when the method itself is catalogued. (``pathlib.Path``, the former worked example here, is no longer one: its methods are catalogued and constructor-result chains like ``Path(p).write_text(x)`` emit edges.) **This limitation is no longer silent** — INV-fibis and INV-nuhun made both verdict arms disclose it, with a count, a denominator and the distinct method names, so a reader can size it rather than merely be told it exists. On this repository the measured size is stark and is reported rather than softened: **6,541 of 9,267 method call sites (70.6%) have a receiver the analysis could not type**. That figure bounds every verdict in the table above. And a language that emits even ONE call edge passes the coverage check while the rest of its call structure may be unanalysable: Kotlin emits one and misses roughly 95% of its catalogued sinks.
+Two further limitations bound EVERY ``confirmed`` verdict this tool emits, here or in a user's repository. Receiver typing is incomplete: a method call on a receiver the analysis cannot type (a parameter, a call result it has no chain rule for, a closure capture) may miss the catalogue even when the method itself is catalogued. (``pathlib.Path``, the former worked example here, is no longer one: its methods are catalogued and constructor-result chains like ``Path(p).write_text(x)`` emit edges.) **This limitation is no longer silent** — INV-fibis and INV-nuhun made both verdict arms disclose it, with a count, a denominator and the distinct method names, so a reader can size it rather than merely be told it exists. On this repository the measured size is stark and is reported rather than softened: **10,395 of 14,024 method call sites (74.1%) have a receiver the analysis could not type** (measured 2026-11-03 on the shipped-artifact scope; the figure is the `unknown_receiver_scope` caveat's own count). That figure bounds every verdict in the table above. And a language that emits even ONE call edge passes the coverage check while the rest of its call structure may be unanalysable: Kotlin emits one and misses roughly 95% of its catalogued sinks.
 
 The surface above is narrower than it was: the post-DDG IR refinement pass (``hypergumbo_core.taint_refine``) rewrites ``python:external:0-0:NAME:unresolved`` dsts to a module-resolved form (e.g., ``python:os.environ:0-0:NAME:unresolved``) when the data-dependence graph can prove what the receiver was bound to — typically receivers bound by file-scope imports or by local assignment to a module attribute. Sink-matching then runs against the resolved module, so the ``external``-module exemption only applies to the residual unresolvable cases above.
 
@@ -234,14 +291,86 @@ Hypergumbo's own mutating callsites (``shutil.rmtree`` for cache eviction and gr
 
 <!-- END generated -->
 
+## Using hypergumbo safely
+
+Each statement below was checked against the code on 2026-11-06.
+
+### What a default run does
+
+`hypergumbo .` is the same as `hypergumbo sketch .`.
+
+- Reads the files of the repository you point it at.
+- Writes only under `~/.cache/hypergumbo/` (`$XDG_CACHE_HOME/hypergumbo/` if set) and short-lived files in the system temp directory. It never writes into the repository it analyses unless you name an `-o` path inside it ([ADR-0047](docs/adr/0047-catalogue-scope-and-user-visible-homes.md) ruling 9). The one write outside the cache and temp is the offer in the last bullet of this list. One command writes more than the file you name: `survey --out X.json` also writes `X.4k.json`, `X.16k.json` and `X.64k.json` (the same map compacted to those token budgets) and a directory `X.slices/` holding one slice per detected route handler, all beside `X.json`. `--no-sketch-fan-out --no-handler-slices` suppresses them, so exactly one file is written.
+- Runs `git` read-only: `rev-parse HEAD`, `rev-list --max-parents=0 HEAD` and `config --get remote.origin.url` for cache keys and repository identity, `ls-tree HEAD` when file discovery checks for submodules and committed directories, and `check-ignore --no-index --stdin` (file names on stdin) to leave out files git ignores and does not track. With in-repo catalogues opted in, it also runs `ls-files --error-unmatch` and `status --porcelain` on the catalogue files. If they are installed, it also runs `gitleaks` to scan for secrets and `rust-analyzer --version`; the version check does not index anything.
+- Makes no network connection. With embeddings support installed, the sketch loads its model (`microsoft/unixcoder-base`) from `~/.cache/huggingface/` (or `$HF_HOME`) only. If it is not there, it runs without embeddings and says to run `hypergumbo install-embeddings`, which downloads it. `pip install 'hypergumbo[embeddings]'` installs the library but not the model. This relies on Hugging Face's offline mode, which hypergumbo turns on before the model library loads. If you have set `HF_HUB_OFFLINE` to a value that turns offline mode off (such as `0` or `false`), hypergumbo replaces it with `1` for that run.
+- If a directory `~/hypergumbo` exists (for example, a clone of this repository), an interactive run asks once whether to write example config files into `~/hypergumbo/.hypergumbo-examples/`. It records your answer in `~/.local/state/hypergumbo/offers.json` (`$XDG_STATE_HOME/hypergumbo/` if set). It does not ask while the path you analysed is `~/hypergumbo`, lies inside it, or contains it.
+
+### Commands that download, compile or run other programs
+
+None of these run unless you invoke them, with one exception: the analysed repository itself can switch on the scip-python backend (last row).
+
+| Command | What it does |
+|---|---|
+| `install-gitleaks` | Downloads gitleaks 8.30.0 from github.com into `~/.local/bin/`, refusing an archive whose SHA-256 differs from the one gitleaks published for that release. gitleaks publishes no signatures. |
+| `install-embeddings` | Runs `pip install sentence-transformers`, which pulls in PyTorch (about 2 GB), then downloads the embedding model from huggingface.co. Analysis never downloads it. |
+| `install-rust-analyzer` | Runs `rustup component add rust-analyzer`. |
+| `build-grammars` | Compiles three tree-sitter grammars (Lean, Wolfram, Circom) with your compiler, from C source that ships inside `hypergumbo-core`, through `pip install`, which can download build tools from PyPI. |
+| `add-extras` | Runs all four of the above; the rust-analyzer step runs only when the `hypergumbo[rust-analyzer]` extra is installed. Skip any of them with `--skip`. |
+| `--backend rust-analyzer` | Runs `rust-analyzer scip`, which **executes the analysed repository's `build.rs` and proc macros as you**. It is off unless you pass the flag, set `HYPERGUMBO_RUST_ANALYZER=1`, or record a per-repository grant with `hypergumbo trust-backend rust_analyzer`. No config file can switch it on, including one inside the analysed repository ([ADR-0045](docs/adr/0045-user-config-and-backend-trust.md)). Do not use it on code you don't trust. Do not export the variable from your shell profile, because that turns it on for every Rust repository. |
+| `--backend scip-python` | Runs `scip-python index`, a static analyser that does not execute the project. Besides the flag, `HYPERGUMBO_SCIP_PYTHON`, your `config.toml`, **or the analysed repository's own `.hypergumbo.toml`** can switch it on, provided the `hypergumbo[scip-python]` extra and the `scip-python` npm tool are installed. |
+
+### The tracker (`htrac`) is a separate package
+
+`pip install hypergumbo` does not install it. It was built for this repository's agent workflow. If you install `hypergumbo-tracker`, note the following:
+
+- `htrac sync` commits and pushes with `git` and calls the GitHub or Forgejo API with a token. So does any tracker command that changes data, once enough unsynced changes have piled up (auto-sync).
+- `htrac serve` starts a web server on 127.0.0.1:7380. Every route except `/health` refuses a request unless an authenticator accepts it, and no login flow is wired up yet, so today the API refuses everything. Still, do not expose the port.
+- `htrac guidance` sends tracker item titles to openrouter.ai when `OPENROUTER_API_KEY` is set and an unread message starts with a `[[tag]]` (WI-puban).
+- `htrac setup` adds the repository to your global git `safe.directory` list when git reports "dubious ownership".
+- The self-claims check described below does not cover the tracker yet (WI-sunan); the I/O allowlist does. The tracker was designed to stop an agent from accidentally undermining it, not to resist a determined attacker ([ADR-0013](docs/adr/0013-structured-tracker.md), Security Model).
+
+### How these statements are checked
+
+1. **Self-claims.** The "Audited IO Surface" section above lists the claims about what each group of commands may touch, and about what the analysed repository itself can reach. hypergumbo checks them by analysing its own source (`scripts/check-self-claims`, on the twice-daily CI run). Every claim currently reads `confirmed_with_caveats`. That means the analysis found no contradiction where it could see, and it names what it could not see: programs it launches, statements the repository made about itself, and the method calls whose receiver type it could not work out (the share is measured above). In auditing terms, this is a qualified opinion, not proof ([ADR-0016](docs/adr/0016-io-boundary-analysis.md)). It covers the `hypergumbo` command only.
+2. **I/O allowlist.** `scripts/check-io-allowlist` is a separate scan built on the standard library and PyYAML; it imports nothing from hypergumbo. It finds every place in `packages/*/src`, tracker included, that writes or deletes a file, starts or signals a process, opens a connection or a server, imports code dynamically, deserializes data, or changes the process environment or working directory, and prints how many there are. Each one must be listed in [`docs/hypergumbo.io-allowlist.yaml`](docs/hypergumbo.io-allowlist.yaml) with its purpose and the commands that reach it, and an unlisted one fails CI on every pull request. A second gate, `scripts/check-allowlist-commands`, checks each listed set of commands against the commands a call graph finds reaching that place (on every pull request) and against traced runs of every subcommand (on the twice-daily run). Together they show that every such place is listed with a stated purpose, and that its listed commands agree with what a call graph and those traced runs find. A call graph misses calls it cannot resolve, and a trace sees only the paths it ran, so this is not proof that no other command reaches a place. Nor does it show that any place is safe.
+3. **Observed I/O manifest.** At every release, `scripts/io-manifest` runs the installed `hypergumbo` over six pinned open-source repositories under `strace`. It records every file write, delete and rename, every program started and every connection attempted, reduced to a short list of expected entries ([`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt)). An entry not seen at the previous release fails the build, and a write into the analysed repository or a network connection fails it regardless. This is the only one of the three checks that sees what dependencies and compiled extensions do, because it watches the process rather than reading the Python. It covers a default run with no extras installed, on those six repositories. It supports "every scenario we exercised", not "every scenario".
+
+The allowlist currently records one open finding:
+
+- **WI-puban:** the tracker's OpenRouter call, described above.
+
+### Analysing a repository you don't trust
+
+- Unless you turn on the rust-analyzer backend, hypergumbo parses the repository's code and never runs it.
+- Catalogue data inside the repository (the catalogue keys in `.hypergumbo.toml` and the files in `.hypergumbo/<family>.d/`) is ignored until you opt in with `--in-repo-catalogues` or `hypergumbo trust-catalogues` ([ADR-0061](docs/adr/0061-catalogue-tiers-for-every-family.md)). Its preferences do load by default, and that is how it can switch on scip-python.
+- It cannot turn on the rust-analyzer backend, and it cannot make hypergumbo write into it.
+- If gitleaks is installed, it runs in an empty directory of its own, so the repository's `.gitleaks.toml` and `.gitleaksignore` cannot hide secret-scan findings. Your own `GITLEAKS_CONFIG` still applies. gitleaks is handed the sketch's text, which quotes your source; hypergumbo runs `~/.local/bin/gitleaks` if present, otherwise the first `gitleaks` on your `PATH`, and `install-gitleaks` puts 8.30.0 there only after checking the archive's SHA-256 against the one gitleaks published. A gitleaks installed any other way is not checked.
+- It does control everything the parsers read. hypergumbo has no sandbox of its own, so a file crafted to exploit a parser bug would run with your permissions.
+
+### Text the sketch quotes from the repository
+
+A sketch is written to be pasted into a language model, and it quotes the repository it describes: the README's opening prose, docstring summaries, names, configuration excerpts and, unless you pass `--no-source`, whole files. That text is untrusted data. Any of it can be written as instructions to a model, in any repository and any language, and a sketch of a repository someone else controls hands those instructions to the model that reads it. What hypergumbo does about this: the line under every sketch's title says that text quoted below from the repository is data from the repository, not instructions to the reader, and no token budget removes that line; each quoted file is printed between a `START of <path>` line and an `END of <path>` line, inside a code fence longer than any run of backticks in the file, so the file cannot close its own fence; configuration excerpts are printed inside a three-backtick fence. What it does not do: it does not detect, mark or remove text written as instructions; the README prose under the title and the docstring summaries in Entry Points, Source Files and Key Symbols are printed inline, with no delimiter; and files addressed to coding agents (an `AGENTS.md`, a `CLAUDE.md`) are chosen and quoted like any other file. The JSON outputs (`survey` and its tier files, `slice`, `compact`) and the text of `explain` also carry docstrings and names, and print no such line.
+
+### Running it confined
+
+- **Container:** install hypergumbo in an image, then run it with networking off and the repository mounted read-only (`docker run --network none -v "$PWD":/repo:ro …`). hypergumbo runs without `git` and writes only its cache and temp files.
+- **Watch it once on Linux:** the commands below log every file opened for writing, created, renamed or deleted, every network connection and every program started.
+
+  ```bash
+  strace -f -e trace=%file,%network,execve -o /tmp/hg.trace hypergumbo .
+  grep -E 'O_CREAT|O_WRONLY|O_RDWR|mkdir|rename|unlink|connect\(|execve\(' /tmp/hg.trace | grep -v ENOENT
+  ```
+
+- **macOS:** block network access for the Python that runs hypergumbo with LuLu or Little Snitch, and watch file activity once with `sudo fs_usage`. We have not tested exact commands for these on macOS.
+
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 2.x     | :white_check_mark: |
-| < 2.0   | :x:                |
+| Version                                  | Supported          |
+| ---------------------------------------- | ------------------ |
+| The latest minor release                 | :white_check_mark: |
+| Anything older                           | :x:                |
 
-Only the latest minor version receives security updates. We recommend always running the latest release.
+Only the latest minor version receives security updates (the newest release is listed on [PyPI](https://pypi.org/project/hypergumbo/) and in [CHANGELOG.md](CHANGELOG.md)). We recommend always running the latest release.
 
 ## Reporting a Vulnerability
 

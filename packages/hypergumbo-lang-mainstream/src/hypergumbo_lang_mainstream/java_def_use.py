@@ -52,7 +52,7 @@ function.
 
 Scope, stated rather than implied
 ---------------------------------
-Intraprocedural and statement-level, like the other four extractors. Loop
+Intraprocedural and statement-level, like the other def/use extractors. Loop
 headers reach the walker as statements of their own (WI-losod): a classic
 for's every ``init`` and ``update`` at its own node, and the enhanced-for
 header AT the loop node, which ``extract`` reads as ``for (T v : xs)`` --

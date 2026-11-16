@@ -9,6 +9,8 @@ Tests verify that the analyzer correctly extracts:
 - Multi-stage build dependencies (COPY --from)
 """
 
+from pathlib import Path
+
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_core import __version__
@@ -250,3 +252,40 @@ def test_skipped_when_grammar_unavailable(tmp_path):
 
     assert result.skipped is True
     assert "not available" in result.skip_reason
+
+
+class TestOneSymbolPerVariablePerStage:
+    """WI-dabug, WI-nasil's model for bash exports applied to ENV / ARG: a
+    re-declared variable is ONE Symbol, at its first declaration -- per build
+    STAGE, because a FROM starts a new stage and an ENV does not cross it.
+    ``ENV A=1 B=2`` declares two variables (only the first was kept)."""
+
+    def test_redeclaration_in_a_stage_is_one_symbol_and_every_pair_counts(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_lang_mainstream.dockerfile import analyze_dockerfiles
+
+        (tmp_path / "Dockerfile").write_text(
+            "ARG BASE=alpine\n"
+            "FROM ${BASE} AS build\n"
+            "ENV A=1 B=2\n"
+            "ENV A=3\n"
+            "ENV C 4\n"
+            "ARG X\n"
+            "ARG X=2\n"
+            "FROM alpine\n"
+            "ENV A=5\n"
+        )
+        result = analyze_dockerfiles(tmp_path)
+        env = sorted(
+            (s.name, s.span.start_line) for s in result.symbols if s.kind == "env_var"
+        )
+        assert env == [("A", 3), ("A", 9), ("B", 3), ("C", 5)]
+        args = sorted(
+            (s.name, s.span.start_line) for s in result.symbols if s.kind == "build_arg"
+        )
+        assert args == [("BASE", 1), ("X", 6)]
+        ids = [s.id for s in result.symbols]
+        assert len(ids) == len(set(ids))
+        stable = [s.stable_id for s in result.symbols if s.kind == "env_var"]
+        assert len(stable) == len(set(stable))

@@ -9,8 +9,11 @@ How It Works
 ------------
 1. ``load_cfg_mapping()`` reads a per-language YAML file that maps tree-sitter
    node types to control-flow categories: conditional, loop, break, continue,
-   return, try/catch, switch/match, and semantic hooks. Two further keys are
-   not control-flow categories: ``call_node_types`` and ``atomic_statement``.
+   return, try/catch, switch/match, and semantic hooks. Besides ``language``
+   and ``grammar``, four further keys are not control-flow categories:
+   ``call_node_types``, ``atomic_statement``, ``nested_function`` and
+   ``block_tail_returns`` (a block's last expression without ``;`` is a
+   return, read by ``ddg_build``'s return-span lift).
 
 2. ``build_function_cfg()`` walks the tree-sitter AST for a function body and
    produces a ``FunctionCfg`` using the fringe-based recursive algorithm (same
@@ -21,13 +24,23 @@ How It Works
      yet known).
    - Sequential composition: connect A's fringe to B's entry.
    - Conditional (if/else): split fringe into true/false edges; merge branches.
-   - Loops (while/for): back-edge from body's fringe to condition entry.
+     Every alternative the mapping's ``false_child`` resolves to is chained:
+     a nested ``else if`` is one alternative, while tree-sitter-python's flat
+     ``elif``/``else`` list is walked arm by arm, each ``elif`` a condition
+     block whose false edge is the next alternative (INV-kakav).
+   - Loops (while/for): back-edge from body's fringe to condition entry. A
+     mapped ``else_child`` (Python's ``for``/``while ... else``) takes the
+     header's normal-exit edge; ``break`` edges bypass it (INV-rotol).
    - break/continue: collect with nesting level; resolve at enclosing loop.
    - return/throw: wire to function exit block; produce empty fringe.
    - try/catch/finally: exception edges run from a synthetic try-entry
      block to every catch entry; the try and catch fringes connect to the
-     finally entry, or merge when there is no finally.
-   - switch/match: edges from scrutinee to each case entry.
+     finally entry, or merge when there is no finally. A mapped
+     ``else_child`` (Python's ``try ... else``) sits on the no-exception
+     path between the try body and finally; the handlers bypass it.
+   - switch/match: ``case`` edges from scrutinee to each case entry, plus an
+     ``always`` fall-through fringe edge from the scrutinee for "no case
+     matched" (WI-sozob), added even when a default arm exists.
 
 3. **Semantic hooks** handle non-standard control flow that cannot be reduced
    to the standard categories via YAML mapping alone:
@@ -38,8 +51,11 @@ How It Works
    yields a CFG missing that construct with no error and no warning.
 
    - ``early_return``: Dual control flow (Rust ``?`` operator) — Ok path
-     continues, Err path exits function. The per-entry ``semantics`` value
-     (e.g. ``return_on_err``) selects the variant.
+     continues, Err path exits function. Each entry's ``semantics``,
+     ``ok_defines`` and ``err_edge`` values are parsed into
+     ``EarlyReturnMapping`` but not consulted: ``_process_early_return``
+     implements one fixed variant, a ``false`` edge from the statement to the
+     exit block (Err) plus a ``true`` fringe edge (Ok).
    - ``context_manager``: Entry call before body, exit call after body including
      exceptional paths (Python ``with``).
    - ``deferred``: Statement body executes at function exit, after all
@@ -99,15 +115,22 @@ The rest of the dataflow pipeline over a built CFG also lives here:
 - **Reaching definitions** (ADR-0017 §1b): ``solve_reaching_defs`` runs the
   worklist fixpoint and emits ``DdgEdge`` def-to-use edges, bailing out above
   ``MAX_DEFINITIONS`` per function.
+- **Late-captured reads** (WI-lokok): ``late_capture_edges`` runs after the
+  solve and adds ``DdgEdge`` edges from each definition placed after a nested
+  function, and outside every nested function, into that nested function's
+  reads of the same name, which the solve cannot connect because the nested
+  body hangs off its definition point. ``ddg_build`` calls it for every
+  function whose solve did not bail out.
 - ``select_ddg_targets`` holds the §1c target-selection policy; it has no
   production caller (see its docstring).
 """
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Literal, Optional, Protocol, runtime_checkable
+from typing import Any, Iterable, Literal, Optional, Protocol, Sequence, runtime_checkable
 
 import yaml
 
@@ -129,6 +152,13 @@ class DefUseResult:
 
     defines: list[str] = field(default_factory=list)
     uses: list[str] = field(default_factory=list)
+    #: The assignment's left-hand side BY POSITION, one entry per slot, ``None``
+    #: for a slot that binds nothing (Go's blank ``_``). ``None`` as a whole
+    #: means the extractor reports no positions: ``defines`` already lists the
+    #: left-hand side in order (WI-sitaf). A separate field, never folded into
+    #: ``defines``: a blank is no variable, and every consumer of ``defines``
+    #: reads its entries as variables the statement binds.
+    targets: Optional[list[Optional[str]]] = None
 
 
 @runtime_checkable
@@ -208,8 +238,7 @@ def registered_def_use_languages() -> frozenset[str]:
     "is it non-empty" check looks equivalent and is not: a test that clears the
     registry and then reloads only ITS OWN extractor module leaves the registry
     populated but INCOMPLETE, and a truthiness check reports everything fine
-    while ``javascript`` is missing. That is the actual observed failure, and a
-    first attempt at this guard keyed on emptiness and did not fix it.
+    while ``javascript`` is missing.
     """
     return frozenset(_DEF_USE_EXTRACTORS)
 
@@ -235,6 +264,8 @@ class CfgStatement:
     code_snippet: str
     defines: list[str] = field(default_factory=list)
     uses: list[str] = field(default_factory=list)
+    #: :attr:`DefUseResult.targets`, copied by the def/use pass (WI-sitaf).
+    targets: Optional[list[Optional[str]]] = None
     call_target: Optional[str] = None
     #: The AST node type this statement stands for, when ``node_type`` is a
     #: SYNTHETIC name no AST node carries (``context_manager_enter`` is recorded
@@ -351,6 +382,10 @@ class LoopMapping:
       node, with :attr:`CfgStatement.extent_end_byte` cut at the body so it
       does not claim to cover the body. The language's def/use extractor
       must read only the header when handed the loop node.
+    - ``else_child``: a clause that runs on the loop's NORMAL exit (the
+      condition false, the iterator exhausted) and never after a ``break``
+      (Python's ``for``/``while ... else``). It is outside the loop: a
+      ``break`` inside it leaves the enclosing loop (INV-rotol).
     """
 
     node_type: str
@@ -361,17 +396,24 @@ class LoopMapping:
     update_child: Optional[str] = None
     header_child: Optional[str] = None
     header_is_node: bool = False
+    else_child: Optional[str] = None
 
 
 @dataclass
 class TryCatchMapping:
-    """Maps a tree-sitter node type to a try/catch/finally construct."""
+    """Maps a tree-sitter node type to a try/catch/finally construct.
+
+    ``else_child`` names a clause that runs when the try body completes
+    without an exception, before ``finally`` (Python's ``try ... else``);
+    the handlers skip it (INV-rotol).
+    """
 
     node_type: str
     body_child: str
     catch_child: Optional[str] = None
     finally_child: Optional[str] = None
     catch_clause_type: Optional[str] = None
+    else_child: Optional[str] = None
 
 
 @dataclass
@@ -440,10 +482,10 @@ class NestedFunctionMapping:
     A lambda, closure, arrow function, function literal or nested declaration
     does not run where it is written: it runs when it is called, which may be
     never, once, many times, or after the enclosing statement has finished.
-    Inlining its body as though it ran in sequence (what the builder did before
-    this mapping existed) makes its bindings DEFINE and KILL the enclosing
-    function's variables -- a closure's ``t := "x"`` shadowing an outer ``t``
-    hid the outer value from every later use.
+    Inlining its body as though it ran in sequence would make its bindings
+    DEFINE and KILL the enclosing function's variables: a closure's
+    ``t := "x"`` shadowing an outer ``t`` would hide the outer value from
+    every later use.
 
     ``body_child`` names the body. The builder records the statement holding
     the function as ONE statement and builds the body as its own CFG region
@@ -471,31 +513,30 @@ class CfgNodeMapping:
     break_statements: list[str] = field(default_factory=list)
     continue_statements: list[str] = field(default_factory=list)
     return_statements: list[str] = field(default_factory=list)
-    #: WI-sodoj: the language returns a block's tail expression (Rust).
+    #: The language returns a block's tail expression (Rust) (history: WI-sodoj).
     block_tail_returns: bool = False
     try_catch: list[TryCatchMapping] = field(default_factory=list)
     early_return: list[EarlyReturnMapping] = field(default_factory=list)
     context_manager: list[ContextManagerMapping] = field(default_factory=list)
     deferred: list[DeferredMapping] = field(default_factory=list)
     switch: list[SwitchMapping] = field(default_factory=list)
-    # Atomic statement node types — types that the CFG builder treats
-    # as a single CfgStatement, NOT as a control-flow construct. Without
-    # this hint, _process_sequential decomposes every unmapped node into
-    # its children, which for Python recurses past expression_statement
-    # all the way down to bare identifiers / integers — losing the
-    # statement-level granularity that def/use extractors need.
     #: Tree-sitter node types that ARE a call in this grammar. Declared here
     #: rather than sniffed from the type name because "does this node invoke
     #: something" is a per-grammar fact (Go ``call_expression``, Python
-    #: ``call``, Java ``method_invocation``, Rust ``macro_invocation``), and a
-    #: substring heuristic over node-type names is exactly the hand-rolled
-    #: predicate this codebase keeps getting wrong.
+    #: ``call``, Java ``method_invocation``, Rust ``macro_invocation``) that a
+    #: substring heuristic over node-type names gets wrong.
     #:
     #: Consumed by :func:`uncovered_semantic_lines` (WI-joluk). A language that
     #: declares NONE cannot be checked, and the consumer treats that as
     #: "forfeit everything" rather than "nothing uncovered" — the permitting
     #: case is enumerated, so an unconfigured language fails CLOSED.
     call_node_types: list[str] = field(default_factory=list)
+    # Atomic statement node types — types that the CFG builder treats
+    # as a single CfgStatement, NOT as a control-flow construct. Without
+    # this hint, _process_sequential decomposes every unmapped node into
+    # its children, which for Python recurses past expression_statement
+    # all the way down to bare identifiers / integers — losing the
+    # statement-level granularity that def/use extractors need.
     atomic_statements: list[str] = field(default_factory=list)
     #: Functions nested in a function body (WI-faful); see
     #: :class:`NestedFunctionMapping`. Deliberately NOT a ``classify()``
@@ -638,13 +679,10 @@ def load_cfg_mapping(language: str, search_dir: Optional[Path] = None) -> Option
     the resolved name would be a micro-optimisation that makes a future
     per-language post-processing step silently wrong.
     """
-    # INV-kazij class: resolve the directory BEFORE keying. The previous key
-    # spelled the default as the literal 'default' while the resolved dir
-    # came from patchable ``get_cfg_nodes_dir()`` — the same
-    # partial-input-memoization hole that poisoned the framework-pattern
-    # cache (a patched dir's Nones cached under the unpatched caller's key).
-    # No test patches this getter today; keyed on the resolved dir so none
-    # ever can.
+    # Resolve the directory BEFORE keying. The default dir comes from the
+    # patchable ``get_cfg_nodes_dir()``; a key that spelled it as a literal
+    # would cache a patched dir's results (Nones included) under the
+    # unpatched caller's key (history: INV-kazij).
     search = search_dir or get_cfg_nodes_dir()
     cache_key = f"{search}:{language}"
     if cache_key in _MAPPING_CACHE:
@@ -690,6 +728,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
             update_child=lo.get("update_child"),
             header_child=lo.get("header_child"),
             header_is_node=lo.get("header_is_node", False),
+            else_child=lo.get("else_child"),
         )
         for lo in data.get("loop", [])
     ]
@@ -701,6 +740,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
             catch_child=tc.get("catch_child"),
             finally_child=tc.get("finally_child"),
             catch_clause_type=tc.get("catch_clause_type"),
+            else_child=tc.get("else_child"),
         )
         for tc in data.get("try_catch", [])
     ]
@@ -1044,13 +1084,15 @@ class CfgBuilder:
 
         The walk does not enter a nested function (WI-faful). A branch inside a
         lambda is the LAMBDA's control flow, not this statement's: counting it
-        was what made ``Runnable q = () -> { if (x > 0) go(); };`` decompose
-        into leaves, so ``q`` was read as a use and never defined. Nor does it
-        enter a control-flow node, whose own handler owns everything inside it.
+        would make ``Runnable q = () -> { if (x > 0) go(); };`` decompose
+        into leaves, so ``q`` would read as a use and never be defined. Nor
+        does it enter a control-flow node, whose own handler owns everything
+        inside it.
 
         Only named children are walked: anonymous nodes are punctuation and
-        keywords, which no mapping classifies. Iterative, for the reason every
-        AST walk in this module is (INV-gotir).
+        keywords, which no mapping classifies. Iterative, like every AST walk
+        in this module: an AST can nest deeper than Python's recursion limit
+        (INV-gotir).
         """
         control_flow: list[Any] = []
         functions: list[Any] = []
@@ -1159,9 +1201,8 @@ class CfgBuilder:
            b };``, ``int r = switch (n) { ... };``, ``let k = env::var("K")?;``.
            The control flow runs first and is processed as control flow; THEN
            the statement is recorded, once, after it -- so it DEFINES its
-           target where later code can read it. Decomposing it instead (the
-           builder's rule until WI-faful) recorded the target as a bare
-           identifier USE and never defined it.
+           target where later code can read it. Decomposing it instead would
+           record the target as a bare identifier USE and never define it.
 
         A nested function anywhere outside that control flow (a lambda, a
         closure, a callback argument) is not control flow of this function:
@@ -1248,16 +1289,17 @@ class CfgBuilder:
           (where a sink call in a callback is);
         - a binding inside the body MAY reach code after the statement (a
           closure can assign a captured variable) but can never KILL an outer
-          definition, because the skip edge keeps the outer one alive. The
-          inlined body this replaces killed it: a closure's ``t := "x"`` hid
-          the outer ``t`` from every later use;
+          definition, because the skip edge keeps the outer one alive.
+          Inlining the body instead would kill it: a closure's ``t := "x"``
+          would hide the outer ``t`` from every later use;
         - the repeat edge lets a binding made late in the body reach a use
           early in it, as a callback invoked twice does.
 
-        What it does not model: a closure that runs only AFTER a later
-        statement redefines a captured variable sees only the value at its
-        creation. Returns the region's fringe (empty when the body is empty or
-        absent, in which case nothing is attached).
+        What the region alone does not model: a closure that runs AFTER a later
+        statement redefines a captured variable reads the later value.
+        :func:`late_capture_edges` adds those edges after the solve (WI-lokok).
+        Returns the region's fringe (empty when the body is empty or absent, in
+        which case nothing is attached).
         """
         mapping = self._mapping.get_nested_function(function.type)
         body = self._find_child(function, mapping.body_child) if mapping else None
@@ -1294,12 +1336,58 @@ class CfgBuilder:
         """Process an if/else-style conditional.
 
         Creates a condition block, then true/false branches. The fringe
-        is the union of both branches' fringes (merge point).
+        is the union of both branches' fringes (merge point). The false
+        branch is EVERY node the mapping's ``false_child`` resolves to,
+        chained by :meth:`_process_alternatives`: one node for a grammar
+        that nests ``else if``, the whole ``elif``/``else`` list for
+        tree-sitter-python (INV-kakav).
         """
         mapping = self._mapping.get_conditional(node.type)
         if mapping is None:
             return self._process_sequential(node, source)  # pragma: no cover
+        alternatives = (
+            self._find_children(node, mapping.false_child) if mapping.false_child else []
+        )
+        return self._conditional(node, mapping, alternatives, source)
 
+    def _process_alternatives(
+        self, alternatives: list[Any], source: bytes,
+    ) -> Optional[_PartialCfg]:
+        """The false branch of a conditional: its alternatives, chained.
+
+        One alternative is the common case: a nested ``else if`` or an
+        ``else`` block, processed as any node. tree-sitter-python lays a
+        chain FLAT: every ``elif_clause`` and the ``else_clause`` sit under
+        the ``if_statement``'s repeated ``alternative`` field. So an
+        alternative the mapping classifies as a conditional becomes a
+        condition block of its own, whose ``false`` edge is the REST of the
+        list (plus any alternatives of its own, for a nesting grammar), and
+        an alternative with no conditional mapping (an ``else``) ends the
+        chain (INV-kakav). Reading the field only once would keep the first
+        ``elif`` as straight-line code on the ``false`` edge and drop every
+        later arm from the CFG, so their definitions and uses would never
+        reach the DDG and the taint walk would forfeit the function.
+        """
+        if not alternatives:
+            return None
+        head, rest = alternatives[0], alternatives[1:]
+        head_mapping = self._mapping.get_conditional(head.type)
+        if head_mapping is None:
+            return self._process_node(head, source)
+        own = (
+            self._find_children(head, head_mapping.false_child)
+            if head_mapping.false_child else []
+        )
+        return self._conditional(head, head_mapping, own + rest, source)
+
+    def _conditional(
+        self,
+        node: Any,
+        mapping: ConditionalMapping,
+        alternatives: list[Any],
+        source: bytes,
+    ) -> _PartialCfg:
+        """One condition block: ``true`` to its consequence, ``false`` to ``alternatives``."""
         # Create condition block. A header initializer runs first, in the same
         # block, so the binding it makes reaches the condition and both
         # branches (WI-losod).
@@ -1331,20 +1419,17 @@ class CfgBuilder:
         else:
             fringe.append(_FringeEdge(source_block=cond_block.id, edge_type="true"))  # pragma: no cover
 
-        # False branch (else)
-        false_node = self._find_child(node, mapping.false_child) if mapping.false_child else None
-        if false_node:
-            false_partial = self._process_node(false_node, source)
-            if false_partial and false_partial.entry_block:
-                cond_block.successors.append(CfgEdge(
-                    target_block=false_partial.entry_block,
-                    edge_type="false",
-                ))
-                fringe.extend(false_partial.fringe)
-            else:
-                fringe.append(_FringeEdge(source_block=cond_block.id, edge_type="false"))  # pragma: no cover
+        # False branch: the alternatives, chained (see _process_alternatives).
+        false_partial = self._process_alternatives(alternatives, source)
+        if false_partial is not None and false_partial.entry_block:
+            cond_block.successors.append(CfgEdge(
+                target_block=false_partial.entry_block,
+                edge_type="false",
+            ))
+            fringe.extend(false_partial.fringe)
         else:
-            # No else branch — false edge goes to fringe (fall through)
+            # No else branch (or one that produced no block): the false edge
+            # falls through to whatever follows the chain.
             fringe.append(_FringeEdge(source_block=cond_block.id, edge_type="false"))
 
         return _PartialCfg(
@@ -1383,9 +1468,15 @@ class CfgBuilder:
           a ``continue`` goes, and flows back to the header.
 
         An infinite loop's header is empty. Break edges go to the fringe.
-        Until WI-losod the header held the condition alone, so ``for v in
+        A header holding the condition alone would leave ``for v in
         os.environ:``, Go's ``for _, e := range os.Environ()`` and every
-        classic ``for`` initializer defined nothing.
+        classic ``for`` initializer defining nothing.
+
+        A mapped ``else_child`` (Python) takes the header's normal-exit edge
+        and its fringe becomes the loop's; ``break`` edges still join the
+        fringe directly, so the clause never runs after a ``break``. It is
+        processed AFTER the loop context is popped: a ``break`` inside it
+        belongs to the enclosing loop.
         """
         mapping = self._mapping.get_loop(node.type)
         if mapping is None:
@@ -1444,6 +1535,10 @@ class CfgBuilder:
 
         self._loop_stack.pop()
 
+        # Outside the loop: processed after the pop so a ``break`` in it
+        # resolves against the enclosing loop.
+        else_partial = self._process_else_clause(node, mapping.else_child, source)
+
         fringe: list[_FringeEdge] = []
 
         if body_partial and body_partial.entry_block:
@@ -1454,18 +1549,18 @@ class CfgBuilder:
                     edge_type="always",
                 ))
             else:
-                # Conditional loop: header → body (true), header → fringe (false)
+                # Conditional loop: header → body (true), header → else or fringe (false)
                 header_block.successors.append(CfgEdge(
                     target_block=body_partial.entry_block,
                     edge_type="true",
                 ))
-                fringe.append(_FringeEdge(source_block=header_block.id, edge_type="false"))
+                fringe.extend(self._loop_exit(header_block, else_partial))
 
             # Back-edge: body's fringe → update (or header)
             self._connect_fringe(body_partial.fringe, back_target)
         else:
             if not mapping.infinite:
-                fringe.append(_FringeEdge(source_block=header_block.id, edge_type="false"))
+                fringe.extend(self._loop_exit(header_block, else_partial))
             if update_block is not None:
                 # An empty body still runs the update every iteration.
                 header_block.successors.append(CfgEdge(
@@ -1494,6 +1589,37 @@ class CfgBuilder:
             fringe=fringe,
             blocks=blocks,
         )
+
+    def _process_else_clause(
+        self, node: Any, ref: Optional[str], source: bytes,
+    ) -> Optional[_PartialCfg]:
+        """The ``else`` clause a loop or try statement may carry, or None.
+
+        None when the mapping names no such clause (every grammar but
+        Python) or the statement has none (INV-rotol).
+        """
+        if ref is None:
+            return None
+        else_node = self._find_child(node, ref)
+        if else_node is None:
+            return None
+        return self._process_children(else_node, source)
+
+    def _loop_exit(
+        self, header_block: BasicBlock, else_partial: Optional[_PartialCfg],
+    ) -> list[_FringeEdge]:
+        """The loop's normal-exit edge: into the else clause, or left pending.
+
+        With an else clause the header's ``false`` edge enters it and the
+        clause's fringe is what the loop hands on. A ``break`` never comes
+        this way: its edge joins the loop's fringe directly.
+        """
+        if else_partial is None or not else_partial.entry_block:
+            return [_FringeEdge(source_block=header_block.id, edge_type="false")]
+        header_block.successors.append(CfgEdge(
+            target_block=else_partial.entry_block, edge_type="false",
+        ))
+        return list(else_partial.fringe)
 
     def _process_break(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
         """Process a break statement.
@@ -1576,6 +1702,10 @@ class CfgBuilder:
         Try body's fringe connects to finally entry (if present) or to the
         merge point. Each catch clause gets an exception edge from the try
         body. Finally block (if present) executes after both try and catch.
+        A mapped ``else_child`` (Python) sits between the try body and
+        finally on the no-exception path only: the try body's fringe enters
+        it and its fringe takes the try body's place; the handlers' fringes
+        bypass it (INV-rotol).
         """
         mapping = self._mapping.get_try_catch(node.type)
         if mapping is None:
@@ -1631,6 +1761,14 @@ class CfgBuilder:
                     edge_type="exception",
                 ))
 
+        # The no-exception path: the try body's fringe, routed through the
+        # else clause when there is one.
+        normal_fringe: list[_FringeEdge] = list(try_partial.fringe) if try_partial else []
+        else_partial = self._process_else_clause(node, mapping.else_child, source)
+        if else_partial and else_partial.entry_block:
+            self._connect_fringe(normal_fringe, else_partial.entry_block)
+            normal_fringe = list(else_partial.fringe)
+
         # Process finally
         finally_partial: Optional[_PartialCfg] = None
         if mapping.finally_child:
@@ -1639,17 +1777,15 @@ class CfgBuilder:
                 finally_partial = self._process_children(finally_node, source)
 
         if finally_partial and finally_partial.entry_block:
-            # try fringe → finally entry
-            if try_partial:
-                self._connect_fringe(try_partial.fringe, finally_partial.entry_block)
+            # no-exception path → finally entry
+            self._connect_fringe(normal_fringe, finally_partial.entry_block)
             # catch fringes → finally entry
             for cp in catch_partials:
                 self._connect_fringe(cp.fringe, finally_partial.entry_block)
             fringe.extend(finally_partial.fringe)
         else:
-            # No finally: merge try and catch fringes
-            if try_partial:
-                fringe.extend(try_partial.fringe)
+            # No finally: merge the no-exception path and the catch fringes
+            fringe.extend(normal_fringe)
             for cp in catch_partials:
                 fringe.extend(cp.fringe)
 
@@ -1857,18 +1993,17 @@ class CfgBuilder:
                     fringe.extend(arm_partial.fringe)
 
         # "NO CASE MATCHED" LEAVES THE SWITCH, ALWAYS (WI-sozob). Without this
-        # edge the scrutinee's only successors were the arms, so in a switch
-        # with no default a definition killed in EVERY arm did not reach the
-        # code after it -- the source's ``t`` vanished from ``sink(t)`` after
+        # edge the scrutinee's only successors are the arms, so in a switch
+        # with no default a definition killed in EVERY arm does not reach the
+        # code after it -- the source's ``t`` vanishes from ``sink(t)`` after
         # ``switch x { case 1: t = "c" }`` -- which REMOVES reaching
         # definitions, the direction that manufactures a walk ``False``.
         # Always on rather than "only when no arm is a default": recognising a
         # default is per grammar (Go ``default_case``, Java / C ``default``,
         # Python ``case _``), and the edge an exhaustive switch gains never
         # runs, so it only ADDS definitions -- the conservative side. With no
-        # recognised arm at all it is the only exit, which is what kept a Java
-        # arrow-form switch's continuation reachable before ``switch_rule``
-        # was mapped (WI-faful).
+        # recognised arm at all (an arm type the mapping does not name) it is
+        # the only exit, and it keeps the switch's continuation reachable.
         fringe.append(_FringeEdge(source_block=scrutinee_block.id, edge_type="always"))
 
         return _PartialCfg(
@@ -1955,7 +2090,7 @@ def populate_def_use_for_cfg(
     # position AND a type: in ``open("o", "wb").write(e)`` the outer call and
     # the inner ``open(...)`` are both ``call`` at the same column. The walk is
     # pre-order, so the statement's own (outer) node is met first; populating
-    # again from the inner one replaced ``uses=["e"]`` with ``[]``, and a
+    # again from the inner one would replace ``uses=["e"]`` with ``[]``, and a
     # tainted value with no recorded use escapes the walk.
     populated: set[tuple[int, int, str]] = set()
 
@@ -1971,6 +2106,9 @@ def populate_def_use_for_cfg(
             result = extractor.extract(node, source)
             cfg_stmt.defines = list(result.defines)
             cfg_stmt.uses = list(result.uses)
+            cfg_stmt.targets = (
+                list(result.targets) if result.targets is not None else None
+            )
         for child in node.children:
             visit(child)
 
@@ -1983,10 +2121,7 @@ def uncovered_semantic_lines(
     source: bytes,
     mapping: CfgNodeMapping,
 ) -> Optional[frozenset[int]]:
-    """Lines whose code no CFG statement covers (WI-joluk, widened by WI-mugop).
-
-    WAS ``uncovered_call_lines`` and asked only about CALL nodes; the name is
-    changed with the predicate because the old one would now be a lie.
+    """Lines whose code no CFG statement covers (history: WI-joluk, WI-mugop).
 
     The coverage question behind INV-lupav: did the def/use extractor actually
     SEE all of this function? If code sits outside every statement the CFG
@@ -1997,41 +2132,32 @@ def uncovered_semantic_lines(
     the caller passes ``forfeit_refutation=True`` when this returns a non-empty
     set.
 
-    WHY "CALL NODE" WAS TOO NARROW (WI-mugop). The omission that motivates this
-    gate is not a call. Go's ``for _, c := range v`` binds ``c`` from ``v`` in a
-    range clause the loop hook did not record until WI-losod, and the clause
-    contains no call at all — so the original predicate returned an EMPTY set
-    for a function whose taint chain the extractor had demonstrably not
-    followed, and the walk was free to refute. Measured on that exact shape:
-    calls-only reported ``frozenset()``, the widened predicate reported the
-    clause's line.
+    WHY NOT CALL NODES ALONE. Code the extractor never saw need not contain a
+    call. Go's ``for _, c := range v`` binds ``c`` from ``v`` in a range
+    clause with no call in it; if no statement records that clause, a
+    calls-only predicate returns an EMPTY set for a function whose taint chain
+    the extractor did not follow, and the walk is free to refute. So the
+    predicate also counts semantic leaves (identifiers, literals).
 
-    WHY A STRUCTURAL PREDICATE AND NOT A DECLARED VOCABULARY. The considered
-    alternative was a per-language list of node types that bind or use a
+    WHY A STRUCTURAL PREDICATE AND NOT A DECLARED VOCABULARY. The alternative
+    is a per-language list of node types that bind or use a
     variable. That list is open-ended — it is coextensive with "everything the
     def/use extractor does not model", which :func:`_ddg_taint_reaches` says
     outright is not knowable from inside the walk — so an incomplete one reports
     "fully covered" and PERMITS an unearned refutation, with nothing to diff it
-    against. The project has run that experiment: ``atomic_statement`` was
-    missing from ``rust.yaml`` and ``typescript.yaml`` and both emitted zero DDG
-    edges for months at 100% test coverage. :func:`_is_semantic_leaf` asks a
-    structural question instead and needs no vocabulary to keep in step.
+    against. Such vocabularies decay silently: a language whose mapping lacks
+    ``atomic_statement`` emits zero DDG edges while its tests still pass.
+    :func:`_is_semantic_leaf` asks a structural question instead and needs no
+    vocabulary to keep in step.
 
-    PRICED BEFORE IT WAS WIDENED, on WI-joluk's own five repo-language pairs:
-    the forfeit share moves 12.5-35.5% to 18.8-51.6%, so refutation survives
-    on 48.4-81.2% of walkable functions. WI-joluk pre-registered "not near 100%,
-    so refutation stays viable on the remainder" as the condition; it is met.
-
-    WHY BYTE EXTENTS AND NOT LINES. A line test cannot see the motivating case.
-    Until WI-losod ``CfgBuilder._process_conditional`` recorded ONLY the
-    condition child of an ``if`` — for Go's ``if err := do(); err != nil`` that
-    was ``err != nil``, and the initializer ``err := do()`` became no statement
-    at all. Both are on the same line, so line-matching reported the call as
-    covered and the gate was vacuous exactly where the gap was. The recorded
-    statement's byte range did not contain the initializer's, so an extent test
-    caught it. The same reasoning is why a loop header recorded AT its loop
-    node carries :attr:`CfgStatement.extent_end_byte`: its extent stops at the
-    body.
+    WHY BYTE EXTENTS AND NOT LINES. Unrecorded code often shares a line with a
+    recorded statement. If only the condition of Go's ``if err := do(); err !=
+    nil`` were recorded, the initializer ``err := do()`` would sit on the same
+    line, so a line test would report it covered and the gate would be vacuous
+    exactly where the gap is; the condition's byte range does not contain the
+    initializer's, so an extent test catches it. The same reasoning is why a
+    loop header recorded AT its loop node carries
+    :attr:`CfgStatement.extent_end_byte`: its extent stops at the body.
 
     RETURNS ``None`` — NOT AN EMPTY SET — when the language declares no
     ``call_node_types``. Those are different facts: an empty set means "checked,
@@ -2068,11 +2194,11 @@ def uncovered_semantic_lines(
     extents: list[tuple[int, int]] = []
     hits: list[tuple[int, int, int]] = []
 
-    # ITERATIVE. This recursed one frame per AST level, which is the crash
-    # INV-gotir fixed in ddg_build's own walk — keda's generated protobuf
-    # measures an AST depth of 1,171 against CPython's default limit of 1,000.
-    # Here the RecursionError would have been swallowed by the caller's
-    # ``except Exception`` and read as "function has no DDG edges".
+    # ITERATIVE. A recursive walk takes one frame per AST level, and generated
+    # code (protobuf output, for one) can nest deeper than CPython's default
+    # recursion limit of 1,000. The caller's ``except Exception`` would swallow
+    # the RecursionError and read it as "function has no DDG edges"
+    # (history: INV-gotir).
     stack: list[Any] = [body_node]
     while stack:
         node = stack.pop()
@@ -2102,7 +2228,7 @@ def uncovered_semantic_lines(
 # Reaching-def solver (ADR-0017 §1b)
 # ---------------------------------------------------------------------------
 
-#: Node types that carry no semantics for coverage purposes. Extracted from
+#: Node types that carry no semantics for coverage purposes. Shared with
 #: :meth:`CfgBuilder._process_sequential`, which skips exactly these, so the
 #: "is this node worth accounting for" question has ONE spelling and the
 #: coverage gate cannot drift from the builder that produces its input.
@@ -2116,7 +2242,7 @@ def _is_semantic_leaf(node: Any) -> bool:
     """A named terminal that carries meaning — an identifier, a literal.
 
     GRAMMAR-NEUTRAL BY CONSTRUCTION, and that is the point. The alternative
-    considered for :func:`uncovered_semantic_lines` was a declared per-language
+    for :func:`uncovered_semantic_lines` is a declared per-language
     list of node types that bind or use a variable. That list is open-ended —
     it is coextensive with "everything a def/use extractor does not model",
     which is not knowable in advance — so an incomplete one would report
@@ -2127,8 +2253,7 @@ def _is_semantic_leaf(node: Any) -> bool:
     Interior nodes are deliberately excluded. A function body is contained in
     no statement extent by construction, so counting interior nodes forfeits
     every function on every repository — a predicate that cannot return
-    "covered" is not a gate, and that spelling was measured and rejected
-    rather than reasoned away (WI-mugop phase 1).
+    "covered" is not a gate (history: WI-mugop).
     """
     return (
         bool(node.is_named)
@@ -2150,28 +2275,27 @@ def unaccounted_names(
     INSIDE a statement it did record, the def/use extractor accounted for the
     variables the statement mentions. Both failures produce the same downstream
     lie — the §3a walk exhausts and returns ``False``, "every step accounted
-    for", for a value it never followed — and since 2026-09-02 that ``False``
-    REMOVES a reported flow.
+    for", for a value it never followed — and that ``False`` REMOVES a
+    reported flow.
 
     WHY THE EXTENT TEST CANNOT SEE THIS. Go's grouped ``var ( msg = cwd )`` is
     recorded as one ``var_declaration`` statement whose extent covers the whole
-    block, and the extractor then fills it with ``defines=[] uses=[]``: the
-    grammar nests the specs one level deeper than the handler descends. There
-    is no uncovered region to find, so the coverage predicate is silent at any
-    width. Python's ``c[key] = 1`` is the same shape — ``defines=['c']
-    uses=[]``, the index never read — and so is a Go grouped ``const``.
+    block; the grammar nests the specs one level below it, so a handler that
+    does not descend that far fills it with ``defines=[] uses=[]``. There is
+    no uncovered region to find, so the coverage predicate is silent at any
+    width. Python's ``c[key] = 1`` reported as ``defines=['c'] uses=[]``, the
+    index never read, is the same shape, and so is a Go grouped ``const``.
 
-    MEASURED, NOT ARGUED: with the handler present and wrong in six of the
-    seven shapes found by a four-language sweep, a per-handler "I understood
-    this construct" flag — the remedy this clause was filed proposing — would
-    have claimed understanding in all six. Membership in a dispatch table is
+    WHY NOT A PER-HANDLER FLAG. A handler that exists but handles its
+    construct wrongly would still claim, through an "I understood this
+    construct" flag, to have understood it. Membership in a dispatch table is
     not evidence that the dispatch was complete.
 
     SAME PREDICATE AS THE EXTENT GATE, DELIBERATELY. "Worth accounting for" has
     one spelling here (:func:`_is_semantic_leaf`), so the two questions cannot
     drift apart, and neither needs a per-language vocabulary of binding
-    constructs — the list that ``atomic_statement`` already proved decays
-    silently in the direction that deletes findings.
+    constructs — a kind of list that decays silently in the direction that
+    deletes findings.
 
     ACCOUNTED FOR BY *ANY* ENCLOSING STATEMENT, not by the innermost one. Go
     records ``defer log.Print(msg)`` as two nested statements: the outer
@@ -2186,12 +2310,9 @@ def unaccounted_names(
     a statement's ``defines`` — seeds through ``defs_at`` and heirs through
     ``inherits`` are both built from them — so a callee name, a type name, a
     struct-literal key or a package qualifier can never be queried and is not
-    worth reporting. FLOOR-CHECKED on two real repositories rather than
-    reasoned about: 12.6% of alertmanager's functions and 4.9% of hypergumbo's
-    carry any unaccounted name at all (4.8% and 2.1% of tracked names), so this
-    withholds ``False`` from a minority and a predicate that fires everywhere —
-    the failure that killed one candidate spelling in WI-mugop phase 1 — is
-    ruled out by measurement.
+    worth reporting. Without the restriction those names would fire on
+    nearly every function, and a gate that fires everywhere withholds
+    ``False`` everywhere.
 
     EMPTY IS A REAL ANSWER HERE, AND ONLY BECAUSE OF THE CALLER. A function
     whose statements define nothing yields an empty ``tracked`` set and so an
@@ -2222,10 +2343,10 @@ def unaccounted_names(
         return frozenset()
 
     out: set[str] = set()
-    # ITERATIVE, for the reason uncovered_semantic_lines is (INV-gotir): keda's
-    # generated protobuf measures an AST depth of 1,171 against CPython's
-    # default limit of 1,000, and the caller's ``except Exception`` would read
-    # the RecursionError as "this function has no DDG edges".
+    # ITERATIVE, for the reason uncovered_semantic_lines is (INV-gotir):
+    # generated code can nest deeper than CPython's default recursion limit,
+    # and the caller's ``except Exception`` would read the RecursionError as
+    # "this function has no DDG edges".
     #
     # The stack carries the accumulated ``accounted`` set of every ENCLOSING
     # recorded statement, which is what makes the nested-statement case right.
@@ -2362,7 +2483,10 @@ class _Definition:
     line: int
 
 
-def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
+def solve_reaching_defs(
+    cfg: FunctionCfg,
+    entry_defs: Sequence[tuple[str, int]] = (),
+) -> ReachingDefResult:
     """Compute reaching definitions for a function CFG.
 
     Implements the classic worklist algorithm:
@@ -2377,6 +2501,15 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
     Args:
         cfg: A FunctionCfg with populated ``CfgStatement.defines`` and
             ``CfgStatement.uses`` fields.
+        entry_defs: ``(variable, line)`` pairs defined on ENTRY, before the
+            entry block's first statement -- the function's parameters at
+            its own line (WI-sosov). No def/use extractor defines a
+            parameter, so without these a use of ``req`` has no reaching
+            definition and no DDG edge, and a value that arrives as a
+            parameter is invisible to the taint walk. They are definitions
+            like any other (a later statement defining the name kills them)
+            and NOTHING else: no statement is added, so ``stmt_defuse``,
+            ``unaccounted_names`` and the coverage gate are unaffected.
 
     Returns:
         A ReachingDefResult with DDG edges, or bailed_out=True if the
@@ -2398,6 +2531,17 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
                 ))
                 var_defs.setdefault(var, []).append(idx)
 
+    # Entry definitions are numbered AFTER the statements' so that a
+    # statement defining the same name on the same line (a one-line
+    # function) still finds its own definition first below.
+    entry_indices: list[int] = []
+    for var, line in entry_defs:
+        idx = len(definitions)
+        definitions.append(_Definition(
+            index=idx, variable=var, block_id=cfg.entry_block, line=line,
+        ))
+        var_defs.setdefault(var, []).append(idx)
+        entry_indices.append(idx)
     result.definition_count = len(definitions)
 
     if len(definitions) == 0:
@@ -2422,6 +2566,15 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
         block_kill = 0
         # Track which variables are defined in this block (last wins)
         block_var_def: dict[str, int] = {}
+
+        if block.id == cfg.entry_block:
+            # The entry definitions come first: a statement below that
+            # defines the same name replaces them in the gen set exactly as
+            # it would any earlier definition in the block. They kill
+            # nothing: no definition flows into the entry block.
+            for idx in entry_indices:
+                block_gen |= (1 << idx)
+                block_var_def[definitions[idx].variable] = idx
 
         for stmt in block.statements:
             for var in stmt.defines:
@@ -2486,6 +2639,12 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
     for block in cfg.blocks.values():
         # Reaching defs at the start of this block
         reaching = in_sets[block.id]
+        if block.id == cfg.entry_block:
+            # Nothing flows INTO the entry block, so its uses see the entry
+            # definitions only if they are placed here, ahead of its first
+            # statement (the gen set carries them out, not in).
+            for idx in entry_indices:
+                reaching |= (1 << idx)
 
         # Walk statements; update reaching set as definitions are encountered
         for stmt in block.statements:
@@ -2517,6 +2676,104 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
                         break
 
     return result
+
+
+def late_capture_edges(
+    cfg: FunctionCfg,
+    body_node: Any,
+    mapping: CfgNodeMapping,
+    edges: list[DdgEdge],
+) -> list[DdgEdge]:
+    """Edges from a definition AFTER a nested function into its reads (WI-lokok).
+
+    A nested function reads what it captures when it RUNS, which is any time
+    after it is defined. The CFG hangs its body off the definition as a region
+    that may run there (WI-faful), so reaching definitions connect only the
+    definitions BEFORE it:
+
+        function setup() { u = u + k; }   // reads k
+        const k = process.env.K;          // no edge into setup
+        setup(); fetch(u);
+
+    Without these edges the walk sees the secret go only where the enclosing
+    function uses it and removes a flow that runs. This returns, for each read of a name inside
+    a nested function, an edge from every definition of that name placed after
+    the function's end and outside every nested function -- the definitions the
+    solve could not have connected. A definition before the function is left to
+    the solve, which already kills the ones overwritten in between. A read that
+    follows the nested function's own binding of the name reads that binding,
+    not the enclosing one, and gets no edge: a callback that declares its own
+    ``err`` must not be linked to the outer ``err``, or walks confirm through a
+    value the callback never saw.
+
+    May, not must: the closure might never run after the definition. That only
+    adds paths, so a walk over the result can turn ``False`` into ``True`` or
+    ``None`` and never the reverse.
+
+    Args:
+        cfg: The function's CFG, after :func:`populate_def_use_for_cfg`.
+        body_node: The tree-sitter node the CFG was built from.
+        mapping: The language's mapping; its ``nested_function`` types say
+            what a nested function is.
+        edges: The solve's edges, so an existing one is not duplicated.
+    """
+    regions: list[tuple[tuple[int, int], tuple[int, int]]] = []
+    stack = list(reversed(body_node.named_children))
+    while stack:
+        node = stack.pop()
+        if mapping.get_nested_function(node.type) is not None:
+            regions.append((node.start_point, node.end_point))
+        else:
+            stack.extend(reversed(node.named_children))
+    if not regions:
+        return []
+
+    def region_of(stmt: CfgStatement) -> Optional[int]:
+        at = (stmt.line - 1, stmt.col)
+        for i, (start, end) in enumerate(regions):
+            if start <= at < end:
+                return i
+        return None
+
+    statements = [
+        (block.id, stmt, region_of(stmt))
+        for block in cfg.blocks.values() for stmt in block.statements
+    ]
+    # Where each nested function first binds a name of its own: Go's
+    # ``output, err := ...`` in a callback, a JS ``let``, a Python local. A read
+    # after that is of the function's own value, so it gets no late edge.
+    bound_at: dict[tuple[int, str], tuple[int, int]] = {}
+    for _block, stmt, region in statements:
+        if region is None:
+            continue
+        at = (stmt.line - 1, stmt.col)
+        for var in stmt.defines:
+            bound_at[(region, var)] = min(at, bound_at.get((region, var), at))
+    reads: dict[str, list[tuple[int, str, int]]] = defaultdict(list)
+    outside: list[tuple[str, str, CfgStatement]] = []
+    for block_id, stmt, region in statements:
+        if region is None:
+            outside.extend((var, block_id, stmt) for var in stmt.defines)
+            continue
+        at = (stmt.line - 1, stmt.col)
+        for var in stmt.uses:
+            if bound_at.get((region, var), at) < at:
+                continue
+            reads[var].append((region, block_id, stmt.line))
+    have = {(e.variable, e.def_line, e.use_line) for e in edges}
+    out: list[DdgEdge] = []
+    for var, def_block, stmt in outside:
+        for region, use_block, use_line in reads.get(var, ()):
+            if (stmt.line - 1, stmt.col) < regions[region][1]:
+                continue
+            if (var, stmt.line, use_line) in have:
+                continue
+            have.add((var, stmt.line, use_line))
+            out.append(DdgEdge(
+                variable=var, def_block=def_block, def_line=stmt.line,
+                use_block=use_block, use_line=use_line, symbol_id=cfg.symbol_id,
+            ))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2571,17 +2828,13 @@ def select_ddg_targets(
        every file of a registered language, with no sampling, no budget and
        no cache.
 
-       The previous wording here — "DDG analysis is expensive, so only 2-10%
-       of functions are analyzed" — described an intended design as though it
-       were current behaviour, and a reader sizing DDG cost from it would be
-       wrong by more than an order of magnitude. Corrected 2026-08-03 rather
-       than deleted, because the selection policy below is still the intended
-       one and is worth keeping until it is either wired or withdrawn.
+       The selection policy below is the intended one, kept until it is
+       either wired or withdrawn. Do not size DDG cost from it: nothing
+       samples today.
 
-       Wiring it is deliberately sequenced *after* ADR-0017 §3a lands: it
-       reduces which functions carry DDG data, so switching it on before the
-       forward walk exists would move two variables in one measurement and
-       make §3a's effect unreadable.
+       Wiring it reduces which functions carry DDG data, and so what the
+       ADR-0017 §3a forward walk can see; measure that change on its own,
+       not alongside another change to the walk.
 
     Implements ADR-0017 §1c targeted analysis selection — the *design*, not
     the running behaviour.
@@ -2641,10 +2894,10 @@ def select_ddg_targets(
                 continue
             if _tier_ok(finding.source_symbol):
                 result.taint_relevant.add(finding.source_symbol)
-            # INV-karud: read the SET. An unadjudicated finding now stands
-            # for every sink symbol it reached, and ``sink_symbol`` is only
-            # the witness the ``path`` belongs to — selecting on it would
-            # silently drop the rest of the group from DDG coverage.
+            # Read the SET: an unadjudicated finding stands for every sink
+            # symbol it reached, and ``sink_symbol`` is only the witness the
+            # ``path`` belongs to — selecting on it would silently drop the
+            # rest of the group from DDG coverage (history: INV-karud).
             for _sink in finding.sink_symbols:
                 if _tier_ok(_sink):
                     result.taint_relevant.add(_sink)

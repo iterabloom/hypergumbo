@@ -1,0 +1,75 @@
+- op: create  # e32e
+  at: '2026-10-25T21:25:44Z'  # e32e
+  by: agent  # e32e
+  actor: jgstern_agent  # e32e
+  clock: 1  # e32e
+  nonce: e32e  # e32e
+  data:  # e32e
+    kind: invariant  # e32e
+    title: "nodes standing for one workspace package carry different tiers: python sibling declarations tier 2, npm/cargo sibling declarations and the js_module stand-in package node tier 3 'external'"  # e32e
+    status: violated  # e32e
+    priority: 3  # e32e
+    parent:  # e32e
+    tags:  # e32e
+    - supply_chain  # e32e
+    - adr_0041  # e32e
+    isbefore: []  # e32e
+    duplicate_of: []  # e32e
+    not_duplicate_of: []  # e32e
+    pr_ref:  # e32e
+    description: "Found by the F1 investigation 2026-10-25 on dev edafc0cada, production CLI `hypergumbo survey` on three two-member workspace fixtures (scratchpad tierF1/):\n- python (uv-style pyproject workspace): `project pkg-b` tier 1 'default'; `dependency pkg_b` in a's pyproject.toml tier 2 'workspace-internal dependency declaration'.\n- JS (npm workspaces): `package @ws/b` tier 1 'in workspace b'; `dependency @ws/b` in a's package.json tier 3 'dependency declaration (external)'; and a second, pathless `package @ws/b` from the js_module linker tier 3 'npm_package (third-party dependency)'.\n- Cargo workspace: `package crate-b` tier 1; `dependency crate-b` tier 3 'dependency declaration (external)'.\nOne package, up to three tiers. Producers: the declaration branch at cli.py:12080-12086 recognises python pyproject siblings only (workspace_names); npm and cargo siblings fall to the external arm; js_module.py:949-950 mints the stand-in package node as third-party. Under the owner's 2026-10-25 project-frame ruling (ADR-0041 §1, see the companion document item) all of them are tier 1, and the python tier 2 is wrong too. Consequences today: --max-tier 1 drops every sibling declaration; supply_chain_summary.internal_dep counts python sibling declarations; a JS/Cargo workspace reads its own siblings as third-party. Ranking effect is about nil (sibling declarations have no incident edges). Fix: a declaration naming an in-tree workspace package, in every manifest ecosystem the workspace detector knows, takes tier 1 with a reason naming the sibling; the js_module stand-in for a workspace package takes the workspace package's tier (or is not minted). Flip TestWorkspaceSiblingDependencyTier (test_supply_chain.py:2220); add a cross-ecosystem property test (python, npm, cargo fixtures) asserting every node standing for one package has one tier, with a control that fails on today's code. Land with or after WI-lidig."  # e32e
+    fields:  # e32e
+      statement: "Every node that stands for the same package carries the same supply_chain_tier; a dependency declaration naming an in-tree workspace package is tier 1 (ADR-0041 §1, project frame, owner ruling 2026-10-25)."  # e32e
+      root_cause: "The declaration branch (cli.py:12080-12086) recognises only python pyproject workspace siblings and gives them tier 2; npm and cargo siblings fall to the external arm (tier 3), and js_module mints a third-party stand-in package node for a workspace package (js_module.py:949-950)."  # e32e
+- op: discuss  # eb43
+  at: '2026-10-25T21:26:14Z'  # eb43
+  by: agent  # eb43
+  actor: jgstern_agent  # eb43
+  clock: 2  # eb43
+  nonce: eb43  # eb43
+  message: "Companion items: WI-sufon (rewrite ADR-0041 §1, spec §14 and tier docstrings to the project frame -- the document half), INV-fuhin (directness unstamped on declarations), INV-nuzas (statement reworded 2026-10-25 to this ruling; this item carries its declaration clause). Blocked by WI-lidig (unclassified marker). Measure first: tier-2 population by node kind on the corpus."  # eb43
+- op: discuss  # 95a6
+  at: '2026-10-25T23:58:45Z'  # 95a6
+  by: agent  # 95a6
+  actor: jgstern_agent  # 95a6
+  clock: 3  # 95a6
+  nonce: 95a6  # 95a6
+  message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). Independently reproduced (repro_INV-kutub/{py,js,cargo}): python dependency pkg-b tier 2 while project pkg-b tier 1; npm and cargo sibling declarations tier 3 'dependency declaration (external)'; js_module stand-in package @ws/b tier 3. ADDITIONAL PRODUCERS this item missed: boundary stubs for sibling code at tier 3 -- javascript:@ws/b:0-0:helper and :module external_symbols, rust:crate_b::helper:0-0:module external_symbol. Those are also a CALL-GRAPH defect (JS run calls the phantom helper instead of b's real tier-1 helper), filed as WI-rilof (P2); once WI-rilof resolves sibling imports to source, the stubs and the stand-in stop being minted and this item's remaining work is the declaration tier. Correction: 'ranking effect about nil' holds only for python -- the npm declaration has a depends_on edge from @ws/a and the cargo declaration a depends_on_manifest edge from crate-a/src/lib.rs. Spec :1923-1924 already discloses the npm/Cargo gap ('still tier 3') and must change with the fix. Now ordered before WI-sufon (its 'no tier-2 node' sentence becomes true only after this lands). The declaration clause moved here from INV-nuzas's statement 2026-10-25 (owner-approved)."  # 95a6
+- op: update  # cedd
+  at: '2026-10-25T23:58:47Z'  # cedd
+  by: agent  # cedd
+  actor: jgstern_agent  # cedd
+  clock: 4  # cedd
+  nonce: cedd  # cedd
+  set: {}  # cedd
+  add:  # cedd
+    isbefore: [WI-sufon-zajul-sosuh-nojik-pugus-tohap-dahun-vonur]  # cedd
+- op: discuss  # 9572
+  at: '2026-10-26T00:31:43Z'  # 9572
+  by: agent  # 9572
+  actor: jgstern_agent  # 9572
+  clock: 5  # 9572
+  nonce: '9572'  # 9572
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output) counts this item's planned test (every node standing for one package carries one tier) as ADR-0041's falsification test, and uses it as the model for the other axes."  # 9572
+- op: discuss  # 28e6
+  at: '2026-10-26T13:33:43Z'  # 28e6
+  by: agent  # 28e6
+  actor: jgstern_agent  # 28e6
+  clock: 6  # 28e6
+  nonce: '28e6'  # 28e6
+  message: "2026-10-26: WI-rilof landed (PR #1877, dev 091984531e). On the repro fixtures the js_module stand-in package node (javascript:npm:0-0:@ws/b:package) is no longer minted, the helper/module call stubs for the sibling are gone, and the Cargo use stub resolves to crate-b/src/lib.rs. One stub remains: javascript:@ws/b:0-0:module:external_symbol, from the analyzer's raw import edge that js_module never retires (also present for every relative import) -- filed as WI-vadup. What remains for this item: the dependency-declaration tier (python tier 2, npm/cargo tier 3), plus WI-vadup's stub if this item's property test counts it."  # 28e6
+- op: update  # ea8f
+  at: '2026-10-27T01:32:05Z'  # ea8f
+  by: agent  # ea8f
+  actor: jgstern_agent  # ea8f
+  clock: 7  # ea8f
+  nonce: ea8f  # ea8f
+  set:  # ea8f
+    status: satisfied  # ea8f
+- op: discuss  # cd6c
+  at: '2026-10-27T01:32:05Z'  # cd6c
+  by: agent  # cd6c
+  actor: jgstern_agent  # cd6c
+  clock: 8  # cd6c
+  nonce: cd6c  # cd6c
+  message: "Satisfied on the filed instances by PR #1890 (merged as 1ecb54e013). Root cause: cli._classify_symbols recognised in-tree siblings only through collect_workspace_package_names (python pyproject names, tier 2); every other declaration fell to the external arm. Fix: supply_chain.collect_in_tree_packages reads the own name of every in-tree pyproject / package.json / composer.json / Cargo.toml / pom.xml (compared per ecosystem: PEP 503; exact; '-'='_'; Maven groupId:artifactId with ${project.groupId} = the declaring module's group, groupId inherited from <parent>), and a declaration matching one takes the tier that manifest classifies to -- the package node's tier by construction -- with reason 'declares in-tree package <name> (<manifest>)'. sketch's no-map fallback now calls the same annotator (it tiered every declaration by path, tier 1).\nBehavioural evidence, the item's own repro re-run on merged dev 1ecb54e013 (`hypergumbo survey` on one two-member workspace per ecosystem, scratchpad r_kutub/): python `dependency pkg_b` tier 1 'declares in-tree package pkg_b (packages/b/pyproject.toml)' beside `project pkg-b` tier 1 (was tier 2); npm `dependency @ws/b` tier 1 beside `package @ws/b` tier 1 (was 3); cargo `dependency crate_b` tier 1 beside `package crate-b` tier 1 (was 3); maven `${project.groupId}:mod-b` tier 1 beside `module mod-b` tier 1 (was 3), while `other.org:mod-b` stays tier 3; composer `ws/b` tier 1 (was 3). Third-party declarations (requests, lodash, serde, guava, monolog) stay tier 3 'dependency declaration (external)'. The js_module stand-in package node is no longer minted (WI-rilof). Tests on merged dev: test_in_tree_declaration_tier.py (production path, run_behavior_map, one workspace per ecosystem: every node standing for one package carries one tier, reach asserted first) + TestInTreeDependencyDeclarationTier: 13 passed; a mutation making the matcher find nothing reds 7/8 core and 5/5 production cases.\nMeasured dev vs branch: nest 172/1379 declarations 3->1 (165 from sample/ apps pinning the published @nestjs/* by version), diesel 45/275, killbill 118/683, poetry 0/24; no other node moved; no tier-2 node in any map before or after; nest sketch byte-identical.\nNOT asserted: the general statement 'every node that stands for the same package carries the same tier'. Boundary stubs standing for in-tree packages remain tier 3: javascript:@ws/b:0-0:module:external_symbol (WI-vadup) and the Go analogue go:example.com/b:0-0:package:external_symbol (noted on WI-vadup). Not covered by the matcher, disclosed in spec §14 §3a: a Cargo dependency renamed with package = \"...\"; go.mod emits no declaration nodes; poetry/optional/PEP 735 dependency tables emit no node (filed as a new item)."  # cd6c

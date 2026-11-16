@@ -506,7 +506,8 @@ class TestRunAllLinkers:
 
         ctx = LinkerContext(repo_root=Path("/test"))
         results = run_all_linkers(ctx)
-        assert len(results) == 1
+        # The enclosure post-pass is always recorded after the linkers (WI-tivif).
+        assert [name for name, _ in results] == ["pair-test", "enclosure"]
         name, result = results[0]
         assert name == "pair-test"
         assert result.symbols == ["s"]
@@ -887,11 +888,10 @@ class TestEnclosureLinker:
     def test_creates_uses_edges_for_synthetic_nodes(self):
         """Creates 'uses' edges from enclosing functions to synthetic nodes.
 
-        Synthetic node uses the post-Phase-4b shape (ADR-0027 §6,
-        PR #3633): canonical ``kind="function"`` plus framework role on
-        ``Symbol.meta["framework_role"]``. The pre-Phase-4b legacy
-        shape (``kind="grpc_stub"`` etc.) is structurally impossible
-        — that vocabulary is no longer in the Symbol.kind registry.
+        The synthetic node has the shape linkers emit: canonical
+        ``kind="function"`` plus the framework role on
+        ``Symbol.meta["framework_role"]`` (ADR-0027 §6). Role names such as
+        ``grpc_stub`` are not ``Symbol.kind`` values.
         """
         from hypergumbo_core.ir import Symbol, Span
 
@@ -907,7 +907,7 @@ class TestEnclosureLinker:
             origin_run_id="test",
         )
 
-        # A synthetic gRPC stub created by a linker (post-Phase-4b shape).
+        # A synthetic gRPC stub created by a linker.
         stub = Symbol(
             id="grpc:test.py:15:EmailService:function",
             name="EmailService",
@@ -975,16 +975,18 @@ class TestEnclosureLinker:
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
         results = run_all_linkers(ctx)
 
-        # Only the linker result, no enclosure result (no synthetic nodes)
-        assert len(results) == 1
-        assert results[0][0] == "non-synthetic-test"
+        # The linker result, and the enclosure run recorded with no edges
+        # because there was no synthetic node to connect (WI-tivif).
+        assert [name for name, _ in results] == ["non-synthetic-test", "enclosure"]
+        assert results[1][1].edges == []
+        assert results[1][1].run.silence_reason == "no_candidate_construct"
 
     def test_handles_no_enclosing_function(self):
         """Gracefully handles synthetic nodes with no enclosing function."""
         from hypergumbo_core.ir import Symbol, Span
 
         # Synthetic node at module level (no enclosing function).
-        # Post-Phase-4b shape: kind=function + meta['framework_role'].
+        # Shape: kind=function + meta['framework_role'].
         stub = Symbol(
             id="grpc:test.py:5:Service:function",
             name="Service",
@@ -1005,18 +1007,19 @@ class TestEnclosureLinker:
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[])
         results = run_all_linkers(ctx)
 
-        # Only the linker result, no enclosure edges created
-        assert len(results) == 1
-        assert results[0][0] == "no-enclosing-test"
+        # No enclosure edge: the synthetic node was found but nothing encloses
+        # it, which the recorded run says (WI-tivif).
+        assert [name for name, _ in results] == ["no-enclosing-test", "enclosure"]
+        assert results[1][1].edges == []
+        assert results[1][1].run.silence_reason == "candidates_unresolved"
 
     def test_creates_uses_edges_for_post_phase3_framework_role_shape(self):
-        """Synthetic nodes emitted in the post-Wave-5 shape — kind=function/method
-        + meta['framework_role'] — are still recognised as synthetic.
+        """A synthetic node with kind="method" + meta['framework_role'] is
+        recognised as synthetic and gets an enclosure edge.
 
-        Validates the dual-shape ``_is_synthetic_node`` predicate added in
-        WI-jukav (ADR-0027 §"Phase 2"): the consumer continues to fire after
-        Cluster D producers fold framework_role labels off ``Symbol.kind``
-        and into ``Symbol.meta``.
+        Pins that ``_is_synthetic_node`` reads the role from ``Symbol.meta``
+        for both callable kinds, not just ``kind="function"`` (ADR-0027
+        §"Phase 3" Wave 5).
         """
         from hypergumbo_core.ir import Symbol, Span
 
@@ -1031,8 +1034,8 @@ class TestEnclosureLinker:
             origin_run_id="test",
         )
 
-        # Post-Wave-5 emit shape: kind="method" (canonical Cluster A
-        # construct) plus framework_role label moved to meta.
+        # Emit shape: kind="method" (canonical construct) plus the
+        # framework_role label on meta.
         stub = Symbol(
             id="grpc:test.py:15:EmailService.SendMail:method",
             name="EmailService.SendMail",
@@ -1100,9 +1103,11 @@ class TestEnclosureLinker:
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
         results = run_all_linkers(ctx)
 
-        # No enclosure pass result — predicate rejects unknown roles.
-        assert len(results) == 1
-        assert results[0][0] == "non-synth-role-test"
+        # No enclosure edge — the predicate rejects unknown roles, so the run
+        # found no synthetic node (WI-tivif records it anyway).
+        assert [name for name, _ in results] == ["non-synth-role-test", "enclosure"]
+        assert results[1][1].edges == []
+        assert results[1][1].run.silence_reason == "no_candidate_construct"
 
 
 class TestLinkerPipelineAccumulation:
@@ -1399,8 +1404,9 @@ class TestStampConfigFingerprint:
 
 
 class TestRunLinkerWithCacheStampsEmissionAndDuration:
-    """INV-gizik / INV-pitab: _run_linker_with_cache is the per-linker chokepoint
-    that stamps nodes_emitted/edges_emitted and (guarded) duration_ms."""
+    """_run_linker_with_cache is the per-linker chokepoint that stamps
+    nodes_emitted/edges_emitted, duration_ms and cpu_ms (INV-gizik /
+    INV-pitab)."""
 
     def _ctx(self):
         return LinkerContext(repo_root=Path("/test"))
@@ -1416,10 +1422,10 @@ class TestRunLinkerWithCacheStampsEmissionAndDuration:
         assert run.duration_ms >= 0  # measured (>=0; floored to 1 at to_dict if 0)
 
     def test_replaces_self_timed_duration_with_the_whole_call(self):
-        """WI-nuvam: a body's self-timed duration_ms is REPLACED by the
-        wrapper's reading. It used to be kept, but cpu_ms is read over the
-        whole call, and a wall figure over a different span cannot be compared
-        with it. The 999 here is a body figure the call did not take."""
+        """A body's self-timed duration_ms is REPLACED by the wrapper's
+        reading: cpu_ms is read over the whole call, and a wall figure over a
+        different span cannot be compared with it. The 999 here is a body
+        figure the call did not take. (WI-nuvam)"""
         run = AnalysisRun.create(pass_id="lk", version="1.0.0")
         run.duration_ms = 999
         result = LinkerResult(symbols=[], edges=[object()], run=run)

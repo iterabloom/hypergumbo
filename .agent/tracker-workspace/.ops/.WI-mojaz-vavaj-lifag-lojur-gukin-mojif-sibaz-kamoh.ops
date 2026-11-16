@@ -49,3 +49,18 @@
   clock: 5  # f61e
   nonce: f61e  # f61e
   message: "OWNER RULING (2026-09-22, in chat) on the sink_before_source REMOVAL rule surfaced from WI-dopat: NOT YET.\nDo NOT build it and do NOT amend ADR-0052. The evidence is 22 FP / 0 TP from one repo (pretix nonprod, seeded sample), which is too thin to change a confirm-only ADR. A loop-carried value is also a real soundness exception.\nIf it is pursued later, the next step is measurement, not code: adjudicate sink_before_source situations across the WI-dopat census cohort (0007's 11 repos + sherpa-onnx + podman-compose; 55 default / 113 nonprod first-blocker rows). Count loop-carried true positives explicitly. Then return to the owner with the numbers.\nThis row stays todo_hard: the re-measure showed precision unchanged (24.2% -> 27.5%), and this rule is the lever identified so far."  # f61e
+- op: update  # 8b82
+  at: '2026-11-01T09:32:31Z'  # 8b82
+  by: agent  # 8b82
+  actor: jgstern_agent  # 8b82
+  clock: 6  # 8b82
+  nonce: 8b82  # 8b82
+  set:  # 8b82
+    title: "The --include-non-production-sources arm is ~72-76% false positives on pretix (n=120/102): the dominant FP is sink_before_source / not_attempted shipped under confirm-only; a removal rule awaits the owner-ruled multi-repo count"  # 8b82
+- op: discuss  # 0523
+  at: '2026-11-01T09:32:31Z'  # 0523
+  by: agent  # 0523
+  actor: jgstern_agent  # 0523
+  clock: 7  # 0523
+  nonce: '0523'  # 0523
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/B2/). VERDICT: PARTLY-STALE on the title ('every situation structural/walk-unavailable' no longer holds since WI-ripas: structural 58% -> 7% per the 09-22 entry); the FP ratio is not re-measurable here (pretix corpus); the mechanism reproduces. Flag live: verify-claims --include-non-production-sources (cli.py:12054, read at :7568/7822/7834/7886; logic unchanged since b297d1ce81). Fixture (Django TestCase, create-then-get and get-then-create): default arm inconclusive with excluded_flows {test_sourced: 2}; flag arm violated; test_create_then_get evidence analysis_method ddg_mixed, walk_verdict not_attempted, walk_blocked_by sink_before_source (the FP shape, shipped unrefuted under confirm-only ADR-0052); test_get_then_create ddg / reached (true). taint.py:543 WALK_BLOCKED_SINK_BEFORE_SOURCE; no removal rule (WI-dopat wont_do; owner 'NOT YET' 09-22). Title re-scoped. ROOT-CAUSE GROUP: an unwalkable pairing ships as a finding (taint seed/walk family). Status unchanged."  # 0523

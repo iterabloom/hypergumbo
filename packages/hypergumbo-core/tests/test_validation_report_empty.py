@@ -1,52 +1,48 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""validator:F1 / G1 — the spec-validator ratchet gate (WI-kafar, WI-himoj).
+"""The spec-validator ratchet gate over a matrix of writer-path substrates.
 
-ADR-0033 named a CI gate ``tests/test_validation_report_empty.py`` that
-"runs the self-analysis corpus and fails when ``validation_report.violations``
-is non-empty." Two facts make the literal "assert empty" form impossible:
+ADR-0033 names this file as the CI gate that fails when
+``validation_report.violations`` is non-empty. It is realized as a
+**shrink-only, per-substrate RATCHET** over a four-substrate matrix (default,
+``--frameworks all``, ``--include-docs``, ``--max-tier``) run against the
+multi-language ``schema-coverage-corpus`` fixture tree; a gate on the default
+substrate alone would let the flag-gated writer paths escape. For each
+substrate, the spec-validator violation total, each (class, severity) cell,
+and, as a separate co-ratcheted dimension, the ADR-0023 §3
+``runtime_coherence`` offender count may **shrink** below its committed
+baseline — ratchet the baseline down when it does — but may never **grow**: a
+regression that adds a violation trips CI rather than accumulating silently.
+The violation baselines are all 0, so for them the ratchet is assert-empty;
+the runtime_coherence baseline is not (see ``RUNTIME_COHERENCE_BASELINES``).
+(history: WI-kafar, WI-himoj)
 
-1. The corpus is *not* at zero violations (the validator surfaces real,
-   currently-open defects — e.g. the INV-bazij stable_id collision rate on a
-   small corpus, and non-canonical markdown section stable_ids under
-   ``--include-docs``). An assert-empty gate would be permanently red.
-2. A default-substrate-only gate lets flag-gated writer paths escape
-   (``--frameworks all``, ``--include-docs``, ``--max-tier`` — WI-himoj).
-
-So the realized gate is a **shrink-only, per-substrate RATCHET** over a
-four-substrate matrix run against the multi-language ``schema-coverage-corpus``
-fixture tree. For each substrate, the spec-validator violation total (and,
-as a separate co-ratcheted dimension, the ADR-0023 §3 ``runtime_coherence``
-offender count) may **shrink** below its committed baseline — ratchet the
-baseline down when it does — but may never **grow**: a regression that adds
-a violation trips CI rather than accumulating silently. This is the honest
-realization of WI-kafar (lock in the state) + WI-himoj (exercise every
-writer path including flag-gated ones).
-
-The gate is the future HOST for the integrity predicates added in later
-waves (dangling-endpoint, origin->analysis_runs FK, is_resolved<->dst
-coherence, kind-slot round-trip, per-file stable_id uniqueness, …); each
-such predicate, as it lands, shrinks the relevant substrate's baseline.
+Every check in ``spec_validator._WIRED_CHECKS`` runs here on every substrate,
+and each must declare in ``_REACH`` which records it inspects.
 
 Vehicle notes:
 * In-process ``run_behavior_map`` (not subprocess) so the analysis pipeline
   contributes to hypergumbo-core coverage.
-* The fixture corpus (~5s/substrate) keeps the per-PR run well under the
-  5-minute budget; the heavy self-analysis variant is future work for
-  full-suite.yml ("fixture corpus per-PR; self-tree in full-suite").
-* One analysis run per substrate, both dimensions checked off it — the
-  orphan-audit anti-redundancy lesson (don't re-run analysis per assertion
-  under pytest-xdist).
+* The fixture corpus (a few seconds per substrate) keeps the per-PR run well
+  under the 5-minute budget; the self-tree is validated in full-suite by
+  ``scripts/check-self-tree-validation``.
+* One analysis run per substrate, every dimension checked off it: re-running
+  analysis per assertion under pytest-xdist multiplies the cost.
 * A shrink-only ceiling alone passes vacuously if the corpus ever goes
   missing/empty (0 violations <= baseline). So the test also asserts a
   LIVENESS FLOOR: the corpus exists, is non-empty, and the run produced a
   non-trivial node count. The floor is deliberately low (it proves the
   substrate was analyzed, not its exact size) so it survives a
   reduced-analyzer CI environment while still catching a vacuous pass.
-* On the current corpus only ``default`` and ``include_docs`` are
-  distinguishing (``frameworks_all`` and ``max_tier_4`` produce byte-identical
-  output — the fixtures carry no framework code and no tier>1 third-party
-  symbols). The latter two are retained as FORWARD GUARDS for when the corpus
-  grows to exercise those writer paths.
+* ``frameworks_all`` is distinguished by ``java/web/HealthController.java``:
+  Spring annotations with no build file declaring Spring, so only ``--frameworks
+  all`` applies the spring patterns (one more route, three more concepts).
+  ``max_tier_4`` filters nothing BY CONSTRUCTION -- tier 4 is the highest tier
+  -- so its output equals ``default``; it is kept to run the filter's code path.
+* A ceiling of 0 passes vacuously for a check whose population the corpus does
+  not contain. ``_REACH`` therefore names, per wired check, the records it
+  inspects, and each must be non-empty on every substrate. Some corpus files
+  exist to supply a population: ``go/web/server.go``, a gin route, gives the
+  route-marker check a symbol on every substrate. (history: WI-jigup)
 """
 from __future__ import annotations
 
@@ -57,6 +53,7 @@ from typing import Any
 import pytest
 
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.spec_validator import _WIRED_CHECKS
 from hypergumbo_core.runtime_coherence import (
     filter_by_allowlist,
     find_offenders,
@@ -69,7 +66,7 @@ CORPUS = REPO_ROOT / "tests" / "fixtures" / "schema-coverage-corpus"
 ALLOWLIST = REPO_ROOT / "docs" / "edge-type-runtime-allowlist.yaml"
 
 # substrate name -> run_behavior_map kwargs that produce that writer-path
-# substrate. The four substrates of the G1 matrix.
+# substrate. The four substrates of the matrix.
 SUBSTRATES: dict[str, dict[str, Any]] = {
     "default": {},
     "frameworks_all": {"frameworks": "all"},
@@ -77,58 +74,35 @@ SUBSTRATES: dict[str, dict[str, Any]] = {
     "max_tier_4": {"max_tier": 4},
 }
 
-# Shrink-only spec-validator baselines. Measured 2026-06-11; re-measured
-# 2026-06-13 (id-format:F3 round-trip canary) and 2026-06-15 (stable_id v6
-# closure gate, ADR-0035 §5). A substrate's total may shrink below its
-# baseline (ratchet it down here when it does) but never exceed it.
+# Shrink-only spec-validator baselines. A substrate's total may shrink below
+# its baseline (ratchet it down here when it does) but never exceed it. Every
+# substrate is at 0.
 #
-# What the non-zero baselines pin today (all 11 are id_format):
-#   * every substrate: 11 id_format round-trip warnings (id-format:F3) on
-#     external_symbol boundary nodes (go/java/rust/solidity/swift) whose
-#     id kind-slot kept the original reference kind (unresolved / package /
-#     attribute / module) while Symbol.kind became external_symbol during
-#     boundary synthesis. This is the WI-pubiv ~1645-node kind-slot
-#     disagreement cohort, surfaced at advisory (warning) severity; the
-#     producer fix rebuilds node.id (id-changing, deferred), after which
-#     these promote to error and ratchet back down.
-#   * cross_field stable_id collision: 0. Was 1 in the v5 era (the small
-#     corpus's 4/42 = 9.5% rate over the 5% threshold); the v6 atomic bump
-#     (ADR-0035 §1, PR #245) drove the fixture's collisions to 0, so the
-#     umbrella no longer fires here — even though §5 dropped the threshold
-#     to ~0. Per-file uniqueness (the new HARD error) is ALSO 0 on this
-#     fixture (asserted explicitly below); the self-tree still carries
-#     ~35 per-file collisions that the v7 producer fix will eliminate.
-#   * include_docs: previously +5 id_format on markdown README sections
-#     (WI-himoj); FIXED by id-format:F2 4a, so include_docs ratcheted to
-#     match default.
-#
-# These counts are corpus-coupled in BOTH directions: the F3 '11' tracks the
-# corpus's external-reference count, so a *fixture* edit can move it with no
-# code change. On a red gate, re-measure before assuming a code regression;
-# ratchet DOWN on a genuine shrink, never UP.
+# These counts are corpus-coupled in BOTH directions: an id_format count, for
+# one, tracks the corpus's external references, so a *fixture* edit can move it
+# with no code change. On a red gate, re-measure before assuming a code
+# regression; ratchet DOWN on a genuine shrink, never UP.
+# (history: WI-popak, ADR-0035 §5)
 VALIDATION_BASELINES: dict[str, int] = {
-    "default": 11,
-    "frameworks_all": 11,
-    "include_docs": 11,
-    "max_tier_4": 11,
+    "default": 0,
+    "frameworks_all": 0,
+    "include_docs": 0,
+    "max_tier_4": 0,
 }
 
 # Shrink-only runtime_coherence (ADR-0023 §3 edge-type partition coherence)
 # baselines, co-ratcheted as a separate dimension. One un-allow-listed
-# offender today on every substrate: the (file/rust -> external_symbol/rust)
+# offender on every substrate: the (file/rust -> external_symbol/rust)
 # partition carries both ``imports`` and ``module_attr_ref``. It is pinned
 # in-test rather than allow-listed because nobody has ruled on whether that
-# variance is legitimate — NOT because amending the allow-list is expensive.
-# (The original note here said the amendment was "governance-touching"; it is
-# not. Neither ``docs/adr/**`` nor ``docs/edge-type-runtime-allowlist.yaml`` is
-# on the AGENTS.md governance list, and INV-fimon amended both in-band. That
-# stale rationale is what made the trait-partition breach look unfixable.)
+# variance is legitimate — NOT because amending the allow-list is expensive:
+# neither ``docs/adr/**`` nor ``docs/edge-type-runtime-allowlist.yaml`` is on
+# the AGENTS.md governance list, so a ruling can amend both in-band. Ratchet to
+# 0 when this partition is ruled on.
 #
-# A second offender, (trait/rust -> method/rust), appeared when WI-duguk taught
-# the Rust analyzer to emit trait members and breached this baseline silently —
-# the per-PR gate never selected this file. It was ruled legitimate and
-# allow-listed under the INV-fimon amendment, so the count is back at 1.
-# Ratchet to 0 when the file-anchor partition is ruled on too.
+# A producer change can add an offender (a new edge type in an existing
+# partition) without the per-PR smart test selecting this file, so a breach
+# here may first show in the full suite. (history: INV-fimon, WI-duguk)
 RUNTIME_COHERENCE_BASELINES: dict[str, int] = {
     "default": 1,
     "frameworks_all": 1,
@@ -138,16 +112,79 @@ RUNTIME_COHERENCE_BASELINES: dict[str, int] = {
 
 # Shrink-only per-(validator_class, severity) baselines — a finer dimension than
 # the lumped ``total`` below, so a regression in one warning class cannot hide
-# behind a shrink in another (signed cancellation). Measured 2026-06-18; all 11
-# of each substrate's violations are the id-format:F3 external_symbol kind-slot
-# round-trip warnings. Shrink-only: ratchet a cell DOWN on a genuine shrink,
-# never UP; an unbaselined (class|severity) cell has a ceiling of 0. (WI-jigup.)
+# behind a shrink in another (signed cancellation). An unbaselined
+# (class|severity) cell has a ceiling of 0, and every cell is unbaselined.
+# With every ceiling at 0 no check, at any severity, is total-count-only: a
+# violation of any class trips its own cell. (history: WI-popak, WI-jigup)
 CLASS_SEVERITY_BASELINES: dict[str, dict[str, int]] = {
-    "default": {"id_format|warning": 11},
-    "frameworks_all": {"id_format|warning": 11},
-    "include_docs": {"id_format|warning": 11},
-    "max_tier_4": {"id_format|warning": 11},
+    "default": {},
+    "frameworks_all": {},
+    "include_docs": {},
+    "max_tier_4": {},
 }
+
+
+def _meta(record: dict[str, Any]) -> dict[str, Any]:
+    return record.get("meta") or {}
+
+
+def _method_call_pool(bm: dict[str, Any]) -> int:
+    kinds = {n["id"]: n.get("kind") for n in bm["nodes"]}
+    return sum(
+        1 for e in bm["edges"]
+        if e.get("type") in ("calls", "dispatches_to") and e.get("is_resolved")
+        and kinds.get(e.get("dst")) == "method"
+    )
+
+
+def _files_with_two_stable_ids(bm: dict[str, Any]) -> int:
+    per_file: dict[str, int] = {}
+    for n in bm["nodes"]:
+        if n.get("stable_id") and n.get("path"):
+            per_file[n["path"]] = per_file.get(n["path"], 0) + 1
+    return sum(1 for count in per_file.values() if count >= 2)
+
+
+#: Per wired spec_validator check, how many records of the substrate's map it
+#: inspects -- the population a violation could come from. A check whose
+#: population is empty passes at ceiling 0 having looked at nothing.
+#: ``no_harmful_receiver_blind_magnets`` reads resolved calls into methods;
+#: the HARMFUL subset is empty on any honest corpus, because producers withhold
+#: such binds (``defer_bare_method_call``) and finalize demotes survivors, so
+#: the pool is what a fixture can show the check reads.
+_REACH: dict[str, Any] = {
+    "axis_conformance": lambda bm: len(bm["nodes"]) + len(bm["edges"]),
+    "writer_contract": lambda bm: len(bm.get("analysis_runs") or []),
+    "cross_field_coherence": lambda bm: len(bm["nodes"]) + len(bm["edges"]),
+    "stable_id_per_file_uniqueness": _files_with_two_stable_ids,
+    "id_format": lambda bm: sum(1 for n in bm["nodes"] if n.get("id")),
+    "edge_id_format": lambda bm: sum(1 for e in bm["edges"] if e.get("id")),
+    "stable_id_format": lambda bm: sum(1 for n in bm["nodes"] if n.get("stable_id")),
+    "id_roundtrip": lambda bm: sum(1 for n in bm["nodes"] if n.get("id")),
+    "origin_run_id_fk": lambda bm: sum(
+        1 for r in bm["nodes"] + bm["edges"] if r.get("origin_run_id")
+    ) if bm.get("analysis_runs") else 0,
+    "dangling_endpoint": lambda bm: len(bm["edges"]) if bm.get("analysis_runs") else 0,
+    "fingerprint_format": lambda bm: sum(
+        1 for n in bm["nodes"] if n.get("fingerprint") and n.get("language")
+    ),
+    "confidence_range": lambda bm: sum(
+        1 for e in bm["edges"]
+        if _meta(e).get("evidence_type") and e.get("confidence") is not None
+    ),
+    "route_marker_single_home": lambda bm: sum(
+        1 for n in bm["nodes"] if _meta(n).get("framework_role") == "route"
+    ),
+    "one_file_node_per_path": lambda bm: sum(
+        1 for n in bm["nodes"]
+        if n.get("kind") == "file" and str(n.get("id")).endswith(":1-1:file:file")
+    ),
+    "no_harmful_receiver_blind_magnets": _method_call_pool,
+}
+
+#: Wired checks that read no corpus record: ``verdict_enum_completeness``
+#: inspects the verdict dataclasses' docstrings.
+_CORPUS_INDEPENDENT: frozenset[str] = frozenset({"verdict_enum_completeness"})
 
 # Liveness floor (NOT a ratchet): the smallest node count that still proves the
 # corpus was found and analyzed. Deliberately far below the observed ~66, so a
@@ -168,6 +205,22 @@ def _run_substrate(substrate: str, out_path: Path) -> dict[str, Any]:
         **SUBSTRATES[substrate],
     )
     return json.loads(out_path.read_text())
+
+
+def test_every_wired_check_declares_its_reach() -> None:
+    """A newly wired check must say what it reads, or the reach floor below
+    cannot tell a vacuous pass from a clean one."""
+    wired = {c["check"] for c in _WIRED_CHECKS}
+    assert set(_REACH) | _CORPUS_INDEPENDENT == wired
+    assert not set(_REACH) & _CORPUS_INDEPENDENT
+
+
+def test_no_class_severity_cell_tolerates_a_violation() -> None:
+    """Every (class|severity) ceiling is 0 and so is every total: no check is
+    advisory on the fixture matrix (WI-jigup's enforcement rule). Raising a
+    cell is a ratchet going UP; this makes it a visible test edit."""
+    assert all(not cells for cells in CLASS_SEVERITY_BASELINES.values())
+    assert set(VALIDATION_BASELINES.values()) == {0}
 
 
 @pytest.mark.parametrize("substrate", sorted(SUBSTRATES))
@@ -197,6 +250,13 @@ def test_substrate_within_ratchet_baseline(
         "corpus was not analyzed — a shrink-only gate would pass vacuously"
     )
 
+    # --- Reach floor: every wired check inspected something. -------------
+    unreached = sorted(name for name, reach in _REACH.items() if reach(bm) == 0)
+    assert not unreached, (
+        f"[{substrate}] wired checks with no population on this substrate "
+        f"(their ceiling of 0 passes vacuously): {unreached}"
+    )
+
     # --- Structural floor: report present and internally consistent. -----
     report = bm.get("validation_report")
     assert report is not None, (
@@ -213,7 +273,7 @@ def test_substrate_within_ratchet_baseline(
 
     # --- ADR-0035 §5 HARD floor: zero per-file stable_id collisions. ------
     # The per-file uniqueness check is zero-tolerance (error severity). The
-    # fixture corpus is collision-free under v6; this pins that and catches a
+    # fixture corpus is collision-free; this pins that and catches a
     # producer regression that reintroduces a within-file collision.
     per_file_errors = [
         v for v in violations
@@ -229,12 +289,11 @@ def test_substrate_within_ratchet_baseline(
         )
     )
 
-    # --- validator:F2 HARD floor: zero origin_run_id->analysis_runs FK breaches.
-    # WI-mosil + synthetic:F1 made every emitted node/edge name a real
-    # producing AnalysisRun. This pins that (error severity, zero-tolerance):
-    # a provenance regression that drops (empty) or dangles origin_run_id trips
-    # CI here instead of silently breaking the node->AnalysisRun join. This is
-    # the realization of the docstring's "origin->analysis_runs FK" future HOST.
+    # --- HARD floor: zero origin_run_id->analysis_runs FK breaches. ------
+    # Every emitted node/edge names a real producing AnalysisRun. This pins
+    # that (error severity, zero-tolerance): a provenance regression that
+    # drops (empty) or dangles origin_run_id trips CI here instead of
+    # silently breaking the node->AnalysisRun join. (history: WI-mosil)
     fk_errors = [
         v for v in violations
         if v.get("validator_class") == "cross_field"
@@ -267,6 +326,20 @@ def test_substrate_within_ratchet_baseline(
     # never read as "every id came from an analyzer" (ADR-0035 §1 backstop).
     assert 0 <= stats["floor_abstained"] <= stats["none_cohort"]
     assert 0 <= stats["floor_cohort"] <= stats["non_null"]
+
+    # --- ADR-0036 Ruling 1 measurement: name_slot_stats covers every node. --
+    # A statistic, not a ratcheted violation count: the block must be present
+    # and must account for each emitted node exactly once.
+    name_stats = report.get("name_slot_stats")
+    assert name_stats is not None, f"[{substrate}] name_slot_stats missing"
+    assert (
+        name_stats["ids_checked"] + name_stats["exempt_file_nodes"]
+        + name_stats["not_parsed"]
+    ) == len(nodes), f"[{substrate}] name_slot_stats does not cover every node"
+    assert name_stats["exempt_file_nodes"] == sum(
+        1 for n in nodes
+        if n.get("kind") == "file" and str(n.get("id")).endswith(":1-1:file:file")
+    )
 
     # --- Shrink-only ratchet across both dimensions. ---------------------
     failures: list[str] = []

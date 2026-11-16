@@ -32,10 +32,10 @@ Edge Destinations
 -----------------
 A src naming an in-repo JS/TS file resolves onto that file's canonical
 node id, ``make_file_id(<lang>, <path>)`` -- the id the JS/TS analyzer mints
-for the same file (WI-majov). Before this, every src -- in-repo or not --
-pointed at a raw-URL placeholder, so the HTML -> script linkage (the whole of
-this analyzer's cross-file output) landed on a phantom ``external_symbol``
-while the real file node sat unlinked beside it. Resolution rules:
+for the same file. A raw-URL placeholder for an in-repo src would land the
+HTML -> script linkage (the whole of this analyzer's cross-file output) on a
+phantom ``external_symbol`` while the real file node sat unlinked beside it
+(history: WI-majov). Resolution rules:
 
 - **Relative to the HTML file's directory, for both forms.** ``./a.js`` and
   ``a.js`` are relative URLs; a root-absolute ``/src/main.ts`` takes the HTML
@@ -43,13 +43,12 @@ while the real file node sat unlinked beside it. Resolution rules:
   the directory holding ``index.html``). The query string and fragment are
   dropped and the path is percent-decoded, as a browser does.
 - **No wider web-root guessing.** The real web root of a root-absolute src is
-  configuration (a server's static dir), not something the file says. Walking
-  ancestor directories or falling back to the repo root was measured on the
-  273-repo corpus (2026-10-01): the repo-root fallback added 0 resolutions
-  beyond the HTML directory, and the ancestor walk added 2, one of them false
-  (vault ``ui/tests/index.html``'s ``/testem.js`` is served by Testem itself;
-  ``ui/testem.js`` is Testem's config file). A wrong resolution is worse than
-  an honest placeholder, so neither is attempted.
+  configuration (a server's static dir), not something the file says.
+  Walking ancestor directories or falling back to the repo root finds
+  same-named files that are not the script: a test page's ``/testem.js`` is
+  served by the Testem runner itself, while an ancestor ``testem.js`` is
+  Testem's config file. A wrong resolution is worse than an honest
+  placeholder, so neither is attempted.
 - **Lexically confined to the repo.** A path that normalizes above the repo
   root, a URL with a scheme (``https:``, ``data:``, ...), and a
   protocol-relative ``//host/...`` never resolve.
@@ -59,23 +58,17 @@ while the real file node sat unlinked beside it. Resolution rules:
   through ``<script src>``). The language is that analyzer's own
   ``_get_language_for_file`` result, so ``/src/main.ts`` resolves to
   ``typescript:...``. For any other suffix the owning analyzer's file id is
-  not known here. A pre-implementation scan of the corpus found every
-  existing in-repo src target to be a JS/TS file; running this analyzer over
-  the same 273 repos (2026-10-01) resolves 11,932 of 12,614 srcs in 46 repos
-  (11,913 ``javascript``, 19 ``typescript``), and the other 682 keep the
-  placeholder.
+  not known here, so the src keeps the placeholder.
 
 A resolved id may name a file the JS/TS analyzer did not emit (an excluded
 directory, a ``max_files`` cut): the orchestrator's
 ``synthesize_file_symbols_for_dangling_edges`` then mints the real
 first-party file Symbol for it, so the edge never falls to a placeholder.
-Because the edge now ends on a real file, it also obeys that file's supply
-chain tier: when the default tier filter drops the file (minified vendor JS),
-the edge goes with it, exactly as any other edge into a tier-filtered file
-does, and the file is listed in ``limits.tier_filtered_files``. On Alamofire
-(2026-10-01) that is 664 of 1,660 script edges, all into its jazzy docs'
-``jquery.min.js`` / ``lunr.min.js``. Before resolution those edges survived
-only because their phantom placeholder sat at tier 3.
+Because the edge ends on a real file, it also obeys that file's supply chain
+tier: when the default tier filter drops the file (minified vendor JS, such
+as a generated docs site's ``jquery.min.js``), the edge goes with it, exactly
+as any other edge into a tier-filtered file does, and the file is listed in
+``limits.tier_filtered_files``.
 
 Anything that does not resolve keeps the synthetic reference id
 ``<lang>:<src>:0-0:ref:script`` (CDN scripts, build outputs not in the repo,
@@ -149,8 +142,7 @@ def _resolve_script_src(
 ) -> Path | None:
     """Return the in-repo JS/TS file a ``<script src>`` loads, or None.
 
-    Rules and their measured rationale: module docstring, "Edge
-    Destinations". The result is ``repo_root / <normalized relative path>``,
+    Rules and their rationale: module docstring, "Edge Destinations". The result is ``repo_root / <normalized relative path>``,
     i.e. the same string form ``find_files(repo_root)`` yields to the JS/TS
     analyzer, so the minted file id matches its node byte for byte.
     """
@@ -214,12 +206,12 @@ def analyze_html(
         # Create a file node for the HTML file
         file_id = _make_file_id(str(html_file))
         span = Span(start_line=1, end_line=total_lines, start_col=0, end_col=0)
-        # INV-tajap PR 2: stamp ``html_entry`` concept on the file Symbol
-        # when the filename is ``index.html`` (case-insensitive) — that's
-        # the SPA-root / convention-named entrypoint that bootstraps a JS
+        # Stamp the ``html_entry`` concept on the file Symbol when the
+        # filename is ``index.html`` (case-insensitive) — that's the
+        # SPA-root / convention-named entrypoint that bootstraps a JS
         # bundle. Other HTML files (templates, 404 pages, docs) are not
         # entrypoints. entrypoints.py turns the concept into a HTML_ENTRY
-        # entry (parallel to SHELL_SCRIPT for bash in PR 1).
+        # entry, as it does SHELL_SCRIPT for bash (history: INV-tajap).
         meta: dict | None = None
         if html_file.name.lower() == "index.html":
             meta = {"concepts": [{"concept": "html_entry", "framework": "html"}]}
@@ -244,9 +236,9 @@ def analyze_html(
             char_pos = match.start()
             line_num = content[:char_pos].count("\n") + 1
 
-            # WI-majov: land on the in-repo file's canonical node when the src
-            # names one; otherwise a reference id that boundary synthesis
-            # turns into an external_symbol (CDN script, missing build output).
+            # Land on the in-repo file's canonical node when the src names
+            # one; otherwise a reference id that boundary synthesis turns
+            # into an external_symbol (CDN script, missing build output).
             target = _resolve_script_src(script_src, html_file, repo_root)
             if target is not None:
                 script_ref_id = make_file_id(
@@ -258,9 +250,7 @@ def analyze_html(
 
             # INV-vavat / ADR-0023: ``<script src>`` is a *reference*
             # relationship; the script_src specificity is a CONSTRUCT, not a
-            # relationship, so it rides in meta. (Previously edge_type was the
-            # endpoint-shape value "script_src" with the construct mis-filed
-            # under framework_dispatch="html_script_src".)
+            # relationship, so it rides in meta.
             edge = Edge.create(
                 src=file_id,
                 dst=script_ref_id,

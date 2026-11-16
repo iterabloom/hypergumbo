@@ -1,36 +1,35 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The release gate must REPORT a dependency finding, not die on it (WI-zisoj).
 
-``scripts/release-check`` sets ``set -euo pipefail`` at line 18 and then wrote::
+``scripts/release-check`` runs under ``set -euo pipefail``, and under
+``set -e`` a simple assignment whose command substitution exits non-zero
+terminates the script AT THE ASSIGNMENT. So the obvious shape::
 
     AUDIT_OUTPUT=$(pip-audit ... )
     AUDIT_EXIT=$?
     if [ $AUDIT_EXIT -eq 0 ]; then pass ...; else echo "$AUDIT_OUTPUT"; fail ...; fi
 
-Under ``set -e`` a simple assignment whose command substitution exits non-zero
-terminates the script AT THE ASSIGNMENT. So ``AUDIT_EXIT=$?`` never ran and the
-entire if/else — including the ``echo "$AUDIT_OUTPUT"`` that prints the
-findings — was unreachable whenever pip-audit was non-clean. Every check after
-it (secrets scan, coverage, docs sync, tag state) was skipped too.
+never reaches ``AUDIT_EXIT=$?`` when pip-audit is non-clean: the
+``echo "$AUDIT_OUTPUT"`` that prints the findings is unreachable, and every
+check after it (secrets scan, coverage, docs sync, tag state) is skipped. The
+operator sees output ending at "  Running pip-audit...", exit 1, no findings
+and no verdict — the same truncated output whether the finding is dev-box
+noise or a real shipped-dependency CVE, which is the part that makes this a
+defect rather than an annoyance.
 
-The script's own comment says the opposite of what it did: "pip-audit's exit
-code is the gate: 0 = no vulnerabilities, 1 = found. Anything else (network,
-parse, unsupported package) is a real failure we want to surface, not paper
-over."
-
-Observed 2026-08-17: the captured report was 31 lines and ended mid-section at
-"  Running pip-audit...", exit 1, no findings and no verdict. Standalone,
-pip-audit reported 6 vulnerabilities. An operator sees that same truncated
-output whether the finding is dev-box noise or a real shipped-dependency CVE,
-which is the part that makes this a defect rather than an annoyance.
+The shipped block initializes ``AUDIT_EXIT=0`` and captures with
+``$(...) || AUDIT_EXIT=$?``, which is what the script's own comment requires:
+"pip-audit's exit code is the gate: 0 = no vulnerabilities, 1 = found.
+Anything else (network, parse, unsupported package) is a real failure we want
+to surface, not paper over."
 
 THESE TESTS EXECUTE THE SHIPPED BLOCK rather than pattern-matching it, because
 a guard that cannot be SHOWN to fire is indistinguishable from one matching
 nothing. The block is extracted from the real script, run under the real
 ``set -euo pipefail`` against a stub ``pip-audit``, and the differential test
-below reconstructs the OLD form and proves it behaves differently — without
-that, "the fixed block reports findings" would be satisfiable by a block that
-reports findings for reasons unrelated to the fix.
+below reconstructs the unguarded form and proves it behaves differently —
+without that, "the shipped block reports findings" would be satisfiable by a
+block that reports findings for reasons unrelated to the guard.
 """
 
 from __future__ import annotations
@@ -123,7 +122,7 @@ def test_a_finding_is_reported_and_later_checks_still_run(tmp_path):
 
 
 def test_control_a_clean_audit_still_passes(tmp_path):
-    """POSITIVE CONTROL: the fix must not turn every audit into a failure.
+    """POSITIVE CONTROL: the guard must not turn every audit into a failure.
 
     Without this, `AUDIT_EXIT` defaulting to a non-zero value — or the branch
     being inverted — would satisfy the test above while making the gate
@@ -160,10 +159,10 @@ def test_any_non_zero_audit_exit_is_surfaced(tmp_path, audit_exit):
 def test_control_the_old_form_really_did_behave_differently(tmp_path):
     """DIFFERENTIAL CONTROL, and the load-bearing test in this file.
 
-    Reconstruct the pre-fix shape and prove the harness separates the two. An
-    old-vs-new differential with no input that distinguishes the rules is
-    vacuous — if the buggy block also reported findings here, then the tests
-    above would be passing for some reason other than the fix, and this file
+    Reconstruct the unguarded shape and prove the harness separates the two.
+    A differential with no input that distinguishes the rules is vacuous — if
+    the unguarded block also reported findings here, then the tests above
+    would be passing for some reason other than the guard, and this file
     would be decoration.
     """
     fixed = _extract_audit_block()

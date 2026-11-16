@@ -1,0 +1,29 @@
+- op: create  # 628c
+  at: '2026-10-22T18:27:29Z'  # 628c
+  by: agent  # 628c
+  actor: jgstern_agent  # 628c
+  clock: 1  # 628c
+  nonce: 628c  # 628c
+  data:  # 628c
+    kind: work_item  # 628c
+    title: "Go cmd.Stdout = &buf; cmd.Run() buffer fill mints no source"  # 628c
+    status: todo_hard  # 628c
+    priority: 3  # 628c
+    parent:  # 628c
+    tags:  # 628c
+    - taint  # 628c
+    - catalogue  # 628c
+    - io_boundary  # 628c
+    isbefore: []  # 628c
+    duplicate_of: []  # 628c
+    not_duplicate_of: []  # 628c
+    pr_ref:  # 628c
+    description: "FOUND 2026-10-22 by the WI-lanos re-measure (~/hypergumbo_lab_notebook/lanos_rerun_10212026/RESULT.md: \"4 of [7 captured-output flows] only through a Cmd.Stdout buffer the call fills, not its return value\"; adjudication_part1.md rows 5 and 16, part2 row 18). Owner asked for this to be tracked on its own: none of WI-lanos's options fixes it.\n\nTHE GAP. The Go idiom\n    var buf bytes.Buffer\n    cmd := exec.Command(...); cmd.Stdout = &buf\n    err := cmd.Run()\n    use(buf.String())\nwrites the child's bytes into a caller-visible location. ADR-0049 Ruling 1 counts that as a transfer explicitly (\"return -- or write into a caller-visible location -- a value whose content is chosen by the party on the far side\"). go.yaml rows Cmd.Output / CombinedOutput (they return the bytes) but nothing for the buffer path, so the same bytes get two verdicts depending on API shape. Example from the sample: istio tools/bug-report/pkg/kubectlcmd/kubectlcmd.go:203 (cmd.Run inside Runner.Run, reached via content.getCRDList content.go:343) into a later os.WriteFile (bugreport.go:557).\n\nWHY IT IS NOT A ONE-LINE ROW. The value that crosses is not Run's return; it is whatever was assigned to Cmd.Stdout / Cmd.Stderr earlier. A Run row would mint the error value, which is the exit-status shape WI-lanos is removing. The source has to be the BUFFER, defined at the Run / Wait call, and only when a Stdout / Stderr field write on that same Cmd precedes it.\n\nFIX DIRECTION (design, not decided): in the Go analyzer or DDG, treat `x.Stdout = &b` / `x.Stderr = &b` on an exec.Cmd receiver, followed by x.Run() / x.Wait(), as a definition of b at the Run / Wait line, labelled ipc_recv. Check analogues before building it: an io.Writer that is not a buffer (os.Stdout, a file: no in-process source); Cmd.StdoutPipe, already a handle read; Java ProcessBuilder.redirectOutput(File), where the bytes land in a file read later, already represented by fs_read; rust Command.stdout(Stdio::piped()) + wait_with_output, already rowed.\n\nACCEPTANCE. Production CLI, cold cache: a fixture with the idiom above feeding exec.Command(\"sh\", \"-c\", buf.String()) gives violated, matching its cmd.Output() twin. A control where Stdout = os.Stdout mints nothing. Measure the delta on a Go cohort (istio, buildah, vault from the lanos cohort) before merging."  # 628c
+    fields: {}  # 628c
+- op: discuss  # ba06
+  at: '2026-10-22T18:28:31Z'  # ba06
+  by: agent  # ba06
+  actor: jgstern_agent  # ba06
+  clock: 2  # ba06
+  nonce: ba06  # ba06
+  message: "Context: WI-lanos-busoj-lativ-minud-buton-vuviv-jihit-bumip (owner chose option 2 on 2026-10-22: exit status is not content; drop os.wait*/Child.wait rows). That change does not affect this gap: this one concerns the child's OUTPUT, which stays a transfer under ADR-0049 Ruling 1."  # ba06

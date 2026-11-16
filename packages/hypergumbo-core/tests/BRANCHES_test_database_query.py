@@ -38,7 +38,7 @@ class TestExtractTablesFromQuery:
     """Branch coverage for _extract_tables_from_query function."""
 
     def test_table_name_is_sql_keyword(self) -> None:
-        """Test when extracted table name is a SQL keyword (branch 161->158).
+        """Test when extracted table name is a SQL keyword (the keyword-skip branch).
 
         Some queries might contain constructs that look like table names
         but are actually SQL keywords. These should be skipped.
@@ -76,7 +76,7 @@ class TestScanJavascriptQueries:
     """Branch coverage for _scan_javascript_queries function."""
 
     def test_query_with_no_tables(self) -> None:
-        """Test when query extracts no tables (branch 263->255).
+        """Test when query extracts no tables (the raw-query ``if tables`` false branch).
 
         When a JavaScript raw SQL query has no extractable tables,
         no pattern should be created.
@@ -102,7 +102,7 @@ class TestScanJavaQueries:
     """Branch coverage for _scan_java_queries function."""
 
     def test_execute_query_with_no_tables(self) -> None:
-        """Test executeQuery with no tables (branch 299->294).
+        """Test executeQuery with no tables (the executeQuery ``if tables`` false branch).
 
         When a Java executeQuery has no extractable tables,
         no pattern should be created.
@@ -115,7 +115,7 @@ statement.executeQuery("SELECT 1 + 1 AS result");
         assert len(patterns) == 0
 
     def test_query_annotation_with_no_tables(self) -> None:
-        """Test @Query annotation with no tables (branch 315->310).
+        """Test @Query annotation with no tables (the @Query ``if tables`` false branch).
 
         When a Spring @Query annotation has no extractable tables,
         no pattern should be created.
@@ -142,7 +142,7 @@ class TestLinkDatabaseQueries:
     """Branch coverage for link_database_queries function."""
 
     def test_table_symbol_with_wrong_kind(self, tmp_path: Path) -> None:
-        """Test when table_symbols contains non-table symbols (branch 399->398).
+        """Test when table_symbols contains non-table symbols (the kind filter).
 
         Symbols with kind != "table" should be skipped when building
         the table lookup.

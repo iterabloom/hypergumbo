@@ -4,29 +4,22 @@
 Background
 ----------
 ``auto-pr`` regenerates ``.ci/affected-tests.txt`` during the push so a STALE
-manifest — one missing a test the new diff affects — cannot reach CI. It did
-that by running ``smart-test --manifest`` and, if the result differed from the
-committed file, ``git add``-ing it into an amended commit.
+manifest — one missing a test the new diff affects — cannot reach CI.
+Overwriting the committed manifest with the regenerated one would destroy
+authored intent: the slicer has no data-file -> test edge (INV-bigaz), so a
+change to ``io_primitives/*.yaml`` — or any other pure-data input — slices to
+roughly ONE test file, and a manifest the author deliberately widened to the
+tests that exercise the changed data would be silently narrowed back during
+the push.
 
-That is an unconditional overwrite, and it destroys authored intent. The
-slicer has no data-file -> test edge (INV-bigaz), so a change to
-``io_primitives/*.yaml`` — or any other pure-data input — slices to roughly
-ONE test file. An author who deliberately widens the manifest to the twenty
-tests that actually exercise the changed data watches auto-pr silently narrow
-it back during the push.
+THE OVERWRITE WOULD BE INVISIBLE FROM THE AUTHOR'S SIDE: the manifest is
+extended and committed correctly, then replaced afterwards; only CI's
+``N selected files`` log line shows the narrowing.
 
-THE OVERWRITE IS INVISIBLE FROM THE AUTHOR'S SIDE, which is why it survived:
-the manifest is extended, committed correctly, and replaced afterwards. It was
-found by reading a CI log that said ``1 selected files`` for a commit whose
-own manifest listed twenty. Re-checked across three merged catalogue PRs:
-every one shipped a 1-file manifest while its notes recorded a working
-19-file extension.
-
-THIS IS THE SAME BUG AS WI-buhov, ONE DIRECTORY OVER. ``auto-pr`` used to
-restore backed-up ``.ops`` files over the working tree unconditionally and
-silently ate concurrent tracker writes; ``_ops_union_restore_file`` — the
-function directly above this one in the same library — fixed it by making the
-restore a UNION. The manifest path had the identical shape and no such guard.
+``_ops_union_restore_file`` — the function directly below this one in the
+same library — protects tracker ``.ops`` restores from the same overwrite by
+making the restore a UNION, and ``_manifest_union`` applies that remedy to the
+manifest (history: WI-buhov).
 
 Invariant under test
 --------------------
@@ -48,10 +41,9 @@ FORGEJO_LIB = REPO_ROOT / "scripts" / "lib" / "forgejo-api.sh"
 #: The manifest is SECTIONED. CI reads everything after
 #: ``# === SELECTED_TESTS ===`` as the test list, and the region between
 #: ``# === CHANGED_SOURCE_FILES ===`` and that marker as the changed-source
-#: list. Tests here use the real shape, because an earlier cut of this helper
-#: matched entries by the ``packages/`` prefix and would have emitted an EMPTY
-#: manifest for the very manifest that motivated it — 95 root-level
-#: ``tests/...`` entries, none of which start with ``packages/``.
+#: list. Tests here use the real shape, because matching entries by a
+#: ``packages/`` prefix instead of by section selects NOTHING from a manifest
+#: of root-level ``tests/...`` entries, which is the common shape.
 _HEADER = (
     "# Test selection manifest\n"
     "# Mode: targeted\n"
@@ -64,18 +56,16 @@ _HEADER = (
 def _run_lib(cwd: Path, snippet: str) -> subprocess.CompletedProcess:
     """Run SNIPPET against the real library under the REAL CALLER'S SHELL OPTIONS.
 
-    ``scripts/auto-pr`` sets ``set -euo pipefail`` on line 3 and sources this
-    library afterwards, so every function here executes with ``errexit`` and
-    ``pipefail`` live. This harness did not: it sourced the library into a
-    plain ``bash -c`` and called the function with both options OFF. That gap
-    is the whole of INV-zamoh. ``_manifest_selected_tests`` ended its happy
-    path in ``| grep -v '^#' | grep -v '^$'``, which exits 1 on a manifest
-    that selects no tests; with ``errexit`` off the non-zero status was
-    discarded and every test here passed, while under auto-pr's own options
-    the same status killed the shell mid-push — no PR, no gate, no log.
+    ``scripts/auto-pr`` runs ``set -Eeuo pipefail`` before sourcing this
+    library, so every function here executes with ``errexit`` and
+    ``pipefail`` live. A harness that sources the library into a plain
+    ``bash -c`` hides any non-zero pipeline status: a trailing
+    ``| grep -v '^#' | grep -v '^$'`` exits 1 on a manifest that selects no
+    tests, which passes with ``errexit`` off and kills auto-pr mid-push —
+    no PR, no gate, no log — with it on (history: INV-zamoh).
 
     A test that does not reproduce the caller's shell options is not testing
-    the caller. Options are set BEFORE the source, exactly as auto-pr does it.
+    the caller. Options are set BEFORE the source, as auto-pr does it.
     """
     return subprocess.run(
         ["bash", "-c",
@@ -125,11 +115,11 @@ def _declared_count(path: Path) -> str:
 
 
 def test_the_count_sees_root_level_tests_paths(tmp_path: Path) -> None:
-    """The REPORTING half of the same prefix bug. auto-pr's first cut counted
-    with ``grep -c '^packages/'``, which is 0 for a manifest of root-level
-    ``tests/...`` entries — the common shape — so the "kept N entries" line
-    that makes a silent narrowing VISIBLE never printed. A diagnostic that
-    cannot fire is worse than none: it reads as "nothing was preserved"."""
+    """The count must see root-level ``tests/...`` entries. A path-prefix
+    count (``grep -c '^packages/'``) is 0 for them — the common shape — so
+    the "kept N entries" line that makes a silent narrowing VISIBLE would
+    never print. A diagnostic that cannot fire is worse than none: it reads
+    as "nothing was preserved"."""
     m = tmp_path / "m.txt"
     m.write_text(_HEADER + "tests/test_a.py\ntests/test_b.py\n"
                  "packages/p/tests/test_c.py\n")
@@ -143,12 +133,10 @@ def test_the_count_is_zero_for_an_empty_selection(tmp_path: Path) -> None:
 
 
 def test_root_level_tests_paths_survive(tmp_path: Path) -> None:
-    """THE BUG THIS HELPER ITSELF SHIPPED WITH, caught before merge. An
-    earlier cut selected entries with ``grep '^packages/'``. The manifest
-    that motivated the whole fix holds 95 entries, every one of them a
-    root-level ``tests/...`` path — so that cut would have written an EMPTY
-    test list and CI would have run nothing while reporting success. Entries
-    are selected by SECTION, never by path prefix."""
+    """Entries are selected by SECTION, never by path prefix. Selecting with
+    ``grep '^packages/'`` writes an EMPTY test list for a manifest of
+    root-level ``tests/...`` paths, and CI then runs nothing while reporting
+    success."""
     _mk(tmp_path, "tests/test_root.py", "packages/p/tests/test_pkg.py")
     committed = tmp_path / "committed.txt"
     committed.write_text(_HEADER + "tests/test_root.py\n"
@@ -183,7 +171,7 @@ def test_the_changed_source_files_section_is_preserved(tmp_path: Path) -> None:
 
 
 def test_the_slicer_may_not_narrow_a_hand_extended_manifest(tmp_path: Path) -> None:
-    """THE REGRESSION. Committed lists 3; the slicer sees 1; all 3 survive."""
+    """The core property: committed lists 3; the slicer sees 1; all 3 survive."""
     _mk(tmp_path, "tests/test_a.py", "packages/b/tests/test_b.py",
         "tests/test_c.py")
     committed = tmp_path / "committed.txt"
@@ -232,9 +220,9 @@ def test_a_deleted_test_is_not_resurrected(tmp_path: Path) -> None:
 
 
 def test_a_filter_that_removed_everything_is_not_believed(tmp_path: Path) -> None:
-    """FAIL-SAFE. The existence check is cwd-relative. If the caller's
-    long-standing "auto-pr runs from the repo root" assumption ever broke,
-    every path would fail -f and the manifest would empty — CI would then run
+    """FAIL-SAFE. The existence check is cwd-relative, so it assumes auto-pr
+    runs from the repo root. If that assumption ever broke, every path would
+    fail -f and the manifest would empty — CI would then run
     nothing and report success, which is the silent-loss failure this whole
     function exists to prevent, reintroduced one level down. A filter that
     removed absolutely everything is not a believable answer."""
@@ -254,8 +242,9 @@ def test_a_filter_that_removed_everything_is_not_believed(tmp_path: Path) -> Non
 
 
 def test_the_targeted_mode_header_is_preserved(tmp_path: Path) -> None:
-    """The pre-commit hook rejects a full-suite manifest, so the header from
-    the freshly generated (targeted) file must survive the merge."""
+    """The pre-commit hook rejects any manifest whose mode is not
+    ``targeted`` (full-suite included), so the header from the freshly
+    generated (targeted) file must survive the merge."""
     _mk(tmp_path, "tests/test_a.py")
     committed = tmp_path / "committed.txt"
     committed.write_text("# Mode: full-suite\ntests/test_a.py\n")
@@ -295,21 +284,18 @@ def test_missing_committed_file_falls_back_to_the_regen(tmp_path: Path) -> None:
 
 
 # ----------------------------------------------------------------------
-# INV-zamoh — a manifest that selects NO tests
+# A manifest that selects NO tests (history: INV-zamoh)
 #
-# `_manifest_union` landed in de8403b14c to stop the regen DROPPING tests.
-# It calls `_manifest_selected_tests` twice inside a pipeline group, and that
-# function ended its happy path with `| grep -v '^#' | grep -v '^$'`. On a
-# manifest with zero selected tests both greps match nothing and exit 1, and
+# `_manifest_union` calls `_manifest_selected_tests` twice inside a pipeline
+# group. A selection pipeline ending in `| grep -v '^#' | grep -v '^$'` exits
+# 1 on a manifest with zero selected tests (both greps match nothing), and
 # under auto-pr's `set -euo pipefail` that status kills the shell before the
 # function's own `return 0` can mask it.
 #
 # WHICH POPULATION: any docs-only or config-only change, where the slicer
 # correctly reports "no test-relevant files changed". That is precisely the
-# population the union was written to protect — the guard against silent
-# narrowing destroyed the entire run instead, in the same shape it was
-# defending. It went unseen for a day because the last docs-only manifest
-# committed before the guard landed predates it, so nothing had exercised it.
+# population the union protects, so an unguarded empty selection turns the
+# guard against silent narrowing into a killed run.
 # ----------------------------------------------------------------------
 
 #: A real zero-selection manifest, as `smart-test --manifest` writes one for a
@@ -338,9 +324,9 @@ def _header_declaring(n: int) -> str:
 
 
 def test_an_empty_selection_is_a_success_not_an_error(tmp_path: Path) -> None:
-    """(a) THE REGRESSION. Zero selected tests is a legitimate answer for a
-    docs-only diff, so the function must SUCCEED with empty output. It exited
-    1, and every caller runs under `set -euo pipefail`."""
+    """(a) Zero selected tests is a legitimate answer for a docs-only diff,
+    so the function must SUCCEED with empty output: every caller runs under
+    `set -euo pipefail`, where an exit 1 kills the shell."""
     m = tmp_path / "zero.txt"
     m.write_text(_ZERO_MANIFEST)
 
@@ -352,10 +338,10 @@ def test_an_empty_selection_is_a_success_not_an_error(tmp_path: Path) -> None:
 def test_an_empty_selection_is_a_success_in_the_markerless_branch(
     tmp_path: Path,
 ) -> None:
-    """The same pipeline appears in the `else` branch, for a manifest written
-    before the sections existed. Both branches were patched; both are pinned,
-    because a fix applied to one arm of an if/else and not the other is the
-    shape that leaves half a defect behind."""
+    """The same pipeline appears in the `else` branch, reached by a manifest
+    with no section markers (the pre-section format). Both arms are pinned,
+    because a fix applied to one arm of an if/else and not the other leaves
+    half a defect behind."""
     m = tmp_path / "old.txt"
     m.write_text("# Test selection manifest\n# Mode: targeted\n")
 
@@ -365,10 +351,10 @@ def test_an_empty_selection_is_a_success_in_the_markerless_branch(
 
 
 def test_a_docs_only_regen_does_not_kill_the_union(tmp_path: Path) -> None:
-    """(b) THE LIVE FAILURE, end to end: three authored tests in the committed
-    manifest, a zero-selection regen from a docs-only diff. auto-pr died here
-    with exit 1 — no PR, no `.git/PR_PENDING` gate, no branch on the remote.
-    The union must complete and preserve every committed path."""
+    """(b) End to end: three authored tests in the committed manifest, a
+    zero-selection regen from a docs-only diff. A non-zero exit here kills
+    auto-pr mid-push — no PR, no `.git/PR_PENDING` gate, no branch on the
+    remote. The union must complete and preserve every committed path."""
     _mk(tmp_path, "tests/test_adr_readme_index_sync.py",
         "tests/test_adr_supersession_symmetry.py",
         "tests/test_top_level_test_map.py")
@@ -403,21 +389,21 @@ def test_both_sides_empty_is_still_a_success(tmp_path: Path) -> None:
 
 
 # ----------------------------------------------------------------------
-# INV-zamoh, second defect — the header must not contradict the body
+# The header must not contradict the body (history: INV-zamoh)
 #
 # The union copies the header VERBATIM from the regen so the "# Mode:" line
 # and the CHANGED_SOURCE_FILES section survive. That also copies the regen's
-# own "# Selected tests:" count, which describes a body the union just
-# replaced. After a docs-only union the file says 0 over a body of three.
+# own "# Selected tests:" count, which describes a body the union replaced;
+# left alone, a docs-only union would say 0 over a body of three.
 #
-# Nothing reads this count today — ci.yml recomputes it from the body it is
-# about to run (`.github/workflows/ci.yml:935`), and the pre-commit hook gates
-# only on "# Mode: full-suite". So this is a manifest that LIES rather than
-# one that breaks, and the tests below pin it as a lie fixed, not a failure
-# fixed. It is worth fixing anyway: "CI runs nothing while reporting success"
-# is the exact failure `_manifest_union`'s own FAIL-SAFE comment says it
-# exists to prevent, and a header that already reads 0 is that failure
-# pre-staged for whichever consumer trusts it first.
+# No consumer reads this count: ci.yml recomputes it from the SELECTED_TESTS
+# section it is about to run, and the pre-commit hook gates only on the
+# "# Mode:" line. So an uncorrected count is a manifest that LIES rather than
+# one that breaks, and the tests below pin it as a lie, not a failure. It is
+# corrected anyway: "CI runs nothing while reporting success" is the failure
+# `_manifest_union`'s own FAIL-SAFE comment says it exists to prevent, and a
+# header that reads 0 is that failure pre-staged for whichever consumer
+# trusts it first.
 # ----------------------------------------------------------------------
 
 

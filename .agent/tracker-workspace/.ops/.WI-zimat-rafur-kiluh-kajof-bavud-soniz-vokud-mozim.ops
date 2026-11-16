@@ -28,3 +28,26 @@
   clock: 2  # 86ff
   nonce: 86ff  # 86ff
   message: "Cross-ref backfill: closure of this item advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. Return-type registry resolution (C++ portion of the INV-dihos campaign) is one of the dispatch primitives the integrated cluster covers. Note: parent INV-dihos is closed (satisfied), so this is now effectively top-of-chain for the C++ phase."  # 86ff
+- op: discuss  # 4e12
+  at: '2026-11-01T22:22:28Z'  # 4e12
+  by: agent  # 4e12
+  actor: jgstern_agent  # 4e12
+  clock: 3  # 4e12
+  nonce: '4e12'  # 4e12
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: PARTLY-STALE. Review 2026-11-01 at dev 9ae4abe13f. Deliverable 1 (typed locals/params/fields) shipped in a different shape after this item was filed: _cpp_receiver_class / _cpp_declared_type_node, WI-lamij 261c7921d2 2026-10-19. On a fixture, Query q; q.run() emits calls -> Query::run (receiver=declared_type). Return-type deliverables 2-4 are unbuilt: auto q = makeQuery(); q.run(), the Query* and unique_ptr<Query> variants, and makeQuery().run() all go to an external run at 0.5. cpp.py has no method_return_types reference. The Scala sibling WI-hijot was folded into WI-gokop, which is done. MECHANISM: cpp.py never populates FileAnalysis.method_return_types, so a receiver bound from a call result or a chained call has no type. SHARES MECHANISM WITH: WI-hudam,INV-zujag,WI-jutur."  # 4e12
+- op: update  # 9a0f
+  at: '2026-11-01T22:22:28Z'  # 9a0f
+  by: agent  # 9a0f
+  actor: jgstern_agent  # 9a0f
+  clock: 4  # 9a0f
+  nonce: 9a0f  # 9a0f
+  set:  # 9a0f
+    title: "cpp: return-type registry so auto x = f(); x.m() and f().m() resolve (method_return_types population + Pass-2 read); declared-type receivers already done"  # 9a0f
+- op: update  # 2679
+  at: '2026-11-01T22:22:28Z'  # 2679
+  by: agent  # 2679
+  actor: jgstern_agent  # 2679
+  clock: 5  # 2679
+  nonce: '2679'  # 2679
+  set:  # 2679
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Review 2026-11-01 at dev 9ae4abe13f. Deliverable 1 (typed locals/params/fields) shipped in a different shape after this item was filed: _cpp_receiver_class / _cpp_declared_type_node, WI-lamij 261c7921d2 2026-10-19. On a fixture, Query q; q.run() emits calls -> Query::run (receiver=declared_type). Return-type deliverables 2-4 are unbuilt: auto q = makeQuery(); q.run(), the Query* and unique_ptr<Query> variants, and makeQuery().run() all go to an external run at 0.5. cpp.py has no method_return_types reference. The Scala sibling WI-hijot was folded into WI-gokop, which is done. (Original text below; the review entry in the thread has the evidence.)\n\nINV-dihos Phase 3 (split): Return-Type Registry — C++ portion.\n\nWI-titor was originally scoped to ship Rust + C++ + Scala in one PR. Per\nthe WI's own splitting hint (\"consider splitting if it grows too large to\nship as a single PR\"), the Rust slice landed first as a standalone PR\n(see WI-titor pr_ref). This sibling WI tracks the C++ slice.\n\nDELIVERABLES:\n(1) Bootstrap var_types infrastructure for C++: per-file `dict[str, str]`\n    populated from constructor calls, parameter declarations, AND field\n    declarations (per WI guidance — C++ field-type tracking is in scope).\n    Mirror the Rust pattern landed under WI-titor (`_extract_var_types_rust`\n    in `rust.py`).\n\n(2) Populate `FileAnalysis.method_return_types` from each\n    function_definition / method_definition / declaration node's\n    signature in Pass 1.\n\n(3) Tier 2 escape hatches in a `_extract_cpp_return_type_name` helper:\n    - pointer/reference strip: `Query*` → `Query`, `Query&` → `Query`,\n      `const Query&` → `Query`\n    - template specialization: `vector<Query>` → `vector` (consistent\n      with ADR-0006 §Limitations / `generic_strip_pattern`)\n    - smart pointers: `std::unique_ptr<T>` / `std::shared_ptr<T>` /\n      `std::weak_ptr<T>` → `T` (Tier-2 unwrap analogous to Rust\n      Box/Rc/Arc)\n    - module-path strip: `std::vector::iterator` → `iterator`\n\n(4) Wire registry into Pass 2 var_types fill loop + add new\n    resolution strategy in `_extract_edges_from_file` for typed-variable\n    method calls (mirror Rust's Strategy 1.8).\n\n(5) Regression tests per language. Target a bakeoff repo with active\n    receiver-type-blocked dispatch: any LLVM-style C++ repo per\n    ADR-0006 §Phase rollout.\n\nPREREQUISITE: WI-titor (Rust slice) landed — pattern established in\n`base.py` §4c aggregation + `_extract_var_types_*` per-language helper\nconvention.\n\nTag at merge: `awaits_bakeoff_validation`."  # 2679

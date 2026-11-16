@@ -4,17 +4,14 @@
 
 Background
 ----------
-On 2026-04-17 the agent observed two tracker ``discuss`` entries on WI-ripuz
-vanish from the TUI mid-session. Root cause: when ``auto-pr`` detects the
-feature branch is behind base, it backs up ``.agent/tracker/.ops`` and
-``.agent/tracker-workspace/.ops``, rebases, then ``cp``'d the backup back
-over the working tree unconditionally. Any ops appended by concurrent
-tracker activity between the snapshot and the rebase (either
+When ``auto-pr`` detects the feature branch is behind base, it backs up
+``.agent/tracker/.ops`` and ``.agent/tracker-workspace/.ops``, rebases, then
+restores the backup. Copying the backup back over the working tree would
+silently overwrite any ops appended between the snapshot and the restore —
 agent-driven ``discuss``/``add``/``update`` calls during CI polling, or
-``tracker: sync`` commits pulled in by the rebase) were silently
-overwritten.
+``tracker: sync`` commits pulled in by the rebase.
 
-Fix: ``_ops_union_restore_file`` performs an order-preserving line-level
+So ``_ops_union_restore_file`` performs an order-preserving line-level
 union. ``awk '!seen[$0]++'`` is the dedupe primitive; for append-only ops
 files this is semantics-preserving because each op's lines are unique to
 that op (they carry a ``nonce:`` and ``clock:``).
@@ -194,13 +191,12 @@ def test_helper_is_sourceable_without_deps(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# WI-tasuj: regression tests for _ops_union_restore_dir (the caller that
-# iterates the backup directory). Tracker ops filenames are dotfiles
-# (.WI-…ops, .INV-…ops), and the pre-WI-tasuj caller used a single `*`
-# glob that bash's default behaviour excludes dotfiles from — so every
-# tracker-ops restore was a silent no-op. These tests pin the fix by
-# asserting that hidden files in the backup subdir DO get restored into
-# the target ops dir.
+# _ops_union_restore_dir (the caller that iterates the backup directory).
+# Tracker ops filenames are dotfiles (.WI-…ops, .INV-…ops), and bash's
+# default `*` glob excludes dotfiles, so a single `*` glob makes every
+# tracker-ops restore a silent no-op. These tests assert that hidden files
+# in the backup subdir DO get restored into the target ops dir
+# (history: WI-tasuj).
 # ---------------------------------------------------------------------------
 
 
@@ -226,9 +222,9 @@ def _run_restore_dir(
 
 
 def test_restore_dir_matches_hidden_files(tmp_path: Path) -> None:
-    """The critical WI-tasuj regression: dotfiles in the backup must be
-    enumerated and restored. Pre-fix, bash's default ``*`` glob skipped
-    them and every tracker-ops restore was silently empty."""
+    """Dotfiles in the backup must be enumerated and restored. Bash's
+    default ``*`` glob skips them, which would make every tracker-ops
+    restore silently empty."""
     backup = tmp_path / "ops-backup" / ".agent" / "tracker-workspace" / ".ops"
     backup.mkdir(parents=True)
     (backup / ".WI-test-foo.ops").write_text(

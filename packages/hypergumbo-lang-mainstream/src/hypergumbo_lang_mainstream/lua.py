@@ -83,6 +83,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
     file_anchor_symbol,
@@ -679,10 +680,10 @@ def _extract_edges_from_file(
                             # ``inherited_calls`` walker via ``enclosing_class``)
                             # instead of binding to the unrelated def. Same-table
                             # implicit calls and free functions still bind.
-                            _defer = callee is not None and defer_bare_method_call(
+                            _defer = (callee is not None and defer_bare_method_call(
                                 callee.kind, callee.name,
                                 lookup_result.match_type, _enclosing_type,
-                            )
+                            )) or defer_unresolved_tie(lookup_result)
                             if callee and not _defer:
                                 edge = Edge.create(
                                     src=caller.id,
@@ -766,10 +767,10 @@ def _extract_edges_from_file(
                         # withhold it (defer to the Site-1 ``inherited_calls``
                         # walker via ``enclosing_class``). Same-table implicit
                         # ``self`` calls and free functions still bind.
-                        _defer = callee is not None and defer_bare_method_call(
+                        _defer = (callee is not None and defer_bare_method_call(
                             callee.kind, callee.name,
                             lookup_result.match_type, _enclosing_type,
-                        )
+                        )) or defer_unresolved_tie(lookup_result)
                         if callee and not _defer:
                             edge = Edge.create(
                                 src=caller.id,

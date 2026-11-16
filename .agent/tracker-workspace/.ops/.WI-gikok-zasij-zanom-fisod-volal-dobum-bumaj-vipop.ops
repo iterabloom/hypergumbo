@@ -18,3 +18,10 @@
     pr_ref:  # b6b0
     description: "Structural scope-expansion from supply-verdict:F4 (Python in-tree module resolution, dev ba11d947a5, INV-nuzas import facet). Python's analyzer previously emitted 'imports' edges whose dst dangled to a phantom external_symbol boundary node for in-tree workspace-sibling modules (ast.Import did no lookup; 'from pkg import submod' failed on submodules). F4 fixed this for Python via a module_to_file_id map in py.py's analyze().\n\nVERIFY then FIX the analogue in the other in-tree-package languages: Go (module-path imports e.g. 'myorg/internal/foo'), Java/Kotlin (package imports). Question: do their analyzers resolve in-tree module imports to real first-party nodes, or do they dangle to external_symbol like Python did pre-F4? JS/TS already has linkers/js_module.py (no gap). Each language analyzer is separate (py.py/java.py/go.py each have their own _extract_import_edges-equivalent). If a gap exists, mirror F4's pattern (build an in-tree module->file-anchor map, resolve in the import-edge emitter). Behavioral check: run hypergumbo on a 2-package monorepo fixture per language and confirm sibling imports resolve to first_party file nodes, not external_dep boundary nodes. Filed as verify+fix (not yet confirmed broken)."  # b6b0
     fields: {}  # b6b0
+- op: discuss  # a528
+  at: '2026-10-25T23:58:48Z'  # a528
+  by: agent  # a528
+  actor: jgstern_agent  # a528
+  clock: 2  # a528
+  nonce: a528  # a528
+  message: "2026-10-25 correction: 'JS/TS already has linkers/js_module.py (no gap)' does not hold for workspace siblings -- an npm workspace import of a sibling package calls a tier-3 phantom (javascript:@ws/b:0-0:helper:external_symbol) instead of the sibling's source; Cargo has the same gap (rust:crate_b::helper). Filed as WI-rilof."  # a528

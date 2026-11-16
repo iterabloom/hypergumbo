@@ -1,0 +1,21 @@
+- op: create  # a525
+  at: '2026-10-25T11:05:04Z'  # a525
+  by: agent  # a525
+  actor: jgstern_agent  # a525
+  clock: 1  # a525
+  nonce: a525  # a525
+  data:  # a525
+    kind: work_item  # a525
+    title: "jackson_dispatch: a class whose only Jackson hint is a field-level @JsonProperty gets no accessor edges (field annotations live on kind=field symbols)"  # a525
+    status: todo_hard  # a525
+    priority: 3  # a525
+    parent:  # a525
+    tags:  # a525
+    - docstring_audit  # a525
+    - analysis_quality  # a525
+    isbefore: []  # a525
+    duplicate_of: []  # a525
+    not_duplicate_of: []  # a525
+    pr_ref:  # a525
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- jackson_dispatch.py: A class whose only Jackson hint is a field-level `@JsonProperty` is not a target, so its bean accessors get no edges -- evidence: the repro in notebook staleness_audit_10252026/verify/V07.md (`jackson edges: 0`).\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # a525
+    fields: {}  # a525

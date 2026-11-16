@@ -1,0 +1,20 @@
+- op: create  # 0d11
+  at: '2026-11-01T07:56:45Z'  # 0d11
+  by: agent  # 0d11
+  actor: jgstern_agent  # 0d11
+  clock: 1  # 0d11
+  nonce: 0d11  # 0d11
+  data:  # 0d11
+    kind: work_item  # 0d11
+    title: "evidence_types.py ipc_channel_match prose cites a stale line, linkers/ipc.py:546"  # 0d11
+    status: todo_soft  # 0d11
+    priority: 4  # 0d11
+    parent:  # 0d11
+    tags:  # 0d11
+    - docs  # 0d11
+    isbefore: []  # 0d11
+    duplicate_of: []  # 0d11
+    not_duplicate_of: []  # 0d11
+    pr_ref:  # 0d11
+    description: "packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py (around line 466) cites `ipc.py:546` in prose. PR #1985 (WI-pumit) rewrote linkers/ipc.py, so the line no longer names what the prose describes. Replace the line citation with the function name it means (cite names, not line numbers)."  # 0d11
+    fields: {}  # 0d11

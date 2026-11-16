@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-jusus (emission-parity F5): Swift stored-property field + top-level variable symbols.
+"""Swift stored-property field + top-level variable symbols (history: WI-jusus).
 
-The Swift analyzer emitted computed properties (kind="property") but not STORED
-properties or top-level value bindings — both are bare `property_declaration`
-nodes (no `computed_property` child). This slice — a double gate strip — emits:
+Besides computed properties (kind="property"), the Swift analyzer emits STORED
+properties and top-level value bindings — both bare `property_declaration`
+nodes (no `computed_property` child):
 
 * ``kind="field"`` for a stored property inside a type body (class/struct/enum),
 * ``kind="variable"`` for a top-level (`source_file`-scope) ``let``/``var``.
@@ -115,13 +115,11 @@ func run() -> Int {
 
 
 class TestSwiftMethodLocalExclusion:
-    """INV-lanaz regression: a function-local ``let``/``var`` inside a *method*
-    of a type parses as a ``property_declaration`` and (unlike a top-level
-    function's local) DOES have an enclosing type, so the original
-    ``_get_enclosing_type``-only gate misclassified it as ``kind="field"``.
-
-    Ground truth: on SwiftyJSON, 383 of 407 emitted swift "fields" were XCTest
-    method-body locals. A stored property is a field ONLY when it is a DIRECT
+    """INV-lanaz: a function-local ``let``/``var`` inside a *method* of a type
+    parses as a ``property_declaration`` and (unlike a top-level function's
+    local) DOES have an enclosing type, so a ``_get_enclosing_type``-only gate
+    would misclassify it as ``kind="field"`` -- in an XCTest suite, nearly
+    every method-body local. A stored property is a field ONLY when it is a DIRECT
     member of the type body (parent ``class_body``/``enum_class_body``); a
     binding nested in a method/init/closure body (parent ``statements``) is a
     local and must be excluded.
@@ -182,7 +180,7 @@ class C {
         assert "C.closureLocal" not in fnames and "C.f" not in fnames, fnames
 
     def test_stored_property_kept_when_type_has_method_locals(self, tmp_path: Path) -> None:
-        # Mirrors the SwiftyJSON failure: stored props kept; method-body locals
+        # A SwiftyJSON-shaped type: stored props kept; method-body locals
         # and computed properties dropped from the field set.
         _write(tmp_path, """
 struct JSON {

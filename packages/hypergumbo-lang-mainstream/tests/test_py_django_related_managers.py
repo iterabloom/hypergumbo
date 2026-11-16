@@ -1,34 +1,33 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-gulaz (INV-mumov candidate 2): Django reverse-relation managers and
-custom manager names carry ``django.db.models``.
+"""Django reverse-relation managers and custom manager names carry
+``django.db.models``.
 
-WI-sozoj's marker is the literal ``.objects`` attribute, so every Django
-manager reached any other way was invisible: the REVERSE-RELATION manager
-(``order.payments.create(...)`` where ``Payment.order = ForeignKey(Order,
-related_name="payments")``), the forward many-to-many manager
-(``event.sponsors.add(s)``), the default ``<model>_set`` accessor, and a
-class-level manager under another name (pretix's soft-delete
-``Checkin.all.filter(...)``). Measured on pretix before this change: 5,441
-call sites on a related-name-like accessor and 73 on a custom manager name,
-none typed.
+The literal ``.objects`` attribute is only one way to reach a Django manager.
+A marker keyed on it alone leaves the others untyped: the REVERSE-RELATION
+manager (``order.payments.create(...)`` where ``Payment.order =
+ForeignKey(Order, related_name="payments")``), the forward many-to-many
+manager (``event.sponsors.add(s)``), the default ``<model>_set`` accessor, and
+a class-level manager under another name (a soft-delete
+``Checkin.all.filter(...)``).
 
-The fix is a PROJECT-WIDE index of relation declarations, built once per
-repository and keyed by class-symbol id, consulted by the same two consumers
-the ``.objects`` marker already has: the chain root rule in
-``_preserved_receiver_type`` and the bounded emission in ``_process_call``.
-The manager itself stays untyped (Phase 6 PR 1's false-owner rule); its
-QuerySet-returning members carry the module, its closed method set emits.
+A PROJECT-WIDE index of relation declarations, built once per repository and
+keyed by class-symbol id, is consulted by the same two consumers the
+``.objects`` marker has: the chain root rule in ``_preserved_receiver_type``
+and the bounded emission in ``_process_call``. The manager itself stays
+untyped (the false-owner rule: typing it would put ``django.db.models`` in the
+owner slot of a project-defined manager method); its QuerySet-returning
+members carry the module, its closed method set emits.
 
-THE REFUTATION CONDITION, pre-registered: an accessor-like attribute on a
-receiver whose resolved class does NOT own it must not be typed -- a
-serializer field named like an accessor, a ``@property`` that returns a
-QuerySet, an untyped root. (Two of the three were later overturned on
-narrower terms: the untyped root by INV-mumov, see
-``test_py_django_untyped_relation_root.py``; the QuerySet-returning property by
-WI-valav, adjudicated on the getter's return expression, see
-``test_py_django_property_managers.py``.) Ownership walks the project bases, so an accessor
-declared on an abstract base (``ForeignKey("self", related_name="addons")``)
-is owned by the concrete subclass.
+THE REFUTATION CONDITION: an accessor-like attribute on a receiver with
+positive evidence AGAINST owning it must not be typed -- a non-model class
+with a field named like an accessor, a typed non-model local. Two narrower
+cases ARE typed: an untyped root, from the accessor NAME (see
+``test_py_django_untyped_relation_root.py``), and a QuerySet-returning
+``@property``, adjudicated on the getter's return expression (see
+``test_py_django_property_managers.py``). Ownership walks the project bases,
+so an accessor declared on an abstract base (``ForeignKey("self",
+related_name="addons")``) is owned by the concrete subclass.
+(history: WI-gulaz, WI-sozoj, INV-mumov, WI-valav)
 """
 from __future__ import annotations
 
@@ -241,15 +240,15 @@ class TestReverseRelationManagers:
         assert _slot_at(project_edges, line, "count") == "external"
 
     def test_deeper_untyped_roots(self, project_edges: list[Edge]) -> None:
-        """INV-mumov OVERTURNED HALF OF THIS, deliberately.
+        """One deeper untyped root types, the other refuses.
 
-        ``request.thing.seats`` NOW TYPES: nothing is known about
+        ``request.thing.seats`` TYPES: nothing is known about
         ``request.thing`` either way, and ``seats`` is a name this project's
         models declare, so the name-only rule fills the MODULE slot. No model
         is stamped -- ``manager_model`` keeps its class-keyed rule, so the
         instance binding is unchanged.
 
-        ``make().seats`` STILL REFUSES, and that half is the point: a call the
+        ``make().seats`` REFUSES, and that half is the point: a call the
         resolver already declined to type is positive evidence AGAINST, which
         is categorically different from silence about a bare name.
         """
@@ -381,10 +380,9 @@ class TestCustomManagerNames:
 class TestTheRefutationCondition:
     """A receiver with POSITIVE EVIDENCE against owning the accessor stays untyped.
 
-    INV-mumov narrowed this class's subject. SILENCE about the root is no
-    longer a refusal (see :meth:`test_an_untyped_root`); EVIDENCE still is. The
-    other three tests here are the condition that survives, and they are the
-    reason the narrowing is not a blanket loosening.
+    SILENCE about the root is not a refusal (see :meth:`test_an_untyped_root`);
+    EVIDENCE is. The other tests here are that condition, and they are why
+    typing an untyped root is not a blanket loosening. (history: INV-mumov)
     """
 
     def test_a_non_model_class_with_a_field_named_like_an_accessor(self, tmp_path: Path) -> None:
@@ -397,19 +395,12 @@ class TestTheRefutationCondition:
         assert _slot_at(edges, 3, "get") == "external"
 
     def test_an_untyped_root(self, tmp_path: Path) -> None:
-        """OVERTURNED BY INV-mumov, deliberately, and this is the one clause that
-        changed.
+        """An untyped root IS typed, by accessor name.
 
         ``thing`` is a bare parameter: the walker never had an input for it, so
         its untypedness is SILENCE, not a refusal. ``seats`` is declared by this
         project's models, so the MODULE slot is filled from the accessor NAME.
-
-        WI-gulaz's FILED refutation condition is NOT overturned -- only the
-        "an untyped root" clause of its implementation DOCSTRING. Measured on
-        pretix: +2,943 ORM-slot edges, 0 lost, and a shuffled-index ablation
-        (20 size- and frequency-matched WRONG accessor sets) puts the
-        true:shuffled firing ratio at 78.9 against a kill threshold of 10 fixed
-        before the number existed.
+        (history: INV-mumov)
         """
         views = "def f(thing):\n    thing.seats.create(number=1)\n"
         edges = _edges(tmp_path, {"models.py": MODELS, "views.py": views})

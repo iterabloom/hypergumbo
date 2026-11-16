@@ -1,60 +1,32 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """One library entity must have ONE node identity in a run (INV-rilit).
 
-WHAT WAS BROKEN. A language whose module separator is ``::`` spelled the same
-module two ways depending on which edge reached it: ``imports`` and ``calls``
-emitted ``std::io``, while ``module_attr_ref`` emitted ``std.io``. Those are two
-external nodes for one module, so every per-dependency question — who imports
-it, its centrality, its supply-chain tier, whether it is dead — was answered
-over a split population.
+A language whose module separator is ``::`` must spell a module the same way
+on every edge that reaches it: ``imports``, ``calls`` and ``module_attr_ref``
+all emit ``std::io``, never ``std.io`` on one of them. Two spellings are two
+external nodes for one module (``std::io`` / ``std.io``,
+``crate::gadgets::boolean::Boolean`` / ``crate.gadgets.boolean.Boolean``), so
+every per-dependency question — who imports it, its centrality, its
+supply-chain tier, whether it is dead — would be answered over a split
+population.
 
-MEASURED 2026-08-24 on bellman (2,467 edges), by folding every rust node's path
-slot and counting the survivors::
+The colon-bearing spelling is safe in an id. ADR-0036 (D1a) makes the path
+slot the one colon-TOLERANT slot in the id grammar, and
+:func:`ir.symbol_path_slot` — the chokepoint consumers route through — carries
+``rust:std::fs:0-0:write:external_symbol`` as a worked example in its own
+docstring. :func:`ir.symbol_name_slot` is span-anchored for the same reason and
+handles a colon-bearing name.
 
-    TEN entities existed under two spellings in one run
-      bellman.VerificationError / bellman::VerificationError
-      bls12_381.Scalar          / bls12_381::Scalar
-      crate.SynthesisError      / crate::SynthesisError
-      crate.gadgets.boolean.Boolean / crate::gadgets::boolean::Boolean
-      ff.Field                  / ff::Field
-      std.cmp.Ordering          / std::cmp::Ordering
-      std.io                    / std::io
-      super.SynthesisError      / super::SynthesisError
-      super.boolean.Boolean     / super::boolean::Boolean
-      super.uint32.UInt32       / super::uint32::UInt32
+This is conformance rather than a new shape, which is the whole risk argument:
+colon-bearing rust path and name slots are ordinary on ``calls`` edges
+(``rust:std::cmp:0-0:min:external_symbol``,
+``rust:std::io:0-0:Error::new:external_symbol``) and flow through every
+consumer, so ``module_attr_ref`` matching its siblings introduces no spelling
+downstream has not seen.
 
-THE ITEM'S OWN COST FIGURE WAS TOO HIGH, AND SO WAS THE CORRECTION TO IT. The
-item filed "4 of 23 withhold entries are one module under two spellings"; a
-later note repeated the 4. Measured directly, only TWO of the coverage gate's
-entries are a second spelling of one already listed (``bls12_381::Scalar`` and
-``std::io``). The other two counted pairs — ``std.cmp.Ordering`` / ``std::cmp``
-and ``std.sync`` / ``std::sync::Arc`` — are a TYPE path beside a MODULE path,
-which is a different fact and not a spelling split at all. The node-level cost
-(ten entities) is the larger and the real one; the gate-level cost is two.
-
-WHY THE DOTTED SPELLING EXISTED, and why that reason no longer holds.
-``emit_module_attribute_refs`` documented it as dot-normalising "so the
-resulting edge ID survives downstream ``:``-split parsing". ADR-0036 (D1a) made
-the path slot the one colon-TOLERANT slot in the id grammar, and
-:func:`ir.symbol_path_slot` — the chokepoint every consumer now routes through —
-carries ``rust:std::fs:0-0:write:external_symbol`` as a WORKED EXAMPLE in its
-own docstring. :func:`ir.symbol_name_slot` is span-anchored for the same reason
-and explicitly handles a colon-bearing name. The workaround outlived its defect
-(LIVE.md rule 1: verify the premise in the CODE, not the design doc).
-
-WHY THIS IS CONFORMANCE RATHER THAN A NEW SHAPE, which is the whole risk
-argument. A colon-bearing rust path slot is ALREADY in production and has been
-all along — ``rust:std::cmp:0-0:min:external_symbol`` and
-``rust:bls12_381::Scalar:0-0:from:external_symbol`` are ordinary ``calls``
-edges on bellman, and they flow through every consumer this change can reach.
-The name slot too: ``rust:std::io:0-0:Error::new:external_symbol``. So
-``module_attr_ref`` was the OUTLIER, and this makes it match its siblings
-rather than introducing a spelling nothing downstream has seen.
-
-THE NORMALISATION WAS ALSO ONLY HALF-APPLIED, which is its own tell: C++ emitted
-``cpp:std:0-0:std.numbers::pi:attribute`` — ONE id carrying BOTH separators —
-because only the path taken from the imports map was rewritten and the inner
-qualified text passed through verbatim.
+Separators must also not mix within one id: rewriting only the path taken from
+the imports map while the inner qualified text passes through verbatim yields
+ids like ``cpp:std:0-0:std.numbers::pi:attribute``.
 """
 
 from pathlib import Path
@@ -97,7 +69,7 @@ class TestOneEntityOneSpelling:
         self, tmp_path: Path,
     ) -> None:
         """``std::env::consts`` — the shape rust.yaml declares an ``attributes:``
-        entry for, and the one INV-pusin's fix left standing."""
+        entry for (INV-pusin)."""
         dsts = _attr_dsts(_rust_edges(tmp_path, (
             "use std::env;\n"
             "pub fn f() -> &'static str { std::env::consts::OS }\n"
@@ -108,12 +80,11 @@ class TestOneEntityOneSpelling:
     def test_rust_module_reached_BOTH_WAYS_yields_ONE_node_identity(
         self, tmp_path: Path,
     ) -> None:
-        """THE INVARIANT ITSELF, and the only test here that would have failed
-        for the right reason before the fix.
+        """THE INVARIANT ITSELF.
 
-        bellman's shape: ``std::io`` is reached by an import, by a call
-        (``io::Error::new``) and by a scoped attribute read
-        (``std::io::ErrorKind``). All three must name ONE node."""
+        ``std::io`` is reached by an import, by a call (``io::Error::new``) and
+        by a scoped attribute read (``std::io::ErrorKind``). All three must
+        name ONE node."""
         edges = _rust_edges(tmp_path, (
             "use std::io;\n"
             "pub fn f() -> io::Error {\n"
@@ -137,17 +108,17 @@ class TestOneEntityOneSpelling:
     def test_cpp_attribute_read_does_not_mix_separators_in_one_id(
         self, tmp_path: Path,
     ) -> None:
-        """The half-applied normalisation, pinned. C++ emitted
-        ``cpp:std:0-0:std.numbers::pi:attribute`` — one id carrying BOTH
-        separators, because only the imports-map half was rewritten."""
+        """No id carries BOTH separators. A half-applied normalisation, which
+        rewrites only the imports-map half, would emit
+        ``cpp:std:0-0:std.numbers::pi:attribute``."""
         dsts = _attr_dsts(_cpp_edges(tmp_path, (
             "#include <numbers>\n"
             "#include <iostream>\n"
             "double f() { std::cout << 1; return std::numbers::pi; }\n"
         )))
         assert dsts, "fixture emitted no attribute read — vacuous"
-        # THE MIXING IS IN THE NAME SLOT, not the path slot, and a first draft
-        # of this assertion looked in the path slot and PASSED VACUOUSLY.
+        # THE MIXING SHOWS UP IN THE NAME SLOT, not the path slot; an
+        # assertion on the path slot would pass vacuously.
         mixed = [
             d for d in dsts
             if "::" in symbol_name_slot(d) and "." in symbol_name_slot(d)
@@ -156,38 +127,30 @@ class TestOneEntityOneSpelling:
 
 
 class TestTheCatalogueStillMatches:
-    """POSITIVE CONTROLS, and they earned their keep — the premise they were
-    written to confirm turned out to be FALSE.
+    """POSITIVE CONTROLS: every separator spelling classifies identically
+    against the I/O catalogue.
 
-    The dotted spelling's one real job was catalogue matching, and the code
-    said ``IoBoundaryCatalog`` "registers both ``::`` and ``.`` forms in its
-    qualified-name index", so changing the emitted spelling looked free. It was
-    not. ``IoPrimitive.qualified_name`` joins module and name with a DOT
-    unconditionally, so a ``module: std::env`` row was indexed as the MIXED
-    ``std::env.consts`` plus a fully-dotted alias — and NEVER as the
-    fully-colon ``std::env::consts`` the producer was about to emit. Run
-    before the producer changed, this class failed, which is the only reason
-    the change did not ship a silent loss of every Rust and C++ attribute
-    classification.
-
-    The fix is one separator-folding helper on the read side rather than a
-    third registered spelling, because the same gap reappeared WITHIN this
-    session: folding in ``lookup`` but not in ``lookup_with_module`` left
-    ``classify_call`` still returning ``None``."""
+    ``IoPrimitive.qualified_name`` joins module and name with a DOT
+    unconditionally, so a ``module: std::env`` row's raw key is the MIXED
+    ``std::env.consts`` — never the fully-colon ``std::env::consts`` the
+    producer emits. Catalogue matching therefore depends on the separator
+    fold: the catalogue indexes each row under its folded name and folds the
+    queried name too. The fold lives in one helper on the read side rather
+    than in a third registered spelling, because folding in ``lookup`` but not
+    in ``lookup_with_module`` leaves ``classify_call`` returning ``None``.
+    Without these controls a spelling change could silently lose every Rust
+    and C++ attribute classification."""
 
     @pytest.mark.parametrize("dst,expected", [
-        # THE ONE THAT CAUGHT THE FALSE PREMISE. Before this landed, the
-        # fully-colon spelling classified as NOTHING while its dotted twin
-        # matched, because ``qualified_name`` joins with a DOT unconditionally
-        # — so a ``::`` module was indexed as the MIXED ``std::env.consts``
-        # plus a dotted alias, and never as ``std::env::consts``. Shipping the
-        # producer change without this control would have silently lost every
-        # Rust and C++ attribute classification.
-        # ``host_info_read`` since INV-tutar split the boundary --
-        # ``std::env::consts::OS`` is the target platform's NAME, not
-        # configuration that could hold a credential. The subject of this
-        # parametrisation is the SEPARATOR fold, not the boundary value, and
-        # the fold is unaffected.
+        # THE KEY CONTROL. ``qualified_name`` joins with a DOT
+        # unconditionally, so a ``::`` module's raw key is the MIXED
+        # ``std::env.consts``, never ``std::env::consts``; without the fold
+        # the fully-colon spelling would classify as NOTHING while its
+        # dotted twin matched.
+        # The boundary is ``host_info_read`` because ``std::env::consts::OS``
+        # is the target platform's NAME, not configuration that could hold a
+        # credential (INV-tutar). The subject of this parametrisation is the
+        # SEPARATOR fold, not the boundary value.
         ("rust:std::env:0-0:std::env::consts:attribute", "host_info_read"),
         ("rust:std.env:0-0:std.env.consts:attribute", "host_info_read"),
         ("rust:std::fs:0-0:read_to_string:external_symbol", "fs_read"),

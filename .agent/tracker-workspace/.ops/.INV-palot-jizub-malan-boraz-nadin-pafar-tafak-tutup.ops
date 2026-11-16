@@ -20,3 +20,18 @@
     fields:  # b2c1
       statement: "A kind=file node's span covers every declaration in its file"  # b2c1
       root_cause: "analyzer-minted file symbols compute their own span (lua: 1-1 placeholder; purescript: last line dropped)"  # b2c1
+- op: discuss  # 672f
+  at: '2026-11-01T10:55:52Z'  # 672f
+  by: agent  # 672f
+  actor: jgstern_agent  # 672f
+  clock: 2  # 672f
+  nonce: 672f  # 672f
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. Lua fixture: file node named 'file' with span 1-1 (lua.py:882-891), and its functions get no contains edge. Ansible has the same shape (site.yml file 1-1, declarations to line 18, zero contains edges). Purescript is mis-diagnosed: the file spans 1-9 correctly and the module overshoots to 1-10 (end_point after the trailing newline, as in WI-nabaz). Other literal-1-1 file minters: yaml.py, base.py, websocket/js_module/vue_component linkers. MECHANISM: analyzers mint file nodes with placeholder Span(1,1); purescript module span uses root end_point (N+1 after trailing newline). SHARES MECHANISM WITH: WI-nabaz,WI-budoh."  # 672f
+- op: update  # 6327
+  at: '2026-11-01T10:55:52Z'  # 6327
+  by: agent  # 6327
+  actor: jgstern_agent  # 6327
+  clock: 3  # 6327
+  nonce: '6327'  # 6327
+  set:  # 6327
+    description: "[REVIEW 2026-11-01, CURRENT] Reviewed 2026-11-01 on dev 100b6fbb6e. Lua fixture: file node named 'file' with span 1-1 (lua.py:882-891), and its functions get no contains edge. Ansible has the same shape (site.yml file 1-1, declarations to line 18, zero contains edges). Purescript is mis-diagnosed: the file spans 1-9 correctly and the module overshoots to 1-10 (end_point after the trailing newline, as in WI-nabaz). Other literal-1-1 file minters: yaml.py, base.py, websocket/js_module/vue_component linkers. (Original text below; the review entry in the thread has the evidence.)\n\nFOUND by WI-tusad F3 (containment linker fix, corpus check). After the linker started rooting unplaced dotted names at their file, 5 dotted declarations on three samples stayed orphans because their file node's span does not enclose them: the Lua analyzer's file node in lua/moby/contrib/wireshark/memberlist.lua is named `file` with span 1-1 (the file has 587 lines; functions memberlist_protocol.dissector etc. at 122+), and purescript/ce2794/Lib.purs's file node spans 1-60 while its module spans 1-61. Invariant: a kind=\"file\" node's span covers every declaration in the file. Check every analyzer that mints its own file symbol (lua, purescript, others) against the orchestrator's file anchor."  # 6327

@@ -22,3 +22,58 @@
     fields:  # d5f8
       statement: "A Python import that names a module analyzed in the importing file's own directory resolves to that module's in-repo file id."  # d5f8
       root_cause: "Not investigated: the Python import resolver does not try the importing file's own directory for a bare absolute import (observed, resolver code not yet read)."  # d5f8
+- op: discuss  # dd6d
+  at: '2026-10-29T07:46:16Z'  # dd6d
+  by: agent  # dd6d
+  actor: jgstern_agent  # dd6d
+  clock: 2  # dd6d
+  nonce: dd6d  # dd6d
+  message: "PREMISE CHECK 2026-10-29 (dev 4892851370). VERDICT: CURRENT, WIDER than the title, narrower in consequence. Fresh fixture (src/pkg/{__init__,a,b}.py, tests/{conftest,test_a}.py, scripts/{util,run}.py, pyproject with no deps), `hypergumbo survey`: tests/test_a.py `import conftest` -> python:conftest:0-0:conftest:external_symbol, AND scripts/run.py `import util` -> python:util:0-0:util:external_symbol -- not a test-directory case; any same-directory bare import. `from pkg.a import fa` still resolves (src-layout). The DEPENDENCY linker line now reads 'found 3 third-party Rust/Python import edges' (conftest, util, and the genuinely third-party pytest). STALE TEXT: the dst id is now ...:conftest:external_symbol, not ...:module:module. NARROWER: CALLS through those modules already resolve in-tree (test_a -> tests/conftest.py:helper, run.main -> scripts/util.py:util, both 0.85), so only the IMPORT edge and its consumers see the phantom module. ROOT CAUSE, now read: _extract_import_edges (py.py:2657) looks both arms up in module_to_file_id by the import's dotted name only (`import X` -> module_to_file_id.get(X); `from X import Y` -> .get(X.Y) or .get(X)); the map is keyed on repo-root/src-layout dotted names (tests.conftest, scripts.util), and there is no fallback to the importing file's own directory. FAMILY: that code's docstring is supply:F4 (INV-nuzas) -- the same first-party-reads-as-external family; surfaced to the owner as a possible child of INV-nuzas, not folded."  # dd6d
+- op: update  # b913
+  at: '2026-10-29T07:46:28Z'  # b913
+  by: agent  # b913
+  actor: jgstern_agent  # b913
+  clock: 3  # b913
+  nonce: b913  # b913
+  set:  # b913
+    fields:  # b913
+      root_cause: "py.py _extract_import_edges looks an import up in module_to_file_id by its dotted name only (import X -> .get(X); from X import Y -> .get(X.Y) or .get(X)); the map is keyed on repo-root / src-layout dotted names (tests.conftest, scripts.util) and nothing falls back to the importing file's own directory, so a bare same-directory import becomes an ExternalRef. Calls through the module already resolve in-tree; only the import edge is affected (read and reproduced 2026-10-29)."  # b913
+- op: update  # 55fb
+  at: '2026-10-29T07:49:04Z'  # 55fb
+  by: agent  # 55fb
+  actor: jgstern_agent  # 55fb
+  clock: 4  # 55fb
+  nonce: 55fb  # 55fb
+  set:  # 55fb
+    parent: INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap  # 55fb
+- op: discuss  # 8ca0
+  at: '2026-10-29T07:49:04Z'  # 8ca0
+  by: agent  # 8ca0
+  actor: jgstern_agent  # 8ca0
+  clock: 5  # 8ca0
+  nonce: 8ca0  # 8ca0
+  message: "Made a child of INV-nuzas on owner ruling 2026-10-29: same family (first-party code read as external); _extract_import_edges is the supply:F4 site INV-nuzas's fix introduced."  # 8ca0
+- op: update  # f3e2
+  at: '2026-10-29T09:59:06Z'  # f3e2
+  by: agent  # f3e2
+  actor: jgstern_agent  # f3e2
+  clock: 6  # f3e2
+  nonce: f3e2  # f3e2
+  set:  # f3e2
+    fields:  # f3e2
+      statement: "A bare absolute Python import that names a module in the directory the importer's own run puts on sys.path -- a test-tree file's pytest basedir (nearest ancestor without __init__.py), or a directly-run script's own non-package directory -- resolves to that module's in-repo file id."  # f3e2
+- op: update  # 72c2
+  at: '2026-10-29T09:59:07Z'  # 72c2
+  by: agent  # 72c2
+  actor: jgstern_agent  # 72c2
+  clock: 7  # 72c2
+  nonce: 72c2  # 72c2
+  set:  # 72c2
+    status: satisfied  # 72c2
+- op: discuss  # 27d1
+  at: '2026-10-29T09:59:07Z'  # 27d1
+  by: agent  # 27d1
+  actor: jgstern_agent  # 27d1
+  clock: 8  # 27d1
+  nonce: 27d1  # 27d1
+  message: "Fixed in PR #1939 (dev 291a3a2418). STATEMENT RE-SCOPED (was: 'a module analyzed in the importing file's own directory'), because that wording is broader than Python: a library module's directory is never on sys.path, and inside a package there is no implicit relative import. The corpus proved the broad reading wrong -- a first cut applying it to every importer resolved stdlib `import json` in src/poetry (a PEP 420 namespace package) to src/poetry/json/. New statement names the two runs that put a directory below the source root on sys.path: pytest's basedir for a test-tree file, and a directly-run script's own directory. Filed repro re-run on merged dev 291a3a2418 (fixture from the 10-29 premise check): tests/test_a.py `import conftest` -> python:tests/conftest.py:1-1:file:file (was python:conftest:0-0:conftest:external_symbol); the DEPENDENCY linker line drops from 3 to 2 third-party edges (pytest, genuinely third-party; and scripts/run.py `import util`, which has no main guard and so is not a script run directly -- correctly external under the new statement). Tests: test_py_same_directory_import.py through run_behavior_map (conftest, script with main guard, from-import, basedir above a package subdir, submodules each to their file; controls for package, namespace package, library-beside-script, third-party), mutation-checked. Corpus A/B, every changed edge read: libvirt-ci 10 edges external -> in-tree, vmaf 5, poetry 0. Not changed: precedence (Python searches the script dir before the source root; here it is tried after, so no existing resolution moves)."  # 27d1

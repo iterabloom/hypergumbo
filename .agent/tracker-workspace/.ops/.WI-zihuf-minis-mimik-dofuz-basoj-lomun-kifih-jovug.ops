@@ -38,3 +38,10 @@
   set: {}  # 8c0f
   remove:  # 8c0f
     isbefore: [INV-pujob-padob-fomif-zivif-kabam-hurog-kirub-jozav]  # 8c0f
+- op: discuss  # 709f
+  at: '2026-11-01T09:32:31Z'  # 709f
+  by: agent  # 709f
+  actor: jgstern_agent  # 709f
+  clock: 4  # 709f
+  nonce: 709f  # 709f
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/B2/). VERDICT: CURRENT. bash.py _literal_tail (:468-479) returns None for a bare $VAR; _RepoBashIndex._resolve binds a variable only via an enclosing for loop (_for_loop_words), has no assignment binding, and returns set() without a literal tail. Fixture: notail.sh `source \"$ENV_FILE\"` -> env.environ with env_var_values [ENV_FILE, MY_TOKEN]; assignvar.sh `f=lib/lib.sh; source $f` -> env_var LOOP_TOKEN; control tail.sh `source \"$TOOL_DIR/lib.sh\"` -> only TOOL_DIR, OTHER_TOKEN resolved. io-boundaries: 3 env_read chains. The 13/97 and 5/97 cohort ratios were not re-taken (corpus). Resolver unchanged since filing. ROOT-CAUSE GROUP: analyzer has no arm for the construct (assignment-bound source target). Status unchanged."  # 709f

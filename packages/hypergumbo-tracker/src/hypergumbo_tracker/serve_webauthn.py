@@ -29,8 +29,9 @@ Why This Design
 - In-memory credential storage: restart invalidates all credentials (security).
   Re-registration is required after restart, but registration has no CLI
   entry point yet (``htrac setup`` does not register credentials), and
-  nothing outside this module constructs a ``WebAuthnManager`` -- the serve
-  auth modules are not wired into ``serve.py`` (WI-hopip).
+  nothing outside this module constructs a ``WebAuthnManager``. The serve
+  login modules are not wired into ``serve.py``, whose deny-by-default
+  ``authenticate`` gate has no authenticator built from them.
 - Response verification is not implemented; the pending challenge is kept
   per-manager (single-user server) for a verifier to check against.
 """

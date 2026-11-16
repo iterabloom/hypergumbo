@@ -27,3 +27,18 @@
   clock: 2  # c157
   nonce: c157  # c157
   message: "CORRECTION to the description: the py.py precedent was observed on X = 1 at top level and X = 2 inside an if-block, NOT two top-level assignments; whether py.py emits one or two variable Symbols for two TOP-LEVEL assignments of one name was not checked."  # c157
+- op: update  # 1d42
+  at: '2026-10-22T18:51:13Z'  # 1d42
+  by: agent  # 1d42
+  actor: jgstern_agent  # 1d42
+  clock: 3  # 1d42
+  nonce: 1d42  # 1d42
+  set:  # 1d42
+    status: done  # 1d42
+- op: discuss  # f237
+  at: '2026-10-22T18:51:13Z'  # f237
+  by: agent  # f237
+  actor: jgstern_agent  # f237
+  clock: 4  # f237
+  nonce: f237  # f237
+  message: "Fixed in 375c967697 (merged to dev, PR via auto-pr). Model: one env_var Symbol per variable per build STAGE, identity (path, stage, name) = the scoped_stable_id the analyzer already mints; ARG follows it. Also fixed from the NOT CHECKED list: ENV A=1 B=2 kept only the first pair. LIVE REPRO on dev e9382e877d, hypergumbo run . on FROM alpine / ENV A=1 / ENV A=2 / ENV B=3 C=4 / FROM debian AS two / ENV A=5, cold cache, exit 0: env_var nodes = A@2 (sha256:4ea134c4e6951cb8), A@6 (sha256:9d49fd90c0729d1c, stage two), B@4, C@4. Before the fix the same fixture gave A@2 AND A@3, and no C. stable_id is set on every one (the item's None observation predated WI-tusad). Still NOT CHECKED: docker-compose environment blocks; whether any consumer reads env_var Symbols."  # f237

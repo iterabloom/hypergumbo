@@ -27,3 +27,10 @@
   clock: 2  # 9ef4
   nonce: 9ef4  # 9ef4
   message: "Cross-link 2026-10-03: WI-rihos (clock reads as host_info_read are mostly false positives) was closed wont_do as already ruled by WI-pavob. The part of it still open, whether a claim can exclude clock reads or whether host_info_read should seed taint at all, is this item's question. WI-rihos's numbers (cassandra 408/459 java.lang edges, jenkins 5/20) predate Java's DDG (WI-gotun, #1245), and measurement 0017 attributes the jenkins five to flow imprecision rather than to the clock label."  # 9ef4
+- op: discuss  # abad
+  at: '2026-11-01T10:55:36Z'  # abad
+  by: agent  # abad
+  actor: jgstern_agent  # abad
+  clock: 3  # abad
+  nonce: abad  # abad
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint4/). VERDICT: CURRENT. Re-checked at dev 100b6fbb6e: _ALLOWED_CONSTRAINT_KEYS (verify_claims.py:1993-1994) is still {boundary, must_not_exist, max_chains, taint_flow}; clock rows landed in 13 catalogues (WI-tubij done). Option 1 on a fixture: host_description->network flags time.time()->sock.send and gethostname()->sock.send, not time.time()->logging.info, so taint_flow separates read from transmit; it cannot separate clock from hostname (one label, taint.py:2120). The first task (run option 1 on a real corpus repo) has not been done. MECHANISM: host_info_read maps to one taint label (host_description) and boundary claims have no exception key, so clock reads cannot be separated from hostname/uid reads."  # abad

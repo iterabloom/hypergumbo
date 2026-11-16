@@ -37,3 +37,19 @@
   clock: 3  # 4602
   nonce: '4602'  # 4602
   message: "SATISFIED by PR #1571 (merge 3c9f03a81f, the WI-tusad stable_id scheme bump to hypergumbo-stableid-v9). Root cause: Scala/Kotlin/C#/Swift members passed the nearest-owner emitted name (`Inner.go`) as qualified_name and classes took the backstop's bare-name table key, so A.Inner.go / B.Inner.go tied and the per-file split numbered them by emission order. Fix (F2, in the bump): members hash every enclosing scope that can repeat within a file (_scala_scope incl. block packages, _kotlin_scope, _csharp_scope incl. block namespaces, _swift_scope); nested types mint overload_arity.scoped_table_stable_id; F3 added the C# property under nested same-name namespaces (it hashed the innermost namespace only and tied). Top-level types and their members keep their v8 values. EVIDENCE (behavioural, merged dev): (1) the filed repro re-run unchanged, scratchpad fixes/tusad/b6/nested/probe.py (hypergumbo run with and without class A, A blanked, per-symbol (kind,name,line,col)): scala survivors 4 moved [], kotlin 4 moved [], csharp 5 moved [], swift 4 moved [], java 4 moved [], dart 3 moved [] (filed: scala/kotlin/csharp/swift MOVED). (2) multi-line nested-owner cases via `hypergumbo run --include-docs` on dev 3c9f03a81f (f3/live/live.py): scala 4/4, kotlin 4/4, csharp 5/5, swift 4/4 survivors same id, 0 moved, 0 null; C# nested namespaces with a property 3/3 same. Gate: test_stable_id_floor_gate SCOPE_CASES scala/kotlin/csharp/csharp-namespace/csharp-namespace-nested/swift-nested pass (sibling_deletion_moves [])."  # 4602
+- op: update  # d183
+  at: '2026-11-15T19:47:30Z'  # d183
+  by: agent  # d183
+  actor: jgstern_agent  # d183
+  clock: 4  # d183
+  nonce: d183  # d183
+  set:  # d183
+    fields:  # d183
+      statement: "Deleting an earlier same-name sibling scope never moves another symbol's stable_id (ADR-0035 section 1). ASSERTED for the filed instance only: members and nested types of same-name owners in Scala, Kotlin, C# and Swift (fixed in scheme v9, PR #1571). NOT ASSERTED in general. Known counterexample, open: Swift init/deinit of two same-name types local to different functions tie and are split by occurrence, so deleting the first moves the second's two ids (WI-muvab-dipik-luhik-tosug-valum-badoj-tagum-zufif; re-run 2026-11-15 at dev e2b6ab8096)."  # d183
+- op: discuss  # cb69
+  at: '2026-11-15T19:47:30Z'  # cb69
+  by: agent  # cb69
+  actor: jgstern_agent  # cb69
+  clock: 5  # cb69
+  nonce: cb69  # cb69
+  message: "OWNER RULING 2026-11-15: this item must say that its general statement has an open counterexample. Statement field amended: it is asserted for the filed Scala/Kotlin/C#/Swift instance and names WI-muvab-dipik-luhik-tosug-valum-badoj-tagum-zufif as the open residual (fixture ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-muvab: deleting f's local `struct Inner` moves g's Inner.init 365fa579 -> 15a05d39 and Inner.deinit ca92d0f5 -> 1340cad2). A second counterexample found the same day, Agda anonymous modules, is filed as its own item. Status left satisfied: the filed instance still holds."  # cb69

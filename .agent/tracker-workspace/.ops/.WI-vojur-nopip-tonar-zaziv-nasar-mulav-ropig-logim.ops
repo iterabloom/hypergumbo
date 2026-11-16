@@ -18,3 +18,18 @@
     pr_ref:  # 3e1d
     description: "wasm_bindgen.py (~line 456) mints the importing file's id as\n\n    src_id = f\"{sym.language}:{rel_path}:0-0:file:file\"\n\n`0-0`, where the canonical `make_file_id` shape is `{lang}:{path}:1-1:file:file`. So the `imports` edge's src never equals the real file Symbol's id and dangles (a shadow id). Same class as INV-ronuf / INV-movor / INV-bahov, which fixed the non-canonical file id in websocket / js_module / vue_component.\n\nFound by the WI-latup derived_from sweep (verdict group 5).\n\nFIX SHAPE: `make_file_id(sym.language, rel_path)`; add a fixture test asserting the edge src is an existing node id. Check the sibling `wasm_import` id at ~line 272 (`0-0:{import_name}:wasm_import`) against the node-id grammar (ADR-0036) while there."  # 3e1d
     fields: {}  # 3e1d
+- op: update  # b0a3
+  at: '2026-10-22T15:56:09Z'  # b0a3
+  by: agent  # b0a3
+  actor: jgstern_agent  # b0a3
+  clock: 2  # b0a3
+  nonce: b0a3  # b0a3
+  set:  # b0a3
+    status: done  # b0a3
+- op: discuss  # d714
+  at: '2026-10-22T15:56:09Z'  # d714
+  by: agent  # d714
+  actor: jgstern_agent  # d714
+  clock: 3  # d714
+  nonce: d714  # d714
+  message: "Fixed in 2cb1073bab (dev). The wasm-load imports edge's src is the existing file node, else make_file_id(lang, path) (1-1, not 0-0). The import stand-in is make_symbol_id(host, rel, 0, 0, '<name>-wasm_import', 'import'), so its kind slot equals its kind; the module id is wasm:<ref>:0-0:module:module. Live repro on dev 3a75002d27: Cargo cdylib with #[wasm_bindgen] pub fn greet, web/app.js importing greet from ../pkg/my_module, web/loader.js calling WebAssembly.instantiateStreaming(fetch('add.wasm')); hypergumbo run, survey.json. Results: imports javascript:web/loader.js:1-1:file:file -> wasm:add.wasm:0-0:module:module (src and dst both nodes); calls javascript:web/app.js:0-0:greet-wasm_import:import -> rust:src/lib.rs:4-6:greet:function (both nodes; stand-in kind slot 'import' == kind 'import'). Zero ids anywhere end in :0-0:file:file."  # d714

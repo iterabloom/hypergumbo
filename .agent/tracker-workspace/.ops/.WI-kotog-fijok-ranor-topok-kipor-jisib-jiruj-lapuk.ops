@@ -22,3 +22,26 @@
     pr_ref:  # cc7d
     description: "Wire mypy invocation into the pre-commit hook script (.githooks or scripts/install-hooks). Initial phase: warning-only output to stderr; don't fail the commit. Transition to blocking once W4 (strict mode) is clean. Aim for IDE-style fast feedback via dmypy (W10) rather than full mypy on every commit."  # cc7d
     fields: {}  # cc7d
+- op: discuss  # 75f1
+  at: '2026-11-01T10:55:49Z'  # 75f1
+  by: agent  # 75f1
+  actor: jgstern_agent  # 75f1
+  clock: 2  # 75f1
+  nonce: 75f1  # 75f1
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at 100b6fbb6e: the W4 precondition is met (WI-rokup done 2026-07-30), the CI mypy job is blocking (ci.yml:247, WI-rabum done), and smart-test runs check-mypy-ratchet before pytest and refuses to test on a breach (0603296456). .githooks/pre-commit still contains no mypy call and dmypy does not exist. The warning-then-blocking phasing is moot; only the commit-time question (governance file) remains. MECHANISM: type gate runs at test time and in CI but not at commit time. SHARES MECHANISM WITH: WI-porum."  # 75f1
+- op: update  # b7a0
+  at: '2026-11-01T10:55:49Z'  # b7a0
+  by: agent  # b7a0
+  actor: jgstern_agent  # b7a0
+  clock: 3  # b7a0
+  nonce: b7a0  # b7a0
+  set:  # b7a0
+    title: "mypy: decide whether .githooks/pre-commit should also run the strict ratchet (via dmypy for speed); CI and smart-test already block on it"  # b7a0
+- op: update  # 9711
+  at: '2026-11-01T10:55:49Z'  # 9711
+  by: agent  # 9711
+  actor: jgstern_agent  # 9711
+  clock: 4  # 9711
+  nonce: '9711'  # 9711
+  set:  # 9711
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at 100b6fbb6e: the W4 precondition is met (WI-rokup done 2026-07-30), the CI mypy job is blocking (ci.yml:247, WI-rabum done), and smart-test runs check-mypy-ratchet before pytest and refuses to test on a breach (0603296456). .githooks/pre-commit still contains no mypy call and dmypy does not exist. The warning-then-blocking phasing is moot; only the commit-time question (governance file) remains. (Original text below; the review entry in the thread has the evidence.)\n\nWire mypy invocation into the pre-commit hook script (.githooks or scripts/install-hooks). Initial phase: warning-only output to stderr; don't fail the commit. Transition to blocking once W4 (strict mode) is clean. Aim for IDE-style fast feedback via dmypy (W10) rather than full mypy on every commit."  # 9711

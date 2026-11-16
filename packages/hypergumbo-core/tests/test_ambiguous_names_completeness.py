@@ -1,30 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-mivud: ``ambiguous_names`` must be COMPLETE, not merely present.
 
-WI-razol made taint propagation honour ``ambiguous_names``; the mechanism works.
-INV-mivud is about the LIST — a short name that is a catalogued primitive AND
-collides with a common non-IO builtin will be falsely matched on a bare
-unresolved call unless the list names it, and nothing checked completeness.
+Taint propagation honours ``ambiguous_names`` (WI-razol). This file is about
+the LIST: a short name that is a catalogued primitive AND collides with a
+common non-IO builtin will be falsely matched on a bare unresolved call unless
+the list names it.
 
-WHY THIS IS A DERIVED PROPERTY RATHER THAN SEVEN LITERALS. The list was
-hand-maintained, and hand-maintenance is precisely what left the gap: the item
-was filed for ``copy`` alone, and the campaign plan then generalised to "all
-seven shutil peers", which is wrong in BOTH directions — ``copytree`` /
-``rmtree`` / ``make_archive`` collide with nothing and must stay matchable,
-while five Django ORM names that do collide (``all``, ``count``, ``filter``,
-``update``, ``values``) were missed entirely. A literal list would go stale the
-next time a primitive is added; this asserts the rule instead, so a new
-colliding primitive fails CI on the day it lands.
+WHY THIS IS A DERIVED PROPERTY RATHER THAN LITERALS. A hand-maintained list
+goes wrong in BOTH directions: ``copytree`` / ``rmtree`` / ``make_archive``
+collide with nothing and must stay matchable, while Django ORM names that do
+collide (``all``, ``count``, ``filter``, ``update``, ``values``) are easy to
+miss. A literal list would go stale the next time a primitive is added; this
+asserts the rule instead, so a new colliding primitive fails CI on the day it
+lands.
 
-MEASURED EXPOSURE, AND THE HONEST LIMIT. On a 9-repo cohort, 1509 python
-unresolved taint call edges carry one of these seven names — the shape is
-abundant, not rare. But 1505 of the 1509 are METHOD-form, which
-io-boundary:F3's kind-aware gate already suppresses, and the remaining 4 carry
-disambiguating module hints. So this change moves ZERO flows on that cohort and
-is prevention rather than a measured improvement. That is stated here rather
-than left for someone to discover: the residual hole is the FUNCTION-form bare
-call with no module hint, which is real (verified in isolation below) but which
-python's analyzer rarely produces because it emits ``call_construct``.
+THE HONEST LIMIT. Most unresolved python taint call edges carrying these names
+are METHOD-form, which io-boundary:F3's kind-aware gate already suppresses, or
+carry disambiguating module hints. The residual hole the list closes is the
+FUNCTION-form bare call with no module hint, which is real (verified in
+isolation below) but which python's analyzer rarely produces because it emits
+``call_construct``. This is prevention rather than a measured improvement.
 """
 
 from __future__ import annotations
@@ -93,9 +88,8 @@ class TestAmbiguousNamesCompleteness:
         """The other direction: over-suppression costs real recall.
 
         ``copytree``/``rmtree``/``make_archive`` collide with nothing. Adding
-        them — which the campaign plan proposed as "all seven shutil peers" —
-        would suppress true positives for no benefit, so the rule must not be
-        read as "suppress every shutil name".
+        them would suppress true positives for no benefit, so the rule must
+        not be read as "suppress every shutil name".
         """
         amb = set(catalog.ambiguous_names_for_language("python"))
         for distinctive in ("copytree", "rmtree", "make_archive", "unpack_archive"):
@@ -112,9 +106,8 @@ class TestTheFiledReproIsClosed:
         """The filed case: ``python:external:0-0:copy:...`` matched shutil.copy.
 
         Both forms that reach the ambiguous_names branch are asserted. The
-        method form was already handled by io-boundary:F3's kind-aware gate;
-        the FUNCTION form and the meta-absent form were not, which is the hole
-        this closes and which the item's own discussion left unresolved.
+        method form is also caught by io-boundary:F3's kind-aware gate; the
+        FUNCTION form and the meta-absent form rely on ambiguous_names alone.
         """
         idx = _build_callee_index(catalog.sinks_for_language("python"))
         amb = catalog.ambiguous_names_for_language("python")
@@ -132,8 +125,8 @@ class TestTheFiledReproIsClosed:
         """Non-destructiveness (L57): suppression must not cost the real case.
 
         ``ambiguous_names`` is consulted only when there is no usable module
-        hint. An edge that names ``shutil`` must still match, or this change
-        traded a false positive for a false negative.
+        hint. An edge that names ``shutil`` must still match, or suppression
+        would trade a false positive for a false negative.
         """
         idx = _build_callee_index(catalog.sinks_for_language("python"))
         amb = catalog.ambiguous_names_for_language("python")
@@ -147,11 +140,10 @@ class TestTheFiledReproIsClosed:
 class TestBuiltinsRowsKeepTheirHint:
     """INV-bofab: the builtins rows are suppressed bare and matched hinted.
 
-    The six rows added when ``builtins`` was enumerated (``print``,
-    ``breakpoint``, ``copyright``, ``credits``, ``license``, ``help``) are
-    builtins BY CONSTRUCTION, so the completeness rule above puts each short
-    name in ``ambiguous_names`` -- the test at the top of this file flagged
-    all six on the day they landed. That must cost nothing on the production
+    The ``builtins`` catalogue rows (``print``, ``breakpoint``,
+    ``copyright``, ``credits``, ``license``, ``help``) are builtins BY
+    CONSTRUCTION, so the completeness rule above puts each short name in
+    ``ambiguous_names``. That must cost nothing on the production
     path: every edge INV-foluz emits for a bare builtin call carries
     ``builtins`` in the module slot, and suppression is consulted only when
     there is no usable hint. Both directions are asserted, on the taint index

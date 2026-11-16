@@ -122,7 +122,7 @@ def _find_enclosing_function(
         if current.type == "fn":
             name = _get_function_name(current)
             if name:
-                return make_symbol_id("fennel", rel_path, current.start_point[0]+1, current.end_point[0]+1, name, "fn")
+                return make_symbol_id("fennel", rel_path, current.start_point[0]+1, current.end_point[0]+1, name, "function")
         current = current.parent
     return None  # pragma: no cover
 
@@ -196,7 +196,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
                 signature = f"(fn {name} [{' '.join(params)}] ...)"
 
                 sym = Symbol(
-                    id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "fn"),
+                    id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "function"),
                     stable_id=self.compute_stable_id(
                         node, kind="fn", name=name,
                         file_stable_id=file_stable_id,
@@ -230,7 +230,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
             name = _get_local_name(node)
             if name:
                 sym = Symbol(
-                    id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "var"),
+                    id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "variable"),
                     stable_id=self.compute_stable_id(
                         node, kind="var", name=name,
                         file_stable_id=file_stable_id,

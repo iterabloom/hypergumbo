@@ -100,14 +100,9 @@ fs_read:
       - useLines
       - forEachLine
     notes: "Kotlin 1.5+ kotlin.io.path.* extensions"
-  - module: kotlin.io.FilesKt
-    methods:
-      - readText
-      - readLines
-      - readBytes
-      - forEachLine
-      - useLines
-    notes: "kotlin.io public top-level (compiler-emitted FilesKt receiver)"
+  # kotlin.io.FilesKt is NOT rowed (WI-ziviv): it is the compiler-emitted JVM
+  # facade for the top-level extensions, no Kotlin value has that type, and
+  # File(p).readText() reaches the java.io.File rows above. Nothing emitted it.
 
 # ---------------------------------------------------------------------------
 # Filesystem write — Kotlin extension functions on java.io.File / Path

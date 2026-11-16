@@ -1,0 +1,28 @@
+- op: create  # 72df
+  at: '2026-11-16T04:58:24Z'  # 72df
+  by: agent  # 72df
+  actor: jgstern_agent  # 72df
+  clock: 1  # 72df
+  nonce: 72df  # 72df
+  data:  # 72df
+    kind: work_item  # 72df
+    title: "About 40 hand-built edge endpoints remain in 23 analyzer and linker files, and check-id-construction does not read src=/dst="  # 72df
+    status: todo_hard  # 72df
+    priority: 3  # 72df
+    parent:  # 72df
+    tags:  # 72df
+    - id_format  # 72df
+    - analysis_quality  # 72df
+    isbefore: []  # 72df
+    duplicate_of: []  # 72df
+    not_duplicate_of: []  # 72df
+    pr_ref:  # 72df
+    description: "WHAT. PR #2198 fixed the non-id edge endpoints of 15 analyzers. A throwaway AST sweep over Edge(src=/dst=) expressions found more, none verified by fixture: linkers/pyffi.py:413, linkers/ruby_ffi.py:274, fortran.py:881,920, hlsl.py:272, latex.py:286,299,326,339,350,378, matlab.py:283, meson.py:358, nix.py:499,500,529, puppet.py:434, purescript.py:549, r_lang.py:488,490, racket.py:434, robot.py:472,473,547, scheme.py:365, gleam.py:290,291, odin.py:306,307, prisma.py:311, twig.py:178,233,284, v_lang.py:516,517, verilog.py (the external module dst), vhdl.py:319, powershell.py:223,253, xml_config.py:251 (line numbers as of dev 2e41d7d686). The sweep cannot see an endpoint passed through a parameter, so the list is a lower bound.\n\nASK. Verify each with a fixture, fix with analyze/edge_target.py's helpers, and extend scripts/check-id-construction to edge endpoints so the next one is caught statically. The verilog/vhdl external module id (verilog:external:<type>:module) is hashed into the stand-in's stable id: fixing its shape changes stand-in ids. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 72df
+    fields: {}  # 72df
+- op: discuss  # c69b
+  at: '2026-11-16T11:46:44Z'  # c69b
+  by: agent  # c69b
+  actor: jgstern_agent  # c69b
+  clock: 2  # c69b
+  nonce: c69b  # c69b
+  message: "Measured 2026-11-16 on dev a35aeb56aa (stableid v15), 45 trees with --include-docs (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/fleet_idformat.txt): 26 nodes with an `<unknown>` path slot remain, by producer: latex 19 on sqlalchemy's docs (`amsmath:<unknown>:0-0:amsmath:external_symbol`: the package name sits in the lang slot), robot 4 on harbor tests (`robot:<unknown>:0-0:resource:external_symbol`, and one with an empty name slot), meson `subdir` 2 (meson, git-gui), fortran `external` 1 (meson). Seen on a fixture: twig `include('x.twig')` -> `twig:<unknown>:0-0:template:external_symbol`. latex.py, robot.py, meson.py and fortran.py are in this item's list; twig is not."  # c69b

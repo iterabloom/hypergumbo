@@ -1,0 +1,44 @@
+- op: create  # 6745
+  at: '2026-11-10T21:00:39Z'  # 6745
+  by: agent  # 6745
+  actor: jgstern_agent  # 6745
+  clock: 1  # 6745
+  nonce: '6745'  # 6745
+  data:  # 6745
+    kind: work_item  # 6745
+    title: "Per-function static test selector: seed hypergumbo's reverse slice with only the changed blocks and answer in test functions, falling back to file-level across unresolved/dynamic edges; score it against coverage on the WI-damom test-bed"  # 6745
+    status: todo_soft  # 6745
+    priority: 3  # 6745
+    parent:  # 6745
+    tags:  # 6745
+    - smart_test  # 6745
+    - ci_infrastructure  # 6745
+    - dogfooding  # 6745
+    isbefore: []  # 6745
+    duplicate_of: []  # 6745
+    not_duplicate_of: []  # 6745
+    pr_ref:  # 6745
+    description: "A static, per-function test selector built on hypergumbo's own call graph, scored on the WI-damom test-bed against coverage-directed selection (WI-gapos) and today's file-level slice.\n\nTODAY. smart-test's static selection is already a hypergumbo reverse slice: `hypergumbo slice --files <changed>` \"finds all symbols in these files and performs reverse slice to identify dependent files\". Seeding with ALL symbols of a changed file and answering in FILES makes it file-level twice over: a one-line edit to one io_boundary.py function selects every file that reaches any io_boundary.py symbol, and then every test file mapped to those files.\n\nTHE CHANGE. Seed the reverse slice with only the CHANGED blocks (block_hash.py's per-block digests already identify them: digest moved, or block vanished/renamed per selection_index.changed_blocks), and answer in test FUNCTIONS (or test files containing a reaching test function) rather than dependent source files.\n\nWHY BOTHER WHEN COVERAGE EXISTS. Coverage is the stronger signal locally, but it needs history:\n1. CI has no local selection index, so a per-function CI manifest can only come from a static selector. (Narrowing the CI manifest still needs owner sign-off: the owner's 2026-08-16 option A on WI-kuliv / WI-bolot kept it static and file-level.)\n2. Cold start and new tests: no coverage history yet; the graph knows what a test calls as soon as it is written.\n3. Cross-check on the index: a test the graph says reaches a changed block but the index never observed running it suggests a stale index — keep the test, refresh the index.\n4. Dogfooding: every test the oracle says must run that the graph misses is a hypergumbo call-graph bug with a ready-made repro.\nNOT a fix for the ~45% of wall-clock the index cannot speak about (measure-narrowing-headroom.py): that is 15.9% producing no coverage rows (tracker package outside COV_PATHS; subprocess and scripts/ tests leave no in-process trace) plus tests never run locally. The direct fixes are subprocess coverage (COVERAGE_PROCESS_START), adding the tracker package to COV_PATHS, and index freshness; a CLI-subprocess test reaches nearly everything in the graph anyway.\n\nSOUNDNESS RULE (the hard part). A missing edge here drops a test, the one unacceptable outcome. Python hides callers from a static graph through registries, registration decorators, dispatch tables, string lookups (getattr; the `explain` edge-type lookup from WI-kuliv), pytest fixtures bound by parameter name, monkeypatch, parametrize over function objects, import-time code, and YAML catalogues that change behaviour with no code change. So: select per function only when EVERY reverse path from a test to the changed block is resolved and above a confidence floor; if any path crosses an unresolved or low-confidence edge, or the changed function is referenced from a dispatch table / registry, fall back to the file-level rule for that file. hypergumbo already records edge resolution and confidence, so the check is cheap; how often it falls back on hypergumbo's own code (likely often in the linkers and all_analyzers) is unmeasured.\n\nDone when: the selector runs on the WI-damom test-bed, its must/extra table sits beside the coverage selector's and the file-level baseline's, it drops no must-select test on any scripted edit, and the fallback rate on hypergumbo itself is measured (share of changed blocks that fall back, on a sample of recent commits)."  # 6745
+    fields: {}  # 6745
+- op: discuss  # 8cdf
+  at: '2026-11-11T01:13:24Z'  # 8cdf
+  by: agent  # 8cdf
+  actor: jgstern_agent  # 8cdf
+  clock: 2  # 8cdf
+  nonce: 8cdf  # 8cdf
+  message: "Owner decision 2026-11-10: PARKED. Local narrowing stays opt-in; the goal of making it the default is dropped. Reasons, measured (details on WI-zajuv): with the WI-zunug fix (a), narrowing applies to about 18 percent of commits that touch package source (20 of 113; the rest change import-time code, where every importer must run); and 69 test files read the whole tree as text, about 50 of which match any one source file, a floor of roughly 3 minutes wall on 6 CPUs for any selector narrower than the import graph. Not reopened unless the whole-tree reader set gets built (option 1 on WI-zajuv: reads markers, verified per test). Alternatives filed: WI-fipuf (failure-first ordering), WI-nupit (four slow whole-tree tests). Applies here because a per-function static selector is also narrower than the import graph and would drop the same whole-tree readers."  # 8cdf
+- op: update  # 41c2
+  at: '2026-11-11T15:52:58Z'  # 41c2
+  by: agent  # 41c2
+  actor: jgstern_agent  # 41c2
+  clock: 3  # 41c2
+  nonce: 41c2  # 41c2
+  set:  # 41c2
+    status: wont_do  # 41c2
+- op: discuss  # 4661
+  at: '2026-11-11T15:52:58Z'  # 4661
+  by: agent  # 4661
+  actor: jgstern_agent  # 4661
+  clock: 4  # 4661
+  nonce: '4661'  # 4661
+  message: "Owner decision 2026-11-11: COMPLETE FOR THE FORESEEABLE FUTURE. Closed as wont_do (not done: nothing here was built). The per-function static selector is dropped with the rest of local narrowing; same measured reasons as WI-gapos (details on WI-zajuv). Reopen only if the owner asks. The earlier technical trigger (someone builds a reliable map of which whole-tree text-reading tests depend on which source file) has no watcher, so it will not fire by itself."  # 4661

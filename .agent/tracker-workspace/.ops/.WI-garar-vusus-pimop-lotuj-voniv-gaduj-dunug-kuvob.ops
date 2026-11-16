@@ -67,3 +67,19 @@
   clock: 7  # 6993
   nonce: '6993'  # 6993
   message: "FOLLOW-UP 2026-09-09, not a reopen (this item is done and stays done). Its\nstage-2 HEADLINE PREDICTION -- the one measurement 0026 named as its own\nfalsifier and honoured when it failed -- is now SATISFIED, and the cause of the\nrefutation was confirmed to be the input rather than this fix.\n\n0026 predicted that typing `self.<property>` would move AFNetworking's nine\nnet_recv rows, all NSURLSession, all reached through `self.session`. net_recv\nstayed 0, and the diagnosis filed as WI-lafom was that AFURLSessionManager.h is\none of the files tree-sitter cannot parse. WI-lafom (PR #872) fixed the parse.\nRe-measured on the shipped tree, AFNetworking:\n\n    primitives reached via objc edges   12 -> 21\n    net_recv                             0 ->  2\n    net_send  4 -> 8    ipc_send  0 -> 7    ipc_recv  11 -> 14\n\nSix NSURLSession rows now reach: dataTaskWithRequest:, dataTaskWithURL:,\ndownloadTaskWithRequest:, uploadTaskWithRequest:fromData:,\nuploadTaskWithRequest:fromFile:, uploadTaskWithStreamedRequest:. These are\n`self.session` receivers typed from their @property declaration -- THIS item's\nmechanism -- reaching method-kind catalogue rows through the F3 gate.\n\nWORTH RECORDING BECAUSE THE FIRST DIAGNOSIS WAS ONLY HALF RIGHT: recovering the\nHEADER is not what did it. With the parse fix's first two rules the `session`\nproperty exists as a node and net_recv is STILL 0, because the CALLS live in\nAFURLSessionManager.m, which needed a third rule of its own. The blocker moved\nfrom the .h to the .m and had to be found a second time."  # 6993
+- op: update  # 572b
+  at: '2026-11-02T10:19:37Z'  # 572b
+  by: agent  # 572b
+  actor: jgstern_agent  # 572b
+  clock: 8  # 572b
+  nonce: 572b  # 572b
+  set: {}  # 572b
+  remove:  # 572b
+    tags: [awaits_bakeoff_validation]  # 572b
+- op: discuss  # fdd4
+  at: '2026-11-02T10:19:37Z'  # fdd4
+  by: agent  # fdd4
+  actor: jgstern_agent  # fdd4
+  clock: 9  # fdd4
+  nonce: fdd4  # fdd4
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). AFNetworking: measured objc primitives incl. net_recv NSURLSession.dataTaskWithURL: / downloadTaskWithRequest: and 4 NSURLSession net_send rows (recorded net_recv 0 -> 2). Tag stripped."  # fdd4

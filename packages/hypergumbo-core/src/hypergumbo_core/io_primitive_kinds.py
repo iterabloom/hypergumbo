@@ -74,7 +74,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Iterable
+from typing import Final
 
 
 KIND_FUNCTION: Final[str] = "function"
@@ -186,40 +186,11 @@ class NonconformingRow:
     blocked_by: tuple[str, ...]
 
 
-def _rows(language: str, module: str, names: Iterable[str],
-          blocked_by: tuple[str, ...]) -> tuple[NonconformingRow, ...]:
-    return tuple(NonconformingRow(language, module, n, blocked_by) for n in names)
-
-
 KNOWN_NONCONFORMING_ROWS: Final[tuple[NonconformingRow, ...]] = (
-    # No measured blocker; queued (WI-ziviv).
-    *(NonconformingRow("swift", m, n, ("WI-ziviv",)) for m, n in (
-        ("Date", "now"), ("DispatchTime", "now"), ("ProcessInfo", "processInfo"),
-    )),
-    *(NonconformingRow("objc", m, n, ("WI-ziviv",)) for m, n in (
-        ("NSData", "dataWithContentsOfFile:"), ("NSData", "dataWithContentsOfFile:options:error:"),
-        ("NSData", "dataWithContentsOfURL:"), ("NSData", "dataWithContentsOfURL:options:error:"),
-        ("NSString", "stringWithContentsOfFile:encoding:error:"),
-        ("NSString", "stringWithContentsOfURL:encoding:error:"),
-        ("NSFileHandle", "fileHandleForReadingAtPath:"),
-        ("NSFileHandle", "fileHandleForReadingFromURL:error:"),
-        ("NSFileHandle", "fileHandleForUpdatingAtPath:"),
-        ("NSFileHandle", "fileHandleForUpdatingURL:error:"),
-        ("NSFileHandle", "fileHandleForWritingAtPath:"),
-        ("NSFileHandle", "fileHandleForWritingToURL:error:"),
-        ("NSInputStream", "inputStreamWithFileAtPath:"), ("NSInputStream", "inputStreamWithURL:"),
-        ("NSOutputStream", "outputStreamToFileAtPath:append:"),
-        ("NSMutableURLRequest", "requestWithURL:"),
-        ("NSURLConnection", "connectionWithRequest:delegate:"),
-        ("NSURLConnection", "sendAsynchronousRequest:queue:completionHandler:"),
-        ("NSURLConnection", "sendSynchronousRequest:returningResponse:error:"),
-        ("NSFetchRequest", "fetchRequestWithEntityName:"), ("NSDate", "date"),
-    )),
-    # Neither kind fits: no Kotlin value has type FilesKt, and
-    # `FilesKt.readText(f)` is not valid Kotlin -- the module string is wrong.
-    *_rows("kotlin", "kotlin.io.FilesKt", (
-        "forEachLine", "readBytes", "readLines", "readText", "useLines",
-    ), ("WI-ziviv",)),
+    # Empty since WI-ziviv (2026-10-28): the objc class methods and the swift
+    # statics were re-kinded, kotlin.io.FilesKt (a facade nothing emits) and
+    # NSMutableURLRequest (a request builder that sends nothing) were deleted,
+    # and NSFetchRequest fetchRequestWithEntityName: moved to db_compose.
 )
 
 

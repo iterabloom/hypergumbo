@@ -1,0 +1,5 @@
+from bedapp.beta import normalize
+
+
+def test_normalize_uppers():
+    assert normalize("  AbC ") == "ABC"

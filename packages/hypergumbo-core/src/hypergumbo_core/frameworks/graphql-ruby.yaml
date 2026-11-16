@@ -83,6 +83,3 @@ patterns:
   # graphql-ruby subscription class
   - concept: graphql_resolver
     base_class: "^GraphQL::Schema::Subscription$"
-
-linkers:
-  - graphql_resolver

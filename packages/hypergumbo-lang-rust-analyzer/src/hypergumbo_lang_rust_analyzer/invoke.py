@@ -58,6 +58,8 @@ import subprocess  # nosec B404 — required for rust-analyzer scip invocation
 from pathlib import Path
 from typing import Optional
 
+from hypergumbo_core.safety_zones import backend_index_rust_analyzer
+
 
 class RustAnalyzerError(Exception):
     """Base class for :func:`run_rust_analyzer_scip` failures."""
@@ -146,7 +148,10 @@ def run_rust_analyzer_scip(
 
     # resolved comes from shutil.which (or caller-supplied absolute
     # path); never shell=True; args are list-form.
-    run = runner if runner is not None else subprocess.run
+    # INV-tusos: the default launcher is the declared ``analyser_backend``
+    # zone wrapper, so the self-proof sees the launch; ``runner`` stays the
+    # test seam.
+    run = runner if runner is not None else backend_index_rust_analyzer
     cmd = [resolved, "scip", str(workspace)]
     try:
         completed = run(  # nosec B603

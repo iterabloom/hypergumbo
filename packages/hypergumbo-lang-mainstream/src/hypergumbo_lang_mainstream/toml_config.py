@@ -16,7 +16,9 @@ The analyzer produces Symbols for:
 - Dependencies (Rust crates, Python packages) as ``kind="dependency"``.
   Cargo dev / build dependencies fold to the same kind, with
   ``meta["dependency_scope"]`` discriminating (per WI-limas /
-  ADR-0027 audit-findings 0006).
+  ADR-0027 audit-findings 0006). A ``pyproject.toml`` declares dependencies
+  in many tables (PEP 621, PEP 735, ``[build-system]``, Poetry, PDM, uv,
+  Hatch); see "pyproject dependency tables" below.
 - Cargo array-of-tables targets: ``[[bin]]``, ``[[test]]``,
   ``[[example]]``, ``[[bench]]``
 - Library configuration ([lib])
@@ -52,25 +54,69 @@ Why This Design
   mints ``overload_arity.scoped_table_stable_id`` scoped by its table
   (``dev``, ``build``, a ``target.'cfg(..)'`` table), the backstop's value for
   ``[dependencies]`` (:func:`_extract_cargo_dependencies`; INV-punig), and a
-  pyproject dependency keeps the backstop's table formula.
+  pyproject dependency is scoped by its table too, as described next.
+
+pyproject dependency tables
+---------------------------
+The tables read are ``py_deps.PYPROJECT_DEPENDENCY_TABLES``, the list
+``py_deps`` builds the import-directness manifest from, so the node reader and
+the manifest reader name the same tables. Each entry of each table is one
+node (:func:`_extract_pyproject_dependencies`):
+
+- The key path of every pair is computed from the syntax tree, so a table is
+  found however it is spelled: ``[project.optional-dependencies]`` with
+  ``docs = [...]``, ``optional-dependencies.docs = [...]`` under
+  ``[project]``, or ``optional-dependencies = {docs = [...]}``.
+- The role of the table is ``meta["dependency_scope"]``: absent for a runtime
+  dependency (``[project].dependencies``, ``[tool.poetry.dependencies]``),
+  ``optional`` for an extra and for a Poetry entry with ``optional = true``,
+  ``dev`` for a PEP 735 / Poetry / PDM / uv group and a Hatch environment,
+  ``build`` for ``[build-system].requires``. ``dev`` and ``build`` are the
+  values the Cargo tables and ``json_config``'s ``devDependencies`` use;
+  ``optional`` is new with these tables.
+- Identity: ``requests`` in ``[project].dependencies`` and in an extra are two
+  declarations, each with its own span and constraint (ADR-0035 §4), so they
+  are two nodes, and the table is the scope that tells them apart (ADR-0035
+  §1; the rule Cargo's and package.json's groups follow, INV-punig). The
+  stable_id is ``overload_arity.scoped_table_stable_id`` scoped by the
+  table's key path (``project/optional-dependencies/docs``). One table is not
+  scoped: ``[project].dependencies``, whose nodes take the backstop's
+  unscoped value, the one they had when it was the only table read. Leaving
+  the other tables unscoped would tie them with it, and the per-file split
+  pass gives the unsuffixed id to whichever tied node comes first in the
+  file: a ``[build-system]`` or ``[dependency-groups]`` table above
+  ``[project]`` would take the runtime node's id.
+- The name of a ``[project].dependencies`` node is still cut at the first
+  ``.`` (``zope.interface`` is named ``zope``); that name is in the node's
+  stable_id, so correcting it moves the id. Every other table uses
+  ``py_deps.pep508_name``, which keeps the whole name.
 """
 
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     is_table_kind,
     iter_tree,
+    make_manifest_target_dst,
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
+
+from hypergumbo_lang_mainstream.py_deps import (
+    PYPROJECT_DEPENDENCY_TABLES,
+    SHAPE_REQUIREMENTS,
+    is_interpreter_constraint,
+    pep508_name,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import tree_sitter
@@ -82,8 +128,8 @@ def _make_toml_symbol_id(
     """Generate a location-based symbol ID for TOML symbols.
 
     Uses the standard ``lang:path:start-end:name:kind`` format so that
-    symbol IDs are human-readable and resolvable by ``slice --entry``.
-    Previously used sha256 hashes, which made compact output IDs opaque.
+    symbol IDs are human-readable and resolvable by ``slice --entry``
+    (a hash would make compact output IDs opaque).
     """
     return make_symbol_id("toml", path, start_line, end_line, name, kind)
 
@@ -107,9 +153,10 @@ def _get_key_text(node: "tree_sitter.Node") -> str:
 
     tree-sitter-toml nests a dotted key of three or more parts
     (``a.b.c`` is ``dotted_key(dotted_key(a, b), c)``), so the inner
-    ``dotted_key`` is joined too: skipping it named ``[tool.poetry.dependencies]``
-    and ``[target.'cfg(windows)'.dependencies]`` both ``dependencies``, one
-    name under two different parents, whose ids tied (INV-punig).
+    ``dotted_key`` is joined too; skipping it would name both
+    ``[tool.poetry.dependencies]`` and ``[target.'cfg(windows)'.dependencies]``
+    ``dependencies``, one name under two different parents, and their ids
+    would tie (INV-punig).
     """
     if node.type == "bare_key":
         return node.text.decode("utf-8", errors="replace") if node.text else ""
@@ -124,6 +171,33 @@ def _get_key_text(node: "tree_sitter.Node") -> str:
                 parts.append(_get_key_text(child))
         return ".".join(parts)
     return node.text.decode("utf-8", errors="replace") if node.text else ""  # pragma: no cover
+
+
+_KEY_NODE_TYPES = ("bare_key", "quoted_key", "dotted_key")
+
+
+def _key_parts(node: "tree_sitter.Node") -> list[str]:
+    """The parts of a key node, one per segment.
+
+    ``a."b.c".d`` is three parts; :func:`_get_key_text` would join them into
+    a string that reads as four.
+    """
+    if node.type != "dotted_key":
+        return [_get_key_text(node)]
+    parts: list[str] = []
+    for child in node.children:
+        if child.type in _KEY_NODE_TYPES:
+            parts.extend(_key_parts(child))
+    return parts
+
+
+def _header_key_parts(node: "tree_sitter.Node") -> tuple[str, ...]:
+    """The key path a ``table`` or ``table_array_element`` header names."""
+    parts: list[str] = []
+    for child in node.children:
+        if child.type in _KEY_NODE_TYPES:
+            parts.extend(_key_parts(child))
+    return tuple(parts)
 
 
 def _get_string_value(node: "tree_sitter.Node | None") -> str:
@@ -169,7 +243,7 @@ def _find_pair_value(table_node: "tree_sitter.Node", key: str) -> str | None:
     return None  # pragma: no cover - key not found
 
 
-def _toml_stable_id(kind: str, name: str, rel_path: str) -> Optional[str]:
+def _toml_stable_id(kind: str, name: str, rel_path: str) -> Optional[StableId]:
     """The producer stable_id of a table-like symbol, or None for a table kind."""
     if is_table_kind(kind):
         return None
@@ -188,8 +262,15 @@ def _process_toml_tree(
     run_id: str,
 ) -> None:
     """Process a TOML AST tree iteratively and extract symbols and edges."""
+    # The (table, name) pairs of the name-keyed pyproject tables already
+    # emitted for this file (see _extract_pyproject_dependencies).
+    declared_names: set[tuple[tuple[str, ...], str]] = set()
     for node in iter_tree(root):
-        if node.type == "table":
+        if node.type == "document" and is_pyproject:
+            # Pairs above the first table header (``dependency-groups.test = [..]``).
+            _extract_pyproject_dependencies(node, rel_path, symbols, declared_names)
+
+        elif node.type == "table":
             table_name = _extract_table_name(node)
 
             # Determine kind based on table name
@@ -224,7 +305,7 @@ def _process_toml_tree(
                     id=symbol_id,
                     stable_id=_toml_stable_id(kind, name, rel_path),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind=kind,
                     name=name,
                     path=rel_path,
@@ -240,10 +321,10 @@ def _process_toml_tree(
             )
 
             # Process dependencies if this is a dependency table.
-            # WI-limas: dev-dependencies and build-dependencies fold to
-            # kind="dependency" + meta["dependency_scope"] = "dev" / "build".
-            # The bare "dev-dependency" / "build-dependency" symbol_kind
-            # values never landed in the canonical registry post-ADR-0027.
+            # dev-dependencies and build-dependencies use kind="dependency"
+            # with meta["dependency_scope"] = "dev" / "build"; the symbol-kind
+            # registry has no separate dev-/build-dependency kinds
+            # (WI-limas, ADR-0027).
             if is_cargo and table_name in (
                 "dependencies",
                 "dev-dependencies",
@@ -265,13 +346,12 @@ def _process_toml_tree(
                     node, rel_path, symbols, content, None,
                     id_scope=table_name[: -len(".dependencies")],
                 )
-            elif is_pyproject and table_name == "project":
-                _extract_pyproject_dependencies(node, rel_path, symbols, content)
-            # Process pyproject.toml [project.scripts] and [project.gui-scripts]
-            elif is_pyproject and table_name in (
-                "project.scripts", "project.gui-scripts",
-            ):
-                _extract_pyproject_scripts(node, rel_path, symbols, edges, content, run_id=run_id)
+            elif is_pyproject:
+                _extract_pyproject_dependencies(node, rel_path, symbols, declared_names)
+                # Process pyproject.toml [project.scripts] and [project.gui-scripts]
+                if table_name in ("project.scripts", "project.gui-scripts"):
+                    _extract_pyproject_scripts(
+                        node, rel_path, symbols, edges, content, run_id=run_id)
 
         elif node.type == "table_array_element":
             table_name = _extract_table_name(node)
@@ -320,7 +400,7 @@ def _process_toml_tree(
                     id=symbol_id,
                     stable_id=_toml_stable_id(kind, name, rel_path),
                     shape_id=None,
-                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                    # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                     kind=kind,
                     name=name,
                     path=rel_path,
@@ -336,26 +416,31 @@ def _process_toml_tree(
                 )
             )
 
+            if is_pyproject:
+                # ``[[tool.poetry.dependencies.foo]]``: one constraint of several.
+                _extract_pyproject_dependencies(node, rel_path, symbols, declared_names)
+
             # Create edge from build target to source file.
             #
-            # INV-zatug: declare the pathway. Without an explicit
-            # evidence_type this inherited Edge.create's ``ast_call_direct``
-            # default — "inferred from a direct (non-method) call site" — which
-            # a Cargo [[bin]]/[[test]] target naming its source path plainly is
-            # not, and which then had the edge judged against the call-site
-            # band. Confidence is dropped so the ir.py chokepoint derives it
-            # from the pathway seed; the old 1.0 literal breached the reserved
-            # ceiling (no detection method is certain).
+            # The edge declares the build_target_main pathway: a Cargo
+            # [[bin]]/[[test]] target naming its source path is not a call
+            # site, so Edge.create's ``ast_call_direct`` default would judge
+            # it against the call-site band. No confidence is passed; the
+            # ir.py chokepoint derives it from the pathway seed, since no
+            # detection method is certain (INV-zatug).
             if target_path:
                 edges.append(
                     Edge.create(
                         src=symbol_id,
-                        dst=target_path,
+                        # The target file's node id; the linker reads the
+                        # path from meta["target_path"] (WI-bufar-pokam).
+                        dst=make_manifest_target_dst(rel_path, target_path, "rust"),
                         edge_type="defines_target",
                         line=start_line,
                         evidence_type="build_target_main",
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta={"target_path": target_path},
                     )
                 )
 
@@ -483,13 +568,11 @@ def _extract_cargo_dependencies(
 ) -> None:
     """Extract dependencies from a Cargo.toml dependencies table.
 
-    ``scope`` carries the axis-meta value that the YAML
-    ``config-conventions.yaml`` rules consume via ``meta_match`` — the
-    Wave 6 fold collapsed kind="dev-dependency" / "build-dependency" onto
-    a single canonical kind="dependency" with ``meta["dependency_scope"]``
-    naming the table the entry lives in (``dev``, ``build``, or absent
-    for production dependencies). WI-limas wired the producer side here
-    so the YAML side could migrate off the legacy bare-kind regexes.
+    ``scope`` becomes ``meta["dependency_scope"]``, naming the table the
+    entry lives in (``dev``, ``build``, or absent for production
+    dependencies). Every Cargo dependency has kind="dependency", so the
+    ``config-conventions.yaml`` rules tell dev and build dependencies apart
+    by this meta value via ``meta_match`` (WI-limas).
 
     The stable_id is ``overload_arity.scoped_table_stable_id`` scoped by the
     table the entry lives in (INV-punig, scheme v9): ``scope`` for
@@ -521,7 +604,7 @@ def _extract_cargo_dependencies(
                             scope=(table,) if table else (),
                         ),
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="dependency",
                         name=dep_name,
                         path=rel_path,
@@ -556,57 +639,167 @@ def _parse_pyproject_dependency(dep_str: str) -> str:
     return dep_str.strip()  # pragma: no cover - fallback
 
 
-def _extract_pyproject_dependencies(
-    table_node: "tree_sitter.Node", rel_path: str, symbols: list[Symbol],
-    content: str,
-) -> None:
-    """Extract dependencies from a pyproject.toml [project] table.
+#: The one pyproject table whose nodes keep the backstop's unscoped stable_id
+#: and the name parse they had when it was the only table read (module
+#: docstring, "pyproject dependency tables").
+_UNSCOPED_PYPROJECT_TABLE = ("project", "dependencies")
 
-    Looks for:
-    - dependencies = ["pkg1", "pkg2>=1.0"]
+#: One step of the way from a table header down to a pair: the length of the
+#: key path once this node's keys are added, and the node.
+_PathStep = tuple[int, "tree_sitter.Node"]
+
+#: A pair (or a table header) of a pyproject: its key path from the document
+#: root, its value node (None for a header), and the steps that lead to it.
+_PyprojectEntry = tuple[
+    tuple[str, ...], Optional["tree_sitter.Node"], tuple[_PathStep, ...],
+]
+
+
+@dataclass
+class _DeclaredDependency:
+    """One entry of a pyproject dependency table, before it becomes a node."""
+
+    name: str
+    node: "tree_sitter.Node"
+    #: Key path of the declaring table (``project/optional-dependencies/docs``).
+    table_path: tuple[str, ...]
+    #: ``meta["dependency_scope"]``; None for a runtime dependency.
+    scope: Optional[str]
+
+
+def _iter_pyproject_entries(
+    container: "tree_sitter.Node", path: tuple[str, ...], steps: tuple[_PathStep, ...],
+) -> Iterator[_PyprojectEntry]:
+    """Every pair under ``container`` as ``(key path, value node, steps)``.
+
+    ``path`` is the key path of ``container`` itself. An inline table is
+    walked into, so ``optional-dependencies = {docs = [...]}`` yields the pair
+    and then ``docs`` under it, with the same key path the
+    ``[project.optional-dependencies]`` spelling gives.
     """
-    for child in table_node.children:
-        if child.type == "pair":
-            pair_key = None
-            pair_value = None
-            for pair_child in child.children:
-                if pair_child.type in ("bare_key", "quoted_key", "dotted_key"):
-                    pair_key = _get_key_text(pair_child)
-                elif pair_child.type == "array":
-                    pair_value = pair_child
+    for child in container.children:
+        if child.type != "pair":
+            continue
+        key_parts: list[str] = []
+        value = None
+        for pair_child in child.children:
+            if pair_child.type in _KEY_NODE_TYPES:
+                key_parts = _key_parts(pair_child)
+            elif pair_child.is_named:
+                value = pair_child
+        full = (*path, *key_parts)
+        here = (*steps, (len(full), child))
+        yield full, value, here
+        if value is not None and value.type == "inline_table":
+            yield from _iter_pyproject_entries(value, full, here)
 
-            if pair_key == "dependencies" and pair_value is not None:
-                # Extract each dependency from the array
-                for elem in pair_value.children:
-                    if elem.type == "string":
-                        dep_str = _get_string_value(elem)
-                        dep_name = _parse_pyproject_dependency(dep_str)
 
-                        start_line = elem.start_point[0] + 1
-                        end_line = elem.end_point[0] + 1
-                        symbol_id = _make_toml_symbol_id(
-                            rel_path, start_line, end_line, dep_name, "dependency"
-                        )
+def _extract_pyproject_dependencies(
+    container: "tree_sitter.Node", rel_path: str, symbols: list[Symbol],
+    declared_names: set[tuple[tuple[str, ...], str]],
+) -> None:
+    """Emit one dependency node per entry a pyproject table declares.
 
-                        symbols.append(
-                            Symbol(
-                                id=symbol_id,
-                                stable_id=None,
-                                shape_id=None,
-                                # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
-                                kind="dependency",
-                                name=dep_name,
-                                path=rel_path,
-                                language="toml",
-                                span=Span(
-                                    start_line=start_line,
-                                    start_col=elem.start_point[1],
-                                    end_line=end_line,
-                                    end_col=elem.end_point[1],
-                                ),
-                                origin=PASS_ID,
-                            )
-                        )
+    ``container`` is a ``table``, a ``table_array_element`` or the document
+    (for the pairs above the first header). Its pairs are matched by key path
+    against ``py_deps.PYPROJECT_DEPENDENCY_TABLES``:
+
+    - a requirements table (an array of PEP 508 strings) emits a node per
+      string element, spanning the element; an element that is not a string
+      (``{include-group = "x"}``) or names no package is skipped;
+    - a name-keyed table (Poetry) emits a node per key, spanning the node that
+      introduces the key: the pair ``foo = ...``, or the table
+      ``[tool.poetry.dependencies.foo]``. ``declared_names`` keeps the keys
+      already emitted for this file, because one key can be reached more than
+      once (``foo.version`` and ``foo.extras``; the elements of
+      ``[[tool.poetry.dependencies.foo]]``). ``python`` is the interpreter
+      constraint and is skipped.
+
+    ``meta["dependency_scope"]`` and the stable_id's scope are described in
+    the module docstring.
+    """
+    header = _header_key_parts(container)
+    # The header is an entry too: ``[tool.poetry.dependencies.foo]`` names
+    # ``foo`` before any of its pairs does (and when it has none).
+    header_steps: tuple[_PathStep, ...] = ((len(header), container),)
+    entries: list[_PyprojectEntry] = [
+        (header, None, header_steps),
+        *_iter_pyproject_entries(container, header, header_steps),
+    ]
+
+    declared: list[_DeclaredDependency] = []  # in file order
+    by_name: dict[tuple[tuple[str, ...], str], _DeclaredDependency] = {}
+    for path, value, steps in entries:
+        table = next((t for t in PYPROJECT_DEPENDENCY_TABLES if t.match(path)), None)
+        if table is None:
+            continue
+        depth = len(table.path)
+        if table.shape == SHAPE_REQUIREMENTS:
+            if len(path) != depth or value is None or value.type != "array":
+                continue
+            for elem in value.children:
+                if elem.type != "string":
+                    continue
+                requirement = _get_string_value(elem)
+                name = (
+                    _parse_pyproject_dependency(requirement)
+                    if path == _UNSCOPED_PYPROJECT_TABLE
+                    else pep508_name(requirement)
+                )
+                if name is not None:
+                    declared.append(_DeclaredDependency(name, elem, path, table.scope))
+        elif len(path) > depth and not is_interpreter_constraint(path[depth]):
+            key = (path[:depth], path[depth])
+            entry = by_name.get(key)
+            if entry is None and key not in declared_names:
+                declared_names.add(key)
+                node = next(n for length, n in steps if length > depth)
+                entry = by_name[key] = _DeclaredDependency(
+                    path[depth], node, path[:depth], table.scope)
+                declared.append(entry)
+            # Poetry: ``optional = true`` on a main-table entry makes it an
+            # extra's dependency, whichever way the entry is spelled.
+            if (
+                entry is not None
+                and table.scope is None
+                and path[depth + 1:] == ("optional",)
+                and value is not None
+                and value.type == "boolean"
+                and value.text == b"true"
+            ):
+                entry.scope = "optional"
+
+    for dep in declared:
+        name, node, table_path, scope = dep.name, dep.node, dep.table_path, dep.scope
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+        symbols.append(
+            Symbol(
+                id=_make_toml_symbol_id(rel_path, start_line, end_line, name, "dependency"),
+                stable_id=(
+                    None  # the backstop's table value, unscoped
+                    if table_path == _UNSCOPED_PYPROJECT_TABLE
+                    else scoped_table_stable_id(
+                        kind="dependency", lang="toml", path=rel_path, name=name,
+                        scope=table_path,
+                    )
+                ),
+                shape_id=None,
+                # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
+                kind="dependency",
+                name=name,
+                path=rel_path,
+                language="toml",
+                span=Span(
+                    start_line=start_line,
+                    start_col=node.start_point[1],
+                    end_line=end_line,
+                    end_col=node.end_point[1],
+                ),
+                origin=PASS_ID,
+                meta={"dependency_scope": scope} if scope else None,
+            )
+        )
 
 
 def _python_entry_point_to_path(entry_point: str) -> tuple[str, str] | None:
@@ -669,7 +862,7 @@ def _extract_pyproject_scripts(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
+                        # No canonical_name (name= carries it); the central post-pass stamps the fingerprint (ADR-0032).
                         kind="file",
                         name=script_name,
                         path=rel_path,
@@ -701,11 +894,10 @@ def _extract_pyproject_scripts(
                         target_path, target_func = parsed
                         module_dotted = entry_point.rsplit(":", 1)[0]
                         dst_id = f"python:{module_dotted}:0-0:{target_func}:unresolved"
-                        # INV-zatug: a [project.scripts] entry IS a build
-                        # target's main entry point, so declare that pathway
-                        # instead of inheriting the ast_call_direct default.
-                        # Confidence derives at the ir.py chokepoint (the 1.0
-                        # literal breached the reserved ceiling).
+                        # A [project.scripts] entry is a build target's main
+                        # entry point, so the edge declares build_target_main
+                        # rather than the ast_call_direct default. Confidence
+                        # derives at the ir.py chokepoint (INV-zatug).
                         edges.append(
                             Edge.create(
                                 src=symbol_id,

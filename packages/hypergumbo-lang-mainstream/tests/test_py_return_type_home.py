@@ -1,29 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-ribak: Python reads a callee's return type from its declared home.
+"""Python reads a callee's return type from its declared home.
 
-ADR-0058 declared the callable-signature axis and closed its consumer set:
 ``Symbol.signature`` is a DISPLAY string, and the facts inside it are read
-from their declared homes. ``py.py`` was the largest violator -- it parsed
-``assigned_class.signature`` to seed ``var_types``, which is how a Python
-variable gets a type at all, and therefore what feeds ``receiver_type_hint``
-and the method-call-recovery linker.
+from their declared homes (ADR-0058). A callee's declared return type is how a
+Python variable gets a type from ``c = make()``, and therefore what feeds
+``var_types``, ``receiver_type_hint`` and the method-call-recovery linker, so
+it must not be parsed out of the signature. (history: WI-ribak)
 
 THE HOME IS ``Symbol.meta["return_type"]`` -- the registered meta key
-(``axis_meta_keys.py:1082``) that java, luau and apex already populate, and
-whose sibling ``inferred_return_type`` names Python as an intended producer.
+(``axis_meta_keys.py``) that java, luau and apex also populate, and whose
+sibling ``inferred_return_type`` names Python as an intended producer.
 NOT ``FileAnalysis.method_return_types``: ``py.py`` has its OWN
-``FileAnalysis`` (py.py:2181), a different dataclass from the tree-sitter
-base's, and it never reaches the core linker that needs the fact.
-
-EQUIVALENCE WAS MEASURED, NOT ASSUMED: over 33,740 functions in this
-repository the AST-derived value and the old signature parse agreed on every
-one, 0 disagreements. WI-hopiz is why -- display-mode truncation preserves
-the return type rather than cutting it off.
+``FileAnalysis``, a different dataclass from the tree-sitter base's, and it
+never reaches the core linker that needs the fact.
 
 SPLIT OF RESPONSIBILITY. The producer records the declared type VERBATIM,
 including ``Optional[Foo]`` and ``list[Foo]``. The narrowness (simple
-identifiers only) is the CONSUMER's policy and is unchanged, so this move
-neither widens nor narrows what gets inferred.
+identifiers only) is the CONSUMER's policy.
 """
 from __future__ import annotations
 
@@ -76,8 +69,8 @@ class TestTheProducerStampsTheHome:
     def test_an_unannotated_function_has_NO_return_type_KEY(
         self, tmp_path: Path
     ) -> None:
-        # ABSENT, not empty. A missing key predates the instrument; a null
-        # value would claim the producer looked and found nothing.
+        # ABSENT, not empty: a null value would claim the producer looked and
+        # found nothing.
         syms = _symbols(
             tmp_path / "bare",
             "def make():\n"
@@ -113,7 +106,7 @@ class TestTheProducerStampsTheHome:
 
 
 class TestTheConsumerStillInfers:
-    """The behaviour py.py:5881 provided, preserved through the move."""
+    """A declared factory return type types the assigned variable."""
 
     def _edges(self, root: Path, source: str) -> list:
         root.mkdir(parents=True, exist_ok=True)
@@ -142,11 +135,11 @@ class TestTheConsumerStillInfers:
     def test_it_no_longer_depends_on_the_DISPLAY_STRING(
         self, tmp_path: Path
     ) -> None:
-        """The difference arm, and the whole point of the move.
+        """The difference arm.
 
-        Render every signature without its return type. Under the old code
-        the inference read that string and would find nothing; reading the
-        declared home, it is unaffected.
+        Render every signature without its return type. Inference that read
+        the display string would find nothing; reading the declared home, it
+        is unaffected.
         """
         real = analyze_python
 
@@ -168,12 +161,13 @@ class TestTheConsumerStillInfers:
 
 
 class TestAForwardReferenceIsStillATypeName:
-    """WI-fihun: ``-> "Client"`` names exactly the type it spells.
+    """``-> "Client"`` names exactly the type it spells.
 
-    ``ast.unparse`` renders a string annotation WITH its quotes, so the
-    identifier check rejected it. PEP 484 says a string annotation names the
-    type it spells and every type checker resolves it, so unquoting widens
-    how a type may be SPELLED, not what counts as one.
+    ``ast.unparse`` renders a string annotation WITH its quotes, which the
+    identifier check would reject, so the reader unquotes first. PEP 484 says
+    a string annotation names the type it spells and every type checker
+    resolves it, so unquoting widens how a type may be SPELLED, not what
+    counts as one. (history: WI-fihun)
     """
 
     def _edges(self, root: Path, source: str) -> list:
@@ -227,7 +221,7 @@ class TestAForwardReferenceIsStillATypeName:
 
 
 class TestTheConsumerKeepsItsNarrowness:
-    """Neither widened nor narrowed: only simple identifiers infer."""
+    """Only simple identifiers infer."""
 
     def _edges(self, root: Path, source: str) -> list:
         root.mkdir(parents=True, exist_ok=True)

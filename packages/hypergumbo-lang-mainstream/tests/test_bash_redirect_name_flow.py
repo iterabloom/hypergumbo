@@ -1,15 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A redirect's write is credited only to names the SHELL ITSELF can put there.
 
-WI-zovuz. bash is ``dataflow_capable=False``, so every taint finding in a shell
-script was call-graph reachability: "this file reads the environment somewhere
-AND reaches a function that writes somewhere". Measured on 15 cohort repos, 186
-environment names are read in the 69 files that also carry a write redirect,
-and only 28 of them (15%) can reach what the shell writes -- so 71% of those
-files carried a redirect-sink finding no name supports.
+bash is ``dataflow_capable=False``, so without this a taint finding in a shell
+script is call-graph reachability alone: "this file reads the environment
+somewhere AND reaches a function that writes somewhere". Most environment names
+read in a file that carries a write redirect cannot reach what the shell
+writes, so a redirect-sink finding needs a name that can (history: WI-zovuz).
 
 THE QUESTION THIS ASKS, and why it is the finer one rather than a sibling gate:
-not "is the byte producer external?" (measured wrong -- see the two pinned
+not "is the byte producer external?" (wrong -- see the two pinned
 counterexamples below) but "can an externally-derived NAME reach what the SHELL
 contributes here?" The shell contributes three things and only three: the
 redirect's target operand, a heredoc body it expands itself, and the arguments
@@ -52,10 +51,9 @@ class TestTheShellsOwnBytes:
         assert origins == {3: ["IMAGE_TAG"]}
 
     def test_a_builtin_stage_upstream_of_an_external_one_still_credits(self, tmp_path):
-        # PINNED COUNTEREXAMPLE 1 (beads scripts/sign-windows.sh:99). The stage
-        # feeding the redirect is external (base64), but stage ONE is a builtin
-        # carrying a secret, and a signing certificate really is written to
-        # disk. A gate that reasoned about the last stage would delete this.
+        # PINNED COUNTEREXAMPLE 1. The stage feeding the redirect is external
+        # (base64), but stage ONE is a builtin carrying a secret, and a signing
+        # certificate really is written to disk. A gate that reasoned about the last stage would delete this.
         origins = _redirect_origins(tmp_path, (
             'echo "$SIGNING_CERT_BASE64" | base64 -d > /tmp/cert.pfx\n'
         ))
@@ -75,7 +73,7 @@ class TestTheShellsOwnBytes:
 
     def test_a_quoted_heredoc_delimiter_suppresses_expansion(self, tmp_path):
         # The other half of the heredoc rule: <<'EOF' writes the dollar sign
-        # literally, so nothing crosses. Asserted so the fix above cannot be
+        # literally, so nothing crosses. Asserted so the rule above cannot be
         # implemented as "any heredoc credits every name in its body".
         origins = _redirect_origins(tmp_path, (
             "cat > /tmp/out.conf <<'EOF'\n"
@@ -113,7 +111,7 @@ class TestTheShellsOwnBytes:
 
 
 class TestABindingIsABindingHoweverItIsWritten:
-    """Found by reading a removed row back against source, not by design."""
+    """Loop variables bind the names in their word list, and only those."""
 
     def test_a_loop_variable_carries_its_word_lists_origin(self, tmp_path):
         # The env-read rule treats a `for` target as ASSIGNED, so without an
@@ -153,13 +151,13 @@ def _redirect_sites(tmp_path: Path, script: str) -> list[tuple[str, list[str]]]:
 
 
 class TestTheAwkwardShapes:
-    """Each of these silently mis-answered a first draft of the closure."""
+    """Shapes a naive closure silently mis-answers."""
 
     def test_a_sibling_redirects_target_is_not_this_ones_contribution(self, tmp_path):
         # `> out` writes the command's stdout; `2> "$ERROR_LOG"` names a
-        # DIFFERENT file. Crediting ERROR_LOG to the first was a
-        # fresh-Node-wrapper bug: tree-sitter hands out a new Node per access,
-        # so `sibling is node` never matched and the self-skip never fired.
+        # DIFFERENT file. Crediting ERROR_LOG to the first is what an
+        # identity-based self-skip does: tree-sitter hands out a new Node per
+        # access, so `sibling is node` never matches and the skip never fires.
         #
         # ALSO PINS INV-vukiv: both redirects are on ONE line, so a per-LINE
         # answer would collapse them. The stamp is keyed per SITE.
@@ -199,11 +197,11 @@ class TestAParseFailureIsNotAProof:
     """The stamp must be ABSENT, not empty, when the closure cannot answer."""
 
     def test_an_unparsed_statement_stamps_nothing(self, tmp_path):
-        # cilium contrib/scripts/kind-setup-dns.sh: `<<EOF cat >/etc/dnsmasq.conf`
-        # with the heredoc leading. tree-sitter recovers with an ERROR node and
-        # the body is never attached as a sibling, so the closure sees no names
-        # while the body really does write `$ddns` to a config file. Stamping
-        # an empty list there is a false ALL-CLEAR the PARSER manufactured.
+        # `<<EOF cat >/etc/dnsmasq.conf` with the heredoc leading. tree-sitter
+        # recovers with an ERROR node and the body is never attached as a
+        # sibling, so the closure sees no names while the body really does
+        # write `$ddns` to a config file. Stamping an empty list there is a
+        # false ALL-CLEAR the PARSER manufactured.
         (tmp_path / "s.sh").write_text(
             'read _ ddns < <(grep nameserver /etc/resolv.conf)\n'
             '<<EOF cat >/etc/dnsmasq.conf\n'

@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the ``scripts/auto-pr`` ``--tracker-id`` flag.
 
-Per the 2026-04-11 user discussion, when the agent resolves a tracker item
-via ``auto-pr``, it currently writes a pre-merge discussion entry that cites
-the feature-branch commit SHA. That SHA survives true fast-forward merges
-but is changed by rebase-before-merge and squash-fallback, so it is not a
+A tracker discussion entry written before the merge can only cite the
+feature-branch commit SHA. That SHA survives true fast-forward merges but is
+changed by rebase-before-merge and squash-fallback, so it is not a
 guaranteed-durable identifier.
 
 ``auto-pr`` already knows two durable identifiers post-merge (``PR_NUM`` and
@@ -15,7 +14,7 @@ carrying the PR number and the merged SHA.
 
 Test strategy
 -------------
-The test file exercises three surfaces:
+The test file exercises four surfaces:
 
 1. **Arg parsing.** Existing failure paths (protected-branch, simulated
    outage) should still fail the same way when ``--tracker-id WI-foo`` is
@@ -38,10 +37,10 @@ helper) is called from all three sites.
 
 4. **WI-kifuh: the record runs outside auto-pr's own PR_PENDING gate.**
    ``tracker discuss`` runs the tracker's auto-sync, which waits up to 900 s
-   for ``.git/PR_PENDING`` to clear and then skips the sync. The record used
-   to precede the cleanup that removes the gate, so the discuss child waited
-   on its own parent. ``_autopr_finish_merged`` runs cleanup first, then the
-   record; the real extracted functions are driven against a real git repo
+   for ``.git/PR_PENDING`` to clear and then skips the sync. A record made
+   before the cleanup that removes the gate would make the discuss child wait
+   on its own parent, so ``_autopr_finish_merged`` runs cleanup first, then
+   the record; the real extracted functions are driven against a real git repo
    and a tracker stub that logs whether the gate exists at call time.
 """
 
@@ -62,9 +61,9 @@ AUTO_PR_PATH = REPO_ROOT_REAL / "scripts" / "auto-pr"
 def _init_fake_repo(tmp_path: Path, branch: str = "feature") -> Path:
     """Build a tiny fake git repo with the requested current branch.
 
-    Copied from test_autopr_result_sentinel.py — same reason: auto-pr's
-    branch / remote checks need realistic state, but we don't want to touch
-    the host repository.
+    Same helper as test_autopr_result_sentinel.py's: auto-pr's branch /
+    remote checks need realistic state, but the tests must not touch the
+    host repository.
     """
     fake_root = tmp_path / "fake-repo"
     fake_root.mkdir()
@@ -302,20 +301,16 @@ class TestWiring:
         assert len(defs) == 1, f"helper must be defined exactly once, found {len(defs)}"
 
     # Window size for "is the helper called from the merge-success site?"
-    # scans below. The original 10-line window was chosen when there was a
-    # single comment block between the marker and the call. Subsequent
-    # additions (WI-miriz sentinel-trap comment, WI-dofaz orphan-sync
-    # warning + comment, WI-mokak comment) push the call to ~11 lines past
-    # the marker; the test was failing in full-suite under that drift.
-    # 25 absorbs the current spread plus reasonable future growth while
-    # still asserting the call is "near" the marker.
+    # scans below. Comments and warnings between the marker and the call put
+    # the call up to ~20 lines past the marker; 25 absorbs that plus modest
+    # growth while still asserting the call is "near" the marker.
     _HELPER_CALL_WINDOW = 25
 
     def _merge_site_calls_helper(self, func_name: str) -> None:
         """Assert ``func_name``'s FINAL merge-success site calls the helper.
 
         Scoped to the function body (via the ``name() {`` … column-0 ``}``
-        delimiters) so do_pr and flush_queue can't cross-match — both now
+        delimiters) so do_pr and flush_queue can't cross-match — both
         record the merged SHA via a ``_merged_sha`` local, so a line-window
         marker alone is ambiguous. The final site is distinguished from the
         recovery gates (which also set ``_autopr_state_final="merged"``) by the
@@ -358,11 +353,11 @@ class TestWiring:
 #
 # `tracker discuss` runs `_maybe_auto_sync`. With pending ops over the
 # threshold, that waits up to 900 s for `.git/PR_PENDING` to clear, then
-# SKIPS the sync. auto-pr is the process that clears the file, and auto-pr
-# was blocked on the discuss child: observed 2026-09-03 on PR #743, a 15-min
-# stall followed by no sync. The fix (owner-approved option (b)) records the
-# merge only AFTER the post-merge cleanup has removed the gate, on all three
-# merge-success paths, through one function that owns the order.
+# SKIPS the sync. auto-pr is the process that clears the file, so a discuss
+# call made while auto-pr still holds the gate stalls auto-pr for the full
+# wait and then does not sync. auto-pr therefore records the merge only AFTER
+# the post-merge cleanup has removed the gate, on all three merge-success
+# paths, through one function that owns the order (`_autopr_finish_merged`).
 #
 # The tests below drive the REAL extracted functions against a real git repo
 # and a tracker stub that records, at the instant it is called, whether
@@ -461,7 +456,7 @@ class TestRecordRunsOutsideGate:
     def test_control_old_order_records_inside_the_gate(self, tmp_path: Path) -> None:
         """Non-vacuity floor: the fixture's gate is up when the tail starts.
 
-        The pre-fix order (record, then clean up) must be observed as
+        The reversed order (record, then clean up) must be observed as
         ``held`` by the probe. Without this a ``released`` below could mean
         the fixture never raised the gate at all.
         """

@@ -1,0 +1,89 @@
+- op: create  # 3427
+  at: '2026-10-22T05:13:28Z'  # 3427
+  by: agent  # 3427
+  actor: jgstern_agent  # 3427
+  clock: 1  # 3427
+  nonce: '3427'  # 3427
+  data:  # 3427
+    kind: work_item  # 3427
+    title: "argv mints untrusted_input as well as host_secret, and document.cookie moves to browser storage keeping its host_secret label -- measure before shipping (owner-approved 2026-10-22)"  # 3427
+    status: todo_hard  # 3427
+    priority: 3  # 3427
+    parent:  # 3427
+    tags:  # 3427
+    - taint  # 3427
+    - io_boundary  # 3427
+    - catalogue  # 3427
+    - concept_audit_20261021  # 3427
+    isbefore: []  # 3427
+    duplicate_of: []  # 3427
+    not_duplicate_of: []  # 3427
+    pr_ref:  # 3427
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6. OWNER DECISION 2026-10-22: 'yes' to: command-line arguments count as both host_secret and untrusted_input (the launcher chose them, as it chose stdin, which is ipc_recv / untrusted_input per ADR-0050); document.cookie moves from env_read to browser storage (medium reading of ADR-0050) but keeps its host_secret label on the row. Measure first, as WI-lanos: pre-register PLAN (cohort chosen by argv / cookie call-site density across languages: python sys.argv, go os.Args, node process.argv, rust std::env::args, js document.cookie), BEFORE/AFTER arms on dev, seeded sample of added situations judged on ADR-0046's two axes, then the owner rules on the delta. Depends on F6a (axiom amendment) for the cookie half."  # 3427
+    fields: {}  # 3427
+- op: discuss  # 2c02
+  at: '2026-10-25T20:08:23Z'  # 2c02
+  by: agent  # 2c02
+  actor: jgstern_agent  # 2c02
+  clock: 2  # 2c02
+  nonce: 2c02  # 2c02
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). OWNER RULING 2026-10-25 on the cookie mechanism: document.cookie is declared `simultaneous` under browser_storage_read (the medium) AND env_read (may carry a credential) -- the INV-dadu precedent (javascript.yaml:298-306; the AUTO_SOURCE_LABEL_MAP comment: 'a second boundary rather than a second label on the row'). Rejected: browser_storage_read minting host_secret for every storage row (the registry refuses it, io_boundary_types.py:344-353, 'sensitivity depends on what is stored'; INV-tutar's 22.9% host-secret precision lesson) and a per-row label (INV-tutar: 'one fact in two homes'). Premise re-check: stdin is ipc_recv / untrusted_input (ADR-0050 :183-184; go os.Stdin, python sys.stdin python.yaml:905-915). argv rows today are all env_read (host_secret only): python sys.argv :1141 and argparse :1134-1135; javascript process.argv :293-294; rust args/args_os :384; haskell getArgs :258; elixir System.argv :245; erlang init:get_argument* :316-317; swift CommandLine.arguments :178-179 (its note says unreachable). No argv row in go, c/cpp, the JVM languages or objc. document.cookie is env_read (javascript.yaml:295-297). Corrections to the PLAN: (1) go has no os.Args row, so the go arm ADDS a row rather than relabelling one; (2) argv's untrusted_input half needs its own second boundary that mints the label -- under the amended ADR-0050 ipc_recv is the wrong medium for argv, so likely a new argv boundary; choose it in the PLAN; both halves therefore depend on WI-rutup (isbefore added); (3) two-label function-kind argv rows make WI-mozig's defect live, so WI-mozig lands first (isbefore added). P3 kept."  # 2c02
+- op: discuss  # cf2a
+  at: '2026-10-26T00:31:44Z'  # cf2a
+  by: agent  # cf2a
+  actor: jgstern_agent  # cf2a
+  clock: 3  # cf2a
+  nonce: cf2a  # cf2a
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output) classifies ADR-0050 against the 10-25 ruling recorded here (a label read from content rides as a simultaneous second boundary, not the primary). That shape can be checked on catalogue rows. The argv/cookie measurement here is independent of both audits."  # cf2a
+- op: discuss  # 18ac
+  at: '2026-10-26T19:32:29Z'  # 18ac
+  by: agent  # 18ac
+  actor: jgstern_agent  # 18ac
+  clock: 4  # 18ac
+  nonce: 18ac  # 18ac
+  message: "2026-10-26, from WI-rutup (ADR-0050 section 1 now reads: a row's PRIMARY boundary names the medium; a simultaneous SECOND boundary may record the credential or navigator reading; env_read means both the process environment and 'may carry a credential'). One point for this item to settle with its row changes: the INV-dadu URL rows (document.location / referrer / URL / documentURI / baseURI, window.location) declare env_read + navigation_read simultaneous, and first-declared-wins (CATALOG_BOUNDARY_TYPES order, pinned by three tests: test_io_boundary_types, test_deferred_crossing_boundary, test_navigation_read_boundary) makes env_read their scalar io_boundary. The owner's ruling cites those rows as already following the new axiom; if their MEDIUM is the navigation, the primary should be navigation_read, which needs an explicit per-row primary or a registry reorder, not a row edit. Since WI-votat (PR #1883) every consumer that asks 'does this edge reach B' reads the full list, so the scalar is now informational. WI-rutup changed no row's boundary; document.cookie (env_read, 'session tokens') is left for this item's browser-storage move."  # 18ac
+- op: update  # 556c
+  at: '2026-10-28T14:46:06Z'  # 556c
+  by: agent  # 556c
+  actor: jgstern_agent  # 556c
+  clock: 5  # 556c
+  nonce: 556c  # 556c
+  set:  # 556c
+    status: needs_human_review  # 556c
+- op: discuss  # 95ae
+  at: '2026-10-28T14:46:07Z'  # 95ae
+  by: agent  # 95ae
+  actor: jgstern_agent  # 95ae
+  clock: 6  # 95ae
+  nonce: 95ae  # 95ae
+  message: "2026-10-28: implemented on an uncommitted branch and MEASURED as pre-registered; NOT shipped, because this item says the owner rules on the delta. Rows: argv (python sys.argv + argparse parse_args/parse_known_args, js/ts process.argv, rust std::env::args/args_os, elixir System.argv, haskell getArgs, erlang init:get_argument*, swift CommandLine.arguments) declared env_read AND ipc_recv, simultaneous; document.cookie declared browser_storage_read (the medium) AND env_read, simultaneous. Patch: ~/hypergumbo_lab_notebook/zidam_10282026/zidam.patch; plan PLAN.md, results RESULTS.md beside it. DELTA (10 repos x 7 generic claims): only the two untrusted_input claims move; no host_secret verdict changes (the cookie move keeps its label). 6 verdicts flip inconclusive -> violated (arti subprocess; growthbook host-fs + subprocess; jaeger host-fs; livebook host-fs + subprocess); counts grow elsewhere, e.g. qemu-meson host-fs 99 -> 351 and subprocess 83 -> 173, sherpa-onnx host-fs 1 -> 56. Seeded sample of 10 new argv rows: 10/10 correct or plausible, 0/10 useful -- each is a CLI or script doing with its own arguments what it exists to do (4 are qemu-meson 'test cases/' fixtures the production scope did not exclude). OPTIONS FOR THE OWNER: (a) ship as is; (b) ship with argv's untrusted_input rows marked so a claim can set them aside (a disclosed exclusion like resource_naming_only); (c) keep argv host_secret-only and record the ruling's measured cost. Also open: the scalar primary io_boundary of the simultaneous cookie / INV-dadu URL rows follows registry order (env_read first), not the medium; consumers read the full list since WI-votat."  # 95ae
+- op: update  # 50f6
+  at: '2026-10-28T19:44:14Z'  # 50f6
+  by: agent  # 50f6
+  actor: jgstern_agent  # 50f6
+  clock: 7  # 50f6
+  nonce: 50f6  # 50f6
+  set:  # 50f6
+    status: in_progress  # 50f6
+- op: discuss  # 378c
+  at: '2026-10-28T19:44:14Z'  # 378c
+  by: agent  # 378c
+  actor: jgstern_agent  # 378c
+  clock: 8  # 378c
+  nonce: 378c  # 378c
+  message: "OWNER RULING 2026-10-28: option (b) -- ship argv as untrusted_input as well as host_secret, with argv's untrusted_input flows MARKED so they are set aside and disclosed, the resource_naming_only shape (a structural, catalogue-declared exclusion, counted in the verdict sentence and JSON, not deleted)."  # 378c
+- op: update  # 0252
+  at: '2026-10-28T21:11:31Z'  # 0252
+  by: agent  # 0252
+  actor: jgstern_agent  # 0252
+  clock: 9  # 0252
+  nonce: '0252'  # 0252
+  set:  # 0252
+    status: done  # 0252
+- op: discuss  # e6b3
+  at: '2026-10-28T21:11:31Z'  # e6b3
+  by: agent  # e6b3
+  actor: jgstern_agent  # e6b3
+  clock: 10  # e6b3
+  nonce: e6b3  # e6b3
+  message: "Shipped in PR #1924 (dev 75f4881f64) per the owner's 2026-10-28 ruling (b). argv rows are env_read + a new command_line_read boundary (simultaneous), which mints untrusted_input; verify-claims sets command_line_read flows aside into a per-verdict command_line_flows count (envelope 3.0 -> 3.1) unless the claim sets taint_flow.include_command_line: true (non-boolean refused). Changed from the measured patch: the second boundary is command_line_read, not ipc_recv (nothing crosses from another process at the call; an ipc_recv boundary claim would have counted every argv read) -- the untrusted_input flow set is the same. document.cookie is browser_storage_read + env_read, keeping host_secret only. Behavioral evidence through the production CLI (test_command_line_read_boundary.py): python sys.argv[1] -> subprocess.run under untrusted_input/subprocess gives evidence_count 0, command_line_flows 1, details naming the command line; with include_command_line: true it is violated with one row whose source_boundary is command_line_read; the same app under host_secret is violated; sys.stdin.read() is violated with command_line_flows 0. Not covered: no argv row in go, c/cpp, JVM, objc; the swift row stays unreachable (no module_attr_ref from the swift analyzer)."  # e6b3

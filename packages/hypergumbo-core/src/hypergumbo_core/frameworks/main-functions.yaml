@@ -160,5 +160,3 @@ patterns:
     symbol_name: "^main$"
     symbol_kind: "^variable$"
     language: "^circom$"
-
-linkers: []

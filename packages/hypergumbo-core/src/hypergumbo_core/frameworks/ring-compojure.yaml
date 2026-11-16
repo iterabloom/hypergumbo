@@ -155,6 +155,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^defstate$"
-
-linkers:
-  - http

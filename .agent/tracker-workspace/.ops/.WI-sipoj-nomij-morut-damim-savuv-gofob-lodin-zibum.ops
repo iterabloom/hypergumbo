@@ -26,3 +26,54 @@
   clock: 2  # 36f8
   nonce: 36f8  # 36f8
   message: "A SECOND INSTANCE OF THE SAME PATTERN, found in the same sweep: packages/hypergumbo-lang-extended1/tests/test_llvm_ir.py::TestAnalyzeLlvmIr::test_cross_file_call_resolution also fails locally at 4c82fe0131, in isolation, while PR #639's CI passed at that commit. Different package, different language, same local-red/CI-green shape. Two independent instances make 'flaky test' a weaker explanation than 'the local environment differs from CI in something both tests depend on' -- and cross-FILE call resolution is, like the namespace-import case, a question about which of several same-named candidates wins, which is exactly where enumeration order decides. Worth checking whether both resolve through the same ordering-sensitive code path before treating them as two bugs. Neither was caused by INV-kanuk's catalogue change: that diff touches only go.yaml, two go overlays and two hypergumbo-core test files, none of which test_llvm_ir.py or test_js_ts.py imports."  # 36f8
+- op: discuss  # dc05
+  at: '2026-11-01T09:32:32Z'  # dc05
+  by: agent  # dc05
+  actor: jgstern_agent  # dc05
+  clock: 3  # dc05
+  nonce: dc05  # dc05
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: CURRENT, and the item's 'second reading' (a product bug, not an environment dependency) is confirmed. On tmpfs (readdir = reverse creation order): JS files created a_early then z_late -> rglob [main, z_late, a_early] -> dst a_early PASS; created z_late then a_early -> rglob [main, a_early, z_late] -> dst z_late/utils.js:1-1:process:function FAIL. LLVM: created utils then main PASS; main then utils -> dst llvm_ir:main.ll:1-1:utility_func:declaration FAIL. `scripts/smart-test --no-cov <both node ids>` -> 2 passed (pytest tmp_path creates in the passing order here). Code: js_ts.py:7442/7771 global_symbols[sym.name] = sym (last-writer-wins); find_js_ts_files (:286) does not sort; the namespace path_hint lookup (:7191) does not override the name-keyed table; in LLVM a `declare` overwrites the `define` of the same name. The test docstring's 'rglob processes alphabetically' is false. PROPOSED (owner): split - (a) js namespace path_hint does not disambiguate same-name functions; (b) llvm declare shadows define; (c) make both tests create files in the failing order, or sort discovery. ROOT-CAUSE GROUP: symbol identity keyed by bare name in enumeration order (with INV-dosoz, INV-tohuj). Status unchanged."  # dc05
+- op: update  # 36b3
+  at: '2026-11-01T09:57:48Z'  # 36b3
+  by: agent  # 36b3
+  actor: jgstern_agent  # 36b3
+  clock: 4  # 36b3
+  nonce: 36b3  # 36b3
+  set:  # 36b3
+    title: "test_namespace_import_disambiguates_same_name_functions (js) and test_cross_file_call_resolution (llvm) pass only when tmp_path creates the fixture files in the lucky order: create them in the failing order, or sort analyzer file discovery, so the tests pin WI-povub and WI-pagoj"  # 36b3
+- op: discuss  # d1b1
+  at: '2026-11-01T09:57:48Z'  # d1b1
+  by: agent  # d1b1
+  actor: jgstern_agent  # d1b1
+  clock: 5  # d1b1
+  nonce: d1b1  # d1b1
+  message: "SPLIT 2026-11-01 (owner-approved, P2 review): the two product bugs are WI-povub-butok-vunij-filar-lojom-nuzif-pivag-kikol (js namespace path_hint does not override the bare-name last-writer-wins table) and WI-pagoj-guviv-miton-zupaj-dipub-bupuf-pirur-lijoz (llvm declare shadows define). This item keeps the test limb: both tests pass today only because pytest's tmp_path on this box creates files in the passing order (verified on tmpfs, where readdir is reverse creation order: a_early created first -> PASS, z_late created first -> FAIL; utils.ll first -> PASS, main.ll first -> FAIL). Make them create the files in the failing order (z_late before a_early; main.ll before utils.ll), or sort find_js_ts_files (js_ts.py:286) and the llvm discovery, so the tests pin the two bugs; fix the docstring's false 'rglob processes alphabetically'. Title re-scoped; priority unchanged."  # d1b1
+- op: discuss  # 8a97
+  at: '2026-11-01T23:36:20Z'  # 8a97
+  by: agent  # 8a97
+  actor: jgstern_agent  # 8a97
+  clock: 6  # 8a97
+  nonce: 8a97  # 8a97
+  message: "PARTIAL overlap (owner-approved fold of the bullet, not the item; root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/)): WI-sipoj's LLVM half (a declare shadows the define in the bare-name table, so the test passes only in lucky tmp_path order) is WI-dabul's bug (WI-pagoj folded into WI-dabul today); WI-sipoj's js_ts global_symbols last-writer-wins half stays here."  # 8a97
+- op: discuss  # f675
+  at: '2026-11-02T06:06:58Z'  # f675
+  by: agent  # f675
+  actor: jgstern_agent  # f675
+  clock: 7  # f675
+  nonce: f675  # f675
+  message: "RE-CHECK 2026-11-02 on dev ae02786fca (WI-jomik acceptance sweep, after PR #2004: shared resolvers no longer guess among tied candidates; PR #2006: a Rust method call never binds a free function). VERDICT: STILL_REPRODUCES. Repro run: pytest test_js_ts.py::TestNamespaceImports::test_namespace_import_disambiguates_same_name_functions and test_llvm_ir.py::TestAnalyzeLlvmIr::test_cross_file_call_resolution (tmp_path on tmpfs /tmp); plus the same fixture shapes on ext4 via povub_drive.py / dabul_drive.py. Observed: pytest: 2 passed (tmpfs). Same fixtures on ext4 scratch: js a_early__z_late -> z_late/utils.js:2-4:process:function (test would fail); llvm utils.ll+main.ll -> main.ll:1-1:utility_func:declaration (test would fail). Note: Tests still create files in the passing order (a_early before z_late; utils.ll before main.ll). The docstring still says ’rglob processes alphabetically’. Discovery is unsorted. The tests pass on this box only because tmp_path is on tmpfs. Their verdict depends on the filesystem, so they do not pin WI-povub or WI-dabul. Fixtures: /home/jgstern_agent/hypergumbo_lab_notebook/jomik_member_recheck_11022026/scratch_*/."  # f675
+- op: update  # 884e
+  at: '2026-11-03T01:45:31Z'  # 884e
+  by: agent  # 884e
+  actor: jgstern_agent  # 884e
+  clock: 8  # 884e
+  nonce: 884e  # 884e
+  set:  # 884e
+    status: done  # 884e
+- op: discuss  # 9480
+  at: '2026-11-03T01:45:31Z'  # 9480
+  by: agent  # 9480
+  actor: jgstern_agent  # 9480
+  clock: 9  # 9480
+  nonce: '9480'  # 9480
+  message: "DONE for the half this item kept (js_ts; the llvm test_cross_file_call_resolution half is WI-dabul's, per the 11-01 split) in PR #2021 (merged; dev 21f8147afa). test_namespace_import_disambiguates_same_name_functions no longer depends on directory order: it is parametrized over creation order (first in [\"a_early\", \"z_late\"]) and its docstring's false 'rglob processes alphabetically' premise is gone; a require-object twin was added the same way. With the fix reverted, both z_late-first cases fail on tmpfs (2 failed, 10 passed); with it, 12 passed. The product bug behind it (WI-povub) is fixed: on ext4 the re-check driver reads 8/8 correct on merged dev. The llvm test still creates files in the passing order: tracked on WI-dabul."  # 9480

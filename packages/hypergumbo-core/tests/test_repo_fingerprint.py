@@ -92,15 +92,15 @@ class TestOutputShape:
 
 
 class TestFieldRendering:
-    """WI-bosog: the AnalysisRun ``repo_fingerprint`` FIELD carries the
-    ``sha256:`` scheme prefix (matching the sibling ``run_signature`` /
-    ``config_fingerprint`` identity fields), while the bare digest is reserved
-    for the colon-free cache-dir path segment."""
+    """The AnalysisRun ``repo_fingerprint`` FIELD carries the scheme's label
+    ``hgrepofp3:`` (a ``sha256:`` prefix from WI-bosog's v2 until the v3
+    relabel), while the bare digest is reserved for the colon-free cache-dir
+    path segment."""
 
     def test_field_is_scheme_prefixed_full_digest(self, git_repo: Path) -> None:
         field = compute_repo_fingerprint_field(git_repo)
-        assert field.startswith("sha256:")
-        hex_part = field[len("sha256:"):]
+        assert field.startswith("hgrepofp3:")
+        hex_part = field[len("hgrepofp3:"):]
         assert len(hex_part) == 64
         assert all(c in "0123456789abcdef" for c in hex_part)
 
@@ -109,13 +109,13 @@ class TestFieldRendering:
         # so the two never diverge in the underlying hash.
         assert (
             compute_repo_fingerprint_field(git_repo)
-            == "sha256:" + compute_repo_fingerprint(git_repo)
+            == "hgrepofp3:" + compute_repo_fingerprint(git_repo)
         )
 
     def test_field_works_for_non_git(self, non_git_repo: Path) -> None:
         field = compute_repo_fingerprint_field(non_git_repo)
-        assert field.startswith("sha256:")
-        assert len(field[len("sha256:"):]) == 64
+        assert field.startswith("hgrepofp3:")
+        assert len(field[len("hgrepofp3:"):]) == 64
 
 
 # ---------------------------------------------------------------------------
@@ -434,7 +434,7 @@ class TestUnreadableFileToleration:
         test failure, because the other tests compare against the imported
         constant, not its value. Per spec line 392 a value-altering change to
         the fingerprint must bump ``repo_fingerprint_scheme``
-        (``hypergumbo-repofp-v2``); this literal pin forces that coupling to be
+        (``hypergumbo-repofp-v3``); this literal pin forces that coupling to be
         a conscious, reviewed edit rather than an accidental cache wipe.
         """
         from hypergumbo_core.repo_fingerprint import _UNREADABLE_CONTENT_SENTINEL

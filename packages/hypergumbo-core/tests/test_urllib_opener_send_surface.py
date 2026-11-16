@@ -20,18 +20,17 @@ things were missing, and each alone does nothing:
 A ``host_secret -> network`` claim over the item's repro read
 ``confirmed_with_caveats``, a false clean: the secret visibly went out.
 
-THE SECOND SOURCE, PINNED RATHER THAN HIDDEN. WI-bakik rowed ``build_opener``
-``env_read`` (it always installs a default ``ProxyHandler``, which reads the
-``*_proxy`` variables), and taint models the RECEIVER of a sink as a carrier.
-So once ``opener.open`` is a sink, ``build_opener()`` -> ``opener.open(url)``
-is a ``host_secret -> network`` flow even with no secret in the arguments: the
-proxy configuration the opener read from the environment travels with the
-request (``ProxyHandler.proxy_open`` sends ``user:password@`` from a proxy
-URL as ``Proxy-Authorization``). WI-bakik counted the ``getproxies()`` ->
-``urlopen`` twin of that flow as a real finding. Whether a handle that read
-the environment should taint every send through it is an open question
-filed as WI-patit; the test below pins today's behaviour so a ruling either
-way shows up as a test change.
+THE CONSTRUCTOR'S OWN READ IS NOT A SECOND SOURCE (WI-patit). WI-bakik rowed
+``build_opener`` ``env_read`` (it always installs a default ``ProxyHandler``,
+which reads the ``*_proxy`` variables), and taint models the RECEIVER of a sink
+as a carrier, so once ``opener.open`` was a sink every ``opener.open(url)``
+read ``violated`` on ``host_secret -> network`` with no secret in any argument
+-- while ``urlopen(url)``, which does the same proxy read, read clean. This
+file pinned that until the owner ruled (2026-10-04): OPENER SENDS STAY CLEAN,
+a handle constructor's configuration read is not data sent through the handle
+(ADR-0049 Ruling 4). The row now declares ``returns_handle: true``, its source
+taints no return value, and the pin below asserts the ruled behaviour. The
+mechanism and the rows it covers are in ``test_handle_constructor_config_read.py``.
 
 Every assertion here runs on REAL analyzer output and asserts reach first.
 """
@@ -274,23 +273,22 @@ class TestTheFindingIsReported:
         assert verdict["verdict"] == "confirmed", (
             verdict["verdict"], verdict["caveats"])
 
-    def test_build_openers_own_env_read_reaches_the_send(
+    def test_build_openers_own_env_read_does_not_reach_the_send(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """PINNED, see the module docstring: with no secret in any argument,
-        the opener's own ``env_read`` (its default ProxyHandler) reaches
-        ``open`` through the receiver."""
+        """WI-patit, owner ruling 2026-10-04 (see the module docstring): with no
+        secret in any argument, the opener's own ``env_read`` (its default
+        ProxyHandler) is not carried into ``open`` through the receiver. It
+        read ``violated`` with exactly that one flow before the ruling."""
         source = (
             "import urllib.request\n\n\ndef fetch():\n"
             "    opener = urllib.request.build_opener()\n"
             "    opener.open('https://example.com/status')\n"
         )
         verdict = _verify(tmp_path, source, monkeypatch)
-        assert verdict["verdict"] == "violated", verdict["details"]
-        assert _flows(verdict) == {
-            (frozenset({"urllib.request.build_opener"}),
-             frozenset({f"{_OPENER}.open"})),
-        }
+        assert verdict["verdict"] == "confirmed", (
+            verdict["verdict"], verdict["details"])
+        assert _flows(verdict) == set()
 
     def test_urlopen_is_unchanged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

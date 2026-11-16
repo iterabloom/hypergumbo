@@ -1,32 +1,33 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """G2 parity column: interface-method → impl-method dispatch, per language.
 
-INV-tihim was filed as "one fact, two homes" — the member-name separator
-divergence between ``linkers/containment`` and ``linkers/type_hierarchy``.
-That is real, and it is *Rust's* cause. Probing four languages found three
-unrelated causes; probing sixteen found **eight**. The filing generalized
-from the one cause in hand, which is the failure mode this column exists to
-make impossible: an empty cell here means an analyzer/linker gap, not
-construct-absence, because every language gets the same injected fixture.
+A missing dispatch edge has a different cause in different languages: the
+member-name separator divergence between ``linkers/containment`` and
+``linkers/type_hierarchy`` is *Rust's*, while others are producer gaps,
+vocabulary gaps in a consumer, or anchoring choices. Generalizing from one
+cause in hand is the failure mode this column exists to make impossible: an
+empty cell here means an analyzer/linker gap, not construct-absence, because
+every language gets the same injected fixture. (history: INV-tihim)
 
 Why end-to-end rather than analyzer-only
 ----------------------------------------
-WI-duguk built a parity column that read green for Swift while the live
-reverse slice was unmoved, because the column measured the analyzer in
-isolation and the defect was in a *linker* two packages away. This column
-therefore asserts on the **emitted artifact** after the full pipeline: the
+A column that measures the analyzer in isolation can read green while the
+live reverse slice is unmoved, because the defect may be in a *linker* two
+packages away (history: WI-duguk). This column therefore asserts on the
+**emitted artifact** after the full pipeline: the
 question is not "did the analyzer emit an interface?" but "does a
 ``dispatches_to`` edge from the abstract type's method to the implementor's
 method exist in the behavior map?" — which is the thing a consumer sees.
 
 Why one shared run
 ------------------
-Seventeen full-pipeline invocations is ~30s; one polyglot run is ~2s and the
-per-language assertions stay independently xfail-able. The corpus is
-generated into ``tmp_path_factory`` rather than committed under
-``tests/fixtures/`` for two measured reasons: the pipeline's own test-path
-heuristics suppress linkers under fixture paths (byte-identical input, 4
-markers at an ordinary path and 0 under ``tests/fixtures/``), and a gate
+One full-pipeline invocation per language is roughly an order of magnitude
+slower than one polyglot run, and the per-language assertions stay
+independently xfail-able either way. The corpus is generated into
+``tmp_path_factory`` rather than committed under ``tests/fixtures/`` for two
+reasons: the pipeline's own test-path heuristics suppress linkers under
+fixture paths (byte-identical input loses its markers under
+``tests/fixtures/``), and a gate
 that deliberately preserves defects cannot host its corpus inside the tree
 the project ratchets against itself.
 
@@ -111,15 +112,10 @@ EXTRA_FILES: dict[str, tuple[str, str]] = {
                "area() -> 1.\n"),
 }
 
-# Measured 2026-07-31, one cause per entry. Each is a strict xfail: fixing a
-# language XPASSes its cell and forces removal of the entry in the same PR.
-#
-# Note how little these share. The item that produced this column named ONE
-# of them. Three of the eight were producer gaps, three vocabulary gaps in a
-# consumer, one an anchoring choice. The last one, Kotlin's (WI-rufub: a file
-# with two bodied type declarations came out as one ERROR node, the
-# tree-sitter-kotlin 1.1.0 nested one-line-body bug), went green with
-# ``kotlin._close_brace_repair`` in the WI-tusad scheme bump.
+# Language -> one-line cause of its hole, one cause per entry. Each is a strict
+# xfail: fixing a language XPASSes its cell and forces removal of the entry in
+# the same PR. Empty means every gated language currently passes. Causes are
+# independent per language; do not assume a new hole shares an old one's.
 KNOWN_HOLES: dict[str, str] = {}
 
 # Languages deliberately outside this column, with the reason. Declared as

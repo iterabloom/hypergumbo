@@ -10,7 +10,9 @@ also exercised end-to-end by the Scala/Swift analyzer tests; this pins the pure
 decision table.
 """
 
-from hypergumbo_core.analyze.base import defer_bare_method_call
+from hypergumbo_core.analyze.base import defer_bare_method_call, defer_unresolved_tie
+from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.symbol_resolution import ListNameResolver
 
 
 def test_non_method_targets_bind() -> None:
@@ -67,3 +69,26 @@ def test_custom_separator_parses_owner() -> None:
     # so it defers on match_type alone — tolerable because same-class calls are
     # pre-caught upstream, but this is why "::" callers pass the separator.
     assert defer_bare_method_call("method", "Foo::bar", "suffix", "Foo") is True
+
+
+class TestDeferUnresolvedTie:
+    """WI-jomik: a tie the resolver refused to guess is deferred like a weak pick."""
+
+    @staticmethod
+    def _sym(name: str, kind: str, path: str) -> Symbol:
+        return Symbol(id=f"x:{path}:1-2:{name}:{kind}", name=name, kind=kind,
+                      language="x", path=path, span=Span(1, 0, 2, 0))
+
+    def test_tie_among_methods_defers(self) -> None:
+        a, b = self._sym("A.run", "method", "/a.x"), self._sym("B.run", "method", "/b.x")
+        assert defer_unresolved_tie(ListNameResolver({"run": [a, b]}).lookup("run")) is True
+
+    def test_tie_among_free_functions_does_not_defer(self) -> None:
+        a, b = self._sym("run", "function", "/a.x"), self._sym("run", "function", "/b.x")
+        assert defer_unresolved_tie(ListNameResolver({"run": [a, b]}).lookup("run")) is False
+
+    def test_a_binding_or_a_miss_does_not_defer(self) -> None:
+        a = self._sym("A.run", "method", "/a.x")
+        resolver = ListNameResolver({"run": [a]})
+        assert defer_unresolved_tie(resolver.lookup("run")) is False
+        assert defer_unresolved_tie(resolver.lookup("nothing")) is False

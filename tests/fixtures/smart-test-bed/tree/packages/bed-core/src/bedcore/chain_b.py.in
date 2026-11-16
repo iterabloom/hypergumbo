@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Middle link of A -> B -> C."""
+from bedcore.chain_c import step_c
+
+
+def step_b(x):
+    return step_c(x) * 2

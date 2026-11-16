@@ -1,0 +1,22 @@
+- op: create  # 65f4
+  at: '2026-10-30T21:48:20Z'  # 65f4
+  by: agent  # 65f4
+  actor: jgstern_agent  # 65f4
+  clock: 1  # 65f4
+  nonce: 65f4  # 65f4
+  data:  # 65f4
+    kind: work_item  # 65f4
+    title: "slice --io-boundary and verify-claims assemble catalogues apart from io-boundaries: no user overlays, no external_potential, caller- vs callee-language keying"  # 65f4
+    status: todo_hard  # 65f4
+    priority: 3  # 65f4
+    parent:  # 65f4
+    tags:  # 65f4
+    - concept_audit  # 65f4
+    - consumer_agreement  # 65f4
+    - io_boundary  # 65f4
+    isbefore: []  # 65f4
+    duplicate_of: []  # 65f4
+    not_duplicate_of: []  # 65f4
+    pr_ref:  # 65f4
+    description: "From WI-borib (docs/audits/0026; agent D, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/D_classification_tier.md, live runs in ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/D_run/). Verdict SINGLE-SOURCE the catalogue assembly, RENAME where the questions differ.\n\n1. slice --io-boundary loads load_catalog(lang) with no overlay arguments (cli.py:1840): no io_primitives.d, no config.toml, no --io-primitives, no --no-default-overlays. io-boundaries resolves them (cli.py:6128). Live: with a user overlay io-boundaries showed an fs_write chain and the slice had edge_ids=[].\n2. verify-claims builds no external_potential chains (passes no nodes_by_id): it printed \"No external_potential chains found\" where io-boundaries on the same map gave external_potential_edges=1.\n3. Module coverage: io-boundaries untraced_modules counts a community row as classified; verify-claims _adjudicate_external_modules does not count an unvouched row as examined. Live, with an overlay: io's untraced groups empty, verify-claims \"the I/O catalog could not classify\" gin; the chain JSON carries no provenance to say why.\n4. io and starvation pick the catalogue by the CALLER's language, verify-claims by the callee's; C/C++ include-list slots are expanded per header only in verify-claims; first-party filters (analysed modules, crate:: / ./, the repo's own package names) exist only on the verify-claims side.\n5. Ecosystem: the node ecosystem stamp falls back to the manifest, verify-claims does not, so Go/JS dependencies read third_party in io-boundaries while verify-claims' untraced-dependency clause never fires. A pyproject declaration of dataclasses / typing / pathlib is third_party on the declaration node and stdlib on the import's node.\n6. check-claims-coverage loads only the claims file's overlays.\n\nNOT measured on real repos with overlays. ACCEPTANCE: one catalogue resolver (overlays, defaults, language keying) every consumer calls; where io and verify-claims ask different questions about a module, each output names its question."  # 65f4
+    fields: {}  # 65f4

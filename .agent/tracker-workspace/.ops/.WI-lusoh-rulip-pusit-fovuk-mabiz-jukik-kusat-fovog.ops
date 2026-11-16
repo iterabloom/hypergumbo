@@ -1,0 +1,47 @@
+- op: create  # b1b6
+  at: '2026-10-24T10:27:39Z'  # b1b6
+  by: agent  # b1b6
+  actor: jgstern_agent  # b1b6
+  clock: 1  # b1b6
+  nonce: b1b6  # b1b6
+  data:  # b1b6
+    kind: work_item  # b1b6
+    title: "The id kind slot carries a role in three producers (cuda execution space, Android manifest element, message-dispatch role): INV-kurup kind-slot limb"  # b1b6
+    status: todo_hard  # b1b6
+    priority: 3  # b1b6
+    parent:  # b1b6
+    tags:  # b1b6
+    - id_format  # b1b6
+    - identity  # b1b6
+    - dogfood_umbrella_member  # b1b6
+    isbefore: []  # b1b6
+    duplicate_of: []  # b1b6
+    not_duplicate_of: []  # b1b6
+    pr_ref:  # b1b6
+    description: "FOUND 2026-10-24 while checking WI-popak's trigger (INV-kurup, stage 10). The schema-coverage corpus has 0 violations on default and include_docs (VALIDATION_BASELINES still say 11). Real-repo surveys (jahuf_10232026 AFTER arms, dev 2aeec80eb3 code) still carry the id-format:F3 advisory kind-slot class (kind-slot not registered / != Symbol.kind), all from three producers that put a ROLE in the id's kind slot:\n  - cuda.py: the id discriminator is cuda_execution_space (device / global / host / host_device), while kind=\"function\" and the meta already carries the space. whisper.cpp: 698 device + 238 global + 34 host + 28 host_device symbols (x2 violations each).\n  - xml_config.py, AndroidManifest components: the kind slot is the element name (activity / service / receiver / provider), while kind=\"component\" and meta.component_type carries it. sherpa-onnx 42, grpc 4, whisper.cpp 4.\n  - linkers/message_dispatch.py: f-string ids ending :message_sender / :message_handler on kind=\"function\" nodes (meta.framework_role carries it). sherpa-onnx 26, whisper.cpp 14. The ids are also hand-built f-strings, not make_symbol_id (WI-vodin's linker did not reach them).\nFIX: the kind slot is the kind (ADR-0036; WI-kugaj's precedent for route/event). Node ids change, stable_ids do not: each producer's stable_id already hashes kind=\"function\"/\"component\" (verify per producer). A same-location sender/handler pair would collide only if one line were both a send and a handle site. Acceptance: those surveys show 0 kind-slot advisories from these producers; WI-popak can then flip."  # b1b6
+    fields: {}  # b1b6
+- op: update  # 9136
+  at: '2026-10-24T10:28:05Z'  # 9136
+  by: agent  # 9136
+  actor: jgstern_agent  # 9136
+  clock: 2  # 9136
+  nonce: '9136'  # 9136
+  set: {}  # 9136
+  add:  # 9136
+    isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # 9136
+- op: update  # c2d0
+  at: '2026-10-24T11:40:52Z'  # c2d0
+  by: agent  # c2d0
+  actor: jgstern_agent  # c2d0
+  clock: 3  # c2d0
+  nonce: c2d0  # c2d0
+  set:  # c2d0
+    status: done  # c2d0
+    pr_ref: '1832'  # c2d0
+- op: discuss  # aa3b
+  at: '2026-10-24T11:40:52Z'  # aa3b
+  by: agent  # aa3b
+  actor: jgstern_agent  # aa3b
+  clock: 4  # aa3b
+  nonce: aa3b  # aa3b
+  message: "Fixed in PR #1832 (dev a02f461d2b). Root cause: cuda.py put cuda_execution_space in the id's kind slot, xml_config.py put the AndroidManifest element, and message_dispatch.py built f-string ids ending :message_sender/:message_handler. All three already carried the role on meta. The kind slot is now the kind; node ids change, stable_ids do not. LIVE REPRO on merged dev: hypergumbo run ~/whole_bunch_of_repos/sherpa-onnx gives rc=0 and validation_report id_format violations 72 -> 0. Dispatch stand-ins are now e.g. javascript:wasm/tts/app-tts.js:28-28:sherpa-onnx-tts-progress:function. whisper.cpp (branch run, same code) 1,016 -> 0. Per-producer tests run _check_id_roundtrip on their own output."  # aa3b

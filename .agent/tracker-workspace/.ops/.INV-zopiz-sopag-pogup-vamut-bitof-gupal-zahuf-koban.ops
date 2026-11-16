@@ -1,0 +1,55 @@
+- op: create  # c7a0
+  at: '2026-10-24T11:57:32Z'  # c7a0
+  by: agent  # c7a0
+  actor: jgstern_agent  # c7a0
+  clock: 1  # c7a0
+  nonce: c7a0  # c7a0
+  data:  # c7a0
+    kind: invariant  # c7a0
+    title: "ruby, kotlin and go drop a file with no symbols before the edge pass, so a top-level-only script (RSpec file, Rakefile, .kts, Go var _ = init file) emits no calls or imports"  # c7a0
+    status: violated  # c7a0
+    priority: 2  # c7a0
+    parent:  # c7a0
+    tags:  # c7a0
+    - call_graph  # c7a0
+    - ruby  # c7a0
+    - kotlin  # c7a0
+    - go  # c7a0
+    - analysis_quality  # c7a0
+    isbefore: []  # c7a0
+    duplicate_of: []  # c7a0
+    not_duplicate_of: []  # c7a0
+    pr_ref:  # c7a0
+    description: "FOUND 2026-10-24 while minimising a WI-pusan Ruby fixture (dev a02f461d2b code).\n\nThree analyzers drop a file whose pass 1 found no symbols, before the edge pass ever sees it: `if analysis.symbols: file_analyses[f] = analysis else: files_skipped += 1`.\n  - ruby.py:3564. Measured: `require \"json\"; puts(1); Foo.bar(2)` gives 0 edges and 0 symbols. Adding `def m; end` makes the same file give calls file->puts and file->bar. RSpec files (only describe/it blocks), Rakefiles and bin/ scripts are this shape. The require is lost too.\n  - kotlin.py:2856. Measured: a .kts with `println(\"x\"); val y = listOf(1)` contributes no edges, while a .kt with `val z = listOf(1).map{}` does, because it has a variable symbol.\n  - go.py:6648. Not measured. A file with only imports and a blank `var _ = register()` (the INV-nopoh file-anchor shape) has no symbol, so its anchored call is dropped.\nThe file is also counted in files_skipped, which reads as \"not analysed\" although it was parsed.\n\nStatement: a parsed file's top-level calls and imports are emitted whether or not it declares anything (INV-bamij anchored them on the file; this drops the file first).\nFIX DIRECTION: keep every parsed file in the edge pass; the file anchor already exists (file_anchor_symbol). Check every analyzer for the same gate, not only these three. Measure the edge delta on a Ruby corpus repo with specs (e.g. a Rails app) before merging."  # c7a0
+    fields:  # c7a0
+      statement: "A parsed file's top-level calls and imports are emitted whether or not the file declares a symbol."  # c7a0
+      root_cause: "ruby.py / kotlin.py / go.py keep a file for pass 2 only if pass 1 found symbols (if analysis.symbols ... else files_skipped += 1)."  # c7a0
+- op: discuss  # 2774
+  at: '2026-10-25T11:36:55Z'  # 2774
+  by: agent  # 2774
+  actor: jgstern_agent  # 2774
+  clock: 2  # 2774
+  nonce: '2774'  # 2774
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT, re-scoped (title updated). Gates still at ruby.py:3564, kotlin.py:2856, go.py:6648 and reproduce: ruby `require \"json\"; puts(1); Foo.bar(2)` -> 0 edges, skipped 1 (adding `def m; end` restores imports + 2 calls); a describe/it-only spec/foo_spec.rb -> 0 edges; go `var _ = register()` file skipped; an import-only .kt loses both imports. UNDER-SCOPED: C# has the same gate at csharp.py:2370 -- a top-level-statements Program.cs (C# 9+, the minimal-API shape) gives 0 edges; adding `class K {}` restores imports System and both calls. `grep 'if analysis.symbols:' packages/hypergumbo-lang-*` finds exactly these four; base.py TreeSitterAnalyzer.analyze has no such gate. WRONG EXAMPLES: .kts, Rakefile and extensionless bin/ scripts are never DISCOVERED (KotlinAnalyzer.file_patterns = ['*.kt'], RubyAnalyzer = ['*.rb']), so removing this gate cannot help them; filed separately as a discovery item. Kotlin's real exposure to this gate is import-only .kt files (a .kt cannot hold top-level calls without a declaration). NOT checked: the edge delta on a corpus repo."  # 2774
+- op: update  # a7d9
+  at: '2026-10-25T11:36:58Z'  # a7d9
+  by: agent  # a7d9
+  actor: jgstern_agent  # a7d9
+  clock: 3  # a7d9
+  nonce: a7d9  # a7d9
+  set:  # a7d9
+    title: "ruby, kotlin, go and csharp drop a file with no symbols before the edge pass, so a top-level-only file (RSpec spec, Go var _ = init file, import-only .kt, C# top-level-statements Program.cs) emits no calls or imports"  # a7d9
+- op: discuss  # 5ea8
+  at: '2026-10-25T11:38:46Z'  # 5ea8
+  by: agent  # 5ea8
+  actor: jgstern_agent  # 5ea8
+  clock: 4  # 5ea8
+  nonce: 5ea8  # 5ea8
+  message: "Cross-ref (2026-10-25): the .kts / .rake / Rakefile discovery gap is WI-pogad (related to WI-midik)."  # 5ea8
+- op: discuss  # 115e
+  at: '2026-11-01T09:32:29Z'  # 115e
+  by: agent  # 115e
+  actor: jgstern_agent  # 115e
+  clock: 5  # 115e
+  nonce: 115e  # 115e
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: CURRENT. Gates still read `if analysis.symbols:` at csharp.py:2370, go.py:6703, kotlin.py:2958, ruby.py:3634 (lines drifted, text unchanged). Fixtures: top.rb and spec/foo_spec.rb -> no file node, no edges, while with_def.rb -> imports json + calls file -> puts, Foo.bar; Imports.kt -> nothing vs Decl.kt -> imports + 2 calls; go reg.go (`var _ = lib.Register()`) -> nothing; C# Program.cs -> nothing vs Helper.cs -> imports System + call. ROOT-CAUSE GROUP: analyzer has no arm for the construct / early exit (with WI-kavam, WI-gokun, WI-zihuf). Status unchanged."  # 115e

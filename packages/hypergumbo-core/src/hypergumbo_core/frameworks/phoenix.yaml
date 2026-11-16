@@ -149,9 +149,3 @@ patterns:
 
   - concept: graphql_resolver
     decorator: "^use Absinthe\\.Schema\\.Notation$"
-
-linkers:
-  - http
-  - websocket
-  - graphql
-  - message_queue

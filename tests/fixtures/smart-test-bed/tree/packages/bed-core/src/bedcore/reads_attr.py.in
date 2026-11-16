@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Reads limits.CAP as an attribute of the module object."""
+from bedcore import limits
+
+
+def doubled():
+    return limits.CAP * 2

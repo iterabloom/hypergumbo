@@ -1,19 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Every measurement record declares the frame it was produced under (INV-duvup).
 
-Frame rule F8 — "the headline must declare its own frame" — was ratified
-2026-08-25 with NOTHING ENFORCING IT. That is the shape of the original defect,
-not a detail of it: measurements 0001 / 0004 / 0005 each changed the estimator
-or the cohort or both, none said so, and all three ended up disclaiming
-comparability with the one before. The question the taint campaign exists to
-answer — is precision improving? — became structurally unanswerable while every
-individual measurement stayed sound.
+Frame rule F8: "the headline must declare its own frame". Measurements that
+change the estimator or the cohort without saying so cannot be compared with
+one another, so the question the taint campaign exists to answer — is
+precision improving? — becomes structurally unanswerable while every
+individual measurement stays sound.
 
-WHY A GATE AND NOT A CHECKLIST. A rule only a careful author obeys is how the
-drift happened the first time. The frame lived in a lab-notebook file, so it
-could not be cited by a record, could not be diffed against the code it
-measures, and could not fail anything. ADR-0048 moves it into the repository
-and §A3 makes F8 executable.
+WHY A GATE AND NOT A CHECKLIST. A rule only a careful author obeys drifts. A
+frame kept in a lab-notebook file cannot be cited by a record, cannot be
+diffed against the code it measures, and cannot fail anything. ADR-0048 moves
+it into the repository and §A3 makes F8 executable.
 
 WHAT THE GATE CANNOT DO, stated so nobody reads more into a green run: it
 checks that a record DECLARES its frame, not that the frame was FOLLOWED. A
@@ -88,11 +85,11 @@ class TestTheGate:
     def test_a_placeholder_is_not_a_declaration(
         self, tmp_path: Path, placeholder: str,
     ) -> None:
-        """THE LOOPHOLE THAT WOULD HAVE MADE THE GATE DECORATIVE. A required
-        key is trivially satisfiable by typing a word into it. The SHA is the
-        one that matters: eighteen commits changed taint between one screen and
-        the figures published two days later, and `analyzer_sha: unrecorded`
-        would let exactly that recur while the gate reported green."""
+        """THE LOOPHOLE THAT WOULD MAKE THE GATE DECORATIVE. A required key
+        is trivially satisfiable by typing a word into it. The SHA is the one
+        that matters: the analyzer can change many times between a screen and
+        the figures published from it, and `analyzer_sha: unrecorded` would
+        hide exactly that while the gate reported green."""
         body = _GOOD.replace("analyzer_sha: a738c503b9",
                              f"analyzer_sha: {placeholder}")
         _write(tmp_path, "0009-a.md", body)
@@ -188,8 +185,8 @@ class TestTheLiveTree:
 
     def test_the_gate_binds_at_least_one_live_record(self) -> None:
         """A gate with no live subject cannot fire, and a rule enforced only
-        against fixtures is the rule F8 already was. 0006 is framed, so the
-        shipped tree exercises the real path."""
+        against fixtures enforces nothing. 0006 is framed, so the shipped tree
+        exercises the real path."""
         framed = [
             r for r in (REPO_ROOT / "docs" / "measurements").glob("[0-9]" * 4 + "-*.md")
             if r.name.split("-", 1)[0] not in GATE.GRANDFATHERED
@@ -197,9 +194,9 @@ class TestTheLiveTree:
         assert framed, "no measurement record is subject to the gate"
 
     def test_0006_declares_the_allocation_the_ledger_actually_has(self) -> None:
-        """The record read `M=7 repositories x R=16 situations`; its own
-        adjudication ledger holds 16 repositories with exactly 7 rows each, so
-        the LABELS were swapped (the numbers were right). Under frame F2, M is
+        """0006's adjudication ledger holds 16 repositories with exactly 7
+        rows each, so the record must say `M=7 situations x R=16
+        repositories`, never the label-swapped form. Under frame F2, M is
         situations-per-repo and R is repositories, and equal allocation is what
         makes the pooled rate and the unweighted per-repo mean the same number
         — so which letter means what is not cosmetic."""

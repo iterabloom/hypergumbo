@@ -18,6 +18,53 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
+# A check that cannot RUN has not found anything wrong, and saying it did sends
+# the committer to fix the wrong thing (WI-ziguk: "Schema is out of date" over
+# a current schema, because generate-schema could not import). Both helpers
+# below still block the commit; they only say why.
+#
+# check_generated LABEL SCRIPT: a doc generator's --check, read on the
+# scripts/generator_check.py contract (0 fresh, 1 stale, else could not run).
+check_generated() {
+    local label="$1" script="$2" log rc=0
+    log=$(mktemp)
+    echo -n "  ${label}... "
+    "./scripts/${script}" --check > "$log" 2>&1 || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$log"
+        return 0
+    fi
+    echo -e "${RED}✗${NC}"
+    echo ""
+    if [[ $rc -eq 1 ]]; then
+        echo -e "${RED}Out of date (./scripts/${script} --check says):${NC}"
+        cat "$log"
+    else
+        echo -e "${RED}./scripts/${script} --check could not run (exit ${rc}), so freshness is unknown:${NC}"
+        tail -5 "$log"
+    fi
+    rm -f "$log"
+    exit 1
+}
+
+# require_module MODULE LABEL: stop with the real reason when a check that
+# imports an installed package is about to run without it. Asked only where
+# such a check runs, never hook-wide: a commit that stages neither package
+# source nor tracker ops needs no dev environment, and a gate up here would
+# block it.
+require_module() {
+    local module="$1" label="$2"
+    if python3 -c "import ${module}" >/dev/null 2>&1; then
+        return 0
+    fi
+    echo -e "${RED}✗${NC}"
+    echo ""
+    echo -e "${RED}${label} cannot run: python3 cannot import ${module}.${NC}"
+    echo "  The dev environment is probably not active. Run: source .venv/bin/activate"
+    exit 1
+}
+
 # Block direct commits to protected branches (dev, main)
 current_branch=$(git branch --show-current 2>/dev/null || true)
 if [[ "$current_branch" == "dev" || "$current_branch" == "main" ]]; then
@@ -138,6 +185,7 @@ echo -n "  Tracker (schema)... "
 if [ -d ".agent/tracker" ] && command -v scripts/tracker &> /dev/null; then
     STAGED_TRACKER=$(git diff --cached --name-only -- '.agent/tracker/.ops/*.ops' '.agent/tracker-workspace/.ops/*.ops' '.agent/tracker-workspace/stealth/*.ops' 2>/dev/null || true)
     if [ -n "$STAGED_TRACKER" ]; then
+        require_module hypergumbo_tracker "Tracker validation"
         if scripts/tracker validate 2>/dev/null; then
             echo -e "${GREEN}✓${NC}"
         else
@@ -211,44 +259,13 @@ else
     echo -e "${YELLOW}skipped (not installed)${NC}"
 fi
 
-# Check schema freshness (fast check - just JSON comparison)
-echo -n "  Schema (freshness)... "
-if ./scripts/generate-schema --check >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC}"
-else
-    echo -e "${RED}✗${NC}"
-    echo ""
-    echo -e "${RED}Schema is out of date. Run:${NC}"
-    echo "  ./scripts/generate-schema"
-    exit 1
-fi
-
-# Check concept-axes.md freshness — companion to schema, but the
-# human-readable by-axis view of the canonical edge-type registry.
-echo -n "  Concept axes (freshness)... "
-if ./scripts/generate-concept-axes --check >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC}"
-else
-    echo -e "${RED}✗${NC}"
-    echo ""
-    echo -e "${RED}docs/concept-axes.md is out of date. Run:${NC}"
-    echo "  ./scripts/generate-concept-axes"
-    exit 1
-fi
-
-# Check CONCEPTS.md freshness — concept-vocabulary registry mapping
-# every concept string to (producers, consumers, status). Drift surfaces
-# when framework YAMLs or linker sources change.
-echo -n "  Concepts vocabulary (freshness)... "
-if ./scripts/generate-concepts --check >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC}"
-else
-    echo -e "${RED}✗${NC}"
-    echo ""
-    echo -e "${RED}docs/CONCEPTS.md is out of date. Run:${NC}"
-    echo "  ./scripts/generate-concepts"
-    exit 1
-fi
+# Doc freshness: each generator's --check compares its output with the
+# committed doc. schema.json, then concept-axes.md (the by-axis view of the
+# edge-type registry), then CONCEPTS.md (every concept string mapped to its
+# producers and consumers; it drifts when framework YAMLs or linkers change).
+check_generated "Schema (freshness)" generate-schema
+check_generated "Concept axes (freshness)" generate-concept-axes
+check_generated "Concepts vocabulary (freshness)" generate-concepts
 
 # Check README sync (meta-package must match root)
 echo -n "  README sync... "
@@ -461,6 +478,7 @@ fi
 # tests/test_confidence_sites.py; this catches it before the push.
 echo -n "  Confidence call sites... "
 if git diff --cached --name-only | grep -qE "^packages/[^/]+/src/.*\.py$"; then
+    require_module hypergumbo_core "The confidence-site check"
     CONF_LOG="/tmp/.confidence-sites.$$"
     if scripts/check-confidence-sites > "$CONF_LOG" 2>&1; then
         echo -e "${GREEN}✓${NC}"

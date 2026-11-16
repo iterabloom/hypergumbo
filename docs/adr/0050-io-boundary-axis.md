@@ -70,35 +70,100 @@ is `hypergumbo_core.io_boundary_types`; the linter is
 
 ### 1. Axiom
 
-> A boundary value names **what data crosses the process boundary at this call
-> site, in which direction** — not what the program is thereby arranged to do
-> later.
+> A row's **primary** boundary names the **medium** data crosses at this call
+> site — the process environment, the host, the filesystem, a network peer,
+> another process, a database, the process's own standard streams, the
+> browser's storage, the page's navigation — and in which direction; not what
+> the program is thereby arranged to do later, and not what the data is. A
+> `simultaneous` **second** boundary records either a reading of the same
+> crossing that a taint label needs, such as that its content may carry a
+> credential (`env_read`) or that the party who navigated to the page chose it
+> (`navigation_read`), as the shipped INV-dadu URL rows do, or that the party who
+> launched the process chose it (`command_line_read`, the argv rows); or a second crossing
+> the same call performs at this call site, which must satisfy this axiom on its
+> own. Every simultaneous boundary is a fact about the call, and none is
+> primary over the others.
 
-Taken verbatim from ADR-0049 ruling 1. Adopting the existing sentence rather
-than writing a new one keeps ADR-0049 the value-level ruling and makes this the
-axis that ruling lives on; two differently-worded axioms for one vocabulary
-would be the same "one fact, two homes" shape the vocabulary already paid for.
+`env_read` therefore still means both. As a primary boundary it names the
+process environment: environment variables and the ambient configuration a
+deployment supplies (application config, system properties). Wherever it is
+declared it also says the content may carry a credential, which is why it mints
+`host_secret`. INV-tutar's split stands on the medium: host description and user
+identity come from the host, not from the environment, so they are
+`host_info_read`.
 
-The axiom is falsifiable in ADR-0024's sense. Its second clause is what makes
-`net_listen` a disclosure rather than a crossing, and its first clause is the
-sentence `env_read` failed when INV-tutar found most of its rows were host
-description.
+The axiom applies ADR-0049 ruling 1's transfer test (does the call hand the
+program data the far side chose?) to the axis as a whole; it is not that
+ruling's sentence. Medium is the reading the value definitions already used
+where they were written carefully (`logging` "names a medium", audit-findings
+0021); content readings and chooser readings, which some rows had used for
+their only boundary, now live in a second, `simultaneous` boundary instead.
+
+**A second crossing (owner ruling 2026-10-27, WI-kuzoh).** The `simultaneous`
+flag was minted (INV-zumin) for a call that is true under two boundaries at
+once. The first wording of this section described only one of its uses, the
+reading. On the shipped catalogues the other use is the larger one: of the 39
+primitives on `simultaneous: true` rows, 6 pair a medium with a reading (the
+URL rows) and 33 pair two crossings. Checked against the widened sentence:
+
+| Pair | Primitives | Verdict |
+|---|---|---|
+| `ipc_recv` + `subprocess` (`check_output`, `execSync`, `Command.output`, …) | 23 | Hold. A launch, and a transfer of the child's bytes at the call (ADR-0049 ruling 1, INV-lozat). |
+| `env_read` + `navigation_read` (the page URL and referrer) | 6 | Hold. The reading case. |
+| `fs_read` + `fs_write` (erlang `filelib.ensure_dir`) | 1 | Holds. It checks, then creates, at the call. |
+| `fs_read` + `logging` (python `builtins.license`) | 1 | Holds. It opens the licence file, then prints it. |
+| `net_send` + `net_recv`, objc `sendSynchronousRequest:` | 1 | Holds. |
+| `net_send` + `net_recv`, objc `sendAsynchronousRequest:` | 1 | **Fails.** The response arrives in the completion handler, later. WI-mapim's shape. |
+| `fs_write` + `subprocess` (scala `Process.apply`, `Process(...)`, `Process.run`) | 3 | **Fail.** `apply` returns a `ProcessBuilder` and launches nothing; the file write is what a child may do later. WI-novap. |
+| `host_info_read` + `subprocess` (python `platform.architecture` / `platform` / `processor`) | 3 | Kept, by judgment. They run a command and return host facts. The returned bytes cross from the child's stdout, but `ipc_recv` would mint `untrusted_input` for a host fact, so `host_info_read` stands as the reading the `host_description` label needs. |
+
+**The command line (owner rulings 2026-10-22 and 2026-10-28, WI-zidam).** Two
+reading pairs were added after that count. Every argv row (python `sys.argv` and
+`argparse` `parse_args` / `parse_known_args`, javascript `process.argv`, rust
+`std::env::args` / `args_os`, elixir `System.argv`, haskell `getArgs`, erlang
+`init:get_argument*`, swift `CommandLine.arguments`; 12 primitives) is `env_read` +
+`command_line_read`: an argument may carry a credential, and the launcher chose
+it, as it chose stdin, so it mints `untrusted_input` as well as `host_secret`.
+`command_line_read` exists so the second label can be told apart downstream: the
+flows it added were measured on 10 repositories as 10/10 true and 0/10 useful,
+so `verify-claims` sets them aside and counts them (`command_line_flows`) unless
+a claim sets `include_command_line: true`. It is not `ipc_recv`, which nothing
+at the call site crosses. And `document.cookie` is `browser_storage_read` (the
+medium) + `env_read` (it may carry a session token), keeping `host_secret` only.
+
+**"Primary" is not stored.** Consumers read every simultaneous boundary
+(`boundaries_of`; `compute_boundary_map` builds one chain per boundary; the
+auto-derived taint catalogue takes a source or sink from each row). The scalar `Edge.meta["io_boundary"]` is the
+first of them in `CATALOG_BOUNDARY_TYPES` order. It carries no primacy: for the
+URL rows it is `env_read`, while this section names `navigation_read` the
+medium. A consumer that asks "does this edge reach B" reads `boundaries_of`,
+never the scalar.
+
+The axiom is falsifiable in ADR-0024's sense. Its "not what the program is
+arranged to do later" clause is what makes `net_listen` a disclosure rather than
+a crossing, and its medium clause is the sentence `env_read` failed when INV-tutar
+found most of its rows were host description.
 
 ### 2. Sections
 
-Four axes partition the twenty-one values.
+Four axes partition the twenty-three values.
 
 | Axis | Meaning | Values |
 |---|---|---|
-| `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write`, `navigation_read` |
+| `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write`, `navigation_read`, `command_line_read` |
 | `opacity` | Control left this process. The classification is correct and the analysis cannot see past it, so it does not license "I looked and found nothing." | `subprocess`, `command_launch` |
-| `deferred_crossing` | The call *arranges* a crossing it does not itself perform (ADR-0049). | `net_listen`, `db_compose` |
+| `deferred_crossing` | The call *arranges* a crossing it does not itself perform (ADR-0049). | `net_listen`, `db_compose`, `ipc_listen` |
 | `speculative` | Synthesised uncertainty; declarable by no catalogue. | `external_potential` |
 
 `deferred_crossing` is a section rather than a violation, and that is the
-subtle part: `net_listen` (and since WI-fasap its database twin `db_compose`,
-the composed-but-unevaluated query) is *precisely* what the axiom's second
-clause excludes from `data_crossing`. ADR-0049 created it deliberately, so the axis
+subtle part: `net_listen` (with its database twin `db_compose`, the
+composed-but-unevaluated query, and its local-IPC twin `ipc_listen`, a
+Unix-domain socket server) is *precisely* what the axiom's second clause
+excludes from `data_crossing`. The listener pair is split by medium, as §1
+requires of every row: `ipc_listen` shadows `ipc_recv` and `net_listen`
+shadows `net_recv`, and a call that may bind either medium (a generic
+`bind` / `Listen` taking the family or network as an argument) stays
+`net_listen` until a call-site stamp can tell them apart. ADR-0049 created it deliberately, so the axis
 must have somewhere to put it. A value that the axiom rejects and the project
 intends is a section; a value that the axiom rejects and nobody defends is a
 deprecation candidate.
@@ -119,8 +184,8 @@ the signal to put them on the spec:
 - **`counts_in_headline`** — whether the value is part of the curated surface
   reported as `total_io_edges`. `subprocess` is the value that proves this
   cannot be an axis query: it is *opaque and counted*, while
-  `external_potential`, `command_launch`, `net_listen` and `db_compose` are
-  disclosed and excluded. An axis-derived rule would need exactly one special case.
+  `external_potential`, `command_launch`, `net_listen`, `db_compose` and
+  `ipc_listen` are disclosed and excluded. An axis-derived rule would need exactly one special case.
 
 ### 4. The registry is the single source of truth
 

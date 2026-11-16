@@ -87,5 +87,3 @@ patterns:
   # Dry::CLI register
   - concept: command
     decorator: "^register$"
-
-linkers: []

@@ -8,10 +8,10 @@ Three groups, and they check different things on purpose:
 * CITATION LIVENESS — every ``file:line`` this module cites still says what
   it claimed. A rotted citation is worse than none: it sends the next reader
   to a line that now means something else (ADR-0051 section 5).
-* THE CLOSED PARSER SET — the A+no half of the owner ruling. The nine
-  consumers that parse the value are GRANDFATHERED and enumerated; a tenth
-  is a decision, and the gate makes it one by failing until the table is
-  edited.
+* THE CLOSED PARSER SET — the "A+no" half of the ruling ADR-0058 records.
+  The consumers that parse the value are GRANDFATHERED and enumerated in
+  ``LEGACY_VALUE_PARSERS``; adding one is a decision, and the gate makes it
+  one by failing until the table is edited.
 """
 from __future__ import annotations
 
@@ -99,6 +99,22 @@ class TestConformanceIsDerived:
             )
 
 
+def test_every_cited_emission_site_still_says_what_it_claimed() -> None:
+    """A notion's ``file:line`` citation is checked, like a legacy parser's.
+
+    A comment-only edit above the anchor shifts it, and without this check
+    nothing notices: an unchecked citation rots silently.
+    """
+    sites = [site for notion in SIGNATURE_NOTIONS for site in notion.emission_sites]
+    assert sites, "no emission site is cited, so this test checks nothing"
+    for site in sites:
+        lines = (REPO_ROOT / site.path).read_text(encoding="utf-8").splitlines()
+        assert site.anchor in lines[site.line - 1], (
+            f"{site.path}:{site.line} no longer contains "
+            f"{site.anchor!r} — it says {lines[site.line - 1].strip()!r}"
+        )
+
+
 class TestFactHomes:
     def test_every_fact_names_a_home_that_exists(self) -> None:
         for fact, home in FACT_HOMES.items():
@@ -124,7 +140,7 @@ class TestFactHomes:
 
     def test_the_three_facts_consumers_actually_parse_have_homes(self) -> None:
         # Return type, arity and a field's declared type are exactly the
-        # three the nine legacy parsers go after.
+        # three facts the legacy parsers go after.
         assert {"return_type", "parameter_arity", "value_type"} <= set(
             FACT_HOMES
         )
@@ -134,8 +150,8 @@ class TestLegacyParsersAreClosedAndLive:
     def test_the_set_is_the_current_migration_backlog(self) -> None:
         """This number may only go DOWN.
 
-        It was NINE when ADR-0058 declared the axis. ``py.py`` left it under
-        WI-ribak. A RISE means a new parser slipped in -- which the live-tree
+        It falls as legacy parsers migrate off the value (history: WI-ribak).
+        A RISE means a new parser slipped in -- which the live-tree
         gate below should have caught first, so a rise here means the gate
         was edited to admit it, and that is the review.
         """
@@ -282,8 +298,8 @@ class TestLiveTree:
     def test_no_undeclared_value_parser_exists(self) -> None:
         """The A+no gate, on the real tree.
 
-        The nine are declared in ``LEGACY_VALUE_PARSERS``. A tenth fails
-        here, which is the point: adding one is a decision, and this is
+        The grandfathered parsers are declared in ``LEGACY_VALUE_PARSERS``.
+        Any other fails here, which is the point: adding one is a decision, and this is
         where the decision gets made rather than noticed later.
         """
         undeclared = find_undeclared_value_parsers(REPO_ROOT)

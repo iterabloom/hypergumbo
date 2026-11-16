@@ -1,0 +1,22 @@
+- op: create  # 3047
+  at: '2026-11-16T11:47:01Z'  # 3047
+  by: agent  # 3047
+  actor: jgstern_agent  # 3047
+  clock: 1  # 3047
+  nonce: '3047'  # 3047
+  data:  # 3047
+    kind: work_item  # 3047
+    title: "swift: argument labels, generic constraints and static-vs-instance are not hashed; calls on a local type bind by name"  # 3047
+    status: todo_hard  # 3047
+    priority: 3  # 3047
+    parent:  # 3047
+    tags:  # 3047
+    - swift  # 3047
+    - stable_id  # 3047
+    - analysis_quality  # 3047
+    isbefore: []  # 3047
+    duplicate_of: []  # 3047
+    not_duplicate_of: []  # 3047
+    pr_ref:  # 3047
+    description: "WHAT (MOVES IDS).\n- Argument labels are not in the hashed signature: `f(a: Int)` and `f(b: Int)` share an id until the occurrence split. Hashing labels would move 8.0% of swift-composable-architecture and 28.6% of Alamofire (measured by the package, on top of the 11.85% / 9.13% v15 moved). Owner's call; left out of PR #2200.\n- Generic constraints and `where` clauses are not hashed; a `static` and an instance member of one name and signature share an id.\n- INV-fabih's wide statement still does not hold for five same-name-sibling shapes: two blocks of one function, two getters, label-only overloads, two inits, two closures.\n\nWHAT (does not move ids).\n- A method or static call on a function-local type, and a call to a local function, resolve by last-one-wins name.\n- Two same-named local types in two blocks of one function tie.\n- A dotted superclass is read as its head segment.\n\nFixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 3047
+    fields: {}  # 3047

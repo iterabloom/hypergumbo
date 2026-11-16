@@ -4,8 +4,8 @@
 rust-analyzer executes the analysed crate's ``build.rs``, is opt-in, and
 never runs in CI, so every cross-backend test in this repository consumes
 RECORDED output of the real producer rather than something derived from the
-tree-sitter arm's own records (a control that cannot fail is not a control —
-INV-dolud was exactly that, and stood for months). This module is the one
+tree-sitter arm's own records (a control that cannot fail is not a control;
+INV-dolud). This module is the one
 place those recordings are exposed; it lives under the rust-analyzer
 package's ``recorded/`` directory (owned by the producer's package, not
 shipped in its wheel) and is on pytest's ``pythonpath`` so core, mainstream
@@ -44,17 +44,22 @@ Two facts these records pin, which the merge anchor declarations rely on:
 every callable's ``range`` is the identifier TOKEN (single-line), so the SCIP
 arm's ``span_role`` is ``token`` (INV-lodum); and every ``enclosing_range``
 is the ITEM extent that the tree-sitter arm spans the same declaration over,
-which is what makes an item-against-item comparison possible once the fold
-lands (WI-kokiz).
+which is what makes an item-against-item comparison possible (WI-kokiz).
 
 Re-record (3 s) rather than edit: create the crate above, run
 ``rust-analyzer scip .``, parse ``index.scip`` and regenerate the table.
 
 2. AARDVARK-DNS — the crate every ADR-0057 measurement was taken on, committed
    under ``aardvark_dns/crate/`` (upstream containers/aardvark-dns at commit
-   ``4444d90fee``, Apache-2.0, ``LICENSE`` retained; ``src/``, ``build.rs``,
-   ``Cargo.toml`` and ``Cargo.lock`` only) beside the ``index.scip`` that
+   ``4444d90fee``, Apache-2.0, ``LICENSE`` retained; ``src/``, ``build.rs``
+   and ``Cargo.toml`` only) beside the ``index.scip`` that
    ``rust-analyzer scip <crate>`` emitted for it on 2026-09-18 in 6.3 s.
+   The recording was made with upstream's ``Cargo.lock`` at that commit,
+   which pins the dependency versions the index's external monikers name
+   (``hickory-proto 0.25.2``, ``tokio 1.49.0``, ...). The lockfile is not
+   committed: nothing here builds the crate or reads it, and its pins draw
+   Dependabot alerts. ``aardvark_dns/README.md`` gives its URL and
+   SHA-256 for re-recording.
    The index is committed RAW (protobuf, 428 KB) because that is the byte
    stream production hands to ``translate_scip_to_hg``; the one edit is
    ``metadata.project_root``, rewritten from the recording machine's absolute
@@ -64,30 +69,32 @@ Re-record (3 s) rather than edit: create the crate above, run
    what the index contains — 16 documents, 169 global Definitions, 500 local
    Definitions (the ones WI-jikok drops), 3,543 reference occurrences — so a
    test that gets a different count is looking at a different recording.
-   The producer's own log during the recording said ``Duplicate symbol:
-   rust-analyzer cargo aardvark-dns 2.0.0-dev crate/`` — INV-kutid's
-   per-target moniker collision, visible at the source.
+   The producer logs ``Duplicate symbol: rust-analyzer cargo aardvark-dns
+   2.0.0-dev crate/`` while indexing this crate — the per-target moniker
+   collision (INV-kutid), visible at the source.
 
-   Under the ADR-0057 §10 anchors as declared on 2026-09-18 (tree-sitter:
-   last ``::`` segment over the item span; SCIP: name as emitted over the
-   identifier token), the live tree-sitter arm run on ``crate/`` pairs
-   **148 of the 169** SCIP definitions with exactly one record each and
-   none ambiguously; the 21 unpaired are the 18 module namespaces (no
-   tree-sitter counterpart by design), 2 ``type`` aliases (``AardvarkResult``,
-   ``ThreadHandleMap``; SCIP kind ``type_alias`` since WI-gapup) and 1
-   ``static`` item (``DNSBACKEND``, ``variable``) — three constructs the
-   tree-sitter arm emits no Symbol for at all (WI-bamar), an incumbent gap,
-   not an anchor defect — :data:`AARDVARK_DNS_PAIRING` pins it, and
+   Under the ADR-0057 §10 anchors (tree-sitter: last ``::`` segment over the
+   item span; SCIP: name as emitted over the identifier token), the live
+   tree-sitter arm run on ``crate/`` pairs
+   **150 of the 169** SCIP definitions with exactly one record each and
+   none ambiguously; the 19 unpaired are the 18 module namespaces (no
+   tree-sitter counterpart by design) and 1 ``static`` item (``DNSBACKEND``,
+   ``variable``), a static inside a function body, which the tree-sitter arm
+   emits no Symbol for by its module-level rule. The 2 ``type`` aliases
+   (``AardvarkResult``, ``ThreadHandleMap``) pair through their
+   ``type_alias`` Symbols (WI-bamar).
+   :data:`AARDVARK_DNS_PAIRING` pins it, and
    :data:`AARDVARK_DNS_AGREEMENT_TALLY` pins that the paired records agree on
-   ``kind`` 133 times out of 148. ADR-0057 §3 cites 138 of 169 from
-   a scratch-script measurement on 2026-09-18; the committed rule and the
-   committed input give 148, and the committed number is the one the merge
-   pass (WI-kokiz) must reproduce.
+   ``kind`` 150 times out of 150 (135 until stable-id v15 moved Rust's
+   ``const`` items off ``variable``). ADR-0057 §3 cites 138 of 169 from a
+   scratch-script measurement; the number the committed rule gives on the
+   committed input is the one the merge pass (WI-kokiz) must reproduce.
 
 Re-record either fixture rather than editing it: the crate is at
-``aardvark_dns/crate``; run ``rust-analyzer scip <crate>`` from an empty
-directory, normalise ``project_root``, replace ``index.scip``, and update the
-counts here and the producer version above.
+``aardvark_dns/crate``; restore upstream's ``Cargo.lock`` into it (README
+has the URL and hash), run ``rust-analyzer scip <crate>`` from an empty
+directory, normalise ``project_root``, replace ``index.scip``, update the
+counts here and the producer version above, and delete the lockfile again.
 """
 from __future__ import annotations
 
@@ -214,41 +221,41 @@ AARDVARK_DNS_COUNTS: Final[dict[str, int]] = {
 #: What the declared anchors pair on the committed input (see docstring).
 AARDVARK_DNS_PAIRING: Final[dict[str, int]] = {
     "scip_definitions": 169,
-    "paired": 148,
+    "paired": 150,
     "ambiguous": 0,
     "unpaired_namespace": 18,
-    "unpaired_type_alias": 2,
+    "unpaired_type_alias": 0,
     "unpaired_variable": 1,
 }
 
-#: On the 148 paired records, how often the two arms say the same ``kind``.
+#: On the 150 paired records, how often the two arms say the same ``kind``.
 #: (Named without the word "kind": the axis-drift collector reads any
 #: identifier containing it as a Symbol.kind value set, and these are counters.)
-#: (WI-gapup: the SCIP arm reads the producer's declared kind). The 15
-#: disagreements are every ``const`` item: SCIP declares ``Constant`` and the
-#: importer maps it to the registry's ``constant``; the tree-sitter arm emits
-#: ``variable`` for module-level ``const`` and ``static`` alike. The SCIP side
-#: is the more precise one, so the contest is left to arbitration rather than
-#: shaped away. Statics agree (``variable`` on both).
+#: (The SCIP arm reads the producer's declared kind; WI-gapup.) They agree on
+#: all 150. The 15 ``const`` items are ``const`` on both arms: rust.py emits the
+#: registry's ``const`` kind for a module-level ``const`` and the Rust SCIP
+#: translation refines SCIP's ``Constant`` (generic ``constant``) to the same
+#: kind. Until stable-id v15 these 15 were the only disagreement (``variable``
+#: from rust.py vs ``constant``). Statics agree (``variable`` on both).
 AARDVARK_DNS_AGREEMENT_TALLY: Final[dict[str, int]] = {
-    "paired": 148,
-    "agree": 133,
-    "disagree": 15,
-    "disagree_constant_vs_variable": 15,
-    # WI-binis, the provenance slot on the 148 merged records: ``span`` is
+    "paired": 150,
+    "agree": 150,
+    "disagree": 0,
+    "const_on_both": 15,
+    # The provenance slot on the 150 merged records (WI-binis): ``span`` is
     # contested (token vs item) on all but the 2 unit enum variants, whose
     # tree-sitter span IS the bare name; ``stable_id`` is contested (moniker
-    # hash vs rust.py's) on all 148 -- no pair shares an id (INV-dolud). This
-    # read 134 while the harness skipped the kind backstop: the 14 struct/enum/
-    # trait records had no incumbent value to contest (WI-paluk).
-    "span_alternatives": 146,
-    "stable_id_alternatives": 148,
+    # hash vs rust.py's) on all 150 -- no pair shares an id (INV-dolud). All
+    # 150 only because the harness runs the declaration backstop, which gives
+    # the 14 struct/enum/trait records an incumbent value to contest (WI-paluk).
+    "span_alternatives": 148,
+    "stable_id_alternatives": 150,
 }
 
 #: The SCIP arm's occurrence edges on the recording and their tree-sitter
 #: twins (WI-zapuk). A "twin" is a tree-sitter edge on the same (src, dst)
 #: after both endpoints are paired through the declared anchors. The eleven
-#: twins that still differ are tuple-struct / variant CONSTRUCTION sites the
+#: twins that differ are tuple-struct / variant CONSTRUCTION sites the
 #: tree-sitter arm labels ``calls`` while the SCIP target is a struct or
 #: variant. (Named without "edge type": see AARDVARK_DNS_AGREEMENT_TALLY.)
 AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
@@ -256,36 +263,38 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     "calls": 130,
     "references": 368,
     "field_target_references": 113,
-    # 130 until INV-midag: the three `impl From<_> for AardvarkError` share the
-    # name `AardvarkError::from`, and the tree-sitter arm credited all their calls
-    # to one of them, so two `IOError(e)` constructions had no SCIP twin.
-    "twins": 132,
-    "twins_calls_calls": 121,
+    # The three `impl From<_> for AardvarkError` share the name
+    # `AardvarkError::from`; the tree-sitter arm tells them apart by span, so
+    # both `IOError(e)` constructions have a SCIP twin (INV-midag).
+    # src/test/test.rs:37 ``config::parse_configs(..)`` (after
+    # ``use aardvark_dns::config``) binds src/config/mod.rs, the edge SCIP
+    # emits (WI-lirik).
+    "twins": 133,
+    "twins_calls_calls": 122,
     "twins_references_calls": 11,
-    # After the merge pass rewires endpoints (WI-kokiz), the 121 calls/calls
-    # twins fall onto 93 DISTINCT (src, dst, edge_type) keys — SCIP emits one
+    # After the merge pass rewires endpoints (WI-kokiz), the 122 calls/calls
+    # twins fall onto 94 DISTINCT (src, dst, edge_type) keys — SCIP emits one
     # edge per call occurrence and within-arm dedup already folds repeats —
-    # so deduplicate_edges removes exactly 93 cross-arm duplicates.
-    "shared_call_keys_after_fold": 93,
-    # Edges the fold absorbs into those 93 survivors (WI-binis): the 121 SCIP
+    # so deduplicate_edges removes exactly 94 cross-arm duplicates.
+    "shared_call_keys_after_fold": 94,
+    # Edges the fold absorbs into those 94 survivors (WI-binis): the 122 SCIP
     # twins plus each arm's own repeats of the same key — a producer's repeated
     # call sites are absorbed the same way, their lines unioned into call_lines.
-    "edges_absorbed_by_fold": 149,
+    "edges_absorbed_by_fold": 150,
     # ADR-0057 §14 (WI-lihis), after the fold and the resolution verdict: of
     # the tree-sitter call edges that end at an external stub, how many share
     # a src, a call line, the edge type AND the declared callee name with a
     # resolved edge from a producer they lack (superseded — every one is a
     # `wrap` SCIP resolves to `Result::wrap`), and how many share the site and
     # type but name a DIFFERENT callee (two calls on one line: never demoted).
-    # 245 since INV-duzom (was 244): `std::io::Error::new(..)` at
-    # src/server/serve.rs:384 is written with its full path, which now names
-    # its owner, so the generic-method guard no longer suppresses it.
-    # 256 since INV-bamij's rust batch: the calls in `const` initialisers
-    # (`Duration::from_secs(5)` in src/dns/coredns.rs, the `SocketAddr` /
-    # `Ipv4Addr` / `Ipv6Addr` constants in src/server/serve.rs and
-    # src/test/test.rs) are anchored on the file instead of dropped. They are
-    # file-sourced, so the edge-overlap table above, which pairs records by
-    # symbol, does not see them.
+    # Includes `std::io::Error::new(..)` at src/server/serve.rs:384, written
+    # with its full path, which names its owner, so the generic-method guard
+    # does not suppress it (INV-duzom). Also includes the 11 calls in `const`
+    # initialisers (`Duration::from_secs(5)` in src/dns/coredns.rs, the
+    # `SocketAddr` / `Ipv4Addr` / `Ipv6Addr` constants in src/server/serve.rs
+    # and src/test/test.rs), anchored on the file rather than dropped
+    # (INV-bamij). Those are file-sourced, so AARDVARK_DNS_EDGE_OVERLAP, which
+    # pairs records by symbol, does not see them (245 there).
     "stub_calls": 256,
     "superseded_stubs": 3,
     "co_located_same_type_not_superseded": 24,
@@ -295,49 +304,57 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
 # two-arm artifact — the merge pass, edge dedup, the resolution verdict and
 # supersession, as `_two_arm_artifact()` in test_recorded_fixtures builds it.
 # These are the numbers in docs/audits/0019-backend-agreement-rust-aardvark-dns.md.
-# Pairing per Symbol category: every one of the 148 paired records has both
-# producers; the 21 SCIP-only records are the namespaces, the two `type`
-# aliases and the one `static` (WI-bamar) the tree-sitter arm emits nothing for.
+# Pairing per Symbol category: every one of the 150 paired records has both
+# producers, the two `type` aliases among them (WI-bamar); the 19 SCIP-only
+# records are the 18 namespaces and the one `static` the tree-sitter arm emits
+# nothing for.
 AARDVARK_DNS_PAIRED_PER_CATEGORY = {
-    "enum": 3, "field": 38, "function": 52, "method": 27, "struct": 10, "trait": 1, "variable": 17,
+    "const": 15, "enum": 3, "field": 38, "function": 52, "method": 27, "struct": 10,
+    "trait": 1, "type_alias": 2, "variable": 2,
 }
-AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "type_alias": 2, "variable": 1}
-# Per attribute over the 148 paired records: (agree, disagree, rust only, rust_analyzer only).
+AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "variable": 1}
+# Per attribute over the 150 paired records: (agree, disagree, rust only, rust_analyzer only).
 # `name`: the 38 fields and 27 methods tree-sitter qualifies as `Type::member`
 # and SCIP emits bare — the anchors' name_key folds them, the carried scalar
 # keeps the incumbent's form. `is_exported`: one-sided to the incumbent on all
-# 148 — `rust.py` computes exportedness for every item it emits (`"pub" in
-# modifiers`) and the SCIP arm computes none, so since INV-kubup its records
-# carry no value at all rather than a `False` that read as a measurement. `span`: the
+# 150 — `rust.py` computes exportedness for every item it emits (`"pub" in
+# modifiers`) and the SCIP arm computes none, so its records carry no value at
+# all rather than a `False` that would read as a measurement (INV-kubup). `span`: the
 # item/token role split of §10, by construction. `stable_id`: disagrees on all
-# 148, because the arms hash different things. tree-sitter uses the typed id, or the
+# 150, because the arms hash different things. tree-sitter uses the typed id, or the
 # orchestrator's declaration backstop for struct/enum/trait (WI-rihob); SCIP uses
-# `sha256(moniker)`, and its parity reassignment abstains (INV-dolud, WI-gojum). It read
-# 134 / 14-one-sided while the harness skipped the backstop a survey runs before the
-# merge (WI-paluk); a live survey reads 0 / 148 / 0 / 0. The one-sided rust-only columns
+# `sha256(moniker)`, and its parity reassignment abstains (INV-dolud, WI-gojum). The
+# harness runs the backstop a survey runs before the merge, so it reads 0 / 150 / 0 / 0
+# as a live survey does (WI-paluk). The one-sided rust-only columns
 # are attributes the SCIP translation never fills (signature, docstring, modifiers,
 # qualified_name).
 AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
     "docstring": (0, 0, 63, 0),
-    "is_exported": (0, 0, 148, 0),
-    "kind": (133, 15, 0, 0),
-    "modifiers": (0, 0, 35, 0),
-    "name": (83, 65, 0, 0),
-    "qualified_name": (0, 0, 148, 0),
-    "signature": (0, 0, 125, 0),
-    "span": (2, 146, 0, 0),
-    "stable_id": (0, 148, 0, 0),
+    "is_exported": (0, 0, 150, 0),
+    "kind": (150, 0, 0, 0),
+    "modifiers": (0, 0, 36, 0),
+    "name": (85, 65, 0, 0),
+    "qualified_name": (0, 0, 150, 0),
+    "signature": (0, 0, 127, 0),
+    "span": (2, 148, 0, 0),
+    "stable_id": (0, 150, 0, 0),
 }
 # Per (edge type, resolved) after the fold: (both producers, rust only, rust_analyzer only).
-# The 93 "both" calls are the corroborated edges; the incumbent emits no
+# The 94 "both" calls are the corroborated edges; the incumbent emits no
 # `references` edge and the SCIP arm no edge to an external stub.
 AARDVARK_DNS_EDGE_OVERLAP = {
-    ("calls", True): (93, 19, 7),
-    ("calls", False): (0, 245, 0),  # 244 before INV-duzom; see stub_calls
+    # The harness's dedup drops self-loops as a survey's does (WI-vosop), and
+    # test.rs:37 binds config/mod.rs, corroborated by SCIP (WI-lirik).
+    ("calls", True): (94, 16, 6),
+    ("calls", False): (0, 245, 0),  # see stub_calls
     ("decorated_by", False): (0, 1, 0),
     ("implements", False): (0, 2, 0),
     ("module_attr_ref", False): (0, 26, 0),
-    ("references", True): (0, 0, 269),
+    # main.rs:6's ``use aardvark_dns::commands`` and lib.rs:2's own
+    # ``pub mod commands;`` each keep their real source rather than sharing the
+    # ``crate/`` moniker, so the fold does not merge them and both survive
+    # (INV-sipod).
+    ("references", True): (0, 0, 270),
 }
 
 

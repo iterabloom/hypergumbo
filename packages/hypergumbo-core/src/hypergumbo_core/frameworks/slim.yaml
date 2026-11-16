@@ -77,6 +77,3 @@ patterns:
   # PSR-7 Response
   - concept: response
     base_class: "^ResponseInterface$"
-
-linkers:
-  - http

@@ -19,3 +19,26 @@
     description: "Found by the 0006 adversarial refutation pass; reported independently by 5 of 14 refuters.\n\nLow severity for output correctness -- it moved no label in 0006 -- but it is load-bearing for ANY consumer that uses the span to bound a search, which includes every human or agent reading a flow record to check it. The C 4-line shift is a separate and more worrying case because it is not explained by the newline rule and makes the anchor test unreliable wherever it occurs; it is recorded here rather than split out because 0006 saw it once and did not characterise it."  # ab17
     fields:  # ab17
       statement: "A file-anchored symbol span ends one line past the last real line whenever the file is newline-terminated: span_end = count(newlines) + 1. Confirmed on four repositories in 0006 -- session-desktop babel.config.js 510 lines spanned 1-511; kamaraflow train_script.py 391 lines spanned 1-392; spacedrive gradlew 251 lines spanned 1-252; ArkLib revert_nav.py 93 lines spanned 1-94 and inject_nav.py 78 lines spanned 1-79. The diagnosis is exact rather than approximate: ArkLib lint-style.py has 471 lines and NO trailing newline, and its span 1-471 is correct. SYMBOL-anchored spans are exact and inclusive by contrast, except server-fn.c where server_destroy_pane (309-383) is recorded 313-387, a uniform 4-line shift at both ends."  # ab17
+- op: discuss  # 6ff7
+  at: '2026-11-01T10:56:02Z'  # 6ff7
+  by: agent  # 6ff7
+  actor: jgstern_agent  # 6ff7
+  clock: 2  # 6ff7
+  nonce: 6ff7  # 6ff7
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: PARTLY-STALE. 2026-11-01 review @100b6fbb6e: newline-terminated fixtures: c.js 2 lines -> 1-3, gradlew (bash) 3 -> 1-4, a.php 2 -> 1-3, a.pl 2 -> 1-3 (wrong). Python (py.py len(splitlines()), and the synthesizer's _read_file_end_line), Java, Ruby, C, Go, Rust, Kotlin and Swift are exact. So the item's Python examples do not reproduce. The 4-line C shift did not reproduce: tmate's server-fn.c gives server_destroy_pane 293-341, which is exact. The original tmux file is not here. Separately, lua.py emits its file node as 1-1. MECHANISM: file-node end_line taken from tree.root_node.end_point[0]+1, which is one past the last line when the grammar's root ends at (N,0) after a trailing newline. SHARES MECHANISM WITH: none."  # 6ff7
+- op: update  # 178e
+  at: '2026-11-01T10:56:02Z'  # 178e
+  by: agent  # 178e
+  actor: jgstern_agent  # 178e
+  clock: 3  # 178e
+  nonce: 178e  # 178e
+  set:  # 178e
+    title: "File-anchored spans end one line late on newline-terminated files in analyzers using tree.root_node.end_point[0]+1 (JS/TS, bash, PHP, Perl)"  # 178e
+- op: update  # 54d5
+  at: '2026-11-01T10:56:02Z'  # 54d5
+  by: agent  # 54d5
+  actor: jgstern_agent  # 54d5
+  clock: 4  # 54d5
+  nonce: 54d5  # 54d5
+  set:  # 54d5
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e: newline-terminated fixtures: c.js 2 lines -> 1-3, gradlew (bash) 3 -> 1-4, a.php 2 -> 1-3, a.pl 2 -> 1-3 (wrong). Python (py.py len(splitlines()), and the synthesizer's _read_file_end_line), Java, Ruby, C, Go, Rust, Kotlin and Swift are exact. So the item's Python examples do not reproduce. The 4-line C shift did not reproduce: tmate's server-fn.c gives server_destroy_pane 293-341, which is exact. The original tmux file is not here. Separately, lua.py emits its file node as 1-1. (Original text below; the review entry in the thread has the evidence.)\n\nFound by the 0006 adversarial refutation pass; reported independently by 5 of 14 refuters.\n\nLow severity for output correctness -- it moved no label in 0006 -- but it is load-bearing for ANY consumer that uses the span to bound a search, which includes every human or agent reading a flow record to check it. The C 4-line shift is a separate and more worrying case because it is not explained by the newline rule and makes the anchor test unreliable wherever it occurs; it is recorded here rather than split out because 0006 saw it once and did not characterise it."  # 54d5

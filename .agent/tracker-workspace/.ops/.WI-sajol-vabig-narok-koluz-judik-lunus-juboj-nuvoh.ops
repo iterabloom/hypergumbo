@@ -19,3 +19,10 @@
     pr_ref:  # 286a
     description: "FILED 2026-10-04 from WI-silos-mufon-mular-gavik-hihip-mibuj-mihov-julim (branch jgstern-agent/fix/silos).\n\nA closure CAPTURE LIST item with an initialiser, `{ [s = m] in s.x() }`, declares `s` inside the closure (type: m's). The binding pass records nothing for `capture_list_item`, so `s` falls through to the enclosing `s`. Live repro on origin/dev 385ec63be1 (and on the WI-silos branch, which does not touch capture lists):\n  func go(s: URLSession, m: FileManager) { run { [s = m] in s.zap3() } }\n  -> swift:URLSession:0-0:zap3:unresolved (should be FileManager, or at least not URLSession).\nFix shape: in the binding pass, a `capture_list_item` with `=` binds its simple_identifier into the lambda_literal's scope, typed by `_swift_receiver_expr_type` of the RHS (None when untyped, which still shadows). A bare `[weak self]` / `[unowned x]` item re-binds the same name to the same object and needs no entry.\nNot sized on the corpus."  # 286a
     fields: {}  # 286a
+- op: discuss  # 2236
+  at: '2026-11-01T10:56:16Z'  # 2236
+  by: agent  # 2236
+  actor: jgstern_agent  # 2236
+  clock: 2  # 2236
+  nonce: '2236'  # 2236
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs2/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: func go(s: URLSession, m: FileManager) { run { [s = m] in s.zap3() } } still yields swift:URLSession:0-0:zap3 (receiver_type_hint URLSession), same as the unshadowed control zap4. swift.py has no capture_list handling (grep capture_list: 0 hits); later swift.py commits (WI-sogof, 7b57c9137c) do not touch it. MECHANISM: swift binding pass records nothing for capture_list_item, so an initialised capture does not shadow."  # 2236

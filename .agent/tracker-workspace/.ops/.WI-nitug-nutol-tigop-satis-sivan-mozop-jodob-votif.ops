@@ -1,0 +1,22 @@
+- op: create  # d5ba
+  at: '2026-10-28T13:41:34Z'  # d5ba
+  by: agent  # d5ba
+  actor: jgstern_agent  # d5ba
+  clock: 1  # d5ba
+  nonce: d5ba  # d5ba
+  data:  # d5ba
+    kind: work_item  # d5ba
+    title: "dead and hidden-dead functions the test-only ratchet misses: 11 with no caller, 7 hidden by bare-name collisions, 44 reached only through test-only roots, and the textconv_main false positive"  # d5ba
+    status: todo_hard  # d5ba
+    priority: 4  # d5ba
+    parent:  # d5ba
+    tags:  # d5ba
+    - concept_audit  # d5ba
+    - kosup_sweep  # d5ba
+    - dead_code  # d5ba
+    isbefore: []  # d5ba
+    duplicate_of: []  # d5ba
+    not_duplicate_of: []  # d5ba
+    pr_ref:  # d5ba
+    description: "From the WI-kosup function census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/D_functions.md). Dead and hidden-dead functions the test-only-reachability ratchet does not see:\n- 11 module-level functions with no caller at all (1 public: make_file_finder, analyze/base.py ~:3564; 9 carry pragma: no cover; 2 probe getters in sketch_embeddings.py ~:725/742, a file outside coverage). DELETE.\n- 7 hidden by bare-name collisions in the ratchet: analyze/registry.py::run_all_analyzers (unused copy of the live one in all_analyzers.py), symbol_resolution.py::lookup_name (masked by a loop variable), js_ts._extract_symbols_and_edges, _collect_identifiers in py_def_use and ts_def_use -- DELETE; linkers/registry.py::clear_registry and _reset_cli_scan_cache stay as test helpers (the test reaches the latter by getattr(..., None), so a rename silently disables the reset).\n- 44 functions reached only through a test-only root (25 roots, all in the baseline), e.g. 15 tracker SVG/preview/screenshot functions in 5 modules: deleting a root makes them silent dead code; the ratchet should follow production-from-production reachability, not one hop.\n- Ratchet false positive: hypergumbo_tracker/cli.py::textconv_main is a console-script entry point (scripts/tracker-textconv:14) and should leave the baseline.\n- ANSWER_PATTERNS and BIG_PICTURE_QUESTIONS are hand-copied in sketch.py and sketch_embeddings.py (equal today, nothing keeps them in sync)."  # d5ba
+    fields: {}  # d5ba

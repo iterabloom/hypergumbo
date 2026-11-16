@@ -4,19 +4,18 @@
 This linker creates ``calls`` edges (tagged ``meta.bridge_kind="wasm"``)
 between JavaScript/TypeScript code that imports functions from
 wasm-pack-generated packages and the Rust functions annotated with
-``#[wasm_bindgen]``. (The bespoke ``wasm_bridge`` edge type was folded onto
-the canonical ``calls`` per the audit-findings 0002 relationship-axis
-consolidation.)
+``#[wasm_bindgen]``. (``calls`` is the canonical relationship; the bridge
+is carried by ``meta.bridge_kind``, per audit-findings 0002.)
 
 How It Works
 ------------
 Three-phase detection:
 
-1. **Rust side**: Iterates all Rust symbols to find functions with
-   ``#[wasm_bindgen]`` in their ``meta.annotations``. Builds an export map
-   keyed by the JavaScript-visible name:
-   - Default: the Rust function name (snake_case preserved)
-   - ``js_name = "customName"``: explicit JavaScript name override
+1. **Rust side**: Iterates all Rust function and method symbols to find
+   those with ``#[wasm_bindgen]`` in their ``meta.annotations``. Builds an
+   export map keyed by the JavaScript-visible name:
+   - Always: the Rust function name (snake_case preserved)
+   - ``js_name = "customName"``: also registered under that explicit name
 
 2. **JS/TS side**: Scans source files for import statements that reference
    wasm-bindgen output directories or files. Detects:
@@ -53,6 +52,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..analyze.base import make_file_id, make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -271,7 +271,13 @@ def link_wasm_bindgen(
 
             # WI-dovog: the importing file's language, not a literal.
             host_language = js_ts_language_from_path(Path(rel_path))
-            src_id = f"{host_language}:{rel_path}:0-0:{import_name}:wasm_import"
+            # The kind slot is the node's kind, ``import`` (ADR-0036 Ruling 2,
+            # WI-vojur); the ``-wasm_import`` role suffix on the name segment
+            # (the websocket linker's INV-dulah shape) keeps the stand-in from
+            # colliding with an analyzer ``import`` node of the same name.
+            src_id = make_symbol_id(
+                host_language, rel_path, 0, 0, f"{import_name}-wasm_import", "import",
+            )
 
             # Create synthetic Symbol node for the wasm import so the
             # slicer's BFS can traverse through it. Without this node,
@@ -280,13 +286,14 @@ def link_wasm_bindgen(
             if src_id not in seen_import_ids:
                 seen_import_ids.add(src_id)
                 # ADR-0031 Class B: synthetic stand-in for a WASM import
-                # on the TS side. Was LITERAL ("typescript").
+                # on the JS/TS side; discovery_language is the importing
+                # file's language.
                 result_symbols.append(Symbol(
                     id=src_id,
                     stable_id=None,
                     shape_id=None,
                     display_label=f"import {{ {import_name} }}",  # ADR-0032
-                    # ADR-0032: producer-side Format 1 fingerprint dropped; central post-pass stamps Format 2.
+                    # ADR-0032: no producer-side fingerprint; the central post-pass stamps Format 2.
                     kind="import",
                     name=import_name,
                     path=rel_path,
@@ -300,17 +307,15 @@ def link_wasm_bindgen(
                         "wasm_export": import_name,
                         "compilation_target": "wasm",
                     },
-                    # INV-bonup / ADR-0041 §1: NO supply_chain_tier stamp — this
-                    # node used to borrow tier 2 purely to make _classify_symbols
-                    # skip host-path reclassification (e.g. generated pkg/ files →
-                    # tier 4 → filtered out), leaking a skip mechanism into the
-                    # distance axis. The skip now keys on this node's protocol_origin
-                    # marker, so it keeps its honest first-party default distance.
+                    # NO supply_chain_tier stamp: the tier names supply-chain
+                    # distance only (INV-bonup / ADR-0041 §1). _classify_symbols
+                    # recognises this stand-in by its protocol_origin marker and
+                    # gives it its file's distance (WI-zuzud).
                     supply_chain_reason="synthetic WASM bridge node",
                 ))
 
-            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-            # + meta['bridge_kind']='wasm'.
+            # Canonical 'calls' edge tagged meta['bridge_kind']='wasm'
+            # (ADR-0023 §6).
             result_edges.append(Edge.create(
                 src=src_id,
                 dst=target_sym.id,
@@ -399,6 +404,9 @@ def _create_wasm_load_edges(
     the WASM module.
     """
     edges: list[Edge] = []
+    # WI-vojur: the file node each loading file already has, so the edge
+    # starts at it rather than at a shadow id.
+    file_ids_by_path = {s.path: s.id for s in ts_js_symbols if s.kind == "file"}
     symbols: list[Symbol] = []
     seen_paths: set[str] = set()
     seen_wasm_refs: set[tuple[str, str]] = set()
@@ -424,18 +432,22 @@ def _create_wasm_load_edges(
             seen_wasm_refs.add(dedup_key)
 
             # Create synthetic WASM module symbol
-            wasm_module_id = f"wasm:{wasm_ref}:0-0:module:wasm_module"
+            # Kind slot = node.kind (ADR-0036 Ruling 2, WI-vojur). The ``wasm``
+            # language slot stays: the module has no host discovery language,
+            # and the slot of a host-less synthetic is ADR-0036's deferred
+            # chokepoint question (make_synthetic_symbol_identity, 5b).
+            wasm_module_id = f"wasm:{wasm_ref}:0-0:module:module"
 
             if wasm_module_id not in {s.id for s in symbols}:
                 # ADR-0031 Class B: WASM module synthetic — has no host
-                # discovery context (it's referenced by URL/path). Was
-                # LITERAL-SENTINEL ("wasm" — not a real language tag).
+                # discovery context (it's referenced by URL/path), so it
+                # carries no language ("wasm" is not a real language tag).
                 symbols.append(Symbol(
                     id=wasm_module_id,
                     stable_id=None,
                     shape_id=None,
                     display_label=f"WASM module: {wasm_ref}",  # ADR-0032
-                    # ADR-0032: producer-side Format 1 fingerprint dropped; central post-pass stamps Format 2.
+                    # ADR-0032: no producer-side fingerprint; the central post-pass stamps Format 2.
                     kind="module",
                     name=wasm_ref,
                     path=wasm_ref,
@@ -449,19 +461,16 @@ def _create_wasm_load_edges(
                 ))
 
             # Create an ``imports`` edge (meta.framework_dispatch=
-            # "wasm_instantiate") from the JS file to the WASM module
-            rel_path = sym.path
-            try:
-                rel_path = str(Path(sym.path).relative_to(repo_root))
-            except ValueError:
-                pass
-
-            src_id = f"{sym.language}:{rel_path}:0-0:file:file"
-            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): wasm_load is a
-            # file→module relationship (not a call), parallel to module
-            # imports. Fold to canonical 'imports'; the dst's
-            # ``kind == 'module'`` + ``meta['compilation_target']='wasm'``
-            # carries the WASM-specificity (Wave 6 PR 3 fold).
+            # "wasm_instantiate") from the JS file to the WASM module.
+            # It starts at the file's own node -- the canonical ``1-1`` id
+            # on the path the file's symbols carry -- so it attaches to a
+            # real node rather than a shadow id (WI-vojur).
+            src_id = file_ids_by_path.get(sym.path) or make_file_id(sym.language, sym.path)
+            # Loading a WASM module is a file→module relationship (not a
+            # call), parallel to module imports, so the edge is canonical
+            # 'imports'; the dst's ``kind == 'module'`` +
+            # ``meta['compilation_target']='wasm'`` carries the
+            # WASM-specificity (ADR-0023 §6).
             edges.append(Edge.create(
                 src=src_id,
                 dst=wasm_module_id,

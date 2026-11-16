@@ -1,0 +1,60 @@
+- op: create  # 6f74
+  at: '2026-10-27T08:59:34Z'  # 6f74
+  by: agent  # 6f74
+  actor: jgstern_agent  # 6f74
+  clock: 1  # 6f74
+  nonce: 6f74  # 6f74
+  data:  # 6f74
+    kind: work_item  # 6f74
+    title: "js/ts: a workspace sibling reached through a module object (require('@ws/b').helper), a namespace import (C.shout) or a default import still calls a tier-3 @ws/ phantom; WI-rilof fixed only named bindings"  # 6f74
+    status: todo_hard  # 6f74
+    priority: 2  # 6f74
+    parent:  # 6f74
+    tags:  # 6f74
+    - call_graph  # 6f74
+    - supply_chain  # 6f74
+    - javascript  # 6f74
+    isbefore: []  # 6f74
+    duplicate_of: []  # 6f74
+    not_duplicate_of: []  # 6f74
+    pr_ref:  # 6f74
+    description: "Found 2026-10-27 by the INV-nuzas re-check, production `hypergumbo survey` on dev 8c61dbe07c (fixtures in the session scratchpad, nuzas_recheck/js and ctl_js). WI-rilof (#1877/#1879) resolved the shape it was filed on (`const { helper } = require('@ws/b'); helper()`, and the ESM named import `import { shout } from '@ws/c'; shout()`); three other import shapes of a workspace sibling still call a tier-3 phantom.\n\nnpm workspace (root package.json workspaces [\"packages/*\"]; @ws/b = packages/b, @ws/c = packages/c with a TS entry), production code in packages/a/src:\n1. module object of a require: `const b = require('@ws/b'); b.helper()` -> calls `javascript:@ws/b:0-0:helper:external_symbol` (ast_method_inferred)\n2. namespace import: `import * as C from '@ws/c'; C.shout(\"b\")` -> calls `typescript:@ws/c:0-0:shout:external_symbol`\n3. default import: `import cDefault from '@ws/c'; cDefault()` (c exports `export default function cDefault`) -> calls `typescript:@ws/c:0-0:default:external_symbol`\nControl (ctl_js): the same three shapes against RELATIVE imports (`require('./b')`, `from './c'`) all resolve to the real functions, so the gap is the package-name route WI-rilof added only for named bindings.\n\nTwo more phantoms appear with relative imports too, so they are general JS/TS behaviour; in a workspace they carry the @ws/ prefix. Decide with this item whether they are acceptable stand-ins:\n4. `new b.Engine()` emits a module_attr_ref to `javascript:@ws/b:0-0:@ws/b.Engine:external_symbol` (relative: `./b.Engine`) BESIDE the correct instantiates edge to class Engine.\n5. every import emits an imports edge to a `<spec>:0-0:module` external_symbol stand-in BESIDE the real file edge (`javascript:@ws/b:0-0:module`, `typescript:@ws/c:0-0:module`, `javascript:@ws/b/src/util/deep:0-0:module`).\nShapes 1-3 are consumer-reached phantoms with an in-tree definition: INV-nuzas counterexamples. Closure: the fixture through the production survey, shapes 1-3 landing on the real nodes, plus the relative-import control unchanged."  # 6f74
+    fields: {}  # 6f74
+- op: update  # 5c6f
+  at: '2026-10-27T09:00:08Z'  # 5c6f
+  by: agent  # 5c6f
+  actor: jgstern_agent  # 5c6f
+  clock: 2  # 5c6f
+  nonce: 5c6f  # 5c6f
+  set: {}  # 5c6f
+  add:  # 5c6f
+    isbefore: [INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap]  # 5c6f
+- op: discuss  # 052b
+  at: '2026-10-30T10:53:49Z'  # 052b
+  by: agent  # 052b
+  actor: jgstern_agent  # 052b
+  clock: 3  # 052b
+  nonce: 052b  # 052b
+  message: "PROGRESS 2026-10-30. Shapes 1-4 FIXED in PR #1953 (d4bac1048a) and PR #1954 (c5ef72894e). Evidence, the filed fixture (~/hypergumbo_lab_notebook/nuzas_10292026/fixtures/js) re-run on merged dev through production `hypergumbo survey`: (1) const b = require('@ws/b'); b.helper() -> packages/b/src/index.js helper; (2) import * as C from '@ws/c'; C.shout() -> packages/c/src/index.ts shout; (3) import cDefault from '@ws/c'; cDefault() -> c's export default cDefault (resolved through the package ENTRY's default export, whatever the local name); (4) new b.Engine() -> references to class Engine, the @ws/b.Engine stand-in gone (#1953 gated it per module and missed the filed fixture, which binds @ws/b both by destructuring and as an object; #1954 decides per read). check.py: 0 violations. Control ctl_js unchanged. Corpus A/B (8 repos): 99 module_attr_ref stand-ins became references to the in-tree symbol and 3 relative default imports resolved, every edge read; 0 lost.\nSHAPE 5 DECISION (the item asked): the `<spec>:0-0:module` import stand-in beside the linker's real file edge is the WI-lipal case exactly -- js-module-linker consumes it and names it in derived_from. Same answer: grant js-module-linker ADR-0057 section 14.1's supersedes_consumed_stub on a measured precision table, so the stub is demoted with superseded_by and INV-nuzas carve-out (c) covers it. NOT GRANTED YET: the audit (7,290 resolutions over 7 repos) found a wrong route -- require('.') / require('..') resolve to an npm package named '.' / '..' (35 edges, 4 repos), filed as WI-pulid, which now blocks this item. Also found, not this item's: INV-saruf (a filtered compiled-JS file's edges survive with an external_symbol src). Remaining here: WI-pulid, then the audit re-run, the grant (docs/audits/0025) and a fixture re-run."  # 052b
+- op: discuss  # 69fc
+  at: '2026-10-30T11:57:03Z'  # 69fc
+  by: agent  # 69fc
+  actor: jgstern_agent  # 69fc
+  clock: 4  # 69fc
+  nonce: 69fc  # 69fc
+  message: "SHAPE-5 GRANT AUDIT, continued 2026-10-30. WI-pulid fixed (#1956). Hand-read stratified sample of the other 7,255 js-module-linker resolutions: relative 25/25 correct, bare-specifier -> in-tree file (tsconfig paths, workspace entries, a dist-only entry falling back to src/index.ts) 30/30 correct, package-node 13/15 -- the 2 wrong are Node core modules (url, assert) minted as npm packages. Enumerated: 540 of 2,771 package-node edges (19.5%) are core modules labelled third-party dependencies, filed as WI-tufob, which now also blocks this item. Grant stays refused until WI-tufob lands; then re-run the enumeration and write docs/audits/0025."  # 69fc
+- op: update  # 856b
+  at: '2026-10-30T16:30:49Z'  # 856b
+  by: agent  # 856b
+  actor: jgstern_agent  # 856b
+  clock: 5  # 856b
+  nonce: 856b  # 856b
+  set:  # 856b
+    status: done  # 856b
+- op: discuss  # fd4d
+  at: '2026-10-30T16:30:49Z'  # fd4d
+  by: agent  # fd4d
+  actor: jgstern_agent  # fd4d
+  clock: 6  # fd4d
+  nonce: fd4d  # fd4d
+  message: "Done. Shapes 1-4 in PR #1953 (d4bac1048a) and #1954 (c5ef72894e); shape 5 in PR #1960 (e7a90a03fd), after its precision audit found and fixed three js-module-linker wrong routes (WI-pulid #1956, WI-tufob #1957, WI-dunab #1959). Root causes: the cross-package guard refused a module-object / namespace member and a default import that WI-rilof's named-binding route would have accepted; an attribute read on an in-tree module object was emitted as a module_attr_ref stand-in; the analyzer's <spec>:0-0:module import stub survived beside the linker's file edge with nothing stating the relation. CLOSURE EVIDENCE, the filed fixture (~/hypergumbo_lab_notebook/nuzas_10292026/fixtures/js) through production `hypergumbo survey` on merged dev: (1) b.helper() via const b = require('@ws/b') -> packages/b/src/index.js helper; (2) C.shout() via import * as C -> packages/c/src/index.ts shout; (3) cDefault() via a default import -> c's export default cDefault; (4) new b.Engine() -> references to class Engine, no @ws/b.Engine stand-in; (5) each of the 4 @ws/ module stand-ins (index.js:1, index.js:3 @ws/b/src/util/deep, test/a.test.js:1, esm.ts:1) carries superseded_by naming the file edge that resolved it (packages/b/src/index.js, packages/b/src/util/deep.js, packages/c/src/index.ts) -- INV-nuzas carve-out (c). check.py with carve-out (c): 0 violations. Control ctl_js: calls / instantiates / imports edge set identical to 10-27. Grant table docs/audits/0025: 6,792 resolutions over 7 repos, 6,213 judged, 0 wrong. Not asserted: consumers that count external nodes read superseded_by (ADR-0057's general gap)."  # fd4d

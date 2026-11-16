@@ -51,3 +51,19 @@
   set: {}  # b025
   add:  # b025
     tags: [awaits_bakeoff_validation]  # b025
+- op: update  # 1ab5
+  at: '2026-11-02T10:19:40Z'  # 1ab5
+  by: agent  # 1ab5
+  actor: jgstern_agent  # 1ab5
+  clock: 6  # 1ab5
+  nonce: 1ab5  # 1ab5
+  set: {}  # 1ab5
+  remove:  # 1ab5
+    tags: [awaits_bakeoff_validation]  # 1ab5
+- op: discuss  # f2b3
+  at: '2026-11-02T10:19:40Z'  # f2b3
+  by: agent  # f2b3
+  actor: jgstern_agent  # f2b3
+  clock: 7  # f2b3
+  nonce: f2b3  # f2b3
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). git perl subset: measured Pkg->m sites: own package 41, external-package slot 55, ANOTHER package 0 (recorded 173 -> 0 other-package binds). Tag stripped."  # f2b3

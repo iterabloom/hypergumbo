@@ -1,0 +1,21 @@
+- op: create  # 603e
+  at: '2026-11-16T04:58:30Z'  # 603e
+  by: agent  # 603e
+  actor: jgstern_agent  # 603e
+  clock: 1  # 603e
+  nonce: 603e  # 603e
+  data:  # 603e
+    kind: work_item  # 603e
+    title: "JavaScript anonymous callbacks carry an @column suffix in the id's name slot that Symbol.name lacks"  # 603e
+    status: todo_hard  # 603e
+    priority: 3  # 603e
+    parent:  # 603e
+    tags:  # 603e
+    - id_format  # 603e
+    - javascript  # 603e
+    isbefore: []  # 603e
+    duplicate_of: []  # 603e
+    not_duplicate_of: []  # 603e
+    pr_ref:  # 603e
+    description: "WHAT. js_ts.py gives an anonymous callback the name _cb_forEach and the id name slot _cb_forEach@33, so two same-callee callbacks on one line get distinct ids. ADR-0036 Ruling 1 says the name slot is the sanitized name.\n\nMEASURED (validation_report.name_slot_stats, added in PR #2198): knex 6,356 of 10,649 javascript nodes; 6,604 across six maps.\n\nDECISION NEEDED (owner). Either Ruling 1 allows a disambiguating suffix, or the collision is solved another way. Changing the NAME to match moves stable ids (the name feeds make_typed_stable_id); dropping the suffix makes same-line ids collide. A comment at that site says the validator 'only requires non-empty + colon-free', which is out of date. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 603e
+    fields: {}  # 603e

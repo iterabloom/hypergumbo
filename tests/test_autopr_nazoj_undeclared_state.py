@@ -1,42 +1,39 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """auto-pr must never end a run with the terminal state still undeclared (WI-nazoj).
 
-This is INV-rahib's residual class. The sibling class — a run that merged and
-then exited nonzero — was closed by the post-merge boundary. What remains is
-the run that ends with ``final_state`` still holding its initializer,
-``unknown``: 14 of 485 recorded invocations, the most recent 2026-09-11, one of
-them at exit 0. Owner ruling 2026-08-03 makes ``unknown`` *the* violation
-signal rather than a state in the vocabulary, because it is never written by a
-deliberate exit — reaching it means the run fell off the end.
+Every run must end in a declared terminal state (INV-rahib). A run that
+ends with ``final_state`` still holding its initializer, ``unknown``, fell off
+the end: no deliberate exit writes ``unknown``, so it is *the* violation signal
+rather than a state in the vocabulary. (A run that merged and then exited
+nonzero is the sibling class, handled by the post-merge boundary.)
 
 Two mechanisms produce it, and they need different instruments:
 
-**Deliberate exits that forgot to declare.** Ten ``exit`` statements in
-``do_pr`` and ``flush_queue`` were reached with the state still unset — the
-branch-ownership guards, the re-push failures inside stuck-CI recovery, the
-unresolvable/non-linear vPR queue checks, the simulated outage. These are
-static and enumerable, so ``test_no_action_path_exit_leaves_the_state_undeclared``
-enumerates them. It is deliberately a *dominance* analysis rather than "is
-there an assignment somewhere earlier in the function": the assignment at
-auto-pr:2085 sits in the ``if _pre_scenario_b_gate`` arm while the exits at
-2105/2114 sit in the ``else`` arm, so a proximity heuristic clears them. One
-did — a 25-line distance threshold hid 2105 during this investigation, which is
-the same defect class as a grep whose own filter omits the line being checked.
+**Deliberate exits that do not declare.** An ``exit`` in an action function
+(``do_pr``, ``flush_queue``, ...) reached with the state still unset — e.g. a
+branch-ownership guard, a re-push failure inside stuck-CI recovery, a vPR
+queue check. These are static and enumerable, so
+``test_no_action_path_exit_leaves_the_state_undeclared`` enumerates them. It
+is deliberately a *dominance* analysis rather than "is there an assignment
+somewhere earlier in the function": a declaration in the
+``if _pre_scenario_b_gate`` arm does not cover an exit in the ``else`` arm,
+yet a proximity heuristic (such as a line-distance threshold) clears it.
 
 **`set -e` aborts before any declaration.** These are not statically
-enumerable — any unguarded command in a 700-line function can do it. So the
-run is made to attribute itself: an ERR trap records the file and line, and
-``_autopr_finalize`` reports it and persists it to the sentinel and the
-convergence ledger. That turns every future ``unknown`` row from "something
-went wrong somewhere" into a line number.
+enumerable — any unguarded command in a long action function can do it. So
+the run is made to attribute itself: an ERR trap records the file and line,
+and ``_autopr_finalize`` reports it and persists it to the sentinel and the
+convergence ledger, so an ``unknown`` row names a line number instead of
+"something went wrong somewhere".
 
 **ABSENT IS NOT EMPTY, at two depths here.** A ``set -u`` unbound-variable
-abort does *not* fire the ERR trap (verified, not assumed — bash treats it as
-an expansion error, not a command failure), and neither does a bare ``exit``.
-So ``abort_site`` can be null on a genuinely undeclared run, and a reader must
-not take null to mean "no abort happened". The finalize banner says
-``not recorded`` explicitly, and the audit script distinguishes a row that
-carries no site from a row written before the instrumentation existed.
+abort does *not* fire the ERR trap (bash treats it as an expansion error, not
+a command failure), and neither does a bare ``exit``. So ``abort_site`` can be
+null on a genuinely undeclared run, and a reader must not take null to mean
+"no abort happened". The finalize banner says ``not recorded`` explicitly, and
+``scripts/audit-autopr-convergence`` distinguishes a row whose site is null
+from a row with no ``abort_site`` key at all (one written before the field
+existed).
 """
 
 from __future__ import annotations
@@ -61,10 +58,9 @@ def production_shell_flags() -> str:
     """The `set` line auto-pr actually runs under.
 
     Read rather than copied. A harness that hardcodes its own flags is blind to
-    whole defect classes: ``tests/test_autopr_branch_cleanup.py`` ran
-    ``set -uo pipefail`` against a file whose defect only reproduces under
-    ``-e``, and stayed green through six weeks of it. The same copy would go
-    stale again the moment ``-E`` was added for the ERR trap.
+    whole defect classes — one running ``set -uo pipefail`` stays green on a
+    defect that only reproduces under ``-e`` — and a copy goes stale whenever
+    production's flags change.
     """
     for line in AUTO_PR.read_text(encoding="utf-8").splitlines()[:20]:
         if line.startswith("set -"):
@@ -75,12 +71,11 @@ def production_shell_flags() -> str:
 def test_errtrace_is_enabled_in_production() -> None:
     """`set -E` is what makes the ERR trap fire inside functions at all.
 
-    Verified empirically before relying on it: without ``errtrace`` an ERR trap
-    installed at the top level is NOT inherited by shell functions, and every
-    line of auto-pr's action logic lives in one. The trap would then record
-    nothing, on every run, forever — and a recorded-nothing looks exactly like
-    a run that never aborted. Pinning the flag keeps that failure from being
-    reintroduced silently.
+    Without ``errtrace`` an ERR trap installed at the top level is NOT
+    inherited by shell functions, and every line of auto-pr's action logic
+    lives in one. The trap would then record nothing, on every run — and a
+    recorded-nothing looks exactly like a run that never aborted. Pinning the
+    flag keeps that failure from being introduced silently.
     """
     flags = production_shell_flags()
     assert re.match(r"^set -[a-zA-Z]*E", flags), (
@@ -172,8 +167,8 @@ def _func_bounds(lines: list[str], name: str) -> tuple[int, int]:
 def test_no_action_path_exit_leaves_the_state_undeclared() -> None:
     """Every deliberate exit declares what the run decided, before leaving.
 
-    Ten did not when WI-nazoj was filed. Each wrote an ``unknown`` ledger row
-    and told the caller only `exit 1`.
+    An exit that does not declare writes an ``unknown`` ledger row and tells
+    the caller only ``exit 1`` (history: WI-nazoj).
     """
     lines = AUTO_PR.read_text(encoding="utf-8").splitlines()
     offenders: list[str] = []
@@ -192,10 +187,10 @@ def test_the_scanner_separates_a_declared_exit_from_an_undeclared_one() -> None:
     """Non-vacuity control for the scanner above.
 
     Both arms matter. Without the positive arm a scanner hard-wired to return
-    ``[]`` passes the enumeration forever; without the negative arm one that
-    flags everything looks equally green once the fix lands. The synthetic
-    fixture reproduces the real shape that fooled a proximity heuristic: a
-    declaration in the ``if`` arm and an exit in the ``else`` arm.
+    ``[]`` passes the enumeration forever; without the negative arm a scanner
+    that ignores declarations and flags every exit goes unnoticed here. The
+    synthetic fixture reproduces the real shape that fools a proximity
+    heuristic: a declaration in the ``if`` arm and an exit in the ``else`` arm.
     """
     fixture = [
         "f() {",
@@ -224,9 +219,9 @@ def _extract_func(name: str) -> str:
 
     The obvious regex — start of function to the first `^}$` — silently
     TRUNCATES `_autopr_write_sentinel`, because the Python it heredocs closes a
-    dict literal with a `}` in column 0. The harness then ran a half-function
-    and wrote no sentinel at all, which reads as "the feature does not work"
-    rather than "the test is lying". Tracking the heredoc is the fix.
+    dict literal with a `}` in column 0. A truncated function writes no
+    sentinel at all, which reads as "the feature does not work" rather than
+    "the test is lying", so the extraction tracks heredocs.
     """
     lines = AUTO_PR.read_text(encoding="utf-8").splitlines()
     start = next(
@@ -310,9 +305,9 @@ def _run_action(tmp_path: Path, body: str) -> tuple[subprocess.CompletedProcess[
 def test_an_undeclared_abort_names_the_line_it_died_on(tmp_path: Path) -> None:
     """The load-bearing test: a silent abort becomes a line number.
 
-    Before this, an undeclared run recorded ``final_state=unknown`` and
-    nothing else — fourteen of them, spread over five weeks, with no way to
-    tell whether they shared a cause.
+    Without the site, an undeclared run records ``final_state=unknown`` and
+    nothing else, and there is no way to tell whether two such runs share a
+    cause.
     """
     proc, payload = _run_action(tmp_path, "\tgrep needle /definitely-absent-xyz\n\techo unreachable")
     assert proc.returncode != 0
@@ -330,9 +325,8 @@ def test_an_abort_inside_a_helper_function_is_attributed_too(tmp_path: Path) -> 
     """The arm that actually depends on `-E`, and the reason it exists.
 
     A `trap ... ERR` set inside a function already covers commands in that same
-    function WITHOUT errtrace — so the sibling test above kept passing with
-    `-E` removed, and would have certified a flag it does not exercise. That is
-    the harness contaminating its own control.
+    function WITHOUT errtrace — so the sibling test above passes with `-E`
+    removed and cannot certify a flag it does not exercise.
 
     Production's aborts are not in do_pr's own body; they are inside the
     helpers do_pr calls — `_assert_branch_owns_head`, `api_call`, `poll_ci`,
@@ -357,9 +351,8 @@ def test_an_abort_inside_a_helper_function_is_attributed_too(tmp_path: Path) -> 
 def test_the_abort_banner_is_loud_and_names_the_violation(tmp_path: Path) -> None:
     """Criterion (b): the run must say so, not only write a row nobody reads.
 
-    The ledger already recorded these; that is exactly how they accumulated
-    unnoticed for five weeks. A convergence violation has to be visible in the
-    output of the run that commits it.
+    A ledger row alone lets violations accumulate unnoticed. A convergence
+    violation has to be visible in the output of the run that commits it.
     """
     proc, _ = _run_action(tmp_path, "\tgrep needle /definitely-absent-xyz")
     assert "CONVERGENCE VIOLATION" in proc.stderr, proc.stderr
@@ -388,9 +381,9 @@ def test_an_unbound_variable_abort_is_disclosed_rather_than_silently_unattribute
 ) -> None:
     """ABSENT IS NOT EMPTY, at the instrument's own boundary.
 
-    A ``set -u`` violation kills the shell without firing the ERR trap —
-    verified, because bash raises it as an expansion error rather than a
-    command failure. So this run is undeclared AND unattributed, and the two
+    A ``set -u`` violation kills the shell without firing the ERR trap,
+    because bash raises it as an expansion error rather than a command
+    failure. So this run is undeclared AND unattributed, and the two
     facts must be reported separately. A banner that simply omitted the site
     would read as "aborted, no site" — indistinguishable from an instrument
     that is broken.

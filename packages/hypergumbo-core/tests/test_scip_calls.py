@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for the SCIP Occurrence-ref → Edge translator (WI-mafut Phase 2 Slice D, WI-kopav).
+"""Tests for the SCIP Occurrence-ref → Edge translator (WI-mafut, WI-kopav).
 
 These tests drive
 :func:`hypergumbo_core.scip.calls.scip_index_to_call_edges`, which
@@ -24,8 +24,7 @@ Behavioural contract pinned here:
   first definition) are skipped silently. Attributing them to a
   phantom caller would introduce false edges.
 * Edges are emitted with ``edge_type="calls"`` when the target's declared
-  kind is callable and ``"references"`` otherwise (WI-zapuk); before that,
-  uniformly ``"references"``,
+  kind is callable and ``"references"`` otherwise (WI-zapuk),
   ``evidence_type="scip_occurrence_ref"``, ``origin="scip"``, and
   meta carrying the scip symbol strings and the role bitfield. A
   downstream linker can specialize to "calls" / "writes_to" / "imports"
@@ -267,9 +266,17 @@ def test_resolve_symbol_rewrites_endpoints() -> None:
     )
     mapping = {caller: "python:mod.py:1-21:foo:method",
                callee: "python:mod.py:30-35:bar:method"}
-    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=lambda s: mapping.get(s), run_id="test")
+    seen: list[str] = []
+
+    def resolve(s: str, document: str) -> "str | None":
+        seen.append(document)
+        return mapping.get(s)
+
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=resolve, run_id="test")
     assert edge.src == mapping[caller]
     assert edge.dst == mapping[callee]
+    # INV-sipod: both ends are read in the occurrence's Document.
+    assert seen == [doc.relative_path] * 2
 
 
 def test_resolve_symbol_none_for_either_endpoint_drops_edge() -> None:
@@ -285,14 +292,14 @@ def test_resolve_symbol_none_for_either_endpoint_drops_edge() -> None:
     # Resolve caller but not callee → drop
     assert scip_index_to_call_edges(
         _idx(doc),
-        resolve_symbol=lambda s: "resolved" if s == caller else None,
+        resolve_symbol=lambda s, _doc: "resolved" if s == caller else None,
 
         run_id="test",
     ) == []
     # Resolve callee but not caller → drop
     assert scip_index_to_call_edges(
         _idx(doc),
-        resolve_symbol=lambda s: "resolved" if s == callee else None,
+        resolve_symbol=lambda s, _doc: "resolved" if s == callee else None,
 
         run_id="test",
     ) == []
@@ -364,8 +371,9 @@ def test_occurrence_with_unsupported_range_length_skipped() -> None:
 def test_ref_to_a_local_binding_emits_no_edge_even_in_raw_mode() -> None:
     """A ``local <id>`` is document-scoped and never minted as a Symbol
     (see test_scip_index), so an edge naming one — in raw mode as much as
-    resolved mode — would name an endpoint nothing carries. On aardvark-dns
-    455 such edges were emitted and 329 resolved across files."""
+    resolved mode — would name an endpoint nothing carries, and since
+    local ids repeat across documents it could resolve to another file's
+    binding."""
     outer, local, callee = _sym("outer"), "local 0", _sym("callee")
     doc = _doc_with([
         scip_pb2.Occurrence(symbol=outer, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0]),
@@ -398,9 +406,9 @@ def test_a_local_binding_never_encloses_a_reference() -> None:
 
 def test_enclosing_range_attributes_a_body_reference_to_its_function() -> None:
     """rust-analyzer's Definition ``range`` is the identifier token — one line
-    — so with ``range`` alone a reference in a function's BODY was never
-    inside the function, and every SCIP edge on aardvark-dns (182 of 182) was
-    sourced from the file's namespace. ``enclosing_range`` is the item range,
+    — so with ``range`` alone a reference in a function's BODY is never
+    inside the function, and every SCIP edge would be sourced from the
+    file's namespace. ``enclosing_range`` is the item range,
     and rust-analyzer populates it on every Definition; ranges below are the
     recorded ones for ``impl#[Counter]increment().`` on the parity sample.
     """
@@ -424,7 +432,7 @@ def test_enclosing_range_attributes_a_body_reference_to_its_function() -> None:
 def test_without_enclosing_range_a_token_definition_cannot_enclose() -> None:
     """Control for the test above, and the contract for emitters that leave
     ``enclosing_range`` empty: the same document with only ``range`` attributes
-    the body reference to the namespace, which is what production did."""
+    the body reference to the namespace."""
     ns, fn, callee = _sym("ns"), _sym("increment"), _sym("callee")
     doc = _doc_with([
         scip_pb2.Occurrence(symbol=ns, symbol_roles=DEFINITION_ROLE, range=[0, 0, 32, 0]),
@@ -477,9 +485,9 @@ def test_innermost_is_chosen_by_enclosing_range_when_items_nest() -> None:
 # WI-zapuk / ADR-0057 §7: the edge type comes from the TARGET's declared kind
 # ---------------------------------------------------------------------------
 #
-# The row prescribed mapping ``Occurrence.symbol_roles``; measured on the
-# recorded aardvark-dns index, rust-analyzer 1.94.0 sets ``symbol_roles = 0``
-# on 3,543 of 3,543 reference occurrences, so there is nothing there to map.
+# Not from ``Occurrence.symbol_roles``: rust-analyzer sets
+# ``symbol_roles = 0`` on every reference occurrence in the recorded
+# aardvark-dns index, so there is nothing there to map.
 # What the producer DOES declare is ``SymbolInformation.kind`` on every
 # definition, and a reference whose target is declared callable is a call.
 
@@ -565,9 +573,9 @@ class TestEdgeTypeFromTheTargetsDeclaredKind:
 
 # ---------------------------------------------------------------------------
 # WI-nanom: a producer that declares NO SymbolInformation.kind at all
-# (scip-python 0.6.6: kind == 0 on 17,851 of 17,851 symbols) emitted only
-# `references` — every call site typed as a bare reference, the shape that
-# measured zero receiver typing on the Rust arm. When the producer is silent
+# (scip-python 0.6.6 leaves kind == 0 on every symbol) would otherwise get
+# only `references` — every call site typed as a bare reference. When the
+# producer is silent
 # the SCIP descriptor grammar still says what is callable: a METHOD
 # descriptor (`name().`) is a function or method. A declared kind, when
 # present, keeps winning (WI-gapup).

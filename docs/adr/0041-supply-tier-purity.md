@@ -36,28 +36,26 @@ Four rulings, all decided.
 
 ### §1 Tier names supply-chain distance — and nothing else
 
-The axiom (per ADR-0024, one sentence, falsifiable): *`tier` names the supply-chain distance of code from the project under analysis; no other fact may influence the value.*
+The axiom (per ADR-0024, one sentence, falsifiable): *`tier` names the supply-chain distance, from the project under analysis, of the code a node stands for — the project being every package whose source is in the analysed tree; where the node is written, how the code is declared, and what produced the node may not influence the value.*
+
+A file, function, project or package node stands for its own code; a dependency declaration stands for the package it names; a boundary stub stands for the code it replaces. Nodes standing for the same package carry the same tier. Tiers 1-3 are distances; tier 4 is the derived-artifact exception.
 
 | Tier | Name | Post-split semantic |
 |------|------|---------------------|
-| 1 | `first_party` | The project's own source, including its tests (`is_test=True`) |
-| 2 | `internal_dep` | Workspace / org-internal packages **only** (monorepo siblings, local forks) |
+| 1 | `first_party` | The project's own code — every package whose source is in the analysed tree (workspace siblings included), with its tests (`is_test=True`) — and every node standing for it |
+| 2 | `internal_dep` | Org-internal code that is not part of the project (local forks, `internal_package_roots`). No CLI path supplies that setting, so a CLI run emits no tier-2 node |
 | 3 | `external_dep` | **All** third-party code, regardless of declaration status — direct, transitive, undeclared, and stdlib alike |
 | 4 | `derived` | Derived/vendored build artifacts (transpiled, bundled, minified) — unchanged |
 
 The direct-dependency → `Tier.INTERNAL_DEP` mapping **retires**. `classify_import` (`supply_chain.py::classify_import`) returns `EXTERNAL_DEP` for every third-party match; the boundary tier-min relabeling in `ir.py` and its `"direct dependency (…)"` reason strings retire with it — the direct/transitive knowledge the classifier was burning into the tier is re-emitted as the directness stamp (§2). Enum names and numbering are untouched: `--max-tier N` keeps its ordinal contract and now reads coherently as "distance ≤ N."
 
-Note the irony recorded for posterity: this ruling lands tier 2 *closer to spec §14's original prose* ("internal libraries, monorepo packages") than the implementation's drift did. The implementation, not the original concept, is what's being reverted — but the spec still needs §4's rewrite for the test routing, directness, and ecosystem additions.
-
 ### §2 Directness becomes its own recorded fact
 
 A registered `Symbol.meta` key `directness` (a `MetaKeySpec` entry in `axis_meta_keys.py`, `AXIS_SYMBOL_META`), with the axiom: *`directness` records the declaration relationship between the project's manifests and an external dependency — `direct` (declared in a project manifest), `transitive` (pulled in by another dependency), or `undeclared` (imported but declared nowhere).*
 
-It is stamped **once, at classification time**, on dependency and boundary nodes — the single producer is the classification chokepoint that today computes the tier-2/tier-3 split. `undeclared` is itself a supply-chain signal (a phantom dependency: imported, resolved from somewhere, declared in no manifest).
+It is stamped **once**, on boundary nodes as they are synthesized (`ir.py`), the single producer. Dependency declarations do not carry it yet (INV-fuhin). `undeclared` is itself a supply-chain signal (a phantom dependency: imported, resolved from somewhere, declared in no manifest).
 
-Directness is derivable from the per-manifest dependency-node join (ADR-0035 ruling 4: a package declared in N manifests is N nodes), but it is **recorded anyway**, per the no-consumer-re-derivation rule. META-bifif is the cluster-level lesson: producers emit a finer/correct verdict that consumers ignore or re-derive coarser — WI-popok is the worked example (entrypoint detector re-deriving test-ness from a filename heuristic instead of consuming `supply_chain.is_test_file`).
-
-> **Annotation (2026-07-17, WI-popok fundamental-concept audit).** The WI-popok illustration above reflects that item's *original* 2026-06-04 framing, when the entrypoint detector used a private `test_*.py` prefix check genuinely *narrower* (coarser) than the supply-chain classifier — a true re-derivation. The code has since inverted the relationship: the detector now consumes the *shared, broad* `paths.is_test_file` heuristic (a "test-OR-support" ranking predicate that also covers mocks/fixtures/testdata/benches), while `supply_chain.is_test_file` stays deliberately narrow (spec §14; §1 above excludes fuzz/bench from `is_test`). A fundamental-concept audit returned a **KEEP verdict**: the two are distinct-purpose predicates (ranking-deprioritization vs supply-chain test-code classification), not a coarse-vs-granular pair, so WI-popok is no longer a live re-derivation instance but a documented concept boundary. This does **not** affect §2's directness ruling, which stands on its own — directness *is* a genuine record-don't-re-derive case.
+Directness is derivable from the per-manifest dependency-node join (ADR-0035 ruling 4: a package declared in N manifests is N nodes), but it is **recorded anyway**, per the no-consumer-re-derivation rule. META-bifif is the cluster-level lesson: producers emit a finer/correct verdict that consumers ignore or re-derive coarser.
 
 Making each consumer reconstruct directness from the manifest join would mint the next instance of that family.
 
@@ -90,7 +88,7 @@ The spec §14 rewrite documents: the §1 tier table and axiom; tests at tier 1 w
 
 ### Negative
 
-- **Behavior-map churn.** Every node currently tier 2 via the manifest mapping moves to tier 3; `tier_name` changes in JSON output; consumers filtering `tier <= 2` see direct deps drop out. On the self-corpus, tier 2 becomes *empty* until INV-nuzas's workspace resolution correctly populates it with the 7 actual workspace packages (today's tier-2 cohort is 100% `external_symbol`-kind, i.e. all of it is the retiring mapping).
+- **Behavior-map churn.** Every node currently tier 2 via the manifest mapping moves to tier 3; `tier_name` changes in JSON output; consumers filtering `tier <= 2` see direct deps drop out. Tier 2 becomes *empty* in a CLI run: workspace packages are the project (tier 1, §1), and the remaining producer, `internal_package_roots`, has no CLI setting.
 - **Ranking shifts.** Direct third-party deps drop from weight 1.5 to 1.0. Quantitative effects on ranking/slice quality are bakeoff-validation-tagged per the tagging discipline, not asserted here.
 - **Two new registered meta keys** plus their registry descriptions, schema documentation, and property tests — incremental vocabulary surface under the ADR-0024 regime.
 
@@ -115,7 +113,8 @@ Full eight-segment IDs per tracker convention:
 - `WI-golov-pitiz-tahim-hitiz-dotog-goduk-jifup-jagur` — P1, todo_hard: spec §14 tier-2 text never updated after the INV-tisid refactor; the work item that executes §4's rewrite.
 - `WI-bifih-haguk-jilat-kobof-hoduj-fabal-noras-dosih` — P1, todo_hard: wire python.yaml `stdlib_modules` into Python import resolution; its catalog is §3's mandated single source for stdlib recognition.
 - `INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap` — P1, violated (cross-ref): tier classifier mislabels workspace and first-party source as external. Fixed by workspace resolution (supply:F3+F4), not this ADR; this ADR removes the tier-2 relabel that amplified its phantom twins.
-- `WI-popok-dijih-hohub-pojop-novar-dakus-kulaj-sufif` — P3, todo_hard (cross-ref): entrypoint detector re-derives test-ness instead of consuming the canonical verdict; the worked precedent behind §2's record-don't-re-derive ruling.
+- `WI-popok-dijih-hohub-pojop-novar-dakus-kulaj-sufif` — wont_do (cross-ref): the entrypoint detector's test predicate (`paths.is_test_file`, a broad ranking predicate) and `supply_chain.is_test_file` (narrow) answer different questions; a concept audit kept both, so it is not a re-derivation instance.
+- `INV-kutub-napih-rudak-lijam-hozof-zavih-sigip-ropop` — satisfied: a dependency declaration naming an in-tree package carries that package's tier (§1's same-package rule) in pyproject, npm, Composer, Cargo and Maven.
 - `META-bifif-luzin-nuzul-fogom-famig-hupoh-zanav-pohud` — META: producers emit a finer/correct verdict that consumers ignore or re-derive coarser; §2 and §3's single-source constraint are its enactment for the supply-chain surface.
 
 ## References

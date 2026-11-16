@@ -50,3 +50,72 @@
   clock: 5  # 3388
   nonce: '3388'  # 3388
   message: "New instance of this statement (one file-kind Symbol per path across producers), found 2026-10-01 during WI-majov on dev af4e16964b: a .ts file importing ./util.js makes js-module-linker mint typescript:src/util.js:1-1:file:file beside the analyzer's javascript:src/util.js:1-1:file:file (target id built with the IMPORTER's language, js_module.py ~805). Filed as WI-babuk-nufoh-rolig-sabus-gobuk-zituh-sofup-holid. This note changes no status; this row's fix (absolute-path shape) is not contradicted."  # 3388
+- op: discuss  # c82e
+  at: '2026-11-01T10:57:56Z'  # c82e
+  by: agent  # c82e
+  actor: jgstern_agent  # c82e
+  clock: 6  # c82e
+  nonce: c82e  # c82e
+  message: "P3 REVIEW 2026-11-01 side finding (misc3/fx_modan): on .svelte and .vue files each path carries TWO file-kind Symbols, javascript:src/App.svelte:1-1:file:file and svelte:src/App.svelte:1-1:file:file (likewise vue:), which contradicts this invariant's statement (one file-kind Symbol per path). Recorded on WI-modan point 5 too. Proposal for the owner: re-open as violated, or narrow the statement to per-analyzer. Status unchanged."  # c82e
+- op: update  # 4c80
+  at: '2026-11-01T20:00:46Z'  # 4c80
+  by: agent  # 4c80
+  actor: jgstern_agent  # 4c80
+  clock: 7  # 4c80
+  nonce: 4c80  # 4c80
+  set:  # 4c80
+    status: violated  # 4c80
+- op: discuss  # 7cea
+  at: '2026-11-01T20:00:46Z'  # 7cea
+  by: agent  # 7cea
+  actor: jgstern_agent  # 7cea
+  clock: 8  # 7cea
+  nonce: 7cea  # 7cea
+  message: "REOPENED as violated (owner-approved 2026-11-01). Live at dev 100b6fbb6e, `hypergumbo survey` on ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/fx_modan: every .svelte/.vue path carries two file-kind Symbols: src/App.svelte -> javascript: + svelte:, src/App.vue -> javascript: + vue:, src/Kid.vue -> vue: + javascript:, and src/Child.svelte -> javascript: + vue: (a vue:-language id on a .svelte file). This contradicts the statement 'one file-kind Symbol per path'. The 2026-05-19 js_module fix for .ts paths still holds; this is a different producer pair (the javascript analyzer and the SFC analyzers both emit a file node). Also recorded on WI-modan point 5."  # 7cea
+- op: discuss  # cbe5
+  at: '2026-11-15T19:25:52Z'  # cbe5
+  by: agent  # cbe5
+  actor: jgstern_agent  # cbe5
+  clock: 9  # cbe5
+  nonce: cbe5  # cbe5
+  message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096, fixture run. js_module/.ts limb: not occurring (main.ts, widget.ts, util.js carry one file node each; no node has origin js-module-linker; fix 4549106aec). WI-babuk limb: not occurring (one `javascript:src/util.js` node). SFC limb: live when components use each other: in that fixture 4 of 4 .svelte/.vue paths carry two file nodes; in a second fixture of two SFC files with no component use each carried one (`javascript:` + `svelte:`/`vue:`), including `vue:src/Child.svelte:1-1:file:file` from vue-component-linker. The statement's 5 htrac-frontend paths no longer exist (removed 86cb7d3a37). cli.py:7244-7247 is now cli.py:13159-13169. Self-analysis: one path with 3 kind=file nodes, toml script entries on packages/hypergumbo-tracker/pyproject.toml (WI-dofif, wont_do). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-movor.md. No status or priority change made by this review."  # cbe5
+- op: discuss  # d191
+  at: '2026-11-15T19:47:30Z'  # d191
+  by: agent  # d191
+  actor: jgstern_agent  # d191
+  clock: 10  # d191
+  nonce: d191  # d191
+  message: "[INVESTIGATION 2026-11-15, owner-requested: this item against the ADRs, the spec and the project's intent; dev e2b6ab8096] (1) The statement as written cannot stand. ADR-0036 Ruling 3, as amended by WI-dipim, lets kind=file also carry manifest entries with meta entry_role (npm script or main, pyproject script; audit-findings 0005), and WI-dofif-nidon-fuhip-migib-ribob-bilov-ruzur-hotif was retracted for that reason. \"Exactly one file-kind Symbol per path\" is therefore false by design. The property the documents rely on is narrower: one FILE PSEUDO-SYMBOL per path (name file, kind file, span 1-1, make_file_id). Spec line 1436 defines metrics.debug.analyzed_file_symbols as the count of kind=file nodes and reads it as a file count. (2) The narrower property is violated today on .svelte/.vue paths whose components use each other: two pseudo-symbols per path, javascript: (the JavaScript analyzer, for the script block) beside svelte:/vue: (orchestrator synthesis for the component analyzer, or vue-component-linker, which hard-codes vue and so labels a .svelte file vue). On the fixture analyzed_file_symbols is 12 for 8 paths. Two components that do not use each other got one node each. (3) Measured consequence: the file's edges are split. Script imports and the call to helper() start at javascript:src/App.svelte; the component import starts at svelte:src/App.svelte; main.ts's import lands on the javascript: node; the component link lands on vue:src/Child.svelte. A consumer walking from either node sees part of the file. (4) What the single node should be, per the ADRs: ADR-0031 defines Symbol.language as the source language of the declaration, and the declaration here is the FILE, which is a Svelte or Vue file; INV-ronuf-hazag-mumut-rozih-rumig-sugif-dijip-sijiz (satisfied) already says a synthesized file Symbol takes its language from the file extension. Symbols inside <script> are JavaScript and stay so. ADR-0057 is the doctrine for two producers of one declaration: one record with both passes in origin, not two records. (5) Nothing enforces it: spec_validator has no one-pseudo-symbol-per-path check, and the four instances so far (websocket INV-ronuf-hazag-mumut-rozih-rumig-sugif-dijip-sijiz; js_module, this item 05-19; importer-language WI-babuk-nufoh-rolig-sabus-gobuk-zituh-sofup-holid; components, 11-01) were each found by hand. RECOMMENDATION, owner's call, nothing changed: keep this invariant as the carrier instead of closing it into WI-modan-tizob-bilag-fanas-simip-guzuz-homoj-rimut, which is a P3 work item about phantom import targets whose point 5 only mentions this. Rewrite the header: title \"every path has exactly one file pseudo-symbol across producers (live: .svelte/.vue paths carry javascript: beside svelte:/vue:)\"; statement narrowed to the pseudo-symbol and naming the manifest-entry exclusion; root_cause \"each producer picks the language slot itself (its own language, the importer's, or a hard-coded vue) and no check compares\"; close condition \"a validator check for one file pseudo-symbol per path, at 0 on a fleet measurement\". Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/INV-movor and work/v_movor."  # d191
+- op: update  # fd9f
+  at: '2026-11-15T19:57:55Z'  # fd9f
+  by: agent  # fd9f
+  actor: jgstern_agent  # fd9f
+  clock: 11  # fd9f
+  nonce: fd9f  # fd9f
+  set:  # fd9f
+    title: "Every path has exactly one file pseudo-symbol across producers; live on .svelte/.vue paths whose components use each other (javascript: beside svelte:/vue:)"  # fd9f
+    fields:  # fd9f
+      statement: "Every file path has exactly one FILE PSEUDO-SYMBOL (name `file`, kind `file`, span 1-1, minted by make_file_id) across all producers, analyzers and linkers, and its language slot is the file's own language. Manifest entries that carry kind=file with meta entry_role (an npm script or main, a pyproject script; ADR-0036 Ruling 3 as amended, audit-findings 0005) are not file pseudo-symbols and are outside this statement. LIVE (2026-11-15, dev e2b6ab8096): .svelte and .vue paths whose components use each other carry two, javascript:<path>:1-1:file:file beside svelte:/vue:<path>:1-1:file:file, and vue-component-linker mints vue:<path> for a .svelte file; on the fixture metrics.debug.analyzed_file_symbols is 12 for 8 paths. FIXED INSTANCES: js_module absolute-path ids on .ts paths (4549106aec, 2026-05-19); importer-language ids (WI-babuk-nufoh-rolig-sabus-gobuk-zituh-sofup-holid, done); websocket (INV-ronuf-hazag-mumut-rozih-rumig-sugif-dijip-sijiz, satisfied). CLOSE CONDITION: a spec_validator check for one file pseudo-symbol per path, at 0 on a fleet measurement."  # fd9f
+      root_cause: "Each producer chooses the language slot of the file id itself: the JavaScript analyzer uses its own language for the script block of a component file, the orchestrator synthesizes a file symbol under the component analyzer's language, and vue-component-linker hard-codes vue. Canonical-id dedup keys on the whole id, so two ids that differ only in the language slot both persist and the file's edges are split between them (script imports on the javascript: node, the component import on the svelte:/vue: node). No validator check compares file pseudo-symbols per path, so each of the four instances was found by hand."  # fd9f
+- op: discuss  # c5ca
+  at: '2026-11-15T19:57:55Z'  # c5ca
+  by: agent  # c5ca
+  actor: jgstern_agent  # c5ca
+  clock: 12  # c5ca
+  nonce: c5ca  # c5ca
+  message: "OWNER RULING 2026-11-15 (\"keep it, but narrow and rewrite it\" -- agreed): this invariant stays the carrier. Title, statement and root_cause rewritten: the statement is narrowed to the file pseudo-symbol, names the manifest-entry exclusion, lists the fixed instances and sets a validator check as the close condition. WI-modan-tizob-bilag-fanas-simip-guzuz-homoj-rimut keeps its points 1-4 (phantom import targets); its point 5 is this item. The file's language is the file's own (ADR-0031; INV-ronuf-hazag-mumut-rozih-rumig-sugif-dijip-sijiz's statement), and two producers of one declaration yield one record (ADR-0057). Status unchanged: violated. Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/INV-movor and work/v_movor."  # c5ca
+- op: update  # 8a32
+  at: '2026-11-16T04:57:51Z'  # 8a32
+  by: agent  # 8a32
+  actor: jgstern_agent  # 8a32
+  clock: 13  # 8a32
+  nonce: 8a32  # 8a32
+  set:  # 8a32
+    status: satisfied  # 8a32
+- op: discuss  # f3e1
+  at: '2026-11-16T04:57:51Z'  # f3e1
+  by: agent  # f3e1
+  actor: jgstern_agent  # f3e1
+  clock: 14  # f3e1
+  nonce: f3e1  # f3e1
+  message: "Satisfied by PR #2198 for the statement as written (every path has exactly one file pseudo-symbol across producers). Re-ran the live limb: on the six-file Svelte/Vue fixture paths with more than one file node went 4 -> 0; koel 219 -> 0; workadventure play/src/front 251 -> 0; nuclear 8 -> 0; pretix 5 -> 0; whisper.cpp 1 -> 0. Mechanism: analyze/file_records.py reconciles after the linkers (survivor = the file's own language by taxonomy, else the first emitted; edges and usage contexts rewired, none dropped), and a new validator check one_file_node_per_path at error reads 0 on those trees. Members of a component kept their stable ids (koel 5,330, workadventure 5,887: 0 moved). NOT done, filed separately because it moves stable ids: a component whose ONLY file node is the JavaScript analyzer's keeps typescript:/javascript: in the slot (koel 62 of 297, workadventure 187 of 440). No fleet measurement of the new check beyond these trees."  # f3e1

@@ -80,13 +80,19 @@ def test_an_in_house_framework_is_loaded_from_the_user_channel(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     channel = tmp_path / "hypergumbo" / "frameworks.d"
     channel.mkdir(parents=True)
+    # WI-hapon: this fixture used to read ``name:`` / ``symbol_patterns:`` /
+    # ``decorators:`` -- none of them keys -- and loaded ZERO patterns while
+    # the assertion below only asked for "not None". Unread keys are refused
+    # now, so the fixture says what an author must write.
     (channel / "acmeweb.yaml").write_text(
-        "id: acmeweb\nname: Acme Web\nlanguage: python\n"
-        "symbol_patterns:\n"
+        "id: acmeweb\nlanguage: python\n"
+        "patterns:\n"
         "  - concept: route\n"
-        "    decorators: ['acme.route']\n"
+        "    decorator: '^acme\\.route$'\n"
     )
-    assert load_framework_patterns("acmeweb") is not None
+    loaded = load_framework_patterns("acmeweb")
+    assert loaded is not None
+    assert [p.concept for p in loaded.patterns] == ["route"]
 
 
 def test_a_user_definition_replaces_the_shipped_one_whole(

@@ -34,3 +34,26 @@
   clock: 3  # 8838
   nonce: '8838'  # 8838
   message: "Facet 1 (contains) SHIPPED in PR #695 (dev 5dcfad4927): added 'subscript' to CONTAINABLE_KINDS in linkers/containment.py, so correctly-named struct-body Swift subscripts (JSON.subscript(key:)) now attach to their enclosing type. Verified by co-located test test_containment_linker.py::test_swift_struct_body_subscript (parent-name extraction already handled the parenthesized (key:) suffix; only the kind gate blocked the edge). Graph-completeness only — the dead-code BFS does not traverse contains, so no dead-code FP-rate change.\n\nFacet 2 REMAINS OPEN (this item stays open, scoped to it): the json[\"key\"] subscript-CALL site still does not resolve to the subscript node (0 incoming) — a Swift-analyzer subscript-call-resolution gap, distinct from and larger than the containment one-liner."  # 8838
+- op: discuss  # 9c5c
+  at: '2026-11-01T22:22:24Z'  # 9c5c
+  by: agent  # 9c5c
+  actor: jgstern_agent  # 9c5c
+  clock: 4  # 9c5c
+  nonce: 9c5c  # 9c5c
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 on dev 9ae4abe13f (fx_fokag). Facet 1, the title's contains check, is done: JSON contains both JSON.subscript(key:) and JSON.subscript(index:) (PR #695). Facet 2 holds: j[\"name\"], j[3] and k[\"x\"] produce no edge, so both subscripts have 0 incoming. The mechanism has moved: 69b357ce47 (WI-dimad) now drops every subscript as a member access on purpose, so the fix is a positive binding to the receiver type's subscript, not a mis-emitted call. Side note: j.merge() on a parameter typed JSON also emitted no calls edge in this fixture. MECHANISM: subscript call sites are suppressed as member access (WI-dimad) and never bound to the receiver type's subscript symbol."  # 9c5c
+- op: update  # 5975
+  at: '2026-11-01T22:22:24Z'  # 5975
+  by: agent  # 5975
+  actor: jgstern_agent  # 5975
+  clock: 5  # 5975
+  nonce: '5975'  # 5975
+  set:  # 5975
+    title: "swift: a subscript use (j[\"key\"], j[3]) emits no edge to the user-declared subscript it invokes (0 incoming on JSON.subscript(key:))"  # 5975
+- op: update  # 410e
+  at: '2026-11-01T22:22:24Z'  # 410e
+  by: agent  # 410e
+  actor: jgstern_agent  # 410e
+  clock: 6  # 410e
+  nonce: 410e  # 410e
+  set:  # 410e
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 on dev 9ae4abe13f (fx_fokag). Facet 1, the title's contains check, is done: JSON contains both JSON.subscript(key:) and JSON.subscript(index:) (PR #695). Facet 2 holds: j[\"name\"], j[3] and k[\"x\"] produce no edge, so both subscripts have 0 incoming. The mechanism has moved: 69b357ce47 (WI-dimad) now drops every subscript as a member access on purpose, so the fix is a positive binding to the receiver type's subscript, not a mis-emitted call. Side note: j.merge() on a parameter typed JSON also emitted no calls edge in this fixture. (Original text below; the review entry in the thread has the evidence.)\n\nWI-kudir (PR #689) fixed extension-declared Swift members (incl. extension subscripts) to attribute to their type. But struct-BODY subscripts were ALREADY correctly named (e.g. 'JSON.subscript(key:)') before that fix, yet WI-kudir's original evidence claimed all 6 SwiftyJSON subscripts had 0 contains + 0 incoming. The Swift analyzer emits NO contains edges directly — containment is built by a downstream core pass from symbol names. UNVERIFIED (low-confidence WATCH): whether the downstream containment builder attaches a correctly-named 'Type.subscript(key:)' node under its type, or whether the '(key:)'/'(index:)' parenthesized name-suffix format breaks its parent-name extraction. Action: run the full hypergumbo pipeline on SwiftyJSON post-#689 and check contains/incoming on the struct-body subscripts; if still 0, the defect is in the core containment builder for subscript-kind or the parenthesized-name parse, not the Swift analyzer."  # 410e

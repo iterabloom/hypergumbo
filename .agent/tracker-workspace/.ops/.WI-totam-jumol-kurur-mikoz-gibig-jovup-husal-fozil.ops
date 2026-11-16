@@ -1,0 +1,51 @@
+- op: create  # eb37
+  at: '2026-10-22T05:11:14Z'  # eb37
+  by: agent  # eb37
+  actor: jgstern_agent  # eb37
+  clock: 1  # eb37
+  nonce: eb37  # eb37
+  data:  # eb37
+    kind: work_item  # eb37
+    title: "anchor kinds unregistered or missing from kind sets: pony emits actor/primitive via node.type.replace; slice _CONTAINER_KINDS lacks object/actor/program/variable/record; JS anchors a class-field initializer on the file"  # eb37
+    status: todo_hard  # eb37
+    priority: 3  # eb37
+    parent:  # eb37
+    tags:  # eb37
+    - symbol_kind  # eb37
+    - call_graph  # eb37
+    - concept_audit_20261021  # eb37
+    isbefore: []  # eb37
+    duplicate_of: []  # eb37
+    not_duplicate_of: []  # eb37
+    pr_ref:  # eb37
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F3, agent probe/read: pony.py:327 kind = node.type.replace('_definition','') -> 'actor', 'primitive' not in all_symbol_kind_names() (a SIXTH producer-emit shape for the audit playbook's Step 4.5: string method on an AST node type); slice.py:635-638 _CONTAINER_KINDS lacks object, actor, program, variable, record; type_like_kind_names() omits module, actor, program; JS anchors class-field initializer 'p = helper()' on the FILE while py/java/kotlin/swift/csharp anchor class-body code on the class. Check whether a later pass normalises the pony kinds before fixing."  # eb37
+    fields: {}  # eb37
+- op: discuss  # 3c6e
+  at: '2026-10-25T20:08:21Z'  # 3c6e
+  by: agent  # 3c6e
+  actor: jgstern_agent  # 3c6e
+  clock: 2  # 3c6e
+  nonce: 3c6e  # 3c6e
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). PARTLY DONE, PARTLY DUPLICATE. (a) pony actor/primitive: still emitted via pony.py:327, no later pass normalises them, and the validation_report flags both as errors on a live run (3 axis_conformance + 3 id_format); 'actor' duplicates WI-higik, and 'primitive' is moved there. (b) DONE: the sixth producer-emit shape is in the concept-audit playbook (:251-261), though its header at :223 still says 'five'. (c) CURRENT: slice _CONTAINER_KINDS (slice.py:635-638) lacks object, actor, record -- `slice --entry Registry --reverse` on a Kotlin object returns only {Registry:object}; the same code as a class returns members plus main; a Pony actor entry also returns only itself. Drop 'variable': the set drives member expansion through contains edges and a Go variable has no members. (d) type_like_kind_names() correctly omits module/program (kinds that declare a nominal type); the real gap is that there is no anchor-kind predicate. (e) JS class-field initializer anchored on the file (calls app.js(file) -> helper): ADR-0023 now records this as a permitted divergence needing its own measurement before any change -- P4 within this item. Remaining scope: (c), (d), the playbook header; (e) only after measurement. P3 kept."  # 3c6e
+- op: discuss  # 382e
+  at: '2026-10-26T00:31:43Z'  # 382e
+  by: agent  # 382e
+  actor: jgstern_agent  # 382e
+  clock: 3  # 382e
+  nonce: 382e  # 382e
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) Part (a) moved to WI-higik and is WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0027 counterexample. (2) Part (c): slice _CONTAINER_KINDS and type_like_kind_names are hand-written subsets of the symbol-kind vocabulary, a named instance in WI-kosup section D (subsets that drift when the vocabulary grows). The fix here does not wait for that sweep. A structural fix places every symbol kind in or out, rather than adding the three missing ones."  # 382e
+- op: update  # d7b0
+  at: '2026-10-28T09:23:46Z'  # d7b0
+  by: agent  # d7b0
+  actor: jgstern_agent  # d7b0
+  clock: 4  # d7b0
+  nonce: d7b0  # d7b0
+  set:  # d7b0
+    status: done  # d7b0
+- op: discuss  # 9da0
+  at: '2026-10-28T09:23:46Z'  # 9da0
+  by: agent  # 9da0
+  actor: jgstern_agent  # 9da0
+  clock: 5  # 9da0
+  nonce: 9da0  # 9da0
+  message: "Parts (b) and (c) done in PR #1917 (4ebcd0d29c); (a) moved to WI-higik (done in the same PR); (d) and (e) not done, see below. (c): slice's _CONTAINER_KINDS and the containment linker's CONTAINER_KINDS were two hand-written copies; both now read symbol_kinds.container_kind_names() = the nominal type kinds + SCOPE_CONTAINER_KINDS (file, module, type, instance, message, library), so every kind is placed in or out by the registry rather than by a consumer. Measured first on 30 recent surveys: object was the source of 40,820 contains edges (Kotlin/Scala) and slice lacked it, as it lacked contract, type, instance, record, union. Behavioural evidence: test_container_kinds.py::test_a_reverse_slice_from_a_container_reaches_its_members_callers[object|class|actor] (a reverse slice from an object reaches its member's caller; mutating slice back to the old list reds object and actor); the linker change is only actor/primitive (pony fixture A/B). 'variable' left out (a Go variable has no members). (b): the concept-audit playbook header now says six shapes. NOT DONE: (d) there is no anchor-kind predicate -- anchor_execution (WI-fakuh, #1884) now carries the anchor contract, and the taint half lands with WI-tibib; (e) the JS class-field initializer anchored on the file stays ADR-0023's recorded permitted divergence awaiting its own measurement. The title's condition (c) no longer holds."  # 9da0

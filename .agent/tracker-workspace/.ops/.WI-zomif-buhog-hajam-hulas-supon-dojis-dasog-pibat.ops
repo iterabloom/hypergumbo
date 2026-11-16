@@ -19,3 +19,25 @@
     pr_ref:  # 65b9
     description: "FOUND 2026-09-29: PR #1292's CI (a javascript.yaml row move, no Python source touched) failed on tests/test_watcher_lifecycle.py::TestLauncherNamesTheOwner::test_owner_pid_falls_back_to_first_non_shell_ancestor -- \"AssertionError: launcher did not start a watcher\". The same file passed 30/30 locally on that branch, and an empty re-run commit passed CI (merged). The test's own history is a timing fix: 722ea33a57 \"give the detached-launch wait 20 s, not 5 s\", so the launch wait is still load-sensitive on the CI runner.\n\nSibling of WI-narum (test_a_hangup_is_named_too, 30 s timeout under a loaded smart-test run) -- same family: a subprocess-lifecycle test with a wall-clock bound that a loaded machine can exceed. Not reproduced deterministically; no root cause claimed.\n\nFIX SHAPE (unbuilt): wait on the condition the test asserts (the watcher's pid/record file appearing) with a generous bound, or run the lifecycle tests serially (xdist_group), rather than raising the constant again."  # 65b9
     fields: {}  # 65b9
+- op: discuss  # 7a7c
+  at: '2026-10-20T22:31:10Z'  # 7a7c
+  by: agent  # 7a7c
+  actor: jgstern_agent  # 7a7c
+  clock: 2  # 7a7c
+  nonce: 7a7c  # 7a7c
+  message: "ROOT CAUSE FOUND 2026-10-20 (not load, not the wait budget). Recurred on the full-suite cron at b0ad48d0 (step test-agent-infra, 1 failed / 2290 passed). Both tests in TestLauncherNamesTheOwner launch with the SAME session id, 'launch-owner', in separate tmp_path sandboxes, and xdist can run them at the same moment on two workers. launch-transcript-sync.sh Phase 2 (pgrep fallback) kills every sync-transcript.sh on the MACHINE whose session-id argument matches, with no repo/DEST scoping, so the second launch kills the first test's watcher; its EXIT trap removes the pid file and _wait_for_file times out. REPRO (standalone, outside pytest): two sandbox copies of .agent/hooks/_shared, fake inotifywait, launch A then B 50 ms later with the same sid: A's pid file never appears in 8/8 iterations, twice. Control, same stagger, different sid: 0/8. Simultaneous start: 0/10; 20 ms, 100 ms, 200 ms staggers: 0/8 each, so the window is narrow, which is why it reads as a rare flake. FIX OPTIONS: (1) test side, tests/test_watcher_lifecycle.py: derive a unique sid per test (e.g. from tmp_path.name) for every launch, not only these two; other tests in the file also use fixed literals. (2) production side, scope Phase 2 (and kill-transcript-sync.sh Phase 2, which matches identically) to watchers of the same REPO_ROOT/DEST; that is .agent/** and needs owner approval. The 20 s wait (722ea33a57) was never the problem."  # 7a7c
+- op: update  # 62fc
+  at: '2026-10-20T22:53:54Z'  # 62fc
+  by: agent  # 62fc
+  actor: jgstern_agent  # 62fc
+  clock: 3  # 62fc
+  nonce: 62fc  # 62fc
+  set:  # 62fc
+    status: done  # 62fc
+- op: discuss  # 6215
+  at: '2026-10-20T22:53:54Z'  # 6215
+  by: agent  # 6215
+  actor: jgstern_agent  # 6215
+  clock: 4  # 6215
+  nonce: '6215'  # 6215
+  message: "Fixed in PR #1781 (test side). Root cause: the two TestLauncherNamesTheOwner tests shared the literal session id 'launch-owner'; under xdist the second launch's machine-wide Phase 2 pgrep sweep killed the first test's watcher. Evidence: standalone repro (two sandbox launches, same id, 50 ms apart) lost a watcher 8/8 on two runs, and 0/8 with different ids at the same stagger. Every session id in tests/test_watcher_lifecycle.py now comes from _unique_sid(), and test_no_session_id_in_this_file_is_a_bare_literal fails on a literal (checked red by restoring 'launch-owner'). All 31 tests in the file pass. Not changed: the launcher and kill script still sweep machine-wide by session id; real ids are UUIDs, so only tests collide. Repo-scoping the sweeps is a .agent/** change for owner approval."  # 6215

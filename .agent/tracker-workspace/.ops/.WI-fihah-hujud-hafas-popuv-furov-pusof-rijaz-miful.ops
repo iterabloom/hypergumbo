@@ -21,3 +21,18 @@
     pr_ref:  # 51ca
     description: "**False positive (found while measuring WI-hizon on branch jgstern-agent/fix/fovus).** graphql_resolver's JS scanner mints a resolver symbol named after a control-flow keyword: `if (cond) {` inside a scope it reads as a `Query: { ... }` resolver map becomes `Query.if:function`, with a `references` edge to the `Query` SDL type.\n\nObserved on apollo-server (survey, branch head): 13 `Query.if:function` nodes in `.ts` files before the branch (`packages/integration-testsuite/src/apolloServerTests.ts` lines 2407, 2413, 2439, 2489, 2498, 2513, 2649, 2669, 2823, 3125; `httpServerTests.ts` 2065, 2443, 2647), plus 1 new one the branch exposes by now scanning `.cjs` (`smoke-test/smoke-test.cjs:57`, the line `if (process.env.INCREMENTAL_DELIVERY_TESTS_ENABLED) {`). Not checked: other keywords (`for`, `while`, `switch`, `catch`) and other repos.\n\nFix direction: exclude JS reserved words from the resolver-name capture (and check how the scanner decides it is still inside the resolver map)."  # 51ca
     fields: {}  # 51ca
+- op: discuss  # aee1
+  at: '2026-11-01T10:56:06Z'  # aee1
+  by: agent  # aee1
+  actor: jgstern_agent  # aee1
+  clock: 2  # aee1
+  nonce: aee1  # aee1
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e. graphql_resolver.py patterns (~:102-125) are unchanged since filing (later commits are activation/extension-list only). Fixture: a Query resolver map whose hello body has if/for/while/switch, in both .ts and .cjs, mints Query.if, Query.for, Query.while and Query.switch:function nodes (graphql-resolver-linker) in both files, besides the correct Query.hello. The premise holds and is wider than filed: every keyword followed by `(...) {` matches, not just `if`. MECHANISM: JS_FIELD_RESOLVER_SHORTHAND_PATTERN ^\\s*(async\\s+)?(\\w+)\\s*\\([^)]*\\)\\s*\\{ matches keyword statements, and the scanner does not track nesting depth inside the type object. SHARES MECHANISM WITH: none."  # aee1
+- op: update  # 5133
+  at: '2026-11-01T10:56:06Z'  # 5133
+  by: agent  # 5133
+  actor: jgstern_agent  # 5133
+  clock: 3  # 5133
+  nonce: '5133'  # 5133
+  set:  # 5133
+    title: "graphql_resolver JS shorthand-method regex mints Query.if/for/while/switch:function from control-flow statements nested inside a resolver body"  # 5133

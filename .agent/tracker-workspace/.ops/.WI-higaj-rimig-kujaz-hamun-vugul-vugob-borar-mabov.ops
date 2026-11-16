@@ -19,3 +19,26 @@
     pr_ref:  # 7d8b
     description: "WI-fuvuj (PR #4322) added receiver-type inference for open()->file and socket.socket()->socket via py.py EXTERNAL_CONSTRUCTOR_TYPES + a synthetic 'file' catalog module. The map is the extension point; this item expands it to other stdlib constructor-returning I/O types so their method calls classify into the right boundary instead of external_potential: sqlite3.connect()->Connection (db_query), http.client.HTTPConnection/HTTPSConnection (net), tempfile.NamedTemporaryFile/TemporaryFile (fs), subprocess.Popen (subprocess pipes), urllib.request.urlopen result, etc. Each is an additive EXTERNAL_CONSTRUCTOR_TYPES entry + (where missing) a catalog module entry + tests. Also consider aliased constructors (from socket import socket as x) and binary/text-mode precision (open mode -> io.BufferedReader vs io.TextIOWrapper), both deferred from WI-fuvuj. Mechanism is proven; this is pure breadth."  # 7d8b
     fields: {}  # 7d8b
+- op: discuss  # fb67
+  at: '2026-11-01T10:55:42Z'  # fb67
+  by: agent  # fb67
+  actor: jgstern_agent  # fb67
+  clock: 2  # fb67
+  nonce: fb67  # fb67
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat4/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 on dev 100b6fbb6e. Since fb3ad346f9 (2026-08-10) EXTERNAL_CONSTRUCTOR_TYPES is derived from python.yaml method-row owners, not hand-listed. Fixture: HTTPConnection.request is net_send, urlopen(...).read is net_recv (HTTPResponse), Popen.communicate is ipc_recv, so those asks are done. Still open: `c = sqlite3.connect(); c.execute()` is python:external:0-0:execute and unclassified; NamedTemporaryFile().write is typed but external_potential; with `from socket import socket as sk`, `sk().send` is untyped. open() mode precision is not done. MECHANISM: constructor map is derived from catalogue method-row owners, so a factory function's result and an unrowed owner type stay untyped/unclassified."  # fb67
+- op: update  # ed73
+  at: '2026-11-01T10:55:43Z'  # ed73
+  by: agent  # ed73
+  actor: jgstern_agent  # ed73
+  clock: 3  # ed73
+  nonce: ed73  # ed73
+  set:  # ed73
+    title: "Python receiver typing remainder after the derived EXTERNAL_CONSTRUCTOR_TYPES: sqlite3.connect() result, tempfile objects, aliased constructors, open() mode"  # ed73
+- op: update  # 345e
+  at: '2026-11-01T10:55:43Z'  # 345e
+  by: agent  # 345e
+  actor: jgstern_agent  # 345e
+  clock: 4  # 345e
+  nonce: 345e  # 345e
+  set:  # 345e
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 on dev 100b6fbb6e. Since fb3ad346f9 (2026-08-10) EXTERNAL_CONSTRUCTOR_TYPES is derived from python.yaml method-row owners, not hand-listed. Fixture: HTTPConnection.request is net_send, urlopen(...).read is net_recv (HTTPResponse), Popen.communicate is ipc_recv, so those asks are done. Still open: `c = sqlite3.connect(); c.execute()` is python:external:0-0:execute and unclassified; NamedTemporaryFile().write is typed but external_potential; with `from socket import socket as sk`, `sk().send` is untyped. open() mode precision is not done. (Original text below; the review entry in the thread has the evidence.)\n\nWI-fuvuj (PR #4322) added receiver-type inference for open()->file and socket.socket()->socket via py.py EXTERNAL_CONSTRUCTOR_TYPES + a synthetic 'file' catalog module. The map is the extension point; this item expands it to other stdlib constructor-returning I/O types so their method calls classify into the right boundary instead of external_potential: sqlite3.connect()->Connection (db_query), http.client.HTTPConnection/HTTPSConnection (net), tempfile.NamedTemporaryFile/TemporaryFile (fs), subprocess.Popen (subprocess pipes), urllib.request.urlopen result, etc. Each is an additive EXTERNAL_CONSTRUCTOR_TYPES entry + (where missing) a catalog module entry + tests. Also consider aliased constructors (from socket import socket as x) and binary/text-mode precision (open mode -> io.BufferedReader vs io.TextIOWrapper), both deferred from WI-fuvuj. Mechanism is proven; this is pure breadth."  # 345e

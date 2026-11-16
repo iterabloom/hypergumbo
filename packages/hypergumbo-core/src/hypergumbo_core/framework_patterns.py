@@ -14,11 +14,11 @@ How It Works
 
 Also provides:
 
-- Nine language-convention pattern files (``_CONVENTION_PATTERN_IDS``:
+- Eleven language-convention pattern files (``_CONVENTION_PATTERN_IDS``:
   main-functions, test-frameworks, library-exports, naming-conventions, ...)
   that ``enrich_symbols`` applies on every repo regardless of framework
   detection.
-- A user-channel override: a ``frameworks/`` file in the user channel whose
+- A user-channel override: a file in the user's ``frameworks.d`` channel whose
   stem matches a framework id (or its alias) replaces the shipped YAML whole
   rather than merging into it (ADR-0047 ruling 10, ``load_framework_patterns``).
 - Route-marker hygiene at enrichment: on a symbol that already carries a
@@ -26,6 +26,12 @@ Also provides:
   framework lifted onto ``route_framework`` (``_dedup_route_marker_concepts``,
   INV-vokak), and on any route-family marker a ``library_export`` match is
   dropped (``_drop_library_export_on_route_marker``, INV-liraj).
+- Route-path composition inside ``enrich_symbols``: an APIRouter
+  ``router_prefix`` is prepended to the symbol's route paths, a pattern's
+  ``prefix_from_parent`` combines a method's path with its parent class's
+  concept path (``_combine_route_paths``), and JAX-RS subresource-locator paths
+  are chained through the locator methods that return a resource class
+  (``_apply_subresource_locator_paths``).
 - Pipeline passes run outside ``enrich_symbols``:
   ``resolve_deferred_symbol_refs`` (resolves UsageContext handler references
   against the full symbol table once every analyzer has run),
@@ -61,7 +67,9 @@ function gets tagged as a route handler). This is complementary to — not a
 replacement for — route-marker symbols. Route symbols are first-class IR
 entities representing the route itself, consumed by the ``route_handler``
 linker to create ``dispatches_to`` edges. Language analyzers create route
-markers directly for routing DSLs (Go, JS/TS, Django urls.py, Rails, Phoenix).
+markers directly for routing DSLs and constructor-style routing (Go, JS/TS,
+Django urls.py, Starlette ``Route``, Flask-RESTful ``add_resource``, Rails,
+Phoenix, Laravel, Swift, Play ``conf/routes``).
 For handlers enriched with ``concept: route`` that have no marker (decorator
 and annotation frameworks such as JAX-RS, Spring, ASP.NET, FastAPI),
 ``materialize_route_symbols`` creates the marker.
@@ -83,12 +91,14 @@ Usage
     # Enrich symbols in place with matched framework concepts. Pass the set of
     # detected framework ids directly; enrich_symbols loads each framework's
     # YAML patterns internally (signature: enrich_symbols(symbols,
-    # detected_frameworks, usage_contexts=None)).
+    # detected_frameworks, usage_contexts=None, report=None); ``report``
+    # collects per-pattern-YAML gain counts, WI-tivif).
     enriched = enrich_symbols(symbols, detected_frameworks)
 """
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -102,7 +112,7 @@ if TYPE_CHECKING:
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
-from .yaml_catalogs import CatalogueError, read_catalogue_yaml
+from .yaml_catalogs import CatalogueError, read_catalogue_yaml, reject_unknown_keys
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
 # but never imported in app code (Rails-style autoload-by-convention), also add
@@ -120,7 +130,7 @@ class UsagePatternSpec:
     for call-based frameworks like Django, Express, Go Gin.
 
     Attributes:
-        kind: Regex pattern to match context kind (call, data_value, export, macro)
+        kind: Regex pattern to match context kind (call, export, library_export, macro)
         name: Regex pattern to match context_name (function called, var defined, etc.)
         position: Regex pattern to match position (args[1], :get, default, etc.)
     """
@@ -178,7 +188,8 @@ class Pattern:
     Language convention patterns (v1.2.x):
     - symbol_name: Match symbol name directly (for main() detection, etc.)
     - language: Filter by symbol's language (AND'd with other conditions)
-    When symbol_name + symbol_kind are both specified, they're AND'd together.
+    When symbol_name + symbol_kind are both specified, they're AND'd together;
+    so are symbol_name + parameter_type (WI-jonin).
 
     Usage-based patterns (v1.1.x):
     - usage: UsagePatternSpec to match against UsageContext records
@@ -199,7 +210,8 @@ class Pattern:
         symbol_name: Regex pattern to match symbol name directly
         language: Regex pattern to filter by symbol's language
         annotation: Regex pattern to match against Java annotations
-        parameter_type: Regex pattern to match against parameter types
+        parameter_type: Regex pattern to match against parameter types, read
+            from ``Symbol.meta["parameters"]`` (ADR-0058: never the signature)
         symbol_kind: Regex pattern to match against symbol kind field
         framework_role: Regex pattern to match against ``Symbol.meta["framework_role"]``
             (ADR-0027 Phase 3 fold residue — see audit-findings 0013). Use this
@@ -207,14 +219,13 @@ class Pattern:
             websocket_endpoint, …) instead of overloading ``symbol_kind``.
         meta_match: Dict of ``Symbol.meta`` key → regex pattern. Each key must
             be present in ``Symbol.meta`` and its string-coerced value must
-            match the regex. WI-limas wired this in to re-bind Wave 6 / ADR-0027
-            fold rules (devDependency → kind="dependency" + meta["dependency_scope"]="dev",
-            tsconfig → kind="file" + meta["config_format"]="tsconfig", etc.)
-            that previously hardcoded the post-fold meta value into ``symbol_kind``.
-            framework_role has its own dedicated field because the framework_role
-            axis predates this generic mechanism and has bespoke per-pattern-type
-            interaction with symbol_name; meta_match handles every other
-            ADR-0027 fold-residue axis uniformly.
+            match the regex. It binds rules to ADR-0027 fold-residue meta values
+            rather than to ``symbol_kind`` (devDependency → kind="dependency" +
+            meta["dependency_scope"]="dev", tsconfig → kind="file" +
+            meta["config_format"]="tsconfig", etc.) (WI-limas).
+            framework_role has its own dedicated field because it has bespoke
+            per-pattern-type interaction with symbol_name; meta_match handles
+            every other ADR-0027 fold-residue axis uniformly.
         modifiers: Regex pattern requiring at least one modifier to match (positive filter)
         modifiers_exclude: Regex pattern to reject symbols with matching modifiers
         symbol_path: Regex pattern to match against symbol's file path (search, not match)
@@ -342,6 +353,28 @@ class Pattern:
             matched[key] = value_str
         return True, matched
 
+    def _kind_and_role(self, symbol: Symbol) -> dict[str, str] | None:
+        """The ``symbol_kind`` / ``framework_role`` conjunct of a match.
+
+        ``symbol_kind`` matches ``Symbol.kind`` (canonical Cluster A
+        construct); ``framework_role`` matches ``Symbol.meta["framework_role"]``
+        (ADR-0027 Phase 3 fold residue per audit-findings 0013). Either can be
+        declared alone; both must match when both are. Returns the
+        ``matched_*`` keys to record (empty when neither is declared), or None
+        when a declared one does not match.
+        """
+        matched: dict[str, str] = {}
+        if self._symbol_kind_re:
+            if self._symbol_kind_re.match(symbol.kind) is None:
+                return None
+            matched["matched_symbol_kind"] = symbol.kind
+        if self._framework_role_re:
+            framework_role = (symbol.meta or {}).get("framework_role")
+            if framework_role is None or self._framework_role_re.match(framework_role) is None:
+                return None
+            matched["matched_framework_role"] = framework_role
+        return matched
+
     def _check_filters(self, symbol: Symbol) -> bool:
         """Check language, path, and modifier filters.
 
@@ -450,15 +483,27 @@ class Pattern:
         # one match per symbol, so wrap in a list.
         result = {"concept": self.concept}
 
-        # Try parameter type match
+        # Try parameter type match. Declared beside symbol_name it is an AND
+        # (WI-jonin: a method NAMED ``ServeHTTP`` that TAKES a ``*Request``),
+        # and decisive: neither half may then match alone below.
         if self._param_type_re:
-            for param in parameters:
-                param_type = (
+            matched_type = next((
+                param_type for param in parameters
+                if (param_type := (
                     param.get("type") or "" if isinstance(param, dict) else str(param)
-                )
-                if param_type and self._param_type_re.match(param_type):
-                    result["matched_parameter_type"] = param_type
-                    return [result]
+                )) and self._param_type_re.match(param_type)
+            ), None)
+            if self._symbol_name_re:
+                if matched_type is None or not self._symbol_name_re.search(symbol.name):
+                    return []
+                kind_role = self._kind_and_role(symbol)
+                if kind_role is None:
+                    return []
+                result["matched_symbol_name"] = symbol.name
+                result.update(kind_role)
+            if matched_type is not None:
+                result["matched_parameter_type"] = matched_type
+                return [result]
 
         # Try symbol_name + symbol_kind combined match (for language conventions like main())
         # When both are specified, both must match (AND semantics)
@@ -474,33 +519,12 @@ class Pattern:
                 # symbol_name matches
                 result["matched_symbol_name"] = symbol.name
 
-                # Check symbol_kind / framework_role if specified (AND condition).
-                # symbol_kind matches Symbol.kind (canonical Cluster A construct);
-                # framework_role matches Symbol.meta["framework_role"] (ADR-0027
-                # Phase 3 fold residue per audit-findings 0013). Either kind of
-                # constraint can be specified independently; both must match
-                # when both are specified. When neither matches, fall through
-                # so other pattern types can still try.
-                if self._symbol_kind_re or self._framework_role_re:
-                    kind_ok = (
-                        self._symbol_kind_re is None
-                        or self._symbol_kind_re.match(symbol.kind) is not None
-                    )
-                    framework_role = (symbol.meta or {}).get("framework_role")
-                    role_ok = (
-                        self._framework_role_re is None
-                        or (framework_role is not None
-                            and self._framework_role_re.match(framework_role) is not None)
-                    )
-                    if kind_ok and role_ok:
-                        if self._symbol_kind_re:
-                            result["matched_symbol_kind"] = symbol.kind
-                        if self._framework_role_re:
-                            result["matched_framework_role"] = framework_role
-                        return [result]
-                    # else: don't match this pattern; fall through
-                else:
-                    # Only symbol_name specified, and it matches
+                # Check symbol_kind / framework_role if specified (AND
+                # condition, :meth:`_kind_and_role`). When they do not match,
+                # fall through so other pattern types can still try.
+                kind_role = self._kind_and_role(symbol)
+                if kind_role is not None:
+                    result.update(kind_role)
                     return [result]
 
         # Try symbol_kind / framework_role / meta_match match (alone,
@@ -510,8 +534,8 @@ class Pattern:
         # fields are AND conditions, not independent alternatives.
         # symbol_kind / framework_role / meta_match can be specified
         # together (AND). meta_match alone is also a valid match shape:
-        # WI-limas yaml rules of the form "all symbols with meta key X
-        # whose value matches /regex/" don't need a symbol_kind clause.
+        # yaml rules of the form "all symbols with meta key X whose value
+        # matches /regex/" don't need a symbol_kind clause (WI-limas).
         if (
             (
                 self._symbol_kind_re
@@ -526,22 +550,10 @@ class Pattern:
             and not self._annotation_re
             and not self._param_type_re
         ):
-            kind_ok = (
-                self._symbol_kind_re is None
-                or self._symbol_kind_re.match(symbol.kind) is not None
-            )
-            framework_role = (symbol.meta or {}).get("framework_role")
-            role_ok = (
-                self._framework_role_re is None
-                or (framework_role is not None
-                    and self._framework_role_re.match(framework_role) is not None)
-            )
+            kind_role = self._kind_and_role(symbol)
             meta_ok, matched_meta = self._meta_match_ok(symbol)
-            if kind_ok and role_ok and meta_ok:
-                if self._symbol_kind_re:
-                    result["matched_symbol_kind"] = symbol.kind
-                if self._framework_role_re:
-                    result["matched_framework_role"] = framework_role
+            if kind_role is not None and meta_ok:
+                result.update(kind_role)
                 if self._meta_match_re:
                     result["matched_meta"] = matched_meta
                 return [result]
@@ -853,6 +865,21 @@ def _extract_from_metadata(metadata: dict[str, Any], path: str) -> str | None:
     return None
 
 
+#: WI-hapon: the keys :meth:`FrameworkPatternDef.from_dict` reads. ``provenance``
+#: and ``retrieved`` are read for the ADR-0061 tier and its disclosure.
+_FILE_KEYS: frozenset[str] = frozenset({
+    "id", "language", "patterns", "provenance", "retrieved",
+})
+_PATTERN_KEYS: frozenset[str] = frozenset({
+    "concept", "decorator", "base_class", "parent_base_class", "method_name",
+    "symbol_name", "language", "annotation", "parameter_type", "symbol_kind",
+    "framework_role", "meta_match", "modifiers", "modifiers_exclude",
+    "symbol_path", "is_test_file", "extract_path", "extract_method",
+    "prefix_from_parent", "usage", "extract",
+})
+_USAGE_KEYS: frozenset[str] = frozenset({"kind", "name", "position"})
+
+
 @dataclass
 class FrameworkPatternDef:
     """Framework pattern definition loaded from YAML.
@@ -861,13 +888,16 @@ class FrameworkPatternDef:
         id: Unique framework identifier (e.g., "fastapi", "spring")
         language: Primary language for this framework
         patterns: List of patterns to match
-        linkers: Linkers that should be activated when this framework is detected
+
+    There is no ``linkers`` field: a linker's activation is its
+    ``LinkerActivation`` in code, so a YAML list of the linkers a framework
+    activates would decide nothing and be a second, unchecked statement of
+    the same fact. As an unknown key, ``linkers:`` is refused (WI-hapon).
     """
 
     id: str
     language: str
     patterns: list[Pattern] = field(default_factory=list)
-    linkers: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FrameworkPatternDef:
@@ -879,12 +909,28 @@ class FrameworkPatternDef:
         Returns:
             FrameworkPatternDef instance
         """
+        # A key nothing reads is refused, at each level, naming the file (the
+        # loader wraps this ValueError). Silently accepting an unread key
+        # would leave the rule that declares it matching nothing (WI-hapon).
+        reject_unknown_keys(
+            data, _FILE_KEYS, origin="framework pattern definition",
+            where="top-level", error=ValueError,
+        )
         patterns = []
         for p in data.get("patterns", []):
+            reject_unknown_keys(
+                p, _PATTERN_KEYS, origin="framework pattern definition",
+                where="pattern", error=ValueError,
+            )
             # Parse usage pattern spec if present (v1.1.x)
             usage_spec = None
             if "usage" in p:
                 usage_data = p["usage"]
+                reject_unknown_keys(
+                    usage_data, _USAGE_KEYS,
+                    origin="framework pattern definition",
+                    where="pattern usage", error=ValueError,
+                )
                 usage_spec = UsagePatternSpec(
                     kind=usage_data.get("kind"),
                     name=usage_data.get("name"),
@@ -919,22 +965,17 @@ class FrameworkPatternDef:
             id=data.get("id", "unknown"),
             language=data.get("language", "unknown"),
             patterns=patterns,
-            linkers=data.get("linkers", []),
         )
 
 
 # Cache for loaded framework patterns, keyed on (frameworks_dir, framework_id).
 #
-# INV-kazij: the key MUST include the resolved directory, because
+# The key MUST include the resolved directory, because
 # ``get_frameworks_dir`` is patchable and a cache keyed on the id alone
-# memoizes half the function's input. The measured failure mode: a test
-# patched the dir to a tmp path, the convention ids (main-functions,
-# config-conventions, ...) cached as None, and every symbol analyzed
-# afterwards IN THE SAME PROCESS carried zero concepts — so the
-# pyproject-console-script entrypoint test failed on exactly the xdist
-# workers whose earlier schedule included a dir-patching test. That
-# worker-composition dependence spent three cron runs looking like an
-# interpreter, container, and install-set problem in turn.
+# memoizes half the function's input: a lookup made while the dir is patched
+# to a tmp path would cache the convention ids (main-functions,
+# config-conventions, ...) as None, and every symbol analyzed afterwards in the
+# same process would carry zero concepts (INV-kazij).
 _PATTERN_CACHE: dict[tuple[str, str], FrameworkPatternDef | None] = {}
 
 # Framework alias mapping: maps detected framework names to pattern file names
@@ -1397,7 +1438,9 @@ _CONVENTION_PATTERN_IDS: tuple[str, ...] = (
     "library-exports",
     "logging-conventions",
     "go-encoding-callbacks",
+    "go-net-http",
     "node-http",
+    "python-http-server",
 )
 
 
@@ -1427,17 +1470,24 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
 
     WI-bosab: naming-convention concepts (``service_by_name``,
     ``controller_by_name``, ``handler_by_name``) fire on a class purely by its
-    name, so a test fixture like ``class MyService`` in ``tests/`` was mislabeled
-    a production service. The concept-enrichment pass (``enrich_symbols``) runs
+    name, so a test fixture like ``class MyService`` in ``tests/`` would be
+    mislabeled a production service. The concept-enrichment pass (``enrich_symbols``) runs
     BEFORE supply-chain classification in the pipeline (linker-produced symbols
     must be classified too), so ``Symbol.is_test_file`` — the canonical
     supply-chain *test-code* verdict (the narrow role flag, spec §14; distinct
     from the broader ``paths.is_test_file`` ranking/scan heuristic that keys
     entrypoint deprioritization — WI-popok KEEP verdict) — is not yet set when
     concepts are attached. This
-    post-classification pass honors it: any concept whose producing pattern set
-    ``is_test_file: false`` is removed from a symbol the classifier marked
-    ``is_test_file``. Returns the number of concepts stripped.
+    post-classification pass honors it: any concept that SOME loaded pattern
+    declares ``is_test_file: false`` is removed from a symbol the classifier
+    marked ``is_test_file``. The key is the concept NAME, not the producing
+    rule (``_test_excluded_concepts``): once the always-loaded
+    python-http-server.yaml declares ``route_handler`` test-excluded, a
+    flask-restful or falcon fixture's handler in ``tests/`` loses the concept
+    too (WI-losij), which is
+    the intended reading -- a test's handler is not the program's ingress --
+    and a comment on each of those rules says so. Returns the number of
+    concepts stripped.
     """
     excluded = _test_excluded_concepts()
     if not excluded:  # pragma: no cover - the convention corpus always declares some
@@ -1449,12 +1499,10 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
         meta = symbol.meta
         if not meta:
             continue
-        # INV-hazov (a)/(b). This was `meta["concepts"] = kept` on a LOCAL
-        # ALIAS of symbol.meta, and both halves of that were invisible:
-        # the linter's bypass rule matched only `<expr>.meta["k"] = ...`, so
-        # an alias hid a direct assignment to a merge_union key; and the
-        # chokepoint had no way to express a REMOVAL, since write_meta_key
-        # would have unioned the stripped concepts straight back in.
+        # ``concepts`` is a merge_union key, so a removal goes through the
+        # filter_meta_key chokepoint: write_meta_key would union the stripped
+        # concepts straight back in, and a direct assignment through a local
+        # alias of symbol.meta would bypass the chokepoint unseen (INV-hazov).
         stripped += filter_meta_key(
             meta,
             "concepts",
@@ -1515,10 +1563,10 @@ def _drop_library_export_on_route_marker(
     takes every non-``defp`` function (the marker has no ``private``
     modifier), the Go pattern every uppercase-initial name ("GET /users").
     ``library_export`` means "externally importable public API"; nothing can
-    import a route registration. Left in place the concept leaked into
-    ``meta.concepts`` and, through first-emitted-wins dedup, displaced the
-    marker's HTTP_ROUTE entrypoint (thc: 377 Phoenix routes filed as library
-    exports). Dropped here — the one point every definition-based match
+    import a route registration. Left in place the concept would leak into
+    ``meta.concepts`` and, through first-emitted-wins dedup, displace the
+    marker's HTTP_ROUTE entrypoint, filing routes as library exports. Dropped
+    here — the one point every definition-based match
     passes through — rather than per-language in the YAML, because the YAML
     matcher has no ``framework_role`` exclusion and every current and future
     language's export convention would need its own.
@@ -1528,10 +1576,34 @@ def _drop_library_export_on_route_marker(
     return [c for c in matches if c.get("concept") != "library_export"]
 
 
+def _concept_keys(symbol: Symbol) -> set[str]:
+    """The symbol's concepts, as comparable strings."""
+    concepts = (symbol.meta or {}).get("concepts") or []
+    return {json.dumps(c, sort_keys=True, default=str) for c in concepts if isinstance(c, dict)}
+
+
+def _report_new_concepts(
+    symbols: list[Symbol], before: dict[int, set[str]],
+    pattern_defs: list[Any], report: dict[str, int],
+) -> None:
+    """Count, per loaded YAML, the symbols that gained a concept from it."""
+    for pattern_def in pattern_defs:
+        report.setdefault(pattern_def.id, 0)
+    for symbol in symbols:
+        frameworks = set()
+        for key in _concept_keys(symbol) - before.get(id(symbol), set()):
+            fw = json.loads(key).get("framework")
+            if fw in report:
+                frameworks.add(fw)
+        for fw in frameworks:
+            report[fw] += 1
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
     usage_contexts: list[UsageContext] | None = None,
+    report: dict[str, int] | None = None,
 ) -> list[Symbol]:
     """Enrich symbols with framework concept metadata.
 
@@ -1548,6 +1620,10 @@ def enrich_symbols(
         symbols: Symbols to enrich
         detected_frameworks: Set of detected framework IDs
         usage_contexts: List of UsageContext records for usage-based matching (v1.1.x)
+        report: When given, filled with ``{pattern YAML id: symbols that gained
+            a concept from it}`` for EVERY YAML loaded, zeros included, so a
+            consumer can tell "loaded and matched nothing" (0) from "not loaded"
+            (absent) (WI-tivif).
 
     Returns:
         Same symbols, possibly with updated metadata.
@@ -1570,7 +1646,10 @@ def enrich_symbols(
     # - library-exports.yaml: JS/TS index exports, Go exported symbols, Elixir modules
     # - logging-conventions.yaml: Logger classes, factory methods, log bridges
     # - go-encoding-callbacks.yaml: Go MarshalJSON/UnmarshalYAML/etc. methods (WI-pimig)
+    # - go-net-http.yaml: Go http.Handler implementations, ServeHTTP (WI-jonin)
     # - node-http.yaml: bare-Node http.createServer / Apollo startStandaloneServer (WI-tisam)
+    # - python-http-server.yaml: http.server do_<VERB> handlers on a
+    #   BaseHTTPRequestHandler subclass (WI-losij)
     for convention_id in _CONVENTION_PATTERN_IDS:
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:
@@ -1579,9 +1658,16 @@ def enrich_symbols(
     if not pattern_defs:  # pragma: no cover - main-functions.yaml is always loaded
         return symbols
 
+    # WI-tivif: what each symbol carried BEFORE enrichment, so the report
+    # credits a YAML only with concepts this call added (an analyzer may have
+    # stamped concepts of its own already).
+    before = (
+        {id(s): _concept_keys(s) for s in symbols} if report is not None else {}
+    )
+
     # Build lookups for parent resolution and name-based fallback
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
-    # Build name-based lookup for fallback resolution (INV-002 fix)
+    # Build name-based lookup for fallback resolution (INV-002)
     # Uses simple name as key; for qualified names, use the last component
     symbol_by_name: dict[str, Symbol] = {}
     for s in symbols:
@@ -1612,11 +1698,10 @@ def enrich_symbols(
             # concept=route onto an already-marked marker (dual-carry orphans
             # the framework). Lift the framework onto route_framework and drop
             # the redundant concept before stamping.
-            # INV-hazov instance 7: this was a bare assignment, so a symbol
-            # the ANALYZER had already stamped (python's ``main_guard``,
-            # bash's ``shell_script``, go's ``middleware``) lost that fact
-            # the moment any framework pattern matched it. Both facts are
-            # independently true; the union is the sound fold.
+            # The matches are unioned into existing concepts, not assigned
+            # over them: a concept the ANALYZER already stamped (python's
+            # ``main_guard``, bash's ``shell_script``, go's ``middleware``)
+            # stays true when a framework pattern also matches (INV-hazov).
             # INV-liraj: and a route marker is not importable API, so the
             # accidental library_export match is dropped too.
             write_meta_key(
@@ -1712,15 +1797,15 @@ def enrich_symbols(
     if usage_contexts:
         for ctx in usage_contexts:
             # Distinct from the `for symbol in symbols:` loop var above (that is
-            # a Symbol; this is a nullable lookup result) — renamed to satisfy
-            # mypy [no-redef]/[assignment] (WI-hokag).
+            # a Symbol; this is a nullable lookup result), so mypy does not
+            # report [no-redef]/[assignment] (WI-hokag).
             resolved_symbol: Symbol | None = None
 
             # Try direct symbol_ref lookup first
             if ctx.symbol_ref:
                 resolved_symbol = symbol_by_id.get(ctx.symbol_ref)
 
-            # Fallback: try name-based resolution from metadata (INV-002 fix)
+            # Fallback: try name-based resolution from metadata (INV-002)
             # This handles cases where view_name exists but symbol_ref wasn't set
             # because the symbol was in a different file during analysis
             if resolved_symbol is None and ctx.metadata:
@@ -1743,15 +1828,12 @@ def enrich_symbols(
                 # Both definition-based (Phase 1) and usage-based (Phase 3)
                 # can produce the same concept (e.g., Go route handlers
                 # matched by both decorator and UsageContext patterns).
-                # INV-hazov: this block used to hand-roll the union (read
-                # existing, dedup by sorted items, append). The identical
-                # fold was ALSO owed by the def-based phase above, which
-                # assigned over the top instead and destroyed producer-set
-                # concepts — one fact, two homes, one of them wrong. Both
-                # now route through the single fold on the key's
-                # merge_union declaration.
+                # Both phases route through the single fold on the key's
+                # merge_union declaration (write_meta_key) (INV-hazov).
                 write_meta_key(resolved_symbol.meta, "concepts", matches)
 
+    if report is not None:
+        _report_new_concepts(symbols, before, pattern_defs, report)
     return symbols
 
 
@@ -1760,7 +1842,11 @@ class DeferredResolutionStats:
     """Statistics from deferred symbol resolution phase.
 
     Tracks how many UsageContexts were resolved and by which strategy,
-    enabling observability into the resolution process.
+    enabling observability into the resolution process. ``resolved_ambiguous``
+    counts a handler chosen among several same-named candidates because it is
+    defined in the usage context's own file (``caller_file``); a tie with no
+    such evidence is left unresolved by the resolver (WI-jomik) and counts in
+    ``still_unresolved``.
     """
 
     total_unresolved: int = 0
@@ -1787,9 +1873,9 @@ def resolve_deferred_symbol_refs(
 ) -> DeferredResolutionStats:
     """Resolve symbol_ref for UsageContexts that couldn't be resolved during analysis.
 
-    This is the proper fix for INV-002: Usage patterns extracted by analyzers should
-    become concepts on nodes, but this requires resolving string-based handler
-    references to actual Symbol IDs.
+    Usage patterns extracted by analyzers become concepts on nodes only once
+    their string-based handler references are resolved to actual Symbol IDs
+    (INV-002).
 
     The problem: When an analyzer extracts a UsageContext (e.g., Django URL pattern
     referencing 'views.list_users'), the target symbol may be in a different file
@@ -1857,6 +1943,7 @@ def resolve_deferred_symbol_refs(
             resolution_hints["name"],
             allow_suffix=True,
             path_hint=path_hint,
+            caller_path=ctx.path,
         )
 
         if result.found:
@@ -1871,7 +1958,7 @@ def resolve_deferred_symbol_refs(
                 stats.resolved_exact += 1
             elif match_type == "path_hint":
                 stats.resolved_path_hint += 1
-            elif match_type == "suffix_ambiguous":
+            elif match_type == "caller_file":
                 stats.resolved_ambiguous += 1
             else:
                 stats.resolved_suffix += 1
@@ -1957,21 +2044,19 @@ def materialize_route_symbols(
         List of new route Symbol objects to extend the symbol list.
         Does NOT modify the input list.
     """
-    from .analyze.base import make_route_stable_id, make_symbol_id
+    from .analyze.base import make_route_symbol
     from .ir import Span, Symbol as SymbolCls, make_pass_id
-    from .routes import transport_meta
 
     pass_id = make_pass_id("route-materializer")
     new_route_symbols: list[SymbolCls] = []
     seen_routes: set[str] = set()  # Dedupe by (method, path)
 
-    # WI-tizad: also dedupe against analyzer-emitted route-marker symbols.
+    # Also dedupe against analyzer-emitted route-marker symbols (WI-tizad).
     # Django's urls.py analyzer creates routes at the URL registration site
     # (e.g. `path("/users/", UsersView.as_view())`) AND the view class's
     # get/post methods get concept=route via framework enrichment. Without
     # this pre-populate, the same (method, path) pair is emitted twice:
-    # once at urls.py and once at the view method. Pretix UAT saw 985 routes
-    # where only ~500 were unique.
+    # once at urls.py and once at the view method.
     for existing in symbols:
         if (existing.meta or {}).get("framework_role") != "route":
             continue
@@ -2026,10 +2111,10 @@ def materialize_route_symbols(
             # would emit a single ``GET,POST`` route Symbol that the
             # WI-tizad dedupe (keyed on the joined string) misses,
             # producing a duplicate alongside the per-method analyzer
-            # emissions. Surfaced by WI-pusad once bare-name framework
-            # promotion (here: starlette via ``starlette.routing``
-            # compound import) made starlette.yaml load on repos
-            # without an explicit manifest declaration.
+            # emissions. starlette.yaml can load without an explicit
+            # manifest declaration (bare-name framework promotion via a
+            # ``starlette.routing`` import, WI-pusad), so both paths can
+            # fire on one repo.
             if "," in method_raw:
                 methods_list = [m.strip() for m in method_raw.split(",") if m.strip()]
             else:
@@ -2040,7 +2125,7 @@ def materialize_route_symbols(
                 #
                 # WI-misud: when the source symbol is kind="file", scope the
                 # dedupe key by source symbol id. File-level route concepts
-                # (WI-tisam: node-http.yaml / graphql.yaml's startStandaloneServer
+                # (WI-tisam: node-http.yaml's startStandaloneServer
                 # / http.createServer catch-all patterns) attach to file Symbols
                 # via UC-enrichment, and different files calling these framework
                 # entry points are DISTINCT deployments — not duplicate
@@ -2055,34 +2140,16 @@ def materialize_route_symbols(
                     continue
                 seen_routes.add(route_key)
 
-                # Normalize empty paths to "/" (INV-nimik)
-                route_path_normalized = path if path else "/"
-                route_name = f"{method} {route_path_normalized}"
-
-                stable_id = make_route_stable_id(method, route_path_normalized)
-
-                # Create route symbol at the same location as the handler.
-                # WI-hafap: Symbol.span is Optional. A span-less handler
-                # anchors its route marker at the degenerate zero span —
-                # the line-0 fallback convention, and the same shape
-                # from_dict used to fabricate for span-less artifact symbols.
+                # Anchored at the handler's span. WI-hafap: Symbol.span is Optional,
+                # and a span-less handler anchors at the degenerate zero span (the
+                # line-0 fallback convention). Minted through the shared chokepoint,
+                # so the marker is the same ADR-0031 Class-B stand-in every analyzer
+                # emits (WI-mupal) and its id round-trips (WI-tufil).
                 handler_span = sym.span if sym.span is not None else Span(
                     start_line=0, end_line=0, start_col=0, end_col=0,
                 )
-                # WI-tufil: build the id via make_symbol_id with the symbol's
-                # own kind ("function", the ADR-0027 Phase-3 route->function
-                # fold) so the id kind-slot round-trips against Symbol.kind. The
-                # route signal lives in meta["framework_role"], not the id-slot.
-                route_id = make_symbol_id(
-                    sym.language, sym.path,
-                    handler_span.start_line, handler_span.end_line,
-                    route_name, "function",
-                )
-                route_sym = SymbolCls(
-                    id=route_id,
-                    name=route_name,
-                    kind="function",
-                    language=sym.language,
+                new_route_symbols.append(make_route_symbol(
+                    language=sym.host_language or "unknown",
                     path=sym.path,
                     span=Span(
                         start_line=handler_span.start_line,
@@ -2090,18 +2157,13 @@ def materialize_route_symbols(
                         start_col=handler_span.start_col,
                         end_col=handler_span.end_col,
                     ),
+                    method=method,
+                    route_path=path,
                     origin=pass_id,
                     origin_run_id=origin_run_id,
-                    stable_id=stable_id,
-                    meta={
-                        "route_path": route_path_normalized,
-                        **transport_meta(method),
-                        "handler_ref": sym.name,
-                        "materialized_from": sym.id,
-                        "framework_role": "route",
-                    },
-                )
-                new_route_symbols.append(route_sym)
+                    handler_ref=sym.name,
+                    extra_meta={"materialized_from": sym.id},
+                ))
 
     return new_route_symbols
 
@@ -2127,7 +2189,11 @@ def expand_class_based_view_routes(
     imported from a third-party Django app) still surface in ``routes``
     output, just labeled ``[ANY]`` instead of falsely labeled ``[GET]``.
 
-    The lookup is name-only (no module qualification): if two unrelated
+    A marker whose analyzer resolved the view class (``meta.handler_ref``, a
+    symbol id) hands that id to each per-method marker, so the route-handler
+    linker binds them to the class the registration names.
+
+    The METHOD lookup is name-only (no module qualification): if two unrelated
     classes share a name like ``LoginView``, their methods are unioned. This
     is conservative — better to over-report HTTP methods than to miss real
     handlers — and matches how Django itself dispatches in practice (the
@@ -2193,17 +2259,14 @@ def expand_class_based_view_routes(
         )
         for method_name in sorted(methods):
             http_method = method_name.upper()
-            # WI-javag / WI-zugob: mint through the shared chokepoint rather
-            # than deriving a name by string concatenation. The old
-            # f"{sym.name}.{method_name}" inherited whatever the parent marker
-            # was called, and py.py's Django markers were named
-            # "django:{view}" — so the COLON went straight into
-            # make_symbol_id's name slot and produced a SIX-segment id that
-            # could not be parsed back into its ADR-0036 slots at all. Deriving
-            # the name from method+path removes the whole class of problem
-            # instead of sanitizing one instance of it.
+            # Minted through the shared chokepoint, which derives the name from
+            # method+path, rather than by concatenating onto the parent
+            # marker's name: a parent name containing a separator such as ``:``
+            # would land in make_symbol_id's name slot and produce an id that
+            # cannot be parsed back into its ADR-0036 slots
+            # (WI-javag / WI-zugob).
             new_routes.append(make_route_symbol(
-                language=sym.language or "python",
+                language=sym.host_language or "python",
                 path=sym.path,
                 span=Span(
                     start_line=src_span.start_line,
@@ -2215,6 +2278,10 @@ def expand_class_based_view_routes(
                 route_path=route_path,
                 origin=pass_id,
                 origin_run_id=origin_run_id,
+                # The view class the analyzer resolved for the registration,
+                # when it did: the per-method markers stand for the same
+                # route and are served by the same class.
+                handler_ref=meta.get("handler_ref"),
                 extra_meta={
                     "view_name": view_name,
                     "view_method": method_name,

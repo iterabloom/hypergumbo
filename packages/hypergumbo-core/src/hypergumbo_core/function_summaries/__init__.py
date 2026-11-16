@@ -63,6 +63,7 @@ from ..yaml_catalogs import (
     CatalogueError,
     declares_community,
     read_catalogue_yaml,
+    reject_unknown_keys,
 )
 
 logger = logging.getLogger(__name__)
@@ -262,6 +263,18 @@ def load_function_summaries(
 
 _WHAT = "function summary file"
 
+#: WI-hapon: the keys :func:`_read_summary_file` and :func:`_parse_summary`
+#: read, at each level. ``provenance`` / ``retrieved`` feed the ADR-0061 tier.
+_FILE_KEYS: frozenset[str] = frozenset({"provenance", "retrieved", "summaries"})
+_ENTRY_KEYS: frozenset[str] = frozenset({
+    "function", "param_to_return", "param_to_self", "mutates_self",
+    "side_effect", "sanitizes", "callback",
+})
+_CALLBACK_KEYS: frozenset[str] = frozenset({
+    "param_index", "caller_to_callback_args", "callback_return_to_outer_return",
+})
+_SANITIZE_KEYS: frozenset[str] = frozenset({"from", "to"})
+
 
 def _read_summary_file(
     path: Path,
@@ -274,6 +287,11 @@ def _read_summary_file(
     refusal a reader cannot reproduce.
     """
     data: dict[str, Any] = read_catalogue_yaml(path, what=_WHAT)
+    # WI-hapon: a key nothing reads is refused naming the file -- a
+    # ``summary:`` typo read as a file with no summaries.
+    reject_unknown_keys(
+        data, _FILE_KEYS, origin=f"{_WHAT} {path}", where="top-level",
+    )
     entries = data.get("summaries")
     if entries is None:
         return data, []
@@ -289,6 +307,22 @@ def _read_summary_file(
                 f"{_WHAT} {path}: summary {number} must be a mapping, got "
                 f"{type(entry).__name__}."
             )
+        reject_unknown_keys(
+            entry, _ENTRY_KEYS, origin=f"{_WHAT} {path}",
+            where=f"summary {number}",
+        )
+        if isinstance(entry.get("callback"), dict):
+            reject_unknown_keys(
+                entry["callback"], _CALLBACK_KEYS, origin=f"{_WHAT} {path}",
+                where=f"summary {number} callback",
+            )
+        if isinstance(entry.get("sanitizes"), dict):
+            for value in entry["sanitizes"].values():
+                if isinstance(value, dict):
+                    reject_unknown_keys(
+                        value, _SANITIZE_KEYS, origin=f"{_WHAT} {path}",
+                        where=f"summary {number} sanitizes",
+                    )
         try:
             parsed.append(_parse_summary(entry))
         except (KeyError, TypeError, ValueError, AttributeError) as exc:

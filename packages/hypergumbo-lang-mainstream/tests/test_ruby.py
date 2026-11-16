@@ -10,14 +10,13 @@ from unittest.mock import patch, MagicMock
 def _run_inherited_calls_pipeline(analyzer_result):
     """Run inheritance + inherited_calls linkers on top of analyzer output.
 
-    WI-hatip (PR-2 of INV-nilud): the Ruby analyzer's constructor walk
-    (formerly `_find_inherited_initialize`) was lifted into the
-    `inherited_calls` Tier-2 linker. Tests that previously asserted on
-    resolved `ast_call_inherited` edges directly from `analyze_ruby`
-    output now need to also run the linker stack. This helper composes
-    the two passes (inheritance for `extends`/`implements`/`includes`,
-    then `inherited_calls` for ancestor-walked resolution) and returns
-    the combined edge list.
+    `analyze_ruby` does not walk ancestors itself: resolved
+    `ast_call_inherited` edges come from the `inherited_calls` Tier-2
+    linker, so a test asserting on them must run the linker stack. This
+    helper composes the two passes (inheritance for
+    `extends`/`implements`/`includes`, then `inherited_calls` for
+    ancestor-walked resolution) and returns the combined edge list
+    (history: WI-hatip, INV-nilud).
     """
     from hypergumbo_core.linkers.inheritance import link_inheritance
     from hypergumbo_core.linkers.inherited_calls import link_inherited_calls
@@ -316,13 +315,19 @@ end
         assert len(extends_edges) == 0
 
     def test_qualified_name_matches_simple_name(self, tmp_path: Path) -> None:
-        """Edge created when qualified superclass matches a simple class name."""
+        """Edge created when a qualified superclass names a class nested in a
+        module block, whose own ``Symbol.name`` is the simple name. (A
+        top-level ``Base`` is a different class from ``SomeModule::Base`` and
+        is not matched by its last segment; see
+        test_ruby_nested_declaration_registry.py.)"""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         rb_file = tmp_path / "models.rb"
         rb_file.write_text("""
-class Base
-  def save
+module SomeModule
+  class Base
+    def save
+    end
   end
 end
 
@@ -341,7 +346,7 @@ end
         assert user.meta is not None
         assert user.meta.get("base_classes") == ["SomeModule::Base"]
 
-        # Edge should be created (SomeModule::Base matches Base via last segment)
+        # Edge should be created (SomeModule::Base is the block-nested Base)
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
         assert len(extends_edges) == 1
         assert extends_edges[0].src == user.id
@@ -371,9 +376,9 @@ end
     ) -> None:
         """When multiple classes share a name, extends resolves via require_relative hint.
 
-        INV-015: Same bug as Python (Django 238 Model stubs). Two files define
-        class 'Model'; child file uses require_relative to specify which one.
-        Edge should resolve to the required Model.
+        Two files define class 'Model'; the child file's require_relative
+        names which one, so the edge must resolve to the required Model, not
+        a same-named stub elsewhere (history: INV-015).
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
@@ -476,13 +481,13 @@ end
         assert len(child_extends) == 1
 
 class TestRubyIncludedModulesExtraction:
-    """Tests for WI-hatip (PR-2 of INV-nilud inherited_calls campaign).
+    """Tests for `include`/`extend` extraction into ``meta["included_modules"]``.
 
-    Ruby Pass 1 now extracts `include ModuleName` and `extend ModuleName`
+    Ruby Pass 1 extracts `include ModuleName` and `extend ModuleName`
     declarations from class/module bodies into ``meta["included_modules"]``,
-    so PR-2's extended `inheritance.py` linker can emit `includes` edges
-    and the new `inherited_calls.py` linker can walk through mixins as
-    part of the Ruby insertion-order MRO.
+    so the `inheritance.py` linker can emit `includes` edges and the
+    `inherited_calls.py` linker can walk through mixins as part of the
+    Ruby insertion-order MRO (history: WI-hatip, INV-nilud).
     """
 
     def test_extracts_single_include(self, tmp_path: Path) -> None:
@@ -970,7 +975,7 @@ class TestRubyFileReadErrors:
 
     The RubyAnalyzer.analyze() method handles file read errors during Pass 1
     by incrementing files_skipped. The internal _extract_symbols_from_file and
-    _extract_edges_from_file functions now receive pre-parsed trees, so file
+    _extract_edges_from_file functions receive pre-parsed trees, so file
     read errors are handled at the analyzer level.
     """
 
@@ -1171,8 +1176,8 @@ require_relative 'helpers/string_utils.rb'
     ) -> None:
         """A scoped-constant-receiver call (``Rack::Utils.parse``) that resolves
         to no project symbol is attributed to the constant as written, namespace
-        included, as an unresolved external ``calls`` edge (WI-rijij / WI-mafik;
-        the spelling is WI-surar's)."""
+        included, as an unresolved external ``calls`` edge (history: WI-rijij,
+        WI-mafik, WI-surar)."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "worker.rb").write_text("""
@@ -1428,7 +1433,11 @@ end
         assert get_route.name == "GET /users"
         assert get_route.meta["http_method"] == "GET"
         assert get_route.meta["route_path"] == "/users"
-        assert get_route.language == "ruby"
+        # A route marker is a Class-B stand-in for the route (WI-mupal):
+        # no source language of its own, discovered in a ruby file.
+        assert get_route.language is None
+        assert get_route.discovery_language == "ruby"
+        assert get_route.protocol_origin == "http"
 
         post_route = next((s for s in route_symbols if "POST" in s.name), None)
         assert post_route is not None
@@ -1438,8 +1447,8 @@ end
     def test_route_symbols_for_resources_macro(self, tmp_path: Path) -> None:
         """Resources macro creates expanded RESTful route symbols.
 
-        INV-006 improvement: Instead of single RESOURCES symbol, emit all
-        7 RESTful routes to enable route-handler linking for all actions.
+        All 7 RESTful routes are emitted (not a single RESOURCES symbol) so
+        route-handler linking can reach every action (history: INV-006).
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
@@ -2391,8 +2400,8 @@ class TestRubyReceiverCalls:
     """Tests for method calls with explicit receivers.
 
     Ruby method calls on receivers (e.g., User.find, obj.process) are common
-    in Rails. The key improvement is disambiguation: when multiple classes define
-    the same method, the receiver class name resolves to the correct target.
+    in Rails. When multiple classes define the same method, the receiver
+    class name disambiguates and resolves to the correct target.
     """
 
     def test_receiver_disambiguates_same_name_methods(self, tmp_path: Path) -> None:
@@ -2667,13 +2676,11 @@ end
     def test_receiver_call_resolver_fallback(self, tmp_path: Path) -> None:
         """A constant receiver is NOT bound to another class by short name (WI-johib).
 
-        This test used to pin the opposite: ``Finder.locate(42)`` bound to
-        ``Admin::UserFinder#locate`` through a receiver-blind short-name
-        lookup, although ``Finder`` is not ``UserFinder``. That fallback bound
-        ``Rails.root`` to ``HealthServer#root`` and 54 of postal's 160
-        constant-receiver calls to a different class. ``Finder`` is not a
-        project constant, so the call takes the constant-external fallback;
-        the namespaced spelling still resolves.
+        ``Finder`` is not ``UserFinder``: a receiver-blind short-name lookup
+        would bind ``Finder.locate(42)`` to ``Admin::UserFinder#locate`` (and
+        ``Rails.root`` to any project ``#root``), i.e. to a different class.
+        ``Finder`` is not a project constant, so the call takes the
+        constant-external fallback; the namespaced spelling still resolves.
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
@@ -2710,10 +2717,9 @@ end
     def test_receiver_call_outside_method_is_anchored_on_the_file(self, tmp_path: Path) -> None:
         """A receiver call at module level emits a call anchored on the FILE.
 
-        This test used to pin the opposite ("produce no receiver_call edges"),
-        which is the defect INV-bamij names: a parsed call site that emits no
-        edge (INV-foluz). The file pseudo-symbol is the anchor python and php
-        already use for module-level code."""
+        A parsed call site that emits no edge is a defect (INV-bamij,
+        INV-foluz). The file pseudo-symbol is the anchor python and php also
+        use for module-level code."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "top.rb").write_text("""
@@ -3926,10 +3932,9 @@ class TestRubyVariableReceiverNoFalsePositive:
     def test_variable_receiver_does_not_match_unrelated_method(self, tmp_path: Path) -> None:
         """user.account should NOT create an edge to Billing#account.
 
-        Previously, when ``user`` is a local variable (not a constant),
-        _try_receiver_call returned False, and the code fell through to
-        bare-name lookup, matching whatever method named ``account``
-        happened to be last in global_symbols.
+        ``user`` is a local variable (not a constant); falling through to
+        bare-name lookup would match whatever method named ``account``
+        happens to be last in global_symbols.
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
@@ -4195,8 +4200,8 @@ end
         run = next((s for s in result.symbols if s.name == "Caller#run"), None)
         a_init = next((s for s in result.symbols if s.name == "A#initialize"), None)
         assert run is not None and a_init is not None
-        # WI-hatip PR-2: the inherited walk now lives in the
-        # inherited_calls linker; run the pipeline to see the resolved edge.
+        # The inherited walk lives in the inherited_calls linker; run the
+        # pipeline to see the resolved edge.
         all_edges = _run_inherited_calls_pipeline(result)
         init_edges = [
             e for e in all_edges
@@ -4206,52 +4211,48 @@ end
             "C.new should walk C->B->A to find the inherited #initialize"
         )
 
+    @pytest.mark.parametrize("hops, reached", [(10, True), (11, False)])
     def test_inheritance_walk_respects_depth_limit(
-        self, tmp_path: Path,
+        self, tmp_path: Path, hops: int, reached: bool,
     ) -> None:
-        """Inheritance walk uses a bounded depth limit. When no ancestor
-        defines ``#initialize`` within ~10 hops, the walk gives up and
-        returns None (falls through to the existing receiver_is_project
-        suppression path that produces no FP edge).
+        """``ChainN.new`` reaches an ``#initialize`` defined only on the root of
+        the chain when it is at most 10 inheritance hops up, and not when it is
+        11: the ``inherited_calls`` linker caps its ancestor walk at 10 hops
+        (``_DEFAULT_DEPTH_CAP``). ``analyze_ruby`` does no walk of its own; it
+        emits an unresolved ``initialize`` call carrying an ``enclosing_class``
+        hint, so the test runs the linker pipeline. The in-cap case is the
+        control: without it, "no edge" could mean the walk never ran.
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
-        # Construct a long-chain inheritance with NO #initialize anywhere.
-        # The walk should not crash, should not emit an edge, and should
-        # return None at depth limit (covering the ``return None`` exit).
-        files = []
-        for i in range(12):
-            parent = f" < Chain{i - 1}" if i > 0 else ""
-            files.append((f"chain{i}.rb", f"class Chain{i}{parent}\nend\n"))
-        for fname, content in files:
-            (tmp_path / fname).write_text(content)
-        (tmp_path / "caller.rb").write_text("""
-class Caller
-  def run
-    Chain11.new
-  end
-end
-""")
+        (tmp_path / "chain0.rb").write_text(
+            "class Chain0\n  def initialize\n  end\nend\n"
+        )
+        for i in range(1, hops + 1):
+            (tmp_path / f"chain{i}.rb").write_text(
+                f"class Chain{i} < Chain{i - 1}\nend\n"
+            )
+        (tmp_path / "caller.rb").write_text(
+            f"class Caller\n  def run\n    Chain{hops}.new\n  end\nend\n"
+        )
+
         result = analyze_ruby(tmp_path)
-        run = next((s for s in result.symbols if s.name == "Caller#run"), None)
-        assert run is not None
-        # No #initialize exists anywhere in the chain, so no constructor
-        # edge should be emitted (no FP, no inherited-walk false hit).
-        from_run = [e for e in result.edges if e.src == run.id]
-        # Each edge target must NOT be a method named "initialize"
-        for e in from_run:
-            dst = next((s for s in result.symbols if s.id == e.dst), None)
-            if dst is not None:
-                assert "initialize" not in dst.name, (
-                    f"No #initialize edge expected, got {dst.name}"
-                )
+        run = next(s for s in result.symbols if s.name == "Caller#run")
+        root_init = next(s for s in result.symbols if s.name == "Chain0#initialize")
+
+        all_edges = _run_inherited_calls_pipeline(result)
+        to_root_init = [
+            e for e in all_edges
+            if e.src == run.id and e.dst == root_init.id and e.is_resolved
+        ]
+        assert bool(to_root_init) is reached, (hops, to_root_init)
 
     def test_inherits_initialize_via_parent_chain(self, tmp_path: Path) -> None:
-        """WI-vuton chatwoot diagnostic: when ``Sub < Base`` and only ``Base``
-        defines ``#initialize``, ``Sub.new(...)`` should emit a ``calls`` edge
-        to ``Base#initialize`` via the inheritance chain. Before this fix the
-        redirect failed (no edge emitted) and the call site's transitive
-        downstream methods became unreachable in dead-code analysis.
+        """When ``Sub < Base`` and only ``Base`` defines ``#initialize``,
+        ``Sub.new(...)`` must resolve to ``Base#initialize`` via the
+        inheritance chain. Without that edge the call site's transitive
+        downstream methods look unreachable in dead-code analysis
+        (history: WI-vuton).
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
@@ -4297,7 +4298,7 @@ end
         assert run is not None, "Should find Caller#run"
         assert base_init is not None, "Should find Base#initialize"
 
-        # WI-hatip PR-2: inherited walk via linker pipeline.
+        # The inherited walk runs in the linker pipeline.
         all_edges = _run_inherited_calls_pipeline(result)
         # Sub.new(...) should resolve to Base#initialize via inheritance.
         init_edges = [
@@ -4312,15 +4313,15 @@ end
     def test_scope_resolution_namespaced_with_leading_colon_colon(
         self, tmp_path: Path,
     ) -> None:
-        """WI-vuton MessageBuilder diagnostic on chatwoot: the exact shape
-        ``::Foo::Bar.new(args).method`` where ``Bar`` inherits ``#initialize``
-        from a parent and the source uses the leading-``::`` idiom for
-        unambiguous root-namespace resolution. Pre-fix the leading ``::`` on
-        a namespaced constant defeated the global-symbols lookup
-        (``::Instagram::MessageText`` doesn't match the registered
-        ``Instagram::MessageText`` key) — the inheritance walk never fired
-        and the constructor call was orphaned, then misresolved to a Rails
-        controller's ``#new`` action via the name-only fallback.
+        """The shape ``::Foo::Bar.new(args).method``, where ``Bar`` inherits
+        ``#initialize`` from a parent and the source uses the leading-``::``
+        idiom for unambiguous root-namespace resolution. The leading ``::``
+        must be stripped before the global-symbols lookup
+        (``::Instagram::MessageText`` does not match the registered
+        ``Instagram::MessageText`` key); otherwise the inheritance walk never
+        fires and the constructor call falls to the name-only fallback, which
+        misresolves it to a Rails controller's ``#new`` action
+        (history: WI-vuton).
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
@@ -4379,7 +4380,7 @@ end
         assert base_init is not None
         assert sc_new is not None
 
-        # WI-hatip PR-2: inherited walk via linker pipeline.
+        # The inherited walk runs in the linker pipeline.
         all_edges = _run_inherited_calls_pipeline(result)
         # The constructor call must resolve to the inherited #initialize.
         init_edges = [
@@ -4392,7 +4393,7 @@ end
         )
 
         # And critically must NOT name-collide onto the unrelated
-        # controller's #new action (the chatwoot FP shape).
+        # controller's #new action.
         fp_edges = [
             e for e in result.edges
             if e.src == job_msg.id and e.dst == sc_new.id
@@ -4405,11 +4406,11 @@ end
     def test_scope_resolution_leading_colon_colon(
         self, tmp_path: Path,
     ) -> None:
-        """WI-vuton chatwoot diagnostic: ``::Klass.new(...)`` (leading ``::``
-        for unambiguous root-namespace resolution) must still resolve
-        through the constant-receiver redirect. Chatwoot uses this idiom in
-        background jobs (``::Instagram::MessageText.new(messaging,
-        channel).perform``).
+        """``::Klass.new(...)`` (leading ``::`` for unambiguous root-namespace
+        resolution) must still resolve through the constant-receiver
+        redirect. The idiom appears in Rails background jobs
+        (``::Instagram::MessageText.new(messaging, channel).perform``)
+        (history: WI-vuton).
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
@@ -5179,7 +5180,7 @@ class TestRubyHashFunctionReferences:
 
 
 class TestRubyStableShapeId:
-    """Tests for stable_id and shape_id in Ruby (ADR-0014 §1-2)."""
+    """Tests for stable_id and shape_id in Ruby (spec §6; ADR-0035 §1)."""
 
     def test_method_has_stable_and_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
@@ -5190,9 +5191,9 @@ class TestRubyStableShapeId:
         result = analyze_ruby(tmp_path)
         method = next(s for s in result.symbols if s.kind == "method")
         assert method.stable_id is not None
-        assert method.stable_id.startswith("sha256:")
+        assert method.stable_id.startswith("hgstableid15:")
         assert method.shape_id is not None
-        assert method.shape_id.startswith("sha256:")
+        assert method.shape_id.startswith("hgshapeid4:")
 
     def test_class_has_stable_and_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
@@ -5203,9 +5204,9 @@ class TestRubyStableShapeId:
         result = analyze_ruby(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.stable_id is not None
-        assert cls.stable_id.startswith("sha256:")
+        assert cls.stable_id.startswith("hgstableid15:")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("sha256:")
+        assert cls.shape_id.startswith("hgshapeid4:")
 
 
 class TestRubyLinesOfCode:
@@ -5276,7 +5277,7 @@ class TestRubyIsExported:
 
 
 class TestRubyDocstringAndSignature:
-    """INV-jahiv Phase 4 PR3: Symbol.docstring + signature on Ruby methods."""
+    """Symbol.docstring + signature on Ruby methods (history: INV-jahiv)."""
 
     def test_method_with_preceding_comment(self, tmp_path: Path) -> None:
         """Method symbols populate docstring from preceding # comments."""
@@ -5328,7 +5329,7 @@ end
 
 
 class TestRubyQualifiedName:
-    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Ruby symbols."""
+    """Symbol.qualified_name on Ruby symbols (ADR-0032)."""
 
     def test_method_qualified_name_uses_double_colon(self, tmp_path: Path) -> None:
         """Methods inside ``module Foo; class Bar`` carry Foo::Bar::method."""
@@ -5379,7 +5380,7 @@ class TestRubyQualifiedName:
 
 
 class TestRubyCyclomaticComplexity:
-    """Phase 4 PR5: cyclomatic_complexity populated on Ruby methods."""
+    """cyclomatic_complexity populated on Ruby methods."""
 
     def test_method_complexity_populated(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
@@ -5425,11 +5426,11 @@ class TestRubyCyclomaticComplexity:
 
 
 class TestRubyFieldVariableSymbols:
-    """WI-jusus: Ruby constants (class/module body -> kind='field'; top level ->
+    """Ruby constants (class/module body -> kind='field'; top level ->
     kind='variable'), attr_accessor/attr_reader/attr_writer attributes
     (-> field), and class-body @@class variables (-> field). Members assigned
-    inside method bodies (instance variables, method-local constants) are
-    deferred in this slice, so no method-body scope walk is needed."""
+    inside method bodies (instance variables, method-local constants) are not
+    emitted, so no method-body scope walk is needed (history: WI-jusus)."""
 
     @staticmethod
     def _fields(result: object) -> dict:
@@ -5484,7 +5485,7 @@ class TestRubyFieldVariableSymbols:
 
     def test_instance_var_in_method_deferred(self, tmp_path: Path) -> None:
         """@ivars are assigned inside method bodies (the tricky attribute-to-
-        enclosing-class case) and are deferred in this slice — none emit."""
+        enclosing-class case) and are not emitted."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
         (tmp_path / "a.rb").write_text(
             "class User\n  def initialize\n    @created_at = Time.now\n  end\nend\n"
@@ -5515,7 +5516,7 @@ class TestRubyFieldVariableSymbols:
 
     def test_attr_accessor_in_method_deferred(self, tmp_path: Path) -> None:
         """A dynamic attr_accessor call inside a method body is method-scoped —
-        it must not emit a class field (deferred like @ivars)."""
+        it must not emit a class field (like @ivars)."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
         (tmp_path / "a.rb").write_text(
             "class C\n  def setup\n    attr_accessor :dynamic\n  end\nend\n"

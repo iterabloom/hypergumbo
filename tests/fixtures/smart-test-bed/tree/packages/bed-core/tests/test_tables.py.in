@@ -1,0 +1,10 @@
+from bedcore.tables import TABLE, lookup
+
+
+def test_table_size():
+    assert len(TABLE) == 10
+
+
+def test_lookup():
+    assert lookup(3) == 9
+    assert lookup(99) == -1

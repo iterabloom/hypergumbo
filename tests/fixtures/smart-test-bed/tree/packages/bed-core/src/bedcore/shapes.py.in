@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""A class with methods, and a function with a nested function."""
+
+
+class Square:
+    def __init__(self, side):
+        self.side = side
+
+    def area(self):
+        return self.side * self.side
+
+    def describe(self):
+        return "square " + str(self.side)
+
+
+def make_scaler(k):
+    def scale(x):
+        return x * k
+
+    return scale

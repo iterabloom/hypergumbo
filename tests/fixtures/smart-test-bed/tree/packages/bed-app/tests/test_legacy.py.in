@@ -1,0 +1,5 @@
+from bedapp.legacy import old
+
+
+def test_old():
+    assert old() == "legacy"

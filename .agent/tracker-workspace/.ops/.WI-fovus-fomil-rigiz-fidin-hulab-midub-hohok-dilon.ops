@@ -73,3 +73,19 @@
   set: {}  # 1f4d
   add:  # 1f4d
     tags: [awaits_bakeoff_validation]  # 1f4d
+- op: update  # 5337
+  at: '2026-11-02T10:19:42Z'  # 5337
+  by: agent  # 5337
+  actor: jgstern_agent  # 5337
+  clock: 9  # 5337
+  nonce: '5337'  # 5337
+  set: {}  # 5337
+  remove:  # 5337
+    tags: [awaits_bakeoff_validation]  # 5337
+- op: discuss  # 27b7
+  at: '2026-11-02T10:19:43Z'  # 27b7
+  by: agent  # 27b7
+  actor: jgstern_agent  # 27b7
+  clock: 10  # 27b7
+  nonce: 27b7  # 27b7
+  message: "VALIDATED: moved. bakeoff-queue drain 2026-11-02 on dev b20da19ff3, cold survey of this item’s own repo(s); record ~/hypergumbo_lab_notebook/bakeoff_queue_11022026/VERDICTS.md (instruments verify_queue.py / verify_more.py / threeway/). apollo-server: measured fovus’s OWN measure.py on dev: .cjs / .mts / .cts walked 1/1/1 (before 0/0/0); DDG symbols by ext include .mjs 4 .cjs 2 .cts 2 .mts 2 (recorded 0 -> 1 each). Tag stripped."  # 27b7

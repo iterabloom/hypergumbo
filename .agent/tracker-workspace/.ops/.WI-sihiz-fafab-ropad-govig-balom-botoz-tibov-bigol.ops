@@ -20,3 +20,32 @@
     pr_ref:  # 39a4
     description: "Concept audit 2026-08-12 (write-up: ~/hypergumbo_lab_notebook/concept-audit-io-primitives-status_08122026.md). Verdict: DEPRECATE (fold).\n\nTests 3 and 4 both fire. 'complete'/'in_progress' name a COMPLETENESS STATE; 'overlay' names the file's ORIGIN — who wrote it and under what authority. Mechanism/origin competing for the same slot as a category.\n\nTHE TELL IS THAT IT DOES NOT SURVIVE. load_overlay_catalog checks status != _OVERLAY_STATUS at io_boundary.py:1137 and then overwrites it at :1174 (payload['status'] = 'in_progress') before _from_dict builds the object. 'overlay' is a DOOR PASSWORD, not a state: it exists only to be compared at an entrance and then erased. That is what a field looks like when used for access control rather than description.\n\nFIVE-SHAPE PRODUCER TRACE RUN (playbook Step 4.5), confirming it is never a stored state:\n  shape 1 literal kwarg status='overlay'      zero hits\n  shape 2 helper-call positional/kwarg        zero hits (one comment at :1158)\n  shape 3 assignment-form to Name             zero hits (all status= sites are unrelated modules)\n  shape 4 f-string interpolation              zero hits\n  shape 5 dict-subscript target               1 hit — :1174, the erasure site itself\nReal producers are YAML documents only: docs/io-primitives-overlays/{go-web-frameworks,python-http-clients}.yaml, two test files, ADR-0016.\n\nPROPOSED FOLD: gate the overlay door on an explicit marker of its own (a required 'overlay: true' key, or the absence of stdlib_provenance) and let 'status' mean exactly one thing. The refusals the door currently performs — no 'complete', no stdlib_module_completeness — must be preserved verbatim; they are load-bearing (a six-line overlay with one completeness entry once flipped the INV-buzab telnet exfiltration fixture from inconclusive rc 2 back to confirmed rc 0).\n\nLOW BLAST RADIUS: 3 code sites, 2 shipped example YAMLs, 2 test files, and the value never reaches an object — so no persisted data migrates. Cosmetic-looking but security-adjacent: the error message it produces is the user's only explanation of why an overlay may not claim completeness."  # 39a4
     fields: {}  # 39a4
+- op: discuss  # 23c0
+  at: '2026-10-25T20:08:25Z'  # 23c0
+  by: agent  # 23c0
+  actor: jgstern_agent  # 23c0
+  clock: 2  # 23c0
+  nonce: 23c0  # 23c0
+  message: "From WI-donod 2026-10-25: WI-donod (a user I/O overlay rewrites the merged catalogue status to in_progress, io_boundary.py:2206, flipping unrelated external_potential chains to dst_classification_unreliable) works on the same erasure line; fix together or in order."  # 23c0
+- op: discuss  # 556e
+  at: '2026-10-25T23:58:45Z'  # 556e
+  by: agent  # 556e
+  actor: jgstern_agent  # 556e
+  clock: 3  # 556e
+  nonce: 556e  # 556e
+  message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). CURRENT, refs drifted; BLAST RADIUS WIDER than filed. Live (io-boundaries --io-primitives, --no-default-overlays): status 'overlay' accepted; provenance_declared / in_progress / complete / missing all exit 2 with the SAME text \"'provenance_declared' is a claim about a language's stdlib citation and is not available to an overlay\" -- the wrong explanation for 3 of 4; load_overlay_catalog returns status 'in_progress' (erasure io_boundary.py:2206; gate :2159-2165; constant :1881), and the same run shows WI-donod's unreliable-flag flip. Corrections: 'no persisted data migrates' is now FALSE -- status: overlay is in 8 shipped community overlays (io_primitives_overlays/*.yaml), docs/io-primitives-overlays/hypergumbo-self.yaml, docs/CATALOGUES.md:92, docs/templates/bash-io-primitives.template.yaml, generated samples (repo_tier_offer.py:216, catalogues_doc.py:46), 17 test files, and init-catalogs seeds copies into users' io_primitives.d -- so the fold must keep accepting `status: overlay` as a deprecated alias. 'complete' is now 'provenance_declared' (e6cb77fa15); module_completeness is PERMITTED in overlays (owner 2026-08-15; only the stdlib_ spelling is refused); ADR-0016:47 still says 'complete'. ADR-0061's `provenance:` key already gives origin its own field, which strengthens the fold. Do together with WI-donod (same line). P3 todo_soft kept."  # 556e
+- op: update  # b765
+  at: '2026-10-26T03:22:20Z'  # b765
+  by: agent  # b765
+  actor: jgstern_agent  # b765
+  clock: 4  # b765
+  nonce: b765  # b765
+  set:  # b765
+    status: done  # b765
+- op: discuss  # a03b
+  at: '2026-10-26T03:22:20Z'  # a03b
+  by: agent  # a03b
+  actor: jgstern_agent  # a03b
+  clock: 5  # a03b
+  nonce: a03b  # a03b
+  message: "DONE in PR #1870 (merged, dev cd60932590), with WI-donod. FOLD as the 2026-08-12 audit's DEPRECATE verdict proposed: `status` now means one thing, a shipped catalogue's completeness claim, and an overlay omits it; origin is ADR-0061's `provenance:`. The legacy `status: overlay` is still accepted (_LEGACY_OVERLAY_STATUS), as the 10-25 re-check required for shipped/seeded copies. The refusal that matters is preserved: provenance_declared is refused with the laundering reason; any other value is refused with its own reason (every value used to get the provenance_declared text). The 8 shipped community overlays, hypergumbo-self.yaml, the bash template, the catalogues-doc and repo-tier-offer samples drop the line; docs/CATALOGUES.md regenerated; ADR-0016 states the rule in place (the stale 'complete' wording went with it). LIVE REPRO ON MERGED DEV, production CLI `hypergumbo io-boundaries . --io-primitives F`: a file with NO status loads (rc 0, its mylib.ship row classifies: net_send 1); `status: overlay` loads (rc 0); `status: in_progress` rc 2 'declares status: 'in_progress'. `status` is a shipped catalogue's completeness claim and an overlay makes none, so omit the key...'; `status: provenance_declared` rc 2 '...a claim about a language's stdlib citation and is not available to an overlay. Omit `status`.' Tests: test_io_primitives_overlay.py::test_an_overlay_omits_status, ::test_status_overlay_is_still_accepted, ::test_an_overlay_may_not_claim_a_shipped_status, ::test_any_other_status_is_refused_with_its_own_reason[in_progress|complete|partial]."  # a03b

@@ -180,7 +180,7 @@ def test_a_real_flow_is_confirmed_by_the_ddg(
 ) -> None:
     [finding] = _verify(tmp_path, _FLOW, capsys, monkeypatch)["verdicts"][0]["evidence"]
     assert finding["analysis_method"] == "ddg"
-    assert finding["walk_verdict"] == "confirmed"
+    assert finding["walk_verdict"] == "reached"
 
 
 def test_a_co_located_non_flow_is_not_confirmed(
@@ -191,7 +191,7 @@ def test_a_co_located_non_flow_is_not_confirmed(
     read passed to a call escapes), but no longer labelled as a data flow."""
     [finding] = _verify(tmp_path, _CO_LOCATED, capsys, monkeypatch)["verdicts"][0]["evidence"]
     assert finding["analysis_method"] == "ddg_mixed"
-    assert finding["walk_verdict"] != "confirmed"
+    assert finding["walk_verdict"] != "reached"
 
 
 def test_the_ddg_names_functions_as_the_analyzer_does(tmp_path: Path) -> None:

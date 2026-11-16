@@ -1,0 +1,21 @@
+- op: create  # aa97
+  at: '2026-10-31T10:07:06Z'  # aa97
+  by: agent  # aa97
+  actor: jgstern_agent  # aa97
+  clock: 1  # aa97
+  nonce: aa97  # aa97
+  data:  # aa97
+    kind: work_item  # aa97
+    title: "supply chain: detect_package_roots ignores pnpm-workspace.yaml, so pnpm monorepos get no workspace roots"  # aa97
+    status: todo_hard  # aa97
+    priority: 3  # aa97
+    parent:  # aa97
+    tags:  # aa97
+    - docstring_audit  # aa97
+    - analysis_quality  # aa97
+    isbefore: []  # aa97
+    duplicate_of: []  # aa97
+    not_duplicate_of: []  # aa97
+    pr_ref:  # aa97
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. supply_chain.py:1416-1439 reads only package.json `workspaces`; no production file reads pnpm-workspace.yaml. A pnpm-only fixture returns set(); the npm control returns its package. Visible effect today: the classification reason and step order, not the tier. v08."  # aa97
+    fields: {}  # aa97

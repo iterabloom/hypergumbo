@@ -1,0 +1,5 @@
+from bedcore.reads_attr import doubled
+
+
+def test_doubled():
+    assert doubled() == 8

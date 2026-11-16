@@ -42,3 +42,19 @@
   clock: 4  # bb7c
   nonce: bb7c  # bb7c
   message: "Both keystone deliverables have SHIPPED (evidence 2026-07-21): (1) per-(validator_class,severity) shrink-only ratchet — `validation_ratchet.py::matrix_breaches`/`violation_matrix`, wired into the fixture ratchet (`test_validation_report_empty.py`), which passes on the 4-substrate matrix; kills the signed-cancellation this item describes. (2) self-tree gate — `full-suite.yml:256` `self-tree-validation` job runs `hypergumbo run .` -> `scripts/check-self-tree-validation` against `.ci/self-tree-validation-baselines.json`; the strategy-promised \"self-tree in full-suite\" locus now exists. Stale numbers refreshed: id_format|warning ratcheted 3012 -> 46 (WI-pubiv/ADR-0036); the fingerprint floor is gone (WI-guhas). RESIDUAL keeps this OPEN (todo_soft — hardening not hole): the `enforcement` meta-rule is unimplemented (_WIRED_CHECKS carry no enforcement axis) and per-PR fixture-coverage + byte-identical-fixture requirements are not done."  # bb7c
+- op: update  # ced5
+  at: '2026-10-25T00:18:13Z'  # ced5
+  by: agent  # ced5
+  actor: jgstern_agent  # ced5
+  clock: 5  # ced5
+  nonce: ced5  # ced5
+  set:  # ced5
+    status: done  # ced5
+    pr_ref: '1840'  # ced5
+- op: discuss  # 8283
+  at: '2026-10-25T00:18:13Z'  # 8283
+  by: agent  # 8283
+  actor: jgstern_agent  # 8283
+  clock: 6  # 8283
+  nonce: '8283'  # 8283
+  message: "Residual closed in PR #1840 (dev 53015c632b). Both keystones had shipped earlier: the per-(class, severity) ratchet in PR #291, and the self-tree gate.\n\n1. Enforcement. CLASS_SEVERITY_BASELINES still allowed id_format|warning 11 per substrate after WI-popak took the totals to 0. Every cell is now 0, and test_no_class_severity_cell_tolerates_a_violation pins that, so no check at any severity is total-count-only on the fixture matrix. The self-tree baseline is 0 in every cell, and the cron log at a02f461d shows the matrix {}. I did NOT add a per-entry `enforcement` field to _WIRED_CHECKS: with every ceiling at 0 it would carry one value for every check, and the test above states the property directly.\n2. Reach. A table in test_validation_report_empty.py names, per wired check, the records it inspects. Each count must be >0 on every substrate, and test_every_wired_check_declares_its_reach pins the table to _WIRED_CHECKS. Before the change, route_marker_single_home inspected 0 route markers on all four substrates; the new fixture go/web/server.go (a gin route) gives it 1.\n   Behavioural evidence on merged dev: with that fixture moved away, the test fails \"3 failed, 3 passed\", naming ['route_marker_single_home']; with it restored, 19/19 pass.\n3. Substrates. frameworks_all now differs from default: java/web/HealthController.java (Spring with no build file) gives one more route and three more concepts. max_tier_4 equals default BY CONSTRUCTION (tier 4 is the highest tier), stated in the test docstring.\n\nNOT asserted:\n- The harmful subset of no_harmful_receiver_blind_magnets is reached on no honest corpus, because producers withhold such binds (defer_bare_method_call). A Go production -> testutils `.Add()` bait got an external call. The reach asserted is its pool: 7 resolved calls into methods.\n- No new fixture for the \"decorated Python declarations differing only by name\" surface named in the description: the corpus has no Python, and the WI-guhas fingerprint floor it targeted is gone.\n\nAlso fixed in the same PR, pre-existing on dev: test_check_schema_coverage.py swapped the committed baseline in place and raced under xdist (3/12 failing on dev, file left deleted). It now uses check-schema-coverage --baseline PATH."  # 8283

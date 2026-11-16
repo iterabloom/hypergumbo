@@ -1,0 +1,21 @@
+- op: create  # 6408
+  at: '2026-10-31T10:08:59Z'  # 6408
+  by: agent  # 6408
+  actor: jgstern_agent  # 6408
+  clock: 1  # 6408
+  nonce: '6408'  # 6408
+  data:  # 6408
+    kind: work_item  # 6408
+    title: "napi: which C/C++ function a JS name registered twice binds depends on PYTHONHASHSEED (export map filled in set order)"  # 6408
+    status: todo_hard  # 6408
+    priority: 3  # 6408
+    parent:  # 6408
+    tags:  # 6408
+    - docstring_audit  # 6408
+    - analysis_quality  # 6408
+    isbefore: []  # 6408
+    duplicate_of: []  # 6408
+    not_duplicate_of: []  # 6408
+    pr_ref:  # 6408
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. c_cpp_files is a set (napi.py:248-255), export_map last-write-wins (278). Five .c files registering \"hello\": seeds 1-6 gave impl_e, impl_b, impl_b, impl_a, impl_c, impl_a. v10."  # 6408
+    fields: {}  # 6408

@@ -6,12 +6,14 @@ How It Works
 ``rust-analyzer scip`` emits a Protobuf-encoded ``scip.Index`` file
 describing every defined symbol, every reference, and every
 relationship in a Rust workspace. This module wraps the hypergumbo-core
-SCIP shim (``hypergumbo_core.scip.*``) with three things the generic
+SCIP shim (``hypergumbo_core.scip.*``) with four things the generic
 shim cannot do on its own:
 
 1. **Stable-ID parity with rust.py.** The core shim fills
-   ``Symbol.stable_id`` with the raw SCIP symbol string. That string is
-   correct for cross-SCIP-pass dedup but does not match the
+   ``Symbol.stable_id`` with ``scip_stable_id``, a sha256 of the defining
+   Document's relative path and the SCIP moniker (INV-kutid); the raw
+   moniker stays in ``meta['scip_symbol']``. That id is correct for
+   cross-SCIP-pass dedup but does not match the
    signature-derived stable_id rust.py computes for the same function
    in the same source file. Without reassignment, enabling this
    backend on a cached analysis double-counts every Rust symbol.
@@ -25,45 +27,59 @@ shim cannot do on its own:
    modules, constants — rust.py has no signature-level parity for these),
    and Symbols whose source cannot be read pass through unchanged.
 
-   **What this achieves in production today: nothing, for any multi-line
-   function (INV-dolud, 2026-09-18).** The span handed to the helper is the
-   SCIP Definition-occurrence range, and rust-analyzer's is the identifier
+   **What this achieves in production: nothing, for any multi-line
+   function (INV-dolud).** The span handed to the helper is the SCIP
+   Definition-occurrence range, and rust-analyzer's is the identifier
    token; the helper requires the item range, so it abstains and the
-   ``sha256(moniker)`` id stays. Measured on aardvark-dns: 0 of 52 functions
-   emitted by both Rust arms share a ``stable_id``, so the double-counting
-   the paragraph above describes is the shipped state, not the averted one.
-   The pass is kept as readiness for WI-gojum (parked), which owns whether
-   the arms should share an identity; see ``rust_scip.py``'s docstring for
-   why it is not simply "fixed" here.
+   path-and-moniker id (``scip_stable_id``) stays. The two Rust arms
+   therefore do not share a ``stable_id`` for such functions, so the
+   double-counting the paragraph above describes is the shipped state, not
+   the averted one. The pass is kept as readiness for WI-gojum, which owns
+   whether the arms should share an identity; see ``rust_scip.py``'s
+   docstring for why it is not simply "fixed" here.
 
 2. **One-shot translate.** :func:`translate_scip_to_hg` bundles the
    three core shim calls (``scip_index_to_symbols``,
    ``scip_index_to_edges``, ``scip_index_to_call_edges``) with the
-   parity reassignment so Slice-B's analyzer wrapper can consume a
+   parity reassignment so the backend's analyzer wrapper can consume a
    single entry point. It also stamps ``run_id`` onto what it emits,
    falling back to a locally-constructed ``AnalysisRun`` when the caller
    supplies none (WI-higap).
 
-3. **Symbol resolution, and the deliberate dropping of external edges.**
-   The translate builds an ``id_by_scip_symbol`` map from each Symbol's
-   ``meta['scip_symbol']`` to its hypergumbo id, and passes a ``_resolve``
-   closure to both edge builders as ``resolve_symbol=``. ``_resolve``
-   returns ``None`` for a symbol outside the indexed workspace, and the
-   shims skip the edge rather than emitting it.
+3. **Rust kind refinement.** The core shim's ``SymbolInformation.kind``
+   map is language-agnostic, so rust-analyzer's ``Constant`` lands as the
+   registry's generic ``constant``. For a Rust record that is exactly a
+   ``const`` item (associated, trait and function-body consts included;
+   statics are ``StaticVariable`` and stay ``variable``), and rust.py emits
+   the registry's Rust-specific ``const`` kind for it.
+   :func:`refine_rust_kinds` rewrites ``constant`` to ``const`` on Rust
+   records (and the kind suffix of their ``Symbol.id``, which edges are
+   resolved against afterwards), so the two Rust arms agree on the kind of
+   every paired const. Non-Rust records keep ``constant``. The SCIP
+   ``stable_id`` is a hash of path and moniker and does not contain the kind.
 
-   This is load-bearing, not an oversight. Before commit ``9266762d4b``
-   the edge builders used raw SCIP descriptor strings as endpoints, so
-   every scip edge dangled and ``finalize`` silently discarded the entire
-   scip call graph — 0 edges on zoxide, against 739 once resolution
-   landed. The residual consequence is that a Rust call into a dependency
-   or the stdlib yields no edge under this backend, where the tree-sitter
-   analyzer would emit an ``:unresolved`` one. That gap is tracked as
-   WI-gojum sub-component 1 and was parked by its owner on 2026-07-19.
+4. **Symbol resolution, and the deliberate dropping of external edges.**
+   The translate builds a ``MonikerResolver`` (``hypergumbo_core.scip.
+   resolve``) over each Symbol's ``meta['scip_symbol']`` and passes it to
+   both edge builders as ``resolve_symbol=``. It is keyed per Document, not
+   per moniker (INV-sipod). rust-analyzer gives a package's lib, bin and
+   build-script roots one ``crate/`` moniker, so a reference resolves in its
+   own Document first, then within its crate target (``crate_units``: the
+   ``mod`` tree from each root), and is otherwise refused and counted, with
+   one line to ``log``. It returns ``None`` for a symbol outside the indexed
+   workspace, and the shims skip the edge rather than emitting it.
+
+   This is load-bearing, not an oversight: with raw SCIP descriptor
+   strings as endpoints every scip edge dangles, and ``finalize`` silently
+   discards the entire scip call graph. The residual consequence is that a
+   Rust call into a dependency or the stdlib yields no edge under this
+   backend, where the tree-sitter analyzer would emit an ``:unresolved``
+   one (WI-gojum).
 
 Why This Design
 ---------------
-WI-zakub (2026-04-17 mini trial) established that rust-analyzer leaves
-``SymbolInformation.relationships`` empty; the primary edge source is
+rust-analyzer leaves ``SymbolInformation.relationships`` empty
+(WI-zakub); the primary edge source is
 therefore non-Definition ``Occurrence``s routed through
 ``scip_index_to_call_edges``. Both ``scip_index_to_edges`` and
 ``scip_index_to_call_edges`` are still called here — the former is
@@ -84,6 +100,7 @@ does abort the translate.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Callable, Iterable, List, Optional
 
 from hypergumbo_core.ir import Edge, Symbol
@@ -91,9 +108,12 @@ from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.calls import scip_index_to_call_edges
 from hypergumbo_core.scip.edges import scip_index_to_edges
 from hypergumbo_core.scip.index import scip_index_to_symbols
+from hypergumbo_core.scip.resolve import MonikerResolver
 from hypergumbo_lang_mainstream.rust_scip import (
     compute_rust_stable_id_from_source,
 )
+
+from .crate_units import crate_owners, same_crate
 
 
 SourceReader = Callable[[str], Optional[bytes]]
@@ -168,17 +188,47 @@ def reassign_rust_stable_ids(
     return reassigned
 
 
+#: Language-agnostic SCIP kind -> the registry kind rust.py emits for the
+#: same Rust construct (module docstring, point 3).
+_RUST_KIND_REFINEMENT = {"constant": "const"}
+
+
+def refine_rust_kinds(symbols: Iterable[Symbol]) -> List[Symbol]:
+    """Return *symbols* with Rust ``constant`` records re-kinded ``const``.
+
+    The rewritten record's ``id`` gets the new kind as its last segment, so it
+    stays the ``make_symbol_id`` of its own fields; every other field is kept.
+    Must run before edges are resolved, so they reach the re-minted id.
+    Inputs are not mutated.
+    """
+    out: List[Symbol] = []
+    for sym in symbols:
+        kind = _RUST_KIND_REFINEMENT.get(sym.kind) if sym.language == "rust" else None
+        if kind is not None:
+            # ``make_symbol_id`` ends ``:{kind}``; swap only that suffix.
+            stem, _sep, _old_kind = sym.id.rpartition(":")
+            sym = dataclasses.replace(sym, kind=kind, id=f"{stem}:{kind}")
+        out.append(sym)
+    return out
+
+
 def translate_scip_to_hg(
     scip_bytes: bytes,
     source_reader: SourceReader,
     *,
     run_id: str = "",
+    log: Optional[Callable[[str], None]] = None,
 ) -> tuple[List[Symbol], List[Edge]]:
     """Parse *scip_bytes* and return ``(symbols, edges)`` with parity.
 
-    The three core SCIP shim passes are invoked in order:
+    ``log`` receives one line when edge endpoints were refused as ambiguous
+    (INV-sipod; :class:`~hypergumbo_core.scip.resolve.MonikerResolver`).
 
-    1. :func:`scip_index_to_symbols` to build the Symbol list.
+    The three core SCIP shim passes, the kind refinement and the parity
+    pass run in order:
+
+    1. :func:`scip_index_to_symbols` to build the Symbol list, then
+       :func:`refine_rust_kinds` (Rust ``constant`` -> ``const``).
     2. :func:`reassign_rust_stable_ids` to overwrite Rust function
        ``stable_id`` fields with rust.py-compatible values.
     3. :func:`scip_index_to_edges` for Relationship-derived edges.
@@ -195,22 +245,18 @@ def translate_scip_to_hg(
     index = scip_pb2.Index()
     index.ParseFromString(scip_bytes)
     symbols = reassign_rust_stable_ids(
-        scip_index_to_symbols(index), source_reader,
+        refine_rust_kinds(scip_index_to_symbols(index)), source_reader,
     )
-    # WI-higap: if no run_id is supplied (legacy callers), create a local
-    # run so Edge.__post_init__ enforcement passes. Callers that want
-    # provenance to flow into a parent run can pass run_id explicitly.
-    #
-    # WI-didag: that escape hatch was UNREACHABLE from production until the
-    # analyzer threaded a run through ``try_analyze_with_rust_analyzer``, so
-    # every real survey took this branch and every scip edge named a run that
-    # was constructed here, harvested for its id, and discarded. Worse, the
-    # asymmetry ran the wrong way: ``Edge.__post_init__`` hard-raises on an
-    # empty value and ``Symbol`` has no such guard, so the GUARDED half got a
-    # well-formed UUID resolving to nothing while the unguarded half stayed
-    # honestly empty. Measured on aardvark-dns: 637 edges with a fabricated id
-    # beside 669 symbols with ``''``, and 1308 validation violations. The guard
-    # turned an abstention into a confident wrong answer.
+    # If no run_id is supplied (a library caller), create a local run so
+    # Edge.__post_init__ enforcement passes. Its id is a well-formed UUID that
+    # resolves to nothing: the local run is constructed, harvested for its id
+    # and discarded. Production passes a real run (the analyzer threads one
+    # through ``try_analyze_with_rust_analyzer``), and any caller that wants
+    # provenance to flow into a parent run must do the same. Note the
+    # asymmetry: ``Edge.__post_init__`` hard-raises on an empty value and
+    # ``Symbol`` has no such guard, so without the stamping below the guarded
+    # half would carry a confident wrong id while the unguarded half stayed
+    # empty. (history: WI-higap, WI-didag)
     if not run_id:
         from hypergumbo_core.ir import AnalysisRun, PASS_VERSION, make_pass_id
         _scip_run = AnalysisRun.create(
@@ -222,11 +268,11 @@ def translate_scip_to_hg(
     # fabricated id resolvable — nothing serializes the local run either way —
     # but it makes the two halves agree, so a dangling artifact is ONE fact a
     # reader can chase rather than two unrelated-looking ones. When the caller
-    # supplied a real run (the production path since WI-didag) it is the whole
-    # fix for the symbol side, and it closes WI-zabus at the source instead of
-    # relying on the orchestrator's WI-mosil empty-only backstop, which a
-    # library caller bypassing the orchestrator never gets. Pure fill: a
-    # producer that already stamped keeps its value.
+    # supplied a real run (the production path) this stamps the symbols at the
+    # source instead of relying on the orchestrator's empty-only backstop,
+    # which a library caller bypassing the orchestrator never gets. Pure fill:
+    # a producer that already stamped keeps its value. (history: WI-zabus,
+    # WI-mosil)
     for _sym in symbols:
         if not _sym.origin_run_id:
             _sym.origin_run_id = run_id
@@ -237,26 +283,30 @@ def translate_scip_to_hg(
     # the raw string endpoint (``occ.symbol``), so every scip edge is dangling
     # (its src/dst match no ``Symbol.id``) — and the survey's endpoint-integrity
     # finalize drops the ENTIRE scip call graph while the scip Symbols survive,
-    # a silent half-merge that made the rust-analyzer backend emit zero edges via
-    # ``hypergumbo survey``.
-    id_by_scip_symbol = {
-        (sym.meta or {}).get("scip_symbol"): sym.id
-        for sym in symbols
-        if sym.meta and sym.meta.get("scip_symbol")
-    }
-
-    def _resolve(scip_symbol: str) -> Optional[str]:
-        # ``None`` tells the shim to skip the edge: the referenced symbol is
-        # external (a dependency / stdlib symbol not defined in this workspace,
-        # hence absent from the Symbol set). Internal references resolve to the
-        # defining Symbol's ``id``.
-        return id_by_scip_symbol.get(scip_symbol)
+    # a silent half-merge that leaves the rust-analyzer backend emitting zero
+    # edges via ``hypergumbo survey``.
+    #
+    # INV-sipod: the map is per Document, not per moniker. rust-analyzer gives a
+    # package's lib, bin and build-script roots one ``crate/`` moniker, and a
+    # flat dict would keep the last record, crediting main.rs code to lib.rs.
+    # ``None`` still tells the shim to skip the edge: a symbol no record
+    # carries is external (a dependency / stdlib symbol, absent from the Symbol
+    # set), and an ambiguous one is refused and counted.
+    resolve = MonikerResolver(
+        symbols,
+        same_unit=same_crate(
+            crate_owners(index, lambda p: _read_source(source_reader, p)),
+        ),
+    )
 
     edges: List[Edge] = []
     edges.extend(
-        scip_index_to_edges(index, run_id=run_id, resolve_symbol=_resolve)
+        scip_index_to_edges(index, run_id=run_id, resolve_symbol=resolve)
     )
     edges.extend(
-        scip_index_to_call_edges(index, run_id=run_id, resolve_symbol=_resolve)
+        scip_index_to_call_edges(index, run_id=run_id, resolve_symbol=resolve)
     )
+    report = resolve.ambiguity_report()
+    if report is not None and log is not None:
+        log(report)
     return symbols, edges

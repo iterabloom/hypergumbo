@@ -19,3 +19,10 @@
     pr_ref:  # 1b9d
     description: "Residual of INV-gumom (PR #1320). ADR-0061 ruling 5: 'The verify-claims JSON lists every catalogue file the run loaded.' tiers lists the verify-stage files (io, taint, function_summaries) and the user's analysis-stage channel files (stage: analysis), but not the SHIPPED files the analysis consulted while building the graph -- including community ones (99 frameworks files, python-django.yaml signatures, python-pyyaml.yaml dataflow). The graph does not record which were consulted, so listing them needs the analysis to stamp that into the survey (e.g. analysis_runs or limits), and a cached graph must carry it. Until then the gap is stated in the spec's implementation-status table."  # 1b9d
     fields: {}  # 1b9d
+- op: discuss  # 62f0
+  at: '2026-11-01T10:55:31Z'  # 62f0
+  by: agent  # 62f0
+  actor: jgstern_agent  # 62f0
+  clock: 2  # 62f0
+  nonce: 62f0  # 62f0
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint2/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: cli._loaded_catalogue_files still documents 'NOT LISTED: the shipped files of the analysis-stage families' and appends only user_channel_files for frameworks/dataflow_patterns/library_signatures. Live verify-claims --format json on a tiny Django fixture: tiers lists io_primitives, io overlays, taint_* and function_summaries files only; no frameworks, library_signatures or dataflow_patterns file in any tier. Premise holds. MECHANISM: graph/survey does not record which shipped analysis-stage catalogue files were consulted, so verify cannot list them. SHARES MECHANISM WITH: WI-lunih."  # 62f0

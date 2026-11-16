@@ -1,52 +1,35 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-linub: a catalogued receiver TYPE must be mintable from its constructor.
+"""A catalogued receiver TYPE must be mintable from its constructor.
 
-THE GAP THIS PINS. ``io_primitives/python.yaml`` declares a receiver type in the
-``module`` slot of every ``kind: method`` primitive — ``pathlib.Path``,
-``smtplib.SMTP``, ``sqlite3.Cursor``, seventeen of them. For a method call on
-such a receiver to reach its catalogue entry, the analyzer must first know the
-receiver's type, and the only way it learns that for an external object is
-``EXTERNAL_CONSTRUCTOR_TYPES``. That table was hand-curated at FOUR rows, so
-fifteen of the seventeen declared types could never be minted and every method
-hanging off them was structurally unreachable.
+``io_primitives/python.yaml`` declares a receiver type in the ``module`` slot of
+every ``kind: method`` primitive — ``pathlib.Path``, ``smtplib.SMTP``,
+``sqlite3.Cursor`` and the rest. For a method call on such a receiver to reach
+its catalogue entry, the analyzer must first know the receiver's type, and the
+only way it learns that for an external object is ``EXTERNAL_CONSTRUCTOR_TYPES``.
+A type the table cannot mint leaves every method hanging off it structurally
+unreachable: ``smtplib.SMTP(a).sendmail(b, b, b)`` would produce no method-call
+edge at all. (``scripts/measure-catalogue-reach.py python`` measures reach by
+generating one call site per catalogued primitive in both import forms.)
 
-MEASURED BEFORE THE FIX, by generating one call site per catalogued primitive in
-both import forms (``scripts/measure-catalogue-reach.py python``):
+WHY A PARITY TEST AND NOT A FEW EXAMPLES. The failure mode is not "these types
+are missing", it is "the table and the catalogue are two homes for one fact and
+they drift". So the assertions enumerate the LIVE catalogue and require the table
+to cover it — a new catalogue entry fails this file rather than silently going
+unreachable.
 
-    reachable both ways   105   48.8%
-    dotted form only       27   12.6%
-    bare form only          0    0.0%
-    UNREACHABLE            83   38.6%      <- 78 of them method-kind
-
-and the discriminating fixture, run through the real analyzer:
-
-    pathlib.Path(a).write_text(b)              -> calls python:pathlib.Path:...:write_text
-    smtplib.SMTP(a).sendmail(b, b, b)          -> NO method-call edge at all
-    sqlite3.Cursor(a).execute(b)               -> NO method-call edge at all
-
-WHY A PARITY TEST AND NOT THREE EXAMPLES. The failure mode is not "these three
-types are missing", it is "the table and the catalogue are two homes for one
-fact and they drift". Fifteen rows added by hand today would be sixteen short
-the day someone adds a type to ``python.yaml``. So the assertion enumerates the
-LIVE catalogue and requires the table to cover it — a new catalogue entry
-tomorrow fails this file rather than silently going unreachable.
-
-DIRECTION, MEASURED BEFORE THE CHANGE. The fifteen newly-mintable types carry
-43 of 83 python taint SOURCES and 35 of 113 SINKS — and 0 of 4 sanitizers. That
-last figure is the load-bearing one and :class:`TestDerivationCannotArmTheBarrier`
-pins it: typing a SANITIZER receiver arms the WI-fasub barrier arm, where a walk
-returning ``False`` earns ``sanitized`` and drops a flow from the violation set.
-This change cannot reach that arm, so it is additive-only.
+DIRECTION. A newly mintable receiver type exposes taint sources and sinks, which
+only ADDS findings. Typing a SANITIZER receiver would arm the barrier arm, where a
+walk returning ``False`` earns ``sanitized`` and drops a flow from the violation
+set; :class:`TestDerivationCannotArmTheBarrier` pins that no sanitizer receiver
+type is mintable. (history: INV-linub, WI-fasub)
 
 WHY ``io_primitives`` AND NOT ALSO THE TAINT CATALOGUE. The taint catalogue names
 two module strings ``io_primitives`` does not —
-``cryptography.hazmat.primitives.asymmetric`` and ``...ciphers.aead``. An earlier
-draft of this file asserted they were sanitizer receivers and excluded them on
-direction grounds; that was WRONG and is corrected here rather than left standing.
-They are taint SOURCES, and the real reason they are out of scope is that neither
-is a constructible type: their entries carry the class in the NAME slot
-(``AESGCM.decrypt``, ``rsa.generate_private_key``), so the module slot holds a
-module and ``asymmetric(...)`` constructs nothing.
+``cryptography.hazmat.primitives.asymmetric`` and ``...ciphers.aead``. They appear
+in taint SOURCE entries (not sanitizer receivers), and neither is a constructible
+type: their entries carry the class in the NAME slot (``AESGCM.decrypt``,
+``rsa.generate_private_key``), so the module slot holds a module and
+``asymmetric(...)`` constructs nothing.
 """
 
 from __future__ import annotations
@@ -78,8 +61,7 @@ class TestEveryCatalogueReceiverTypeIsMintable:
 
     def test_the_catalogue_declares_receiver_types(self) -> None:
         """NON-VACUITY FLOOR. An empty catalogue would satisfy every assertion
-        below while testing nothing — the shape that let three Go integration
-        tests pass without executing once (WI-jolif)."""
+        below while testing nothing. (history: WI-jolif)"""
         types = _catalogue_receiver_types()
         assert len(types) >= 15, (
             f"expected the python catalogue to declare a substantial set of "
@@ -145,8 +127,7 @@ class TestDerivationCannotArmTheBarrier:
         """A sanitizer receiver arms the barrier arm, which DELETES findings.
 
         A SANITIZER ROW HAS A DIFFERENT SHAPE FROM A SOURCE OR SINK ROW, and
-        getting that wrong is how this assertion first passed while measuring
-        nothing. Sources and sinks carry ``module`` + ``name`` + ``kind``;
+        getting that wrong makes this assertion pass while measuring nothing. Sources and sinks carry ``module`` + ``name`` + ``kind``;
         sanitizers carry only ``qualified_name`` (``cryptography.fernet.Fernet.
         encrypt``) and ``short_name`` (``Fernet.encrypt``). A ``kind == "method"``
         filter therefore matches ZERO sanitizer rows and yields an empty set that
@@ -192,13 +173,11 @@ class TestBareKeysStayUnambiguous:
 class TestTheReceiverActuallyResolves:
     """Behavioural, through the real analyzer — the table is a means, not the end.
 
-    NO GRAMMAR-AVAILABILITY FIXTURE, DELIBERATELY. An earlier draft guarded these
-    with ``is_grammar_available("tree_sitter_python")``, which returns False on a
-    working tree: ``analyze_python`` parses with the stdlib ``ast`` module and
-    needs no tree-sitter grammar at all. The three tests below skipped silently
-    and the file reported green while asserting nothing — the exact shape that
-    hid an ``AttributeError`` behind three never-executed Go tests (WI-jolif).
-    A python analyzer test has no unavailability path to guard.
+    NO GRAMMAR-AVAILABILITY FIXTURE, DELIBERATELY. ``analyze_python`` parses
+    with the stdlib ``ast`` module and needs no tree-sitter grammar at all, so a
+    guard such as ``is_grammar_available("tree_sitter_python")`` can only skip
+    these tests silently and report green while asserting nothing. A python
+    analyzer test has no unavailability path to guard. (history: WI-jolif)
     """
     @staticmethod
     def _method_call_dsts(tmp_path: Path, source: str) -> set[str]:
@@ -239,10 +218,10 @@ class TestTheReceiverActuallyResolves:
     def test_a_shadowed_binding_still_withholds_the_type(
         self, tmp_path: Path,
     ) -> None:
-        """INV-kipor must survive the widening. Fifteen new bare names are
-        fifteen new chances to mint a type for a class that merely shares a
-        name, and the binding check is the only thing standing between them
-        and a fabricated network sink."""
+        """Every bare catalogue name in the table is a chance to mint a type
+        for a class that merely shares the name, and the binding check
+        (INV-kipor) is the only thing standing between them and a fabricated
+        network sink."""
         dsts = self._method_call_dsts(tmp_path, (
             "from decoy_lib import SMTP\n\n\n"
             "def send(a, b):\n    return SMTP(a).sendmail(b, b, b)\n"
@@ -253,26 +232,18 @@ class TestTheReceiverActuallyResolves:
 
 
 class TestWideningDoesNotMintFakeBuiltins:
-    """The table's SECOND consumer assumed it held only builtins.
+    """The table's bare keys must not license a ``builtins`` call edge.
 
-    ``_process_call`` has an ``elif callee_name in EXTERNAL_CONSTRUCTOR_TYPES``
-    arm that emits ``python:builtins:0-0:<name>:unresolved`` — an assertion that
-    the name IS a builtin. Its comment states the assumption outright ("only the
-    bare ``EXTERNAL_CONSTRUCTOR_TYPES`` key ``open`` can match"), which was true
-    while the table was hand-curated and false the moment it grew seventeen more
-    bare keys. That is the N-places-one-rule drift this project keeps meeting,
-    with a comment claiming it had not happened.
-
-    CAUGHT BY THE DIRECTION CHECK, NOT BY REVIEW. The A/B over hypergumbo and
-    pretix gained exactly one edge — ``builtins.StreamWriter`` — from pretix's
+    ``_process_call``'s bare-call arm emits
+    ``python:builtins:0-0:<name>:unresolved`` — an assertion that the name IS a
+    builtin. The catalogue-derived ``EXTERNAL_CONSTRUCTOR_TYPES`` holds bare type
+    names that are not builtins (``StreamWriter``, from ``asyncio.StreamWriter``),
+    so that arm gates on ``PY_BUILTIN_CALLABLES`` (real builtins) and on the name
+    not being rebound in an enclosing scope — never on table membership. Gating
+    on the table would fabricate ``builtins.StreamWriter`` for
     ``StreamWriter = codecs.getwriter('utf-8'); StreamWriter(byte_data)``, a
-    LOCAL name rebound to a codecs writer. ``_external_constructor_type``'s
-    INV-kipor binding check refused to type the receiver (correctly); this second
-    arm fabricated the edge anyway because it never consults a binding at all.
-
-    The permitting predicate is ``BUILTIN_CONSTRUCTOR_NAMES``, which already
-    exists and already means exactly "bare rows that are REAL builtins" — so this
-    consolidates onto it rather than minting a third rule.
+    LOCAL name rebound to a codecs writer that ``_external_constructor_type``'s
+    binding check (INV-kipor) correctly refuses to type.
     """
 
     @staticmethod
@@ -287,7 +258,7 @@ class TestWideningDoesNotMintFakeBuiltins:
     def test_an_unbound_non_builtin_key_mints_no_builtins_edge(
         self, tmp_path: Path,
     ) -> None:
-        """pretix's exact shape, reduced."""
+        """A local name rebound from ``codecs.getwriter``, then called."""
         dsts = self._dsts(tmp_path, (
             "import codecs\n\n\n"
             "def export(byte_data):\n"
@@ -324,9 +295,8 @@ def _resolve_ctor(source: str) -> str | None:
     ``source`` must contain EXACTLY ONE call, and that is asserted rather than
     assumed. ``ast.walk`` is breadth-first, so on the chained form
     ``http.client.HTTPConnection(h).request(...)`` the first call it yields is
-    ``.request(...)`` — the outer one. An earlier draft took that first call and
-    reported a genuine fix as still broken. Picking the wrong node silently is
-    the failure mode; the chained shape is covered behaviourally instead, where
+    ``.request(...)`` — the outer one, which would report a working resolver as
+    broken. Picking the wrong node silently is the failure mode; the chained shape is covered behaviourally instead, where
     the analyzer decides which node is the constructor.
     """
     import ast
@@ -355,48 +325,25 @@ def _resolve_ctor(source: str) -> str | None:
 
 
 class TestDottedModuleConstructorsResolve:
-    """WI-lifol: a constructor under a DOTTED module must be typable.
+    """A constructor under a DOTTED module must be typable.
 
-    THE GAP. ``_external_constructor_type``'s attribute branch required
-    ``isinstance(func.value, ast.Name)``. For ``http.client.HTTPConnection(h)``
-    the base is itself an ``ast.Attribute`` (``http.client``), so the branch was
-    structurally unreachable no matter what the table held — and
-    :class:`TestEveryCatalogueReceiverTypeIsMintable` above passed the whole
-    time, because it asserts the TABLE holds a key and this is a RESOLUTION
-    defect. Table coverage was never the same claim as reachability.
+    For ``http.client.HTTPConnection(h)`` the call's base is itself an
+    ``ast.Attribute`` (``http.client``), so a resolver that requires an
+    ``ast.Name`` base cannot reach it no matter what the table holds.
+    :class:`TestEveryCatalogueReceiverTypeIsMintable` above asserts the TABLE
+    holds a key; this class asserts RESOLUTION. Table coverage is not the same
+    claim as reachability.
 
-    WHY THE PARITY TEST ENUMERATES DEPTH RATHER THAN NAMING FOUR TYPES. The four
-    affected types today (``http.client.HTTPConnection`` / ``HTTPSConnection``,
-    ``http.server.HTTPServer``, ``xmlrpc.server.SimpleXMLRPCServer``) are an
-    accident of what ``python.yaml`` currently declares. The defect is a depth
-    assumption, so the assertion is over every catalogued type at every depth;
-    adding a five-segment type tomorrow fails here rather than going quietly
-    unreachable.
+    WHY THE PARITY TEST ENUMERATES DEPTH RATHER THAN NAMING TYPES. Which types
+    sit under a dotted module is an accident of what ``python.yaml`` declares;
+    the defect class is a depth assumption. So the assertion is over every
+    catalogued type at every depth, and a five-segment type added to the YAML
+    fails here rather than going quietly unreachable.
 
-    THE REAL-CODE FLOOR, measured before building, because a generated reach
-    probe is a ceiling and this project has mistaken one for a payoff three
-    times. Across the 103 corpus files naming these types, counting only the
-    JOINED shape that can actually mint a boundary (constructor assigned to a
-    name, that name later the receiver of a CATALOGUED method):
-
-        dotted  production 10     <- invisible today
-        dotted  test       21     <- invisible today
-        bare    production  4     <- works today
-        bare    test       13     <- works today
-
-    The dotted form is the MORE common of the two in real code for these types,
-    not a long tail. The ten production sites are genuine ``net_send``:
-    mitmproxy's two release scripts, envoy's ``socket_passing`` tool, ceph's
-    barbican task, ClickHouse CI.
-
-    NOT COUNTED, AND DELIBERATELY. ``django.db.models`` also sits at depth 2 and
-    supplies 29 of the 41 primitives the reach probe attributed to this item —
-    but it is a MODULE, not a constructible type, so ``models(...)`` constructs
-    nothing and no fix can make those 29 reachable through a constructor. They
-    already reach production by a different route entirely (the ``.objects.``
-    dispatch, WI-sozoj: 447 ``filter`` + 121 ``get`` chains on pretix). The
-    probe counted a call form that cannot exist; the honest scope is 12
-    primitives across 4 types, not 41.
+    ``django.db.models`` also sits under a dotted module but is a MODULE, not a
+    constructible type: ``models(...)`` constructs nothing, and its primitives
+    reach production through the ``.objects.`` dispatch instead (WI-sozoj).
+    (history: WI-lifol)
     """
 
     def test_the_dotted_form_types_its_receiver(self) -> None:
@@ -423,16 +370,16 @@ class TestDottedModuleConstructorsResolve:
         )
 
     def test_single_segment_modules_still_resolve(self) -> None:
-        """NON-DESTRUCTION. The depth-1 case is the branch being generalized, and
-        it carries 13 of the 17 catalogued types — breaking it to fix 4 would be
-        a net loss that a green suite on the new case would happily hide."""
+        """NON-DESTRUCTION. The single-segment module case carries most
+        catalogued types; breaking it would be a net loss that a green suite on
+        the dotted case would happily hide."""
         assert _resolve_ctor(
             "import smtplib\n\n\ndef send(a):\n    return smtplib.SMTP(a)\n"
         ) == "smtplib.SMTP"
 
     def test_an_alias_still_resolves(self) -> None:
-        """``import http.client as hc`` binds ``hc`` directly and already worked;
-        the generalization must not regress it."""
+        """``import http.client as hc`` binds ``hc`` directly to the module;
+        dotted-module resolution must not regress it."""
         assert _resolve_ctor(
             "import http.client as hc\n\n\ndef f(h):\n    return hc.HTTPConnection(h)\n"
         ) == "http.client.HTTPConnection"
@@ -450,26 +397,28 @@ class TestDottedModuleConstructorsResolve:
         self,
     ) -> None:
         """``import mylib.client`` must not satisfy ``http.client.HTTPConnection``
-        merely by ending in the same two segments — ``_module_matches`` is
-        permissive by design and is not a guard. The instance IS a construction
-        of what the import supplied, so it is typed ``mylib.client.HTTPConnection``
-        (WI-makij's imported-class rule) — its own path, which reaches no row."""
+        merely by ending in the same two segments — the resolver must refuse it
+        itself rather than rely on a downstream module match. The instance IS a
+        construction of what the import supplied, so it is typed
+        ``mylib.client.HTTPConnection`` (WI-makij's imported-class rule) — its
+        own path, which reaches no row."""
         assert _resolve_ctor(
             "import mylib.client\n\n\n"
             "def f(h):\n    return mylib.client.HTTPConnection(h)\n"
         ) == "mylib.client.HTTPConnection"
 
     def test_a_local_shadow_should_not_be_typed(self) -> None:
-        """INV-dulum (was a strict xfail): ``module_imports`` is file-scoped, so
-        a ``http`` PARAMETER satisfied the root check and the call was typed as
-        the stdlib class. The scope's value bindings now withhold it."""
+        """``module_imports`` is file-scoped, so on its own a ``http``
+        PARAMETER would satisfy the root check and the call would be typed as
+        the stdlib class; the scope's value bindings withhold it.
+        (history: INV-dulum)"""
         assert _resolve_ctor(
             "import http.client\n\n\n"
             "def f(http, h):\n    return http.client.HTTPConnection(h)\n"
         ) is None
 
     def test_a_function_local_import_is_still_typed(self) -> None:
-        """THE TRAP the INV-dulum fix had to step around: a function-local
+        """THE TRAP for the shadow check: a function-local
         ``import`` binds the name TO THE MODULE. It is a local binding, but not
         a shadow, and refusing it would turn the false positive into a false
         negative on the ordinary lazy-import idiom."""
@@ -499,7 +448,7 @@ class TestDottedConstructorsReachTheCatalogue:
     def test_httpconnection_request_reaches_its_catalogue_module(
         self, tmp_path: Path,
     ) -> None:
-        """mitmproxy's and envoy's exact shape, reduced: construct, then call."""
+        """The common real-code shape: construct, then call."""
         dsts = self._method_call_dsts(tmp_path, (
             "import http.client\n\n\n"
             "def fetch(host, path):\n"

@@ -192,7 +192,7 @@ executable('myapp', 'main.c')
         assert exe is not None
         assert exe.id != exe.stable_id
         assert exe.id.startswith("meson:meson.build:")
-        assert exe.stable_id.startswith("sha256:")
+        assert exe.stable_id.startswith("hgstableid15:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", """project('test', 'c')

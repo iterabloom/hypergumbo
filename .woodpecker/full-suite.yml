@@ -104,7 +104,7 @@ steps:
         else
           WORKERS=$(nproc)
         fi
-        pytest -n "$WORKERS" --tb=short \
+        pytest -n "$WORKERS" --dist=loadgroup --tb=short \
           --cov=packages/hypergumbo-core/src \
           --cov=packages/hypergumbo-lang-mainstream/src \
           --cov=packages/hypergumbo-lang-common/src \
@@ -115,6 +115,10 @@ steps:
           --cov-report=term-missing --cov-fail-under=100 \
           --cov-config=.coveragerc.no-embeddings \
           packages/*/tests/
+        # Top-level tests that need the installed packages, which
+        # test-agent-infra ignores (see there). A separate run, so they add
+        # no coverage to the package gate above.
+        pytest -o addopts="" --tb=short tests/test_score_readability.py tests/test_smart_test_bed.py
 
   # ── self-map ratchets: WI-jigup self-tree-validation + WI-ratuv ───────────
   # Builds ONE behaviour map of hypergumbo's OWN tree and runs both ratchets
@@ -225,6 +229,28 @@ steps:
       - pip install --upgrade pip && pip install "pyyaml>=6"
       - scripts/check-io-allowlist
 
+  # ── allowlist COMMANDS, traced — cron arm (check-allowlist-commands) ───────
+  # Every subcommand, in the variants that change a path (cold / warm /
+  # evicting cache, --backend, --gzip, --minimal, the install commands with
+  # HOME in scratch and launches stubbed), runs under a sys.monitoring line
+  # tracer; a command seen executing an entry's line that the entry does not
+  # list fails. 3.12 for sys.monitoring. This runner has no rust-analyzer,
+  # gitleaks or sentence-transformers: the script supplies stand-ins (the
+  # question is whether hypergumbo's own line runs, not what the tool says)
+  # and names them; numpy is what hypergumbo's embedding code does with a
+  # loaded model. A variant that cannot run fails the step BY NAME. ~10 min.
+  - name: allowlist-commands-trace
+    image: python:3.12-bookworm
+    depends_on: []
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=4000"
+    commands:
+      - apt-get update && apt-get install -y --no-install-recommends nodejs npm
+      - npm install -g @sourcegraph/scip-python@0.6.6
+      - pip install --upgrade pip && pip install "pyyaml>=6" numpy
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python
+      - scripts/check-allowlist-commands --trace
+
   # ── top-level forge/governance + agent-infra suite (no package coverage) ───
   - name: test-agent-infra
     image: python:3.11-bookworm
@@ -272,4 +298,15 @@ steps:
         else
           WORKERS=$(nproc)
         fi
-        pytest tests/ -o addopts="" -n "$WORKERS" --tb=short
+        # A top-level test whose subject needs the installed packages cannot
+        # pass in this step, and installing them would retire the premise
+        # above; it is ignored here and run by test-all-packages instead.
+        # tests/test_full_suite_agent_infra_ignores.py pins that pairing.
+        #   test_score_readability — scripts/score-readability imports
+        #           tree_sitter, tree_sitter_language_pack and hypergumbo_core.
+        #   test_smart_test_bed — scripts/smart-test-bed imports
+        #           hypergumbo_core and drives smart-test, whose slice needs an
+        #           installed hypergumbo.
+        pytest tests/ -o addopts="" -n "$WORKERS" --dist=loadgroup --tb=short \
+          --ignore=tests/test_score_readability.py \
+          --ignore=tests/test_smart_test_bed.py

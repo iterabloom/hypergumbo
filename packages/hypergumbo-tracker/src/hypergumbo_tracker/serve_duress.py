@@ -6,10 +6,12 @@ duress contract). By design the handler is loaded from a Python file named in
 config.yaml under ``auth.duress_module``; the file must define a module-level
 ``handler`` variable that satisfies the ``DuressHandler`` Protocol.
 
-Not yet wired as of 2026-10 (WI-hopip): nothing loads the handler at server
-startup or calls these hooks, and config.yaml's ``auth.duress_module`` is not
-read by ``load_config``. The "called once" / "called on every API response"
-descriptions below are the contract a future caller must honour.
+Not yet wired: nothing loads the handler at server startup or calls these
+hooks, and config.yaml's ``auth.duress_module`` is not read by
+``load_config``. ``serve.py`` guards its routes with a caller-supplied
+``authenticate`` callable that denies by default, and no login flow built on
+these modules supplies one. The "called once" / "called on every API
+response" descriptions below are the contract a future caller must honour.
 
 How It Works
 ------------
