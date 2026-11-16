@@ -796,3 +796,30 @@ class TestDiscoveryIsTheHelper:
         from hypergumbo_core.profile import _detect_languages
 
         assert _detect_languages(self._repo(tmp_path))["d"].files == 1
+
+
+class TestImportEdgeEndpoints:
+    """An ``imports`` edge starts at the importing file's node.
+
+    It used to start at ``d:<path>:file:``, a string no node carries, so
+    finalize folded every importing file into one ``<unknown>`` placeholder.
+    """
+
+    def test_import_edges_start_at_the_file_node(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (tmp_path / "app.d").write_text(
+            "module app;\nimport std.stdio;\nimport util;\nvoid main() { helper(); }\n"
+        )
+        (tmp_path / "util.d").write_text("module util;\nvoid helper() {}\n")
+
+        result = analyze_d(tmp_path)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        util = next(s for s in result.symbols if s.kind == "module" and s.name == "util")
+        imports = [(e.src, e.dst) for e in result.edges if e.edge_type == "imports"]
+        here = make_file_id("d", "app.d")
+        assert imports == [
+            (here, "d:std.stdio:0-0:module:module"),  # outside the tree
+            (here, util.id),                          # the module symbol, looked up
+        ]

@@ -225,3 +225,54 @@ end
         assert result.run is not None
         assert result.run.pass_id == "fish"
         assert result.run.files_analyzed >= 1
+
+
+class TestSourceEdgeEndpoints:
+    """A ``sources`` edge joins two file nodes, or ends at a stand-in.
+
+    Both ends were hand-built strings (``fish:<path>:file:`` and
+    ``fish:<path>:file``) that named no node, so finalize folded every
+    sourcing file of a repository into one ``<unknown>`` placeholder.
+    """
+
+    def _sources(self, repo: Path) -> list[tuple[str, str, bool]]:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        result = analyze_fish(repo)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        return [
+            (e.src, e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == "sources"
+        ]
+
+    def test_sourced_file_of_the_repository_is_its_file_node(self, temp_repo: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        (temp_repo / "conf").mkdir()
+        (temp_repo / "lib").mkdir()
+        (temp_repo / "conf" / "a.fish").write_text(
+            "source near.fish\nsource lib/util.fish\nsource ../lib/util.fish\n"
+        )
+        (temp_repo / "conf" / "near.fish").write_text("function near\nend\n")
+        (temp_repo / "lib" / "util.fish").write_text("function util\nend\n")
+
+        here = make_file_id("fish", "conf/a.fish")
+        util = make_file_id("fish", "lib/util.fish")
+        assert self._sources(temp_repo) == [
+            (here, make_file_id("fish", "conf/near.fish"), True),  # next to the file
+            (here, util, True),                                    # from the root
+            (here, util, True),                                    # normalised
+        ]
+
+    def test_sourced_file_outside_the_repository_is_a_stand_in(self, temp_repo: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        (temp_repo / "a.fish").write_text(
+            "source /usr/share/fish/x.fish\nsource gone.fish\nsource $HOME/y.fish\n"
+        )
+        here = make_file_id("fish", "a.fish")
+        assert self._sources(temp_repo) == [
+            (here, "fish:/usr/share/fish/x.fish:0-0:module:module", False),
+            (here, "fish:gone.fish:0-0:module:module", False),
+            (here, "fish:$HOME/y.fish:0-0:module:module", False),
+        ]

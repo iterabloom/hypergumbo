@@ -902,3 +902,26 @@ class TestApexCallerByPosition:
             src, dst = by_id[e.src], by_id[e.dst]
             assert src.path == dst.path == file_of_line, (e.line, e.src, e.dst)
             assert src.span.start_line <= e.line <= src.span.end_line
+
+
+def test_every_call_endpoint_is_an_id(tmp_path: Path) -> None:
+    """Every end of an Apex ``calls`` edge is an emitted symbol or a stand-in.
+
+    Reach: one resolved and one unresolved call. No call edge starts at the
+    file: a call is only read inside a method or constructor, whose symbol is
+    the src (``_caller_id``'s file fallback is not reached by any source).
+    """
+    from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+    (tmp_path / "A.cls").write_text(
+        "public class A {\n"
+        "    public static void f() { B.g(); h(); }\n"
+        "    public static void h() { }\n"
+        "}\n"
+    )
+    result = analyze_apex(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    calls = [e for e in result.edges if e.edge_type == "calls"]
+    assert {by_id[e.src].name for e in calls} == {"A.f"}
+    assert sorted(e.dst in by_id for e in calls) == [False, True]
+    assert non_id_edge_endpoints(result.symbols, result.edges) == []

@@ -512,8 +512,27 @@ class TestLuauCallerAndCalleeByFile:
         by_id = {s.id: s for s in result.symbols}
         (edge,) = self._calls(result)
         assert edge.src not in by_id
-        assert edge.src == "luau:t.luau:file"
+        # The file's node, which the orchestrator materialises: it was the
+        # string ``luau:t.luau:file``, which no node carries.
+        assert edge.src == "luau:t.luau:1-1:file:file"
         assert by_id[edge.dst].name == "go"
+
+    def test_every_call_endpoint_is_an_id(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        make_luau_file(tmp_path, "t.luau", (
+            "local function go()\nend\n\n"
+            "go()\nmissing()\nobj:method()\n"
+        ))
+        result = analyze_luau(tmp_path)
+        calls = self._calls(result)
+        assert {e.src for e in calls} == {"luau:t.luau:1-1:file:file"}
+        assert [e.dst for e in calls][1:] == [
+            "luau:unresolved:0-0:missing:unresolved",
+            # ``obj:method``: a colon in the name slot would be no id.
+            "luau:unresolved:0-0:obj.method:unresolved",
+        ]
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
 
     def test_call_with_no_named_callee_is_skipped(self, tmp_path: Path) -> None:
         # ``make()()``: the outer call's callee is itself a call, so only the

@@ -6,7 +6,13 @@ Detects:
   ``--argument`` flag; the ``--argument-names`` and ``-a`` spellings are not read)
 - Alias declarations
 - Global variable assignments (set -g, set -gx, set -U, set -Ux, set -x)
-- Source statements for imports
+- Source statements, as ``sources`` edges from the file's node
+  (``make_file_id``). ``source`` reads its path against the shell's working
+  directory, which the script does not say, so the path is looked up next to
+  the sourcing file and then at the repository root
+  (``edge_target.in_tree_file_id``): a hit is that file's node, and anything
+  else (an absolute path, a ``$var`` path, a file that is not here) is the
+  ``make_module_import_dst`` stand-in for the path as written
 - Command calls
 
 Fish is a modern, user-friendly shell with clean syntax.
@@ -39,6 +45,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import posixpath
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -49,12 +56,15 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     iter_tree,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import nested_qualified_name
@@ -260,22 +270,21 @@ class FishAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract source and call edges from Fish commands."""
         edges: list[Edge] = []
-        file_stable_id = f"fish:{rel_path}:file:"
         # Every declaration of this file, by position (INV-midag).
         decl_index = symbols_at(self.file_symbols(local_symbols))
 
         for node in iter_tree(tree.root_node):
             if node.type == "command":
                 self._process_command_edges(
-                    node, source, rel_path, run.execution_id,
-                    file_stable_id, decl_index, resolver, edges,
+                    node, source, file_path, rel_path, run.execution_id,
+                    decl_index, resolver, edges,
                 )
 
         return edges
 
     def _process_command_edges(
         self, node: "tree_sitter.Node", source: bytes,
-        rel_path: str, run_id: str, file_stable_id: str,
+        file_path: Path, rel_path: str, run_id: str,
         decl_index: SymbolsAt, resolver: "NameResolver",
         edges: list[Edge],
     ) -> None:
@@ -302,14 +311,21 @@ class FishAnalyzer(TreeSitterAnalyzer):
                     break
 
             if source_path:
+                # The sourced file's node when it is a file of this
+                # repository, else the stand-in for the path as written.
+                target = in_tree_file_id(file_path, rel_path, [
+                    posixpath.join(posixpath.dirname(rel_path), source_path),
+                    source_path,
+                ])
                 edges.append(
                     Edge.create(
-                        src=file_stable_id,
-                        dst=f"fish:{source_path}:file",
+                        src=make_file_id("fish", rel_path),
+                        dst=target or make_module_import_dst("fish", source_path),
                         edge_type="sources",
                         evidence_type="source_statement",
                         line=node.start_point[0] + 1,
                         confidence=0.9,
+                        is_resolved=target is not None,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     )

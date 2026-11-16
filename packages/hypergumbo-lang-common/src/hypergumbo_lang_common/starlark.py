@@ -22,7 +22,14 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Parse all BUILD, BUILD.bazel, BUCK, and .bzl files
 2. Extract function definitions and signatures
 3. Extract build targets with rule types
-4. Track load statements as import edges
+4. Track load statements as import edges, one per loaded name, from the
+   loading file's node (``make_file_id``). A ``load`` label is resolved after
+   every file is read, like a ``deps`` label below: when it names a file of
+   the run, the edge ends at the top-level function or variable of that name
+   in it, or at that file's node when the name has no symbol (a rule bound
+   with ``name = rule(...)``: lowercase assignments are not extracted). A
+   label that names no file of the run (``@repo//...``) is an unresolved edge
+   to ``starlark:<@repo//pkg:file.bzl | //pkg:file.bzl>:0-0:<name>:unresolved``
 5. Track target dependencies as depends_on edges. A ``deps`` label is
    resolved after every file's targets are known (WI-pusan): ``:name``, a
    bare ``name`` and ``//pkg:name`` (``//pkg`` meaning ``//pkg:pkg``) reach
@@ -55,10 +62,12 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     find_child_by_type,
     iter_tree,
+    make_file_id,
     make_symbol_id,
     node_text,
     populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, format_legacy_dst,
@@ -122,7 +131,6 @@ class _FileContext:
         self,
         source: bytes,
         rel_path: str,
-        file_stable_id: str,
         run_id: str,
         symbols: list[Symbol],
         edges: list[Edge],
@@ -131,10 +139,10 @@ class _FileContext:
         file_anchor: str = "",
         package_targets: Optional[dict[tuple[str, str], str]] = None,
         pending_deps: Optional[list[tuple[str, str, int, str]]] = None,
+        pending_loads: Optional[list[tuple[str, str, int, str]]] = None,
     ) -> None:
         self.source = source
         self.rel_path = rel_path
-        self.file_stable_id = file_stable_id
         self.run_id = run_id
         self.symbols = symbols
         self.edges = edges
@@ -153,6 +161,11 @@ class _FileContext:
         )
         self.pending_deps: list[tuple[str, str, int, str]] = (
             pending_deps if pending_deps is not None else []
+        )
+        # Each loaded name as (label, name, line, loading file), resolved once
+        # every file's symbols are known.
+        self.pending_loads: list[tuple[str, str, int, str]] = (
+            pending_loads if pending_loads is not None else []
         )
 
 
@@ -235,8 +248,10 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     - Direct: load("file.bzl", "symbol")        -> imports symbol as-is
     - Aliased: load("file.bzl", alias = "symbol") -> imports symbol as alias
 
-    Both forms create import edges. Aliased imports also populate ctx.load_aliases
-    for use in call resolution with path_hint disambiguation.
+    Both forms record one pending import per loaded name, which
+    ``_resolve_load_edges`` turns into an edge once every file is read.
+    Aliased imports also populate ctx.load_aliases for use in call resolution
+    with path_hint disambiguation.
     """
     arg_list = find_child_by_type(node, "argument_list")
     if not arg_list:
@@ -266,35 +281,12 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                     aliased_symbols.append((alias, original_name))
 
     if source_file:
-        # Create import edges for direct imports
+        line = node.start_point[0] + 1
         for sym in loaded_symbols:
-            ctx.edges.append(
-                Edge.create(
-                    src=ctx.file_stable_id,
-                    dst=f"starlark:{source_file}:{sym}",
-                    edge_type="imports",
-                    evidence_type="ast_import",
-                    line=node.start_point[0] + 1,
-                    confidence=0.9,
-                    origin=PASS_ID,
-                    origin_run_id=ctx.run_id,
-                )
-            )
+            ctx.pending_loads.append((source_file, sym, line, ctx.rel_path))
 
-        # Create import edges for aliased imports and track aliases
         for alias, original_name in aliased_symbols:
-            ctx.edges.append(
-                Edge.create(
-                    src=ctx.file_stable_id,
-                    dst=f"starlark:{source_file}:{original_name}",
-                    edge_type="imports",
-                    evidence_type="ast_import",
-                    line=node.start_point[0] + 1,
-                    confidence=0.9,
-                    origin=PASS_ID,
-                    origin_run_id=ctx.run_id,
-                )
-            )
+            ctx.pending_loads.append((source_file, original_name, line, ctx.rel_path))
             # Track alias for path_hint resolution
             ctx.load_aliases[alias] = source_file
 
@@ -363,6 +355,52 @@ def _parse_label(label: str, package: str) -> tuple[Optional[str], str, str]:
         pkg, sep, name = label[2:].partition(":")
         return repo, pkg, name if sep else posixpath.basename(pkg)
     return repo, package, label[1:] if label.startswith(":") else label
+
+
+def _resolve_load_edges(
+    pending: list[tuple[str, str, int, str]],
+    symbols: list[Symbol],
+    run_files: set[str],
+    run_id: str,
+) -> list[Edge]:
+    """One ``imports`` edge per loaded name, to what the ``load`` names.
+
+    The label's file, when the run read it, gives the dst: its top-level
+    function or variable of that name, else the file's own node. Any other
+    label is an unresolved edge to the name in that label.
+    """
+    top_level: dict[tuple[str, str], str] = {}
+    for sym in symbols:
+        span = sym.span
+        if sym.kind in ("function", "variable") and span is not None and span.start_col == 0:
+            top_level.setdefault((sym.path, sym.name), sym.id)
+    edges: list[Edge] = []
+    for label, name, line, rel_path in pending:
+        repo, pkg, file_name = _parse_label(label, posixpath.dirname(rel_path))
+        # ``//dir/file.bzl``, the spelling without a colon, parses as a package.
+        target = None if repo is not None else next(
+            (p for p in (posixpath.join(pkg, file_name), pkg) if p in run_files),
+            None,
+        )
+        ref: Optional[ExternalRef] = None
+        if target is not None:
+            dst = top_level.get((target, name)) or make_file_id("starlark", target)
+        else:
+            module = ("" if repo is None else f"@{repo}") + f"//{pkg}:{file_name}"
+            dst, ref = external_target("starlark", name, module)
+        edges.append(Edge.create(
+            src=make_file_id("starlark", rel_path),
+            dst=dst,
+            edge_type="imports",
+            evidence_type="ast_import",
+            line=line,
+            confidence=0.9,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            is_resolved=target is not None,
+            dst_ref=ref,
+        ))
+    return edges
 
 
 def _resolve_dependency_edges(
@@ -557,6 +595,7 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
         target_ids: dict[str, str] = {}
         package_targets: dict[tuple[str, str], str] = {}
         pending_deps: list[tuple[str, str, int, str]] = []
+        pending_loads: list[tuple[str, str, int, str]] = []
 
         # Global symbol registry for cross-file resolution
         global_symbol_registry: dict[str, Symbol] = {}
@@ -575,12 +614,10 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
             files_analyzed += 1
 
             rel_path = str(file_path.relative_to(repo_root))
-            file_stable_id = f"starlark:{rel_path}:file:"
 
             ctx = _FileContext(
                 source=source,
                 rel_path=rel_path,
-                file_stable_id=file_stable_id,
                 run_id=run_id,
                 symbols=symbols,
                 edges=edges,
@@ -590,6 +627,7 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
                 file_anchor=self._file_anchor(rel_path),
                 package_targets=package_targets,
                 pending_deps=pending_deps,
+                pending_loads=pending_loads,
             )
 
             before = len(ctx.symbols)
@@ -599,6 +637,9 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
             # Store for pass 2 (including load_aliases for path_hint resolution)
             parsed_files.append((rel_path, source, tree, ctx.load_aliases))
 
+        edges.extend(_resolve_load_edges(
+            pending_loads, symbols, {rel for rel, _, _, _ in parsed_files}, run_id,
+        ))
         edges.extend(_resolve_dependency_edges(pending_deps, package_targets, run_id))
 
         # Create resolver from global registry
@@ -612,7 +653,6 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
             ctx = _FileContext(
                 source=source,
                 rel_path=rel_path,
-                file_stable_id=f"starlark:{rel_path}:file:",
                 run_id=run_id,
                 symbols=[],  # Not adding symbols in pass 2
                 edges=edges,

@@ -24,7 +24,12 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract proc/func/method definitions with signatures, plus
    type definitions and field/variable symbols
-2. Pass 2: Extract import edges and call edges. A call's caller is the proc
+2. Pass 2: Extract import edges and call edges. An ``import`` statement
+   gives one ``imports`` edge per module it names, from the importing file's
+   node (``make_file_id``) to the one repository file the module path
+   resolves to (``_NimScope.resolve_module``), else to the
+   ``make_module_import_dst`` stand-in for the path as written
+   (``nim:std/strutils:0-0:module:module``). A call's caller is the proc
    whose declaration contains it, found by the declaration's position, so
    exported (``proc a*``) and overloaded procs keep their calls. Its target
    is a declaration the calling module can SEE (``_NimScope``): its own file,
@@ -75,6 +80,8 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     find_child_by_type,
     iter_tree,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
@@ -516,44 +523,39 @@ def _extract_import_aliases(
 
 
 def _extract_import_edges(
-    source: bytes, file_stable_id: str, run_id: str, node: "tree_sitter.Node",
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    scope: "_NimScope",
 ) -> list[Edge]:
-    """Extract import edges from an import statement."""
+    """One ``imports`` edge per module an import statement names.
+
+    The edge starts at the importing file's node. The modules are read as
+    ``_extract_module_scope`` reads them (``std/[a, b]`` is two, ``x as y`` is
+    ``x``), and each is looked up the way a call's visibility is
+    (``_NimScope.resolve_module``): exactly one repository file is that file's
+    node, and none or several is the stand-in for the module path as written.
+    """
     edges: list[Edge] = []
-    expr_list = find_child_by_type(node, "expression_list")
-    if expr_list:
-        for child in expr_list.children:
-            if child.type == "identifier":
-                import_name = node_text(child, source)
-                edges.append(
-                    Edge.create(
-                        src=file_stable_id,
-                        dst=f"nim:{import_name}:0-0:module:module",
-                        edge_type="imports",
-                        evidence_type="ast_import",
-                        line=node.start_point[0] + 1,
-                        confidence=0.9,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
-                    )
+    for item in _import_items(node):
+        if item.type == "infix_expression" and find_child_by_type(item, "as"):
+            item = item.named_children[0]
+        for spec in _expand_module_specs(item, source):
+            files = scope.resolve_module(spec, rel_path)
+            edges.append(
+                Edge.create(
+                    src=make_file_id("nim", rel_path),
+                    dst=(
+                        make_file_id("nim", files[0]) if len(files) == 1
+                        else make_module_import_dst("nim", spec)
+                    ),
+                    edge_type="imports",
+                    evidence_type="ast_import",
+                    line=node.start_point[0] + 1,
+                    confidence=0.9,
+                    is_resolved=len(files) == 1,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
-            elif child.type == "infix_expression":
-                for subchild in child.children:
-                    if subchild.type == "identifier":
-                        import_name = node_text(subchild, source)
-                        edges.append(
-                            Edge.create(
-                                src=file_stable_id,
-                                dst=f"nim:{import_name}:0-0:module:module",
-                                edge_type="imports",
-                                evidence_type="ast_import",
-                                line=node.start_point[0] + 1,
-                                confidence=0.9,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                            )
-                        )
-                        break  # Only take the first identifier (module name)
+            )
     return edges
 
 
@@ -1313,14 +1315,13 @@ class NimAnalyzer(TreeSitterAnalyzer):
         if scope is None:  # pragma: no cover - defensive: Pass 2 runs inside analyze()
             scope = _NimScope()
         edges: list[Edge] = []
-        file_stable_id = f"nim:{rel_path}:file:"
         decl_index = symbols_at(self.file_symbols(local_symbols))
         proc_types = _ProcTypes(source)
 
         for node in iter_tree(tree.root_node):
             if node.type == "import_statement":
                 edges.extend(_extract_import_edges(
-                    source, file_stable_id, run.execution_id, node,
+                    source, rel_path, run.execution_id, node, scope,
                 ))
 
             elif node.type == "call":

@@ -44,16 +44,18 @@ Call resolution
   defining ``local function helper`` had one file's calls credited to the
   other's, and a nested function's calls went to the function around it. An
   anonymous ``function () ... end`` has no symbol, so its calls belong to the
-  named function around it; a call in no function comes from
-  ``luau:<path>:file``.
+  named function around it; a call in no function comes from the file's
+  node (``make_file_id``).
 - The callee is looked up by its full text (``Module.fn``), then by its
   short name (the last ``.`` / ``:`` segment), each time in THIS file's
   symbols before the run-wide table (confidence 1.0 either way): a
   ``local function`` is file-scoped, so another file's same-named one must
   not win while this file has its own.
 - An unmatched call is still emitted, to
-  ``luau:unresolved:0-0:<name>:unresolved`` with confidence 0.6. All call
-  edges carry evidence_type ``tree_sitter``.
+  ``luau:unresolved:0-0:<name>:unresolved`` with confidence 0.6; the ``:`` of
+  a method call ``obj:fn`` is written ``obj.fn`` there, since the name slot
+  of an id holds no colon. All call edges carry evidence_type
+  ``tree_sitter``.
 """
 
 from __future__ import annotations
@@ -70,6 +72,7 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     enclosing_declared_symbol,
     iter_tree,
+    make_file_id,
     make_symbol_id,
     symbols_at,
 )
@@ -419,7 +422,7 @@ def _extract_call_edges(
             continue
 
         caller = enclosing_declared_symbol(node, decl_index, _CALLER_NODE_TYPES)
-        src_id = caller.id if caller is not None else f"luau:{rel_path}:file"
+        src_id = caller.id if caller is not None else make_file_id("luau", rel_path)
 
         callee = _resolve_callee(call_name, local_symbols, global_symbols)
         if callee is not None:
@@ -432,8 +435,9 @@ def _extract_call_edges(
             # language='unresolved' (sentinel leak; INV-nodij violation
             # observed on alertmanager). Use the established mainstream
             # 5-part shape (see csharp/rust/java/py) so the boundary node
-            # carries language='luau'.
-            dst = f"luau:unresolved:0-0:{call_name}:unresolved"
+            # carries language='luau'. A method call's ``a:b`` would put a
+            # colon in the name slot, which make_symbol_id folds to ``a.b``.
+            dst = make_symbol_id("luau", "unresolved", 0, 0, call_name, "unresolved")
 
         edges.append(Edge.create(
             src=src_id,

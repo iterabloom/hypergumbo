@@ -60,6 +60,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    make_file_id,
     make_symbol_id,
     symbol_declared_by,
     symbols_at,
@@ -804,7 +805,7 @@ def _caller_id(node: "tree_sitter.Node", rel_path: str, decl_index: SymbolsAt) -
     """
     caller = symbol_declared_by(node, decl_index)
     if caller is None:  # pragma: no cover - every named member in a class has a symbol
-        return f"apex:{rel_path}:file"
+        return make_file_id("apex", rel_path)
     return caller.id
 
 

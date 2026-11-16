@@ -501,3 +501,58 @@ class TestHackCallerByPosition:
             src, dst = by_id[e.src], by_id[e.dst]
             assert src.path == dst.path == file_of_line, (e.line, e.src, e.dst)
             assert src.span.start_line <= e.line <= src.span.end_line
+
+
+class TestHackCallEndpoints:
+    """Every end of a ``calls`` edge is a node's id or a stand-in.
+
+    A call in a standalone function used to start at ``hack:<path>:file``, a
+    string no node carries, so finalize folded a file's calls into one
+    ``<unknown>`` placeholder and the function that made the call had none.
+    """
+
+    def _calls(self, tmp_path: Path, code: str):
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (tmp_path / "a.hack").write_text(code)
+        result = analyze_hack(tmp_path)
+        assert non_id_edge_endpoints(result.symbols, result.edges) == []
+        by_id = {s.id: s for s in result.symbols}
+        return by_id, [e for e in result.edges if e.edge_type == "calls"]
+
+    def test_call_in_a_standalone_function_starts_at_the_function(self, tmp_path: Path) -> None:
+        by_id, calls = self._calls(tmp_path, (
+            "<?hh\n"
+            "function helper(): int {\n  return 1;\n}\n"
+            "function main(): void {\n  helper();\n}\n"
+        ))
+        (edge,) = calls
+        assert (by_id[edge.src].name, by_id[edge.dst].name) == ("main", "helper")
+        assert by_id[edge.src].kind == "function"
+
+    def test_top_level_call_starts_at_the_file_node(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        by_id, calls = self._calls(tmp_path, (
+            "<?hh\nfunction setup(): void {}\nsetup();\n"
+        ))
+        (edge,) = calls
+        assert edge.src == make_file_id("hack", "a.hack")
+        assert by_id[edge.dst].name == "setup"
+
+    def test_unresolved_callees_are_stand_ins(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        _, calls = self._calls(tmp_path, (
+            "<?hh\n"
+            "function main(): void {\n  missing_fn();\n  Other::stat();\n}\n"
+        ))
+        assert [(e.dst, e.dst_ref, e.is_resolved) for e in calls] == [
+            ("hack:unresolved:0-0:missing_fn:unresolved", None, False),
+            # ``::`` in the name slot would be no id: the owner is the path slot.
+            (
+                "hack:Other:0-0:stat:unresolved",
+                ExternalRef(lang="hack", module_path="Other", name="stat"),
+                False,
+            ),
+        ]
