@@ -1,0 +1,21 @@
+- op: create  # f7ca
+  at: '2026-11-16T04:58:59Z'  # f7ca
+  by: agent  # f7ca
+  actor: jgstern_agent  # f7ca
+  clock: 1  # f7ca
+  nonce: f7ca  # f7ca
+  data:  # f7ca
+    kind: work_item  # f7ca
+    title: "Solidity: modifier and base-constructor invocations, revert CustomError, new C(...) and overloads are not resolved"  # f7ca
+    status: todo_hard  # f7ca
+    priority: 3  # f7ca
+    parent:  # f7ca
+    tags:  # f7ca
+    - solidity  # f7ca
+    - analysis_quality  # f7ca
+    isbefore: []  # f7ca
+    duplicate_of: []  # f7ca
+    not_duplicate_of: []  # f7ca
+    pr_ref:  # f7ca
+    description: "WHAT. After PR #2198 a call or emit resolves in its own contract and its linearised bases. Left:\n- modifier invocations (function f() only) and base-constructor invocations (constructor() Base(1)): no edge; adding one is a new edge class whose type needs a decision;\n- revert CustomError(...): error declarations are not symbols;\n- new C(...): an unresolved edge named 'new C';\n- overloads: not told apart by argument, the last declared in the contract wins (on openzeppelin Arrays.unsafeMemoryAccess(string[]) receives calls whose argument is uint256[]);\n- import aliases (import {X as Y}, import * as M), using {f} for T / using ... global, visibility of base members: not checked;\n- the overrides pass looks at direct parents only.\nNOT traced: on openzeppelin the dead-code seed_count went 525 -> 524 (the library_export entrypoint for contract BridgeERC721 is absent after the fix although that node's own edges are identical).\nThirteen other analyzers also register a short name in a per-file table (hcl, ocaml, fennel, gleam, janet, llvm_ir, pascal, pony, prisma, tcl, v_lang, cpp, csharp): not checked for the same misbinding. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # f7ca
+    fields: {}  # f7ca

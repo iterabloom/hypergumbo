@@ -56,3 +56,18 @@
   clock: 6  # 178b
   nonce: 178b  # 178b
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. Reproduces on the 2026-11-02 fixture: `path(\"login/\", LoginView.as_view())` gives usage_context symbol_ref `python:urls.py:19-20:LoginView:class` (nested `Outer.LoginView`); dispatches_to goes to `urls.py:9-10` at 0.5 with disambiguation_fallback. Two more shapes show the same clobber: a function-local `class LoginView` (Django `path`) and a function-local `class Item` (flask-restful `api.add_resource`). Writer: py.py:3579, unconditional for every ClassDef; nested functions are not registered (py.py:3918-3925). Reader sites today: 1519/1532/1537 (Django), 1894/1955/1969 (Flask), 2119 (Starlette). Volume on real repositories not measured. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-hahud.md. No status or priority change made by this review."  # 178b
+- op: update  # daf3
+  at: '2026-11-16T04:57:52Z'  # daf3
+  by: agent  # daf3
+  actor: jgstern_agent  # daf3
+  clock: 7  # daf3
+  nonce: daf3  # daf3
+  set:  # daf3
+    status: done  # daf3
+- op: discuss  # d839
+  at: '2026-11-16T04:57:52Z'  # d839
+  by: agent  # d839
+  actor: jgstern_agent  # d839
+  clock: 8  # d839
+  nonce: d839  # d839
+  message: "Fixed in PR #2198. Re-ran the three review shapes: Outer.LoginView beside a top-level LoginView, a function-local class LoginView (Django path), and a function-local class Item (flask-restful add_resource): each UsageContext symbol_ref and dispatches_to now names the class the source names. The registry keys a declaration by its full scope chain; a bare name resolves lexically; a handler the registering file does not declare is resolved through that file's imports. pretix src/pretix: 0 declared ids gone, 29,223 of 29,223 symbols keep their stable id by position; 19 symbol_refs changed, 14 route edges retargeted (13 read in source), 504 route edges go from 0.5 flagged to 0.9. The route-handler linker fix that this needed (candidates of the route's host language, total order) has no item of its own: the Django route ^locale/set$ bound a JavaScript class in vendored pdf.js in some runs, and binds the Python view in both seeds measured now."  # d839

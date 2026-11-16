@@ -43,3 +43,18 @@
   clock: 4  # 078e
   nonce: 078e  # 078e
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096. Reproduces. Names: `X`@2, `X`@4, `X.run`@2, `X.run`@4; compact `A::C` keeps its path. Wrong binds on the wider fixture: `A.top {X.run}` and `Z.go {A::X.run}` -> `X.run`@4; `extends Q < A::B::X` -> `X`@2 (analyzer) plus `X`@4 (inheritance-linker). Swapping declaration order flips which sites are wrong (`B.go {X.run}` -> A::X), so calls take the last-registered namesake and analyzer `extends` the first. `qualified_name` (`A::X`, `A::B::X::run`) and `stable_id` already differ per class; only `name` and the `symbol_by_name` keys (ruby.py:2343, :2390, :2232, :2280) collide. `_get_enclosing_class_or_module` :361, `_lexical_nesting` :2458, `_nested_candidates` :2479, unchanged. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/INV-dosoz.md. No status or priority change made by this review."  # 078e
+- op: update  # 4744
+  at: '2026-11-16T04:57:54Z'  # 4744
+  by: agent  # 4744
+  actor: jgstern_agent  # 4744
+  clock: 5  # 4744
+  nonce: '4744'  # 4744
+  set:  # 4744
+    status: satisfied  # 4744
+- op: discuss  # f6b3
+  at: '2026-11-16T04:57:54Z'  # f6b3
+  by: agent  # f6b3
+  actor: jgstern_agent  # f6b3
+  clock: 6  # f6b3
+  nonce: f6b3  # f6b3
+  message: "Satisfied by PR #2198. Re-ran the review's fixture: A.top {X.run} and Z.go {A::X.run} now reach A::X.run (base: A::B::X.run); Q < A::B::X has one extends edge. The registry keys a nested declaration by its full lexical path and follows Ruby's order (nesting innermost out, ancestors, top level); block and compact forms share a key; there is no last-segment fallback (ActionController::Base no longer binds a project Base). postal (283 .rb): 0 declared ids gone, 45 edge sites changed, each read in source as a wrong bind removed or corrected; chatwoot (1,884 .rb): 71 sites, 53 newly resolved, none resolved -> unresolved; dead-code unchanged on both. Left and filed: a compact declaration nested in a block whose head is a top-level constant; extend treated like include; classes assigned to a constant; the core inheritance linkers still identify a Ruby class by Symbol.name."  # f6b3

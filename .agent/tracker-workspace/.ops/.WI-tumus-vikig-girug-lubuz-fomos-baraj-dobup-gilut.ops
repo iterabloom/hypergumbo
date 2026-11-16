@@ -33,3 +33,18 @@
   clock: 3  # 4eac
   nonce: 4eac  # 4eac
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT PARTLY STALE] 2026-11-15, dev e2b6ab8096. All three texts unchanged: base.py:1647-1648 (make_export_stable_id), base.py:2170 (split_within_file_stable_id_collisions), symbol_kinds.py:363-364; mirror at docs/concept-axes.md:153 (not in docs/schema.json). find_emitted_symbol_kinds()['export'] = bash.py:1107, json_config.py:573, json_config.py:634. Fixture: two `export FOO` lines give one bash export Symbol, `export -f f` gives none; package.json `exports` gives two json export Symbols; python `__all__`, ES named exports, rust `pub use`, toml give none. The notebook patch base_py_docstring_followup.patch no longer applies (`git apply --check` fails at hunk 2, base.py:1967 context). Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-tumus.md. No status or priority change made by this review."  # 4eac
+- op: update  # 77a5
+  at: '2026-11-16T04:57:50Z'  # 77a5
+  by: agent  # 77a5
+  actor: jgstern_agent  # 77a5
+  clock: 4  # 77a5
+  nonce: 77a5  # 77a5
+  set:  # 77a5
+    status: done  # 77a5
+- op: discuss  # 221b
+  at: '2026-11-16T04:57:50Z'  # 221b
+  by: agent  # 221b
+  actor: jgstern_agent  # 221b
+  clock: 5  # 221b
+  nonce: 221b  # 221b
+  message: "Fixed in PR #2198. The three texts now say what the code emits: bash emits one export Symbol per exported VARIABLE per file and none for `export -f`; json_config emits one per package.json exports entry; js_ts's kind=export is a UsageContext. Re-checked by grep for kind=\"export\" over packages/*/src. docs/concept-axes.md regenerated. NOT done: no gate ties a kind's description to the producer scan, so the same drift can recur on another kind."  # 221b

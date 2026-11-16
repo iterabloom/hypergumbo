@@ -87,3 +87,18 @@
   clock: 10  # b7f4
   nonce: b7f4  # b7f4
   message: "OWNER RULING 2026-11-15 (\"drop the redirect part\" -- agreed). Title and description rewritten to what remains: the cohort re-measure and three ADR-0051 corrections plus one sentence. The isbefore edge from WI-talos-duhuj-gafut-lamop-majuj-gotif-janaj-zazih is removed in the same batch: the remaining work changes no emitted id, so it does not wait on the stable-id relabel. Status and priority unchanged."  # b7f4
+- op: update  # f6dd
+  at: '2026-11-16T04:57:51Z'  # f6dd
+  by: agent  # f6dd
+  actor: jgstern_agent  # f6dd
+  clock: 11  # f6dd
+  nonce: f6dd  # f6dd
+  set:  # f6dd
+    status: done  # f6dd
+- op: discuss  # 9279
+  at: '2026-11-16T04:57:51Z'  # 9279
+  by: agent  # 9279
+  actor: jgstern_agent  # 9279
+  clock: 12  # 9279
+  nonce: '9279'  # 9279
+  message: "Done in PR #2198. Re-measured on the 22-repository cohort (module_key_audit_09012026/cohort*.txt), one repository at a time, with this branch's code and again with the 2026-09-01 code. The audit's 7.8% reproduces at 7.80% with the old code when only edges carrying a dst_ref are counted (65,022 edges against the published 65,187; the 165 gap is not explained). Today: 9.7% of the 73,547 edges with a dst_ref hold a disjunction; over all 138,506 edges to a 0-0 stand-in, 52.0% are not a module identity (external 46.5%, disjunction 5.2%, <unknown> 0.3%). ADR-0051 and the registry docstring now match the registry: bash redirect is a namespace; the v9/v10 gate sentence is gone; the disjunction row describes the module-set handle. ADR-0051's status stays Accepted. NOT decided here, as the item says: whether `external` and the module-set handle stay legal slot values. New violator class filed separately: Java writes a comma-joined set into the module slot (1,160 edges). Data: pr1/marok/."  # 9279

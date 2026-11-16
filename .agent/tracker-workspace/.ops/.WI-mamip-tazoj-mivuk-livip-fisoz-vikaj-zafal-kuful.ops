@@ -20,3 +20,18 @@
     pr_ref:  # c246
     description: "Found by the 2026-11-15 review of the stable-id items (reports and fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026). Re-run by hand the same day at dev e2b6ab8096, analyzer 9.2.0.\n\nDEFECT. scripts/check-id-construction (WI-vodin, pre-commit at .githooks/pre-commit:433) exits 0 on today's tree\nwhile four producers emit a Symbol.id whose kind slot differs from Symbol.kind (INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil: robot test_case/test,\nJSX route/function, BitBake python_task/task, json_config export_entry/export). The runtime validator reports them\n(id_format, \"kind-slot ... does not match Symbol.kind\"), but only on a repository that contains such files, which\nis the gap the linter was written to close (its own header says so).\n\nWHY IT MISSES THEM. The linter checks the GRAMMAR of every expression that can reach Symbol(id=...) or\nEdge(id=...). robot.py and json_config.py are grammatical: they call the factory and pass it a role word as its\n`kind` argument, then build the Symbol with a different `kind`.\n\nASK. In the same static pass, when a Symbol(...) construction and the id factory call that feeds its id= are in one\nfunction, compare the two kind arguments when both are string literals or the same name, and report a mismatch.\nDecide and state what happens when one side is not statically known (report nothing, or report \"cannot verify\").\n\nREPRO. `scripts/check-id-construction; echo $?` prints 0. Fixture ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/v_dulah (package.json with an\n`exports` map): `hypergumbo run --include-docs` gives json:package.json:1-1:.:export_entry on a kind=export Symbol\nwith 2 id_format errors.\n\nACCEPTANCE. The linter exits 1 naming robot.py and json_config.py on today's tree (and whichever of the JSX and\nBitBake sites it can see statically), and exits 0 once INV-dulah-kisiz-gobak-jafov-soduj-tomim-dufut-kinil's limbs are fixed.\n\nNOT CHECKED: how many of the four sites are visible to a one-function static comparison (JSX and BitBake build the\nid by hand rather than through the factory)."  # c246
     fields: {}  # c246
+- op: update  # 2429
+  at: '2026-11-16T04:57:54Z'  # 2429
+  by: agent  # 2429
+  actor: jgstern_agent  # 2429
+  clock: 2  # 2429
+  nonce: '2429'  # 2429
+  set:  # 2429
+    status: done  # 2429
+- op: discuss  # dc78
+  at: '2026-11-16T04:57:54Z'  # dc78
+  by: agent  # dc78
+  actor: jgstern_agent  # dc78
+  clock: 3  # dc78
+  nonce: dc78  # dc78
+  message: "Done in PR #2198. scripts/check-id-construction compares the id's kind word with Symbol(kind=...) where both are readable in one function (factory argument, same-module helper read at its return, literal slot of a template). Acceptance re-run: on dev 2e41d7d686 it names robot, BitBake, both json_config sites and the JSX marker; on the merged tree it exits 0 with two declared holes (robot, twig), and a declaration nothing matches is itself reported. It found 33 sites; one (websocket) was the check's own error and is fixed in the check. A side that cannot be read statically is not judged; four such sites were found by running the fixture gate instead."  # dc78

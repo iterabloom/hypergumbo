@@ -1,0 +1,21 @@
+- op: create  # 1a17
+  at: '2026-11-16T04:59:22Z'  # 1a17
+  by: agent  # 1a17
+  actor: jgstern_agent  # 1a17
+  clock: 1  # 1a17
+  nonce: 1a17  # 1a17
+  data:  # 1a17
+    kind: work_item  # 1a17
+    title: "The code disagrees with three rules ADR-0014 stated: TypeScript default values, pointer decorators, Python visibility"  # 1a17
+    status: todo_hard  # 1a17
+    priority: 3  # 1a17
+    parent:  # 1a17
+    tags:  # 1a17
+    - stable_id  # 1a17
+    - v15  # 1a17
+    isbefore: []  # 1a17
+    duplicate_of: []  # 1a17
+    not_duplicate_of: []  # 1a17
+    pr_ref:  # 1a17
+    description: "WHAT. Retiring ADR-0014 (PR #2198) re-derived its rules from the code; the spec now states the code. Three differ from what the ADR had ruled:\n- 'exclude default values': a TypeScript parameter's default is in the typed stable id (x: number = 5 and = 6 give two ids; measured on a fixture). A stable id that changes when a default value changes is a defect candidate; a fix moves ids;\n- 'strip pointer/reference decorators': only Go strips a leading *; Rust &'a str is hashed as written;\n- 'visibility empty for Python': _name gives private.\nOwner question from the same work: does raising a PyPI grammar constraint in pyproject.toml bump SHAPE_ID_SCHEME? vendor-sync.md says bump for a vendored re-sync and nothing for a PyPI constraint raise. docs/audits/0009 line 47 says a decision 'belongs in an ADR-0014 amendment', which can no longer happen. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 1a17
+    fields: {}  # 1a17

@@ -1,0 +1,21 @@
+- op: create  # ecf4
+  at: '2026-11-16T04:59:28Z'  # ecf4
+  by: agent  # ecf4
+  actor: jgstern_agent  # ecf4
+  clock: 1  # ecf4
+  nonce: ecf4  # ecf4
+  data:  # ecf4
+    kind: work_item  # ecf4
+    title: "smart-test: scoped coverage gates nothing on a committed tree, and a directory argument starts a whole-repo slice"  # ecf4
+    status: todo_hard  # ecf4
+    priority: 2  # ecf4
+    parent:  # ecf4
+    tags:  # ecf4
+    - smart_test  # ecf4
+    - ci  # ecf4
+    isbefore: []  # ecf4
+    duplicate_of: []  # ecf4
+    not_duplicate_of: []  # ecf4
+    pr_ref:  # ecf4
+    description: "WHAT.\n1. An explicit-path smart-test run on a tree with nothing uncommitted prints 'COVERAGE: (all files at 100%)' whatever the coverage of the branch's changed files. The pre-PR runs of PR #2198 printed it while cuda.py had an unreachable uncovered line; PR CI, which gates the changed files against the merge base, failed on that line. A check that cannot fail in the state the recipe runs it in is not a check.\n2. In a git worktree with PYTHONPATH pinned, a run returned rc 0 with a changed file at 95% in that run.\n3. `scripts/smart-test <directory>` is not an explicit run: it starts the whole-repo slice (5.5 minutes, 4.2 GB).\n4. tests/test_generator_check.py::test_a_failed_import_exits_2_and_says_why fails (2 cases) when PYTHONPATH is set: its `python -S` subprocess inherits it.\n\nASK. Gate the files changed against the merge base in the pre-PR recipe's runs (as CI does), or print that nothing was gated. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # ecf4
+    fields: {}  # ecf4

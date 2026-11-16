@@ -46,3 +46,18 @@
   clock: 5  # 4b87
   nonce: 4b87  # 4b87
   message: "[OWNER RULING 2026-11-15] 'yes to the chain and no to the module path'. A nested Python class and its methods carry the full enclosing chain (classes and functions) in qualified_name, the chain the stable id already hashes; name and the hash inputs do not change; no module path is added. Measured: 0 stable ids move, so no scheme bump; planned in PR 1 of ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/PLAN.md. With it: the comment at py.py:3551-3556, and the three ADR-0032 examples that show a module path (Python, Rust, TypeScript), which the ruling makes wrong. The call-resolution defect is WI-tulas-gakah-mikit-biniz-bimod-satis-fulim-zohiz, a rider in the same PR."  # 4b87
+- op: update  # 607d
+  at: '2026-11-16T04:57:52Z'  # 607d
+  by: agent  # 607d
+  actor: jgstern_agent  # 607d
+  clock: 6  # 607d
+  nonce: 607d  # 607d
+  set:  # 607d
+    status: done  # 607d
+- op: discuss  # a56f
+  at: '2026-11-16T04:57:52Z'  # a56f
+  by: agent  # a56f
+  actor: jgstern_agent  # a56f
+  clock: 7  # a56f
+  nonce: a56f  # a56f
+  message: "Fixed in PR #2198. A nested Python class and its methods carry every enclosing class and function in qualified_name (A.B, A.B.go, outer.Local); no module path. name and every hash input are unchanged (a test pins the method's stable id formula). pretix src/pretix: 0 stable ids gone, 326 qualified names changed, 283 contains edges 0.90 -> 0.95, one extends edge corrected (class Meta(OrderPositionSerializer.Meta) at api/serializers/order.py:644). ADR-0032's Python, Rust, TypeScript and JavaScript examples now show what is emitted. NOT measured: verify-claims and taint, which read the field."  # a56f

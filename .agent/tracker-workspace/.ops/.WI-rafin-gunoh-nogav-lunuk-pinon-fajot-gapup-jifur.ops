@@ -32,3 +32,18 @@
   clock: 3  # 99ad
   nonce: 99ad  # 99ad
   message: "[REVIEW 2026-11-15: REAL TODAY, TEXT ACCURATE] 2026-11-15, dev e2b6ab8096 (analyzer 9.2.0, stable-id v14): filed fixture still emits `A.f -> B.helper` (calls, ast_call_direct) and `A.f -> B.Transfer` (references, event_emit). Code sites now at solidity.py L675 (call), L745-748 (member-access fallback), L782 (emit); short-name registration at L380. Newly measured on a second fixture: `this.helper()` in A -> B.helper; inherited `inh()` in `A is Base` -> B.inh (unrelated contract), not Base.inh; `b.other()` with `B b` -> C.other at confidence 0.6; a modifier invocation (`function f() public only`) emits no edge. Not checked: overloads across contracts, cross-file same-name contracts, corpus measurement. Fixtures: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/work/WI-rafin/. Full review: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/reports/WI-rafin.md. No status or priority change made by this review."  # 99ad
+- op: update  # 2820
+  at: '2026-11-16T04:57:52Z'  # 2820
+  by: agent  # 2820
+  actor: jgstern_agent  # 2820
+  clock: 4  # 2820
+  nonce: '2820'  # 2820
+  set:  # 2820
+    status: done  # 2820
+- op: discuss  # d8f6
+  at: '2026-11-16T04:57:52Z'  # d8f6
+  by: agent  # d8f6
+  actor: jgstern_agent  # d8f6
+  clock: 5  # d8f6
+  nonce: d8f6  # d8f6
+  message: "Fixed in PR #2198. Re-ran the filed fixture: A.f's helper() and emit Transfer now bind A's own members (base bound B's). A call or emit resolves in its own contract, then its C3-linearised bases, then a file-level name; there is no suffix match across contracts. openzeppelin-contracts (397 .sol): 0 of 4,781 declared ids gone; calls 27,876 -> 28,079; 28 retargeted, 384 unresolved -> resolved, 203 new (182 on super.), 9 resolved -> unresolved (array push and call-result receivers); dead-code candidates 1,102 -> 1,021. NOT traced: seed_count 525 -> 524 (the library_export entrypoint for contract BridgeERC721 is absent after the fix). Residuals filed: modifier and base-constructor invocations, revert CustomError, new C(...), overload selection, import aliases."  # d8f6
