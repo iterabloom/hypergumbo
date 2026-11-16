@@ -41,6 +41,18 @@ relative import against the importing file's directory and, when the file is
 in the tree, returns its file id, so the edge ends on the file's node and not
 on an ``external_symbol`` stand-in for a file that sits in the repository.
 
+TWO RECORDS, ONE ID. Two producers can also mint the SAME id for a path and
+still leave two records: an analyzer builds its file id from the absolute
+path, a manifest's ``defines_target`` edge names the repo-relative one, the
+synthesis pass sees an id no Symbol carries and mints a second Symbol, and
+path relativization then makes the two ids equal. Left alone, the stable-id
+split pass tells them apart with an occurrence ordinal, so the analyzer's
+own file node ends up with a non-canonical ``stable_id`` and its duplicate
+with the canonical one. Both passes here remove that case: the reference is
+re-pointed before the synthesis (paths are compared repo-relative), and a
+same-id pair that still arrives is folded into its first record before the
+split pass runs, so the one record keeps ``make_file_stable_id``'s value.
+
 WHICH RECORD SURVIVES. The one in the FILE's own language: the language
 ``taxonomy.get_language`` gives the path, the same reading the orchestrator's
 own anchors use (ADR-0031: ``Symbol.language`` is the source language of the
@@ -202,26 +214,31 @@ def unify_file_pseudo_symbols(
     by_path: Dict[str, List[Symbol]] = {}
     for symbol in symbols:
         if is_file_pseudo_symbol(symbol) and symbol.path:
-            members = by_path.setdefault(symbol.path, [])
-            # One id emitted twice is one record already; id-keyed consumers
-            # see one node, and there is nothing to rewire.
-            if all(member.id != symbol.id for member in members):
-                members.append(symbol)
+            by_path.setdefault(symbol.path, []).append(symbol)
 
     remap: Dict[str, str] = {}
+    dropped: set[int] = set()
     for path, members in by_path.items():
         if len(members) < 2:
             continue
         survivor = _survivor(path, members)
         for member in members:
-            if member is not survivor:
-                _absorb(survivor, member)
+            if member is survivor:
+                continue
+            _absorb(survivor, member)
+            dropped.add(id(member))
+            # Two records may share ONE id (see the module docstring): the
+            # second is dropped all the same, and there is nothing to rewire.
+            if member.id != survivor.id:
                 remap[member.id] = survivor.id
-    if not remap:
+    if not dropped:
         return remap
 
-    symbols[:] = [s for s in symbols if not (s.id in remap and is_file_pseudo_symbol(s))]
-    _carry_provenance_across_folds(edges, rewire_endpoints(edges, remap, usage_contexts))
+    symbols[:] = [s for s in symbols if id(s) not in dropped]
+    if remap:
+        _carry_provenance_across_folds(
+            edges, rewire_endpoints(edges, remap, usage_contexts),
+        )
     return remap
 
 

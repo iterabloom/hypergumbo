@@ -2707,15 +2707,13 @@ def test_one_file_node_per_path_flags_two_language_slots_for_one_path() -> None:
 
 
 def test_one_file_node_per_path_counts_only_file_pseudo_symbols() -> None:
-    """One id twice is one record; a manifest entry of kind ``file`` and a
-    function on line 1 are not file pseudo-symbols; a pathless or idless
-    record is skipped."""
+    """A manifest entry of kind ``file`` and a function on line 1 are not
+    file pseudo-symbols; a pathless or idless record is skipped."""
     from hypergumbo_core.spec_validator import _check_one_file_node_per_path
 
     anchor = _file_sym("toml", "pyproject.toml")
     assert _check_one_file_node_per_path([
         anchor,
-        _file_sym("toml", "pyproject.toml"),
         _FakeSym(id="toml:pyproject.toml:56-56:htrac:file", kind="file",
                  path="pyproject.toml", meta={"entry_role": "script"}),
         _FakeSym(id="python:a.py:1-1:file:function", kind="function", path="a.py"),
@@ -2723,6 +2721,17 @@ def test_one_file_node_per_path_counts_only_file_pseudo_symbols() -> None:
         _FakeSym(id="python::1-1:file:file", kind="file", path=""),
         _FakeSym(id=None, kind="file", path="a.py"),
     ]) == []
+
+
+def test_one_file_node_per_path_flags_two_records_sharing_one_id() -> None:
+    """An analyzer's node and a synthesized one with the same id are two
+    records of one file: one violation, both ids listed."""
+    from hypergumbo_core.spec_validator import _check_one_file_node_per_path
+
+    first = _file_sym("typescript", "pkg/src/index.ts")
+    second = _file_sym("typescript", "pkg/src/index.ts")
+    (violation,) = _check_one_file_node_per_path([first, second])
+    assert violation.observed == f"{first.id}, {second.id}"
 
 
 def test_one_file_node_per_path_wired_into_validate_ir() -> None:

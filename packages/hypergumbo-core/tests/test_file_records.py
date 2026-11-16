@@ -141,7 +141,6 @@ class TestUnify:
     def test_one_node_per_path_is_left_untouched(self) -> None:
         a = _file("typescript", "src/a.ts")
         only_script = _file("typescript", "src/Solo.vue")  # its slot is NOT changed
-        again = _file("typescript", "src/a.ts")            # one id emitted twice
         manifest = Symbol(
             id="toml:pyproject.toml:5-5:tool:file", name="tool", kind="file",
             language="toml", path="pyproject.toml",
@@ -150,7 +149,7 @@ class TestUnify:
         )
         anchor = _file("toml", "pyproject.toml", origin="toml")
         nopath = _file("typescript", "")
-        symbols = [a, only_script, again, manifest, anchor, nopath]
+        symbols = [a, only_script, manifest, anchor, nopath]
         before = list(symbols)
         edge = _edge(a.id, only_script.id)
         key = edge.edge_key
@@ -158,6 +157,36 @@ class TestUnify:
         assert symbols == before and edge.edge_key == key
         assert only_script.language == "typescript"
         assert not is_file_pseudo_symbol(manifest)
+
+
+class TestTwoRecordsOneId:
+    """An absolute-path id and a repo-relative one that relativization made
+    equal are two records of one file all the same."""
+
+    def test_the_second_record_is_folded_into_the_first(self) -> None:
+        analyzer = _file("typescript", "pkg/src/index.ts", end=30, meta={"module_system": "esm"})
+        synthesized = _file("typescript", "pkg/src/index.ts",
+                            origin="orchestrator_file_symbol_synthesis", end=31)
+        analyzer.stable_id = synthesized.stable_id = "sha256:0123456789abcdef"
+        other = _file("typescript", "pkg/src/other.ts")
+        symbols = [analyzer, other, synthesized]
+        edge = _edge("json:pkg/package.json:5-5:main:file", analyzer.id, "defines_target")
+        key = edge.edge_key
+        assert unify_file_pseudo_symbols(symbols, [edge]) == {}  # nothing to rewire
+        assert symbols == [analyzer, other]
+        assert symbols[0] is analyzer
+        assert analyzer.origin == ["javascript", "orchestrator_file_symbol_synthesis"]
+        assert analyzer.span.end_line == 31 and analyzer.stable_id == "sha256:0123456789abcdef"
+        assert edge.dst == analyzer.id and edge.edge_key == key
+
+    def test_a_same_id_pair_beside_another_language_slot(self) -> None:
+        script = _file("typescript", "src/App.vue")
+        again = _file("typescript", "src/App.vue", origin="orchestrator_file_symbol_synthesis")
+        own = _file("vue", "src/App.vue", origin="orchestrator_file_symbol_synthesis")
+        symbols = [script, again, own]
+        edge = _edge(script.id, "x")
+        assert unify_file_pseudo_symbols(symbols, [edge]) == {script.id: own.id}
+        assert symbols == [own] and edge.src == own.id
 
 
 class TestRepointReferences:

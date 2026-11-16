@@ -211,3 +211,35 @@ def test_the_scripts_import_placeholder_is_still_demoted(
         assert resolved["src"] == stub["src"] and resolved["is_resolved"] is True
         assert resolved["dst"].endswith(":1-1:file:file")
 
+
+
+def test_a_manifest_entry_file_has_one_node_with_the_canonical_stable_id(
+    tmp_path: Path,
+) -> None:
+    """``package.json`` ``main`` names ``./src/index.ts`` by its repo-relative
+    id while the JavaScript analyzer mints the absolute-path one. The
+    synthesis pass used to mint a second Symbol; relativization then made the
+    two ids equal, and the stable-id split pass left the analyzer's node a
+    non-canonical ``stable_id`` beside a duplicate holding the canonical one."""
+    from hypergumbo_core.analyze.base import make_file_stable_id
+
+    root = tmp_path / "repo"
+    (root / "pkg" / "src").mkdir(parents=True)
+    (root / "pkg" / "package.json").write_text(
+        '{"name": "@x/pkg", "version": "1.0.0", "main": "./src/index.ts",'
+        ' "exports": {".": "./src/index.ts"}}\n'
+    )
+    (root / "pkg" / "src" / "index.ts").write_text("export function f() { return 1; }\n")
+    out = tmp_path / "out.json"
+    run_behavior_map(repo_root=root, out_path=out, include_sketch_precomputed=False)
+    data = json.loads(out.read_text())
+
+    (node,) = _file_nodes(data)["pkg/src/index.ts"]
+    assert node["stable_id"] == make_file_stable_id("typescript", "pkg/src/index.ts")
+    assert "javascript" in node["origin"]  # the analyzer's record, not a synthesized twin
+    targets = [e["dst"] for e in data["edges"] if e["type"] == "defines_target"]
+    assert targets and set(targets) == {node["id"]}
+    assert [
+        v for v in data["validation_report"]["violations"]
+        if "file pseudo-symbols" in v["message"]
+    ] == []
