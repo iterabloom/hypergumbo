@@ -104,6 +104,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Python bare name never binds a nested or function-local class**: a route's handler is the view its name can reach.
 - **A Python call through a nested class reaches it**: `Outer.Inner().go()` binds the class and its method, also from another module.
 - **A route binds a handler of its own language, the same one every run**; a uniquely named handler keeps confidence 0.9.
+- **A Python route names its view through the file's imports**: `views.LoginView` is that module's class, not another `LoginView`.
 
 #### Request handlers and taint (`verify-claims`)
 

@@ -2189,7 +2189,11 @@ def expand_class_based_view_routes(
     imported from a third-party Django app) still surface in ``routes``
     output, just labeled ``[ANY]`` instead of falsely labeled ``[GET]``.
 
-    The lookup is name-only (no module qualification): if two unrelated
+    A marker whose analyzer resolved the view class (``meta.handler_ref``, a
+    symbol id) hands that id to each per-method marker, so the route-handler
+    linker binds them to the class the registration names.
+
+    The METHOD lookup is name-only (no module qualification): if two unrelated
     classes share a name like ``LoginView``, their methods are unioned. This
     is conservative — better to over-report HTTP methods than to miss real
     handlers — and matches how Django itself dispatches in practice (the
@@ -2274,6 +2278,10 @@ def expand_class_based_view_routes(
                 route_path=route_path,
                 origin=pass_id,
                 origin_run_id=origin_run_id,
+                # The view class the analyzer resolved for the registration,
+                # when it did: the per-method markers stand for the same
+                # route and are served by the same class.
+                handler_ref=meta.get("handler_ref"),
                 extra_meta={
                     "view_name": view_name,
                     "view_method": method_name,

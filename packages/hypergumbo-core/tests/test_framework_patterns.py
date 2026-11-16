@@ -19984,6 +19984,29 @@ class TestExpandClassBasedViewRoutes:
             assert (r.meta or {}).get("expanded_from") == route.id
         assert removed == {route.id}
 
+    def test_expanded_routes_keep_the_resolved_view_class(self) -> None:
+        """A marker that names its view class by id (``handler_ref``) hands
+        it to every per-method marker: they stand for the same registration,
+        and ``view_name`` alone cannot tell two ``LoginView`` classes apart."""
+        route = self._make_route("LoginView", "/login/")
+        assert route.meta is not None
+        route.meta["handler_ref"] = "python:accounts/views.py:3-9:LoginView:class"
+        m_get = self._make_method("LoginView", "get")
+        m_post = self._make_method("LoginView", "post")
+
+        new_routes, _removed = expand_class_based_view_routes([route, m_get, m_post])
+
+        assert len(new_routes) == 2
+        assert {(r.meta or {}).get("handler_ref") for r in new_routes} == {
+            "python:accounts/views.py:3-9:LoginView:class",
+        }
+
+    def test_expanded_routes_of_an_unresolved_view_carry_no_handler_ref(self) -> None:
+        route = self._make_route("LoginView", "/login/")
+        m_get = self._make_method("LoginView", "get")
+        new_routes, _removed = expand_class_based_view_routes([route, m_get])
+        assert [("handler_ref" in (r.meta or {})) for r in new_routes] == [False]
+
     def test_unresolved_view_class_keeps_original(self) -> None:
         """No matching method symbols -> original ANY route stays in place."""
         route = self._make_route("LoginView", "/login/")
