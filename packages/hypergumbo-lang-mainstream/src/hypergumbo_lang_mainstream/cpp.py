@@ -29,7 +29,12 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Namespace aliases (used as resolution path hints, ADR-0007)
 - Function call relationships
 - Include directives
-- Object instantiation (new expressions, stack construction, and compound literals)
+- Object instantiation (new expressions, ``std::make_unique<T>`` /
+  ``make_shared<T>``, stack construction, and compound literals). Each lands
+  on the class, or on the constructor its argument count chooses; a stack or
+  brace construction the count chooses for also gets an edge to that
+  constructor at the same line, so a walk reaches it and not every one
+  (``construction``), and several taking the count land on the class
 - Dispatch table edges (function pointers in array initializers, static or
   not, at file scope or inside a function),
   plus ``references`` edges carrying ``meta.ref_construct='dispatch_table'``
@@ -604,6 +609,11 @@ def _cpp_call_arity(call_node: "tree_sitter.Node") -> Optional[int]:
         if call_node.type == "new_expression":
             return 0
         return None  # pragma: no cover - every call_expression has an argument_list
+    return _cpp_argument_count(args)
+
+
+def _cpp_argument_count(args: "tree_sitter.Node") -> Optional[int]:
+    """The arguments an ``argument_list`` / ``initializer_list`` passes."""
     count = 0
     for child in args.named_children:
         if child.type == "comment":
@@ -612,6 +622,53 @@ def _cpp_call_arity(call_node: "tree_sitter.Node") -> Optional[int]:
             return None
         count += 1
     return count
+
+
+def _cpp_declarator_arity(declarator: "tree_sitter.Node") -> Optional[int]:
+    """The arguments a declarator constructs its object with, or None when it
+    constructs nothing by itself: ``C x;`` passes none, ``C x(1)`` and
+    ``C x{1}`` one. A pointer, reference, array or ``= expr`` declarator is
+    not counted (``C x = C(1)`` is the call's construction)."""
+    if declarator.type == "identifier":
+        return 0
+    if declarator.type != "init_declarator":
+        return None
+    inner = declarator.child_by_field_name("declarator")
+    value = declarator.child_by_field_name("value")
+    if (
+        inner is None or inner.type != "identifier" or value is None
+        or value.type not in ("argument_list", "initializer_list")
+    ):
+        return None
+    return _cpp_argument_count(value)
+
+
+#: The standard factories that construct their template argument with the
+#: call's arguments: ``std::make_unique<T>(a, b)`` constructs a ``T(a, b)``.
+_CPP_MAKE_FUNCTIONS = frozenset({"make_unique", "make_shared"})
+
+
+def _cpp_made_type(call: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """``T`` for ``std::make_unique<T>(..)`` / ``make_shared<T>(..)``, its
+    template arguments dropped; None for any other call."""
+    function = call.child_by_field_name("function")
+    if function is not None and function.type == "qualified_identifier":
+        scope = function.child_by_field_name("scope")
+        if scope is None or _node_text(scope, source) != "std":
+            return None
+        function = function.child_by_field_name("name")
+    if function is None or function.type != "template_function":
+        return None
+    name = function.child_by_field_name("name")
+    if name is None or _node_text(name, source) not in _CPP_MAKE_FUNCTIONS:
+        return None
+    arguments = function.child_by_field_name("arguments")
+    made = next(
+        (c for c in arguments.named_children if c.type == "type_descriptor"), None,
+    ) if arguments is not None else None
+    if made is None:
+        return None
+    return _cpp_strip_template_args(_node_text(made, source))
 
 
 #: Where a function prototype can stand: file and namespace scope, a class
@@ -1535,7 +1592,7 @@ def _try_instantiation_edge(
     edges: list[Edge],
     run: AnalysisRun,
     choose: Callable[[Symbol, "tree_sitter.Node"], Optional[OverloadChoice]],
-) -> None:
+) -> Optional[Symbol]:
     """Emit an instantiates edge if type_name resolves to a known symbol.
 
     Checks local symbols first (an exact match: the pathway base), then
@@ -1546,7 +1603,11 @@ def _try_instantiation_edge(
     of the class's constructors -- the last one defined, whatever its
     parameters. ``choose`` (the edge pass's ``overload_choice``) re-chooses
     it among the class's constructors by the argument count of the ``new``,
-    as a call's callee is (WI-jidot); a class it picks is left alone.
+    as a call's callee is (WI-jidot); a class it picks is left alone. When
+    several constructors take the count, the edge lands on their class, so
+    the walk reaches all of them; an ambiguous record on the name's pick is
+    kept only when the class has no symbol.
+    Returns the symbol the edge lands on, None when it draws none.
     """
     score: Optional[float] = None
     if type_name in local_symbols:
@@ -1554,15 +1615,28 @@ def _try_instantiation_edge(
     else:
         lookup_result = resolver.lookup(type_name)
         if not lookup_result.found or lookup_result.symbol is None:
-            return
+            return None
         target, score = lookup_result.symbol, lookup_result.confidence
     meta: Optional[dict[str, Any]] = None
     choice = choose(target, node)
     if choice is not None and choice.symbol is not None:
         target = choice.symbol
         if choice.ambiguous:
-            meta = {"resolution_quality": "ambiguous"}
-            score = (1.0 if score is None else score) * choice.confidence
+            # Several constructors take the argument count: the construction
+            # is of the CLASS, certainly, and of one of them, unknown which.
+            # Landing on the class lets the walk reach every one of them
+            # (construction.py) instead of a guessed one.
+            owner = target.name.rsplit("::", 1)[0]
+            cls = local_symbols.get(owner)
+            if cls is None or cls.kind not in ("class", "struct"):
+                # The short-name key may hold a constructor, not the class.
+                found = resolver.lookup(owner)
+                cls = found.symbol if found.found else None
+            if cls is not None and cls.kind in ("class", "struct"):
+                target = cls
+            else:
+                meta = {"resolution_quality": "ambiguous"}
+                score = (1.0 if score is None else score) * choice.confidence
     edges.append(Edge.create(
         src=current_function.id,
         dst=target.id,
@@ -1574,6 +1648,7 @@ def _try_instantiation_edge(
         origin_run_id=run.execution_id,
         meta=meta,
     ))
+    return target
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -2125,6 +2200,33 @@ def _extract_edges_from_tree(
             return OverloadChoice(choice.symbol, 1.0, False, choice.admitted)
         return choice
 
+    def construct(
+        caller: Symbol, cls: Symbol, arity: Optional[int],
+        node: "tree_sitter.Node", evidence_type: str,
+    ) -> None:
+        """A construction of ``cls`` passing ``arity`` arguments also gets an
+        ``instantiates`` edge to the ONE constructor that count admits, at the
+        same line, so it reaches that constructor rather than every one
+        (``construction._CHOSEN_INITIALIZER_LANGUAGES``). None or several
+        admitting it: no edge, and the construction reaches them all."""
+        if cls.kind not in ("class", "struct") or arity is None:
+            return
+        short = cls.name.rsplit("::", 1)[-1]
+        choice = choose_overload(
+            [callables_by_name.get(f"{cls.name}::{short}", [])], arity,
+        )
+        if choice.symbol is None or choice.ambiguous:
+            return
+        edges.append(Edge.create(
+            src=caller.id,
+            dst=choice.symbol.id,
+            edge_type="instantiates",
+            line=node.start_point[0] + 1,
+            evidence_type=evidence_type,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the function name being called from a call_expression.
 
@@ -2249,6 +2351,20 @@ def _extract_edges_from_tree(
             # ``mode_argument_for`` walks the same parent link rather than
             # growing a second ``cpp`` table to drift.
             _edges_before_call = len(edges)
+            _made = _cpp_made_type(node, source) if current_function is not None else None
+            if _made is not None and current_function is not None:
+                # ``std::make_unique<T>(a, b)`` constructs ``T(a, b)``: a
+                # construction of ``T`` (as ``new T(a, b)`` is), besides the
+                # call of the factory itself.
+                _made_target = _try_instantiation_edge(
+                    _made, current_function, node, "ast_new",
+                    local_symbols, resolver, edges, run, overload_choice,
+                )
+                if _made_target is not None:
+                    construct(
+                        current_function, _made_target, _cpp_call_arity(node),
+                        node, "ast_new",
+                    )
             if current_function is not None and not (
                 current_function is file_anchor and c_family_is_not_a_call(node)
             ):
@@ -2614,10 +2730,15 @@ def _extract_edges_from_tree(
                     # 'new_expression' (absent from the evidence-type catalog —
                     # an axis_conformance leak). Stack-construction paths keep
                     # their own registered 'stack_construction' pathway.
-                    _try_instantiation_edge(
+                    _new_target = _try_instantiation_edge(
                         type_name, current_function, node, "ast_new",
                         local_symbols, resolver, edges, run, overload_choice,
                     )
+                    if _new_target is not None:
+                        construct(
+                            current_function, _new_target, _cpp_call_arity(node),
+                            node, "ast_new",
+                        )
 
         # Stack object construction: Widget w; / Widget w(args); / Widget w{};
         elif node.type == "declaration":
@@ -2653,6 +2774,12 @@ def _extract_edges_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
+                        for _declarator in node.children_by_field_name("declarator"):
+                            construct(
+                                current_function, target,
+                                _cpp_declarator_arity(_declarator),
+                                node, "stack_construction",
+                            )
 
         # Compound literal expression: Widget{42} as expression
         elif node.type == "compound_literal_expression":
@@ -2673,6 +2800,12 @@ def _extract_edges_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
+                        _literal = node.child_by_field_name("value")
+                        construct(
+                            current_function, target,
+                            _cpp_argument_count(_literal) if _literal is not None else None,
+                            node, "stack_construction",
+                        )
 
         # Explicit function pointer: &process or &Class::method
         elif node.type == "pointer_expression":

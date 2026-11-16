@@ -151,9 +151,10 @@ def test_new_lands_on_the_constructor_its_arguments_select(tmp_path: Path) -> No
         assert _targets(result, line, "instantiates") == [("Tc::Tc", ctor_line, None)], line
 
 
-def test_new_among_same_arity_constructors_is_an_ambiguous_record(tmp_path: Path) -> None:
+def test_new_among_same_arity_constructors_lands_on_the_class(tmp_path: Path) -> None:
     """Two one-parameter constructors: ``new Two(1)`` cannot be told apart by
-    arity, and says so rather than claiming the last one defined."""
+    arity. The construction is certainly of ``Two``, so the edge lands on the
+    class, from which the walk reaches both, not on the last one defined."""
     (tmp_path / "a.cpp").write_text("""\
 struct Two {
   Two(int x) {}
@@ -166,8 +167,86 @@ void user() { Two* t = new Two(1); }
     edges = [
         e for e in result.edges
         if e.edge_type == "instantiates" and e.line == 5 and e.dst in by_id
+    ]
+    assert {by_id[e.dst].kind for e in edges} == {"struct"}
+    assert all((e.meta or {}).get("resolution_quality") is None for e in edges)
+
+
+def test_an_ambiguous_new_of_a_class_without_a_symbol_stays_ambiguous(
+    tmp_path: Path,
+) -> None:
+    """The class is defined in a header outside the tree; only its
+    out-of-line constructors are: the edge keeps the name's pick, marked
+    ambiguous."""
+    (tmp_path / "a.cpp").write_text("""\
+#include "two.h"
+Two::Two(int x) {}
+template <typename T> Two::Two(T* p) {}
+void user() {}
+void make() {}
+void use() { Two* t = new Two(1); }
+""")
+    result = analyze_cpp(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    edges = [
+        e for e in result.edges
+        if e.edge_type == "instantiates" and e.line == 6 and e.dst in by_id
         and by_id[e.dst].kind == "method"
     ]
-    assert len(edges) == 1
-    assert (edges[0].meta or {}).get("resolution_quality") == "ambiguous"
+    assert [(e.meta or {}).get("resolution_quality") for e in edges] == ["ambiguous"]
     assert edges[0].confidence < 0.95
+
+CONSTRUCTIONS = """\
+#include <memory>
+struct Box {
+  Box() {}
+  explicit Box(int x) {}
+  Box(int x, int y) {}
+  ~Box() {}
+};
+void build() {
+  Box a;
+  Box b(1);
+  Box c{1, 2};
+  Box d(1), *e;
+  auto f = std::make_unique<Box>(1, 2);
+  auto g = Box{};
+}
+"""
+
+
+def test_each_construction_also_lands_on_the_constructor_it_calls(tmp_path: Path) -> None:
+    """The class edge stays (consumers key on it); the constructor the
+    argument count chose gets its own edge at the same line."""
+    (tmp_path / "a.cpp").write_text(CONSTRUCTIONS)
+    result = analyze_cpp(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+
+    def at(line: int) -> set[tuple[str, int]]:
+        return {
+            (by_id[e.dst].kind, by_id[e.dst].span.start_line) for e in result.edges
+            if e.edge_type == "instantiates" and e.line == line and e.dst in by_id
+        }
+
+    assert at(9) == {("struct", 2), ("method", 3)}
+    assert at(10) == {("struct", 2), ("method", 4)}
+    assert at(11) == {("struct", 2), ("method", 5)}
+    # ``Box d(1), *e``: the pointer constructs nothing.
+    assert at(12) == {("struct", 2), ("method", 4)}
+    # std::make_unique<Box>(1, 2) constructs Box(1, 2).
+    assert ("method", 5) in at(13)
+    assert at(14) == {("struct", 2), ("method", 3)}
+
+
+def test_a_make_function_with_no_type_argument_constructs_nothing(tmp_path: Path) -> None:
+    """``make_unique<5>()`` names no type; ``other::make_unique<Box>()`` is
+    not the standard factory; neither is a construction."""
+    (tmp_path / "a.cpp").write_text("""\
+struct Box { Box() {} };
+void build() {
+  auto a = std::make_unique<5>();
+  auto b = other::make_unique<Box>();
+}
+""")
+    result = analyze_cpp(tmp_path)
+    assert [e for e in result.edges if e.edge_type == "instantiates"] == []

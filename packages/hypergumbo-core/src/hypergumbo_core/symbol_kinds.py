@@ -42,7 +42,8 @@ helpers :func:`type_like_kind_names` / :func:`abstract_type_kind_names` /
 construction: the ``constructor`` kind, or a ``method``/``function`` with its
 language's reserved initializer name (``_INITIALIZER_NAMES_BY_LANGUAGE``:
 python ``__init__``, javascript/typescript ``constructor``, ruby
-``initialize``, php ``__construct``). It also owns
+``initialize``, php ``__construct``), or, in C++, the member named after its
+class (``C::C``; ``_CLASS_NAMED_INITIALIZER_LANGUAGES``). It also owns
 :data:`SOLIDITY_CALLABLE_DECLARATION_KINDS`, kept in core because both the
 Solidity producer and the ``solidity_abi`` linker read it.
 
@@ -67,7 +68,7 @@ from typing import Final
 # ``_literal_scan`` rather than being copied, because a fact kept in two
 # homes that drift apart is the defect this very linter exists to catch
 # (INV-nosoz).
-from .member_names import member_short_name
+from .member_names import member_owner, member_short_name
 from ._literal_scan import (
     declared_linker_languages as _declared_linker_languages,
     language_guarded_line_spans as _language_guarded_line_spans,
@@ -878,6 +879,14 @@ _INITIALIZER_NAMES_BY_LANGUAGE: Final[dict[str, frozenset[str]]] = {
     "php": frozenset({"__construct"}),
 }
 
+#: Languages whose constructor is named after its class: C++ ``C::C``,
+#: ``OnlineStream::Impl::Impl``. No fixed name can identify it, so it is a
+#: member whose short name equals its owner's short name (template arguments
+#: aside: ``V<T>::V``). A destructor ``C::~C`` is not an initializer -- it runs
+#: on destruction, which no construction edge names -- as Swift's ``deinit``
+#: (a ``method`` ``Type.deinit``) is not one either.
+_CLASS_NAMED_INITIALIZER_LANGUAGES: Final[frozenset[str]] = frozenset({"cpp"})
+
 #: Kinds that can carry an initializer NAME. A ``class`` is never its own
 #: initializer, which matters because the caller walks ``contains`` edges out
 #: of a class and would otherwise be able to loop one back onto itself.
@@ -902,6 +911,11 @@ def is_initializer(kind: str, name: str, language: str) -> bool:
         return True
     if kind not in _NAME_BEARING_INITIALIZER_KINDS:
         return False
+    if language in _CLASS_NAMED_INITIALIZER_LANGUAGES:
+        owner = member_owner(name)
+        return owner is not None and (
+            member_short_name(owner).split("<", 1)[0] == member_short_name(name)
+        )
     return member_short_name(name) in _INITIALIZER_NAMES_BY_LANGUAGE.get(
         language, frozenset(),
     )
