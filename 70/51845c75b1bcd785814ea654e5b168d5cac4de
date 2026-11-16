@@ -1,0 +1,3 @@
+Original commit body from c5a628d32ef9489e5eeef79e29d34a890cc3e06e:
+
+Two lines in the 10.0.0 section (CI gates and self-checks) for PR #2209: the release workflow's secret scan runs the pinned gitleaks and can fail; the expected I/O manifest lists the git queries and file renames this release added. The v10.0.0 tag is being re-pointed at a commit that includes both.
