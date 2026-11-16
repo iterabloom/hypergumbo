@@ -8,7 +8,7 @@ All notable changes to hypergumbo are documented in this file. The format is bas
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
-> **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-9.X.md](docs/RELEASE-NOTES-9.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [8.x](docs/RELEASE-NOTES-8.X.md), [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
+> **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-10.X.md](docs/RELEASE-NOTES-10.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [9.x](docs/RELEASE-NOTES-9.X.md), [8.x](docs/RELEASE-NOTES-8.X.md), [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
 
 ## [Unreleased]
 
