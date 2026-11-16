@@ -16,15 +16,15 @@ for focused LLM context.
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
 - **378** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 121 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **60788** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13677, of which 7846 are functions, methods or classes
-- **244399** edges, test code included, by type:
-  - calls: 138095
-  - contains: 56677
-  - imports: 20842
-  - instantiates: 13239
-  - references: 11350
-  - module_attr_ref: 2327
-  - other: 1869
+- **61387** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13823, of which 7925 are functions, methods or classes
+- **246623** edges, test code included, by type:
+  - calls: 139302
+  - contains: 57252
+  - imports: 21092
+  - instantiates: 13265
+  - references: 11499
+  - module_attr_ref: 2342
+  - other: 1871
 
 ## Package Architecture
 
@@ -275,21 +275,21 @@ The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 2168.2 | hypergumbo_core/ir.py |
-| `node_text` | function | 1391.8 | hypergumbo_core/analyze/base.py |
+| `Symbol` | class | 2190.2 | hypergumbo_core/ir.py |
+| `node_text` | function | 1401.9 | hypergumbo_core/analyze/base.py |
 | `Span` | class | 1259.5 | hypergumbo_core/ir.py |
 | `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
-| `Edge.create` | method | 969.6 | hypergumbo_core/ir.py |
+| `Edge.create` | method | 973.3 | hypergumbo_core/ir.py |
 | `Edge` | class | 854.9 | hypergumbo_core/ir.py |
-| `AnalysisRun` | class | 814.2 | hypergumbo_core/ir.py |
-| `iter_tree` | function | 787.5 | hypergumbo_core/analyze/base.py |
+| `AnalysisRun` | class | 821.8 | hypergumbo_core/ir.py |
+| `iter_tree` | function | 789.9 | hypergumbo_core/analyze/base.py |
 | `register_analyzer` | function | 570.3 | hypergumbo_core/analyze/registry.py |
 | `AnalysisResult` | class | 568.0 | hypergumbo_core/analyze/base.py |
 | `find_files` | function | 558.1 | hypergumbo_core/discovery.py |
 | `FileAnalysis` | class | 530.1 | hypergumbo_core/analyze/base.py |
 | `make_symbol_id` | function | 494.4 | hypergumbo_core/analyze/base.py |
 | `compute_cyclomatic_complexity` | function | 485.9 | hypergumbo_core/analyze/cyclomatic.py |
-| `find_child_by_type` | function | 450.0 | hypergumbo_core/analyze/base.py |
+| `find_child_by_type` | function | 452.0 | hypergumbo_core/analyze/base.py |
 
 ## Pattern System
 
@@ -1004,8 +1004,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e93f40b09035
-  commit_count: 9264
+  commit: cc35fb477ecc
+  commit_count: 9315
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
