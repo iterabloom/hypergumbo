@@ -177,11 +177,11 @@ The table is read as follows. Those three are legal. What IS enforced
 | Rule | Severity | Measured at landing |
 |---|---|---|
 | An id named `file` of kind `file` (the file pseudo-symbol) has span `1-1`. The converse is not required: kind `file` also carries manifest entries with a role (an npm script or `main`, a pyproject script; `meta["entry_role"]`, audit-findings 0005) | error | 0 (grpc, whisper.cpp, sherpa-onnx) |
-| No path slot is `<unknown>`. It is finalize's fallback for an edge dst that is not an id (INV-dulah, WI-bufar-pokam) | warning: producers still emitting non-id dsts | grpc 221 (starlark `calls` 213, cmake `links` 7, rst `includes` 1); whisper.cpp 361 (cuda 340, cmake 19, glsl 1, wgsl 1) |
+| No path slot is `<unknown>`. It is finalize's fallback for an edge dst that is not an id (INV-dulah, WI-bufar-pokam) | warning: producers still emitting non-id dsts | whisper.cpp 0, SwiftLint 0 (2026-11-15, after the starlark, cmake, rst, cuda, glsl and wgsl producers were fixed); grpc not re-measured since |
 | Span `start <= end` | error | 0 |
 
-The `<unknown>` warning goes to `error` once its producers are fixed
-(WI-zihij). That is the same path the round-trip checks took (WI-popak).
+The `<unknown>` warning goes to `error` once it reads 0 on the measured
+corpus with every producer of a non-id edge destination fixed.
 
 
 ### Enforcement

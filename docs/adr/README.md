@@ -57,7 +57,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0048](0048-taint-precision-benchmark-frame.md) | The Taint-Precision Benchmark — Equal Allocation, Declared Frame, Pinned SHA | Accepted | 2026-08-28 |
 | [0049](0049-deferred-crossings-are-disclosed-not-minted.md) | A Deferred Crossing Is Disclosed, Not Minted (extends ADR-0016) | Accepted | 2026-08-29 |
 | [0050](0050-io-boundary-axis.md) | The I/O-Boundary Axis | Accepted | 2026-09-01 |
-| [0051](0051-module-key-axis.md) | The Module-Key Axis | Implemented | 2026-09-01 |
+| [0051](0051-module-key-axis.md) | The Module-Key Axis | Accepted | 2026-09-01 |
 | [0052](0052-taint-refutation-is-confirm-only.md) | Taint Refutation Is Confirm-Only — the escape-closing goal is retired (supersedes ADR-0017 §3a removal-coverage ambition) | Accepted | 2026-09-09 |
 | [0053](0053-accessor-name-typing-and-its-disclosure.md) | A Declared Relation-Accessor Name Types the Module Slot, and Says That It Did (amends WI-gulaz's implementation docstring clause) | Accepted | 2026-09-10 |
 | [0054](0054-pass-silence-candidates-unresolved.md) | `candidates_unresolved` — splitting the pass-silence residue (a pass that found its construct and resolved none of it is not "did not say why") | Accepted | 2026-09-16 |

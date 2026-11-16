@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0051: The Module-Key Axis
 
-Status: Implemented
+Status: Accepted
 Date: 2026-09-01
 Related: [ADR-0024](0024-axis-declaration-template.md) (the template this
 instantiates), [ADR-0032](0032-canonical-name-fingerprint-reshape.md) (whose
