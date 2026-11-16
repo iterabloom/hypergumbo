@@ -1,0 +1,20 @@
+Original commit body from 28f638e7be5bef92475565c6e4f0b29ac74b83c5:
+
+The v10.0.0 release run stopped before publishing, at its io-manifest job. Two fixes to the release workflow's gates.
+
+## 1. Expected I/O manifest
+
+Four observed lines were not in docs/io-manifest/expected.txt. Each is intended and new in 10.0.0:
+
+- exec git check-ignore --no-index -z --stdin and exec git ls-tree -r -z --name-only HEAD: discovery asks git which files are ignored and not tracked and does not analyse them (ADR-0004 point 9).
+- rename within the cache and within the output directory: a file is written to a sibling and renamed into place, so an interrupted run leaves no truncated file.
+
+Reproduced locally with the README recipe (plain install of 10.0.0, the six corpus repositories at their pins): the unedited file fails with exactly these four lines; with them the run ends OK. SECURITY.md, which states the manifest's line count, is regenerated (15 to 19).
+
+## 2. Secret scanning never ran
+
+The step ran pip install trufflehog and then trufflehog filesystem . --no-update --only-verified || true. PyPI's trufflehog is a different, older program; it printed a usage error and || true passed it. The step now installs the pinned gitleaks with hypergumbo's own install-gitleaks (version 8.30.0, archive checked against its SHA-256) and runs gitleaks detect --source . --no-git --no-banner, with its exit code as the gate. On a clean checkout of this branch that command exits 0.
+
+tests/test_release_workflow_gates.py pins that publishing waits for both gate jobs, that no command in them is followed by || true, and how the secret scan is installed and invoked. Seven mutations of the workflow each fail a test.
+
+Checks: manifest tests under the CI stubs pass (2,939).
