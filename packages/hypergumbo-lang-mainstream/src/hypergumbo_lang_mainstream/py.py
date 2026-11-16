@@ -7257,7 +7257,7 @@ def _extract_edges(
                             node.value, local_symbols,
                             _scope_live(imports, _value_shadow), global_symbols,
                             _scope_live(module_imports, _value_shadow), resolver,
-                            inner_scope=stack.immediate_symbols() if stack else None,
+                            inner_scope=_frame_defs(stack),
                             sym_by_path_name=_sym_by_path_name,
                             var_types=var_types,
                             shadowed=_value_shadow | (
@@ -8323,17 +8323,44 @@ def _lexical_def(
     """What a bare name is bound to by a ``def`` / ``class`` (or a module-level
     assignment) where it is used.
 
-    The caller's own frame first -- its nested defs and local classes
-    (INV-mofav) -- then the module: a registry key without a dot
+    The caller's function scopes first (:func:`_frame_defs`): its own frame's
+    nested defs and local classes (INV-mofav), and the local CLASSES of the
+    functions around it, which a closure reaches before anything the module
+    binds. Then the module: a registry key without a dot
     (:class:`FileAnalysis`). A class body is not an enclosing scope, so a
     method or a class nested in a class is never the answer; it is reached
     through its owner (:func:`_class_member`). Imports are the caller's next
-    question, and the defs of the functions further out its last
-    (:meth:`ScopeStack.lookup_enclosing`, kept a last resort on purpose: it
-    never re-targets a name the module or an import already answers).
+    question, and the nested FUNCTIONS of the functions further out its last
+    (:meth:`ScopeStack.lookup_enclosing`, kept a last resort on purpose for
+    them: it never re-targets a name the module or an import already
+    answers).
     """
-    found = stack.lookup_immediate(name) if stack is not None else None
+    found = _frame_defs(stack).get(name)
     return found if found is not None else local_symbols.get(name)
+
+
+def _frame_defs(stack: ScopeStack | None) -> dict[str, Symbol]:
+    """The defs a bare name reaches in the caller's function scopes.
+
+    The caller's own frame (its nested functions and local classes), and the
+    local classes of the enclosing functions that no nearer plain local
+    hides (:meth:`ScopeStack.lookup_enclosing`). An enclosing function's
+    class comes before the module here because that is Python's order and
+    because it is what the registry gave before it was keyed by scope chain:
+    a function-local class answered its bare name everywhere in the file,
+    its own closures included. An enclosing function's nested FUNCTION is
+    not listed: for those the enclosing lookup stays the last resort.
+    Empty at a site with no scope stack.
+    """
+    frames = stack.frames if stack is not None else []
+    defs: dict[str, Symbol] = {}
+    for frame in frames[:-1]:
+        for bound in frame.bindings:
+            enclosing = stack.lookup_enclosing(bound) if stack is not None else None
+            if enclosing is not None and enclosing.kind == "class":
+                defs[bound] = enclosing
+    defs.update(stack.immediate_symbols() if stack is not None else {})
+    return defs
 
 
 def _put_class_body_def(
@@ -9917,7 +9944,7 @@ def _process_call(
         """
         if _resolve_call_target(
             call, local_symbols, imports, global_symbols, module_imports, resolver,
-            inner_scope=stack.immediate_symbols() if stack else None,
+            inner_scope=_frame_defs(stack),
         ) is not None:
             return None
         return _external_constructor_type(
@@ -9947,7 +9974,7 @@ def _process_call(
                 _resolve_call_target(
                     receiver, local_symbols, imports, global_symbols,
                     module_imports, resolver,
-                    inner_scope=stack.immediate_symbols() if stack else None,
+                    inner_scope=_frame_defs(stack),
                     sym_by_path_name=sym_by_path_name, var_types=var_types,
                     shadowed=_value_shadow | own_locals,
                 ),
