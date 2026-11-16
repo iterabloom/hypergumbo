@@ -87,7 +87,14 @@ class SchemaDriftError(Exception):
 
 
 def python_type_to_json_schema(py_type: Any) -> Dict[str, Any]:
-    """Convert a Python type annotation to a JSON Schema type fragment."""
+    """Convert a Python type annotation to a JSON Schema type fragment.
+
+    A ``typing.NewType`` is its supertype at run time and on the wire
+    (``StableId`` serializes as the ``str`` it is), so it maps exactly as
+    its supertype does; chains of NewTypes unwrap to the base.
+    """
+    while isinstance(py_type, typing.NewType):
+        py_type = py_type.__supertype__
     origin = get_origin(py_type)
     args = get_args(py_type)
 
@@ -386,7 +393,7 @@ def _symbol_spec() -> ClassSpec:
     return ClassSpec(
         cls=Symbol,
         description="A code symbol (function, class, method, etc.)",
-        folded={name: "supply_chain" for name in supply_chain_fields},
+        folded=dict.fromkeys(supply_chain_fields, "supply_chain"),
         # WI-lidig: the annotator's internal "already classified" flag.
         omitted={"supply_chain_classified"},
         composites={
