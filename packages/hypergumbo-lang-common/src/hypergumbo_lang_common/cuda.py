@@ -72,6 +72,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, declared_arity, declared_arity_stable_id,
@@ -417,7 +418,10 @@ def _extract_cuda_edges(
                         "cuda", caller.id, called_name, start_line, PASS_ID, run_id,
                     )
                     if launch_meta is not None:
-                        edge.meta = {**(edge.meta or {}), **launch_meta}
+                        if edge.meta is None:
+                            edge.meta = {}
+                        for key, value in launch_meta.items():
+                            write_meta_key(edge.meta, key, value)
                 edges.append(edge)
                 if stands_in:
                     mark_stand_in(edges, edges_before, caller.id)
