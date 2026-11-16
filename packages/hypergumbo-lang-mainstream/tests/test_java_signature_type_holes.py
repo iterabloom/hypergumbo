@@ -13,6 +13,11 @@ method's parameter list (``int f()[]``) or after a field's name
 (``int a[];``) were lost. Two declarations that differ only there shared one
 hashed text, so they shared one stable_id.
 
+Separately, the shared types-first normalizer erases the varargs marker
+(``Object... a`` hashes as ``Object``), so ``log(Object o)`` and
+``log(Object... os)``, a legal overload pair, tied. Java's normalizer writes a
+variable-arity parameter as the array it is (JLS 8.4.1), ``Object[]``.
+
 Each test pair puts the two declarations in two repositories at the same
 relative path, so the file anchor is equal and only the hashed text can tell
 them apart (within one file the occurrence ordinal would hide the tie).
@@ -24,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo_lang_mainstream.java import analyze_java
+from hypergumbo_lang_mainstream.java import analyze_java, normalize_java_signature
 
 
 def _symbols(root: Path, body: str, *, header: str = "class C {") -> dict[str, object]:
@@ -123,6 +128,37 @@ def test_every_parameter_shape_renders_in_order(tmp_path: Path) -> None:
         "(Map.Entry e, int[] x, String[][] y, Outer.Inner<String>.Deep q, int _,"
         " float... rest) Map.Entry<String, Integer>[]"
     )
+
+
+def test_varargs_and_single_parameter_overloads_hash_apart(tmp_path: Path) -> None:
+    a, b = _pair(tmp_path, "C.log", "void log(Object... os) {}", "void log(Object o) {}")
+    assert a.signature == "(Object... os)"
+    assert a.stable_id != b.stable_id
+
+
+def test_an_annotated_vararg_hashes_as_the_annotated_array_it_declares(
+    tmp_path: Path,
+) -> None:
+    # tree-sitter-java leaves `T @A ... xs` as an ERROR node; its source text
+    # is written, and hashes as `T @A [] xs` (an array_type) would.
+    a, b = _pair(
+        tmp_path, "C.f",
+        "void f(String @A\n      ... xs) {}", "void f(String @A [] xs) {}",
+    )
+    assert a.signature == "(String @A ... xs)"
+    assert a.stable_id == b.stable_id
+
+
+def test_varargs_hashes_as_the_array_it_declares() -> None:
+    # JLS 8.4.1: the type of `T... xs` is T[]; `f(T... x)` and `f(T[] x)`
+    # are one signature (a class cannot declare both), so they hash as one.
+    assert normalize_java_signature("(String fmt, Object... args) String") == (
+        "(String,Object[])String"
+    )
+    assert normalize_java_signature("(Object... args)") == normalize_java_signature(
+        "(Object[] args)"
+    )
+    assert normalize_java_signature("(int[]... xs)") == "(int[][])"
 
 
 def test_a_receiver_parameter_is_not_a_formal_parameter(tmp_path: Path) -> None:

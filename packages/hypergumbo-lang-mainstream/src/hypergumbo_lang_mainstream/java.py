@@ -25,7 +25,7 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
   (``_extract_java_signature``), which writes every parameter and return
   type as its source text whatever the type's node kind; a type left out
   there is one the id cannot see, so two overloads differing only in it
-  would tie.
+  would tie. ``normalize_java_signature`` hashes ``T...`` as ``T[]``.
 - Method call relationships (edges)
 - Inheritance relationships: this analyzer emits ``extends`` / ``implements``
   edges for classes only. A record's ``implements`` and an interface's
@@ -481,8 +481,21 @@ def normalize_java_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Java signature for typed stable_id (spec §6 typed tier)."""
+    """Normalize a Java signature for typed stable_id (spec §6 typed tier).
+
+    A variable-arity parameter ``T... xs`` is written as ``T[] xs`` first:
+    its type IS ``T[]`` (JLS 8.4.1), so ``f(T... x)`` and ``f(T[] x)`` are one
+    signature (a class cannot declare both) and hash as one. The shared
+    types-first normalizer would instead erase the marker, hashing
+    ``log(Object... os)`` as ``(Object)``, the text of ``log(Object o)``: a
+    legal overload pair would tie. Outside a string inside a type
+    annotation (``@A("...")``, rewritten too: the hash stays deterministic),
+    ``...`` appears nowhere else in the text ``_extract_java_signature``
+    writes.
+    """
     from hypergumbo_core.analyze.base import normalize_signature_types_first
+    if signature:
+        signature = signature.replace("...", "[]")
     return normalize_signature_types_first(signature, type_params)
 
 
