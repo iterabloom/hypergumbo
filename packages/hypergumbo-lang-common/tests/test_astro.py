@@ -570,3 +570,90 @@ class TestPathRelativeToAnalysisRoot:
         scss_dirs = {Path(s.path).parent for s in analyze_scss(tmp_path).symbols}
         assert scss_dirs == {Path("src")}  # control: the sibling's convention
         assert astro_dirs == scss_dirs
+
+
+class TestComponentImportResolution:
+    """A relative import of a component in the tree ends on that file's node.
+
+    Both edges an import yields did not: the frontmatter edge named
+    ``astro:../components/Hero.astro:1-1:file:file``, a file id whose path
+    slot is the raw import string, so the pipeline minted a file node for a
+    path that names no file; the tag edge named
+    ``astro:../components/Hero.astro:0-0:module:module``, a stand-in for a
+    file sitting in the repository.
+    """
+
+    _PAGE = """---
+import Hero from '../components/Hero.astro';
+import Gone from '../components/Gone.astro';
+import Aliased from '@components/Aliased.astro';
+---
+<Hero /><Gone /><Aliased /><Unimported />
+"""
+
+    def _edges(self, tmp_path: Path) -> list:
+        make_astro_file(tmp_path, "src/pages/index.astro", self._PAGE)
+        make_astro_file(tmp_path, "src/components/Hero.astro", "<h1>h</h1>")
+        make_astro_file(tmp_path, "src/components/Aliased.astro", "<p>a</p>")
+        return [e for e in analyze_astro(tmp_path).edges if e.edge_type == "imports"]
+
+    def test_both_edges_of_an_existing_target_end_on_its_file_node(
+        self, tmp_path: Path,
+    ) -> None:
+        hero = [
+            e for e in self._edges(tmp_path)
+            if "Hero" in ((e.meta or {}).get("import_name"), (e.meta or {}).get("component_name"))
+        ]
+        assert len(hero) == 2  # the frontmatter import and the <Hero /> use
+        for edge in hero:
+            assert edge.dst == "astro:src/components/Hero.astro:1-1:file:file"
+            assert edge.src == "astro:src/pages/index.astro:1-1:file:file"
+            assert edge.meta["import_path"] == "../components/Hero.astro"
+
+    def test_no_edge_names_a_file_id_with_a_raw_import_path(self, tmp_path: Path) -> None:
+        """A file id's path slot is a repo path, never ``../x`` or ``@alias/x``."""
+        for edge in self._edges(tmp_path):
+            if edge.dst.endswith(":1-1:file:file"):
+                path = edge.dst[: -len(":1-1:file:file")].partition(":")[2]
+                assert (tmp_path / path).is_file(), edge.dst
+
+    def test_a_missing_or_aliased_target_keeps_the_module_placeholder(
+        self, tmp_path: Path,
+    ) -> None:
+        by_name: dict[str, set[str]] = {}
+        for edge in self._edges(tmp_path):
+            meta = edge.meta or {}
+            by_name.setdefault(meta.get("import_name") or meta["component_name"], set()).add(edge.dst)
+        assert by_name["Gone"] == {"astro:../components/Gone.astro:0-0:module:module"}
+        assert by_name["Aliased"] == {"astro:@components/Aliased.astro:0-0:module:module"}
+        assert by_name["Unimported"] == {"astro:component:Unimported:0-0:Unimported:component"}
+
+    def test_the_use_sites_meta_is_on_the_edge_that_survives_dedup(
+        self, tmp_path: Path,
+    ) -> None:
+        """The frontmatter edge and the tag edge of one import now name the
+        same target, and edge dedup keeps the first of two identical
+        relations. The first must be the tag's: it carries the hydration
+        directive and the attributes, and its component name is the import's."""
+        make_astro_file(tmp_path, "src/pages/index.astro", """---
+import Counter from '../components/Counter.astro';
+import Gone from '../components/Gone.astro';
+import Unused from '../components/Unused.astro';
+---
+<Counter client:load start="1" /><Gone client:idle />
+""")
+        make_astro_file(tmp_path, "src/components/Counter.astro", "<p>c</p>")
+        edges = [e for e in analyze_astro(tmp_path).edges if e.edge_type == "imports"]
+        first_by_dst: dict[str, object] = {}
+        for edge in edges:
+            first_by_dst.setdefault(edge.dst, edge)
+        assert len(edges) == 5 and len(first_by_dst) == 3
+        counter = first_by_dst["astro:src/components/Counter.astro:1-1:file:file"]
+        assert counter.meta["component_name"] == "Counter"
+        assert counter.meta["client_directive"] == "client:load"
+        assert "start" in counter.meta["attributes"]
+        gone = first_by_dst["astro:../components/Gone.astro:0-0:module:module"]
+        assert gone.meta["client_directive"] == "client:idle"
+        # An import no tag uses keeps its frontmatter edge.
+        unused = first_by_dst["astro:../components/Unused.astro:0-0:module:module"]
+        assert unused.meta["import_name"] == "Unused"
