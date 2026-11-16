@@ -92,6 +92,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Solidity call or emit resolves in its own contract, then its bases**, never in another contract of the file.
 - **Java and Dart constructions reach the constructor**, which now belongs to its class.
 - **Java interface methods without `public` count as exported**, as the language makes them.
+- **PHP `private` and `protected` class constants are no longer reported public.**
 - **Python**: flask-restful `Resource` methods and Graphene `resolve_*` methods are handlers again; class-body calls emit edges; comprehension variables no longer retype other names.
 - **Electron IPC connects renderer → preload → main**, through `contextBridge` or a project's own wrapper: on podman-desktop, 66 of 66 bridge calls reach main, up from 1.
 - **The Go memberlist linker emits its delegate edges in a real survey**, not only in unit tests.

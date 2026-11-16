@@ -2099,6 +2099,128 @@ enum Suit {
         assert "Suit.WILD" in fields, fields
 
 
+class TestPhpClassConstantVisibility:
+    """A class constant's visibility modifier is read the way a property's and a
+    method's is (PHP 7.1+ accepts public/protected/private on ``const``). It was
+    never read: every constant came out modifiers=[], is_exported=True, and a
+    private constant hashed the empty (public) visibility into its stable_id."""
+
+    _SRC = """<?php
+namespace App;
+class A {
+    const PLAIN = 1;
+    public const OPEN = 2;
+    protected const GUARDED = 3;
+    private const SECRET = 4;
+    final public const FIN = 5;
+    final const FINPLAIN = 6;
+    private const int TYPED = 7;
+    const string TYPEDPLAIN = 'x';
+    private const MA = 1, MB = 2;
+}
+interface I { const IC = 1; public const IPC = 2; }
+trait T { private const TC = 1; protected const TP = 2; }
+enum E: int { private const EC = 1; case One = 1; }
+"""
+
+    @pytest.mark.parametrize("name, modifiers, exported", [
+        ("A.PLAIN", [], True),
+        ("A.OPEN", ["public"], True),
+        ("A.GUARDED", ["protected"], False),
+        ("A.SECRET", ["private"], False),
+        ("A.FIN", ["final", "public"], True),
+        ("A.FINPLAIN", ["final"], True),
+        ("A.TYPED", ["private"], False),
+        ("A.TYPEDPLAIN", [], True),
+        ("A.MA", ["private"], False),
+        ("A.MB", ["private"], False),
+        ("I.IC", [], True),
+        ("I.IPC", ["public"], True),
+        ("T.TC", ["private"], False),
+        ("T.TP", ["protected"], False),
+        ("E.EC", ["private"], False),
+    ])
+    def test_constant_modifiers_and_exportedness(
+        self, tmp_path: Path, name: str, modifiers: list[str], exported: bool,
+    ) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "a.php").write_text(self._SRC)
+        result = analyze_php(tmp_path)
+        sym = next(s for s in result.symbols if s.name == name)
+        assert sym.kind == "field"
+        assert sym.modifiers == modifiers
+        assert sym.is_exported is exported
+
+    def test_constant_reads_modifiers_like_a_property(self, tmp_path: Path) -> None:
+        """One reading for properties and constants: the same declaration
+        modifiers give the same ``modifiers`` and ``is_exported``."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "p.php").write_text(
+            "<?php\nclass P {\n"
+            "    private const C1 = 1; private $p1 = 1;\n"
+            "    protected const C2 = 1; protected $p2 = 1;\n"
+            "    public const C3 = 1; public $p3 = 1;\n"
+            "}\n"
+        )
+        result = analyze_php(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        for c, p in (("P.C1", "P.p1"), ("P.C2", "P.p2"), ("P.C3", "P.p3")):
+            assert by_name[c].modifiers == by_name[p].modifiers
+            assert by_name[c].is_exported is by_name[p].is_exported
+
+    def test_anonymous_class_constant_keeps_its_visibility(self, tmp_path: Path) -> None:
+        """An anonymous class has no type name, so its constant is emitted as a
+        ``variable`` like a top-level one; it still carries its modifier, and a
+        top-level constant (which takes none) stays public."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "m.php").write_text(
+            "<?php\nconst TOP = 1;\n"
+            "return new class {\n    private const HIDDEN = 1;\n"
+            "    public function up(): int { return self::HIDDEN; }\n};\n"
+        )
+        result = analyze_php(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["HIDDEN"].kind == "variable"
+        assert by_name["HIDDEN"].modifiers == ["private"]
+        assert by_name["HIDDEN"].is_exported is False
+        assert by_name["TOP"].modifiers == []
+        assert by_name["TOP"].is_exported is True
+
+    def _const_stable_id(self, root: Path, decl: str) -> str:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        root.mkdir()
+        (root / "C.php").write_text(f"<?php\nclass C {{\n    {decl} K = 1;\n}}\n")
+        result = analyze_php(root)
+        sym = next(s for s in result.symbols if s.name == "C.K")
+        assert sym.stable_id is not None
+        return sym.stable_id
+
+    def test_stable_id_carries_non_public_visibility_only(self, tmp_path: Path) -> None:
+        """``private`` and ``protected`` enter the stable_id's visibility slot;
+        an unmodified constant, an explicit ``public`` one and a ``final`` one
+        keep the empty slot every constant hashed before (PHP's default is
+        public, so ``public`` adds no information and moving those ids would
+        churn every public constant)."""
+        ids = {
+            decl: self._const_stable_id(tmp_path / f"r{i}", decl)
+            for i, decl in enumerate((
+                "const", "public const", "final const", "final public const",
+                "private const", "protected const", "final protected const",
+            ))
+        }
+        public_ids = {ids["const"], ids["public const"], ids["final const"],
+                      ids["final public const"]}
+        assert len(public_ids) == 1, ids
+        assert ids["private const"] not in public_ids
+        assert ids["protected const"] not in public_ids
+        assert ids["private const"] != ids["protected const"]
+        assert ids["final protected const"] == ids["protected const"]
+
+
 class TestPhpBareMethodMagnetGate:
     """INV-fahub: a bare / receiver-typeless call that resolves only via a weak
     short-name match to a DIFFERENT class's method must be WITHHELD (deferred to
