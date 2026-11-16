@@ -757,3 +757,354 @@ endmodule
 
     assert _named(result, "module") == ["dut"]
     assert _instantiations(result) == []
+
+
+# -- calls into functions, and what the dead-code view makes of them -----------
+
+
+def _calls(result: AnalysisResult) -> list[tuple[str, str, int]]:
+    """``(source, target, line)`` of every ``calls`` edge, sorted by line then
+    names. A symbol is written ``kind:name@line`` (its own start line); a
+    source that is no symbol (the file node) is written as its id."""
+    by_id = {s.id: s for s in result.symbols}
+
+    def show(symbol_id: str) -> str:
+        sym = by_id.get(symbol_id)
+        return f"{sym.kind}:{sym.name}@{sym.span.start_line}" if sym else symbol_id
+
+    return sorted(
+        ((show(e.src), show(e.dst), e.line) for e in result.edges if e.edge_type == "calls"),
+        key=lambda edge: (edge[2], edge[0], edge[1]),
+    )
+
+
+def test_calls_resolve_in_the_enclosing_scopes_innermost_first(tmp_path):
+    """A call with arguments (``tf_call``) and one without (``f0()``, which
+    the grammar reads as a ``let_expression``) reach the function declared in
+    the nearest enclosing scope: the generate block, then the module, then the
+    file. The source is the innermost function or task around the call, else
+    the module or interface."""
+    result = _analyze(tmp_path, {"rtl/m.sv": """\
+function int top_f(int x); return x; endfunction
+function int top_g(int x); return top_f(x); endfunction
+module m(input [7:0] a, output [7:0] y);
+  function [7:0] f; input [7:0] x; f = x + 1; endfunction
+  function [7:0] g; input [7:0] x; g = f(x); endfunction
+  function [7:0] f0; f0 = 8'd0; endfunction
+  wire [7:0] w = g(a);
+  assign y = f(w) + f0();
+  reg [7:0] r;
+  always @(*) r = top_f(a);
+  task t; output [7:0] o; o = f(8'd1); endtask
+  generate if (1) begin : gen
+    function [7:0] f; input [7:0] x; f = x; endfunction
+    wire [7:0] gw = f(a) + g(a);
+  end endgenerate
+endmodule
+interface bus_if;
+  logic v;
+  function logic get(); return v; endfunction
+  wire rdy = get();
+endinterface
+"""})
+
+    assert _calls(result) == [
+        ("function:top_g@2", "function:top_f@1", 2),
+        ("function:g@5", "function:f@4", 5),
+        ("module:m@3", "function:g@5", 7),
+        ("module:m@3", "function:f0@6", 8),
+        ("module:m@3", "function:f@4", 8),
+        ("module:m@3", "function:top_f@1", 10),
+        ("task:t@11", "function:f@4", 11),
+        ("module:m@3", "function:f@13", 14),
+        ("module:m@3", "function:g@5", 14),
+        ("interface:bus_if@17", "function:get@19", 20),
+    ]
+    assert {e.evidence_type for e in result.edges if e.edge_type == "calls"} == {"ast_call"}
+
+
+def test_package_qualified_static_and_imported_calls(tmp_path):
+    """``pkg::f(...)`` reaches the package's function in whatever file
+    declares it, ``C::m(...)`` the class's, and an unqualified name reaches a
+    package function through an ``import`` visible where the call is: in the
+    module header, the module body or the compilation unit. A local
+    declaration wins over an import and an explicit import over a wildcard
+    one; an import in another module is not visible."""
+    result = _analyze(tmp_path, {
+        "rtl/pkg.sv": """\
+package pkg;
+  function automatic int add(int a, int b); return a + b; endfunction
+  function automatic int twice(int a); return add(a, a); endfunction
+  function automatic int zero(); return 0; endfunction
+endpackage
+package other;
+  function automatic int add(int a, int b); return a; endfunction
+endpackage
+class C;
+  static function int m(int x); return x; endfunction
+endclass
+""",
+        "rtl/use.sv": """\
+import other::*;
+module q(input int a, output int y);
+  assign y = pkg::add(a, 1) + pkg::zero() + C::m(a) + nopkg::add(a, 1);
+endmodule
+module hdr import pkg::add; (input int a, output int y);
+  assign y = add(a, 1);
+endmodule
+module body(input int a, output int y);
+  import pkg::*;
+  function int twice(int x); return x; endfunction
+  assign y = twice(a) + zero();
+endmodule
+module unit_import(input int a, output int y);
+  assign y = add(a, 1) + twice(a);
+endmodule
+module explicit_wins(input int a, output int y);
+  import other::*;
+  import pkg::add;
+  assign y = add(a, 1);
+endmodule
+""",
+    })
+
+    assert _calls(result) == [
+        ("function:twice@3", "function:add@2", 3),
+        ("module:q@2", "function:add@2", 3),
+        ("module:q@2", "function:m@10", 3),
+        ("module:q@2", "function:zero@4", 3),
+        ("module:hdr@5", "function:add@2", 6),
+        ("module:body@8", "function:twice@10", 11),
+        ("module:body@8", "function:zero@4", 11),
+        ("module:unit_import@13", "function:add@7", 14),
+        ("module:explicit_wins@16", "function:add@2", 19),
+    ]
+
+
+def test_calls_the_source_does_not_decide_emit_no_edge(tmp_path):
+    """No ``calls`` edge for a system task or function, a name declared in no
+    enclosing scope and no visible import, a call through an instance or an
+    interface port, or a name two declarations of one scope share. ``this.m``
+    reaches the enclosing class's own ``m`` and nothing else, and a bare name
+    in a class that ``extends`` another does not look past the class: the
+    name may be inherited."""
+    result = _analyze(tmp_path, {"rtl/no.sv": """\
+function int outside(int x); return x; endfunction
+module m(input [7:0] a, output [7:0] y);
+`ifdef A
+  function [7:0] twin; input [7:0] x; twin = x; endfunction
+`else
+  function [7:0] twin; input [7:0] x; twin = ~x; endfunction
+`endif
+  reg [7:0] r;
+  initial begin
+    $display("%d", $clog2(8));
+    r = undefined_fn(a);
+    r = u_sub.h(a);
+    r = port_if.get();
+    r = twin(a);
+  end
+endmodule
+class C;
+  function int m(int x); return x; endfunction
+  function int n(int x); return this.m(x) + this.outside(x); endfunction
+endclass
+class D extends C;
+  function int p(int x); return outside(x); endfunction
+endclass
+module standalone;
+  reg [7:0] r;
+  initial r = this.outside(8'd1);
+endmodule
+"""})
+
+    assert _calls(result) == [("function:n@19", "function:m@18", 19)]
+
+
+def test_each_of_two_same_named_modules_calls_its_own_function(tmp_path):
+    """Scopes are told apart by where they are, not by name: an ``ifdef`` pair
+    of ``module dup`` each calls the ``f`` it declares."""
+    result = _analyze(tmp_path, {"rtl/dup.v": """\
+`ifdef FPGA
+module dup(input a, output y);
+  function f; input x; f = x; endfunction
+  assign y = f(a);
+endmodule
+`else
+module dup(input a, output y);
+  function f; input x; f = ~x; endfunction
+  assign y = f(a);
+endmodule
+`endif
+"""})
+
+    assert _calls(result) == [
+        ("module:dup@2", "function:f@3", 4),
+        ("module:dup@7", "function:f@8", 9),
+    ]
+
+
+def test_a_task_enable_emits_no_calls_edge(tmp_path):
+    """tree-sitter-verilog parses neither ``t2(w, z);`` nor a bare ``run;`` as
+    a call (a syntax error and a declaration), so neither is an edge. The
+    function call beside them still is: anchored on the module, or on the file
+    where the task enable cost the module its ``module_declaration``."""
+    result = _analyze(tmp_path, {
+        "tb/tb.sv": """\
+module tb;
+  reg [7:0] w, z;
+  task run; begin end endtask
+  task t2(input [7:0] a, output [7:0] b); b = a; endtask
+  function [7:0] twice; input [7:0] x; twice = x * 2; endfunction
+  initial begin
+    run;
+    t2(w, z);
+    w = twice(z);
+  end
+endmodule
+""",
+        "tb/lost.sv": """\
+module lost;
+  reg [7:0] q;
+  task check(input [7:0] expect); begin end endtask
+  function [7:0] half; input [7:0] x; half = x / 2; endfunction
+  initial begin
+    check(8'd1);
+    q = half(q);
+  end
+endmodule
+""",
+    })
+
+    assert _named(result, "module") == ["tb"]
+    assert _named(result, "task") == ["check", "run", "t2"]
+    assert _calls(result) == [
+        ("verilog:tb/lost.sv:1-1:file:file", "function:half@4", 7),
+        ("module:tb@1", "function:twice@5", 9),
+    ]
+
+
+def test_is_exported_follows_where_a_task_or_function_is_declared(tmp_path):
+    """A package's tasks and functions are importable by every design unit:
+    exported. One declared in a module, program or checker (a generate block
+    included) is local to it: not exported. For an interface, a class and the
+    compilation unit the analyzer has no rule and says nothing (``None``)."""
+    result = _analyze(tmp_path, {"rtl/vis.sv": """\
+package pkg;
+  function automatic int pf(int a); return a; endfunction
+  task automatic pt(input int n); endtask
+endpackage
+module m;
+  function integer mf; input x; mf = x; endfunction
+  task mt; begin end endtask
+  generate if (1) begin : g
+    function integer gf; input x; gf = x; endfunction
+  end endgenerate
+endmodule
+program prog; task progt; endtask endprogram
+checker chk(input x); function bit cf(); return 1; endfunction endchecker
+interface bus_if; function logic bf(); return 1; endfunction endinterface
+class C; function int cm(int x); return x; endfunction endclass
+function int uf(int x); return x; endfunction
+"""})
+
+    exported = {s.name: s.is_exported for s in result.symbols if s.kind in ("task", "function")}
+    assert exported == {
+        "pf": True, "pt": True,
+        "mf": False, "mt": False, "gf": False, "progt": False, "cf": False,
+        "bf": None, "cm": None, "uf": None,
+    }
+    assert {s.is_exported for s in result.symbols if s.kind in ("module", "signal")} == {None}
+
+
+def test_a_module_nothing_instantiates_is_an_entrypoint(tmp_path):
+    """A module no instantiation statement names is a top-level module
+    (IEEE 1800 §23.3.1), elaborated without being instantiated: it carries the
+    ``entrypoint`` concept. An instantiated module and an interface do not."""
+    result = _analyze(tmp_path, {"rtl/top.sv": """\
+interface bus_if; logic v; endinterface
+module leaf(input x); endmodule
+module mid(input x);
+  leaf u_leaf(.x(x));
+endmodule
+module top;
+  wire w;
+  bus_if bif();
+  mid u_mid(.x(w));
+endmodule
+module spare; endmodule
+"""})
+
+    concepts = {
+        s.name: (s.meta or {}).get("concepts")
+        for s in result.symbols if s.kind in ("module", "interface")
+    }
+    entry = [{"concept": "entrypoint", "framework": "verilog"}]
+    assert concepts == {
+        "bus_if": None, "leaf": None, "mid": None, "top": entry, "spare": entry,
+    }
+
+
+def _dead_code(repo, files: dict[str, str]) -> tuple[dict, set[str]]:
+    """Survey ``files`` and return ``dead-code-maybe``'s summary and the
+    ``name@line`` of its candidates (default seeds)."""
+    import io
+    import json
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from hypergumbo_core.cli import build_parser, cmd_dead_code_maybe, run_behavior_map
+
+    for rel, text in files.items():
+        path = repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    map_file = repo / "map.json"
+    run_behavior_map(repo_root=repo, out_path=map_file, include_sketch_precomputed=False)
+    out = io.StringIO()
+    with redirect_stdout(out), redirect_stderr(io.StringIO()):
+        assert cmd_dead_code_maybe(build_parser().parse_args([
+            "dead-code-maybe", str(repo), "--input", str(map_file), "--format", "json",
+        ])) == 0
+    data = json.loads(out.getvalue())
+    return data["summary"], {
+        f'{c["name"]}@{c["span"]["start_line"]}' for c in data["dead_candidates"]
+    }
+
+
+def test_dead_code_view_keeps_only_the_functions_nothing_calls(tmp_path):
+    """End to end: a function called from a module body, from another
+    function, through a package qualifier or in an instantiated module is not
+    a dead-code candidate; an exported package function nothing calls is a
+    seed; the functions nothing calls stay candidates."""
+    summary, dead = _dead_code(tmp_path, {
+        "rtl/pkg.sv": """\
+package pkg;
+  function automatic int add(int a, int b); return a + b; endfunction
+  function automatic int unused_api(int a); return a; endfunction
+endpackage
+""",
+        "rtl/design.sv": """\
+module leaf(input int a, output int y);
+  function int helper(int x); return x + 1; endfunction
+  function int inner(int x); return helper(x); endfunction
+  function int orphan(int x); return x; endfunction
+  assign y = inner(a);
+endmodule
+module top(input int a, output int y);
+  function int local_dead(int x); return x; endfunction
+  function int used_by_top(int x); return x; endfunction
+  wire int w = pkg::add(a, 1) + used_by_top(a);
+  leaf u_leaf(.a(w), .y(y));
+endmodule
+""",
+    })
+
+    # ``used_by_top`` is reached only because ``top``, which nothing
+    # instantiates, is a seed; ``helper`` and ``inner`` only through the
+    # instantiation of ``leaf`` under it.
+    assert dead == {"orphan@4", "local_dead@8"}
+    assert summary["total_production_functions"] == 7
+    assert summary["reachable_functions"] == 5
+    assert summary["dead_candidates"] == 2
+    # ``top`` and the two exported package functions.
+    assert summary["seed_count"] == 3

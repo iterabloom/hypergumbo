@@ -38,7 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Added
 
 - **New symbols**: Swift initialisers, Rust `type` aliases, Dockerfile stage variables, Pony actors.
-- **Verilog tasks, functions and nets are symbols**, each under its module.
+- **Verilog tasks, functions and nets are symbols**, each under its module; function calls emit edges, and a module nothing instantiates is an entrypoint.
 - **`request_ingress`**: a top-level list of every request handler, which `verify-claims` reads instead of the capped entrypoint list.
 - **`hypergumbo catalog` names each pass's grammar package.**
 - **Go functions and methods record `meta.parameters`.**
