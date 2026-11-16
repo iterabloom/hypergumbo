@@ -365,3 +365,67 @@ addtask do_mytask after do_configure before do_compile
         assert addtask is not None
         assert addtask.name == "do_mytask"
         assert "addtask" in addtask.signature
+
+
+_RECIPE = '''\
+DEPENDS = "a"
+DEPENDS += "b"
+
+do_compile() {
+    oe_runmake
+}
+
+python do_patchit() {
+    bb.note("patching")
+}
+
+do_twice() {
+    :
+}
+
+python do_twice() {
+    pass
+}
+
+addtask patchit after do_compile
+'''
+
+
+class TestSymbolIdsRoundTrip:
+    """A BitBake node id names its symbol's own kind and its own lines
+    (ADR-0036 Rulings 2 and 3). The id used to be ``bitbake:<path>:0-0:<name>:<word>``:
+    keyed by name alone, with ``python_task`` in the kind slot to keep a python
+    task apart from a shell task. So a python task's id named a kind no symbol
+    has, and two assignments to one variable shared one id."""
+
+    def _symbols(self, tmp_path: Path) -> list:
+        make_bitbake_file(tmp_path, "recipes/bar.bb", _RECIPE)
+        return analyze_bitbake(tmp_path).symbols
+
+    def test_the_fixture_reaches_every_declaration_form(self, tmp_path: Path) -> None:
+        syms = self._symbols(tmp_path)
+        got = sorted((s.kind, s.name, s.meta.get("task_implementation", "")) for s in syms)
+        assert got == [
+            ("addtask", "patchit", ""),
+            ("task", "do_compile", ""),
+            ("task", "do_patchit", "python"),
+            ("task", "do_twice", ""),
+            ("task", "do_twice", "python"),
+            ("variable", "DEPENDS", ""),
+            ("variable", "DEPENDS", ""),
+        ], got
+
+    def test_the_kind_slot_is_the_symbols_kind(self, tmp_path: Path) -> None:
+        for sym in self._symbols(tmp_path):
+            assert sym.id.rsplit(":", 1)[1] == sym.kind, sym.id
+
+    def test_the_span_slot_is_the_symbols_span(self, tmp_path: Path) -> None:
+        for sym in self._symbols(tmp_path):
+            span_slot = sym.id.rsplit(":", 3)[1]
+            assert span_slot == f"{sym.span.start_line}-{sym.span.end_line}", sym.id
+
+    def test_no_two_symbols_share_an_id(self, tmp_path: Path) -> None:
+        """Two assignments to DEPENDS, and a shell and a python task of one
+        name, are four symbols with four ids."""
+        ids = [s.id for s in self._symbols(tmp_path)]
+        assert len(ids) == len(set(ids)), sorted(ids)

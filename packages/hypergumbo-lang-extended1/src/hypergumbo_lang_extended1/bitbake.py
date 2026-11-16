@@ -45,6 +45,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -67,15 +68,19 @@ def find_bitbake_files(repo_root: Path) -> list[Path]:
 
 
 
-def _make_symbol_id(path: Path, name: str, kind: str) -> str:
-    """Create a stable symbol ID.
+def _make_symbol_id(path: Path, node: "tree_sitter.Node", name: str, kind: str) -> str:
+    """The node id of the symbol declared by ``node``.
 
-    The span slot is ``0-0`` rather than absent: BitBake symbol ids are keyed
-    by name within a file and do not encode a line (every caller does build a
-    Span for the Symbol itself), and ADR-0036's grammar has a spelling for
-    "no source span" (WI-vodin).
+    ``kind`` is the Symbol's own kind and the span slot is the declaration's
+    own lines (ADR-0036 Rulings 2 and 3). The lines are what tell apart two
+    assignments to one variable, and a shell task from a python task of the
+    same name: an id keyed by name alone gave the first pair one id, and kept
+    the second pair apart only by writing ``python_task``, a kind no symbol
+    has, into the kind slot.
     """
-    return f"bitbake:{path}:0-0:{name}:{kind}"
+    return make_symbol_id(
+        "bitbake", str(path), node.start_point[0] + 1, node.end_point[0] + 1, name, kind,
+    )
 
 
 # Important BitBake variables to track
@@ -180,7 +185,7 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
             return
 
         rel_p = Path(rel_path)
-        symbol_id = _make_symbol_id(rel_p, var_name, "variable")
+        symbol_id = _make_symbol_id(rel_p, node, var_name, "variable")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -288,7 +293,7 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
             return  # pragma: no cover
 
         rel_p = Path(rel_path)
-        symbol_id = _make_symbol_id(rel_p, func_name, "task")
+        symbol_id = _make_symbol_id(rel_p, node, func_name, "task")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -334,7 +339,7 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
             return  # pragma: no cover
 
         rel_p = Path(rel_path)
-        symbol_id = _make_symbol_id(rel_p, func_name, "python_task")
+        symbol_id = _make_symbol_id(rel_p, node, func_name, "task")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -346,7 +351,7 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
         symbol = Symbol(
             id=symbol_id,
             # The scope keeps a python task apart from a shell task of the
-            # same name, as the ``python_task`` id kind does.
+            # same name; their node ids differ by their lines.
             stable_id=scoped_stable_id(
                 kind="task", lang="bitbake", path=str(rel_p), name=func_name,
                 scope=("python",),
@@ -379,7 +384,7 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
             return  # pragma: no cover
 
         rel_p = Path(rel_path)
-        symbol_id = _make_symbol_id(rel_p, task_name, "addtask")
+        symbol_id = _make_symbol_id(rel_p, node, task_name, "addtask")
 
         span = Span(
             start_line=node.start_point[0] + 1,
