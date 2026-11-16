@@ -483,7 +483,7 @@ def _extract_r_edges(
                 target = lookup_result.symbol if lookup_result.found else None
                 resolved = target is not None
                 if target is not None:
-                    dst_id = target.id
+                    dst_id: str = target.id
                 elif path_hint:
                     dst_id = f"r:external:{path_hint}::{func_name}"
                 else:

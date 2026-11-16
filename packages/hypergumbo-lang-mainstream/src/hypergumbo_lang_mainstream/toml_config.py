@@ -98,7 +98,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -124,7 +124,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 def _make_toml_symbol_id(
     path: str, start_line: int, end_line: int, name: str, kind: str,
-) -> str:
+) -> NodeId:
     """Generate a location-based symbol ID for TOML symbols.
 
     Uses the standard ``lang:path:start-end:name:kind`` format so that

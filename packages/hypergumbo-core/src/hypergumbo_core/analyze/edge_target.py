@@ -48,7 +48,7 @@ import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, AbstractSet, Iterable, Optional
 
-from ..ir import ExternalRef
+from ..ir import ExternalRef, NodeId
 from ..discovery import is_excluded
 from ..taxonomy import get_language
 from .base import make_file_id, make_symbol_id
@@ -73,7 +73,7 @@ _STAND_IN_SPAN = "0-0"
 
 def in_tree_file_id(
     file_path: Path, rel_path: str, candidates: Iterable[str],
-) -> Optional[str]:
+) -> Optional[NodeId]:
     """The file node of the first candidate that is a file of the repository.
 
     ``file_path`` is the absolute path of the file being analysed and

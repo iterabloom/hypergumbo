@@ -97,7 +97,7 @@ import posixpath
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from ..ir import Edge, Span, Symbol, UsageContext
+from ..ir import Edge, NodeId, Span, Symbol, UsageContext
 from ..discovery import is_excluded
 from ..paths import normalize_path
 from ..taxonomy import get_language
@@ -149,7 +149,7 @@ def _absorb(survivor: Symbol, member: Symbol) -> None:
 
 def rewire_endpoints(
     edges: List[Edge],
-    remap: Dict[str, str],
+    remap: Dict[str, NodeId],
     usage_contexts: Optional[List[UsageContext]] = None,
 ) -> List[Edge]:
     """Rewrite every reference to a remapped Symbol id; return the edges changed.
@@ -203,7 +203,7 @@ def unify_file_pseudo_symbols(
     symbols: List[Symbol],
     edges: List[Edge],
     usage_contexts: Optional[List[UsageContext]] = None,
-) -> Dict[str, str]:
+) -> Dict[str, NodeId]:
     """Leave each path exactly one file pseudo-symbol; return ``dropped id -> survivor id``.
 
     Mutates ``symbols`` (the dropped members removed, in place), the survivor
@@ -217,7 +217,7 @@ def unify_file_pseudo_symbols(
         if is_file_pseudo_symbol(symbol) and symbol.path:
             by_path.setdefault(symbol.path, []).append(symbol)
 
-    remap: Dict[str, str] = {}
+    remap: Dict[str, NodeId] = {}
     dropped: set[int] = set()
     for path, members in by_path.items():
         if len(members) < 2:
@@ -247,7 +247,7 @@ def repoint_file_references(
     symbols: Sequence[Symbol],
     edges: List[Edge],
     repo_root: Optional[Path] = None,
-) -> Dict[str, str]:
+) -> Dict[str, NodeId]:
     """Land a reference to a file on the file Symbol its path already has.
 
     For every edge ``dst`` of ``make_file_id`` shape that no Symbol carries
@@ -278,7 +278,7 @@ def repoint_file_references(
         return {}
 
     anchored = {edge.src for edge in edges}
-    remap: Dict[str, str] = {}
+    remap: Dict[str, NodeId] = {}
     for edge in edges:
         dst = edge.dst
         if dst in remap or not dst.endswith(_FILE_ID_SUFFIX):

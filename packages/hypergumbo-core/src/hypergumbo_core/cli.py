@@ -1714,11 +1714,11 @@ def _handle_files_mode(
             reverse_edge_index[edge.dst].append(edge.src)
 
         # Build symbol lookup
-        symbol_lookup = {node.id: node for node in nodes}
+        symbol_lookup: Dict[str, Symbol] = {node.id: node for node in nodes}
 
         # BFS from each changed symbol to find all dependents
         visited: Set[str] = set()
-        queue = [sym.id for sym in changed_symbols]
+        queue: List[str] = [sym.id for sym in changed_symbols]
 
         # Also add the changed files themselves
         for sym in changed_symbols:
@@ -2036,7 +2036,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
         # Apply --exclude-tests and --max-tier filters to entrypoint list
         # Build lookup from symbol_id to Symbol for filtering
-        symbol_lookup = {node.id: node for node in nodes}
+        symbol_lookup: Dict[str, Symbol] = {node.id: node for node in nodes}
         exclude_tests = getattr(args, "exclude_tests", False)
         max_tier = getattr(args, "max_tier", None)
 

@@ -371,7 +371,7 @@ def _find_bean_target_classes(
     """
     edges = edges or []
     edge_index = build_inheritance_edge_index(edges)
-    symbol_by_id = {sym.id: sym for sym in symbols}
+    symbol_by_id: dict[str, Symbol] = {sym.id: sym for sym in symbols}
 
     targets: list[tuple[Symbol, bool, tuple[str, ...]]] = []
     for sym in symbols:

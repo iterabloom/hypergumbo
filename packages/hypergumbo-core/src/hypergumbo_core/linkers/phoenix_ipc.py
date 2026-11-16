@@ -45,7 +45,7 @@ from typing import Iterator
 
 from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
 from ._text_filters import language_from_path, read_source_bytes
 from .ipc import IPC_FRAMEWORK_ROLES
@@ -282,7 +282,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     symbols: list[Symbol] = []
     created_symbol_ids: set[str] = set()
 
-    def _make_symbol_id(pattern: PhoenixPattern, event: str) -> str:
+    def _make_symbol_id(pattern: PhoenixPattern, event: str) -> NodeId:
         # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The id used
         # to end in the EVENT (``phoenix:<file>:<l>-<l>:send:<event>``), so
         # its kind slot held an event name, and an event with a colon
@@ -293,7 +293,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
             f"{event}-{pattern.type}", "function",
         )
 
-    def _ensure_symbol(pattern: PhoenixPattern, event: str) -> str:
+    def _ensure_symbol(pattern: PhoenixPattern, event: str) -> NodeId:
         """Create symbol for Phoenix endpoint if not already created."""
         sym_id = _make_symbol_id(pattern, event)
         if sym_id not in created_symbol_ids:

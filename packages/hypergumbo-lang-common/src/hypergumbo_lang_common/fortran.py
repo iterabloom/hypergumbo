@@ -70,7 +70,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -525,8 +525,8 @@ def _extract_fortran_signature(
 def _get_enclosing_fortran_symbol(
     node: "tree_sitter.Node",
     source: bytes,
-    symbol_registry: dict[str, str],
-) -> Optional[str]:
+    symbol_registry: dict[str, NodeId],
+) -> Optional[NodeId]:
     """Walk up to find the enclosing symbol (module, program, function, subroutine)."""
     current = node.parent
     while current is not None:
@@ -853,7 +853,7 @@ def _extract_fortran_edges(
     if import_aliases is None:
         import_aliases = {}  # pragma: no cover - always passed by caller
     # Build local ID registry for _get_enclosing_fortran_symbol
-    local_id_registry: dict[str, str] = {name: sym.id for name, sym in local_symbols.items()}
+    local_id_registry: dict[str, NodeId] = {name: sym.id for name, sym in local_symbols.items()}
 
     for node in iter_tree(root_node):
         # Use statements (imports)
@@ -874,7 +874,7 @@ def _extract_fortran_edges(
                 # edge takes the pathway base (ADR-0039); whether the module is
                 # in the repo is is_resolved (ADR-0037), not confidence.
                 if lookup_result.found and lookup_result.symbol:
-                    dst_id = lookup_result.symbol.id
+                    dst_id: str = lookup_result.symbol.id
                     resolved = True
                 else:
                     # External module not in our codebase

@@ -294,7 +294,7 @@ def production_edges(
     surface that adopts the symbol filter without the edge filter ranks the
     same population as the others with different weights.
     """
-    by_id = {s.id: s for s in symbols}
+    by_id: dict[str, Symbol] = {s.id: s for s in symbols}
 
     def from_test(edge: Any) -> bool:
         src = by_id.get(getattr(edge, "src", ""))

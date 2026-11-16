@@ -39,7 +39,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -286,7 +286,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
             )
 
     def _process_field_relation(
-        self, field_node: "tree_sitter.Node", source_model_id: str,
+        self, field_node: "tree_sitter.Node", source_model_id: NodeId,
         path: Path, repo_root: Path,
         targets: dict[str, Symbol], run: "AnalysisRun", edges: list[Edge],
     ) -> None:
@@ -306,7 +306,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
             target_model = _get_relation_target(field_node)
             if target_model:
                 target_sym = targets.get(target_model)
-                target_id = target_sym.id if target_sym else None
+                target_id: Optional[str] = target_sym.id if target_sym else None
                 confidence = 1.0 if target_id else 0.6
                 if target_id is None:
                     target_id = f"prisma:unresolved:{target_model}"

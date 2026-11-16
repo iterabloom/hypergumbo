@@ -130,7 +130,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Sequence, Tuple
+from typing import AbstractSet, Any, Callable, Dict, List, Sequence, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
 from .ranking import (
@@ -848,7 +848,7 @@ def select_by_connectivity(
     Returns:
         ConnectivityResult with selected symbols and induced edges.
     """
-    symbol_by_id = {s.id: s for s in symbols}
+    symbol_by_id: Dict[str, Symbol] = {s.id: s for s in symbols}
 
     # Build adjacency lists
     outgoing, incoming = _build_adjacency_list(edges)
@@ -1175,7 +1175,7 @@ def select_by_coverage(
     # First, force-include any must-include symbols (e.g., entrypoints)
     # These are semantically important and should always be included
     if force_include_ids:
-        symbol_by_id = {s.id: s for s in symbols}
+        symbol_by_id: Dict[str, Symbol] = {s.id: s for s in symbols}
         for sid in sorted(force_include_ids):  # reproducible order (WI-nivuj)
             if sid in symbol_by_id and sid not in included_ids:
                 sym = symbol_by_id[sid]
@@ -1251,7 +1251,7 @@ def select_by_coverage(
 
 def _reproject_features(
     features: List[dict[str, Any]],
-    included_node_ids: set[str],
+    included_node_ids: AbstractSet[str],
     included_edge_ids: set[str],
 ) -> List[dict[str, Any]]:
     """Re-project feature slices onto the compacted node/edge set (INV-titid).
@@ -1730,7 +1730,7 @@ def select_by_tokens(
     # When there are more entrypoints than the budget allows (e.g., FastAPI
     # with ~1400 routes), we cap them to fit.
     if force_include_ids:
-        symbol_by_id = {s.id: s for s in symbols}
+        symbol_by_id: Dict[str, Symbol] = {s.id: s for s in symbols}
         # Sort forced symbols by centrality so the most important ones
         # are included first when the budget is tight
         forced_syms = [

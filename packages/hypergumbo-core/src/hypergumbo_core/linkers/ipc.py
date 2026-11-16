@@ -139,7 +139,7 @@ from typing import Iterator
 
 from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from ._text_filters import js_ts_language_from_path, read_source_bytes
 from ._name_args import (
@@ -895,7 +895,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     symbols: list[Symbol] = []
     created_symbol_ids: set[str] = set()
 
-    def _make_symbol_id(pattern: IpcPattern, channel: str) -> str:
+    def _make_symbol_id(pattern: IpcPattern, channel: str) -> NodeId:
         # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The id used
         # to end in the CHANNEL (``ipc:<file>:<l>-<l>:send:<channel>``), so
         # its kind slot held a channel name, and a channel with a colon
@@ -907,7 +907,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
             f"{channel}-{pattern.type}", "function",
         )
 
-    def _ensure_symbol(pattern: IpcPattern, channel: str) -> str:
+    def _ensure_symbol(pattern: IpcPattern, channel: str) -> NodeId:
         """Create symbol for IPC endpoint if not already created."""
         sym_id = _make_symbol_id(pattern, channel)
         if sym_id not in created_symbol_ids:
@@ -955,7 +955,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     # receivers.
     sender_ids = {_make_symbol_id(s, s.channel) for s in senders}
 
-    def _bridge_send_id(preload_file: str, send: _BridgeSend) -> str:
+    def _bridge_send_id(preload_file: str, send: _BridgeSend) -> NodeId:
         site = IpcPattern(
             type="send",
             channel=send.channel,

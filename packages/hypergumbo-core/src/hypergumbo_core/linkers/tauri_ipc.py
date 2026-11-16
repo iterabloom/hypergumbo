@@ -76,7 +76,7 @@ from pathlib import Path
 import hashlib
 
 from ..analyze.base import make_symbol_id
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -569,7 +569,7 @@ def _scan_ts_js_file_for_listen(file_path: Path) -> list[str]:
     return events
 
 
-def _stand_in_id(lang: str, path: str, name: str, role: str) -> str:
+def _stand_in_id(lang: str, path: str, name: str, role: str) -> NodeId:
     """The node id of a stand-in this linker mints for a file.
 
     ADR-0036 Ruling 2: the kind slot is the Symbol's kind, ``function``. The

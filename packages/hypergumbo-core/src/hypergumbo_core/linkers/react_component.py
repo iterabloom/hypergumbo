@@ -54,7 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..analyze.base import make_file_id
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -138,7 +138,7 @@ def _build_component_map(
     """
     edges = edges or []
     inheritance_index = build_inheritance_index(edges)
-    symbol_by_id = {sym.id: sym for sym in symbols}
+    symbol_by_id: dict[str, Symbol] = {sym.id: sym for sym in symbols}
 
     component_map: dict[str, list[Symbol]] = {}
 
@@ -209,7 +209,7 @@ _RENDERER_KINDS: frozenset[str] = frozenset({"function", "method", "class"})
 
 def _rendering_symbol_id(
     file_symbols: list[Symbol], path: str, language: str, line: int,
-) -> str:
+) -> NodeId:
     """The id of the code that renders a JSX tag at *line* (WI-gulud).
 
     The innermost function / method / class whose span contains the line

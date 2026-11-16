@@ -879,7 +879,7 @@ def _hs_emit_call_edge(
     # grade times the short-name penalty) interpolates in the ast_call band.
     resolution_score: float | None = None
     if lookup_result.found and lookup_result.symbol:
-        dst = lookup_result.symbol.id
+        dst: str = lookup_result.symbol.id
         resolution_score = (
             lookup_result.confidence * _short_name_penalty(callee_name)
         )

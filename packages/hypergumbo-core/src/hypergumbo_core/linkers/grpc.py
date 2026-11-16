@@ -99,7 +99,7 @@ from typing import Iterator
 
 from ..discovery import find_files, find_non_test_files
 from ..analyze.base import make_route_symbol, make_symbol_id
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..overload_arity import pass_minted_stable_id
 from ..paths import to_relative_path
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs, extension_suffixes
@@ -476,7 +476,7 @@ _PATTERN_FOLDS: dict[str, tuple[str, str]] = {
 }
 
 
-def _make_symbol_id(pattern: "GrpcPattern") -> str:
+def _make_symbol_id(pattern: "GrpcPattern") -> NodeId:
     """The node id of the symbol this linker mints for *pattern*.
 
     ADR-0036 Ruling 2 puts ``node.kind`` in the kind slot and the node's own
@@ -618,7 +618,7 @@ def _link_go_methods_to_rpc_routes(
     # keeps them for the edge's ``derived_from``. The text-scan mapping above
     # read none, and has no entry.
     edge_index = build_inheritance_edge_index(existing_edges or [])
-    symbol_by_id = {s.id: s for s in existing_symbols}
+    symbol_by_id: dict[str, Symbol] = {s.id: s for s in existing_symbols}
     struct_evidence: dict[tuple[str, str], tuple[str, ...]] = {}
     for sym in existing_symbols:
         if sym.kind != "struct" or sym.language != "go":

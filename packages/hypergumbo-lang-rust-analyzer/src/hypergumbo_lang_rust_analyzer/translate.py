@@ -103,7 +103,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Callable, Iterable, List, Optional
 
-from hypergumbo_core.ir import Edge, Symbol
+from hypergumbo_core.ir import Edge, NodeId, Symbol
 from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.calls import scip_index_to_call_edges
 from hypergumbo_core.scip.edges import scip_index_to_edges
@@ -206,8 +206,11 @@ def refine_rust_kinds(symbols: Iterable[Symbol]) -> List[Symbol]:
         kind = _RUST_KIND_REFINEMENT.get(sym.kind) if sym.language == "rust" else None
         if kind is not None:
             # ``make_symbol_id`` ends ``:{kind}``; swap only that suffix.
+            # NodeId-wrapped: the kind slot of a factory-minted id is rewritten
+            # in place; re-minting from the fields is not guaranteed to give
+            # the same text (test_id_newtypes.py lists this site).
             stem, _sep, _old_kind = sym.id.rpartition(":")
-            sym = dataclasses.replace(sym, kind=kind, id=f"{stem}:{kind}")
+            sym = dataclasses.replace(sym, kind=kind, id=NodeId(f"{stem}:{kind}"))
         out.append(sym)
     return out
 

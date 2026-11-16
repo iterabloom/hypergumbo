@@ -245,7 +245,7 @@ def link_dependencies(
     # WI-timon: the importing file's path (from its code Symbol) drives the
     # nearest-enclosing-manifest disambiguation when a dependency name is
     # declared in more than one monorepo manifest.
-    file_path_by_id = {s.id: s.path for s in code_symbols}
+    file_path_by_id: dict[str, str] = {s.id: s.path for s in code_symbols}
 
     # Process import edges
     for edge in code_edges:

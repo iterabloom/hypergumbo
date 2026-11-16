@@ -256,7 +256,7 @@ def _ancestors_for(index: _Index, owner: "Symbol", member: str) -> list[str]:
     near the library parent is.
     """
     found: list[str] = []
-    visited = {owner.id}
+    visited: set[str] = {owner.id}
     queue: deque[tuple["Symbol", int]] = deque([(owner, 0)])
     while queue:
         current, depth = queue.popleft()

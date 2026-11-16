@@ -73,7 +73,7 @@ from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
@@ -180,8 +180,11 @@ def _directives(content: str) -> Iterator[tuple[str, list[str] | None, int, int]
             yield name, parsed[0], m.start(), parsed[1]
 
 
-def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"blade:{path}:{line}-{line}:{name}:{kind}"
+def _make_symbol_id(path: str, line: int, name: str, kind: str) -> NodeId:
+    # NodeId-wrapped, not routed through make_symbol_id: a quoted name may hold
+    # a ':' (``package::view``) that the factory would rewrite
+    # (test_id_newtypes.py).
+    return NodeId(f"blade:{path}:{line}-{line}:{name}:{kind}")
 
 
 def find_blade_files(

@@ -127,7 +127,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Mapping, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.module_sets import module_slot
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     claim_declaration_silence,
@@ -176,7 +176,7 @@ _df_config = get_dataflow_config("c")
 
 
 def _remap_edge_ids(
-    edges: list[Edge], id_remap: dict[str, str],
+    edges: list[Edge], id_remap: dict[str, NodeId],
 ) -> list[Edge]:
     """Rewrite edge src/dst that reference removed declaration symbol IDs."""
     from dataclasses import replace
@@ -1237,7 +1237,7 @@ def _extract_edges(
     # holds a function (a data-only array is no node), by the edges' own id.
     emitted_tables: dict[str, Symbol] = {}
 
-    def _table_symbol(declarator: "tree_sitter.Node", name: str) -> str:
+    def _table_symbol(declarator: "tree_sitter.Node", name: str) -> NodeId:
         line = declarator.start_point[0] + 1
         table_id = make_symbol_id("c", str(file_path), line, line, name, "variable")
         if table_symbols is not None and table_id not in emitted_tables:
@@ -2059,7 +2059,7 @@ class CAnalyzer(TreeSitterAnalyzer):
             populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
             # INV-nohob: what the call sites into each function need (pass 2),
             # and the lines where each one stores into memory it does not own.
-            _by_id = {s.id: s for s in analysis.symbols}
+            _by_id: dict[str, Symbol] = {s.id: s for s in analysis.symbols}
             for _sym_id, _node in analysis.node_for_symbol.items():
                 if _node.type == "function_definition":
                     function_facts[_sym_id] = _c_function_facts(_node, source)
@@ -2071,7 +2071,7 @@ class CAnalyzer(TreeSitterAnalyzer):
                         }
             # Auto-compute shape_id for symbols with nodes (spec §6 shape_id)
             if analysis.node_for_symbol:
-                sym_by_id = {s.id: s for s in analysis.symbols}
+                sym_by_id: dict[str, Symbol] = {s.id: s for s in analysis.symbols}
                 for sym_id, ts_node in analysis.node_for_symbol.items():
                     sym = sym_by_id.get(sym_id)
                     if sym is not None and sym.shape_id is None:
@@ -2132,7 +2132,7 @@ class CAnalyzer(TreeSitterAnalyzer):
         # Build a remap table: declaration ID → definition ID.
         # Edges targeting a removed declaration should point to the
         # surviving definition instead.
-        id_remap: dict[str, str] = {}
+        id_remap: dict[str, NodeId] = {}
         kept: list[Symbol] = []
         for sym in all_symbols:
             if (

@@ -253,7 +253,7 @@ def link_view_templates(
 def _count_controller_methods(ctx: LinkerContext) -> int:
     """Count methods belonging to controller classes (transitive base walk per WI-vigih)."""
     inheritance_index = build_inheritance_index(ctx.edges)
-    symbol_by_id = {sym.id: sym for sym in ctx.symbols}
+    symbol_by_id: dict[str, Symbol] = {sym.id: sym for sym in ctx.symbols}
     controller_classes: set[str] = set()
     for sym in ctx.symbols:
         if sym.kind != "class":

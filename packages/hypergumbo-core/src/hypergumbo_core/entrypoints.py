@@ -2166,7 +2166,7 @@ def apply_rank_floor_and_cap(
     cap = compute_entrypoint_cap(len(nodes))
     if len(kept) > cap:
         kept_ids = {ep.symbol_id for ep in kept}
-        files = {
+        files: dict[str, str] = {
             node.id: node.path for node in nodes
             if node.id in kept_ids and node.path
         }

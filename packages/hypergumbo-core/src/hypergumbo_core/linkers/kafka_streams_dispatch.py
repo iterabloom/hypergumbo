@@ -368,7 +368,7 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
 
     method_index = _build_class_method_index(ctx.symbols)
     edge_index = build_inheritance_edge_index(ctx.edges)
-    symbol_by_id = {sym.id: sym for sym in ctx.symbols}
+    symbol_by_id: dict[str, Symbol] = {sym.id: sym for sym in ctx.symbols}
     in_tree_collisions = _build_in_tree_callback_name_collisions(ctx.symbols)
     existing_keys: set[tuple[str, str, str]] = {
         (e.src, e.dst, e.edge_type)

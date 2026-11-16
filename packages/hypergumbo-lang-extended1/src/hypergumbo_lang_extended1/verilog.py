@@ -715,7 +715,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
             edge_meta: Optional[dict[str, Any]] = None
             if resolved is not None:
                 dst_sym, is_fallback = resolved
-                dst_id = dst_sym.id
+                dst_id: str = dst_sym.id
                 # INV-zuhub fallback contract: when multiple
                 # candidates matched, mark the edge as a
                 # disambiguation fallback with confidence ≤ 0.5

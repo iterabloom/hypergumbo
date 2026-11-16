@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, NamedTuple, Optional, Sequence, Tuple, Union
 
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..overload_arity import pass_minted_stable_id
 from .registry import LinkerContext, LinkerResult
 
@@ -75,7 +75,7 @@ class TemplateRenderEmission:
     ``show.text.erb``); duplicate template Symbols are deduplicated.
     """
 
-    action_symbol_id: str
+    action_symbol_id: NodeId
     line: int
     detection_pattern: str
     candidates: Tuple[TemplateCandidate, ...]
@@ -279,7 +279,10 @@ def link_via_strategies(
                     continue
 
                 filename = candidate.path.name
-                template_id = (
+                # NodeId-wrapped, not routed through make_symbol_id: the name
+                # slot is a file name, which may hold a ':' that the factory
+                # would rewrite (test_id_newtypes.py).
+                template_id = NodeId(
                     f"{candidate.language}:{candidate.path}:1-1:{filename}:template"
                 )
                 if template_id not in seen_templates:

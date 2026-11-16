@@ -153,7 +153,56 @@ RepoFingerprint = NewType("RepoFingerprint", str)
 """An ``AnalysisRun.repo_fingerprint`` value: ``hgrepofp<N>:<64hex>``. See StableId."""
 
 NodeId = NewType("NodeId", str)
-"""A node id: ``{lang}:{path}:{start}-{end}:{name}:{kind}`` (ADR-0036)."""
+"""A node id: ``{lang}:{path}:{start}-{end}:{name}:{kind}`` (ADR-0036).
+
+Types ``Symbol.id``, ``UsageContext.symbol_ref`` and ``DataModel.symbol_id``.
+Minted (the one ``NodeId(...)`` call each) only by the factories:
+``make_symbol_id``, ``make_file_id`` and ``make_module_import_dst``
+(analyze/base.py) and ``_canonical_external_id`` (this module);
+``make_manifest_target_dst`` and ``make_doc_symbol_ids`` return a
+``make_file_id`` / ``make_symbol_id`` value. A value that already IS a node
+id but reaches the code as a plain ``str`` (an edge endpoint, a CLI argument,
+a key read out of text) becomes one through :func:`read_node_id`, the single
+boundary, never through a cast; :func:`relativize_node_id` is finalize's
+rewrite of one. Producers whose pre-existing hand-built id differs from what
+a factory would emit keep their text and wrap it at the site;
+``test_id_newtypes.py`` lists each one and why. See StableId for what a
+NewType does and does not change.
+
+``Edge.src`` and ``Edge.dst`` stay ``str``. A dst is a node id OR an
+unresolved reference that finalize turns into a boundary node, and dozens of
+producers write references that are not in the node-id grammar. A src is a
+node id at every producer site but eleven (latex, nix, robot, gleam, odin, v
+and pony write a file reference outside the grammar) and the SCIP edge
+builders' no-resolver path (a raw SCIP symbol), and ``Edge``'s field types
+are pinned by ``tests/test_rct_public_api_pinned.py`` for the RCT variants.
+"""
+
+
+def read_node_id(value: str) -> NodeId:
+    """The one boundary that turns a ``str`` holding a node id into a ``NodeId``.
+
+    For a value that already IS a node id and reaches the code as a ``str``:
+    an ``Edge.dst`` (typed ``str``, see NodeId) that names a node, an id a
+    user passed on the command line, an id parsed out of text. It checks
+    nothing and changes nothing (a NewType is the identity at run time); it
+    exists so the places where an id enters the typed world are one name a
+    reader can grep, and so a hand-built id cannot hide behind it unnoticed:
+    its call sites are listed in ``test_id_newtypes.py``. Values loaded from
+    JSON arrive as ``Any`` and need no call.
+    """
+    return NodeId(value)
+
+
+def relativize_node_id(node_id: NodeId, prefix: str) -> NodeId:
+    """*node_id* with every occurrence of the absolute *prefix* removed.
+
+    Finalize's path normalisation: an analyzer handed absolute paths mints
+    ids whose path slot starts with the repo root, and the published map
+    carries repo-relative ids. The id is rewritten, not minted, so this sits
+    beside the factories as the one sanctioned rewrite of a ``NodeId``.
+    """
+    return NodeId(node_id.replace(prefix, ""))
 
 VALID_ACCESS_MODES: frozenset[str] = frozenset({"read", "write", "mutate", "delete"})
 """ADR-0015 access mode vocabulary for dataflow edges.
@@ -771,7 +820,7 @@ class Symbol:
             opt-in policy reads instead.
     """
 
-    id: str  # axis: identity
+    id: NodeId  # axis: identity
     name: str  # axis: free-text — language identifier from source; consumers display/store/lookup, never branch on the value itself.
     kind: str  # axis: symbol-kind
     language: Optional[str]  # axis: language
@@ -1597,7 +1646,7 @@ class UsageContext:
     id: str  # axis: identity
     kind: Literal["call", "export", "library_export", "macro"]  # axis: bounded-enum
     context_name: str  # axis: free-text — name of the function call or export name from source; consumers display/lookup, never branch on the value itself.
-    symbol_ref: Optional[str]  # axis: identity  (None for inline handlers — lambdas, blocks)
+    symbol_ref: Optional[NodeId]  # axis: identity  (None for inline handlers — lambdas, blocks)
     position: str  # axis: free-text — positional descriptor like "args[1]", ":get", "default"; consumer-facing display string parsed by humans, not branched on by code.
     metadata: Dict[str, Any]
     path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself.
@@ -1611,7 +1660,7 @@ class UsageContext:
         position: str,
         path: str,
         span: Span,
-        symbol_ref: Optional[str] = None,
+        symbol_ref: Optional[NodeId] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> "UsageContext":
         """Create a UsageContext with auto-generated ID."""
@@ -2064,7 +2113,7 @@ def create_boundary_nodes(
     dependency_manifest: Any = None,
     origin_run_id: str = "",
     ecosystem_classifier: "Optional[Callable[[str, str], Optional[str]]]" = None,
-) -> tuple[List[Symbol], Dict[str, str]]:
+) -> tuple[List[Symbol], Dict[str, NodeId]]:
     """Create boundary nodes for dangling edge endpoints, with cross-run identity.
 
     After all analyzers and linkers have run, some edges point to IDs
@@ -2183,7 +2232,7 @@ def create_boundary_nodes(
         group_ref_kinds.setdefault(key, set()).add(kind)
 
     boundary_nodes: List[Symbol] = []
-    id_remap: Dict[str, str] = {}
+    id_remap: Dict[str, NodeId] = {}
     zero_span = Span(start_line=0, end_line=0, start_col=0, end_col=0)
 
     # The boundary ``language`` (WI-muzuf) is whatever ``_parse_dangling_id`` /
@@ -2286,7 +2335,7 @@ def create_boundary_nodes(
 
 def apply_external_id_remap(
     edges: List[Edge],
-    id_remap: Dict[str, str],
+    id_remap: Dict[str, NodeId],
 ) -> List[Edge]:
     """Rewrite edges' ``src`` / ``dst`` per the remap from
     :func:`create_boundary_nodes`, dedupe collapsed edges, and capture
