@@ -15,7 +15,7 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **376** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 121 other core modules (8 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **377** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 121 other core modules (9 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
 - **59506** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13335, of which 7642 are functions, methods or classes
 - **239400** edges, test code included, by type:
   - calls: 135279
@@ -739,6 +739,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.analyze.config_secrets`**: Which config keys hold secrets, and what their values become in the...
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
 - **`hypergumbo_core.analyze.edge_source`**: Where an edge comes FROM: the src of every edge is an emitted symbo...
+- **`hypergumbo_core.analyze.edge_target`**: Where an edge goes TO: every endpoint is the id of a node, never a ...
 - **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become o...
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
 - **`hypergumbo_lang_mainstream.bash`**: Bash/shell script analyzer using tree-sitter.
