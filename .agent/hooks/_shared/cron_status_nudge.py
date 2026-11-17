@@ -55,7 +55,11 @@ WHEN IT IS SILENT. Every verdict passed and is within its allowance. Or:
   make no network call.
 
 COST. A green, fresh verdict: the bounded fetch plus a few local git calls.
-A red one adds the history walk (local) and the bounded tracker call.
+A red one adds the history walk (local) and the bounded tracker call. The
+fetch and the tracker call share ``TOTAL_BUDGET``: the hook that runs this has
+5 s for everything and prints nothing when it runs out, so after a slow fetch
+the tracker call is shortened or skipped ("tracker not consulted") and the red
+line is still printed.
 """
 from __future__ import annotations
 
@@ -72,8 +76,12 @@ from typing import Any, Optional
 
 REF = "origin/badges"
 DIR = "scheduled/"
-FETCH_TIMEOUT = 2.0
+FETCH_TIMEOUT = 1.5
 TRACKER_TIMEOUT = 2.0
+#: Seconds the fetch and the tracker call may take together. The hook that
+#: runs this has 5 s for everything it does and prints NOTHING when it runs
+#: out, so the tracker gets what the fetch left and loses its turn first.
+TOTAL_BUDGET = 3.6
 GIT_TIMEOUT = 2.0
 MAX_HISTORY = 20
 
@@ -203,12 +211,15 @@ def first_red(root: Path, path: str, newest: dict[str, Any]) -> tuple[Optional[s
     return None, f"red in all {len(versions)} verdicts read, oldest at {first[:8]}"
 
 
-def open_items(root: Path) -> Optional[list[dict[str, Any]]]:
-    """Open tracker items, or None when the tracker could not be consulted."""
+def open_items(root: Path, *, timeout: float = TRACKER_TIMEOUT) -> Optional[list[dict[str, Any]]]:
+    """Open tracker items, or None when the tracker could not be consulted
+    (which includes: no time left to consult it)."""
+    if timeout <= 0:
+        return None
     venv_bin = root / ".venv" / "bin"
     env = _env(PATH=f"{venv_bin}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}")
     out = _bounded([str(root / "scripts" / "tracker"), "--json", "list"], cwd=root,
-                   timeout=TRACKER_TIMEOUT, env=env)
+                   timeout=timeout, env=env)
     if out is None:
         return None
     try:
@@ -235,8 +246,10 @@ def _label(verdict: dict[str, Any]) -> str:
     return f"{verdict['workflow']} {leg}" if leg else verdict["workflow"]
 
 
-def compute_line(root: Path, *, now: float, refreshed: bool) -> str:
-    """The session-start line, or '' when there is nothing to say."""
+def compute_line(root: Path, *, now: float, refreshed: bool,
+                 deadline: Optional[float] = None) -> str:
+    """The session-start line, or '' when there is nothing to say.
+    ``deadline`` (``time.monotonic()`` seconds) caps the tracker call."""
     try:
         all_paths, verdicts, problems = read_verdicts(root)
     except NotChecked as exc:
@@ -252,7 +265,8 @@ def compute_line(root: Path, *, now: float, refreshed: bool) -> str:
         if allowance is not None and hours > allowance:
             stale.append(f"{_label(verdict)}: newest verdict is {math.floor(hours)} h old: "
                          "the scheduled run has not published since")
-    items = open_items(root) if red else []
+    left = TRACKER_TIMEOUT if deadline is None else min(TRACKER_TIMEOUT, deadline - time.monotonic())
+    items = open_items(root, timeout=left) if red else []
     parts: list[str] = []
     for _path, verdict, first, why in red:
         commit = verdict["commit"][:8]
@@ -288,7 +302,8 @@ def main(argv: list[str]) -> int:
         return 0
     try:
         root = Path(argv[0]).resolve()
-        line = compute_line(root, now=time.time(), refreshed=refresh(root))
+        deadline = time.monotonic() + TOTAL_BUDGET
+        line = compute_line(root, now=time.time(), refreshed=refresh(root), deadline=deadline)
     except Exception as exc:  # a session must never fail to start over this
         line = not_checked(f"unexpected {type(exc).__name__}")
     if line:
