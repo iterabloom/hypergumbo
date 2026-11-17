@@ -113,6 +113,8 @@ PAUSE_SECONDS = (0.5, 2.0)
 BOT_NAME = "CI Bot"
 BOT_EMAIL = "ci@iterabloom.com"
 GIT_TIMEOUT = 120
+#: Seconds ssh waits for the remote to accept the connection.
+SSH_CONNECT_TIMEOUT = 20
 
 #: GitHub's SSH host keys, read from https://api.github.com/meta on 2026-11-17.
 GITHUB_HOST_KEYS = (
@@ -283,16 +285,25 @@ class Publisher:
         self._git("init", "-q", "--bare", str(self.repo), what="git init")
 
     def _git(self, *args: str, what: str, data: Optional[bytes] = None) -> str:
-        proc = self._run(*args, data=data)
+        proc = self._run(*args, what=what, data=data)
         if proc.returncode != 0:
             raise PublishError(
                 f"{what} failed: {_one_line(proc.stderr.decode('utf-8', 'replace'))}")
         return proc.stdout.decode("utf-8", "replace").strip()
 
-    def _run(self, *args: str, data: Optional[bytes] = None) -> "subprocess.CompletedProcess[bytes]":
-        return subprocess.run(  # noqa: S603 -- git on PATH; args are ours, the remote is the caller's
-            ["git", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],  # noqa: S607
-            input=data, capture_output=True, env=self.env, check=False, timeout=GIT_TIMEOUT)
+    def _run(self, *args: str, what: str,
+             data: Optional[bytes] = None) -> "subprocess.CompletedProcess[bytes]":
+        """One git command. A command that outlasts ``GIT_TIMEOUT`` is a
+        failed publish that names ``what`` it was doing: 'git timed out' alone
+        does not say whether a remote was involved, or which."""
+        try:
+            return subprocess.run(  # noqa: S603 -- git on PATH; args are ours, the remote is the caller's
+                ["git", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],  # noqa: S607
+                input=data, capture_output=True, env=self.env, check=False, timeout=GIT_TIMEOUT)
+        except subprocess.TimeoutExpired as exc:
+            raise PublishError(
+                f"{what} timed out after {exc.timeout} s: the remote did not answer "
+                "(is its port reachable from this runner?)") from exc
 
     def tip(self) -> Optional[str]:
         out = self._git("ls-remote", self.remote, f"refs/heads/{self.branch}",
@@ -316,7 +327,8 @@ class Publisher:
         tree = self._git("write-tree", what="git write-tree")
         parents = ["-p", base] if base else []
         commit = self._git("commit-tree", tree, *parents, "-m", message, what="git commit-tree")
-        proc = self._run("push", "-q", self.remote, f"{commit}:refs/heads/{self.branch}")
+        proc = self._run("push", "-q", self.remote, f"{commit}:refs/heads/{self.branch}",
+                         what=f"pushing {self.branch} to {self.remote}")
         return proc.returncode == 0, _one_line(proc.stderr.decode("utf-8", "replace"))
 
 
@@ -335,9 +347,14 @@ def _ssh_env(workdir: Path) -> dict[str, str]:
         fh.write(key if key.endswith("\n") else key + "\n")
     known = workdir / "known_hosts"
     known.write_text("".join(f"github.com {k}\n" for k in GITHUB_HOST_KEYS), encoding="utf-8")
+    # BatchMode: nothing in CI can answer a prompt, so ssh must fail where it
+    # would ask. ConnectTimeout: a port that silently drops packets (the
+    # runner's port 22, 2026-11-17) is then ssh's own "Connection timed out"
+    # in seconds, and not this script's GIT_TIMEOUT with no reason at all.
     return _clean_env(GIT_SSH_COMMAND=(
         f"ssh -i {shlex.quote(str(key_file))} -o IdentitiesOnly=yes "
-        f"-o UserKnownHostsFile={shlex.quote(str(known))} -o StrictHostKeyChecking=yes"))
+        f"-o UserKnownHostsFile={shlex.quote(str(known))} -o StrictHostKeyChecking=yes "
+        f"-o BatchMode=yes -o ConnectTimeout={SSH_CONNECT_TIMEOUT}"))
 
 
 def _default_remote() -> str:
