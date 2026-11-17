@@ -1390,6 +1390,11 @@ fi
 # (the tree did not change since an earlier run); more than one means another
 # analysis finished meanwhile and the two cannot be told apart. Either way no
 # comparison is made, and the row says which.
+#
+# stale-record also keeps the fresh graph: it stores the survey's nodes and
+# edges as rows in the selection index (hypergumbo_core/graph_rows.py). The
+# survey is some 330 MB in a cache that evicts it within hours; the rows are
+# about 4 MB and are what `coverage-select graph-walk` walks.
 stale_graph_shadow() {
     local helper="$TOOLS_ROOT/scripts/coverage-select"
     local cache_base="${XDG_CACHE_HOME:-$HOME/.cache}/hypergumbo"
