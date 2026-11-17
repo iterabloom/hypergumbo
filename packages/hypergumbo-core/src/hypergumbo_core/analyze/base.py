@@ -172,7 +172,7 @@ from ..ir import (
 # (``_canonical_external_id``) and importing it from here would be a cycle;
 # ``analyze.base`` remains the producer-facing surface (INV-divuf).
 from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
-from ..schema import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
+from ..identity_schemes import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 from ..axis_meta_keys import write_meta_key
 from ..call_constructs import require_declared as _require_declared_construct
 from ..symbol_resolution import NameResolver
@@ -1469,7 +1469,7 @@ def _short_sha256(payload: str) -> StableId:
     The ONE place a tree-sitter (or Python ``ast``) stable id is minted (the
     ``StableId`` wrap; see ``hypergumbo_core.ir.StableId``): every
     ``make_*_stable_id`` factory and ``assemble_stable_id`` reach it. The
-    label is ``schema.STABLE_ID_PREFIX``, derived from the scheme constant
+    label is ``identity_schemes.STABLE_ID_PREFIX``, derived from the scheme constant
     (ADR-0035 §"Value labels"); the digest is ``sha256(payload)[:16]``.
     The SCIP arm mints through :func:`mint_scip_stable_id` instead.
     """

@@ -29,6 +29,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Session start reports a red or stale scheduled run.**
 - **README shows coverage and full-suite status badges.**
 - **Session hooks no longer time out on large transcripts.**
+- **A schema version bump no longer selects every test.**
 
 ## [10.0.0] - 2026-11-16
 

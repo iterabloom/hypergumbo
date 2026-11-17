@@ -67,12 +67,12 @@ field without conditional logic.
 
 ## Scheme
 
-The top-level ``repo_fingerprint_scheme`` (``schema.REPO_FINGERPRINT_SCHEME``,
+The top-level ``repo_fingerprint_scheme`` (``identity_schemes.REPO_FINGERPRINT_SCHEME``,
 currently ``hypergumbo-repofp-v3``) identifies this algorithm and its field
 rendering, and any algorithm change must bump the scheme version. v2 (WI-bosog)
 added the ``sha256:`` prefix to the AR-record FIELD
 (:func:`compute_repo_fingerprint_field`); v3 replaced it with the scheme's own
-label ``hgrepofp3:`` (``schema.REPO_FINGERPRINT_PREFIX``, derived from the
+label ``hgrepofp3:`` (``identity_schemes.REPO_FINGERPRINT_PREFIX``, derived from the
 constant), with the digest unchanged (ADR-0035 §"Value labels"). The bare
 digest returned by :func:`compute_repo_fingerprint` (the colon-free cache-dir
 path segment) is unchanged.
@@ -100,7 +100,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 from .ir import RepoFingerprint
-from .schema import REPO_FINGERPRINT_PREFIX
+from .identity_schemes import REPO_FINGERPRINT_PREFIX
 from .safety_zones import repo_inspect_git
 from pathlib import Path
 
@@ -304,9 +304,9 @@ def compute_repo_fingerprint_field(repo_root: Path) -> RepoFingerprint:
     prefix onto the FIELD while leaving the cache-dir digest untouched. The
     full 64-hex digest is retained — ``repo_fingerprint`` is a content hash of
     the code snapshot, not a derived 16-hex signature. The prefix is the
-    scheme's label ``schema.REPO_FINGERPRINT_PREFIX`` (``hgrepofp<N>:``), so
+    scheme's label ``identity_schemes.REPO_FINGERPRINT_PREFIX`` (``hgrepofp<N>:``), so
     the field is ``hgrepofp<N>:<64hex>`` and reads as a repo fingerprint
-    without its field name. Governed by ``schema.REPO_FINGERPRINT_SCHEME``
+    without its field name. Governed by ``identity_schemes.REPO_FINGERPRINT_SCHEME``
     (v2 added a ``sha256:`` prefix, v3 replaced it with the label).
     """
     return RepoFingerprint(REPO_FINGERPRINT_PREFIX + compute_repo_fingerprint(repo_root))

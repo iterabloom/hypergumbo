@@ -115,7 +115,7 @@ Identity (``stable_id``, INV-kutid):
 
 * ``stable_id = SCIP_STABLE_ID_PREFIX + sha256("scip:<Document.relative_path>:<moniker>")``,
   truncated like every other id (:func:`scip_stable_id`). The label
-  (``hgscipid<N>:``, ``schema.SCIP_STABLE_ID_PREFIX``) is the SCIP arm's own
+  (``hgscipid<N>:``, ``identity_schemes.SCIP_STABLE_ID_PREFIX``) is the SCIP arm's own
   scheme (``scip_stable_id_scheme``), not the tree-sitter arm's ``hgstableid``:
   the two arms hash different inputs, and a value says which (ADR-0035
   §"Value labels"). A moniker alone

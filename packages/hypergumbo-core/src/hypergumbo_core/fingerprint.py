@@ -98,9 +98,9 @@ if TYPE_CHECKING:
 # Symbol fingerprint scheme tag. Stored in
 # ``BehaviorMap.symbol_fingerprint_scheme`` for consumer-side
 # version detection. The canonical definition lives in
-# ``hypergumbo_core.schema`` (re-exported here for consumers that
+# ``hypergumbo_core.identity_schemes`` (re-exported here for consumers that
 # import it from this module).
-from .schema import SYMBOL_FINGERPRINT_SCHEME  # noqa: F401
+from .identity_schemes import SYMBOL_FINGERPRINT_SCHEME  # noqa: F401
 
 _SCHEME_PREFIX = "hgfp2:"
 
