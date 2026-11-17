@@ -54,3 +54,25 @@
   clock: 5  # 7a39
   nonce: 7a39  # 7a39
   message: "DESIGN FINDINGS BEFORE BUILDING (2026-11-17, from building WI-bibal; details in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md). (1) SEEDING. 'Seed from every changed file' has to mean every file that DIFFERS BETWEEN THE GRAPH'S TREE AND THE CURRENT TREE, plus the PR's changed files, not the PR's files alone: a path test -> changed file that exists now and not in the graph uses an edge made since the graph, which starts in a file changed since the graph, and a test file another PR added since is not in the graph at all. Step 1a's 741 pairs were measured with that seeding (git diff between the two trees). Of the 9 live shadow comparisons, 6 had every differing source file seeded and say nothing about it; 3 had differing files NOT seeded (17, 5, 2 files; graph ages 47, 93, 55 commits) and lost no test file. The wider seeding selects a superset of the PR-only one, and grows with the graph's age. (2) A graph made from a tree with uncommitted changes is usable because WI-bibal stores which files differed from its commit; they join the seeds. (3) A branch commit is REWRITTEN by the rebase merge, so a graph's commit id stops being reachable (graph 1 in the real index is of e3fd495c7, a pre-merge commit). Store the commit's git TREE id too and diff against the tree. (4) WHICH BUILD. The stored graph must come from the analyzer build smart-test's own slice would use until the cross-build check (WI-kitin-rirup) passes: ask the installed release for compute_analyzer_identity_hash() and pass it as graph-walk --build. (5) The graph tables already exist in the real index; a column added now needs a format number and a drop-and-recreate (the rows are a cache). (6) scripts/smart-test's slice line is pinned by line-scanning guards (WI-tolil, WI-zufij): add the stored-graph path beside it, do not rewrite it."  # 7a39
+- op: discuss  # 9871
+  at: '2026-11-17T13:15:18Z'  # 9871
+  by: agent  # 9871
+  actor: jgstern_agent  # 9871
+  clock: 6  # 9871
+  nonce: '9871'  # 9871
+  message: "Merged as PR #2226, dev SHA 99ac1c34fa7d."  # 9871
+- op: update  # 1e02
+  at: '2026-11-17T13:15:50Z'  # 1e02
+  by: agent  # 1e02
+  actor: jgstern_agent  # 1e02
+  clock: 7  # 1e02
+  nonce: '1e02'  # 1e02
+  set:  # 1e02
+    status: done  # 1e02
+- op: discuss  # aecf
+  at: '2026-11-17T13:15:50Z'  # aecf
+  by: agent  # aecf
+  actor: jgstern_agent  # aecf
+  clock: 8  # aecf
+  nonce: aecf  # aecf
+  message: "Merged in PR #2226 (dev: commit 'feat(smart-test): select from a stored graph; analyse only when it may not answer'). CLOSE CONDITION, RUN: (1) LIVE in the main checkout, on the branch's change to package source (graph_rows.py, graph_select.py, selection_log.py): `smart-test --manifest` with no usable stored graph 345 s (it analysed and stored graph 1); the next `smart-test --manifest` 14 s, printing '[smart-test] selecting from stored graph 1 of fd5448d16, 0 commit(s) old: 11 seed file(s), 0 of them not this change's, reaching 0 test file(s) this change does not; 205 file(s) named'; 404 selected test files against the analysed run's 393, none of the 393 missing (the 11 more: every changed file is seeded, not package source only). switch/live.txt. The PR's own committed manifest was selected that way; its header: '# Graph: stored graph 1 of fd5448d16, 2 commit(s) old: 13 seed file(s), 0 of them not this change's, ...'. (2) EACH FALLBACK HAS A TEST AND A MUTATION: no usable graph (exit 3: none stored, another build, too old, a tree git does not have), failed (4), an added file (5), too far behind (6), an unreadable analyzer build, --fresh-graph, CI / nested / target mode; 34 text mutations, 33 red, the survivor a condition another implied, removed (switch/mutations.tsv). (3) Documented: .agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md, section 'Where the selection comes from: a stored graph'. WHAT DIFFERS FROM THE DESCRIPTION: seeds are the change's files PLUS every file that differs from the graph's tree (see the note of 11-17 above); the comparison that stays on is now 'what graph-select would have answered' against the fresh answer, in stale-record; the survey registry is removed. MY CHOICE, NOT A RULING, FOR THE OWNER TO CONFIRM OR CHANGE: a stored graph is refused when its age adds more than 150 test files that are not the change's (MAX_EXTRA_TESTS in scripts/coverage-select). NOT SHOWN: a refused graph in a LIVE run other than 'no usable stored graph' (the other refusals are shown by tests on small repositories); a STORED GRAPH LOST line has not occurred. KNOWN GAPS, EACH ITS OWN ITEM: nothing renews a graph except a refusal (WI-tupup-garak); worktree runs still analyse (WI-kitin-rirup)."  # aecf

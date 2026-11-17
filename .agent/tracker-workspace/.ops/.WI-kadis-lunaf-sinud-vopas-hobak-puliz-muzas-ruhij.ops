@@ -28,3 +28,18 @@
   set: {}  # 7b9a
   add:  # 7b9a
     isbefore: [WI-huvum-taral-mogos-dozaj-kibus-hitid-linav-dohaf]  # 7b9a
+- op: update  # 5877
+  at: '2026-11-17T13:15:50Z'  # 5877
+  by: agent  # 5877
+  actor: jgstern_agent  # 5877
+  clock: 3  # 5877
+  nonce: '5877'  # 5877
+  set:  # 5877
+    status: done  # 5877
+- op: discuss  # 36f6
+  at: '2026-11-17T13:15:50Z'  # 36f6
+  by: agent  # 36f6
+  actor: jgstern_agent  # 36f6
+  clock: 4  # 36f6
+  nonce: 36f6  # 36f6
+  message: "Merged in PR #2226, in the same commit as the switch (WI-huvum-taral): hypergumbo_core/graph_select.py judge_added / mentions, applied by `coverage-select graph-select`. CLOSE CONDITION, RUN: (1) one test per case, on the function and on a real git repository: an added test file runs itself; an added source file a changed file mentions is left to that file; an added file nothing mentions is exit 5; an added conftest.py is exit 5 though a changed line names it; a file's own text is not a mention; a file the graph saw untracked is not 'added since'. Mutations Q2, Q3, Q4, Q5, Q6, Q8, S14, S16 each turn a test red. (2) THE PRODUCTION RULE REPLAYED over the 149 PR boundaries of the measurement (switch/added_rule_replay.py): 57 add a file; 3 need a fresh analysis: e7829a677, 78e0eeb43, a44572db3, the same three; 126 added test files, 115 added files mentioned, 62 not mentioned (all in those three). WHAT THE BUILD DECIDED, as the description asked: an added conftest.py always needs an analysis (no data: none in the 149); 'mentions' is the stem as a whole word, or the full file name when the stem is three characters or fewer. NOT MEASURED, as before: whether the walk from the mentioning files reaches every test the fresh walk reaches from the added file, beyond the 38 steps of 1a. The ongoing comparison in stale-record is what would show a miss."  # 36f6

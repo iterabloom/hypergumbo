@@ -19,3 +19,25 @@
     pr_ref:  # d44d
     description: "WHAT (owner ruling). Once smart-test selects from a stored graph, a fresh analysis is needed only to renew that graph. It runs detached AFTER a smart-test run finishes when the stored graph is older than a threshold the agent sets from the shadow data, and on every `--full`. It never starts while tests are running.\n\nCONSTRAINTS. The rebuild takes 4.2 GB for 5.5 minutes on one core. On this machine a background run is reaped when memory is low, and two heavy runs at once have killed each other before. smart-test holds `.ci/.smart-test.lock` while it runs; a second instance is refused. The rebuild must not start beside a test run, and a test run that starts during a rebuild must not fail because of it: say which of the two waits.\n\nCLOSE CONDITION. A test that the rebuild does not start while the smart-test lock is held; a live detached rebuild after a real run, with its peak memory and time; the threshold and the data it was set from written in the smart-test playbook; each rebuild appends its comparison to stale_graph_observations.jsonl.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # d44d
     fields: {}  # d44d
+- op: discuss  # 454d
+  at: '2026-11-17T14:15:10Z'  # 454d
+  by: agent  # 454d
+  actor: jgstern_agent  # 454d
+  clock: 2  # 454d
+  nonce: 454d  # 454d
+  message: "Merged as PR #2227, dev SHA eec3215e6995."  # 454d
+- op: update  # a563
+  at: '2026-11-17T14:15:31Z'  # a563
+  by: agent  # a563
+  actor: jgstern_agent  # a563
+  clock: 3  # a563
+  nonce: a563  # a563
+  set:  # a563
+    status: done  # a563
+- op: discuss  # ddd8
+  at: '2026-11-17T14:15:31Z'  # ddd8
+  by: agent  # ddd8
+  actor: jgstern_agent  # ddd8
+  clock: 4  # ddd8
+  nonce: ddd8  # ddd8
+  message: "Merged in PR #2227 (dev eec3215e6). BUILT: `coverage-select graph-rebuild --commit C --hg H [--build B] [--after-pid P]` and, in scripts/smart-test, stop_graph_rebuild (run as soon as a run holds the lock) and start_graph_rebuild (called before pytest on an explicit-path run and after the installed hypergumbo is found on every other). WHAT IT REBUILDS, AND THE THRESHOLD THE RULING LEFT TO ME: the graph of the branch's BASELINE commit (merge-base with origin/dev), whenever no stored graph of that commit, from the installed analyzer build and with no uncommitted files, exists. With that graph a selection has no seed that is not the change's own. CLOSE CONDITION, RUN: (1) 'does not start while the smart-test lock is held': test_it_does_not_start_while_a_test_run_has_the_checkout (it reads smart-test's pid file; it does not take the lock, which would refuse a run starting in that instant); and a starting smart-test stops a running one: test_a_run_that_starts_stops_the_rebuild_and_only_the_rebuild, and LIVE: '[smart-test] stopped a graph rebuild (pid 775535)' with 'stopped after 660 s: a test run has the machine' in rebuild.log. (2) A LIVE DETACHED REBUILD after a real run: 'stored graph 2 of 99ac1c34f (68954 nodes, 275187 edges, build dfca1edd8196f6bb) in 398 s' (60 s of that its settle wait); its checkout and its 350 MB survey were gone afterwards. PEAK MEMORY WAS NOT MEASURED in that run (the plan's figure for the same analysis is 4.2 GB; the rebuild refuses to start under 6,000 MB free). (3) The next `smart-test --manifest` with a source edit: 14 s, 'selecting from stored graph 2 of 99ac1c34f, 0 commit(s) old: 8 seed file(s), 0 of them not this change's, reaching 0 test file(s) this change does not'. rebuild/live.txt. (4) Documented in the smart-test playbook ('The graph that answers exactly, made in the background'). (5) 27 mutations, 26 red; the survivor was `git worktree add --force`, not needed on git 2.43, removed (rebuild/mutations.tsv). DIFFERS FROM THE DESCRIPTION: the description said each rebuild appends its comparison to stale_graph_observations.jsonl. It does not: the rebuild analyses the baseline commit, not the tree a selection was made for, so there is no selection to compare. The comparison still runs whenever a selection itself analyses (stale-record). 'On every --full' is covered by the same start on every run. FOUND: a process that ended and was not collected by its parent still answers a signal, so the wait for the starter could hang; a zombie counts as ended. The rebuild does not prune git's worktree list (it would drop other worktrees whose directory is missing). KNOWN LIMIT: runs that follow one another without about seven idle minutes (an agent's pre-PR chain) stop it each time; the first selection on a new baseline then analyses in the foreground as before."  # ddd8
