@@ -34,6 +34,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test keeps a compact copy of each analysis graph.**
 - **smart-test selects from a stored graph in seconds.**
 - **smart-test rebuilds its baseline graph in the background.**
+- **A failed verdict publish says why within seconds.**
 
 ## [10.0.0] - 2026-11-16
 

@@ -307,7 +307,7 @@ def test_a_leg_that_lands_between_fetch_and_push_is_kept(tmp_path: Path, ci_env,
     real_run = psv.Publisher._run
     pushes: list[str] = []
 
-    def interleaved(self, *args: str, data=None):
+    def interleaved(self, *args: str, what: str, data=None):
         if args[0] == "push":
             pushes.append(args[-1])
             if len(pushes) == 1:
@@ -318,7 +318,7 @@ def test_a_leg_that_lands_between_fetch_and_push_is_kept(tmp_path: Path, ci_env,
                 _git("add", ".", cwd=other)
                 _git("commit", "-q", "-m", "other leg", cwd=other)
                 _git("push", "-q", "origin", "HEAD:badges", cwd=other)
-        return real_run(self, *args, data=data)
+        return real_run(self, *args, what=what, data=data)
 
     monkeypatch.setattr(psv.Publisher, "_run", interleaved)
     assert psv.main(["publish", "--workflow", "nightly", "--leg", "3.10", "--steps", "a",
@@ -431,12 +431,43 @@ def test_the_deploy_key_path(tmp_path: Path, ci_env, capsys, monkeypatch) -> Non
     assert argv[:7] == ["-i", key_path, "-o", "IdentitiesOnly=yes",
                         "-o", f"UserKnownHostsFile={hosts_path}", "-o"]
     assert "StrictHostKeyChecking=yes" in argv and "git@github.com" in argv
+    # No prompt can be answered in CI, and a port that drops packets must be
+    # reported by ssh in seconds, not by this script's own limit minutes later.
+    assert "BatchMode=yes" in argv and "ConnectTimeout=20" in argv
     assert Path(f"{log}.keymode").read_text().strip() == "600"
     assert Path(f"{log}.key").read_text() == KEY + "\n"
     hosts = Path(f"{log}.hosts").read_text().splitlines()
     assert hosts == [f"github.com {k}" for k in psv.GITHUB_HOST_KEYS] and len(hosts) == 3
     assert not Path(key_path).exists() and not Path(hosts_path).exists()
     assert "fakekeymaterial" not in "\n".join(argv) + out + err
+
+
+#: Stand-in for an ``ssh`` whose connection is never answered.
+HANGING_SSH = """#!/bin/sh
+exec sleep 30
+"""
+
+
+def test_a_remote_that_never_answers_says_which_step_waited(
+        tmp_path: Path, ci_env, capsys, monkeypatch) -> None:
+    """The first scheduled run failed with 'git timed out after 120 s' and
+    nothing else (pipeline 6512: the runner cannot reach github.com:22). The
+    line must say what was being done and to which remote."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "ssh").write_text(HANGING_SSH)
+    (bindir / "ssh").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("CI_REPO", "iterabloom/hypergumbo")
+    monkeypatch.setenv("BADGES_DEPLOY_KEY", KEY)
+    monkeypatch.setattr(psv, "GIT_TIMEOUT", 1)
+    rc = psv.main(["publish", "--workflow", "full-suite", "--steps", "a",
+                   "--markers", str(tmp_path)])
+    _out, err = capsys.readouterr()
+    assert rc == 1
+    assert err.strip() == (
+        "publish-scheduled-verdict: reading git@github.com:iterabloom/hypergumbo.git timed out "
+        "after 1 s: the remote did not answer (is its port reachable from this runner?)")
 
 
 def test_the_key_file_is_private(tmp_path: Path, monkeypatch) -> None:
