@@ -1,0 +1,3 @@
+Original commit body from 6c7bd86679ae11f4bdeae05336601cb6b42c4a71:
+
+Addresses WI-sutuz-puvum-zidud-lugij-kinod-gitir-kabur-tiguv. ir.py and analyze/base.py took the stable-id labels from schema.py at module level, so every test file loaded schema.py and a SCHEMA_VERSION bump selected the whole suite. The scheme constants, value_label and the labels now live in identity_schemes.py (standard library imports only); schema.py offers the same objects. Test files that load schema.py: 1,477 of 1,477 before, 326 of 1,478 after. No identity value changes (1,894 nodes compared). Whole suite run locally under the CI stubs: green.
