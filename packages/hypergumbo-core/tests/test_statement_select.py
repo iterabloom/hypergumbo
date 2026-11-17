@@ -113,6 +113,50 @@ def test_a_block_the_index_saw_in_another_version_is_answered_with_every_test(
     assert chosen.tests == {"t_early", "t_full", "t_no_record"} == chosen.by_block
 
 
+def _fold_a_run(repo: Repo, source: str, ran: dict[str, Optional[set[int]]],
+                measured: bool = False) -> None:
+    """A later run, folded in: ``f`` is ``source``'s now, and each test in
+    ``ran`` ran those statements of it (``None``: it ran and did not reach f)."""
+    key = str(repo.path)
+    digests = {key: {b.name: b.digest for b in blocks_for_source(key, source)}}
+    edges = {test: ([(key, "f")] if ordinals is not None else []) for test, ordinals in ran.items()}
+    statements = {test: {(key, "f"): _bitmap(ordinals)} for test, ordinals in ran.items()
+                  if ordinals is not None}
+    si.store_edges(repo.conn, edges, digests=digests, statements=statements,
+                   measured=[key] if measured else None)
+
+
+def test_a_change_that_has_been_run_is_still_compared_with_its_base(repo: Repo) -> None:
+    """The second run of a change. The first stored the edited ``f``'s digest
+    and dropped the records of ``f`` as it was; they were kept, and it is
+    those the selector reads: before they were, this was answered with every
+    test that reached ``f``."""
+    first_edit = BASE.replace("b = a + 1 ", "b = a + 2 ")
+    _fold_a_run(repo, first_edit, {"t_full": {1, 3, 4, 5}})
+    chosen = repo.select(first_edit.replace("b = a + 2 ", "b = a + 3 "))
+    assert repo.answer(chosen, "f") == ss.BY_STATEMENT
+    assert chosen.tests == {"t_full", "t_no_record"}
+    assert chosen.by_block == {"t_early", "t_full", "t_no_record"}
+
+
+def test_a_test_that_stopped_reaching_the_block_during_the_change_still_counts(
+        repo: Repo) -> None:
+    """``t_full`` reached ``f`` at the base and, on the edited code, no longer
+    does: its pair is gone. Measured from the base it ran the edited
+    statement, and it is selected on its kept record."""
+    first_edit = BASE.replace("b = a + 1 ", "b = a + 2 ")
+    _fold_a_run(repo, first_edit, {"t_full": None}, measured=True)
+    assert "t_full" not in si.statement_records(repo.conn, str(repo.path), "f")
+    chosen = repo.select(first_edit)
+    assert repo.answer(chosen, "f") == ss.BY_STATEMENT
+    assert chosen.tests == {"t_full", "t_no_record"}
+    assert chosen.by_block == {"t_early", "t_full", "t_no_record"}
+    # The same for an answer that does not narrow.
+    whole = repo.select(first_edit.replace("def f(x):", "def f(x, y=0):"))
+    assert repo.answer(whole, "f").startswith("whole: ")
+    assert whole.tests == {"t_early", "t_full", "t_no_record"} == whole.by_block
+
+
 def test_a_signature_change_is_answered_with_every_test_and_says_why(repo: Repo) -> None:
     chosen = repo.select(BASE.replace("def f(x):", "def f(x, y=0):"))
     assert repo.answer(chosen, "f") == "whole: its signature or a decorator changed"

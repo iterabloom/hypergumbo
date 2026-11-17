@@ -79,9 +79,23 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    get new ones and the others keep their pair with no record. A reader
    compares the stored digest with the source in front of it before reading a
    record (:func:`tests_of_line`), which covers an edit no fold has seen yet.
-   Nothing in test selection reads the records yet: they are read by
-   :func:`tests_of_line` and :func:`statement_records`
-   (``coverage-select line-tests`` / ``line-records``).
+   The records are read by :func:`tests_of_line` and
+   :func:`statement_records` (``coverage-select line-tests`` /
+   ``line-records``) and by the by-statement selector
+   (:mod:`~hypergumbo_core.statement_select`).
+
+   THE DROPPED RECORDS ARE KEPT, BY DIGEST. A selector that runs before a
+   change is merged needs the records of the block as it was at the BASE of
+   the change, and by then the changed code has been run: the fold that
+   stored its digest dropped exactly those records. So what a fold drops it
+   first copies to ``block_record``, keyed by the digest it was made under,
+   and :func:`statement_records_at` reads a block's records for a GIVEN
+   digest: the current ones when that is the stored digest, with the kept
+   ones laid under them. :data:`KEPT_VERSIONS` superseded digests are kept
+   per block. These two tables are an addition no reader depends on: a file
+   without them gains them empty when opened, a fold by older code simply
+   keeps nothing, and :data:`FORMAT` does not move (the file is shared by
+   every checkout on the machine, older ones included).
 
 SOUNDNESS BOUNDARY, stated because it is the thing that would bite. The index
 knows "tests I have OBSERVED executing block B", a subset of "tests that execute
@@ -131,7 +145,7 @@ a format it does not know (:class:`IndexFormatError`), because a file read with
 the wrong schema looks like an EMPTY index, and to narrowing an empty index
 says "no test runs this code". Callers read and write through the functions
 here (:func:`store_edges`, :func:`touching_tests`, :func:`measured_tests`,
-:func:`statement_records`, :func:`tests_of_line`),
+:func:`statement_records`, :func:`statement_records_at`, :func:`tests_of_line`),
 never through the tables.
 """
 from __future__ import annotations
@@ -210,7 +224,25 @@ CREATE TABLE IF NOT EXISTS test_run (
     PRIMARY KEY (test, run)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS test_run_by_run ON test_run (run, test);
+CREATE TABLE IF NOT EXISTS block_record (
+    block      INTEGER NOT NULL,
+    digest     TEXT NOT NULL,
+    test       INTEGER NOT NULL,
+    statements BLOB NOT NULL,
+    PRIMARY KEY (block, digest, test)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS block_version (
+    block  INTEGER NOT NULL,
+    digest TEXT NOT NULL,
+    seq    INTEGER NOT NULL,
+    PRIMARY KEY (block, digest)
+) WITHOUT ROWID;
 """
+
+#: Superseded digests whose records are kept, per block. A function edited
+#: and run more often than this inside one change loses the records of its
+#: base, and is then selected by block again.
+KEPT_VERSIONS = 8
 
 #: The tables :func:`convert_format_1` rewrites. Every other table in the file
 #: belongs to another module and is copied as it stands.
@@ -268,6 +300,19 @@ _RECORDS_OF_BLOCK = (
 #: Forget what every test ran INSIDE one block; the pairs stay. ``?`` = the
 #: block's number.
 _DROP_RECORDS_OF_BLOCK = "UPDATE test_block SET statements = NULL WHERE block = ?"
+
+#: The records of block ``?2``, as they stand, kept under the digest ``?1``.
+_KEEP_RECORDS_OF_BLOCK = (
+    "INSERT OR REPLACE INTO block_record (block, digest, test, statements) "
+    "SELECT block, ?, test, statements FROM test_block "
+    "WHERE block = ? AND statements IS NOT NULL"
+)
+
+#: The kept records of one block under one digest. ``?`` = block id, digest.
+_KEPT_RECORDS = (
+    "SELECT t.test_id, r.statements FROM block_record r "
+    "JOIN test t ON t.id = r.test WHERE r.block = ? AND r.digest = ?"
+)
 
 #: Pairs; pairs with a record; pairs whose record names a statement; bytes of
 #: bitmap. The one query here that reads every pair, and says so in its plan.
@@ -568,13 +613,15 @@ def store_edges(
         cur, "INSERT OR IGNORE INTO file (path) VALUES (?)",
         "SELECT id FROM file WHERE path = ?", scope)
     moved = [
-        (block_id,)
+        (block_id, stored)
         for path, per_name in digests.items()
         for block_id, name, stored in cur.execute(
             "SELECT id, name, digest FROM block WHERE file = ?",
             (file_ids[path],)).fetchall()
         if stored and name in per_name and per_name[name] != stored]
-    cur.executemany(_DROP_RECORDS_OF_BLOCK, moved)
+    for block_id, superseded in moved:
+        _keep_records(cur, block_id, superseded)
+    cur.executemany(_DROP_RECORDS_OF_BLOCK, [(block_id,) for block_id, _ in moved])
     cur.executemany(
         "INSERT INTO block (file, name, digest) VALUES (?, ?, ?) "
         "ON CONFLICT (file, name) DO UPDATE SET digest = excluded.digest",
@@ -606,6 +653,25 @@ def store_edges(
         "INSERT INTO test_block (test, block, statements) VALUES (?, ?, ?) "
         "ON CONFLICT (test, block) DO UPDATE SET statements = excluded.statements",
         pairs)
+
+
+def _keep_records(cur: sqlite3.Cursor, block_id: int, digest: str) -> None:
+    """Copy block ``block_id``'s records, about to be dropped, to
+    ``block_record`` under the ``digest`` they were made for, and forget the
+    versions beyond :data:`KEPT_VERSIONS` (semantic 5 of the module docstring)."""
+    cur.execute(_KEEP_RECORDS_OF_BLOCK, (digest, block_id))
+    newest = cur.execute(
+        "SELECT COALESCE(MAX(seq), 0) FROM block_version WHERE block = ?",
+        (block_id,)).fetchone()[0]
+    cur.execute(
+        "INSERT OR REPLACE INTO block_version (block, digest, seq) VALUES (?, ?, ?)",
+        (block_id, digest, int(newest) + 1))
+    forgotten = [row[0] for row in cur.execute(
+        "SELECT digest FROM block_version WHERE block = ? ORDER BY seq DESC "
+        "LIMIT -1 OFFSET ?", (block_id, KEPT_VERSIONS)).fetchall()]
+    for old in forgotten:
+        cur.execute("DELETE FROM block_record WHERE block = ? AND digest = ?", (block_id, old))
+        cur.execute("DELETE FROM block_version WHERE block = ? AND digest = ?", (block_id, old))
 
 
 def measured_tests(conn: sqlite3.Connection) -> frozenset[str]:
@@ -648,6 +714,40 @@ def statement_records(
     """
     return {test_id: _ordinals(bitmap)
             for test_id, bitmap in conn.execute(_RECORDS_OF_BLOCK, (path, block))}
+
+
+def statement_records_at(
+    conn: sqlite3.Connection, path: str, block: str, digest: str,
+) -> Optional[dict[str, Optional[frozenset[int]]]]:
+    """:func:`statement_records` of ``block`` AS IT WAS under ``digest``.
+
+    For each test paired with the block today, and each test with a kept
+    record of that version: the ordinals it ran in that version, or ``None``
+    when it has no record of it. Returns ``None`` when the index holds
+    nothing of that version at all (it is neither the stored digest nor a
+    kept one): "no test has a record" and "this version is unknown here" must
+    not look alike.
+    """
+    found = conn.execute(
+        "SELECT b.id, b.digest FROM file f JOIN block b ON b.file = f.id "
+        "WHERE f.path = ? AND b.name = ?", (path, block)).fetchone()
+    if found is None or not digest:
+        return None
+    block_id, stored = int(found[0]), str(found[1])
+    current = statement_records(conn, path, block)
+    kept = {str(test_id): _ordinals(bitmap)
+            for test_id, bitmap in conn.execute(_KEPT_RECORDS, (block_id, digest))}
+    if stored == digest:
+        # A record made under this digest and kept, for a test whose pair
+        # now has none (it ran neither then nor since).
+        return {test: (ran if ran is not None else kept.get(test))
+                for test, ran in {**dict.fromkeys(kept), **current}.items()}
+    known = conn.execute(
+        "SELECT 1 FROM block_version WHERE block = ? AND digest = ?",
+        (block_id, digest)).fetchone()
+    if known is None:
+        return None
+    return {**dict.fromkeys(current), **kept}
 
 
 @dataclass(frozen=True)
@@ -1067,6 +1167,12 @@ def _forget_dead_checkouts(conn: sqlite3.Connection, checkout: str) -> None:
         _fill_temp(cur, "dead_file", dead)
         cur.execute(
             "DELETE FROM test_block WHERE block IN ("
+            "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
+        cur.execute(
+            "DELETE FROM block_record WHERE block IN ("
+            "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
+        cur.execute(
+            "DELETE FROM block_version WHERE block IN ("
             "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
         cur.execute("DELETE FROM run_file WHERE file IN (SELECT id FROM temp.dead_file)")
         cur.execute("DELETE FROM block WHERE file IN (SELECT id FROM temp.dead_file)")
