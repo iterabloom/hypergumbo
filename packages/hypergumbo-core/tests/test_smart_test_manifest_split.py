@@ -176,7 +176,11 @@ run_pytest "${_RUN}" "${{ARGS[@]}}"
 # just gets quietly slower. Only position distinguishes the two, so position is
 # what gets pinned.
 
-_SELECT_CALL = re.compile(r"coverage-select\"?\s*\\?\s*\n?[^\n]*\bselect\b")
+# ``select`` as a word of its own: the subcommand. ``graph-select`` is another
+# subcommand (it chooses the MANIFEST's tests from a stored graph and so sits
+# above the seam, where the slice it stands in for sits), and a comment that
+# names either must not be counted as a call of this one.
+_SELECT_CALL = re.compile(r"coverage-select\"?\s*\\?\s*\n?[^\n]*(?<![\w-])select(?![\w-])")
 
 
 def _audit_union(text: str) -> list[str]:
@@ -252,6 +256,26 @@ ADDS=$("$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" select \\
 {_RUN}=$(printf '%s\\n%s\\n' "${_RUN}" "$ADDS" | sort -u)
 '''
     assert _audit_union(src) == []
+
+
+def test_union_guard_does_not_count_another_subcommand_or_a_comment() -> None:
+    """NEGATIVE CONTROL for the pattern itself: ``graph-select`` above the seam
+    and a comment naming it are not calls of ``select``. With them counted,
+    the guard reported four calls on a script that has one."""
+    src = f'''
+# The slice, or a stored graph (coverage-select graph-select;
+# see graph_select.py). coverage-select
+# stale-record compares, as graph-select would.
+LINE=$("$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" graph-select --output "$o")
+{_MAN}="${_RUN}"
+ADDS=$("$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" select \\
+    --changed-files "$f")
+{_RUN}=$(printf '%s\\n%s\\n' "${_RUN}" "$ADDS" | sort -u)
+'''
+    assert _audit_union(src) == []
+    # And the guard still sees a real second call of ``select``.
+    twice = src + '"$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" select --x\n'
+    assert "found 2" in _audit_union(twice)[0]
 
 
 # ── Phase 3: coverage narrowing must land ABOVE the seam ─────────────────────
