@@ -63,7 +63,8 @@ CREDENTIAL. With ``--remote`` the URL is used as is (tests pass a local bare
 repository). Otherwise the remote is ``CI_REPO_CLONE_SSH_URL`` (or
 ``git@github.com:<CI_REPO>.git``) and the private key is the environment
 variable ``BADGES_DEPLOY_KEY`` (the Woodpecker secret ``badges_deploy_key``).
-It is written to a 0600 file in a private temporary directory, next to a
+It is written (line ends normalised to newlines) to a 0600 file in a private
+temporary directory, next to a
 ``known_hosts`` holding GitHub's pinned host keys, and handed to git through
 ``GIT_SSH_COMMAND``. The key never appears in an argument list or in output,
 and the directory is removed afterwards, on failure too.
@@ -327,7 +328,10 @@ def _ssh_env(workdir: Path) -> dict[str, str]:
                            "(the Woodpecker secret badges_deploy_key)")
     key_file = workdir / "deploy_key"
     fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+    # A secret pasted through a web form can carry CRLF line ends, which ssh
+    # refuses as "invalid format"; a key file also needs its final newline.
+    key = key.replace("\r\n", "\n").replace("\r", "\n")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
         fh.write(key if key.endswith("\n") else key + "\n")
     known = workdir / "known_hosts"
     known.write_text("".join(f"github.com {k}\n" for k in GITHUB_HOST_KEYS), encoding="utf-8")

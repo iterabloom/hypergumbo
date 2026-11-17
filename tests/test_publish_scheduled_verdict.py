@@ -447,6 +447,16 @@ def test_the_key_file_is_private(tmp_path: Path, monkeypatch) -> None:
     assert "k\n" not in env["GIT_SSH_COMMAND"]
 
 
+@pytest.mark.parametrize("pasted", ["l1\r\nl2\r\n", "l1\r\nl2", "l1\nl2\n", "l1\rl2\r"])
+def test_a_key_pasted_with_other_line_endings_is_written_with_newlines(
+        tmp_path: Path, monkeypatch, pasted: str) -> None:
+    """A secret pasted through a web form can arrive with CRLF line ends, and
+    ssh refuses such a key file as "invalid format"."""
+    monkeypatch.setenv("BADGES_DEPLOY_KEY", pasted)
+    psv._ssh_env(tmp_path)
+    assert (tmp_path / "deploy_key").read_bytes() == b"l1\nl2\n"
+
+
 def test_dry_run_contacts_nothing_and_needs_no_key(tmp_path: Path, ci_env, capsys) -> None:
     markers = _markers(tmp_path, ["a"])
     rc = psv.main(["publish", "--workflow", "full-suite", "--steps", "a", "--markers", str(markers),
