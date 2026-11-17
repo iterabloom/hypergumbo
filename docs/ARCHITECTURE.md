@@ -550,6 +550,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure_code_tree.py` | Which tree's hypergumbo does a measurement script measure? Chosen, never inherited. |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `prose-only-files` | Print the ``.py`` files that differ from a commit in comments or docstrings only. |
+| `publish-scheduled-verdict` | Publish a scheduled CI run's verdict to the ``badges`` branch. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
 | `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
 | `repin-line-citations` | Re-pin ``path=`` / ``line=`` / ``anchor=`` citations whose line moved. |
@@ -1006,8 +1007,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 677ee7828dec
-  commit_count: 9361
+  commit: bafd29a3b4db
+  commit_count: 9369
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
