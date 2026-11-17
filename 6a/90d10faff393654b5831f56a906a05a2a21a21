@@ -1,0 +1,43 @@
+Original commit body from 0b0cd9adcf04f2e576bab32f6ac268b50722dc3d:
+
+A node id now has its own type, `NodeId`, so mypy rejects an id that was not built by an id factory.
+
+## Why
+
+Node ids follow one grammar (`language:path:lines:name:kind`), written by a small set of factory functions. An id assembled by hand with an f-string can leave that grammar without any test noticing; `scripts/check-id-construction` catches the f-string at pre-commit, but nothing checked the value's path through the code. With a distinct type, a plain `str` reaching an id field is a type error that the strict mypy ratchet counts.
+
+## What changed
+
+- `NodeId = NewType("NodeId", str)` in `ir.py`. The factories (`make_symbol_id`, `make_file_id`, `make_module_import_dst`, the external-id helper) return it.
+- `Symbol.id`, `UsageContext.symbol_ref` and `DataModel.symbol_id` are typed `NodeId`.
+- Two ways a `str` becomes a `NodeId` outside the factories: `read_node_id` (one call: a dangling edge endpoint in file-id shape becomes the file node it names) and `relativize_node_id` (the repo-root strip at finalize).
+- Thirteen hand-built ids whose text a factory reproduces byte for byte now go through the factory.
+- Six producers whose hand-built id differs from what a factory would emit keep their text and wrap it at the site. Each is listed with its reason in `test_id_newtypes.py`: event names, template file names, handlebars partials, bibtex keys, blade view names, and rust-analyzer's in-place kind rewrite.
+- `scripts/check-id-construction` sees through `NodeId(...)` and `read_node_id(...)`.
+- `test_id_newtypes.py` pins the typed fields and three tables: every place that mints an id (11), every hand-built wrap (6), every boundary read (1). Dropping any one of the 18 entries fails a test (checked one at a time).
+
+## Left as `str`, with the reason
+
+- `Edge.dst`: a dst is a node id or an unresolved reference that finalize turns into a boundary node. 67 producer sites write it as an f-string; 12 are outside the node-id grammar and 34 interpolate a name that may hold `:`.
+- `Edge.src`: `tests/test_rct_public_api_pinned.py` pins its type as `str` and asks for coordination first, and 11 producer sites plus the SCIP builders' no-resolver path write a src that is not a node id.
+
+Owner ruling 2026-11-16: typing `Edge.src` and fixing the six wrapped producers are follow-up items, filed after this merges.
+
+## Measured
+
+- No output change: maps equal node for node and edge for edge before and after on a 70-file multi-language fixture (297 nodes, 233 edges), meson (23,602 / 62,664) and mitmproxy (14,310 / 44,777). Stable ids: 0 gone, 0 new, 0 moved.
+- The one visible difference is `analysis_runs[].pass_version`, the code digest of each pass whose source file changed.
+- mypy strict: the same count before and after (466 each on the release commit the work started from; 453 each on current dev). No `type: ignore` or `cast` added.
+
+## Checks
+
+- Whole suite on this branch, every test directory with explicit file lists: 40,543 passed, no failures.
+- Each package directory's manifest tests run alone with numpy, sentence_transformers and torch stubbed out, as CI runs them: core 21,332 passed; lang-mainstream 8,808; lang-common 2,546; lang-extended1 1,836; rust-analyzer 165; scip-python 50; tracker 3,098; hypergumbo 4; tests/ 2,649. No failures.
+- `scripts/check-self-claims`: 23 claims unchanged (23 confirmed_with_caveats).
+- `scripts/check-claims-coverage`: passes.
+- `scripts/check-package-coverage --serial`: core reports three uncovered lines (c_family.py:256, route_handler.py:463, the `_withhold_for_unfollowed_escapes` call in verify_claims.py). The same three statements are uncovered on dev; this branch adds none. The other six packages pass.
+- mypy strict on current dev and on this branch: 453 errors each (baseline file 477, not edited).
+- Test manifest: targeted, 1,468 test files.
+- `docs/ARCHITECTURE.md` regenerated.
+
+Addresses WI-tapak-mosuh-pifam-zarov-kurov-zifam-fukos-zokog
