@@ -31,6 +31,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Session hooks no longer time out on large transcripts.**
 - **A schema version bump no longer selects every test.**
 - **A time-stamped test id no longer stops parallel runs.**
+- **smart-test keeps a compact copy of each analysis graph.**
 
 ## [10.0.0] - 2026-11-16
 

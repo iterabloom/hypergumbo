@@ -29,12 +29,17 @@ catches broadly and exits 0 — see `main`.
     stale-record  store what a fresh walk and a walk on an older graph named
     stale-report  print the accrued stale-graph evidence and its verdict
     run-record  store what one test run ran against and which tests failed
+    graph-store  store a survey's graph as rows in the index
+    graph-walk  write the files that depend on the changed files, walking a
+                STORED graph (exit 3: no stored graph to walk; 4: it failed)
+    graph-list  print the stored graphs, newest first
     line-tests  print which tests the index records running FILE:LINE
     line-records  print how many pairs of the index have statement records
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -46,6 +51,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent
                       / "packages" / "hypergumbo-core" / "src"))
 
+from hypergumbo_core import graph_rows
 from hypergumbo_core.import_closure import build as build_import_graph
 from hypergumbo_core.prose_only import (
     fold_run, global_refusal, select_for_prose, tests_reading,
@@ -541,6 +547,10 @@ def cmd_stale_record(args: argparse.Namespace) -> int:
     if args.fresh_survey:
         register_graph(Path(args.graphs), survey=args.fresh_survey, head=head,
                        dirty=bool(tracked or untracked), at=_now())
+        # The survey is evicted from the cache within hours; its rows stay.
+        _report_stored(_store_graph_rows(
+            Path(args.index), Path(args.fresh_survey), head=head,
+            dirty_files=_dirty_files(root)))
     lost = row["fresh_only_unedited"]
     if row["stale"] is None:
         print(f"[coverage-select] stale-graph shadow: no comparison ({args.why})",
@@ -553,6 +563,136 @@ def cmd_stale_record(args: argparse.Namespace) -> int:
         print(f"[coverage-select] stale-graph shadow: a graph {graph['age_commits']} "
               f"commit(s) old named every unedited test file the fresh walk named "
               f"({len(row['fresh'])} fresh, {len(row['stale'])} stale)", file=sys.stderr)
+    return 0
+
+
+#: graph-walk's exit codes. A caller ACTS on this command's output, so "there
+#: was nothing to walk" and "the walk failed" must never look like "the walk
+#: found nothing": 0 is the only code that comes with an answer.
+WALK_NO_GRAPH = 3
+WALK_FAILED = 4
+
+
+def _dirty_files(root: Path) -> list[str]:
+    """Every file of the working tree that differs from HEAD: changed and not
+    committed, or not tracked (and not ignored). Pending tracker ops excepted.
+    Unlike :func:`_uncommitted` this does not stop at the surfaces a change is
+    read from: it says which TREE an analysis saw."""
+    names = set(_git_lines(root, "diff", "--name-only", "HEAD"))
+    names.update(_git_lines(root, "ls-files", "--others", "--exclude-standard"))
+    return sorted(name for name in names if not name.endswith(".ops"))
+
+
+def _store_graph_rows(index: Path, survey: Path, *, head: str,
+                      dirty_files: list[str]) -> graph_rows.StoredGraph | None:
+    """Store ``survey``'s graph as rows in ``index``. None when the file holds
+    no graph (no node and edge lists): the index is then not opened at all.
+
+    The graph is named as the survey cache names it: the survey sits in
+    ``.../<tree state>/<analyzer identity>/survey.json``."""
+    loaded = json.loads(survey.read_text(encoding="utf-8"))
+    if not (isinstance(loaded, dict) and isinstance(loaded.get("nodes"), list)
+            and isinstance(loaded.get("edges"), list)):
+        return None
+    nodes, edges = graph_rows.survey_graph(loaded)
+    with contextlib.closing(open_index(index)) as conn:
+        graph_rows.ensure_schema(conn)
+        stored = graph_rows.store_graph(
+            conn, nodes=nodes, edges=edges, tree=survey.parent.parent.name,
+            build=survey.parent.name, head=head, dirty_files=dirty_files, at=_now())
+        conn.commit()
+    return stored
+
+
+def _report_stored(stored: graph_rows.StoredGraph | None) -> None:
+    if stored is None:
+        print("[coverage-select] graph rows: the survey holds no node and edge lists; "
+              "nothing stored", file=sys.stderr)
+    else:
+        print(f"[coverage-select] graph rows: stored graph {stored.id} "
+              f"({stored.nodes} nodes, {stored.edges} edges, head {stored.head[:9]}"
+              f"{_dirt(stored)})", file=sys.stderr)
+
+
+def _dirt(graph: graph_rows.StoredGraph) -> str:
+    count = len(graph.dirty_files)
+    return f", and {count} file(s) not in that commit" if count else ""
+
+
+def _age(root: Path, graph: graph_rows.StoredGraph) -> int | None:
+    """Commits HEAD has that the graph's commit does not; None when git does
+    not know that commit (it was made in a checkout whose branch is gone)."""
+    count = _git_lines(root, "rev-list", "--count", f"{graph.head}..HEAD")
+    return int(count[0]) if count and count[0].isdigit() else None
+
+
+def _described(root: Path, graph: graph_rows.StoredGraph) -> str:
+    age = _age(root, graph)
+    return (f"graph {graph.id}: head {graph.head[:9]}{_dirt(graph)}, "
+            f"{'age not known' if age is None else f'{age} commit(s) old'}, "
+            f"build {graph.build}, {graph.nodes} nodes, {graph.edges} edges, stored {graph.at}")
+
+
+def cmd_graph_store(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    stored = _store_graph_rows(
+        Path(args.index), Path(args.survey), head=args.head or _head(root),
+        dirty_files=_dirty_files(root) if args.head is None else _lines(args.dirty_files))
+    _report_stored(stored)
+    return 0 if stored is not None else 1
+
+
+def cmd_graph_walk(args: argparse.Namespace) -> int:
+    """Exit 0 with ``--output`` written, WALK_NO_GRAPH with nothing written,
+    or WALK_FAILED. It never falls through to main()'s "degrade to silence":
+    silence here would read as "no test depends on this change"."""
+    root = Path(args.repo_root).resolve()
+    try:
+        # Read here and not with _lines(): that helper reads a missing list as
+        # an empty one, and "no list" must not become "nothing changed".
+        changed = [ln.strip() for ln in Path(args.changed_files).read_text(
+            encoding="utf-8").splitlines()
+            if ln.strip() and not ln.strip().startswith("#")]  # as `slice --files` reads it
+        if not Path(args.index).exists():
+            print("[coverage-select] graph-walk: no index, so no stored graph",
+                  file=sys.stderr)
+            return WALK_NO_GRAPH
+        with contextlib.closing(open_index(Path(args.index))) as conn:
+            graph_rows.ensure_schema(conn)
+            if args.graph is not None:
+                graph = next((g for g in graph_rows.stored_graphs(conn)
+                              if g.id == args.graph), None)
+            else:
+                graph = graph_rows.newest_graph(conn, build=args.build)
+            if graph is None:
+                print("[coverage-select] graph-walk: no stored graph"
+                      + (f" with id {args.graph}" if args.graph is not None else "")
+                      + (f" from build {args.build}" if args.build else ""),
+                      file=sys.stderr)
+                return WALK_NO_GRAPH
+            files = graph_rows.walk(conn, graph.id, changed, max_hops=args.max_hops)
+        Path(args.output).write_text("".join(f"{name}\n" for name in files), encoding="utf-8")
+        print(f"[coverage-select] graph-walk: {len(files)} file(s) from "
+              f"{_described(root, graph)}", file=sys.stderr)
+        return 0
+    except Exception as exc:
+        print(f"[coverage-select] graph-walk FAILED: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return WALK_FAILED
+
+
+def cmd_graph_list(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    if not Path(args.index).exists():
+        print("no index: no stored graph")
+        return 0
+    with contextlib.closing(open_index(Path(args.index))) as conn:
+        graph_rows.ensure_schema(conn)
+        graphs = graph_rows.stored_graphs(conn)
+    for graph in graphs:
+        print(_described(root, graph))
+    if not graphs:
+        print("no stored graph")
     return 0
 
 
@@ -716,6 +856,30 @@ def main(argv: list[str] | None = None) -> int:
     rr.add_argument("--exit", type=int, default=None)
     rr.add_argument("--base-branch", default="origin/dev")
     rr.set_defaults(func=cmd_run_record)
+
+    gs = sub.add_parser("graph-store")
+    gs.add_argument("--survey", required=True,
+                    help="a survey.json as the cache files it: "
+                         ".../<tree state>/<analyzer identity>/survey.json")
+    gs.add_argument("--head", default=None,
+                    help="the commit the survey was made from (default: HEAD, and "
+                         "the working tree says which files differed from it)")
+    gs.add_argument("--dirty-files", default=None,
+                    help="with --head: a list of the files that differed from that "
+                         "commit when the survey was made (default: none did)")
+    gs.set_defaults(func=cmd_graph_store)
+
+    gw = sub.add_parser("graph-walk")
+    gw.add_argument("--changed-files", required=True)
+    gw.add_argument("--output", required=True)
+    gw.add_argument("--graph", type=int, default=None,
+                    help="the id of the stored graph to walk (default: the newest)")
+    gw.add_argument("--build", default=None,
+                    help="walk the newest graph of this analyzer build only")
+    gw.add_argument("--max-hops", type=int, default=graph_rows.MAX_HOPS)
+    gw.set_defaults(func=cmd_graph_walk)
+
+    sub.add_parser("graph-list").set_defaults(func=cmd_graph_list)
 
     lt = sub.add_parser("line-tests")
     lt.add_argument("where", metavar="FILE:LINE")

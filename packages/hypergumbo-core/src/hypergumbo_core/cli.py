@@ -196,7 +196,6 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
-    Set,
     TypeVar,
 )
 
@@ -1657,7 +1656,7 @@ def _handle_files_mode(
     Returns:
         0 on success, 1 on error
     """
-    from .paths import normalize_path, path_ends_with
+    from .graph_rows import dependent_files
 
     # Read changed files from the input file
     files_path = Path(args.files)
@@ -1675,82 +1674,16 @@ def _handle_files_mode(
         print("No changed files in input", file=sys.stderr)
         return 1
 
-    # Build lookup structures
-    # Map from normalized file path to symbols in that file
-    file_to_symbols: Dict[str, List[Symbol]] = {}
-    for node in nodes:
-        if node.path:
-            norm_path = normalize_path(node.path)
-            if norm_path not in file_to_symbols:
-                file_to_symbols[norm_path] = []
-            file_to_symbols[norm_path].append(node)
-
-    # Find symbols in changed files (using path suffix matching for flexibility)
-    changed_symbols: List[Symbol] = []
-    for changed_file in changed_files:
-        changed_norm = normalize_path(changed_file)
-        # Try exact match first
-        if changed_norm in file_to_symbols:
-            changed_symbols.extend(file_to_symbols[changed_norm])
-            continue
-        # Try suffix match (handles relative vs absolute paths)
-        for file_path, symbols in file_to_symbols.items():
-            if path_ends_with(file_path, changed_norm) or path_ends_with(changed_norm, file_path):
-                changed_symbols.extend(symbols)
-
-    if not changed_symbols:
-        # No symbols found in changed files - output empty result
-        output_lines: List[str] = []
-    else:
-        # Perform reverse slices from changed symbols to find dependents
-        # Use a set to collect unique dependent files
-        dependent_files: Set[str] = set()
-
-        # Build edge index for reverse traversal (target -> sources)
-        reverse_edge_index: Dict[str, List[str]] = {}
-        for edge in edges:
-            if edge.dst not in reverse_edge_index:
-                reverse_edge_index[edge.dst] = []
-            reverse_edge_index[edge.dst].append(edge.src)
-
-        # Build symbol lookup
-        symbol_lookup: Dict[str, Symbol] = {node.id: node for node in nodes}
-
-        # BFS from each changed symbol to find all dependents
-        visited: Set[str] = set()
-        queue: List[str] = [sym.id for sym in changed_symbols]
-
-        # Also add the changed files themselves
-        for sym in changed_symbols:
-            if sym.path:
-                dependent_files.add(sym.path)
-
-        max_hops = getattr(args, "max_hops", None) or 10  # Generous default for test selection
-        hop_count = 0
-        current_level = set(queue)
-
-        while current_level and hop_count < max_hops:
-            next_level: Set[str] = set()
-            for node_id in current_level:
-                if node_id in visited:  # pragma: no cover
-                    continue  # Defensive: set deduplication prevents this
-                visited.add(node_id)
-
-                # Add this node's file to dependents
-                sym = symbol_lookup.get(node_id)
-                if sym and sym.path:
-                    dependent_files.add(sym.path)
-
-                # Find nodes that call/depend on this node (reverse edges)
-                callers = reverse_edge_index.get(node_id, [])
-                for caller_id in callers:
-                    if caller_id not in visited:
-                        next_level.add(caller_id)
-
-            current_level = next_level
-            hop_count += 1
-
-        output_lines = sorted(dependent_files)
+    # Edge index for reverse traversal (target -> sources). The walk itself
+    # (seeding by path, the hop limit, which file a visit names) is
+    # graph_rows.dependent_files, shared with the walk over a STORED graph so
+    # the two cannot answer differently.
+    reverse_edge_index: Dict[str, List[str]] = {}
+    for edge in edges:
+        reverse_edge_index.setdefault(edge.dst, []).append(edge.src)
+    max_hops = getattr(args, "max_hops", None) or 10  # Generous default for test selection
+    output_lines = dependent_files(
+        changed_files, [(node.id, node.path) for node in nodes], reverse_edge_index, max_hops)
 
     # Write output
     output_text = "\n".join(output_lines)
