@@ -19,3 +19,25 @@
     pr_ref:  # 8973
     description: "WHAT (owner ruling). One test of 58 to 64 seconds is in the by-statement selection of 15 of the 16 replayed PRs that need more than 60 test-seconds (fast_smart_test_11152026/replay_rows.json, field `slowest`: 57.6 or 64.2). The slowest single test bounds wall time whatever the worker count. Identify it from the timing store, then split it into smaller tests if it separates without losing anything it checks.\n\nIF IT DOES NOT SEPARATE. It stays whole, and smart-test's wall-time report names it as the reason a run missed the target.\n\nCLOSE CONDITION. The test's id; what it checks; either the split (the same assertions, each mutation that turned the whole test red turns a part red, new durations) or the reason it cannot be split.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 8973
     fields: {}  # 8973
+- op: discuss  # cc91
+  at: '2026-11-17T20:05:35Z'  # cc91
+  by: agent  # cc91
+  actor: jgstern_agent  # cc91
+  clock: 2  # cc91
+  nonce: cc91  # cc91
+  message: "Merged as PR #2237, dev SHA f4342ccc1938."  # cc91
+- op: update  # bf17
+  at: '2026-11-17T20:05:44Z'  # bf17
+  by: agent  # bf17
+  actor: jgstern_agent  # bf17
+  clock: 3  # bf17
+  nonce: bf17  # bf17
+  set:  # bf17
+    status: done  # bf17
+- op: discuss  # 4113
+  at: '2026-11-17T20:05:44Z'  # 4113
+  by: agent  # 4113
+  actor: jgstern_agent  # 4113
+  clock: 4  # 4113
+  nonce: '4113'  # 4113
+  message: "Done in PR #2237 (dev f4342ccc1). The test is packages/hypergumbo-core/tests/test_producer_coherence.py::test_live_tree_producer_axis_ratchet (median 67.7 s in the timing store). It looped over four axes, each a pass over every source file of the repository; it separated cleanly into one parametrized test per axis with the same assertions. Measured 2026-11-17 on this machine: under coverage, one process, 13.14 / 13.69 / 15.52 / 18.66 s (4 passed in 67.26 s); without coverage across four workers, 4 passed in 9.51 s. Control: a stale value planted in the Symbol.kind baseline failed [symbol_kind] alone (1 failed, 3 passed). Nothing it checked is lost: same finders, same baseline, same two assertions per axis; the function name is unchanged. NOT MEASURED: how many of the 16 replayed PRs now fit 60 test-seconds; the replay was not re-run. The slowest single test in the suite is now some other test; I did not look up which."  # 4113

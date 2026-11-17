@@ -19,3 +19,10 @@
     pr_ref:  # b9d2
     description: "WHAT (owner rulings of 2026-11-17). The by-statement selector goes live when 30 runs that had a failed test show no failed test outside what the selector picked. Logged PAST runs count: any row of ~/hypergumbo_lab_notebook/run_records.jsonl that names the changed files and a failed test (about 600 rows with a failure on 2026-11-17, most of them deliberate mutation controls and work in progress). The agent switches the selector on itself at 30 with zero misses and tells the owner. ONE MISS: it stays off and the miss is filed.\n\nSTATE THE WEAKNESS WITH THE COUNT. Explicit-path runs only tried tests someone had already chosen, so they cannot show a failure in a test nobody ran. Count selected runs and explicit-path runs separately. Zero misses in 30 bounds the miss rate near 10% (95%), not at zero; the twice-daily full run is what catches the rest.\n\nWHAT TO BUILD. A command that replays the selector over the run records and prints: rows usable, rows with a failed test, failed tests inside and outside the selection, by run kind. Then the switch: smart-test selects by statement by default, with an opt-out flag, and every selected test runs.\n\nCLOSE CONDITION. The command's output at the moment of the switch, kept in the notebook; the switch merged; a live selected run under the new default with its test count and wall time.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # b9d2
     fields: {}  # b9d2
+- op: discuss  # 40e2
+  at: '2026-11-17T20:47:53Z'  # 40e2
+  by: agent  # 40e2
+  actor: jgstern_agent  # 40e2
+  clock: 2  # 40e2
+  nonce: '40e2'  # 40e2
+  message: "Merged as PR #2238, dev SHA 1aa0f82728b8."  # 40e2

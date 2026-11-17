@@ -1,0 +1,31 @@
+- op: create  # b608
+  at: '2026-11-17T21:29:17Z'  # b608
+  by: agent  # b608
+  actor: jgstern_agent  # b608
+  clock: 1  # b608
+  nonce: b608  # b608
+  data:  # b608
+    kind: invariant  # b608
+    title: "A function that runs while a module is imported is narrowed like an ordinary function: test files that depend on its import-time result are dropped"  # b608
+    status: violated  # b608
+    priority: 1  # b608
+    parent:  # b608
+    tags:  # b608
+    - smart_test  # b608
+    - trunk_green  # b608
+    - ci_infrastructure  # b608
+    isbefore: []  # b608
+    duplicate_of: []  # b608
+    not_duplicate_of: []  # b608
+    pr_ref:  # b608
+    description: "FOUND 2026-11-17 ~21:40 UTC, by reasoning while designing a mutation campaign for the by-statement selector, then confirmed with the real command.\n\nWHAT IS WRONG. Narrowing refuses when IMPORT-TIME code changed, because \"an import is not a coverage row\": the code runs under no test's context, so a test that only loads the file has no row for it (selection_index.narrowing_blockers). \"Import-time code\" is decided by the KIND of block: a module body or a class body. But a FUNCTION called while a module is being imported runs under no test's context in exactly the same way, and its result is baked into module state that tests then use without ever running the function themselves. A change to such a function is narrowed like any other function change.\n\nSIZE. Importing every module of the six measured packages under coverage: 113 of 6,515 function blocks have a statement that runs during import (99 in core). Largest: io_boundary.IoBoundaryCatalog._from_dict (65 statements at import), io_boundary.load_catalog (24), analyze/registry._gate_language_declaration (19). Notebook: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/import_time_functions.txt.\n\nLIVE REPRO (real command, live index, 2026-11-17). One statement inserted at the top of io_boundary.load_catalog, then\n  scripts/coverage-select --repo-root . --verbose narrow --changed-files <io_boundary.py> --run-set <all 1,370 test files> --base HEAD\n  -> \"narrow: 1370 -> 904 file(s), dropped 466\", exit 0, no refusal.\nTracing every package module's import shows load_catalog runs during the import of hypergumbo_lang_common/haskell.py (2 calls), hypergumbo_lang_mainstream/jupyter.py (1) and html.py (3). Of the test files whose imports load haskell.py, 4 of 6 were dropped (test_haskell_equation_span.py, test_haskell_handle_argument_origin.py, test_haskell_zero_arg_actions.py, one more); of those that load jupyter.py, 3 of 3 (test_jupyter.py, test_jupyter_cyclomatic.py, test_jupyter_producer_stable_ids.py). Loading each of them runs the edited function.\n(An earlier line in the notebook file counts 43 dropped files that load io_boundary.py; loading io_boundary.py does not itself run load_catalog, and that count is corrected there.)\n\nSINCE WHEN. Since narrowing was switched on (2026-11-12); not introduced by today's work. NOT ESTABLISHED: whether any merged manifest lost a test file this way. The by-statement selector (recording only) has the same hole and worse: it would leave out a test whose own context did not run the changed statement.\n\nANALOGUE NOT FIXED BY THE OBVIOUS FIX: code run at COLLECTION (a function called inside @pytest.mark.parametrize arguments) is the same shape and is caught by the same evidence (coverage's empty context)."  # b608
+    fields:  # b608
+      statement: "Code that runs under no test's context (at import or collection) is import-time code whatever kind of block holds it: a change to it never narrows a test away on the strength of a missing coverage row."  # b608
+      root_cause: "selection_index decides 'import-time' from the block's kind (module or class body). The fold sees which function statements ran in coverage's empty context and does not keep it."  # b608
+- op: discuss  # eb99
+  at: '2026-11-17T22:41:44Z'  # eb99
+  by: agent  # eb99
+  actor: jgstern_agent  # eb99
+  clock: 2  # eb99
+  nonce: eb99  # eb99
+  message: "Merged as PR #2240, dev SHA b9b34fe44763."  # eb99
