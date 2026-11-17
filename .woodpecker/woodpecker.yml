@@ -95,6 +95,42 @@ clone:
       partial: false
 
 steps:
+  # ── TEMPORARY PROBE, NOT TO BE MERGED ─────────────────────────────────────
+  # The scheduled run's publish-verdict step timed out in git after 120 s
+  # (pipeline 6512). Can a step on this runner reach github.com by SSH at all?
+  - name: probe-ssh-egress
+    image: python:3.11-bookworm
+    depends_on: []
+    commands:
+      - which ssh git
+      - ssh -V
+      - |
+        python3 - <<'PY'
+        import socket, time
+        for host, port in (("github.com", 22), ("github.com", 443)):
+            try:
+                found = sorted({(info[0], info[4][0]) for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)})
+            except OSError as exc:
+                print(f"RESOLVE {host}: FAILED {exc}", flush=True)
+                continue
+            for family, address in found:
+                name = "IPv6" if family == socket.AF_INET6 else "IPv4"
+                started = time.monotonic()
+                sock = socket.socket(family, socket.SOCK_STREAM)
+                sock.settimeout(15)
+                try:
+                    sock.connect((address, port))
+                    banner = b""
+                    if port == 22:
+                        banner = sock.recv(64)
+                    print(f"TCP {host}:{port} {name} {address}: OPEN in {time.monotonic() - started:.1f} s {banner[:40]!r}", flush=True)
+                except OSError as exc:
+                    print(f"TCP {host}:{port} {name} {address}: NOT REACHABLE after {time.monotonic() - started:.1f} s ({exc})", flush=True)
+                finally:
+                    sock.close()
+        PY
+      - timeout 40 ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new -T git@github.com || echo "ssh to github.com ended with exit $?"
+
   # ── ruff + bandit ─────────────────────────────────────────────────────────
   - name: lint
     image: python:3.11-bookworm
