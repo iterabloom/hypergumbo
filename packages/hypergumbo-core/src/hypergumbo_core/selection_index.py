@@ -88,8 +88,8 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    change is merged needs the records of the block as it was at the BASE of
    the change, and by then the changed code has been run: the fold that
    stored its digest dropped exactly those records. So what a fold drops it
-   first copies to ``block_record``, keyed by the digest it was made under,
-   and :func:`statement_records_at` reads a block's records for a GIVEN
+   first copies to ``kept_record``, under the version (``kept_version``: a
+   block and the digest the records were made under) they belong to, and :func:`statement_records_at` reads a block's records for a GIVEN
    digest: the current ones when that is the stored digest, with the kept
    ones laid under them. :data:`KEPT_VERSIONS` superseded digests are kept
    per block. These two tables are an addition no reader depends on: a file
@@ -224,18 +224,18 @@ CREATE TABLE IF NOT EXISTS test_run (
     PRIMARY KEY (test, run)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS test_run_by_run ON test_run (run, test);
-CREATE TABLE IF NOT EXISTS block_record (
-    block      INTEGER NOT NULL,
-    digest     TEXT NOT NULL,
-    test       INTEGER NOT NULL,
-    statements BLOB NOT NULL,
-    PRIMARY KEY (block, digest, test)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS block_version (
+CREATE TABLE IF NOT EXISTS kept_version (
+    id     INTEGER PRIMARY KEY,
     block  INTEGER NOT NULL,
     digest TEXT NOT NULL,
     seq    INTEGER NOT NULL,
-    PRIMARY KEY (block, digest)
+    UNIQUE (block, digest)
+);
+CREATE TABLE IF NOT EXISTS kept_record (
+    version    INTEGER NOT NULL,
+    test       INTEGER NOT NULL,
+    statements BLOB NOT NULL,
+    PRIMARY KEY (version, test)
 ) WITHOUT ROWID;
 """
 
@@ -301,17 +301,27 @@ _RECORDS_OF_BLOCK = (
 #: block's number.
 _DROP_RECORDS_OF_BLOCK = "UPDATE test_block SET statements = NULL WHERE block = ?"
 
-#: The records of block ``?2``, as they stand, kept under the digest ``?1``.
+#: The records of block ``?2``, as they stand, kept under version ``?1``. A
+#: version is a row of its own so that a kept record does not repeat a digest
+#: (measured on this repository's index: 52 bytes a record with it).
 _KEEP_RECORDS_OF_BLOCK = (
-    "INSERT OR REPLACE INTO block_record (block, digest, test, statements) "
-    "SELECT block, ?, test, statements FROM test_block "
+    "INSERT OR REPLACE INTO kept_record (version, test, statements) "
+    "SELECT ?, test, statements FROM test_block "
     "WHERE block = ? AND statements IS NOT NULL"
 )
 
-#: The kept records of one block under one digest. ``?`` = block id, digest.
+_KEPT_VERSION = "SELECT id FROM kept_version WHERE block = ? AND digest = ?"
+
+#: The kept records of one version.
 _KEPT_RECORDS = (
-    "SELECT t.test_id, r.statements FROM block_record r "
-    "JOIN test t ON t.id = r.test WHERE r.block = ? AND r.digest = ?"
+    "SELECT t.test_id, r.statements FROM kept_record r "
+    "JOIN test t ON t.id = r.test WHERE r.version = ?"
+)
+
+#: The kept versions of the blocks of the files in ``temp.dead_file``.
+_DEAD_VERSIONS = (
+    "SELECT v.id FROM temp.dead_file d JOIN block b ON b.file = d.id "
+    "JOIN kept_version v ON v.block = b.id"
 )
 
 #: Pairs; pairs with a record; pairs whose record names a statement; bytes of
@@ -657,21 +667,23 @@ def store_edges(
 
 def _keep_records(cur: sqlite3.Cursor, block_id: int, digest: str) -> None:
     """Copy block ``block_id``'s records, about to be dropped, to
-    ``block_record`` under the ``digest`` they were made for, and forget the
-    versions beyond :data:`KEPT_VERSIONS` (semantic 5 of the module docstring)."""
-    cur.execute(_KEEP_RECORDS_OF_BLOCK, (digest, block_id))
+    ``kept_record`` under the version they were made for (the block at
+    ``digest``), and forget the versions beyond :data:`KEPT_VERSIONS`
+    (semantic 5 of the module docstring)."""
     newest = cur.execute(
-        "SELECT COALESCE(MAX(seq), 0) FROM block_version WHERE block = ?",
+        "SELECT COALESCE(MAX(seq), 0) FROM kept_version WHERE block = ?",
         (block_id,)).fetchone()[0]
     cur.execute(
-        "INSERT OR REPLACE INTO block_version (block, digest, seq) VALUES (?, ?, ?)",
+        "INSERT INTO kept_version (block, digest, seq) VALUES (?, ?, ?) "
+        "ON CONFLICT (block, digest) DO UPDATE SET seq = excluded.seq",
         (block_id, digest, int(newest) + 1))
-    forgotten = [row[0] for row in cur.execute(
-        "SELECT digest FROM block_version WHERE block = ? ORDER BY seq DESC "
-        "LIMIT -1 OFFSET ?", (block_id, KEPT_VERSIONS)).fetchall()]
-    for old in forgotten:
-        cur.execute("DELETE FROM block_record WHERE block = ? AND digest = ?", (block_id, old))
-        cur.execute("DELETE FROM block_version WHERE block = ? AND digest = ?", (block_id, old))
+    version = cur.execute(_KEPT_VERSION, (block_id, digest)).fetchone()[0]
+    cur.execute(_KEEP_RECORDS_OF_BLOCK, (version, block_id))
+    forgotten = cur.execute(
+        "SELECT id FROM kept_version WHERE block = ? ORDER BY seq DESC "
+        "LIMIT -1 OFFSET ?", (block_id, KEPT_VERSIONS)).fetchall()
+    cur.executemany("DELETE FROM kept_record WHERE version = ?", forgotten)
+    cur.executemany("DELETE FROM kept_version WHERE id = ?", forgotten)
 
 
 def measured_tests(conn: sqlite3.Connection) -> frozenset[str]:
@@ -735,17 +747,16 @@ def statement_records_at(
         return None
     block_id, stored = int(found[0]), str(found[1])
     current = statement_records(conn, path, block)
-    kept = {str(test_id): _ordinals(bitmap)
-            for test_id, bitmap in conn.execute(_KEPT_RECORDS, (block_id, digest))}
+    version = conn.execute(_KEPT_VERSION, (block_id, digest)).fetchone()
+    kept = {} if version is None else {
+        str(test_id): _ordinals(bitmap)
+        for test_id, bitmap in conn.execute(_KEPT_RECORDS, (version[0],))}
     if stored == digest:
         # A record made under this digest and kept, for a test whose pair
         # now has none (it ran neither then nor since).
         return {test: (ran if ran is not None else kept.get(test))
                 for test, ran in {**dict.fromkeys(kept), **current}.items()}
-    known = conn.execute(
-        "SELECT 1 FROM block_version WHERE block = ? AND digest = ?",
-        (block_id, digest)).fetchone()
-    if known is None:
+    if version is None:
         return None
     return {**dict.fromkeys(current), **kept}
 
@@ -1168,12 +1179,9 @@ def _forget_dead_checkouts(conn: sqlite3.Connection, checkout: str) -> None:
         cur.execute(
             "DELETE FROM test_block WHERE block IN ("
             "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
-        cur.execute(
-            "DELETE FROM block_record WHERE block IN ("
-            "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
-        cur.execute(
-            "DELETE FROM block_version WHERE block IN ("
-            "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
+        dead_versions = cur.execute(_DEAD_VERSIONS).fetchall()
+        cur.executemany("DELETE FROM kept_record WHERE version = ?", dead_versions)
+        cur.executemany("DELETE FROM kept_version WHERE id = ?", dead_versions)
         cur.execute("DELETE FROM run_file WHERE file IN (SELECT id FROM temp.dead_file)")
         cur.execute("DELETE FROM block WHERE file IN (SELECT id FROM temp.dead_file)")
         cur.execute("DELETE FROM file WHERE id IN (SELECT id FROM temp.dead_file)")

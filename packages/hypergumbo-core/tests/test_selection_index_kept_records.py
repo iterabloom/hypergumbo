@@ -13,7 +13,7 @@ What is pinned: the dropped records are kept and read back by digest; the
 current records are unchanged by any of it; a version the index holds nothing
 of is ``None`` and not "no test has a record"; a block reverted to an earlier
 version gets its earlier records back; only ``KEPT_VERSIONS`` versions are
-kept; a file that has gone takes its kept records with it; and a file written
+kept, the longest-superseded forgotten first; a file that has gone takes its kept records with it; and a file written
 before the tables existed opens with nothing kept and no format change.
 """
 from __future__ import annotations
@@ -21,6 +21,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Iterable, Optional
+
+import pytest
 
 from hypergumbo_core import selection_index as si
 from hypergumbo_core.selection_index import statement_records, statement_records_at, store_edges
@@ -106,9 +108,25 @@ def test_only_so_many_superseded_versions_are_kept(tmp_path: Path) -> None:
     assert statement_records_at(conn, M, "alpha", "d1") is None
     assert statement_records_at(conn, M, "alpha", "d2")["test_a"] == {2}
     assert statement_records_at(conn, M, "alpha", f"d{newest}")["test_a"] == {newest}
-    assert conn.execute("SELECT COUNT(*) FROM block_version").fetchone()[0] == si.KEPT_VERSIONS
+    assert conn.execute("SELECT COUNT(*) FROM kept_version").fetchone()[0] == si.KEPT_VERSIONS
     assert conn.execute(
-        "SELECT COUNT(DISTINCT digest) FROM block_record").fetchone()[0] == si.KEPT_VERSIONS
+        "SELECT COUNT(DISTINCT version) FROM kept_record").fetchone()[0] == si.KEPT_VERSIONS
+
+
+def test_a_version_kept_again_is_the_newest_again(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The version that is forgotten is the one superseded longest ago, and a
+    version the block came back to and left again was superseded just now."""
+    monkeypatch.setattr(si, "KEPT_VERSIONS", 2)
+    conn = _index(tmp_path)                       # d1
+    _fold(conn, "d2", {"test_a": {2}})            # kept: d1
+    _fold(conn, "d1", {"test_a": {0, 1}})         # kept: d1, d2
+    _fold(conn, "d3", {"test_a": {3}})            # kept: d2, d1 (again)
+    _fold(conn, "d4", {"test_a": {4}})            # kept: d1, d3; d2 is forgotten
+    assert statement_records_at(conn, M, "alpha", "d2") is None
+    assert statement_records_at(conn, M, "alpha", "d1")["test_a"] == {0, 1}
+    assert statement_records_at(conn, M, "alpha", "d3")["test_a"] == {3}
+    assert conn.execute("SELECT COUNT(*) FROM kept_version").fetchone()[0] == 2
 
 
 def test_a_block_whose_digest_was_never_stored_keeps_nothing(tmp_path: Path) -> None:
@@ -119,26 +137,26 @@ def test_a_block_whose_digest_was_never_stored_keeps_nothing(tmp_path: Path) -> 
     # "No digest" names no version: it is what a block that is new is asked with.
     assert statement_records_at(conn, M, "alpha", "") is None
     _fold(conn, "d1", {"test_b": {1}})
-    assert conn.execute("SELECT COUNT(*) FROM block_record").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM kept_record").fetchone()[0] == 0
     assert statement_records_at(conn, M, "alpha", "d1") == {"test_a": {0}, "test_b": {1}}
 
 
 def test_a_file_that_is_gone_takes_its_kept_records_with_it(tmp_path: Path) -> None:
     conn = _index(tmp_path)
     _fold(conn, "d2", {"test_a": {0, 3}})
-    assert conn.execute("SELECT COUNT(*) FROM block_record").fetchone()[0] == 2
+    assert conn.execute("SELECT COUNT(*) FROM kept_record").fetchone()[0] == 2
     # /repo/src/m.py is not on disk and is no source file of this checkout.
     si._forget_dead_checkouts(conn, str(tmp_path))
-    assert conn.execute("SELECT COUNT(*) FROM block_record").fetchone()[0] == 0
-    assert conn.execute("SELECT COUNT(*) FROM block_version").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM kept_record").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM kept_version").fetchone()[0] == 0
 
 
 def test_a_file_from_before_the_tables_opens_with_nothing_kept_and_the_same_format(
         tmp_path: Path) -> None:
     path = tmp_path / "index.sqlite"
     conn = _index(tmp_path)
-    conn.execute("DROP TABLE block_record")
-    conn.execute("DROP TABLE block_version")
+    conn.execute("DROP TABLE kept_record")
+    conn.execute("DROP TABLE kept_version")
     conn.commit()
     conn.close()
     again = si.open_index(path)
