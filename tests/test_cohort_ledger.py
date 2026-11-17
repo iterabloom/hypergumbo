@@ -45,6 +45,9 @@ _LIB = _ROOT / "scripts" / "lib"
 sys.path.insert(0, str(_LIB))
 import cohort_ledger  # noqa: E402
 from cohort_ledger import CohortLedger, MemberAbsent  # noqa: E402
+from helpers_package_src import put_core_src_on_path  # noqa: E402
+
+put_core_src_on_path()
 
 
 # ---------------------------------------------------------------------------

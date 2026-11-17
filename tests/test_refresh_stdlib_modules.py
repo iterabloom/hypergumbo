@@ -20,6 +20,10 @@ from pathlib import Path
 
 import pytest
 
+from helpers_package_src import put_core_src_on_path
+
+put_core_src_on_path()
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "refresh-stdlib-modules"
