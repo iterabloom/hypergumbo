@@ -338,8 +338,14 @@ def _format_of(conn: sqlite3.Connection) -> int:
     return 1 if "test_id" in columns else 0
 
 
-def open_index(path: Path) -> sqlite3.Connection:
+def open_index(path: Path, *, timeout: float = 5.0) -> sqlite3.Connection:
     """Open the index database, creating or converting it as needed.
+
+    ``timeout`` is how long, in seconds, this connection waits for another
+    process's write to finish, from its first statement on (opening stamps the
+    format, which is a write). SQLite's own five seconds are the default; a
+    caller that stores something large while other checkouts may be doing the
+    same passes more.
 
     A format-1 file is converted first (:func:`convert_format_1`). A format-2
     file gains the run tables where it stands, and a format-2 or format-3
@@ -350,12 +356,12 @@ def open_index(path: Path) -> sqlite3.Connection:
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=timeout)
     found = _format_of(conn)
     if found == 1:
         conn.close()
         convert_format_1(path)
-        conn = sqlite3.connect(str(path))
+        conn = sqlite3.connect(str(path), timeout=timeout)
         found = _format_of(conn)
     if found not in _OPENED_IN_PLACE:
         conn.close()

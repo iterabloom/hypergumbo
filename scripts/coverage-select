@@ -806,6 +806,10 @@ def _tree_of(root: Path, commit: str) -> str | None:
     return out[0] if out else None
 
 
+#: How long a store waits for another process that is writing the index.
+STORE_WAIT_SECONDS = 120.0
+
+
 def _store_graph_rows(index: Path, survey: Path, *, head: str, git_tree: str | None,
                       dirty_files: list[str]) -> graph_rows.StoredGraph | None:
     """Store ``survey``'s graph as rows in ``index``. None when the file holds
@@ -818,7 +822,10 @@ def _store_graph_rows(index: Path, survey: Path, *, head: str, git_tree: str | N
             and isinstance(loaded.get("edges"), list)):
         return None
     nodes, edges = graph_rows.survey_graph(loaded)
-    with contextlib.closing(open_index(index)) as conn:
+    # Another checkout's run, or a rebuild, may be storing a graph at this
+    # moment, and a store holds the write lock for seconds: wait for it. The
+    # wait has to start with the connection, whose opening already writes.
+    with contextlib.closing(open_index(index, timeout=STORE_WAIT_SECONDS)) as conn:
         graph_rows.ensure_schema(conn)
         stored = graph_rows.store_graph(
             conn, nodes=nodes, edges=edges, tree=survey.parent.parent.name,
@@ -953,6 +960,26 @@ def _terminated(_signum: int, _frame: object) -> None:
 
 
 def cmd_graph_rebuild(args: argparse.Namespace) -> int:
+    """:func:`_graph_rebuild`, with every failure it did not foresee written to
+    its log and returned as exit 1. Left to main(), which turns any exception
+    into exit 0 for the commands that ride on a test run, a rebuild that
+    stored nothing would look like one that had."""
+    work = Path(args.work_dir)
+    work.mkdir(parents=True, exist_ok=True)
+
+    def say(message: str) -> None:
+        with open(work / "rebuild.log", "a", encoding="utf-8") as log:
+            log.write(f"{_now()} {message}\n")
+        print(f"[coverage-select] graph-rebuild: {message}", file=sys.stderr)
+
+    try:
+        return _graph_rebuild(args, work, say)
+    except Exception as exc:
+        say(f"failed: {type(exc).__name__}: {exc}")
+        return 1
+
+
+def _graph_rebuild(args: argparse.Namespace, work: Path, say) -> int:
     """Analyse ``--commit`` and store its graph, unless that graph is stored.
 
     WHY A COMMIT AND NOT THE WORKING TREE. smart-test selects from a stored
@@ -979,14 +1006,6 @@ def cmd_graph_rebuild(args: argparse.Namespace) -> int:
     ``rebuild.log`` in the rebuild directory.
     """
     root = Path(args.repo_root).resolve()
-    work = Path(args.work_dir)
-    work.mkdir(parents=True, exist_ok=True)
-
-    def say(message: str) -> None:
-        with open(work / "rebuild.log", "a", encoding="utf-8") as log:
-            log.write(f"{_now()} {message}\n")
-        print(f"[coverage-select] graph-rebuild: {message}", file=sys.stderr)
-
     resolved = _git_lines(root, "rev-parse", "--verify", "--quiet", f"{args.commit}^{{commit}}")
     tree = _tree_of(root, resolved[0]) if resolved else None
     if not resolved or tree is None:
@@ -1057,12 +1076,18 @@ def cmd_graph_rebuild(args: argparse.Namespace) -> int:
             say(f"the commit {commit[:9]} holds no file")
             return 1
         (work / "seed.txt").write_text(f"{seed}\n", encoding="utf-8")
-        minimal = ["--minimal"] if "--minimal" in subprocess.run(  # noqa: S603
-            [args.hg, "slice", "--help"], capture_output=True, text=True).stdout else []
+        # The installed hypergumbo must run its OWN code. A run in a worktree
+        # pins PYTHONPATH to the worktree's sources, the installed command
+        # inherits it, and it then analyses with the code under test under
+        # another analyzer build's name.
         environment = {
             **os.environ, "XDG_CACHE_HOME": str(cache), "HF_HUB_OFFLINE": "1",
             "HF_HOME": os.environ.get("HF_HOME") or str(Path(os.environ.get(
                 "XDG_CACHE_HOME", Path.home() / ".cache")) / "huggingface")}
+        environment.pop("PYTHONPATH", None)
+        minimal = ["--minimal"] if "--minimal" in subprocess.run(  # noqa: S603
+            [args.hg, "slice", "--help"], capture_output=True, text=True,
+            env=environment).stdout else []
         with open(work / "analysis.log", "wb") as analysis_log:
             child = subprocess.Popen(  # noqa: S603
                 [args.hg, "slice", "--files", str(work / "seed.txt"), *minimal,

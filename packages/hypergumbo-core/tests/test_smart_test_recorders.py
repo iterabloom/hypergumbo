@@ -192,6 +192,7 @@ exit {rc}
 # The installed hypergumbo: a script whose first line names its interpreter.
 # The interpreter here is a stand-in that prints a build name for any -c.
 _STUB_INTERPRETER = """#!/usr/bin/env bash
+echo "interpreter:${{PYTHONPATH-unset}}" >> "{seen}"
 echo "{build}"
 """
 
@@ -206,13 +207,14 @@ def _selection(tmp_path: Path, *, use: str = "true", select_rc: int = 0,
     """Run smart-test's own lines from the stored-graph selection to the end of
     the slice, with stand-ins for the helper and the installed hypergumbo."""
     scripts = tmp_path / "scripts"
-    scripts.mkdir()
+    scripts.mkdir(parents=True)
     calls, slices = tmp_path / "select.calls", tmp_path / "slice.calls"
     (scripts / "coverage-select").write_text(_STUB_SELECT.format(
         calls=calls, rc=select_rc, line=line, reason="an added file needs a fresh analysis"))
     (scripts / "coverage-select").chmod(0o755)
     interpreter = tmp_path / "python"
-    interpreter.write_text(_STUB_INTERPRETER.format(build=build))
+    seen = tmp_path / "pythonpath.seen"
+    interpreter.write_text(_STUB_INTERPRETER.format(build=build, seen=seen))
     interpreter.chmod(0o755)
     # As the command it is "run" by bash below (a function shadows it), so only
     # its first line is read: the interpreter the build name is asked from.
@@ -228,7 +230,10 @@ def _selection(tmp_path: Path, *, use: str = "true", select_rc: int = 0,
         f'USE_STORED_GRAPH={use}',
         f'STABLE_HG="{hg}"',
         # The slice itself: recorded, and it writes a fresh answer.
-        f'run_slice() {{ echo "$*" >> "{slices}"; echo "packages/p/tests/test_fresh.py" > "$SLICE_OUTPUT"; }}',
+        f'run_slice() {{ echo "$*" >> "{slices}"; echo "slice:${{PYTHONPATH-unset}}" >> "{seen}"; '
+        'echo "packages/p/tests/test_fresh.py" > "$SLICE_OUTPUT"; }',
+        # As a run in a git worktree has it: pinned to the worktree's sources.
+        'export PYTHONPATH="/a/worktree/packages/x/src"',
         'CHANGED_FILES="packages/p/src/p/a.py\ndocs/notes.md"',
         f'CHANGED_FILE_LIST="{tmp_path}/changed.txt"',
         ('echo "packages/p/src/p/a.py" > "$CHANGED_FILE_LIST"' if source_changed
@@ -250,6 +255,7 @@ def _selection(tmp_path: Path, *, use: str = "true", select_rc: int = 0,
         "seeded": (Path(f"{calls}.changed").read_text().splitlines()
                    if Path(f"{calls}.changed").exists() else None),
         "sliced": slices.exists(), "stderr": done.stderr,
+        "pythonpath": seen.read_text().splitlines() if seen.exists() else [],
     }
 
 
@@ -276,6 +282,18 @@ def test_a_refused_stored_graph_is_a_fresh_analysis_and_never_an_empty_selection
     assert ran["line"] == "", "a manifest must not name a graph that did not answer"
     assert (f"stored graph not used (graph-select exit {refusal}): [coverage-select] "
             "graph-select: an added file needs a fresh analysis; analysing") in ran["stderr"]
+
+
+def test_the_installed_hypergumbo_never_inherits_the_runs_pythonpath(tmp_path) -> None:
+    """A worktree run pins PYTHONPATH to its own sources. Handed on, it makes
+    the installed hypergumbo import the code under test: the build name is then
+    another build's, no stored graph matches, and the "stable" slice is not."""
+    answered = _selection(tmp_path / "answered")
+    assert answered["pythonpath"] == ["interpreter:"], "the build name was asked with it set"
+    refused = _selection(tmp_path / "refused", select_rc=3)
+    assert refused["pythonpath"] == ["interpreter:", "slice:"], "the slice ran with it set"
+    # The probe for --minimal is the third call of the installed command.
+    assert "if PYTHONPATH= $STABLE_HG slice --help 2>/dev/null | grep -q -- '--minimal'; then" in _TEXT
 
 
 def test_an_answer_with_no_line_about_its_graph_is_not_taken(tmp_path) -> None:

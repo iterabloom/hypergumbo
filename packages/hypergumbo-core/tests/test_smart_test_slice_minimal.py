@@ -126,7 +126,9 @@ def test_the_probe_result_reaches_the_slice_invocation() -> None:
     """
     text = _SMART_TEST.read_text(encoding="utf-8")
     invocation = re.search(
-        r"^\s*\$STABLE_HG slice --files \"\$CHANGED_FILE_LIST\"(.*?)"
+        # ``PYTHONPATH= ``: the installed build runs its own code, never a
+        # worktree's (test_smart_test_recorders.py pins why and that it holds).
+        r"^\s*PYTHONPATH= \$STABLE_HG slice --files \"\$CHANGED_FILE_LIST\"(.*?)"
         r"--output \"\$SLICE_OUTPUT\"",
         text,
         re.MULTILINE | re.DOTALL,
