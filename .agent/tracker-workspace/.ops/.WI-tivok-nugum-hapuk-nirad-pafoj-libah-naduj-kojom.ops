@@ -1,0 +1,22 @@
+- op: create  # e5cd
+  at: '2026-11-17T03:54:01Z'  # e5cd
+  by: agent  # e5cd
+  actor: jgstern_agent  # e5cd
+  clock: 1  # e5cd
+  nonce: e5cd  # e5cd
+  data:  # e5cd
+    kind: work_item  # e5cd
+    title: "verify-claims reads confirmed_with_caveats when a Go deferred closure writes a secret assigned after the defer statement"  # e5cd
+    status: todo_hard  # e5cd
+    priority: 2  # e5cd
+    parent:  # e5cd
+    tags:  # e5cd
+    - taint  # e5cd
+    - adr_0017  # e5cd
+    - dataflow  # e5cd
+    isbefore: []  # e5cd
+    duplicate_of: []  # e5cd
+    not_duplicate_of: []  # e5cd
+    pr_ref:  # e5cd
+    description: "verify-claims reads confirmed_with_caveats (exit 3) when a Go deferred closure writes a secret assigned after the defer statement.\n\nREPRO (release 10.0.0 and the WI-buzup branch, same result). Fixture: ~/hypergumbo_lab_notebook/post_release_11162026/buzup_review/probes/go_defer_noalias/main.go; claims: side_defects/claims_fs.yaml (host_secret must not reach host_fs).\n\n  func leak() {\n      k := \"\"\n      defer func() { os.WriteFile(\"o.txt\", []byte(k), 0o600) }()\n      k = os.Getenv(\"API_KEY\")\n      fmt.Println(len(k))\n  }\n\n  hypergumbo verify-claims go_defer_noalias --claims claims_fs.yaml --format json\n  -> confirmed_with_caveats, exit 3, evidence_count 1, caveat sink_before_source_only.\nControl go_defer_noalias_ctrl (the write follows the assignment, no defer): violated, exit 1.\n\nThe deferred closure runs when leak returns, after `k` holds the secret, so the secret is written. The verdict treats the flow as one whose sink comes before its source, because the defer statement's line precedes the source line. For a deferred call, line order is the reverse of execution order.\n\nSWEEP BY MECHANISM before fixing: any construct that runs later than where it is written and holds the sink call. In Go: `defer` with a closure, `defer` with a direct call whose arguments are closures, a goroutine started before the assignment. Other languages: Python `atexit.register` / `contextlib.ExitStack.callback` / `finally` blocks, JavaScript `process.on('exit', ...)` and promise callbacks, Rust `Drop`. Each needs its own fixture; I checked only the Go `defer` closure.\n\nCLOSE WHEN go_defer_noalias does not read confirmed or confirmed_with_caveats, its control still reads violated, and the swept forms are each fixed or listed as stated limits in docs/VERIFY-CLAIMS-SCOPE.md."  # e5cd
+    fields: {}  # e5cd

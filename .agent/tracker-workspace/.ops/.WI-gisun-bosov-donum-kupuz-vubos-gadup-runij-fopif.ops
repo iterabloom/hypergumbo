@@ -1,0 +1,22 @@
+- op: create  # 2aa6
+  at: '2026-11-17T03:54:19Z'  # 2aa6
+  by: agent  # 2aa6
+  actor: jgstern_agent  # 2aa6
+  clock: 1  # 2aa6
+  nonce: 2aa6  # 2aa6
+  data:  # 2aa6
+    kind: work_item  # 2aa6
+    title: "Type Edge.src as NodeId (coordinate the RCT pin; 11 producer sites write a non-id source)"  # 2aa6
+    status: todo_hard  # 2aa6
+    priority: 3  # 2aa6
+    parent:  # 2aa6
+    tags:  # 2aa6
+    - mypy_adoption  # 2aa6
+    - static_typing  # 2aa6
+    - identifier_factories  # 2aa6
+    isbefore: []  # 2aa6
+    duplicate_of: []  # 2aa6
+    not_duplicate_of: []  # 2aa6
+    pr_ref:  # 2aa6
+    description: "Type Edge.src as NodeId, so mypy refuses a hand-built source endpoint.\n\nWHERE IT STANDS. NodeId (a NewType over str, ir.py) types Symbol.id, UsageContext.symbol_ref and DataModel.symbol_id. Edge.src, Edge.create's src and IoChain.io_edge_src are still str. A trial that typed them raised 78 more mypy errors and was backed out for two reasons, both still true:\n\n1. tests/test_rct_public_api_pinned.py pins Edge's src and dst types as str for the RCT variants and says to coordinate before changing them.\n2. Eleven producer sites write a src that is not a node id: latex (4 sites), nix, robot (2), gleam, odin, v, pony; and the SCIP builders' no-resolver path does the same.\n\nWHAT TO DO.\n- Decide with the owner how the RCT pin moves (the pinned test changes in the same PR as the type).\n- For each of the eleven sites plus the SCIP path: read what the src is. Either it names a node that exists (route it through a factory or the boundary read_node_id) or it names nothing (then the edge's source is wrong and that is a defect of its own: fix or file it). Do not wrap them wholesale.\n- Type the three fields, clear the errors, keep the mypy strict count at or below its present value.\n- Extend the tables in packages/hypergumbo-core/tests/test_id_newtypes.py (MINT_SITES, HAND_BUILT_NODE_IDS, BOUNDARY_READS) to the new call sites.\n\nOUT OF SCOPE: Edge.dst. A dst is a node id OR an unresolved reference that finalize turns into a boundary node (67 f-string producer sites, 12 outside the node-id grammar, 34 with a name that may hold ':'), so it needs a second type and its own item.\n\nMEASURE: maps equal node-for-node and edge-for-edge before and after on the fixture tree, meson and mitmproxy, except where a site's src was a defect and is fixed (list each).\n\nOwner ruling 2026-11-16: yes, do this as a follow-up to WI-tapak."  # 2aa6
+    fields: {}  # 2aa6

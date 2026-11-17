@@ -59,3 +59,10 @@
   clock: 6  # 6888
   nonce: '6888'  # 6888
   message: "OWNER RULING 2026-11-16: NodeId alone gets the NewType treatment, as its own PR after the release (after PR 3 and the release, beside PR 4 = WI-buzup). The other four types named here (EdgeId, RunId, EdgeKey, SymbolFingerprint) stay filed on this item, unscheduled. No status change."  # 6888
+- op: discuss  # 9b4b
+  at: '2026-11-17T03:54:37Z'  # 9b4b
+  by: agent  # 9b4b
+  actor: jgstern_agent  # 9b4b
+  clock: 7  # 9b4b
+  nonce: 9b4b  # 9b4b
+  message: "NodeId SHIPPED in PR #2214 (dev 6a90d10faf: e34ee538bc, f8fa9b8408, f30ae62914, 0592b0ff29), 2026-11-16. NodeId is a NewType over str; the id factories return it; Symbol.id, UsageContext.symbol_ref and DataModel.symbol_id are typed, so a hand-built id in those slots is a mypy error the strict ratchet counts. Maps equal node-for-node and edge-for-edge on a 70-file fixture (297 / 233), meson (23,602 / 62,664) and mitmproxy (14,310 / 44,777); 0 stable ids moved; mypy strict the same count before and after. Tables in packages/hypergumbo-core/tests/test_id_newtypes.py pin 11 mint sites, 6 hand-built wraps, 1 boundary read; dropping any of the 18 fails a test. LEFT AS str: Edge.dst (a node id OR an unresolved reference) and Edge.src (RCT-pinned; 11 non-id producer sites). OWNER 2026-11-16: yes to typing Edge.src and yes to fixing the six wrapped producers, as follow-ups: both filed in this batch. THIS ITEM STAYS OPEN for the four other types it names (EdgeId, RunId, EdgeKey, SymbolFingerprint), unscheduled."  # 9b4b

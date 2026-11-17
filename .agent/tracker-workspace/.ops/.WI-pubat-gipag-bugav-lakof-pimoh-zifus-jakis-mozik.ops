@@ -1,0 +1,21 @@
+- op: create  # 3962
+  at: '2026-11-17T03:54:07Z'  # 3962
+  by: agent  # 3962
+  actor: jgstern_agent  # 3962
+  clock: 1  # 3962
+  nonce: '3962'  # 3962
+  data:  # 3962
+    kind: work_item  # 3962
+    title: "A read inside an expression-bodied JavaScript arrow function is not recorded as a late read of the captured variable"  # 3962
+    status: todo_hard  # 3962
+    priority: 3  # 3962
+    parent:  # 3962
+    tags:  # 3962
+    - taint  # 3962
+    - dataflow  # 3962
+    isbefore: []  # 3962
+    duplicate_of: []  # 3962
+    not_duplicate_of: []  # 3962
+    pr_ref:  # 3962
+    description: "A read inside an expression-bodied JavaScript arrow function (`() => x`) is not recorded as a late read of the captured variable.\n\nREPRO. Fixture: ~/hypergumbo_lab_notebook/post_release_11162026/side_defects/js_arrow/app.js; claims side_defects/claims_fs.yaml.\n\n  let x = \"\";\n  const get = () => x;\n  x = process.env.API_KEY;\n  console.log(x);\n  fs.writeFileSync(\"o.txt\", get());\n\n  Release 10.0.0: confirmed, exit 0, flows_removed_by_walk 1.\n  After WI-buzup: inconclusive, exit 4, flows_withheld_by_walk 1 (the capture clause of its rule withholds the removal).\nThe secret is written, so the true answer is violated. The block-bodied form `() => { return x; }` is followed (the build agent's fixture matrix reads violated for it).\n\nMECHANISM (as reported by the WI-buzup build; I did not read the code path myself): `cfg.late_capture_edges` records no read for the expression body of an arrow function, so the walk has no edge from the later definition of `x` to the closure's read.\n\nSWEEP: the same question for every expression-bodied closure form in the mapped grammars: Python `lambda`, Rust closure without a block, Java expression lambda, C# is not mapped. After WI-buzup these read inconclusive (Python lambda: measured) rather than violated.\n\nCLOSE WHEN js_arrow reads violated and each swept form is measured."  # 3962
+    fields: {}  # 3962

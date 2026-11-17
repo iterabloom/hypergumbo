@@ -1,0 +1,21 @@
+- op: create  # 21f2
+  at: '2026-11-17T03:54:31Z'  # 21f2
+  by: agent  # 21f2
+  actor: jgstern_agent  # 21f2
+  clock: 1  # 21f2
+  nonce: 21f2  # 21f2
+  data:  # 21f2
+    kind: work_item  # 21f2
+    title: "A Python file using syntax newer than the running interpreter is dropped whole, and the reason does not name the interpreter"  # 21f2
+    status: todo_hard  # 21f2
+    priority: 3  # 21f2
+    parent:  # 21f2
+    tags:  # 21f2
+    - python  # 21f2
+    - disclosure  # 21f2
+    isbefore: []  # 21f2
+    duplicate_of: []  # 21f2
+    not_duplicate_of: []  # 21f2
+    pr_ref:  # 21f2
+    description: "A Python file that uses syntax newer than the interpreter running hypergumbo is dropped whole, and the output does not say the interpreter is the reason.\n\nWHAT HAPPENS (read from the code by the agent that fixed the 3.10 nightly tests, 2026-11-16; NOT run on Python 3.10). The Python analyzer parses each file with the running interpreter's `ast.parse` (packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py, near line 3578). On Python 3.10, a file that uses 3.11+ syntax (for example a star inside a subscript, `tuple[*Ts]`; `except*`) raises SyntaxError; `_extract_file_analysis` returns a \"SyntaxError: ...\" reason, the file goes to `limits.failed_files` and `files_skipped`, and none of its symbols or edges exist in the map.\n\nWHAT IS DISCLOSED. Spec section 17 says Python parses with the standard library and reports a SyntaxError as a whole-file failure. Nothing says that whether a file parses depends on the Python that runs hypergumbo, and the failure reason does not name the interpreter version. So the same repository gives different maps under 3.10 and 3.12, and a reader of the 3.10 map sees \"SyntaxError\" on a file that is valid Python.\n\nhypergumbo supports Python 3.10+ (pyproject).\n\nTO DO\n- Reproduce on a real 3.10 interpreter (one exists at /snap/core22/2955/usr/bin/python3.10, without hypergumbo's dependencies; the nightly's leg 1 runs 3.10).\n- Decide: (a) say it in the failure reason and the docs (\"this file needs Python >= 3.11 syntax; hypergumbo is running on 3.10\"), which needs a way to tell an interpreter-version failure from a genuinely broken file; or (b) parse Python with tree-sitter when `ast` refuses, as the other languages do.\n- Sweep the other analyzers for the same dependence on the host interpreter (any use of `ast`, `tokenize`, `compile` on analysed source).\n\nCLOSE WHEN a 3.10 run on a file with 3.11+ syntax either analyses it or states the interpreter as the reason, and the sweep is recorded."  # 21f2
+    fields: {}  # 21f2
