@@ -1,0 +1,41 @@
+Original commit body from 36504bdaf6b1dd00a501ecbff469ea8e536800ec:
+
+## What this does
+
+A scheduled run (the full suite twice a day, each nightly leg) now ends by publishing its verdict, and three readers use it.
+
+- **Publisher.** `scripts/publish-scheduled-verdict`. Every step of `.woodpecker/full-suite.yml` and `.woodpecker/nightly.yml` ends with `publish-scheduled-verdict mark <its name>`, reached only when the step's other commands passed. A new last step, `publish-verdict`, runs on success and on failure and pushes `scheduled/<workflow>[-<leg>].json` to the `badges` branch: the commit, each step `passed` / `not_passed`, the coverage figure and up to 200 uncovered lines (from a JSON coverage report the whole-suite pytest now also writes). It pushes without force and retries from the new tip when another leg pushed first.
+- **Session start.** `.agent/hooks/_shared/cron_status_nudge.py` reads those files from `origin/badges` with local git commands after one fetch bounded at 1.5 s. It prints one line when a run is red (steps, commit, age, first-red commit), when the newest verdict is older than its allowance (26 h full suite, 50 h nightly), or when the status could not be determined. The `ci-debug` call it replaces took 41 s cold against the hook's 5 s timeout and printed nothing without the virtualenv.
+- **README.** Coverage and full-suite badges that read the same branch.
+
+## Why
+
+The scheduled full suite was red in two steps through the 10.0.0 release and reached no reader; the owner noticed it by hand. The old coverage badge was written by a GitHub Actions step whose push ended in `|| echo "Push failed"`; it stood frozen for five months. Here a publish that does not happen exits 1 and turns the step red, and a run that publishes nothing (killed with its runner) shows as age.
+
+## The secret
+
+`publish-verdict` uses a deploy key held in the Woodpecker secret `badges_deploy_key`, available to the `cron` event. In Woodpecker a step that names a secret which does not exist, or which the event may not use, is a compile error for the whole workflow. The owner confirmed on 2026-11-17 that the deploy key and the secret are in place; this PR must not merge to a repository without them. The key can push to any branch the forge lets a deploy key write; it is readable only by cron pipelines, which run code already merged to `dev`.
+
+## Verified
+
+- New tests: 44 for the reader, 41 for the publisher, 26 for the workflow wiring; they pass with `CI` set and with no git identity configured.
+- End to end against a bare repository standing in for GitHub: a red full-suite verdict with 99.97% coverage (badge reads `99%`, red); four legs publishing at the same moment, all four landed; the reader under `env -i HOME=… PATH=/usr/bin:/bin` printed the RED line, nothing for an all-passed set, and the "not checked" line with the ref deleted; a remote that rejects every push gave exit 1 and one stderr line.
+- The reader run from a plain shell against the real checkout: 0.5 s, `Scheduled-run status not checked: no verdict file under scheduled/ on origin/badges. Run ./scripts/ci-debug cron-status.` That is the correct line until the first scheduled run publishes.
+- Mutations: the builder's 21 and 32 of the reviewer's own; every one fails at least one test except one equivalent mutant (the first-red walk comparing the newest verdict with itself).
+- Whole suite on the branch: see the PR's CI and `suite_verdict_summary.txt` in the lab notebook.
+
+## NOT verified (cannot be before the merge)
+
+- The SSH push to GitHub with the real deploy key. Tests used a stand-in `ssh` that checked the arguments, the key file's mode and content, the pinned host keys, and that both files are removed.
+- A Woodpecker run of either workflow: the secret reaching the step, the marks under the real runner, `${PYTHON_VERSION}` inside a command, and whether `publish-verdict` runs when a step it depends on was skipped because of an earlier failure.
+- The first scheduled run after the merge is the check. If `publish-verdict` fails there, the run is red in that step and `ci-debug logs publish-verdict <sha>` holds the one-line reason.
+
+## Known gaps
+
+- A nightly leg that never publishes is not reported (the reader knows the workflow, not its four legs).
+- `not_passed` cannot tell "failed" from "did not run because a step it needs failed".
+- The README badges read "resource not found" until the first scheduled run publishes.
+- June's `coverage.json` and `last-green-sha.txt` at the root of the `badges` branch are left as they are.
+
+Addresses WI-zutub-matug-lasut-sukob-jojuj-tohoz-movut-gosus
+Addresses WI-jomid-jihub-pavol-pagul-pujun-tavov-silal-gufut
