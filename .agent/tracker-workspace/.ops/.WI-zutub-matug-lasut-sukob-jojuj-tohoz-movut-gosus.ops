@@ -1,0 +1,29 @@
+- op: create  # 9068
+  at: '2026-11-17T05:22:54Z'  # 9068
+  by: agent  # 9068
+  actor: jgstern_agent  # 9068
+  clock: 1  # 9068
+  nonce: '9068'  # 9068
+  data:  # 9068
+    kind: work_item  # 9068
+    title: "The red-scheduled-run session-start nudge prints nothing without the virtualenv and takes 41 s cold against a 5 s hook timeout: a red scheduled run reaches no reader"  # 9068
+    status: todo_hard  # 9068
+    priority: 2  # 9068
+    parent:  # 9068
+    tags:  # 9068
+    - ci_infrastructure  # 9068
+    - hooks  # 9068
+    - governance  # 9068
+    isbefore: []  # 9068
+    duplicate_of: []  # 9068
+    not_duplicate_of: []  # 9068
+    pr_ref:  # 9068
+    description: "The session-start nudge for a red scheduled run prints nothing in the environment a hook runs in, so a red scheduled run reaches no reader.\n\nWHAT HAPPENED. The scheduled full-suite was red on dev in the same two steps in pipelines 6453 (2026-11-16 06:49) and 6480, from causes merged between 11-11 and 11-15, and the nightly's Python 3.10 leg was red in 6447. The agent session working on dev through 11-16 (release 10.0.0 was cut that day) was never told. The owner noticed pipeline 6480 by hand on the evening of 11-16. WI-lapof (done 09-24) added `.agent/hooks/_shared/cron_status_nudge.py`, called by `session_start_logic.sh::_append_cron_status`, to print \"The cron CI is RED and no open tracker row names it: ...\" at session start. That line did not appear in the session-start output of 11-16 (the mode, concept-audit and agent-notes lines did).\n\nMEASURED 2026-11-17 on dev 463912bb1, from the repository root:\n1. With the virtualenv active, cold: `python3 .agent/hooks/_shared/cron_status_nudge.py .` -> prints the RED line naming `test-agent-infra` and `self-tree-validation` at 6a9720bc, first red at 425477b6; 41.1 s wall.\n2. Same, cache warm: same line, 1.5 s.\n3. In a hook-like environment, `env -i HOME=$HOME PATH=/usr/bin:/bin python3 .agent/hooks/_shared/cron_status_nudge.py .` -> NO OUTPUT, exit 0, 0.10 s.\n4. `.claude/settings.json`: the SessionStart hook has `\"timeout\": 5`.\n\nTWO INDEPENDENT CAUSES.\n(a) Without the virtualenv on PATH the nudge fails at once and says nothing (its contract is \"silent on any failure, outage or parse miss\"). I did not trace which call fails; `scripts/tracker --json` is known to print nothing in a shell without the virtualenv. A hook does not get the virtualenv unless the harness was started inside it.\n(b) Cold, the network half takes 41 s (it was 17 s when written), against a 5 s hook timeout. The 1-hour cache is only warm if something ran the nudge in the last hour.\n\nSo the nudge can appear only when the harness has the virtualenv AND the cache is under an hour old. WI-lapof listed (b) as not asserted. A silent failure here is the defect the nudge exists to prevent, one level up.\n\nASK.\n- Make the failure visible: when the nudge cannot determine the scheduled runs' state, say so in one line (\"scheduled-run status not checked: <reason>\") instead of nothing.\n- Make it work without the virtualenv (call the tracker through the repository's own interpreter path, as other hooks do, or read what it needs another way).\n- Take the network call off the session-start path: refresh the cache somewhere that has time (the stop hook, auto-pr's post-merge step, or a detached refresh) and have session start read the cache only, stating its age.\n- Add a test that runs the nudge in an environment without the virtualenv and asserts a line comes out.\n`.agent/hooks/**` and `.claude/settings.json` are governance files: the change needs the owner's approval.\n\nCLOSE WHEN, with the scheduled run red and no open item naming the step, a session started from a plain shell shows either the RED line or a line saying the status could not be checked; shown by the test above and one live session start."  # 9068
+    fields: {}  # 9068
+- op: discuss  # 0ce9
+  at: '2026-11-17T06:07:27Z'  # 0ce9
+  by: agent  # 0ce9
+  actor: jgstern_agent  # 0ce9
+  clock: 2  # 0ce9
+  nonce: 0ce9  # 0ce9
+  message: "OWNER RULING 2026-11-17: built together with WI-jomid (README badge). Design: the scheduled run publishes its verdict to the badges branch; session start reads it from the already-fetched origin/badges with a local git command (no virtualenv, no network call on the session-start path), states the verdict's age, and prints one line when it cannot determine the status. This replaces the ci-debug call that took 41 s cold. The governance files are covered by the owner's standing ruling. The close condition of this item is unchanged."  # 0ce9

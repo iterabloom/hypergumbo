@@ -28,3 +28,10 @@
   clock: 2  # f27d
   nonce: f27d  # f27d
   message: "2026-10-27: closure test, PR #1905: packages/hypergumbo-core/tests/test_medium_families.py (cross-catalogue medium families), rows c:stdio.printf and c:stdio.putchar are strict xfails naming this item. It also answers this item's 'Not checked': across the 12 stdout members in 9 catalogues, these two are the only stdout-only writers not rowed logging; elixir IO.inspect is a different shape (fs_read, WI-jofud). Mutation check: moving printf/putchar to logging XPASSes both."  # f27d
+- op: discuss  # 5085
+  at: '2026-11-17T03:56:14Z'  # 5085
+  by: agent  # 5085
+  actor: jgstern_agent  # 5085
+  clock: 3  # 5085
+  nonce: '5085'  # 5085
+  message: "REPRO THROUGH verify-claims, 2026-11-17 (release 10.0.0 and dev a44572db3, same result). Fixture ~/hypergumbo_lab_notebook/post_release_11162026/side_defects/c_printf/main.c: `char *k = getenv(\"API_KEY\"); printf(\"%s\\n\", k);`; claim host_secret must not reach host_fs (side_defects/claims_fs.yaml). `hypergumbo verify-claims c_printf --claims claims_fs.yaml --format json` -> violated, exit 1, one evidence row host_secret -> host_fs with sink printf, walk verdict reached. The same program in Go (fmt.Println) or Python (print) leaves that claim clean. Found during the WI-buzup alias study, whose C fixtures had to avoid printf as the non-sink use. A duplicate item I filed for this (WI-guzuv-movog-vupul-ditiv-zanuh-sobup-nilug-vidaf) is closed."  # 5085
