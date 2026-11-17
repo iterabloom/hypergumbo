@@ -118,3 +118,13 @@ store_target:
 address_of:
   - node_type: unary_expression
     operator: "&"
+
+# Late-evaluation capture forms (WI-buzup), read ONLY by
+# cfg.exposed_definitions and unioned there with nested_function: a form that
+# reads enclosing names when it RUNS, later than where it is written, but
+# that the CFG builder must not treat as a nested function. A name mentioned
+# inside one is "captured". Required by the wiring gate in every language with
+# a def/use extractor; an empty list is the declared answer. Forms checked and
+# not added are listed, with the observed verdict, in
+# test_definition_exposure.py (_CAPTURE_FORMS_NOT_ADDED).
+capture_scope: []

@@ -62,6 +62,13 @@ function f(t: any, b: any): void {
   console.log(x);
 }
 """),
+    "javascript": ("m.js", """\
+function f(t, b) {
+  let x = 1;
+{body}
+  console.log(x);
+}
+"""),
     "java": ("A.java", """\
 class A {
   String fld;
@@ -90,8 +97,11 @@ fn f(t: &mut Vec<i32>, b: &mut T, p: &mut i32) {
 """),
 }
 
-_INDENT = {"go": "\t", "python": "    ", "typescript": "  ", "java": "    ",
-           "c": "    ", "rust": "    "}
+_INDENT = {"go": "\t", "python": "    ", "typescript": "  ", "javascript": "  ",
+           "java": "    ", "c": "    ", "rust": "    "}
+
+#: The YAML files, by stem (``javascript`` reads ``typescript.yaml``).
+_YAML_STEMS = ("go", "python", "typescript", "java", "c", "rust")
 
 #: (yaml file, key, node type[, operator]) -> (language, snippet, kind, name).
 #: ``kind`` is the exposure the snippet must produce for ``name``; a store is
@@ -111,6 +121,8 @@ _ROWS: dict[tuple[str, str, str], tuple[str, str, str, str]] = {
     ("python", "target", "attribute"): ("python", "b.f = x", EXPOSURE_IN_PLACE_STORE, "b"),
     ("python", "nested_function", "function_definition"): ("python", "def h():\n    return x", EXPOSURE_CAPTURED, "x"),
     ("python", "nested_function", "class_definition"): ("python", "class K:\n    y = x", EXPOSURE_CAPTURED, "x"),
+    ("python", "capture_scope", "lambda"): ("python", "g = lambda: x", EXPOSURE_CAPTURED, "x"),
+    ("python", "capture_scope", "generator_expression"): ("python", "g = (x for _ in range(1))", EXPOSURE_CAPTURED, "x"),
     # --- typescript.yaml (javascript reads it too)
     ("typescript", "assignment", "assignment_expression"): ("typescript", "t[0] = x;", EXPOSURE_IN_PLACE_STORE, "t"),
     ("typescript", "assignment", "augmented_assignment_expression"): ("typescript", "t[0] += x;", EXPOSURE_IN_PLACE_STORE, "t"),
@@ -122,6 +134,8 @@ _ROWS: dict[tuple[str, str, str], tuple[str, str, str, str]] = {
     ("typescript", "nested_function", "function_declaration"): ("typescript", "function h() { return x; }", EXPOSURE_CAPTURED, "x"),
     ("typescript", "nested_function", "generator_function_declaration"): ("typescript", "function* h() { yield x; }", EXPOSURE_CAPTURED, "x"),
     ("typescript", "nested_function", "method_definition"): ("typescript", "const o = { m() { return x; } };", EXPOSURE_CAPTURED, "x"),
+    ("typescript", "capture_scope", "public_field_definition"): ("typescript", "class K { v = x; }", EXPOSURE_CAPTURED, "x"),
+    ("typescript", "capture_scope", "field_definition"): ("javascript", "class K { v = x; }", EXPOSURE_CAPTURED, "x"),
     # --- java.yaml
     ("java", "assignment", "assignment_expression"): ("java", "t[0] = x;", EXPOSURE_IN_PLACE_STORE, "t"),
     ("java", "target", "array_access"): ("java", "t[0] = x;", EXPOSURE_IN_PLACE_STORE, "t"),
@@ -193,13 +207,14 @@ def test_each_yaml_entry_is_read(tmp_path: Path, entry: tuple[str, str, str]) ->
 
 def _yaml_entries() -> set[tuple[str, str, str]]:
     out: set[tuple[str, str, str]] = set()
-    for stem in _TEMPLATES:
+    for stem in _YAML_STEMS:
         mapping = cfg_mod.load_cfg_mapping(stem)
         assert mapping is not None
         out |= {(stem, "assignment", a.node_type) for a in mapping.store_assignments}
         out |= {(stem, "target", t.node_type) for t in mapping.store_targets}
         out |= {(stem, "address_of", a.node_type) for a in mapping.address_of or []}
         out |= {(stem, "nested_function", n.node_type) for n in mapping.nested_functions}
+        out |= {(stem, "capture_scope", c) for c in mapping.capture_scopes or []}
     return out
 
 
@@ -211,6 +226,41 @@ def test_every_yaml_entry_has_a_row() -> None:
     assert set(_ROWS) <= entries
 
 
+#: Late-evaluation candidates checked by mechanism and NOT added to
+#: ``capture_scope``, with the verdict observed for the leak fixture
+#: (``x = ""``; the form mentions ``x``; ``x = <secret>``; the sink reads the
+#: form) on the branch that added the key. Kept as data so adding one later
+#: means reading why it was left out.
+_CAPTURE_FORMS_NOT_ADDED = {
+    ("python", "list_comprehension"): "evaluated where it stands: the leak "
+        "fixture's sink receives the empty string, so its removal is correct "
+        "(confirmed_with_caveats, removed 1); adding it would mark every name a "
+        "comprehension mentions as captured",
+    ("typescript", "class_static_block"): "runs once, at class definition, "
+        "where it is written: the fixture's removal is correct (confirmed, "
+        "removed 1)",
+    ("rust", "async_block"): "lazy, but no Rust walk refutes this shape: the "
+        "leak fixture reads violated (the walk escapes) on both arms",
+    ("java", "class_body"): "a Java capture must be effectively final, so a "
+        "rebinding after capture does not compile and only an in-place store "
+        "(already a store) can be seen; the anonymous-class leak fixture reads "
+        "violated (the walk escapes) on both arms",
+    ("go", "method_value"): "``get := t.Get`` copies a value receiver when "
+        "evaluated, so the fixture's removal is correct (confirmed, removed 1); "
+        "a pointer receiver is reached through a store, already a store",
+    ("c", "none"): "C has no closure or late-evaluation form",
+}
+
+
+@pytest.mark.parametrize("entry", sorted(_CAPTURE_FORMS_NOT_ADDED), ids=lambda e: "-".join(e))
+def test_a_form_left_out_is_not_a_capture_scope(entry: tuple[str, str]) -> None:
+    """Adding one of these must come back through the record above."""
+    stem, node_type = entry
+    mapping = cfg_mod.load_cfg_mapping(stem)
+    assert mapping is not None and mapping.capture_scopes is not None
+    assert node_type not in mapping.capture_scopes
+
+
 @pytest.mark.parametrize("language", sorted(_TEMPLATES))
 def test_a_definition_that_reads_its_own_target_is_a_self_reference(
     tmp_path: Path, language: str,
@@ -218,6 +268,7 @@ def test_a_definition_that_reads_its_own_target_is_a_self_reference(
     """Clause 2 comes from the def/use record, so every extractor is checked."""
     snippet = {
         "go": "x = x + 1", "python": "x = x + 1", "typescript": "x = x + 1;",
+        "javascript": "x = x + 1;",
         "java": 'x = x + "1";', "c": "x = x + 1;", "rust": "let x = x + 1;",
     }[language]
     exposure, line = _exposure(tmp_path, language, snippet)
@@ -229,7 +280,8 @@ def test_a_plain_rebinding_exposes_nothing(tmp_path: Path, language: str) -> Non
     """The case the rule must leave alone: a fresh local, rebound and read."""
     snippet = {
         "go": "y := x\n_ = y", "python": "y = x\nprint(y)",
-        "typescript": "const y = x;\nconsole.log(y);", "java": "String y = x;\nSystem.out.println(y);",
+        "typescript": "const y = x;\nconsole.log(y);", "javascript": "const y = x;\nconsole.log(y);",
+        "java": "String y = x;\nSystem.out.println(y);",
         "c": "int y = x;\ng(y);", "rust": "let y = x;\ng(y);",
     }[language]
     exposure, _line = _exposure(tmp_path, language, snippet)

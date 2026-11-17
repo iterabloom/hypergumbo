@@ -222,7 +222,9 @@ def _every_registered_def_use_language() -> list[str]:
 
 
 @pytest.mark.parametrize("language", _every_registered_def_use_language())
-def test_cfg_mapping_declares_store_target_and_address_of(language: str) -> None:
+def test_cfg_mapping_declares_store_target_address_of_and_capture_scope(
+    language: str,
+) -> None:
     """ADR-0017 §7b's withhold rule reads these keys (WI-buzup).
 
     A language whose mapping omits ``store_target`` would record no in-place
@@ -230,20 +232,22 @@ def test_cfg_mapping_declares_store_target_and_address_of(language: str) -> None
     flow removed in silence -- the defect the rule exists to close. Quantified
     over EVERY registered def/use extractor (C included), not over the
     expected list, so a new extractor cannot ship without them. ``address_of``
-    must be PRESENT; an empty list is the declared answer for a grammar with
-    no address-of operator.
+    and ``capture_scope`` must be PRESENT; an empty list is the declared
+    answer for a grammar with no such form.
     """
     mapping = cfg_mod.load_cfg_mapping(language)
     assert mapping is not None, f"no cfg_nodes mapping for {language}"
     assert mapping.store_assignments, f"{language}: store_target.assignment is empty"
     assert mapping.store_targets, f"{language}: store_target.target is empty"
     assert mapping.address_of is not None, f"{language}: address_of is not declared"
+    assert mapping.capture_scopes is not None, f"{language}: capture_scope is not declared"
 
 
 def test_an_absent_address_of_key_reads_as_undeclared() -> None:
     """The gate above relies on ``None`` meaning ABSENT, not empty."""
     mapping = cfg_mod._parse_cfg_mapping({"language": "x"})
     assert mapping.address_of is None
+    assert mapping.capture_scopes is None
     assert mapping.store_assignments == [] and mapping.store_targets == []
 
 

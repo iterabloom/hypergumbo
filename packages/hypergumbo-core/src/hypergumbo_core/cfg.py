@@ -10,12 +10,12 @@ How It Works
 1. ``load_cfg_mapping()`` reads a per-language YAML file that maps tree-sitter
    node types to control-flow categories: conditional, loop, break, continue,
    return, try/catch, switch/match, and semantic hooks. Besides ``language``
-   and ``grammar``, six further keys are not control-flow categories:
+   and ``grammar``, seven further keys are not control-flow categories:
    ``call_node_types``, ``atomic_statement``, ``nested_function``,
    ``block_tail_returns`` (a block's last expression without ``;`` is a
    return, read by ``ddg_build``'s return-span lift), and ``store_target`` /
-   ``address_of`` (the in-place store and address-of node forms, read only by
-   ``exposed_definitions``).
+   ``address_of`` / ``capture_scope`` (the in-place store, address-of and
+   late-evaluation forms, read only by ``exposed_definitions``).
 
 2. ``build_function_cfg()`` walks the tree-sitter AST for a function body and
    produces a ``FunctionCfg`` using the fringe-based recursive algorithm (same
@@ -598,6 +598,14 @@ class CfgNodeMapping:
     #: wiring gate refuses for a language with a def/use extractor; an empty
     #: list is the declared answer "this grammar has no address-of operator".
     address_of: Optional[list[AddressOfMapping]] = None
+    #: ``capture_scope`` (WI-buzup): node types that evaluate what they mention
+    #: LATER, or elsewhere, than where they are written but are not
+    #: ``nested_function`` entries (a Python ``lambda`` or generator
+    #: expression, a class field initialiser). Read only by
+    #: :func:`exposed_definitions`, unioned there with the nested-function
+    #: types; the CFG builder never reads it. ``None`` when the key is ABSENT,
+    #: which the wiring gate refuses; an empty list is the declared answer.
+    capture_scopes: Optional[list[str]] = None
 
     def get_nested_function(self, node_type: str) -> Optional[NestedFunctionMapping]:
         """Return the nested-function mapping for a node type, if any."""
@@ -859,6 +867,10 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         ]
         if "address_of" in data else None
     )
+    capture_scopes = (
+        [c["node_type"] for c in data["capture_scope"]]
+        if "capture_scope" in data else None
+    )
 
     return CfgNodeMapping(
         language=data["language"],
@@ -880,6 +892,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         store_assignments=store_assignments,
         store_targets=store_targets,
         address_of=address_of,
+        capture_scopes=capture_scopes,
     )
 
 
@@ -2501,7 +2514,9 @@ class DefinitionExposure:
       (``&v``, ``&v.f``; ``address_of`` in ``cfg_nodes``). A plain rebinding of
       such a name is seen through the pointer.
     * ``captured`` -- names mentioned inside a nested function
-      (``nested_function`` in ``cfg_nodes``). A rebinding is seen by the
+      (``nested_function`` in ``cfg_nodes``) or another form that evaluates
+      them later (``capture_scope``: a Python ``lambda`` or generator
+      expression, a class field initialiser). A rebinding is seen by the
       closure.
 
     A plain rebinding of an unexposed local creates a new value no earlier
@@ -2588,7 +2603,9 @@ def exposed_definitions(
     for t in mapping.store_targets:
         targets.setdefault(t.node_type, []).append(t.operator)
     address = {a.node_type: a.operator for a in (mapping.address_of or [])}
-    nested = {nf.node_type for nf in mapping.nested_functions}
+    nested = {nf.node_type for nf in mapping.nested_functions} | set(
+        mapping.capture_scopes or (),
+    )
 
     def _is_target(node: Any) -> bool:
         return node.type in targets and any(
