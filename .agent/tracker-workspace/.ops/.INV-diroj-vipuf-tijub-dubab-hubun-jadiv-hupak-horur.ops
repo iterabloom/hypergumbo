@@ -1,0 +1,53 @@
+- op: create  # b708
+  at: '2026-11-17T18:43:01Z'  # b708
+  by: agent  # b708
+  actor: jgstern_agent  # b708
+  clock: 1  # b708
+  nonce: b708  # b708
+  data:  # b708
+    kind: invariant  # b708
+    title: "A row left by a fixture that runs for every test makes every test 'measured': narrowing drops subprocess-driven test files for changes they depend on"  # b708
+    status: violated  # b708
+    priority: 1  # b708
+    parent:  # b708
+    tags:  # b708
+    - smart_test  # b708
+    - trunk_green  # b708
+    - ci_infrastructure  # b708
+    isbefore: []  # b708
+    duplicate_of: []  # b708
+    not_duplicate_of: []  # b708
+    pr_ref:  # b708
+    description: "FOUND 2026-11-17 18:41 UTC, by the first full local run since 2026-11-15.\n\nWHAT IS WRONG. Coverage narrowing (on by default, and what the merge-gating manifest publishes) may drop a test file only if none of its tests is \"unmeasured\". The index calls a test unmeasured when it ran and produced NO coverage row: its work is in a subprocess or in code outside the measured packages, so coverage cannot say what it depends on. Commit b962b6cc6 (2026-11-16 18:28, \"a repository declares its test-input directories\") added an autouse fixture to the root conftest.py whose teardown calls hypergumbo_core.declared_test_inputs.install_declaration(None) after EVERY test. Every test now produces a row (on declared_test_inputs.py), so every test counts as measured. The unmeasured list fell from 6,916 tests to 227 at the full fold of 18:39 UTC.\n\nLIVE REPRO (real command, real index; output kept in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/fixture_row_hole.txt). One statement added to graph_rows.walk (the function `coverage-select graph-walk` runs), then:\n  scripts/coverage-select --repo-root . --verbose narrow --changed-files <graph_rows.py> --run-set <the 10 test_smart_test_* / test_coverage_select_* files that name coverage-select or smart-test> --base HEAD\n  -> \"narrow: 10 -> 3 file(s), dropped 7\", exit 0. Dropped: test_smart_test_recorders.py (14 mentions of graph-walk / graph-select / graph-store / stale-record, all through subprocess), test_smart_test_coverage_gate.py, test_smart_test_import_union.py, test_smart_test_manifest_split.py, test_smart_test_read_union.py, test_smart_test_slice_minimal.py, test_smart_test_slice_robustness.py.\nBefore the fixture those files' tests had no row and were kept.\n\nSIZE. In the full run's coverage data 41,124 tests have a row; 8,484 have no row in their own call phase (pytest-cov records setup, run and teardown as separate contexts); 8,250 have rows in declared_test_inputs.py only. 176 test files (2,745 tests) consist wholly of such tests, and 173 of them are now in the droppable set for a change to a core source file.\n\nWHAT HAS IT ALREADY DONE? Not established. The list was rebuilt only by the full fold at 18:39 UTC today, and no manifest has been computed on this machine since. Between 11-16 18:28 and then, a non-full fold removed a test from the list whenever that test ran in a folded run (few such runs: 7 selected runs in the run records). I have NOT checked whether any merged PR's manifest lost a test file this way.\n\nANALOGUES NOT CHECKED: the read-record rule and the import rule have their own notions of \"this test said something\"; `select_tests` and the by-statement selector subtract the unmeasured list.\n\nUNTIL FIXED AND RE-FOLDED: manifests on this machine are computed with --no-narrow."  # b708
+    fields:  # b708
+      statement: "A test is called measured only on evidence from its own execution: coverage rows from setup or teardown code that runs for every test never turn 'coverage cannot speak for this test' into 'this test runs none of the changed code'."  # b708
+      root_cause: "selection_index.update_from_run clears a test from unmeasured_test, and a full run leaves it off the list, whenever any phase of the test produced a row; since b962b6cc6 the root conftest's autouse teardown produces one for every test."  # b708
+- op: discuss  # c77f
+  at: '2026-11-17T19:22:47Z'  # c77f
+  by: agent  # c77f
+  actor: jgstern_agent  # c77f
+  clock: 2  # c77f
+  nonce: c77f  # c77f
+  message: "Merged as PR #2235, dev SHA a60b1a86da5d."  # c77f
+- op: update  # f991
+  at: '2026-11-17T19:36:03Z'  # f991
+  by: agent  # f991
+  actor: jgstern_agent  # f991
+  clock: 3  # f991
+  nonce: f991  # f991
+  set:  # f991
+    status: satisfied  # f991
+- op: discuss  # 6941
+  at: '2026-11-17T19:36:03Z'  # 6941
+  by: agent  # 6941
+  actor: jgstern_agent  # 6941
+  clock: 4  # 6941
+  nonce: '6941'  # 6941
+  message: "Fixed in PR #2235 (dev a60b1a86d): selection_index.update_from_run counts a test as having produced rows only when a row is in its own call phase (pytest-cov's |run context, or a context with no phase); rows from |setup and |teardown stay edges and no longer clear the unmeasured flag or make the test a producer of its run record. BEHAVIOURAL EVIDENCE, the item's own repro re-run on the real index after a full re-fold (2026-11-17 19:35 UTC; output in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/fixture_row_hole.txt): (1) the full run's fold printed 'full run: coverage cannot speak for 8704 test(s) (their own call ran no measured code); 227 before this run' (41,094 passed); (2) the same command as filed, same one-statement edit to graph_rows.walk, same 10-file run set: 'narrow: 10 -> 10 file(s), dropped 0', exit 0, where it had dropped 7; test_smart_test_recorders.py is among the kept; (3) narrowing still narrows: 1,225 test files are droppable for a change to graph_rows.py (1,461 while the defect held). Tests: test_selection_index_own_phase.py (7 tests, the hole reproduced in miniature and at the command), 10 mutations each red. NOT ESTABLISHED: which of the 12 test files removed from the 4 narrowed manifests committed between the fixture (b962b6cc6) and the fix (26f51346b 2 files, d0e00a83c 1, eec3215e6 8, 5a38b95bb 1) were removed because of the defect. Bound: two full local runs on dev since (41,087 and 41,094 tests) passed, so no removed test is failing on dev. NOT CLOSED BY THIS: a test whose own call runs some measured code in process AND does other work in a subprocess is still called measured; that shape predates the fixture and has no item of its own that I know of. NO STRUCTURAL GUARD beyond the printed count: a sharp fall in that number has to be noticed by a reader."  # 6941
+- op: discuss  # 13cf
+  at: '2026-11-17T19:36:10Z'  # 13cf
+  by: agent  # 13cf
+  actor: jgstern_agent  # 13cf
+  clock: 5  # 13cf
+  nonce: 13cf  # 13cf
+  message: "CORRECTION to my closing note, point (3): the figure '1,225 test files are droppable' is WRONG. I wrote it before the measurement returned. The measured figure (2026-11-17 19:36 UTC, live index, droppable_test_files for a change to graph_rows.py) is 937 of the 1,488 test files the index knows; it was 1,461 while the defect held. Points (1) and (2) are as measured and stand."  # 13cf
