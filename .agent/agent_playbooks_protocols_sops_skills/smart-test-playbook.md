@@ -80,6 +80,14 @@ It prints which graph answered, and the manifest header carries the same line:
 
 A fresh analysis leaves a graph of your tree, so the next run on the same branch is fast again. `--fresh-graph` forces one. CI never selects: it reads the committed manifest.
 
+**The graph that answers exactly, made in the background.** A graph of your branch's *baseline* commit (its merge-base with `dev`) differs from your tree by your own change and nothing else, so it selects exactly: no surplus tests, no refusal. Every `smart-test` run therefore starts, for after it has ended, an analysis of that commit in a checkout of its own (`coverage-select graph-rebuild`), unless that graph is stored already. You do not manage it:
+
+- it waits for the run to end and a minute more, runs one at a time, and does not start while a test run holds the checkout or less than 6 GB of memory is free;
+- **a `smart-test` that starts stops it** (`[smart-test] stopped a graph rebuild ...`) and starts it again when it ends, so it never runs beside tests;
+- it works in `~/.cache/hypergumbo-graph-rebuild/` (override: `HG_GRAPH_REBUILD_DIR`), removes its checkout and its survey when done, and writes one line per outcome to `rebuild.log` there.
+
+If runs follow one another without a few idle minutes (an agent's pre-PR chain), it never gets to finish and the first selection on a new baseline analyses in the foreground as before.
+
 **The check that stays on.** Every time a fresh analysis does run, `smart-test` also records what the stored graph would have selected (`~/hypergumbo_lab_notebook/stale_graph_observations.jsonl`; `scripts/coverage-select stale-report` prints the verdict). A line `STORED GRAPH LOST n TEST FILE(S)` means the stored graph missed a test the fresh analysis found and your change did not edit. **That is a stop:** file it, and use `--fresh-graph` until it is understood.
 
 **Looking at the stored graphs:** `scripts/coverage-select graph-list`.

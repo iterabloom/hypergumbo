@@ -37,6 +37,8 @@ catches broadly and exits 0 — see `main`.
                   4: it failed; 5: an added file needs a fresh analysis;
                   6: the graph is too far behind this tree)
     graph-list  print the stored graphs, newest first
+    graph-rebuild  analyse one COMMIT in a checkout of its own and store its
+                   graph; started detached by smart-test, stops for a test run
     line-tests  print which tests the index records running FILE:LINE
     line-records  print how many pairs of the index have statement records
 """
@@ -44,9 +46,12 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import json
 import os
 import re
+import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -102,6 +107,9 @@ _NOTEBOOK = Path.home() / "hypergumbo_lab_notebook"
 DEFAULT_STALE_LOG = Path(os.environ.get(
     "HG_STALE_GRAPH_LOG", _NOTEBOOK / "stale_graph_observations.jsonl"))
 DEFAULT_RUNS = Path(os.environ.get("HG_RUN_RECORDS", _NOTEBOOK / "run_records.jsonl"))
+
+#: A package source file, as the reverse slice is seeded with one.
+_SLICED_SOURCE_PATH = re.compile(r"^packages/.*/src/.*\.py$")
 
 #: Untracked files that count as part of a change: the surfaces smart-test's
 #: own change detection reads (INV-kinin). Pending tracker ops never do.
@@ -891,6 +899,205 @@ def cmd_graph_walk(args: argparse.Namespace) -> int:
         return WALK_FAILED
 
 
+#: Where a rebuild keeps its checkout, its private survey cache, its lock, its
+#: pid and its log. Real disk on purpose: /tmp is memory on some machines, and
+#: the survey alone is some 350 MB beside an analysis that needs 4 GB.
+DEFAULT_REBUILD_DIR = Path(os.environ.get(
+    "HG_GRAPH_REBUILD_DIR",
+    Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "hypergumbo-graph-rebuild"))
+#: The analysis peaks near 4.2 GB; below this much free memory it is not started.
+REBUILD_MIN_FREE_MB = 6000
+
+
+def _free_mb() -> int | None:
+    """MemAvailable in MB; None where /proc/meminfo does not say."""
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _test_run_pid(root: Path) -> int | None:
+    """The pid of a smart-test running in ``root``, from the pid file it keeps
+    beside its lock; None when there is none or the process is gone. Read, not
+    locked: taking smart-test's own lock to look would refuse a run that
+    starts in that instant."""
+    try:
+        pid = int((root / ".ci" / ".smart-test.lock.pid").read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    return pid if _alive(pid) else None
+
+
+def _alive(pid: int) -> bool:
+    """Whether process ``pid`` is still running. A process that has ended and
+    not yet been collected by its parent (a zombie) still answers a signal;
+    it is over, and waiting for it could last as long as its parent does."""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        # The field after the parenthesised command name is the state.
+        state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[0]
+    except (OSError, IndexError):
+        return True
+    return state != "Z"
+
+
+def _terminated(_signum: int, _frame: object) -> None:
+    raise SystemExit(143)
+
+
+def cmd_graph_rebuild(args: argparse.Namespace) -> int:
+    """Analyse ``--commit`` and store its graph, unless that graph is stored.
+
+    WHY A COMMIT AND NOT THE WORKING TREE. smart-test selects from a stored
+    graph by seeding every file that differs between the graph's tree and the
+    current one, so a graph of the branch's BASELINE commit (its merge-base
+    with dev) differs from the branch by the branch's own change and nothing
+    else: the selection is exact. A graph of an edited working tree is of a
+    tree nobody will be on again.
+
+    HOW. A detached checkout of the commit (``git worktree``, hooks off) in
+    the rebuild directory; the installed hypergumbo's slice there, with a
+    survey cache of its own so that its one survey is found and removed; the
+    rows stored under the commit, with no uncommitted files.
+
+    IT GIVES WAY. One rebuild at a time (a lock). It waits for the process
+    ``--after-pid`` to be gone (the smart-test that started it) and ``--settle``
+    seconds more, then does not start while a smart-test run holds the checkout or
+    memory is short, and smart-test stops it when a run starts: SIGTERM ends
+    the analysis and removes the checkout. Nothing is lost but the time; the
+    next run starts it again.
+
+    Exit 0 when the graph is stored or was already, 1 when it could not be
+    made, 2 when it gave way or was stopped. Every outcome is one line in
+    ``rebuild.log`` in the rebuild directory.
+    """
+    root = Path(args.repo_root).resolve()
+    work = Path(args.work_dir)
+    work.mkdir(parents=True, exist_ok=True)
+
+    def say(message: str) -> None:
+        with open(work / "rebuild.log", "a", encoding="utf-8") as log:
+            log.write(f"{_now()} {message}\n")
+        print(f"[coverage-select] graph-rebuild: {message}", file=sys.stderr)
+
+    resolved = _git_lines(root, "rev-parse", "--verify", "--quiet", f"{args.commit}^{{commit}}")
+    tree = _tree_of(root, resolved[0]) if resolved else None
+    if not resolved or tree is None:
+        say(f"git does not know the commit {args.commit}")
+        return 1
+    commit = resolved[0]
+    if Path(args.index).exists():
+        with contextlib.closing(open_index(Path(args.index))) as conn:
+            graph_rows.ensure_schema(conn)
+            have = next((g for g in graph_rows.stored_graphs(conn)
+                         if g.git_tree == tree and not g.dirty_files
+                         and (args.build is None or g.build == args.build)), None)
+        if have is not None:
+            say(f"the graph of {commit[:9]} is stored already (graph {have.id})")
+            return 0
+
+    lock = os.open(work / "rebuild.lock", os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock)
+        say("another rebuild is running")
+        return 2
+    pid_file = work / "rebuild.pid"
+    checkout, cache = work / "tree", work / "cache"
+    child: subprocess.Popen[bytes] | None = None
+
+    def clear() -> None:
+        """Remove the checkout and the private cache, whoever left them.
+
+        No ``git worktree prune``: that drops the registration of EVERY
+        worktree whose directory is missing at that moment, and the
+        repository's other worktrees are not this command's to judge.
+        ``worktree remove`` drops this checkout's own registration whether
+        or not its directory is still there (git 2.43)."""
+        _git(root, "worktree", "remove", "--force", str(checkout))
+        shutil.rmtree(checkout, ignore_errors=True)
+        shutil.rmtree(cache, ignore_errors=True)
+
+    signal.signal(signal.SIGTERM, _terminated)
+    started = time.monotonic()
+    try:
+        pid_file.write_text(f"{os.getpid()}\n", encoding="utf-8")
+        while args.after_pid is not None and _alive(args.after_pid):
+            time.sleep(1.0)
+        time.sleep(args.settle)
+        running = _test_run_pid(root)
+        if running is not None:
+            say(f"not started: a test run (pid {running}) has the checkout")
+            return 2
+        free = _free_mb()
+        if free is not None and free < args.min_free_mb:
+            say(f"not started: {free} MB of memory free, {args.min_free_mb} needed")
+            return 2
+        clear()
+        added = subprocess.run(  # noqa: S603
+            ["git", "-C", str(root), "-c", "core.hooksPath=/dev/null",  # noqa: S607
+             "worktree", "add", "--detach", "--quiet", str(checkout), commit],
+            capture_output=True)
+        if added.returncode != 0:
+            say(f"no checkout of {commit[:9]}: "
+                f"{added.stderr.decode('utf-8', 'replace').strip()[:200]}")
+            return 1
+        tracked = _git_z(root, "ls-tree", "-r", "--name-only", "-z", commit)
+        seed = next((name for name in tracked if _SLICED_SOURCE_PATH.match(name)),
+                    tracked[0] if tracked else None)
+        if seed is None:
+            say(f"the commit {commit[:9]} holds no file")
+            return 1
+        (work / "seed.txt").write_text(f"{seed}\n", encoding="utf-8")
+        minimal = ["--minimal"] if "--minimal" in subprocess.run(  # noqa: S603
+            [args.hg, "slice", "--help"], capture_output=True, text=True).stdout else []
+        environment = {
+            **os.environ, "XDG_CACHE_HOME": str(cache), "HF_HUB_OFFLINE": "1",
+            "HF_HOME": os.environ.get("HF_HOME") or str(Path(os.environ.get(
+                "XDG_CACHE_HOME", Path.home() / ".cache")) / "huggingface")}
+        with open(work / "analysis.log", "wb") as analysis_log:
+            child = subprocess.Popen(  # noqa: S603
+                [args.hg, "slice", "--files", str(work / "seed.txt"), *minimal,
+                 "--output", str(work / "slice.out")],
+                cwd=str(checkout), env=environment, stdout=analysis_log,
+                stderr=subprocess.STDOUT)
+            code = child.wait()
+        child = None
+        if code != 0:
+            say(f"the analysis of {commit[:9]} failed (exit {code}); see {work / 'analysis.log'}")
+            return 1
+        surveys = sorted(cache.glob("hypergumbo/*/results/*/*/survey.json"))
+        if len(surveys) != 1:
+            say(f"the analysis of {commit[:9]} left {len(surveys)} surveys; exactly 1 is its graph")
+            return 1
+        stored = _store_graph_rows(Path(args.index), surveys[0], head=commit, git_tree=tree,
+                                   dirty_files=[])
+        if stored is None:
+            say(f"the survey of {commit[:9]} holds no node and edge lists")
+            return 1
+        say(f"stored graph {stored.id} of {commit[:9]} ({stored.nodes} nodes, {stored.edges} "
+            f"edges, build {stored.build}) in {time.monotonic() - started:.0f} s")
+        return 0
+    except SystemExit:
+        say(f"stopped after {time.monotonic() - started:.0f} s: a test run has the machine")
+        return 2
+    finally:
+        if child is not None and child.poll() is None:
+            child.terminate()
+            child.wait()
+        clear()
+        pid_file.unlink(missing_ok=True)
+        os.close(lock)
+
+
 def cmd_graph_list(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
     if not Path(args.index).exists():
@@ -1097,6 +1304,21 @@ def main(argv: list[str] | None = None) -> int:
     gsel.set_defaults(func=cmd_graph_select)
 
     sub.add_parser("graph-list").set_defaults(func=cmd_graph_list)
+
+    gr = sub.add_parser("graph-rebuild")
+    gr.add_argument("--commit", required=True, help="the commit to analyse")
+    gr.add_argument("--hg", required=True, help="the installed hypergumbo to analyse with")
+    gr.add_argument("--build", default=None,
+                    help="that hypergumbo's analyzer build: a stored graph of the "
+                         "commit from another build does not count as stored")
+    gr.add_argument("--work-dir", default=str(DEFAULT_REBUILD_DIR))
+    gr.add_argument("--settle", type=float, default=60.0,
+                    help="seconds to wait before starting, so runs that follow "
+                         "one another do not each start an analysis")
+    gr.add_argument("--after-pid", type=int, default=None,
+                    help="wait for this process to be gone first")
+    gr.add_argument("--min-free-mb", type=int, default=REBUILD_MIN_FREE_MB)
+    gr.set_defaults(func=cmd_graph_rebuild)
 
     lt = sub.add_parser("line-tests")
     lt.add_argument("where", metavar="FILE:LINE")
