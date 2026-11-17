@@ -15,6 +15,10 @@ from pathlib import Path
 
 import pytest
 
+from helpers_package_src import put_core_src_on_path
+
+put_core_src_on_path()
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "yaml-catalog-index"
 

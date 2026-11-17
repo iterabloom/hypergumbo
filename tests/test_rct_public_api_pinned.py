@@ -35,6 +35,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from helpers_package_src import put_core_src_on_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -61,10 +62,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # worker. A test that passes on borrowed state is not passing. Declaring the
 # path here makes this module's requirement its own — it now behaves the same
 # run alone as in the full suite, and the free-ride is gone rather than merely
-# working today.
-_SRC = REPO_ROOT / "packages" / "hypergumbo-core" / "src"
-if _SRC.is_dir() and str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
+# working today. tests/helpers_package_src.py holds the declaration, for every
+# module of this suite that imports hypergumbo_core.
+put_core_src_on_path()
 
 
 # ---------------------------------------------------------------------------

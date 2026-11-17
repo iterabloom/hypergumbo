@@ -28,6 +28,10 @@ from pathlib import Path
 
 import pytest
 
+from helpers_package_src import put_core_src_on_path
+
+put_core_src_on_path()
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PREPARE_RELEASE = REPO_ROOT / "scripts" / "prepare-release"
 SCHEMA_PY = REPO_ROOT / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core" / "schema.py"

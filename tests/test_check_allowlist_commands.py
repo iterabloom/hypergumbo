@@ -24,6 +24,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from helpers_package_src import put_core_src_on_path
+
+put_core_src_on_path()
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "check-allowlist-commands"
 

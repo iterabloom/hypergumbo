@@ -64,6 +64,10 @@ import pytest
 # pin into a silent skip (see test_ci_self_claims_gate_scope.py).
 import yaml
 
+from helpers_package_src import put_core_src_on_path
+
+put_core_src_on_path()
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CRON = REPO_ROOT / ".woodpecker" / "full-suite.yml"
 
