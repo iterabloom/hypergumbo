@@ -70,13 +70,16 @@ _SHAPES = sorted(
 
 
 def test_the_shape_population_is_the_reproduced_one() -> None:
-    """35 shape-language pairs reproduced the unearned removal (Go 15,
-    Python 11, JavaScript 9); a lost fixture directory must not shrink it."""
+    """39 shape-language pairs reproduced the unearned removal (Go 15,
+    Python 13, JavaScript 10, TypeScript 1): the study's 35, plus the
+    late-evaluation captures ``capture_scope`` covers (a Python ``lambda`` and
+    generator expression, a JS / TS class field initialiser). A lost fixture
+    directory must not shrink it."""
     by_language: dict[str, int] = {}
     for shape in _SHAPES:
         language = shape.split("__")[0]
         by_language[language] = by_language.get(language, 0) + 1
-    assert by_language == {"go": 15, "python": 11, "javascript": 9}
+    assert by_language == {"go": 15, "python": 13, "javascript": 10, "typescript": 1}
 
 
 @pytest.mark.parametrize("shape", _SHAPES)

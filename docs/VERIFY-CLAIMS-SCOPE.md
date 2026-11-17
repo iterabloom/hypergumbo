@@ -240,8 +240,10 @@ sink zone** reads `inconclusive` (exit 4). A definition counts when it is
   assignment's target node;
 - a definition that also reads the variable (`s = append(s, k)`, `s += k`);
 - a variable whose address the function takes anywhere (`&buf`);
-- a variable a nested function (closure, lambda, arrow function, local
-  function) mentions.
+- a variable mentioned by a form that reads it later than where it is
+  written: a closure, arrow function, local function or method, a Python
+  `lambda` or generator expression, a JavaScript / TypeScript class field
+  initialiser.
 
 The same walk earns no `sanitized` credit when a sanitizer sits in the
 source's own function: `t[0] = decrypt(ct); write(encrypt(t[0])); write(s[0])`
@@ -267,10 +269,23 @@ Known limits, measured on the shapes they name:
   way: the rule asks whether the walk relied on an exposed definition, not
   whether a second name was found.
 - **Not seen:** a store made by a call the walk treats as terminating; a
-  Python `lambda`'s capture (a lambda is not one of the nested-function forms
-  the walk models); a value that reaches another name through the slot a
-  helper returns it in (`mApp, _ := app.NewApp(...)`), where the walk follows
-  no name at all.
+  value that reaches another name through the slot a helper returns it in
+  (`mApp, _ := app.NewApp(...)`), where the walk follows no name at all.
+- **A value a helper RETURNS through an alias is not withheld.** The walk
+  that decides whether a source's value reaches a function's `return` (and so
+  is lifted into its callers) does not apply this rule. In
+  `def load(): s = [""]; t = s; t[0] = os.getenv("K"); print(len(t)); return s`,
+  with a caller that writes `load()[0]` to a file, the walk follows `t`, does
+  not reach the `return s`, and the value is never lifted: the claim reads
+  `confirmed` (exit 0) with nothing removed and nothing withheld. The same
+  Go function reads the same way. The control that stores into `s` itself
+  (`s[0] = os.getenv("K")`, no alias) reads `violated`.
+- **A value that reaches an unfollowed construct through an alias does not
+  withhold.** The pass behind "A value the walk loses through an unfollowed
+  construct withholds the verdict" runs the same walk and does not apply this
+  rule either: a source value that reaches such a construct only through
+  another name for the same object is not reported, and that clean verdict is
+  not withheld on its account.
 - Java, C and Rust carry the same rule, but none of the measured alias shapes
   produced a refutation in those languages to begin with: their walks escape
   at the print call, which has no terminating summary.
