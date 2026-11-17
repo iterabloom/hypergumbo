@@ -20,3 +20,30 @@
     pr_ref:  # 3636
     description: "WHY. Today's selection is many times larger than the tests that run a changed statement. Replay of 37 PRs (fast_smart_test_11152026/): the manifests ran 57,221 test-seconds; the tests that run a changed statement are 13,955. The PRs are two groups: 21 need at most 35 test-seconds, 16 need 109 or more (median 951).\n\nWHAT. A selector that reads the statement records in the selection index and names tests, in SHADOW ONLY: it changes nothing about what runs. Each run that reaches pytest logs what the selector would have picked beside what ran and what failed.\n- a changed statement -> the tests whose record has that statement;\n- an edited block with no usable record -> every test that reached the block;\n- a new block -> the tests of its changed callers;\n- import-time code -> the import-closure rule as shipped (WI-nusil), which statement records cannot improve on;\n- a changed file that is not a .py under packages/*/src (YAML catalogues, scripts, fixtures): the replay did not cover these. The selector must name the rule it applies to each kind (today's rules: the top-level map, the read records, the declared gates) and never be silent about one.\n\nLIMITS OF THE EVIDENCE TO CARRY. 206 of 1,593 changed blocks in the replay could not be looked up, so \"21 of 37\" is an upper bound. Nothing in the replay says whether a test left out would have FAILED.\n\nOWNER RULING (decision 9). When this selector goes live, a PR runs EVERY test it selects, however long that takes. There is no budget cut.\n\nCLOSE CONDITION. The shadow log exists and a real run has written a row to it; each arm above has a test with a mutation control; an unlisted kind of changed file is reported, not skipped.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 3636
     fields: {}  # 3636
+- op: update  # f753
+  at: '2026-11-17T09:00:37Z'  # f753
+  by: agent  # f753
+  actor: jgstern_agent  # f753
+  clock: 2  # f753
+  nonce: f753  # f753
+  set: {}  # f753
+  add:  # f753
+    isbefore: [WI-pugol-sajov-fazah-romaj-lotag-hatuj-kogap-tovor]  # f753
+- op: update  # 6f5e
+  at: '2026-11-17T09:00:37Z'  # 6f5e
+  by: agent  # 6f5e
+  actor: jgstern_agent  # 6f5e
+  clock: 3  # 6f5e
+  nonce: 6f5e  # 6f5e
+  set: {}  # 6f5e
+  add:  # 6f5e
+    isbefore: [WI-gapal-tarid-vifub-jopoh-zazud-dataz-giluz-zazih]  # 6f5e
+- op: update  # b8f3
+  at: '2026-11-17T09:00:37Z'  # b8f3
+  by: agent  # b8f3
+  actor: jgstern_agent  # b8f3
+  clock: 4  # b8f3
+  nonce: b8f3  # b8f3
+  set: {}  # b8f3
+  add:  # b8f3
+    isbefore: [WI-tunoz-vidid-zihig-vusun-mogug-bipah-galid-zudos]  # b8f3

@@ -20,3 +20,30 @@
     pr_ref:  # 90d6
     description: "WHAT (owner rulings on decisions 4 and 5: the bar is MET by 9 live comparisons plus the 38 historical steps of 1a with no missed test file, so this goes live as soon as it is built). smart-test selects test files by walking the newest stored graph (the rows of step 1d) when that graph is at most 93 commits old (the largest age that passed), seeding from EVERY changed file, with the added-file rule of decision 14b. It runs a fresh analysis when there is no stored graph, when the graph is older than that, or when the added-file rule asks. `--fresh-graph` opts out. The manifest header names the graph's commit and its age in commits.\n\nTHE COMPARISON STAYS ON. Every time a fresh analysis does run (the detached rebuild, a fallback, `--full`), the stale walk is compared with it and the result appended to ~/hypergumbo_lab_notebook/stale_graph_observations.jsonl; a test file the fresh walk names, the stale one does not, and the change did not edit is printed and logged. One such miss is a stop: file it and switch the default back to the fresh analysis.\n\nEXPECTED. Manifest generation 328 s -> about 14 s (mypy gate 5.7, walk 4.8 or less, other selection steps 2.7).\n\nWHAT IT DOES NOT DO. It does not shrink the test set: in the 11 non-trivial slices logged so far today's selection is 72 to 1,127 test files of about 1,474.\n\nKNOWN LIMITS TO HANDLE OR STATE. A new installed release starts with no graph from its build. The slice runs the INSTALLED hypergumbo, and a graph from one analyzer build is not yet shown equal to another's (that check belongs to the worktree item).\n\nCLOSE CONDITION. A live `smart-test --manifest` in the main checkout, on a change to package source, that selects from the stored graph: state its wall time and the header line. Each fallback has a test with a mutation control. Documented in the smart-test playbook.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 90d6
     fields: {}  # 90d6
+- op: update  # 4464
+  at: '2026-11-17T09:00:36Z'  # 4464
+  by: agent  # 4464
+  actor: jgstern_agent  # 4464
+  clock: 2  # 4464
+  nonce: '4464'  # 4464
+  set: {}  # 4464
+  add:  # 4464
+    isbefore: [WI-tupup-garak-mazip-pivur-nozak-limif-hotil-jusor]  # 4464
+- op: update  # 9478
+  at: '2026-11-17T09:00:36Z'  # 9478
+  by: agent  # 9478
+  actor: jgstern_agent  # 9478
+  clock: 3  # 9478
+  nonce: '9478'  # 9478
+  set: {}  # 9478
+  add:  # 9478
+    isbefore: [WI-kitin-rirup-gigid-fomiz-kogap-zovor-sugok-pakan]  # 9478
+- op: update  # 273c
+  at: '2026-11-17T09:00:36Z'  # 273c
+  by: agent  # 273c
+  actor: jgstern_agent  # 273c
+  clock: 4  # 273c
+  nonce: 273c  # 273c
+  set: {}  # 273c
+  add:  # 273c
+    isbefore: [WI-gapal-tarid-vifub-jopoh-zazud-dataz-giluz-zazih]  # 273c

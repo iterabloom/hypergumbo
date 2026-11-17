@@ -19,3 +19,12 @@
     pr_ref:  # 8b2d
     description: "WHY. A file the change adds has no symbols in an older graph. In step 1a this was the one cause of a miss when seeding from every changed file (226 test files unreached in 2 of 741 pairs, an ADDED test file).\n\nWHAT (owner ruling: option b). When smart-test selects from a stored graph: an added test file is selected itself; any other added file is left to the changed files that mention it; a fresh analysis runs only when nothing else in the change mentions the added file.\n\nMEASURED (added_files.py in fast_smart_test_followup_11172026/, \"mentions\" read as the file's stem or path in a line added to another changed file). 149 PR boundaries, 2026-11-01 to 11-17: 57 add a file; the rule asks for a fresh analysis in 3, all of them fixture trees a test reads by scanning a directory. All 11 added package source files were mentioned.\n\nNOT MEASURED, AND THE BUILD MUST SAY WHAT IT DOES. (1) An added conftest.py: none in the 149. My design, not a ruling: an added conftest.py always forces a fresh analysis. (2) Whether the walk from the mentioning files reaches every test the fresh walk reaches from the added file: yes for the 38 steps of 1a, unknown for the other 111 (no stored graphs).\n\nCLOSE CONDITION. One test per case (added test file; added source file that is mentioned; added file nothing mentions; added conftest.py), each with a mutation control; and the rule re-run over the 149 boundaries gives the same 3.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 8b2d
     fields: {}  # 8b2d
+- op: update  # 7b9a
+  at: '2026-11-17T09:00:36Z'  # 7b9a
+  by: agent  # 7b9a
+  actor: jgstern_agent  # 7b9a
+  clock: 2  # 7b9a
+  nonce: 7b9a  # 7b9a
+  set: {}  # 7b9a
+  add:  # 7b9a
+    isbefore: [WI-huvum-taral-mogos-dozaj-kibus-hitid-linav-dohaf]  # 7b9a
