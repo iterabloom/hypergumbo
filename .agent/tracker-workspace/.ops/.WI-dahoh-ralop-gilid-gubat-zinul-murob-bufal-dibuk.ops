@@ -1,0 +1,22 @@
+- op: create  # f1bb
+  at: '2026-11-16T22:16:41Z'  # f1bb
+  by: agent  # f1bb
+  actor: jgstern_agent  # f1bb
+  clock: 1  # f1bb
+  nonce: f1bb  # f1bb
+  data:  # f1bb
+    kind: work_item  # f1bb
+    title: "Add hypergumbo's own .hypergumbo.toml declaring its recorded fixture trees, once local test selection can read the new key"  # f1bb
+    status: todo_hard  # f1bb
+    priority: 3  # f1bb
+    parent:  # f1bb
+    tags:  # f1bb
+    - config  # f1bb
+    - smart_test  # f1bb
+    isbefore:  # f1bb
+    - WI-fosuk-mudof-fapol-foron-vibif-kalam-gizap-tajov  # f1bb
+    duplicate_of: []  # f1bb
+    not_duplicate_of: []  # f1bb
+    pr_ref:  # f1bb
+    description: "hypergumbo's own repository does not yet declare its two recorded fixture trees as test input, although the setting that lets a repository do so (`test_input_dirs` in `.hypergumbo.toml`, built for WI-fosuk-mudof-fapol-foron-vibif-kalam-gizap-tajov) exists. Owner ruling 2026-11-16: ship the setting without hypergumbo's own config file, and track getting the config in as its own item (this one).\n\nWHY IT WAS LEFT OUT. A released hypergumbo refuses a config file with a setting it does not know (exit 2, \"unknown setting 'test_input_dirs'\"; checked on the installed 10.0.0 on 2026-11-16). `scripts/smart-test` selects tests by running the INSTALLED release (`~/.local/bin/hypergumbo`, the \"stable\" copy; scripts/smart-test around line 1320) on this repository's tree. With a root `.hypergumbo.toml` that uses the new key, that slice fails, smart-test falls back to the full suite (\"Reason: slice command failed\"), and the pre-commit hook refuses a full-suite manifest. Seen on the branch on 2026-11-16 (diagnostic: .ci/smart-test-fallback.log). CI was not affected. No released version knows the key until the release after 10.0.0.\n\nTHE CONFIG TO ADD (it was written and measured, then removed from the PR):\n\n    test_input_dirs = [\n        \"packages/hypergumbo-lang-rust-analyzer/recorded/aardvark_dns\",\n        \"packages/hypergumbo-lang-scip-python/recorded/sample_project\",\n    ]\n\nWHAT IT FIXES, measured on 2026-11-16 (sketch of hypergumbo at 8k tokens, release code vs the branch with this config): Tests line \"1534 test files · cargo test, hypothesis, pytest, unittest\" becomes \"1551 test files · hypothesis, pytest, unittest\"; the Entry Points section loses `main` of recorded/sample_project/pkg/app.py and `main` of recorded/aardvark_dns/crate/src/main.rs; the Overview gains \"Classified as test input because .hypergumbo.toml declares it (test_input_dirs), 22 files: .../recorded/aardvark_dns/ (18 files), .../recorded/sample_project/ (4 files)\". `scripts/check-self-claims` with the config: 23 claims unchanged. `docs/ARCHITECTURE.md` changes when regenerated with it (14 lines).\n\nTWO WAYS TO GET THERE (the owner chooses):\n(1) WAIT FOR A RELEASE. After the release that carries `test_input_dirs` is published, every machine that develops hypergumbo installs it as its stable copy (this machine: `pipx upgrade hypergumbo`), and then the config is added. A contributor who has not upgraded gets the full-suite fallback and the refused manifest.\n(2) MAKE smart-test INDEPENDENT OF IT. When the installed release cannot read the tree's config, smart-test selects with the working tree's own hypergumbo before falling back to the full suite. Then the config can be added at once, and a later new config key cannot break selection either. Cost: for as long as the installed release is too old, test selection runs on the code being edited, so an edit that makes the analysis under-report affected tests could shrink the committed manifest; the twice-daily full-suite run is the backstop.\n\nWHEN DONE: regenerate docs/ARCHITECTURE.md, run scripts/check-self-claims and scripts/check-claims-coverage, re-take the self-sketch figures above, and close WI-fosuk (its filed row is hypergumbo's own recorded crate).\n\nALSO NOTED, not asked here: any user on an older hypergumbo gets exit 2 on a repository that adopts a newer config key. That strictness is deliberate today (unknown keys raise); whether a project-tier key that an older version does not know should be an error or a named warning is a separate decision."  # f1bb
+    fields: {}  # f1bb

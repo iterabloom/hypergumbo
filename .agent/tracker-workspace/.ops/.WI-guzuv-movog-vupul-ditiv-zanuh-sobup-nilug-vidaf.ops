@@ -1,0 +1,21 @@
+- op: create  # 5f6e
+  at: '2026-11-17T03:54:13Z'  # 5f6e
+  by: agent  # 5f6e
+  actor: jgstern_agent  # 5f6e
+  clock: 1  # 5f6e
+  nonce: 5f6e  # 5f6e
+  data:  # 5f6e
+    kind: work_item  # 5f6e
+    title: "C printf and putchar are catalogued as file-system writes; other languages file stdout printing under logging"  # 5f6e
+    status: todo_hard  # 5f6e
+    priority: 3  # 5f6e
+    parent:  # 5f6e
+    tags:  # 5f6e
+    - taint  # 5f6e
+    - io_boundary  # 5f6e
+    isbefore: []  # 5f6e
+    duplicate_of: []  # 5f6e
+    not_duplicate_of: []  # 5f6e
+    pr_ref:  # 5f6e
+    description: "C `printf` is catalogued as a host_fs sink, so printing a secret to stdout reads as a write to the file system.\n\nREPRO (release 10.0.0 and the WI-buzup branch). Fixture: ~/hypergumbo_lab_notebook/post_release_11162026/side_defects/c_printf/main.c:\n\n  char *k = getenv(\"API_KEY\");\n  printf(\"%s\\n\", k);\n\n  hypergumbo verify-claims c_printf --claims side_defects/claims_fs.yaml --format json\n  -> violated, exit 1, one evidence row: host_secret -> host_fs, sink printf, walk verdict reached.\n\nTHE ROW. packages/hypergumbo-core/src/hypergumbo_core/io_primitives/c.yaml, `fs_write`, module stdio: its function list holds `printf` and `putchar` beside fopen / fwrite / fprintf. The row's own comment says \"printf has no resource argument at all\". Go's catalogue files fmt.Print / Println / Printf under `logging` (\"write stdout unconditionally\"), and Python's `print` is a logging row too. So the same program reads violated against a host_fs claim in C and clean in Go and Python.\n\nTO DO: move `printf` and `putchar` (and check `puts`, `vprintf`, `perror`, and the cpp.yaml twins) to the zone the other languages use for stdout, or record why C differs. I did not check cpp.yaml, java.yaml, scala.yaml or erlang.yaml, which also mention printf.\n\nCLOSE WHEN c_printf does not read violated against a host_fs claim, and the stdout-printing functions of every catalogued language sit in one zone (list each language checked)."  # 5f6e
+    fields: {}  # 5f6e

@@ -1,0 +1,22 @@
+- op: create  # 5598
+  at: '2026-11-17T03:53:49Z'  # 5598
+  by: agent  # 5598
+  actor: jgstern_agent  # 5598
+  clock: 1  # 5598
+  nonce: '5598'  # 5598
+  data:  # 5598
+    kind: work_item  # 5598
+    title: "verify-claims reads confirmed when a function stores a secret through one name and returns another name for the same object (return-lift and unfollowed-escape readers lack the alias rule)"  # 5598
+    status: todo_hard  # 5598
+    priority: 2  # 5598
+    parent:  # 5598
+    tags:  # 5598
+    - taint  # 5598
+    - adr_0017  # 5598
+    - dataflow  # 5598
+    isbefore: []  # 5598
+    duplicate_of: []  # 5598
+    not_duplicate_of: []  # 5598
+    pr_ref:  # 5598
+    description: "verify-claims reads confirmed (exit 0) when a function stores a secret through one name and returns another name for the same object.\n\nREPRO (release 10.0.0 and the WI-buzup fix branch give the same result). Fixtures: ~/hypergumbo_lab_notebook/post_release_11162026/buzup_review/py_lift, go_lift, py_lift_ctrl; claims file side_defects/claims_fs.yaml (host_secret must not reach host_fs).\n\n  def load():\n      s = [\"\"]\n      t = s\n      t[0] = os.getenv(\"API_KEY\")\n      print(len(t))\n      return s\n\n  def main():\n      v = load()\n      with open(\"/tmp/out.txt\", \"w\") as fh:\n          fh.write(v[0])\n\n  hypergumbo verify-claims py_lift --claims claims_fs.yaml --format json\n  -> verdict confirmed, exit 0, evidence_count 0, flows_removed_by_walk 0, flows_withheld_by_walk 0 (branch).\nThe Go equivalent (go_lift: t := s; t[0] = os.Getenv(\"API_KEY\"); return s; caller writes v[0] with os.WriteFile) reads the same.\nControl py_lift_ctrl (the store goes through s itself): violated, exit 1, 1 evidence row.\n\nThe secret reaches the file. Nothing in the output says a flow was dropped: no removal is counted, because no flow was ever formed.\n\nMECHANISM. A source inside a function reaches that function's callers only if the taint walk finds the source value at a return statement (taint.py, `_walk_reaches_return`, feeding `_lift_returned_sources`). The call tests the walk's answer with `is True`. The walk follows names, not objects, so it exhausts along `t`, does not reach `return s`, and the function is not treated as returning the secret. The caller is never seeded.\n\nThis is the alias gap of WI-buzup in a second reader of the same walk. WI-buzup's fix (rule R: a walk that relied on an in-place store, a self-referencing definition, an address-taken or a captured variable is withheld) is wired to the two places where a False answer removes a flow or credits a sanitizer. Here a not-True answer silently means \"does not return it\", and the exposure record is not passed.\n\nA THIRD READER, NOT PROBED: `taint.py` around line 5041 (unfollowed escapes: does the source value reach a call site with an unfollowed construct) also tests `is True` and does not pass the exposure record. A not-True there means no escape is recorded and no verdict is withheld.\n\nWHAT A FIX HAS TO DECIDE. At the lift there is no flow yet, only a (source function, caller) candidate, so \"withhold the flow\" has no object. Options:\n (a) lift anyway when the walk to the return relied on an exposed definition: callers are seeded; over-reports when the stored value is not what is returned;\n (b) record a withheld marker scoped by source label only (the sink is unknown here), which turns every confirming verdict on that label inconclusive;\n (c) lift tentatively and mark flows that descend from it, so that only a confirming verdict on a (label, sink zone) those flows would have reached is withheld.\nEach has a cost that must be measured on the 39-repository corpus before choosing (how many functions contain a source, an exposed definition the walk relies on, and a return the walk does not reach).\n\nCLOSE WHEN py_lift and go_lift do not read confirmed or confirmed_with_caveats, py_lift_ctrl still reads violated, and the cost on the corpus is stated."  # 5598
+    fields: {}  # 5598

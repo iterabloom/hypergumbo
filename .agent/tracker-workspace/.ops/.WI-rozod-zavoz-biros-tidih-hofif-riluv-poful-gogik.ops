@@ -1,0 +1,21 @@
+- op: create  # a817
+  at: '2026-11-17T03:54:25Z'  # a817
+  by: agent  # a817
+  actor: jgstern_agent  # a817
+  clock: 1  # a817
+  nonce: a817  # a817
+  data:  # a817
+    kind: work_item  # a817
+    title: "Six producers hand-build a node id whose text differs from the id factory's"  # a817
+    status: todo_hard  # a817
+    priority: 3  # a817
+    parent:  # a817
+    tags:  # a817
+    - identifier_factories  # a817
+    - static_typing  # a817
+    isbefore: []  # a817
+    duplicate_of: []  # a817
+    not_duplicate_of: []  # a817
+    pr_ref:  # a817
+    description: "Six producers build a node id by hand whose text differs from what the id factory emits.\n\nWHERE. Listed with reasons in HAND_BUILT_NODE_IDS, packages/hypergumbo-core/tests/test_id_newtypes.py:\n- hypergumbo-core linkers/event_sourcing.py, _create_event_symbol: an event name (\"user:created\") in the name slot.\n- hypergumbo-core linkers/_view_template_core.py, link_via_strategies: a template file name in the name slot.\n- hypergumbo-lang-common handlebars.py, _make_symbol_id: a partial name.\n- hypergumbo-lang-extended1 bibtex.py, _make_symbol_id: a citation key (knuth:1984).\n- hypergumbo-lang-extended1 blade.py, _make_symbol_id: a quoted view name (package::view).\n- hypergumbo-lang-rust-analyzer translate.py, refine_rust_kinds: rewrites the kind slot of a factory-minted id in place.\n\nWHY IT MATTERS. In the first five the name can hold ':' and the id is written without the escaping make_symbol_id applies, so the id does not parse back into its slots (the same family as the 36 colon-in-name id_format violations counted for INV-dulah). The sixth edits an id's text after minting, so the id and the record's fields can disagree. Each is wrapped in NodeId(...) at the site today so the text stays byte-identical; that wrap is the thing to remove.\n\nWHAT TO DO. Route each through make_symbol_id (for the sixth: re-mint from the refined fields). Then remove its entry from HAND_BUILT_NODE_IDS; the table should end empty.\n\nTHIS CHANGES ID TEXT. Before merging, measure on real repositories that contain these constructs: which ids change, and whether any stable_id moves. Standing owner rule (10-01): a producer value that replaces a stable-id floor value is no scheme bump; a change to an INPUT of the hash is a bump. State which applies, with the count, and ask the owner if a bump is needed.\n\nOwner ruling 2026-11-16: yes, fix these as a follow-up to WI-tapak."  # a817
+    fields: {}  # a817
