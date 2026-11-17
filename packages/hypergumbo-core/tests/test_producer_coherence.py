@@ -1260,7 +1260,23 @@ def test_ratchet_diff_clean():
     assert stale == []
 
 
-def test_live_tree_producer_axis_ratchet():
+#: One test per axis, not one loop: each finder reads every source file of the
+#: repository. Under coverage, on the machine this was split on, the four take
+#: 13 to 19 s apiece; as one test they were 67 s, the slowest test of most
+#: selections, and the slowest test bounds a run's wall time whatever the
+#: worker count.
+@pytest.mark.parametrize(
+    ("axis", "finder"),
+    [
+        ("Symbol.kind", unregistered_symbol_kinds),
+        ("Edge.evidence_type", unregistered_evidence_types),
+        ("Edge.edge_type", unregistered_edge_types),
+        # The meta KEY axis (hypergumbo_core.meta_key_coherence; WI-lijaz).
+        ("Edge.meta key", unregistered_edge_meta_keys),
+    ],
+    ids=["symbol_kind", "evidence_type", "edge_type", "edge_meta_key"],
+)
+def test_live_tree_producer_axis_ratchet(axis, finder):
     """THE producer-side closure gate for INV-numat: the live tree's
     unregistered helper-descend emitted values, per axis, must exactly
     equal the committed baseline. A NEW unregistered value fails
@@ -1269,23 +1285,16 @@ def test_live_tree_producer_axis_ratchet():
     baseline = json.loads(
         (REPO_ROOT / ".ci" / "producer-axis-coherence-baseline.json").read_text()
     )
-    for axis, finder in (
-        ("Symbol.kind", unregistered_symbol_kinds),
-        ("Edge.evidence_type", unregistered_evidence_types),
-        ("Edge.edge_type", unregistered_edge_types),
-        # The meta KEY axis (hypergumbo_core.meta_key_coherence; WI-lijaz).
-        ("Edge.meta key", unregistered_edge_meta_keys),
-    ):
-        live = set(finder(REPO_ROOT))
-        new_leaks, stale = ratchet_diff(live, set(baseline.get(axis, [])))
-        assert not new_leaks, (
-            f"{axis}: NEW unregistered producer value(s) {new_leaks} — "
-            f"register the value (ADR-0027) or fold the producer (WI-zipis)."
-        )
-        assert not stale, (
-            f"{axis}: baselined value(s) {stale} no longer emitted — remove "
-            f"from .ci/producer-axis-coherence-baseline.json (shrink-only)."
-        )
+    live = set(finder(REPO_ROOT))
+    new_leaks, stale = ratchet_diff(live, set(baseline.get(axis, [])))
+    assert not new_leaks, (
+        f"{axis}: NEW unregistered producer value(s) {new_leaks} — "
+        f"register the value (ADR-0027) or fold the producer (WI-zipis)."
+    )
+    assert not stale, (
+        f"{axis}: baselined value(s) {stale} no longer emitted — remove "
+        f"from .ci/producer-axis-coherence-baseline.json (shrink-only)."
+    )
 
 
 def test_assignment_form_annassign_without_value_is_skipped(tmp_path: Path):
