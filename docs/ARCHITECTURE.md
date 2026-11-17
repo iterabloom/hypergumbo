@@ -15,15 +15,15 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **379** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 122 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **62127** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13926, of which 7972 are functions, methods or classes
-- **249367** edges, test code included, by type:
-  - calls: 140626
-  - contains: 57861
-  - imports: 21549
-  - instantiates: 13374
+- **380** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 123 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **62139** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13927, of which 7972 are functions, methods or classes
+- **249420** edges, test code included, by type:
+  - calls: 140647
+  - contains: 57870
+  - imports: 21568
+  - instantiates: 13376
   - references: 11682
-  - module_attr_ref: 2382
+  - module_attr_ref: 2384
   - other: 1893
 
 ## Package Architecture
@@ -196,7 +196,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `span`: Source location with lines and columns
 - `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat. The declared type is ``str | List[str]`` so this accepted-input contract holds at the type level; do NOT narrow it to ``List[str]`` — most producers pass a single scalar pass ID, and narrowing would produce arg-type errors at those call sites under mypy strict (INV-zogud). The stored value is always a list after ``__post_init__``.
 - `origin_run_id`: Unique execution ID of the analysis run
-- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0035 §1; INV-bazij). Survives BODY edits; does NOT survive rename or move — those are identity-changing operations, because name + qualified_name are hash inputs. Without them, same-shaped symbols in one scope collide (e.g. the zero-param bash functions of one file would share one ID). Serialized as ``<label><16hex>``. The label names the value and the scheme that produced it: ``hgstableid<N>:`` for the tree-sitter / ``ast`` factories (``stable_id_scheme``, ``hypergumbo-stableid-v<N>``), ``hgscipid<N>:`` for an id the rust-analyzer (SCIP) arm minted (``scip_stable_id_scheme``). Like ``fingerprint``'s ``hgfp2:``, the label is readable without the field, so a stable id, a shape id (``hgshapeid<N>:``) and a repo fingerprint (``hgrepofp<N>:``) cannot be mistaken for one another, and two ids from different algorithms never compare equal (ADR-0035 §"Value labels"). Each label is derived from its scheme constant (``schema.value_label``). The labels are labels only: stableid-v15 wrote the digest stableid-v14 wrote after ``sha256:``.
+- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0035 §1; INV-bazij). Survives BODY edits; does NOT survive rename or move — those are identity-changing operations, because name + qualified_name are hash inputs. Without them, same-shaped symbols in one scope collide (e.g. the zero-param bash functions of one file would share one ID). Serialized as ``<label><16hex>``. The label names the value and the scheme that produced it: ``hgstableid<N>:`` for the tree-sitter / ``ast`` factories (``stable_id_scheme``, ``hypergumbo-stableid-v<N>``), ``hgscipid<N>:`` for an id the rust-analyzer (SCIP) arm minted (``scip_stable_id_scheme``). Like ``fingerprint``'s ``hgfp2:``, the label is readable without the field, so a stable id, a shape id (``hgshapeid<N>:``) and a repo fingerprint (``hgrepofp<N>:``) cannot be mistaken for one another, and two ids from different algorithms never compare equal (ADR-0035 §"Value labels"). Each label is derived from its scheme constant (``identity_schemes.value_label``). The labels are labels only: stableid-v15 wrote the digest stableid-v14 wrote after ``sha256:``.
 - `shape_id`: Structural *skeleton* hash — the parse subtree with identifiers, literals, comments, and punctuation STRIPPED (spec §6 ``shape_id``; compute_shape_id), so two symbols with the same code shape but different names/values collide. Compared within-language only (Python uses an ast-based variant). Contrast ``fingerprint``, which KEEPS identifiers/literals — ``shape_id`` is a strict coarsening of it. Serialized as ``hgshapeid<N>:<16hex>`` (``shape_id_scheme``; see ``stable_id`` on the labels).
 - `fingerprint`: Structural *content* hash of the symbol's parse subtree — shape PLUS identifiers and literals, whitespace/ comment-invariant, tagged with the scheme in ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw source-byte hash (ADR-0032). ``None`` for grammarless languages / parse errors / synthetic spans. Producer: fingerprint.py.
 - `quality`: Score and reason dict for quality assessment
@@ -653,6 +653,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.fingerprint`**: Symbol-level structural content fingerprinting (WI-fanun).
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-3aaa).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
+- **`hypergumbo_core.identity_schemes`**: The identity schemes and the label each one puts on its values.
 - **`hypergumbo_core.import_closure`**: File-level import closure: which files load a given file.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
 - **`hypergumbo_core.in_repo_catalogues`**: In-repo catalogue data: the operator's opt-in, and what git says ab...
@@ -1007,8 +1008,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: bc4b0b7a1892
-  commit_count: 9372
+  commit: 7d9e08688098
+  commit_count: 9377
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
