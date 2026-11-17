@@ -424,6 +424,63 @@ def test_a_tracker_that_cannot_be_consulted_does_not_hide_red(badges: Badges, sc
     assert "(tracker not consulted)" in line
 
 
+def test_a_spent_budget_skips_the_tracker_and_still_prints_red(badges: Badges) -> None:
+    """The hook that runs this has 5 s for everything, and prints nothing at
+    all when it runs out. A slow fetch must cost the tracker its turn, never
+    the line."""
+    _red(badges)
+    badges.tracker([{"status": "todo_hard", "title": "test-agent-infra and test-all-packages",
+                     "description": C_RED1[:8]}])
+    line = nudge.compute_line(badges.root, now=time.time(), refreshed=True,
+                              deadline=time.monotonic())
+    assert "(`test-all-packages`, `test-agent-infra`)" in line
+    assert "(tracker not consulted)" in line
+    assert not badges.tracker_log.exists()
+
+
+def test_a_budget_with_room_consults_the_tracker(badges: Badges) -> None:
+    _red(badges)
+    badges.tracker([{"status": "todo_hard", "title": "test-agent-infra and test-all-packages",
+                     "description": C_RED1[:8]}])
+    assert nudge.compute_line(badges.root, now=time.time(), refreshed=True,
+                              deadline=time.monotonic() + 30) == ""
+
+
+def test_no_time_left_starts_no_tracker(badges: Badges, monkeypatch) -> None:
+    badges.tracker([])
+    def started(*_args, **_kwargs):
+        raise AssertionError("a process was started")
+    monkeypatch.setattr(nudge, "_bounded", started)
+    assert nudge.open_items(badges.root, timeout=0.0) is None
+    assert nudge.open_items(badges.root, timeout=-1.0) is None
+
+
+def test_the_budget_starts_before_the_fetch(badges: Badges, monkeypatch, capsys) -> None:
+    """The fetch spends the budget too: the deadline is set before it runs."""
+    seen: dict[str, float] = {}
+    def slow_refresh(_root: Path) -> bool:
+        seen["fetch_started"] = time.monotonic()
+        time.sleep(0.3)
+        return True
+    def fake_line(_root: Path, *, now: float, refreshed: bool, deadline: Optional[float] = None) -> str:
+        assert deadline is not None
+        seen["deadline"] = deadline
+        return ""
+    monkeypatch.setattr(nudge, "refresh", slow_refresh)
+    monkeypatch.setattr(nudge, "compute_line", fake_line)
+    assert nudge.main([str(badges.root)]) == 0
+    assert 0 < seen["deadline"] - seen["fetch_started"] <= nudge.TOTAL_BUDGET + 0.05
+
+
+def test_the_worst_case_fits_the_session_start_hook() -> None:
+    """Fetch timed out, then the tracker used the rest: under the hook's 5 s
+    (.claude/settings.json) with room for the hook's other work."""
+    assert nudge.FETCH_TIMEOUT < nudge.TOTAL_BUDGET <= 4.0
+    settings = json.loads((REPO_ROOT / ".claude" / "settings.json").read_text())
+    timeouts = [h["timeout"] for group in settings["hooks"]["SessionStart"] for h in group["hooks"]]
+    assert timeouts and all(nudge.TOTAL_BUDGET + 1.0 <= t for t in timeouts)
+
+
 def test_the_tracker_runs_with_the_repository_virtualenv_on_path(badges: Badges, tmp_path: Path) -> None:
     """``scripts/tracker`` finds its CLI on PATH; a hook has no activated
     virtualenv, so the nudge puts ``<root>/.venv/bin`` first."""
