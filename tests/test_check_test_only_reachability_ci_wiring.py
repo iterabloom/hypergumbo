@@ -87,6 +87,13 @@ esac
 exit 97
 """
 
+#: Stand-in for ``scripts/publish-scheduled-verdict``: the step's last command
+#: records that it passed (tests/test_scheduled_verdict_ci_wiring.py pins that
+#: wiring). Logged like the stub above, so a test can see whether it was reached.
+_MARK_STUB = """#!/bin/sh
+echo "publish-scheduled-verdict $*" >> "$STUB_LOG"
+"""
+
 
 def _steps() -> dict[str, dict]:
     data = yaml.safe_load(CRON.read_text())
@@ -121,6 +128,10 @@ def _run_step(tmp_path: Path, *, map_rc: int = 0, stv_rc: int = 0,
     stub = bindir / "python"
     stub.write_text(_STUB)
     stub.chmod(0o755)
+    marker = tmp_path / "scripts" / "publish-scheduled-verdict"
+    marker.parent.mkdir()
+    marker.write_text(_MARK_STUB)
+    marker.chmod(0o755)
     log = tmp_path / "calls.log"
     log.touch()
     script = "\n".join(_tail_from_map_build(_map_step()[1])) + "\n"
@@ -176,11 +187,16 @@ def test_the_gate_step_is_unconditional_and_cannot_ignore_failure() -> None:
     )
 
 
+def _mark_calls(calls: list[str]) -> list[str]:
+    return [c for c in calls if c.startswith("publish-scheduled-verdict mark")]
+
+
 def test_both_gates_run_and_pass_on_a_clean_tree(tmp_path: Path) -> None:
     rc, out, calls = _run_step(tmp_path)
     assert rc == 0, out
     assert len(_gate_calls(calls)) == 1, calls
     assert any("check-self-tree-validation" in c for c in calls), calls
+    assert _mark_calls(calls) == ["publish-scheduled-verdict mark self-tree-validation"], calls
 
 
 def test_a_regression_reds_the_step(tmp_path: Path) -> None:
@@ -188,6 +204,7 @@ def test_a_regression_reds_the_step(tmp_path: Path) -> None:
     rc, out, calls = _run_step(tmp_path, reach_rc=1)
     assert _gate_calls(calls), calls
     assert rc != 0, f"the ratchet exited 1 and the step still passed:\n{out}"
+    assert not _mark_calls(calls), "a red step must not record itself as passed"
 
 
 def test_an_infrastructure_exit_warns_and_passes(tmp_path: Path) -> None:
@@ -257,13 +274,15 @@ def test_the_gate_requires_the_backend_to_have_contributed() -> None:
 
 def test_the_map_step_has_the_vm_to_itself() -> None:
     """~10 GB summed peak on a 16 GB VM: every other step that starts after
-    the grammar build is one this step waits for."""
+    the grammar build is one this step waits for. A step that itself waits
+    for this one (publish-verdict) cannot overlap it."""
     name, _ = _map_step()
     steps = _steps()
     waits_for = set(steps[name].get("depends_on") or [])
     concurrent = {
         other for other, step in steps.items()
         if other != name and "build-grammars" in (step.get("depends_on") or [])
+        and name not in (step.get("depends_on") or [])
     }
     assert concurrent and concurrent <= waits_for, (concurrent, waits_for)
 

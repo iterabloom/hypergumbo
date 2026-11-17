@@ -68,6 +68,7 @@ steps:
         fi
         echo "✅ clone carries no partial-clone filter (trees are local)"
       - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
+      - scripts/publish-scheduled-verdict mark prepare-git
 
   - name: build-grammars
     image: python:3.11-bookworm
@@ -75,6 +76,7 @@ steps:
     commands:
       - python3 -m pip install --upgrade pip setuptools wheel
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - scripts/publish-scheduled-verdict mark build-grammars
 
   # ── whole-codebase 100% (WI-kalub full-suite teeth) ────────────────────────
   - name: test-all-packages
@@ -112,13 +114,16 @@ steps:
           --cov=packages/hypergumbo-lang-rust-analyzer/src \
           --cov=packages/hypergumbo-lang-scip-python/src \
           --cov=packages/hypergumbo-tracker/src \
-          --cov-report=term-missing --cov-fail-under=100 \
+          --cov-report=term-missing \
+          --cov-report=json:.git/scheduled-verdict/coverage.json \
+          --cov-fail-under=100 \
           --cov-config=.coveragerc.no-embeddings \
           packages/*/tests/
         # Top-level tests that need the installed packages, which
         # test-agent-infra ignores (see there). A separate run, so they add
         # no coverage to the package gate above.
         pytest -o addopts="" --tb=short tests/test_score_readability.py tests/test_smart_test_bed.py tests/test_measure_go_import_versioning.py
+      - scripts/publish-scheduled-verdict mark test-all-packages
 
   # ── self-map ratchets: WI-jigup self-tree-validation + WI-ratuv ───────────
   # Builds ONE behaviour map of hypergumbo's OWN tree and runs both ratchets
@@ -185,6 +190,7 @@ steps:
         fi
         echo "self-tree-validation exit=$stv  test-only-reachability exit=$tor"
         if [ "$stv" != "0" ] || [ "$tor" != "0" ]; then exit 1; fi
+      - scripts/publish-scheduled-verdict mark self-tree-validation
 
   # ── WI-vanun / WI-ninoz self-claim drift gate — THE ONLY ARM ───────────────
   # Ported from .github/workflows/full-suite.yml, where it had been running on
@@ -217,6 +223,7 @@ steps:
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - PYTHON=python scripts/check-self-claims
+      - scripts/publish-scheduled-verdict mark self-claims-gate
 
   # ── WI-vumum independent I/O allowlist — cron arm ──────────────────────────
   # The per-PR arm (woodpecker.yml `io-allowlist`) is path-filtered; this arm is
@@ -228,6 +235,7 @@ steps:
     commands:
       - pip install --upgrade pip && pip install "pyyaml>=6"
       - scripts/check-io-allowlist
+      - scripts/publish-scheduled-verdict mark io-allowlist
 
   # ── allowlist COMMANDS, traced — cron arm (check-allowlist-commands) ───────
   # Every subcommand, in the variants that change a path (cold / warm /
@@ -250,6 +258,7 @@ steps:
       - pip install --upgrade pip && pip install "pyyaml>=6" numpy
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python
       - scripts/check-allowlist-commands --trace
+      - scripts/publish-scheduled-verdict mark allowlist-commands-trace
 
   # ── top-level forge/governance + agent-infra suite (no package coverage) ───
   - name: test-agent-infra
@@ -317,3 +326,33 @@ steps:
           --ignore=tests/test_score_readability.py \
           --ignore=tests/test_smart_test_bed.py \
           --ignore=tests/test_measure_go_import_versioning.py
+      - scripts/publish-scheduled-verdict mark test-agent-infra
+
+  # ── publish the verdict to the badges branch (scripts/publish-scheduled-verdict)
+  # Every step above ends with `publish-scheduled-verdict mark <its name>`,
+  # reached only when all its other commands passed (`set -e`); Woodpecker
+  # gives a step no other step's result, but the steps share .git. This step
+  # runs on success AND failure, after every other step, and pushes
+  # scheduled/full-suite.json (each step passed / not_passed, the commit, the
+  # coverage figure from test-all-packages' JSON report) plus the README's
+  # shields.io badges to the `badges` branch. Session start reads the verdict
+  # from origin/badges (.agent/hooks/_shared/cron_status_nudge.py).
+  #  • THE SECRET. The push uses the deploy key in the repository secret
+  #    `badges_deploy_key`, allowed for the cron event. A step naming a secret
+  #    that does not exist, or that this event may not use, is a COMPILE ERROR
+  #    for the whole workflow: without the secret, NO step of this file runs.
+  #  • ITS FAILURE IS DELIBERATE. A publish that did not happen exits 1 and
+  #    turns the run red. The GitHub Actions badge step this replaces ended in
+  #    `|| echo "Push failed"` and its badge stood frozen for five months
+  #    unnoticed. Never add `failure: ignore` or `|| true` here.
+  #    tests/test_scheduled_verdict_ci_wiring.py pins all of this.
+  - name: publish-verdict
+    image: python:3.11-bookworm
+    depends_on: [prepare-git, build-grammars, test-all-packages, self-tree-validation, self-claims-gate, io-allowlist, allowlist-commands-trace, test-agent-infra]
+    when:
+      - status: [success, failure]
+    environment:
+      BADGES_DEPLOY_KEY:
+        from_secret: badges_deploy_key
+    commands:
+      - scripts/publish-scheduled-verdict publish --workflow full-suite --coverage-json .git/scheduled-verdict/coverage.json --steps prepare-git build-grammars test-all-packages self-tree-validation self-claims-gate io-allowlist allowlist-commands-trace test-agent-infra
