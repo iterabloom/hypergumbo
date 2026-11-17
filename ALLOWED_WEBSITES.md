@@ -17,6 +17,11 @@
 
 ## Source code hosting / forge
 - github.com
+# GitHub's SSH service on the HTTPS port. CI ONLY, and only for the push of
+# the scheduled runs' verdicts to this repository's badges branch
+# (scripts/publish-scheduled-verdict): the CI runner cannot reach github.com
+# on port 22. Approved by the owner on 2026-11-17.
+- ssh.github.com
 - raw.githubusercontent.com
 - api.github.com
 - gitlab.com

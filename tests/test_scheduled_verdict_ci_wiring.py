@@ -13,7 +13,7 @@ step that a failure skips or that swallows its own failure, and a coverage
 report written to one path and read from another. The last tests run the
 real script over the commands as written.
 """
-# covers: .woodpecker/full-suite.yml, .woodpecker/nightly.yml, scripts/publish-scheduled-verdict
+# covers: .woodpecker/full-suite.yml, .woodpecker/nightly.yml, .woodpecker/woodpecker.yml, scripts/publish-scheduled-verdict
 from __future__ import annotations
 
 import json
@@ -184,3 +184,15 @@ def test_the_commands_as_written_name_the_step_that_did_not_pass(
     verdict = _run_workflow(tmp_path, workflow, fail=pytest_step)
     assert verdict["status"] == "failed"
     assert [s["name"] for s in verdict["steps"] if s["result"] == "not_passed"] == [pytest_step]
+
+
+def test_a_change_to_the_publisher_probes_its_transport_on_the_runner() -> None:
+    """The push happens only in the scheduled workflows, on a runner that
+    cannot reach port 22. A pull request that changes the publisher must make
+    the connection from that runner (no key: the secret is not a pull
+    request's), or a broken transport is found at the next scheduled run."""
+    (step,) = [s for s in _steps("woodpecker.yml") if s["name"] == "verdict-transport-probe"]
+    assert step["commands"] == [f"{SCRIPT} probe"]
+    assert step["when"] == [{"path": {"include": [SCRIPT]}}]
+    assert step["depends_on"] == [], "it waits for nothing and nothing may skip it"
+    assert "environment" not in step and "failure" not in step
