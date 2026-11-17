@@ -1,0 +1,3 @@
+Original commit body from 1889ae842fa54fc04cd7257be9037d12a84c7cb3:
+
+Addresses WI-pagus-tahib-nokit-dabim-gigus-kagar-mobog-fufib. test_live_tree_producer_axis_ratchet looped over four axes, each a pass over every source file: 67 s under coverage as one test, the slowest test of most selections. It is parametrized over the same four axes with the same assertions: 13.1, 13.7, 15.5 and 18.7 s under coverage in one process. The function keeps its name. Control: a stale value planted in the Symbol.kind baseline fails [symbol_kind] alone.
