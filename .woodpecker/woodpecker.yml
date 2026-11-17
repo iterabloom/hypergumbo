@@ -223,7 +223,8 @@ steps:
       SMART_TEST_ACTIVE: "1"       # suppress conftest.py's smart-test re-exec
     commands:
       - apt-get update && apt-get install -y jq
-      - pip install --upgrade pip && pip install pytest
+      # pytest pinned to the dev extras' spec (tests/test_ci_pytest_pin.py).
+      - pip install --upgrade pip && pip install "pytest~=9.0.2"
       # -o addopts="" drops the repo's --cov addopts (pytest-cov is not installed
       # here); the *github* glob also catches test_hg_github_token_documented.py.
       - >
