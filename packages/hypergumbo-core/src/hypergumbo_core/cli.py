@@ -408,7 +408,7 @@ from .partial_install_warnings import check_partial_install_warnings
 # deliberate, for startup cost and cycle avoidance — so their types are
 # TYPE_CHECKING-only and the runtime import graph is unchanged.
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from .cfg import DdgEdge
+    from .cfg import DdgEdge, DefinitionExposure
     from .dataflow_scope import LanguageDataflowScope, SanitizerScope
     from .ddg_build import ReturnStatement
     from .discovery import TraceDeps
@@ -6739,6 +6739,7 @@ def _build_ddg_for_verify_claims(
     dict[str, list["ReturnStatement"]],
     dict[str, list[tuple[int, tuple[Optional[str], ...]]]],
     dict[str, tuple[str, ...]],
+    dict[str, "DefinitionExposure"],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
@@ -6770,7 +6771,11 @@ def _build_ddg_for_verify_claims(
     It is filled with or without DDG edges, so a repository whose functions
     define nothing still gets it on the structural arm.
 
-    Returns ``([], set(), {}, {}, set(), {}, {}, {}, {})`` if the def/use
+    The tenth is each walked function's ``DefinitionExposure`` (WI-buzup): the
+    definitions another name may reach, over which the §3a walk withholds a
+    refutation instead of removing a flow.
+
+    Returns ``([], set(), {}, {}, set(), {}, {}, {}, {}, {})`` if the def/use
     extractors cannot be registered (tree-sitter unavailable) — the caller
     falls back to the structural pass in that case.
     """
@@ -6795,7 +6800,7 @@ def _build_ddg_for_verify_claims(
         # The fail-closed default lives at the point of USE (a function absent
         # from the set only qualifies because it was checked and covered), not
         # here, where the whole analysis is absent rather than incomplete.
-        return [], set(), {}, {}, set(), {}, {}, {}, {}
+        return [], set(), {}, {}, set(), {}, {}, {}, {}, {}
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -6818,6 +6823,7 @@ def _build_ddg_for_verify_claims(
         result.return_spans,
         result.stmt_targets,
         result.params,
+        result.exposure,
     )
 
 
@@ -7519,6 +7525,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # count is a property of the RUN, and a per-language split would imply a
     # precision the disclosure does not have.
     refuted_flows: list[Any] = []
+    # Flows the §3a walk WITHHELD instead of removing (WI-buzup, ADR-0017 §7b):
+    # the walk relied on a definition another name may reach. Run-scoped like
+    # ``refuted_flows``; ``verify_claims`` reads them per (label, sink zone).
+    withheld_flows: list[Any] = []
     # Track languages with no taint coverage (INV-javam) so callers can
     # distinguish "no taint-flow violations" from "language not analyzed".
     # Without this, taint-flow trivially passes every claim on unsupported
@@ -7762,7 +7772,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             (
                 ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
                 ddg_forfeits, ddg_unaccounted, ddg_returns, ddg_targets,
-                ddg_params,
+                ddg_params, ddg_exposure,
             ) = _build_ddg_for_verify_claims(
                 repo_root, sorted(per_lang_sinks), behavior_map.get("nodes", []),
             )
@@ -7876,6 +7886,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # precision the mechanism does not have.
                         credited_user_summaries=credited_user_summaries,
                         refuted_flows=refuted_flows,
+                        exposure=ddg_exposure,
+                        withheld_flows=withheld_flows,
                         include_community=not getattr(
                             args, "no_default_overlays", False),
                         # INV-komoj: a source a helper RETURNS is lifted into
@@ -7965,6 +7977,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # without this. Same denominator, deliberately -- both count findings
         # the propagators produced, post-collapse.
         walk_verdict_counts = count_walk_verdicts(taint_findings or [])
+        # ``withheld`` counts the flows the walk WITHHELD (WI-buzup). They are
+        # not findings, so the per-finding count above is always 0 there --
+        # the key carries the diverted flows instead, beside
+        # ``flows_withheld_by_walk``, so the breakdown names every walk outcome
+        # that can change a verdict.
+        from .taint import WALK_VERDICT_WITHHELD
+        walk_verdict_counts[WALK_VERDICT_WITHHELD] = len(withheld_flows)
 
     # Verify claims
     _blind_reason, _blind_opaque = _taint_blind_reason(
@@ -8045,6 +8064,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         blind_by_source_taint=blind_by_source_taint,
         sink_zone_gaps=sink_zone_gaps,
         unfollowed_escapes=unfollowed_escapes,
+        withheld_flows=withheld_flows,
         # The request handlers no taint source represents -- read off the
         # graph's own request handlers, so it holds whatever the catalogue
         # says (WI-fuzik). Taken from ``request_ingress`` (every handler,
@@ -8170,6 +8190,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 "dataflow_coverage": dataflow_scope_dict(
                     dataflow_rows, findings_by_method, sanitizer_scope,
                     flows_removed_by_walk=len(refuted_flows),
+                    flows_withheld_by_walk=len(withheld_flows),
                     walk_verdicts=walk_verdict_counts,
                     functions_walkable=ddg_walkable_count,
                     functions_forfeited=ddg_forfeited_count,
@@ -8236,6 +8257,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         for line in render_dataflow_scope_text(
             dataflow_rows, findings_by_method, sanitizer_scope,
             flows_removed_by_walk=len(refuted_flows),
+            flows_withheld_by_walk=len(withheld_flows),
             walk_verdicts=walk_verdict_counts,
             functions_walkable=ddg_walkable_count,
             functions_forfeited=ddg_forfeited_count,

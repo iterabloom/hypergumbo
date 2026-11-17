@@ -98,3 +98,23 @@ atomic_statement:
 nested_function:
   - node_type: func_literal
     body_child: "field:body"
+
+# In-place stores and address-of (WI-buzup). Read ONLY by
+# cfg.exposed_definitions, for the ADR-0017 §7b withhold rule: a §3a walk that
+# relied on a definition written INTO a referent (an element, field or
+# dereference target of one of these assignment forms), or on a variable whose
+# address is taken, may not refute a flow, because another name may reach the
+# value. The def/use records are not affected. Every entry has its own test in
+# test_definition_exposure.py, and the wiring gate requires both keys.
+store_target:
+  assignment:
+    - node_type: assignment_statement
+      target_field: left
+  target:
+    - node_type: index_expression
+    - node_type: selector_expression
+    - node_type: unary_expression
+      operator: "*"
+address_of:
+  - node_type: unary_expression
+    operator: "&"

@@ -114,3 +114,21 @@ nested_function:
   # nothing it binds kill an outer definition.
   - node_type: class_definition
     body_child: "field:body"
+
+# In-place stores and address-of (WI-buzup). Read ONLY by
+# cfg.exposed_definitions, for the ADR-0017 §7b withhold rule: a §3a walk that
+# relied on a definition written INTO a referent (an element, field or
+# dereference target of one of these assignment forms), or on a variable whose
+# address is taken, may not refute a flow, because another name may reach the
+# value. The def/use records are not affected. Every entry has its own test in
+# test_definition_exposure.py, and the wiring gate requires both keys.
+store_target:
+  assignment:
+    - node_type: assignment
+      target_field: left
+    - node_type: augmented_assignment
+      target_field: left
+  target:
+    - node_type: subscript
+    - node_type: attribute
+address_of: []

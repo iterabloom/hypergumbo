@@ -67,7 +67,10 @@ So a bare ``0`` could mean "the walk adjudicated every flow and refuted none" or
 "the walk never got to look at any of them" — opposite meanings on identical
 evidence. :func:`count_walk_verdicts` publishes the finer axis so the zero is
 readable; a run whose every finding reads ``unavailable`` is the case it
-exists to expose.
+exists to expose. ``flows_withheld_by_walk`` sits beside it: flows the walk
+would have removed but WITHHELD because it relied on a definition another name
+may reach (ADR-0017 §7b, WI-buzup). They are neither survivors nor removals,
+and ``walk_verdicts.withheld`` carries the same count.
 
 The walk's escape sites are a DECLARED limitation, not a work item: most of
 them are not calls at all, so no function summary can close them. §3a still
@@ -403,6 +406,7 @@ def dataflow_scope_dict(
     walk_verdicts: Mapping[str, int] | None = None,
     functions_walkable: int = 0,
     functions_forfeited: int = 0,
+    flows_withheld_by_walk: int = 0,
 ) -> dict[str, Any]:
     """The machine-readable scope block.
 
@@ -436,6 +440,11 @@ def dataflow_scope_dict(
         # produced, with no number a reader could check. ``findings_total``
         # counts what SURVIVED, so the two together say what the walk did.
         "flows_removed_by_walk": flows_removed_by_walk,
+        # How many flows the walk WITHHELD instead (ADR-0017 §7b, WI-buzup):
+        # it exhausted every route it could follow, but relied on a definition
+        # another name may reach. Neither removed nor in ``findings_total``; a
+        # confirming verdict on the flow's claim reads ``inconclusive``.
+        "flows_withheld_by_walk": flows_withheld_by_walk,
         # What makes the number ABOVE readable: only ``refuted``
         # can remove a flow, so a zero beside a large ``escaped`` /
         # ``not_attempted`` count means the walk never got to look. Always
@@ -462,6 +471,7 @@ def render_dataflow_scope_text(
     walk_verdicts: Mapping[str, int] | None = None,
     functions_walkable: int = 0,
     functions_forfeited: int = 0,
+    flows_withheld_by_walk: int = 0,
 ) -> list[str]:
     """The same scope, for the text view. Empty when nothing was analyzed.
 
@@ -506,6 +516,14 @@ def render_dataflow_scope_text(
         "Counted separately from the total above, which counts survivors — a "
         "removal a reader cannot see is the failure mode this number exists "
         "to prevent."
+    )
+    lines.append(
+        f"  Flows WITHHELD by the walk this run: {flows_withheld_by_walk}. The "
+        "walk exhausted every route it could follow, but the value was written "
+        "where another name may reach it (an in-place store, a definition that "
+        "reads its own target, an address taken, a closure capture), so the "
+        "flow was neither removed nor reported; a confirming verdict on its "
+        "claim reads inconclusive."
     )
     verdicts = dict(
         walk_verdicts if walk_verdicts is not None else count_walk_verdicts(())

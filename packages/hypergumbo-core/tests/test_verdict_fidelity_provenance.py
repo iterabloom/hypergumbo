@@ -282,4 +282,4 @@ class TestTheEnvelope:
         through here rather than sliding past a ``>=``.
         """
         from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
-        assert VERIFY_CLAIMS_SCHEMA_VERSION == "3.1"
+        assert VERIFY_CLAIMS_SCHEMA_VERSION == "3.2"

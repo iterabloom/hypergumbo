@@ -43,6 +43,7 @@ upper-bounded.
 """
 
 from hypergumbo_core.taint import (
+    WALK_VERDICT_WITHHELD,
     WALK_VERDICTS,
     WALK_VERDICT_REACHED,
     WALK_VERDICT_ESCAPED,
@@ -59,13 +60,14 @@ from hypergumbo_core.taint import (
 # ---------------------------------------------------------------------------
 
 
-def test_the_five_verdicts_are_declared_in_one_place():
+def test_the_six_verdicts_are_declared_in_one_place():
     assert WALK_VERDICTS == frozenset({
         WALK_VERDICT_REACHED,
         WALK_VERDICT_REFUTED,
         WALK_VERDICT_ESCAPED,
         WALK_VERDICT_NOT_ATTEMPTED,
         WALK_VERDICT_UNAVAILABLE,
+        WALK_VERDICT_WITHHELD,
     })
 
 

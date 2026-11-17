@@ -343,7 +343,7 @@ class TestBindingsThatHoldCallables:
 
     def test_merge_unions_unaccounted_names_and_hints(self) -> None:
         """A second body under the same id ADDS to the first's record."""
-        from hypergumbo_core.cfg import DdgEdge
+        from hypergumbo_core.cfg import DdgEdge, DefinitionExposure
 
         out = RepoDdg()
         spec = LanguageDdgSpec(
@@ -361,11 +361,18 @@ class TestBindingsThatHoldCallables:
             "solve_reaching_defs": lambda cfg: result,
             "uncovered_semantic_lines": lambda *a: frozenset(),
             "unaccounted_names": lambda cfg, body, src: frozenset({body}),
+            "exposed_definitions": lambda cfg, body, src, mapping: DefinitionExposure(
+                stores=frozenset({(f"v{body}", body)}),
+                captured=frozenset({f"c{body}"}),
+            ),
             "late_capture_edges": lambda *a: [],
         }
         for body in (1, 2):
             _solve_one_function(None, body, b"", spec, "s", out, deps, None, {})
         assert out.unaccounted_names["s"] == frozenset({1, 2})
+        # WI-buzup: the exposure record merges the same way.
+        assert out.exposure["s"].stores == frozenset({("v1", 1), ("v2", 2)})
+        assert out.exposure["s"].captured == frozenset({"c1", "c2"})
         assert out.hints_by_caller["s"] == {(1, "x"): "T", (2, "x"): "T"}
 
 

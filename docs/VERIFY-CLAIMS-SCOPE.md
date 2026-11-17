@@ -215,6 +215,66 @@ Following the value through each construct is separate work (out-parameter
 summaries, cross-function global state, macro expansion, variadic tails).
 When one lands, its construct stops withholding.
 
+### A walk over a value another name may reach withholds the verdict
+
+The §3a walk follows a value through the names that reaching definitions
+connect; it does not know which other names refer to the same object. So in
+
+```go
+s := []string{""}
+t := s
+t[0] = os.Getenv("API_KEY")
+fmt.Println(len(t))
+os.WriteFile("o.txt", []byte(s[0]), 0o600)
+```
+
+the walk follows `t`, finds it only in `fmt.Println`, and cannot see `s[0]`.
+Such a walk does not remove the flow. When the walk exhausts every route it
+can follow but relied on a definition another name may reach, the flow is
+**withheld**: neither removed nor reported, and a `confirmed` or
+`confirmed_with_caveats` verdict on a claim with the same source label **and
+sink zone** reads `inconclusive` (exit 4). A definition counts when it is
+
+- an in-place store into the variable: an element, field or dereference
+  target (`t[0] = …`, `b.f = …`, `*p = …`, `t[0] += …`), read from the
+  assignment's target node;
+- a definition that also reads the variable (`s = append(s, k)`, `s += k`);
+- a variable whose address the function takes anywhere (`&buf`);
+- a variable a nested function (closure, lambda, arrow function, local
+  function) mentions.
+
+The same walk earns no `sanitized` credit when a sanitizer sits in the
+source's own function: `t[0] = decrypt(ct); write(encrypt(t[0])); write(s[0])`
+reads `violated`, not sanitized. A non-production source counts only under
+`--include-non-production-sources`, as a flow from it would.
+
+Where it shows: the verdict's `details` ("… each relied on a value another
+name may reach (host_secret from os.Getenv stored into `t` at main.go:11), and
+the walk does not follow aliases …"), the per-verdict `withheld_flows` count,
+`dataflow_coverage.flows_withheld_by_walk`, `dataflow_coverage.walk_verdicts.withheld`,
+and the text footer line "Flows WITHHELD by the walk this run: N."
+
+Known limits, measured on the shapes they name:
+
+- **A real copy the syntax cannot tell from an alias is withheld too.**
+  Python `t = s[:]; t[0] = secret; send(s[0])` (a slice copies) and a Go struct
+  value copy `b := a; b.F = secret; write(a.F)` both read `inconclusive`
+  (exit 4, `withheld_flows: 1`) where they read `confirmed_with_caveats` (exit
+  3) and `confirmed` (exit 0) before; the value never reaches the sink in
+  either.
+- **Every in-place store withholds, alias or not.** A function that stores the
+  secret into a fresh local container and only prints it withholds the same
+  way: the rule asks whether the walk relied on an exposed definition, not
+  whether a second name was found.
+- **Not seen:** a store made by a call the walk treats as terminating; a
+  Python `lambda`'s capture (a lambda is not one of the nested-function forms
+  the walk models); a value that reaches another name through the slot a
+  helper returns it in (`mApp, _ := app.NewApp(...)`), where the walk follows
+  no name at all.
+- Java, C and Rust carry the same rule, but none of the measured alias shapes
+  produced a refutation in those languages to begin with: their walks escape
+  at the print call, which has no terminating summary.
+
 ### A partially parsed file is read from the parser's error recovery, and no verdict consults it
 
 When tree-sitter cannot parse part of a file, the analysis carries on from its
@@ -262,7 +322,10 @@ real:
   "§3a walk verdicts" line) says which: `not_attempted` (a guard above the walk
   failed, so it never ran), `escaped` (it ran and lost the value), or
   `refuted` (it ran to exhaustion and found no dependence; such a flow is
-  removed, so it never survives into a report). **Most `ddg_mixed` rows never
+  removed, so it never survives into a report). A fourth outcome never
+  appears on a row either: `withheld` (it ran to exhaustion over a value
+  another name may reach; the flow is set aside and counted, see "A walk over
+  a value another name may reach withholds the verdict"). **Most `ddg_mixed` rows never
   ran a walk at all**: on measurement 0007's cohort re-run on 2026-09-22,
   `not_attempted` was 242 of 282 `ddg_mixed` rows (85.8%) by default and 551 of
   625 (88.2%) with `--include-non-production-sources`, two thirds of them
