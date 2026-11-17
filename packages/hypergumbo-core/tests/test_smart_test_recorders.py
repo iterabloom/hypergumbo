@@ -584,6 +584,7 @@ def _calc_repo(repo: Path, *, index_saw: str = _CALC, block: str = "f") -> Path:
 def test_a_run_record_says_what_selecting_by_statement_would_have_cost(repo: Path) -> None:
     calc = _calc_repo(repo)
     calc.write_text(_CALC.replace("b = a + 1", "b = a + 2"))
+    (repo / "packages/p/notes.md").write_text("a note\n")
     (repo / "junit.xml").write_text(_CALC_JUNIT)
     done = _helper(repo, "--junit", str(repo / "junit.xml"), "run-record",
                    "--kind", "explicit", "--exit", "1", "--base-branch", "base")
@@ -596,11 +597,25 @@ def test_a_run_record_says_what_selecting_by_statement_would_have_cost(repo: Pat
         "tests": 1, "by_block": 2,
         "failed_reaching_a_changed_block": [
             "packages/p/tests/test_calc.py::test_early", "packages/p/tests/test_calc.py::test_full"],
+        # Both reached a function the selector narrowed: either could have
+        # been left out, which is what makes this run count toward its bar.
+        "failed_reaching_a_narrowed_block": [
+            "packages/p/tests/test_calc.py::test_early", "packages/p/tests/test_calc.py::test_full"],
         # test_early FAILED and would have been left out: the result that
         # counts against the selector. test_a failed too and reached no
         # changed function: not this selector's.
         "failed_not_selected": ["packages/p/tests/test_calc.py::test_early"],
+        # A changed file that is not package source: no rule of this selector
+        # speaks for it, and the row names it.
+        "files_not_judged": ["packages/p/notes.md"],
     }
+    # The bar, counted from that record: one run, and it is a miss.
+    bar = _helper(repo, "statement-bar")
+    assert bar.returncode == 1, bar.stdout + bar.stderr
+    assert "informative runs          : 1 / 30" in bar.stdout
+    assert "RUNS WITH A FAILED TEST LEFT OUT : 1" in bar.stdout
+    assert "packages/p/tests/test_calc.py::test_early" in bar.stdout
+    assert "verdict                   : MISSED" in bar.stdout
 
 
 def test_the_by_statement_facts_say_when_the_index_had_no_record_of_the_base(repo: Path) -> None:
@@ -617,6 +632,35 @@ def test_the_by_statement_facts_say_when_the_index_had_no_record_of_the_base(rep
         "no record of the block as it was: every test that reached it": 1}
     assert (facts["tests"], facts["by_block"]) == (2, 2)
     assert facts["failed_not_selected"] is None, "no junit report: did not look"
+    assert facts["failed_reaching_a_narrowed_block"] is None
+    # With the failed tests known: both reached the changed function, and
+    # neither was at risk, because nothing was narrowed. Such a run says
+    # nothing about the selector and does not count toward its bar.
+    (repo / "junit.xml").write_text(_CALC_JUNIT)
+    done = _helper(repo, "--junit", str(repo / "junit.xml"), "run-record",
+                   "--kind", "explicit", "--exit", "1", "--base-branch", "base")
+    assert done.returncode == 0, done.stderr
+    facts = _rows(repo, "runs.jsonl")[1]["by_statement"]
+    assert len(facts["failed_reaching_a_changed_block"]) == 2
+    assert facts["failed_reaching_a_narrowed_block"] == []
+    bar = _helper(repo, "statement-bar")
+    assert bar.returncode == 1 and "informative runs          : 0 / 30" in bar.stdout
+    assert "verdict                   : NOT MET" in bar.stdout
+
+
+def test_the_bar_command_exits_0_only_when_the_bar_is_met(repo: Path) -> None:
+    runs = repo.parent / "logs" / "runs.jsonl"
+    runs.parent.mkdir(parents=True, exist_ok=True)
+    rows = [{"at": "t", "kind": "explicit", "base": "b", "head": "h", "snapshot": f"s{n}",
+             "failed": ["t::a"],
+             "by_statement": {"unknown_blocks": 0, "failed_not_selected": [],
+                              "failed_reaching_a_narrowed_block": ["t::a"]}}
+            for n in range(30)]
+    runs.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    bar = _helper(repo, "statement-bar")
+    assert bar.returncode == 0, bar.stdout + bar.stderr
+    assert "informative runs          : 30 / 30" in bar.stdout
+    assert "verdict                   : MET" in bar.stdout
 
 
 def test_the_by_statement_facts_count_the_blocks_the_index_has_never_seen(repo: Path) -> None:

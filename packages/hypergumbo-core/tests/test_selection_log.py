@@ -19,17 +19,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Optional, Sequence
 
 import gzip
 
 from hypergumbo_core.selection_log import (
     DEFAULT_MIN_COMMITS,
+    SELECTOR_FILES,
     STALE_GRAPH_MIN_COMMITS,
+    STATEMENT_BAR,
     append_observation,
     append_run_record,
     append_stale_graph_observation,
     evaluate,
     evaluate_stale_graph,
+    evaluate_statement_bar,
     load_observations,
     sliceable_sources,
     sliced_test_files,
@@ -357,3 +361,92 @@ class TestSnapshots:
         assert stored.stat().st_mtime_ns == stamp
         assert store_snapshot(tmp_path / "snap", b"other") != first
         assert len(list((tmp_path / "snap").iterdir())) == 2
+
+
+def _run(kind: str = "explicit", *, state: str = "s1",
+         failed: Optional[Sequence[str]] = (), at_risk: Optional[Sequence[str]] = (),
+         left_out: Sequence[str] = (), unknown: int = 0,
+         instead: object = ...) -> dict[str, object]:
+    """A run record as ``coverage-select run-record`` writes it, reduced to
+    what the bar reads. ``at_risk=None``: a row from before that field.
+    ``instead``: the whole ``by_statement`` value."""
+    facts: dict[str, object] = {"unknown_blocks": unknown, "failed_not_selected": list(left_out)}
+    if at_risk is not None:
+        facts["failed_reaching_a_narrowed_block"] = list(at_risk)
+    return {"at": "t", "kind": kind, "base": "b", "head": "h", "snapshot": state,
+            "failed": None if failed is None else list(failed),
+            "by_statement": facts if instead is ... else instead}
+
+
+class TestStatementBar:
+    """The by-statement selector's bar (owner ruling of 2026-11-17): 30 runs
+    in which a failed test could have been left out, and none was."""
+
+    def test_only_a_run_where_a_failed_test_could_have_been_left_out_counts(self) -> None:
+        bar = evaluate_statement_bar([
+            _run(failed=["t::a"], at_risk=["t::a"]),
+            # A failed test, but it reached no function the selector narrowed.
+            _run(state="s2", failed=["t::a"], at_risk=[]),
+            # Green.
+            _run(state="s3"),
+            # The index had never seen one changed function: nothing would
+            # have been narrowed on this selection.
+            _run(state="s4", failed=["t::a"], at_risk=["t::a"], unknown=1),
+        ])
+        assert (bar.rows, bar.recorded, dict(bar.informative)) == (4, 4, {"explicit": 1})
+        assert bar.misses == () and bar.verdict == "not met"
+
+    def test_the_same_state_of_the_tree_counts_once_and_kinds_are_kept_apart(self) -> None:
+        again = _run(failed=["t::a"], at_risk=["t::a"])
+        bar = evaluate_statement_bar([
+            again, again,
+            _run(state="s2", failed=["t::a"], at_risk=["t::a"]),
+            _run("selected", failed=["t::a"], at_risk=["t::a"]),
+        ])
+        assert dict(bar.informative) == {"explicit": 2, "selected": 1}
+
+    def test_rows_that_cannot_be_counted_say_why(self) -> None:
+        bar = evaluate_statement_bar([
+            _run(instead=None),
+            _run(instead={"error": "KeyError: x"}),
+            _run(failed=None, at_risk=["t::a"]),
+            # Written before the selector recorded what it narrowed.
+            _run(failed=["t::a"], at_risk=None),
+        ])
+        assert bar.recorded == 1 and dict(bar.informative) == {}
+        assert dict(bar.uncounted) == {
+            "the selector was not asked": 1, "the selector failed": 1,
+            "the run left no junit report": 1,
+            "written before narrowed tests were recorded": 1}
+
+    def test_a_run_that_changed_the_selector_is_no_evidence_about_it(self) -> None:
+        """Neither for it nor against it: the row was written by the code
+        under change (or under a mutation control), not by the merged
+        selector."""
+        for file in sorted(SELECTOR_FILES):
+            clean = {**_run(failed=["t::a"], at_risk=["t::a"]), "changed_files": [file, "x.py"]}
+            miss = {**_run(state="s2", failed=["t::a"], at_risk=["t::a"], left_out=["t::a"]),
+                    "changed_files": [file]}
+            bar = evaluate_statement_bar([clean, miss])
+            assert (bar.recorded, dict(bar.informative), bar.misses) == (0, {}, ()), file
+            assert dict(bar.uncounted) == {"the change was to the selector itself": 2}
+        elsewhere = {**_run(failed=["t::a"], at_risk=["t::a"]),
+                     "changed_files": ["packages/p/src/p/other.py"]}
+        assert dict(evaluate_statement_bar([elsewhere]).informative) == {"explicit": 1}
+
+    def test_one_miss_decides_whatever_else_there_is(self) -> None:
+        clean = [_run(state=f"s{n}", failed=["t::a"], at_risk=["t::a"])
+                 for n in range(STATEMENT_BAR)]
+        assert evaluate_statement_bar(clean[:-1]).verdict == "not met"
+        met = evaluate_statement_bar(clean)
+        assert met.verdict == "met" and "30 / 30" in met.summary()
+        # A miss in a row too old to be informative is still a miss.
+        missed = evaluate_statement_bar(
+            [*clean, _run(state="old", failed=["t::lost"], at_risk=None, left_out=["t::lost"])])
+        assert missed.verdict == "missed"
+        assert missed.misses == (("t", "explicit", "h", ("t::lost",)),)
+        text = missed.summary()
+        assert "RUNS WITH A FAILED TEST LEFT OUT : 1" in text and "t::lost" in text
+        assert "verdict                   : MISSED" in text
+        assert "not counted, written before narrowed tests were recorded: 1" in text
+        assert "explicit: 30" in text

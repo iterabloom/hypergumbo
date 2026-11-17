@@ -29,6 +29,7 @@ catches broadly and exits 0 — see `main`.
                   would have selected, and keep the fresh graph as rows
     stale-report  print the accrued stale-graph evidence and its verdict
     run-record  store what one test run ran against and which tests failed
+    statement-bar  count the by-statement selector's bar from the run records
     graph-store  store a survey's graph as rows in the index
     graph-walk  write the files that depend on the changed files, walking a
                 STORED graph (exit 3: no stored graph to walk; 4: it failed)
@@ -77,7 +78,7 @@ from hypergumbo_core.selection_index import (
 )
 from hypergumbo_core.selection_log import (
     append_observation, append_run_record, append_stale_graph_observation,
-    evaluate, evaluate_stale_graph, load_observations,
+    evaluate, evaluate_stale_graph, evaluate_statement_bar, load_observations,
     sliceable_sources, sliced_test_files, stale_graph_row,
     store_snapshot,
 )
@@ -1149,6 +1150,15 @@ def cmd_graph_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_statement_bar(args: argparse.Namespace) -> int:
+    """Print the by-statement selector's bar, counted from the run records.
+    Exit 0 when it is met, 1 when it is not (yet, or because of a miss)."""
+    bar = evaluate_statement_bar(load_observations(Path(args.runs)))
+    print(f"[coverage-select] the by-statement selector's bar, from {args.runs}")
+    print(bar.summary())
+    return 0 if bar.verdict == "met" else 1
+
+
 def cmd_stale_report(args: argparse.Namespace) -> int:
     """Print the accrued stale-graph evidence and its verdict."""
     ev = evaluate_stale_graph(load_observations(Path(args.stale_log)))
@@ -1186,10 +1196,19 @@ def _by_statement_facts(root: Path, index: Path, base: str, changed: list[str],
         "tests": len(tests),
         "by_block": len(by_block),
         "failed_reaching_a_changed_block": None,
+        # The failed tests the selector could have left out: they reached a
+        # function it narrowed. A run counts toward the selector's bar only
+        # when this is not empty (coverage-select statement-bar).
+        "failed_reaching_a_narrowed_block": None,
         "failed_not_selected": None,
+        # Changed files the selector has no rule for (anything that is not
+        # package source): it says nothing about the tests they need.
+        "files_not_judged": sorted(set(changed) - set(sources)),
     }
     if failed is not None:
+        narrowed = rebase_to_repo(chosen.narrowed, root)
         facts["failed_reaching_a_changed_block"] = sorted(failed & by_block)
+        facts["failed_reaching_a_narrowed_block"] = sorted(failed & narrowed)
         facts["failed_not_selected"] = sorted((failed & by_block) - tests)
     return facts
 
@@ -1338,6 +1357,7 @@ def main(argv: list[str] | None = None) -> int:
     sr.set_defaults(func=cmd_stale_record)
 
     sub.add_parser("stale-report").set_defaults(func=cmd_stale_report)
+    sub.add_parser("statement-bar").set_defaults(func=cmd_statement_bar)
 
     rr = sub.add_parser("run-record")
     rr.add_argument("--kind", required=True,

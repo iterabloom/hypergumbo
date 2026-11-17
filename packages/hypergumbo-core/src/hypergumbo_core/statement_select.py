@@ -87,6 +87,11 @@ class Selection:
     #: Changed blocks the index has never seen. Not empty: ``tests`` is NOT
     #: every test the change needs, and nothing may be narrowed on it.
     unknown: frozenset[BlockKey]
+    #: Every test that reached a block answered ``BY_STATEMENT``: the tests
+    #: the selector had the chance to leave out. A failed test in here that
+    #: is also in ``tests`` is the selector holding where it could have
+    #: missed; a failed test outside it was never this selector's to lose.
+    narrowed: frozenset[str]
 
 
 def _stored_digests(conn: sqlite3.Connection, path: str) -> dict[str, str]:
@@ -110,6 +115,7 @@ def select_by_statement(
     answers: dict[BlockKey, str] = {}
     import_time: set[BlockKey] = set()
     unknown: set[BlockKey] = set()
+    narrowed: set[str] = set()
     unmeasured = {str(row[0]) for row in conn.execute("SELECT test_id FROM unmeasured_test")}
     for path, base in base_sources.items():
         try:
@@ -119,9 +125,9 @@ def select_by_statement(
         try:
             changes = statement_changes(path, base, current)
         except SyntaxError:
-            reached = touching_tests(conn, [path])
-            tests |= reached
-            by_block |= reached
+            touched = touching_tests(conn, [path])
+            tests |= touched
+            by_block |= touched
             answers[(path, "")] = UNPARSABLE
             continue
         stored = _stored_digests(conn, path)
@@ -146,7 +152,7 @@ def select_by_statement(
                     unknown.add(key)
                     answers[key] = UNKNOWN
                     continue
-                reached = set()
+                reached: set[str] = set()
                 for sibling in siblings:
                     reached |= set(statement_records(conn, path, sibling))
                 tests |= reached
@@ -172,7 +178,9 @@ def select_by_statement(
             else:
                 tests |= {test for test, ran in was.items()
                           if ran is None or ran & change.ran}
+                narrowed |= reached
                 answers[key] = BY_STATEMENT
     return Selection(
         tests=frozenset(tests - unmeasured), by_block=frozenset(by_block - unmeasured),
-        answers=answers, import_time=frozenset(import_time), unknown=frozenset(unknown))
+        answers=answers, import_time=frozenset(import_time), unknown=frozenset(unknown),
+        narrowed=frozenset(narrowed - unmeasured))

@@ -99,6 +99,9 @@ def test_only_the_tests_that_ran_the_changed_statement_or_have_no_record(repo: R
     assert chosen.tests == {"t_full", "t_no_record"}
     assert chosen.by_block == {"t_early", "t_full", "t_no_record"}
     assert chosen.import_time == frozenset() == chosen.unknown
+    # The tests it could have left out: every test that reached the narrowed
+    # function, selected or not (and never an unmeasured one).
+    assert chosen.narrowed == {"t_early", "t_full", "t_no_record"}
 
 
 def test_a_block_the_index_saw_in_another_version_is_answered_with_every_test(
@@ -111,6 +114,7 @@ def test_a_block_the_index_saw_in_another_version_is_answered_with_every_test(
     chosen = repo.select(BASE.replace("b = a + 1 ", "b = a + 2 "))
     assert repo.answer(chosen, "f") == ss.NO_BASE_RECORD
     assert chosen.tests == {"t_early", "t_full", "t_no_record"} == chosen.by_block
+    assert chosen.narrowed == frozenset(), "nothing was narrowed, so nothing was at risk"
 
 
 def _fold_a_run(repo: Repo, source: str, ran: dict[str, Optional[set[int]]],
