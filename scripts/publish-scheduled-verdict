@@ -1,0 +1,453 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Publish a scheduled CI run's verdict to the ``badges`` branch.
+
+WHY THIS EXISTS. A scheduled run (``.woodpecker/full-suite.yml``, the four legs
+of ``.woodpecker/nightly.yml``) reports one aggregate status to the forge, on
+whatever commit was ``dev``'s tip when it fired. Nothing a session or a reader
+of the README looks at carried that verdict, so a red scheduled run could sit
+unread for days. This script writes the verdict, step by step, to files on the
+``badges`` branch, where two readers pick it up with no API call:
+
+* ``.agent/hooks/_shared/cron_status_nudge.py`` at session start (a local
+  ``git show origin/badges:...``);
+* the README's shields.io endpoint badges (``raw.githubusercontent.com``).
+
+HOW A STEP'S RESULT IS KNOWN. Woodpecker gives a step no other step's result
+(there is no ``CI_STEP_STATUS``). But the steps of one workflow share the
+workspace, ``.git`` included, and run their commands under ``set -e``. So each
+step's LAST command is ``publish-scheduled-verdict mark <its own name>``, which
+creates ``<git dir>/scheduled-verdict/<name>.passed`` and is reached only when
+every command before it succeeded. The final ``publish-verdict`` step runs on
+success AND failure, and reads the markers.
+
+WHAT ``not_passed`` MEANS, AND WHAT IT CANNOT MEAN. A step without a marker is
+``not_passed``. That is either "it failed" or "it never ran because a step it
+depends on failed": the marker cannot tell those apart, and this script does
+not pretend to. It also covers a step whose ``mark`` itself failed. It never
+means "passed".
+
+THE VERDICT (``scheduled/<workflow>[-<leg>].json``, schema 1)::
+
+    {"schema": 1, "workflow": "full-suite", "leg": null,
+     "commit": "<40 hex>", "pipeline": 6480, "url": "<CI_PIPELINE_URL>",
+     "finished_at": "2026-11-17T13:40:00Z",        # UTC, when publish ran
+     "status": "passed" | "failed",                # passed iff every step passed
+     "steps": [{"name": "prepare-git", "result": "passed" | "not_passed"}, ...],
+     "coverage": null | {"percent": 99.97, "statements": N, "missing": M,
+                         "uncovered": {"<path>": [lines]},   # at most 200 lines
+                         "uncovered_truncated": bool}}
+
+``coverage`` is built from a coverage.py JSON report (``--coverage-json``,
+default ``<markers>/coverage.json``); an absent report gives ``null``. A report
+that exists but cannot be read also gives ``null``, with a warning on stderr:
+the verdict still publishes and the coverage badge reads ``unknown``.
+
+Next to it, ``scheduled/<workflow>[-<leg>]-badge.json`` is a shields.io
+endpoint object (``passing`` / ``failing``). Only a run WITHOUT a leg writes
+``scheduled/coverage-badge.json``: the percentage rounded DOWN to a whole
+number, so 99.97 reads ``99%`` and ``100%`` appears only when no line is
+missing; ``brightgreen`` at 100, ``red`` below; ``unknown`` / ``lightgrey``
+when there is no coverage figure. Other files on the branch are left alone.
+
+PUBLISHING. In a temporary bare repository: read the branch tip from the
+remote (``ls-remote``), fetch it, lay the new files over its tree with plumbing
+(``read-tree`` / ``update-index`` / ``write-tree`` / ``commit-tree``, so no
+hook and no working tree is involved), commit as ``CI Bot <ci@iterabloom.com>``
+and push WITHOUT force. The four nightly legs publish at about the same time,
+so a rejected push is retried from the new tip, up to ``PUSH_ATTEMPTS``
+attempts with a short random pause. A branch the remote does not have yet is
+created as an orphan.
+
+CREDENTIAL. With ``--remote`` the URL is used as is (tests pass a local bare
+repository). Otherwise the remote is ``CI_REPO_CLONE_SSH_URL`` (or
+``git@github.com:<CI_REPO>.git``) and the private key is the environment
+variable ``BADGES_DEPLOY_KEY`` (the Woodpecker secret ``badges_deploy_key``).
+It is written to a 0600 file in a private temporary directory, next to a
+``known_hosts`` holding GitHub's pinned host keys, and handed to git through
+``GIT_SSH_COMMAND``. The key never appears in an argument list or in output,
+and the directory is removed afterwards, on failure too.
+
+WHY A FAILED PUBLISH EXITS NON-ZERO. The GitHub Actions step this replaces
+ended in ``git push ... || echo "Push failed"``: its failures were swallowed
+and the coverage badge stood frozen for five months with nobody noticing. A
+publish that did not happen must turn the CI step red. Exit codes:
+
+* 0 -- published (or ``--dry-run``, which prints what it would write and
+  contacts nothing);
+* 1 -- the publish failed: no remote or no key, the remote unreadable, a git
+  error, or the push still rejected after the retries; one line on stderr
+  says which;
+* 2 -- bad arguments.
+
+WHAT PUBLISHES NOTHING. A ``publish-verdict`` step that never runs -- the
+runner killed, the agent lost, the workflow not compiled because the secret is
+missing -- writes no verdict. The readers see that as AGE: the session-start
+reader states each verdict's age and speaks when it exceeds its allowance.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import random
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional, Sequence
+
+SCHEMA = 1
+DIR = "scheduled"
+MARKER_DIR = "scheduled-verdict"
+MAX_UNCOVERED = 200
+PUSH_ATTEMPTS = 5
+PAUSE_SECONDS = (0.5, 2.0)
+BOT_NAME = "CI Bot"
+BOT_EMAIL = "ci@iterabloom.com"
+GIT_TIMEOUT = 120
+
+#: GitHub's SSH host keys, read from https://api.github.com/meta on 2026-11-17.
+GITHUB_HOST_KEYS = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
+    "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7"
+    "opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=",
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGL"
+    "VlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR"
+    "+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA"
+    "2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYi"
+    "rYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB"
+    "6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=",
+)
+
+#: Badge label per workflow, where it differs from the workflow's name.
+LABELS = {"full-suite": "full suite"}
+
+#: Variables that would point git at another repository than the one it is
+#: given (set, e.g., when this runs under a git hook).
+_REPO_ENV = (
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX",
+    "GIT_NAMESPACE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+)
+
+_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+
+
+class PublishError(Exception):
+    """A failure the caller reports as one stderr line and exit 1."""
+
+
+def _clean_env(**extra: str) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k not in _REPO_ENV}
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env.update(extra)
+    return env
+
+
+#: git's advice lines, which say nothing about this failure.
+_BOILERPLATE = ("Please make sure you have the correct access rights",
+                "and the repository exists.", "hint:", "To ")
+
+
+def _one_line(text: str) -> str:
+    """git's stderr folded into one line, its advice lines dropped."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    kept = [ln for ln in lines if not ln.startswith(_BOILERPLATE)] or lines
+    joined = " | ".join(kept) or "(no message)"
+    return joined if len(joined) <= 500 else joined[:497] + "..."
+
+
+def _default_markers() -> Path:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--absolute-git-dir"], capture_output=True, text=True,  # noqa: S607
+        env=_clean_env(), check=False, timeout=GIT_TIMEOUT)
+    if proc.returncode != 0:
+        raise PublishError(f"not in a git repository: {_one_line(proc.stderr)}")
+    return Path(proc.stdout.strip()) / MARKER_DIR
+
+
+# ── the verdict ──────────────────────────────────────────────────────────────
+
+def load_coverage(path: Path) -> Optional[dict[str, Any]]:
+    """The verdict's ``coverage`` object from a coverage.py JSON report, or
+    None when there is no report. Raises ValueError on one it cannot read."""
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        totals = data["totals"]
+        lines = sorted(
+            (str(name), int(line))
+            for name, entry in data.get("files", {}).items()
+            for line in entry.get("missing_lines", []))
+        listed: dict[str, list[int]] = {}
+        for name, line in lines[:MAX_UNCOVERED]:
+            listed.setdefault(name, []).append(line)
+        return {
+            "percent": float(totals["percent_covered"]),
+            "statements": int(totals["num_statements"]),
+            "missing": int(totals["missing_lines"]),
+            "uncovered": listed,
+            "uncovered_truncated": len(lines) > MAX_UNCOVERED,
+        }
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ValueError(f"{path}: {type(exc).__name__}: {exc}") from exc
+
+
+def _commit() -> str:
+    sha = os.environ.get("CI_COMMIT_SHA", "").strip()
+    if not sha:
+        proc = subprocess.run(["git", "rev-parse", "HEAD"],  # noqa: S607 -- git on PATH
+                              capture_output=True, text=True,
+                              env=_clean_env(), check=False, timeout=GIT_TIMEOUT)
+        sha = proc.stdout.strip() if proc.returncode == 0 else ""
+    if not _SHA.match(sha):
+        raise PublishError(
+            f"cannot determine the commit: CI_COMMIT_SHA is {sha!r} and HEAD is unreadable"
+            if sha else "cannot determine the commit: no CI_COMMIT_SHA and no HEAD")
+    return sha
+
+
+def build_verdict(*, workflow: str, leg: Optional[str], steps: Sequence[str],
+                  markers: Path, coverage: Optional[dict[str, Any]], commit: str,
+                  now: datetime) -> dict[str, Any]:
+    results = [{"name": s, "result": "passed" if (markers / f"{s}.passed").is_file()
+                else "not_passed"} for s in steps]
+    pipeline = os.environ.get("CI_PIPELINE_NUMBER", "").strip()
+    return {
+        "schema": SCHEMA,
+        "workflow": workflow,
+        "leg": leg,
+        "commit": commit,
+        "pipeline": int(pipeline) if pipeline.isdigit() else None,
+        "url": os.environ.get("CI_PIPELINE_URL") or None,
+        "finished_at": now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "status": "passed" if all(r["result"] == "passed" for r in results) else "failed",
+        "steps": results,
+        "coverage": coverage,
+    }
+
+
+def coverage_message(coverage: Optional[dict[str, Any]]) -> tuple[str, str]:
+    """(message, colour) of the coverage badge."""
+    if coverage is None:
+        return "unknown", "lightgrey"
+    whole = math.floor(coverage["percent"])
+    if coverage["missing"] > 0 and whole >= 100:
+        whole = 99
+    whole = min(whole, 100)
+    return f"{whole}%", "brightgreen" if whole == 100 else "red"
+
+
+def files_for(verdict: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Branch path -> JSON object, for every file this verdict writes."""
+    workflow, leg = verdict["workflow"], verdict["leg"]
+    base = f"{DIR}/{workflow}-{leg}" if leg else f"{DIR}/{workflow}"
+    label = LABELS.get(workflow, workflow) + (f" {leg}" if leg else "")
+    passed = verdict["status"] == "passed"
+    out = {
+        f"{base}.json": verdict,
+        f"{base}-badge.json": {
+            "schemaVersion": 1, "label": label,
+            "message": "passing" if passed else "failing",
+            "color": "brightgreen" if passed else "red"},
+    }
+    if not leg:
+        message, colour = coverage_message(verdict["coverage"])
+        out[f"{DIR}/coverage-badge.json"] = {
+            "schemaVersion": 1, "label": "coverage", "message": message, "color": colour}
+    return out
+
+
+# ── publishing ───────────────────────────────────────────────────────────────
+
+class Publisher:
+    """Commits files onto ``branch`` at ``remote`` from a private bare repo."""
+
+    def __init__(self, workdir: Path, remote: str, branch: str, env: dict[str, str]) -> None:
+        self.remote, self.branch = remote, branch
+        self.repo = workdir / "repo.git"
+        self.env = {**env, "GIT_DIR": str(self.repo),
+                    "GIT_INDEX_FILE": str(workdir / "index"),
+                    "GIT_AUTHOR_NAME": BOT_NAME, "GIT_AUTHOR_EMAIL": BOT_EMAIL,
+                    "GIT_COMMITTER_NAME": BOT_NAME, "GIT_COMMITTER_EMAIL": BOT_EMAIL}
+        self._git("init", "-q", "--bare", str(self.repo), what="git init")
+
+    def _git(self, *args: str, what: str, data: Optional[bytes] = None) -> str:
+        proc = self._run(*args, data=data)
+        if proc.returncode != 0:
+            raise PublishError(
+                f"{what} failed: {_one_line(proc.stderr.decode('utf-8', 'replace'))}")
+        return proc.stdout.decode("utf-8", "replace").strip()
+
+    def _run(self, *args: str, data: Optional[bytes] = None) -> "subprocess.CompletedProcess[bytes]":
+        return subprocess.run(  # noqa: S603 -- git on PATH; args are ours, the remote is the caller's
+            ["git", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],  # noqa: S607
+            input=data, capture_output=True, env=self.env, check=False, timeout=GIT_TIMEOUT)
+
+    def tip(self) -> Optional[str]:
+        out = self._git("ls-remote", self.remote, f"refs/heads/{self.branch}",
+                        what=f"reading {self.remote}")
+        return out.split()[0] if out else None
+
+    def attempt(self, files: dict[str, bytes], message: str) -> tuple[bool, str]:
+        """One fetch-apply-push round: (pushed, git's stderr as one line)."""
+        base = self.tip()
+        if base:
+            self._git("fetch", "-q", self.remote, f"refs/heads/{self.branch}",
+                      what=f"fetching {self.branch} from {self.remote}")
+            base = self._git("rev-parse", "FETCH_HEAD^{commit}", what="git rev-parse")
+            self._git("read-tree", base, what="git read-tree")
+        else:
+            self._git("read-tree", "--empty", what="git read-tree")
+        for path, content in sorted(files.items()):
+            blob = self._git("hash-object", "-w", "--stdin", data=content, what="git hash-object")
+            self._git("update-index", "--add", "--cacheinfo", f"100644,{blob},{path}",
+                      what="git update-index")
+        tree = self._git("write-tree", what="git write-tree")
+        parents = ["-p", base] if base else []
+        commit = self._git("commit-tree", tree, *parents, "-m", message, what="git commit-tree")
+        proc = self._run("push", "-q", self.remote, f"{commit}:refs/heads/{self.branch}")
+        return proc.returncode == 0, _one_line(proc.stderr.decode("utf-8", "replace"))
+
+
+def _ssh_env(workdir: Path) -> dict[str, str]:
+    """Environment carrying the deploy key; the key itself goes to a 0600 file."""
+    key = os.environ.get("BADGES_DEPLOY_KEY", "")
+    if not key.strip():
+        raise PublishError("no credential: BADGES_DEPLOY_KEY is empty or unset "
+                           "(the Woodpecker secret badges_deploy_key)")
+    key_file = workdir / "deploy_key"
+    fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(key if key.endswith("\n") else key + "\n")
+    known = workdir / "known_hosts"
+    known.write_text("".join(f"github.com {k}\n" for k in GITHUB_HOST_KEYS), encoding="utf-8")
+    return _clean_env(GIT_SSH_COMMAND=(
+        f"ssh -i {shlex.quote(str(key_file))} -o IdentitiesOnly=yes "
+        f"-o UserKnownHostsFile={shlex.quote(str(known))} -o StrictHostKeyChecking=yes"))
+
+
+def _default_remote() -> str:
+    url = os.environ.get("CI_REPO_CLONE_SSH_URL", "").strip()
+    if url:
+        return url
+    repo = os.environ.get("CI_REPO", "").strip()
+    if repo:
+        return f"git@github.com:{repo}.git"
+    raise PublishError("no remote: none of --remote, CI_REPO_CLONE_SSH_URL, CI_REPO is set")
+
+
+def publish(files: dict[str, bytes], message: str, *, remote: Optional[str],
+            branch: str) -> str:
+    """Push ``files`` onto ``branch``; returns the remote it pushed to."""
+    workdir = Path(tempfile.mkdtemp(prefix="publish-verdict-"))
+    try:
+        if remote is None:
+            target = _default_remote()
+            env = _ssh_env(workdir)
+        else:
+            target, env = remote, _clean_env()
+        publisher = Publisher(workdir, target, branch, env)
+        last = ""
+        for attempt in range(1, PUSH_ATTEMPTS + 1):
+            pushed, last = publisher.attempt(files, message)
+            if pushed:
+                return target
+            if attempt < PUSH_ATTEMPTS:
+                time.sleep(random.uniform(*PAUSE_SECONDS))  # noqa: S311 -- jitter, not a secret
+        raise PublishError(
+            f"push to {target} {branch} still rejected after {PUSH_ATTEMPTS} attempts: {last}")
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+# ── command line ─────────────────────────────────────────────────────────────
+
+def _parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="publish-scheduled-verdict",
+        description="Record a scheduled CI run's step results and publish its verdict.")
+    sub = p.add_subparsers(dest="command", required=True)
+    m = sub.add_parser("mark", help="record that STEP passed (its last command)")
+    m.add_argument("step")
+    m.add_argument("--markers", type=Path, default=None,
+                   help="marker directory (default: <git dir>/scheduled-verdict)")
+    pub = sub.add_parser("publish", help="build the verdict and push it to the badges branch")
+    pub.add_argument("--workflow", required=True)
+    pub.add_argument("--leg", default=None)
+    pub.add_argument("--steps", nargs="+", required=True)
+    pub.add_argument("--markers", type=Path, default=None)
+    pub.add_argument("--coverage-json", type=Path, default=None,
+                     help="coverage.py JSON report (default: <markers>/coverage.json)")
+    pub.add_argument("--remote", default=None,
+                     help="push here as is (default: CI_REPO_CLONE_SSH_URL with BADGES_DEPLOY_KEY)")
+    pub.add_argument("--branch", default="badges")
+    pub.add_argument("--dry-run", action="store_true",
+                     help="print the verdict and the files; contact nothing")
+    return p
+
+
+def _check_names(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    names = [args.step] if args.command == "mark" else [
+        args.workflow, *([args.leg] if args.leg is not None else []), *args.steps]
+    for name in names:
+        if not _NAME.match(name):
+            parser.error(f"not a usable name: {name!r} (letters, digits, '.', '_', '-')")
+    if args.command == "publish":
+        if len(set(args.steps)) != len(args.steps):
+            parser.error("--steps names a step twice")
+        if not _NAME.match(args.branch):
+            parser.error(f"not a usable branch: {args.branch!r}")
+
+
+def main(argv: Sequence[str]) -> int:
+    parser = _parser()
+    args = parser.parse_args(list(argv))
+    _check_names(parser, args)
+    try:
+        markers = args.markers if args.markers is not None else _default_markers()
+        if args.command == "mark":
+            markers.mkdir(parents=True, exist_ok=True)
+            (markers / f"{args.step}.passed").touch()
+            return 0
+        coverage_path = args.coverage_json or markers / "coverage.json"
+        try:
+            coverage = load_coverage(coverage_path)
+        except ValueError as exc:
+            print(f"publish-scheduled-verdict: WARNING: coverage report unreadable, "
+                  f"publishing coverage null: {exc}", file=sys.stderr)
+            coverage = None
+        verdict = build_verdict(
+            workflow=args.workflow, leg=args.leg, steps=args.steps, markers=markers,
+            coverage=coverage, commit=_commit(), now=datetime.now(timezone.utc))
+        objects = files_for(verdict)
+        if args.dry_run:
+            print(json.dumps({"verdict": verdict, "files": objects}, indent=2))
+            return 0
+        files = {path: (json.dumps(obj, indent=2) + "\n").encode("utf-8")
+                 for path, obj in objects.items()}
+        leg = f" {args.leg}" if args.leg else ""
+        message = (f"scheduled verdict: {args.workflow}{leg} {verdict['status']} "
+                   f"at {verdict['commit'][:8]}")
+        target = publish(files, message, remote=args.remote, branch=args.branch)
+    except PublishError as exc:
+        print(f"publish-scheduled-verdict: {exc}", file=sys.stderr)
+        return 1
+    except subprocess.TimeoutExpired as exc:
+        print(f"publish-scheduled-verdict: git timed out after {exc.timeout} s", file=sys.stderr)
+        return 1
+    print(f"published {', '.join(sorted(files))} to {target} {args.branch}: {message}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

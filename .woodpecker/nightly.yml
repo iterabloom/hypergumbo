@@ -57,6 +57,7 @@ steps:
     commands:
       - python3 -m pip install --upgrade pip setuptools wheel
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - scripts/publish-scheduled-verdict mark build-grammars
 
   # ── cross-Python whole-codebase 100% ───────────────────────────────────────
   - name: test-matrix
@@ -82,9 +83,12 @@ steps:
           --cov=packages/hypergumbo-lang-rust-analyzer/src \
           --cov=packages/hypergumbo-lang-scip-python/src \
           --cov=packages/hypergumbo-tracker/src \
-          --cov-report=term-missing --cov-fail-under=100 \
+          --cov-report=term-missing \
+          --cov-report=json:.git/scheduled-verdict/coverage.json \
+          --cov-fail-under=100 \
           --cov-config=.coveragerc.no-embeddings \
           packages/*/tests/
+      - scripts/publish-scheduled-verdict mark test-matrix
 
   # ── integration tests (real repos, --quick) ────────────────────────────────
   - name: integration
@@ -96,3 +100,27 @@ steps:
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - ./scripts/integration-test --quick
+      - scripts/publish-scheduled-verdict mark integration
+
+  # ── publish this leg's verdict to the badges branch ─────────────────────────
+  # Same mechanism as full-suite.yml's publish-verdict (read its comment): each
+  # step above ends with `publish-scheduled-verdict mark <its name>`, and this
+  # step, on success AND failure, pushes scheduled/nightly-<version>.json and
+  # its badge. Each matrix leg is its own workflow with its own workspace, so
+  # each leg publishes its own file; the four legs push at about the same time
+  # and the script retries a rejected push from the new tip. No coverage badge
+  # (that is the full suite's).
+  #  • A missing `badges_deploy_key` secret (or one not allowed for cron) is a
+  #    COMPILE ERROR: without it no step of this workflow runs.
+  #  • Its failure is deliberate: a publish that did not happen turns the leg
+  #    red. Never add `failure: ignore` or `|| true` here.
+  - name: publish-verdict
+    image: python:${PYTHON_VERSION}-bookworm
+    depends_on: [build-grammars, test-matrix, integration]
+    when:
+      - status: [success, failure]
+    environment:
+      BADGES_DEPLOY_KEY:
+        from_secret: badges_deploy_key
+    commands:
+      - scripts/publish-scheduled-verdict publish --workflow nightly --leg ${PYTHON_VERSION} --coverage-json .git/scheduled-verdict/coverage.json --steps build-grammars test-matrix integration
