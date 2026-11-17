@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **380** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 123 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **62139** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13927, of which 7972 are functions, methods or classes
-- **249420** edges, test code included, by type:
-  - calls: 140647
-  - contains: 57870
-  - imports: 21568
-  - instantiates: 13376
-  - references: 11682
-  - module_attr_ref: 2384
-  - other: 1893
+- **381** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 124 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **62225** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13963, of which 7983 are functions, methods or classes
+- **249784** edges, test code included, by type:
+  - calls: 140837
+  - contains: 57940
+  - imports: 21602
+  - instantiates: 13385
+  - references: 11730
+  - module_attr_ref: 2385
+  - other: 1905
 
 ## Package Architecture
 
@@ -653,6 +653,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.fingerprint`**: Symbol-level structural content fingerprinting (WI-fanun).
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-3aaa).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
+- **`hypergumbo_core.graph_rows`**: The reverse file walk, and the analysis graph kept as rows to answe...
 - **`hypergumbo_core.identity_schemes`**: The identity schemes and the label each one puts on its values.
 - **`hypergumbo_core.import_closure`**: File-level import closure: which files load a given file.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
@@ -1008,8 +1009,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 7d9e08688098
-  commit_count: 9377
+  commit: 3b2548ba4931
+  commit_count: 9381
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
