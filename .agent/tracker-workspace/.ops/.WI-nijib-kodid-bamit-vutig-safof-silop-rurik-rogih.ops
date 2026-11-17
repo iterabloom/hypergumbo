@@ -28,3 +28,18 @@
   set: {}  # 1c05
   add:  # 1c05
     isbefore: [WI-gapal-tarid-vifub-jopoh-zazud-dataz-giluz-zazih]  # 1c05
+- op: update  # a88e
+  at: '2026-11-17T18:29:10Z'  # a88e
+  by: agent  # a88e
+  actor: jgstern_agent  # a88e
+  clock: 3  # a88e
+  nonce: a88e  # a88e
+  set:  # a88e
+    status: done  # a88e
+- op: discuss  # d3e3
+  at: '2026-11-17T18:29:10Z'  # d3e3
+  by: agent  # d3e3
+  actor: jgstern_agent  # d3e3
+  clock: 4  # d3e3
+  nonce: d3e3  # d3e3
+  message: "DECIDED 2026-11-17: the tracker package stays outside local coverage measurement; its tests are selected through the stored graph (the owner's default). REASON IT IS OUTSIDE: an omission, not a decision. smart-test's COV_PATHS lists six packages and git log -S'hypergumbo-tracker' -- scripts/smart-test finds no commit that ever added the tracker's src to it (the package dates from 689d78fad, 2026-02-14). CI does measure it: .woodpecker/full-suite.yml line 116 (--cov=packages/hypergumbo-tracker/src, fail-under 100, added in 897a20787 on 2026-07-24), and the per-PR step builds its --cov list from the changed files' packages (woodpecker.yml ~611), tracker included. selection_index.py's docstring (semantic 3) states the omission as a fact. IS THE OMISSION UNSAFE? No, checked on the live index (notebook: fast_smart_test_build_11172026/nijib_check.txt): the index holds 38 tracker source files with 0 run_file rows, and droppable_test_files() returns no test file for a change to any of the 38 (0 of 38), against 104 droppable for a change to core's graph_select.py. A tracker-source change can never narrow a test away; the 3,109 tracker tests are listed unmeasured, which keeps their files from being dropped for other changes. WHY NOT MEASURE: (1) little to gain: 14 of the 395 commits since 2026-10-17 that touch package source touch the tracker's, and its tests are quick (639 of them ran in 8.85 s on 2026-11-17; the whole package's 3,109 were NOT timed); (2) 16 of its 63 test files use subprocess, whose work leaves no in-process row, so part of the package stays unmeasured whatever the flag; (3) it would put a seventh --cov path on every local run and need another full local run to fold. NOT DONE, and owed as a wording fix in the next smart-test change: smart-test's comment says COV_SCOPE_COMPLETE means COV_PATHS 'names EVERY package'. It names six of the seven with source that CI measures. The claim is harmless only because a change to an unmeasured coverable file refuses narrowing; the comment should say that. Also seen, not explained: the index holds 904 tracker blocks and 135,974 pairs with no run recorded as having measured them; I did not find which run wrote them."  # d3e3
