@@ -1,0 +1,22 @@
+- op: create  # 90d6
+  at: '2026-11-17T08:57:53Z'  # 90d6
+  by: agent  # 90d6
+  actor: jgstern_agent  # 90d6
+  clock: 1  # 90d6
+  nonce: 90d6  # 90d6
+  data:  # 90d6
+    kind: work_item  # 90d6
+    title: "smart-test: select from the stored graph when it is at most 93 commits old, and fall back to a fresh analysis otherwise (plan step 1c)"  # 90d6
+    status: todo_hard  # 90d6
+    priority: 2  # 90d6
+    parent:  # 90d6
+    tags:  # 90d6
+    - smart_test  # 90d6
+    - fast_smart_test_plan  # 90d6
+    - developer_experience  # 90d6
+    isbefore: []  # 90d6
+    duplicate_of: []  # 90d6
+    not_duplicate_of: []  # 90d6
+    pr_ref:  # 90d6
+    description: "WHAT (owner rulings on decisions 4 and 5: the bar is MET by 9 live comparisons plus the 38 historical steps of 1a with no missed test file, so this goes live as soon as it is built). smart-test selects test files by walking the newest stored graph (the rows of step 1d) when that graph is at most 93 commits old (the largest age that passed), seeding from EVERY changed file, with the added-file rule of decision 14b. It runs a fresh analysis when there is no stored graph, when the graph is older than that, or when the added-file rule asks. `--fresh-graph` opts out. The manifest header names the graph's commit and its age in commits.\n\nTHE COMPARISON STAYS ON. Every time a fresh analysis does run (the detached rebuild, a fallback, `--full`), the stale walk is compared with it and the result appended to ~/hypergumbo_lab_notebook/stale_graph_observations.jsonl; a test file the fresh walk names, the stale one does not, and the change did not edit is printed and logged. One such miss is a stop: file it and switch the default back to the fresh analysis.\n\nEXPECTED. Manifest generation 328 s -> about 14 s (mypy gate 5.7, walk 4.8 or less, other selection steps 2.7).\n\nWHAT IT DOES NOT DO. It does not shrink the test set: in the 11 non-trivial slices logged so far today's selection is 72 to 1,127 test files of about 1,474.\n\nKNOWN LIMITS TO HANDLE OR STATE. A new installed release starts with no graph from its build. The slice runs the INSTALLED hypergumbo, and a graph from one analyzer build is not yet shown equal to another's (that check belongs to the worktree item).\n\nCLOSE CONDITION. A live `smart-test --manifest` in the main checkout, on a change to package source, that selects from the stored graph: state its wall time and the header line. Each fallback has a test with a mutation control. Documented in the smart-test playbook.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 90d6
+    fields: {}  # 90d6

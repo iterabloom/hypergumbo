@@ -1,0 +1,21 @@
+- op: create  # d44d
+  at: '2026-11-17T08:57:59Z'  # d44d
+  by: agent  # d44d
+  actor: jgstern_agent  # d44d
+  clock: 1  # d44d
+  nonce: d44d  # d44d
+  data:  # d44d
+    kind: work_item  # d44d
+    title: "smart-test: rebuild the stored graph detached after a run when it is past an age threshold, and on every --full; never beside tests (decision 6)"  # d44d
+    status: todo_hard  # d44d
+    priority: 3  # d44d
+    parent:  # d44d
+    tags:  # d44d
+    - smart_test  # d44d
+    - fast_smart_test_plan  # d44d
+    isbefore: []  # d44d
+    duplicate_of: []  # d44d
+    not_duplicate_of: []  # d44d
+    pr_ref:  # d44d
+    description: "WHAT (owner ruling). Once smart-test selects from a stored graph, a fresh analysis is needed only to renew that graph. It runs detached AFTER a smart-test run finishes when the stored graph is older than a threshold the agent sets from the shadow data, and on every `--full`. It never starts while tests are running.\n\nCONSTRAINTS. The rebuild takes 4.2 GB for 5.5 minutes on one core. On this machine a background run is reaped when memory is low, and two heavy runs at once have killed each other before. smart-test holds `.ci/.smart-test.lock` while it runs; a second instance is refused. The rebuild must not start beside a test run, and a test run that starts during a rebuild must not fail because of it: say which of the two waits.\n\nCLOSE CONDITION. A test that the rebuild does not start while the smart-test lock is held; a live detached rebuild after a real run, with its peak memory and time; the threshold and the data it was set from written in the smart-test playbook; each rebuild appends its comparison to stale_graph_observations.jsonl.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # d44d
+    fields: {}  # d44d

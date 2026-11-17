@@ -1,0 +1,22 @@
+- op: create  # 8e08
+  at: '2026-11-17T08:58:58Z'  # 8e08
+  by: agent  # 8e08
+  actor: jgstern_agent  # 8e08
+  clock: 1  # 8e08
+  nonce: '8e08'  # 8e08
+  data:  # 8e08
+    kind: work_item  # 8e08
+    title: "ci-debug: a subcommand that names the PRs behind a red scheduled run, most likely first (plan step B2)"  # 8e08
+    status: todo_hard  # 8e08
+    priority: 2  # 8e08
+    parent:  # 8e08
+    tags:  # 8e08
+    - smart_test  # 8e08
+    - fast_smart_test_plan  # 8e08
+    - ci_infrastructure  # 8e08
+    isbefore: []  # 8e08
+    duplicate_of: []  # 8e08
+    not_duplicate_of: []  # 8e08
+    pr_ref:  # 8e08
+    description: "WHY. When pipelines 6453 and 6480 (full suite) and 6447 (nightly leg 1) were red, finding the four causes took a session of reading CI logs (fixed in PR #2217).\n\nWHAT (owner ruling on decision 20: INSIDE `scripts/ci-debug`; its merge is approved in advance, by auto-pr without --gov). One subcommand that, given a red scheduled run, names the PRs to look at. The range is the last green scheduled commit to the red one. It reads the published verdict (`scheduled/<workflow>.json` on origin/badges: the commit, each step passed or not_passed, the coverage figure, at most 200 uncovered lines with a truncation flag) and the step logs.\n\nARMS. The plan had two; the known answer needs five.\n- a failed test: the PRs in the range that changed a file the test's records touch, or the test itself, and whose manifest did not run it;\n- a coverage gap: an uncovered line changed in the range names its PR; an unchanged line names the PRs that changed or removed the tests the last full run recorded on it;\n- a failure only the scheduled environment shows: the PR's own CI ran the test and it passed (another Python version, a step that installs fewer packages). The PR that ADDED or changed the test is the answer although its manifest ran it;\n- a gate, not a test (self-tree-validation, the test-only-reachability gate, the claims gate, the allowlist gates): the PRs that added or changed what the gate flags;\n- no PR at fault: a dependency released between the green and the red run. Say so, and name the installed versions that differ.\n\nKNOWN ANSWER FIRST. The red run of 2026-11-16 had four causes (~/hypergumbo_lab_notebook/post_release_11162026/STATUS.md, the entry of 11-16; logs in post_release_11162026/cron_red/): pytest installed unpinned -> 9.2.0, which broke --dist=loadgroup; tests/test_measure_go_import_versioning.py (added 0bedb1624b) imports a package its step does not install; five new test-only callables at the test-only-reachability gate; test_py_annotation_rendering.py (f8161537ab) a SyntaxError on Python 3.10. The command must name each, or say plainly which it cannot. No red scheduled run with a COVERAGE gap has been looked for: if history holds none, build one in the smart-test bed.\n\nRELATED. INV-libib-kila: `ci-debug logs` cannot address a matrix leg, which this command needs for a nightly leg.\n\nCLOSE CONDITION. The command's output on the 11-16 red run beside the four known causes; a test per arm with a mutation control.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 8e08
+    fields: {}  # 8e08

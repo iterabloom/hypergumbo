@@ -1,0 +1,22 @@
+- op: create  # 778e
+  at: '2026-11-17T08:59:09Z'  # 778e
+  by: agent  # 778e
+  actor: jgstern_agent  # 778e
+  clock: 1  # 778e
+  nonce: 778e  # 778e
+  data:  # 778e
+    kind: work_item  # 778e
+    title: "Measure the full suite's wall time in CI, the runner's idle time and CI's time before the first test; bring the owner one proposed schedule (plan step B4, decision 19)"  # 778e
+    status: todo_hard  # 778e
+    priority: 3  # 778e
+    parent:  # 778e
+    tags:  # 778e
+    - smart_test  # 778e
+    - fast_smart_test_plan  # 778e
+    - ci_infrastructure  # 778e
+    isbefore: []  # 778e
+    duplicate_of: []  # 778e
+    not_duplicate_of: []  # 778e
+    pr_ref:  # 778e
+    description: "WHY. The full suite runs at 01:00 and 13:00 UTC, so a break can wait up to 12 hours before anything measures it. Twice daily was set when every PR ran its whole selection; a run after every merge was removed because with 20 or more merges a day and one run at a time the queue never cleared.\n\nWHAT (owner ruling: measure, then propose; it stays twice daily meanwhile). Measure from Woodpecker's pipeline records: how long a full run and a nightly take; how long the runner sits idle per day; how long a PR's CI takes BEFORE its first test starts (container, install, grammar build). Then bring the owner ONE proposed schedule. The schedule lives in Woodpecker's repository settings; only the owner can change it.\n\nALSO FROM THIS MEASUREMENT. Whether a CI wall-time target can be stated at all (the owner ruled: no CI target until this is known).\n\nCLOSE CONDITION. The three measurements with the pipelines they came from; the proposal posted to the owner; the item moves to needs_human_review until the owner rules.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 778e
+    fields: {}  # 778e

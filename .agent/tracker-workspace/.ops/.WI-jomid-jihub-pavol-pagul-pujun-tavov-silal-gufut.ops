@@ -34,3 +34,10 @@
   nonce: be4d  # be4d
   set:  # be4d
     status: todo_hard  # be4d
+- op: discuss  # e125
+  at: '2026-11-17T07:40:17Z'  # e125
+  by: agent  # e125
+  actor: jgstern_agent  # e125
+  clock: 4  # e125
+  nonce: e125  # e125
+  message: "Built and merged in PR #2219 (dev 26f51346b): scripts/publish-scheduled-verdict, a publish-verdict step in both scheduled workflows, README coverage and full-suite badges reading scheduled/*-badge.json on the badges branch. The owner confirmed on 2026-11-17 that the deploy key and the Woodpecker secret badges_deploy_key (cron event) are in place. STAYS OPEN until a scheduled run has published: the SSH push with the real key and the Woodpecker step are not verifiable before the first run after the merge (13:00 UTC 2026-11-17). Close when `git show origin/badges:scheduled/full-suite.json` names that run's own commit and the two badge files exist; if publish-verdict is red, its log holds a one-line reason."  # e125

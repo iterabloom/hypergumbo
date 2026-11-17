@@ -1,0 +1,21 @@
+- op: create  # 9bd8
+  at: '2026-11-17T08:58:46Z'  # 9bd8
+  by: agent  # 9bd8
+  actor: jgstern_agent  # 9bd8
+  clock: 1  # 9bd8
+  nonce: 9bd8  # 9bd8
+  data:  # 9bd8
+    kind: work_item  # 9bd8
+    title: "smart-test prints its wall time against a 60 s local target and names what made a run miss it (decision 8)"  # 9bd8
+    status: todo_hard  # 9bd8
+    priority: 4  # 9bd8
+    parent:  # 9bd8
+    tags:  # 9bd8
+    - smart_test  # 9bd8
+    - fast_smart_test_plan  # 9bd8
+    isbefore: []  # 9bd8
+    duplicate_of: []  # 9bd8
+    not_duplicate_of: []  # 9bd8
+    pr_ref:  # 9bd8
+    description: "WHAT (owner ruling). The target is 60 s wall for a local smart-test run. It is REPORTED by each run and gates nothing. When a run misses it, the report names the largest parts: the analysis or graph walk, the number of selected tests and their test-seconds, the slowest single test. No CI target until CI's time before the first test is measured (the cadence item).\n\nUNITS. The replay counted test-seconds; this is wall time. On this machine smart-test uses up to 6 workers, capped by free memory.\n\nCLOSE CONDITION. A real run that meets the target and one that misses it, each with the line it printed; a test for the report.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 9bd8
+    fields: {}  # 9bd8

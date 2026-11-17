@@ -1,0 +1,21 @@
+- op: create  # 9bad
+  at: '2026-11-17T08:58:11Z'  # 9bad
+  by: agent  # 9bad
+  actor: jgstern_agent  # 9bad
+  clock: 1  # 9bad
+  nonce: 9bad  # 9bad
+  data:  # 9bad
+    kind: work_item  # 9bad
+    title: "Move STABLE_ID_PREFIX out of schema.py into a leaf module, so a change to schema.py's import-time code stops selecting the whole suite (decision 17a)"  # 9bad
+    status: todo_hard  # 9bad
+    priority: 3  # 9bad
+    parent:  # 9bad
+    tags:  # 9bad
+    - smart_test  # 9bad
+    - fast_smart_test_plan  # 9bad
+    isbefore: []  # 9bad
+    duplicate_of: []  # 9bad
+    not_duplicate_of: []  # 9bad
+    pr_ref:  # 9bad
+    description: "WHAT HAPPENED. Commit 19eaf211c (2026-11-16, stable_id v15) added `from .schema import STABLE_ID_PREFIX` at module level in ir.py (line 126 on dev d0e00a83c). The root conftest imports the core package in a fixture, the package `__init__` imports ir, and ir now imports schema. Under smart-test's import-time rule, a change to a file's module or class body selects every test file whose imports reach it. schema.py's closure was 314 of 1,423 test files before that commit and is 1,474 of 1,474 since (hub_path.py in ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/). A schema version bump is such a change.\n\nWHAT (owner ruling: move it). Put the constant, and whatever it is derived from, in a small leaf module that both ir.py and schema.py import. The VALUE must not change: no stable-id bump.\n\nVERIFY THE PREMISE FIRST. The label is derived from a scheme constant through `schema.value_label` (see WI-jozil-dihub): find out what the leaf module has to hold so that ir.py no longer imports schema at module level, and whether any other module-level import path from ir to schema remains.\n\nNOT MEASURED. How often schema.py's import-time code changes: 2 of the 37 replayed PRs.\n\nCLOSE CONDITION. hub_path.py re-run: schema.py's closure is no longer the whole suite; state the new count. Stable ids are identical before and after (the existing id-pin tests pass unchanged, and a self-run's stable ids compared). The generated docs that name the constant's home are regenerated.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 9bad
+    fields: {}  # 9bad

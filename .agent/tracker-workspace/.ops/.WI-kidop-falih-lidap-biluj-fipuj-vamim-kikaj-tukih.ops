@@ -1,0 +1,22 @@
+- op: create  # d2ae
+  at: '2026-11-17T08:59:03Z'  # d2ae
+  by: agent  # d2ae
+  actor: jgstern_agent  # d2ae
+  clock: 1  # d2ae
+  nonce: d2ae  # d2ae
+  data:  # d2ae
+    kind: work_item  # d2ae
+    title: "auto-pr refuses to merge while the last scheduled full run is red, unless the PR names the red step (plan step B3, decision 18a)"  # d2ae
+    status: todo_hard  # d2ae
+    priority: 2  # d2ae
+    parent:  # d2ae
+    tags:  # d2ae
+    - smart_test  # d2ae
+    - fast_smart_test_plan  # d2ae
+    - ci_infrastructure  # d2ae
+    isbefore: []  # d2ae
+    duplicate_of: []  # d2ae
+    not_duplicate_of: []  # d2ae
+    pr_ref:  # d2ae
+    description: "WHY. A red scheduled run blocks nothing today. Pipelines 6453 and 6480 stood red for days while PRs merged and release 10.0.0 was cut on top. Every merge on a red run adds unmeasured change and widens the range a trace has to search.\n\nWHAT (owner ruling: merges stop). `scripts/auto-pr` reads the same published verdict the session-start reader reads (origin/badges, `scheduled/full-suite.json`) and refuses to merge while the last full run is red, UNLESS the PR says it fixes or reverts the red step by naming it. THREE STATES, not two: red blocks; green passes; NOT KNOWN (no verdict, a verdict that cannot be read, a run that died with its runner) does not block and is said in one line. A MERGED FIX LIFTS THE BLOCK: the full suite is cron-only, so without this every PR waits up to 12 hours for the next run. Decide and write down how auto-pr knows a fix has merged (a commit on dev after the red commit whose PR named the red step) and when the block returns (the next red verdict).\n\nCASES THE RULE MUST NAME. A red caused by a dependency release has no PR at fault: the fix is still a PR naming the step. The nightly's legs: say whether a red nightly blocks or only the full suite does. Tracker auto-sync merges and release PRs: say whether they are exempt.\n\nGOVERNANCE. scripts/auto-pr and AGENTS.md are governance files; the owner approved these merges in advance on 2026-11-17, for this plan's work only, by auto-pr without --gov. AGENTS.md gets the rule beside \"revert first, then fix\".\n\nNEEDS. A published verdict to read: the first is expected from the 13:00 UTC run of 2026-11-17 (WI-jomid-jihub). RELATED: WI-pisal-varop (prepare-release does not consult the scheduled suites) wants the same reader.\n\nCLOSE CONDITION. Tests for the three states and for the lift, each with a mutation control; and live: with a red verdict, an auto-pr that refuses and one naming the step that merges. If no red run occurs, say that the live half is not shown.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # d2ae
+    fields: {}  # d2ae

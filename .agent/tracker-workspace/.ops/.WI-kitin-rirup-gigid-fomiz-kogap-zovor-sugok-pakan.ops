@@ -1,0 +1,21 @@
+- op: create  # ce30
+  at: '2026-11-17T08:58:05Z'  # ce30
+  by: agent  # ce30
+  actor: jgstern_agent  # ce30
+  clock: 1  # ce30
+  nonce: ce30  # ce30
+  data:  # ce30
+    kind: work_item  # ce30
+    title: "smart-test in a worktree: read the main checkout's stored graph, after checking that a graph from a different analyzer build selects the same tests (decision 16a)"  # ce30
+    status: todo_hard  # ce30
+    priority: 3  # ce30
+    parent:  # ce30
+    tags:  # ce30
+    - smart_test  # ce30
+    - fast_smart_test_plan  # ce30
+    isbefore: []  # ce30
+    duplicate_of: []  # ce30
+    not_duplicate_of: []  # ce30
+    pr_ref:  # ce30
+    description: "WHY. Most PRs are built in a worktree with its own XDG_CACHE_HOME and its own analyzer identity, so a worktree run never finds a stored graph: 3 of the 6 uncompared slices in the shadow log, and PRs #2213 to #2217, were built that way. Without this the stored-graph speed-up reaches only PRs built in the main checkout.\n\nWHAT (owner ruling: option a, after a check). FIRST measure the one thing nobody has: step 1a used a single analyzer build throughout. Take graphs produced by two different analyzer builds for the same or nearby commits and compare the test files each selects for the same seed sets, against a fresh analysis. THEN, if they agree, let a worktree run walk the main checkout's newest stored graph.\n\nIF THE CHECK FAILS. Worktree runs keep the fresh analysis, the numbers are written here, and the owner is told. That is a valid close of this item's question, not of the speed-up.\n\nCLOSE CONDITION. The cross-build comparison's counts (pairs compared, test files that differ); and, if it passed, a live worktree `smart-test --manifest` that selects from the main checkout's graph, with its wall time.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # ce30
+    fields: {}  # ce30
