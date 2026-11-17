@@ -26,3 +26,19 @@
   clock: 2  # c69b
   nonce: c69b  # c69b
   message: "Measured 2026-11-16 on dev a35aeb56aa (stableid v15), 45 trees with --include-docs (~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/fleet_idformat.txt): 26 nodes with an `<unknown>` path slot remain, by producer: latex 19 on sqlalchemy's docs (`amsmath:<unknown>:0-0:amsmath:external_symbol`: the package name sits in the lang slot), robot 4 on harbor tests (`robot:<unknown>:0-0:resource:external_symbol`, and one with an empty name slot), meson `subdir` 2 (meson, git-gui), fortran `external` 1 (meson). Seen on a fixture: twig `include('x.twig')` -> `twig:<unknown>:0-0:template:external_symbol`. latex.py, robot.py, meson.py and fortran.py are in this item's list; twig is not."  # c69b
+- op: discuss  # d0b2
+  at: '2026-11-17T05:22:53Z'  # d0b2
+  by: agent  # d0b2
+  actor: jgstern_agent  # d0b2
+  clock: 3  # d0b2
+  nonce: d0b2  # d0b2
+  message: "A RUNTIME MEASURE NOW EXISTS (PR #2217, commit 1e065685b, dev ca25ef307, 2026-11-17; owner ruling 2026-11-16: wire non_id_edge_endpoints to production). Every analyzer and linker pass records `analysis_runs[].non_id_edge_endpoints` (schema 0.21.2): the number of its edge endpoints, src and dst counted apiece, that are neither an emitted symbol's id nor parse as a five-slot id (ADR-0036 Ruling 1); the run's `warnings` name the first three. null = pass not checked (the synthesis passes). This item's before-and-after is now that count on any map. MEASURED with it: a 10-language synthetic tree (~/hypergumbo_lab_notebook/post_release_11162026/endpoint_gate/synth_tree): nix 6, latex 10, robot 2, v 4, gleam 4, odin 4, twig 2, meson 1, powershell 1; real repositories: meson 6 in dbus-broker and 6 in zstd; viper 0. All nine are in this item's list or its note. A SECOND POPULATION this item does not list: endpoints with a raw `:` in the name slot, from the rust and cpp passes (`rust:alloc::rc:0-0:alloc::rc::Rc:attribute`, `cpp:std:0-0:std::uint8_t:attribute`): 139 on dbus-broker, 34 on zstd, 44 on hypergumbo's own tree. finalize recovers a node for these (lenient parse plus meta.callee_name), unlike `meson:subdir:src`; they are counted because the id factory would have sanitized the name. Fixing them changes id text: measure stable ids. NOT ADDED, and why: a spec_validator check on the count, because hypergumbo's own tree is at 44 and the self-tree baseline is shrink-only. Add it when the own-tree count is 0. ORDER: this item blocks WI-gisun-bosov-donum-kupuz-vubos-gadup-runij-fopif (typing Edge.src needs the non-id sources fixed first)."  # d0b2
+- op: update  # 8c61
+  at: '2026-11-17T05:22:54Z'  # 8c61
+  by: agent  # 8c61
+  actor: jgstern_agent  # 8c61
+  clock: 4  # 8c61
+  nonce: 8c61  # 8c61
+  set: {}  # 8c61
+  add:  # 8c61
+    isbefore: [WI-gisun-bosov-donum-kupuz-vubos-gadup-runij-fopif]  # 8c61

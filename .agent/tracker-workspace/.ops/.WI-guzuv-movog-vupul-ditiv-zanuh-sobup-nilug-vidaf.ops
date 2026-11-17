@@ -19,3 +19,18 @@
     pr_ref:  # 5f6e
     description: "C `printf` is catalogued as a host_fs sink, so printing a secret to stdout reads as a write to the file system.\n\nREPRO (release 10.0.0 and the WI-buzup branch). Fixture: ~/hypergumbo_lab_notebook/post_release_11162026/side_defects/c_printf/main.c:\n\n  char *k = getenv(\"API_KEY\");\n  printf(\"%s\\n\", k);\n\n  hypergumbo verify-claims c_printf --claims side_defects/claims_fs.yaml --format json\n  -> violated, exit 1, one evidence row: host_secret -> host_fs, sink printf, walk verdict reached.\n\nTHE ROW. packages/hypergumbo-core/src/hypergumbo_core/io_primitives/c.yaml, `fs_write`, module stdio: its function list holds `printf` and `putchar` beside fopen / fwrite / fprintf. The row's own comment says \"printf has no resource argument at all\". Go's catalogue files fmt.Print / Println / Printf under `logging` (\"write stdout unconditionally\"), and Python's `print` is a logging row too. So the same program reads violated against a host_fs claim in C and clean in Go and Python.\n\nTO DO: move `printf` and `putchar` (and check `puts`, `vprintf`, `perror`, and the cpp.yaml twins) to the zone the other languages use for stdout, or record why C differs. I did not check cpp.yaml, java.yaml, scala.yaml or erlang.yaml, which also mention printf.\n\nCLOSE WHEN c_printf does not read violated against a host_fs claim, and the stdout-printing functions of every catalogued language sit in one zone (list each language checked)."  # 5f6e
     fields: {}  # 5f6e
+- op: update  # ca12
+  at: '2026-11-17T03:56:14Z'  # ca12
+  by: agent  # ca12
+  actor: jgstern_agent  # ca12
+  clock: 2  # ca12
+  nonce: ca12  # ca12
+  set:  # ca12
+    status: wont_do  # ca12
+- op: discuss  # e2f7
+  at: '2026-11-17T03:56:14Z'  # e2f7
+  by: agent  # e2f7
+  actor: jgstern_agent  # e2f7
+  clock: 3  # e2f7
+  nonce: e2f7  # e2f7
+  message: "DUPLICATE, filed by me in error on 2026-11-17 without searching the tracker first: WI-sofam-mazof-havid-bisij-manod-zonak-tozis-tunod (2026-10-03) is this defect, and it already carries the ruling this item asked for (a process's own stdout is `logging` in every catalogue, audit-findings 0021). Closed wont_do as a duplicate; my repro is added to WI-sofam as a note. Nothing is lost by closing this one."  # e2f7
