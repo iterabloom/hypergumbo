@@ -19,3 +19,25 @@
     pr_ref:  # ce30
     description: "WHY. Most PRs are built in a worktree with its own XDG_CACHE_HOME and its own analyzer identity, so a worktree run never finds a stored graph: 3 of the 6 uncompared slices in the shadow log, and PRs #2213 to #2217, were built that way. Without this the stored-graph speed-up reaches only PRs built in the main checkout.\n\nWHAT (owner ruling: option a, after a check). FIRST measure the one thing nobody has: step 1a used a single analyzer build throughout. Take graphs produced by two different analyzer builds for the same or nearby commits and compare the test files each selects for the same seed sets, against a fresh analysis. THEN, if they agree, let a worktree run walk the main checkout's newest stored graph.\n\nIF THE CHECK FAILS. Worktree runs keep the fresh analysis, the numbers are written here, and the owner is told. That is a valid close of this item's question, not of the speed-up.\n\nCLOSE CONDITION. The cross-build comparison's counts (pairs compared, test files that differ); and, if it passed, a live worktree `smart-test --manifest` that selects from the main checkout's graph, with its wall time.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # ce30
     fields: {}  # ce30
+- op: discuss  # 17e4
+  at: '2026-11-17T15:46:04Z'  # 17e4
+  by: agent  # 17e4
+  actor: jgstern_agent  # 17e4
+  clock: 2  # 17e4
+  nonce: '17e4'  # 17e4
+  message: "Merged as PR #2231, dev SHA 268e9cfdaadf."  # 17e4
+- op: update  # 9886
+  at: '2026-11-17T15:46:33Z'  # 9886
+  by: agent  # 9886
+  actor: jgstern_agent  # 9886
+  clock: 3  # 9886
+  nonce: '9886'  # 9886
+  set:  # 9886
+    status: done  # 9886
+- op: discuss  # a9e8
+  at: '2026-11-17T15:46:33Z'  # a9e8
+  by: agent  # a9e8
+  actor: jgstern_agent  # a9e8
+  clock: 4  # a9e8
+  nonce: a9e8  # a9e8
+  message: "Merged in PR #2231 (dev 268e9cfda). THE OWNER'S CHECK, RUN FIRST (decision 16a): commit 5a38b95bb analysed by the installed build (dfca1edd8196f6bb, hypergumbo 10.0.0) and by the tree's own build (7821bf3427cc95d2), 69,013 nodes and 275,454 edges each; for each of 2,600 files alone and the 18 logged changed_source sets both graphs name the same test files: 2,618 same, 0 differ. Control: 2,000 edges deleted from one graph -> 174 sets differ. worktree/cross_build_out2.txt, cross_build_control.txt, cross_build_compare.py. ONE commit and ONE pair of builds, 17 pull requests apart: it does not say two builds further apart agree. WHAT WAS WRONG, which the description had as 'its own cache and its own analyzer identity': a worktree run pins PYTHONPATH to its sources, the installed hypergumbo inherited it and imported the worktree's code (identity dfca1edd8196f6bb without PYTHONPATH, 01971965111c44e4 with a tree's sources pinned), so the 'stable' slice was made by the code under test and no stored graph ever matched. BUILT: smart-test runs the installed hypergumbo with PYTHONPATH empty for the build name, the --minimal probe and the slice; graph-rebuild drops it for the analysis. No graph of ANOTHER build is ever used: a worktree now simply has the installed build, like the main checkout. CLOSE CONDITION: (1) the cross-build counts, above. (2) A LIVE worktree run (git worktree at ~/hg_wt/kitin_probe, PYTHONPATH pinned to its packages/*/src, its own XDG_CACHE_HOME, one source edit): 'selecting from stored graph 4 of 5a38b95bb, 1 commit(s) old: 12 seed file(s), 0 of them not this change's, reaching 0 test file(s) this change does not', wall 50 s; its own rebuild said 'the graph of 5a38b95bb is stored already (graph 4)'. worktree/live_worktree.txt. The probe worktree is removed. (3) Tests: test_the_installed_hypergumbo_never_inherits_the_runs_pythonpath and the rebuild's; mutations X2, X4, X5, X6 red. ALSO IN THIS PR: two stores at once (its own invariant item). CHANGED FOR ANYONE WHO SLICED WITH A TREE'S CODE ON PURPOSE: PYTHONPATH no longer reaches the installed command; a HOME whose .local/bin/hypergumbo is a wrapper that sets PYTHONPATH itself still does it (playbook)."  # a9e8
