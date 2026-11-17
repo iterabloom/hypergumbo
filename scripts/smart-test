@@ -313,6 +313,11 @@ USE_STORED_GRAPH=true
 # selector written later can be replayed against failures that really
 # happened. Explicit-path runs are recorded too: they are most of the runs made
 # while a change is being written. Opt out with --no-run-record.
+# A row also holds what the BY-STATEMENT selector would have selected for the
+# change (hypergumbo_core/statement_select.py), read from the index as it stood
+# before this run was folded into it, and which of the run's failed tests it
+# would have left out. Nothing acts on that selector; these rows are what it
+# will be judged on.
 RUN_RECORDS=true
 
 # LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:

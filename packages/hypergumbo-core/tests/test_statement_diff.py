@@ -83,6 +83,9 @@ def test_an_edited_statement_asks_for_itself_and_for_what_leads_to_it() -> None:
     assert change.ran == frozenset({2, 3})
     assert change.carried == {0: 0, 1: 1, 2: 2, 4: 4, 5: 5}
     assert not change.import_time and change.why == ""
+    # The records that can speak about ``ran`` are those of the OLD block.
+    (old_block,) = [b for b in blocks_for_source("m.py", OLD) if b.name == "f"]
+    assert change.old_digest == old_block.digest
 
 
 def test_a_deleted_statement_asks_only_for_itself() -> None:
@@ -109,6 +112,7 @@ def test_a_statement_added_where_the_block_is_entered_asks_for_every_test() -> N
     assert change.kind is Kind.WHOLE
     assert change.why == "a statement was added or edited where the block is entered"
     assert change.ran == frozenset()
+    assert change.old_digest
     # The docstring is before it and cannot answer: no run is seen executing it.
     edited_first = _edit("    a = 1 ", "    a = 7 ")
     assert edited_first.kind is Kind.WHOLE
@@ -299,6 +303,8 @@ def test_an_added_and_a_deleted_file() -> None:
     deleted = statement_diff.statement_changes("m.py", OLD, None)
     assert {name: change.kind for name, change in deleted.items()} == {
         MODULE_BLOCK: Kind.GONE, "f": Kind.GONE}
+    assert all(change.old_digest for change in deleted.values())
+    assert not any(change.old_digest for change in added.values())
     assert statement_diff.statement_changes("m.py", None, None) == {}
 
 
@@ -325,6 +331,7 @@ def test_a_digest_that_moved_with_nothing_to_show_for_it_asks_for_every_test() -
     change = statement_diff._compare(parsed, parsed)
     assert (change.kind, change.why) == (
         Kind.WHOLE, "it changed in a way none of its statements shows")
+    assert change.old_digest == parsed.block.digest
 
 
 # ── soundness, by execution ─────────────────────────────────────────────────
