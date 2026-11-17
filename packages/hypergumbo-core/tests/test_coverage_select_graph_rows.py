@@ -56,7 +56,7 @@ def _helper(repo: Path, *argv: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(_HELPER), "--repo-root", str(repo),
          "--index", str(logs / "index.sqlite"), "--stale-log", str(logs / "stale.jsonl"),
-         "--graphs", str(logs / "graphs.jsonl"), *argv],
+         *argv],
         capture_output=True, text=True, cwd=str(repo))
 
 
@@ -166,9 +166,13 @@ def test_the_newest_graph_is_walked_and_its_age_is_counted_from_its_commit(repo:
     assert "stored graph 2" in stored.stderr
     assert "and 2 file(s) not in that commit" in stored.stderr
     conn = sqlite3.connect(repo.parent / "logs" / "index.sqlite")
-    assert [g.dirty_files for g in graph_rows.stored_graphs(conn)] == [
-        ("packages/p/src/p/a.py", "packages/p/src/p/new.py"), ()]
+    newest, oldest = graph_rows.stored_graphs(conn)
     conn.close()
+    assert [g.dirty_files for g in (newest, oldest)] == [
+        ("packages/p/src/p/a.py", "packages/p/src/p/new.py"), ()]
+    # Each graph carries its commit's tree id, which outlives a rebased commit.
+    assert oldest.git_tree == _git(repo, "rev-parse", f"{first_head}^{{tree}}")
+    assert newest.git_tree == _git(repo, "rev-parse", "HEAD^{tree}") != oldest.git_tree
     assert _helper(repo, "graph-walk", "--changed-files", str(listing),
                    "--output", str(out)).returncode == 0
     assert out.read_text().splitlines() == ["packages/p/src/p/b.py", "packages/p/tests/test_a.py"]
@@ -189,6 +193,10 @@ def test_the_newest_graph_is_walked_and_its_age_is_counted_from_its_commit(repo:
     assert listing_out[0].startswith(f"graph 4: head {first_head[:9]}, 1 commit(s) old")
     assert listing_out[1].startswith(
         "graph 3: head 000000000, and 1 file(s) not in that commit, age not known")
+    conn = sqlite3.connect(repo.parent / "logs" / "index.sqlite")
+    assert [g.git_tree for g in graph_rows.stored_graphs(conn)][:2] == [
+        _git(repo, "rev-parse", f"{first_head}^{{tree}}"), None], "an unknown commit has no tree"
+    conn.close()
 
 
 def test_a_fresh_analysis_recorded_by_the_shadow_leaves_its_rows(repo: Path) -> None:
@@ -216,3 +224,225 @@ def test_a_file_that_holds_no_graph_stores_nothing_and_opens_no_index(
     assert "holds no node and edge lists; nothing stored" in done.stderr
     assert not (repo.parent / "logs" / "index.sqlite").exists()
     assert _helper(repo, "graph-store", "--survey", str(survey)).returncode == 1
+
+
+# ── graph-select: the stored graph's answer for a LATER tree ─────────────────
+
+A, B = "packages/p/src/p/a.py", "packages/p/src/p/b.py"
+TEST_A, TEST_B = "packages/p/tests/test_a.py", "packages/p/tests/test_b.py"
+#: a.py <- test_a; b.py <- test_b. Nothing joins the two halves.
+_TWO_HALVES = {
+    "nodes": [{"id": "a", "path": A}, {"id": "b", "path": B},
+              {"id": "ta", "path": TEST_A}, {"id": "tb", "path": TEST_B}],
+    "edges": [{"src": "ta", "dst": "a"}, {"src": "tb", "dst": "b"}],
+}
+
+
+@pytest.fixture
+def later(repo: Path) -> Path:
+    """The repository with both source files committed and a graph stored of
+    exactly that commit."""
+    (repo / B).write_text("B = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "two files")
+    assert _helper(repo, "graph-store", "--survey",
+                   str(_survey(repo, "tree1", _TWO_HALVES))).returncode == 0
+    return repo
+
+
+def _select(repo: Path, *changed: str, extra: tuple[str, ...] = ()) -> tuple[
+        subprocess.CompletedProcess[str], list[str] | None, dict]:
+    out, report = repo.parent / "select.txt", repo.parent / "report.json"
+    for stale in (out, report):
+        if stale.exists():
+            stale.unlink()
+    done = _helper(repo, "graph-select", "--changed-files", str(_changed(repo, *changed)),
+                   "--output", str(out), "--report", str(report), *extra)
+    return (done, out.read_text().splitlines() if out.exists() else None,
+            json.loads(report.read_text()) if report.exists() else {})
+
+
+def test_a_graph_of_this_very_tree_answers_for_the_change_alone(later: Path) -> None:
+    (later / A).write_text("A = 2\n")
+    done, files, report = _select(later, A)
+    assert done.returncode == 0, done.stderr
+    assert files == [A, TEST_A]
+    head = _git(later, "rev-parse", "HEAD")
+    assert done.stdout.strip() == (
+        f"stored graph 1 of {head[:9]}, 0 commit(s) old: 1 seed file(s), 0 of them not this "
+        "change's, reaching 0 test file(s) this change does not; 2 file(s) named")
+    assert (report["code"], report["age_commits"], report["extra_seeds"]) == (0, 0, 0)
+
+
+def test_what_changed_since_the_graph_is_seeded_too_and_its_tests_are_counted(later: Path) -> None:
+    # Someone else's change to b.py is merged after the graph was made.
+    (later / B).write_text("B = 2\n")
+    _git(later, "commit", "-q", "-am", "their change")
+    (later / A).write_text("A = 2\n")
+    done, files, report = _select(later, A)
+    assert done.returncode == 0, done.stderr
+    assert files == [A, B, TEST_A, TEST_B], "b.py differs from the graph's tree: it is a seed"
+    assert "1 commit(s) old: 2 seed file(s), 1 of them not this change's, reaching 1 test" in done.stdout
+    assert (report["seeds"], report["extra_seeds"], report["extra_test_files"]) == (2, 1, 1)
+
+    # One surplus test file is over a limit of none: a fresh analysis instead.
+    refused, files, report = _select(later, A, extra=("--max-extra-tests", "0"))
+    assert (refused.returncode, files) == (6, None)
+    assert "they reach 1 test file(s) this change does not (limit 0)" in refused.stderr
+    assert report["code"] == 6 and "limit 0" in report["reason"]
+
+
+def test_a_file_that_was_uncommitted_when_the_graph_was_made_stays_a_seed(repo: Path) -> None:
+    """The graph saw b.py as it was edited then. Putting b.py back does not make
+    the graph's tree and this one the same."""
+    (repo / B).write_text("B = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "two files")
+    (repo / B).write_text("B = 999\n")
+    _helper(repo, "graph-store", "--survey", str(_survey(repo, "tree1", _TWO_HALVES)))
+    _git(repo, "checkout", "--", B)
+    (repo / A).write_text("A = 2\n")
+    done, files, report = _select(repo, A)
+    assert done.returncode == 0, done.stderr
+    assert files == [A, B, TEST_A, TEST_B]
+    assert (report["dirty"], report["extra_seeds"]) == (True, 1)
+
+
+def test_an_added_test_runs_itself_and_an_added_file_is_left_to_what_mentions_it(
+        later: Path) -> None:
+    (later / "packages/p/tests").mkdir(parents=True)
+    new_test = "packages/p/tests/test_new.py"
+    (later / new_test).write_text("def test_new(): pass\n")
+    new_source = "packages/p/src/p/widget_store.py"
+    (later / new_source).write_text("STORE = {}\n")
+    (later / A).write_text("A = 2\nfrom p.widget_store import STORE\n")
+    # The change list names a.py only: the files that are not tracked are found
+    # by asking git, not by trusting the caller to have listed them.
+    done, files, report = _select(later, A)
+    assert done.returncode == 0, done.stderr
+    assert files == [A, TEST_A, new_test], (
+        "the new test is named though the graph has no node for it; the new "
+        "source file has none either and is answered for by a.py, which mentions it")
+    assert report["added_tests"] == [new_test]
+    assert report["added_mentioned"] == [[new_source, A]]
+
+
+@pytest.mark.parametrize(("added", "reason"), [
+    ("packages/p/tests/fixtures/tree/lonely_fixture.txt", "no other changed file mentions it"),
+    ("packages/p/tests/conftest.py", "an added conftest.py applies to every test under"),
+])
+def test_an_added_file_nothing_accounts_for_is_exit_5(later: Path, added: str, reason: str) -> None:
+    (later / added).parent.mkdir(parents=True, exist_ok=True)
+    (later / added).write_text("x\n")
+    (later / A).write_text("A = 2  # see conftest\n")
+    done, files, report = _select(later, A)
+    assert (done.returncode, files) == (5, None), done.stderr
+    assert f"{added} was added since the stored graph and {reason}" in done.stderr
+    assert report["code"] == 5
+
+
+def test_a_pending_tracker_op_is_no_part_of_either_tree(later: Path) -> None:
+    (later / ".agent/tracker/.ops").mkdir(parents=True)
+    (later / ".agent/tracker/.ops/.WI-x.ops").write_text("op\n")
+    (later / A).write_text("A = 2\n")
+    done, files, report = _select(later, A)
+    assert done.returncode == 0 and report["seeds"] == 1, done.stderr
+
+
+def test_no_usable_stored_graph_is_exit_3_with_the_reason_for_each(later: Path) -> None:
+    (later / A).write_text("A = 2\n")
+    _git(later, "commit", "-q", "-am", "mine")
+    too_old, files, report = _select(later, A, extra=("--max-age", "0"))
+    assert (too_old.returncode, files) == (3, None)
+    assert "no usable stored graph: graph 1 is 1 commits old (limit 0)" in too_old.stderr
+    assert report["code"] == 3 and report["id"] is None
+
+    other_build, files, _ = _select(later, A, extra=("--build", "another"))
+    assert (other_build.returncode, files) == (3, None)
+    assert "graph 1 is from another analyzer build" in other_build.stderr
+
+    # A graph whose commit, and so whose tree, this repository never had.
+    _helper(later, "graph-store", "--survey", str(_survey(later, "tree2", _TWO_HALVES)),
+            "--head", "0" * 40)
+    unknown, files, _ = _select(later, A, extra=("--max-age", "0"))
+    assert (unknown.returncode, files) == (3, None)
+    assert "graph 2: git does not have its tree; graph 1 is 1 commits old" in unknown.stderr
+
+
+def test_no_index_and_a_missing_change_list_are_3_and_4(repo: Path) -> None:
+    done, files, _ = _select(repo, "packages/p/src/p/a.py")
+    assert (done.returncode, files) == (3, None) and "no index" in done.stderr
+    out = repo.parent / "select.txt"
+    failed = _helper(repo, "graph-select", "--changed-files", str(repo.parent / "absent.txt"),
+                     "--output", str(out))
+    assert (failed.returncode, out.exists()) == (4, False)
+    assert "graph-select FAILED" in failed.stderr
+
+
+def test_a_graph_of_a_commit_a_rebase_rewrote_is_found_by_its_tree(later: Path) -> None:
+    """A pull request merged by rebase gets new commit ids. The graph made on
+    the branch names a commit that no longer exists; its tree is the merged
+    commit's tree, and that is how the graph is aged and compared."""
+    _git(later, "checkout", "-q", "-b", "feature")
+    (later / A).write_text("A = 2\n")
+    _git(later, "commit", "-q", "-am", "on the branch")
+    branch_commit = _git(later, "rev-parse", "HEAD")
+    _helper(later, "graph-store", "--survey", str(_survey(later, "tree2", _TWO_HALVES)))
+    # The "merge": the same tree under a new commit on main, then one more commit.
+    _git(later, "checkout", "-q", "main")
+    merged = _git(later, "commit-tree", f"{branch_commit}^{{tree}}", "-p", "main", "-m", "merged")
+    _git(later, "reset", "-q", "--hard", merged)
+    (later / B).write_text("B = 2\n")
+    _git(later, "commit", "-q", "-am", "the next change")
+    _git(later, "branch", "-q", "-D", "feature")
+    _git(later, "reflog", "expire", "--expire=now", "--all")
+    _git(later, "gc", "-q", "--prune=now")
+    gone = subprocess.run(["git", "cat-file", "-e", f"{branch_commit}^{{commit}}"],  # noqa: S607
+                          cwd=str(later), capture_output=True)
+    assert gone.returncode != 0, "the branch commit must really be gone for this test to mean anything"
+
+    assert f"graph 2: head {branch_commit[:9]}, 1 commit(s) old" in _helper(later, "graph-list").stdout
+    (later / A).write_text("A = 3\n")
+    done, files, report = _select(later, A)
+    assert done.returncode == 0, done.stderr
+    assert report["id"] == 2 and report["age_commits"] == 1
+    assert files == [A, B, TEST_A, TEST_B], "b.py changed after the merged tree: a seed"
+
+
+def test_a_file_the_graph_already_saw_untracked_is_not_added_since(repo: Path) -> None:
+    """A fixture nothing mentions was on disk, not yet tracked, when the graph
+    was made: the analysis saw it. It is a seed, not a file added since."""
+    (repo / B).write_text("B = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "two files")
+    lonely = "packages/p/tests/fixtures/tree/lonely_fixture.txt"
+    (repo / lonely).parent.mkdir(parents=True)
+    (repo / lonely).write_text("x\n")
+    _helper(repo, "graph-store", "--survey", str(_survey(repo, "tree1", _TWO_HALVES)))
+    (repo / A).write_text("A = 2\n")
+    done, files, report = _select(repo, A)
+    assert done.returncode == 0, done.stderr
+    assert (report["seeds"], report["dirty"]) == (2, True)
+
+
+def test_a_graph_whose_tree_this_repository_does_not_have_is_passed_over(
+        later: Path, tmp_path: Path) -> None:
+    """The index is one file for every checkout on the machine. A graph of
+    another repository has a tree id git here cannot resolve: it is not usable,
+    which is exit 3 and not a failed walk."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "unrelated.py").write_text("U = 1\n")
+    _git(elsewhere, "init", "-q", "-b", "main")
+    _git(elsewhere, "add", "-A")
+    _git(elsewhere, "commit", "-q", "-m", "another repository")
+    out = tmp_path / "walk.txt"
+    listing = tmp_path / "changed-elsewhere.txt"
+    listing.write_text("unrelated.py\n")
+    done = subprocess.run(
+        [sys.executable, str(_HELPER), "--repo-root", str(elsewhere),
+         "--index", str(later.parent / "logs" / "index.sqlite"), "graph-select",
+         "--changed-files", str(listing), "--output", str(out)],
+        capture_output=True, text=True, cwd=str(elsewhere))
+    assert (done.returncode, out.exists()) == (3, False), done.stderr
+    assert "graph 1: git does not have its tree" in done.stderr

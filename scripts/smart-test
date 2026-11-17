@@ -228,9 +228,23 @@ SELECT_IMPORTERS=true
 # which is nearly all of the time selection takes; walking a graph that is
 # already on disk takes seconds. Whether a graph recorded at an OLDER tree
 # names the same test files is a question only evidence answers, so every time
-# a fresh slice is computed the same walk is also run on the newest older
-# graph and both answers are stored. Opt out with --no-stale-shadow.
+# a fresh slice is computed, what the graphs stored before it would have
+# selected is computed too and both answers are stored. Opt out with
+# --no-stale-shadow.
 STALE_SHADOW=true
+#
+# STORED-GRAPH SELECTION (not a recorder: it decides which tests run). The
+# reverse slice needs a graph of the repository, and analysing it takes five
+# minutes. Every fresh analysis leaves its graph as rows in the selection
+# index, and a stored graph answers for a later tree when every file that
+# differs between the two is seeded (coverage-select graph-select;
+# hypergumbo_core/graph_select.py says what is seeded and why). So the slice
+# runs only when no stored graph may answer: none is stored for the installed
+# analyzer build, the newest is more than 93 commits old, a file added since
+# is mentioned by no other changed file, or the graph's age would add more
+# than 150 test files that are not this change's. The manifest header names
+# the graph and its age. Opt out per run with --fresh-graph.
+USE_STORED_GRAPH=true
 #
 # RUN RECORDS. Every run that reaches pytest stores which commit and change it
 # ran against, which test files ran and which tests did not pass, so that a
@@ -286,6 +300,7 @@ for arg in "$@"; do
         --no-read-union) SELECT_READERS=false ;;
         --no-import-union) SELECT_IMPORTERS=false ;;
         --no-stale-shadow) STALE_SHADOW=false ;;
+        --fresh-graph) USE_STORED_GRAPH=false ;;
         --no-run-record) RUN_RECORDS=false ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
@@ -315,6 +330,10 @@ if [[ -n "${CI:-}" ]] || [[ -n "$STARTED_UNDER_SMART_TEST" ]] || [[ "$TARGET_MOD
     # another repository (target mode) is not about this one.
     STALE_SHADOW=false
     RUN_RECORDS=false
+    # The stored graphs are this developer's, of this repository. CI reads the
+    # committed manifest and never slices; a smart-test started by a test, or
+    # pointed at another repository, must not select from them.
+    USE_STORED_GRAPH=false
 fi
 if [[ -n "${CI:-}" ]]; then
     SELECT_NARROW=false
@@ -1381,51 +1400,49 @@ fi
 # seam reads them -- and the main flow calls it exactly once, right after its
 # closing brace.
 # === STALE-GRAPH SHADOW ===
-# Runs the walk the fresh slice just made on the newest OLDER graph, and stores
-# both answers (see STALE_SHADOW above). It reports and acts on nothing, and it
-# must never fail the run it rides on: every step degrades to a stored reason.
+# After a FRESH slice: stores what the fresh walk named beside what the graphs
+# stored before it would have selected for the same tree (coverage-select
+# stale-record makes that selection itself, as graph-select would), and keeps
+# the fresh graph. It reports and acts on nothing, and it must never fail the
+# run it rides on: every step degrades to a stored reason.
 #
 # The fresh graph is found as the one survey.json written under the cache since
 # $STALE_MARK was created. None means the slice answered from a cached survey
 # (the tree did not change since an earlier run); more than one means another
 # analysis finished meanwhile and the two cannot be told apart. Either way no
-# comparison is made, and the row says which.
+# comparison is made and no graph is kept, and the row says which.
 #
-# stale-record also keeps the fresh graph: it stores the survey's nodes and
-# edges as rows in the selection index (hypergumbo_core/graph_rows.py). The
-# survey is some 330 MB in a cache that evicts it within hours; the rows are
-# about 4 MB and are what `coverage-select graph-walk` walks.
+# Keeping the fresh graph: stale-record stores the survey's nodes and edges as
+# rows in the selection index (hypergumbo_core/graph_rows.py). The survey is
+# some 330 MB in a cache that evicts it within hours; the rows are about 5 MB
+# and are what the stored-graph selection below walks.
 stale_graph_shadow() {
     local helper="$TOOLS_ROOT/scripts/coverage-select"
     local cache_base="${XDG_CACHE_HOME:-$HOME/.cache}/hypergumbo"
-    local written count fresh_survey="" older="" why="" stale_out stale_seconds=""
+    local written count fresh_survey="" why=""
     written=$(find "$cache_base" -mindepth 5 -maxdepth 5 -name survey.json -newer "$STALE_MARK" 2>/dev/null || true)
     count=$(printf '%s\n' "$written" | sed '/^$/d' | wc -l | tr -d ' ')
-    stale_out=$(mktemp)
     if [[ "$count" -ne 1 ]]; then
         why="the fresh slice left $count new surveys in the cache; exactly 1 identifies its graph (0: it answered from a cached survey)"
     else
         fresh_survey="$written"
-        older=$("$helper" --repo-root "$REPO_ROOT" stale-pick --fresh-survey "$fresh_survey" 2>/dev/null || true)
-        if [[ -z "$older" ]]; then
-            why="no older graph from this analyzer build is registered and still on disk"
-        else
-            local stale_start=$SECONDS
-            if $STABLE_HG slice --files "$CHANGED_FILE_LIST" --input "$older" --output "$stale_out" 2>/dev/null; then
-                stale_seconds=$((SECONDS - stale_start))
-            else
-                why="the slice on the older graph failed"
-                older=""
-            fi
-        fi
     fi
     "$helper" --repo-root "$REPO_ROOT" stale-record \
         --changed-files <(echo "$CHANGED_FILES") --fresh-out "$SLICE_OUTPUT" \
         --fresh-seconds "$SLICE_DURATION_S" \
         ${fresh_survey:+--fresh-survey "$fresh_survey"} \
-        ${older:+--older-survey "$older" --stale-out "$stale_out" --stale-seconds "$stale_seconds"} \
         ${why:+--why "$why"} || true
-    rm -f "$stale_out"
+}
+
+# The analyzer build of the installed hypergumbo: the name the survey cache
+# files its results under, so the build a stored graph has to be from. Read
+# from the interpreter in the command's first line; prints nothing when that
+# is not a plain interpreter path or the answer is not a build name.
+stable_analyzer_build() {
+    local interpreter
+    interpreter=$(head -1 "$STABLE_HG" 2>/dev/null | sed -n 's/^#!//p')
+    [[ -n "$interpreter" ]] && [[ -x "$interpreter" ]] || return 0
+    "$interpreter" -c 'from hypergumbo_core.analyzer_identity import compute_analyzer_identity_hash as f; print(f())' 2>/dev/null | grep -E '^[0-9a-f]{16}$' || true
 }
 
 select_static() {
@@ -1475,6 +1492,31 @@ fi
 SLICE_CMD="$STABLE_HG slice --files $CHANGED_FILE_LIST ${SLICE_MINIMAL[@]+${SLICE_MINIMAL[@]}} --output $SLICE_OUTPUT"
 STALE_MARK=$(mktemp)
 SLICE_START_S=$SECONDS
+
+# === STORED-GRAPH SELECTION ===
+# (USE_STORED_GRAPH above says what this is.) Asked under the same condition
+# as the slice, a changed package source file, and seeded with EVERY changed
+# file. graph-select exits 0 only with $SLICE_OUTPUT written; any other exit
+# is a reason to analyse, printed, and the slice below runs as before.
+GRAPH_ANSWERED=false
+GRAPH_LINE=""
+if [[ "$USE_STORED_GRAPH" == "true" ]] && [[ -s "$CHANGED_FILE_LIST" ]]; then
+    GRAPH_BUILD=$(stable_analyzer_build)
+    if [[ -z "$GRAPH_BUILD" ]]; then
+        echo "[smart-test] stored graph not used: the installed hypergumbo's analyzer build could not be read; analysing the repository" >&2
+    else
+        GRAPH_EXIT=0
+        GRAPH_LINE=$("$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" graph-select --changed-files <(echo "$CHANGED_FILES") --output "$SLICE_OUTPUT" --build "$GRAPH_BUILD" 2>"$SLICE_STDERR") || GRAPH_EXIT=$?
+        if [[ $GRAPH_EXIT -eq 0 ]] && [[ -n "$GRAPH_LINE" ]]; then
+            GRAPH_ANSWERED=true
+            echo "[smart-test] selecting from $GRAPH_LINE (--fresh-graph analyses the repository instead)" >&2
+        else
+            echo "[smart-test] stored graph not used (graph-select exit $GRAPH_EXIT): $(tail -1 "$SLICE_STDERR" 2>/dev/null); analysing the repository" >&2
+            GRAPH_LINE=""
+            : > "$SLICE_OUTPUT"
+        fi
+    fi
+fi
 # WI-tolil: `set -euo pipefail` would abort the WHOLE script HERE on a non-zero
 # slice exit — before SLICE_EXIT is captured and before the slice-failure
 # fallback below (run_full_suite) can run — swallowing the failure silently
@@ -1482,7 +1524,9 @@ SLICE_START_S=$SECONDS
 # believes tests passed). Capture the real exit via `||` so the fallback is
 # reachable. The `|| SLICE_EXIT=$?` idiom is not subject to `set -e`.
 SLICE_EXIT=0
-if [[ -s "$CHANGED_FILE_LIST" ]]; then
+if [[ "$GRAPH_ANSWERED" == "true" ]]; then
+    : # The stored graph answered: $SLICE_OUTPUT holds the files it named.
+elif [[ -s "$CHANGED_FILE_LIST" ]]; then
     # ONE line on purpose, and within 4 lines of the `-s` check above: the
     # WI-tolil / WI-zufij guards scan smart-test line-by-line and by proximity.
     # Keep the line intact and this comment short rather than loosening them.
@@ -1507,7 +1551,9 @@ if [[ $SLICE_EXIT -ne 0 ]]; then
     run_full_suite "slice command failed" "$CHANGED_FILES"
 fi
 
-if [[ "$STALE_SHADOW" == "true" ]] && [[ -s "$CHANGED_FILE_LIST" ]]; then
+# Only after a FRESH slice: with the stored graph's answer there is no fresh
+# one to compare it with, and no new graph to keep.
+if [[ "$STALE_SHADOW" == "true" ]] && [[ "$GRAPH_ANSWERED" != "true" ]] && [[ -s "$CHANGED_FILE_LIST" ]]; then
     stale_graph_shadow || true
 fi
 rm -f "$STALE_MARK"
@@ -2374,6 +2420,9 @@ mkdir -p "$MANIFEST_DIR"
     echo "# Changed files: $(echo "$ALL_CHANGED_FILES" | wc -l)"
     echo "# Changed source files: $SOURCE_COUNT"
     echo "# Selected tests: $MANIFEST_TEST_COUNT"
+    if [[ -n "${GRAPH_LINE:-}" ]]; then
+        echo "# Graph: $GRAPH_LINE"
+    fi
     if [[ -n "$PROSE_ONLY_FILES" ]]; then
         echo "# Prose-only files: $(echo "$PROSE_ONLY_FILES" | wc -l) (comments and docstrings only; their tests come from recorded evidence, not the import graph)"
     fi

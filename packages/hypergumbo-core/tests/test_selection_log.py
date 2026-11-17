@@ -31,8 +31,6 @@ from hypergumbo_core.selection_log import (
     evaluate,
     evaluate_stale_graph,
     load_observations,
-    newest_older_graph,
-    register_graph,
     sliceable_sources,
     sliced_test_files,
     stale_graph_row,
@@ -202,59 +200,6 @@ def test_end_to_end_append_then_evaluate(tmp_path: Path) -> None:
     assert ev.observations == 2
     assert ev.verdict == "disqualified", ev.summary()
     assert ev.dangerous == (("c2", "b.py::t9"),)
-
-
-def _survey(tmp_path, state: str, build: str = "buildA") -> str:
-    """A survey file where the cache would keep it: <state>/<build>/survey.json."""
-    path = tmp_path / "cache" / "repo" / "results" / state / build / "survey.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{}")
-    return str(path)
-
-
-class TestGraphRegistry:
-    """Which older graph a fresh slice is compared with. A wrong pick compares
-    the tree with itself, or two analyzers, and either would read as agreement
-    or as a loss that the stored graph did not cause."""
-
-    def test_the_newest_other_graph_is_picked(self, tmp_path) -> None:
-        reg = tmp_path / "graphs.jsonl"
-        old, mid, fresh = (_survey(tmp_path, s) for s in ("s1", "s2", "s3"))
-        register_graph(reg, survey=old, head="aaa", dirty=False, at="t1")
-        register_graph(reg, survey=mid, head="bbb", dirty=True, at="t2")
-        picked = newest_older_graph(reg, fresh)
-        assert picked == {"survey": mid, "head": "bbb", "dirty": True, "at": "t2"}
-
-    def test_the_fresh_graph_is_never_its_own_older_graph(self, tmp_path) -> None:
-        reg = tmp_path / "graphs.jsonl"
-        old, fresh = _survey(tmp_path, "s1"), _survey(tmp_path, "s2")
-        register_graph(reg, survey=old, head="aaa", dirty=False, at="t1")
-        register_graph(reg, survey=fresh, head="bbb", dirty=False, at="t2")
-        assert newest_older_graph(reg, fresh)["survey"] == old
-
-    def test_a_graph_from_another_analyzer_build_is_not_picked(self, tmp_path) -> None:
-        reg = tmp_path / "graphs.jsonl"
-        same = _survey(tmp_path, "s1", "buildA")
-        other = _survey(tmp_path, "s2", "buildB")
-        register_graph(reg, survey=same, head="aaa", dirty=False, at="t1")
-        register_graph(reg, survey=other, head="bbb", dirty=False, at="t2")
-        assert newest_older_graph(reg, _survey(tmp_path, "s3", "buildA"))["survey"] == same
-
-    def test_an_evicted_graph_is_not_picked(self, tmp_path) -> None:
-        reg = tmp_path / "graphs.jsonl"
-        kept, gone = _survey(tmp_path, "s1"), _survey(tmp_path, "s2")
-        register_graph(reg, survey=kept, head="aaa", dirty=False, at="t1")
-        register_graph(reg, survey=gone, head="bbb", dirty=False, at="t2")
-        Path(gone).unlink()
-        assert newest_older_graph(reg, _survey(tmp_path, "s3"))["survey"] == kept
-
-    def test_nothing_registered_is_no_graph(self, tmp_path) -> None:
-        assert newest_older_graph(tmp_path / "absent.jsonl", _survey(tmp_path, "s1")) is None
-
-    def test_a_row_without_a_survey_is_skipped(self, tmp_path) -> None:
-        reg = tmp_path / "graphs.jsonl"
-        reg.write_text(json.dumps({"head": "aaa"}) + "\n")
-        assert newest_older_graph(reg, _survey(tmp_path, "s1")) is None
 
 
 class TestSliceOutput:

@@ -20,7 +20,7 @@ files. A graph of 68,798 nodes and 274,523 distinct edges is about 4 MB of
 rows where its survey is 349 MB, and it is read back in a fraction of a second.
 
 WHERE. In the selection index's SQLite file, in tables of this module's own
-(``graph``, ``graph_path``, ``graph_node``, ``graph_edge``, ``graph_dirty``):
+(``graph``, ``graph_path``, ``graph_node``, ``graph_edge``, ``graph_dirty``, ``graph_format``):
 :func:`ensure_schema` adds them to an open index. That file is one per
 machine, outside every checkout, so a graph stored by a run in one checkout
 can be walked from another, which a per-checkout survey cache cannot offer.
@@ -59,14 +59,24 @@ cache files it under); storing that pair again replaces it. The newest
 with the one before it, several builds because a worktree and the main
 checkout run different ones.
 
-WHICH TREE A GRAPH IS OF. ``head`` is the commit that was checked out, and
-``dirty_files`` the files that differed from it (changed and not committed, or
-not tracked) when the analysis ran. Together they name the tree: a caller that
+WHICH TREE A GRAPH IS OF. ``head`` is the commit that was checked out,
+``git_tree`` the id of that commit's tree, and ``dirty_files`` the files that
+differed from it (changed and not committed, or not tracked) when the analysis
+ran. The tree id is kept beside the commit because a branch commit is
+rewritten when its pull request is merged by rebase: the commit id then names
+nothing reachable, while the tree it pointed at is the tree of the merged
+commit and can still be compared with. Together they name the tree: a caller that
 walks the graph for a LATER tree has to seed every file that differs between
 the two, because an edge that exists now and not in the graph starts in such a
 file, and a file added since is not in the graph at all. A flag saying only
 "the tree was dirty" would make the graph useless for that, so the list is
 kept.
+
+THE ROWS ARE A CACHE WITH A FORMAT. :data:`FORMAT` is stored beside the
+tables. :func:`ensure_schema` drops and recreates them when the stored number
+is another one (or none: the first layout had no number), because a graph
+that is lost costs one analysis and a graph read with the wrong layout costs
+a wrong selection.
 
 ABSENT IS NOT EMPTY. Walking a graph that is not stored raises
 :class:`GraphNotStored`. An empty answer means "no node of the stored graph is
@@ -91,12 +101,16 @@ KEEP_PER_BUILD = 2
 #: Analyzer builds whose graphs are kept.
 KEEP_BUILDS = 4
 
+#: The layout of this module's tables. 1 had no ``git_tree`` and no number.
+FORMAT = 2
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS graph (
     id    INTEGER PRIMARY KEY,
     tree  TEXT NOT NULL,
     build TEXT NOT NULL,
     head  TEXT NOT NULL,
+    git_tree TEXT,
     at    TEXT NOT NULL,
     nodes INTEGER NOT NULL,
     edges INTEGER NOT NULL,
@@ -138,6 +152,15 @@ _DROP = (
 )
 
 
+_DROP_TABLES = (
+    "DROP TABLE IF EXISTS graph_path",
+    "DROP TABLE IF EXISTS graph_node",
+    "DROP TABLE IF EXISTS graph_edge",
+    "DROP TABLE IF EXISTS graph_dirty",
+    "DROP TABLE IF EXISTS graph",
+)
+
+
 class GraphNotStored(LookupError):
     """No graph with this id is in the index: there is nothing to walk."""
 
@@ -148,14 +171,16 @@ class StoredGraph:
 
     ``tree`` and ``build`` are the survey cache's names for the tree state and
     the analyzer identity. ``head`` is the commit checked out when the graph
-    was made and ``dirty_files`` the files that differed from it then, sorted;
-    none means the graph is of exactly that commit.
+    was made, ``git_tree`` the id of that commit's tree (None when it was not
+    recorded) and ``dirty_files`` the files that differed from the commit
+    then, sorted; none means the graph is of exactly that commit.
     """
 
     id: int
     tree: str
     build: str
     head: str
+    git_tree: Optional[str]
     dirty_files: tuple[str, ...]
     at: str
     nodes: int
@@ -217,7 +242,16 @@ def dependent_files(
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
-    """Add this module's tables to an open index; a no-op when they exist."""
+    """Add this module's tables to an open index; a no-op when they exist in
+    this :data:`FORMAT`. Tables of another format are dropped first, with the
+    graphs in them (module docstring)."""
+    conn.execute("CREATE TABLE IF NOT EXISTS graph_format (format INTEGER NOT NULL)")
+    stamped = conn.execute("SELECT format FROM graph_format").fetchone()
+    if stamped is None or int(stamped[0]) != FORMAT:
+        for statement in _DROP_TABLES:
+            conn.execute(statement)
+        conn.execute("DELETE FROM graph_format")
+        conn.execute("INSERT INTO graph_format (format) VALUES (?)", (FORMAT,))
     conn.executescript(_SCHEMA)
 
 
@@ -227,11 +261,13 @@ def stored_graphs(conn: sqlite3.Connection) -> list[StoredGraph]:
     for graph_id, path in conn.execute("SELECT graph, path FROM graph_dirty ORDER BY path"):
         dirty.setdefault(int(graph_id), []).append(str(path))
     rows: list[Sequence[Any]] = conn.execute(
-        "SELECT id, tree, build, head, at, nodes, edges FROM graph ORDER BY id DESC").fetchall()
+        "SELECT id, tree, build, head, git_tree, at, nodes, edges "
+        "FROM graph ORDER BY id DESC").fetchall()
     return [StoredGraph(id=int(ident), tree=str(tree), build=str(build), head=str(head),
+                        git_tree=None if git_tree is None else str(git_tree),
                         dirty_files=tuple(dirty.get(int(ident), ())), at=str(at),
                         nodes=int(nodes), edges=int(edges))
-            for ident, tree, build, head, at, nodes, edges in rows]
+            for ident, tree, build, head, git_tree, at, nodes, edges in rows]
 
 
 def newest_graph(
@@ -274,6 +310,7 @@ def store_graph(
     tree: str,
     build: str,
     head: str,
+    git_tree: Optional[str],
     dirty_files: Iterable[str],
     at: str,
 ) -> StoredGraph:
@@ -302,9 +339,9 @@ def store_graph(
     if old is not None:
         _drop(conn, int(old[0]))
     conn.execute(
-        "INSERT INTO graph (id, tree, build, head, at, nodes, edges) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (graph_id, tree, build, head, at, len(node_rows), len(pairs)))
+        "INSERT INTO graph (id, tree, build, head, git_tree, at, nodes, edges) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (graph_id, tree, build, head, git_tree, at, len(node_rows), len(pairs)))
     conn.executemany("INSERT INTO graph_dirty (graph, path) VALUES (?, ?)",
                      ((graph_id, path) for path in dirty))
     conn.executemany("INSERT INTO graph_path (graph, num, path) VALUES (?, ?, ?)",
@@ -314,15 +351,21 @@ def store_graph(
     conn.executemany("INSERT INTO graph_edge (graph, dst, src) VALUES (?, ?, ?)",
                      ((graph_id, dst, src) for dst, src in sorted(pairs)))
     _prune(conn)
-    return StoredGraph(id=graph_id, tree=tree, build=build, head=head, dirty_files=dirty,
+    return StoredGraph(id=graph_id, tree=tree, build=build, head=head, git_tree=git_tree,
+                       dirty_files=dirty,
                        at=at, nodes=len(node_rows), edges=len(pairs))
 
 
-def walk(
-    conn: sqlite3.Connection, graph_id: int, changed_files: Sequence[str],
-    max_hops: int = MAX_HOPS,
-) -> list[str]:
-    """:func:`dependent_files` on a stored graph.
+@dataclass(frozen=True)
+class LoadedGraph:
+    """A stored graph read back, in the shape :func:`dependent_files` takes."""
+
+    nodes: tuple[tuple[int, Optional[str]], ...]
+    reverse: Mapping[int, Sequence[int]]
+
+
+def load_graph(conn: sqlite3.Connection, graph_id: int) -> LoadedGraph:
+    """Read stored graph ``graph_id``, for a caller that walks it more than once.
 
     Raises :class:`GraphNotStored` when no graph has this id: an answer of
     "no file depends on these" must come from a graph, never from its absence.
@@ -331,15 +374,25 @@ def walk(
         raise GraphNotStored(f"graph {graph_id} is not in the index")
     path_names: dict[int, str] = dict(conn.execute(
         "SELECT num, path FROM graph_path WHERE graph = ?", (graph_id,)))
-    nodes: list[tuple[int, Optional[str]]] = [
-        (node, None if path is None else path_names[path])
+    nodes = tuple(
+        (int(node), None if path is None else path_names[path])
         for node, path in conn.execute(
-            "SELECT node, path FROM graph_node WHERE graph = ? ORDER BY seq", (graph_id,))]
+            "SELECT node, path FROM graph_node WHERE graph = ? ORDER BY seq", (graph_id,)))
     reverse: dict[int, list[int]] = {}
     for dst, src in conn.execute(
             "SELECT dst, src FROM graph_edge WHERE graph = ?", (graph_id,)):
         reverse.setdefault(dst, []).append(src)
-    return dependent_files(changed_files, nodes, reverse, max_hops)
+    return LoadedGraph(nodes=nodes, reverse=reverse)
+
+
+def walk(
+    conn: sqlite3.Connection, graph_id: int, changed_files: Sequence[str],
+    max_hops: int = MAX_HOPS,
+) -> list[str]:
+    """:func:`dependent_files` on a stored graph (:func:`load_graph` says what
+    happens when the graph is not stored)."""
+    loaded = load_graph(conn, graph_id)
+    return dependent_files(changed_files, loaded.nodes, loaded.reverse, max_hops)
 
 
 def survey_graph(

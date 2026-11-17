@@ -36,14 +36,19 @@ THE STALE-GRAPH LOG answers one question: would the reverse slice have named
 the same test files from a graph recorded at an OLDER tree? Analysing the whole
 repository takes minutes and walking a stored graph takes seconds, so the
 answer decides whether selection can stop paying for a fresh analysis. Each
-time smart-test computes a fresh slice it runs the same walk on the newest
-older graph it has registered (:func:`register_graph`,
-:func:`newest_older_graph`) and stores both answers
-(:func:`stale_graph_row`). The one result that counts against a stored graph
-is a test file the fresh walk names, the stale walk lacks, and the change did
-not itself edit: smart-test always runs an edited test file, so a new or
-edited one that an older graph cannot know is not a loss. A run with no older
-graph to compare is stored with the reason and counts for nothing.
+time smart-test computes a fresh slice it also asks what the graphs STORED
+before it would have selected for the same tree (``coverage-select
+stale-record``; the stored graphs and the selection are
+:mod:`~hypergumbo_core.graph_rows` and :mod:`~hypergumbo_core.graph_select`)
+and stores both answers (:func:`stale_graph_row`). The one result that counts
+against a stored graph is a test file the fresh walk names, the stored
+graph's selection lacks, and the change did not itself edit: smart-test
+always runs an edited test file, so a new or edited one that an older graph
+cannot know is not a loss. A run with no stored graph to compare is stored
+with the reason and counts for nothing. Rows written before 2026-11-17
+compared a walk of an older SURVEY seeded with the change's source files
+only; their ``graph`` holds a ``survey`` path where later rows hold an
+``id``.
 
 THE RUN RECORDS are what a selector that does not exist yet will be judged
 on. The shadow log above stores only the misses of ONE selector, so a new
@@ -205,42 +210,6 @@ def evaluate(observations: Iterable[dict[str, object]]) -> Evidence:
 #: fresh one, with no unedited test file missing, before a stored graph may
 #: select. The same floor as the coverage shadow, for the same reason.
 STALE_GRAPH_MIN_COMMITS = 30
-
-
-def register_graph(
-    registry_path: Path, *, survey: str, head: str, dirty: bool, at: str,
-) -> None:
-    """Record that ``survey`` is the graph of the tree at ``head``.
-
-    ``dirty`` says the tree had changes ``head`` does not hold, so the commit
-    names the graph only approximately. Registering a survey twice is harmless:
-    the newest entry for a path wins.
-    """
-    _append(registry_path, {"survey": survey, "head": head, "dirty": dirty, "at": at})
-
-
-def newest_older_graph(
-    registry_path: Path, fresh_survey: str,
-) -> Optional[dict[str, object]]:
-    """The most recently registered graph that is not ``fresh_survey``, still
-    exists on disk, and was written by the same analyzer build.
-
-    The survey cache names an entry ``.../<tree state>/<analyzer identity>/``,
-    so two surveys from one build share their parent directory's name. A graph
-    from another build would compare two analyzers, not two trees. The cache
-    evicts old entries, hence the existence check.
-    """
-    fresh = Path(fresh_survey)
-    for row in reversed(load_observations(registry_path)):
-        survey = row.get("survey")
-        if not isinstance(survey, str) or Path(survey) == fresh:
-            continue
-        if Path(survey).parent.name != fresh.parent.name:
-            continue
-        if not Path(survey).exists():
-            continue
-        return row
-    return None
 
 
 #: A test file as the reverse slice's consumer recognises one. The same
