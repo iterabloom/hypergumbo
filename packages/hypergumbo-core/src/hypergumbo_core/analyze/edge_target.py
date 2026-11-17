@@ -37,14 +37,33 @@ What this module provides
   edge types ``make_unresolved_edge`` (calls only) does not build. The name slot
   goes through ``make_symbol_id``, so a colon in the name cannot shift the
   anchored parse.
-- :func:`non_id_edge_endpoints` -- the gate producer tests assert is empty on
-  the production path (``analyze_*`` over a fixture). It runs on ONE analyzer's
-  result, before finalize, because the ``spec_validator`` sees only the
+- :func:`non_id_edge_endpoints` -- the gate, in two modes. It runs on ONE
+  pass's result, before finalize, because the ``spec_validator`` sees only the
   ``<unknown>`` node finalize made of the string, not which producer wrote it.
+  Its STRICT default is what producer tests assert is empty on the production
+  path (``analyze_*`` over a fixture): every endpoint is an emitted symbol, a
+  file anchor, or a ``0-0`` stand-in whose last slot is one of
+  :data:`STAND_IN_SLOT_TOKENS`.
+- :func:`stamp_non_id_edge_endpoints` -- the same gate in production, on every
+  run. The analyzer chokepoint (``all_analyzers.collect_analyzer_result``) and
+  the linker chokepoint (``linkers.registry._run_linker_with_cache``) call it
+  on each pass's own output before the run is serialized. It asks the gate's
+  ``grammar_only`` question -- is each endpoint an emitted symbol's id or a
+  string that parses as a five-slot id (:func:`_five_slots`, ADR-0036 Ruling
+  1)? -- and records the count of those that are not on
+  ``AnalysisRun.non_id_edge_endpoints``, with a warning naming the first
+  :data:`NON_ID_SAMPLE_SIZE` distinct ones. The strict question would be the
+  wrong one there: a well-formed ``0-0`` stand-in whose last slot is a
+  use-site word (``package``, ``attribute``, ``target``) is ADR-0036 Ruling
+  2's unfinished kind-slot migration, hundreds to thousands per repository,
+  and would drown the count; and a linker's edges end on other passes' nodes
+  by design, so "emitted by this pass" cannot be required of them. ADR-0034's
+  Enforcement section states the check.
 """
 from __future__ import annotations
 
 import posixpath
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, AbstractSet, Iterable, Optional
 
@@ -55,7 +74,7 @@ from .base import make_file_id, make_symbol_id
 from .edge_source import unemitted_edge_sources
 
 if TYPE_CHECKING:
-    from ..ir import Edge, Symbol
+    from ..ir import AnalysisRun, Edge, Symbol
 
 #: The ``module_path`` of a stand-in whose module is not known (ADR-0037).
 UNKNOWN_MODULE = "external"
@@ -69,6 +88,7 @@ STAND_IN_SLOT_TOKENS: frozenset[str] = frozenset({"unresolved", "module", "exter
 
 _FILE_ID_SUFFIX = ":1-1:file:file"
 _STAND_IN_SPAN = "0-0"
+_SPAN = re.compile(r"[0-9]+-[0-9]+")
 
 
 def in_tree_file_id(
@@ -117,38 +137,100 @@ def external_target(
     return dst, ExternalRef(lang=lang, module_path=module_path, name=name)
 
 
-def _is_stand_in(endpoint: str, tokens: AbstractSet[str]) -> bool:
-    """Whether ``endpoint`` parses, anchored from both ends (ADR-0036 Ruling
-    1), as a five-slot id with span ``0-0``, a name and a stand-in last slot."""
+def _is_lower_identifier(slot: str) -> bool:
+    """A ``lang`` or ``kind`` slot: an identifier with no upper-case letter."""
+    return slot.isidentifier() and slot == slot.lower()
+
+
+def _five_slots(endpoint: str) -> Optional[tuple[str, str, str, str, str]]:
+    """``(lang, path, span, name, kind)`` when ``endpoint`` parses as a node id.
+
+    The anchored parse of ADR-0036 Ruling 1: ``lang`` up to the FIRST ``:``,
+    ``span``, ``name`` and ``kind`` the last three ``:``-separated slots, and
+    ``path`` (the one colon-tolerant slot) what is left between. It parses
+    when ``lang`` and ``kind`` are lowercase identifiers, ``path`` is not
+    empty and ``span`` is ``<digits>-<digits>``; ``name`` is colon-free by
+    construction and may be empty (the ruling's table). Anything else is
+    ``None``, outside the id grammar: finalize either folds it through its
+    fewer-than-five-slot fallback into a ``<unknown>``-path node, or, for a
+    ``:`` inside the name slot (``std::uint8_t``), recovers a node only by
+    its own lenient parse and ``meta.callee_name``.
+    """
     lang, sep, rest = endpoint.partition(":")
     parts = rest.rsplit(":", 3)
     if not sep or len(parts) != 4:
+        return None
+    path, span, name, kind = parts
+    if not (
+        _is_lower_identifier(lang) and path
+        and _SPAN.fullmatch(span) and _is_lower_identifier(kind)
+    ):
+        return None
+    return lang, path, span, name, kind
+
+
+def _is_stand_in(endpoint: str, tokens: AbstractSet[str]) -> bool:
+    """Whether ``endpoint`` parses (:func:`_five_slots`) with span ``0-0``, a
+    name and a stand-in last slot."""
+    slots = _five_slots(endpoint)
+    if slots is None:
         return False
-    path, span, name, last = parts
-    return bool(
-        lang.isidentifier() and lang == lang.lower() and path
-        and span == _STAND_IN_SPAN and name and last in tokens
-    )
+    _lang, _path, span, name, last = slots
+    return span == _STAND_IN_SPAN and bool(name) and last in tokens
 
 
 def non_id_edge_endpoints(
     symbols: Iterable["Symbol"], edges: Iterable["Edge"],
     *, stand_in_tokens: AbstractSet[str] = STAND_IN_SLOT_TOKENS,
+    grammar_only: bool = False,
 ) -> list[tuple[str, "Edge"]]:
     """``("src" | "dst", edge)`` for every endpoint that is no id.
 
-    ``symbols`` and ``edges`` are one analyzer result's. A src passes when it
-    is an emitted symbol's id or a file anchor (``unemitted_edge_sources``). A
-    dst passes when it is an emitted symbol's id, a file anchor, or a stand-in
-    (:func:`_is_stand_in`). An edge whose two endpoints both fail is listed
-    twice.
+    ``symbols`` and ``edges`` are one pass's result. An edge whose two
+    endpoints both fail is listed twice.
+
+    The default is the STRICT gate producer tests assert is empty. A src
+    passes when it is an emitted symbol's id or a file anchor
+    (``unemitted_edge_sources``). A dst passes when it is an emitted symbol's
+    id, a file anchor, or a stand-in (:func:`_is_stand_in`, last slot in
+    ``stand_in_tokens``).
+
+    ``grammar_only=True`` asks the narrower question the orchestrator asks of
+    every pass in production: is the endpoint IN THE ID GRAMMAR, so finalize
+    can read it as a node id at all? An endpoint (src or dst alike) is in the
+    grammar when it is an emitted symbol's id, a file anchor, or parses as a
+    five-slot id anchored from both ends (:func:`_five_slots`), whatever its
+    span and last slot. Only the rest is listed: a string finalize parses
+    with its fewer-than-five-slot fallback into one shared
+    ``<lang>:<unknown>:0-0:<token>:external_symbol`` node, one whose span or
+    kind slot is not a span or a kind, or one with a raw ``:`` in its name
+    slot, which shifts the anchored slots (Ruling 1 requires the name slot
+    sanitized ``:`` -> ``.``). ``stand_in_tokens`` is not
+    read. What this mode does NOT list, on purpose, so that it is not
+    drowned by them: a well-formed ``0-0`` stand-in whose last slot is a
+    use-site word (``package``, ``attribute``, ``target``, ``doc_link``),
+    which is ADR-0036 Ruling 2's unfinished kind-slot migration; and a
+    well-formed id of a symbol this pass did not emit, src or dst (the
+    strict mode lists the first as ``unemitted_edge_sources`` and the second
+    as a dst that is no stand-in), which a linker's edges do legitimately
+    and which ``spec_validator``'s dangling-endpoint check sees after
+    finalize.
     """
     symbols = list(symbols)
     edges = list(edges)
     ids = {s.id for s in symbols}
-    bad: list[tuple[str, "Edge"]] = [
-        ("src", e) for e in unemitted_edge_sources(symbols, edges)
-    ]
+    if grammar_only:
+        def in_grammar(endpoint: str) -> bool:
+            return endpoint in ids or _five_slots(endpoint) is not None
+
+        bad: list[tuple[str, "Edge"]] = []
+        for e in edges:
+            if not in_grammar(e.src):
+                bad.append(("src", e))
+            if not in_grammar(e.dst):
+                bad.append(("dst", e))
+        return bad
+    bad = [("src", e) for e in unemitted_edge_sources(symbols, edges)]
     bad.extend(
         ("dst", e) for e in edges
         if e.dst not in ids
@@ -156,3 +238,39 @@ def non_id_edge_endpoints(
         and not _is_stand_in(e.dst, stand_in_tokens)
     )
     return bad
+
+
+#: How many distinct offending endpoints the run's warning names.
+NON_ID_SAMPLE_SIZE = 3
+
+
+def stamp_non_id_edge_endpoints(
+    run: "AnalysisRun", symbols: Iterable["Symbol"], edges: Iterable["Edge"],
+) -> None:
+    """Record on ``run`` how many of its pass's edge endpoints are no id.
+
+    The production call of :func:`non_id_edge_endpoints`, in
+    ``grammar_only`` mode, made at the two chokepoints every pass's output
+    crosses before its run is serialized: ``collect_analyzer_result`` for an
+    analyzer, ``_run_linker_with_cache`` for a linker. Sets
+    ``run.non_id_edge_endpoints`` to the number of endpoints listed (a
+    measured ``0`` when none), and, when there are any, appends one warning
+    naming the first :data:`NON_ID_SAMPLE_SIZE` distinct ones in edge order,
+    so a reader of ``analysis_runs`` can find the producer and the spelling.
+    """
+    bad = non_id_edge_endpoints(symbols, edges, grammar_only=True)
+    run.non_id_edge_endpoints = len(bad)
+    if not bad:
+        return
+    sample: list[str] = []
+    for side, edge in bad:
+        endpoint = edge.src if side == "src" else edge.dst
+        if endpoint not in sample:
+            sample.append(endpoint)
+            if len(sample) == NON_ID_SAMPLE_SIZE:
+                break
+    run.warnings.append(
+        f"UserWarning: {len(bad)} edge endpoint(s) of this pass are not "
+        f"node ids (no emitted symbol, and not lang:path:start-end:name:kind); "
+        f"first {len(sample)} distinct: {', '.join(repr(s) for s in sample)}"
+    )

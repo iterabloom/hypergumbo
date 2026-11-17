@@ -119,7 +119,7 @@ from typing import Any, Dict
 
 from .installed_env import kept_per_environment
 
-SCHEMA_VERSION = "0.21.1"
+SCHEMA_VERSION = "0.21.2"
 # Breaking output changes bump MINOR and additions bump PATCH (spec "Breaking
 # output changes bump minor"; the one exception is noted in the module
 # docstring). The per-version record of what changed is CHANGELOG.md.

@@ -146,3 +146,74 @@ def test_gate_stand_in_tokens_are_the_callers_to_widen() -> None:
     assert non_id_edge_endpoints(
         [], [edge], stand_in_tokens=STAND_IN_SLOT_TOKENS | {"package"},
     ) == []
+
+
+# --- grammar_only: the production question (is it shaped like an id at all) --
+
+
+def test_grammar_mode_reports_each_endpoint_outside_the_grammar() -> None:
+    """One entry per way out of ADR-0036 Ruling 1's anchored five-slot parse."""
+    f = _sym("f")
+    file_id = make_file_id("fish", "a.fish")
+    outside = [
+        "bare_name",                          # no colon at all
+        "fish:other.fish:file",               # three slots
+        "cmake:external:m:library",           # four slots
+        "fish:x:1:y:import",                  # span slot is not start-end
+        "powershell:?:?:Mod:module",          # five slots, span slot is '?'
+        "Fish:external:0-0:x:unresolved",     # language slot not lowercase
+        "fish::0-0:x:unresolved",             # empty path slot
+        "fish:a.fish:0-0:x:Kind",             # kind slot not lowercase
+        "fish:a.fish:0-0:x:doc-link",         # kind slot not an identifier
+        "hack:unresolved:0-0:A::b:unresolved",  # colon in the name shifts the span
+    ]
+    edges = [_edge(file_id, dst) for dst in outside]
+    assert non_id_edge_endpoints([f], edges, grammar_only=True) == [
+        ("dst", e) for e in edges
+    ]
+
+
+def test_grammar_mode_passes_what_parses_whatever_its_span_and_kind() -> None:
+    f = _sym("f")
+    file_id = make_file_id("fish", "a.fish")
+    inside = [
+        f.id,                                 # an emitted symbol
+        make_file_id("fish", "other.fish"),   # a file anchor
+        "fish:a.fish:3-4:gone:function",      # a span, but no such symbol here
+        "go:fmt:0-0:package:package",         # a use-site word in the kind slot
+        "fish:external:0-0::unresolved",      # empty name slot (Ruling 1 allows)
+        "rust:std::io:0-0:Read:attribute",    # colons in the path slot
+    ]
+    edges = [_edge(file_id, dst) for dst in inside]
+    assert non_id_edge_endpoints([f], edges, grammar_only=True) == []
+
+
+def test_grammar_mode_asks_the_same_question_of_the_src() -> None:
+    """A well-formed src this pass did not emit passes (strict mode lists it
+    through ``unemitted_edge_sources``); a src that is no id is listed."""
+    unemitted = _edge("fish:b.fish:5-6:h:function", make_file_id("fish", "a.fish"))
+    assert non_id_edge_endpoints([], [unemitted]) == [("src", unemitted)]
+    assert non_id_edge_endpoints([], [unemitted], grammar_only=True) == []
+
+    both = _edge("fish:a.fish:file:", "fish:other.fish:file")
+    assert non_id_edge_endpoints([], [both], grammar_only=True) == [
+        ("src", both), ("dst", both),
+    ]
+
+
+def test_an_emitted_symbol_passes_grammar_mode_even_if_malformed() -> None:
+    """A malformed emitted id is ``spec_validator``'s id_format finding, not an
+    endpoint one; it is not counted twice."""
+    odd = Symbol(
+        id="fish:a.fish:odd", name="odd", kind="function", language="fish",
+        path="a.fish", span=Span(start_line=1, end_line=2, start_col=0, end_col=1),
+        origin="fish-v1",
+    )
+    assert non_id_edge_endpoints([odd], [_edge(odd.id, odd.id)], grammar_only=True) == []
+
+
+def test_grammar_mode_does_not_read_stand_in_tokens() -> None:
+    edge = _edge(make_file_id("go", "a.go"), "go:fmt:0-0:package:package")
+    assert non_id_edge_endpoints(
+        [], [edge], stand_in_tokens=frozenset(), grammar_only=True,
+    ) == []
