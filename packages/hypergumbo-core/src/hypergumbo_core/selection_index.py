@@ -40,7 +40,18 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
 3. **A test that ran and produced no rows is UNMEASURED, not unneeded.** A
    sizeable part of this suite is in that state — the tracker package is
    outside smart-test's COV_PATHS, and subprocess/`scripts/` tests leave no
-   in-process trace. Coverage can never
+   in-process trace. "Produced rows" means IN ITS OWN CALL: pytest-cov
+   records a test's setup, call and teardown as separate contexts, and a
+   fixture that runs for every test (the root conftest's autouse teardown
+   calls ``declared_test_inputs.install_declaration``) leaves a row for
+   every test. Counting that row once took this repository's unmeasured
+   list from 6,916 tests to 227 in one full run, and narrowing then dropped
+   test files that drive ``coverage-select`` through a subprocess for a
+   change to the code it runs. The rows of the other two phases are still
+   stored as edges (the code did run during the test); they never make the
+   test one coverage has spoken for. Costs 244 tests whose in-process work
+   is all in a setup fixture: they are held back like the rest. Coverage
+   can never
    select them, so they are recorded explicitly (on full runs only: a targeted
    run's ``--cov`` scope makes silence meaningless) and reported by
    :class:`Selection`, which is what stops ``--narrow`` (below) from silently
@@ -916,6 +927,11 @@ def _strip_phase(context: str) -> str:
     return context.rsplit("|", 1)[0] if "|" in context else context
 
 
+#: pytest-cov's phases that are not the test's own call: what runs in them is
+#: fixture code, and a fixture can run for every test.
+_FIXTURE_PHASES = ("|setup", "|teardown")
+
+
 def normalize_test_id(node_id: str, repo_root: Optional[Path]) -> str:
     """Rewrite a pytest node id to be repo-relative, or leave it untouched.
 
@@ -1008,6 +1024,9 @@ def update_from_run(
         return owners[path]
 
     edges: dict[str, set[BlockKey]] = {}
+    # The tests with a row from their OWN call (semantic 3 of the module
+    # docstring): the only ones this run has said anything about.
+    spoke: set[str] = set()
     # Which statements of each block each test ran, as an integer with bit i
     # set for ordinal i. The phases of one test (setup, run, teardown) are
     # separate contexts and are OR-ed into one record.
@@ -1024,6 +1043,8 @@ def update_from_run(
         else:
             test_id = normalize_test_id(_strip_phase(context), repo_root)
             edges.setdefault(test_id, set()).update((path, n) for n in names)
+            if not context.endswith(_FIXTURE_PHASES):
+                spoke.add(test_id)
             statement_of = statement_owners[path]
             in_this_phase: dict[BlockKey, int] = {}
             for n in linenos:
@@ -1056,11 +1077,11 @@ def update_from_run(
     store_edges(conn, edges, digests=digests, measured=measured,
                 statements=statements)
     cur = conn.cursor()
-    # Producing edges is positive evidence at ANY coverage scope, so clearing
-    # is always safe.
+    # A row from the test's own call is positive evidence at ANY coverage
+    # scope, so clearing is always safe.
     cur.executemany(
         "DELETE FROM unmeasured_test WHERE test_id = ?",
-        [(t,) for t in sorted(edges)],
+        [(t,) for t in sorted(spoke)],
     )
     # Recording a test as unmeasured is the opposite: it is a claim that the
     # test ran and produced NOTHING, which is only meaningful when coverage was
@@ -1073,7 +1094,7 @@ def update_from_run(
     if ran_tests is not None and full_run:
         cur.executemany(
             "INSERT OR IGNORE INTO unmeasured_test (test_id) VALUES (?)",
-            [(t,) for t in sorted(set(ran_tests) - set(edges))],
+            [(t,) for t in sorted(set(ran_tests) - spoke)],
         )
     if full_run:
         cur.execute(
@@ -1082,9 +1103,11 @@ def update_from_run(
             (git_sha or "",),
         )
     checkout = str(repo_root) if repo_root is not None else ""
+    # A test with rows from fixtures alone is in the run and is not one of
+    # its producers: its record says the run told nothing about it.
     _record_run(
-        conn, checkout=checkout, measured=measured, producers=edges,
-        ran=ran_tests,
+        conn, checkout=checkout, measured=measured, producers=spoke,
+        ran={*edges, *(ran_tests or ())},
         complete=(scope_complete or full_run) and ran_tests is not None)
     if repo_root is not None:
         _forget_dead_checkouts(conn, checkout)
@@ -1111,8 +1134,8 @@ def _record_run(
 ) -> None:
     """Make this run the latest run, in ``checkout``, of every test file in it.
 
-    ``producers`` are the tests that left coverage rows; ``ran`` is the list
-    of tests that ran, when the caller has one. A test that ran and left no
+    ``producers`` are the tests whose own call left coverage rows; ``ran`` is
+    every test known to have run. A test that ran and left no such
     row is recorded with ``rows = 0``: the run says nothing about it, and
     :func:`informed_test_files` holds its file back for that.
 

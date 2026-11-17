@@ -39,6 +39,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Two checkouts storing a graph at once both succeed.**
 - **Run records say what selecting by statement would run.**
 - **The index keeps a function's statement records across edits.**
+- **Narrowing keeps tests whose own call ran nothing measured.**
 
 ## [10.0.0] - 2026-11-16
 
