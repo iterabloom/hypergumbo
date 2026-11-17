@@ -267,7 +267,13 @@
   should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-core/tests/test_shapes.py,
                packages/bed-app/tests/test_beta.py]
 
-# The same file, a function body: only the tests that run the function.
+# The same file, the body of a function ANOTHER MODULE CALLS WHILE IT LOADS
+# (reads_at_import.py: CEILING = ceiling()). test_reads_at_import fails when
+# ceiling breaks and never runs it: the edit is import-time code and takes the
+# file's import closure. That closure is every loader of limits.py, which is
+# more than the loaders of reads_at_import.py (the index knows the function
+# ran at import, not which module called it), so the readers of the constant
+# come along.
 - name: body-edit-limits
   oracle: mutate
   ops:
@@ -276,8 +282,8 @@
             return CAP
       new: |
             return CAP + 0
-  should_not: [packages/bed-core/tests/test_reads_attr.py, packages/bed-core/tests/test_reads_name.py,
-               packages/bed-core/tests/test_reads_lazily.py, packages/bed-core/tests/test_alpha.py]
+  should_not: [packages/bed-core/tests/test_alpha.py, packages/bed-core/tests/test_shapes.py,
+               packages/bed-app/tests/test_beta.py]
 
 # WI-kazig: a module is deleted in a change that also edits another file, so
 # the run stays targeted. test_legacy still imports the deleted module; the
