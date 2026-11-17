@@ -34,7 +34,12 @@ escaping tracked ground (``escaped``) *and* the walk never running at all
 reaching-def data for the flow's SOURCE FUNCTION (decided per function, not
 per language). A walk that exhausts every route without confirming
 (``refuted``) REMOVES the flow (WI-kabif); it is not emitted, and is
-handed to the optional ``refuted_flows`` out-param instead. A sanitizer
+handed to the optional ``refuted_flows`` out-param instead. A walk that
+would have refuted but relied on a definition a name it does not follow may
+reach (``RepoDdg.exposure``: an in-place store, a definition reading its own
+target, an address taken, a closure capture) is WITHHELD instead (ADR-0017
+§7b, WI-buzup): neither removed nor emitted, handed to ``withheld_flows``, and
+never credited ``sanitized`` on the barrier arm. A sanitizer
 called in the source's OWN function, which the BFS barrier exempts with the
 seed, is credited on this arm alone (WI-fasub): once the walk confirms the
 flow, a second walk bounded by that function's sanitizer call lines must
@@ -237,7 +242,7 @@ from .ir import symbol_name_slot, symbol_path_slot
 from .yaml_catalogs import CatalogueError, read_catalogue_yaml, reject_unknown_keys
 
 if TYPE_CHECKING:
-    from .cfg import DdgEdge
+    from .cfg import DdgEdge, DefinitionExposure
     from .function_summaries import FunctionSummary
 
 
@@ -577,6 +582,11 @@ WALK_VERDICT_REFUTED: str = "refuted"
 WALK_VERDICT_ESCAPED: str = "escaped"
 WALK_VERDICT_NOT_ATTEMPTED: str = "not_attempted"
 WALK_VERDICT_UNAVAILABLE: str = "unavailable"
+#: The walk exhausted every route it could follow, but one of the definitions
+#: it relied on was written where a name it does not follow may reach the
+#: value (ADR-0017 §7b, WI-buzup). Neither removed nor reported: the flow goes
+#: to ``withheld_flows`` and a confirming verdict on its claim is withheld.
+WALK_VERDICT_WITHHELD: str = "withheld"
 
 WALK_VERDICTS: frozenset[str] = frozenset({
     WALK_VERDICT_REACHED,
@@ -584,6 +594,7 @@ WALK_VERDICTS: frozenset[str] = frozenset({
     WALK_VERDICT_ESCAPED,
     WALK_VERDICT_NOT_ATTEMPTED,
     WALK_VERDICT_UNAVAILABLE,
+    WALK_VERDICT_WITHHELD,
 })
 
 
@@ -5304,9 +5315,18 @@ class EscapeSite(NamedTuple):
 #:   every use line is (``call_beside_heir``'s), since otherwise what else it
 #:   did with the value would be invisible. Only ever turns ``False`` into
 #:   ``None``.
+#: * ``unmodeled_alias`` — the walk relied on a definition another name may
+#:   reach (:class:`cfg.DefinitionExposure`: an in-place store, a definition
+#:   that reads its own target, an address taken, a closure capture), so an
+#:   exhausted walk is not evidence the value went nowhere (ADR-0017 §7b,
+#:   WI-buzup). The one reason that is not an escape: the walk did not lose
+#:   the value, it cannot see every name for it. Only ever turns ``False``
+#:   into ``None``, and a walk whose only reason is this one is WITHHELD
+#:   rather than ``escaped`` (:class:`WithheldSite`).
 ESCAPE_REASONS = frozenset(
     {
         "call_beside_source",
+        "unmodeled_alias",
         "source_undefined",
         "definition_unrecorded",
         "call_beside_heir",
@@ -5315,6 +5335,39 @@ ESCAPE_REASONS = frozenset(
         "unaccounted_mention",
     }
 )
+
+
+class WithheldSite(NamedTuple):
+    """A definition the §3a walk relied on that another name may reach (WI-buzup).
+
+    ``exposure`` is one of :data:`cfg.EXPOSURES`. Handed out through
+    :func:`_ddg_taint_reaches`'s ``withheld`` argument only when the walk would
+    otherwise have returned ``False``.
+    """
+
+    variable: str
+    line: int
+    exposure: str
+
+
+class WithheldFlow(NamedTuple):
+    """A flow the §3a walk would have removed and WITHHELD instead (WI-buzup).
+
+    Not a finding (no route to the sink was found) and not a removal (a route
+    through a name the walk does not follow cannot be ruled out). ``verify_claims``
+    withholds a confirming verdict on a claim whose source label and sink zone
+    match (:func:`verify_claims._withhold_for_unmodeled_alias`).
+    """
+
+    taint_label: str
+    sink_zone: str
+    #: The flow's seed, as a finding's ``source_symbol`` (scope is read off it).
+    source_symbol: str
+    #: The function the walk ran in, where ``site`` is.
+    function: str
+    source: str
+    sink: str
+    site: WithheldSite
 
 
 def _ddg_taint_reaches(
@@ -5340,6 +5393,8 @@ def _ddg_taint_reaches(
     seed_variables: AbstractSet[str] | None = None,
     reached: list[tuple[str, int]] | None = None,
     source_line_escapes: AbstractSet[int] | None = None,
+    exposure: "DefinitionExposure | None" = None,
+    withheld: list[WithheldSite] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -5495,6 +5550,17 @@ def _ddg_taint_reaches(
             terminate (:func:`_source_line_escapes`): the value may have gone
             into it, so each is an escape (WI-jusoj b). ``None`` treats the
             source line as a seed only.
+        exposure: This function's :class:`cfg.DefinitionExposure` (WI-buzup).
+            A popped ``(variable, line)`` it names is a definition another
+            name may reach, so the walk may not return ``False`` over it: it
+            returns ``None`` (ADR-0017 §7b). ``None`` means no record, which
+            withholds nothing; the §3a and barrier call sites always pass the
+            record ``build_repo_ddg`` made.
+        withheld: Optional out-param. Filled with one :class:`WithheldSite`
+            per exposed definition the walk relied on, and ONLY when exposure
+            is the sole reason the walk returned ``None`` instead of
+            ``False`` -- which is what lets the §3a site report ``withheld``
+            rather than ``escaped``.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -5506,6 +5572,7 @@ def _ddg_taint_reaches(
     barriers = barrier_lines or frozenset()
     seen: set[tuple[str, int]] = set()
     escaped = False
+    exposed: list[WithheldSite] = []
 
     # SEED ON VARIABLES, NOT LINES. The source's return value is whatever the
     # call site defines; if the DDG recorded no definition there, nothing is
@@ -5537,6 +5604,17 @@ def _ddg_taint_reaches(
         if (var, line) in seen:
             continue
         seen.add((var, line))
+        kind = exposure.kind_for(var, line) if exposure is not None else None
+        if kind is not None:
+            # ADR-0017 §7b, WI-buzup. The walk follows names; this definition
+            # is one another name may reach (``t := s; t[0] = secret`` makes
+            # ``s[0]`` the secret; ``p := &buf; buf = secret`` makes ``*p``
+            # it), so exhausting ``var``'s uses is not evidence the value went
+            # nowhere. Falls through like the L4 branch below: a ``True``
+            # found later still wins.
+            exposed.append(WithheldSite(var, line, kind))
+            if escape_sites is not None:
+                escape_sites.append(EscapeSite(symbol_id, line, "unmodeled_alias"))
         if var in (unaccounted or frozenset()):
             # INV-lupav CLAUSE L4. Some statement this function's CFG RECORDED
             # mentions this variable and accounts for it in neither
@@ -5742,6 +5820,16 @@ def _ddg_taint_reaches(
         # dependence the walk actually found, and an incomplete picture cannot
         # unmake it — downgrading that would turn a safety gate into a recall
         # regression.
+        return None
+    if exposed:
+        # WI-buzup. Every route the walk could follow is accounted for, so
+        # this would be ``False`` -- but the walk relied on a definition
+        # another name may reach, and it does not follow that name. Not
+        # ``False``: the §3a arm would remove the flow and the barrier arm
+        # would credit ``sanitized``. ``None``, with the reason handed out so
+        # the §3a site can report WITHHELD rather than ``escaped``.
+        if withheld is not None:
+            withheld.extend(exposed)
         return None
     return False
 
@@ -6129,6 +6217,8 @@ def propagate_taint_ddg(
         str, Sequence[tuple[int, tuple[Optional[str], ...]]]
     ] | None = None,
     parameter_seeds: Sequence[ParameterSeed] = (),
+    exposure: "Mapping[str, DefinitionExposure] | None" = None,
+    withheld_flows: list[WithheldFlow] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -6170,6 +6260,12 @@ def propagate_taint_ddg(
             return statement, or reaching one by the §3a walk -- is lifted
             into that function's callers (INV-komoj,
             :func:`_lift_returned_sources`).
+        exposure: Per function, the definitions another name may reach
+            (``RepoDdg.exposure``, WI-buzup). Handed to the §3a and barrier
+            walks: a walk that relied on one may neither remove a flow nor
+            earn ``sanitized`` (ADR-0017 §7b).
+        withheld_flows: Optional out-param. A flow whose §3a walk was
+            WITHHELD is appended here instead of being reported or removed.
 
     Returns:
         List of TaintFlowFinding objects.
@@ -6466,6 +6562,8 @@ def propagate_taint_ddg(
             # kept alongside so the label can say which of the three
             # non-confirming outcomes this was.
             walk_result: bool | None = None
+            # WI-buzup: the exposed definitions a would-be refutation rested on.
+            withheld_sites: list[WithheldSite] = []
             walk_ran = False
             blocked_by = ""
             if not fn_has_ddg:
@@ -6528,6 +6626,8 @@ def propagate_taint_ddg(
                     walk_result = _ddg_taint_reaches(
                         source_fn, source_call_lines, sink_call_lines,
                         ddg_uses, callee_names, summaries,
+                        exposure=(exposure or {}).get(source_fn),
+                        withheld=withheld_sites,
                         defs_at=defs_at, inherits=inherits,
                         forfeit_refutation=(
                             source_fn in (forfeit_refutation or set())
@@ -6587,9 +6687,14 @@ def propagate_taint_ddg(
                     # strictly FEWER suppressions and therefore strictly MORE
                     # surviving violations: the safe direction.
                     if adjudicated and barrier_sites:
+                        # WI-buzup, ON THIS ARM TOO: a barrier walk that
+                        # relied on a definition another name may reach
+                        # returns ``None``, so the alias route is never
+                        # credited as protected (owner ruling 2026-11-16).
                         ddg_sanitized = _ddg_taint_reaches(
                             source_fn, source_call_lines, sink_call_lines,
                             ddg_uses, callee_names, summaries,
+                            exposure=(exposure or {}).get(source_fn),
                             defs_at=defs_at, inherits=inherits,
                             barrier_lines=frozenset(barrier_sites),
                             forfeit_refutation=(
@@ -6642,6 +6747,10 @@ def propagate_taint_ddg(
             verdict = walk_verdict_for(
                 walk_result, ran=walk_ran, covered=fn_has_ddg,
             )
+            if walk_result is None and withheld_sites:
+                # WI-buzup: ``None`` only because of exposure, which the walk
+                # hands out only when nothing escaped -- not ``escaped``.
+                verdict = WALK_VERDICT_WITHHELD
             method = method_for_walk_verdict(verdict)
             confidence = (
                 "precise" if verdict == WALK_VERDICT_REACHED
@@ -6685,15 +6794,34 @@ def propagate_taint_ddg(
             # terminating. (3) The walk is intraprocedural, so "every route" is
             # a claim about one function body, not about the program.
             #
-            # WHAT IS BEING TRADED, IN WRITING. ADR-0017 §7b excludes alias
-            # analysis and states a preference for overapproximation, so this
-            # introduces FALSE NEGATIVES on container and alias mutation. That
-            # trade is an explicit owner decision (WI-kabif); do not widen what
-            # may remove a flow without one.
+            # WHAT ALIASING DOES HERE. ADR-0017 §7b excludes alias analysis, so
+            # a walk that relied on a definition another name may reach (an
+            # in-place store, a definition reading its own target, an address
+            # taken, a closure capture) never arrives here: it is WITHHELD
+            # above (WI-buzup). Removal rests on walks over fresh values only.
+            # Do not widen what may remove a flow without an owner decision
+            # (WI-kabif).
             #
             # The ``refuted`` class grows as escape sites close, which is why
             # ``refuted_flows`` exists -- a removal nobody can count is a
             # security tool deleting findings in silence.
+            # WITHHELD (ADR-0017 §7b, WI-buzup): exhausted, but over a definition
+            # a name the walk does not follow may reach. Not removed -- the
+            # route through that name cannot be ruled out -- and not reported,
+            # since no route to the sink was found. Diverted, and the claim
+            # it would have cleared reads inconclusive instead.
+            if verdict == WALK_VERDICT_WITHHELD:
+                if withheld_flows is not None:
+                    withheld_flows.append(WithheldFlow(
+                        taint_label=taint_label,
+                        sink_zone=taint_sink.zone,
+                        source_symbol=seed_id,
+                        function=source_fn,
+                        source=_qualify(taint_source.module, taint_source.name),
+                        sink=_qualify(taint_sink.module, taint_sink.name),
+                        site=withheld_sites[0],
+                    ))
+                continue
             if verdict == WALK_VERDICT_REFUTED:
                 if refuted_flows is not None:
                     refuted_flows.append(TaintFlowFinding(

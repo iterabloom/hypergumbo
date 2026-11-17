@@ -579,10 +579,13 @@ transforms:
 > a function whose CFG missed a call node in its body, so an exhausted walk over
 > a demonstrably incomplete graph never reaches the removal.
 >
-> **The trade is a deliberate departure from §7b's stated preference for
-> overapproximation**, and it was granted by the owner in writing rather than
-> taken by the implementation: §7b excludes alias analysis, so this introduces
-> false negatives on container and alias mutation.
+> **Aliasing withholds, it does not remove (§7b).** A walk that would return
+> `False` but relied on a definition another name may reach — an in-place
+> store, a definition that reads its own target, a variable whose address is
+> taken, a variable a nested function captures — returns `None` instead: the
+> flow is WITHHELD (walk verdict `withheld`), neither removed nor reported, and
+> a confirming verdict on its claim reads `inconclusive`. Removal therefore
+> rests only on walks over values no unfollowed name can reach.
 >
 > **MEASURED EFFECT AT THE GRANT: ZERO.** hypergumbo-core reports 15 confirmed /
 > 12 escaped / **0 refuted** across 27 walks, and the 11-repo cohort reports
@@ -595,13 +598,17 @@ transforms:
 > never inferred.
 >
 > **What `propagate_taint_ddg` does:** steps 1–4 run. `_ddg_taint_reaches` *is*
-> this subsection's forward walk and has **two** production call sites. On the
-> §3a arm its `True` / `False` / `None` result becomes the `reached` /
-> `refuted` / `escaped` walk verdict (`walk_verdict_for`), and only
-> `refuted` removes the flow. On the WI-fasub same-function sanitizer
-> barrier arm a `False` earns `sanitized`, which DROPS the flow from a claim's
-> violation set. On both arms an unearned `False` would be a live falsehood,
-> which is why WI-joluk's forfeit gate runs on both.
+> this subsection's forward walk and has **four** production call sites. Two
+> consume its `False`. On the §3a arm its `True` / `False` / `None` result
+> becomes the `reached` / `refuted` / `escaped` walk verdict
+> (`walk_verdict_for`), `withheld` when §7b's exposure was the only reason for
+> `None`, and only `refuted` removes the flow. On the WI-fasub same-function
+> sanitizer barrier arm a `False` earns `sanitized`, which DROPS the flow from
+> a claim's violation set. On both arms an unearned `False` would be a live
+> falsehood, which is why WI-joluk's forfeit gate and §7b's exposure record run
+> on both. The other two — the return lift (`_walk_reaches_return`, INV-komoj)
+> and the unfollowed-construct pass (`find_unfollowed_escapes`, INV-nohob) —
+> read only `True`.
 >
 > **Step 3 runs for DECLARED summaries only.** §4b is wired; §4a inferred
 > summaries are not, and the `FunctionSummary` dataclass has no
@@ -688,7 +695,7 @@ The block carries, per analyzed language with a taint catalog: the catalog it wo
 
 Two constants in the block state facts that no per-run measurement can:
 
-- **`inclusion_decided_by: "call_graph_reachability"`.** §3a is confirm-only — the walk raises a finding's confidence and never removes one — so *every* reported flow, including every `ddg`-labelled flow, was included by call-graph BFS. Reading `analysis_method == "ddg"` as "this flow's inclusion was decided by data flow" is the misreading INV-sadah exists for. Emitting it as data rather than prose gives the claim the executable re-evaluation trigger R16 requires: when §3a gains refutation this value must change or its test fails.
+- **`inclusion_decided_by: "call_graph_reachability_minus_ddg_refutation"`.** The walk raises a finding's confidence and may remove one it refutes, but it never adds one — so *every* reported flow, including every `ddg`-labelled flow, was included by call-graph BFS. Reading `analysis_method == "ddg"` as "this flow's inclusion was decided by data flow" is the misreading INV-sadah exists for. Emitting it as data rather than prose gives the claim the executable re-evaluation trigger R16 requires: when §3a's authority changes this value must change or its test fails.
 - **`coverage_granularity: "language"`.** Capability is reported per language, and that is *not* a per-function completeness claim. Constructs the CFG does not model as statements (a Python `for ... else:` clause, a Go `select` case's `v := <-ch`) are invisible to def/use, so a language marked capable still contains functions the analysis cannot see into. Per-function coverage is the finer signal WI-joluk would produce (forfeit refutation for any function whose CFG statement extents miss a call node in its body); until then the honest granularity is the language, stated rather than implied.
 
 **`sanitizer_scope` — the same disclosure for §2c (INV-karud clause b).** The sanitizer catalogue is far narrower than the source/sink one: 12 entries across 5 languages, every one cryptographic (`plaintext → ciphertext`, `key_material → derived_key`). So a repository-wide "0 sanitized flows" carries the same ambiguity §3e exists to remove — nothing was protected, or nothing *could* be, because the claims' taint labels and the sanitizers' input labels are disjoint sets. Measured on a nine-repo cohort, it is the second: zero sanitizer call sites across 95,950 taint call edges, with exactly one pre-gate name hit, correctly refused by §2c's resolution-aware gate (a bare unresolved `x.encrypt()` must not bind `Fernet.encrypt`). The block therefore carries the catalogue's size, the languages holding entries, the `input → output` categories it can express, `sanitizable_labels` (what a flow must carry to be reportable as sanitized at all), and `same_function_honoured_by` — a third declared constant, currently `["ddg"]`, whose test fails if the structural pass ever gains the ordering §3b says it cannot have. Categories and labels are derived from the loaded catalogue rather than listed, so extending it moves the disclosure without an edit.
@@ -938,7 +945,9 @@ Verdicts become more precise:
 
 #### 7b. Excluded capabilities
 
-- **Full alias analysis.** If `x = secret; y = x; z = y`, the solver tracks this through reaching definitions. But if `obj.field = secret` and later `other_ref.field` accesses the same object via a different reference, the solver does not track that — tracking aliased references requires pointer analysis, which is out of scope.
+- **Alias analysis.** The solver follows a value through the names that reaching definitions connect (`x = secret; y = x; z = y`). It does not track which other names refer to the same object: if `obj.field = secret` and `other_ref.field` later reads the same object, nothing connects the two. A walk therefore never removes a flow on the strength of a route it could not see. When the walk exhausts every route it can follow, but one of the definitions it relied on wrote the value into memory another name may reach — an element, field or dereference store into the variable, a definition that also reads the variable, a variable whose address is taken, or a variable a nested function captures — the flow is neither removed nor reported: it is WITHHELD (walk verdict `withheld`, escape reason `unmodeled_alias`), counted in `dataflow_coverage.flows_withheld_by_walk`, and a confirming verdict on its claim's source label and sink zone reads `inconclusive`. The same walk earns no `sanitized` credit on the same-function sanitizer arm. Only a walk that followed no exposed definition may remove a flow.
+
+  The record behind it is `ddg_build.RepoDdg.exposure` (`cfg.exposed_definitions`), computed per walked function from the syntax tree: the store forms are the `store_target` key of `cfg_nodes/<lang>.yaml` (assignment node types and the element / field / dereference target node types; the store detector reads the assignment's target NODE), the address-of forms are its `address_of` key, the capture scope is its `nested_function` key, and the self-referencing definitions are the def/use records, which the rule reads and never changes. The withhold is scoped by (source label, sink zone), because the walk knows the sink. Known limits: a store made by a call the walk treats as terminating is not seen; Python's `lambda` is not a `nested_function` entry, so a lambda's capture is not an exposure; a real copy that the syntax cannot tell from an alias (Python `t = s[:]`, a Go struct value `b := a`) is withheld although no alias exists.
 
 - **Path sensitivity.** The solver does not track which branch conditions hold at each point. It knows that `encrypt()` is on one path and `send()` is on another, but it does not prove they are mutually exclusive. Overapproximation (false positives) is preferred over underapproximation (missed violations).
 

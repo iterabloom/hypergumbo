@@ -225,7 +225,11 @@ How It Works
    was seen leaving through an ``unfollowed_construct`` call site
    (``taint.find_unfollowed_escapes``) is withheld by
    ``_withhold_for_unfollowed_escapes`` (INV-nohob), so when both fire the
-   withheld reason is the sink-zone gap's. After those,
+   withheld reason is the sink-zone gap's. Then a clean taint verdict whose
+   (source label, sink zone) has a flow the §3a walk WITHHELD -- it relied on a
+   definition another name may reach (``taint.WithheldFlow``, ADR-0017 §7b)
+   -- is withheld by ``_withhold_for_unmodeled_alias``, which also records the
+   per-verdict ``withheld_flows`` count. After those,
    :func:`_withhold_for_unseeded_ingress` states the request handlers whose
    arrival nothing represents (WI-fuzik, ADR-0049 ruling 3): a clean verdict
    is withheld, and an already-inconclusive one (such as one the sink-zone
@@ -461,7 +465,14 @@ from .paths import classify_test_file, is_migration_file
 # reasoning: an added key, and the flows it counts -- untrusted_input from the
 # program's own command line -- are not in ``evidence_count`` unless the claim
 # sets ``include_command_line: true``.
-VERIFY_CLAIMS_SCHEMA_VERSION = "3.1"
+# 3.2 adds ``dataflow_coverage.flows_withheld_by_walk``, the
+# ``dataflow_coverage.walk_verdicts.withheld`` key and the per-verdict
+# ``withheld_flows`` count (WI-buzup, ADR-0017 §7b), on 2.4's reasoning: added
+# keys, and the flows they count are in neither ``evidence_count`` nor
+# ``flows_removed_by_walk``. A §3a walk that relied on a definition another
+# name may reach no longer removes its flow; the flow is counted here and a
+# confirming verdict on its (source label, sink zone) reads ``inconclusive``.
+VERIFY_CLAIMS_SCHEMA_VERSION = "3.2"
 
 #: The source boundary of argv's untrusted_input half (WI-zidam). A flow from
 #: it is set aside and counted in ``command_line_flows`` unless the claim sets
@@ -1017,6 +1028,61 @@ def _withhold_for_unfollowed_escapes(
         f"was never examined"
     ))
 
+
+
+#: How each exposure kind reads in a withheld verdict's ``details``
+#: (``cfg.EXPOSURES``).
+_EXPOSURE_WORDING = {
+    "in_place_store": "stored into",
+    "self_reference": "rebuilt from itself in",
+    "address_taken": "held by address-taken",
+    "captured": "held by closure-captured",
+}
+
+
+def _withhold_for_unmodeled_alias(
+    verdict: ClaimVerdict,
+    label: str,
+    zone: str,
+    flows: Sequence[Any],
+    include_non_production: bool,
+) -> ClaimVerdict:
+    """Withhold a clean taint verdict the §3a walk could not earn (WI-buzup).
+
+    ``flows`` are :class:`taint.WithheldFlow` records: the walk exhausted every
+    route it could follow from a source of ``label`` to a sink in ``zone``, but
+    relied on a definition another name may reach (ADR-0017 §7b) -- so the
+    flow was neither removed nor reported. A claim on that (label, zone) may
+    not read clean on that walk's word: a confirming verdict becomes
+    ``inconclusive``. Scoped by SINK ZONE as well as label, unlike
+    :func:`_withhold_for_unfollowed_escapes`, because here the walk knows the
+    sink. Non-production sources count only under ``include_non_production``,
+    as flows do. Every verdict records the count (``withheld_flows``); only a
+    confirming one changes.
+    """
+    matching = [
+        f for f in flows
+        if f.taint_label == label and f.sink_zone == zone and (
+            include_non_production
+            or symbol_source_scope(f.source_symbol) == SOURCE_SCOPE_PRODUCTION
+        )
+    ]
+    if not matching:
+        return verdict
+    verdict = replace(verdict, withheld_flows=len(matching))
+    if verdict.verdict not in CONFIRMING_VERDICTS:
+        return verdict
+    sites = sorted({
+        f"{label} from {f.source} {_EXPOSURE_WORDING.get(f.site.exposure, f.site.exposure)}"
+        f" `{f.site.variable}` at {_symbol_path_slot(f.function)}:{f.site.line}"
+        for f in matching
+    })
+    return _require_coverage_to_confirm(verdict, (
+        f"the taint walk found no route to {zone} it could follow for "
+        f"{len(matching)} flow(s), but each relied on a value another name may "
+        f"reach ({_render_capped_names(sites)}), and the walk does not follow "
+        f"aliases, so it was not established that the value never reaches {zone}"
+    ))
 
 
 #: The boundary a request handler's ingress belongs to, and so the scope the
@@ -1889,6 +1955,12 @@ class ClaimVerdict:
     ``include_command_line: true``, which counts them as evidence instead.
     """
     sanitized_flows: int = 0
+    withheld_flows: int = 0
+    """Flows the §3a walk WITHHELD for this claim's (source label, sink zone)
+    (WI-buzup, ADR-0017 §7b): the walk found no route it could follow, but it
+    relied on a definition another name may reach. Not evidence and not
+    removed; a confirming verdict with one reads ``inconclusive``
+    (:func:`_withhold_for_unmodeled_alias`)."""
     caveats: list[dict[str, Any]] = field(default_factory=list)
     #: Language -> the pass IDs that produced the call edges this verdict rests
     #: on (WI-lagod). A clean verdict must name what it could not examine AND
@@ -1911,6 +1983,7 @@ class ClaimVerdict:
             "resource_naming_flows": self.resource_naming_flows,
             "trusted_sink_flows": self.trusted_sink_flows,
             "command_line_flows": self.command_line_flows,
+            "withheld_flows": self.withheld_flows,
             "caveats": self.caveats,
             "analysis_fidelity": self.analysis_fidelity,
         }
@@ -7127,6 +7200,7 @@ def verify_claims(
     unfollowed_escapes: Sequence[Any] = (),
     unseeded_ingress: Sequence[str] = (),
     unseeded_ingress_boundary: Sequence[str] | None = None,
+    withheld_flows: Sequence[Any] = (),
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -7159,6 +7233,10 @@ def verify_claims(
             :func:`taint.find_unfollowed_escapes`; a clean taint verdict whose
             label has one is withheld (INV-nohob,
             :func:`_withhold_for_unfollowed_escapes`).
+        withheld_flows: :class:`taint.WithheldFlow` records -- flows the §3a
+            walk withheld (WI-buzup); a clean taint verdict whose source label
+            and sink zone match one is withheld
+            (:func:`_withhold_for_unmodeled_alias`).
         unseeded_ingress: :func:`unseeded_ingress_handlers` of the run's
             entrypoints; a ``net_recv`` boundary verdict and an
             ``untrusted_input`` taint verdict state it, and a clean one is
@@ -7211,6 +7289,11 @@ def verify_claims(
         if tf is not None and unfollowed_escapes:
             verdict = _withhold_for_unfollowed_escapes(
                 verdict, tf.source_taint, unfollowed_escapes, include_non_production,
+            )
+        if tf is not None and withheld_flows:
+            verdict = _withhold_for_unmodeled_alias(
+                verdict, tf.source_taint, tf.prohibited_sink_zone, withheld_flows,
+                include_non_production,
             )
         # BOTH ARMS (INV-fogum): the taint arm by its label, the
         # boundary arm by its boundary -- each with ITS list (WI-sosov): a

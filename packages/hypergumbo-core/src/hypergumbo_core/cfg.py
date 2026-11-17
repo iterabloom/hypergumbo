@@ -10,10 +10,12 @@ How It Works
 1. ``load_cfg_mapping()`` reads a per-language YAML file that maps tree-sitter
    node types to control-flow categories: conditional, loop, break, continue,
    return, try/catch, switch/match, and semantic hooks. Besides ``language``
-   and ``grammar``, four further keys are not control-flow categories:
-   ``call_node_types``, ``atomic_statement``, ``nested_function`` and
+   and ``grammar``, six further keys are not control-flow categories:
+   ``call_node_types``, ``atomic_statement``, ``nested_function``,
    ``block_tail_returns`` (a block's last expression without ``;`` is a
-   return, read by ``ddg_build``'s return-span lift).
+   return, read by ``ddg_build``'s return-span lift), and ``store_target`` /
+   ``address_of`` (the in-place store and address-of node forms, read only by
+   ``exposed_definitions``).
 
 2. ``build_function_cfg()`` walks the tree-sitter AST for a function body and
    produces a ``FunctionCfg`` using the fringe-based recursive algorithm (same
@@ -112,6 +114,12 @@ The rest of the dataflow pipeline over a built CFG also lives here:
   ``call_node_types``), and ``unaccounted_names`` reports variables a
   recorded statement mentions but the extractor did not account for. The
   taint walk withholds a refutation when either fires.
+- **Exposure** (WI-buzup, ADR-0017 §7b): ``exposed_definitions`` records the
+  definitions a name the walk does not follow may reach -- an in-place store
+  read from the assignment's target node, a definition that reads its own
+  target, an address taken, a nested-function capture -- as a
+  ``DefinitionExposure``. A §3a walk that relied on one is WITHHELD rather
+  than refuted. It reads the def/use records and never changes them.
 - **Reaching definitions** (ADR-0017 §1b): ``solve_reaching_defs`` runs the
   worklist fixpoint and emits ``DdgEdge`` def-to-use edges, bailing out above
   ``MAX_DEFINITIONS`` per function.
@@ -498,6 +506,42 @@ class NestedFunctionMapping:
     body_child: str
 
 
+@dataclass(frozen=True)
+class StoreAssignmentMapping:
+    """An assignment form whose TARGET receives the value (WI-buzup).
+
+    ``target_field`` names the field holding the left-hand side. The target
+    is read, not the right-hand side: a store is a write INTO what the target
+    names. Compound forms (``+=``) are listed when the grammar gives them a
+    node type of their own.
+    """
+
+    node_type: str
+    target_field: str
+
+
+@dataclass(frozen=True)
+class StoreTargetMapping:
+    """A target form that writes INTO a referent: an element, a field, or a
+    dereference (``v[i]``, ``v.f``, ``*v``) (WI-buzup).
+
+    ``operator`` is set for a node type that is a dereference only with one
+    operator token (Go's ``unary_expression`` is ``*p`` and also ``-x``).
+    """
+
+    node_type: str
+    operator: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class AddressOfMapping:
+    """A node type that takes an address when its first token is ``operator``
+    (Go ``&v``, C ``&v``, Rust ``&v`` / ``&mut v``) (WI-buzup)."""
+
+    node_type: str
+    operator: str
+
+
 @dataclass
 class CfgNodeMapping:
     """Complete CFG node mapping for a language.
@@ -544,6 +588,16 @@ class CfgNodeMapping:
     #: built, and the atomic-statement rule must not decompose a statement
     #: just because a lambda inside it contains a branch.
     nested_functions: list[NestedFunctionMapping] = field(default_factory=list)
+    #: ``store_target`` (WI-buzup): the assignment forms and the target forms
+    #: that make a statement an IN-PLACE STORE -- a write into memory another
+    #: name may reach. Read only by :func:`exposed_definitions`, for the §3a
+    #: walk's withhold rule; the def/use records are untouched.
+    store_assignments: list[StoreAssignmentMapping] = field(default_factory=list)
+    store_targets: list[StoreTargetMapping] = field(default_factory=list)
+    #: ``address_of`` (WI-buzup). ``None`` when the key is ABSENT, which the
+    #: wiring gate refuses for a language with a def/use extractor; an empty
+    #: list is the declared answer "this grammar has no address-of operator".
+    address_of: Optional[list[AddressOfMapping]] = None
 
     def get_nested_function(self, node_type: str) -> Optional[NestedFunctionMapping]:
         """Return the nested-function mapping for a node type, if any."""
@@ -789,6 +843,23 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         for nf in data.get("nested_function", [])
     ]
 
+    store = data.get("store_target") or {}
+    store_assignments = [
+        StoreAssignmentMapping(node_type=a["node_type"], target_field=a["target_field"])
+        for a in store.get("assignment", [])
+    ]
+    store_targets = [
+        StoreTargetMapping(node_type=t["node_type"], operator=t.get("operator"))
+        for t in store.get("target", [])
+    ]
+    address_of = (
+        [
+            AddressOfMapping(node_type=a["node_type"], operator=a["operator"])
+            for a in data["address_of"]
+        ]
+        if "address_of" in data else None
+    )
+
     return CfgNodeMapping(
         language=data["language"],
         grammar=data.get("grammar", ""),
@@ -806,6 +877,9 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         call_node_types=data.get("call_node_types", []),
         atomic_statements=data.get("atomic_statement", []),
         nested_functions=nested_functions,
+        store_assignments=store_assignments,
+        store_targets=store_targets,
+        address_of=address_of,
     )
 
 
@@ -2386,6 +2460,186 @@ def unaccounted_names(
                 stack.append((child, accounted, inside))
 
     return frozenset(out)
+
+
+#: The four ways a definition the §3a walk relies on can be reached by a name
+#: the walk does not follow (WI-buzup). Named in the order
+#: :meth:`DefinitionExposure.kind_for` reports them.
+EXPOSURE_IN_PLACE_STORE = "in_place_store"
+EXPOSURE_SELF_REFERENCE = "self_reference"
+EXPOSURE_ADDRESS_TAKEN = "address_taken"
+EXPOSURE_CAPTURED = "captured"
+EXPOSURES = (
+    EXPOSURE_IN_PLACE_STORE,
+    EXPOSURE_SELF_REFERENCE,
+    EXPOSURE_ADDRESS_TAKEN,
+    EXPOSURE_CAPTURED,
+)
+
+
+@dataclass(frozen=True)
+class DefinitionExposure:
+    """Where a function's values may be reached by a name the walk does not follow.
+
+    WI-buzup. The §3a walk follows a value through the names reaching
+    definitions connect. It does not know which OTHER names refer to the same
+    object, so ``t := s; t[0] = secret; write(s[0])`` exhausts along ``t`` and
+    would read "no dependence". A value reaches an unfollowed name only if it
+    was written into memory another name may reach, and that happens in four
+    ways, recorded here per function:
+
+    * ``stores`` -- ``(name, statement line)`` for an IN-PLACE STORE: an
+      assignment whose target is an element, field or dereference expression
+      rooted at ``name`` (``v[i] = x``, ``v.f += x``, ``*v = x``). Read from
+      the assignment's target NODE (``store_target`` in ``cfg_nodes``), so it
+      does not depend on how an extractor recorded the statement: Python
+      records ``c[k] = x`` exactly as it records ``c = x``.
+    * ``self_references`` -- ``(name, statement line)`` where the statement's
+      def/use record lists ``name`` in both ``defines`` and ``uses``
+      (``s = append(s, x)``, ``s += x``).
+    * ``address_taken`` -- names whose address the function takes anywhere
+      (``&v``, ``&v.f``; ``address_of`` in ``cfg_nodes``). A plain rebinding of
+      such a name is seen through the pointer.
+    * ``captured`` -- names mentioned inside a nested function
+      (``nested_function`` in ``cfg_nodes``). A rebinding is seen by the
+      closure.
+
+    A plain rebinding of an unexposed local creates a new value no earlier
+    copy sees, which is why the walk may still refute through one.
+    """
+
+    stores: frozenset[tuple[str, int]] = frozenset()
+    self_references: frozenset[tuple[str, int]] = frozenset()
+    address_taken: frozenset[str] = frozenset()
+    captured: frozenset[str] = frozenset()
+
+    def kind_for(self, name: str, line: int) -> Optional[str]:
+        """The exposure of the definition of ``name`` at ``line``, or ``None``."""
+        if (name, line) in self.stores:
+            return EXPOSURE_IN_PLACE_STORE
+        if (name, line) in self.self_references:
+            return EXPOSURE_SELF_REFERENCE
+        if name in self.address_taken:
+            return EXPOSURE_ADDRESS_TAKEN
+        if name in self.captured:
+            return EXPOSURE_CAPTURED
+        return None
+
+    def merged(self, other: "DefinitionExposure") -> "DefinitionExposure":
+        """Union, for a binding whose bodies share one symbol id (WI-rovun)."""
+        return DefinitionExposure(
+            stores=self.stores | other.stores,
+            self_references=self.self_references | other.self_references,
+            address_taken=self.address_taken | other.address_taken,
+            captured=self.captured | other.captured,
+        )
+
+
+def _root_name(node: Any, source: bytes) -> Optional[str]:
+    """The leftmost name of an expression: ``v`` in ``v``, ``v.f``, ``v[i].g``.
+
+    Descends through first named children, which is where every mapped
+    grammar puts the object of an element, field or dereference expression.
+    """
+    while node.named_child_count:
+        node = node.named_children[0]
+    if not _is_semantic_leaf(node) and node.type != "this":
+        return None
+    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+
+def _first_token_is(node: Any, source: bytes, operator: Optional[str]) -> bool:
+    """Whether ``node``'s first token is ``operator`` (``None`` matches any)."""
+    if operator is None:
+        return True
+    if not node.children:  # pragma: no cover - a mapped node always has tokens
+        return False
+    first = node.children[0]
+    return source[first.start_byte:first.end_byte].decode("utf-8", "replace") == operator
+
+
+def exposed_definitions(
+    cfg: FunctionCfg,
+    body_node: Any,
+    source: bytes,
+    mapping: CfgNodeMapping,
+) -> DefinitionExposure:
+    """The function's :class:`DefinitionExposure` (WI-buzup).
+
+    Computed from the syntax tree and the recorded statements, after
+    :func:`populate_def_use_for_cfg`; it reads the def/use records and never
+    changes them. A store is attributed to the line of the innermost RECORDED
+    statement that contains it, which is the line the walk keys that
+    statement's definitions on.
+
+    ITERATIVE, for the reason :func:`unaccounted_names` is (INV-gotir).
+    """
+    recorded: dict[tuple[int, int, str], CfgStatement] = {}
+    self_refs: set[tuple[str, int]] = set()
+    for block in cfg.blocks.values():
+        for stmt in block.statements:
+            recorded[(stmt.line, stmt.col, stmt.node_type)] = stmt
+            for name in stmt.defines:
+                if name in stmt.uses:
+                    self_refs.add((name, stmt.line))
+
+    assignments = {a.node_type: a.target_field for a in mapping.store_assignments}
+    targets: dict[str, list[Optional[str]]] = {}
+    for t in mapping.store_targets:
+        targets.setdefault(t.node_type, []).append(t.operator)
+    address = {a.node_type: a.operator for a in (mapping.address_of or [])}
+    nested = {nf.node_type for nf in mapping.nested_functions}
+
+    def _is_target(node: Any) -> bool:
+        return node.type in targets and any(
+            _first_token_is(node, source, op) for op in targets[node.type]
+        )
+
+    stores: set[tuple[str, int]] = set()
+    addressed: set[str] = set()
+    captured: set[str] = set()
+    stack: list[tuple[Any, Optional[int], bool]] = [(body_node, None, False)]
+    while stack:
+        node, line, inside_nested = stack.pop()
+        covering = recorded.get(
+            (node.start_point[0] + 1, node.start_point[1], node.type)
+        )
+        if covering is not None:
+            line = covering.line
+        if node.type in assignments:
+            target = node.child_by_field_name(assignments[node.type])
+            if target is not None:
+                candidates = (
+                    [target] if _is_target(target) else list(target.named_children)
+                )
+                for cand in candidates:
+                    if _is_target(cand):
+                        stored = _root_name(cand, source)
+                        if stored is not None:
+                            stores.add((stored, line if line is not None
+                                        else node.start_point[0] + 1))
+        if node.type in address and node.named_child_count and _first_token_is(
+            node, source, address[node.type],
+        ):
+            taken = _root_name(node.named_children[-1], source)
+            if taken is not None:
+                addressed.add(taken)
+        if inside_nested and _is_semantic_leaf(node):
+            captured.add(
+                source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+            )
+        child_nested = inside_nested or (
+            node is not body_node and node.type in nested
+        )
+        for child in node.children:
+            stack.append((child, line, child_nested))
+
+    return DefinitionExposure(
+        stores=frozenset(stores),
+        self_references=frozenset(self_refs),
+        address_taken=frozenset(addressed),
+        captured=frozenset(captured),
+    )
 
 
 # Per-function bail-out threshold (same as Joern's ReachingDefPass default).

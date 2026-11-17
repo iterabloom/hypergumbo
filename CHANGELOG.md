@@ -16,6 +16,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Declare fixture directories as test input in `.hypergumbo.toml`.**
 
+### Fixed
+
+- **`verify-claims` no longer confirms secrets written through an alias.**
+
 ### Development tools and CI
 
 - **mypy now rejects a hand-built node id.**

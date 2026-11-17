@@ -1,0 +1,15 @@
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func leak() {
+	inner := []string{""}
+	lst := [][]string{}
+	lst = append(lst, inner)
+	inner[0] = os.Getenv("API_KEY")
+	fmt.Println(len(inner))
+	os.WriteFile("o.txt", []byte(lst[0][0]), 0o600)
+}

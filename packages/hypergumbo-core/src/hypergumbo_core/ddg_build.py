@@ -181,7 +181,7 @@ from .taxonomy import extension_globs, grammar_for_path
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from .cfg import DdgEdge
+    from .cfg import DdgEdge, DefinitionExposure
 
 # Directories never worth walking. verify-claims should not pay to analyze
 # third-party or generated code.
@@ -381,6 +381,14 @@ class RepoDdg:
     #: expression-bodied callable (a Rust tail expression, a JS arrow
     #: ``() => x``) is NOT the same as returning nothing.
     return_spans: dict[str, list["ReturnStatement"]] = field(default_factory=dict)
+    #: ``symbol_id -> DefinitionExposure`` (WI-buzup): which of the function's
+    #: definitions another name may reach -- an in-place store, a definition
+    #: that reads its own target, an address taken, a closure capture. Read
+    #: only by the §3a walk, which WITHHOLDS a refutation that relied on one
+    #: rather than removing a flow it cannot rule out (ADR-0017 §7b). From the
+    #: syntax tree plus the def/use records, which it does not change.
+    #: Populated alongside ``stmt_defuse``, for functions WITH edges only.
+    exposure: dict[str, "DefinitionExposure"] = field(default_factory=dict)
 
 
 _DDG_LANGUAGES: dict[str, LanguageDdgSpec] = {}
@@ -790,6 +798,13 @@ def _solve_one_function(
         # the same reason: a function with no edges is never walked, and the
         # empty answer this returns for an unpopulated CFG would be a lie about
         # one that was.
+        # WI-buzup. On the same terms as ``unaccounted_names`` below: a
+        # function with no edges is never walked.
+        exposure = deps["exposed_definitions"](cfg, body_node, source, mapping)
+        previous = out.exposure.get(sym_id)
+        out.exposure[sym_id] = (
+            exposure if previous is None else previous.merged(exposure)
+        )
         unaccounted = deps["unaccounted_names"](cfg, body_node, source)
         if unaccounted:
             out.unaccounted_names[sym_id] = (
@@ -833,6 +848,7 @@ def build_repo_ddg(
 
         from .cfg import (
             build_function_cfg,
+            exposed_definitions,
             late_capture_edges,
             load_cfg_mapping,
             populate_def_use_for_cfg,
@@ -849,6 +865,7 @@ def build_repo_ddg(
         "solve_reaching_defs": solve_reaching_defs,
         "uncovered_semantic_lines": uncovered_semantic_lines,
         "unaccounted_names": unaccounted_names,
+        "exposed_definitions": exposed_definitions,
         "late_capture_edges": late_capture_edges,
     }
 
