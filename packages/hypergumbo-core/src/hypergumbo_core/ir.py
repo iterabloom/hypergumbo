@@ -123,7 +123,7 @@ from typing import Any, Callable, Dict, Final, List, Literal, NewType, Optional
 
 from . import __version__
 from .axis_meta_keys import per_call_site_keys
-from .schema import STABLE_ID_PREFIX
+from .identity_schemes import STABLE_ID_PREFIX
 
 StableId = NewType("StableId", str)
 """A ``Symbol.stable_id`` value (ADR-0035): ``hgstableid<N>:<16hex>``, or
@@ -713,7 +713,7 @@ class Symbol:
             fingerprint (``hgrepofp<N>:``) cannot be mistaken for one
             another, and two ids from different algorithms never compare
             equal (ADR-0035 §"Value labels"). Each label is derived from its
-            scheme constant (``schema.value_label``). The labels are labels
+            scheme constant (``identity_schemes.value_label``). The labels are labels
             only: stableid-v15 wrote the digest stableid-v14 wrote after
             ``sha256:``.
         shape_id: Structural *skeleton* hash — the parse subtree with

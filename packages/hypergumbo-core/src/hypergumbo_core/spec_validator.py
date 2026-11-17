@@ -154,7 +154,7 @@ from .ir import (
     VALID_CONFIDENCE_SOURCES,
     sanitize_id_name_segment,
 )
-from .schema import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
+from .identity_schemes import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 VALIDATION_REPORT_SCHEMA_VERSION = "0.5"  # 0.5: name_slot_stats (ADR-0036 Ruling 1 round-trip, additive); 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 

@@ -49,7 +49,13 @@ doesn't change.
 How It Works
 ------------
 The behavior map is the primary output format for hypergumbo analysis.
-This module defines several versioned schemes:
+Its top level names several versioned schemes. ``schema_version`` and
+``confidence_model`` are defined here; the five identity schemes, their value
+labels, ``value_label()`` and ``identity_digest()`` are defined in
+``identity_schemes.py`` and offered again from this module (the same
+objects). They live there because ``ir`` and ``analyze/base`` need the labels
+when they are imported, and a module every test file loads must not load this
+one: see that module's docstring.
 
 - **schema_version**: Overall format version (breaking changes increment minor,
   save the 0.20.10 patch-bump exception noted above)
@@ -90,7 +96,8 @@ Related Files
 This module works with two other components to provide schema infrastructure:
 
 **This file (schema.py)** - Runtime constants and factory
-- Defines SCHEMA_VERSION and scheme identifiers
+- Defines SCHEMA_VERSION and CONFIDENCE_MODEL; re-offers the identity scheme
+  identifiers of ``identity_schemes.py``
 - Provides new_behavior_map() factory for output generation
 - Builds the L2 reproducibility_context block via
   build_reproducibility_context() (INV-morag): captures
@@ -113,10 +120,22 @@ from __future__ import annotations
 
 import importlib.metadata
 import platform
-import re
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from .identity_schemes import (
+    REPO_FINGERPRINT_PREFIX as REPO_FINGERPRINT_PREFIX,
+    REPO_FINGERPRINT_SCHEME as REPO_FINGERPRINT_SCHEME,
+    SCIP_STABLE_ID_PREFIX as SCIP_STABLE_ID_PREFIX,
+    SCIP_STABLE_ID_SCHEME as SCIP_STABLE_ID_SCHEME,
+    SHAPE_ID_PREFIX as SHAPE_ID_PREFIX,
+    SHAPE_ID_SCHEME as SHAPE_ID_SCHEME,
+    STABLE_ID_PREFIX as STABLE_ID_PREFIX,
+    STABLE_ID_SCHEME as STABLE_ID_SCHEME,
+    SYMBOL_FINGERPRINT_SCHEME as SYMBOL_FINGERPRINT_SCHEME,
+    identity_digest as identity_digest,
+    value_label as value_label,
+)
 from .installed_env import kept_per_environment
 
 SCHEMA_VERSION = "0.21.2"
@@ -156,82 +175,6 @@ DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.3.0"
 # ``test_confidence_model_matches_documented_grammar`` pins the format; the
 # per-version record is the spec's §12 / Appendix C (history: WI-huhin).
 CONFIDENCE_MODEL = "hypergumbo-evidence-v2.2"
-STABLE_ID_SCHEME = "hypergumbo-stableid-v15"
-# Any change that alters computed stable_id values bumps the scheme (spec §6),
-# even when only one language's values move: the scheme names the whole
-# output, and there is no in-place migration. The per-transition record
-# (driver, hash-basis change, which values moved) is the spec's
-# "stable_id_scheme version history"; record a transition there before bumping.
-# Every value carries the label STABLE_ID_PREFIX derived below, so a bump
-# also relabels every value (ADR-0035 §"Value labels").
-# shape_id: the Python hash folds the symbol kind (class/method/function) and
-# the concrete AST node type into its prefix, so structurally-trivial symbols
-# of different kinds do not collide — a module-level function vs a class method
-# (both ``ast.FunctionDef``), an ``async def`` vs a ``class``. The scheme is
-# global: a change to the Python or the tree-sitter path that alters computed
-# values bumps it (spec §6). A change to the label alone is a change to the
-# emitted value, so it bumps too (v3 -> v4 was the label).
-SHAPE_ID_SCHEME = "hypergumbo-shapeid-v4"
-# The AnalysisRun ``repo_fingerprint`` FIELD is rendered
-# ``REPO_FINGERPRINT_PREFIX<64hex>`` (compute_repo_fingerprint_field). The
-# bare digest is used only as the colon-free cache-dir path segment
-# (compute_repo_fingerprint). A rendering change alters the emitted value, so
-# it bumps the scheme like an algorithm change (spec §6; v2 -> v3 was the
-# label).
-REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v3"
-# The rust-analyzer (SCIP) arm's stable_id: a digest of the defining
-# document's path and the SCIP moniker (scip/index.py ``scip_stable_id``), a
-# different algorithm from the tree-sitter factories, so it is a scheme of
-# its own with a label of its own (ADR-0035 §"Value labels"). A record the
-# SCIP arm emits whose id the rust.py parity pass replaced carries the
-# tree-sitter label: that value was computed by the tree-sitter formula.
-SCIP_STABLE_ID_SCHEME = "hypergumbo-scip-stableid-v1"
-# Scheme tag for Symbol.fingerprint, whose sole producer is the orchestrator
-# post-pass in ``hypergumbo_core.fingerprint`` (whole-file parse + subtree
-# hash). v2 corresponds to the ``hgfp2:`` prefix on every value; a change that
-# alters emitted values bumps both (history: WI-fanun, WI-falum).
-SYMBOL_FINGERPRINT_SCHEME = "hypergumbo-symbol-fp-v2"
-
-#: ``-v<N>`` at the end of a scheme constant: the number a value label carries.
-_SCHEME_NUMBER = re.compile(r"-v(\d+)$")
-
-
-def value_label(word: str, scheme: str) -> str:
-    """The in-value label ``hg<word><N>:`` of a scheme whose constant ends ``-v<N>``.
-
-    The one place a label's number is read (ADR-0035 §"Value labels"): each
-    identity value starts with the label of the scheme that produced it, and
-    the number is the scheme constant's, so bumping the constant relabels
-    every value with no second edit. ``word`` names the value (``stableid``,
-    ``shapeid``, ``repofp``, ``scipid``); it is what tells a stable id from a
-    shape id when the value is read without its field.
-    """
-    match = _SCHEME_NUMBER.search(scheme)
-    if match is None:
-        raise ValueError(f"scheme {scheme!r} does not end in -v<N>")
-    return f"hg{word}{match.group(1)}:"
-
-
-#: The label of every tree-sitter (and Python ``ast``) ``Symbol.stable_id``.
-STABLE_ID_PREFIX = value_label("stableid", STABLE_ID_SCHEME)
-#: The label of every ``Symbol.shape_id``.
-SHAPE_ID_PREFIX = value_label("shapeid", SHAPE_ID_SCHEME)
-#: The label of ``AnalysisRun.repo_fingerprint``.
-REPO_FINGERPRINT_PREFIX = value_label("repofp", REPO_FINGERPRINT_SCHEME)
-#: The label of a ``Symbol.stable_id`` the rust-analyzer (SCIP) arm minted.
-SCIP_STABLE_ID_PREFIX = value_label("scipid", SCIP_STABLE_ID_SCHEME)
-
-
-def identity_digest(value: str) -> str:
-    """The digest of an identity value: the text after its label.
-
-    For a consumer comparing digests across a label-only change (the
-    stableid-v14 ``sha256:<hex>`` and stableid-v15 ``hgstableid15:<hex>``
-    forms of one symbol's id share the hex). A digest says nothing about
-    which algorithm produced it; compare digests only where the scheme
-    history says the algorithm did not change.
-    """
-    return value.rpartition(":")[2]
 
 
 def _now_iso_utc() -> str:
