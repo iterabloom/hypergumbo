@@ -70,3 +70,24 @@
   clock: 8  # 5d19
   nonce: 5d19  # 5d19
   message: "PR #2230 merged (dev 5a38b95bb): the publish step now FAILS FAST AND SAYS WHY. ssh runs with BatchMode=yes and ConnectTimeout=20, so the runner's unreachable port 22 will read 'ssh: connect to host github.com port 22: Connection timed out' after 20 s; a git command that still outlasts 120 s names what it was doing and the remote. Tests: tests/test_publish_scheduled_verdict.py (a stand-in ssh that never answers; four mutations red). THIS DOES NOT PUBLISH ANYTHING: the transport is unchanged and the item still waits on the owner's choice among the three ways recorded above. Expect the 01:00 UTC run of 2026-11-18 to end red at publish-verdict with that ssh line; if it says anything else, the diagnosis is incomplete."  # 5d19
+- op: discuss  # aec0
+  at: '2026-11-17T20:19:05Z'  # aec0
+  by: agent  # aec0
+  actor: jgstern_agent  # aec0
+  clock: 9  # aec0
+  nonce: aec0  # aec0
+  message: "OWNER DECISION, 2026-11-17 ~20:45 UTC (interview answer in the session): the verdict push goes by SSH over port 443 (ssh.github.com), reusing the deploy key already in place (public key in the repo's Deploy keys, private key in Woodpecker as secret badges_deploy_key with cron and push permissions). The owner approved adding ssh.github.com to ALLOWED_WEBSITES.md (a governance file) for this. The owner first leaned to HTTPS with a token 'since you already had me create a deploy key'; I pointed out that a deploy key is an SSH key and cannot authenticate over HTTPS, and asked again; the answer was SSH over 443. PLAN: one PR that adds the allowlist line and a temporary CI step probing ssh.github.com:443 from the runner (TCP connect, SSH banner, host keys against the pinned ones). Nothing merges until the probe passes; then the probe step is replaced by the change to scripts/publish-scheduled-verdict in the same PR. If the probe fails the PR is closed, the allowlist line never lands, and I ask the owner for a token (the HTTPS fallback). The authenticated push itself cannot be tried from a PR (the secret is for cron and push events): the first scheduled run after the merge is that test. THE ITEM STAYS at needs_human_review until a verdict is read from origin/badges."  # aec0
+- op: discuss  # 0756
+  at: '2026-11-17T21:24:16Z'  # 0756
+  by: agent  # 0756
+  actor: jgstern_agent  # 0756
+  clock: 10  # 0756
+  nonce: '0756'  # 0756
+  message: "Merged as PR #2239, dev SHA d20786f6f6ed."  # 0756
+- op: discuss  # 85e1
+  at: '2026-11-17T21:25:02Z'  # 85e1
+  by: agent  # 85e1
+  actor: jgstern_agent  # 85e1
+  clock: 11  # 85e1
+  nonce: '85e1'  # 85e1
+  message: "PR #2239 merged (dev d20786f6f): the verdict push goes to ssh://git@ssh.github.com:443/<repo>.git with the same deploy key and pinned host keys; ALLOWED_WEBSITES.md lists ssh.github.com (owner-approved 2026-11-17). PROBE RESULT, from the CI runner, pipeline 6540 (the push pipeline at d20786f6f), step verdict-transport-probe, read with 'ci-debug logs verdict-transport-probe d20786f6': '+ scripts/publish-scheduled-verdict probe' then 'publish-scheduled-verdict: reached ssh://git@ssh.github.com:443/iterabloom/hypergumbo.git: host key verified (no key was offered; the push itself needs BADGES_DEPLOY_KEY)'. So the runner reaches GitHub's SSH service on 443 and what answers holds a pinned host key. NOT YET SHOWN: that the deploy key is accepted and the push lands. The first scheduled run after this merge (01:00 UTC, 2026-11-18) is that test; the close condition is a verdict file read from origin/badges. If the key is refused the step will say 'Permission denied (publickey)'; the probe command run with the key set distinguishes 'refused' from 'unreachable'. Item stays at needs_human_review."  # 85e1
