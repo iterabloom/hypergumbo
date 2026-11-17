@@ -34,6 +34,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -46,10 +47,24 @@ from hypergumbo_core.selection_index import (
     select_tests,
     speakable_test_files,
     store_edges,
-    stored_edges,
     touching_test_files,
     touching_tests,
 )
+
+
+def stored_edges(conn: sqlite3.Connection) -> Iterator[tuple[str, str, str]]:
+    """Every ``(test id, path, block name)`` pair in the index, unordered.
+
+    A query of the stored tables, for these tests of the format: production
+    reads the index through ``touching_tests``, ``statement_records`` and the
+    other selection functions and never lists every pair.
+    """
+    yield from conn.execute(
+        "SELECT t.test_id, f.path, b.name FROM test_block tb "
+        "JOIN test t ON t.id = tb.test "
+        "JOIN block b ON b.id = tb.block "
+        "JOIN file f ON f.id = b.file")
+
 
 _FORMAT_1_SCHEMA = """
 CREATE TABLE block (

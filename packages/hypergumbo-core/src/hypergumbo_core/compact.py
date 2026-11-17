@@ -1585,15 +1585,10 @@ def format_compact_behavior_map(
     return compact_map
 
 
-# Backwards compatibility aliases for functions that were moved
+# Backwards compatibility alias for a function that was moved
 def estimate_node_tokens(node_dict: dict[str, Any]) -> int:
     """Estimate tokens for a serialized node. Alias for estimate_json_tokens."""
     return estimate_json_tokens(node_dict)
-
-
-def estimate_behavior_map_tokens(behavior_map: dict[str, Any]) -> int:
-    """Estimate total tokens for a behavior map. Alias for estimate_json_tokens."""
-    return estimate_json_tokens(behavior_map)
 
 
 def select_by_tokens(

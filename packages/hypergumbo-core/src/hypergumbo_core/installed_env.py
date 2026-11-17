@@ -96,9 +96,3 @@ def kept_per_environment(slot: Hashable, build: Callable[[], _T]) -> _T:
         answers[slot] = build()
     answer: _T = answers[slot]
     return answer
-
-
-def forget_kept_answers() -> None:
-    """Drop everything kept (for tests that change what a builder reads)."""
-    global _KEPT
-    _KEPT = None

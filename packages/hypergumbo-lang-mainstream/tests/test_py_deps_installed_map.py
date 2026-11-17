@@ -34,10 +34,9 @@ from hypergumbo_lang_mainstream import py_deps
 
 
 @pytest.fixture(autouse=True)
-def _no_memo():
-    installed_env.forget_kept_answers()
-    yield
-    installed_env.forget_kept_answers()
+def _no_memo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each test starts with nothing kept; the module's own state is put back after."""
+    monkeypatch.setattr(installed_env, "_KEPT", None)
 
 
 @pytest.fixture
