@@ -36,9 +36,10 @@ block no pair is not "no test reaches it". It is answered ``UNKNOWN`` and
 listed in ``Selection.unknown``; a caller must not narrow a run on a
 selection whose ``unknown`` is not empty.
 
-WHAT IT DOES NOT DECIDE. Import-time blocks (a module body, a class body):
-no record says which tests ran them; they are listed in ``import_time`` for
-the caller's import rule. A new function has no test of its own (a changed
+WHAT IT DOES NOT DECIDE. Import-time blocks (a module body, a class body,
+and a function the index saw run while a module was imported): no record
+says which tests ran them; they are listed in ``import_time`` for the
+caller's import rule. A new function has no test of its own (a changed
 caller's). A new METHOD is given every test that reached any block of its
 class in the same file: an unchanged call may now reach it in place of an
 inherited one. That last rule is a guess at "the tests that use this class",
@@ -56,7 +57,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional
 
-from .selection_index import BlockKey, statement_records, statement_records_at, touching_tests
+from .selection_index import (
+    BlockKey,
+    blocks_run_at_import,
+    statement_records,
+    statement_records_at,
+    touching_tests,
+)
 from .statement_diff import Kind, statement_changes
 
 #: ``Selection.answers`` values that are not of the form ``whole: <why>``.
@@ -131,12 +138,15 @@ def select_by_statement(
             answers[(path, "")] = UNPARSABLE
             continue
         stored = _stored_digests(conn, path)
+        ran_at_import = blocks_run_at_import(conn, [path])
         for name, change in changes.items():
             key = (path, name)
             if change.kind is Kind.PROSE:
                 answers[key] = PROSE
                 continue
-            if change.import_time:
+            # A function some run saw execute at import is import-time code
+            # too: a test that uses what it built never ran it.
+            if change.import_time or key in ran_at_import:
                 import_time.add(key)
                 answers[key] = IMPORT_TIME
                 continue

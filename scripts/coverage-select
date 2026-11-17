@@ -457,7 +457,8 @@ def cmd_readers(args: argparse.Namespace) -> int:
 
 def cmd_import_closure(args: argparse.Namespace) -> int:
     """Print the test FILES whose imports reach a changed source file whose
-    IMPORT-TIME code changed (a module or class body), one per line.
+    IMPORT-TIME code changed (a module or class body, or a function the index
+    saw run under no test's context), one per line.
 
     The call-edge slice lists a module that imports the changed file but
     reaches a test of that module only through a call into the changed file.
@@ -467,15 +468,22 @@ def cmd_import_closure(args: argparse.Namespace) -> int:
     smart-test unions this answer in.
 
     The graph is read from the working tree: every Python file git tracks or
-    would track. A changed function body is not a trigger; the slice and the
-    coverage record select for it. An empty answer prints nothing.
+    would track. A changed body of a function that runs only inside tests is
+    not a trigger; the slice and the coverage record select for it. An empty
+    answer prints nothing.
     """
     root = Path(args.repo_root).resolve()
     changed = [c for c in _lines(args.changed_files) if c.endswith(".py")]
     if not changed:
         return 0
     base_sources = {str(root / c): _base_source(root, args.base, c) for c in changed}
-    hit = import_time_changed_sources(base_sources, root)
+    # With the index: a changed function it saw run at import is import-time
+    # code too. Without one, the kinds of block alone decide.
+    if Path(args.index).exists():
+        with contextlib.closing(open_index(Path(args.index))) as conn:
+            hit = import_time_changed_sources(base_sources, root, conn)
+    else:
+        hit = import_time_changed_sources(base_sources, root)
     if not hit:
         return 0
     listed = subprocess.run(
