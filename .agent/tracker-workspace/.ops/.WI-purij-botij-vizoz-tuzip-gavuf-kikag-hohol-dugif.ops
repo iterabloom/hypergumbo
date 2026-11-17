@@ -1,0 +1,21 @@
+- op: create  # 45f8
+  at: '2026-11-17T14:19:28Z'  # 45f8
+  by: agent  # 45f8
+  actor: jgstern_agent  # 45f8
+  clock: 1  # 45f8
+  nonce: 45f8  # 45f8
+  data:  # 45f8
+    kind: work_item  # 45f8
+    title: "merge-pr close leaves .git/PR_PENDING for the pull request it just closed, and gov-cleanup refuses an unmerged one"  # 45f8
+    status: needs_human_review  # 45f8
+    priority: 3  # 45f8
+    parent:  # 45f8
+    tags:  # 45f8
+    - ci_infrastructure  # 45f8
+    - governance  # 45f8
+    isbefore: []  # 45f8
+    duplicate_of: []  # 45f8
+    not_duplicate_of: []  # 45f8
+    pr_ref:  # 45f8
+    description: "FOUND 2026-11-17. `./scripts/auto-pr --gov --detach` on a diagnostic pull request (#2228) ended in `governance_pending` and left `.git/PR_PENDING` holding \"2228\", as designed. `./scripts/merge-pr close 2228 --reason ...` then closed the pull request (exit 0, \"PR #2228 closed\") and LEFT THE GATE FILE: `test -f .git/PR_PENDING` was still true, so the pre-work check (\"if the file exists, wait for auto-pr to complete\") would have held every later task on a pull request that no longer exists. `auto-pr gov-cleanup 2228` is no way out: it refuses a pull request that is not merged (\"is not yet merged. Merge it first\").\n\nWHAT I DID: confirmed with `ci-debug pr-status 2228` (State: closed, Merged: False), then removed the file by hand and deleted the branch (local and remote).\n\nWHAT IS WANTED: `merge-pr close N` removes `.git/PR_PENDING` when the file names N, and deletes the branch as a merge does (or says that it does neither). scripts/merge-pr is a governance file: this needs the owner's approval before a pull request.\n\nThe `close` path's own header says \"This script does NOT create PR_PENDING — it only cleans it up\" (scripts/merge-pr:20); the two `rm -f` sites are on the merge paths only (lines 282 and 391 on dev eec3215e6)."  # 45f8
+    fields: {}  # 45f8

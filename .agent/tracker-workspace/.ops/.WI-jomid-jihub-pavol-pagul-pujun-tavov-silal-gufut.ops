@@ -41,3 +41,25 @@
   clock: 4  # e125
   nonce: e125  # e125
   message: "Built and merged in PR #2219 (dev 26f51346b): scripts/publish-scheduled-verdict, a publish-verdict step in both scheduled workflows, README coverage and full-suite badges reading scheduled/*-badge.json on the badges branch. The owner confirmed on 2026-11-17 that the deploy key and the Woodpecker secret badges_deploy_key (cron event) are in place. STAYS OPEN until a scheduled run has published: the SSH push with the real key and the Woodpecker step are not verifiable before the first run after the merge (13:00 UTC 2026-11-17). Close when `git show origin/badges:scheduled/full-suite.json` names that run's own commit and the two badge files exist; if publish-verdict is red, its log holds a one-line reason."  # e125
+- op: discuss  # 767f
+  at: '2026-11-17T13:53:57Z'  # 767f
+  by: agent  # 767f
+  actor: jgstern_agent  # 767f
+  clock: 5  # 767f
+  nonce: 767f  # 767f
+  message: "FIRST SCHEDULED RUN AFTER THE MERGE, 2026-11-17 13:00 UTC, pipeline 6512 on dev fd5448d1 (ci-debug cron-status at 13:52 UTC): the workflow STARTED, so the secret badges_deploy_key exists and is allowed for the cron event. Every other step passed: git, prepare-git, build-grammars, io-allowlist, allowlist-commands-trace, test-all-packages, self-claims-gate, test-agent-infra, self-tree-validation (the two steps that were red in 6480 are green after PR #2217 and the test-id fix of PR #2223). publish-verdict FAILED (exit 1); its whole log is one line: 'publish-scheduled-verdict: git timed out after 120 s' (ci-debug logs publish-verdict fd5448d1; kept in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/jomid/). origin/badges at 13:52 UTC still holds only coverage.json and last-green-sha.txt (last commit 2026-06-28). SO THE CLOSE CONDITION IS NOT MET and this item stays open. WHAT THE LINE DOES NOT SAY: which git command hung (the message does not name it) or why. The ssh command the script builds has no BatchMode and no ConnectTimeout, so a blocked port 22 from the runner, or ssh waiting for input, would both look like this. NEXT: find out from the runner (a probe of github.com:22 in a PR pipeline needs no secret), make the step fail fast with ssh's own reason, fix, and read the 01:00 UTC run. Until then the scheduled full suite shows FAIL although every test step passed."  # 767f
+- op: update  # ab50
+  at: '2026-11-17T14:19:28Z'  # ab50
+  by: agent  # ab50
+  actor: jgstern_agent  # ab50
+  clock: 6  # ab50
+  nonce: ab50  # ab50
+  set:  # ab50
+    status: needs_human_review  # ab50
+- op: discuss  # b88c
+  at: '2026-11-17T14:19:28Z'  # b88c
+  by: agent  # b88c
+  actor: jgstern_agent  # b88c
+  clock: 7  # b88c
+  nonce: b88c  # b88c
+  message: "DIAGNOSED 2026-11-17 14:25 UTC: THE RUNNER CANNOT REACH github.com ON PORT 22. A diagnostic pull request (#2228, closed without merging) ran one step in the per-PR pipeline on the same runner image (python:3.11-bookworm): 'TCP github.com:22 IPv4 140.82.113.4: NOT REACHABLE after 15.0 s (timed out)'; 'TCP github.com:443 IPv4 140.82.113.4: OPEN in 0.0 s'; 'ssh: connect to host github.com port 22: Connection timed out' (OpenSSH 9.2 is in the image; only an IPv4 address resolved). Log: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/jomid/probe_step.log. So the publish step's `git ls-remote` over SSH hung until the script's own 120 s limit. The deploy key and the secret are not shown to be wrong: the connection never got as far as a key. THE DECISION IS THE OWNER'S, three ways through: (1) SSH OVER PORT 443, GitHub's ssh.github.com endpoint: the same deploy key, one line in the ssh command, and one host to add to ALLOWED_WEBSITES.md (ssh.github.com is not listed; I did not probe it for that reason, so whether the runner reaches it is NOT KNOWN). My recommendation: no new credential. (2) PUSH OVER HTTPS with a fine-grained token (Contents: write on this repository) as a new secret; github.com:443 is reachable and already allowed. (3) open outbound port 22 on the runner's network; nothing changes in the repository. WHAT I AM DOING WITHOUT A RULING: making the step fail in seconds with ssh's own reason and name the git command that failed (no change of transport). UNTIL ONE OF THE THREE: every scheduled run ends FAIL at publish-verdict although its test steps pass, no verdict reaches origin/badges, and the session-start reader has nothing to read. The stop rule (WI-kidop-falih) and the ledger (WI-taguj-nisos) read published verdicts and wait on this."  # b88c
