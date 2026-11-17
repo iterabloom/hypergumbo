@@ -73,12 +73,14 @@ ALSO (separate item): ${_msg}"
     fi
 }
 
-# Helper: append the red-cron nudge (WI-lapof) when a cron CI step is red and
-# no open tracker row names it. A red cron gate sat unread for four days
-# (INV-fugus) and again on 2026-09-23, because nothing put the verdict in front
-# of the agent. The nudge makes the network call itself (one approved
-# `ci-debug cron-status`, cached for an hour) and is silent on any failure,
-# outage or parse miss. Same contract as the two helpers above.
+# Helper: append the scheduled-run nudge (WI-lapof, WI-zutub) when a scheduled
+# run is red and no open tracker row names it, when its newest verdict is too
+# old, or when the status cannot be checked. A red cron gate sat unread for
+# four days (INV-fugus), again on 2026-09-23, and through the 10.0.0 release,
+# because nothing put the verdict in front of the agent. The nudge reads the
+# verdict the scheduled runs publish to origin/badges with local git commands
+# (after one fetch bounded at 2 s), needs no virtualenv, and says so in one
+# line when it cannot determine the status instead of printing nothing.
 _append_cron_status() {
     local _nudge_script="$REPO_ROOT/.agent/hooks/_shared/cron_status_nudge.py"
     if [[ ! -f "$_nudge_script" ]] || ! command -v python3 &>/dev/null; then
