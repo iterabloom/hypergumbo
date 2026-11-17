@@ -557,7 +557,11 @@ PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
 # Coverage paths for the modular package structure.
 #
-# COV_SCOPE_COMPLETE says whether COV_PATHS names EVERY package. The selection
+# COV_SCOPE_COMPLETE says whether COV_PATHS names every package IT EVER NAMES
+# (the six below). The tracker package was never in the list and is not: its
+# source is never measured here (CI's full suite measures it), and that is
+# safe because a change to a source file no run measured refuses narrowing
+# (selection_index.droppable_test_files). The selection
 # index is told (fold_selection_index): only a run that measured every package
 # lets a test be narrowed away later, because a test's having no coverage row
 # on a file means "did not run it" only when the file was measured, and a new

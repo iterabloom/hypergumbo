@@ -130,11 +130,20 @@ def cmd_update(args: argparse.Namespace) -> int:
     if args.junit and Path(args.junit).exists():
         ran = ran_tests_from_junit(Path(args.junit), root)
     conn = open_index(Path(args.index))
+    count = "SELECT COUNT(*) FROM unmeasured_test"
+    before = conn.execute(count).fetchone()[0]
     update_from_run(
         conn, Path(args.coverage_db),
         ran_tests=ran, git_sha=args.sha, full_run=args.full, repo_root=root,
         scope_complete=args.scope_complete,
     )
+    if args.full:
+        # Said on every full run, the only run that rewrites the list: it is
+        # what keeps narrowing from dropping a test coverage cannot see into,
+        # and it once fell from 6,916 to 227 with nothing printed anywhere.
+        print(f"[coverage-select] full run: coverage cannot speak for "
+              f"{conn.execute(count).fetchone()[0]} test(s) (their own call ran no "
+              f"measured code); {before} before this run", file=sys.stderr)
     # After the coverage fold, not before: a full run resets both, and the
     # prose-only rule reads the two together.
     if args.source_reads and Path(args.source_reads).is_dir():

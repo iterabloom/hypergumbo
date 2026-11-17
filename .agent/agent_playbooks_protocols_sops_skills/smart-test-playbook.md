@@ -94,6 +94,12 @@ If runs follow one another without a few idle minutes (an agent's pre-PR chain),
 
 **Looking at the stored graphs:** `scripts/coverage-select graph-list`.
 
+### Coverage narrowing, and the tests it never drops
+
+After the graph has named the test files a change reaches, smart-test drops the ones whose recorded coverage shows they never run the changed code (`--no-narrow` keeps them all). The manifest is written after this step, so merge CI runs the narrowed set.
+
+A test file is never dropped while coverage cannot speak for one of its tests. That is a test whose **own call** ran no measured code: it works through a subprocess (`scripts/`, the CLI) or in code outside the measured packages. Rows from a test's setup and teardown do not count, because a fixture can run for every test; the root `conftest.py` has one, and while its row counted, every test looked measured and narrowing dropped subprocess-driven test files for changes to the code they run. The list of such tests is rewritten only by a full run (`smart-test --full`), which prints its size and the size before (`full run: coverage cannot speak for N test(s) ...; M before this run`). **A sharp fall in that number is a defect, not an improvement.**
+
 ### The by-statement selector (recording only)
 
 The selection index records which statements of a function each test ran. A second selector uses that: for a changed function it picks the tests that ran a statement the change touches, not every test that reached the function (`hypergumbo_core/statement_diff.py` says which old statements a change makes a test answer for; `statement_select.py` reads the records). **It selects nothing yet.** Every run that reaches pytest stores, in its row of `~/hypergumbo_lab_notebook/run_records.jsonl` under `by_statement`, what it would have selected and the one result that counts against it:
