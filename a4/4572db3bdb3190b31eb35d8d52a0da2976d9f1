@@ -1,0 +1,75 @@
+Original commit body from cc7ffa1994f848d5f73b5be1db9adabd85c48a4e:
+
+`verify-claims` no longer reads confirmed when a secret is written through a second name for the same object.
+
+## The defect
+
+The taint walk follows a value through variable names. It does not know which other names refer to the same object. For Go
+
+    s := []string{""}
+    t := s
+    t[0] = os.Getenv("API_KEY")
+    fmt.Println(len(t))
+    os.WriteFile("/tmp/out.txt", []byte(s[0]), 0o600)
+
+it followed `t`, found no route to the write, removed the flow, and the claim "host_secret must not reach host_fs" read confirmed (exit 0, no caveat). A study on the 10.0.0 release found 16 such shapes in 35 shape-and-language pairs (Go 15, Python 11, JavaScript 9). The same wrong answer also earned sanitizer credit when a sanitizer sat in the same function.
+
+## The rule (owner ruling 2026-11-16)
+
+A walk that found no route may not remove a flow if it relied on a definition another name may reach:
+
+- an in-place store (`v[i] = x`, `v.f = x`, `*v = x`, compound forms);
+- a definition that reads its own target (`s = append(s, x)`);
+- a variable whose address is taken;
+- a variable mentioned by something that runs later: a nested function, a Python `lambda` or generator expression, a JavaScript / TypeScript class field initialiser.
+
+Such a flow is withheld: not removed and not reported. A confirming verdict on its source label and sink zone reads inconclusive (exit 4), and the details name the site ("host_secret from os.Getenv stored into `t` at main.go:11"). The same record denies sanitizer credit on the same-function sanitizer check.
+
+## What changed
+
+- `cfg.exposed_definitions` builds the per-function record from the syntax tree; it is kept as `RepoDdg.exposure`. The def/use records are not changed.
+- New keys in all six `cfg_nodes` files: `store_target`, `address_of`, `capture_scope`. Every entry has its own behavioural test, and a wiring test requires the keys for each language with a def/use extractor.
+- The walk gains escape reason `unmodeled_alias` and walk verdict `withheld`.
+- Output: per-verdict `withheld_flows`; `dataflow_coverage.flows_withheld_by_walk`; `dataflow_coverage.walk_verdicts.withheld`; a text footer line "Flows WITHHELD by the walk this run: N." Envelope `schema_version` 3.1 to 3.2 (added keys).
+- ADR-0017 §7b states the rule; its phase table and two stale statements are corrected. `docs/VERIFY-CLAIMS-SCOPE.md` and the spec describe the outputs and the limits.
+
+## Measured
+
+Release 10.0.0 against this branch, 171 fixture directories:
+
+| class | count | before | after |
+|---|---|---|---|
+| reproduced leaks | 35 | 24 confirmed, 11 confirmed_with_caveats | inconclusive (exit 4, 1 flow withheld) |
+| controls | 57 | 56 violated, 1 confirmed_with_caveats | unchanged |
+| leaks that never reproduced (Java, C, Rust and others) | 17 | | unchanged |
+| correct refutations | 62 | confirmed or confirmed_with_caveats | 38 now inconclusive, 24 unchanged |
+
+The 38 are the cost of the rule: a real copy the syntax cannot tell from an alias (Python `t = s[:]`, a Go struct value copy), and every negative fixture that keeps its leak's store.
+
+- Late-evaluation forms added in the second commit: Python `lambda` and generator expression, and JavaScript / TypeScript class fields, each moved from confirmed or confirmed_with_caveats (flow removed) to inconclusive; they withhold no additional correct refutation in the 171 directories.
+- Same-function sanitizer: the alias variant was credited `sanitized`; now violated. The plain variant keeps its credit.
+- 39 real repositories with the generic claims: 22,715 flows reported and 23 removed in both arms, 0 withheld, 0 of 273 claim verdicts changed (none was confirming to begin with). Measured on the first commit; the second commit adds no Go entry and all 23 removals are in Go.
+- Removals that must survive still do: a plain rebinding in Go, Python and JavaScript; a value received into `_`; the two removals in hypergumbo's own tracker package.
+- Stable ids: 0 moved (7-language fixture tree; gocryptfs, 1,693 of 1,693 declared symbols).
+- Cost: the DDG build stage is about 0.9 s (13%) slower on jaeger (Go); within noise on kserve (Python).
+- Reviewer's probes (13 further shapes: two-step store, insert, update, setattr, unpacking, a field on `self`, push, Object.assign, destructuring, copy, method store, range store): none reads confirmed on this branch.
+- Mutation control: dropping any one of the 27 `store_target` / `address_of` entries fails 3 to 17 tests; dropping any `capture_scope` entry fails 3; disabling any rule clause, either walk arm or the scoping fails 1 to 47.
+
+## Still not covered (stated in docs/VERIFY-CLAIMS-SCOPE.md; filed separately)
+
+- A function that stores a secret through one name and returns another name for the same object: the caller's write reads confirmed (exit 0), nothing removed or withheld. Same on the release.
+- A Go method value with a pointer receiver (`get := t.Get`, then `t` is reassigned): confirmed (exit 0). Same on the release.
+- A store made by a call the walk treats as terminating; a value reaching another name through a helper's return slot. Not reproduced.
+
+## Checks
+
+- Whole suite on this tree, every test directory with explicit file lists: 40,735 passed, no failures.
+- Each package directory's manifest tests run alone with numpy, sentence_transformers and torch stubbed out, as CI runs them: core 21,524 passed; lang-mainstream 5,825; lang-common 630; lang-extended1 285; rust-analyzer 107; scip-python 29; tracker 488; tests/ 2,649. No failures.
+- `scripts/check-self-claims` on this build: 23 claims unchanged (23 confirmed_with_caveats). The rule fires on neither of the two flows the walk removes in hypergumbo's own tree.
+- `scripts/check-claims-coverage`: passes.
+- `scripts/check-package-coverage --serial`: core reports three uncovered lines (c_family.py:256, route_handler.py:463, the `_withhold_for_unfollowed_escapes` call in verify_claims.py). The same three statements are uncovered on dev; this branch adds none. The other six packages pass.
+- mypy strict ratchet: clean.
+- Test manifest: targeted, 1,056 test files.
+- `docs/ARCHITECTURE.md` regenerated.
+
+Addresses WI-buzup-jidil-huhum-viruv-hasov-linan-lavok-hanur
