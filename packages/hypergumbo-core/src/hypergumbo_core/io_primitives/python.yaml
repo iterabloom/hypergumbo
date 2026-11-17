@@ -1849,6 +1849,18 @@ module_completeness:
   - module: difflib
     completeness: complete
     retrieved: "2026-08-15"
+  - module: difflib.SequenceMatcher
+    completeness: complete
+    retrieved: "2026-11-17"
+    notes: >-
+      An in-process comparison of two sequences already in memory. Its public
+      methods (python 3.12, introspected: find_longest_match,
+      get_grouped_opcodes, get_matching_blocks, get_opcodes, quick_ratio,
+      ratio, real_quick_ratio, set_seq1, set_seq2, set_seqs) compute on those
+      sequences and nothing crosses. The `difflib` entry above already covers
+      the module; exact matching is why the class must be said separately.
+      Reached since statement_diff.py aligns a block's old statements with
+      its new ones (`SequenceMatcher(...).get_opcodes()`).
   - module: copy
     completeness: complete
     retrieved: "2026-08-15"
