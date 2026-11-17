@@ -40,6 +40,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Run records say what selecting by statement would run.**
 - **The index keeps a function's statement records across edits.**
 - **Narrowing keeps tests whose own call ran nothing measured.**
+- **A command counts the by-statement selector's bar.**
 
 ## [10.0.0] - 2026-11-16
 

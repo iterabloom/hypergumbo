@@ -399,3 +399,121 @@ def append_run_record(
         "exit": exit_code,
         "by_statement": None if by_statement is None else dict(by_statement),
     })
+
+
+#: Owner ruling, 2026-11-17: the by-statement selector may select once this
+#: many runs had a failed test it could have left out, and it left none out.
+STATEMENT_BAR = 30
+
+#: The selector's own code, and the code that writes a row about it. A run
+#: whose change touches one of these was answered by a selector other than
+#: the merged one (a half-written one, or a mutation control of this very
+#: code), so its row is no evidence about the merged one. The first row ever
+#: to show a failed test left out was such a row: written two minutes before
+#: the commit that defined the field, by a formula that commit does not have.
+SELECTOR_FILES = frozenset({
+    "packages/hypergumbo-core/src/hypergumbo_core/statement_select.py",
+    "packages/hypergumbo-core/src/hypergumbo_core/statement_diff.py",
+    "packages/hypergumbo-core/src/hypergumbo_core/selection_index.py",
+    "packages/hypergumbo-core/src/hypergumbo_core/selection_log.py",
+    "packages/hypergumbo-core/src/hypergumbo_core/selection_shadow.py",
+    "packages/hypergumbo-core/src/hypergumbo_core/block_hash.py",
+    "scripts/coverage-select",
+})
+
+
+@dataclass(frozen=True)
+class StatementBar:
+    """What the run records say about the by-statement selector so far."""
+
+    rows: int
+    #: Rows with no answer to count, and why (the reason -> how many).
+    uncounted: Mapping[str, int]
+    #: Rows that hold the selector's answer and the run's failed tests.
+    recorded: int
+    #: Informative runs by run kind. A run is informative when a FAILED test
+    #: reached a function the selector narrowed and the selector had a record
+    #: of every changed function: only there could it have left a failing
+    #: test out. Counted once per state of the tree (base, head, uncommitted
+    #: change): the same state run twice is one piece of evidence.
+    informative: Mapping[str, int]
+    #: ``(when, run kind, head, the failed tests left out)`` for every row in
+    #: which the selector left out a failed test that reached a changed function.
+    misses: tuple[tuple[str, str, str, tuple[str, ...]], ...]
+
+    @property
+    def verdict(self) -> str:
+        """``missed`` / ``not met`` / ``met``. One miss is not offset by any
+        number of clean runs (owner ruling: it stays off and is filed)."""
+        if self.misses:
+            return "missed"
+        if sum(self.informative.values()) < STATEMENT_BAR:
+            return "not met"
+        return "met"
+
+    def summary(self) -> str:
+        total = sum(self.informative.values())
+        lines = [
+            f"  run records               : {self.rows}",
+            f"  hold the selector's answer : {self.recorded}",
+        ]
+        lines += [f"      not counted, {why}: {n}" for why, n in sorted(self.uncounted.items())]
+        lines.append(f"  informative runs          : {total} / {STATEMENT_BAR}")
+        lines += [f"      {kind}: {n}" for kind, n in sorted(self.informative.items())]
+        lines.append(f"  RUNS WITH A FAILED TEST LEFT OUT : {len(self.misses)}")
+        for at, kind, head, tests in self.misses[:5]:
+            lines.append(f"      {at} {kind} {head[:12]}  {', '.join(tests[:3])}")
+        lines.append(f"  verdict                   : {self.verdict.upper()}")
+        return "\n".join(lines)
+
+
+def evaluate_statement_bar(records: Iterable[Mapping[str, object]]) -> StatementBar:
+    """Count the by-statement selector's bar from the run records.
+
+    A row written before the selector recorded which tests it had narrowed
+    (no ``failed_reaching_a_narrowed_block``) cannot be informative: it does
+    not say whether the selector narrowed anything. It can still be a miss,
+    and a miss in any row counts, except a row whose change was to the
+    selector's own code (:data:`SELECTOR_FILES`): that row was not written by
+    the selector being judged.
+    """
+    rows = list(records)
+    uncounted: dict[str, int] = {}
+    informative: dict[str, set[tuple[object, object, object]]] = {}
+    misses: list[tuple[str, str, str, tuple[str, ...]]] = []
+    recorded = 0
+
+    def skip(why: str) -> None:
+        uncounted[why] = uncounted.get(why, 0) + 1
+
+    for row in rows:
+        facts = row.get("by_statement")
+        if not isinstance(facts, Mapping):
+            skip("the selector was not asked")
+            continue
+        if "error" in facts:
+            skip("the selector failed")
+            continue
+        changed = row.get("changed_files")
+        if isinstance(changed, list) and SELECTOR_FILES.intersection(changed):
+            skip("the change was to the selector itself")
+            continue
+        if row.get("failed") is None:
+            skip("the run left no junit report")
+            continue
+        recorded += 1
+        kind = str(row.get("kind"))
+        left_out = facts.get("failed_not_selected")
+        if isinstance(left_out, list) and left_out:
+            misses.append((str(row.get("at")), kind, str(row.get("head")),
+                           tuple(str(test) for test in left_out)))
+        at_risk = facts.get("failed_reaching_a_narrowed_block")
+        if at_risk is None:
+            skip("written before narrowed tests were recorded")
+        elif at_risk and not facts.get("unknown_blocks"):
+            informative.setdefault(kind, set()).add(
+                (row.get("base"), row.get("head"), row.get("snapshot")))
+    return StatementBar(
+        rows=len(rows), uncounted=uncounted, recorded=recorded,
+        informative={kind: len(states) for kind, states in informative.items()},
+        misses=tuple(misses))
