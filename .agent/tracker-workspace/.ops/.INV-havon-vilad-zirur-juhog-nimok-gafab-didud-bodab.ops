@@ -1,0 +1,39 @@
+- op: create  # a557
+  at: '2026-11-17T09:57:48Z'  # a557
+  by: agent  # a557
+  actor: jgstern_agent  # a557
+  clock: 1  # a557
+  nonce: a557  # a557
+  data:  # a557
+    kind: invariant  # a557
+    title: "A test's id must not depend on when it was collected: a time-stamped parameter stops every parallel run whose workers import the file in different seconds"  # a557
+    status: violated  # a557
+    priority: 2  # a557
+    parent:  # a557
+    tags:  # a557
+    - ci_infrastructure  # a557
+    - testing  # a557
+    - trunk_green  # a557
+    isbefore: []  # a557
+    duplicate_of: []  # a557
+    not_duplicate_of: []  # a557
+    pr_ref:  # a557
+    description: "FOUND 2026-11-17 on PR #2223 (the per-PR gate, 1,478 selected files, -n 8): pytest stopped at collection with \"Different tests were collected between gw7 and gw6\" and ran nothing (1 skipped, 2 errors in 182 s).\n\nCAUSE. tests/test_cron_status_nudge.py (added in PR #2219) parametrized a test with `json.dumps({**verdict(), ...})`, and `verdict()` stamps `finished_at` from `time.time()`. The value is made while the module is imported and becomes part of the test's id, so two xdist workers that import the module in different seconds collect different ids (\"...finished_at\": \"2026-11-17T08:52:11Z\"... against ...12Z). Whether a run fails depends on whether the workers straddle a second boundary; the local pre-PR runs (-n 3) and the CI runs of #2219 and #2220 did not.\n\nFIXED IN THE SAME PR (#2223, its own commit): the good verdict is built inside the test; the parameters are fixed names.\n\nSWEEP, BY BEHAVIOUR NOT BY GREP (the value came through a helper, which a grep for time.time() in a decorator does not see): every test file of the whole-suite manifest collected twice, 69 s apart, with `smart-test <files> --collect-only -q --no-cov -n 0`, and the two sorted id lists compared. 40,985 ids each, 0 differ. Control: the same comparison on the unfixed file gives 2 differing ids of 44. Lists: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/collect_ids/.\n\nWHAT THE SWEEP DOES NOT SHOW. An id that depends on the DATE, the hour, the host, the process id or an environment variable: two collections 69 s apart on one machine agree on all of those. Not checked.\n\nNO GUARD EXISTS. xdist is the only detector, and only when two workers disagree. A cheap one: a collection hook in the root conftest.py that fails when a test id contains the current date or the current epoch second's leading digits."  # a557
+    fields:  # a557
+      statement: "Collecting the suite twice, at different times, gives the same test ids."  # a557
+      root_cause: "A parametrize argument computed at import from the clock (through a helper), so each xdist worker makes its own value; nothing checks ids for a collection-time value."  # a557
+- op: update  # 06fc
+  at: '2026-11-17T10:11:47Z'  # 06fc
+  by: agent  # 06fc
+  actor: jgstern_agent  # 06fc
+  clock: 2  # 06fc
+  nonce: 06fc  # 06fc
+  set:  # 06fc
+    status: pending_validation  # 06fc
+- op: discuss  # c180
+  at: '2026-11-17T10:11:47Z'  # c180
+  by: agent  # c180
+  actor: jgstern_agent  # c180
+  clock: 3  # c180
+  nonce: c180  # c180
+  message: "FIX MERGED in PR #2223 (dev 31be103a6, commit 'fix(tests): a verdict test no longer puts the current time in its test id'). EVIDENCE: the whole suite collected twice 69 s apart on that tree: 40,985 ids each, 0 differ; the control on the unfixed file: 2 of 44 differ. PR CI then ran the 1,478 selected files on 8 workers and passed. STATUS pending_validation, NOT satisfied, because the statement is general and what holds it is one sweep: no guard exists, and the sweep cannot show an id that depends on the date, the host or the environment. IT CLOSES when a collection-time guard exists (the root conftest hook proposed in the description) with a test that a time-stamped id turns red, or when the owner rules the sweep enough. First live check after the merge: the 13:00 UTC full-suite run of 2026-11-17, whose test-agent-infra step collects tests/ on several workers."  # c180

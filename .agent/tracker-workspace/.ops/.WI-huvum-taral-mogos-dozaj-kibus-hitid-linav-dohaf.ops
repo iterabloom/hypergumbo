@@ -47,3 +47,10 @@
   set: {}  # 273c
   add:  # 273c
     isbefore: [WI-gapal-tarid-vifub-jopoh-zazud-dataz-giluz-zazih]  # 273c
+- op: discuss  # 7a39
+  at: '2026-11-17T12:01:24Z'  # 7a39
+  by: agent  # 7a39
+  actor: jgstern_agent  # 7a39
+  clock: 5  # 7a39
+  nonce: 7a39  # 7a39
+  message: "DESIGN FINDINGS BEFORE BUILDING (2026-11-17, from building WI-bibal; details in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md). (1) SEEDING. 'Seed from every changed file' has to mean every file that DIFFERS BETWEEN THE GRAPH'S TREE AND THE CURRENT TREE, plus the PR's changed files, not the PR's files alone: a path test -> changed file that exists now and not in the graph uses an edge made since the graph, which starts in a file changed since the graph, and a test file another PR added since is not in the graph at all. Step 1a's 741 pairs were measured with that seeding (git diff between the two trees). Of the 9 live shadow comparisons, 6 had every differing source file seeded and say nothing about it; 3 had differing files NOT seeded (17, 5, 2 files; graph ages 47, 93, 55 commits) and lost no test file. The wider seeding selects a superset of the PR-only one, and grows with the graph's age. (2) A graph made from a tree with uncommitted changes is usable because WI-bibal stores which files differed from its commit; they join the seeds. (3) A branch commit is REWRITTEN by the rebase merge, so a graph's commit id stops being reachable (graph 1 in the real index is of e3fd495c7, a pre-merge commit). Store the commit's git TREE id too and diff against the tree. (4) WHICH BUILD. The stored graph must come from the analyzer build smart-test's own slice would use until the cross-build check (WI-kitin-rirup) passes: ask the installed release for compute_analyzer_identity_hash() and pass it as graph-walk --build. (5) The graph tables already exist in the real index; a column added now needs a format number and a drop-and-recreate (the rows are a cache). (6) scripts/smart-test's slice line is pinned by line-scanning guards (WI-tolil, WI-zufij): add the stored-graph path beside it, do not rewrite it."  # 7a39
