@@ -13,11 +13,17 @@ its holes filled (``fill_holes=True``: a node kind with no case is written by
 ``ast.unparse``), so two functions that differ only inside such an annotation
 no longer share an id. A function whose annotations use only the six kinds
 hashes the same text as before; the last tests pin both halves.
+
+A star inside a subscript (``tuple[*Ts]``, PEP 646) is Python 3.11 syntax and
+hypergumbo supports 3.10, whose parser refuses it. Those cases are listed in
+``NEEDS_311``; on 3.10 each is asserted to be refused and then skipped, and on
+3.11+ a refusal is an error like any other.
 """
 
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 import pytest
@@ -38,8 +44,28 @@ HOLES = {
     "Callable[..., int] | None": "Callable[Ellipsis, int] | None",
     "dict[str, list[Callable[[], None]]]": "dict[str, list[Callable[, None]]]",
 }
+#: Annotations only Python 3.11+ can parse: a star inside a subscript (PEP 646).
+#: ``test_the_311_only_cases_are_exactly_the_starred_ones`` holds it to the
+#: cases that have such a star, so it cannot hide any other case.
+NEEDS_311 = frozenset({"tuple[*tuple[int, ...]]", "tuple[*Ts]"})
 WHOLE = ["int", "str | None", "dict[str, list[int]]", "typing.Optional[int]", "'Forward'",
          "Dict[str, Tuple[int, int]]"]
+
+
+def _parsed(source: str) -> ast.expr | None:
+    """The annotation's tree; ``None`` only for a ``NEEDS_311`` case that
+    this interpreter (older than 3.11) refused. Any other refusal raises."""
+    try:
+        return ast.parse(source, mode="eval").body
+    except SyntaxError:
+        if sys.version_info >= (3, 11) or source not in NEEDS_311:
+            raise
+        return None
+
+
+def _skip_if_refused(source: str) -> None:
+    if _parsed(source) is None:
+        pytest.skip(f"{source!r} is Python 3.11 syntax; this is {sys.version_info[:2]}")
 
 
 def _source(annotations: list[str]) -> str:
@@ -60,7 +86,9 @@ def test_the_six_case_renderer_does_leave_holes() -> None:
     """Reach: every shape in HOLES is one the old text got wrong, so the
     assertions below are about something."""
     for source, holed in HOLES.items():
-        node = ast.parse(source, mode="eval").body
+        node = _parsed(source)
+        if node is None:
+            continue
         assert _format_annotation(node) == holed != source
     for source in WHOLE:
         node = ast.parse(source, mode="eval").body
@@ -71,6 +99,7 @@ def test_the_six_case_renderer_does_leave_holes() -> None:
 def test_an_annotation_is_shown_as_written(tmp_path: Path, annotation: str) -> None:
     """In the displayed signature, in the parameter metadata, in the return
     type and on a class attribute: one text, the source's."""
+    _skip_if_refused(annotation)
     symbols = _symbols(tmp_path, [annotation])
     shown = ast.unparse(ast.parse(annotation, mode="eval").body)
     function = symbols["f"]
@@ -161,6 +190,7 @@ def _hashed(annotation: str) -> str:
 
 @pytest.mark.parametrize(("annotation", "filled"), FILLED.items())
 def test_every_annotation_node_is_hashed(annotation: str, filled: str) -> None:
+    _skip_if_refused(annotation)
     assert _format_annotation(ast.parse(annotation, mode="eval").body) != filled
     assert _hashed(annotation) == f"(p: {filled}) -> {filled}"
 
@@ -197,3 +227,28 @@ def test_two_methods_that_differ_inside_a_hole_have_two_ids(
     tmp_path: Path, left: str, right: str,
 ) -> None:
     assert _method_id(tmp_path, left) != _method_id(tmp_path, right)
+
+
+@pytest.mark.parametrize("source", sorted({*HOLES, *WHOLE, *FILLED, *UNCHANGED}))
+def test_the_311_only_cases_are_exactly_the_starred_ones(source: str) -> None:
+    """On 3.11+ every case parses, and a case is in ``NEEDS_311`` exactly when
+    it holds a star; on 3.10 exactly the ``NEEDS_311`` cases are refused."""
+    try:
+        tree = ast.parse(source, mode="eval")
+    except SyntaxError:
+        assert sys.version_info < (3, 11), f"{source!r} does not parse on 3.11+"
+        assert source in NEEDS_311, f"{source!r} is refused here but not in NEEDS_311"
+        return
+    starred = any(isinstance(node, ast.Starred) for node in ast.walk(tree))
+    assert starred == (source in NEEDS_311), source
+    # A case that parses here is run here: the gate skips nothing on 3.11+.
+    try:
+        _skip_if_refused(source)
+    except pytest.skip.Exception:
+        pytest.fail(f"{source!r} parses on this interpreter but its tests skip it")
+
+
+def test_a_refusal_outside_the_list_is_an_error() -> None:
+    """``_parsed`` returns ``None`` for the listed 3.11 cases only."""
+    with pytest.raises(SyntaxError):
+        _parsed("dict[str,")
