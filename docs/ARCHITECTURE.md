@@ -16,14 +16,14 @@ for focused LLM context.
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
 - **379** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 122 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **62085** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13924, of which 7972 are functions, methods or classes
-- **249162** edges, test code included, by type:
-  - calls: 140523
-  - contains: 57821
-  - imports: 21521
-  - instantiates: 13358
-  - references: 11669
-  - module_attr_ref: 2377
+- **62127** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13926, of which 7972 are functions, methods or classes
+- **249367** edges, test code included, by type:
+  - calls: 140626
+  - contains: 57861
+  - imports: 21549
+  - instantiates: 13374
+  - references: 11682
+  - module_attr_ref: 2382
   - other: 1893
 
 ## Package Architecture
@@ -184,6 +184,7 @@ Provenance tracking for an analysis pass execution.
 - `nodes_emitted`
 - `edges_emitted`
 - `silence_reason`
+- `non_id_edge_endpoints`
 
 ### Symbol (`ir.py`)
 A code symbol (function, class, etc.) detected by analysis.
@@ -281,7 +282,7 @@ The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_
 | `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
 | `Edge.create` | method | 973.3 | hypergumbo_core/ir.py |
 | `Edge` | class | 854.9 | hypergumbo_core/ir.py |
-| `AnalysisRun` | class | 821.8 | hypergumbo_core/ir.py |
+| `AnalysisRun` | class | 833.4 | hypergumbo_core/ir.py |
 | `iter_tree` | function | 789.9 | hypergumbo_core/analyze/base.py |
 | `make_symbol_id` | function | 652.7 | hypergumbo_core/analyze/base.py |
 | `register_analyzer` | function | 570.3 | hypergumbo_core/analyze/registry.py |
@@ -1005,8 +1006,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: db294d2fe2f6
-  commit_count: 9353
+  commit: 677ee7828dec
+  commit_count: 9361
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
