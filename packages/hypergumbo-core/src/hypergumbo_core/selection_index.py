@@ -130,8 +130,8 @@ a file of the earlier, spelled-out format (:func:`convert_format_1`) and refuses
 a format it does not know (:class:`IndexFormatError`), because a file read with
 the wrong schema looks like an EMPTY index, and to narrowing an empty index
 says "no test runs this code". Callers read and write through the functions
-here (:func:`store_edges`, :func:`stored_edges`, :func:`touching_tests`,
-:func:`measured_tests`, :func:`statement_records`, :func:`tests_of_line`),
+here (:func:`store_edges`, :func:`touching_tests`, :func:`measured_tests`,
+:func:`statement_records`, :func:`tests_of_line`),
 never through the tables.
 """
 from __future__ import annotations
@@ -141,7 +141,7 @@ import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping, Optional, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
 from hypergumbo_core.block_hash import (
     Block,
@@ -542,7 +542,7 @@ def store_edges(
     empty digest.
 
     ``statements`` maps a test id to ``{key: bitmap}``: which statements of
-    that block the test ran (:func:`_bitmap`; semantic 5 of the module
+    that block the test ran (:func:`_int_bitmap`; semantic 5 of the module
     docstring). A pair it does not name is stored with NO record, which is
     not the same as an empty one. A block whose stored digest is REPLACED by a
     different one here has the records of all its pairs dropped first: they
@@ -602,15 +602,6 @@ def store_edges(
         pairs)
 
 
-def stored_edges(conn: sqlite3.Connection) -> Iterator[tuple[str, str, str]]:
-    """Every ``(test id, path, block name)`` pair in the index, unordered."""
-    yield from conn.execute(
-        "SELECT t.test_id, f.path, b.name FROM test_block tb "
-        "JOIN test t ON t.id = tb.test "
-        "JOIN block b ON b.id = tb.block "
-        "JOIN file f ON f.id = b.file")
-
-
 def measured_tests(conn: sqlite3.Connection) -> frozenset[str]:
     """Test ids with at least one coverage edge."""
     return frozenset(r[0] for r in conn.execute(_MEASURED))
@@ -630,14 +621,6 @@ def _int_bitmap(value: int) -> bytes:
     byte *i // 8*, lowest bit first (coverage's own ``numbits`` layout). As
     long as the highest ordinal needs and no longer, so zero is ``b""``."""
     return value.to_bytes((value.bit_length() + 7) // 8, "little")
-
-
-def _bitmap(ordinals: Iterable[int]) -> bytes:
-    """Statement ordinals as a bitmap (:func:`_int_bitmap`)."""
-    value = 0
-    for ordinal in ordinals:
-        value |= 1 << ordinal
-    return _int_bitmap(value)
 
 
 def _ordinals(bitmap: Optional[bytes]) -> Optional[frozenset[int]]:

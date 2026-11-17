@@ -33,10 +33,9 @@ from hypergumbo_core import cli, installed_env, schema
 
 
 @pytest.fixture(autouse=True)
-def _nothing_kept() -> Iterator[None]:
-    installed_env.forget_kept_answers()
-    yield
-    installed_env.forget_kept_answers()
+def _nothing_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each test starts with nothing kept; the module's own state is put back after."""
+    monkeypatch.setattr(installed_env, "_KEPT", None)
 
 
 @pytest.fixture

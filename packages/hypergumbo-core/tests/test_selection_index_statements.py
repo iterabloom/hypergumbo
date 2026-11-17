@@ -519,17 +519,22 @@ class TestTheRecordQueriesAreIndexLookups:
 # --- the bitmap ------------------------------------------------------------------------
 
 
+def _bits(ordinals: set[int]) -> int:
+    """The integer production hands ``_int_bitmap``: bit *i* for ordinal *i*."""
+    return sum(1 << ordinal for ordinal in ordinals)
+
+
 class TestTheBitmap:
     @pytest.mark.parametrize("ordinals", [
         set(), {0}, {7}, {8}, {0, 7, 8, 15, 16}, set(range(40))])
     def test_it_round_trips(self, ordinals: set[int]) -> None:
-        assert set(si._ordinals(si._bitmap(ordinals))) == ordinals
+        assert set(si._ordinals(si._int_bitmap(_bits(ordinals)))) == ordinals
 
     def test_it_is_as_long_as_its_highest_statement_needs(self) -> None:
-        assert si._bitmap(set()) == b""
-        assert si._bitmap({0}) == b"\x01"
-        assert si._bitmap({7}) == b"\x80"
-        assert si._bitmap({8}) == b"\x00\x01"
+        assert si._int_bitmap(_bits(set())) == b""
+        assert si._int_bitmap(_bits({0})) == b"\x01"
+        assert si._int_bitmap(_bits({7})) == b"\x80"
+        assert si._int_bitmap(_bits({8})) == b"\x00\x01"
 
     def test_none_is_not_an_empty_bitmap(self) -> None:
         assert si._ordinals(None) is None

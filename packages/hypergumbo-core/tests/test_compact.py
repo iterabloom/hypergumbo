@@ -28,7 +28,6 @@ from hypergumbo_core.compact import (
     # Tiered output functions
     parse_tier_spec,
     estimate_node_tokens,
-    estimate_behavior_map_tokens,
     select_by_tokens,
     format_tiered_behavior_map,
     recompute_view_summary,
@@ -40,6 +39,7 @@ from hypergumbo_core.compact import (
     _is_example_path,
     EXAMPLE_PATH_PATTERNS,
 )
+from hypergumbo_core.selection.token_budget import estimate_json_tokens
 
 
 def make_symbol(
@@ -1213,28 +1213,6 @@ class TestEstimateNodeTokens:
             "meta": {"route_path": "/api/v1/users/{id}/profile"},
         }
         assert estimate_node_tokens(large_node) > estimate_node_tokens(small_node)
-
-
-class TestEstimateBehaviorMapTokens:
-    """Tests for estimate_behavior_map_tokens function."""
-
-    def test_basic_behavior_map(self):
-        """Basic behavior map token estimation."""
-        behavior_map = {
-            "schema_version": SCHEMA_VERSION,
-            "nodes": [{"id": "a", "name": "foo"}],
-            "edges": [],
-        }
-        tokens = estimate_behavior_map_tokens(behavior_map)
-        assert tokens > 0
-        assert isinstance(tokens, int)
-
-    def test_empty_behavior_map(self):
-        """Empty behavior map has minimal tokens."""
-        behavior_map = {}
-        tokens = estimate_behavior_map_tokens(behavior_map)
-        # Should be very small (just "{}")
-        assert tokens < 5
 
 
 class TestSelectByTokens:
@@ -3178,8 +3156,7 @@ class TestTieredTokenBudget:
         )
 
         # The total token count of the output should be under budget
-        from hypergumbo_core.compact import estimate_behavior_map_tokens
-        actual_tokens = estimate_behavior_map_tokens(result)
+        actual_tokens = estimate_json_tokens(result)
         assert actual_tokens <= 4000, (
             f"Tiered output is {actual_tokens} tokens, exceeds 4000 budget. "
             f"Nodes: {len(result['nodes'])}"
@@ -3219,7 +3196,7 @@ class TestTieredTokenBudget:
         )
 
         # Budget compliance
-        actual_tokens = estimate_behavior_map_tokens(result)
+        actual_tokens = estimate_json_tokens(result)
         assert actual_tokens <= 4000, (
             f"Tiered output is {actual_tokens} tokens, exceeds 4000 budget"
         )
@@ -3511,7 +3488,7 @@ class TestTieredTokenBudget:
             target_tokens=4000,
             force_include_entrypoints=True,
         )
-        actual_4k = estimate_behavior_map_tokens(result_4k)
+        actual_4k = estimate_json_tokens(result_4k)
         assert actual_4k <= 4000, (
             f"4k tiered output is {actual_4k} tokens, exceeds 4000 budget. "
             f"{len(result_4k['nodes'])} nodes, {len(result_4k['edges'])} edges."
@@ -3523,7 +3500,7 @@ class TestTieredTokenBudget:
             target_tokens=16000,
             force_include_entrypoints=True,
         )
-        actual_16k = estimate_behavior_map_tokens(result_16k)
+        actual_16k = estimate_json_tokens(result_16k)
         assert actual_16k <= 16000, (
             f"16k tiered output is {actual_16k} tokens, exceeds 16000 budget. "
             f"{len(result_16k['nodes'])} nodes, {len(result_16k['edges'])} edges."
@@ -3556,7 +3533,7 @@ class TestTieredTokenBudget:
             behavior_map, syms, edges,
             target_tokens=16000,
         )
-        actual = estimate_behavior_map_tokens(result)
+        actual = estimate_json_tokens(result)
         assert actual <= 16000, (
             f"16k tiered output is {actual} tokens, exceeds 16000 budget. "
             f"{len(result['nodes'])} nodes, {len(result['edges'])} edges."
