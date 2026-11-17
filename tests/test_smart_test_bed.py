@@ -370,14 +370,21 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
         assert not set(const["should_not"]) & set(const["selected"][stage]), stage
     assert lazy_source not in set(const["selected"]["static"])
     assert lazy_source not in set(const["selected"]["manifest"])
-    # A function body of the same file does not take the closure: nothing the
-    # slice left out among the modules that only read the constant is added.
-    # (The 9.2.0 slice selects test_reads_attr.py by itself; that is the
-    # slice's answer, and the manifest carries it.)
+    # A FUNCTION THAT RUNS AT IMPORT IS IMPORT-TIME CODE. The edit is to the
+    # body of limits.ceiling, and reads_at_import.py calls ceiling() once, as
+    # it loads, and keeps the result. test_reads_at_import fails when ceiling
+    # breaks and never runs ceiling itself: no call edge reaches it from a
+    # test, and no coverage row ties it to the function. Until the index
+    # marked functions it saw run under no test's context, it was in no stage
+    # of this edit's selection. The mark makes the edit take the file's import
+    # closure, like a change to the module body.
     body_limits = scores["body-edit-limits"]
-    assert f"{core}test_limits.py" in body_limits["selected"]["manifest"]
-    added = set(body_limits["selected"]["manifest"]) - set(body_limits["selected"]["static"])
-    assert not set(body_limits["should_not"]) & added
+    at_import = f"{core}test_reads_at_import.py"
+    assert {at_import, f"{core}test_limits.py"} <= set(body_limits["must"])
+    assert at_import not in body_limits["selected"]["static"], "the slice does not reach it"
+    for stage in ("manifest", "union", "narrow"):
+        assert set(body_limits["must"]) <= set(body_limits["selected"][stage]), stage
+        assert not set(body_limits["should_not"]) & set(body_limits["selected"][stage]), stage
 
     # WI-kazig: a deleted module has no symbol for the slice to start from,
     # so the test still importing it was left out whenever another edit kept
