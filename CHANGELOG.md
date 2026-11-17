@@ -35,6 +35,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test selects from a stored graph in seconds.**
 - **smart-test rebuilds its baseline graph in the background.**
 - **A failed verdict publish says why within seconds.**
+- **Scheduled verdicts are pushed over port 443.**
 - **smart-test in a worktree selects from stored graphs too.**
 - **Two checkouts storing a graph at once both succeed.**
 - **Run records say what selecting by statement would run.**

@@ -63,6 +63,15 @@ CREDENTIAL. With ``--remote`` the URL is used as is (tests pass a local bare
 repository). Otherwise the remote is ``CI_REPO_CLONE_SSH_URL`` (or
 ``git@github.com:<CI_REPO>.git``) and the private key is the environment
 variable ``BADGES_DEPLOY_KEY`` (the Woodpecker secret ``badges_deploy_key``).
+
+PORT 443, NOT 22. This project's CI runner cannot reach github.com on port
+22 (the first scheduled run, pipeline 6512, waited 120 s on it and published
+nothing), and it does reach GitHub on 443: that is how it clones. GitHub
+serves the same SSH service on ``ssh.github.com:443``, so a github.com SSH
+remote is rewritten to ``ssh://git@ssh.github.com:443/<repo>.git``
+(:func:`_over_443`). Same key, same pinned host keys; no token, which a
+deploy key could not replace (GitHub takes deploy keys over SSH only).
+``probe`` makes that connection without pushing and says what it met.
 It is written (line ends normalised to newlines) to a 0600 file in a private
 temporary directory, next to a
 ``known_hosts`` holding GitHub's pinned host keys, and handed to git through
@@ -115,6 +124,16 @@ BOT_EMAIL = "ci@iterabloom.com"
 GIT_TIMEOUT = 120
 #: Seconds ssh waits for the remote to accept the connection.
 SSH_CONNECT_TIMEOUT = 20
+
+#: GitHub's SSH service on the HTTPS port (module docstring, "PORT 443").
+SSH_443_HOST = "ssh.github.com"
+SSH_443_PORT = 443
+#: A github.com SSH remote in either spelling; ``path`` is ``<owner>/<repo>.git``.
+_GITHUB_SSH_REMOTE = re.compile(
+    r"^(?:git@github\.com:|ssh://git@github\.com(?::22)?/)(?P<path>[^/].*)$")
+#: ``user@host`` and port of an ssh remote, in either spelling.
+_SSH_URL = re.compile(r"^ssh://(?P<who>[^/:]+@[^/:]+)(?::(?P<port>\d+))?/")
+_SCP_LIKE = re.compile(r"^(?P<who>[^/:]+@[^/:]+):")
 
 #: GitHub's SSH host keys, read from https://api.github.com/meta on 2026-11-17.
 GITHUB_HOST_KEYS = (
@@ -332,29 +351,96 @@ class Publisher:
         return proc.returncode == 0, _one_line(proc.stderr.decode("utf-8", "replace"))
 
 
-def _ssh_env(workdir: Path) -> dict[str, str]:
-    """Environment carrying the deploy key; the key itself goes to a 0600 file."""
+def _over_443(url: str) -> str:
+    """A github.com SSH remote, sent to GitHub's SSH service on port 443;
+    any other remote as it is."""
+    found = _GITHUB_SSH_REMOTE.match(url)
+    if found is None:
+        return url
+    return f"ssh://git@{SSH_443_HOST}:{SSH_443_PORT}/{found.group('path')}"
+
+
+def _ssh_argv(workdir: Path, *, need_key: bool = True) -> list[str]:
+    """``ssh`` and its options, without a host: the deploy key from a 0600
+    file, GitHub's pinned host keys, strict checking, no prompt.
+
+    ``need_key=False`` (the probe) goes on without a key and offers none.
+    """
     key = os.environ.get("BADGES_DEPLOY_KEY", "")
-    if not key.strip():
+    argv = ["ssh"]
+    if key.strip():
+        key_file = workdir / "deploy_key"
+        fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        # A secret pasted through a web form can carry CRLF line ends, which ssh
+        # refuses as "invalid format"; a key file also needs its final newline.
+        key = key.replace("\r\n", "\n").replace("\r", "\n")
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(key if key.endswith("\n") else key + "\n")
+        argv += ["-i", str(key_file), "-o", "IdentitiesOnly=yes"]
+    elif need_key:
         raise PublishError("no credential: BADGES_DEPLOY_KEY is empty or unset "
                            "(the Woodpecker secret badges_deploy_key)")
-    key_file = workdir / "deploy_key"
-    fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    # A secret pasted through a web form can carry CRLF line ends, which ssh
-    # refuses as "invalid format"; a key file also needs its final newline.
-    key = key.replace("\r\n", "\n").replace("\r", "\n")
-    with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-        fh.write(key if key.endswith("\n") else key + "\n")
+    else:
+        argv += ["-o", "PubkeyAuthentication=no"]
     known = workdir / "known_hosts"
-    known.write_text("".join(f"github.com {k}\n" for k in GITHUB_HOST_KEYS), encoding="utf-8")
+    hosts = ("github.com", f"[{SSH_443_HOST}]:{SSH_443_PORT}")
+    known.write_text("".join(f"{host} {k}\n" for host in hosts for k in GITHUB_HOST_KEYS),
+                     encoding="utf-8")
     # BatchMode: nothing in CI can answer a prompt, so ssh must fail where it
     # would ask. ConnectTimeout: a port that silently drops packets (the
     # runner's port 22, 2026-11-17) is then ssh's own "Connection timed out"
     # in seconds, and not this script's GIT_TIMEOUT with no reason at all.
-    return _clean_env(GIT_SSH_COMMAND=(
-        f"ssh -i {shlex.quote(str(key_file))} -o IdentitiesOnly=yes "
-        f"-o UserKnownHostsFile={shlex.quote(str(known))} -o StrictHostKeyChecking=yes "
-        f"-o BatchMode=yes -o ConnectTimeout={SSH_CONNECT_TIMEOUT}"))
+    return [*argv, "-o", f"UserKnownHostsFile={known}", "-o", "StrictHostKeyChecking=yes",
+            "-o", "BatchMode=yes", "-o", f"ConnectTimeout={SSH_CONNECT_TIMEOUT}"]
+
+
+def _ssh_env(workdir: Path) -> dict[str, str]:
+    """Environment carrying the deploy key; the key itself goes to a 0600 file."""
+    return _clean_env(GIT_SSH_COMMAND=shlex.join(_ssh_argv(workdir)))
+
+
+def probe(remote: Optional[str]) -> str:
+    """Reach the push remote's SSH service and check its host key, pushing
+    nothing. Returns what it met, as one line; raises when it did not get
+    that far.
+
+    ssh checks the host key before it authenticates, so GitHub's "Permission
+    denied (publickey)" to a connection that offered no key means: reached,
+    and it is GitHub. With ``BADGES_DEPLOY_KEY`` set the key is offered, and
+    the same answer then means the key was refused.
+    """
+    workdir = Path(tempfile.mkdtemp(prefix="publish-verdict-"))
+    try:
+        target = _over_443(remote if remote is not None else _default_remote())
+        found = _SSH_URL.match(target) or _SCP_LIKE.match(target)
+        if found is None:
+            raise PublishError(f"not an ssh remote, nothing to probe: {target}")
+        port = found.groupdict().get("port")
+        argv = [*_ssh_argv(workdir, need_key=False), *(["-p", port] if port else []),
+                "-T", found.group("who")]
+        with_key = "-i" in argv
+        try:
+            done = subprocess.run(  # noqa: S603 -- ssh on PATH; the options are ours
+                argv, capture_output=True, env=_clean_env(), check=False,
+                stdin=subprocess.DEVNULL, timeout=GIT_TIMEOUT)
+        except subprocess.TimeoutExpired as exc:
+            raise PublishError(
+                f"reaching {target} timed out after {exc.timeout} s: the remote did not "
+                "answer (is its port reachable from this runner?)") from exc
+        text = (done.stderr + b" " + done.stdout).decode("utf-8", "replace").strip()
+        said = _one_line(text) if text else f"ssh exit {done.returncode}"
+        if "successfully authenticated" in said:
+            return f"reached {target}: host key verified, deploy key accepted"
+        if "Permission denied (publickey)" in said and not with_key:
+            return (f"reached {target}: host key verified (no key was offered; "
+                    "the push itself needs BADGES_DEPLOY_KEY)")
+        if "Permission denied (publickey)" in said:
+            raise PublishError(f"reached {target} and its host key verified, but the "
+                               "deploy key was refused (is its public half in the "
+                               "repository's deploy keys, with write access?)")
+        raise PublishError(f"could not reach {target}: {said}")
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def _default_remote() -> str:
@@ -373,7 +459,7 @@ def publish(files: dict[str, bytes], message: str, *, remote: Optional[str],
     workdir = Path(tempfile.mkdtemp(prefix="publish-verdict-"))
     try:
         if remote is None:
-            target = _default_remote()
+            target = _over_443(_default_remote())
             env = _ssh_env(workdir)
         else:
             target, env = remote, _clean_env()
@@ -414,10 +500,16 @@ def _parser() -> argparse.ArgumentParser:
     pub.add_argument("--branch", default="badges")
     pub.add_argument("--dry-run", action="store_true",
                      help="print the verdict and the files; contact nothing")
+    pr = sub.add_parser("probe", help="reach the push remote's SSH service and check its "
+                                      "host key; push nothing")
+    pr.add_argument("--remote", default=None,
+                    help="probe this ssh remote (default: the one publish pushes to)")
     return p
 
 
 def _check_names(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.command == "probe":
+        return
     names = [args.step] if args.command == "mark" else [
         args.workflow, *([args.leg] if args.leg is not None else []), *args.steps]
     for name in names:
@@ -435,6 +527,9 @@ def main(argv: Sequence[str]) -> int:
     args = parser.parse_args(list(argv))
     _check_names(parser, args)
     try:
+        if args.command == "probe":
+            print(f"publish-scheduled-verdict: {probe(args.remote)}")
+            return 0
         markers = args.markers if args.markers is not None else _default_markers()
         if args.command == "mark":
             markers.mkdir(parents=True, exist_ok=True)

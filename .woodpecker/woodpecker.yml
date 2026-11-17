@@ -378,6 +378,25 @@ steps:
       - pip install -e packages/hypergumbo-tracker
       - scripts/tracker validate
 
+  # ── the scheduled verdict's transport, checked on the runner that uses it ──
+  # scripts/publish-scheduled-verdict pushes the scheduled runs' verdicts from
+  # THIS runner by ssh on port 443 (ssh.github.com: the runner cannot reach
+  # port 22, and the first scheduled run published nothing for that reason).
+  # The push itself happens only in the scheduled workflows, so a change that
+  # breaks its transport would otherwise be found at the next 01:00 UTC run.
+  # `probe` makes the connection and checks GitHub's host key against the
+  # pinned ones. It offers no key: the deploy-key secret is not given to pull
+  # requests. Runs only when the publisher changes.
+  - name: verdict-transport-probe
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path:
+          include:
+            - "scripts/publish-scheduled-verdict"
+    commands:
+      - scripts/publish-scheduled-verdict probe
+
   # ── build the 3 vendored grammars ONCE into a workspace dir ────────────────
   # Written to $CI_WORKSPACE/.grammar-wheels (shared across steps in this run),
   # so the pytest step installs from them instead of rebuilding. This is the

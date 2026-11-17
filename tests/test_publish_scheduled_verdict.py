@@ -387,6 +387,26 @@ def test_the_remote_defaults_to_the_ssh_clone_url_then_ci_repo(monkeypatch) -> N
     assert psv._default_remote() == "git@example.invalid:o/r.git"
 
 
+@pytest.mark.parametrize(("url", "sent_to"), [
+    ("git@github.com:iterabloom/hypergumbo.git",
+     "ssh://git@ssh.github.com:443/iterabloom/hypergumbo.git"),
+    ("ssh://git@github.com/iterabloom/hypergumbo.git",
+     "ssh://git@ssh.github.com:443/iterabloom/hypergumbo.git"),
+    ("ssh://git@github.com:22/o/r.git", "ssh://git@ssh.github.com:443/o/r.git"),
+    # Already there, another host, another transport, a local path: as given.
+    ("ssh://git@ssh.github.com:443/o/r.git", "ssh://git@ssh.github.com:443/o/r.git"),
+    ("git@example.invalid:o/r.git", "git@example.invalid:o/r.git"),
+    ("git@github.com.example.invalid:o/r.git", "git@github.com.example.invalid:o/r.git"),
+    ("https://github.com/o/r.git", "https://github.com/o/r.git"),
+    ("/srv/git/r.git", "/srv/git/r.git"),
+])
+def test_a_github_ssh_remote_goes_to_port_443_and_nothing_else_is_touched(
+        url: str, sent_to: str) -> None:
+    """Pipeline 6512 waited 120 s on github.com:22 and published nothing; the
+    runner reaches GitHub on 443 only."""
+    assert psv._over_443(url) == sent_to
+
+
 KEY = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAAfakekeymaterialZZZZ\n-----END OPENSSH PRIVATE KEY-----"
 
 #: Stand-in for ``ssh``: records its argv and what the files it is pointed at
@@ -430,14 +450,18 @@ def test_the_deploy_key_path(tmp_path: Path, ci_env, capsys, monkeypatch) -> Non
     hosts_path = Path(f"{log}.hostspath").read_text().strip()
     assert argv[:7] == ["-i", key_path, "-o", "IdentitiesOnly=yes",
                         "-o", f"UserKnownHostsFile={hosts_path}", "-o"]
-    assert "StrictHostKeyChecking=yes" in argv and "git@github.com" in argv
+    assert "StrictHostKeyChecking=yes" in argv
+    # GitHub's SSH service on the HTTPS port: the runner cannot reach port 22.
+    assert argv[argv.index("-p"):argv.index("-p") + 3] == ["-p", "443", "git@ssh.github.com"]
+    assert "git@github.com" not in argv
     # No prompt can be answered in CI, and a port that drops packets must be
     # reported by ssh in seconds, not by this script's own limit minutes later.
     assert "BatchMode=yes" in argv and "ConnectTimeout=20" in argv
     assert Path(f"{log}.keymode").read_text().strip() == "600"
     assert Path(f"{log}.key").read_text() == KEY + "\n"
     hosts = Path(f"{log}.hosts").read_text().splitlines()
-    assert hosts == [f"github.com {k}" for k in psv.GITHUB_HOST_KEYS] and len(hosts) == 3
+    assert hosts == [f"{host} {k}" for host in ("github.com", "[ssh.github.com]:443")
+                     for k in psv.GITHUB_HOST_KEYS] and len(hosts) == 6
     assert not Path(key_path).exists() and not Path(hosts_path).exists()
     assert "fakekeymaterial" not in "\n".join(argv) + out + err
 
@@ -466,8 +490,8 @@ def test_a_remote_that_never_answers_says_which_step_waited(
     _out, err = capsys.readouterr()
     assert rc == 1
     assert err.strip() == (
-        "publish-scheduled-verdict: reading git@github.com:iterabloom/hypergumbo.git timed out "
-        "after 1 s: the remote did not answer (is its port reachable from this runner?)")
+        "publish-scheduled-verdict: reading ssh://git@ssh.github.com:443/iterabloom/hypergumbo.git "
+        "timed out after 1 s: the remote did not answer (is its port reachable from this runner?)")
 
 
 def test_the_key_file_is_private(tmp_path: Path, monkeypatch) -> None:
@@ -523,3 +547,133 @@ def test_bad_arguments_exit_2(argv: list[str], capsys) -> None:
     with pytest.raises(SystemExit) as exc:
         psv.main(argv)
     assert exc.value.code == 2
+
+
+#: Stand-in for ``ssh`` in the probe: records its argv, says what it is told to.
+PROBE_SSH = """#!/bin/sh
+printf '%s\\n' "$@" > "$FAKE_SSH_LOG.argv"
+for a in "$@"; do case "$a" in */deploy_key) cat "$a" > "$FAKE_SSH_LOG.key" ;; esac; done
+[ -n "$FAKE_SSH_SAYS" ] && echo "$FAKE_SSH_SAYS" >&2
+exit "$FAKE_SSH_RC"
+"""
+
+DENIED = "git@ssh.github.com: Permission denied (publickey)."
+WELCOME = ("Hi iterabloom/hypergumbo! You've successfully authenticated, but GitHub does not "
+           "provide shell access.")
+REMOTE_443 = "ssh://git@ssh.github.com:443/iterabloom/hypergumbo.git"
+
+
+@pytest.fixture
+def fake_ssh(tmp_path: Path, monkeypatch):
+    """Put a stand-in ``ssh`` first on PATH; returns (set what it says, read its argv)."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "ssh").write_text(PROBE_SSH)
+    (bindir / "ssh").chmod(0o755)
+    log = tmp_path / "ssh"
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_SSH_LOG", str(log))
+    monkeypatch.setenv("CI_REPO", "iterabloom/hypergumbo")
+    monkeypatch.delenv("CI_REPO_CLONE_SSH_URL", raising=False)
+    monkeypatch.delenv("BADGES_DEPLOY_KEY", raising=False)
+
+    def says(text: str, rc: int) -> None:
+        monkeypatch.setenv("FAKE_SSH_SAYS", text)
+        monkeypatch.setenv("FAKE_SSH_RC", str(rc))
+
+    return says, lambda: Path(f"{log}.argv").read_text().splitlines()
+
+
+def test_the_probe_without_a_key_passes_when_github_answers_on_443(fake_ssh, capsys) -> None:
+    """ssh checks the host key before it authenticates: 'Permission denied
+    (publickey)' to a connection that offered no key means the runner reached
+    port 443 and what answered holds one of the pinned keys."""
+    says, argv = fake_ssh
+    says(DENIED, 255)
+    assert psv.main(["probe"]) == 0
+    out, err = capsys.readouterr()
+    assert out.strip() == (f"publish-scheduled-verdict: reached {REMOTE_443}: host key verified "
+                           "(no key was offered; the push itself needs BADGES_DEPLOY_KEY)")
+    assert err == ""
+    args = argv()
+    assert args[:2] == ["-o", "PubkeyAuthentication=no"] and "-i" not in args
+    assert "StrictHostKeyChecking=yes" in args and "BatchMode=yes" in args
+    assert args[-4:] == ["-p", "443", "-T", "git@ssh.github.com"]
+
+
+def test_the_probe_with_the_key_says_whether_github_took_it(
+        fake_ssh, capsys, monkeypatch, tmp_path: Path) -> None:
+    says, argv = fake_ssh
+    monkeypatch.setenv("BADGES_DEPLOY_KEY", KEY)
+    says(WELCOME, 1)
+    assert psv.main(["probe"]) == 0
+    out, err = capsys.readouterr()
+    assert out.strip() == (f"publish-scheduled-verdict: reached {REMOTE_443}: host key verified, "
+                           "deploy key accepted")
+    args = argv()
+    key_path = args[args.index("-i") + 1]
+    assert (tmp_path / "ssh.key").read_text() == KEY + "\n"
+    assert not Path(key_path).exists(), "the key file is removed afterwards"
+    assert "fakekeymaterial" not in "\n".join(args) + out + err
+    # The same answer that passes without a key is a refusal with one.
+    says(DENIED, 255)
+    assert psv.main(["probe"]) == 1
+    out, err = capsys.readouterr()
+    assert out == "" and "the deploy key was refused" in err and REMOTE_443 in err
+
+
+@pytest.mark.parametrize(("said", "rc", "reported"), [
+    ("Host key verification failed.", 255, "Host key verification failed."),
+    ("ssh: connect to host ssh.github.com port 443: Connection timed out", 255,
+     "ssh: connect to host ssh.github.com port 443: Connection timed out"),
+    ("kex_exchange_identification: Connection closed by remote host", 255,
+     "kex_exchange_identification: Connection closed by remote host"),
+    ("", 255, "ssh exit 255"),
+])
+def test_the_probe_fails_with_what_ssh_said(fake_ssh, capsys, said: str, rc: int,
+                                            reported: str) -> None:
+    says, _argv = fake_ssh
+    says(said, rc)
+    assert psv.main(["probe"]) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.strip() == f"publish-scheduled-verdict: could not reach {REMOTE_443}: {reported}"
+
+
+def test_the_probe_of_another_ssh_remote_uses_that_remotes_port(fake_ssh, capsys) -> None:
+    says, argv = fake_ssh
+    says(DENIED, 255)
+    assert psv.main(["probe", "--remote", "git@example.invalid:o/r.git"]) == 0
+    assert argv()[-2:] == ["-T", "git@example.invalid"] and "-p" not in argv()
+    assert "reached git@example.invalid:o/r.git" in capsys.readouterr().out
+    assert psv.main(["probe", "--remote", "ssh://git@example.invalid:2222/o/r.git"]) == 0
+    assert argv()[-4:] == ["-p", "2222", "-T", "git@example.invalid"]
+
+
+@pytest.mark.parametrize("remote", ["https://github.com/o/r.git", "/srv/git/r.git"])
+def test_the_probe_of_a_remote_that_is_not_ssh_says_so(fake_ssh, capsys, remote: str) -> None:
+    assert psv.main(["probe", "--remote", remote]) == 1
+    assert capsys.readouterr().err.strip() == (
+        f"publish-scheduled-verdict: not an ssh remote, nothing to probe: {remote}")
+
+
+def test_the_probe_with_no_remote_to_derive_says_so(fake_ssh, capsys, monkeypatch) -> None:
+    monkeypatch.delenv("CI_REPO")
+    assert psv.main(["probe"]) == 1
+    assert "no remote" in capsys.readouterr().err
+
+
+def test_a_probe_that_is_never_answered_says_what_it_waited_on(
+        tmp_path: Path, capsys, monkeypatch) -> None:
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "ssh").write_text(HANGING_SSH)
+    (bindir / "ssh").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("CI_REPO", "iterabloom/hypergumbo")
+    monkeypatch.delenv("CI_REPO_CLONE_SSH_URL", raising=False)
+    monkeypatch.setattr(psv, "GIT_TIMEOUT", 1)
+    assert psv.main(["probe"]) == 1
+    assert capsys.readouterr().err.strip() == (
+        f"publish-scheduled-verdict: reaching {REMOTE_443} timed out after 1 s: the remote "
+        "did not answer (is its port reachable from this runner?)")
