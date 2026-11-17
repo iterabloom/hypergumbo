@@ -170,7 +170,8 @@ stable_analyzer_build() {
     local interpreter
     interpreter=$(head -1 "$1" 2>/dev/null | sed -n 's/^#!//p')
     [[ -n "$interpreter" ]] && [[ -x "$interpreter" ]] || return 0
-    "$interpreter" -c 'from hypergumbo_core.analyzer_identity import compute_analyzer_identity_hash as f; print(f())' 2>/dev/null | grep -E '^[0-9a-f]{16}$' || true
+    # PYTHONPATH= : the installed build's own name (see STABLE_HG's PYTHONPATH note).
+    PYTHONPATH= "$interpreter" -c 'from hypergumbo_core.analyzer_identity import compute_analyzer_identity_hash as f; print(f())' 2>/dev/null | grep -E '^[0-9a-f]{16}$' || true
 }
 
 # === GRAPH REBUILD ===
@@ -1415,6 +1416,16 @@ if [[ -z "$STABLE_HG" ]]; then
     run_full_suite "no stable hypergumbo found (install with: pipx install hypergumbo)"
 fi
 
+# STABLE_HG RUNS WITHOUT PYTHONPATH (each call below is prefixed PYTHONPATH= ).
+# A run in a git worktree pins PYTHONPATH to the worktree's own packages/*/src,
+# so that its tests import its code. The installed hypergumbo inherits the
+# variable and then imports that code too: the "stable" slice is made by the
+# version under test, which is what the note above forbids, and under an
+# analyzer build name of its own, so no stored graph ever matches and every
+# worktree run analyses the repository. Measured 2026-11-17: for one commit the
+# installed build's graph and the tree build's graph name the same test files
+# for 2,618 seed sets. To slice with a tree's own code on purpose, point
+# STABLE_HG's HOME at a wrapper that sets PYTHONPATH itself.
 log "Using stable hypergumbo: $STABLE_HG"
 start_graph_rebuild
 
@@ -1534,7 +1545,7 @@ trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT $SLICE_STDERR" EXIT
 # removing a silent-degradation mode. Empty-array expansion is written
 # `${a[@]+"${a[@]}"}` because `set -u` is on.
 SLICE_MINIMAL=()
-if $STABLE_HG slice --help 2>/dev/null | grep -q -- '--minimal'; then
+if PYTHONPATH= $STABLE_HG slice --help 2>/dev/null | grep -q -- '--minimal'; then
     SLICE_MINIMAL=(--minimal)
 fi
 
@@ -1582,7 +1593,7 @@ elif [[ -s "$CHANGED_FILE_LIST" ]]; then
     # ONE line on purpose, and within 4 lines of the `-s` check above: the
     # WI-tolil / WI-zufij guards scan smart-test line-by-line and by proximity.
     # Keep the line intact and this comment short rather than loosening them.
-    $STABLE_HG slice --files "$CHANGED_FILE_LIST" ${SLICE_MINIMAL[@]+"${SLICE_MINIMAL[@]}"} --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR" || SLICE_EXIT=$?
+    PYTHONPATH= $STABLE_HG slice --files "$CHANGED_FILE_LIST" ${SLICE_MINIMAL[@]+"${SLICE_MINIMAL[@]}"} --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR" || SLICE_EXIT=$?
 else
     # WI-zufij: no sliceable source file changed (a test-only / docs-only PR, or
     # one whose only changes are non-source paths the filter above dropped).

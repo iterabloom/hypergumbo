@@ -320,7 +320,8 @@ def store_graph(
     ``nodes`` is every ``(id, path)`` in the graph's order; ``edges`` every
     ``(source id, target id)``. A repeated pair is stored once.
     ``dirty_files`` is every file that differed from ``head`` when the graph
-    was made (module docstring). The caller commits.
+    was made (module docstring). The caller commits; until it does, this
+    connection holds the file's write lock.
     """
     dirty = tuple(sorted(set(dirty_files)))
     numbers: dict[str, int] = {}
@@ -332,6 +333,12 @@ def store_graph(
     pairs = {(numbers.setdefault(dst, len(numbers)), numbers.setdefault(src, len(numbers)))
              for src, dst in edges}
 
+    # The index is one file for every checkout on the machine, so another
+    # process may be storing a graph right now. The write lock is taken BEFORE
+    # the highest id is read: read first, and two writers choose the same id
+    # and the second one's graph is lost to a constraint error.
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     # Numbered past every id in use BEFORE the old graph of this tree goes, so
     # an id is never handed out twice and "newer" always means "higher".
     graph_id = int(conn.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM graph").fetchone()[0])

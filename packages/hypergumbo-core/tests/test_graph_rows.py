@@ -244,6 +244,58 @@ def test_the_rows_live_beside_the_selection_index_tables(tmp_path: Path) -> None
     again.close()
 
 
+class _Interrupted:
+    """A connection that lets another writer in at the worst moment: just
+    before this one inserts its ``graph`` row, after it has chosen an id."""
+
+    def __init__(self, conn: sqlite3.Connection, intruder) -> None:
+        self._conn, self._intruder, self.intruded = conn, intruder, None
+
+    def execute(self, sql: str, *args):
+        if sql.startswith("INSERT INTO graph (id") and self.intruded is None:
+            self.intruded = self._intruder()
+        return self._conn.execute(sql, *args)
+
+    def __getattr__(self, name: str):
+        return getattr(self._conn, name)
+
+
+def test_two_writers_never_take_the_same_graph_id(tmp_path: Path) -> None:
+    """Two processes store a graph at the same moment: a rebuild finishing as
+    a run in another checkout records its fresh slice. Each chooses its id as
+    one more than the highest in use. Found on 2026-11-17 by two rebuilds run
+    side by side: both chose 1, and the second failed with 'UNIQUE constraint
+    failed: graph.id', its graph lost.
+
+    A writer must hold the write lock from before it reads the highest id, so
+    the other waits (here: gives up at once, having no patience) and then
+    chooses the next one."""
+    path = tmp_path / "index.sqlite"
+    first = sqlite3.connect(path)
+    graph_rows.ensure_schema(first)
+    first.commit()
+    second = sqlite3.connect(path, timeout=0)
+    nodes: list[Node] = [("a", "a.py")]
+
+    def intruder() -> str:
+        try:
+            _store(second, nodes, [], tree="theirs")
+            second.commit()
+        except sqlite3.OperationalError as exc:
+            second.rollback()
+            return f"waited: {exc}"
+        return "stored"
+
+    mine = _store(_Interrupted(first, intruder), nodes, [], tree="mine")  # type: ignore[arg-type]
+    first.commit()
+    theirs = _store(second, nodes, [], tree="theirs")
+    second.commit()
+    assert sorted(g.tree for g in graph_rows.stored_graphs(first)) == ["mine", "theirs"]
+    assert theirs.id > mine.id
+    first.close()
+    second.close()
+
+
 def test_tables_of_another_format_are_dropped_with_their_graphs() -> None:
     """The first layout had no format number and no ``git_tree`` column. Read
     with today's queries it would fail or lie, so it is replaced: a lost graph

@@ -56,6 +56,7 @@ _SURVEY = {
 # The installed hypergumbo: records where and how it was run and what a.py
 # held there, then leaves {surveys} survey(s) in the cache it was given.
 _STUB_HG = """#!/usr/bin/env bash
+echo "$2:${{PYTHONPATH-unset}}" >> "{calls}.pythonpath"
 if [ "$1" = slice ] && [ "$2" = --help ]; then echo "  --minimal   skip the side outputs"; exit 0; fi
 echo "$PWD|$*" >> "{calls}"
 cat packages/p/src/p/a.py > "{calls}.saw" 2>/dev/null
@@ -114,9 +115,11 @@ class Bench:
 
     def rebuild(self, *extra: str) -> subprocess.CompletedProcess[str]:
         # A rebuild that waits for something that never comes must fail the
-        # test, not hang the suite.
+        # test, not hang the suite. PYTHONPATH is set the way a run in a git
+        # worktree sets it: the rebuild must not hand it to the analyzer.
         return subprocess.run(self.argv(*extra), capture_output=True, text=True,
-                              cwd=str(self.repo), timeout=120)
+                              cwd=str(self.repo), timeout=120,
+                              env={**os.environ, "PYTHONPATH": "/a/worktree/packages/x/src"})
 
     def graphs(self) -> list[graph_rows.StoredGraph]:
         if not self.index.exists():
@@ -168,6 +171,10 @@ def test_the_commit_is_analysed_in_a_checkout_of_its_own_and_its_graph_stored(be
     assert bench.left_behind() == []
     assert (bench.repo / A).read_text() == "A = 'edited, not committed'\n"
     assert f"stored graph 1 of {bench.commit[:9]}" in bench.log()
+    # The installed hypergumbo ran its own code both times it was called: the
+    # caller's PYTHONPATH (a worktree's sources) did not reach it.
+    assert Path(f"{bench.calls}.pythonpath").read_text().splitlines() == [
+        "--help:unset", "--files:unset"]
 
 
 def test_a_graph_that_is_stored_is_not_made_again(bench: Bench) -> None:
@@ -258,6 +265,17 @@ def test_a_survey_with_no_graph_and_an_unknown_commit_store_nothing(bench: Bench
         capture_output=True, text=True, cwd=str(bench.repo))
     assert unknown.returncode == 1
     assert f"git does not know the commit {'0' * 40}" in unknown.stderr
+
+
+def test_a_failure_nobody_foresaw_is_logged_and_is_exit_1(bench: Bench) -> None:
+    """The helper's other commands turn any exception into exit 0, because they
+    ride on a test run. A rebuild that stored nothing must not look like one
+    that did: here the index path is a directory."""
+    bench.index.mkdir()
+    done = bench.rebuild()
+    assert done.returncode == 1, done.stderr
+    assert "graph-rebuild: failed: " in done.stderr and "failed: " in bench.log()
+    assert bench.left_behind() == []
 
 
 def test_what_a_dead_rebuild_left_is_cleared_before_the_next(bench: Bench) -> None:

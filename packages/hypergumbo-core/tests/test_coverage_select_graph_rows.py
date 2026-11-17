@@ -446,3 +446,31 @@ def test_a_graph_whose_tree_this_repository_does_not_have_is_passed_over(
         capture_output=True, text=True, cwd=str(elsewhere))
     assert (done.returncode, out.exists()) == (3, False), done.stderr
     assert "graph 1: git does not have its tree" in done.stderr
+
+
+def test_a_store_waits_for_another_writer_longer_than_sqlite_would(repo: Path) -> None:
+    """Another process holds the index's write lock for longer than SQLite's
+    own five seconds of patience (a store of a real graph takes about four).
+    The store waits and lands; without that it would fail, and this helper
+    turns a failure into exit 0."""
+    index = repo.parent / "logs" / "index.sqlite"
+    writer = sqlite3.connect(index)
+    graph_rows.ensure_schema(writer)
+    writer.commit()
+    writer.execute("BEGIN IMMEDIATE")
+    logs = repo.parent / "logs"
+    storing = subprocess.Popen(
+        [sys.executable, str(_HELPER), "--repo-root", str(repo), "--index", str(index),
+         "--stale-log", str(logs / "stale.jsonl"), "graph-store", "--survey",
+         str(_survey(repo, "tree1", _GRAPH))],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=str(repo))
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            storing.communicate(timeout=6.5)
+        writer.commit()
+        _, stderr = storing.communicate(timeout=60)
+    finally:
+        writer.close()
+        if storing.poll() is None:
+            storing.kill()
+    assert storing.returncode == 0 and "stored graph 1" in stderr, stderr

@@ -88,6 +88,8 @@ A fresh analysis leaves a graph of your tree, so the next run on the same branch
 
 If runs follow one another without a few idle minutes (an agent's pre-PR chain), it never gets to finish and the first selection on a new baseline analyses in the foreground as before.
 
+**In a git worktree the same graphs answer.** The selection index is one file for every checkout on the machine, and `smart-test` runs the installed hypergumbo **without the run's `PYTHONPATH`**: a worktree run pins `PYTHONPATH` to its own `packages/*/src`, and handed on it would make the installed command import the code under test, under an analyzer build name no stored graph has. (Measured for one commit: the installed build's graph and the tree build's graph name the same test files for 2,618 seed sets.) To slice with a tree's own code on purpose, give `smart-test` a `HOME` whose `.local/bin/hypergumbo` is a wrapper that sets `PYTHONPATH` itself.
+
 **The check that stays on.** Every time a fresh analysis does run, `smart-test` also records what the stored graph would have selected (`~/hypergumbo_lab_notebook/stale_graph_observations.jsonl`; `scripts/coverage-select stale-report` prints the verdict). A line `STORED GRAPH LOST n TEST FILE(S)` means the stored graph missed a test the fresh analysis found and your change did not edit. **That is a stop:** file it, and use `--fresh-graph` until it is understood.
 
 **Looking at the stored graphs:** `scripts/coverage-select graph-list`.
