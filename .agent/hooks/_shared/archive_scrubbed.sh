@@ -3,7 +3,11 @@
 # archive_scrubbed.sh — the ONE fail-safe way to write a transcript archive.
 #
 # Sourced by rotate-on-session-end.sh (2 call sites) and
-# launch-transcript-sync.sh (2 call sites). One implementation because this is
+# sweep-transcript-orphans.sh (4 call sites) -- both of which run DETACHED from
+# the hooks, since this function takes as long as the transcript is big and a
+# hook budget would cut it off (transcript_rotation_queue.sh). A writer killed
+# anyway leaves `<dest>.partial.<pid>`; the sweep removes it once that PID is
+# gone. One implementation because this is
 # the exact shape that failed review: four hand-rolled `gzip -c src > dest`
 # pipelines, each of which had to independently get the failure handling right,
 # and none of which did.

@@ -1,41 +1,66 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# rotate-on-session-end.sh — Promote a just-ended session's per-session
+# rotate-on-session-end.sh — Promote just-ended sessions' per-session
 # current files into the global .last_*/.second_to_last_* slots.
 #
-# Called by each tool's session-end hook AFTER kill-transcript-sync.sh.
-#
 # Usage: rotate-on-session-end.sh <REPO_ROOT> <SESSION_ID>
+#        rotate-on-session-end.sh --drain <REPO_ROOT>
+#
+# THIS SCRIPT IS SLOW AND MUST NOT RUN INSIDE A HOOK. It compresses,
+# validates and secret-scrubs whole transcripts, which reach hundreds of
+# megabytes; a hook budget (Claude Code: 5 s) cuts it off mid-archive. A
+# session-end hook calls end-session-transcript.sh, which queues the session
+# and runs this script DETACHED. See transcript_rotation_queue.sh for the
+# queue and the measured failure.
+#
+# Both forms drain the whole rotation queue; workers are interchangeable.
+# The first form also queues <SESSION_ID> (idempotent), and rotates it even
+# if the queue entry could not be written.
 #
 # Semantics under per-session isolation (ADR-0018 amendment / Option 2):
 #   - Each session writes to its own .current_session_transcript.<sid>.jsonl
 #     and .current_injection_history.<sid>.jsonl during its life.
-#   - When a session ENDS, this script atomically:
-#       1. Acquires .agent/.rotation.lock (flock) so two simultaneous
-#          session-ends serialize cleanly.
-#       2. Archives the existing .second_to_last_* pair (if any) to a
+#   - Under .agent/.rotation.lock (flock), for each queued session in end
+#     order, this script:
+#       1. Archives the existing .second_to_last_* pair (if any) to a
 #          timestamped subdir under .agent/.archived-transcripts/.
-#       3. Demotes .last_* → .second_to_last_*.
-#       4. Promotes this session's .current_*.<sid>.* → .last_*.
-#       5. Cleans up this session's other per-session state files.
-#       6. Releases the lock.
+#       2. Demotes .last_* → .second_to_last_*.
+#       3. Promotes the session's .current_*.<sid>.* → .last_*.
+#       4. Cleans up the session's other per-session state files.
+#     and then, once per drain, heals modes and scrubs the global slots in
+#     place. Queue entries are removed only after that scrub, so a worker
+#     killed anywhere before it leaves entries for the next drain to finish.
+#
+# Two cases rotate nothing for an entry:
+#   - No current file exists for the session. A repeated drain (the previous
+#     worker died after the renames) would otherwise demote the transcript
+#     it had just promoted and leave .last_* absent.
+#   - The session is live again (a PID file naming a live watcher): it was
+#     resumed before its entry drained, and its files belong to a running
+#     session. Checked before the slow archive and again before the renames.
+#
+# A busy lock (TRANSCRIPT_ROTATION_LOCK_WAIT seconds, default 600) leaves
+# the queue untouched for the next drain. It never runs unsynchronized: the
+# holder may be scrubbing a slot in place, and its atomic replace would
+# clobber a slot renamed underneath it.
 #
 # The global ".last_session_transcript.jsonl" therefore means "most
-# recently ENDED session in this repo." With concurrent sessions, two
-# end events linearize via flock — last writer wins the .last slot.
+# recently ENDED session in this repo."
 # Crashed sessions (no session-end fired) DO NOT pass through here;
-# their orphaned current files are archived directly by the next
-# session-start's launch-transcript-sync.sh orphan sweep.
+# their orphaned current files are archived by sweep-transcript-orphans.sh,
+# which the next session start runs detached.
 
 set -euo pipefail
 
-REPO_ROOT="${1:-${REPO_ROOT:?REPO_ROOT must be set}}"
-SESSION_ID="${2:?SESSION_ID is required}"
+if [[ "${1:-}" == "--drain" ]]; then
+    REPO_ROOT="${2:-${REPO_ROOT:?REPO_ROOT must be set}}"
+    SESSION_ID=""
+else
+    REPO_ROOT="${1:-${REPO_ROOT:?REPO_ROOT must be set}}"
+    SESSION_ID="${2:?SESSION_ID is required}"
+fi
 AGENT_DIR="$REPO_ROOT/.agent"
-LOCK_FILE="$AGENT_DIR/.rotation.lock"
 
-CURRENT_TR="$AGENT_DIR/.current_session_transcript.${SESSION_ID}.jsonl"
-CURRENT_INJ="$AGENT_DIR/.current_injection_history.${SESSION_ID}.jsonl"
 LAST_TR="$AGENT_DIR/.last_session_transcript.jsonl"
 LAST_INJ="$AGENT_DIR/.last_injection_history.jsonl"
 SECOND_TR="$AGENT_DIR/.second_to_last_transcript.jsonl"
@@ -55,10 +80,19 @@ _HOOK_SHARED_DIR="$(CDPATH= cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=/dev/null
 . "$_HOOK_SHARED_DIR/transcript_perms.sh"
 harden_transcript_umask
+# shellcheck source=/dev/null
+. "$_HOOK_SHARED_DIR/transcript_rotation_queue.sh"
 
 mkdir -p "$AGENT_DIR"
+LOCK_FILE="$(rotation_lock_file "$AGENT_DIR")"
+QUEUE_DIR="$(rotation_queue_dir "$AGENT_DIR")"
 
-_do_rotation() {
+# _rotate_slots <session_id>: steps 1-3 for one ended session.
+_rotate_slots() {
+    local sid="$1"
+    local CURRENT_TR="$AGENT_DIR/.current_session_transcript.${sid}.jsonl"
+    local CURRENT_INJ="$AGENT_DIR/.current_injection_history.${sid}.jsonl"
+
     # Step 1: archive the about-to-be-clobbered .second_to_last_* pair.
     # Per ADR-0018, we keep cross-session history for retrospective analysis
     # without sacrificing the global .last_*/.second_to_last_* slots.
@@ -105,6 +139,12 @@ _do_rotation() {
         fi
     fi
 
+    # The archive above can take a while. If the session was resumed
+    # meanwhile, stop before the renames: nothing has moved yet.
+    if rotation_session_is_live "$AGENT_DIR" "$sid"; then
+        return 1
+    fi
+
     # Step 2: demote .last_* to .second_to_last_*.
     if [[ -f "$LAST_TR" ]]; then
         mv -f "$LAST_TR" "$SECOND_TR"
@@ -130,6 +170,11 @@ _do_rotation() {
         rm -f "$CURRENT_INJ"
     fi
 
+    return 0
+}
+
+# Steps 3c/3b, once per drain, over the two GLOBAL slots.
+_heal_and_scrub_slots() {
     # Step 3c (ordered before the scrub, which preserves modes): heal the
     # global slots. mv carried over whatever mode the source files had, and
     # months of pre-contract sessions left 664 — every rotation tightens.
@@ -158,25 +203,83 @@ _do_rotation() {
             fi
         done
     fi
-
-    # Step 4: clean up this session's other per-session state files.
-    rm -f "$AGENT_DIR/.transcript-sync.${SESSION_ID}.pid"
-    rm -f "$AGENT_DIR/.transcript-sync-state.${SESSION_ID}.json"
-    rm -f "$AGENT_DIR/.transcript-poll-state.${SESSION_ID}"
-    rm -f "$AGENT_DIR/.transcript-injection-state.${SESSION_ID}.json"
 }
 
-# Acquire the rotation lock. flock with -x (exclusive) and a 30s timeout
-# serializes concurrent end events. If flock is unavailable or fails, fall
-# back to running rotation directly — the only loss is concurrent-end
-# atomicity, which is acceptable in degraded environments.
+# Step 4: clean up one session's other per-session state files.
+_cleanup_session_state() {
+    local sid="$1"
+    rm -f "$AGENT_DIR/.transcript-sync.${sid}.pid"
+    rm -f "$AGENT_DIR/.transcript-sync-state.${sid}.json"
+    rm -f "$AGENT_DIR/.transcript-poll-state.${sid}"
+    rm -f "$AGENT_DIR/.transcript-injection-state.${sid}.json"
+}
+
+# _rotate_one <session_id>: one queue entry, start to finish.
+_rotate_one() {
+    local sid="$1"
+    # Resumed before its entry drained: the files belong to a live session.
+    if rotation_session_is_live "$AGENT_DIR" "$sid"; then
+        return 0
+    fi
+    # Rotate only if the session left a current file (an empty one counts:
+    # it is removed, and .last_* is still demoted). With none, this entry
+    # was already rotated by a worker that died before removing it.
+    if [[ -e "$AGENT_DIR/.current_session_transcript.${sid}.jsonl" || \
+          -e "$AGENT_DIR/.current_injection_history.${sid}.jsonl" ]]; then
+        _rotate_slots "$sid" || return 0
+    fi
+    _cleanup_session_state "$sid"
+}
+
+# Drain every queued session in end order, then <SESSION_ID> itself if it
+# has no entry (the enqueue failed).
+_drain() {
+    local entry sid extra="$SESSION_ID" did=0
+    local -a drained=()
+    shopt -s nullglob
+    for entry in "$QUEUE_DIR"/*; do
+        sid="${entry##*/}"
+        sid="${sid#*.}"
+        _rotate_one "$sid"
+        drained+=("$entry")
+        did=1
+        [[ "$sid" == "$extra" ]] && extra=""
+    done
+    shopt -u nullglob
+    if [[ -n "$extra" ]]; then
+        _rotate_one "$extra"
+        did=1
+    fi
+    if [[ "$did" == 1 ]]; then
+        _heal_and_scrub_slots
+    fi
+    # Entries go last: a worker killed before this point leaves them for
+    # the next drain, which finds no current file and finishes the scrub.
+    for entry in ${drained[@]+"${drained[@]}"}; do
+        rm -f "$entry"
+    done
+    rotation_log_trim "$AGENT_DIR"
+}
+
+if [[ -n "$SESSION_ID" ]]; then
+    rotation_enqueue "$AGENT_DIR" "$SESSION_ID" || \
+        echo "warn: could not queue $SESSION_ID; rotating it directly" >&2
+fi
+
+# Acquire the rotation lock. A busy lock leaves the queue for the next
+# drain (see the header). If flock is unavailable, fall back to draining
+# directly — the only loss is concurrent-end atomicity, which is acceptable
+# in degraded environments.
 if command -v flock >/dev/null 2>&1; then
     (
-        flock -x -w 30 200 || {
-            echo "warn: rotation lock timeout; running unsynchronized" >&2
-        }
-        _do_rotation
+        if ! flock -x -w "$TRANSCRIPT_ROTATION_LOCK_WAIT" 200; then
+            echo "warn: rotation lock busy after" \
+                 "${TRANSCRIPT_ROTATION_LOCK_WAIT}s; leaving the queue for" \
+                 "the next drain" >&2
+            exit 0
+        fi
+        _drain
     ) 200>"$LOCK_FILE"
 else
-    _do_rotation
+    _drain
 fi

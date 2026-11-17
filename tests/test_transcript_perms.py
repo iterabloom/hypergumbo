@@ -277,6 +277,8 @@ class TestEveryShellWriterIsWiredToTheOneHome:
         "sync-transcript.sh",
         "rotate-on-session-end.sh",
         "launch-transcript-sync.sh",
+        "sweep-transcript-orphans.sh",
+        "end-session-transcript.sh",
     )
 
     def test_helper_exists(self):

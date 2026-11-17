@@ -87,9 +87,12 @@ The dedup scans the *filtered* transcript (not the native one), because:
 ├── sync-transcript.sh          # Background watcher (inotifywait loop); writes the per-session transcript
 ├── filter-transcript.py        # Incremental noise filter
 ├── session_id_helpers.sh       # Shared: derive a sanitized session_id from each vendor's hook input
-├── launch-transcript-sync.sh   # Shared: archive crashed sessions' orphans, launch this session's watcher
+├── launch-transcript-sync.sh   # Shared: launch this session's watcher, then detach the orphan sweep
 ├── kill-transcript-sync.sh     # Shared: SIGTERM via per-session PID file with pgrep SESSION_ID-scoped fallback
-├── rotate-on-session-end.sh    # Shared: the only writer of .last_* / .second_to_last_*; archives under flock
+├── end-session-transcript.sh   # Shared: the session-end entry point — queue, kill the watcher, detach the rotation
+├── rotate-on-session-end.sh    # Shared, detached: the only writer of .last_* / .second_to_last_*; drains the rotation queue under flock
+├── sweep-transcript-orphans.sh # Shared, detached: archive crashed and stray sessions' files under the same flock
+├── transcript_rotation_queue.sh # Shared (sourced): the rotation queue, the lock, the detach primitive
 ├── poll-transcript-change.sh   # Size-based polling for tools without FileChanged (or where it's broken)
 ├── on_transcript_change.sh     # Shell wrapper → Python
 ├── on_transcript_change.py     # Two-step LLM pipeline + log_injection_history sidecar writer
@@ -153,10 +156,12 @@ The global `.last_session_transcript.jsonl`, `.second_to_last_transcript.jsonl`,
 ### Lifecycle
 
 * **Session start.** The vendor hook extracts a `session_id` from its native input source via `session_id_helpers.sh` (Claude Code: `.session_id` UUID; Codex: basename of `transcript_path`; Gemini: `GEMINI_SESSION_ID` env var or `transcript_path` basename; Cursor: hardcoded `cursor-singleton`). The hook calls `launch-transcript-sync.sh <SRC> <SESSION_ID>`, which:
-  1. Runs a one-time legacy cleanup (kills any pre-per-session global watcher and removes legacy state files).
-  2. Walks `.agent/.transcript-sync.*.pid`. Files whose recorded PID is dead are *crashed sessions*; their orphaned `.current_session_transcript.<sid>.jsonl` and `.current_injection_history.<sid>.jsonl` are archived directly into `.agent/.archived-transcripts/crashed-<UTC-stamp>-<sid>/` (skipping `.last_*` — a crashed session must not claim "most recently ended"), and the stale state files are removed. Files whose recorded PID is alive are *live siblings* and are left strictly alone.
+  1. Drops any rotation-queue entry for `<SESSION_ID>`: a session that starts again was resumed, and its pending rotation is void.
+  2. Runs a one-time legacy cleanup (kills any pre-per-session global watcher and removes legacy state files).
   3. Launches `sync-transcript.sh <SRC> <DEST> <SESSION_ID>` in the background. The watcher writes the per-session DEST and PID file and never participates in rotation.
-* **Session end.** The vendor hook calls `kill-transcript-sync.sh <REPO_ROOT> <SESSION_ID>`, which kills only the watcher whose per-session PID file or pgrep `argv[+3]` matches `SESSION_ID`. It then calls `rotate-on-session-end.sh <REPO_ROOT> <SESSION_ID>`, which acquires the `.rotation.lock` flock, archives the existing `.second_to_last_*` pair into a timestamped subdir, demotes `.last_*` → `.second_to_last_*`, promotes the per-session `.current_*.<sid>.*` → `.last_*`, and cleans up the per-session state files for `<sid>`. Concurrent end events serialize via flock; last writer wins the `.last_*` slot.
+  4. Detaches `sweep-transcript-orphans.sh <REPO_ROOT> <SESSION_ID>`, which first drains the rotation queue and then, under the `.rotation.lock` flock: removes `*.partial.<pid>` archive temps whose writer is dead; walks `.agent/.transcript-sync.*.pid` — files whose recorded PID is dead are *crashed sessions*, whose orphaned `.current_session_transcript.<sid>.jsonl` and `.current_injection_history.<sid>.jsonl` are archived directly into `.agent/.archived-transcripts/crashed-<UTC-stamp>-<sid>/` (skipping `.last_*` — a crashed session must not claim "most recently ended"), with the stale state files removed, while files whose recorded PID is alive are *live siblings* and are left strictly alone; and archives any per-session transcript that has no PID file at all into `stray-<UTC-stamp>-<sid>/`. Both sweeps skip a session that is queued for rotation.
+* **Session end.** The vendor hook calls `end-session-transcript.sh <REPO_ROOT> <SESSION_ID>`, which (1) writes the rotation-queue entry `.agent/.rotation-queue/<UTC-stamp>.<sid>`, (2) calls `kill-transcript-sync.sh`, which kills only the watcher whose per-session PID file or pgrep `argv[+3]` matches `SESSION_ID`, and (3) detaches `rotate-on-session-end.sh <REPO_ROOT> <SESSION_ID>`. The entry is written before the watcher's PID file disappears, so a concurrent sweep always sees one of the two. The detached worker acquires the `.rotation.lock` flock and drains every queue entry in end order: for each session it archives the existing `.second_to_last_*` pair into a timestamped subdir, demotes `.last_*` → `.second_to_last_*`, promotes the per-session `.current_*.<sid>.*` → `.last_*`, and cleans up the per-session state files for `<sid>`; once per drain it scrubs the global slots in place, and only then removes the entries. An entry with no current file, or whose session has a live watcher again, rotates nothing.
+* **Hook budget.** A vendor hook is killed when it overruns its budget (Claude Code: 5 s), and compressing, validating and secret-scrubbing a transcript of several hundred megabytes takes longer than that. A hook therefore does only O(1) work — a queue entry, a watcher kill or launch — and hands every archive and scrub to a detached worker (`transcript_detach`: its own session, output appended to `.agent/.transcript-rotation.log`). All such work runs under the one lock, because an in-place scrub replaces a slot atomically and would clobber a slot renamed underneath it. The queue entry, not the worker, is the durable record: any worker drains every entry, a worker that finds the lock busy for `TRANSCRIPT_ROTATION_LOCK_WAIT` seconds (default 600) leaves its entry queued instead of running unsynchronized, and an entry whose worker died is drained by the next session start or end.
 * **Polling.** `poll-transcript-change.sh <SESSION_ID>` reads the per-session DEST and the per-session poll state (`.transcript-poll-state.<sid>`).
 * **Dedup / injection state.** `on_transcript_change.py`'s `recently_injected()`, `load_injection_state()`, `save_injection_state()`, and `log_injection_history()` all take a `session_id` argument; the state and sidecar paths embed it.
 
@@ -184,8 +189,9 @@ After that first launch, all legacy state is gone and the per-session pipeline t
 
 * Every per-session file's filename embeds `<session_id>`. `TestPerSessionNamingInvariants` enforces this convention: per-session stems and global slot filenames cannot collide.
 * `kill-transcript-sync.sh` matches by `SESSION_ID` only. `TestKillScript.test_kill_skips_sibling_session_in_same_repo` enforces this — the structural fix for the watcher-leak bug.
-* `launch-transcript-sync.sh`'s orphan sweep distinguishes crashed sessions from live siblings by checking whether the recorded PID is alive. `TestCrashedSessionOrphan` enforces both directions.
+* The orphan sweep (`sweep-transcript-orphans.sh`) distinguishes crashed sessions from live siblings by checking whether the recorded PID is alive. `TestCrashedSessionOrphan` enforces both directions.
 * `rotate-on-session-end.sh` is the *only* writer of `.last_*` and `.second_to_last_*`. `TestRotateOnSessionEnd` covers the rotation chain, mtime preservation, empty-current handling, and concurrent serialization via flock.
+* No hook waits for an archive or a scrub. `tests/test_transcript_hook_budget.py` drives the session-end hook and the launcher against a deliberately slow scrubber and requires each to return while the archive is still running, holds every vendor's `session-end.sh` to the `end-session-transcript.sh` entry point, and covers the queue: end-order drain, a repeated drain, a resumed session, a busy lock, and the sweeps' skip of a queued session.
 
 ### Files changed (summary)
 
