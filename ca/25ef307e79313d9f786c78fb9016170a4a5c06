@@ -1,0 +1,48 @@
+Original commit body from 692c5643a93a1fc2d2df5206d22db3c8aa3b1238:
+
+The scheduled full-suite and nightly runs have been red since at least 2026-11-16 06:49 (pipelines 6453, 6480 and nightly 6447). This fixes each cause, and adds the production check the owner chose for the last one.
+
+## What was red, and why
+
+| Step | Failure | Cause |
+|---|---|---|
+| `test-agent-infra` | `test_smart_test_loadgroup` (1 test) | The step installs pytest with no version and got 9.2.0. With pytest-xdist 3.8.0 (the newest), 9.2.0 does not group under `--dist=loadgroup`. Reproduced: 9.0.3, 9.1.0 and 9.1.1 build the marked module once; 9.2.0 builds it on three workers. |
+| `test-agent-infra` | `test_measure_go_import_versioning` (3 tests) | The test imports a language package; the step installs none. |
+| `self-tree-validation` | test-only-reachability gate | Five production functions had only test callers. |
+| nightly, Python 3.10 | `test_py_annotation_rendering` (2 tests, 4 on current dev) | The tests parse `tuple[*Ts]`-style annotations, a syntax error before Python 3.11. |
+
+## Commits
+
+1. **`ci:` pin pytest where a step installs it with nothing to constrain it.** Three install lines (the `test-agent-infra` step, its GitHub twin, and `forge-arms`) now carry the dev extras' spec. Every other CI step installs the tracker's dev extra afterwards, which lands on pytest 8.4.2 through a snapshot plugin's cap; the commit lists how each of the 20 bare install lines was read. `tests/test_ci_pytest_pin.py` fails if an unconstrained pytest install appears without the spec.
+2. **`ci:` run the Go import-versioning test where its subject is installed.** Ignored in `test-agent-infra`, run in `test-all-packages`, pairing pinned. A sweep found six more top-level tests that pass in that step only because a sibling test happens to put the core package on the import path first; each now declares the path itself (`tests/helpers_package_src.py`), and a standalone test runs each alone.
+3. **`test(python):` the star-subscript annotation cases run where the parser accepts them.** A gate test holds the conditional list to exactly the cases Python 3.10 refuses, so a case that parses cannot be skipped. Checked against a real 3.10 interpreter for the parse behaviour; the test file itself was not run on 3.10 (no dependencies installed there).
+4. **`refactor(core):` retire four callables only their own tests reached**: `compact.estimate_behavior_map_tokens` (an alias whose last caller was removed), `selection_index._bitmap`, `selection_index.stored_edges` (now a helper in its test module), `installed_env.forget_kept_answers`. Four keys that are no longer test-only leave the shrink-only baseline (287 to 283).
+5. **`feat(analyze):` each pass counts edge endpoints that are not node ids** (owner ruling 2026-11-16: wire `non_id_edge_endpoints` to production rather than add it to the test-only baseline).
+
+## The endpoint count (commit 5)
+
+An edge endpoint written by hand that is not shaped like an id becomes one shared `<lang>:<unknown>:0-0:<token>:external_symbol` node at finalize, and the validator that runs afterwards cannot tell which pass wrote it. Until now the rule was asserted only in 17 test files, for the 16 analyzers that had been repaired.
+
+- `non_id_edge_endpoints(..., grammar_only=True)` asks whether each endpoint is an emitted symbol's id or parses as a five-slot id (ADR-0036 Ruling 1). It is called for every analyzer and every linker where the pass's own output is collected.
+- New field `analysis_runs[].non_id_edge_endpoints`: an integer, or `null` for a pass that is not checked (the orchestrator's synthesis passes: seven on hypergumbo's own map built with the scip-python backend). When it is above zero, the run's `warnings` name the first three distinct endpoints.
+- `SCHEMA_VERSION` 0.21.1 to 0.21.2 (an added field).
+- Not counted, on purpose: a well-formed `0-0` stand-in whose last slot is a use-site word (`package`, `attribute`, `target`), which is ADR-0036 Ruling 2's unfinished migration and runs to thousands per repository.
+
+Measured, base against this change, on a 10-language synthetic tree, dbus-broker, zstd and viper: nodes and edges identical, no stable id moved; the differences are `schema_version`, the new field, the warning line and two `pass_version` digests. Counts found: nix 6, latex 10, robot 2, v 4, gleam 4, odin 4, twig 2, meson 1, powershell 1 on the synthetic tree; meson 6 and rust 139 on dbus-broker; meson 6 and cpp 34 on zstd; 0 on viper. The rust and cpp endpoints have `::` in the name slot; finalize recovers a node for those, and they are counted because they are the same factory bypass. hypergumbo's own tree counts 44 (rust), so no validator check is added on top of the count in this PR. Cost: about 30 ms per run on zstd.
+
+The analyzers themselves are not changed here; that work is tracked separately, and this count is its measure.
+
+## Checks
+
+- The gate that was red, run locally on this branch: a map of hypergumbo's own tree built with the scip-python backend (10 minutes, 8.5 GB peak), then `scripts/check-test-only-reachability --require-pass scip_python`: exit 0, "no new test-only-reachable callables", gated cohort 339 (283 functions, 56 methods), equal to the shrunk baseline. `scripts/check-self-tree-validation` on the same map: exit 0, within baselines. That map carries `non_id_edge_endpoints: 44` on the rust pass and `null` on the seven synthesis passes.
+- Whole suite on this tree, every test directory with explicit file lists: 40,815 passed, no failures.
+- Each package directory's manifest tests run alone with numpy, sentence_transformers and torch stubbed out, as CI runs them: core 21,546 passed; lang-mainstream 8,841; lang-common 2,547; lang-extended1 1,836; rust-analyzer 165; scip-python 50; tracker 3,098; hypergumbo 4; tests/ 2,673. No failures.
+- `scripts/check-self-claims`: 23 claims unchanged (23 confirmed_with_caveats).
+- `scripts/check-claims-coverage`: passes.
+- `scripts/check-package-coverage --serial`: core reports three uncovered lines (c_family.py:256, route_handler.py:463, the `_withhold_for_unfollowed_escapes` call in verify_claims.py). The same three statements are uncovered on dev; this branch adds none. The other six packages pass.
+- mypy strict: 453, equal to dev.
+- Mutation control: removing a pytest pin, either pairing entry, any conditional-case entry, either stamp call, or any clause of the grammar test fails 1 to 16 tests each; the reviewer's own removal of the agent-infra pin fails the pin test.
+- Test manifest: targeted, 1,474 test files.
+- `docs/ARCHITECTURE.md` regenerated.
+
+Not verified here: any CI run of the pinned steps; the nightly on Python 3.10.
