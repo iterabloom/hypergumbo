@@ -3,6 +3,8 @@
 
 [![PyPI](https://img.shields.io/pypi/v/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
 [![License](https://img.shields.io/pypi/l/hypergumbo.svg)](https://pypi.org/project/hypergumbo/)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/iterabloom/hypergumbo/badges/scheduled/coverage-badge.json)](https://github.com/iterabloom/hypergumbo/blob/badges/scheduled/full-suite.json)
+[![Full suite](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/iterabloom/hypergumbo/badges/scheduled/full-suite-badge.json)](https://github.com/iterabloom/hypergumbo/blob/badges/scheduled/full-suite.json)
 
 hypergumbo is a local-first CLI that generates surveys and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase.
 

@@ -27,6 +27,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **CI steps installing pytest alone pin its version.**
 - **Scheduled CI runs publish their step-by-step verdict.**
 - **Session start reports a red or stale scheduled run.**
+- **README shows coverage and full-suite status badges.**
 
 ## [10.0.0] - 2026-11-16
 
