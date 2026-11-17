@@ -1012,8 +1012,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 07a7afccf771
-  commit_count: 9425
+  commit: b2b169801596
+  commit_count: 9428
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
