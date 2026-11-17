@@ -70,7 +70,8 @@ from hypergumbo_core.prose_only import (
     fold_run, global_refusal, select_for_prose, tests_reading,
 )
 from hypergumbo_core.selection_index import (
-    Narrowing, droppable_test_files, import_time_changed_sources,
+    Narrowing, droppable_test_files, functions_run_at_import,
+    import_time_changed_sources,
     narrow_run_set, narrowing_blockers,
     open_index, rebase_to_repo, record_counts, selectable_test_files,
     select_tests, speakable_test_files, tests_of_line, touching_test_files,
@@ -478,10 +479,16 @@ def cmd_import_closure(args: argparse.Namespace) -> int:
         return 0
     base_sources = {str(root / c): _base_source(root, args.base, c) for c in changed}
     # With the index: a changed function it saw run at import is import-time
-    # code too. Without one, the kinds of block alone decide.
+    # code too, and an import inside such a function is an edge of the graph.
+    # Without one, the kinds of block and the import statements alone decide.
+    at_import: dict[str, frozenset[str]] = {}
     if Path(args.index).exists():
         with contextlib.closing(open_index(Path(args.index))) as conn:
             hit = import_time_changed_sources(base_sources, root, conn)
+            prefix = f"{root}/"
+            at_import = {path[len(prefix):]: names
+                         for path, names in functions_run_at_import(conn).items()
+                         if path.startswith(prefix)}
     else:
         hit = import_time_changed_sources(base_sources, root)
     if not hit:
@@ -492,7 +499,8 @@ def cmd_import_closure(args: argparse.Namespace) -> int:
         capture_output=True, text=True, check=True).stdout
     sources = {rel: text for rel in listed.split("\0")
                if rel and (text := _read(root / rel)) is not None}
-    graph = build_import_graph(sources, gone=[h for h in hit if h not in sources])
+    graph = build_import_graph(sources, gone=[h for h in hit if h not in sources],
+                               at_import=at_import)
     tests = sorted(f for f in graph.dependents(hit) if re.match(_TEST_FILE, f))
     for f in tests:
         print(f)
