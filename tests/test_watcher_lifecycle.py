@@ -10,9 +10,10 @@ Covers:
   same repo never race.
 * ``kill-transcript-sync.sh`` matches by session_id only — a sibling
   session in the same repo with a different session_id is never killed.
-* ``launch-transcript-sync.sh`` orphan sweep: walks per-session PID files,
-  archives any crashed-session current files into ``.archived-transcripts/``,
-  and removes their stale PID files. Live siblings are left alone.
+* The orphan sweep ``launch-transcript-sync.sh`` runs detached
+  (``sweep-transcript-orphans.sh``): walks per-session PID files, archives
+  any crashed-session current files into ``.archived-transcripts/``, and
+  removes their stale PID files. Live siblings are left alone.
 * ``rotate-on-session-end.sh`` promotes a session's per-session current
   files into the global ``.last_*``/``.second_to_last_*`` slots with a
   flock-based critical section so concurrent end events serialize cleanly.
@@ -124,6 +125,26 @@ def _spawn_fake_watcher(
     return proc
 
 
+def _wait_sweep_done(repo: Path, sid: str, timeout: float = 30.0) -> None:
+    """Block until the sweep the launcher detached for ``sid`` has finished.
+
+    The launcher returns before its sweep runs, so an assertion about what
+    the sweep did (or left alone) is only meaningful after the sweep's own
+    completion line is in the rotation log.
+    """
+    log = repo / ".agent" / ".transcript-rotation.log"
+    needle = f"sweep done session={sid}"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if log.is_file() and needle in log.read_text():
+            return
+        time.sleep(0.05)
+    raise AssertionError(
+        f"the detached sweep for {sid} never finished; log: "
+        f"{log.read_text() if log.is_file() else '<absent>'}"
+    )
+
+
 def _cleanup_proc(proc: subprocess.Popen) -> None:
     """Best-effort kill of a leftover test subprocess."""
     if _proc_alive(proc.pid):
@@ -160,6 +181,12 @@ def _isolate_shared_scripts(tmp_path: Path) -> Path:
         # sandbox without it is a repo where the scripts die at the source
         # line under set -e (INV-todig).
         "transcript_perms.sh",
+        # The slow work runs outside the hooks: the queue/lock/detach
+        # helper every rotation-side script sources, the session-end entry
+        # point, and the sweep the launcher runs detached.
+        "transcript_rotation_queue.sh",
+        "end-session-transcript.sh",
+        "sweep-transcript-orphans.sh",
     ):
         src_file = SHARED_DIR / name
         dest_file = shared_dir / name
@@ -558,7 +585,8 @@ class TestLaunchScript:
 
 
 class TestCrashedSessionOrphan:
-    """The launch-time orphan sweep walks per-session PID files; for any
+    """The orphan sweep the launcher runs detached
+    (``sweep-transcript-orphans.sh``) walks per-session PID files; for any
     PID that is dead, it archives the orphaned current file into
     ``.agent/.archived-transcripts/crashed-<stamp>-<sid>/`` and removes
     the stale PID file.
@@ -623,6 +651,7 @@ class TestCrashedSessionOrphan:
                 capture_output=True, text=True, env=env,
             )
             assert result.returncode == 0, result.stderr
+            _wait_sweep_done(tmp_path, live_sid)
 
             # Crashed session files should be gone from the live slot
             assert not crashed_dest.exists(), (
@@ -704,6 +733,7 @@ class TestCrashedSessionOrphan:
                 capture_output=True, text=True, env=env,
             )
             assert result.returncode == 0, result.stderr
+            _wait_sweep_done(tmp_path, new_sid)
 
             # Sibling files must NOT have been touched
             assert sibling_dest.exists(), (

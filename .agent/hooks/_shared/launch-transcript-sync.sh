@@ -11,9 +11,12 @@
 # Per-session isolation (ADR-0018 amendment / Option 2):
 #   - Each session has its own DEST: .agent/.current_session_transcript.<sid>.jsonl
 #   - Each session has its own PID file: .agent/.transcript-sync.<sid>.pid
-#   - The orphan sweep below walks per-session PID files, archives any
-#     crashed-session current files, and removes their stale PID files.
-#     A live sibling session has a live PID and is left alone.
+#   - Crashed sessions' files are archived by sweep-transcript-orphans.sh,
+#     which this script runs DETACHED and only AFTER the watcher is up. The
+#     sweep compresses and scrubs whole transcripts; run inline and ahead of
+#     the launch (as it was), one un-rotated 453 MB transcript cut the
+#     session-start hook off at its 5 s budget and the session ran with no
+#     watcher. This script does O(1) work.
 #
 # Same-SID idempotence guard:
 #   Claude Code (and other vendors) fire SessionStart on multiple lifecycle
@@ -28,7 +31,7 @@
 #
 # This script does NOT call kill-transcript-sync.sh against SIBLING sessions,
 # because their per-session DEST is isolated. Cleanup of stale PID files from
-# CRASHED prior sessions is handled by the orphan sweep further down.
+# CRASHED prior sessions is handled by the detached sweep.
 
 set -euo pipefail
 
@@ -36,23 +39,25 @@ SRC="$1"
 SESSION_ID="$2"
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")"/../../.. && pwd)}"
 SCRIPT_DIR="$(CDPATH= cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=/dev/null
-. "$SCRIPT_DIR/archive_scrubbed.sh"
-# Permission contract (INV-todig): the orphan/stray sweeps below create
-# archive subdirs, and the watcher launched at the bottom inherits this
-# process's umask — owner-only for both.
+# Permission contract (INV-todig): the watcher and the sweep launched at the
+# bottom inherit this process's umask — owner-only for both.
 # shellcheck source=/dev/null
 . "$SCRIPT_DIR/transcript_perms.sh"
 harden_transcript_umask
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/transcript_rotation_queue.sh"
 AGENT_DIR="$REPO_ROOT/.agent"
 DEST="$AGENT_DIR/.current_session_transcript.${SESSION_ID}.jsonl"
 
 mkdir -p "$AGENT_DIR"
 
+# This session is starting, so a rotation still queued under its id is void:
+# the session was resumed before its end was processed. Dropped before the
+# watcher exists, so no drain can rotate a file the watcher is writing.
+rotation_dequeue "$AGENT_DIR" "$SESSION_ID"
+
 # ---------------------------------------------------------------------------
 # Same-SID idempotence guard (two-phase, mirrors kill-transcript-sync.sh).
-# Run BEFORE the orphan sweep so the prior watcher's PID file is gone by
-# the time the sweep walks .transcript-sync.*.pid.
 # ---------------------------------------------------------------------------
 SELF_PID_FILE="$AGENT_DIR/.transcript-sync.${SESSION_ID}.pid"
 
@@ -131,122 +136,12 @@ while IFS= read -r line; do
 done < <(pgrep -af 'sync-transcript\.sh' 2>/dev/null || true)
 
 # Clean up legacy global state files. These won't be caught by the
-# per-session orphan sweep because they don't have a session_id suffix.
+# per-session sweeps because they don't have a session_id suffix.
 rm -f "$AGENT_DIR/.transcript-sync-state.json"
 rm -f "$AGENT_DIR/.transcript-poll-state"
 rm -f "$AGENT_DIR/.transcript-injection-state.json"
 rm -f "$AGENT_DIR/.transcript-session-token"
 rm -f "$LEGACY_DEST"
-
-# ---------------------------------------------------------------------------
-# Orphan sweep: walk per-session PID files, archive any crashed-session
-# current files, and remove their stale PID files. A live sibling session
-# has a live PID — leave it alone.
-# ---------------------------------------------------------------------------
-shopt -s nullglob
-for orphan_pid_file in "$AGENT_DIR"/.transcript-sync.*.pid; do
-    orphan_sid="${orphan_pid_file##*/.transcript-sync.}"
-    orphan_sid="${orphan_sid%.pid}"
-
-    # Don't touch our own PID file (shouldn't exist yet, but defensive).
-    if [[ "$orphan_sid" == "$SESSION_ID" ]]; then
-        continue
-    fi
-
-    orphan_pid=$(cat "$orphan_pid_file" 2>/dev/null || true)
-    if [[ -z "$orphan_pid" ]]; then
-        rm -f "$orphan_pid_file"
-        continue
-    fi
-
-    # If the recorded PID is alive, this is a live sibling session — leave
-    # it alone. Per-session DEST means our launch cannot interfere with it.
-    if kill -0 "$orphan_pid" 2>/dev/null; then
-        continue
-    fi
-
-    # Stale: the watcher process is dead but its files were never cleaned up.
-    # Archive the orphaned current file directly (do NOT promote to .last_*
-    # because a crashed session shouldn't claim "most recently ended").
-    orphan_dest="$AGENT_DIR/.current_session_transcript.${orphan_sid}.jsonl"
-    orphan_inj="$AGENT_DIR/.current_injection_history.${orphan_sid}.jsonl"
-    if [[ -s "$orphan_dest" || -s "$orphan_inj" ]]; then
-        STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-        ARCHIVE_SUBDIR="$AGENT_DIR/.archived-transcripts/crashed-${STAMP}-${orphan_sid}"
-        mkdir -p "$ARCHIVE_SUBDIR" || true
-        harden_transcript_dir "$AGENT_DIR/.archived-transcripts" "$ARCHIVE_SUBDIR"
-        # The `rm` is now CONDITIONAL on a validated archive. Previously it sat
-        # outside the `if`, so a scrubber failure produced a 20-byte empty gzip
-        # and deleted the only copy -- silently, since this path had no `else`
-        # warn and `2>/dev/null` ate the traceback.
-        if [[ -s "$orphan_dest" ]]; then
-            if archive_scrubbed "$orphan_dest" \
-                    "$ARCHIVE_SUBDIR/transcript.jsonl.gz" "$REPO_ROOT"; then
-                rm -f "$orphan_dest"
-            else
-                echo "warn: could not archive $orphan_dest; LEAVING IT IN" \
-                     "PLACE (next sweep retries)" >&2
-            fi
-        fi
-        if [[ -s "$orphan_inj" ]]; then
-            if archive_scrubbed "$orphan_inj" \
-                    "$ARCHIVE_SUBDIR/injection_history.jsonl.gz" "$REPO_ROOT"; then
-                rm -f "$orphan_inj"
-            else
-                echo "warn: could not archive $orphan_inj; LEAVING IT IN" \
-                     "PLACE (next sweep retries)" >&2
-            fi
-        fi
-    else
-        # No content to archive; just clean up empty files if any.
-        rm -f "$orphan_dest" "$orphan_inj"
-    fi
-
-    # Remove stale per-session state files for this orphan.
-    rm -f "$orphan_pid_file"
-    rm -f "$AGENT_DIR/.transcript-sync-state.${orphan_sid}.json"
-    rm -f "$AGENT_DIR/.transcript-poll-state.${orphan_sid}"
-    rm -f "$AGENT_DIR/.transcript-injection-state.${orphan_sid}.json"
-done
-
-# ---------------------------------------------------------------------------
-# Second sweep: transcripts whose PID FILE IS GONE.
-#
-# The loop above derives the transcript name FROM the PID filename, so a
-# .current_session_transcript.<sid>.jsonl with no matching .transcript-sync
-# .<sid>.pid is invisible to it -- permanently, since rotation for that SID will
-# never fire again either. One such file was found live: 16.8MB from 2026-07-12
-# holding 8 occurrences of a live credential, unreachable by any code path.
-# Globbing transcripts instead of PID files is what closes that class.
-shopt -s nullglob
-for stray in "$AGENT_DIR"/.current_session_transcript.*.jsonl; do
-    stray_sid="${stray##*/.current_session_transcript.}"
-    stray_sid="${stray_sid%.jsonl}"
-    [[ "$stray_sid" == "$SESSION_ID" ]] && continue
-    # A live sibling still has its PID file; leave it alone.
-    [[ -f "$AGENT_DIR/.transcript-sync.${stray_sid}.pid" ]] && continue
-    [[ -s "$stray" ]] || { rm -f "$stray"; continue; }
-    STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-    STRAY_DIR="$AGENT_DIR/.archived-transcripts/stray-${STAMP}-${stray_sid}"
-    mkdir -p "$STRAY_DIR" || true
-    harden_transcript_dir "$AGENT_DIR/.archived-transcripts" "$STRAY_DIR"
-    if archive_scrubbed "$stray" "$STRAY_DIR/transcript.jsonl.gz" "$REPO_ROOT"; then
-        rm -f "$stray"
-    else
-        echo "warn: could not archive stray $stray; LEAVING IT IN PLACE" >&2
-    fi
-    stray_inj="$AGENT_DIR/.current_injection_history.${stray_sid}.jsonl"
-    if [[ -s "$stray_inj" ]]; then
-        if archive_scrubbed "$stray_inj" \
-                "$STRAY_DIR/injection_history.jsonl.gz" "$REPO_ROOT"; then
-            rm -f "$stray_inj"
-        else
-            echo "warn: could not archive stray $stray_inj; LEAVING IT" >&2
-        fi
-    fi
-done
-
-shopt -u nullglob
 
 # ---------------------------------------------------------------------------
 # Name the OWNER of this watcher — the harness process whose session it
@@ -292,3 +187,10 @@ TRANSCRIPT_OWNER_PID="$OWNER_PID" \
     nohup "$SCRIPT_DIR/sync-transcript.sh" "$SRC" "$DEST" "$SESSION_ID" \
     </dev/null >/dev/null 2>&1 &
 disown
+
+# ---------------------------------------------------------------------------
+# Only now the slow part, and not in this process: archive what crashed or
+# un-rotated sessions left behind.
+# ---------------------------------------------------------------------------
+transcript_detach "$AGENT_DIR" \
+    bash "$SCRIPT_DIR/sweep-transcript-orphans.sh" "$REPO_ROOT" "$SESSION_ID"

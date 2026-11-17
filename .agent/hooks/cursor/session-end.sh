@@ -28,6 +28,5 @@ source "$SCRIPT_DIR/../_shared/session_id_helpers.sh"
 SESSION_ID=$(extract_cursor_session_id "$STDIN_JSON")
 
 if [[ -n "$SESSION_ID" ]]; then
-    "$SCRIPT_DIR/../_shared/kill-transcript-sync.sh" "$REPO_ROOT" "$SESSION_ID"
-    "$SCRIPT_DIR/../_shared/rotate-on-session-end.sh" "$REPO_ROOT" "$SESSION_ID"
+    bash "$SCRIPT_DIR/../_shared/end-session-transcript.sh" "$REPO_ROOT" "$SESSION_ID"
 fi

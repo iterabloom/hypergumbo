@@ -57,6 +57,11 @@ _SHARED_SCRIPTS = (
     "scrub_secrets.py",
     # Sourced by every shell writer since INV-todig (permission contract).
     "transcript_perms.sh",
+    # Queue/lock/detach helper sourced by the rotation and the launcher, and
+    # the two scripts they hand the slow work to.
+    "transcript_rotation_queue.sh",
+    "end-session-transcript.sh",
+    "sweep-transcript-orphans.sh",
 )
 
 

@@ -68,6 +68,10 @@ autonomous_intent.txt
 # one behind holding transcript content; never commit it.
 .agent/.scrub-*
 .agent/.rotation.lock
+# Sessions queued for rotation, and the detached rotation/sweep workers' log
+# (transcript_rotation_queue.sh).
+.agent/.rotation-queue/
+.agent/.transcript-rotation.log
 # Legacy paths from before the per-session amendment (ignored for one-time
 # upgrade-cleanup safety; may be removed once no repo still has these).
 .agent/.current_session_transcript.jsonl

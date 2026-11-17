@@ -10,7 +10,8 @@
 # inheriting the process umask (002 here) — nothing ever decided that.
 #
 # Sourced by every shell writer in the pipeline: sync-transcript.sh,
-# rotate-on-session-end.sh, launch-transcript-sync.sh, archive_scrubbed.sh.
+# rotate-on-session-end.sh, launch-transcript-sync.sh,
+# sweep-transcript-orphans.sh, end-session-transcript.sh, archive_scrubbed.sh.
 # The wiring is parity-tested by tests/test_transcript_permissions.py, so a
 # writer that drops the source line goes red. Python write sites
 # (filter-transcript.py, on_transcript_change.py) enforce the same contract
