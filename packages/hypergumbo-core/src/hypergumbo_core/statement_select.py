@@ -13,13 +13,20 @@ answer is the block-level one (every test paired with it) unless there is
 evidence for less:
 
 * the change is one :mod:`statement_diff` can name statements for, AND
-* the index's records are of the block AS IT WAS before the change (its
-  stored digest is the old block's). The index drops a block's records when a
-  run stores another digest for it, so after the changed code has been run
-  once the records of the old block are gone; then, and for a pair that never
-  had a record, the test is selected. ``Selection.answers`` says, per block,
-  which of these happened, so that "it selected everything" is never mistaken
-  for "it had records and they said so".
+* the index holds records of the block AS IT WAS before the change: its
+  stored digest is the old block's, or the old block's records were kept
+  when a run stored another digest (:func:`selection_index.statement_records_at`;
+  the index keeps a few superseded versions per block, so a change that has
+  been run still has its base to compare with). When it holds nothing of
+  that version, and for a test with no record of it, the test is selected.
+  ``Selection.answers`` says, per block, which of these happened, so that
+  "it selected everything" is never mistaken for "it had records and they
+  said so".
+
+"EVERY TEST THAT REACHED THE BLOCK" is the tests paired with it now AND the
+tests with a kept record of the old version: a test that reached the block at
+the base and stopped reaching it in a later run of the same change is still a
+test the change, measured from its base, affects.
 
 WHAT IT CANNOT KNOW, AND SAYS. "Every test that reached the block" is read
 from the index's pairs, and the index has never seen some blocks (on the day
@@ -49,7 +56,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional
 
-from .selection_index import BlockKey, statement_records, touching_tests
+from .selection_index import BlockKey, statement_records, statement_records_at, touching_tests
 from .statement_diff import Kind, statement_changes
 
 #: ``Selection.answers`` values that are not of the form ``whole: <why>``.
@@ -150,19 +157,20 @@ def select_by_statement(
                 unknown.add(key)
                 answers[key] = UNKNOWN
                 continue
-            records = statement_records(conn, path, name)
-            by_block |= set(records)
+            was = statement_records_at(conn, path, name, change.old_digest)
+            reached = set(statement_records(conn, path, name)) | set(was or ())
+            by_block |= reached
             if change.kind is Kind.GONE:
-                tests |= set(records)
+                tests |= reached
                 answers[key] = GONE
             elif change.kind is Kind.WHOLE:
-                tests |= set(records)
+                tests |= reached
                 answers[key] = f"whole: {change.why}"
-            elif stored.get(name) != change.old_digest:
-                tests |= set(records)
+            elif was is None:
+                tests |= reached
                 answers[key] = NO_BASE_RECORD
             else:
-                tests |= {test for test, ran in records.items()
+                tests |= {test for test, ran in was.items()
                           if ran is None or ran & change.ran}
                 answers[key] = BY_STATEMENT
     return Selection(

@@ -38,6 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test in a worktree selects from stored graphs too.**
 - **Two checkouts storing a graph at once both succeed.**
 - **Run records say what selecting by statement would run.**
+- **The index keeps a function's statement records across edits.**
 
 ## [10.0.0] - 2026-11-16
 
