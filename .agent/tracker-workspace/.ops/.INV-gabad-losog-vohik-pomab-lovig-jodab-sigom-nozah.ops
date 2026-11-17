@@ -1,0 +1,24 @@
+- op: create  # 27c3
+  at: '2026-11-17T17:31:39Z'  # 27c3
+  by: agent  # 27c3
+  actor: jgstern_agent  # 27c3
+  clock: 1  # 27c3
+  nonce: 27c3  # 27c3
+  data:  # 27c3
+    kind: invariant  # 27c3
+    title: "A test that sets sys.settrace and does not put back what it found switches coverage off for the rest of its worker on Python 3.11 (CI), and nothing says so"  # 27c3
+    status: pending_validation  # 27c3
+    priority: 3  # 27c3
+    parent:  # 27c3
+    tags:  # 27c3
+    - ci_infrastructure  # 27c3
+    - testing  # 27c3
+    - trunk_green  # 27c3
+    isbefore: []  # 27c3
+    duplicate_of: []  # 27c3
+    not_duplicate_of: []  # 27c3
+    pr_ref:  # 27c3
+    description: "FOUND 2026-11-17 on PR #2232: CI (Python 3.11) ran 14,880 selected tests green and failed the coverage gate with statement_select.py at 96%, lines 124-125 and 162-163 \"missed\", lines its own tests run. Locally (Python 3.12) the same tests gave 100%.\n\nCAUSE. A new test (test_statement_diff.py's execution test) recorded executed lines with sys.settrace and set the tracer back to None in a finally. On Python 3.11 and earlier coverage.py itself measures through sys.settrace, so from that test on nothing the same xdist worker ran was measured. On 3.12 coverage uses sys.monitoring and is not affected, which is why no local run showed it.\n\nREPRODUCED locally by forcing the older tracer: `COVERAGE_CORE=ctrace scripts/smart-test <the two test files> -n 0` gave statement_select.py 27% before the fix and 100% after.\n\nFIXED IN THE SAME PR (commit 'test(smart-test): the execution test records lines without touching the tracer'): the test instruments the generated function's tree; test_no_test_of_this_file_leaves_the_tracer_changed pins that sys.gettrace() is left as found.\n\nSWEEP: `grep -rn settrace packages/*/tests tests` finds no other test that sets a tracer (2026-11-17). sys.setprofile and threading.settrace were not grepped for.\n\nNO GUARD EXISTS. The symptom is a coverage gap on some other file, in CI only, which says nothing about its cause. A cheap guard: an autouse fixture in the root conftest that records sys.gettrace() before each test and fails the test if it differs after. My own pre-PR runs now set COVERAGE_CORE=ctrace, which shows the symptom locally but is a habit, not a gate."  # 27c3
+    fields:  # 27c3
+      statement: "No test leaves sys.gettrace() different from what it found."  # 27c3
+      root_cause: "coverage.py measures through sys.settrace on Python 3.11 and earlier; a test that replaces the tracer and resets it to None removes coverage's own, and the local interpreter (3.12, sys.monitoring) does not show it."  # 27c3

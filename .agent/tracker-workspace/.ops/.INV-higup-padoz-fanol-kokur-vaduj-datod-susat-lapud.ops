@@ -1,0 +1,23 @@
+- op: create  # db51
+  at: '2026-11-17T15:46:33Z'  # db51
+  by: agent  # db51
+  actor: jgstern_agent  # db51
+  clock: 1  # db51
+  nonce: db51  # db51
+  data:  # db51
+    kind: invariant  # db51
+    title: "Two processes storing a graph in the selection index at once: both chose the same graph id and the second graph was lost"  # db51
+    status: satisfied  # db51
+    priority: 2  # db51
+    parent:  # db51
+    tags:  # db51
+    - smart_test  # db51
+    - fast_smart_test_plan  # db51
+    isbefore: []  # db51
+    duplicate_of: []  # db51
+    not_duplicate_of: []  # db51
+    pr_ref:  # db51
+    description: "FOUND 2026-11-17 by running two `coverage-select graph-rebuild` side by side into one index (the cross-build check of WI-kitin-rirup): the first printed \"stored graph 1\"; the second printed \"[coverage-select] non-fatal: IntegrityError: UNIQUE constraint failed: graph.id\", exited 0, wrote no line to its rebuild.log, and its graph was lost.\n\nCAUSE. graph_rows.store_graph (merged in PR #2224) chose the new graph's id as MAX(id) + 1 with a plain read and only then inserted, so two connections could read the same maximum. The selection index is one file for every checkout on the machine, and since the same day a background rebuild and a run in another checkout can both be storing.\n\nFIXED in PR #2231: store_graph takes the file's write lock (BEGIN IMMEDIATE) before it reads the maximum; a store opens the index with a 120 s wait (selection_index.open_index gained a timeout: opening already writes); graph-rebuild logs any failure it did not foresee and exits 1.\n\nEVIDENCE. packages/hypergumbo-core/tests/test_graph_rows.py::test_two_writers_never_take_the_same_graph_id lets a second connection in between the first one's choice of id and its insert: before the fix it failed with that same IntegrityError; after it the second writer waits and takes the next id. test_coverage_select_graph_rows.py::test_a_store_waits_for_another_writer_longer_than_sqlite_would holds the write lock for 6.5 s while a real `graph-store` process runs, and the store lands. Mutations X1, X3, X7, X8 (worktree/mutations.tsv) each turn a test red. The filed repro itself (two rebuilds side by side) was NOT re-run after the fix: the two tests above stand for it.\n\nNOT LOOKED AT: the other writers of this file (selection_index.update_from_run and its folds) and whether two of THEM can collide; they number rows through their own tables."  # db51
+    fields:  # db51
+      statement: "Two processes that store a graph in one selection index at the same moment both succeed, with different ids."  # db51
+      root_cause: "store_graph read MAX(id) before taking the write lock, so two writers could choose the same id; the helper's blanket exception handler then turned the failure into exit 0."  # db51
