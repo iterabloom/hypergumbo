@@ -1350,6 +1350,19 @@ def blocks_run_at_import(
     return frozenset(found)
 
 
+def functions_run_at_import(conn: sqlite3.Connection) -> dict[str, frozenset[str]]:
+    """Every marked function block, by file: ``{path: names}``
+    (:func:`blocks_run_at_import` for the whole index). The import graph
+    reads it: an import inside such a function runs when its file is loaded
+    (:mod:`hypergumbo_core.import_closure`)."""
+    found: dict[str, set[str]] = {}
+    for path, name in conn.execute(
+            "SELECT f.path, b.name FROM at_import_block a JOIN block b ON b.id = a.block "
+            "JOIN file f ON f.id = b.file"):
+        found.setdefault(str(path), set()).add(str(name))
+    return {path: frozenset(names) for path, names in found.items()}
+
+
 def select_tests(
     conn: sqlite3.Connection, base_sources: Mapping[str, Optional[str]],
 ) -> Selection:

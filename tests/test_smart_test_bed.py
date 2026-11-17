@@ -370,6 +370,15 @@ def test_each_selection_stage_does_its_one_job(tmp_path: Path) -> None:
         assert not set(const["should_not"]) & set(const["selected"][stage]), stage
     assert lazy_source not in set(const["selected"]["static"])
     assert lazy_source not in set(const["selected"]["manifest"])
+    # NOT A MISS WHEN THE FUNCTION RUNS AT IMPORT. derives_at_import.py imports
+    # limits inside _derive() too, and calls _derive() as it loads: loading it
+    # loads limits, with no module-level import to say so. The bed's full run
+    # marks _derive as run under no test's context, and the import graph then
+    # follows the import inside it.
+    derived = f"{core}test_derives_at_import.py"
+    assert derived in const["must"]
+    assert derived not in const["selected"]["static"]
+    assert derived in const["selected"]["manifest"]
     # A FUNCTION THAT RUNS AT IMPORT IS IMPORT-TIME CODE. The edit is to the
     # body of limits.ceiling, and reads_at_import.py calls ceiling() once, as
     # it loads, and keeps the result. test_reads_at_import fails when ceiling

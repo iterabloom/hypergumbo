@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Imports limits INSIDE a function, and calls that function as it loads.
+
+No import statement at module level names limits, yet loading this file loads
+it: the import graph follows the import only because a test run saw _derive
+execute under no test's context.
+"""
+
+
+def _derive():
+    from bedcore import limits
+    return limits.CAP * 2
+
+
+DOUBLE = _derive()
+
+
+def doubled():
+    return DOUBLE

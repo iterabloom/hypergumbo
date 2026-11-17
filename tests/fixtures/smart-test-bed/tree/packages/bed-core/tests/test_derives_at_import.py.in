@@ -1,0 +1,5 @@
+from bedcore.derives_at_import import doubled
+
+
+def test_doubled():
+    assert doubled() == 8

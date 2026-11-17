@@ -388,6 +388,82 @@ def test_the_helper_is_silent_for_a_function_body_and_for_no_python(repo: Path) 
     assert _helper(repo, []) == ([], "")
 
 
+AT_IMPORT_TREE = {
+    "packages/core/src/pkg/__init__.py": "",
+    "packages/core/src/pkg/limits.py": "CAP = 4\n",
+    "packages/core/src/pkg/other.py": "X = 1\n",
+    "packages/core/src/pkg/third.py": "Y = 1\n",
+    # _derive runs while derived.py loads, and the import is inside it.
+    "packages/core/src/pkg/derived.py": (
+        "def _derive():\n    from pkg import limits\n    return limits.CAP * 2\n\n\n"
+        "DOUBLE = _derive()\n\n\n"
+        "def later():\n    from pkg import other\n    return other.X\n\n\n"
+        "class Box:\n    def build(self):\n        from pkg import third\n        return third.Y\n\n"
+        "    def unused(self):\n        from pkg import other\n        return other.X\n\n\n"
+        "def outer():\n    def inner():\n        from pkg import other\n        return other.X\n"
+        "    return lambda: __import__('pkg.other')\n"),
+    "packages/core/tests/test_derived.py": "from pkg.derived import DOUBLE\n",
+}
+DERIVED = "packages/core/src/pkg/derived.py"
+
+
+def test_an_import_inside_a_function_that_runs_at_import_is_an_edge() -> None:
+    """``haskell.py`` loads ``io_boundary`` this way (a module-level call of a
+    function that imports it), and six of its and Jupyter's test files were in
+    no selection for a change to ``io_boundary.load_catalog``."""
+    limits, other, third = (f"packages/core/src/pkg/{n}.py" for n in ("limits", "other", "third"))
+    test = "packages/core/tests/test_derived.py"
+    # Nothing known about what runs at import: no function-level import counts.
+    plain = build(AT_IMPORT_TREE)
+    assert plain.dependents([limits]) == frozenset()
+    # _derive is known to run at import: its import is an edge, and the test
+    # that loads derived.py loads limits.py.
+    graph = build(AT_IMPORT_TREE, at_import={DERIVED: ["_derive"]})
+    assert graph.dependents([limits]) == {DERIVED, test}
+    # Only the named function's imports: later() imports other.py and is not named.
+    assert graph.dependents([other]) == frozenset()
+    # A method is named with its class; a function nested in a named one and a
+    # lambda there are functions of their own, and neither is named.
+    graph = build(AT_IMPORT_TREE, at_import={DERIVED: ["Box.build", "outer"]})
+    assert graph.dependents([third]) == {DERIVED, test}
+    assert graph.dependents([other]) == frozenset()
+    assert graph.dependents([limits]) == frozenset()
+    # A nested function is named through the one that holds it, and counts
+    # only when that one runs at import as well: its body is otherwise never
+    # reached while the file loads.
+    assert build(AT_IMPORT_TREE, at_import={DERIVED: ["outer.inner"]}
+                 ).dependents([other]) == frozenset()
+    graph = build(AT_IMPORT_TREE, at_import={DERIVED: ["outer", "outer.inner"]})
+    assert graph.dependents([other]) == {DERIVED, test}
+    # Names of another file's functions do nothing here.
+    assert build(AT_IMPORT_TREE, at_import={"packages/core/src/pkg/other.py": ["_derive"]}
+                 ).dependents([limits]) == frozenset()
+
+
+def test_the_helper_follows_an_import_inside_a_function_the_index_saw_run_at_import(
+        repo: Path) -> None:
+    """The bed's known miss, lifted for the case where it is not a guess:
+    ``reads_lazily.late`` imports limits inside its body. Once a run has seen
+    ``late`` execute under no test's context, loading reads_lazily.py loads
+    limits.py, and its test is in the closure of a change to limits.py."""
+    from hypergumbo_core import selection_index as si
+    from hypergumbo_core.block_hash import blocks_for_source
+
+    (repo / LIMITS).write_text(BASE.replace("CAP = 4", "CAP = 2 + 2"))
+    got, _ = _helper(repo, [LIMITS])
+    assert LAZY_SOURCE_READER not in got
+    lazy = str(repo / "packages/core/src/pkg/reads_lazily.py")
+    conn = si.open_index(repo / "index.sqlite")
+    si.store_edges(conn, {}, digests={lazy: {
+        b.name: b.digest for b in blocks_for_source(lazy, Path(lazy).read_text())}})
+    si._store_at_import(conn.cursor(), [(lazy, "late")], [lazy], full_run=False)
+    conn.commit()
+    assert si.functions_run_at_import(conn) == {lazy: frozenset({"late"})}
+    conn.close()
+    got, _ = _helper(repo, [LIMITS])
+    assert got == sorted([*READERS, LAZY_SOURCE_READER])
+
+
 def test_the_helper_takes_a_function_the_index_saw_run_at_import(repo: Path) -> None:
     """The same function-body change the test above is silent for. Once a run
     has seen ``ceiling`` execute under no test's context (a module calls it

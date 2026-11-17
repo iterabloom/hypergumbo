@@ -43,6 +43,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Narrowing keeps tests whose own call ran nothing measured.**
 - **A command counts the by-statement selector's bar.**
 - **Narrowing treats a function run at import as import-time code.**
+- **Imports inside functions run at import count as dependencies.**
 
 ## [10.0.0] - 2026-11-16
 

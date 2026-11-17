@@ -23,11 +23,23 @@ WHICH IMPORTS COUNT. An ``import`` or ``from ... import`` statement that runs
 when its file is imported: at module level or in a class body, under ``try``
 or ``if`` there, and in a decorator or a parameter default of a ``def``.
 
-An import inside a function BODY counts only in a file outside the source
-roots: a test, a ``conftest.py``, a test helper. A test that imports a module
+An import inside a function BODY counts in a file outside the source roots
+(a test, a ``conftest.py``, a test helper), and in a source module ONLY WHEN
+THE FUNCTION RUNS AT IMPORT. ``haskell.py`` has ``_GATED =
+_derive_haskell_gated_names()`` in its module body, and that function imports
+``io_boundary`` and calls ``load_catalog``: loading ``haskell.py`` runs
+``io_boundary``'s code, with no import statement at module level to say so.
+Six test files of the Haskell and Jupyter analyzers were in no selection for
+a change to ``load_catalog`` for that reason. Which functions run at import
+is not decided here: the caller passes the ones a test run saw execute under
+no test's context (``selection_index.functions_run_at_import``), by file and
+qualified name, and an import inside one of them is an edge like a
+module-level one.
+
+Otherwise, for a file outside the source roots: A test that imports a module
 inside its own test function, or a fixture that does, loads that module when
-it runs. In a source module (a file under ``packages/<pkg>/src``) it does not
-count. The root ``conftest.py`` imports ``hypergumbo_core.analyze.registry``
+it runs. In a source module (a file under ``packages/<pkg>/src``) an import
+inside a function that is not known to run at import does not count. The root ``conftest.py`` imports ``hypergumbo_core.analyze.registry``
 inside a fixture; that runs ``hypergumbo_core/__init__.py``, which imports
 ``ir`` at module level; ``ir`` imports ``catalog`` inside a function and
 ``catalog`` imports ``cli`` inside a function. With those two counted, every
@@ -54,7 +66,8 @@ for those (the tests seen executing a function of the file).
 
 A KNOWN MISS, by the rule above. A test that reaches the changed file only
 through a function-level import in a source module (test -> ``reader.py``,
-whose function imports the changed file) is not in the answer. When such a
+whose function imports the changed file), in a function that does NOT run at
+import, is not in the answer. When such a
 test reads a changed constant it is not selected for the pull request; the
 twice-daily full suite is what runs it. The smart-test bed holds the shape
 (``bedcore/reads_lazily.py``) and its test asserts the miss.
@@ -129,25 +142,49 @@ class _ImportCollector(ast.NodeVisitor):
     """Collect ``(level, module, names)`` for every import that counts.
 
     ``function_bodies`` says whether an import inside a function body counts:
-    yes for a file outside the source roots, no for a source module (module
-    docstring, WHICH IMPORTS COUNT).
+    yes for a file outside the source roots, no for a source module, except
+    in a function named in ``at_import`` (its qualified name, as
+    ``block_hash`` spells it: ``f``, ``Class.method``, ``outer.inner``), which
+    runs when the file is imported (module docstring, WHICH IMPORTS COUNT).
     """
 
-    def __init__(self, *, function_bodies: bool) -> None:
+    def __init__(self, *, function_bodies: bool,
+                 at_import: frozenset[str] = frozenset()) -> None:
         self.function_bodies = function_bodies
+        self.at_import = at_import
         self.found: list[tuple[int, str, tuple[str, ...]]] = []
+        self._scope: list[str] = []
+        #: Whether the code being visited runs when the file is imported.
+        self._counts = True
 
     def _visit_callable(
             self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> None:
-        if self.function_bodies:
-            self.generic_visit(node)
-            return
+        # Decorators and defaults run where the def is written.
         for expr in _runs_at_definition(node):
             self.visit(expr)
+        # A lambda has no name: its body counts only where every body does.
+        name = None if isinstance(node, ast.Lambda) else node.name
+        if name is not None:
+            self._scope.append(name)
+        outside = self._counts
+        self._counts = outside and (self.function_bodies or (
+            name is not None and ".".join(self._scope) in self.at_import))
+        # The body is walked either way: a function defined in it has a name
+        # of its own to be looked up.
+        for child in (node.body if isinstance(node.body, list) else [node.body]):
+            self.visit(child)
+        self._counts = outside
+        if name is not None:
+            self._scope.pop()
 
     visit_FunctionDef = _visit_callable
     visit_AsyncFunctionDef = _visit_callable
     visit_Lambda = _visit_callable
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._scope.append(node.name)
+        self.generic_visit(node)
+        self._scope.pop()
 
     def visit_If(self, node: ast.If) -> None:
         if _is_type_checking(node.test):
@@ -157,18 +194,20 @@ class _ImportCollector(ast.NodeVisitor):
             self.generic_visit(node)
 
     def visit_Import(self, node: ast.Import) -> None:
-        for alias in node.names:
-            self.found.append((0, alias.name, ()))
+        if self._counts:
+            for alias in node.names:
+                self.found.append((0, alias.name, ()))
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        self.found.append((node.level, node.module or "",
-                           tuple(alias.name for alias in node.names)))
+        if self._counts:
+            self.found.append((node.level, node.module or "",
+                               tuple(alias.name for alias in node.names)))
 
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         called = func.id if isinstance(func, ast.Name) else (
             func.attr if isinstance(func, ast.Attribute) else "")
-        if called in _DYNAMIC_IMPORTERS and node.args:
+        if self._counts and called in _DYNAMIC_IMPORTERS and node.args:
             first = node.args[0]
             if (isinstance(first, ast.Constant) and isinstance(first.value, str)
                     and first.value and not first.value.startswith(".")):
@@ -228,13 +267,14 @@ class _Resolver:
         return None
 
 
-def _imports_of(path: str, source: str, resolver: _Resolver) -> frozenset[str]:
+def _imports_of(path: str, source: str, resolver: _Resolver,
+                at_import: frozenset[str] = frozenset()) -> frozenset[str]:
     try:
         tree = ast.parse(source)
     except (SyntaxError, ValueError):
         return frozenset()
     own = module_name(path)
-    collector = _ImportCollector(function_bodies=own is None)
+    collector = _ImportCollector(function_bodies=own is None, at_import=at_import)
     collector.visit(tree)
     is_package = PurePosixPath(path).stem == _INIT
     # A file outside the source roots resolves its relative imports from where
@@ -290,14 +330,21 @@ class ImportGraph:
         return frozenset(seen)
 
 
-def build(sources: Mapping[str, str], gone: Iterable[str] = ()) -> ImportGraph:
+def build(sources: Mapping[str, str], gone: Iterable[str] = (),
+          at_import: Optional[Mapping[str, Iterable[str]]] = None) -> ImportGraph:
     """The import graph of ``sources`` (repo-relative path -> source text).
 
     ``gone`` names files that no longer exist but that other files may still
     import: a deleted module keeps its module name here, so the files still
     importing it are its dependents and get run, which is how the dangling
     import shows up.
+
+    ``at_import`` maps a file to the qualified names of its functions that
+    run when it is imported: the imports inside those count as edges (module
+    docstring, WHICH IMPORTS COUNT).
     """
     resolver = _Resolver([*sources, *gone])
-    return ImportGraph({path: _imports_of(path, text, resolver)
-                        for path, text in sources.items()})
+    marked = at_import or {}
+    return ImportGraph({
+        path: _imports_of(path, text, resolver, frozenset(marked.get(path, ())))
+        for path, text in sources.items()})
