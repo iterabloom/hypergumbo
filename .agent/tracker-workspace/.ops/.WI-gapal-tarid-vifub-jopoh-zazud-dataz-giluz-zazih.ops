@@ -1,0 +1,21 @@
+- op: create  # 3125
+  at: '2026-11-17T08:58:28Z'  # 3125
+  by: agent  # 3125
+  actor: jgstern_agent  # 3125
+  clock: 1  # 3125
+  nonce: '3125'  # 3125
+  data:  # 3125
+    kind: work_item  # 3125
+    title: "By-statement selection: tests with no statement record are selected through the stored graph (5,403) or stay under today's rules (2,629) (plan step 2c)"  # 3125
+    status: todo_hard  # 3125
+    priority: 3  # 3125
+    parent:  # 3125
+    tags:  # 3125
+    - smart_test  # 3125
+    - fast_smart_test_plan  # 3125
+    isbefore: []  # 3125
+    duplicate_of: []  # 3125
+    not_duplicate_of: []  # 3125
+    pr_ref:  # 3125
+    description: "WHY. The statement records cannot speak for 8,107 tests the index calls unmeasured. 5,403 of them have a static path to package source; 2,629 have none. 3,109 of the unmeasured are the tracker package's (its own item decides whether to measure it).\n\nWHAT. In the by-statement selector: an unmeasured test with a static path to package source is selected by walking the stored graph from the changed files; one with no path stays under today's rules (the top-level map, the read records, the declared gates).\n\nCLOSE CONDITION. The same shadow bar as the selector's, counted SEPARATELY for this group: runs with a failed unmeasured test, and how many fell outside the selection. Re-state the three counts above from the current index; they were measured on 2026-11-15.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 3125
+    fields: {}  # 3125

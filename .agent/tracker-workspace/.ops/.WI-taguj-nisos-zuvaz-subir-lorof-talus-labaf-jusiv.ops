@@ -1,0 +1,22 @@
+- op: create  # 9359
+  at: '2026-11-17T08:59:15Z'  # 9359
+  by: agent  # 9359
+  actor: jgstern_agent  # 9359
+  clock: 1  # 9359
+  nonce: '9359'  # 9359
+  data:  # 9359
+    kind: work_item  # 9359
+    title: "A ledger row per scheduled run: the PRs since the last run, what each PR's manifest left out, the measured result (plan step B5)"  # 9359
+    status: todo_hard  # 9359
+    priority: 4  # 9359
+    parent:  # 9359
+    tags:  # 9359
+    - smart_test  # 9359
+    - fast_smart_test_plan  # 9359
+    - ci_infrastructure  # 9359
+    isbefore: []  # 9359
+    duplicate_of: []  # 9359
+    not_duplicate_of: []  # 9359
+    pr_ref:  # 9359
+    description: "WHAT. For each scheduled full run, one row: the PRs merged since the previous run, what each PR's manifest left out of the suite, and the run's measured result from the published verdict. The share of runs that find something a PR's selection had called safe is the error rate of the selection: the number that says whether the stored-graph and by-statement selectors are safe to keep, and later whether a budget cut would be.\n\nABSENT IS NOT EMPTY. A run that did not publish a verdict is a row saying so, never a row saying it found nothing.\n\nCLOSE CONDITION. Rows for at least three real scheduled runs, built from origin/badges and the merged PRs' manifests; a test for the row builder.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 9359
+    fields: {}  # 9359

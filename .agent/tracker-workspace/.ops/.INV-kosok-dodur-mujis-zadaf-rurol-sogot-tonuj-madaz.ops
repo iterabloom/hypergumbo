@@ -1,0 +1,22 @@
+- op: create  # be9e
+  at: '2026-11-17T08:20:09Z'  # be9e
+  by: agent  # be9e
+  actor: jgstern_agent  # be9e
+  clock: 1  # be9e
+  nonce: be9e  # be9e
+  data:  # be9e
+    kind: invariant  # be9e
+    title: "repair-agent-perms.sh re-opens transcripts to the group on every git checkout and merge, undoing the owner-only contract INV-todig was closed on"  # be9e
+    status: violated  # be9e
+    priority: 2  # be9e
+    parent:  # be9e
+    tags:  # be9e
+    - developer_experience  # be9e
+    isbefore: []  # be9e
+    duplicate_of: []  # be9e
+    not_duplicate_of: []  # be9e
+    pr_ref:  # be9e
+    description: "Found 2026-11-17 while fixing the session-hook timeout. INV-todig (satisfied 2026-08-01, PR #140) was closed on: every transcript file 600, every archive dir 700, 0 non-conforming entries. That no longer holds on the live checkout.\n\nMeasured 2026-11-17 (stat / find):\n- .env 600\n- .agent/.last_session_transcript.jsonl 660 (it was 600 straight after rotation, and 660 again after the next git checkout)\n- .agent/.training-data.jsonl 660\n- .agent/.archived-transcripts/ 2770 (setgid)\n- archive tree: 712 of 712 entries have a group bit set (find -perm /077)\n- a transcript being written stays 600: filter-transcript.py re-chmods on every append. Idle files stay loose.\n\nObserved directly: git checkout -b at 07:55:46 UTC gave every transcript file and .partial under .agent/ the same ctime and mode 660.\n\nExposure today: none measured. All 712 archive entries and the top-level transcript files are group jgstern_agent, whose only member is the agent account; 0 are group project-dev. Not checked: whether a file created inside a now-setgid archive dir can inherit project-dev.\n\nRepro: stat -c %A .agent/.last_session_transcript.jsonl; chmod 600 it; git checkout -- .ci/affected-tests.txt; stat again.\n\nNot decided here: whether INV-todig itself should be reopened (owner's call). Candidate fixes: limit the repair to the tracker directories it exists for, or have it skip transcript-content paths. .githooks/** is a governance path."  # be9e
+    fields:  # be9e
+      statement: "A secret's copy is never more readable than its origin (INV-todig's statement): transcript-content files under .agent/ are 600 and archive directories 700, and stay so across git operations. VIOLATED: after any git checkout or merge, idle transcript files are 660 and every archive directory is 2770."  # be9e
+      root_cause: ".githooks/repair-agent-perms.sh (called from post-checkout and post-merge) detects the two-user setup from the tracker directories' group and then runs find over the WHOLE of .agent/: chmod g+rwxs on every directory and g+rw on every file the user owns. It predates the INV-todig fix and that fix did not touch it, so the transcript pipeline tightens a file when it writes it and the next checkout loosens it again. The INV-todig tests drive the pipeline scripts only, never a git hook."  # be9e

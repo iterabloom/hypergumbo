@@ -1,0 +1,21 @@
+- op: create  # 35d0
+  at: '2026-11-17T08:59:21Z'  # 35d0
+  by: agent  # 35d0
+  actor: jgstern_agent  # 35d0
+  clock: 1  # 35d0
+  nonce: 35d0  # 35d0
+  data:  # 35d0
+    kind: work_item  # 35d0
+    title: "Regenerating docs/ARCHITECTURE.md takes 6+ minutes and ran in 8 of the last 12 PRs: measure it and cut it"  # 35d0
+    status: todo_soft  # 35d0
+    priority: 4  # 35d0
+    parent:  # 35d0
+    tags:  # 35d0
+    - smart_test  # 35d0
+    - fast_smart_test_plan  # 35d0
+    isbefore: []  # 35d0
+    duplicate_of: []  # 35d0
+    not_duplicate_of: []  # 35d0
+    pr_ref:  # 35d0
+    description: "FILED BY OWNER RULING 2026-11-17; NOT PART OF THE SMART-TEST BUILD. The fast-smart-test plan counts a pre-PR cycle as the mypy gate, the slice and the tests. It leaves out the regeneration of docs/ARCHITECTURE.md, which runs `hypergumbo run` on the repository (scripts/generate-architecture) and takes 6 minutes or more. In the last 60 commits on dev (2026-11-17, d0e00a83c) there are 12 \"ci: test manifest\" commits and 8 \"regenerate ARCHITECTURE.md\" commits. Once smart-test selects from a stored graph this is the largest fixed cost of a pre-PR cycle.\n\nTO FIND OUT. What triggers it (a 30-commit gate and a module-count gate are noted in the lab notebook); how much of the time is the analysis; whether it can read the analysis smart-test's detached rebuild already produced.\n\nCLOSE CONDITION. The measured time and its parts; then either a change that cuts it, with the new time, or the reason it cannot be cut.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 35d0
+    fields: {}  # 35d0

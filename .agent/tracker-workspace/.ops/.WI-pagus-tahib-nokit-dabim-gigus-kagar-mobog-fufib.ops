@@ -1,0 +1,21 @@
+- op: create  # 8973
+  at: '2026-11-17T08:58:40Z'  # 8973
+  by: agent  # 8973
+  actor: jgstern_agent  # 8973
+  clock: 1  # 8973
+  nonce: '8973'  # 8973
+  data:  # 8973
+    kind: work_item  # 8973
+    title: "Split the 58 to 64 s test that sits in 15 of the 16 slow replayed PRs, if it separates without losing what it checks (decision 12)"  # 8973
+    status: todo_hard  # 8973
+    priority: 3  # 8973
+    parent:  # 8973
+    tags:  # 8973
+    - smart_test  # 8973
+    - fast_smart_test_plan  # 8973
+    isbefore: []  # 8973
+    duplicate_of: []  # 8973
+    not_duplicate_of: []  # 8973
+    pr_ref:  # 8973
+    description: "WHAT (owner ruling). One test of 58 to 64 seconds is in the by-statement selection of 15 of the 16 replayed PRs that need more than 60 test-seconds (fast_smart_test_11152026/replay_rows.json, field `slowest`: 57.6 or 64.2). The slowest single test bounds wall time whatever the worker count. Identify it from the timing store, then split it into smaller tests if it separates without losing anything it checks.\n\nIF IT DOES NOT SEPARATE. It stays whole, and smart-test's wall-time report names it as the reason a run missed the target.\n\nCLOSE CONDITION. The test's id; what it checks; either the split (the same assertions, each mutation that turned the whole test red turns a part red, new durations) or the reason it cannot be split.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 8973
+    fields: {}  # 8973

@@ -27,3 +27,18 @@
   clock: 2  # 0ce9
   nonce: 0ce9  # 0ce9
   message: "OWNER RULING 2026-11-17: built together with WI-jomid (README badge). Design: the scheduled run publishes its verdict to the badges branch; session start reads it from the already-fetched origin/badges with a local git command (no virtualenv, no network call on the session-start path), states the verdict's age, and prints one line when it cannot determine the status. This replaces the ci-debug call that took 41 s cold. The governance files are covered by the owner's standing ruling. The close condition of this item is unchanged."  # 0ce9
+- op: update  # 18fb
+  at: '2026-11-17T07:40:17Z'  # 18fb
+  by: agent  # 18fb
+  actor: jgstern_agent  # 18fb
+  clock: 3  # 18fb
+  nonce: 18fb  # 18fb
+  set:  # 18fb
+    status: done  # 18fb
+- op: discuss  # 87c1
+  at: '2026-11-17T07:40:17Z'  # 87c1
+  by: agent  # 87c1
+  actor: jgstern_agent  # 87c1
+  clock: 4  # 87c1
+  nonce: 87c1  # 87c1
+  message: "Fixed in PR #2219 (dev 26f51346b). Root cause as filed: the nudge needed the virtualenv and a 41 s forge call inside a 5 s hook, and printed nothing when either failed. Now it reads the verdict each scheduled run publishes to origin/badges with local git commands after one fetch bounded at 1.5 s, shares a 3.6 s budget between that fetch and the tracker call, and prints a line when it cannot determine the status. EVIDENCE, re-run on merged dev 2026-11-17 07:45 UTC, the item's own repro form: `echo '{}' | env -i HOME=$HOME PATH=/usr/bin:/bin bash .agent/hooks/claude-code/session-start.sh` -> exit 0 in 0.60 s, and the output holds 'ALSO (separate item): Scheduled-run status not checked: no verdict file under scheduled/ on origin/badges. Run `./scripts/ci-debug cron-status`.' (before the fix the same environment printed nothing about the scheduled run; the latest full-suite verdict, pipeline 6480, is red and no verdict is published yet, so 'not checked' is the correct arm). The RED arm is shown by tests/test_cron_status_nudge.py, which runs the script under env -i against a repository whose origin/badges holds a failed verdict. NOT ASSERTED HERE: the RED line against a verdict published by a real scheduled run; that waits for the first run after the merge and is tracked on WI-jomid. Known gap, not fixed: a nightly leg that never publishes is not reported."  # 87c1

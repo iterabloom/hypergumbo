@@ -1,0 +1,21 @@
+- op: create  # 8c3a
+  at: '2026-11-17T08:58:34Z'  # 8c3a
+  by: agent  # 8c3a
+  actor: jgstern_agent  # 8c3a
+  clock: 1  # 8c3a
+  nonce: 8c3a  # 8c3a
+  data:  # 8c3a
+    kind: work_item  # 8c3a
+    title: "Find out why the tracker package is outside the coverage scope (3,109 tests with no statement record) and decide: measure it, or leave its tests to the stored graph (decision 7)"  # 8c3a
+    status: todo_hard  # 8c3a
+    priority: 3  # 8c3a
+    parent:  # 8c3a
+    tags:  # 8c3a
+    - smart_test  # 8c3a
+    - fast_smart_test_plan  # 8c3a
+    isbefore: []  # 8c3a
+    duplicate_of: []  # 8c3a
+    not_duplicate_of: []  # 8c3a
+    pr_ref:  # 8c3a
+    description: "WHAT (owner ruling: the agent decides after looking). The selection index calls 3,109 tracker-package tests unmeasured because that package is outside coverage measurement. Nobody has checked why. Find the reason in the coverage configuration and its history. Then decide: bring the package into the coverage scope (its tests get statement records and are selected by statement; any uncovered line becomes a 100%-coverage failure to fix first), or leave it out and select its tests through the stored graph. Default: the stored graph, unless measuring is cheap and safe.\n\nCLOSE CONDITION. The reason, with the commit or file that shows it; the decision and why; if measured, the package's coverage figure and the PR; a note to the owner either way.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 8c3a
+    fields: {}  # 8c3a
