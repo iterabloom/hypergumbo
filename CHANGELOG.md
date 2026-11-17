@@ -23,6 +23,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Development tools and CI
 
 - **mypy now rejects a hand-built node id.**
+- **CI steps installing pytest alone pin its version.**
 
 ## [10.0.0] - 2026-11-16
 
