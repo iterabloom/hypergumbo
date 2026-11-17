@@ -37,6 +37,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A failed verdict publish says why within seconds.**
 - **smart-test in a worktree selects from stored graphs too.**
 - **Two checkouts storing a graph at once both succeed.**
+- **Run records say what selecting by statement would run.**
 
 ## [10.0.0] - 2026-11-16
 

@@ -92,7 +92,6 @@ _STATEMENTS = (ast.stmt, ast.ExceptHandler)
 class Kind(Enum):
     """What happened to one block between the old source and the new."""
 
-    UNCHANGED = "unchanged"
     #: Some of its own statements changed: ``ran`` names the old ones to look for.
     STATEMENTS = "statements"
     #: Only docstrings or other bare constants changed: no test.
@@ -121,6 +120,10 @@ class BlockChange:
     carried: Mapping[int, int] = field(default_factory=dict)
     #: For ``WHOLE``: the reason, in words.
     why: str = ""
+    #: The digest of the OLD block (``""`` for a block that is new): records
+    #: are of a block with a given digest, and only records of this one speak
+    #: about ``ran``.
+    old_digest: str = ""
 
 
 @dataclass(frozen=True)
@@ -271,7 +274,7 @@ def _compare(old: _Parsed, new: _Parsed) -> BlockChange:
         why = ("its signature or a decorator changed" if header
                else "a global, nonlocal or bare annotation changed" if scope
                else "it changed in a way none of its statements shows")
-        return BlockChange(name, Kind.WHOLE, at_import, why=why)
+        return BlockChange(name, Kind.WHOLE, at_import, why=why, old_digest=old.block.digest)
 
     new_to_old = {new_ordinal: old_ordinal for old_ordinal, new_ordinal in carried.items()}
     for ordinal in inserted:
@@ -280,11 +283,12 @@ def _compare(old: _Parsed, new: _Parsed) -> BlockChange:
         while anchor != ENTRY and anchor not in new_to_old:
             anchor = news[anchor].anchor
         if anchor == ENTRY:
-            return BlockChange(name, Kind.WHOLE, at_import,
+            return BlockChange(name, Kind.WHOLE, at_import, old_digest=old.block.digest,
                                why="a statement was added or edited where the block is entered")
         ran.add(new_to_old[anchor])
     kind = Kind.STATEMENTS if ran else Kind.PROSE
-    return BlockChange(name, kind, at_import, ran=frozenset(ran), carried=carried)
+    return BlockChange(name, kind, at_import, ran=frozenset(ran), carried=carried,
+                       old_digest=old.block.digest)
 
 
 def statement_changes(
@@ -302,7 +306,8 @@ def statement_changes(
     changes: dict[str, BlockChange] = {}
     for name, was in old.items():
         if name not in new:
-            changes[name] = BlockChange(name, Kind.GONE, was.block.import_time)
+            changes[name] = BlockChange(name, Kind.GONE, was.block.import_time,
+                                        old_digest=was.block.digest)
     for name, now in new.items():
         before = old.get(name)
         if before is None:

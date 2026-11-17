@@ -309,7 +309,16 @@ class TestRunRecords:
             "changed_files": ["a.py", "b.py"], "snapshot": "d1g",
             "ran_files": ["t/test_a.py", "t/test_b.py"], "tests_ran": 7,
             "failed": ["t/test_a.py::test_x", "t/test_b.py::test_y"], "exit": 1,
+            "by_statement": None,
         }
+        # The by-statement selector's facts are stored as given; not asking
+        # (above) is null, which is not "it would have selected nothing".
+        append_run_record(
+            log, at="now", kind="explicit", head="abc", base="000", changed_files=[],
+            snapshot=None, ran_files=None, tests_ran=None, failed=None, exit_code=0,
+            by_statement={"tests": 0, "failed_not_selected": []})
+        assert load_observations(log)[1]["by_statement"] == {
+            "tests": 0, "failed_not_selected": []}
 
     def test_no_junit_is_null_not_nothing_failed(self, tmp_path) -> None:
         log = tmp_path / "runs.jsonl"

@@ -67,7 +67,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Mapping, Optional
 
 from hypergumbo_core.selection_shadow import ShadowReport
 
@@ -369,6 +369,7 @@ def append_run_record(
     tests_ran: Optional[int],
     failed: Optional[Iterable[str]],
     exit_code: Optional[int],
+    by_statement: Optional[Mapping[str, object]] = None,
 ) -> None:
     """Append what one test run was and how it ended.
 
@@ -378,6 +379,12 @@ def append_run_record(
     tree was exactly ``head``. ``ran_files``, ``tests_ran`` and ``failed`` are
     ``None`` when the run left no junit report: "did not look" must stay
     distinguishable from "nothing ran" and "nothing failed".
+
+    ``by_statement`` is what the by-statement selector would have selected
+    for this change, as the index stood BEFORE this run was folded into it,
+    and which of the failed tests it would have left out
+    (``coverage-select run-record`` says what the keys hold). ``None`` when it
+    was not asked: no changed package source, or no index.
     """
     _append(log_path, {
         "at": at,
@@ -390,4 +397,5 @@ def append_run_record(
         "tests_ran": tests_ran,
         "failed": None if failed is None else sorted(failed),
         "exit": exit_code,
+        "by_statement": None if by_statement is None else dict(by_statement),
     })

@@ -516,6 +516,7 @@ def test_a_run_record_holds_the_commit_the_change_and_the_failures(repo: Path) -
     assert row["ran_files"] == ["packages/p/tests/test_a.py", "packages/p/tests/test_new.py"]
     assert row["tests_ran"] == 2
     assert row["failed"] == ["packages/p/tests/test_new.py::test_new"]
+    assert row["by_statement"] is None, "no index: the selector was not asked"
     with gzip.open(repo.parent / "logs" / "runs.d" / f"{row['snapshot']}.patch.gz", "rt") as fh:
         patch = fh.read()
     assert "+B = 2" in patch, "the uncommitted edit"
@@ -534,6 +535,116 @@ def test_a_run_on_a_committed_tree_needs_no_snapshot(repo: Path) -> None:
     assert row["failed"] is None and row["ran_files"] is None and row["tests_ran"] is None, (
         "no junit report was given: that is not the same as nothing failed")
     assert not (repo.parent / "logs" / "runs.d").exists()
+
+
+_CALC = """\
+def f(x):
+    if x < 0:
+        return -1
+    a = 1
+    b = a + 1
+    return b
+"""
+
+_CALC_JUNIT = """<testsuites><testsuite>
+<testcase classname="packages.p.tests.test_calc" name="test_early"><failure>boom</failure></testcase>
+<testcase classname="packages.p.tests.test_calc" name="test_full"><failure>boom</failure></testcase>
+<testcase classname="packages.p.tests.test_a" name="test_a"><failure>boom</failure></testcase>
+</testsuite></testsuites>
+"""
+
+
+def _calc_repo(repo: Path, *, index_saw: str = _CALC, block: str = "f") -> Path:
+    """``calc.py`` committed at ``base``; an index in which test_early ran the
+    early return of ``f`` and test_full ran the rest. Returns calc.py."""
+    from hypergumbo_core import selection_index as si
+    from hypergumbo_core.block_hash import blocks_for_source
+
+    calc = repo / "packages/p/src/p/calc.py"
+    calc.write_text(_CALC)
+    (repo / "packages/p/tests/test_calc.py").write_text(
+        "def test_early():\n    pass\n\ndef test_full():\n    pass\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "calc")
+    # The base is this commit: calc.py's later edit is the whole change.
+    _git(repo, "branch", "-f", "base", "HEAD")
+    early, full = (f"{repo}/packages/p/tests/test_calc.py::{name}"
+                   for name in ("test_early", "test_full"))
+    key = (str(calc), block)
+    conn = si.open_index(repo.parent / "logs" / "index.sqlite")
+    si.store_edges(
+        conn, {early: [key], full: [key]},
+        digests={str(calc): {b.name: b.digest for b in blocks_for_source(str(calc), index_saw)}},
+        statements={early: {key: si._int_bitmap(0b00011)}, full: {key: si._int_bitmap(0b11101)}})
+    conn.commit()
+    conn.close()
+    return calc
+
+
+def test_a_run_record_says_what_selecting_by_statement_would_have_cost(repo: Path) -> None:
+    calc = _calc_repo(repo)
+    calc.write_text(_CALC.replace("b = a + 1", "b = a + 2"))
+    (repo / "junit.xml").write_text(_CALC_JUNIT)
+    done = _helper(repo, "--junit", str(repo / "junit.xml"), "run-record",
+                   "--kind", "explicit", "--exit", "1", "--base-branch", "base")
+    assert done.returncode == 0, done.stderr
+    (row,) = _rows(repo, "runs.jsonl")
+    assert row["by_statement"] == {
+        "changed_blocks": 1, "answers": {"by statement": 1}, "import_time_blocks": 0,
+        "unknown_blocks": 0,
+        # test_full ran the edited line; test_early returned before it.
+        "tests": 1, "by_block": 2,
+        "failed_reaching_a_changed_block": [
+            "packages/p/tests/test_calc.py::test_early", "packages/p/tests/test_calc.py::test_full"],
+        # test_early FAILED and would have been left out: the result that
+        # counts against the selector. test_a failed too and reached no
+        # changed function: not this selector's.
+        "failed_not_selected": ["packages/p/tests/test_calc.py::test_early"],
+    }
+
+
+def test_the_by_statement_facts_say_when_the_index_had_no_record_of_the_base(repo: Path) -> None:
+    """The index was folded after the function had already been edited once:
+    its records are of another version, and the row says every test was kept
+    for that reason."""
+    calc = _calc_repo(repo, index_saw=_CALC.replace("a = 1", "a = 100"))
+    calc.write_text(_CALC.replace("b = a + 1", "b = a + 2"))
+    done = _helper(repo, "run-record", "--kind", "selected", "--exit", "0",
+                   "--base-branch", "base")
+    assert done.returncode == 0, done.stderr
+    facts = _rows(repo, "runs.jsonl")[0]["by_statement"]
+    assert facts["answers"] == {
+        "no record of the block as it was: every test that reached it": 1}
+    assert (facts["tests"], facts["by_block"]) == (2, 2)
+    assert facts["failed_not_selected"] is None, "no junit report: did not look"
+
+
+def test_the_by_statement_facts_count_the_blocks_the_index_has_never_seen(repo: Path) -> None:
+    """The index knows calc.py through another function only. The edited one
+    is a block it has never seen: zero tests is then no answer, and the row
+    has to carry the count that says so."""
+    calc = _calc_repo(repo, index_saw="def other():\n    return 0\n", block="other")
+    calc.write_text(_CALC.replace("b = a + 1", "b = a + 2"))
+    (repo / "junit.xml").write_text(_CALC_JUNIT)
+    done = _helper(repo, "--junit", str(repo / "junit.xml"), "run-record",
+                   "--kind", "explicit", "--exit", "1", "--base-branch", "base")
+    assert done.returncode == 0, done.stderr
+    facts = _rows(repo, "runs.jsonl")[0]["by_statement"]
+    assert facts["unknown_blocks"] == 1 and facts["tests"] == 0
+    assert facts["answers"] == {
+        "the index has never seen this block: it cannot say which tests reach it": 1}
+
+
+def test_a_selector_that_fails_does_not_lose_the_run_record(repo: Path) -> None:
+    calc = _calc_repo(repo)
+    calc.write_text(_CALC.replace("b = a + 1", "b = a + 2"))
+    index = repo.parent / "logs" / "index.sqlite"
+    index.write_bytes(b"this is not a database")
+    done = _helper(repo, "run-record", "--kind", "selected", "--exit", "0",
+                   "--base-branch", "base")
+    assert done.returncode == 0
+    (row,) = _rows(repo, "runs.jsonl")
+    assert row["kind"] == "selected" and set(row["by_statement"]) == {"error"}
 
 
 def _graph_survey(repo: Path, tree: str, edges: list[tuple[str, str]]) -> Path:

@@ -45,6 +45,7 @@ catches broadly and exits 0 — see `main`.
 from __future__ import annotations
 
 import argparse
+import collections
 import contextlib
 import fcntl
 import json
@@ -80,6 +81,7 @@ from hypergumbo_core.selection_log import (
     sliceable_sources, sliced_test_files, stale_graph_row,
     store_snapshot,
 )
+from hypergumbo_core.statement_select import select_by_statement
 from hypergumbo_core.selection_shadow import (
     compare, failed_tests_from_junit, ran_tests_from_junit,
 )
@@ -1146,6 +1148,43 @@ def cmd_stale_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _by_statement_facts(root: Path, index: Path, base: str, changed: list[str],
+                        failed: set[str] | None) -> dict[str, object] | None:
+    """What the by-statement selector would have selected for this change,
+    from the index as it stands NOW (the caller has not folded this run into
+    it yet), and what that would have cost the run's failed tests.
+
+    ``failed_not_selected`` is the result that counts against the selector: a
+    test that reached a changed function, FAILED, and would have been left
+    out. A failed test that reached no changed function is no business of a
+    selector that only narrows "reached a changed function".
+    """
+    sources = [name for name in changed if _SLICED_SOURCE_PATH.match(name)]
+    if not sources or not index.exists():
+        return None
+    base_sources = {str(root / name): _base_source(root, base, name) for name in sources}
+    with contextlib.closing(open_index(index)) as conn:
+        chosen = select_by_statement(conn, base_sources)
+    tests = rebase_to_repo(chosen.tests, root)
+    by_block = rebase_to_repo(chosen.by_block, root)
+    facts: dict[str, object] = {
+        "changed_blocks": len(chosen.answers),
+        "answers": dict(sorted(collections.Counter(chosen.answers.values()).items())),
+        "import_time_blocks": len(chosen.import_time),
+        # Not zero: the index has never seen that many of the changed blocks,
+        # and "tests" is then not every test the change needs.
+        "unknown_blocks": len(chosen.unknown),
+        "tests": len(tests),
+        "by_block": len(by_block),
+        "failed_reaching_a_changed_block": None,
+        "failed_not_selected": None,
+    }
+    if failed is not None:
+        facts["failed_reaching_a_changed_block"] = sorted(failed & by_block)
+        facts["failed_not_selected"] = sorted((failed & by_block) - tests)
+    return facts
+
+
 def cmd_run_record(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
     head = _head(root)
@@ -1165,13 +1204,19 @@ def cmd_run_record(args: argparse.Namespace) -> int:
     if args.junit and Path(args.junit).exists():
         ran = ran_tests_from_junit(Path(args.junit), root)
         failed = failed_tests_from_junit(Path(args.junit), root)
+    changed_files = sorted({*committed, *tracked, *untracked})
+    try:
+        by_statement = _by_statement_facts(root, Path(args.index), base, changed_files, failed)
+    except Exception as exc:
+        # The record of the run matters more than this one field of it.
+        by_statement = {"error": f"{type(exc).__name__}: {exc}"}
     append_run_record(
         Path(args.runs), at=_now(), kind=args.kind, head=head, base=base,
-        changed_files=sorted({*committed, *tracked, *untracked}),
+        changed_files=changed_files,
         snapshot=snapshot,
         ran_files=None if ran is None else {t.split("::")[0] for t in ran},
         tests_ran=None if ran is None else len(ran),
-        failed=failed, exit_code=args.exit,
+        failed=failed, exit_code=args.exit, by_statement=by_statement,
     )
     return 0
 
