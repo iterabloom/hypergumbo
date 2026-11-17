@@ -15,6 +15,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Added
 
 - **Declare fixture directories as test input in `.hypergumbo.toml`.**
+- **Each analysis pass counts edge endpoints that are not ids.**
 
 ### Fixed
 

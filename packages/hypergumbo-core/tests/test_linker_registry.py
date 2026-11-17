@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo_core.ir import AnalysisRun, Edge, Symbol, _default_config_fingerprint
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, _default_config_fingerprint
 from hypergumbo_core.linkers.registry import (
     LinkerContext,
     LinkerRequirement,
@@ -1411,10 +1411,28 @@ class TestRunLinkerWithCacheStampsEmissionAndDuration:
     def _ctx(self):
         return LinkerContext(repo_root=Path("/test"))
 
+    # The chokepoint also reads each edge's endpoints and each symbol's id
+    # (the non-id endpoint count), so the output is real records.
+    @staticmethod
+    def _sym(name: str) -> Symbol:
+        return Symbol(
+            id=f"python:a.py:1-2:{name}:function", name=name, kind="function",
+            language="python", path="a.py", span=Span(1, 2, 0, 1), origin="lk",
+        )
+
+    @staticmethod
+    def _edge() -> Edge:
+        return Edge.create(
+            src="python:a.py:1-2:f:function", dst="python:a.py:1-2:g:function",
+            edge_type="calls", line=1, origin="lk", origin_run_id="run",
+        )
+
     def test_stamps_counts_and_duration_when_run_present(self):
         run = AnalysisRun.create(pass_id="lk", version="1.0.0")
         assert run.duration_ms == 0
-        result = LinkerResult(symbols=[object(), object()], edges=[object()], run=run)
+        result = LinkerResult(
+            symbols=[self._sym("f"), self._sym("g")], edges=[self._edge()], run=run,
+        )
         out = _run_linker_with_cache(lambda ctx: result, self._ctx())
         assert out is result
         assert run.nodes_emitted == 2
@@ -1428,7 +1446,7 @@ class TestRunLinkerWithCacheStampsEmissionAndDuration:
         figure the call did not take. (WI-nuvam)"""
         run = AnalysisRun.create(pass_id="lk", version="1.0.0")
         run.duration_ms = 999
-        result = LinkerResult(symbols=[], edges=[object()], run=run)
+        result = LinkerResult(symbols=[], edges=[self._edge()], run=run)
         _run_linker_with_cache(lambda ctx: result, self._ctx())
         assert run.duration_ms < 999
         assert isinstance(run.cpu_ms, int) and run.cpu_ms >= 1

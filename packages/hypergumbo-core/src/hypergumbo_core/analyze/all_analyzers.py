@@ -14,7 +14,9 @@ manifest — so it is not a pure facade. Each analyzer runs inside
 there (WI-nuvam: wall time under the pool overlaps and inflates with
 contention, see ``pass_clock``) and hands the cost to
 ``collect_analyzer_result``, the per-pass chokepoint that stamps it with the
-emitted-count counters and silence reason before serialization, backfills
+emitted-count counters, silence reason and count of edge endpoints that are
+not node ids (``edge_target.stamp_non_id_edge_endpoints``) before
+serialization, backfills
 ``Symbol.origin_run_id``, and accounts for every pass as an AnalysisRun or a
 skip (synthesizing a run, with a warning, for a producer that emitted output
 without one). An analyzer that raises is recorded as a crashed pass and the run continues
@@ -62,6 +64,7 @@ from .base import (
     synthesize_file_anchors_for_paths,
     synthesize_file_symbols_for_dangling_edges,
 )
+from .edge_target import stamp_non_id_edge_endpoints
 from .file_records import repoint_file_references
 from .registry import (
     RegisteredAnalyzer,
@@ -281,6 +284,11 @@ def collect_analyzer_result(
         # override (WI-finij).
         if _derived == "" or not result.run.silence_reason:
             result.run.silence_reason = _derived
+        # An endpoint written by hand that is not shaped like an id becomes a
+        # boundary node finalize cannot attribute to this pass (edge_target's
+        # docstring). This is the last place the pass and its edges are
+        # still together, so count them here, on the run that is serialized.
+        stamp_non_id_edge_endpoints(result.run, result.symbols, result.edges)
         analysis_runs.append(result.run.to_dict())
         # WI-mosil central origin_run_id backstop. Direct-constructor analyzers
         # (toml/json/wgsl/sql and any future ones that build Symbols by hand

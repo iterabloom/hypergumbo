@@ -59,7 +59,11 @@ How It Works
    unset) and stamps ``silence_reason`` on a run the body left
    unexplained: ``PREREQUISITE_ABSENT`` when a ``depends_on`` clause
    was blocked by a skipped analyzer (``skipped_pass_codes``), else
-   the answer from ``derive_silence_reason``.
+   the answer from ``derive_silence_reason``. It also stamps
+   ``non_id_edge_endpoints``, the count of the linker's edge endpoints
+   that are not in the node-id grammar
+   (``analyze.edge_target.stamp_non_id_edge_endpoints``, the same call the
+   analyzer chokepoint makes).
    A linker that raises is contained (§17 fail-open):
    ``_record_linker_crash`` records it via
    ``limits.record_crashed_pass`` and dispatch continues.
@@ -770,6 +774,7 @@ def _run_linker_with_cache(
     ``linkers/_text_filters`` can read/write ``ctx.parsed_trees`` without
     every linker passing the cache explicitly.
     """
+    from ..analyze.edge_target import stamp_non_id_edge_endpoints
     from ..pass_silence import PREREQUISITE_ABSENT, derive_silence_reason
     from ._text_filters import (
         reset_active_parse_cache,
@@ -868,6 +873,10 @@ def _run_linker_with_cache(
                 if _blocked_prerequisite_clauses(ctx)
                 else _derived
             )
+        # The same endpoint count the analyzer chokepoint stamps. It asks
+        # only whether each endpoint is in the id grammar, so a linker edge
+        # that ends on another pass's node, as linker edges do, passes.
+        stamp_non_id_edge_endpoints(result.run, result.symbols, result.edges)
     return result
 
 

@@ -532,6 +532,17 @@ class AnalysisRun:
     # that never makes a claim cannot appear there, so a zero measures the
     # corpus, not completion (WI-bivim).
     silence_reason: str = ""  # axis: pass-silence-reason
+    # How many of this pass's edge endpoints (src and dst counted apiece) are
+    # NOT node ids: neither a symbol the pass emitted nor a string that parses
+    # as ``lang:path:start-end:name:kind`` (ADR-0036 Ruling 1). Finalize turns
+    # such a string into a boundary node it cannot attribute to a producer,
+    # one for every edge that shares the spelling. Stamped by
+    # ``analyze.edge_target.stamp_non_id_edge_endpoints`` at the analyzer and
+    # linker chokepoints, which also add a warning naming the first few.
+    # ``None`` means NOT CHECKED (serialized null: a synthesis pass, or a run
+    # built outside those chokepoints), never a 0, which is a measured
+    # "every endpoint is an id".
+    non_id_edge_endpoints: Optional[int] = None
 
     def __post_init__(self) -> None:
         if not self.config_fingerprint:
@@ -617,6 +628,9 @@ class AnalysisRun:
             "pass_version": self.pass_version,
             "nodes_emitted": self.nodes_emitted,
             "edges_emitted": self.edges_emitted,
+            # ALWAYS present, like cpu_ms: null = not checked, 0 = checked
+            # and clean; a missing key means a map written before the field.
+            "non_id_edge_endpoints": self.non_id_edge_endpoints,
         }
         # Omit-when-empty, like the reporting lists below (INV-virik). An empty
         # silence_reason is NOT APPLICABLE (this pass emitted output), and a

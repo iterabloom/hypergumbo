@@ -961,6 +961,22 @@ def _analysis_run_spec() -> ClassSpec:
                     "duration_ms>0"
                 ),
             },
+            "non_id_edge_endpoints": {
+                "description": (
+                    "How many of this pass's edge endpoints (src and dst "
+                    "counted apiece) are not node ids: neither a symbol the "
+                    "pass emitted nor a string that parses as "
+                    "lang:path:start-end:name:kind (ADR-0036 Ruling 1). "
+                    "Finalize turns each such spelling into a boundary node "
+                    "it cannot attribute to the pass. When it is above 0, "
+                    "`warnings` names the first 3 distinct endpoints. A "
+                    "well-formed 0-0 stand-in whose kind slot is a use-site "
+                    "word (package, attribute, target) is not counted. "
+                    "null = NOT CHECKED (a pass that does not cross the "
+                    "analyzer or linker chokepoint); an absent key means "
+                    "the artifact predates the field"
+                ),
+            },
             "silence_reason": {
                 "description": (
                     "WHY this pass emitted nothing (INV-bikaj, arc T6), on the "

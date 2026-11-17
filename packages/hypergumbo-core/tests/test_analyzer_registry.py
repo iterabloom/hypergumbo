@@ -1021,6 +1021,9 @@ class TestCollectAnalyzerResult:
         run = MagicMock(spec=AnalysisRun)
         run.to_dict.return_value = {"pass": "test"}
         run.pass_id = "test"
+        # An instance field (not on the class the spec reads); the chokepoint
+        # appends the non-id endpoint warning for "a" and "b" to it.
+        run.warnings = []
 
         result = AnalysisResult(
             symbols=[sym],
