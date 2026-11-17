@@ -30,7 +30,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
+from typing import Optional, Union
 
 import pytest
 
@@ -310,10 +310,25 @@ def test_a_ref_without_verdicts_is_not_checked(badges: Badges) -> None:
         "Scheduled-run status not checked: no verdict file under scheduled/ on origin/badges.")
 
 
-@pytest.mark.parametrize("text", ["{broken", '{"schema": 2}', '{"schema": 1, "workflow": "x"}',
-                                  json.dumps({**verdict(), "finished_at": "yesterday"}),
-                                  json.dumps({**verdict(), "steps": [{"result": "passed"}]})])
-def test_a_verdict_that_does_not_parse_is_not_checked(badges: Badges, text: str) -> None:
+#: A file that is not a verdict: its text, or the fields that spoil a good one.
+#: The good verdict is built INSIDE the test. ``verdict()`` stamps the current
+#: time, and a value made while the module is imported becomes part of the
+#: test's id: xdist workers that import the module in different seconds then
+#: collect different ids and the whole run stops ("Different tests were
+#: collected between gw7 and gw6").
+UNPARSEABLE: dict[str, Union[str, dict]] = {
+    "not JSON": "{broken",
+    "another schema": '{"schema": 2}',
+    "fields missing": '{"schema": 1, "workflow": "x"}',
+    "finished_at is not a time": {"finished_at": "yesterday"},
+    "a step without a name": {"steps": [{"result": "passed"}]},
+}
+
+
+@pytest.mark.parametrize("case", list(UNPARSEABLE))
+def test_a_verdict_that_does_not_parse_is_not_checked(badges: Badges, case: str) -> None:
+    spoiled = UNPARSEABLE[case]
+    text = spoiled if isinstance(spoiled, str) else json.dumps({**verdict(), **spoiled})
     _both_green(badges)
     badges.publish(raw={"scheduled/full-suite.json": text})
     badges.fetch()

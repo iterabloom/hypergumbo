@@ -30,6 +30,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **README shows coverage and full-suite status badges.**
 - **Session hooks no longer time out on large transcripts.**
 - **A schema version bump no longer selects every test.**
+- **A time-stamped test id no longer stops parallel runs.**
 
 ## [10.0.0] - 2026-11-16
 
