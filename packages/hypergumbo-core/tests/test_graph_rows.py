@@ -40,10 +40,10 @@ def _conn() -> sqlite3.Connection:
 
 def _store(conn: sqlite3.Connection, nodes: list[Node], edges: list[Pair], *,
            tree: str = "t1", build: str = "b1", head: str = "h1",
-           dirty_files: tuple[str, ...] = (),
+           git_tree: Optional[str] = "gt1", dirty_files: tuple[str, ...] = (),
            at: str = "2026-11-17T00:00:00+00:00") -> graph_rows.StoredGraph:
     return graph_rows.store_graph(conn, nodes=nodes, edges=edges, tree=tree, build=build,
-                                  head=head, dirty_files=dirty_files, at=at)
+                                  head=head, git_tree=git_tree, dirty_files=dirty_files, at=at)
 
 
 def _reverse(edges: list[Pair]) -> dict[str, list[str]]:
@@ -215,13 +215,15 @@ def test_the_newest_graph_can_be_asked_for_one_build_and_before_another() -> Non
     old = _store(conn, [("a", "a.py")], [], tree="t1", build="b1")
     other = _store(conn, [("a", "a.py")], [], tree="t2", build="b2",
                    dirty_files=("z.py", "a.py", "z.py"))
-    new = _store(conn, [("a", "a.py")], [], tree="t3", build="b1")
+    new = _store(conn, [("a", "a.py")], [], tree="t3", build="b1", git_tree=None)
     assert graph_rows.newest_graph(conn) == new
     assert graph_rows.newest_graph(conn, build="b2") == other
     # The files that differed from the commit are kept, sorted, each once;
     # a graph of exactly its commit has none.
     assert other.dirty_files == ("a.py", "z.py")
     assert new.dirty_files == ()
+    # The commit's tree id is kept; one that was not recorded reads back as None.
+    assert (other.git_tree, new.git_tree) == ("gt1", None)
     assert graph_rows.newest_graph(conn, build="b1", before=new.id) == old
     assert graph_rows.newest_graph(conn, build="b3") is None
 
@@ -240,6 +242,31 @@ def test_the_rows_live_beside_the_selection_index_tables(tmp_path: Path) -> None
     assert graph_rows.newest_graph(again) == graph
     assert graph_rows.walk(again, graph.id, ["f3.py"], max_hops=2) == ["f3.py", "f4.py"]
     again.close()
+
+
+def test_tables_of_another_format_are_dropped_with_their_graphs() -> None:
+    """The first layout had no format number and no ``git_tree`` column. Read
+    with today's queries it would fail or lie, so it is replaced: a lost graph
+    costs one analysis."""
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE graph (id INTEGER PRIMARY KEY, tree TEXT, build TEXT, head TEXT,"
+        " at TEXT, nodes INTEGER, edges INTEGER);"
+        "INSERT INTO graph VALUES (1, 't', 'b', 'h', 'at', 1, 0);"
+        "CREATE TABLE graph_node (graph INTEGER, seq INTEGER, node INTEGER, path INTEGER);"
+        "INSERT INTO graph_node VALUES (1, 0, 0, NULL);")
+    graph_rows.ensure_schema(conn)
+    assert graph_rows.stored_graphs(conn) == []
+    assert conn.execute("SELECT COUNT(*) FROM graph_node").fetchone()[0] == 0
+    assert conn.execute("SELECT format FROM graph_format").fetchall() == [(graph_rows.FORMAT,)]
+    stored = _store(conn, [("a", "a.py")], [])
+    # The same format again keeps what is stored; a number from elsewhere does not.
+    graph_rows.ensure_schema(conn)
+    assert graph_rows.stored_graphs(conn) == [stored]
+    conn.execute("UPDATE graph_format SET format = ?", (graph_rows.FORMAT + 1,))
+    graph_rows.ensure_schema(conn)
+    assert graph_rows.stored_graphs(conn) == []
+    assert conn.execute("SELECT format FROM graph_format").fetchall() == [(graph_rows.FORMAT,)]
 
 
 def test_a_loaded_survey_gives_nodes_and_edge_pairs() -> None:

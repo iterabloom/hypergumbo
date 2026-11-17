@@ -25,13 +25,17 @@ catches broadly and exits 0 — see `main`.
     import-closure  print the test files whose imports reach a source file
                     whose import-time code changed
     report  print the accrued shadow evidence and its verdict
-    stale-pick  print the newest older graph a fresh slice can be compared with
-    stale-record  store what a fresh walk and a walk on an older graph named
+    stale-record  store what a fresh walk named beside what the stored graph
+                  would have selected, and keep the fresh graph as rows
     stale-report  print the accrued stale-graph evidence and its verdict
     run-record  store what one test run ran against and which tests failed
     graph-store  store a survey's graph as rows in the index
     graph-walk  write the files that depend on the changed files, walking a
                 STORED graph (exit 3: no stored graph to walk; 4: it failed)
+    graph-select  what smart-test selects from: graph-walk for a tree that is
+                  LATER than the graph's (exit 3: no usable stored graph;
+                  4: it failed; 5: an added file needs a fresh analysis;
+                  6: the graph is too far behind this tree)
     graph-list  print the stored graphs, newest first
     line-tests  print which tests the index records running FILE:LINE
     line-records  print how many pairs of the index have statement records
@@ -45,13 +49,15 @@ import os
 import re
 import subprocess
 import sys
+import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent
                       / "packages" / "hypergumbo-core" / "src"))
 
-from hypergumbo_core import graph_rows
+from hypergumbo_core import graph_rows, graph_select
 from hypergumbo_core.import_closure import build as build_import_graph
 from hypergumbo_core.prose_only import (
     fold_run, global_refusal, select_for_prose, tests_reading,
@@ -65,8 +71,8 @@ from hypergumbo_core.selection_index import (
 )
 from hypergumbo_core.selection_log import (
     append_observation, append_run_record, append_stale_graph_observation,
-    evaluate, evaluate_stale_graph, load_observations, newest_older_graph,
-    register_graph, sliceable_sources, sliced_test_files, stale_graph_row,
+    evaluate, evaluate_stale_graph, load_observations,
+    sliceable_sources, sliced_test_files, stale_graph_row,
     store_snapshot,
 )
 from hypergumbo_core.selection_shadow import (
@@ -92,12 +98,9 @@ DEFAULT_LOG = Path(
 
 _NOTEBOOK = Path.home() / "hypergumbo_lab_notebook"
 
-#: The stale-graph shadow's observations, the graphs it can compare against,
-#: and the run records. Out-of-repo and append-only, like DEFAULT_LOG.
+#: The stale-graph shadow's observations and the run records. Out-of-repo and append-only, like DEFAULT_LOG.
 DEFAULT_STALE_LOG = Path(os.environ.get(
     "HG_STALE_GRAPH_LOG", _NOTEBOOK / "stale_graph_observations.jsonl"))
-DEFAULT_GRAPHS = Path(os.environ.get(
-    "HG_SLICE_GRAPHS", _NOTEBOOK / "slice_graphs.jsonl"))
 DEFAULT_RUNS = Path(os.environ.get("HG_RUN_RECORDS", _NOTEBOOK / "run_records.jsonl"))
 
 #: Untracked files that count as part of a change: the surfaces smart-test's
@@ -514,55 +517,68 @@ def _uncommitted(root: Path) -> tuple[list[str], list[str]]:
     return tracked, untracked
 
 
-def cmd_stale_pick(args: argparse.Namespace) -> int:
-    row = newest_older_graph(Path(args.graphs), args.fresh_survey)
-    if row is not None:
-        print(row["survey"])
-    return 0
-
-
 def cmd_stale_record(args: argparse.Namespace) -> int:
+    """Store one row of the stale-graph log and keep the fresh graph.
+
+    The comparison is with what ``graph-select`` WOULD have answered from the
+    graphs stored before this one (same analyzer build, another tree): the
+    selection smart-test acts on when it does not analyse. A test file the
+    fresh walk names, that selection lacks and the change did not edit is a
+    miss of the stored graph, and one is enough to disqualify it.
+    """
     root = Path(args.repo_root).resolve()
     changed = _lines(args.changed_files)
     head = _head(root)
-    tracked, untracked = _uncommitted(root)
-    graph = None
-    if args.older_survey:
-        graph = dict(newest_older_graph(Path(args.graphs), args.fresh_survey or "") or {})
-        if graph.get("survey") != args.older_survey:
-            graph = {"survey": args.older_survey}
-        count = _git_lines(root, "rev-list", "--count", f"{graph.get('head')}..{head}")
-        graph["age_commits"] = int(count[0]) if count else None
+    fresh_survey = Path(args.fresh_survey) if args.fresh_survey else None
+    graph: dict[str, object] | None = None
+    stale: frozenset[str] | None = None
+    why = args.why
+    stale_seconds: float | None = None
+    if fresh_survey is not None:
+        started = time.monotonic()
+        try:
+            stored = _select_from_stored(
+                root, Path(args.index), changed, build=fresh_survey.parent.name,
+                exclude_tree=fresh_survey.parent.parent.name,
+                max_age=args.max_age, max_extra_tests=args.max_extra_tests)
+        except Exception as exc:
+            why = f"the selection from the stored graph failed: {type(exc).__name__}: {exc}"
+        else:
+            if stored.selection is not None and stored.code == 0:
+                stale = sliced_test_files(stored.selection.files, str(root))
+                stale_seconds = round(time.monotonic() - started, 1)
+                graph = _graph_facts(stored)
+            else:
+                why = stored.reason
     row = stale_graph_row(
         fresh=sliced_test_files(_lines(args.fresh_out), str(root)),
-        stale=(sliced_test_files(_lines(args.stale_out), str(root))
-               if args.older_survey else None),
+        stale=stale,
         edited_tests=sliced_test_files(changed, str(root)),
         head=head, at=_now(),
         changed_source=sliceable_sources(changed),
-        graph=graph, why_no_comparison=args.why,
-        fresh_seconds=args.fresh_seconds, stale_seconds=args.stale_seconds,
+        graph=graph, why_no_comparison=why,
+        fresh_seconds=args.fresh_seconds, stale_seconds=stale_seconds,
     )
     append_stale_graph_observation(Path(args.stale_log), row)
-    if args.fresh_survey:
-        register_graph(Path(args.graphs), survey=args.fresh_survey, head=head,
-                       dirty=bool(tracked or untracked), at=_now())
+    if fresh_survey is not None:
         # The survey is evicted from the cache within hours; its rows stay.
+        # Stored AFTER the comparison, which must not meet its own graph.
         _report_stored(_store_graph_rows(
-            Path(args.index), Path(args.fresh_survey), head=head,
-            dirty_files=_dirty_files(root)))
+            Path(args.index), fresh_survey, head=head,
+            git_tree=_tree_of(root, head), dirty_files=_dirty_files(root)))
     lost = row["fresh_only_unedited"]
     if row["stale"] is None:
-        print(f"[coverage-select] stale-graph shadow: no comparison ({args.why})",
+        print(f"[coverage-select] stale-graph shadow: no comparison ({why})",
               file=sys.stderr)
     elif lost:
-        print(f"[coverage-select] STALE GRAPH LOST {len(lost)} TEST FILE(S) the fresh "
+        print(f"[coverage-select] STORED GRAPH LOST {len(lost)} TEST FILE(S) the fresh "
               f"walk names and this change did not edit: {', '.join(lost[:5])}",
               file=sys.stderr)
     else:
-        print(f"[coverage-select] stale-graph shadow: a graph {graph['age_commits']} "
-              f"commit(s) old named every unedited test file the fresh walk named "
-              f"({len(row['fresh'])} fresh, {len(row['stale'])} stale)", file=sys.stderr)
+        print(f"[coverage-select] stale-graph shadow: a stored graph "
+              f"{graph['age_commits'] if graph else '?'} commit(s) old named every unedited "
+              f"test file the fresh walk named ({len(row['fresh'])} fresh, "
+              f"{len(row['stale'])} from the stored graph)", file=sys.stderr)
     return 0
 
 
@@ -571,6 +587,199 @@ def cmd_stale_record(args: argparse.Namespace) -> int:
 #: found nothing": 0 is the only code that comes with an answer.
 WALK_NO_GRAPH = 3
 WALK_FAILED = 4
+#: graph-select's two more: a stored graph exists and may not answer.
+SELECT_ADDED_FILE = 5
+SELECT_TOO_FAR_BEHIND = 6
+
+#: The oldest stored graph smart-test selects from, in commits: the largest
+#: age at which a stored graph was compared with a fresh one and lost no test
+#: file (the plan's step 1b). Owner ruling, 2026-11-17.
+MAX_GRAPH_AGE = 93
+#: Test files that only OTHER people's changes since the graph reach. Past
+#: this many, a fresh analysis is the cheaper answer: each such file runs in
+#: the pull request's CI as well as here.
+MAX_EXTRA_TESTS = 150
+#: How far back HEAD's history is read for a commit with a graph's tree.
+_HISTORY = 500
+
+
+def _git_z(root: Path, *argv: str) -> list[str]:
+    """The NUL-separated names a git command prints; a failed command raises:
+    a list git could not give must not read as an empty list."""
+    done = subprocess.run(["git", "-C", str(root), *argv],  # noqa: S603, S607
+                          capture_output=True)
+    if done.returncode != 0:
+        raise RuntimeError(f"git {' '.join(argv[:2])} failed: "
+                           f"{done.stderr.decode('utf-8', 'replace').strip()[:200]}")
+    return [name for name in done.stdout.decode("utf-8", "replace").split("\0") if name]
+
+
+def _git_knows(root: Path, name: str) -> bool:
+    return _git(root, "cat-file", "-e", name) is not None
+
+
+def _graph_age(root: Path, graph: graph_rows.StoredGraph) -> int | None:
+    """Commits HEAD has since the graph's commit. When that commit is gone (a
+    branch commit rewritten by a rebase merge), the distance back to the commit
+    of HEAD's history that has the graph's TREE. None when neither is found."""
+    if _git_knows(root, f"{graph.head}^{{commit}}"):
+        count = _git_lines(root, "rev-list", "--count", f"{graph.head}..HEAD")
+        return int(count[0]) if count and count[0].isdigit() else None
+    trees = _git_lines(root, "log", f"-n{_HISTORY}", "--format=%T", "HEAD")
+    return trees.index(graph.git_tree) if graph.git_tree in trees else None
+
+
+def _added_lines(root: Path, tree: str, tracked: list[str],
+                 untracked: list[str]) -> dict[str, str]:
+    """For each changed file, the text of the lines added to it since ``tree``
+    (the whole text of a file that is not tracked)."""
+    lines: dict[str, list[str]] = {}
+    if tracked:
+        diff = _git(root, "diff", "-U0", "--no-color", "--no-renames", tree, "--", *tracked)
+        current = None
+        for line in (diff or b"").decode("utf-8", "replace").splitlines():
+            if line.startswith("+++ "):
+                current = line[6:] if line.startswith("+++ b/") else None
+            elif line.startswith("+") and current is not None:
+                lines.setdefault(current, []).append(line[1:])
+    out = {name: "\n".join(body) for name, body in lines.items()}
+    for name in untracked:
+        text = _read(root / name)
+        if text is not None:
+            out[name] = text
+    return out
+
+
+@dataclass(frozen=True)
+class _FromStored:
+    """What the stored graphs answer for this tree. ``code`` is graph-select's
+    exit code; only 0 comes with a selection to act on."""
+
+    code: int
+    reason: str | None
+    graph: graph_rows.StoredGraph | None = None
+    age: int | None = None
+    selection: graph_select.Selection | None = None
+
+
+def _select_from_stored(
+    root: Path, index: Path, changed: list[str], *, build: str | None,
+    max_age: int, max_extra_tests: int, exclude_tree: str | None = None,
+) -> _FromStored:
+    """Pick the newest usable stored graph and select from it for the current
+    tree (hypergumbo_core/graph_select.py says what is seeded and why).
+
+    Usable: of ``build`` when one is given, not of ``exclude_tree``, with a
+    tree git still has, and at most ``max_age`` commits old.
+    """
+    if not index.exists():
+        return _FromStored(WALK_NO_GRAPH, "no index, so no stored graph")
+    with contextlib.closing(open_index(index)) as conn:
+        graph_rows.ensure_schema(conn)
+        passed_over: list[str] = []
+        chosen: graph_rows.StoredGraph | None = None
+        age: int | None = None
+        for graph in graph_rows.stored_graphs(conn):
+            if build is not None and graph.build != build:
+                passed_over.append(f"graph {graph.id} is from another analyzer build")
+            elif exclude_tree is not None and graph.tree == exclude_tree:
+                passed_over.append(f"graph {graph.id} is of this very tree")
+            elif graph.git_tree is None or not _git_knows(root, f"{graph.git_tree}^{{tree}}"):
+                passed_over.append(f"graph {graph.id}: git does not have its tree")
+            else:
+                age = _graph_age(root, graph)
+                if age is None:
+                    passed_over.append(f"graph {graph.id}: its age is not known")
+                elif age > max_age:
+                    passed_over.append(f"graph {graph.id} is {age} commits old (limit {max_age})")
+                else:
+                    chosen = graph
+                    break
+        if chosen is None or chosen.git_tree is None:
+            return _FromStored(WALK_NO_GRAPH, "no usable stored graph"
+                               + (": " + "; ".join(passed_over) if passed_over else ""))
+        tracked = [name for name in _git_z(root, "diff", "--name-only", "--no-renames", "-z",
+                                           chosen.git_tree) if not name.endswith(".ops")]
+        untracked = [name for name in _git_z(root, "ls-files", "--others",
+                                             "--exclude-standard", "-z")
+                     if not name.endswith(".ops")]
+        differing = sorted({*tracked, *untracked, *chosen.dirty_files})
+        in_tree = set(_git_z(root, "ls-tree", "-r", "--name-only", "-z", chosen.git_tree))
+        # Added since the graph: not in its tree, not among the files that were
+        # uncommitted when it was made (the analysis saw those), and here now.
+        added = [name for name in sorted({*differing, *changed})
+                 if name not in in_tree and name not in chosen.dirty_files
+                 and (root / name).is_file()]
+        lines = (_added_lines(root, chosen.git_tree, tracked, untracked)
+                 if any(not graph_select.is_test_file(name) for name in added) else {})
+        selection = graph_select.select(
+            conn, chosen.id, changed=changed, differing=differing,
+            added=graph_select.judge_added(added, lines))
+    verdict, why = graph_select.verdict(selection, max_extra_tests=max_extra_tests)
+    code = {graph_select.Verdict.USE: 0,
+            graph_select.Verdict.ADDED_FILE: SELECT_ADDED_FILE,
+            graph_select.Verdict.TOO_FAR_BEHIND: SELECT_TOO_FAR_BEHIND}[verdict]
+    return _FromStored(code, why, chosen, age, selection)
+
+
+def _graph_facts(stored: _FromStored) -> dict[str, object]:
+    """What a log row or a report says about the graph a selection came from."""
+    graph, selection = stored.graph, stored.selection
+    return {
+        "id": graph.id if graph else None,
+        "head": graph.head if graph else None,
+        "git_tree": graph.git_tree if graph else None,
+        "build": graph.build if graph else None,
+        "age_commits": stored.age,
+        "dirty": bool(graph.dirty_files) if graph else None,
+        "seeds": len(selection.seeds) if selection else None,
+        "extra_seeds": len(selection.extra_seeds) if selection else None,
+        "extra_test_files": len(selection.extra_test_files) if selection else None,
+        "added_tests": list(selection.added.run_themselves) if selection else None,
+        "added_mentioned": [list(pair) for pair in selection.added.mentioned] if selection else None,
+    }
+
+
+def _selection_line(stored: _FromStored) -> str:
+    """One line saying which graph answered and what its age cost."""
+    graph, selection = stored.graph, stored.selection
+    if graph is None or selection is None:
+        return "no stored graph answered"
+    return (f"stored graph {graph.id} of {graph.head[:9]}, {stored.age} commit(s) old: "
+            f"{len(selection.seeds)} seed file(s), {len(selection.extra_seeds)} of them not "
+            f"this change's, reaching {len(selection.extra_test_files)} test file(s) this "
+            f"change does not; {len(selection.files)} file(s) named")
+
+
+def cmd_graph_select(args: argparse.Namespace) -> int:
+    """Exit 0 with ``--output`` written and one line about the graph on
+    stdout; any other code with nothing written and the reason on stderr. Like
+    graph-walk it never degrades to exit 0."""
+    root = Path(args.repo_root).resolve()
+    try:
+        changed = [ln.strip() for ln in Path(args.changed_files).read_text(
+            encoding="utf-8").splitlines()
+            if ln.strip() and not ln.strip().startswith("#")]
+        stored = _select_from_stored(
+            root, Path(args.index), changed, build=args.build, max_age=args.max_age,
+            max_extra_tests=args.max_extra_tests)
+        if args.report:
+            Path(args.report).write_text(json.dumps(
+                {"code": stored.code, "reason": stored.reason, **_graph_facts(stored)},
+                sort_keys=True) + "\n", encoding="utf-8")
+        if stored.code != 0 or stored.selection is None:
+            print(f"[coverage-select] graph-select: {stored.reason}", file=sys.stderr)
+            return stored.code or WALK_FAILED
+        Path(args.output).write_text(
+            "".join(f"{name}\n" for name in stored.selection.files), encoding="utf-8")
+        print(_selection_line(stored))
+        return 0
+    except Exception as exc:
+        print(f"[coverage-select] graph-select FAILED: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return WALK_FAILED
+
+
 
 
 def _dirty_files(root: Path) -> list[str]:
@@ -583,7 +792,13 @@ def _dirty_files(root: Path) -> list[str]:
     return sorted(name for name in names if not name.endswith(".ops"))
 
 
-def _store_graph_rows(index: Path, survey: Path, *, head: str,
+def _tree_of(root: Path, commit: str) -> str | None:
+    """The id of ``commit``'s tree; None when git does not know the commit."""
+    out = _git_lines(root, "rev-parse", "--verify", "--quiet", f"{commit}^{{tree}}")
+    return out[0] if out else None
+
+
+def _store_graph_rows(index: Path, survey: Path, *, head: str, git_tree: str | None,
                       dirty_files: list[str]) -> graph_rows.StoredGraph | None:
     """Store ``survey``'s graph as rows in ``index``. None when the file holds
     no graph (no node and edge lists): the index is then not opened at all.
@@ -599,7 +814,8 @@ def _store_graph_rows(index: Path, survey: Path, *, head: str,
         graph_rows.ensure_schema(conn)
         stored = graph_rows.store_graph(
             conn, nodes=nodes, edges=edges, tree=survey.parent.parent.name,
-            build=survey.parent.name, head=head, dirty_files=dirty_files, at=_now())
+            build=survey.parent.name, head=head, git_tree=git_tree,
+            dirty_files=dirty_files, at=_now())
         conn.commit()
     return stored
 
@@ -619,15 +835,8 @@ def _dirt(graph: graph_rows.StoredGraph) -> str:
     return f", and {count} file(s) not in that commit" if count else ""
 
 
-def _age(root: Path, graph: graph_rows.StoredGraph) -> int | None:
-    """Commits HEAD has that the graph's commit does not; None when git does
-    not know that commit (it was made in a checkout whose branch is gone)."""
-    count = _git_lines(root, "rev-list", "--count", f"{graph.head}..HEAD")
-    return int(count[0]) if count and count[0].isdigit() else None
-
-
 def _described(root: Path, graph: graph_rows.StoredGraph) -> str:
-    age = _age(root, graph)
+    age = _graph_age(root, graph)
     return (f"graph {graph.id}: head {graph.head[:9]}{_dirt(graph)}, "
             f"{'age not known' if age is None else f'{age} commit(s) old'}, "
             f"build {graph.build}, {graph.nodes} nodes, {graph.edges} edges, stored {graph.at}")
@@ -635,8 +844,9 @@ def _described(root: Path, graph: graph_rows.StoredGraph) -> str:
 
 def cmd_graph_store(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
+    head = args.head or _head(root)
     stored = _store_graph_rows(
-        Path(args.index), Path(args.survey), head=args.head or _head(root),
+        Path(args.index), Path(args.survey), head=head, git_tree=_tree_of(root, head),
         dirty_files=_dirty_files(root) if args.head is None else _lines(args.dirty_files))
     _report_stored(stored)
     return 0 if stored is not None else 1
@@ -762,7 +972,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--log", default=str(DEFAULT_LOG))
     parser.add_argument("--stale-log", default=str(DEFAULT_STALE_LOG))
-    parser.add_argument("--graphs", default=str(DEFAULT_GRAPHS))
     parser.add_argument("--runs", default=str(DEFAULT_RUNS))
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -829,21 +1038,15 @@ def main(argv: list[str] | None = None) -> int:
     rp = sub.add_parser("report")
     rp.set_defaults(func=cmd_report)
 
-    sp = sub.add_parser("stale-pick")
-    sp.add_argument("--fresh-survey", required=True)
-    sp.set_defaults(func=cmd_stale_pick)
-
     sr = sub.add_parser("stale-record")
     sr.add_argument("--changed-files", default=None)
     sr.add_argument("--fresh-out", required=True,
                     help="the fresh slice's output file")
     sr.add_argument("--fresh-survey", default=None,
                     help="the survey the fresh slice wrote; registered as a graph")
-    sr.add_argument("--older-survey", default=None)
-    sr.add_argument("--stale-out", default=None,
-                    help="the output of the same slice on --older-survey")
     sr.add_argument("--fresh-seconds", type=float, default=None)
-    sr.add_argument("--stale-seconds", type=float, default=None)
+    sr.add_argument("--max-age", type=int, default=MAX_GRAPH_AGE)
+    sr.add_argument("--max-extra-tests", type=int, default=MAX_EXTRA_TESTS)
     sr.add_argument("--why", default=None,
                     help="why no comparison was made, when none was")
     sr.set_defaults(func=cmd_stale_record)
@@ -878,6 +1081,20 @@ def main(argv: list[str] | None = None) -> int:
                     help="walk the newest graph of this analyzer build only")
     gw.add_argument("--max-hops", type=int, default=graph_rows.MAX_HOPS)
     gw.set_defaults(func=cmd_graph_walk)
+
+    gsel = sub.add_parser("graph-select")
+    gsel.add_argument("--changed-files", required=True,
+                      help="the change's own files, one per line")
+    gsel.add_argument("--output", required=True)
+    gsel.add_argument("--build", default=None,
+                      help="select from graphs of this analyzer build only")
+    gsel.add_argument("--max-age", type=int, default=MAX_GRAPH_AGE,
+                      help="the oldest graph to select from, in commits")
+    gsel.add_argument("--max-extra-tests", type=int, default=MAX_EXTRA_TESTS,
+                      help="refuse a graph whose age adds more test files than this")
+    gsel.add_argument("--report", default=None,
+                      help="write what was decided, as JSON, whatever the exit code")
+    gsel.set_defaults(func=cmd_graph_select)
 
     sub.add_parser("graph-list").set_defaults(func=cmd_graph_list)
 
