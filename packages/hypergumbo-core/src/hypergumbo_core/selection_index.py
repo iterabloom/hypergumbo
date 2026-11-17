@@ -37,6 +37,21 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    guess: if a test executes any line in file F then F was imported, so F's
    import-time blocks run whenever that test runs.
 
+   A FUNCTION CAN RUN AT IMPORT TOO, and then it is import-time code whatever
+   kind of block it is. ``TABLE = build()`` in a module body runs ``build``
+   under no test's context; a test that reads ``TABLE`` never runs ``build``
+   itself and has no row for it. 113 of this repository's 6,515 functions
+   have a statement that runs while some module is imported, and narrowing,
+   asked about one statement added to ``io_boundary.load_catalog``, dropped
+   the test files of two analyzers whose modules call it at import. So the
+   fold keeps which function blocks had a statement in coverage's empty
+   context (``at_import_block``; :func:`blocks_run_at_import`), and a change
+   to one of them counts as import-time code changed. The mark is added by
+   any run that sees it and removed only by a full run that does not (a
+   partial run loads fewer modules, so not seeing it there says nothing).
+   Code run at collection (a call inside ``parametrize`` arguments) is marked
+   by the same evidence.
+
 3. **A test that ran and produced no rows is UNMEASURED, not unneeded.** A
    sizeable part of this suite is in that state — the tracker package is
    outside smart-test's COV_PATHS, and subprocess/`scripts/` tests leave no
@@ -235,6 +250,9 @@ CREATE TABLE IF NOT EXISTS test_run (
     PRIMARY KEY (test, run)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS test_run_by_run ON test_run (run, test);
+CREATE TABLE IF NOT EXISTS at_import_block (
+    block INTEGER PRIMARY KEY
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS kept_version (
     id     INTEGER PRIMARY KEY,
     block  INTEGER NOT NULL,
@@ -1011,6 +1029,7 @@ def update_from_run(
     owners: dict[str, dict[int, str]] = {}
     statement_owners: dict[str, dict[int, tuple[str, int]]] = {}
     digests: dict[str, dict[str, str]] = {}
+    import_kind: dict[str, set[str]] = {}
 
     def owner_for(path: str) -> dict[int, str]:
         if path not in owners:
@@ -1021,6 +1040,7 @@ def update_from_run(
             owners[path] = line_owner(blocks)
             statement_owners[path] = statement_owner(blocks)
             digests[path] = {b.name: b.digest for b in blocks}
+            import_kind[path] = {b.name for b in blocks if b.import_time}
         return owners[path]
 
     edges: dict[str, set[BlockKey]] = {}
@@ -1032,6 +1052,8 @@ def update_from_run(
     # separate contexts and are OR-ed into one record.
     ran: dict[str, dict[BlockKey, int]] = {}
     import_blocks: dict[str, set[str]] = {}
+    # Function blocks a statement of which ran under no test's context.
+    at_import: set[BlockKey] = set()
     for context, path, numbits in rows:
         own = owner_for(path)
         linenos = list(_numbits_to_linenos(numbits))
@@ -1040,6 +1062,9 @@ def update_from_run(
             continue
         if context == "":
             import_blocks.setdefault(path, set()).update(names)
+            ran_statements = {statement_owners[path][n][0]
+                              for n in linenos if n in statement_owners[path]}
+            at_import.update((path, name) for name in ran_statements - import_kind[path])
         else:
             test_id = normalize_test_id(_strip_phase(context), repo_root)
             edges.setdefault(test_id, set()).update((path, n) for n in names)
@@ -1077,6 +1102,7 @@ def update_from_run(
     store_edges(conn, edges, digests=digests, measured=measured,
                 statements=statements)
     cur = conn.cursor()
+    _store_at_import(cur, at_import, measured, full_run=full_run)
     # A row from the test's own call is positive evidence at ANY coverage
     # scope, so clearing is always safe.
     cur.executemany(
@@ -1112,6 +1138,28 @@ def update_from_run(
     if repo_root is not None:
         _forget_dead_checkouts(conn, checkout)
     conn.commit()
+
+
+def _store_at_import(
+    cur: sqlite3.Cursor, at_import: Iterable[BlockKey], measured: Iterable[str],
+    *, full_run: bool,
+) -> None:
+    """Mark the function blocks this run saw execute under no test's context.
+
+    A mark is only ever ADDED by a partial run: it loaded some modules, and a
+    function it did not see at import may run at the import of a module it
+    never loaded. A full run loaded every module a test loads, so there the
+    blocks of the files it measured are marked afresh.
+    """
+    if full_run:
+        cur.executemany(
+            "DELETE FROM at_import_block WHERE block IN ("
+            "SELECT b.id FROM block b JOIN file f ON f.id = b.file WHERE f.path = ?)",
+            [(path,) for path in sorted(set(measured))])
+    cur.executemany(
+        "INSERT OR IGNORE INTO at_import_block (block) "
+        "SELECT b.id FROM block b JOIN file f ON f.id = b.file "
+        "WHERE f.path = ? AND b.name = ?", sorted(at_import))
 
 
 def _tests_of_file(cur: sqlite3.Cursor, test_file: str) -> list[int]:
@@ -1202,6 +1250,9 @@ def _forget_dead_checkouts(conn: sqlite3.Connection, checkout: str) -> None:
         cur.execute(
             "DELETE FROM test_block WHERE block IN ("
             "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
+        cur.execute(
+            "DELETE FROM at_import_block WHERE block IN ("
+            "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
         dead_versions = cur.execute(_DEAD_VERSIONS).fetchall()
         cur.executemany("DELETE FROM kept_record WHERE version = ?", dead_versions)
         cur.executemany("DELETE FROM kept_version WHERE id = ?", dead_versions)
@@ -1243,12 +1294,15 @@ def changed_blocks(
 
 def _diff_blocks(
     base_sources: Mapping[str, Optional[str]],
+    ran_at_import: frozenset[BlockKey] = frozenset(),
 ) -> tuple[frozenset[BlockKey], frozenset[BlockKey], frozenset[BlockKey]]:
     """``(changed, new, import-time changed)``; see :func:`changed_blocks`.
 
-    The third set is the subset of ``changed`` whose statements run at import.
-    A vanished block is judged by what it was at the base, since the current
-    source no longer says.
+    The third set is the subset of ``changed`` whose statements run at import:
+    by the block's kind (a module or class body), or because it is one of
+    ``ran_at_import``, the function blocks a run saw execute under no test's
+    context (:func:`blocks_run_at_import`). A vanished block is judged by
+    what it was at the base, since the current source no longer says.
     """
     changed: set[BlockKey] = set()
     new: set[BlockKey] = set()
@@ -1271,15 +1325,29 @@ def _diff_blocks(
                 new.add((path, name))
             elif base[name].digest != block.digest:
                 changed.add((path, name))
-                if block.import_time:
+                if block.import_time or (path, name) in ran_at_import:
                     import_time.add((path, name))
         # Vanished blocks are the ONLY signal for a rename, move or deletion,
         # because children are removed from a parent's digest entirely.
         for name in set(base) - set(current):
             changed.add((path, name))
-            if base[name].import_time:
+            if base[name].import_time or (path, name) in ran_at_import:
                 import_time.add((path, name))
     return frozenset(changed), frozenset(new), frozenset(import_time)
+
+
+def blocks_run_at_import(
+    conn: sqlite3.Connection, paths: Iterable[str],
+) -> frozenset[BlockKey]:
+    """The function blocks of ``paths`` that some run saw execute under no
+    test's context: at import or at collection (semantic 2 of the module
+    docstring)."""
+    found: set[BlockKey] = set()
+    for path in paths:
+        found.update((path, str(name)) for (name,) in conn.execute(
+            "SELECT b.name FROM at_import_block a JOIN block b ON b.id = a.block "
+            "JOIN file f ON f.id = b.file WHERE f.path = ?", (path,)))
+    return frozenset(found)
 
 
 def select_tests(
@@ -1292,7 +1360,8 @@ def select_tests(
             "SELECT 1 FROM block b JOIN file f ON f.id = b.file "
             "WHERE f.path = ? LIMIT 1", (p,)).fetchone()
     }
-    changed, new, import_time = _diff_blocks(base_sources)
+    changed, new, import_time = _diff_blocks(
+        base_sources, blocks_run_at_import(conn, base_sources))
     tests: set[str] = set()
     for path, name in changed:
         tests.update(r[0] for r in conn.execute(_TESTS_OF_BLOCK, (path, name)))
@@ -1505,6 +1574,7 @@ def droppable_test_files(
 
 def import_time_changed_sources(
     base_sources: Mapping[str, Optional[str]], repo_root: Path,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> tuple[str, ...]:
     """Repo-relative coverable source files whose import-time code changed.
 
@@ -1520,8 +1590,13 @@ def import_time_changed_sources(
     counts, since its module body is gone from under its importers. A new
     file does not: nothing imported it at the base, and a file that starts
     importing it has a changed module body of its own.
+
+    With ``conn``, a changed FUNCTION the index saw run at import counts too
+    (:func:`blocks_run_at_import`): the modules that call it while they load
+    import its file, so that file's importers are a superset of them.
     """
-    _changed, _new, import_time = _diff_blocks(base_sources)
+    ran = blocks_run_at_import(conn, base_sources) if conn is not None else frozenset()
+    _changed, _new, import_time = _diff_blocks(base_sources, ran)
     prefix = f"{repo_root}/"
     rels = {p[len(prefix):] if p.startswith(prefix) else p for p, _name in import_time}
     return tuple(sorted(r for r in rels if not _is_test_path(r) and _is_coverable(r)))
@@ -1563,7 +1638,8 @@ def narrowing_blockers(
             out.append(f"unknown coverable source: {r}")
     for p in sorted(selection.missing_paths):
         out.append(f"missing changed file: {rel(p)}")
-    # AN IMPORT IS NOT A COVERAGE ROW. A module or class body runs when the
+    # AN IMPORT IS NOT A COVERAGE ROW. A module or class body, and a function
+    # called from one (semantic 2 of the module docstring), runs when the
     # file is imported, under no test's context, so a test that only imports
     # the file has no row for it, and narrowing would read that absence as
     # proof of irrelevance. Every importer runs the changed code; the index

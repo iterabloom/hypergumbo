@@ -388,6 +388,27 @@ def test_the_helper_is_silent_for_a_function_body_and_for_no_python(repo: Path) 
     assert _helper(repo, []) == ([], "")
 
 
+def test_the_helper_takes_a_function_the_index_saw_run_at_import(repo: Path) -> None:
+    """The same function-body change the test above is silent for. Once a run
+    has seen ``ceiling`` execute under no test's context (a module calls it
+    while it loads), the change is import-time code and the file's loaders
+    are selected."""
+    from hypergumbo_core import selection_index as si
+    from hypergumbo_core.block_hash import blocks_for_source
+
+    path = str(repo / LIMITS)
+    conn = si.open_index(repo / "index.sqlite")
+    si.store_edges(conn, {}, digests={path: {b.name: b.digest
+                                             for b in blocks_for_source(path, BASE)}})
+    si._store_at_import(conn.cursor(), [(path, "ceiling")], [path], full_run=False)
+    conn.commit()
+    conn.close()
+    (repo / LIMITS).write_text(BASE.replace("return CAP", "return CAP + 0"))
+    got, said = _helper(repo, [LIMITS])
+    assert got == READERS
+    assert "1 file(s) with changed import-time code are loaded by 3 test file(s)" in said
+
+
 def test_the_helper_names_the_tests_still_importing_a_deleted_module(repo: Path) -> None:
     (repo / LIMITS).unlink()
     got, _ = _helper(repo, [LIMITS])

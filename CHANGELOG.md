@@ -42,6 +42,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The index keeps a function's statement records across edits.**
 - **Narrowing keeps tests whose own call ran nothing measured.**
 - **A command counts the by-statement selector's bar.**
+- **Narrowing treats a function run at import as import-time code.**
 
 ## [10.0.0] - 2026-11-16
 
