@@ -16,15 +16,15 @@ for focused LLM context.
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
 - **382** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 125 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **62292** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 13993, of which 7991 are functions, methods or classes
-- **250074** edges, test code included, by type:
-  - calls: 140969
-  - contains: 58002
-  - imports: 21618
-  - instantiates: 13388
-  - references: 11800
-  - module_attr_ref: 2386
-  - other: 1911
+- **62348** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14000, of which 7991 are functions, methods or classes
+- **250324** edges, test code included, by type:
+  - calls: 141121
+  - contains: 58046
+  - imports: 21630
+  - instantiates: 13395
+  - references: 11818
+  - module_attr_ref: 2395
+  - other: 1919
 
 ## Package Architecture
 
@@ -1010,8 +1010,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 7be669b977c5
-  commit_count: 9386
+  commit: 0c6604cc5df7
+  commit_count: 9390
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
