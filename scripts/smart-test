@@ -144,6 +144,62 @@ echo $$ > "$LOCKFILE.pid"
 _cleanup_lock() { rm -f "$LOCKFILE.pid"; }
 trap _cleanup_lock EXIT
 
+# ── A graph rebuild gives way to a test run ──
+# After a run, smart-test may have started an analysis of the branch's baseline
+# commit in the background (start_graph_rebuild, below): 4 GB and one core for
+# five minutes. A test run that starts stops it. Nothing is lost but the time:
+# this run starts it again when it ends. The pid file can outlive its process
+# and the number be given to another, so the process must BE a graph rebuild.
+GRAPH_REBUILD_DIR="${HG_GRAPH_REBUILD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/hypergumbo-graph-rebuild}"
+stop_graph_rebuild() {
+    local pid
+    pid=$(cat "$GRAPH_REBUILD_DIR/rebuild.pid" 2>/dev/null || true)
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+    grep -q -a 'graph-rebuild' "/proc/$pid/cmdline" 2>/dev/null || return 0
+    # Its process group: the rebuild leads one, and the analysis is in it.
+    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+    echo "[smart-test] stopped a graph rebuild (pid $pid): a test run has the machine" >&2
+}
+stop_graph_rebuild
+
+# The analyzer build of an installed hypergumbo ($1): the name the survey
+# cache files its results under, so the build a stored graph has to be from.
+# Read from the interpreter in the command's first line; prints nothing when
+# that is not a plain interpreter path or the answer is not a build name.
+stable_analyzer_build() {
+    local interpreter
+    interpreter=$(head -1 "$1" 2>/dev/null | sed -n 's/^#!//p')
+    [[ -n "$interpreter" ]] && [[ -x "$interpreter" ]] || return 0
+    "$interpreter" -c 'from hypergumbo_core.analyzer_identity import compute_analyzer_identity_hash as f; print(f())' 2>/dev/null | grep -E '^[0-9a-f]{16}$' || true
+}
+
+# === GRAPH REBUILD ===
+# Start, for AFTER this run has ended, an analysis of the branch's baseline
+# commit, so that the next selection finds a graph that answers exactly
+# (coverage-select graph-rebuild says how: a checkout of its own, the
+# installed analyzer, one at a time, and it does nothing when that graph is
+# stored). It waits for this process to be gone and a minute more, and any
+# smart-test that starts meanwhile stops it (stop_graph_rebuild, above), so it
+# never runs beside tests. Everything here is in a background subshell that
+# closes the lock's descriptor: a child holding fd 9 would hold the lock, and
+# the next run would be refused for as long as the analysis took.
+start_graph_rebuild() {
+    [[ "$USE_STORED_GRAPH" == "true" ]] || return 0
+    local hg="${STABLE_HG:-}" parent=$$
+    if [[ -z "$hg" ]] && [[ -x "$HOME/.local/bin/hypergumbo" ]]; then
+        hg="$HOME/.local/bin/hypergumbo"
+    fi
+    [[ -n "$hg" ]] || return 0
+    (
+        build=$(stable_analyzer_build "$hg")
+        commit=$(git merge-base HEAD "${BASE_BRANCH:-origin/dev}" 2>/dev/null || true)
+        [[ -n "$build" ]] && [[ -n "$commit" ]] || exit 0
+        exec setsid "$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" graph-rebuild \
+            --commit "$commit" --hg "$hg" --build "$build" --after-pid "$parent" \
+            --work-dir "$GRAPH_REBUILD_DIR"
+    ) </dev/null >/dev/null 2>&1 9>&- &
+}
+
 # Signal that we're running through smart-test (ADR-0010)
 # This prevents infinite recursion when the pytest wrapper calls smart-test
 # and smart-test subsequently calls pytest.
@@ -244,6 +300,11 @@ STALE_SHADOW=true
 # is mentioned by no other changed file, or the graph's age would add more
 # than 150 test files that are not this change's. The manifest header names
 # the graph and its age. Opt out per run with --fresh-graph.
+#
+# So that a graph exists which answers EXACTLY, each run starts, for after it
+# has ended, a background analysis of the branch's baseline commit (its
+# merge-base with dev) unless that graph is stored: a branch differs from its
+# baseline by its own change and nothing else. See start_graph_rebuild.
 USE_STORED_GRAPH=true
 #
 # RUN RECORDS. Every run that reaches pytest stores which commit and change it
@@ -1332,6 +1393,7 @@ if [[ "$HAS_EXPLICIT_TESTS" == "true" ]]; then
     fi
 
     # Run pytest with the caller's args (test paths are already in PYTEST_ARGS)
+    start_graph_rebuild
     run_pytest "" "${PYTEST_ARGS[@]}"
     exit $?
 fi
@@ -1354,6 +1416,7 @@ if [[ -z "$STABLE_HG" ]]; then
 fi
 
 log "Using stable hypergumbo: $STABLE_HG"
+start_graph_rebuild
 
 # Get baseline commit (last-green-sha or merge-base fallback)
 BASE_BRANCH="${BASE_BRANCH:-origin/dev}"
@@ -1434,17 +1497,6 @@ stale_graph_shadow() {
         ${why:+--why "$why"} || true
 }
 
-# The analyzer build of the installed hypergumbo: the name the survey cache
-# files its results under, so the build a stored graph has to be from. Read
-# from the interpreter in the command's first line; prints nothing when that
-# is not a plain interpreter path or the answer is not a build name.
-stable_analyzer_build() {
-    local interpreter
-    interpreter=$(head -1 "$STABLE_HG" 2>/dev/null | sed -n 's/^#!//p')
-    [[ -n "$interpreter" ]] && [[ -x "$interpreter" ]] || return 0
-    "$interpreter" -c 'from hypergumbo_core.analyzer_identity import compute_analyzer_identity_hash as f; print(f())' 2>/dev/null | grep -E '^[0-9a-f]{16}$' || true
-}
-
 select_static() {
 # Write changed files to temp file for slice query.
 # WI-zufij: `hypergumbo slice --files` only reaches packages/*/src/** (see the
@@ -1501,7 +1553,7 @@ SLICE_START_S=$SECONDS
 GRAPH_ANSWERED=false
 GRAPH_LINE=""
 if [[ "$USE_STORED_GRAPH" == "true" ]] && [[ -s "$CHANGED_FILE_LIST" ]]; then
-    GRAPH_BUILD=$(stable_analyzer_build)
+    GRAPH_BUILD=$(stable_analyzer_build "$STABLE_HG")
     if [[ -z "$GRAPH_BUILD" ]]; then
         echo "[smart-test] stored graph not used: the installed hypergumbo's analyzer build could not be read; analysing the repository" >&2
     else

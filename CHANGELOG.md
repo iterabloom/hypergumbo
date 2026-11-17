@@ -33,6 +33,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A time-stamped test id no longer stops parallel runs.**
 - **smart-test keeps a compact copy of each analysis graph.**
 - **smart-test selects from a stored graph in seconds.**
+- **smart-test rebuilds its baseline graph in the background.**
 
 ## [10.0.0] - 2026-11-16
 
