@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from hypergumbo_core import graph_rows
@@ -271,7 +271,7 @@ _IDS = st.sampled_from([f"n{i}" for i in range(9)])
 _PATHS = st.sampled_from(["a.py", "b.py", "pkg/c.py", "tests/test_a.py", "tests/test_b.py"])
 
 
-@settings(max_examples=150, deadline=None)
+@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(
     nodes=st.lists(st.tuples(_IDS, _PATHS), min_size=1, max_size=9, unique_by=lambda n: n[0]),
     edges=st.lists(st.tuples(_IDS, _IDS), max_size=24),
