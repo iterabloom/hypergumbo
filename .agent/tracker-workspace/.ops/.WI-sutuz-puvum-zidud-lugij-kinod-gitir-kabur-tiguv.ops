@@ -26,3 +26,18 @@
   clock: 2  # 4fd5
   nonce: 4fd5  # 4fd5
   message: "PREMISE CHECKED 2026-11-17 (dev d0e00a83c), before building: moving STABLE_ID_PREFIX alone does not do it. Commit 19eaf211c added a module-level schema import in TWO files every test file already loads: ir.py:126 (STABLE_ID_PREFIX) and analyze/base.py:175 (SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX). Other module-level importers of schema in core: fingerprint.py:103, repo_fingerprint.py:103, survey_io.py:55, spec_validator.py:157, cli.py:332; whether each is on a chain from the root conftest is to be measured with hub_path.py. The labels are derived by schema.value_label from the five *_SCHEME constants, so the leaf module has to hold the scheme constants, value_label and the four *_PREFIX labels; schema.py re-exports them."  # 4fd5
+- op: update  # 4967
+  at: '2026-11-17T10:11:47Z'  # 4967
+  by: agent  # 4967
+  actor: jgstern_agent  # 4967
+  clock: 3  # 4967
+  nonce: '4967'  # 4967
+  set:  # 4967
+    status: done  # 4967
+- op: discuss  # 2a29
+  at: '2026-11-17T10:11:47Z'  # 2a29
+  by: agent  # 2a29
+  actor: jgstern_agent  # 2a29
+  clock: 4  # 2a29
+  nonce: 2a29  # 2a29
+  message: "Merged in PR #2223 (dev 31be103a6; commit 'refactor(core): the identity scheme constants move to a leaf module'). CLOSE CONDITION, re-run on dev 31be103a6: (1) hub_path.py: closure of schema.py = 326 of 1,478 test files (1,477 of 1,477 before; cli.py 314, unchanged); conftest.py -> schema.py: no path. Output: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/hub_dev_31be103a6.txt. (2) Values unchanged: old core against new core on packages/hypergumbo-tracker/src, 1,894 nodes, 0 with a different stable_id / shape_id / fingerprint, same repo_fingerprint (leaf/ids_before_after.txt); the whole suite, id-pin tests included, passed locally under the CI stubs and in PR CI. (3) ADR-0035 and docs/ARCHITECTURE.md name identity_schemes.py. WHAT WAS BUILT IS WIDER THAN THE TITLE: the five scheme constants, value_label, the four labels and identity_digest moved, because analyze/base.py imported them too. Tests: packages/hypergumbo-core/tests/test_identity_schemes.py; 5 mutations, each one failed test (leaf/mutations.tsv). NOT MEASURED: how often schema.py's import-time code changes. A change to identity_schemes.py's own import-time code still selects the whole suite, by design."  # 2a29

@@ -29,3 +29,25 @@
   set: {}  # 29e7
   add:  # 29e7
     isbefore: [WI-huvum-taral-mogos-dozaj-kibus-hitid-linav-dohaf]  # 29e7
+- op: discuss  # 8a6c
+  at: '2026-11-17T11:59:04Z'  # 8a6c
+  by: agent  # 8a6c
+  actor: jgstern_agent  # 8a6c
+  clock: 3  # 8a6c
+  nonce: 8a6c  # 8a6c
+  message: "Merged as PR #2224, dev SHA 1ffb446d62ec."  # 8a6c
+- op: update  # c816
+  at: '2026-11-17T12:01:23Z'  # c816
+  by: agent  # c816
+  actor: jgstern_agent  # c816
+  clock: 4  # c816
+  nonce: c816  # c816
+  set:  # c816
+    status: done  # c816
+- op: discuss  # 643d
+  at: '2026-11-17T12:01:23Z'  # 643d
+  by: agent  # 643d
+  actor: jgstern_agent  # 643d
+  clock: 5  # 643d
+  nonce: 643d  # 643d
+  message: "Merged in PR #2224 (dev 1ffb446d6). BUILT: packages/hypergumbo-core/src/hypergumbo_core/graph_rows.py (dependent_files = the walk moved out of the `slice --files` handler, which now calls it; store_graph / walk / newest_graph / stored_graphs / survey_graph; tables graph, graph_path, graph_node, graph_edge, graph_dirty in the selection index's file); coverage-select graph-store, graph-walk (exit 0 answer written / 3 no stored graph / 4 failed), graph-list; stale-record stores the rows after every fresh slice. CLOSE CONDITION, RUN: (1) the one survey still on disk when the work started (c625dbf52, 68,798 nodes, 276,494 edges): 2,791 seed sets (the 16 logged changed_source sets, each of 2,594 files alone, 120 other spellings, 60 random sets of five, one unknown file) against the RELEASED 10.0.0 handler, which still has its own walk: 161,155 files named, 0 sets differ; as commands on the 16 logged sets, `slice --files --input` against `graph-walk`: 0 differ, 4.6 s against 0.24 s; 3.9 s to store, 5.2 MB. Control: 2,000 stored edges deleted -> 380 sets differ. (2) LIVE: the PR's own manifest run stored graph 1 through stale-record in the real index (68,885 nodes, 274,891 edges, head e3fd495c7); the 17 logged seed sets on that survey, `slice --files --input` against `graph-walk`: 0 differ. (3) 25 text mutations, each at least one failed test. Files: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/rows/ (equiv_check.py, equiv_reference.py, equiv_out.txt, live_graph_check.txt, mutations.tsv). DEVIATIONS FROM THE DESCRIPTION: no symbol table keyed by stable_id (the walk is seeded by file path and reads no id); each graph also stores the files that differed from its commit, which the switch needs. NOT SHOWN: more than two surveys (the other 14 registered since 11-16 had been evicted); a graph made by another analyzer build. FOUND ON THE WAY: coverage-select's _lines() reads a MISSING list as an empty one; graph-walk reads its list itself, the other commands still use _lines()."  # 643d
