@@ -510,8 +510,10 @@ elif [[ "${HG_SKIP_MYPY_GATE:-}" != "1" ]]; then
     MYPY_GATE_LOG="$REPO_ROOT/.ci/mypy-gate.log"
     mkdir -p "$REPO_ROOT/.ci" 2>/dev/null || true
     set +e
+    MYPY_GATE_START_S=$SECONDS
     "$TOOLS_ROOT/scripts/check-mypy-ratchet" --mode=strict > "$MYPY_GATE_LOG" 2>&1
     MYPY_GATE_RC=$?
+    MYPY_GATE_SECONDS=$((SECONDS - MYPY_GATE_START_S))
     set -e
     if [[ $MYPY_GATE_RC -eq 1 ]]; then
         cat "$MYPY_GATE_LOG" >&2
@@ -1148,6 +1150,7 @@ run_pytest() {
         # INV-tazur: the junit report is how the verdict below counts what ran,
         # so the previous run's report must not survive to answer for this one.
         rm -f "$JUNIT_XML"
+        local pytest_start_s=$SECONDS
         env -u FORCE_COLOR -u COLORTERM PYTHONPATH="$plugin_path" ${omp_cap:+OMP_NUM_THREADS=$omp_cap} pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
         # Corrective re-derivation: these may only ESCALATE to failure, never
         # de-escalate to success. An affirmative-green clause (`N passed` && !
@@ -1202,6 +1205,23 @@ run_pytest() {
                 --repo-root "${REPO_ROOT:-$PWD}" --junit "$JUNIT_XML" run-record \
                 --kind "$run_kind" --exit "$exit_code" \
                 --base-branch "${BASE_BRANCH:-origin/dev}" || true
+        fi
+
+        # THE WALL-TIME LINE (hypergumbo_core/wall_time.py): this run against
+        # the 60 s local target, with what the script timed around its own
+        # steps. Reported, never a gate. Here because every run that reaches
+        # pytest passes this point; the coverage gate and the fold come after
+        # it and are not in the number, which the line says. Not in CI, where
+        # nobody waits on a local run. ${…:-} because tests drive this
+        # function alone.
+        if [[ -z "${CI:-}" ]] && [[ "${SMART_TEST_WALL_REPORT:-true}" == "true" ]]; then
+            local selection_name="the analysis"
+            [[ -n "${GRAPH_LINE:-}" ]] && selection_name="the stored graph"
+            "${TOOLS_ROOT:-${REPO_ROOT:-$PWD}}/scripts/coverage-select" \
+                --repo-root "${REPO_ROOT:-$PWD}" --junit "$JUNIT_XML" wall-report \
+                --total "$SECONDS" --gate "${MYPY_GATE_SECONDS:-0}" \
+                --selection "${SLICE_DURATION_S:-0}" --selection-name "$selection_name" \
+                --tests "$((SECONDS - pytest_start_s))" || true
         fi
 
         # A RED RUN STILL LEAVES ITS READ RECORD. The caller folds the

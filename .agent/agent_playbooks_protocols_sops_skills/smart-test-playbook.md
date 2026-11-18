@@ -94,6 +94,10 @@ If runs follow one another without a few idle minutes (an agent's pre-PR chain),
 
 **Looking at the stored graphs:** `scripts/coverage-select graph-list`.
 
+### The wall-time line
+
+Every local run that reaches pytest ends its test phase with one line: its wall time against the **60 s local target** (owner ruling, 2026-11-17). Under the target it gives the total and its parts; over it, by how much, the parts largest first, and the slowest single test, which bounds wall time whatever the worker count. It is reported and gates nothing. The clock stops when the tests end (the coverage gate and the fold into the selection index come after), and the line says so. Example: `smart-test: 15 s to the end of the tests (local target 60 s): the tests 10 s, the rest 4 s, the type gate 1 s (49 tests, 15 test-seconds)`. "The rest" is what the timed parts leave of the total (change detection, narrowing, writing the manifest); "test-seconds" is the tests' summed duration, which exceeds their wall time by about the number of workers.
+
 ### Coverage narrowing, and the tests it never drops
 
 After the graph has named the test files a change reaches, smart-test drops the ones whose recorded coverage shows they never run the changed code (`--no-narrow` keeps them all). The manifest is written after this step, so merge CI runs the narrowed set.

@@ -30,6 +30,7 @@ catches broadly and exits 0 — see `main`.
     stale-report  print the accrued stale-graph evidence and its verdict
     run-record  store what one test run ran against and which tests failed
     statement-bar  count the by-statement selector's bar from the run records
+    wall-report  print a run's wall time against the 60 s local target
     graph-store  store a survey's graph as rows in the index
     graph-walk  write the files that depend on the changed files, walking a
                 STORED graph (exit 3: no stored graph to walk; 4: it failed)
@@ -84,6 +85,7 @@ from hypergumbo_core.selection_log import (
     store_snapshot,
 )
 from hypergumbo_core.statement_select import select_by_statement
+from hypergumbo_core.wall_time import junit_times, report as wall_report
 from hypergumbo_core.selection_shadow import (
     compare, failed_tests_from_junit, ran_tests_from_junit,
 )
@@ -1166,6 +1168,16 @@ def cmd_graph_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_wall_report(args: argparse.Namespace) -> int:
+    """Print the run's wall time against the local target (wall_time.py).
+    smart-test hands in the seconds it timed around its own steps."""
+    parts = {"the type gate": args.gate, args.selection_name: args.selection,
+             "the tests": args.tests}
+    times = junit_times(Path(args.junit)) if args.junit else None
+    print(wall_report(total=args.total, parts=parts, tests=times))
+    return 0
+
+
 def cmd_statement_bar(args: argparse.Namespace) -> int:
     """Print the by-statement selector's bar, counted from the run records.
     Exit 0 when it is met, 1 when it is not (yet, or because of a miss)."""
@@ -1374,6 +1386,15 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("stale-report").set_defaults(func=cmd_stale_report)
     sub.add_parser("statement-bar").set_defaults(func=cmd_statement_bar)
+    wr = sub.add_parser("wall-report")
+    wr.add_argument("--total", type=float, required=True, help="wall seconds since the run began")
+    wr.add_argument("--gate", type=float, default=0.0, help="seconds in the type gate")
+    wr.add_argument("--selection", type=float, default=0.0,
+                    help="seconds in the analysis or the walk of a stored graph")
+    wr.add_argument("--selection-name", default="the analysis",
+                    help="what --selection timed, as the line should call it")
+    wr.add_argument("--tests", type=float, default=0.0, help="wall seconds pytest took")
+    wr.set_defaults(func=cmd_wall_report)
 
     rr = sub.add_parser("run-record")
     rr.add_argument("--kind", required=True,
