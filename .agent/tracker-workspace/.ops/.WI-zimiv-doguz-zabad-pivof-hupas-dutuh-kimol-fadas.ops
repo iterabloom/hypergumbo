@@ -1,0 +1,22 @@
+- op: create  # 04a3
+  at: '2026-11-18T03:01:34Z'  # 04a3
+  by: agent  # 04a3
+  actor: jgstern_agent  # 04a3
+  clock: 1  # 04a3
+  nonce: 04a3  # 04a3
+  data:  # 04a3
+    kind: work_item  # 04a3
+    title: "Selection index: a module, class or session fixture runs under its own coverage context, and every test that used it inherits its rows"  # 04a3
+    status: todo_hard  # 04a3
+    priority: 2  # 04a3
+    parent:  # 04a3
+    tags:  # 04a3
+    - smart_test  # 04a3
+    - fast_smart_test_plan  # 04a3
+    isbefore:  # 04a3
+    - WI-gojov-rohul-savug-mulap-rirur-diguh-havij-dosih  # 04a3
+    duplicate_of: []  # 04a3
+    not_duplicate_of: []  # 04a3
+    pr_ref:  # 04a3
+    description: "WHY. A module, class or session fixture runs once per worker, inside the setup of whichever test needs it first. Coverage records its lines under that one test. Every other test that uses the fixture has no row for the code the fixture ran, so a change to that code selects one of its dependents and leaves the rest out. Sizes on 2026-11-17: 99 such fixtures in 78 test files.\n\nWHAT EXISTS. scripts/pytest_plugins/pytest_source_reads.py already wraps pytest_fixture_setup for every fixture that is not function scope, and writes per test the keys of the shared fixtures it used (request.getfixturevalue ones included). prose_only.fold_run merges those away; the selection index does not store them.\n\nWHAT TO BUILD. (1) While a shared fixture is being set up, coverage runs under a context of the fixture's own, switched back afterwards (a stack: a session fixture can be built inside a module fixture). pytest-cov 7 sets no variable naming the current context, so the plugin tracks the test phase itself. (2) The same for the fixture's post-yield half, which runs in the teardown of whichever test is last. (3) At fold, selection_index.update_from_run gives the rows of a fixture's context to every test of that run that used the fixture, directly or through another shared fixture; such rows do not make a test 'measured'; a fixture context is never read as a test id.\n\nNOT COVERED HERE. State an object keeps after the fixture returned it (a cached property a later test fills): its own item.\n\nCLOSE CONDITION. A test in which two tests share a module fixture and both are paired with the function only the fixture calls, at function and at statement level, in one process and under xdist. A full run folded, with the count of fixture contexts and of tests that inherited rows. A mutation control: a planted fault in code reached only through a shared fixture, every failing test inside what the by-statement selector selects.\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 04a3
+    fields: {}  # 04a3
