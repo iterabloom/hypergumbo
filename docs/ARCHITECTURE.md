@@ -556,6 +556,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
 | `repin-line-citations` | Re-pin ``path=`` / ``line=`` / ``anchor=`` citations whose line moved. |
 | `scheduled-gate` | May a change be merged while the last scheduled full run stands as it does? |
+| `scheduled-trace` | Name the commits to look at for a red scheduled run (``ci-debug trace``). |
 | `score-readability` | Score the reader load of Python source files, one function at a time. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
 | `show-site` | Print the code around one I/O allowlist site, for a human reviewing the sheet. |
@@ -1019,8 +1020,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 691d2bd76bee
-  commit_count: 9491
+  commit: ca2a7956a404
+  commit_count: 9494
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
