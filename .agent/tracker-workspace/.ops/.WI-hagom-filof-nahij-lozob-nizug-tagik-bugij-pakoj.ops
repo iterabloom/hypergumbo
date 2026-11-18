@@ -1,0 +1,22 @@
+- op: create  # de9e
+  at: '2026-11-18T14:33:42Z'  # de9e
+  by: agent  # de9e
+  actor: jgstern_agent  # de9e
+  clock: 1  # de9e
+  nonce: de9e  # de9e
+  data:  # de9e
+    kind: work_item  # de9e
+    title: "Planted-fault campaign 4 on a dev with INV-kazud's fix: zero real misses before the switch"  # de9e
+    status: todo_hard  # de9e
+    priority: 2  # de9e
+    parent:  # de9e
+    tags:  # de9e
+    - smart_test  # de9e
+    - fast_smart_test_plan  # de9e
+    isbefore:  # de9e
+    - WI-pugol-sajov-fazah-romaj-lotag-hatuj-kogap-tovor  # de9e
+    duplicate_of: []  # de9e
+    not_duplicate_of: []  # de9e
+    pr_ref:  # de9e
+    description: "WHAT. Campaign 3 (WI-gojov) was not clean: 12 failed tests outside the selection, all from one shape (a module fixture's closure keeping its own cache), fixed by INV-kazud (PR #2255). Run the weighted planted-fault campaign again on a dev that has the fix, with a FRESH seed (not 20261118) so it plants other faults, and after a full run has folded the index (so every test's rows reflect the marks).\n\nHOW. ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/campaign3.py --out bar/campaign4 --per-shape 8 --seed <new>. Before it: smart-test --full on dev (folds the index), stored graph rebuilt for HEAD. Replay every miss alone (-n 0) with and without the fault (bar/replay_misses.py) before calling it real; a miss that fails alone is real, one that does not reproduce goes to WI-holuj.\n\nCLOSE CONDITION. Summary in the notebook: planted, type gate, ran, failed a test, failed tests, kept, named, outside, by shape. Zero real misses: WI-pugol may proceed (state with the count that this bounds the miss rate and does not prove it zero). One real miss: the selector stays off and the miss is filed."  # de9e
+    fields: {}  # de9e

@@ -20,3 +20,18 @@
     pr_ref:  # 62f5
     description: "WHY. The first campaign (210 planted faults, 104 ran, 93 failed a test) found 13 failing tests in 3 runs that the index does not pair with the changed function: a memoised function, a shared fixture, tests that start a child process. The selector's own miss count read zero, because it only counts tests it had paired. The by-statement selector stays recording-only until this is re-run clean.\n\nWHAT. Re-run bar/campaign.py after the shared-work fixes are merged and a full run has folded the index, with the sample WEIGHTED to the shapes that failed: functions under a cache decorator, functions reached through a module, class or session fixture, functions that write module state, functions run by tests that start a child. For each planted fault run every test the stored graph names (not only the tests the index pairs with the function), and count EVERY failed test the selector would have left out, paired or not.\n\nCLOSE CONDITION. The campaign's summary kept in the notebook: faults planted, stopped by the type gate, run, failed a test; failed tests the selector would have left out = 0, with the count by shape. One miss: the selector stays off and the miss is filed. State with the count that a clean campaign bounds the miss rate and does not prove it zero.\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 62f5
     fields: {}  # 62f5
+- op: update  # 189e
+  at: '2026-11-18T12:56:57Z'  # 189e
+  by: agent  # 189e
+  actor: jgstern_agent  # 189e
+  clock: 2  # 189e
+  nonce: 189e  # 189e
+  set:  # 189e
+    status: done  # 189e
+- op: discuss  # 70e1
+  at: '2026-11-18T12:56:57Z'  # 70e1
+  by: agent  # 70e1
+  actor: jgstern_agent  # 70e1
+  clock: 3  # 70e1
+  nonce: '70e1'  # 70e1
+  message: "CAMPAIGN RUN, NOT CLEAN; the selector stays OFF. 89 faults planted (one statement each, 8 runs per shape sought), 43 stopped by the type gate, 46 ran, 40 failed a test: 3,729 failed tests, 3,544 kept by the selector, 171 named as ones coverage cannot speak for, 14 outside. By shape (ran / failed-a-test / outside): cached 6/5/0 (pool exhausted at 6), kept 8/6/11, fixture 8/8/1, state 8/6/0, child 8/7/0, plain 8/8/2. REPLAYED: 12 of the 14 are real misses in 2 faults, all in test_axiom_falsification.py: each fails alone (-n 0) with the fault and passes alone without it. Cause: the module-scoped fixture survey hands out a closure that keeps behavior maps in a dict, so only the first test per name records the analysis. Filed as INV-kazud (isbefore WI-pugol). The other 2 (pep508_name fault) did not reproduce in 4 tries (alone and in the 387-file set at -n 6, with and without the fault): added to WI-holuj as intermittent. Even a clean campaign of 40 runs would bound the per-run miss rate near 7% (95%), not prove it zero. Summary: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/campaign3_summary.txt."  # 70e1
