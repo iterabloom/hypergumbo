@@ -18,6 +18,7 @@ function-scoped teardown, the conftest's included -- and fails if anything
 they set is still there. Remove the conftest fixture and this module errors.
 """
 
+# covers: conftest.py
 from __future__ import annotations
 
 import os
