@@ -174,6 +174,15 @@ class _Bucket:
         self.docs: set[str] = set()
         self.lines: set[str] = set()
 
+    def __bool__(self) -> bool:
+        return bool(self.reads or self.opaque or self.docs or self.lines)
+
+    def merge(self, other: "_Bucket") -> None:
+        self.reads |= other.reads
+        self.opaque |= other.opaque
+        self.docs |= other.docs
+        self.lines |= other.lines
+
     def dump(self) -> dict[str, list[str]]:
         return {"reads": sorted(self.reads), "opaque": sorted(self.opaque),
                 "docs": sorted(self.docs), "lines": sorted(self.lines)}
@@ -319,11 +328,12 @@ class SourceReads:
         #: The running test's node id, and the thread the tests run on.
         self.nodeid: Optional[str] = None
         self.thread = threading.get_ident()
-        #: Cached functions: what each one's body did (audit events), which
-        #: tests called each, and the key of each function's code (None: not
-        #: repository code).
-        self.caches: dict[str, _Bucket] = {}
+        #: Cached functions: which tests called each; per function and per
+        #: ENTRY (the arguments), what the body that filled it read or
+        #: started, kept only when it did; and the key of each function's
+        #: code (None: not repository code).
         self.test_caches: dict[str, set[str]] = {}
+        self.cache_events: dict[str, dict[Any, _Bucket]] = {}
         self.cache_keys: dict[Any, Optional[str]] = {}
         self.flush_seconds = flush_seconds
         self.root = os.path.realpath(root) + os.sep
@@ -596,25 +606,52 @@ class SourceReads:
                             found.add(key)
         return sorted(found)
 
-    def used_cache(self, key: str) -> None:
+    def used_cache(self, key: str, entry: Callable[[], Any]) -> None:
         """A call of cached function ``key``, hit or miss: the running test
-        used it, and so did the shared work the call was made inside."""
+        used it, and so did the shared work the call was made inside.
+
+        What the body that filled THIS ENTRY read or started is the caller's
+        too: a test handed a stored value depends on the file the fill read
+        and on the process it started. Per entry and not per function: one
+        test's ``git`` in its own directory is not every caller's.
+        ``entry()`` gives the cache key of the call's arguments and is asked
+        for only when some fill of this function recorded anything."""
         if not self.active:
             return
         if self.building and threading.get_ident() == self.thread:
             self.nested.setdefault(self.building[-1], set()).add(f"cache|{key}")
         if self.nodeid is not None:
             self.test_caches.setdefault(self.nodeid, set()).add(key)
+        fills = self.cache_events.get(key)
+        if fills:
+            try:
+                events = fills.get(entry())
+            except TypeError:  # unhashable arguments: the cache refuses them itself
+                return
+            if events is not None:
+                for target in (*self.scopes, *([self.test] if self.test is not None else [])):
+                    target.merge(events)
 
-    def cache_body(self, key: str) -> Any:
-        """The context to run a cached function's body in, or None when it
-        must run as it is: outside every test (the code is then recorded
-        under no test, which the index treats as run at import), and on a
-        thread other than the one the tests run on (coverage has ONE current
-        context for the whole process, and this plugin one stack)."""
-        if not self.active or not self.phase or threading.get_ident() != self.thread:
-            return None
-        return self._shared_work(f"cache|{key}", self.caches.setdefault(key, _Bucket()))
+    def labels_cache_bodies(self) -> bool:
+        """Whether a cached body gets a context of its own here. Not outside
+        every test (the code is then recorded under no test, which the index
+        treats as run at import), and not on a thread other than the one the
+        tests run on (coverage has ONE current context for the whole
+        process, and this plugin one stack)."""
+        return bool(self.active and self.phase) and threading.get_ident() == self.thread
+
+    @contextlib.contextmanager
+    def cache_body(self, key: str, entry: Any) -> Iterator[None]:
+        """Run the body that fills ``entry`` of cached function ``key`` under
+        the function's coverage context, and keep what it read or started
+        for the later callers of that entry."""
+        events = _Bucket()
+        try:
+            with self._shared_work(f"cache|{key}", events):
+                yield
+        finally:
+            if events:
+                self.cache_events.setdefault(key, {}).setdefault(entry, _Bucket()).merge(events)
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_runtest_setup(self, item: Any) -> None:
@@ -680,7 +717,6 @@ class SourceReads:
                 if bucket is not self.test
             },
             "fixtures": {key: b.dump() for key, b in self.fixtures.items()},
-            "caches": {key: b.dump() for key, b in self.caches.items()},
             "unwrapped_caches": self.unwrapped_caches(),
             "nested": {key: sorted(inner) for key, inner in self.nested.items()},
             "modules": {key: b.dump() for key, b in self.modules.items()},
@@ -767,6 +803,8 @@ sys.addaudithook(_hook)
 # function's own (``|shared|cache|<file>::<qualified name>``), and every
 # CALL, hit or miss, is recorded as a use by the running test. A test then
 # inherits the rows of every cached function it used (the fold does that).
+# What a body read or started is kept per ENTRY and handed to each later
+# caller of that entry, here, as the call is made.
 #
 # With no recorder (the option was not given) both wrappers pass straight
 # through. A function that is not repository code is cached as before and
@@ -774,6 +812,10 @@ sys.addaudithook(_hook)
 # ``__wrapped__`` are the cache's own.
 
 _REAL_LRU_CACHE = functools.lru_cache
+#: How functools turns a call's arguments into a cache key (hashable when
+#: the arguments are). Private there, and the only way to name an entry the
+#: way the cache does.
+_MAKE_KEY = functools._make_key  # type: ignore[attr-defined]
 #: Where the interpreter and its installed packages live.
 _INSTALLED = tuple({os.path.realpath(prefix) + os.sep for prefix in (sys.prefix, sys.base_prefix)}
                    | {os.path.dirname(os.path.realpath(os.__file__)) + os.sep})
@@ -785,8 +827,11 @@ def _recorded_cache(fn: Any, maxsize: Any, typed: bool) -> Any:
     code = getattr(fn, "__code__", None)
     # A builtin, a class or a callable object has no code to label. The
     # standard library and installed packages are decided here, once, so that
-    # their cached functions stay exactly what functools makes.
-    if code is None or code.co_filename.startswith(_INSTALLED) \
+    # their cached functions stay exactly what functools makes. Code with no
+    # file of its own (a frozen module of the standard library, ``exec`` of a
+    # string) is not the repository's either.
+    if code is None or not os.path.isabs(code.co_filename) \
+            or code.co_filename.startswith(_INSTALLED) \
             or "site-packages" in code.co_filename:
         return _REAL_LRU_CACHE(maxsize=maxsize, typed=typed)(fn)
     qualname = getattr(fn, "__qualname__", code.co_name)
@@ -795,10 +840,9 @@ def _recorded_cache(fn: Any, maxsize: Any, typed: bool) -> Any:
     def body(*args: Any, **kwargs: Any) -> Any:
         recorder = _STATE["recorder"]
         key = recorder.cache_key(code, qualname) if recorder is not None else None
-        context = recorder.cache_body(key) if key is not None else None
-        if context is None:
+        if key is None or not recorder.labels_cache_bodies():
             return fn(*args, **kwargs)
-        with context:
+        with recorder.cache_body(key, _MAKE_KEY(args, kwargs, typed)):
             return fn(*args, **kwargs)
 
     cached = _REAL_LRU_CACHE(maxsize=maxsize, typed=typed)(body)
@@ -809,7 +853,7 @@ def _recorded_cache(fn: Any, maxsize: Any, typed: bool) -> Any:
         if recorder is not None:
             key = recorder.cache_key(code, qualname)
             if key is not None:
-                recorder.used_cache(key)
+                recorder.used_cache(key, lambda: _MAKE_KEY(args, kwargs, typed))
         return cached(*args, **kwargs)
 
     call.cache_info = cached.cache_info  # type: ignore[attr-defined]

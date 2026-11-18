@@ -429,9 +429,9 @@ def fold_run(
     another version of the plugin is skipped. Per test the stored events are
     its own, those of every fixture it used (unioned across processes by
     fixture key, because one worker may build what another reuses) and those
-    made while its module was imported. The same for every cached function
-    it called (``functools.lru_cache``): what the cached body read or
-    started happened once, in whichever test filled the cache.
+    made while its module was imported. (What a cached function's body read
+    or started is already in the record of every test that was handed the
+    stored value: the plugin copies it per cache entry as the call is made.)
 
     ONE SPELLING PER TEST: a worker of a pytest-xdist group names a test
     ``<id>@<group>`` everywhere but in its list of expected tests. Every id
@@ -448,8 +448,6 @@ def fold_run(
     observed: dict[str, bool] = {}
     used: dict[str, set[str]] = {}
     fixtures: dict[str, _Events] = {}
-    called: dict[str, set[str]] = {}
-    caches: dict[str, _Events] = {}
     modules: dict[str, _Events] = {}
     expected: dict[str, set[str]] = {}
     loose = _events()
@@ -471,12 +469,9 @@ def fold_run(
             test_id = without_xdist_group(recorded_id)
             _merge(tests.setdefault(test_id, _events()), bucket)
             used.setdefault(test_id, set()).update(bucket.get("fixtures", ()))
-            called.setdefault(test_id, set()).update(bucket.get("caches", ()))
             observed[test_id] = bool(data.get("observed")) and observed.get(test_id, True)
         for key, bucket in data.get("fixtures", {}).items():
             _merge(fixtures.setdefault(key, _events()), bucket)
-        for key, bucket in data.get("caches", {}).items():
-            _merge(caches.setdefault(key, _events()), bucket)
         for key, bucket in data.get("modules", {}).items():
             _merge(modules.setdefault(key, _events()), bucket)
         for test_file, ids in data.get("expected", {}).items():
@@ -515,8 +510,6 @@ def fold_run(
             _merge(events, modules.get(test_file, {}))
             for key in used.get(test_id, ()):
                 _merge(events, fixtures.get(key, {}))
-            for key in called.get(test_id, ()):
-                _merge(events, caches.get(key, {}))
             cur.execute("DELETE FROM read_edge WHERE test_id = ?", (test_id,))
             cur.execute(
                 "INSERT INTO read_test (test_id, test_file, opaque, observed) "

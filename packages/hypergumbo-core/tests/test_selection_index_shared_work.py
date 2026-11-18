@@ -285,7 +285,7 @@ def test_the_command_counts_contexts_by_kind_and_names_the_caches_it_could_not_l
     bucket = {"reads": [], "opaque": [], "docs": [], "lines": []}
     (reads / "main-1.json").write_text(json.dumps({
         "version": RECORDER_VERSION, "observed": True, "expected": {}, "sources": {},
-        "failed": [], "fixtures": {}, "caches": {}, "nested": {}, "modules": {},
+        "failed": [], "fixtures": {}, "nested": {}, "modules": {},
         "unattributed": bucket,
         "unwrapped_caches": ["packages/p/src/p/mod.py::own"],
         "tests": {FIRST: {**bucket, "fixtures": ["tests/test_x.py::shared"],
