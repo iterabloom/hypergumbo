@@ -1,0 +1,40 @@
+- op: create  # 9378
+  at: '2026-11-18T17:05:13Z'  # 9378
+  by: agent  # 9378
+  actor: jgstern_agent  # 9378
+  clock: 1  # 9378
+  nonce: '9378'  # 9378
+  data:  # 9378
+    kind: invariant  # 9378
+    title: "A test that reads a changed file as data is selected by the by-statement selector"  # 9378
+    status: violated  # 9378
+    priority: 1  # 9378
+    parent:  # 9378
+    tags:  # 9378
+    - smart_test  # 9378
+    - fast_smart_test_plan  # 9378
+    isbefore:  # 9378
+    - WI-pugol-sajov-fazah-romaj-lotag-hatuj-kogap-tovor  # 9378
+    duplicate_of: []  # 9378
+    not_duplicate_of: []  # 9378
+    pr_ref:  # 9378
+    description: "VIOLATED (campaign 4 of WI-hagom, 2026-11-18). Four planted faults (framework_patterns.clear_pattern_cache 'drop call'; c._c_ambiguous_names 'drop call'; io_boundary.declared_by_an_included_header 'drop call'; ir.Edge.__post_init__ 'negate if') each failed packages/hypergumbo-core/tests/test_kept_work_guard.py::test_live_tree_is_clean, which select_by_statement left out. Each fails ALONE (-n 0) with its fault and passes without it. The test reads every source file as text (check-kept-work): it ran none of the changed statements, and its outcome depends on the text. smart-test's file-level manifest adds such readers (coverage-select readers, prose_only.tests_reading); the by-statement selector never consulted the read record.\n\nFIX (branch jgstern-agent/fix/statement-select-readers): select_by_statement adds every test recorded reading a changed file as data, for any kind of change, in the index's spelling (Selection.readers). Also: analyzer_identity._hash_package_py_files named hash-only for the recorder (median 1,012 readers per changed file before, against 345 tests kept by statement; nearly all from that hash).\n\nCLOSE CONDITION. On the live index, select_by_statement keeps the guard test for all four faults (bar/recheck_readers.py: done, CLEAN before merge); merged; after the next full run, the readers per changed file measured again with the hash-only read gone."  # 9378
+    fields:  # 9378
+      statement: "A test recorded reading a changed file as data is in the by-statement selection, whatever kind of change it is."  # 9378
+      root_cause: "select_by_statement selected only from coverage records and never consulted the read record that the file-level manifest already uses."  # 9378
+- op: update  # fc2a
+  at: '2026-11-18T18:48:14Z'  # fc2a
+  by: agent  # fc2a
+  actor: jgstern_agent  # fc2a
+  clock: 2  # fc2a
+  nonce: fc2a  # fc2a
+  set:  # fc2a
+    status: satisfied  # fc2a
+    pr_ref: '2257'  # fc2a
+- op: discuss  # 2f33
+  at: '2026-11-18T18:48:14Z'  # 2f33
+  by: agent  # 2f33
+  actor: jgstern_agent  # 2f33
+  clock: 3  # 2f33
+  nonce: 2f33  # 2f33
+  message: "Merged as PR #2257. EVIDENCE: (1) bar/recheck_readers.py replants campaign 4's four faults on the live index: test_live_tree_is_clean 'missed before 1, kept now 1' for each, CLEAN (recheck_readers.txt). (2) After the full run of 2026-11-18 ~19:00Z (dev 55e2fbb2c, 41,394 passed), readers per changed file over campaign 4's 58 files: min 81, median 101, max 118 (was min 993, median 1,012, max 1,030 before analyzer_identity._hash_package_py_files was named hash-only); the guard test is a reader of every one (readers_after.txt). (3) test_statement_select.py pins the rule: a reader is selected for a statement change and a docstring edit, in the index's spelling, unmeasured or not; tests/test_smart_test_prose_rule.py resolves every hash-only name."  # 2f33

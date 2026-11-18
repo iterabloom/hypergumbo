@@ -20,3 +20,18 @@
     pr_ref:  # de9e
     description: "WHAT. Campaign 3 (WI-gojov) was not clean: 12 failed tests outside the selection, all from one shape (a module fixture's closure keeping its own cache), fixed by INV-kazud (PR #2255). Run the weighted planted-fault campaign again on a dev that has the fix, with a FRESH seed (not 20261118) so it plants other faults, and after a full run has folded the index (so every test's rows reflect the marks).\n\nHOW. ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/campaign3.py --out bar/campaign4 --per-shape 8 --seed <new>. Before it: smart-test --full on dev (folds the index), stored graph rebuilt for HEAD. Replay every miss alone (-n 0) with and without the fault (bar/replay_misses.py) before calling it real; a miss that fails alone is real, one that does not reproduce goes to WI-holuj.\n\nCLOSE CONDITION. Summary in the notebook: planted, type gate, ran, failed a test, failed tests, kept, named, outside, by shape. Zero real misses: WI-pugol may proceed (state with the count that this bounds the miss rate and does not prove it zero). One real miss: the selector stays off and the miss is filed."  # de9e
     fields: {}  # de9e
+- op: update  # 75f9
+  at: '2026-11-18T18:48:15Z'  # 75f9
+  by: agent  # 75f9
+  actor: jgstern_agent  # 75f9
+  clock: 2  # 75f9
+  nonce: 75f9  # 75f9
+  set:  # 75f9
+    status: done  # 75f9
+- op: discuss  # 8528
+  at: '2026-11-18T18:48:15Z'  # 8528
+  by: agent  # 8528
+  actor: jgstern_agent  # 8528
+  clock: 3  # 8528
+  nonce: '8528'  # 8528
+  message: "CAMPAIGN 4 RUN, NOT CLEAN; the selector stays OFF. 89 planted, 44 type gate, 45 ran, 40 failed a test; 4,999 failed tests, 4,749 kept, 237 named, 13 outside. By shape (ran / failed-a-test / outside): cached 5/4/4, kept 8/7/5, fixture 8/8/0, state 8/7/4, child 8/7/0, plain 8/7/0. REPLAYED: 4 real misses, one test (test_kept_work_guard.py::test_live_tree_is_clean reads every source file; fails alone with each fault) -> INV-simop, fixed in PR #2257. 9 did not reproduce alone or in company; their cause was the environment leak of WI-holuj (fixed PR #2258). Summary: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/campaign4_summary.txt. Campaign 5 filed."  # 8528
