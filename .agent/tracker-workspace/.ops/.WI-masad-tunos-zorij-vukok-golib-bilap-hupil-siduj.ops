@@ -20,3 +20,25 @@
     pr_ref:  # 164c
     description: "WHY. A function under functools.lru_cache or functools.cache runs its body once per argument per process. Coverage records the body, and everything it calls, under the test that happened to call it first. Every later caller gets the stored value and has no row for that code. Campaign case: _get_php_parser. Size on 2026-11-17: 22 such decorators in package source.\n\nWHAT TO BUILD. The same mechanism as the shared-fixture item. In the recorder plugin (imported before any conftest), wrap functools.lru_cache and functools.cache for functions whose code is under the repository root: the BODY runs under a coverage context of the function's own; every CALL of the wrapper, hit or miss, records a use by the running test, or by the shared work (fixture or other cached function) it was called inside. At fold, a test inherits the rows of every cached function it used, through nesting. Why the body's whole context and not the function alone: a fault in an uncached function called beneath a cached one reaches every test that hits the cache. At import or collection (no test and no shared work running) nothing is switched; the at-import mark covers that code as today. A cached function decorated before the plugin was imported cannot be wrapped: the plugin reports each one and the selector does not narrow on it.\n\nCLOSE CONDITION. A test in which test A fills a cache and test B hits it, and B is paired with the cached function and with a function only its body calls. The wrapper keeps cache_clear, cache_info and __wrapped__ (a test for each). A full run folded, with the count of cache contexts, of tests that inherited rows, and of cached functions that could not be wrapped. A mutation control on _get_php_parser: every failing test inside the selection. The added wall time of a full run, measured.\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 164c
     fields: {}  # 164c
+- op: discuss  # cba7
+  at: '2026-11-18T08:10:51Z'  # cba7
+  by: agent  # cba7
+  actor: jgstern_agent  # cba7
+  clock: 2  # cba7
+  nonce: cba7  # cba7
+  message: "Merged as PR #2252, dev SHA d7d39637d7d7."  # cba7
+- op: update  # c898
+  at: '2026-11-18T08:11:12Z'  # c898
+  by: agent  # c898
+  actor: jgstern_agent  # c898
+  clock: 3  # c898
+  nonce: c898  # c898
+  set:  # c898
+    status: done  # c898
+- op: discuss  # 3a5c
+  at: '2026-11-18T08:11:12Z'  # 3a5c
+  by: agent  # 3a5c
+  actor: jgstern_agent  # 3a5c
+  clock: 4  # 3a5c
+  nonce: 3a5c  # 3a5c
+  message: "Merged in PR #2252 (dev a81dde10a..d7d39637d). The recorder wraps functools.lru_cache for repository code (not frozen modules, not installed packages): a body runs under its own coverage context |shared|cache|<file>::<qualname>, and every test that calls the cached function gets its rows at the fold. Reads and child processes of a body go to the callers of THAT cache entry (functools._make_key), not of the function: the first cut kept them per function and held 12,100 tests back from narrowing. Caches made before the recorder loaded are held back and named on the shared-work line.\nEvidence (fast_smart_test_build_11172026/caches/):\n- census_summary.txt: 24 cached functions in repository code; 26,352 misses in tests (~12 s); 14,816 tests had a hit on an entry another test filled, so they were never paired with the body.\n- logs/full2.log (smart-test --full on e4ac1c1ad): 41,330 passed, 12 skipped, 30 xfailed, 707.05 s, against 689-703 s in the three full runs without the cache step (inside run-to-run spread; one run each, not separable from noise). Fold: 66 fixture + 22 cache contexts, 41,372 tests given rows, 0 unused, 0 unwrapped. Never narrowed 427 (git-elsewhere 242, python 175, git 23).\n- live_control.txt (behavioral): _get_php_parser made to return None. The index pairs 16 tests of test_view_template_laravel.py with the function; in the campaign the 3 failing measured tests were NOT paired. 12 tests failed; the selector asked about that fault alone selected all 12, 0 neither selected nor named. The 3 campaign cases failed and were selected.\n- mutations.tsv: 35 planted, 34 red. Survivor E4 (except TypeError -> except KeyError around the per-entry lookup) is equivalent for a caller: the cache raises the same TypeError one line later.\n- prepr.sh (logs/prepr.txt): every gate rc=0; core 21,838 passed, root tests 2,895 passed.\nNot covered: hand-written caches and lazily filled module state (WI-supar); caches made before the recorder loads are held back from narrowing, not paired."  # 3a5c
