@@ -103,7 +103,8 @@ def _numbits(numbits: bytes) -> list[int]:
             if byte & (1 << bit)]
 
 
-def _run(tmp_path: Path, workers: str, *, test_contexts: bool = True) -> Run:
+def _run(tmp_path: Path, workers: str, *, test_contexts: bool = True,
+         extra: tuple[str, ...] = ()) -> Run:
     project = tmp_path / "project"
     project.mkdir()
     for name, text in _PROJECT.items():
@@ -119,16 +120,20 @@ def _run(tmp_path: Path, workers: str, *, test_contexts: bool = True) -> Run:
          "-o", "addopts=", "-p", "no:cacheprovider", "-q", "--rootdir", str(project),
          f"--source-reads-dir={reads}", "--cov=work", "--cov-report=",
          *(["--cov-context=test"] if test_contexts else []),
-         "-n", workers, str(project)],
+         *extra, "-n", workers, str(project)],
         capture_output=True, text=True, cwd=project, env=env)
     assert done.returncode == 0, done.stdout + done.stderr
     by_line = _functions_by_line(_PROJECT["work.py"])
     ran: dict[str, set[str]] = {}
+    if not db.exists():
+        db.touch()  # coverage was off: an empty file reads as "no rows"
     conn = sqlite3.connect(db)
+    has_rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE name = 'line_bits'").fetchone() is not None
     for context, numbits in conn.execute(
             "SELECT c.context, lb.numbits FROM line_bits lb "
             "JOIN context c ON c.id = lb.context_id JOIN file f ON f.id = lb.file_id "
-            "WHERE f.path LIKE '%work.py'"):
+            "WHERE f.path LIKE '%work.py'") if has_rows else ():
         names = {by_line[n] for n in _numbits(numbits) if n in by_line}
         if names:
             ran.setdefault(context, set()).update(names)
@@ -208,6 +213,15 @@ def test_without_pytest_covs_test_contexts_nothing_is_labelled(
         "test_a.py::shared", "::deep"}
 
 
+def test_with_coverage_switched_off_the_run_passes_and_the_record_is_kept(
+        tmp_path_factory: pytest.TempPathFactory) -> None:
+    """``smart-test --no-cov`` still passes ``--cov-context=test``. pytest-cov
+    then has no coverage object to label anything with."""
+    off = _run(tmp_path_factory.mktemp("off"), "0", extra=("--no-cov",))
+    assert off.ran == {}
+    assert off.record["nested"] == {"fixture|test_a.py::lazy": {"fixture|::late"}}
+
+
 def test_the_record_names_the_shared_fixtures_each_test_used(run: Run) -> None:
     tests = run.record["tests"]
     assert set(tests["test_a.py::test_second"]["fixtures"]) & OURS == {
@@ -216,7 +230,7 @@ def test_the_record_names_the_shared_fixtures_each_test_used(run: Run) -> None:
 
 
 def test_the_record_names_what_was_built_inside_a_shared_fixture(run: Run) -> None:
-    assert run.record["nested"] == {"test_a.py::lazy": {"::late"}}
+    assert run.record["nested"] == {"fixture|test_a.py::lazy": {"fixture|::late"}}
 
 
 def test_folded_every_user_is_paired_with_the_code_the_fixture_ran(
