@@ -23,6 +23,23 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 ./scripts/ci-debug cron-status origin/dev 60
 ./scripts/ci-debug logs self-claims-gate <sha>   # one STEP's transcript; found on ANY gate reporting on <sha> (WI-ratam)
 
+# A RED SCHEDULED RUN: which commits (and PRs) to look at, per failure (WI-finat).
+# The range is the last passed scheduled commit to the red one, from the
+# verdicts on origin/badges; each failed step's log is fetched. Arms: a failed
+# test its PR's CI ran and passed ("scheduled environment": another Python, a
+# step that installs fewer packages); one its PR's manifest did not run (a
+# listed file whose test is deselected by statement counts as not run); no
+# commit touched it ("dependency": installed versions green vs red); a gate's
+# flagged callable (commits that added or removed the name); an uncovered
+# line (the commit that last changed it, else commits that changed the tests
+# the index records on it). It names commits to READ, not a verdict.
+./scripts/ci-debug trace                   # full-suite
+./scripts/ci-debug trace nightly-3.10      # one nightly leg
+# A run older than the published verdicts (before 2026-11-17): give the range and logs.
+./scripts/ci-debug trace --green <sha> --red <sha> --log test-agent-infra=red.log \
+    --green-log test-agent-infra=green.log
+./scripts/ci-debug pr-of <sha>             # the PR that merged a commit
+
 # Analyze tree-sitter dependencies (finds missing packages)
 ./scripts/ci-debug analyze-deps
 
