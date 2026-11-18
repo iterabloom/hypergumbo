@@ -29,3 +29,18 @@
   clock: 2  # eb99
   nonce: eb99  # eb99
   message: "Merged as PR #2240, dev SHA b9b34fe44763."  # eb99
+- op: update  # 49bf
+  at: '2026-11-17T22:57:14Z'  # 49bf
+  by: agent  # 49bf
+  actor: jgstern_agent  # 49bf
+  clock: 3  # 49bf
+  nonce: 49bf  # 49bf
+  set:  # 49bf
+    status: satisfied  # 49bf
+- op: discuss  # 9ae6
+  at: '2026-11-17T22:57:14Z'  # 9ae6
+  by: agent  # 9ae6
+  actor: jgstern_agent  # 9ae6
+  clock: 4  # 9ae6
+  nonce: 9ae6  # 9ae6
+  message: "Fixed in PR #2240 (merged 2026-11-17 ~22:40 UTC). The fold marks the function blocks it saw run in coverage's empty context (at_import_block); a change to a marked function is import-time code changed for narrowing (select_tests / narrowing_blockers), for the import-closure rule and for the by-statement selector. BEHAVIOURAL EVIDENCE, the item's own repro re-run on the live index after a full re-fold (dev 1e39f0f3b, full run 41,133 passed, 2026-11-17 22:56 UTC; output in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/import_time_functions.txt): the same one-statement edit to io_boundary.load_catalog, the same command, the same 1,370-file run set -> 'narrow REFUSED: import-time code changed: packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py (load_catalog)', kept 1370 of 1370 (it had dropped 466, among them 4 haskell and 3 jupyter test files). 153 functions are marked in the live index (more than the 113 counted by importing every module: code run at collection is marked too). In the selection bed, the edit to limits.ceiling (called once by reads_at_import.py as it loads) now selects test_reads_at_import.py at every stage; with the marking removed the bed test fails, and before the fix that must-run test was in no stage, the slice included. 14 mutations red. WHAT THIS DOES NOT CLOSE, filed as its own invariant right after this note: for that same edit, 6 of the 9 haskell/jupyter test files are not SELECTED in the first place (not in the graph walk, not in the import closure), because their modules reach load_catalog through an import inside a function that runs at import, and the import graph does not follow function-level imports. Narrowing no longer drops anything there; selection never had them. Also not closed: a function that newly starts to run at import is unmarked until a run that loads the calling module is folded."  # 9ae6

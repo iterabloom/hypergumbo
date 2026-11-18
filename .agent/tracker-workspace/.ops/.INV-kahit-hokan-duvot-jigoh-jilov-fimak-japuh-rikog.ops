@@ -1,0 +1,24 @@
+- op: create  # 9e33
+  at: '2026-11-18T01:00:06Z'  # 9e33
+  by: agent  # 9e33
+  actor: jgstern_agent  # 9e33
+  clock: 1  # 9e33
+  nonce: '9e33'  # 9e33
+  data:  # 9e33
+    kind: invariant  # 9e33
+    title: "Work done once and shared (a memoised function, a module or session fixture, a subprocess) leaves most of its dependents unpaired: selecting test by test leaves out failing tests"  # 9e33
+    status: violated  # 9e33
+    priority: 2  # 9e33
+    parent:  # 9e33
+    tags:  # 9e33
+    - smart_test  # 9e33
+    - trunk_green  # 9e33
+    - fast_smart_test_plan  # 9e33
+    isbefore: []  # 9e33
+    duplicate_of: []  # 9e33
+    not_duplicate_of: []  # 9e33
+    pr_ref:  # 9e33
+    description: "FOUND 2026-11-18 ~01:00 UTC by the planted-fault campaign for the by-statement selector (210 faults, one statement each, in functions outside the selector's code; 104 ran tests; 93 failed at least one test; 653 failed tests). Notebook: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/ (campaign_1_summary.txt, campaign_2_summary.txt, file_level_summary.txt, file_level.json).\n\nWHAT IS WRONG. The selection index pairs a test with a function when the test's own coverage context ran the function. Selection by block, and by statement even more, reads \"not paired\" as \"does not depend on it\". That is false wherever work is done ONCE and its result is shared:\n\n1. A MEMOISED FUNCTION. hypergumbo_core/linkers/view_template_laravel.py: `@lru_cache(maxsize=64) def _get_php_parser()`. The index pairs it with 3 of the 23 tests of test_view_template_laravel.py (whichever called it first in each worker). With its return replaced by `return None`, 9 other tests of that file failed: tests coverage can speak for, not paired with the function. 20 functions in the measured packages carry lru_cache / cache; hand-written caches were not counted.\n\n2. A FIXTURE SHARED BY A MODULE OR SESSION. packages/hypergumbo-core/tests/test_stable_id_floor_gate.py: the analysis runs once, in the setup of the first test (test_every_fixture_emits_a_symbol: 3,831 pairs, all from its setup phase, so it is now 'unmeasured'). With one assignment in entrypoints._take_dealing_ties replaced by None, test_every_fixture_node_id_names_its_own_kind and test_floor_census_matches_baseline failed: measured, and not paired with the function.\n\n3. A TEST THAT WORKS BOTH IN PROCESS AND THROUGH A SUBPROCESS. test_import_closure.py::test_the_helper_takes_a_function_the_index_saw_run_at_import (and its neighbour) build an index in process and then run coverage-select in a subprocess. With one call dropped from import_closure.ImportGraph.__init__ they failed: measured (their own call ran measured code), not paired with the function (the subprocess ran it).\n\nWHAT IT MEANS FOR THE BY-STATEMENT SELECTOR. Applied test by test, it would have left out 13 failing tests in 3 of the 93 runs. Its run record does not call these misses (failed_not_selected counts only tests that reached the changed function; all 13 reached it in no recorded way), and `coverage-select statement-bar` printed MET (88 runs by the merged definition; 40 by the stricter count of runs in which the selector left tests out, 781 tests left out, none failed). I count the 13 as a miss of a TEST-LEVEL switch: it stays off (owner ruling: one miss, it stays off and is filed).\n\nAPPLIED FILE BY FILE (a test file is kept if one of its tests is selected, or if it holds a test coverage cannot speak for, as narrowing already requires): 0 of the 93 runs lose a failing test file. Shapes 1 and 3 are held because another test of the same file ran the function; shape 2 because the file holds an unmeasured test. That is an observation over 93 runs, not a guarantee: a cache filled by a test in ANOTHER file, or a subprocess test file with no in-process path to the changed code, would not be held. Today's live narrowing is file by file and keeps every file that touched the changed FILE (a wider keep set), so it holds these three cases too; whether it has the cross-file shape was not observed either way.\n\nNOT ESTABLISHED: how many functions have a result shared across test files; whether a merged change ever lost a failing test this way."  # 9e33
+    fields:  # 9e33
+      statement: "A test that depends on code is selected when that code changes, whether or not the test's own coverage context ran it: code whose result outlives the context that ran it (a cache, a shared fixture, a subprocess) is not narrowed on the strength of who ran it."  # 9e33
+      root_cause: "The index's test-to-function pairs record execution under a test's own context, and selection reads their absence as independence. A memoised function runs under its first caller only; a module- or session-scoped fixture under the first test's setup; a subprocess under no context at all."  # 9e33
