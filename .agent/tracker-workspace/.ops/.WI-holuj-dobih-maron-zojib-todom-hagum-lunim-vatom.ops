@@ -1,0 +1,20 @@
+- op: create  # 7ba8
+  at: '2026-11-18T11:06:29Z'  # 7ba8
+  by: agent  # 7ba8
+  actor: jgstern_agent  # 7ba8
+  clock: 1  # 7ba8
+  nonce: 7ba8  # 7ba8
+  data:  # 7ba8
+    kind: work_item  # 7ba8
+    title: "Two tests failed once in a full run and pass alone: order-dependent state between tests (alias details, VCS-ignored nodes)"  # 7ba8
+    status: todo_hard  # 7ba8
+    priority: 2  # 7ba8
+    parent:  # 7ba8
+    tags:  # 7ba8
+    - smart_test  # 7ba8
+    isbefore: []  # 7ba8
+    duplicate_of: []  # 7ba8
+    not_duplicate_of: []  # 7ba8
+    pr_ref:  # 7ba8
+    description: "WHAT. In one smart-test --full run (2026-11-18 ~08:44Z, branch jgstern-agent/feat/lazy-state-contexts, log ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/state/logs/full_marked.log) two tests failed that pass alone and passed in the next two full runs of the same code:\n(1) packages/hypergumbo-core/tests/test_unmodeled_alias_shapes.py::test_the_alias_leak_is_withheld[python__S1_list_copy]: verdict inconclusive and the flow withheld as expected, but details read \"NOT CONFIRMED: the analysis makes calls into 2 module(s) that ... was never examined\" instead of containing \"does not follow aliases\".\n(2) packages/hypergumbo-core/tests/test_vcs_ignored_untracked.py::TestNothingOfAnIgnoredFileReachesTheOutput::test_no_graph_node: the dirty repo's survey nodes include git-ignored paths (the VCS-ignore answer did not apply).\nNeither appears among the failures of any earlier full run in run_records.jsonl. The branch added three test files, which changes how xdist spreads tests over workers: the leading hypothesis is state another test leaves behind (a module-level setter such as trace-deps or locale excludes, a kept per-environment answer, or the VCS-ignore cache), NOT verified.\nCLOSE CONDITION. The leaking state named, with the test that leaves it and a repro that runs the two in one process and fails; the leak fixed at its source (reset, or the test isolated); the repro green. Or, if no leak reproduces in N=20 targeted orderings, say so with the orderings tried and keep the item open with that evidence."  # 7ba8
+    fields: {}  # 7ba8
