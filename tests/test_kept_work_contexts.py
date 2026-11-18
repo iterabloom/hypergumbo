@@ -27,6 +27,7 @@ from typing import Any
 
 import pytest
 
+from hypergumbo_core import kept_work
 from hypergumbo_core.prose_only import shared_work_used, unwrapped_caches
 from hypergumbo_core.selection_index import (
     blocks_run_at_import,
@@ -38,6 +39,10 @@ from hypergumbo_core.selection_index import (
 )
 
 PLUGIN_DIR = Path(__file__).resolve().parents[1] / "scripts" / "pytest_plugins"
+#: Where THIS process found ``hypergumbo_core``: the toy project imports
+#: ``kept_work`` from it. CI's agent-infra step does not install the package
+#: (the parent imports it off a path entry the child would not inherit).
+CORE_SRC = Path(kept_work.__file__).resolve().parents[1]
 
 _WORK = '''\
 import pathlib
@@ -172,7 +177,7 @@ def _run(tmp_path: Path, workers: str, *, marks_first: bool = False,
     db = tmp_path / "coverage.sqlite"
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("PYTEST_", "COV_CORE_", "COVERAGE_", "GIT_"))}
-    env["PYTHONPATH"] = os.pathsep.join([str(PLUGIN_DIR), str(project)])
+    env["PYTHONPATH"] = os.pathsep.join([str(PLUGIN_DIR), str(project), str(CORE_SRC)])
     env["COVERAGE_FILE"] = str(db)
     done = subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "early", "-p", "pytest_source_reads",
