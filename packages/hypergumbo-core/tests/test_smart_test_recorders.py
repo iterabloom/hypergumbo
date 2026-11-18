@@ -802,3 +802,62 @@ def test_no_identified_fresh_graph_is_no_comparison_and_nothing_kept(repo: Path)
     done = _helper(repo, "stale-record", "--fresh-out", str(answer), "--why", "a cache hit")
     assert "no comparison (a cache hit)" in done.stderr and "graph rows" not in done.stderr
     assert not (repo.parent / "logs" / "index.sqlite").exists()
+
+
+# ── the wall-time line ────────────────────────────────────────────────────────
+
+def test_the_wall_report_command_prints_the_line_for_the_run_it_is_given(repo: Path) -> None:
+    junit = repo / "junit.xml"
+    junit.write_text(
+        '<testsuites><testsuite>'
+        '<testcase classname="packages.p.tests.test_a" name="test_a" time="30.5"/>'
+        '<testcase classname="packages.p.tests.test_a" name="test_b" time="1.5"/>'
+        '</testsuite></testsuites>')
+    under = _helper(repo, "--junit", str(junit), "wall-report", "--total", "41", "--gate", "6",
+                    "--selection", "2", "--selection-name", "the stored graph", "--tests", "19")
+    assert under.returncode == 0, under.stderr
+    assert under.stdout.strip() == (
+        "smart-test: 41 s to the end of the tests (local target 60 s): the tests 19 s, "
+        "the rest 14 s, the type gate 6 s, the stored graph 2 s (2 tests, 32 test-seconds)")
+    over = _helper(repo, "--junit", str(junit), "wall-report", "--total", "263", "--gate", "5",
+                   "--selection", "330", "--tests", "244")
+    assert over.stdout.strip().startswith(
+        "smart-test: 263 s to the end of the tests, 203 s OVER the 60 s local target. "
+        "Largest first: the analysis 330 s, the tests 244 s, the type gate 5 s")
+    assert over.stdout.strip().endswith("Slowest test: 30.5 s packages.p.tests.test_a::test_a")
+    # No junit report: said, and no test count invented.
+    bare = _helper(repo, "wall-report", "--total", "3")
+    assert bare.stdout.strip() == ("smart-test: 3 s to the end of the tests (local target 60 s): "
+                                   "the rest 3 s (no junit report)")
+
+
+def _function_body(name: str) -> str:
+    """The text of shell function ``name`` in smart-test, to its closing brace."""
+    text = _SMART_TEST.read_text()
+    start = text.index(f"\n{name}() {{\n")
+    return text[start:text.index("\n}\n", start)]
+
+
+def test_smart_test_prints_the_wall_line_after_every_run_that_reached_pytest() -> None:
+    """In run_pytest, where every run that reaches pytest passes; with the
+    whole elapsed time, the type gate, the selection step and pytest's own
+    time; never in CI; and never able to fail the run."""
+    body = _function_body("run_pytest")
+    start = body.index(" wall-report ")
+    call = body[body.rindex("if [[", 0, start):body.index("fi", start)]
+    assert '[[ -z "${CI:-}" ]]' in call
+    for argument in ('--total "$SECONDS"', '--gate "${MYPY_GATE_SECONDS:-0}"',
+                     '--selection "${SLICE_DURATION_S:-0}"',
+                     '--tests "$((SECONDS - pytest_start_s))"', '--junit "$JUNIT_XML"'):
+        assert argument in call, argument
+    assert call.rstrip().endswith("|| true")
+    # pytest's own time starts just before pytest and after the old report is removed.
+    # (The last pytest call of the function: the --raw one before it replaces
+    # the shell and reports nothing.)
+    timed = body.rindex(" pytest $test_targets")
+    assert 0 < timed - body.index("local pytest_start_s=$SECONDS") < 200
+    # The type gate is timed around the gate itself.
+    text = _SMART_TEST.read_text()
+    gate = text.index('"$TOOLS_ROOT/scripts/check-mypy-ratchet" --mode=strict')
+    assert "MYPY_GATE_START_S=$SECONDS" in text[gate - 80:gate]
+    assert "MYPY_GATE_SECONDS=$((SECONDS - MYPY_GATE_START_S))" in text[gate:gate + 200]

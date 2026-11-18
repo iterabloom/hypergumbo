@@ -43,6 +43,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The index keeps a function's statement records across edits.**
 - **Narrowing keeps tests whose own call ran nothing measured.**
 - **A command counts the by-statement selector's bar, strictly.**
+- **smart-test reports its wall time against a 60 s target.**
 - **Narrowing treats a function run at import as import-time code.**
 - **Imports inside functions run at import count as dependencies.**
 
