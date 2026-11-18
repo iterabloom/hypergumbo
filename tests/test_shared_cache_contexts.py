@@ -46,6 +46,9 @@ PLUGIN_DIR = Path(__file__).resolve().parents[1] / "scripts" / "pytest_plugins"
 
 _WORK = '''\
 import functools
+import pathlib
+import subprocess
+import sys
 import threading
 
 
@@ -89,6 +92,20 @@ def refuses(x):
     raise ValueError(x)
 
 
+@functools.lru_cache(maxsize=None)
+def size_of(name):
+    """Opens a source file of the project as data."""
+    return len(pathlib.Path(__file__).with_name(name + ".py").read_text())
+
+
+@functools.lru_cache(maxsize=None)
+def exit_code(of, start=True):
+    """Starts a process for one entry and none for the other."""
+    if not start:
+        return 0
+    return subprocess.run([sys.executable, "-c", "raise SystemExit(%d)" % of]).returncode
+
+
 class Holder:
     @functools.lru_cache(maxsize=None)
     def twice(self, x):
@@ -123,6 +140,23 @@ _PROJECT = {
         "def test_through_a_fixture(built):\n    assert built == 3\n\n\n"
         "def test_through_the_same_fixture(built):\n    assert built == 3\n\n\n"
         "def test_reads_what_collection_filled():\n    assert work.at_collection() == 11\n"),
+    "data_a.py": "A = 1\n",
+    "data_b.py": "B = 22\n",
+    # In file order the first test of each pair fills the entry and the
+    # second is handed the stored value.
+    "test_events.py": (
+        "import work\n\n\n"
+        "def test_fills_a():\n    assert work.size_of('data_a') == 6\n\n\n"
+        "def test_is_handed_a():\n    assert work.size_of('data_a') == 6\n\n\n"
+        "def test_fills_b():\n    assert work.size_of('data_b') == 7\n\n\n"
+        "def test_starts_a_process():\n    assert work.exit_code(3) == 3\n\n\n"
+        "def test_is_handed_its_exit_code():\n    assert work.exit_code(3) == 3\n\n\n"
+        "def test_another_entry_starts_nothing():\n"
+        "    assert work.exit_code(0, start=False) == 0\n\n\n"
+        "def test_an_unhashable_argument_after_a_fill_with_events():\n"
+        "    work.size_of('data_a')\n"
+        "    try:\n        work.size_of([])\n    except TypeError:\n        pass\n"
+        "    else:\n        raise AssertionError('no TypeError')\n"),
     # What functools.lru_cache promises, asserted INSIDE the run: the
     # subprocess passes only if a wrapped function still keeps it.
     "test_api.py": (
@@ -159,6 +193,16 @@ _PROJECT = {
         "def test_a_builtin_is_cached_by_functools_itself():\n"
         "    cached = functools.lru_cache(maxsize=None)(len)\n"
         "    assert cached('ab') == 2 and type(cached).__name__ == '_lru_cache_wrapper'\n\n\n"
+        "def test_the_standard_library_and_installed_packages_are_too():\n"
+        "    import json, posixpath\n"
+        "    # A frozen module (no file), a module in a file, an installed package.\n"
+        "    for fn in (posixpath.join, json.dumps, pytest.approx):\n"
+        "        cached = functools.lru_cache(maxsize=None)(fn)\n"
+        "        assert type(cached).__name__ == '_lru_cache_wrapper', fn\n"
+        "    # A site-packages directory that is not under the interpreter's prefix.\n"
+        "    scope = {}\n"
+        "    exec(compile('def f():\\n    return 1\\n', '/elsewhere/site-packages/x.py', 'exec'), scope)\n"
+        "    assert type(functools.cache(scope['f'])).__name__ == '_lru_cache_wrapper'\n\n\n"
         "def test_a_call_on_another_thread():\n"
         "    seen = []\n"
         "    thread = threading.Thread(target=lambda: seen.append(work.threaded()))\n"
@@ -336,6 +380,40 @@ def test_caches_made_before_the_recorder_are_listed(run: Run) -> None:
     assert unwrapped_caches(run.reads) == run.record["unwrapped"]
 
 
+# ── what a cached body read or started ──────────────────────────────────────
+
+
+def _events(run: Run, test: str) -> dict[str, list[str]]:
+    record = run.record["tests"][f"test_events.py::{test}"]
+    return {kind: record[kind] for kind in ("reads", "opaque") if record[kind]}
+
+
+def test_a_test_handed_a_stored_value_gets_what_the_fill_read(run: Run) -> None:
+    """The fill opened ``data_a.py`` as data. A change to that file changes
+    the answer of the test that never opened it."""
+    assert _events(run, "test_fills_a") == {"reads": ["data_a.py"]}
+    assert _events(run, "test_is_handed_a") == {"reads": ["data_a.py"]}
+
+
+def test_and_what_it_started(run: Run) -> None:
+    python = f"subprocess.Popen:{Path(sys.executable).name}"
+    assert _events(run, "test_starts_a_process") == {"opaque": [python]}
+    assert _events(run, "test_is_handed_its_exit_code") == {"opaque": [python]}
+
+
+def test_per_entry_and_not_per_function(run: Run) -> None:
+    """Another argument is another fill. A full run of this repository with
+    the events kept per function showed 11,930 tests as having started
+    ``git``, where 242 had."""
+    assert _events(run, "test_fills_b") == {"reads": ["data_b.py"]}
+    assert _events(run, "test_another_entry_starts_nothing") == {}
+
+
+def test_an_unhashable_argument_gets_nothing_and_breaks_nothing(run: Run) -> None:
+    assert _events(run, "test_an_unhashable_argument_after_a_fill_with_events") == {
+        "reads": ["data_a.py"]}
+
+
 # ── folded ──────────────────────────────────────────────────────────────────
 
 
@@ -363,8 +441,9 @@ def test_folded_every_caller_is_paired_with_the_body_and_what_it_calls(
     assert done.unused == ()
     # ``built`` is a fixture of a conftest, which is not measured here: its
     # context has no row of its own, and its users reach the caches through it.
-    # table, doubled, plain, fib, Holder.twice, and refuses (its body raises).
-    assert done.by_kind == {"cache": 6}
+    # table, doubled, plain, fib, Holder.twice, size_of, exit_code, and
+    # refuses (its body raises).
+    assert done.by_kind == {"cache": 8}
     # Not narrowed on: the function collection filled (under no test), and
     # the caches the recorder could not wrap.
     held = blocks_run_at_import(conn, [work, str(run.project / "early.py")])
