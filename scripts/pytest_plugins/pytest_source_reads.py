@@ -16,9 +16,12 @@ WHAT IT RECORDS, per pytest process, into ``--source-reads-dir``:
   from a cache without opening anything.
 * SPAWNS: every process start (``subprocess``, ``os.system``, ``fork``,
   ``exec``). A child's reads are invisible here, so a test that spawns one is
-  OPAQUE and the rule keeps it. One exception is decided here: ``git`` run
+  OPAQUE and the rule keeps it. One distinction is made here: ``git`` run
   somewhere else (its directory, arguments and ``GIT_*`` variables all point
-  outside the rootdir) cannot read a repository file and is not recorded.
+  outside the rootdir) cannot read a repository file, and is recorded as
+  ``git-elsewhere``. It is still recorded because a second reader asks
+  another question of a spawn, "could the child have run Python?", and a git
+  in any repository runs that repository's hooks.
 * DOCSTRINGS AND LINE NUMBERS READ AT RUNTIME (Python 3.12+, via
   ``sys.monitoring``): when a line holding ``x.__doc__``, ``frame.f_lineno``
   and the like runs, ``x`` is evaluated in that frame and the file (and for a
@@ -110,8 +113,12 @@ from typing import Any, Callable, Iterator, Optional
 import pytest
 
 #: Bumped whenever what a record means changes. The consumer discards evidence
-#: recorded under any other version.
-VERSION = 2
+#: recorded under any other version. 3: ``git`` run elsewhere is recorded.
+VERSION = 3
+
+#: The program name recorded for a ``git`` that cannot reach the rootdir's
+#: repository (``hypergumbo_core.started_programs.GIT_ELSEWHERE``).
+GIT_ELSEWHERE = "git-elsewhere"
 
 #: Seconds between writes of the record while tests run (--source-reads-flush).
 FLUSH_SECONDS = 30.0
@@ -660,7 +667,7 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
             recorder = _STATE["recorder"]
             if (program == "git" and recorder is not None
                     and recorder.git_runs_elsewhere(args[1], args[2], args[3])):
-                return
+                program = GIT_ELSEWHERE
             what = f"{event}:{program}"
         frame = sys._getframe(1)
     else:

@@ -28,7 +28,7 @@ one of them, per test, and :func:`fold_run` stores the record:
    names the file; a read that could not be tied to one counts for every file.
 4. **It starts a process** whose reads the plugin cannot see. Such a test is
    OPAQUE and always runs, unless every program it starts is in
-   :data:`INERT_PROGRAMS`.
+   :data:`hypergumbo_core.started_programs.INERT_PROGRAMS`.
 5. **It is the changed file.** A test file always runs when it changed.
 
 LEAVING A TEST OUT NEEDS POSITIVE EVIDENCE. A test file is left out only when
@@ -91,18 +91,7 @@ from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
 from hypergumbo_core.selection_index import SHARED_CONTEXT, without_xdist_group
-
-#: The record format this module reads; ``pytest_source_reads.VERSION``.
-RECORDER_VERSION = 2
-
-#: Programs that cannot read a repository ``.py`` file whatever they are
-#: given, so a test that starts only these is not opaque. ``rust-analyzer``
-#: is here because the pipeline probes for it in most tests, and it reads
-#: Rust projects only.
-INERT_PROGRAMS = frozenset({
-    "rust-analyzer", "rustup", "ldconfig", "sleep", "true", "false", "echo",
-    "pwd", "mktemp",
-})
+from hypergumbo_core.started_programs import RECORDER_VERSION, may_read_repository
 
 #: Above this share of test files with no usable record, the rule gives way
 #: to the import graph. Both selections are safe; this is about cost. A test
@@ -599,19 +588,12 @@ def shared_work_used(reads_dir: Path) -> dict[str, frozenset[str]]:
 # ── Deciding ────────────────────────────────────────────────────────────────
 
 
-def _not_inert(spawns: str) -> list[str]:
-    """The recorded spawns (``event:program``, comma-joined) that could read
-    a repository file."""
-    return [s for s in spawns.split(",")
-            if s and s.rpartition(":")[2] not in INERT_PROGRAMS]
-
-
 def global_refusal(conn: sqlite3.Connection) -> Optional[str]:
     """Why the rule must not act at all, or None."""
     ensure_schema(conn)
     row = conn.execute(
         "SELECT value FROM read_meta WHERE key = 'global_opaque'").fetchone()
-    spawned = _not_inert(row[0]) if row and row[0] else []
+    spawned = may_read_repository(row[0]) if row and row[0] else []
     if spawned:
         return f"a process was started outside any test ({','.join(spawned)})"
     if conn.execute("SELECT 1 FROM read_test LIMIT 1").fetchone() is None:
@@ -718,7 +700,7 @@ def tests_for_prose(
     for test_id, test_file, opaque, observed in conn.execute(
             "SELECT test_id, test_file, opaque, observed FROM read_test"):
         recorded.setdefault(test_file, set()).add(test_id)
-        spawns.setdefault(test_file, set()).update(_not_inert(opaque))
+        spawns.setdefault(test_file, set()).update(may_read_repository(opaque))
         if not observed:
             unobserved.add(test_file)
     expected: dict[str, set[str]] = {}

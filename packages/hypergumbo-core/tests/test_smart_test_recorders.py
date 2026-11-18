@@ -554,9 +554,12 @@ _CALC_JUNIT = """<testsuites><testsuite>
 """
 
 
-def _calc_repo(repo: Path, *, index_saw: str = _CALC, block: str = "f") -> Path:
+def _calc_repo(repo: Path, *, index_saw: str = _CALC, block: str = "f",
+               early_starts: str = "") -> Path:
     """``calc.py`` committed at ``base``; an index in which test_early ran the
-    early return of ``f`` and test_full ran the rest. Returns calc.py."""
+    early return of ``f`` and test_full ran the rest, each with a read record
+    (test_early's shows it starting ``early_starts``). Returns calc.py."""
+    from hypergumbo_core import prose_only
     from hypergumbo_core import selection_index as si
     from hypergumbo_core.block_hash import blocks_for_source
 
@@ -576,6 +579,11 @@ def _calc_repo(repo: Path, *, index_saw: str = _CALC, block: str = "f") -> Path:
         conn, {early: [key], full: [key]},
         digests={str(calc): {b.name: b.digest for b in blocks_for_source(str(calc), index_saw)}},
         statements={early: {key: si._int_bitmap(0b00011)}, full: {key: si._int_bitmap(0b11101)}})
+    prose_only.ensure_schema(conn)
+    for name, spawns in (("test_early", early_starts), ("test_full", "")):
+        conn.execute(
+            "INSERT INTO read_test (test_id, test_file, opaque, observed) VALUES (?, ?, ?, 1)",
+            (f"packages/p/tests/test_calc.py::{name}", "packages/p/tests/test_calc.py", spawns))
     conn.commit()
     conn.close()
     return calc
@@ -605,6 +613,8 @@ def test_a_run_record_says_what_selecting_by_statement_would_have_cost(repo: Pat
         # counts against the selector. test_a failed too and reached no
         # changed function: not this selector's.
         "failed_not_selected": ["packages/p/tests/test_calc.py::test_early"],
+        # Both have a read record that shows no child process.
+        "failed_coverage_cannot_speak_for": [],
         # A changed file that is not package source: no rule of this selector
         # speaks for it, and the row names it.
         "files_not_judged": ["packages/p/notes.md"],
@@ -617,6 +627,28 @@ def test_a_run_record_says_what_selecting_by_statement_would_have_cost(repo: Pat
     assert "RUNS WITH A FAILED TEST LEFT OUT : 1" in bar.stdout
     assert "packages/p/tests/test_calc.py::test_early" in bar.stdout
     assert "verdict                   : MISSED" in bar.stdout
+
+
+def test_a_failed_test_that_starts_python_is_not_left_out_and_the_record_says_why(
+        repo: Path) -> None:
+    """The same run, with test_early recorded starting ``python``. Coverage
+    did not see what the child ran, so the selector does not narrow the test:
+    it is selected, it was never at risk, and the row names it among the
+    failed tests coverage cannot speak for. The index spells the test id
+    absolutely and the read record relative to the repository."""
+    calc = _calc_repo(repo, early_starts="subprocess.Popen:python")
+    calc.write_text(_CALC.replace("b = a + 1", "b = a + 2"))
+    (repo / "junit.xml").write_text(_CALC_JUNIT)
+    done = _helper(repo, "--junit", str(repo / "junit.xml"), "run-record",
+                   "--kind", "explicit", "--exit", "1", "--base-branch", "base")
+    assert done.returncode == 0, done.stderr
+    facts = _rows(repo, "runs.jsonl")[0]["by_statement"]
+    assert (facts["tests"], facts["by_block"]) == (2, 2)
+    assert facts["failed_not_selected"] == []
+    assert facts["failed_reaching_a_narrowed_block"] == [
+        "packages/p/tests/test_calc.py::test_full"]
+    assert facts["failed_coverage_cannot_speak_for"] == [
+        "packages/p/tests/test_calc.py::test_early"]
 
 
 def test_the_by_statement_facts_say_when_the_index_had_no_record_of_the_base(repo: Path) -> None:

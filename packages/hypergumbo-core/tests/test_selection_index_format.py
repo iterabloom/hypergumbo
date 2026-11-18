@@ -265,7 +265,7 @@ class TestOpeningAFormat1File:
             "index.sqlite", "index.sqlite.format-1"]
 
     def test_the_narrowing_answers_match_a_format_2_index_of_the_same_pairs(
-        self, old: Path, tmp_path: Path,
+        self, old: Path, tmp_path: Path, record_reads,
     ) -> None:
         converted = open_index(old)
         native = open_index(tmp_path / "native.sqlite")
@@ -277,6 +277,7 @@ class TestOpeningAFormat1File:
                            [(t,) for t in _UNMEASURED])
         root = Path("/r")
         for conn in (converted, native):
+            record_reads(conn, [test for test, _, _ in _PAIRS])
             assert measured_tests(conn) == frozenset(t for t, _, _ in _PAIRS)
             assert touching_test_files(conn, ["/r/pkg/src/x.py"], root) == {
                 "pkg/tests/test_a.py", "pkg/tests/test_b.py"}

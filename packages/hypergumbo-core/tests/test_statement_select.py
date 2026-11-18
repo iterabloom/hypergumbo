@@ -17,6 +17,7 @@ from typing import Iterable, Optional
 
 import pytest
 
+from hypergumbo_core import prose_only as po
 from hypergumbo_core import selection_index as si
 from hypergumbo_core import statement_select as ss
 from hypergumbo_core.block_hash import blocks_for_source
@@ -61,7 +62,12 @@ def _bitmap(ordinals: Iterable[int]) -> bytes:
 
 class Repo:
     def __init__(self, tmp_path: Path, stored: str = BASE,
-                 records: Optional[dict[str, dict[str, Optional[set[int]]]]] = None) -> None:
+                 records: Optional[dict[str, dict[str, Optional[set[int]]]]] = None,
+                 started: Optional[dict[str, list[str]]] = None,
+                 no_read_record: Iterable[str] = ()) -> None:
+        """``started``: the programs a test is recorded starting. Every test
+        gets a read record (one that shows no child process unless
+        ``started`` names it), apart from those in ``no_read_record``."""
         records = RECORDS if records is None else records
         self.path = tmp_path / "m.py"
         self.path.write_text(BASE)
@@ -73,6 +79,13 @@ class Repo:
         digests = {key: {b.name: b.digest for b in blocks_for_source(key, stored)}}
         si.store_edges(self.conn, edges, digests=digests, statements=statements)
         self.conn.execute("INSERT INTO unmeasured_test (test_id) VALUES ('t_unmeasured')")
+        po.ensure_schema(self.conn)
+        for test in sorted(set(records) - set(no_read_record)):
+            spawns = ",".join(f"subprocess.Popen:{program}"
+                              for program in (started or {}).get(test, ()))
+            self.conn.execute(
+                "INSERT INTO read_test (test_id, test_file, opaque, observed) "
+                "VALUES (?, ?, ?, 1)", (test, test, spawns))
         self.conn.commit()
 
     def select(self, new: Optional[str], base: Optional[str] = BASE) -> ss.Selection:
@@ -262,3 +275,92 @@ def test_a_closed_index_is_an_error_not_an_empty_selection(repo: Repo) -> None:
     repo.conn.close()
     with pytest.raises(sqlite3.ProgrammingError):
         repo.select(BASE.replace("b = a + 1 ", "b = a + 2 "))
+
+
+# ── tests coverage cannot speak for ─────────────────────────────────────────
+
+#: Four tests that reached ``f`` and returned before the line the change
+#: edits. By their statements alone the selector leaves all four out.
+EARLY: dict[str, dict[str, Optional[set[int]]]] = {
+    "t_plain": {"f": {1, 2}},
+    "t_gitleaks": {"f": {1, 2}},
+    "t_python": {"f": {1, 2}},
+    "t_unrecorded": {"f": {1, 2}},
+    "t_full": {"f": {1, 3, 4, 5}},
+    # Never reached f; starts a child that may have.
+    "t_python_elsewhere": {"g": {0}},
+}
+EDIT = BASE.replace("b = a + 1 ", "b = a + 2 ")
+
+
+def test_with_clean_read_records_the_early_tests_are_left_out(tmp_path: Path) -> None:
+    """The reach check for the three tests below: the same index, every test
+    with a record that shows no child process."""
+    chosen = Repo(tmp_path, records=EARLY).select(EDIT)
+    assert chosen.tests == {"t_full"}
+    assert chosen.narrowed == {"t_plain", "t_gitleaks", "t_python", "t_unrecorded", "t_full"}
+
+
+def test_a_test_that_starts_a_program_able_to_run_python_is_never_narrowed(
+        tmp_path: Path) -> None:
+    """Coverage did not see what the child ran: "it reached f and ran none
+    of the changed statements" is not known of this test."""
+    repo = Repo(tmp_path, records=EARLY, started={
+        "t_python": ["python"], "t_gitleaks": ["gitleaks"], "t_python_elsewhere": ["bash"]})
+    chosen = repo.select(EDIT)
+    assert repo.answer(chosen, "f") == ss.BY_STATEMENT
+    assert chosen.tests == {"t_full", "t_python"}
+    # Not among the tests the selector could have left out: it could not.
+    assert chosen.narrowed == {"t_plain", "t_gitleaks", "t_unrecorded", "t_full"}
+    assert chosen.by_block == {"t_plain", "t_gitleaks", "t_python", "t_unrecorded", "t_full"}
+
+
+def test_a_test_that_starts_only_gitleaks_is_narrowed_as_before(tmp_path: Path) -> None:
+    repo = Repo(tmp_path, records=EARLY, started={"t_gitleaks": ["gitleaks", "rust-analyzer"]})
+    chosen = repo.select(EDIT)
+    assert "t_gitleaks" not in chosen.tests
+    assert "t_gitleaks" in chosen.narrowed
+    assert "t_gitleaks" not in chosen.cannot_speak
+
+
+def test_a_test_with_no_read_record_is_never_narrowed(tmp_path: Path) -> None:
+    """What it started is not known."""
+    repo = Repo(tmp_path, records=EARLY, no_read_record=["t_unrecorded"])
+    chosen = repo.select(EDIT)
+    assert chosen.tests == {"t_full", "t_unrecorded"}
+    assert "t_unrecorded" not in chosen.narrowed
+
+
+def test_the_selection_names_every_test_it_says_nothing_about(tmp_path: Path) -> None:
+    """``t_python_elsewhere`` has no row on ``f``. The selector does not
+    select it and must not be read as sparing it: its child may run ``f``.
+    The unmeasured test is named for the same reason."""
+    repo = Repo(tmp_path, records=EARLY, started={
+        "t_python": ["python"], "t_python_elsewhere": ["bash"]},
+        no_read_record=["t_unrecorded"])
+    chosen = repo.select(EDIT)
+    assert chosen.cannot_speak == {
+        "t_python", "t_python_elsewhere", "t_unrecorded", "t_unmeasured"}
+    assert "t_python_elsewhere" not in chosen.tests
+
+
+def test_an_unmeasured_test_stays_out_of_the_selection_whatever_it_started(
+        tmp_path: Path) -> None:
+    """Its rows are its fixtures'. The rules for unmeasured tests select it;
+    this selector never did, and a recorded child does not change whose it is."""
+    records = {**EARLY, "t_unmeasured": {"f": {1, 2}}}
+    chosen = Repo(tmp_path, records=records, started={"t_unmeasured": ["python"]}).select(EDIT)
+    assert "t_unmeasured" not in chosen.tests | chosen.by_block | chosen.narrowed
+    assert "t_unmeasured" in chosen.cannot_speak
+
+
+def test_every_other_answer_already_selects_such_a_test(tmp_path: Path) -> None:
+    """Only the by-statement answer leaves a test that reached the block out,
+    so only there is there anything to hold: a signature change selects
+    every test that reached ``f``, with or without a child."""
+    repo = Repo(tmp_path, records=EARLY, started={"t_python": ["python"]})
+    chosen = repo.select(BASE.replace("def f(x):", "def f(x, y=0):"))
+    assert chosen.tests == chosen.by_block == {
+        "t_plain", "t_gitleaks", "t_python", "t_unrecorded", "t_full"}
+    assert chosen.narrowed == frozenset()
+

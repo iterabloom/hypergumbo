@@ -118,11 +118,13 @@ def test_the_rows_a_fixture_left_are_still_edges(repo: Repo) -> None:
     assert touching_tests(repo.conn, [str(repo.source)]) == {REAL, SUB, SETUP}
 
 
-def test_narrowing_may_drop_only_the_file_whose_test_ran_code_itself(repo: Repo) -> None:
+def test_narrowing_may_drop_only_the_file_whose_test_ran_code_itself(
+        repo: Repo, record_reads) -> None:
     """The guard that does not wait for a full run: the run record. A run
     says nothing about a test whose own call left no row, and its file is
     held back."""
     repo.fold(SUITE, RAN)
+    record_reads(repo.conn, RAN)
     assert repo.unmeasured() == set(), "only a full run writes the list"
     assert informed_test_files(repo.conn, repo.root, [str(repo.source)]) == {"tests/test_real.py"}
     assert droppable_test_files(repo.conn, repo.root, [str(repo.source)]) == {"tests/test_real.py"}
@@ -148,10 +150,11 @@ def test_a_later_run_with_fixture_rows_alone_replaces_the_tests_record(repo: Rep
     assert informed_test_files(repo.conn, repo.root, [str(repo.source)]) == frozenset()
 
 
-def test_a_context_with_no_phase_is_the_tests_own(repo: Repo) -> None:
+def test_a_context_with_no_phase_is_the_tests_own(repo: Repo, record_reads) -> None:
     """Coverage contexts that are not pytest-cov's carry no phase; such a row
     is the test's own, as it always was."""
     repo.fold([(PLAIN, ["mod.work"]), (f"{SUB}|teardown", ["mod.tidy"])], [PLAIN, SUB], full=True)
+    record_reads(repo.conn, [PLAIN, SUB])
     assert repo.unmeasured() == {SUB}
     assert droppable_test_files(repo.conn, repo.root, [str(repo.source)]) == {"tests/test_plain.py"}
 

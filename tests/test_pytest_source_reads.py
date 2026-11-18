@@ -308,8 +308,30 @@ def test_a_spawn_makes_the_test_opaque(recorded: dict[str, Any]) -> None:
         "opaque": [f"subprocess.Popen:{Path(sys.executable).name}"]}
 
 
-def test_git_run_elsewhere_is_not_recorded(recorded: dict[str, Any]) -> None:
-    assert _seen(recorded, "test_c.py::test_git_elsewhere") == {}
+def test_git_run_elsewhere_is_recorded_as_such(recorded: dict[str, Any]) -> None:
+    """It cannot read a file of this repository, and it can run the hooks of
+    the repository it is in: the two readers of the record each need to tell
+    it from a git that reaches this one, and from no spawn at all."""
+    assert _seen(recorded, "test_c.py::test_git_elsewhere") == {
+        "opaque": ["subprocess.Popen:git-elsewhere"]}
+
+
+def test_the_plugin_and_the_readers_of_its_record_spell_the_same_things() -> None:
+    """The plugin imports nothing from the package (it must load before any
+    conftest), so the record version and the one program name it invents are
+    written twice. A reader discards a record of another version."""
+    import ast
+
+    from hypergumbo_core import started_programs
+
+    # Read, not imported: importing the plugin installs an audit hook that
+    # cannot be removed.
+    tree = ast.parse((PLUGIN_DIR / "pytest_source_reads.py").read_text())
+    constants = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body
+                 if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+                 and node.targets[0].id in ("VERSION", "GIT_ELSEWHERE")}
+    assert constants == {"VERSION": started_programs.RECORDER_VERSION,
+                         "GIT_ELSEWHERE": started_programs.GIT_ELSEWHERE}
 
 
 @pytest.mark.parametrize("test", [
@@ -330,7 +352,7 @@ def test_git_inside_a_shell_command_is_the_shells_spawn(recorded: dict[str, Any]
 
 
 def test_the_record_says_it_watched(recorded: dict[str, Any]) -> None:
-    assert recorded["versions"] == {2}
+    assert recorded["versions"] == {3}
     assert recorded["observed"] == {sys.version_info >= (3, 12)}
 
 

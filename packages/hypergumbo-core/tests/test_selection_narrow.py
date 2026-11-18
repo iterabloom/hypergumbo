@@ -298,16 +298,19 @@ class TestTestsTouching:
 
 
 class TestSpeakableTestFiles:
-    def test_a_measured_file_is_speakable(self, tmp_path) -> None:
+    def test_a_measured_file_is_speakable(self, tmp_path, record_reads) -> None:
         conn = _index(tmp_path, blocks=[
             (f"{tmp_path}/t/test_a.py::t", f"{tmp_path}/s/x.py", "f"),
         ])
+        assert speakable_test_files(conn, tmp_path) == frozenset(), (
+            "not before a read record says the test started no child process")
+        record_reads(conn, ["t/test_a.py::t"])
         got = speakable_test_files(conn, tmp_path)
         conn.close()
         assert got == frozenset({"t/test_a.py"})
 
     def test_one_unmeasured_test_makes_the_whole_file_unspeakable(
-        self, tmp_path,
+        self, tmp_path, record_reads,
     ) -> None:
         """The conservative half of RULE 1, and the one worth seeing fail.
 
@@ -321,6 +324,8 @@ class TestSpeakableTestFiles:
                     (f"{tmp_path}/t/test_b.py::m", f"{tmp_path}/s/x.py", "f")],
             unmeasured=[f"{tmp_path}/t/test_a.py::subprocess_driven"],
         )
+        record_reads(conn, ["t/test_a.py::measured", "t/test_a.py::subprocess_driven",
+                            "t/test_b.py::m"])
         got = speakable_test_files(conn, tmp_path)
         conn.close()
         assert got == frozenset({"t/test_b.py"})

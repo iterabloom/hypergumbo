@@ -71,7 +71,8 @@ from hypergumbo_core.prose_only import (
     fold_run, global_refusal, select_for_prose, shared_work_used, tests_reading,
 )
 from hypergumbo_core.selection_index import (
-    Narrowing, droppable_test_files, functions_run_at_import,
+    CoverageBlind, Narrowing, coverage_cannot_speak_for, droppable_test_files,
+    functions_run_at_import,
     import_time_changed_sources,
     narrow_run_set, narrowing_blockers,
     open_index, rebase_to_repo, record_counts, selectable_test_files,
@@ -172,10 +173,28 @@ def cmd_update(args: argparse.Namespace) -> int:
         if args.verbose:
             print(f"[coverage-select] stored source reads for {stored} tests",
                   file=sys.stderr)
+    if args.full or args.verbose:
+        print(_held_line(coverage_cannot_speak_for(conn, root)), file=sys.stderr)
     conn.close()
     if args.verbose:
         print(f"[coverage-select] indexed {len(ran or ())} ran tests", file=sys.stderr)
     return 0
+
+
+def _held_line(blind: CoverageBlind) -> str:
+    """How many tests no narrowing may drop, and for what: a child process
+    that can run Python (by program), or no read record. The unmeasured
+    tests are held already and have their own line; they are not counted
+    again here."""
+    started = {test: programs for test, programs in blind.started.items()
+               if test not in blind.unmeasured}
+    by_program = collections.Counter(
+        program for programs in started.values() for program in programs)
+    named = ", ".join(f"{program} {count}" for program, count in sorted(
+        by_program.items(), key=lambda item: (-item[1], item[0])))
+    return (f"[coverage-select] never narrowed, besides the unmeasured: {len(started)} "
+            f"test(s) start a program that can run Python{f' ({named})' if named else ''}; "
+            f"{len(blind.unrecorded - blind.unmeasured)} test(s) have no read record")
 
 
 def _failed(args: argparse.Namespace, root: Path) -> set[str]:
@@ -1226,7 +1245,7 @@ def _by_statement_facts(root: Path, index: Path, base: str, changed: list[str],
         return None
     base_sources = {str(root / name): _base_source(root, base, name) for name in sources}
     with contextlib.closing(open_index(index)) as conn:
-        chosen = select_by_statement(conn, base_sources)
+        chosen = select_by_statement(conn, base_sources, root)
     tests = rebase_to_repo(chosen.tests, root)
     by_block = rebase_to_repo(chosen.by_block, root)
     facts: dict[str, object] = {
@@ -1244,6 +1263,11 @@ def _by_statement_facts(root: Path, index: Path, base: str, changed: list[str],
         # when this is not empty (coverage-select statement-bar).
         "failed_reaching_a_narrowed_block": None,
         "failed_not_selected": None,
+        # Failed tests coverage cannot speak for (their own call ran no
+        # measured code, they start a program that can run Python, or they
+        # have no read record): the selector narrowed none of them, and one
+        # outside "tests" is a test it says nothing about.
+        "failed_coverage_cannot_speak_for": None,
         # Changed files the selector has no rule for (anything that is not
         # package source): it says nothing about the tests they need.
         "files_not_judged": sorted(set(changed) - set(sources)),
@@ -1253,6 +1277,8 @@ def _by_statement_facts(root: Path, index: Path, base: str, changed: list[str],
         facts["failed_reaching_a_changed_block"] = sorted(failed & by_block)
         facts["failed_reaching_a_narrowed_block"] = sorted(failed & narrowed)
         facts["failed_not_selected"] = sorted((failed & by_block) - tests)
+        facts["failed_coverage_cannot_speak_for"] = sorted(
+            failed & rebase_to_repo(chosen.cannot_speak, root))
     return facts
 
 
