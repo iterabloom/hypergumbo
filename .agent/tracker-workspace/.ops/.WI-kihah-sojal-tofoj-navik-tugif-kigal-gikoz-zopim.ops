@@ -1,0 +1,21 @@
+- op: create  # 3603
+  at: '2026-11-18T20:27:39Z'  # 3603
+  by: agent  # 3603
+  actor: jgstern_agent  # 3603
+  clock: 1  # 3603
+  nonce: '3603'  # 3603
+  data:  # 3603
+    kind: work_item  # 3603
+    title: "A fault in test-only cleanup breaks tests outside the by-statement selection through state it no longer resets"  # 3603
+    status: todo_hard  # 3603
+    priority: 3  # 3603
+    parent:  # 3603
+    tags:  # 3603
+    - smart_test  # 3603
+    - fast_smart_test_plan  # 3603
+    isbefore: []  # 3603
+    duplicate_of: []  # 3603
+    not_duplicate_of: []  # 3603
+    pr_ref:  # 3603
+    description: "WHAT (campaign 5, 2026-11-18). Dropping the body of linkers/registry.py::clear_registry (test-only; called by test_linker_registry.py's autouse fixture around each test) left toy linkers registered for the rest of the xdist worker: 278 later tests that never reach clear_registry failed (max-tier, taint, include-closure). Each passes alone with the fault; the registry file followed by two victim files at -n 0 gives 44 failed with the fault, 127 passed clean. The selected run was red only because the cleanup's own 15 tests failed. A fault in cleanup that its own tests do not notice would leave every failure outside the selection; only the full run would catch it. WHAT TO DECIDE. A rule for blocks called from fixture setup or teardown (reset helpers such as clear_registry, install_declaration(None), cache_clear wrappers): fall back to every test that touches the file (today's narrowing keep set), or measure first how often such blocks change. CLOSE CONDITION. A rule merged with a test that plants this exact fault and shows the victims selected, or a recorded owner decision that the full run is the guard. EVIDENCE. ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/campaign5_summary.txt, campaign5/replay/."  # 3603
+    fields: {}  # 3603

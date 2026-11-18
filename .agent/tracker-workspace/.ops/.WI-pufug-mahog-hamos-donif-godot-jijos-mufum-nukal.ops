@@ -1,0 +1,43 @@
+- op: create  # 008c
+  at: '2026-11-18T21:35:25Z'  # 008c
+  by: agent  # 008c
+  actor: jgstern_agent  # 008c
+  clock: 1  # 008c
+  nonce: 008c  # 008c
+  data:  # 008c
+    kind: work_item  # 008c
+    title: "smart-test analyses the whole repository when the change adds a tracker .ops file: graph-select refuses the stored graph for a file no analysis gives a node"  # 008c
+    status: todo_hard  # 008c
+    priority: 2  # 008c
+    parent:  # 008c
+    tags:  # 008c
+    - smart_test  # 008c
+    - fast_smart_test_plan  # 008c
+    isbefore: []  # 008c
+    duplicate_of: []  # 008c
+    not_duplicate_of: []  # 008c
+    pr_ref:  # 008c
+    description: "WHAT (seen 2026-11-18). A change holding a NEW tracker ops file (.agent/tracker-workspace/.ops/.WI-x.ops, written by any tracker add) makes coverage-select graph-select exit 5: 'was added since the stored graph and no other changed file mentions it'; smart-test then runs a fresh analysis (331 s of a 514 s run). A fresh analysis gives tracker data no node either (the newest stored graph, 29, holds 0 paths under .agent/tracker*), so it answers nothing the stored graph could not. FIX. graph_select.judge_added: an added file under .agent/tracker/ or .agent/tracker-workspace/ needs no analysis. CLOSE CONDITION. A unit test, and a live smart-test run with a pending new .ops file that selects from the stored graph."  # 008c
+    fields: {}  # 008c
+- op: discuss  # 6ca5
+  at: '2026-11-18T22:12:39Z'  # 6ca5
+  by: agent  # 6ca5
+  actor: jgstern_agent  # 6ca5
+  clock: 2  # 6ca5
+  nonce: 6ca5  # 6ca5
+  message: "Merged as PR #2261, dev SHA 3852addf6701."  # 6ca5
+- op: update  # a3fc
+  at: '2026-11-18T22:17:54Z'  # a3fc
+  by: agent  # a3fc
+  actor: jgstern_agent  # a3fc
+  clock: 3  # a3fc
+  nonce: a3fc  # a3fc
+  set:  # a3fc
+    status: done  # a3fc
+- op: discuss  # 8560
+  at: '2026-11-18T22:17:54Z'  # 8560
+  by: agent  # 8560
+  actor: jgstern_agent  # 8560
+  clock: 4  # 8560
+  nonce: '8560'  # 8560
+  message: "Merged as PR #2261. Root cause: graph_select.judge_added sent an added tracker op file to 'needs analysis' (nothing mentions it), though no analysis gives tracker data a node (stored graph 29: 0 paths under .agent/tracker*). Fix: tracker data is set aside (AddedFiles.tracker_data); unit test test_added_tracker_data_needs_no_analysis. Live, dev 3852addf6: 'coverage-select graph-select --changed-files <new untracked .agent/tracker-workspace/.ops/.WI-kihah...ops + graph_select.py> --build dfca1edd8196f6bb' -> exit 0, 'stored graph 30 of 61b03763f ... 4 file(s) named'; before the fix the same shape exited 5 ('was added since the stored graph and no other changed file mentions it') and the run analysed for 331 s."  # 8560
