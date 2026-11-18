@@ -61,6 +61,29 @@ def _hg_discover_analyzers_before_any_test() -> None:
     ensure_discovered()
 
 
+@pytest.fixture(autouse=True)
+def _hg_environment_restored_after_test() -> Iterator[None]:
+    """Hand the next test the environment this one was given (WI-holuj).
+
+    ``hypergumbo_core.cli`` writes ``--backend`` into ``os.environ``
+    (``HYPERGUMBO_RUST_ANALYZER`` / ``HYPERGUMBO_SCIP_PYTHON``) for the rest
+    of the process, and ``monkeypatch.delenv(name, raising=False)`` records
+    nothing to undo for a variable that was absent. A test calling ``main``
+    in-process therefore switched a backend on or off for every later test of
+    its xdist worker, and 21 tests of three files failed whenever the
+    scip-python opt-in reached them, depending on how xdist spread the tests.
+    Function-scoped and autouse: it takes its copy after every wider-scoped
+    fixture has set up, so a module or session fixture's variables are kept;
+    ``tests/test_environment_restored_after_each_test.py`` proves it is
+    needed and works.
+    """
+    before = dict(os.environ)
+    yield
+    if os.environ != before:
+        os.environ.clear()
+        os.environ.update(before)
+
+
 def _find_venv_dir() -> Path | None:
     """Find the venv directory, checking common names."""
     for candidate in [".venv", "venv", ".env", "env"]:
