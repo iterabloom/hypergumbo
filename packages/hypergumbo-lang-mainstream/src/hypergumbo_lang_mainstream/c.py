@@ -125,6 +125,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Mapping, Optional
 
+from hypergumbo_core import kept_work
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.module_sets import module_slot
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
@@ -844,10 +845,12 @@ def _c_ambiguous_names() -> frozenset[str]:
     because it is consulted once per unresolved call site.
     """
     global _C_AMBIGUOUS_CACHE
+    kept_work.used(_c_ambiguous_names)
     if _C_AMBIGUOUS_CACHE is None:
         from hypergumbo_core.io_boundary import load_catalog
 
-        _C_AMBIGUOUS_CACHE = frozenset(load_catalog("c").ambiguous_names or ())
+        with kept_work.filling(_c_ambiguous_names):
+            _C_AMBIGUOUS_CACHE = frozenset(load_catalog("c").ambiguous_names or ())
     return _C_AMBIGUOUS_CACHE
 
 

@@ -82,6 +82,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from .. import kept_work
 from ..analyze.base import make_symbol_id, sanitize_id_name_segment
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -594,10 +595,18 @@ def _scan_python_cli_facts(root: Path) -> _CliScanFacts:
 
     files = list(_find_python_files(root))
     key = _cli_scan_key(root, files)
+    kept_work.used(_scan_python_cli_facts, key)
     memo = _CLI_SCAN_MEMO
     if memo is not None and memo[0] == key:
         return memo[1]
+    with kept_work.filling(_scan_python_cli_facts, key):
+        facts = _walk_python_cli_facts(root, files)
+        _CLI_SCAN_MEMO = (key, facts)
+    return facts
 
+
+def _walk_python_cli_facts(root: Path, files: list[Path]) -> _CliScanFacts:
+    """The facts :func:`_scan_python_cli_facts` keeps for ``files``."""
     argparse_pairs: list[tuple[str, str, str]] = []
     fire_targets: set[tuple[str, str]] = set()
     for file_path in files:
@@ -638,12 +647,10 @@ def _scan_python_cli_facts(root: Path) -> _CliScanFacts:
             if handler_name:
                 argparse_pairs.append((rel_path, subcmd, handler_name))
 
-    facts = _CliScanFacts(
+    return _CliScanFacts(
         argparse_pairs=tuple(argparse_pairs),
         fire_targets=frozenset(fire_targets),
     )
-    _CLI_SCAN_MEMO = (key, facts)
-    return facts
 
 
 def _scan_argparse_commands(

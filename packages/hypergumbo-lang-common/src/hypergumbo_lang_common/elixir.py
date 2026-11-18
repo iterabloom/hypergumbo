@@ -198,6 +198,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, NamedTuple, Optional
 
+from hypergumbo_core import kept_work
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
@@ -724,11 +725,13 @@ _FILE_ALIAS_CACHE: list[Any] = [None, {}]
 
 def _file_alias_hints(node: "tree_sitter.Node", source: bytes) -> dict[str, str]:
     """The ``alias`` / ``import`` hints of the file ``node`` is in."""
+    kept_work.used(_file_alias_hints, id(source))
     if _FILE_ALIAS_CACHE[0] is not source:
-        root = node
-        while root.parent is not None:
-            root = root.parent
-        _FILE_ALIAS_CACHE[:] = [source, _alias_hints_under(root, source)]
+        with kept_work.filling(_file_alias_hints, id(source)):
+            root = node
+            while root.parent is not None:
+                root = root.parent
+            _FILE_ALIAS_CACHE[:] = [source, _alias_hints_under(root, source)]
     hints: dict[str, str] = _FILE_ALIAS_CACHE[1]
     return hints
 

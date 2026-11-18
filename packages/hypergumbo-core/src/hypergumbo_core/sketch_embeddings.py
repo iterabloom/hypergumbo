@@ -90,6 +90,7 @@ _IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
 
 # Set HF env vars BEFORE importing sentence_transformers downstream — most
 # HuggingFace libraries cache these at their own import time (WI-gatot).
+from . import kept_work  # noqa: E402
 from ._hf_noise import suppress_hf_noise as _suppress_hf_noise  # noqa: E402
 from .safety_zones import (  # noqa: E402
     cache_mkdir,
@@ -171,19 +172,21 @@ def _warn_embeddings_unavailable(exc: BaseException) -> None:
     but not what to do about it.
     """
     global _EMBEDDINGS_UNAVAILABLE_WARNED
+    kept_work.used(_warn_embeddings_unavailable)
     if _EMBEDDINGS_UNAVAILABLE_WARNED:
         return
-    _EMBEDDINGS_UNAVAILABLE_WARNED = True
-    warnings.warn(
-        "Embedding model unavailable — continuing without semantic "
-        f"enhancement. Cause: {exc}. The sketch is complete but omits "
-        "semantic config discovery and README description extraction. "
-        "To enable it, run 'hypergumbo install-embeddings' on a machine with "
-        "network access: it downloads the model weights into $HF_HOME. "
-        "Analysis never downloads them itself (runtime-cli-no-network).",
-        UserWarning,
-        stacklevel=2,
-    )
+    with kept_work.filling(_warn_embeddings_unavailable):
+        _EMBEDDINGS_UNAVAILABLE_WARNED = True
+        warnings.warn(
+            "Embedding model unavailable — continuing without semantic "
+            f"enhancement. Cause: {exc}. The sketch is complete but omits "
+            "semantic config discovery and README description extraction. "
+            "To enable it, run 'hypergumbo install-embeddings' on a machine with "
+            "network access: it downloads the model weights into $HF_HOME. "
+            "Analysis never downloads them itself (runtime-cli-no-network).",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 _cached_embedding_model = None
@@ -208,35 +211,36 @@ def _load_embedding_model():
         notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
     global _cached_embedding_model
+    kept_work.used(_load_embedding_model)
     if _cached_embedding_model is not None:
         return _cached_embedding_model
+    with kept_work.filling(_load_embedding_model):
+        # Force HF offline BEFORE importing sentence_transformers, which imports
+        # huggingface_hub and freezes its offline constant at import time
+        # (INV-dasig).
+        _ensure_hf_offline_for_cached_models()
 
-    # Force HF offline BEFORE importing sentence_transformers, which imports
-    # huggingface_hub and freezes its offline constant at import time
-    # (INV-dasig).
-    _ensure_hf_offline_for_cached_models()
+        # Suppress warnings BEFORE importing to catch all submodule loggers
+        logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+        logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
 
-    # Suppress warnings BEFORE importing to catch all submodule loggers
-    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-    logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
+        from sentence_transformers import SentenceTransformer
+        import sys
+        import io
 
-    from sentence_transformers import SentenceTransformer
-    import sys
-    import io
+        # Work around httpx bug with IPv6 CIDR in NO_PROXY
+        old_no_proxy = _sanitize_no_proxy_for_httpx()
 
-    # Work around httpx bug with IPv6 CIDR in NO_PROXY
-    old_no_proxy = _sanitize_no_proxy_for_httpx()
-
-    # Capture any stdout during model loading (library prints to stdout)
-    old_stdout = sys.stdout
-    sys.stdout = io.StringIO()
-    try:
-        model = _load_st_model_offline_first(SentenceTransformer, _EMBEDDING_MODEL)
-    finally:
-        sys.stdout = old_stdout
-        _restore_no_proxy(old_no_proxy)
-    _cached_embedding_model = model
-    return model
+        # Capture any stdout during model loading (library prints to stdout)
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            model = _load_st_model_offline_first(SentenceTransformer, _EMBEDDING_MODEL)
+        finally:
+            sys.stdout = old_stdout
+            _restore_no_proxy(old_no_proxy)
+        _cached_embedding_model = model
+    return _cached_embedding_model
 
 
 def _load_st_model_offline_first(st_cls, model_name, **kwargs):
@@ -745,15 +749,17 @@ def _shipped_probe_embeddings(name: str) -> "np.ndarray | None":
     ``_EMBEDDING_MODEL``, or a data file from before the digests existed gives
     ``None``, and the caller encodes the probes with the model.
     """
+    kept_work.used(_shipped_probe_embeddings, name)
     if name not in _SHIPPED_PROBES:
-        from . import _embedding_data as data
+        with kept_work.filling(_shipped_probe_embeddings, name):
+            from . import _embedding_data as data
 
-        probes, attr = PROBE_SETS[name]
-        recorded = getattr(data, "PROBE_DIGESTS", {}).get(name)
-        fresh = recorded == probe_digest(_EMBEDDING_MODEL, probes)
-        _SHIPPED_PROBES[name] = (
-            _decode_probe_embeddings(getattr(data, attr), len(probes)) if fresh else None
-        )
+            probes, attr = PROBE_SETS[name]
+            recorded = getattr(data, "PROBE_DIGESTS", {}).get(name)
+            fresh = recorded == probe_digest(_EMBEDDING_MODEL, probes)
+            _SHIPPED_PROBES[name] = (
+                _decode_probe_embeddings(getattr(data, attr), len(probes)) if fresh else None
+            )
     return _SHIPPED_PROBES[name]
 
 

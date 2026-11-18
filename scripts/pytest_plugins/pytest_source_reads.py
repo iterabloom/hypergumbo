@@ -872,6 +872,45 @@ def _lru_cache(maxsize: Any = 128, typed: bool = False) -> Any:
 
 functools.lru_cache = _lru_cache  # type: ignore[assignment]
 
+
+# ── Work kept by hand (hypergumbo_core.kept_work) ───────────────────────────
+#
+# A cache written by hand (a dict filled on first use, a module global, a
+# warning given once) has no decorator to replace. Such a function marks
+# itself: ``kept_work.used(fn, entry)`` on every call and ``with
+# kept_work.filling(fn, entry):`` around the work it keeps. Both are treated
+# exactly as a cached function's call and body are, under the same name
+# (``cache|<file>::<qualname>``), so the record and the fold need nothing new.
+# The module finds this object when it is imported after this plugin; this
+# plugin hands it over when the module was imported first.
+
+
+class _KeptWork:
+    """``hypergumbo_core.kept_work``'s recorder."""
+
+    @staticmethod
+    def _key(recorder: Any, fn: Any) -> Optional[str]:
+        return recorder.cache_key(fn.__code__, fn.__qualname__)
+
+    def used(self, fn: Any, entry: Any) -> None:
+        recorder = _STATE["recorder"]
+        key = self._key(recorder, fn) if recorder is not None else None
+        if key is not None:
+            recorder.used_cache(key, lambda: entry)
+
+    def filling(self, fn: Any, entry: Any) -> Any:
+        recorder = _STATE["recorder"]
+        key = self._key(recorder, fn) if recorder is not None else None
+        if key is None or not recorder.labels_cache_bodies():
+            return contextlib.nullcontext()
+        return recorder.cache_body(key, entry)
+
+
+KEPT_WORK_RECORDER = _KeptWork()
+_KEPT_WORK = sys.modules.get("hypergumbo_core.kept_work")
+if _KEPT_WORK is not None:
+    _KEPT_WORK.HOOK = KEPT_WORK_RECORDER  # type: ignore[attr-defined]
+
 _real_getlines = linecache.getlines
 
 

@@ -83,6 +83,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
+from . import kept_work
 from .cfg import get_def_use_extractor, load_cfg_mapping
 from .ddg_build import registered_ddg_languages
 from .taint import WALK_VERDICTS
@@ -319,6 +320,7 @@ def ensure_def_use_extractors_registered() -> bool:
     from .cfg import registered_def_use_languages
 
     global _EXPECTED_DEF_USE_LANGUAGES
+    kept_work.used(ensure_def_use_extractors_registered)
     try:
         modules = [
             importlib.import_module(name)
@@ -354,14 +356,16 @@ def ensure_def_use_extractors_registered() -> bool:
     # first call therefore reloads unconditionally and learns from the state
     # it produced itself.
     if not _EXPECTED_DEF_USE_LANGUAGES:
-        for module in modules:
-            importlib.reload(module)
-        _EXPECTED_DEF_USE_LANGUAGES = registered_def_use_languages()
+        with kept_work.filling(ensure_def_use_extractors_registered):
+            for module in modules:
+                importlib.reload(module)
+            _EXPECTED_DEF_USE_LANGUAGES = registered_def_use_languages()
         return True
     current = registered_def_use_languages()
     if not _EXPECTED_DEF_USE_LANGUAGES <= current:
-        for module in modules:
-            importlib.reload(module)
+        with kept_work.filling(ensure_def_use_extractors_registered):
+            for module in modules:
+                importlib.reload(module)
     return True
 
 

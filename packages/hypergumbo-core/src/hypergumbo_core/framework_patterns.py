@@ -110,6 +110,7 @@ if TYPE_CHECKING:
     from .ir import Symbol
 
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
+from . import kept_work
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
 from .yaml_catalogs import CatalogueError, read_catalogue_yaml, reject_unknown_keys
@@ -1044,9 +1045,18 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
     """
     frameworks_dir = get_frameworks_dir()
     cache_key = (str(frameworks_dir), framework_id)
+    kept_work.used(load_framework_patterns, cache_key)
     if cache_key in _PATTERN_CACHE:
         return _PATTERN_CACHE[cache_key]
+    with kept_work.filling(load_framework_patterns, cache_key):
+        _PATTERN_CACHE[cache_key] = _read_framework_patterns(framework_id, frameworks_dir)
+    return _PATTERN_CACHE[cache_key]
 
+
+def _read_framework_patterns(
+    framework_id: str, frameworks_dir: Path,
+) -> FrameworkPatternDef | None:
+    """What :func:`load_framework_patterns` keeps for ``framework_id``."""
     # Resolve alias if present (e.g., "chi" -> "go-web")
     resolved_id = _FRAMEWORK_ALIASES.get(framework_id, framework_id)
 
@@ -1071,7 +1081,6 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
     )
     yaml_path = user_path or frameworks_dir / f"{resolved_id}.yaml"
     if not yaml_path.exists():
-        _PATTERN_CACHE[cache_key] = None
         return None
 
     # A broken file -- the user's or shipped -- is refused naming it
@@ -1085,7 +1094,6 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
             f"framework pattern file {yaml_path} could not be read "
             f"({type(exc).__name__}: {exc})."
         ) from exc
-    _PATTERN_CACHE[cache_key] = pattern_def
     return pattern_def
 
 

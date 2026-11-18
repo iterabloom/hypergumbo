@@ -155,10 +155,18 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    before. A cached function made before the plugin was imported cannot be
    wrapped: the plugin lists it and :func:`update_from_run` marks it as run
    under no test (``unlabelled_caches``).
-   NOT COVERED: a value kept without the decorator (a module-level dict, an
-   attribute filled on first use), and state an object keeps after a shared
-   fixture returned it. Each is work done once under one test's label, with
-   no boundary to see.
+   THE SAME FOR WORK KEPT BY HAND (a module-level dict, a global, a flag
+   set once): such a function marks itself with ``kept_work.used`` on every
+   call and ``with kept_work.filling(...)`` around the work, and the plugin
+   treats the two as a cached function's call and body, under the same
+   ``cache|`` name. ``kept_work_guard`` (run by ``test_kept_work_guard``)
+   fails on a function that writes module state or a lazy attribute and is
+   neither marked nor exempted with a written reason.
+   NOT COVERED: what the guard's scan cannot see (its docstring lists it:
+   state reached through an alias or written from another module, lazy
+   attributes on an object other than ``self``), and state an object keeps
+   after a shared fixture returned it when the object is not one the guard
+   reads as made per run.
 
 7. **A child process is not measured, so a test that starts one that can
    run Python is one coverage cannot speak for.** A test that runs some

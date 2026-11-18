@@ -62,6 +62,7 @@ from typing import Callable, List, Optional, Protocol, Tuple
 
 from google.protobuf.message import DecodeError
 
+from hypergumbo_core import kept_work
 from hypergumbo_core.install_steps import rust_analyzer_install_steps
 from hypergumbo_core.ir import Edge, Symbol
 from hypergumbo_core.safety_zones import tmp_artifact_dir
@@ -298,24 +299,26 @@ def try_analyze_with_rust_analyzer(
             scip_bytes = invoke_fn(workspace, cwd=scratch)
         except RustAnalyzerError as exc:
             key = f"{type(exc).__name__}:{workspace}"
+            kept_work.used(try_analyze_with_rust_analyzer, key)
             if key not in _LOGGED_FALLBACK:
-                _LOGGED_FALLBACK.add(key)
-                if isinstance(exc, RustAnalyzerInvocationFailed):
-                    detail = _format_invocation_failed(exc)
-                elif isinstance(exc, RustAnalyzerNoOutput):
-                    detail = _format_no_output(exc)
-                else:
-                    detail = str(exc)
-                # The steps describe the machine, not the workspace: print
-                # them with the first workspace that finds the binary missing.
-                steps = ""
-                if isinstance(exc, RustAnalyzerNotInstalled) and "install-steps" not in _LOGGED_FALLBACK:
-                    _LOGGED_FALLBACK.add("install-steps")
-                    steps = f"\n\n{rust_analyzer_install_steps()}"
-                emit(
-                    f"rust-analyzer backend unavailable for {workspace}: "
-                    f"{type(exc).__name__}: {detail} — falling through to rust.py{steps}",
-                )
+                with kept_work.filling(try_analyze_with_rust_analyzer, key):
+                    _LOGGED_FALLBACK.add(key)
+                    if isinstance(exc, RustAnalyzerInvocationFailed):
+                        detail = _format_invocation_failed(exc)
+                    elif isinstance(exc, RustAnalyzerNoOutput):
+                        detail = _format_no_output(exc)
+                    else:
+                        detail = str(exc)
+                    # The steps describe the machine, not the workspace: print
+                    # them with the first workspace that finds the binary missing.
+                    steps = ""
+                    if isinstance(exc, RustAnalyzerNotInstalled) and "install-steps" not in _LOGGED_FALLBACK:
+                        _LOGGED_FALLBACK.add("install-steps")
+                        steps = f"\n\n{rust_analyzer_install_steps()}"
+                    emit(
+                        f"rust-analyzer backend unavailable for {workspace}: "
+                        f"{type(exc).__name__}: {detail} — falling through to rust.py{steps}",
+                    )
             # WI-luvud: the taxonomy already knows which state this is; before
             # this the information died here and all four became one ``None``.
             return ScipAttempt.failure(_silence_code_for(exc), str(exc))
@@ -330,12 +333,14 @@ def try_analyze_with_rust_analyzer(
         return ScipAttempt.success(symbols, edges)
     except DecodeError as exc:
         key = f"DecodeError:{workspace}"
+        kept_work.used(try_analyze_with_rust_analyzer, key)
         if key not in _LOGGED_FALLBACK:
-            _LOGGED_FALLBACK.add(key)
-            emit(
-                f"rust-analyzer SCIP decode failed for {workspace}: "
-                f"{exc} — falling through to rust.py",
-            )
+            with kept_work.filling(try_analyze_with_rust_analyzer, key):
+                _LOGGED_FALLBACK.add(key)
+                emit(
+                    f"rust-analyzer SCIP decode failed for {workspace}: "
+                    f"{exc} — falling through to rust.py",
+                )
         # An index we cannot decode is a contained raise, same as a non-zero
         # exit: the pass started and blew up, and "install the package" would
         # be the wrong advice (ADR-0056's init-failure ruling).

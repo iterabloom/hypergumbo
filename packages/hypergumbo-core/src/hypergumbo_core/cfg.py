@@ -142,6 +142,8 @@ from typing import Any, Iterable, Literal, Optional, Protocol, Sequence, runtime
 
 import yaml
 
+from . import kept_work
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -747,19 +749,22 @@ def load_cfg_mapping(language: str, search_dir: Optional[Path] = None) -> Option
     # unpatched caller's key (history: INV-kazij).
     search = search_dir or get_cfg_nodes_dir()
     cache_key = f"{search}:{language}"
+    kept_work.used(load_cfg_mapping, cache_key)
     if cache_key in _MAPPING_CACHE:
         return _MAPPING_CACHE[cache_key]
-    yaml_path = search / f"{_CFG_MAPPING_ALIASES.get(language, language)}.yaml"
-    if not yaml_path.exists():
-        _MAPPING_CACHE[cache_key] = None  # type: ignore[assignment]
-        return None
+    with kept_work.filling(load_cfg_mapping, cache_key):
+        _MAPPING_CACHE[cache_key] = _read_cfg_mapping(
+            search / f"{_CFG_MAPPING_ALIASES.get(language, language)}.yaml")
+    return _MAPPING_CACHE[cache_key]
 
+
+def _read_cfg_mapping(yaml_path: Path) -> Optional[CfgNodeMapping]:
+    """The mapping in ``yaml_path``, None when there is no such file."""
+    if not yaml_path.exists():
+        return None
     with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
-
-    mapping = _parse_cfg_mapping(data)
-    _MAPPING_CACHE[cache_key] = mapping
-    return mapping
+    return _parse_cfg_mapping(data)
 
 
 def clear_cfg_mapping_cache() -> None:

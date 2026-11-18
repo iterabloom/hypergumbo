@@ -103,6 +103,8 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Callable, Final, Iterator, Optional
 
+from . import kept_work
+
 Step = tuple[object, ...]
 """One projection: ``("pos", i)``, ``("elem",)``, ``("key",)``, ``("val",)``,
 ``("sub", i)`` or ``("attr", name)``."""
@@ -1529,12 +1531,14 @@ def flow_for(tree: ast.Module) -> ModuleValueFlow:
     Producer scans visit every site of one parsed module before moving to the
     next, so one cached entry is enough; holding the tree keeps ``id`` stable.
     """
+    kept_work.used(flow_for, id(tree))
     cached = _CACHE.get(id(tree))
     if cached is not None and cached[0] is tree:
         return cached[1]
-    _CACHE.clear()
-    flow = ModuleValueFlow(tree)
-    _CACHE[id(tree)] = (tree, flow)
+    with kept_work.filling(flow_for, id(tree)):
+        _CACHE.clear()
+        flow = ModuleValueFlow(tree)
+        _CACHE[id(tree)] = (tree, flow)
     return flow
 
 

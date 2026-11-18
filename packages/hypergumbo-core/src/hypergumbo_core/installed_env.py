@@ -52,6 +52,8 @@ import os
 import sys
 from typing import Any, Callable, Hashable, TypeVar
 
+from . import kept_work
+
 _T = TypeVar("_T")
 
 #: The key the kept answers were built under, and the answers by slot.
@@ -88,11 +90,13 @@ def kept_per_environment(slot: Hashable, build: Callable[[], _T]) -> _T:
     """
     global _KEPT
     key = environment_key()
+    kept_work.used(kept_per_environment, (key, slot))
     kept = _KEPT
     if kept is None or kept[0] != key:
         kept = _KEPT = (key, {})
     answers = kept[1]
     if slot not in answers:
-        answers[slot] = build()
+        with kept_work.filling(kept_per_environment, (key, slot)):
+            answers[slot] = build()
     answer: _T = answers[slot]
     return answer
