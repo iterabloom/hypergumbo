@@ -20,3 +20,10 @@
     fields:  # be9e
       statement: "A secret's copy is never more readable than its origin (INV-todig's statement): transcript-content files under .agent/ are 600 and archive directories 700, and stay so across git operations. VIOLATED: after any git checkout or merge, idle transcript files are 660 and every archive directory is 2770."  # be9e
       root_cause: ".githooks/repair-agent-perms.sh (called from post-checkout and post-merge) detects the two-user setup from the tracker directories' group and then runs find over the WHOLE of .agent/: chmod g+rwxs on every directory and g+rw on every file the user owns. It predates the INV-todig fix and that fix did not touch it, so the transcript pipeline tightens a file when it writes it and the next checkout loosens it again. The INV-todig tests drive the pipeline scripts only, never a git hook."  # be9e
+- op: discuss  # 5c88
+  at: '2026-11-18T03:44:42Z'  # 5c88
+  by: agent  # 5c88
+  actor: jgstern_agent  # 5c88
+  clock: 2  # 5c88
+  nonce: 5c88  # 5c88
+  message: "OWNER APPROVAL, 2026-11-18 ~03:50 UTC (in session). I asked: 'the fix is in .githooks/, which is a governance path outside the pre-approval you gave for the smart-test plan. Does listing it in the file [~/hypergumbo_lab_notebook/after_fast_smart_test.txt] mean you approve that change and its merge through auto-pr without --gov?' The owner answered: 'INV-kosok - yes'. Scope of the approval: the fix for this invariant in .githooks/ (limit repair-agent-perms.sh to the tracker directories it exists for, with a test that drives the git hook), merged by auto-pr without --gov. Not asked again and NOT answered: whether INV-todig is reopened. Re-measured 2026-11-18 03:26 UTC: .agent/.last_session_transcript.jsonl and .training-data.jsonl are rw-rw----, the archive directory rwxrws---, 714 of 714 archive entries have a group bit, all in group jgstern_agent (0 in project-dev). Work starts after the fast-smart-test plan, per the owner's instruction."  # 5c88
