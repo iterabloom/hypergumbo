@@ -602,3 +602,38 @@ def test_a_missing_report_fails_closed(tmp_path: Path) -> None:
     result = _run_with_report(tmp_path, None)
     assert result.returncode != 0, result.stdout + result.stderr
     assert "no readable junit report" in result.stdout, result.stdout
+
+
+MANIFEST_WITH_DESELECTED = (
+    "# Mode: targeted\n"
+    "# By statement: 2 test(s) deselected in 1 file(s)\n"
+    "#\n"
+    "# === DESELECTED_TESTS ===\n"
+    "#- tests/test_something.py::test_x\n"
+    "#- tests/test_something.py::test_y[a b]\n"
+    "# === CHANGED_SOURCE_FILES ===\n"
+    "# === SELECTED_TESTS ===\n"
+    "tests/test_something.py\n"
+)
+
+
+def test_the_tests_the_selector_left_out_are_deselected(tmp_path: Path) -> None:
+    """WI-kunah: the manifest's ``#- <id>`` lines reach the deselect plugin,
+    verbatim (a parameter may hold a space), and the files still run."""
+    repo, marker = _sandbox(tmp_path, manifest_body=MANIFEST_WITH_DESELECTED,
+                            changed_files=["tests/test_something.py"])
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+    args = marker.read_text().split()
+    assert "-p" in args and "pytest_statement_deselect" in args, result.stdout
+    listed = next(a for a in args if a.startswith("--statement-deselect="))
+    assert Path(listed.split("=", 1)[1]).read_text().splitlines() == [
+        "tests/test_something.py::test_x", "tests/test_something.py::test_y[a b]"]
+    assert "tests/test_something.py" in args
+    assert "=== by statement: 2 test(s) of the selected files deselected ===" in result.stdout
+
+
+def test_a_manifest_without_the_section_loads_no_plugin(tmp_path: Path) -> None:
+    repo, marker = _sandbox(tmp_path, manifest_body=MANIFEST_TEST_ONLY,
+                            changed_files=["tests/test_something.py"])
+    _run(_pytest_step_script(), repo, tmp_path / "bin")
+    assert "statement" not in marker.read_text()

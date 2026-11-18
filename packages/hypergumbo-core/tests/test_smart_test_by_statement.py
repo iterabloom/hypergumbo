@@ -48,12 +48,20 @@ echo "by-statement: left out 2"
 """
 
 
-def _block() -> str:
-    start = re.search(_START, _TEXT, re.MULTILINE)
-    assert start, "the by-statement step is gone from smart-test"
-    end = re.search(r"^fi$", _TEXT[start.start():], re.MULTILINE)
+def _between(start_pattern: str, end_pattern: str) -> str:
+    start = re.search(start_pattern, _TEXT, re.MULTILINE)
+    assert start, f"{start_pattern} is gone from smart-test"
+    end = re.search(end_pattern, _TEXT[start.start():], re.MULTILINE)
     assert end
     return _TEXT[start.start():start.start() + end.end()]
+
+
+def _function() -> str:
+    return _between(r"^by_statement_left_out\(\) \{$", r"^\}$")
+
+
+def _block() -> str:
+    return _function() + "\n" + _between(_START, r"^fi$")
 
 
 def _run(tmp_path: Path, *, stub: str, enabled: str = "true",
@@ -71,6 +79,7 @@ def _run(tmp_path: Path, *, stub: str, enabled: str = "true",
         f'TOOLS_ROOT="{tmp_path}"',
         f'SELECT_BY_STATEMENT="{enabled}"',
         'LOCAL_CHANGED_FILES="a/src/a/m.py"',
+        'CHANGED_FILES="a/src/a/m.py"',
         "AFFECTED_TESTS=$'a/tests/test_x.py\\na/tests/test_gate.py\\na/tests/test_changed.py'",
         "SLICE_TESTS=$'a/tests/test_x.py\\na/tests/test_changed.py'",
         'CHANGED_TEST_FILES="a/tests/test_changed.py"',
@@ -131,3 +140,44 @@ def test_it_sits_below_the_manifest_seam_and_reaches_the_targeted_run() -> None:
     run = _TEXT.index('run_pytest "$RUN_ORDER" "${FAIL_GRACE_ARGS[@]}" '
                       '${STATEMENT_ARGS[@]+"${STATEMENT_ARGS[@]}"} "${SCOPED_PYTEST_ARGS[@]}"')
     assert run > step.start()
+
+
+def _manifest(tmp_path: Path, *, stub: str) -> str:
+    """The manifest step and the manifest writer's by-statement lines, run."""
+    _run(tmp_path, stub=stub)  # lays out the stub helper and plugin
+    writer = _between(r'^    if \[\[ -n "\$MANIFEST_LEFT_OUT" \]\]; then$',
+                      r'^    echo "# === CHANGED_SOURCE_FILES ==="$')
+    script = "\n".join([
+        "set -uo pipefail",
+        f'REPO_ROOT="{tmp_path}"', f'TOOLS_ROOT="{tmp_path}"',
+        'SELECT_BY_STATEMENT="true"', 'CHANGED_FILES="a/src/a/m.py"',
+        "MANIFEST_TESTS=$'a/tests/test_x.py'", "SLICE_TESTS=$'a/tests/test_x.py'",
+        _function(), _between(r'^MANIFEST_LEFT_OUT=""$', r"^fi$"), "{", writer, "}",
+    ])
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True,  # noqa: S607
+                          cwd=str(tmp_path))
+    assert done.returncode == 0, done.stderr
+    return done.stdout
+
+
+def test_the_manifest_carries_the_ids_as_comment_lines(tmp_path: Path) -> None:
+    out = _manifest(tmp_path, stub=_WRITES_TWO)
+    assert out.splitlines() == [
+        "# By statement: 2 test(s) deselected in 1 file(s) (smart-test --no-by-statement keeps them)",
+        "#", "# === DESELECTED_TESTS ===",
+        "#- a/tests/test_x.py::t1", "#- a/tests/test_x.py::t2",
+        "# === CHANGED_SOURCE_FILES ==="]
+
+
+def test_a_refusal_is_named_in_the_manifest_header(tmp_path: Path) -> None:
+    out = _manifest(tmp_path, stub='echo "by-statement: left out nothing (no package source changed)"')
+    assert out.splitlines() == [
+        "# By statement: left out nothing (no package source changed)", "#",
+        "# === CHANGED_SOURCE_FILES ==="]
+
+
+def test_the_manifest_list_is_taken_above_the_seam() -> None:
+    step = re.search(r'^MANIFEST_LEFT_OUT=""$', _TEXT, re.MULTILINE)
+    assert step
+    assert _TEXT.index('\nMANIFEST_TESTS="$AFFECTED_TESTS"') < step.start()
+    assert step.start() < _TEXT.index('\nLOCAL_CHANGED_FILES="$CHANGED_FILES"')

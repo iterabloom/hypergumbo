@@ -71,8 +71,8 @@ run, the limit ``prose_only.tests_reading`` states.
 WHAT ACTS ON IT. A local targeted smart-test run deselects, inside the files
 it runs, the tests this selector leaves out (:mod:`statement_narrow`, which
 says when it refuses and which tests it puts back to keep the coverage gate
-measured; switched on 2026-11-18 at the owner's bar). The CI manifest still
-lists files. ``coverage-select run-record`` stores its answer beside what a
+measured; switched on 2026-11-18 at the owner's bar), and the manifest
+carries the same answer for its own files, which PR CI deselects. ``coverage-select run-record`` stores its answer beside what a
 run really ran and which tests failed.
 """
 from __future__ import annotations

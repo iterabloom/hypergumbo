@@ -54,6 +54,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Caches inside shared test fixtures are paired too.**
 - **Local smart-test runs skip tests no changed statement reaches.**
 - **New tracker data no longer forces a fresh analysis.**
+- **PR CI skips tests no changed statement reaches.**
 - **By-statement selection keeps tests that read changed files.**
 - **Hashing analyzer sources no longer counts as reading them.**
 - **Tests no longer leak environment variables to later tests.**

@@ -2419,6 +2419,55 @@ MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
 # less careful consumer, empties) the merge gate. Refuse before it is written.
 require_selection_on_disk "the manifest (.ci/affected-tests.txt)" "$MANIFEST_TESTS"
 
+# ── THE BY-STATEMENT SELECTOR (WI-pugol, WI-kunah; SELECT_BY_STATEMENT above) ─
+# Deselects, inside a run set's files, the tests the change does not need
+# (hypergumbo_core.statement_narrow: when it refuses, and which tests it puts
+# back so the changed files stay covered). Only files the code reached may
+# lose tests: the graph's answer and the coverage union. A file any other rule
+# added runs every test, because that rule saw something statements do not (a
+# changed test, fixture, conftest, document a gate reads, a script's own
+# suite). Sets STATEMENT_LINE and writes the ids to $3; the helper writes $3
+# empty first and exits 0 whatever happens, so a failure deselects nothing.
+#   $1 the changed files  $2 the run set (test files)  $3 the output file
+by_statement_left_out() {
+    STATEMENT_LINE=""
+    : > "$3"
+    [[ -f "$TOOLS_ROOT/scripts/pytest_plugins/pytest_statement_deselect.py" ]] || return 0
+    local changed run whole
+    changed=$(mktemp); run=$(mktemp); whole=$(mktemp)
+    echo "$1" | sed '/^$/d' > "$changed"
+    echo "$2" | sed '/^$/d' > "$run"
+    {
+        comm -23 <(echo "$2" | sed '/^$/d' | sort -u) \
+            <(printf '%s\n%s\n' "${SLICE_TESTS:-}" "${COVERAGE_UNION_NEW:-}" | sed '/^$/d' | sort -u)
+        printf '%s\n' "${CHANGED_TEST_FILES:-}" "${TOP_LEVEL_TESTS:-}" "${FIXTURE_TESTS:-}" \
+            "${CONFTEST_TESTS:-}" "${ROOT_SUITE:-}" "${PLAYBOOK_GATE_TESTS:-}" \
+            "${CATALOGUE_GATE_TESTS:-}" "${CATALOGUE_ROOT_SUITE:-}" "${DOC_GATE_TESTS:-}" \
+            "${CITATION_GATE_TESTS:-}" "${CONFIDENCE_GATE_TEST:-}" "${PROSE_TESTS:-}" \
+            "${IMPORT_NEW:-}" "${PER_PKG_FALLBACKS:-}" "${COV_DEPS_ADDS:-}"
+    } | sed '/^$/d' | sort -u > "$whole"
+    STATEMENT_LINE=$("$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+        statement-narrow --changed-files "$changed" --run-set "$run" \
+        --whole "$whole" --base "${BASELINE:-HEAD}" --out "$3" || echo "")
+    rm -f "$changed" "$run" "$whole"
+}
+
+# THE MANIFEST'S OWN LIST (WI-kunah): ABOVE THE SEAM, over the manifest's files
+# alone, because PR CI runs those and nothing else, and the tests put back to
+# cover the changed files must be among them. Written into the manifest as
+# "#- <id>" lines: a comment to every reader that predates it, which then runs
+# the whole files as before. The Woodpecker pytest step hands them to the
+# deselect plugin.
+MANIFEST_LEFT_OUT=""
+MANIFEST_STATEMENT_LINE=""
+if [[ "$SELECT_BY_STATEMENT" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _manifest_left_out=$(mktemp)
+    by_statement_left_out "$CHANGED_FILES" "$MANIFEST_TESTS" "$_manifest_left_out"
+    MANIFEST_STATEMENT_LINE="$STATEMENT_LINE"
+    MANIFEST_LEFT_OUT=$(sed '/^$/d' "$_manifest_left_out")
+    rm -f "$_manifest_left_out"
+fi
+
 # The prose-only files are already out of $CHANGED_FILES, so the local coverage
 # gate and the coverage union below do not see them.
 LOCAL_CHANGED_FILES="$CHANGED_FILES"
@@ -2550,7 +2599,16 @@ mkdir -p "$MANIFEST_DIR"
     if [[ "$IMPORT_UNION_COUNT" -gt 0 ]]; then
         echo "# Import-closure tests: $IMPORT_UNION_COUNT added (they import a file whose import-time code changed; the call-edge slice does not reach them)"
     fi
+    if [[ -n "$MANIFEST_LEFT_OUT" ]]; then
+        echo "# By statement: $(echo "$MANIFEST_LEFT_OUT" | wc -l) test(s) deselected in $(echo "$MANIFEST_LEFT_OUT" | sed 's/::.*//' | sort -u | wc -l) file(s) (smart-test --no-by-statement keeps them)"
+    elif [[ -n "$MANIFEST_STATEMENT_LINE" ]]; then
+        echo "# By statement: ${MANIFEST_STATEMENT_LINE#by-statement: }"
+    fi
     echo "#"
+    if [[ -n "$MANIFEST_LEFT_OUT" ]]; then
+        echo "# === DESELECTED_TESTS ==="
+        echo "$MANIFEST_LEFT_OUT" | sed 's/^/#- /'
+    fi
     echo "# === CHANGED_SOURCE_FILES ==="
     if [[ -n "$CHANGED_SOURCE_FILES" ]]; then
         echo "$CHANGED_SOURCE_FILES"
@@ -2672,34 +2730,14 @@ except Exception:
     fi
 fi
 
-# ── THE BY-STATEMENT SELECTOR (WI-pugol; SELECT_BY_STATEMENT above) ─────────
-# Deselects, inside the run set's files, the tests the change does not need.
-# Only files the code reached may lose tests: the graph's answer and the
-# coverage union. A file any other rule added runs every test, because that
-# rule saw something statements do not (a changed test, fixture, conftest,
-# document a gate reads, a script's own suite). The helper writes the list
-# empty first and exits 0 whatever happens, so a failure deselects nothing.
+# ── THE BY-STATEMENT SELECTOR, LOCAL RUN (WI-pugol) ──────────────────────────
+# by_statement_left_out (above the seam) on the local run set, which may hold
+# the coverage union's files too. Its list goes to the deselect plugin.
 STATEMENT_ARGS=()
 STATEMENT_LINE=""
-if [[ "$SELECT_BY_STATEMENT" == "true" ]] && [[ -n "$LOCAL_CHANGED_FILES" ]] \
-        && [[ -f "$TOOLS_ROOT/scripts/pytest_plugins/pytest_statement_deselect.py" ]]; then
-    _st_changed=$(mktemp); _st_run=$(mktemp); _st_whole=$(mktemp)
+if [[ "$SELECT_BY_STATEMENT" == "true" ]] && [[ -n "$LOCAL_CHANGED_FILES" ]]; then
     STATEMENT_LEFT_OUT="$REPO_ROOT/.ci/statement-left-out.txt"
-    echo "$LOCAL_CHANGED_FILES" | sed '/^$/d' > "$_st_changed"
-    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_st_run"
-    {
-        comm -23 <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) \
-            <(printf '%s\n%s\n' "${SLICE_TESTS:-}" "${COVERAGE_UNION_NEW:-}" | sed '/^$/d' | sort -u)
-        printf '%s\n' "${CHANGED_TEST_FILES:-}" "${TOP_LEVEL_TESTS:-}" "${FIXTURE_TESTS:-}" \
-            "${CONFTEST_TESTS:-}" "${ROOT_SUITE:-}" "${PLAYBOOK_GATE_TESTS:-}" \
-            "${CATALOGUE_GATE_TESTS:-}" "${CATALOGUE_ROOT_SUITE:-}" "${DOC_GATE_TESTS:-}" \
-            "${CITATION_GATE_TESTS:-}" "${CONFIDENCE_GATE_TEST:-}" "${PROSE_TESTS:-}" \
-            "${IMPORT_NEW:-}" "${PER_PKG_FALLBACKS:-}" "${COV_DEPS_ADDS:-}"
-    } | sed '/^$/d' | sort -u > "$_st_whole"
-    STATEMENT_LINE=$("$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
-        statement-narrow --changed-files "$_st_changed" --run-set "$_st_run" \
-        --whole "$_st_whole" --base "${BASELINE:-HEAD}" --out "$STATEMENT_LEFT_OUT" || echo "")
-    rm -f "$_st_changed" "$_st_run" "$_st_whole"
+    by_statement_left_out "$LOCAL_CHANGED_FILES" "$AFFECTED_TESTS" "$STATEMENT_LEFT_OUT"
     if [[ -n "$STATEMENT_LINE" ]]; then
         echo "$STATEMENT_LINE (--no-by-statement runs them)"
     fi

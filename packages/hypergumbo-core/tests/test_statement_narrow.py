@@ -210,3 +210,21 @@ def test_the_index_may_spell_tests_relative(tmp_path: Path) -> None:
 def test_deselected_matches_through_the_xdist_group_suffix() -> None:
     collected = ["a.py::t1", "a.py::t2@grp", "a.py::t3[x]", "a.py::t4"]
     assert sn.deselected(collected, {"a.py::t2", "a.py::t3[x]"}) == [1, 2]
+
+
+def test_a_run_left_with_no_test_is_not_narrowed(repo: Repo) -> None:
+    """The only file of the run holds a test that never touched the changed
+    file (it ran another file's code): it is left out, and the run would have
+    nothing to run. pytest exits 5 on that, so the run is not narrowed."""
+    other, tests_c = repo.root / "packages/p/src/p/other.py", "packages/p/tests/test_c.py"
+    test_id = f"{repo.root}/{tests_c}::t_other"
+    si.store_edges(repo.conn, {test_id: [(str(other), "h")]}, digests={str(other): {"h": "d"}},
+                   statements={test_id: {(str(other), "h"): _bitmap({0})}})
+    repo.conn.execute("INSERT INTO read_test (test_id, test_file, opaque, observed) "
+                      "VALUES (?, ?, '', 1)", (f"{tests_c}::t_other", tests_c))
+    repo.conn.execute("INSERT INTO test_run (test, run, rows) SELECT id, 1, 1 FROM test "
+                      "WHERE test_id = ?", (test_id,))
+    repo.conn.commit()
+    out = repo.narrow(EDIT_B, run_files=(tests_c,))
+    assert out.refusal == "it would leave no test to run"
+    assert out.left_out == frozenset() and out.candidates == 1

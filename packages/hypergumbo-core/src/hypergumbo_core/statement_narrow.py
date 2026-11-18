@@ -15,9 +15,9 @@ selection. Planted-fault campaign 5 (2026-11-18, notebook
 ``fast_smart_test_build_11172026/bar/campaign5_summary.txt``): 42 runs failed
 a test, 35 of them narrowed, no failed test outside the selection that fails
 on its own with the fault. That bounds the per-run miss rate below about 7%
-(95%); it does not show it is zero. The CI manifest still lists files, so PR
-CI runs every test of every selected file, and the twice-daily full run runs
-everything.
+(95%); it does not show it is zero. smart-test asks twice: over the local run
+set, and over the manifest's files alone, whose answer the manifest carries
+for PR CI (``#- <id>`` lines). The twice-daily full run runs everything.
 
 IT REFUSES, AND THE RUN IS NOT NARROWED, WHEN:
 
@@ -205,6 +205,11 @@ def narrow_by_statement(
     candidates = _index_tests_of(conn, repo_root, narrowable)
     left_out = {t for t in candidates if t not in held}
     back = _cover(conn, repo_root, base_sources, files, left_out)
+    if left_out and not frozenset(_index_tests_of(conn, repo_root, files)) - left_out:
+        # pytest exits 5 when it runs nothing, and CI reads that as a failed
+        # selection: leave the files to run whole.
+        return StatementNarrowing(left_out=frozenset(), refusal="it would leave no test to run",
+                                  candidates=len(candidates), selection=selection)
     return StatementNarrowing(
         left_out=frozenset(left_out), refusal=None, candidates=len(candidates),
         kept_for_coverage=frozenset(back), selection=selection)
