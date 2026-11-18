@@ -1,0 +1,22 @@
+- op: create  # 156b
+  at: '2026-11-18T18:48:15Z'  # 156b
+  by: agent  # 156b
+  actor: jgstern_agent  # 156b
+  clock: 1  # 156b
+  nonce: 156b  # 156b
+  data:  # 156b
+    kind: work_item  # 156b
+    title: "Planted-fault campaign 5 on a dev with the readers rule and the environment fix: zero real misses before the switch"  # 156b
+    status: todo_hard  # 156b
+    priority: 2  # 156b
+    parent:  # 156b
+    tags:  # 156b
+    - smart_test  # 156b
+    - fast_smart_test_plan  # 156b
+    isbefore:  # 156b
+    - WI-pugol-sajov-fazah-romaj-lotag-hatuj-kogap-tovor  # 156b
+    duplicate_of: []  # 156b
+    not_duplicate_of: []  # 156b
+    pr_ref:  # 156b
+    description: "WHAT. Campaigns 3 and 4 were not clean (INV-kazud, INV-simop: both fixed, PRs #2255, #2257), and their counts were muddied by an environment leak between tests (WI-holuj, fixed PR #2258). Run the weighted planted-fault campaign again on a dev with all three fixes, after a full run has folded the index, with a fresh seed (20261120).\n\nHOW. bar/campaign3.py --out bar/campaign5 --per-shape 8 --seed 20261120. Replay every miss alone (bar/replay_misses.py campaign5) and in company (bar/replay_company2.py) before calling it real.\n\nCLOSE CONDITION. Summary in the notebook, by shape: planted, type gate, ran, failed a test, failed tests, kept, named, outside. Zero real misses: WI-pugol may proceed (with the count: a clean campaign bounds the miss rate, it does not prove it zero). One real miss: the selector stays off and the miss is filed."  # 156b
+    fields: {}  # 156b

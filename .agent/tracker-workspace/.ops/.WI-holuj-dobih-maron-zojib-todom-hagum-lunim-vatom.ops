@@ -25,3 +25,26 @@
   clock: 2  # c09b
   nonce: c09b  # c09b
   message: "Two more intermittent failures, 2026-11-18 campaign 3 (pep508_name 'return None' fault, 387 test files at -n 6): test_unmodeled_alias_shapes.py::test_the_alias_leak_is_withheld[python__S6b_append_stores] (same family as case 1) and test_cli_run_behavior_map.py::test_run_behavior_map_tolerates_unreadable_file_end_to_end. Neither reproduced: alone with and without the fault, and the whole 387-file set at -n 6 clean (0 failed) and with the fault (58 failed, not these two). Failure text was not kept (the run's output log was overwritten). Replay scripts: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/replay_misses.py, replay_company.py."  # c09b
+- op: discuss  # 3bd6
+  at: '2026-11-18T16:57:22Z'  # 3bd6
+  by: agent  # 3bd6
+  actor: jgstern_agent  # 3bd6
+  clock: 3  # 3bd6
+  nonce: 3bd6  # 3bd6
+  message: "ROOT CAUSE FOUND (2026-11-18 ~17:30Z), fix not yet made. With HYPERGUMBO_SCIP_PYTHON=1 exported, smart-test of test_vcs_ignored_untracked.py, test_cli_run_behavior_map.py and test_unmodeled_alias_shapes.py fails 21 tests DETERMINISTICALLY, including both cases filed here (test_no_graph_node; the alias 'NOT CONFIRMED: ... calls into 2 module(s)' text) and every non-reproducing campaign-3/4 miss among those files (test_run_behavior_map_tolerates_unreadable_file_end_to_end, test_the_plain_shape_keeps_its_credit, alias S5L/S6b). A clean company run of 251 files failed 3 of them with scip/scip_python-origin nodes in the output and a rust-analyzer fallback warning. MECHANISM: cli.py (~line 3606) writes os.environ[HYPERGUMBO_SCIP_PYTHON / HYPERGUMBO_RUST_ANALYZER] for --backend, and test_backend_cli_flag.py's autouse fixtures use monkeypatch.delenv(VAR, raising=False), which records nothing when the variable is absent, so a value main() then writes outlives the test (test_present_and_available_sets_the_transport sets it to 1). No conftest resets these variables. NOT YET SHOWN: a two-file sequential repro (test_backend_cli_flag.py then the victims, -n 0) passed 118/118, so the exact leaking test is not pinned. FIX PLANNED: an autouse fixture restoring os.environ after every test in each package conftest (plus the root one), and test_backend_cli_flag.py's fixtures recording absence properly."  # 3bd6
+- op: update  # 9981
+  at: '2026-11-18T18:48:14Z'  # 9981
+  by: agent  # 9981
+  actor: jgstern_agent  # 9981
+  clock: 4  # 9981
+  nonce: '9981'  # 9981
+  set:  # 9981
+    status: done  # 9981
+    pr_ref: '2258'  # 9981
+- op: discuss  # b78a
+  at: '2026-11-18T18:48:14Z'  # b78a
+  by: agent  # b78a
+  actor: jgstern_agent  # b78a
+  clock: 5  # b78a
+  nonce: b78a  # b78a
+  message: "Fixed in PR #2258. LEAK NAMED: os.environ HYPERGUMBO_SCIP_PYTHON / HYPERGUMBO_RUST_ANALYZER, written by hypergumbo_core.cli for --backend; monkeypatch.delenv(name, raising=False) records nothing for an absent variable, so the value outlives the test. A test that leaves it: test_backend_cli_flag.py (a probe test run after it in one process saw SCIP=0, RUST=1; after the fix None, None). The victims: with HYPERGUMBO_SCIP_PYTHON=1, 21 tests of test_vcs_ignored_untracked.py, test_cli_run_behavior_map.py, test_unmodeled_alias_shapes.py fail deterministically, both cases filed here among them. FIX AT THE SOURCE OF THE CLASS: an autouse fixture in the root conftest restores os.environ after every test; tests/test_environment_restored_after_each_test.py (the CLI call included) errors without it. Full run after the merge: 41,394 passed, 0 failed. GAP, stated: the exact test that leaves SCIP=1 (not 0) in a worker was not pinned; the fixture covers every test whatever it sets."  # b78a
