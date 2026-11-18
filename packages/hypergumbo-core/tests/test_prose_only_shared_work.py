@@ -3,8 +3,8 @@
 
 The recorder plugin writes one file per pytest process. Per test it lists the
 keys of the module, class and session fixtures the test used; ``nested`` lists,
-per shared fixture, the shared fixtures that were BUILT INSIDE it (a module
-fixture that fetches a session fixture by name). A test that uses the outer
+per piece of shared work, the shared work done INSIDE it, each named
+``<kind>|<key>`` (a module fixture that fetches a session fixture by name). A test that uses the outer
 one depends on the inner one's code too, and pytest does not put the inner one
 in that test's own list when the outer fixture was already built.
 
@@ -39,7 +39,8 @@ def _write(reads: Path, name: str, tests: dict[str, Any], *,
                                "tests": tests, "fixtures": {}, "modules": {},
                                "unattributed": _bucket()}
     if nested is not None:
-        payload["nested"] = nested
+        payload["nested"] = {f"fixture|{key}": [f"fixture|{inner}" for inner in inside]
+                             for key, inside in nested.items()}
     (reads / name).write_text(json.dumps(payload))
 
 

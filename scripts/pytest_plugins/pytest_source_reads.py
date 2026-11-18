@@ -70,8 +70,9 @@ last), though every test that uses the fixture depends on it. While such a
 fixture is set up or torn down this plugin switches coverage to the context
 ``|shared|fixture|<fixture key>`` and back to the test's own afterwards. The
 record lists the fixtures each test used (``tests.<id>.fixtures``) and, per
-shared fixture, the shared fixtures BUILT INSIDE it (``nested``: a module
-fixture that fetches a session fixture by name), and the selection index
+piece of shared work, the shared work done INSIDE it (``nested``, each named
+``<kind>|<key>``, the context name without its prefix: a module fixture that
+fetches a session fixture by name), and the selection index
 gives the rows of a shared context to every test that used it
 (``hypergumbo_core.selection_index``, semantic 6). Done only when pytest-cov's
 test contexts are on, since "back to the test's own" has no meaning otherwise,
@@ -301,8 +302,11 @@ class SourceReads:
         self.plugins = plugins
         #: The context pytest-cov has set: ``<node id>|<phase>``.
         self.phase = ""
-        #: Keys of the shared fixtures being set up or torn down, outermost first.
+        #: The shared work being done, outermost first, each named
+        #: ``<kind>|<key>`` (``fixture|tests/test_x.py::built``): its coverage
+        #: context is SHARED_CONTEXT followed by that name.
         self.building: list[str] = []
+        #: Per piece of shared work, the shared work done INSIDE it.
         self.nested: dict[str, set[str]] = {}
         self.flush_seconds = flush_seconds
         self.root = os.path.realpath(root) + os.sep
@@ -514,18 +518,18 @@ class SourceReads:
     def _shared_work(self, key: str, bucket: _Bucket) -> Iterator[None]:
         """Run shared fixture ``key`` under its own coverage context, and
         attribute what the audit hook sees to it."""
+        name = f"fixture|{key}"
         if self.building:
-            self.nested.setdefault(self.building[-1], set()).add(key)
-        self.building.append(key)
+            self.nested.setdefault(self.building[-1], set()).add(name)
+        self.building.append(name)
         self.scopes.append(bucket)
-        self._label(f"{SHARED_CONTEXT}fixture|{key}")
+        self._label(SHARED_CONTEXT + name)
         try:
             yield
         finally:
             self.scopes.pop()
             self.building.pop()
-            self._label(f"{SHARED_CONTEXT}fixture|{self.building[-1]}"
-                        if self.building else self.phase)
+            self._label(SHARED_CONTEXT + self.building[-1] if self.building else self.phase)
 
     def _as_shared_work(self, key: str, bucket: _Bucket,
                         finalizer: Callable[[], object]) -> Callable[[], object]:
