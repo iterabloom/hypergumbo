@@ -37,7 +37,12 @@ caller (``coverage-select graph-select``) asks git and hands the answers in.
      scanning a directory;
    * an added ``conftest.py`` always needs one. pytest applies it to every
      test under its directory without anything naming it. None was added in
-     the 149 pull requests, so this is a rule without a measurement.
+     the 149 pull requests, so this is a rule without a measurement;
+   * the tracker's data (under ``.agent/tracker/`` and
+     ``.agent/tracker-workspace/``) needs none. Every ``tracker add`` writes
+     a new op file and nothing names it, but no analysis gives tracker data
+     a node (the stored graph of 2026-11-18 held none of its paths), so a
+     fresh analysis answers nothing more for it. It once cost a run 331 s.
 
    "Mentions" is textual, as it was measured: the added file's stem as a
    whole word (its full name when the stem is three characters or fewer), in
@@ -61,6 +66,9 @@ from . import graph_rows
 
 #: A test file, as smart-test's change detection recognises one.
 _TEST_FILE = re.compile(r"(^|/)tests/(test_|BRANCHES_test_)[^/]*\.py$")
+
+#: Where the tracker keeps its data: no analysis gives a file here a node.
+_TRACKER_DATA = (".agent/tracker/", ".agent/tracker-workspace/")
 
 #: A stem this short is matched as the whole file name: ``io`` as a word is
 #: everywhere, ``io.py`` is not.
@@ -93,6 +101,8 @@ class AddedFiles:
     mentioned: tuple[tuple[str, str], ...]
     #: ``(added file, why the stored graph cannot answer for it)``.
     need_analysis: tuple[tuple[str, str], ...]
+    #: Added tracker data: no analysis would give it a node.
+    tracker_data: tuple[str, ...] = ()
 
 
 def judge_added(added: Iterable[str], added_lines: Mapping[str, str]) -> AddedFiles:
@@ -105,8 +115,11 @@ def judge_added(added: Iterable[str], added_lines: Mapping[str, str]) -> AddedFi
     run: list[str] = []
     mentioned: list[tuple[str, str]] = []
     need: list[tuple[str, str]] = []
+    tracker: list[str] = []
     for path in sorted(set(added)):
-        if is_test_file(path):
+        if path.startswith(_TRACKER_DATA):
+            tracker.append(path)
+        elif is_test_file(path):
             run.append(path)
         elif path.rsplit("/", 1)[-1] == "conftest.py":
             need.append((path, "an added conftest.py applies to every test under its "
@@ -118,7 +131,7 @@ def judge_added(added: Iterable[str], added_lines: Mapping[str, str]) -> AddedFi
                 need.append((path, "no other changed file mentions it"))
             else:
                 mentioned.append((path, by))
-    return AddedFiles(tuple(run), tuple(mentioned), tuple(need))
+    return AddedFiles(tuple(run), tuple(mentioned), tuple(need), tuple(tracker))
 
 
 @dataclass(frozen=True)
