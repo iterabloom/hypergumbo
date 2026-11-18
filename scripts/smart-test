@@ -1078,8 +1078,12 @@ run_pytest() {
         plugin_path="$plugin_dir${PYTHONPATH:+:$PYTHONPATH}"
         # compute_pass_version reads a pass module's source and returns only
         # its hash; see the plugin's docstring for why that is not a read.
+        # _hash_package_py_files does the same for every file of an analyzer
+        # package (the analyzer identity, a cache key): recorded, it made
+        # each of about 1,000 tests a reader of 414 source files.
         extra_args=("-p" "pytest_source_reads" "--source-reads-dir=$reads_dir"
                     "--source-reads-hash-only=hypergumbo_core.ir:compute_pass_version"
+                    "--source-reads-hash-only=hypergumbo_core.analyzer_identity:_hash_package_py_files"
                     "${extra_args[@]}")
     fi
 
