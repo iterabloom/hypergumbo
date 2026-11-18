@@ -1,0 +1,3 @@
+Original commit body from 985c17e7dfd5880b86120364f180097632ca91ff:
+
+Addresses WI-zidug. A local smart-test run now ends with one line: seconds to the end of the tests against the 60 s local target, the parts largest first (the tests, the type gate, the selection, the rest), the test count and the test-seconds. Reported, not enforced: the line never changes the exit code, and CI does not print it. New: hypergumbo_core/wall_time.py, coverage-select wall-report. Seen on this branch: 15 s (under) and 196 s, 136 s over (a 4,025-test self-selected run).
