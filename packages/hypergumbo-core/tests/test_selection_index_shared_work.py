@@ -84,14 +84,16 @@ class Repo:
         self._runs = 0
 
     def fold(self, calls: list[tuple[str, list[str]]], users: dict[str, set[str]] | None,
-             *, ran: list[str] | None = None, full: bool = False):
+             *, ran: list[str] | None = None, full: bool = False,
+             unlabelled: list[str] | None = None):
         self._runs += 1
         db = self.root / f"run-{self._runs}.coverage"
         spec = {"measure": [str(self.source.parent)], "calls": calls}
         subprocess.run([sys.executable, "-c", textwrap.dedent(_GENERATE), str(db), json.dumps(spec)],
                        check=True, capture_output=True, text=True)
         return update_from_run(self.conn, db, ran_tests=ran, repo_root=self.root,
-                               scope_complete=True, full_run=full, shared_users=users)
+                               scope_complete=True, full_run=full, shared_users=users,
+                               unlabelled_caches=unlabelled or ())
 
     def tests_of(self, block: str) -> dict[str, frozenset[int] | None]:
         return statement_records(self.conn, str(self.source), block)
@@ -196,6 +198,42 @@ def test_a_users_test_id_is_spelled_as_the_index_spells_it(repo: Repo) -> None:
     assert set(repo.tests_of("built")) == {stored}
 
 
+# ── cached functions ────────────────────────────────────────────────────────
+
+CACHE = shared_context("cache", "packages/p/src/p/mod.py::built")
+
+
+def test_a_cache_context_is_given_to_its_callers_like_a_fixtures(repo: Repo) -> None:
+    done = repo.fold([(CACHE, ["mod.built"]), (FIXTURE, ["mod.own"]),
+                      (f"{FIRST}|run", ["mod.own"]), (f"{SECOND}|run", ["mod.own"])],
+                     {FIRST: {CACHE, FIXTURE}, SECOND: {CACHE}})
+    assert set(repo.tests_of("built")) == {FIRST, SECOND}
+    assert done.by_kind == {"cache": 1, "fixture": 1}
+    assert done.contexts == 2 and done.unused == () and done.unlabelled == ()
+
+
+def test_a_cache_the_recorder_could_not_wrap_is_marked_as_run_under_no_test(repo: Repo) -> None:
+    """Its body ran under FIRST, the first caller. Nothing says who else was
+    handed the value, so the function is not narrowed on. The key names the
+    file relative to the repository."""
+    calls = [(f"{FIRST}|run", ["mod.built", "mod.own"]), (f"{SECOND}|run", ["mod.own"])]
+    done = repo.fold(calls, {}, unlabelled=["packages/p/src/p/mod.py::built"])
+    assert blocks_run_at_import(repo.conn, [str(repo.source)]) == {(str(repo.source), "built")}
+    assert done.unlabelled == ("packages/p/src/p/mod.py::built",)
+    # Without the list: an ordinary function, narrowed on as before.
+    again = Repo(repo.root.parent / "again")
+    again.fold(calls, {})
+    assert blocks_run_at_import(again.conn, [str(again.source)]) == frozenset()
+
+
+def test_an_unwrapped_cache_the_index_has_no_block_for_marks_nothing(repo: Repo) -> None:
+    """A nested function, or a file the run did not measure."""
+    done = repo.fold(SUITE, USERS, unlabelled=["packages/p/src/p/mod.py::outer.<locals>.inner",
+                                               "packages/p/src/p/absent.py::f"])
+    assert blocks_run_at_import(repo.conn, [str(repo.source)]) == frozenset()
+    assert len(done.unlabelled) == 2
+
+
 COVERAGE_SELECT = Path(__file__).resolve().parents[3] / "scripts" / "coverage-select"
 
 
@@ -231,6 +269,40 @@ def test_the_command_reads_who_used_what_from_the_recorders_files(
     conn = open_index(tmp_path / "cli.sqlite")
     assert set(statement_records(conn, str(repo.source), "built")) == {FIRST, SECOND}
     assert not list(reads.glob("*.json")), "the record is stored and removed as before"
+
+
+def test_the_command_counts_contexts_by_kind_and_names_the_caches_it_could_not_label(
+        repo: Repo, tmp_path: Path) -> None:
+    """Printed without ``--verbose`` or ``--full``, because a function is
+    being held back from narrowing."""
+    db = repo.root / "run.coverage"
+    calls = [(CACHE, ["mod.built"]), (FIXTURE, ["mod.own"]), (f"{FIRST}|run", ["mod.own"])]
+    spec = {"measure": [str(repo.source.parent)], "calls": calls}
+    subprocess.run([sys.executable, "-c", textwrap.dedent(_GENERATE), str(db), json.dumps(spec)],
+                   check=True, capture_output=True, text=True)
+    reads = tmp_path / "reads"
+    reads.mkdir(parents=True)
+    bucket = {"reads": [], "opaque": [], "docs": [], "lines": []}
+    (reads / "main-1.json").write_text(json.dumps({
+        "version": RECORDER_VERSION, "observed": True, "expected": {}, "sources": {},
+        "failed": [], "fixtures": {}, "caches": {}, "nested": {}, "modules": {},
+        "unattributed": bucket,
+        "unwrapped_caches": ["packages/p/src/p/mod.py::own"],
+        "tests": {FIRST: {**bucket, "fixtures": ["tests/test_x.py::shared"],
+                          "caches": ["packages/p/src/p/mod.py::built"]}}}))
+    done = subprocess.run(
+        [sys.executable, str(COVERAGE_SELECT), "--repo-root", str(repo.root),
+         "--index", str(tmp_path / "cli.sqlite"), "update",
+         "--coverage-db", str(db), "--sha", "0" * 40, "--source-reads", str(reads)],
+        capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert ("shared work: 1 fixture and 1 cache context(s) with measured code; "
+            "1 test(s) given their rows; 0 context(s) no test is recorded using; "
+            "1 cached function(s) made before the recorder loaded, held back from narrowing "
+            "(packages/p/src/p/mod.py::own)") in done.stderr
+    conn = open_index(tmp_path / "cli.sqlite")
+    assert set(statement_records(conn, str(repo.source), "built")) == {FIRST}
+    assert blocks_run_at_import(conn, [str(repo.source)]) == {(str(repo.source), "own")}
 
 
 def test_the_command_says_so_when_nobody_is_recorded_using_a_context(

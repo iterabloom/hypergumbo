@@ -69,6 +69,7 @@ from hypergumbo_core import graph_rows, graph_select
 from hypergumbo_core.import_closure import build as build_import_graph
 from hypergumbo_core.prose_only import (
     fold_run, global_refusal, select_for_prose, shared_work_used, tests_reading,
+    unwrapped_caches,
 )
 from hypergumbo_core.selection_index import (
     CoverageBlind, Narrowing, coverage_cannot_speak_for, droppable_test_files,
@@ -137,25 +138,33 @@ def cmd_update(args: argparse.Namespace) -> int:
     conn = open_index(Path(args.index))
     count = "SELECT COUNT(*) FROM unmeasured_test"
     before = conn.execute(count).fetchone()[0]
-    # Which tests used which shared fixture: read before fold_run (below)
-    # removes the record. No record directory leaves it None, and the fold
-    # then stores shared-work rows as code run under no test.
+    # Which tests used which shared fixture or cached function: read before
+    # fold_run (below) removes the record. No record directory leaves it
+    # None, and the fold then stores shared-work rows as code run under no
+    # test.
     reads = Path(args.source_reads) if args.source_reads else None
+    recorded = reads is not None and reads.is_dir()
     shared = update_from_run(
         conn, Path(args.coverage_db),
         ran_tests=ran, git_sha=args.sha, full_run=args.full, repo_root=root,
         scope_complete=args.scope_complete,
-        shared_users=shared_work_used(reads) if reads is not None and reads.is_dir() else None,
+        shared_users=shared_work_used(reads) if recorded else None,
+        unlabelled_caches=unwrapped_caches(reads) if recorded else (),
     )
-    if shared.contexts and (args.full or args.verbose or shared.unused):
-        # Said whenever a context went unused: its code is then held back
-        # from narrowing, and a run where that happens to all of them looks
-        # like any other.
-        print(f"[coverage-select] shared work: {shared.contexts} fixture context(s) "
+    held_back = shared.unused or shared.unlabelled
+    if (shared.contexts and (args.full or args.verbose)) or held_back:
+        # Said whenever a context went unused or a cache could not be
+        # wrapped: that code is then held back from narrowing, and a run
+        # where that happens to all of it looks like any other.
+        kinds = " and ".join(f"{count} {kind}" for kind, count in sorted(
+            shared.by_kind.items(), key=lambda item: (item[0] != "fixture", item[0])))
+        print(f"[coverage-select] shared work: {kinds or 0} context(s) "
               f"with measured code; {shared.inheriting_tests} test(s) given their rows; "
               f"{len(shared.unused)} context(s) no test is recorded using"
-              + (f" ({', '.join(shared.unused[:3])}"
-                 f"{', ...' if len(shared.unused) > 3 else ''})" if shared.unused else ""),
+              + _some(shared.unused)
+              + (f"; {len(shared.unlabelled)} cached function(s) made before the recorder "
+                 f"loaded, held back from narrowing{_some(shared.unlabelled)}"
+                 if shared.unlabelled else ""),
               file=sys.stderr)
     if args.full:
         # Said on every full run, the only run that rewrites the list: it is
@@ -195,6 +204,13 @@ def _held_line(blind: CoverageBlind) -> str:
     return (f"[coverage-select] never narrowed, besides the unmeasured: {len(started)} "
             f"test(s) start a program that can run Python{f' ({named})' if named else ''}; "
             f"{len(blind.unrecorded - blind.unmeasured)} test(s) have no read record")
+
+
+def _some(names: tuple[str, ...]) -> str:
+    """`` (a, b, c, ...)``: the first three of a list, or nothing."""
+    if not names:
+        return ""
+    return f" ({', '.join(names[:3])}{', ...' if len(names) > 3 else ''})"
 
 
 def _failed(args: argparse.Namespace, root: Path) -> set[str]:

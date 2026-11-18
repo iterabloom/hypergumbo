@@ -142,9 +142,23 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    record) are neither dropped nor given to a guess: they are stored as code
    run under no test, the function is marked like one that runs at import
    (semantic 2), and narrowing treats a change to it as import-time code.
-   NOT COVERED: a value a function keeps for later callers (a cache), and
-   state an object keeps after a shared fixture returned it. Each is work
-   done once under one test's label, with no fixture boundary to see.
+   THE SAME FOR A FUNCTION UNDER ``functools.lru_cache`` / ``cache``: its
+   body runs once per argument per process, under whichever test called
+   first. The plugin wraps the decorator, runs the body under
+   ``|shared|cache|<file>::<qualified name>`` and records every call, hit or
+   miss, as a use; nesting is recorded both ways (a cached function called
+   inside a fixture, a cached function calling another). One context per
+   FUNCTION, not per argument: a test that hit one entry inherits the rows
+   of every entry's fill, which is more than it needs and never less. A
+   body that runs outside every test, or on a thread other than the one the
+   tests run on, is not labelled; the first is code run under no test, as
+   before. A cached function made before the plugin was imported cannot be
+   wrapped: the plugin lists it and :func:`update_from_run` marks it as run
+   under no test (``unlabelled_caches``).
+   NOT COVERED: a value kept without the decorator (a module-level dict, an
+   attribute filled on first use), and state an object keeps after a shared
+   fixture returned it. Each is work done once under one test's label, with
+   no boundary to see.
 
 7. **A child process is not measured, so a test that starts one that can
    run Python is one coverage cannot speak for.** A test that runs some
@@ -222,7 +236,7 @@ from __future__ import annotations
 import fcntl
 import sqlite3
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence
 
@@ -1045,6 +1059,11 @@ class SharedWork:
     #: Contexts no test of the run is recorded using. Their rows were stored
     #: as code run under no test.
     unused: tuple[str, ...]
+    #: The same contexts counted by kind (``fixture``, ``cache``).
+    by_kind: Mapping[str, int] = field(default_factory=dict)
+    #: Cached functions the recorder could not wrap (``<file>::<name>``):
+    #: marked as code run under no test, like ``unused``.
+    unlabelled: tuple[str, ...] = ()
 
 
 def normalize_test_id(node_id: str, repo_root: Optional[Path]) -> str:
@@ -1097,6 +1116,7 @@ def update_from_run(
     repo_root: Optional[Path] = None,
     scope_complete: bool = False,
     shared_users: Optional[Mapping[str, Iterable[str]]] = None,
+    unlabelled_caches: Iterable[str] = (),
 ) -> SharedWork:
     """Fold one run's coverage contexts into the index.
 
@@ -1120,6 +1140,14 @@ def update_from_run(
     used it; rows of a context no test is recorded using, and every shared
     row when the mapping is absent, are stored as code run under no test
     (semantic 6 of the module docstring). Returns what was done with them.
+
+    ``unlabelled_caches`` names cached functions the recorder could not wrap
+    (``<file relative to repo_root>::<qualified name>``;
+    :func:`hypergumbo_core.prose_only.unwrapped_caches`). The body of such a
+    function ran under whichever test called it first and nothing says who
+    else used the value, so the function is marked as run under no test and
+    narrowing does not narrow on it. Only the function itself: what it
+    called is not known to be its.
     """
     if ran_tests is not None:
         ran_tests = [without_xdist_group(test) for test in ran_tests]
@@ -1205,9 +1233,16 @@ def update_from_run(
     for test, used in (shared_users or {}).items():
         for context in used:
             users_of.setdefault(context, set()).add(normalize_test_id(test, repo_root))
+    unlabelled = tuple(sorted(set(unlabelled_caches)))
+    for key in unlabelled:
+        rel, _, name = key.partition("::")
+        at_import.add((str(repo_root / rel) if repo_root is not None else rel, name))
     inheriting: set[str] = set()
     unused: list[str] = []
+    by_kind: dict[str, int] = {}
     for context, found_rows in sorted(shared_rows.items()):
+        kind = context[len(SHARED_CONTEXT):].partition("|")[0]
+        by_kind[kind] = by_kind.get(kind, 0) + 1
         users = users_of.get(context)
         if not users:
             # Nobody is recorded using it (a worker that was killed wrote no
@@ -1280,7 +1315,7 @@ def update_from_run(
         _forget_dead_checkouts(conn, checkout)
     conn.commit()
     return SharedWork(contexts=len(shared_rows), inheriting_tests=len(inheriting),
-                      unused=tuple(unused))
+                      unused=tuple(unused), by_kind=by_kind, unlabelled=unlabelled)
 
 
 def _store_at_import(
