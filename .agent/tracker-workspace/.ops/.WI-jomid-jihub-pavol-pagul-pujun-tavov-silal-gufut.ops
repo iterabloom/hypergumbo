@@ -91,3 +91,18 @@
   clock: 11  # 85e1
   nonce: '85e1'  # 85e1
   message: "PR #2239 merged (dev d20786f6f): the verdict push goes to ssh://git@ssh.github.com:443/<repo>.git with the same deploy key and pinned host keys; ALLOWED_WEBSITES.md lists ssh.github.com (owner-approved 2026-11-17). PROBE RESULT, from the CI runner, pipeline 6540 (the push pipeline at d20786f6f), step verdict-transport-probe, read with 'ci-debug logs verdict-transport-probe d20786f6': '+ scripts/publish-scheduled-verdict probe' then 'publish-scheduled-verdict: reached ssh://git@ssh.github.com:443/iterabloom/hypergumbo.git: host key verified (no key was offered; the push itself needs BADGES_DEPLOY_KEY)'. So the runner reaches GitHub's SSH service on 443 and what answers holds a pinned host key. NOT YET SHOWN: that the deploy key is accepted and the push lands. The first scheduled run after this merge (01:00 UTC, 2026-11-18) is that test; the close condition is a verdict file read from origin/badges. If the key is refused the step will say 'Permission denied (publickey)'; the probe command run with the key set distinguishes 'refused' from 'unreachable'. Item stays at needs_human_review."  # 85e1
+- op: update  # f269
+  at: '2026-11-18T01:39:05Z'  # f269
+  by: agent  # f269
+  actor: jgstern_agent  # f269
+  clock: 12  # f269
+  nonce: f269  # f269
+  set:  # f269
+    status: done  # f269
+- op: discuss  # c135
+  at: '2026-11-18T01:39:05Z'  # c135
+  by: agent  # c135
+  actor: jgstern_agent  # c135
+  clock: 13  # c135
+  nonce: c135  # c135
+  message: "CLOSED on its close condition: the first scheduled verdict, read from origin/badges on 2026-11-18 01:38 UTC. Commit 143b27145 on origin/badges, author 'CI Bot <ci@iterabloom.com>', subject 'scheduled verdict: full-suite passed at fc2d2d8a', 2026-11-18 01:26 UTC. scheduled/full-suite.json: schema 1, workflow full-suite, commit fc2d2d8a9c82da61490a27cd083bd20cf57482bc, pipeline 6550, finished_at 2026-11-18T01:26:33Z, status passed, every named step passed. scheduled/full-suite-badge.json: 'passing' / brightgreen. scheduled/coverage-badge.json: '100%'. 'ci-debug cron-status' shows pipeline 6550's publish-verdict step OK. The push went by ssh to ssh.github.com:443 with the deploy key already in place (PR #2239; owner's decision of 2026-11-17), so the key is accepted and the transport works from the runner. The run before it (pipeline 6512, 2026-11-17 13:00 UTC) had published nothing: github.com:22 is unreachable from the runner. NOT YET SEEN: a verdict from the nightly workflow (cron-status: 'nightly: NO VERDICT in the last 40 commits'), which publishes through the same script and has not run since the change; and a FAILED scheduled run publishing its verdict, which is the case the stop rule (WI-kidop) will read. This unblocks WI-kidop and WI-taguj."  # c135

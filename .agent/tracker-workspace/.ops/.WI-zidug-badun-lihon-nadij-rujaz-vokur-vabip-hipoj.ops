@@ -19,3 +19,25 @@
     pr_ref:  # 9bd8
     description: "WHAT (owner ruling). The target is 60 s wall for a local smart-test run. It is REPORTED by each run and gates nothing. When a run misses it, the report names the largest parts: the analysis or graph walk, the number of selected tests and their test-seconds, the slowest single test. No CI target until CI's time before the first test is measured (the cadence item).\n\nUNITS. The replay counted test-seconds; this is wall time. On this machine smart-test uses up to 6 workers, capped by free memory.\n\nCLOSE CONDITION. A real run that meets the target and one that misses it, each with the line it printed; a test for the report.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 9bd8
     fields: {}  # 9bd8
+- op: discuss  # cd5c
+  at: '2026-11-18T02:57:49Z'  # cd5c
+  by: agent  # cd5c
+  actor: jgstern_agent  # cd5c
+  clock: 2  # cd5c
+  nonce: cd5c  # cd5c
+  message: "Merged as PR #2246, dev SHA 76259a0928c1."  # cd5c
+- op: update  # 90e5
+  at: '2026-11-18T02:58:19Z'  # 90e5
+  by: agent  # 90e5
+  actor: jgstern_agent  # 90e5
+  clock: 3  # 90e5
+  nonce: '90e5'  # 90e5
+  set:  # 90e5
+    status: done  # 90e5
+- op: discuss  # fc74
+  at: '2026-11-18T02:58:19Z'  # fc74
+  by: agent  # fc74
+  actor: jgstern_agent  # fc74
+  clock: 4  # fc74
+  nonce: fc74  # fc74
+  message: "Done in PR #2246. Close condition, each part: (1) a real run that meets the target, with its line: \"smart-test: 11 s to the end of the tests (local target 60 s): the tests 5 s, the rest 5 s, the type gate 1 s (243 tests, 7 test-seconds)\" (wall/logs/quick.log of the build directory). (2) a real run that misses it: \"smart-test: 196 s to the end of the tests, 136 s OVER the 60 s local target. Largest first: the tests 187 s, the rest 8 s, the type gate 1 s (4025 tests, 916 test-seconds). Slowest test: 76.8 s tests.test_smart_test_bed::test_each_selection_stage_does_its_one_job\" (wall/logs/selected.log). (3) tests for the report: packages/hypergumbo-core/tests/test_wall_time.py, and two tests in test_smart_test_recorders.py that the line is printed locally and not in CI. Reported, not enforced: the line never changes the exit code. NOT SEEN in a real line: a run where the selection (analysis or graph walk) is the largest part; in both runs above it was under a second and is inside 'the rest'. The unit test covers that wording."  # fc74
