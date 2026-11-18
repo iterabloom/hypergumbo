@@ -43,6 +43,7 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 
 - **Exit 0:** Success — PR merged or vPR queued. If vPR queued, run `./scripts/auto-pr flush` when remote is available.
 - **Exit 1:** Failure. Run `./scripts/ci-debug status` to diagnose, fix the issue, then either re-run `./scripts/auto-pr` or `./scripts/merge-pr <PR_NUM> --wait-for-ci`.
+- **Exit 1 with `scheduled gate: the full suite is RED ...` and `MERGING IS STOPPED`** (recorded state `blocked_scheduled_red`): not a failure of this pull request's CI. The last scheduled full run is red and the branch names no red step. Fix or revert what the scheduled run found, in a branch whose commit carries `Fixes-scheduled-run: <step>`; once commits naming every red step are on dev, other changes merge again. Do not merge past it with `merge-pr`.
 - **Exit 2:** Timeout (CI stuck or slow). Try `./scripts/merge-pr <PR_NUM> --wait-for-ci --timeout 3600`, or if CI already passed, `./scripts/merge-pr <PR_NUM>` to merge immediately. If CI remains stuck, follow Scenario B.
 - **Exit 3:** Hung (no CI jobs started after 5 min). `auto-pr` already retried with exponential backoff (close PR, wait, repush — up to 4 times). All retries failed, meaning CI runners may be down. Follow Scenario B. Do NOT manually kill processes, clear PR_PENDING, or start new branches.
 
