@@ -59,6 +59,8 @@ from importlib.metadata import distributions
 from pathlib import Path
 from types import ModuleType
 
+from . import kept_work
+
 
 _CACHED_HASH: str | None = None
 
@@ -71,9 +73,16 @@ def compute_analyzer_identity_hash() -> str:
     the recompute path.
     """
     global _CACHED_HASH
+    kept_work.used(compute_analyzer_identity_hash)
     if _CACHED_HASH is not None:
         return _CACHED_HASH
+    with kept_work.filling(compute_analyzer_identity_hash):
+        _CACHED_HASH = _identity_hash()
+    return _CACHED_HASH
 
+
+def _identity_hash() -> str:
+    """The hash :func:`compute_analyzer_identity_hash` keeps."""
     package_hashes: dict[str, str] = {}
     seen_paths: set[Path] = set()
 
@@ -133,8 +142,7 @@ def compute_analyzer_identity_hash() -> str:
     for gname in sorted(grammars):
         parts.append(f"grammar:{gname}={grammars[gname]}")
     combined = "\n".join(parts)
-    _CACHED_HASH = hashlib.sha256(combined.encode("utf-8")).hexdigest()[:16]
-    return _CACHED_HASH
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()[:16]
 
 
 def _try_import(module_name: str) -> ModuleType | None:

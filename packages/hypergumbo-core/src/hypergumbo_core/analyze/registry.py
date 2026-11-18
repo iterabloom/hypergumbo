@@ -53,6 +53,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping
 
+from .. import kept_work
 from .base import AnalysisResult
 from ..ir import compute_pass_version
 from ..yaml_catalogs import CatalogueError
@@ -904,10 +905,12 @@ def ensure_discovered() -> None:
     Subsequent calls are no-ops until clear_registry() resets the flag.
     """
     global _discovered
+    kept_work.used(ensure_discovered)
     if _discovered:
         return
-    _discovered = True
-    _load_entry_point_modules()
+    with kept_work.filling(ensure_discovered):
+        _discovered = True
+        _load_entry_point_modules()
 
 
 def clear_registry() -> None:

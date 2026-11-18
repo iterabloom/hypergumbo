@@ -60,6 +60,8 @@ import hashlib
 import sys
 from typing import Iterable, Mapping, Sequence
 
+from . import kept_work
+
 #: Every handle starts with this. No catalogue module, header or package
 #: in any language is spelled this way.
 MODULE_SET_PREFIX = "module-set-"
@@ -106,13 +108,15 @@ def expand_module_slot(slot: str) -> str:
         return slot
     joined = _SETS.get(slot)
     if joined is None:
+        kept_work.used(expand_module_slot, slot)
         if slot not in _WARNED:
-            _WARNED.add(slot)
-            print(
-                f"Warning: module slot {slot} has no module_sets entry; it is "
-                f"read as one unenumerated module (INV-jahuf).",
-                file=sys.stderr,
-            )
+            with kept_work.filling(expand_module_slot, slot):
+                _WARNED.add(slot)
+                print(
+                    f"Warning: module slot {slot} has no module_sets entry; it is "
+                    f"read as one unenumerated module (INV-jahuf).",
+                    file=sys.stderr,
+                )
         return slot
     return joined
 

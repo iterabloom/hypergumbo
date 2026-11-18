@@ -63,6 +63,8 @@ from typing import Any, Callable, Optional
 
 import yaml
 
+from . import kept_work
+
 
 @dataclass(frozen=True)
 class CatalogSpec:
@@ -387,16 +389,18 @@ def parse_yaml_once(parser: str, content: str, parse: Callable[[], Any]) -> Any:
       going first, so a process that loads many distinct files stays bounded.
     """
     key = (parser, content)
+    kept_work.used(parse_yaml_once, key)
     with _PARSED_YAML_LOCK:
         if key in _PARSED_YAML:
             _PARSED_YAML.move_to_end(key)
             return copy.deepcopy(_PARSED_YAML[key])
-    document = parse()
-    with _PARSED_YAML_LOCK:
-        _PARSED_YAML[key] = document
-        _PARSED_YAML.move_to_end(key)
-        while len(_PARSED_YAML) > _PARSED_YAML_MAX:
-            _PARSED_YAML.popitem(last=False)
+    with kept_work.filling(parse_yaml_once, key):
+        document = parse()
+        with _PARSED_YAML_LOCK:
+            _PARSED_YAML[key] = document
+            _PARSED_YAML.move_to_end(key)
+            while len(_PARSED_YAML) > _PARSED_YAML_MAX:
+                _PARSED_YAML.popitem(last=False)
     return copy.deepcopy(document)
 
 

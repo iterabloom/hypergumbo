@@ -144,6 +144,7 @@ if TYPE_CHECKING:
     from .declared_test_inputs import Declaration
     from .discovery import FileIndex
 
+from . import kept_work
 from .declared_test_inputs import declared_dir_of, format_declared_disclosure
 from .discovery import (
     DEFAULT_EXCLUDES, DEPENDENCY_DIR_NAMES, find_files,
@@ -2213,17 +2214,19 @@ def _warn_embedding_fallback_once(requested_mode: "ConfigExtractionMode") -> Non
     user the requested mode never ran (WI-fumap).
     """
     global _embedding_fallback_warned
+    kept_work.used(_warn_embedding_fallback_once)
     if _embedding_fallback_warned:
         return
     import sys as _sys
-    print(
-        f"hypergumbo: --config-extraction={requested_mode.value} requested but "
-        "sentence-transformers is not installed; falling back to heuristic mode. "
-        "Output will be identical to --config-extraction=heuristic. "
-        "Install with: pip install hypergumbo-core[embeddings] (WI-fumap)",
-        file=_sys.stderr,
-    )
-    _embedding_fallback_warned = True
+    with kept_work.filling(_warn_embedding_fallback_once):
+        print(
+            f"hypergumbo: --config-extraction={requested_mode.value} requested but "
+            "sentence-transformers is not installed; falling back to heuristic mode. "
+            "Output will be identical to --config-extraction=heuristic. "
+            "Install with: pip install hypergumbo-core[embeddings] (WI-fumap)",
+            file=_sys.stderr,
+        )
+        _embedding_fallback_warned = True
 
 
 def _extract_config_info(

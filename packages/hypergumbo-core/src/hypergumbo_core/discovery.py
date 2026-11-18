@@ -203,6 +203,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
+from . import kept_work
 from .paths import is_test_file
 
 # Global file size limit. Set via set_max_file_bytes() before running
@@ -1626,24 +1627,30 @@ def refresh_vcs_ignored(root: Path) -> "VcsIgnored | None":
       that directory as the thing to analyse, and an explicit request
       outranks the rule (as ``--trace-deps`` does for installed source).
     """
-    answer: VcsIgnored | None = None
     here = Path(os.path.abspath(root))
-    top = _work_tree_top(here)
-    if top is not None:
-        named_ignored = False
-        if here != top:
-            asked = _repo_git(
-                top, [*_CHECK_IGNORE, "-q"],
-                os.fsencode(here.relative_to(top).as_posix()) + b"\0",
-            )
-            named_ignored = asked is None or asked[0] != 1
-        scan = None if named_ignored else _scan_vcs_ignored(here)
-        if scan is not None:
-            answer = VcsIgnored(here, *scan)
-    if len(_vcs_ignored_cache) >= 256:
-        _vcs_ignored_cache.clear()
-    _vcs_ignored_cache[str(here)] = answer
+    kept_work.used(refresh_vcs_ignored, str(here))
+    with kept_work.filling(refresh_vcs_ignored, str(here)):
+        answer = _ask_vcs_what_it_ignores(here)
+        if len(_vcs_ignored_cache) >= 256:
+            _vcs_ignored_cache.clear()
+        _vcs_ignored_cache[str(here)] = answer
     return answer
+
+
+def _ask_vcs_what_it_ignores(here: Path) -> "VcsIgnored | None":
+    """The answer :func:`refresh_vcs_ignored` remembers for ``here``."""
+    top = _work_tree_top(here)
+    if top is None:
+        return None
+    named_ignored = False
+    if here != top:
+        asked = _repo_git(
+            top, [*_CHECK_IGNORE, "-q"],
+            os.fsencode(here.relative_to(top).as_posix()) + b"\0",
+        )
+        named_ignored = asked is None or asked[0] != 1
+    scan = None if named_ignored else _scan_vcs_ignored(here)
+    return None if scan is None else VcsIgnored(here, *scan)
 
 
 def _vcs_ignored_for(path: Path, root: Path | None = None) -> "VcsIgnored | None":
@@ -1654,13 +1661,16 @@ def _vcs_ignored_for(path: Path, root: Path | None = None) -> "VcsIgnored | None
     root's children)."""
     start = Path(os.path.abspath(path if root is None else root / "_"))
     if root is not None and str(start.parent) in _vcs_ignored_cache:
+        kept_work.used(refresh_vcs_ignored, str(start.parent))
         return _vcs_ignored_cache[str(start.parent)]
     for anc in start.parents:
         known = _vcs_ignored_cache.get(str(anc))
         if known is not None:
+            kept_work.used(refresh_vcs_ignored, str(anc))
             return known
     # An ancestor with no answer says nothing about a work tree below it.
     if root is None and str(start.parent) in _vcs_ignored_cache:
+        kept_work.used(refresh_vcs_ignored, str(start.parent))
         return None
     return refresh_vcs_ignored(start.parent)
 

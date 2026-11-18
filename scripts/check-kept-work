@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Fail on a function that writes module state or a lazy attribute and is
+neither marked as keeping work (``hypergumbo_core.kept_work``) nor exempted
+with a reason (``hypergumbo_core.kept_work_guard.EXEMPT``).
+
+Why and what it reads: the docstring of
+``packages/hypergumbo-core/src/hypergumbo_core/kept_work_guard.py``. The
+same check runs as a test (``test_kept_work_guard.py::test_live_tree_is_clean``).
+
+Exit codes: 0 clean, 1 a finding, 2 the guard module could not be imported.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Every package's src, read from the tree, so the script runs without the venv.
+for _src in sorted((REPO_ROOT / "packages").glob("*/src"), reverse=True):
+    sys.path.insert(0, str(_src))
+
+try:
+    from hypergumbo_core.kept_work_guard import EXEMPT, judge, report
+except ImportError as exc:  # pragma: no cover — defensive
+    print(f"check-kept-work: cannot import the guard: {exc}", file=sys.stderr)
+    sys.exit(2)
+
+
+def main() -> int:
+    lines = report(judge(REPO_ROOT, EXEMPT))
+    for line in lines:
+        print(line)
+    return 1 if lines else 0
+
+
+if __name__ == "__main__":  # pragma: no cover — script entrypoint
+    sys.exit(main())

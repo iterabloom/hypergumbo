@@ -172,6 +172,7 @@ from typing import TYPE_CHECKING, Any, Final, Iterable, Mapping, Optional, Seque
 
 import yaml
 
+from . import kept_work
 from .axis_meta_keys import write_meta_key
 from .construction import construction_calls
 from .edge_types import is_grpc_rpc_implementation
@@ -4878,9 +4879,11 @@ def declared_by_an_included_header(
     """
     if not system_includes:
         return False
+    kept_work.used(declared_by_an_included_header, language)
     catalog = _INCLUDED_HEADER_CATALOGS.get(language)
     if catalog is None:
-        catalog = _INCLUDED_HEADER_CATALOGS[language] = load_catalog(language)
+        with kept_work.filling(declared_by_an_included_header, language):
+            catalog = _INCLUDED_HEADER_CATALOGS[language] = load_catalog(language)
     return catalog.lookup_with_module(
         callee_name, ",".join(system_includes), call_construct="function",
     ) is not None

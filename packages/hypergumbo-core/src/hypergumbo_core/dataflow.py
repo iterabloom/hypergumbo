@@ -53,6 +53,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+from . import kept_work
 from .axis_meta_keys import is_access_mode_not_applicable
 from .yaml_catalogs import reject_unknown_keys, safe_load_once
 
@@ -242,16 +243,18 @@ def get_dataflow_config(language: str) -> Optional[DataflowConfig]:
     Returns:
         DataflowConfig if a YAML exists, None otherwise.
     """
+    kept_work.used(get_dataflow_config, language)
     if language in _config_cache:
         return _config_cache[language]
 
-    yaml_path = _DATAFLOW_DIR / f"{language}.yaml"
-    if yaml_path.is_file():
-        config = load_dataflow_config(yaml_path)
-        config = _with_community_library_patterns(language, config)
-        _config_cache[language] = _with_user_library_patterns(language, config)
-    else:
-        _config_cache[language] = None
+    with kept_work.filling(get_dataflow_config, language):
+        yaml_path = _DATAFLOW_DIR / f"{language}.yaml"
+        if yaml_path.is_file():
+            config = load_dataflow_config(yaml_path)
+            config = _with_community_library_patterns(language, config)
+            _config_cache[language] = _with_user_library_patterns(language, config)
+        else:
+            _config_cache[language] = None
 
     return _config_cache[language]
 

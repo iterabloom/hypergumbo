@@ -89,6 +89,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
+from . import kept_work
 from .paths import is_test_node
 from .selection.filters import is_test_path
 
@@ -185,6 +186,7 @@ def _registry_indexes(
     from a stale index.
     """
     key = id(registry)
+    kept_work.used(_registry_indexes, key)
     entry = _INDEX_CACHE.get(key)
     if (
         entry is not None
@@ -193,11 +195,12 @@ def _registry_indexes(
     ):
         _INDEX_CACHE.move_to_end(key)
         return entry
-    entry = _RegistryIndexes(registry=registry, size=len(registry))
-    _INDEX_CACHE[key] = entry
-    _INDEX_CACHE.move_to_end(key)
-    while len(_INDEX_CACHE) > _INDEX_CACHE_MAX:
-        _INDEX_CACHE.popitem(last=False)
+    with kept_work.filling(_registry_indexes, key):
+        entry = _RegistryIndexes(registry=registry, size=len(registry))
+        _INDEX_CACHE[key] = entry
+        _INDEX_CACHE.move_to_end(key)
+        while len(_INDEX_CACHE) > _INDEX_CACHE_MAX:
+            _INDEX_CACHE.popitem(last=False)
     return entry
 
 
@@ -457,15 +460,17 @@ class SymbolResolver:
         # (history: WI-bavuz)
         entry = _registry_indexes(self.registry)
         if entry.suffix is None:
-            index: dict[str, list[tuple[str, str]]] = {}
-            for module, name in self.registry.keys():
-                parts = module.split(".")
-                # Generate all suffixes (including the full module name)
-                for i in range(len(parts)):
-                    index.setdefault(".".join(parts[i:]), []).append(
-                        (module, name)
-                    )
-            entry.suffix = index
+            # Built into the holder every resolver of this registry shares.
+            with kept_work.filling(_registry_indexes, id(self.registry)):
+                index: dict[str, list[tuple[str, str]]] = {}
+                for module, name in self.registry.keys():
+                    parts = module.split(".")
+                    # Generate all suffixes (including the full module name)
+                    for i in range(len(parts)):
+                        index.setdefault(".".join(parts[i:]), []).append(
+                            (module, name)
+                        )
+                entry.suffix = index
         self._suffix_index = entry.suffix
 
     def _ensure_name_index(self) -> None:
@@ -480,10 +485,11 @@ class SymbolResolver:
         # Shared on the same terms as the suffix index (WI-bavuz).
         entry = _registry_indexes(self.registry)
         if entry.name is None:
-            index: dict[str, list[tuple[str, str]]] = {}
-            for module, name in self.registry.keys():
-                index.setdefault(name, []).append((module, name))
-            entry.name = index
+            with kept_work.filling(_registry_indexes, id(self.registry)):
+                index: dict[str, list[tuple[str, str]]] = {}
+                for module, name in self.registry.keys():
+                    index.setdefault(name, []).append((module, name))
+                entry.name = index
         self._name_index = entry.name
 
     def module_in_tree(self, module: str) -> bool:
@@ -518,9 +524,10 @@ class SymbolResolver:
             return
         entry = _registry_indexes(self.registry)
         if entry.top_levels is None:
-            entry.top_levels = frozenset(
-                module.split(".", 1)[0] for module, _name in self.registry.keys()
-            )
+            with kept_work.filling(_registry_indexes, id(self.registry)):
+                entry.top_levels = frozenset(
+                    module.split(".", 1)[0] for module, _name in self.registry.keys()
+                )
         self._top_level_index = entry.top_levels
 
     def clear_indexes(self) -> None:

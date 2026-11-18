@@ -118,6 +118,14 @@ Limits, each stated by the code that has it: one context per function, not per a
 
 Cost, measured on a full run before building it: 26,352 cache misses inside tests, about 12 s of worker time in 3,291 test-seconds.
 
+### Work kept by hand: marked by the function, guarded by a scan
+
+A cache written by hand (a module-level dict filled on first use, a value in a module global, a warning given once) has no decorator to replace, so the function marks itself with `hypergumbo_core.kept_work`: `kept_work.used(fn, entry)` on every call, hit or miss, and `with kept_work.filling(fn, entry):` around the work it keeps. Under the recorder the two are exactly a cached function's call and body (the context is `|shared|cache|<file>::<qualified name>`; what a fill read or started goes to the callers of that entry); without it each is one global read and a call. 22 functions are marked (`parse_yaml_once`, `load_framework_patterns`, `refresh_vcs_ignored`, the catalogue loaders, the warn-once flags, among them).
+
+`scripts/check-kept-work` (and the test `test_kept_work_guard.py::test_live_tree_is_clean`) reads the syntax tree of `packages/*/src`, `packages/*/tests` and `tests` and fails on a function that writes module state or a lazy attribute and is neither marked nor in `kept_work_guard.EXEMPT` with a reason; on a marked fill with no `used`; and on an exemption that no longer names a state-writing function. To add a cache: mark it. To add state that keeps nothing another test could be handed (a registry filled at import, a setter, state restored on exit): exempt it and say why. What the scan cannot see is listed in `kept_work_guard`'s docstring. The guard runs in every full run, not on a PR that does not touch it.
+
+Cost, measured on a full run: 21,926 fills with a context of their own and 280,050 uses, about 12 s of worker time (about 2 s of wall time on 6 workers).
+
 ### Child processes: a test that starts one that can run Python is never narrowed
 
 Coverage does not measure a child process. A test that runs some measured code itself and also starts `python`, a shell or `git` has rows in the index, and none for what the child ran. Its silence about a changed function is therefore not evidence, and no narrowing drops it: the file-level narrowing keeps its file, and the by-statement selector selects it whole wherever it reached a changed function (`Selection.cannot_speak` names every such test, so a caller knows which tests the selector says nothing about).

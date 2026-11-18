@@ -59,6 +59,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional
 
+from .. import kept_work
 from ..yaml_catalogs import (
     CatalogueError,
     declares_community,
@@ -193,12 +194,20 @@ def load_function_summaries(
     """
     search = search_dir or get_summaries_dir()
     cache_key = f"{search}|community={include_community}"
+    kept_work.used(load_function_summaries, cache_key)
     if cache_key in _SUMMARY_CACHE:
         return _SUMMARY_CACHE[cache_key]
+    with kept_work.filling(load_function_summaries, cache_key):
+        _SUMMARY_CACHE[cache_key] = _read_function_summaries(
+            search, search_dir, include_community)
+    return _SUMMARY_CACHE[cache_key]
 
+
+def _read_function_summaries(search: Path, search_dir: Optional[Path],
+                             include_community: bool) -> dict[str, FunctionSummary]:
+    """What :func:`load_function_summaries` keeps for ``search``."""
     result: dict[str, FunctionSummary] = {}
     if not search.is_dir():
-        _SUMMARY_CACHE[cache_key] = result
         return result
 
     # ADR-0047 ruling 10 (WI-sofov). The user's entries load AFTER the shipped
@@ -256,8 +265,6 @@ def load_function_summaries(
             if "." in summary.function:
                 short = summary.function.rsplit(".", 1)[-1]
                 result.setdefault(short, summary)
-
-    _SUMMARY_CACHE[cache_key] = result
     return result
 
 
