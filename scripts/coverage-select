@@ -68,7 +68,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent
 from hypergumbo_core import graph_rows, graph_select
 from hypergumbo_core.import_closure import build as build_import_graph
 from hypergumbo_core.prose_only import (
-    fold_run, global_refusal, select_for_prose, tests_reading,
+    fold_run, global_refusal, select_for_prose, shared_work_used, tests_reading,
 )
 from hypergumbo_core.selection_index import (
     Narrowing, droppable_test_files, functions_run_at_import,
@@ -136,11 +136,26 @@ def cmd_update(args: argparse.Namespace) -> int:
     conn = open_index(Path(args.index))
     count = "SELECT COUNT(*) FROM unmeasured_test"
     before = conn.execute(count).fetchone()[0]
-    update_from_run(
+    # Which tests used which shared fixture: read before fold_run (below)
+    # removes the record. No record directory leaves it None, and the fold
+    # then stores shared-work rows as code run under no test.
+    reads = Path(args.source_reads) if args.source_reads else None
+    shared = update_from_run(
         conn, Path(args.coverage_db),
         ran_tests=ran, git_sha=args.sha, full_run=args.full, repo_root=root,
         scope_complete=args.scope_complete,
+        shared_users=shared_work_used(reads) if reads is not None and reads.is_dir() else None,
     )
+    if shared.contexts and (args.full or args.verbose or shared.unused):
+        # Said whenever a context went unused: its code is then held back
+        # from narrowing, and a run where that happens to all of them looks
+        # like any other.
+        print(f"[coverage-select] shared work: {shared.contexts} fixture context(s) "
+              f"with measured code; {shared.inheriting_tests} test(s) given their rows; "
+              f"{len(shared.unused)} context(s) no test is recorded using"
+              + (f" ({', '.join(shared.unused[:3])}"
+                 f"{', ...' if len(shared.unused) > 3 else ''})" if shared.unused else ""),
+              file=sys.stderr)
     if args.full:
         # Said on every full run, the only run that rewrites the list: it is
         # what keeps narrowing from dropping a test coverage cannot see into,

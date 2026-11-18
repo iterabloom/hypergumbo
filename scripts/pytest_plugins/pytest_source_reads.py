@@ -62,6 +62,24 @@ WHAT IS NOT RECORDED.
   reaches nothing else, and the hash of a module cannot differ between the two
   sides of any comparison made inside one test run.
 
+SHARED WORK ALSO GETS A COVERAGE CONTEXT OF ITS OWN. pytest-cov
+(``--cov-context=test``) labels each line with the test that was running, so
+the code a module, class or session fixture runs is labelled with whichever
+test needed the fixture first (and its post-yield half with whichever test is
+last), though every test that uses the fixture depends on it. While such a
+fixture is set up or torn down this plugin switches coverage to the context
+``|shared|fixture|<fixture key>`` and back to the test's own afterwards. The
+record lists the fixtures each test used (``tests.<id>.fixtures``) and, per
+shared fixture, the shared fixtures BUILT INSIDE it (``nested``: a module
+fixture that fetches a session fixture by name), and the selection index
+gives the rows of a shared context to every test that used it
+(``hypergumbo_core.selection_index``, semantic 6). Done only when pytest-cov's
+test contexts are on, since "back to the test's own" has no meaning otherwise,
+and through pytest-cov's own coverage object (its plugin ``_cov_contexts``).
+The teardown is reached through ``FixtureDef._finalizers``, which pytest does
+not promise to keep; ``tests/test_shared_fixture_contexts.py`` fails if a
+pytest release moves it.
+
 NOT SEEN: a value cached in a module global by one test and used by another
 (neither a fixture, nor a module body, nor ``linecache``); a docstring or line
 number read by third-party code (a CLI library building help text from
@@ -76,6 +94,7 @@ conftest -- and it buffers until the option is known.
 from __future__ import annotations
 
 import ast
+import contextlib
 import hashlib
 import json
 import linecache
@@ -85,7 +104,7 @@ import sys
 import threading
 import time
 import types
-from typing import Any, Optional
+from typing import Any, Callable, Iterator, Optional
 
 import pytest
 
@@ -110,6 +129,14 @@ READ, CACHED_READ, DOC, LINE = "open", "linecache", "doc", "line"
 
 #: "It may have seen any of them."
 ANY = "*"
+
+#: The name pytest-cov registers its per-test context plugin under.
+_COV_CONTEXTS = "_cov_contexts"
+
+#: What the coverage context of shared work starts with; a test's context
+#: starts with its node id, which starts with a path.
+#: ``hypergumbo_core.selection_index.shared_context`` spells the same name.
+SHARED_CONTEXT = "|shared|"
 
 
 def pytest_addoption(parser: Any) -> None:
@@ -267,8 +294,16 @@ def _line_owner(obj: Any) -> str:
 
 class SourceReads:
     def __init__(self, out_dir: str, root: str, hash_only: list[str],
-                 flush_seconds: float = FLUSH_SECONDS) -> None:
+                 flush_seconds: float = FLUSH_SECONDS, *,
+                 plugins: Any = None) -> None:
         self.out_dir = out_dir
+        #: pytest's plugin manager: where pytest-cov's context plugin is found.
+        self.plugins = plugins
+        #: The context pytest-cov has set: ``<node id>|<phase>``.
+        self.phase = ""
+        #: Keys of the shared fixtures being set up or torn down, outermost first.
+        self.building: list[str] = []
+        self.nested: dict[str, set[str]] = {}
         self.flush_seconds = flush_seconds
         self.root = os.path.realpath(root) + os.sep
         self.prefix = os.path.realpath(sys.prefix) + os.sep
@@ -445,18 +480,74 @@ class SourceReads:
         if fixturedef.scope == "function":
             yield
             return
-        bucket = self.fixtures.setdefault(self._fixture_key(fixturedef), _Bucket())
+        key = self._fixture_key(fixturedef)
+        bucket = self.fixtures.setdefault(key, _Bucket())
+        finalizers = getattr(fixturedef, "_finalizers", None)
+        before = len(finalizers) if isinstance(finalizers, list) else 0
+        try:
+            with self._shared_work(key, bucket):
+                yield
+        finally:
+            # What the fixture registered while it was set up is its own
+            # teardown (the half after ``yield``, ``request.addfinalizer``).
+            # A fixture that DEPENDS on this one registers here later, and
+            # is not this fixture's work.
+            if isinstance(finalizers, list):
+                finalizers[before:] = [self._as_shared_work(key, bucket, finalizer)
+                                       for finalizer in finalizers[before:]]
+
+    def _label(self, context: str) -> None:
+        """Label the lines that run from here on, where pytest-cov is
+        labelling lines with the running test.
+
+        Through pytest-cov's own plugin and coverage object, the way it
+        switches context itself: a test that measures something with a
+        coverage object of its own is not touched, and a run without
+        ``--cov-context=test`` has no such plugin.
+        """
+        labelling = self.plugins.getplugin(_COV_CONTEXTS) if self.plugins else None
+        controller = getattr(labelling, "cov_controller", None)
+        if controller is not None and controller.started:
+            controller.cov.switch_context(context)
+
+    @contextlib.contextmanager
+    def _shared_work(self, key: str, bucket: _Bucket) -> Iterator[None]:
+        """Run shared fixture ``key`` under its own coverage context, and
+        attribute what the audit hook sees to it."""
+        if self.building:
+            self.nested.setdefault(self.building[-1], set()).add(key)
+        self.building.append(key)
         self.scopes.append(bucket)
+        self._label(f"{SHARED_CONTEXT}fixture|{key}")
         try:
             yield
         finally:
             self.scopes.pop()
+            self.building.pop()
+            self._label(f"{SHARED_CONTEXT}fixture|{self.building[-1]}"
+                        if self.building else self.phase)
+
+    def _as_shared_work(self, key: str, bucket: _Bucket,
+                        finalizer: Callable[[], object]) -> Callable[[], object]:
+        def torn_down() -> object:
+            with self._shared_work(key, bucket):
+                return finalizer()
+        return torn_down
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_runtest_setup(self, item: Any) -> None:
+        self.phase = f"{item.nodeid}|setup"
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_runtest_call(self, item: Any) -> None:
+        self.phase = f"{item.nodeid}|run"
 
     def pytest_runtest_logstart(self, nodeid: str) -> None:
         self.test = self.tests.setdefault(nodeid, _Bucket())
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_teardown(self, item: Any) -> Any:
+        self.phase = f"{item.nodeid}|teardown"
         used = self.test_fixtures.setdefault(item.nodeid, set())
         info = getattr(item, "_fixtureinfo", None)
         for defs in getattr(info, "name2fixturedefs", {}).values():
@@ -503,6 +594,7 @@ class SourceReads:
                 if bucket is not self.test
             },
             "fixtures": {key: b.dump() for key, b in self.fixtures.items()},
+            "nested": {key: sorted(inner) for key, inner in self.nested.items()},
             "modules": {key: b.dump() for key, b in self.modules.items()},
             "unattributed": self.unattributed.dump(),
         }
@@ -683,7 +775,8 @@ def pytest_configure(config: Any) -> None:
         config.pluginmanager.register(
             SourceReads(out_dir, str(config.rootpath),
                         config.getoption("--source-reads-hash-only"),
-                        config.getoption("--source-reads-flush")),
+                        config.getoption("--source-reads-flush"),
+                        plugins=config.pluginmanager),
             "source-reads")
     else:
         _STATE["buffering"] = False

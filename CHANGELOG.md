@@ -46,6 +46,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test reports its wall time against a 60 s target.**
 - **Narrowing treats a function run at import as import-time code.**
 - **Imports inside functions run at import count as dependencies.**
+- **Every test using a shared fixture is paired with its code.**
 
 ## [10.0.0] - 2026-11-16
 

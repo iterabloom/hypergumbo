@@ -99,6 +99,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence
 
+from hypergumbo_core.selection_index import is_shared_context
+
 #: ``12.34s setup    path/to/test.py::Class::test[param]``
 _DURATION_LINE = re.compile(
     r"^(?P<seconds>[0-9]+\.[0-9]+)s\s+(?P<phase>setup|call|teardown)\s+(?P<test>\S.*)$"
@@ -443,7 +445,10 @@ def load_index_from_coverage(
             linenos = _numbits_to_linenos(numbits)
             if per_file is not None:
                 linenos = (per_file[n] for n in linenos if n in per_file)
-            if context == "":
+            if context == "" or is_shared_context(context):
+                # Shared work (a module or session fixture, run under a
+                # context of its own) is no test's: its lines are credited
+                # like import-time lines, to every test that touches the file.
                 import_lines.setdefault(path, set()).update(linenos)
             else:
                 test = strip_phase(context)

@@ -723,3 +723,49 @@ class TestUnmeasuredTestsAreNotRedundant:
         rep = redundancy_report(index, chosen=["test_used"])
         assert "ghost_a" not in rep.skip_candidates
         assert rep.skip_candidates == frozenset()
+
+
+_GENERATE_SHARED = '''\
+import sys
+import coverage
+
+db, root = sys.argv[1], sys.argv[2]
+cov = coverage.Coverage(data_file=db, source=[root])
+cov.start()
+sys.path.insert(0, root)
+import sample_mod
+cov.switch_context("|shared|fixture|t.py::built_once")
+sample_mod.never_run()                 # run by a module fixture, under its own context
+cov.switch_context("test_used|run")
+sample_mod.used(5)
+cov.stop()
+cov.save()
+'''
+
+
+class TestSharedWorkIsNoTest:
+    """The recorder plugin runs a module or session fixture under a coverage
+    context of its own (``|shared|fixture|<key>``). The census builds its
+    population of tests from the contexts, so it must not count that one."""
+
+    @pytest.fixture
+    def shared_db(self, tmp_path: Path):
+        (tmp_path / "sample_mod.py").write_text(_SAMPLE)
+        db = tmp_path / "census.coverage"
+        subprocess.run(
+            [sys.executable, "-c", textwrap.dedent(_GENERATE_SHARED), str(db), str(tmp_path)],
+            check=True, capture_output=True, text=True)
+        return db, tmp_path / "sample_mod.py"
+
+    def test_a_shared_context_is_not_in_the_population(self, shared_db) -> None:
+        db, _sample = shared_db
+        assert sorted(load_index_from_coverage(db).lines_of) == ["test_used"]
+
+    def test_its_lines_are_credited_like_import_time_lines(self, shared_db) -> None:
+        """To every test that touches the file: which tests used the fixture
+        is not in the coverage data, and a line left with nobody would read
+        as a line no test reaches."""
+        db, sample = shared_db
+        index = load_index_from_coverage(db)
+        line_id = index.line_ids[(str(sample), _lineno(sample, 'return "never"'))]
+        assert index.lines_of["test_used"] & (1 << line_id)
