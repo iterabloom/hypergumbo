@@ -22,12 +22,12 @@ everything.
 IT REFUSES, AND THE RUN IS NOT NARROWED, WHEN:
 
 * a changed path is one it has no rule for. Judged: package source
-  (``packages/*/src/**.py``). Kept as they are: a changed test file (it runs
-  whole, being in ``whole``), Markdown outside package source, ``.ci/`` and the
-  tracker's data. Anything else (a ``conftest.py``, a test helper module, a
-  fixture file, ``pyproject.toml``, a script, package data such as a YAML
-  catalogue) can change what a test does without changing a statement any
-  test ran;
+  (``packages/*/src/**.py``). Let through: a test module directly in a
+  ``tests`` directory (the caller runs it whole), Markdown outside every
+  ``src`` and ``tests`` directory, ``.ci/`` and the tracker's data. Anything
+  else (a ``conftest.py``, a test helper module, a fixture file,
+  ``pyproject.toml``, a script, package data such as a YAML catalogue) can
+  change what a test does without changing a statement any test ran;
 * no package source changed (there is nothing for statements to say);
 * the selector met code it cannot answer by statement: a block the index has
   never seen, import-time code, a file that does not parse.

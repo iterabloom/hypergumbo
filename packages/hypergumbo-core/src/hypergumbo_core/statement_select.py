@@ -68,9 +68,12 @@ failed ``test_kept_work_guard.py::test_live_tree_is_clean`` and no other
 rule selected it). The read record is as old as each reader's last recorded
 run, the limit ``prose_only.tests_reading`` states.
 
-NOTHING ACTS ON THIS YET. ``coverage-select shadow`` stores its answer beside
-what a run really ran and which tests failed; whether it may select is decided
-on that record.
+WHAT ACTS ON IT. A local targeted smart-test run deselects, inside the files
+it runs, the tests this selector leaves out (:mod:`statement_narrow`, which
+says when it refuses and which tests it puts back to keep the coverage gate
+measured; switched on 2026-11-18 at the owner's bar). The CI manifest still
+lists files. ``coverage-select run-record`` stores its answer beside what a
+run really ran and which tests failed.
 """
 from __future__ import annotations
 
