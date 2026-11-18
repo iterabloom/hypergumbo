@@ -372,3 +372,72 @@ def test_every_other_answer_already_selects_such_a_test(tmp_path: Path) -> None:
         "t_plain", "t_gitleaks", "t_python", "t_unrecorded", "t_full"}
     assert chosen.narrowed == frozenset()
 
+
+
+# ── tests that read a changed file as data ──────────────────────────────────
+
+
+def _reads(repo: Repo, test: str, *targets: str) -> None:
+    """``test`` is recorded opening each of ``targets`` (repo-relative) as data."""
+    repo.conn.execute("INSERT OR IGNORE INTO read_test (test_id, test_file, opaque, observed) "
+                      "VALUES (?, ?, '', 1)", (test, test.split("::")[0]))
+    for target in targets:
+        repo.conn.execute("INSERT INTO read_edge (test_id, kind, target) VALUES (?, ?, ?)",
+                          (test, po.READ, target))
+    repo.conn.commit()
+
+
+def test_a_test_that_reads_the_changed_file_as_data_is_selected(tmp_path: Path) -> None:
+    """A gate that scans source text (the kept-work guard, campaign 4) ran
+    none of ``f``'s statements and depends on every one of them: its record
+    is a read of the file, not a coverage row. The read record spells paths
+    relative to the repository; the index spells them as given."""
+    repo = Repo(tmp_path, records=EARLY)
+    _reads(repo, "test_gate.py::t_scans", "m.py")
+    _reads(repo, "test_other.py::t_reads_another", "other.py")
+    repo.path.write_text(EDIT)
+    chosen = ss.select_by_statement(repo.conn, {str(repo.path): BASE}, repo_root=tmp_path)
+    assert chosen.readers == {"test_gate.py::t_scans"}
+    assert chosen.tests == {"t_full", "test_gate.py::t_scans"}
+    assert "test_gate.py::t_scans" not in chosen.narrowed | chosen.by_block
+
+
+def test_a_reader_is_selected_for_a_change_no_test_runs(tmp_path: Path) -> None:
+    """A docstring edit selects no test by coverage, and changes the text a
+    reader reads all the same."""
+    repo = Repo(tmp_path, records=EARLY)
+    _reads(repo, "test_gate.py::t_scans", "m.py")
+    repo.path.write_text(BASE.replace('"""Doc."""', '"""Other doc."""'))
+    chosen = ss.select_by_statement(repo.conn, {str(repo.path): BASE}, repo_root=tmp_path)
+    assert repo.answer(chosen, "f") == ss.PROSE
+    assert chosen.tests == {"test_gate.py::t_scans"} == chosen.readers
+
+
+def test_a_reader_is_named_as_the_index_spells_it(tmp_path: Path) -> None:
+    """An index that spells a test id absolutely is matched to the read
+    record's repository-relative id, as for the tests coverage cannot speak
+    for; an unmeasured reader is selected too: this rule is not coverage's."""
+    absolute = f"{tmp_path}/test_gate.py::t_scans"
+    records = {**EARLY, absolute: {"g": {0}}}
+    repo = Repo(tmp_path, records=records, no_read_record=[absolute])
+    _reads(repo, "test_gate.py::t_scans", "m.py")
+    repo.conn.execute("INSERT INTO unmeasured_test (test_id) VALUES (?)", (absolute,))
+    repo.path.write_text(EDIT)
+    chosen = ss.select_by_statement(repo.conn, {str(repo.path): BASE}, repo_root=tmp_path)
+    assert chosen.readers == {absolute}
+    assert absolute in chosen.tests
+
+
+def test_without_a_repository_root_paths_are_matched_as_given(repo: Repo) -> None:
+    _reads(repo, "test_gate.py::t_scans", str(repo.path))
+    chosen = repo.select(EDIT)
+    assert chosen.readers == {"test_gate.py::t_scans"}
+
+
+def test_a_changed_path_outside_the_repository_is_matched_as_given(tmp_path: Path) -> None:
+    repo = Repo(tmp_path, records=EARLY)
+    _reads(repo, "test_gate.py::t_scans", str(repo.path))
+    repo.path.write_text(EDIT)
+    elsewhere = tmp_path / "repository"
+    chosen = ss.select_by_statement(repo.conn, {str(repo.path): BASE}, repo_root=elsewhere)
+    assert chosen.readers == {"test_gate.py::t_scans"}

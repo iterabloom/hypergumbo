@@ -776,18 +776,39 @@ def tests_reading(
     marks it opaque and cannot see the child), and a read made at import by a
     module that is not a test (stored unattributed, tied to no test file).
     """
+    found: dict[str, str] = {}
+    for _test_id, test_file, target in _reads_of(conn, paths):
+        found.setdefault(test_file, target)
+    return found
+
+
+def test_ids_reading(
+    conn: sqlite3.Connection, paths: Iterable[str],
+) -> dict[str, str]:
+    """:func:`tests_reading` per TEST: each test recorded reading any of
+    ``paths`` as data (the read record's spelling, relative to the
+    repository) -> one of the paths it reads. For a selector that answers
+    test by test (:mod:`hypergumbo_core.statement_select`); the same limits."""
+    found: dict[str, str] = {}
+    for test_id, _test_file, target in _reads_of(conn, paths):
+        found.setdefault(test_id, target)
+    return found
+
+
+def _reads_of(conn: sqlite3.Connection,
+              paths: Iterable[str]) -> list[tuple[str, str, str]]:
+    """``(test id, test file, target)`` of every recorded read of one of
+    ``paths``, ordered by test file, test id and target."""
     ensure_schema(conn)
     wanted = set(paths)
-    found: dict[str, str] = {}
     if not wanted:
-        return found
-    for test_file, target in conn.execute(
-            "SELECT t.test_file, e.target FROM read_edge e "
-            "JOIN read_test t ON t.test_id = e.test_id "
-            "WHERE e.kind = ? ORDER BY t.test_file, e.target", (READ,)):
-        if target in wanted:
-            found.setdefault(test_file, target)
-    return found
+        return []
+    return [(str(test_id), str(test_file), str(target))
+            for test_id, test_file, target in conn.execute(
+                "SELECT t.test_id, t.test_file, e.target FROM read_edge e "
+                "JOIN read_test t ON t.test_id = e.test_id "
+                "WHERE e.kind = ? ORDER BY t.test_file, t.test_id, e.target", (READ,))
+            if target in wanted]
 
 
 @dataclass(frozen=True)

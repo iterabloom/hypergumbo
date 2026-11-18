@@ -58,6 +58,16 @@ a run keeps those another rule selected. (The unmeasured ones are also left
 out of ``tests``, as before: their rows are their fixtures', and the rules
 for unmeasured tests select them.)
 
+WHOM IT ADDS WHATEVER THE CHANGE. A test recorded reading a changed file as
+data (``prose_only.test_ids_reading``: a gate that scans source text, a test
+that pins a line) ran none of its statements and depends on every one of
+them, and on its comments and docstrings. Coverage has no row for it, so
+every changed file's readers are selected, for any kind of change, and
+listed in ``Selection.readers`` (campaign 4 of 2026-11-18: four faults
+failed ``test_kept_work_guard.py::test_live_tree_is_clean`` and no other
+rule selected it). The read record is as old as each reader's last recorded
+run, the limit ``prose_only.tests_reading`` states.
+
 NOTHING ACTS ON THIS YET. ``coverage-select shadow`` stores its answer beside
 what a run really ran and which tests failed; whether it may select is decided
 on that record.
@@ -67,12 +77,14 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Iterable, Mapping, Optional
 
+from .prose_only import test_ids_reading
 from .selection_index import (
     BlockKey,
     blocks_run_at_import,
     coverage_cannot_speak_for,
+    index_spellings,
     statement_records,
     statement_records_at,
     touching_tests,
@@ -116,6 +128,9 @@ class Selection:
     #: selector did not narrow any of them, and a test here that is not in
     #: ``tests`` is one it says nothing about: not one the change spares.
     cannot_speak: frozenset[str] = frozenset()
+    #: Tests recorded reading a changed file as data, in the index's
+    #: spelling: all in ``tests``, whatever their coverage says.
+    readers: frozenset[str] = frozenset()
 
 
 def _stored_digests(conn: sqlite3.Connection, path: str) -> dict[str, str]:
@@ -212,7 +227,26 @@ def select_by_statement(
                 tests |= reached & held
                 narrowed |= reached - held
                 answers[key] = BY_STATEMENT
+    readers = _readers(conn, base_sources, repo_root)
     return Selection(
-        tests=frozenset(tests - unmeasured), by_block=frozenset(by_block - unmeasured),
+        tests=frozenset(tests - unmeasured) | readers,
+        by_block=frozenset(by_block - unmeasured),
         answers=answers, import_time=frozenset(import_time), unknown=frozenset(unknown),
-        narrowed=frozenset(narrowed - unmeasured), cannot_speak=blind.tests)
+        narrowed=frozenset(narrowed - unmeasured), cannot_speak=blind.tests, readers=readers)
+
+
+def _readers(conn: sqlite3.Connection, paths: Iterable[str],
+             repo_root: Optional[Path]) -> frozenset[str]:
+    """The tests recorded reading one of ``paths`` as data, as the index
+    spells them. The record spells paths relative to the repository."""
+    def relative(path: str) -> str:
+        if repo_root is not None and Path(path).is_absolute():
+            try:
+                return Path(path).relative_to(repo_root).as_posix()
+            except ValueError:
+                return path
+        return path
+
+    read = test_ids_reading(conn, [relative(path) for path in paths])
+    spelled = index_spellings(conn, repo_root)
+    return frozenset(test for recorded in read for test in spelled.get(recorded, {recorded}))

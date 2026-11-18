@@ -1698,6 +1698,24 @@ def _read_record(conn: sqlite3.Connection) -> tuple[dict[str, str], set[str]]:
     return spawns, {str(row[0]) for row in conn.execute("SELECT test_id FROM read_expected")}
 
 
+def index_spellings(
+    conn: sqlite3.Connection, repo_root: Optional[Path] = None,
+) -> dict[str, set[str]]:
+    """Each test id as the read record spells it (relative to the
+    repository) -> the ids the index holds for it. An index id that is
+    absolute is matched through ``repo_root``; a read-record id the index
+    does not hold is absent (callers keep it as it is)."""
+    prefix = f"{repo_root}/" if repo_root is not None else None
+    spelled: dict[str, set[str]] = {}
+    for (test_id,) in conn.execute(
+            "SELECT test_id FROM test UNION SELECT test_id FROM unmeasured_test"):
+        test_id = str(test_id)
+        recorded = (test_id[len(prefix):] if prefix is not None and test_id.startswith(prefix)
+                    else test_id)
+        spelled.setdefault(recorded, set()).add(test_id)
+    return spelled
+
+
 def coverage_cannot_speak_for(
     conn: sqlite3.Connection, repo_root: Optional[Path] = None,
 ) -> CoverageBlind:
@@ -1710,17 +1728,8 @@ def coverage_cannot_speak_for(
     that has records, is not a test to hold anything back for. An index id is
     judged for itself only when its whole FILE has no record.
     """
-    prefix = f"{repo_root}/" if repo_root is not None else None
-
-    def as_recorded(test_id: str) -> str:
-        if prefix is not None and test_id.startswith(prefix):
-            return test_id[len(prefix):]
-        return test_id
-
     unmeasured = {str(row[0]) for row in conn.execute("SELECT test_id FROM unmeasured_test")}
-    spelled: dict[str, set[str]] = {}
-    for test_id in {str(row[0]) for row in conn.execute("SELECT test_id FROM test")} | unmeasured:
-        spelled.setdefault(as_recorded(test_id), set()).add(test_id)
+    spelled = index_spellings(conn, repo_root)
     spawns, expected = _read_record(conn)
     recorded_files = files_of(spawns)
 

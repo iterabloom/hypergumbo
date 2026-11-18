@@ -15,6 +15,7 @@ real ``scripts/smart-test`` on the bed, and where in the script the rule sits.
 # covers: scripts/smart-test, scripts/coverage-select, scripts/smart-test-bed
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import subprocess
@@ -188,8 +189,23 @@ def test_narrowing_cannot_remove_what_the_rule_selected() -> None:
     assert '"$NARROWED" "$PROSE_TESTS" | sed' in _text()
 
 
-def test_the_recorder_is_told_the_pass_version_hash_is_not_a_read() -> None:
-    assert '"--source-reads-hash-only=hypergumbo_core.ir:compute_pass_version"' in _text()
+def _hash_only_names() -> set[str]:
+    return set(re.findall(r'"--source-reads-hash-only=([\w.]+:\w+)"', _text()))
+
+
+def test_the_recorder_is_told_which_reads_only_feed_a_hash() -> None:
+    """The pass version hashes a pass module's source; the analyzer identity
+    hashes every file of each analyzer package (read by about 1,000 tests'
+    cached fill, which made each of them a 'reader' of 414 source files)."""
+    assert _hash_only_names() == {"hypergumbo_core.ir:compute_pass_version",
+                                  "hypergumbo_core.analyzer_identity:_hash_package_py_files"}
+
+
+def test_every_hash_only_name_is_a_function_that_exists() -> None:
+    """A renamed function would turn its exemption off without a word."""
+    for name in _hash_only_names():
+        module, function = name.split(":")
+        assert callable(getattr(importlib.import_module(module), function, None)), name
 
 
 # ── a run with failures still leaves its record ─────────────────────────────
