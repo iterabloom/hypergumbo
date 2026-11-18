@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "workflow": "nightly",
+  "leg": "3.13",
+  "commit": "1a6afa34ca6a115c2bb383435808daf2c3cbf9f0",
+  "pipeline": 6572,
+  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6572",
+  "finished_at": "2026-11-18T06:01:56Z",
+  "status": "passed",
+  "steps": [
+    {
+      "name": "build-grammars",
+      "result": "passed"
+    },
+    {
+      "name": "test-matrix",
+      "result": "passed"
+    },
+    {
+      "name": "integration",
+      "result": "passed"
+    }
+  ],
+  "coverage": {
+    "percent": 100.0,
+    "statements": 102468,
+    "missing": 0,
+    "uncovered": {},
+    "uncovered_truncated": false
+  }
+}
