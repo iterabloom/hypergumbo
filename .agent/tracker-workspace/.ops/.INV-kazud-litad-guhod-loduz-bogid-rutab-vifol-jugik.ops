@@ -1,0 +1,40 @@
+- op: create  # 0a09
+  at: '2026-11-18T12:56:42Z'  # 0a09
+  by: agent  # 0a09
+  actor: jgstern_agent  # 0a09
+  clock: 1  # 0a09
+  nonce: 0a09  # 0a09
+  data:  # 0a09
+    kind: invariant  # 0a09
+    title: "Work a test keeps for later tests is paired with every test handed it, including a closure a broader-scope fixture hands out"  # 0a09
+    status: violated  # 0a09
+    priority: 1  # 0a09
+    parent:  # 0a09
+    tags:  # 0a09
+    - smart_test  # 0a09
+    - fast_smart_test_plan  # 0a09
+    isbefore:  # 0a09
+    - WI-pugol-sajov-fazah-romaj-lotag-hatuj-kogap-tovor  # 0a09
+    duplicate_of: []  # 0a09
+    not_duplicate_of: []  # 0a09
+    pr_ref:  # 0a09
+    description: "STATEMENT. Work a test keeps for later tests is paired with every test that is handed it, including work kept by a closure that a module-, class- or session-scoped fixture hands out.\n\nVIOLATED (campaign 3 of WI-gojov, 2026-11-18). packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py: the module-scoped fixture `survey` returns `run(name, files)`, which keeps each fixture repo's behavior map in a dict it closes over. run_behavior_map runs inside the FIRST test that asks for a name; every later test with that name is handed the map and has no row for the analysis. Two planted faults (framework_patterns._read_framework_patterns 'assign None'; taxonomy.get_language 'negate if') failed 12 tests of this file that the by-statement selector would leave out; each fails alone with the fault and passes alone without it. test_visibility_follows_the_languages_rule[go-unexported] has 27 recorded blocks, none in taxonomy.py or framework_patterns.py.\n\nWHY THE GUARD MISSED IT. kept_work_guard scans module state writes and lazy attributes; a container captured by a closure of a broader-scope fixture is neither. An AST scan of every test file finds one fixture of this shape (this one).\n\nFIX. (1) `run` marks itself: kept_work.used(run, name) on every call, `with kept_work.filling(run, name):` around the survey. (2) kept_work_guard reports a closure of a fixture whose scope is not 'function' that writes a container or name of its enclosing function (subscript store, append/add/update/setdefault/extend, nonlocal) and is not marked, as an unmarked state write.\n\nCLOSE CONDITION. After a recording full run, select_by_statement on each of the two faults keeps all 12 tests (command and output in the notebook); the guard fails on the unmarked fixture (test) and passes the live tree; merged.\n\nEVIDENCE. ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/campaign3_summary.txt, campaign3/replay/."  # 0a09
+    fields:  # 0a09
+      statement: "Work a test keeps for later tests (including a closure that a module-, class- or session-scoped fixture hands out) is paired with every test that is handed it."  # 0a09
+      root_cause: "The module-scoped fixture survey in test_axiom_falsification.py hands out a closure that keeps behavior maps in a dict it closes over; the recorder sees no boundary, and kept_work_guard scans only module state and lazy attributes."  # 0a09
+- op: update  # a579
+  at: '2026-11-18T14:33:42Z'  # a579
+  by: agent  # a579
+  actor: jgstern_agent  # a579
+  clock: 2  # a579
+  nonce: a579  # a579
+  set:  # a579
+    status: satisfied  # a579
+    pr_ref: '2255'  # a579
+- op: discuss  # f65c
+  at: '2026-11-18T14:33:42Z'  # f65c
+  by: agent  # f65c
+  actor: jgstern_agent  # f65c
+  clock: 3  # f65c
+  nonce: f65c  # f65c
+  message: "Merged as PR #2255 (dev c2f3a6694). EVIDENCE (production path): after a bare smart-test run folded the index, ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/recheck_kazud.py replants both campaign-3 faults and asks select_by_statement: '_read_framework_patterns assign None missed before 11, kept now 11, still out []'; 'get_language negate if missed before 1, kept now 1, still out []'; CLEAN (recheck_kazud.txt). go-unexported's recorded blocks went 27 -> 2,452. Guard: check-kept-work flagged exactly test_axiom_falsification.py::survey.<locals>.run before the mark and is clean after; test_kept_work_guard.py pins the closure shape (module/session/dynamic scope, nonlocal, nested) and its non-shapes (function scope, bare fixture, plain helper, rebinding). tests/test_kept_work_contexts.py: a module-fixture closure in the toy project; both tests carry the cache and are paired with what the fill ran. The same PR fixed the two red scheduled steps at 53301132 (both mine): test-agent-infra (the toy project's child lacked hypergumbo_core's path) and self-tree-validation (shared_context had lost its production caller in 0ec2953c4)."  # f65c
