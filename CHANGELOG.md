@@ -54,6 +54,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Caches inside shared test fixtures are paired too.**
 - **By-statement selection keeps tests that read changed files.**
 - **Hashing analyzer sources no longer counts as reading them.**
+- **Tests no longer leak environment variables to later tests.**
 
 ## [10.0.0] - 2026-11-16
 
