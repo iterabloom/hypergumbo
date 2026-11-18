@@ -968,6 +968,29 @@ def _strip_phase(context: str) -> str:
     return context.rsplit("|", 1)[0] if "|" in context else context
 
 
+def without_xdist_group(node_id: str) -> str:
+    """``file::test@group`` -> ``file::test``: the id pytest itself knows.
+
+    Under ``--dist loadgroup`` pytest-xdist renames, on its workers, every
+    test marked ``xdist_group``: ``@<group>`` is appended to the node id.
+    Coverage contexts, the junit report and the recorder's per-test keys are
+    written after that; the recorder's list of expected tests (taken at
+    collection) and every run without xdist are not. Two spellings of one
+    test never join, and the suffixed one is not an id pytest accepts, so
+    every way into the stores passes through here.
+
+    The suffix is an ``@`` after the last ``]`` of a parametrized id, or after
+    the last ``::`` of a plain one, with a non-empty name behind it (xdist
+    appends nothing for an empty group). An ``@`` inside a parameter, or in a
+    directory name, is before that point and stays. NOT HANDLED: a group whose
+    name contains ``]``; its tests keep two spellings.
+    """
+    head, sep, group = node_id.rpartition("@")
+    if not sep or not group or "]" in group or "::" in group or "::" not in head:
+        return node_id
+    return head
+
+
 #: pytest-cov's phases that are not the test's own call: what runs in them is
 #: fixture code, and a fixture can run for every test.
 _FIXTURE_PHASES = ("|setup", "|teardown")
@@ -1020,6 +1043,7 @@ def normalize_test_id(node_id: str, repo_root: Optional[Path]) -> str:
     test to the wrong file, and an unjoined row is a recoverable under-selection
     where a wrong row is a lie.
     """
+    node_id = without_xdist_group(node_id)
     if repo_root is None or "::" not in node_id:
         return node_id
     file_part, _, rest = node_id.partition("::")
@@ -1076,6 +1100,8 @@ def update_from_run(
     row when the mapping is absent, are stored as code run under no test
     (semantic 6 of the module docstring). Returns what was done with them.
     """
+    if ran_tests is not None:
+        ran_tests = [without_xdist_group(test) for test in ran_tests]
     src = sqlite3.connect(f"file:{coverage_db}?mode=ro", uri=True)
     try:
         rows = src.execute(
