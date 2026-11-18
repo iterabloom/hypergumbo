@@ -431,12 +431,18 @@ class StatementBar:
     uncounted: Mapping[str, int]
     #: Rows that hold the selector's answer and the run's failed tests.
     recorded: int
-    #: Informative runs by run kind. A run is informative when a FAILED test
-    #: reached a function the selector narrowed and the selector had a record
-    #: of every changed function: only there could it have left a failing
-    #: test out. Counted once per state of the tree (base, head, uncommitted
-    #: change): the same state run twice is one piece of evidence.
+    #: Runs, by run kind, in which a FAILED test reached a function the
+    #: selector answered by statement and the selector had a record of every
+    #: changed function. Counted once per state of the tree (base, head,
+    #: uncommitted change): the same state run twice is one piece of evidence.
     informative: Mapping[str, int]
+    #: The informative runs in which the selector also LEFT TESTS OUT (it
+    #: selected fewer tests than reached the changed functions). Only these
+    #: test it: where it selects every test that reached the function there is
+    #: nothing it could have missed. In the first planted-fault campaign 25
+    #: runs were informative and 9 of them were of this kind. THE BAR IS
+    #: COUNTED ON THESE.
+    left_out: Mapping[str, int]
     #: ``(when, run kind, head, the failed tests left out)`` for every row in
     #: which the selector left out a failed test that reached a changed function.
     misses: tuple[tuple[str, str, str, tuple[str, ...]], ...]
@@ -447,28 +453,40 @@ class StatementBar:
         number of clean runs (owner ruling: it stays off and is filed)."""
         if self.misses:
             return "missed"
-        if sum(self.informative.values()) < STATEMENT_BAR:
+        if sum(self.left_out.values()) < STATEMENT_BAR:
             return "not met"
         return "met"
 
     def summary(self) -> str:
-        total = sum(self.informative.values())
         lines = [
             f"  run records               : {self.rows}",
             f"  hold the selector's answer : {self.recorded}",
         ]
         lines += [f"      not counted, {why}: {n}" for why, n in sorted(self.uncounted.items())]
-        lines.append(f"  informative runs          : {total} / {STATEMENT_BAR}")
+        lines.append(f"  a failed test was at risk : {sum(self.informative.values())}")
         lines += [f"      {kind}: {n}" for kind, n in sorted(self.informative.items())]
+        lines.append(f"  AND THE SELECTOR LEFT TESTS OUT : "
+                     f"{sum(self.left_out.values())} / {STATEMENT_BAR}")
+        lines += [f"      {kind}: {n}" for kind, n in sorted(self.left_out.items())]
         lines.append(f"  RUNS WITH A FAILED TEST LEFT OUT : {len(self.misses)}")
         for at, kind, head, tests in self.misses[:5]:
             lines.append(f"      {at} {kind} {head[:12]}  {', '.join(tests[:3])}")
         lines.append(f"  verdict                   : {self.verdict.upper()}")
+        lines.append("  not seen by this count    : a failed test the index does not pair with "
+                     "the changed function (shared work: a cache, a shared fixture, a subprocess)")
         return "\n".join(lines)
 
 
 def evaluate_statement_bar(records: Iterable[Mapping[str, object]]) -> StatementBar:
     """Count the by-statement selector's bar from the run records.
+
+    WHAT THIS COUNT CANNOT SEE. A failed test the index does not pair with
+    the changed function at all is not in ``failed_not_selected``: work done
+    once and shared (a memoised function, a module-scoped fixture, a
+    subprocess) leaves most of its dependents unpaired, and a planted-fault
+    campaign found 13 such failing tests in 3 of 93 runs while this count
+    read "met". A clean count here is necessary for selecting test by test,
+    and it is not sufficient.
 
     A row written before the selector recorded which tests it had narrowed
     (no ``failed_reaching_a_narrowed_block``) cannot be informative: it does
@@ -480,6 +498,7 @@ def evaluate_statement_bar(records: Iterable[Mapping[str, object]]) -> Statement
     rows = list(records)
     uncounted: dict[str, int] = {}
     informative: dict[str, set[tuple[object, object, object]]] = {}
+    narrowed: dict[str, set[tuple[object, object, object]]] = {}
     misses: list[tuple[str, str, str, tuple[str, ...]]] = []
     recorded = 0
 
@@ -511,9 +530,13 @@ def evaluate_statement_bar(records: Iterable[Mapping[str, object]]) -> Statement
         if at_risk is None:
             skip("written before narrowed tests were recorded")
         elif at_risk and not facts.get("unknown_blocks"):
-            informative.setdefault(kind, set()).add(
-                (row.get("base"), row.get("head"), row.get("snapshot")))
+            state = (row.get("base"), row.get("head"), row.get("snapshot"))
+            informative.setdefault(kind, set()).add(state)
+            selected, reached = facts.get("tests"), facts.get("by_block")
+            if isinstance(selected, int) and isinstance(reached, int) and selected < reached:
+                narrowed.setdefault(kind, set()).add(state)
     return StatementBar(
         rows=len(rows), uncounted=uncounted, recorded=recorded,
         informative={kind: len(states) for kind, states in informative.items()},
+        left_out={kind: len(states) for kind, states in narrowed.items()},
         misses=tuple(misses))

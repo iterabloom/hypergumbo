@@ -366,11 +366,13 @@ class TestSnapshots:
 def _run(kind: str = "explicit", *, state: str = "s1",
          failed: Optional[Sequence[str]] = (), at_risk: Optional[Sequence[str]] = (),
          left_out: Sequence[str] = (), unknown: int = 0,
+         selected: int = 3, reached: int = 10,
          instead: object = ...) -> dict[str, object]:
     """A run record as ``coverage-select run-record`` writes it, reduced to
     what the bar reads. ``at_risk=None``: a row from before that field.
     ``instead``: the whole ``by_statement`` value."""
-    facts: dict[str, object] = {"unknown_blocks": unknown, "failed_not_selected": list(left_out)}
+    facts: dict[str, object] = {"unknown_blocks": unknown, "failed_not_selected": list(left_out),
+                                "tests": selected, "by_block": reached}
     if at_risk is not None:
         facts["failed_reaching_a_narrowed_block"] = list(at_risk)
     return {"at": "t", "kind": kind, "base": "b", "head": "h", "snapshot": state,
@@ -396,6 +398,27 @@ class TestStatementBar:
         assert (bar.rows, bar.recorded, dict(bar.informative)) == (4, 4, {"explicit": 1})
         assert bar.misses == () and bar.verdict == "not met"
 
+    def test_the_bar_counts_only_runs_in_which_the_selector_left_tests_out(self) -> None:
+        """Where it selects every test that reached the function there is
+        nothing it could have missed: 16 of the first campaign's 25
+        informative runs were of that kind."""
+        took_them_all = [_run(state=f"a{n}", failed=["t::a"], at_risk=["t::a"],
+                              selected=10, reached=10) for n in range(STATEMENT_BAR)]
+        bar = evaluate_statement_bar(took_them_all)
+        assert dict(bar.informative) == {"explicit": STATEMENT_BAR} and dict(bar.left_out) == {}
+        assert bar.verdict == "not met"
+        text = bar.summary()
+        assert f"a failed test was at risk : {STATEMENT_BAR}" in text
+        assert f"AND THE SELECTOR LEFT TESTS OUT : 0 / {STATEMENT_BAR}" in text
+        # The count says what it cannot see, whatever its verdict.
+        assert "not seen by this count    : a failed test the index does not pair" in text
+        # A row that does not say how many it selected cannot show it left any out.
+        no_counts = {**_run(failed=["t::a"], at_risk=["t::a"])}
+        del no_counts["by_statement"]["tests"]  # type: ignore[attr-defined]
+        assert dict(evaluate_statement_bar([no_counts]).left_out) == {}
+        one = evaluate_statement_bar([_run(failed=["t::a"], at_risk=["t::a"], selected=9, reached=10)])
+        assert dict(one.left_out) == {"explicit": 1}
+
     def test_the_same_state_of_the_tree_counts_once_and_kinds_are_kept_apart(self) -> None:
         again = _run(failed=["t::a"], at_risk=["t::a"])
         bar = evaluate_statement_bar([
@@ -403,7 +426,7 @@ class TestStatementBar:
             _run(state="s2", failed=["t::a"], at_risk=["t::a"]),
             _run("selected", failed=["t::a"], at_risk=["t::a"]),
         ])
-        assert dict(bar.informative) == {"explicit": 2, "selected": 1}
+        assert dict(bar.informative) == {"explicit": 2, "selected": 1} == dict(bar.left_out)
 
     def test_rows_that_cannot_be_counted_say_why(self) -> None:
         bar = evaluate_statement_bar([
@@ -439,7 +462,7 @@ class TestStatementBar:
                  for n in range(STATEMENT_BAR)]
         assert evaluate_statement_bar(clean[:-1]).verdict == "not met"
         met = evaluate_statement_bar(clean)
-        assert met.verdict == "met" and "30 / 30" in met.summary()
+        assert met.verdict == "met" and "LEFT TESTS OUT : 30 / 30" in met.summary()
         # A miss in a row too old to be informative is still a miss.
         missed = evaluate_statement_bar(
             [*clean, _run(state="old", failed=["t::lost"], at_risk=None, left_out=["t::lost"])])
