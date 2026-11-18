@@ -181,6 +181,38 @@ def pytest_configure(config):
         )
 
 
+@pytest.fixture
+def record_reads():
+    """``record_reads(conn, test_ids, spawns={})``: give each test a read
+    record in the index ``conn``, as the recorder plugin's fold would after a
+    run in which the test passed, started the programs ``spawns`` names for
+    it (``{test_id: ["python"]}``) and read nothing.
+
+    No narrowing drops a test that has no read record, because the record is
+    what says whether the test started a child process coverage did not
+    measure. A test of narrowing that builds its index from coverage alone
+    therefore needs this before anything can be dropped. Ids are relative to
+    the repository, as the recorder writes them.
+    """
+    from hypergumbo_core import prose_only
+
+    def record(conn, test_ids, spawns=None):
+        prose_only.ensure_schema(conn)
+        for test_id in test_ids:
+            test_file = test_id.split("::")[0]
+            started = ",".join(f"subprocess.Popen:{program}"
+                               for program in (spawns or {}).get(test_id, ()))
+            conn.execute(
+                "INSERT OR REPLACE INTO read_test (test_id, test_file, opaque, observed) "
+                "VALUES (?, ?, ?, 1)", (test_id, test_file, started))
+            conn.execute(
+                "INSERT OR IGNORE INTO read_expected (test_file, test_id) VALUES (?, ?)",
+                (test_file, test_id))
+        conn.commit()
+
+    return record
+
+
 @pytest.fixture(scope="session")
 def build_once(tmp_path_factory):
     """``build_once(name, build)``: ``build()``'s JSON result, computed by one

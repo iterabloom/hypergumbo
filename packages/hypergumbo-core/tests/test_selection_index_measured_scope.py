@@ -291,19 +291,21 @@ class TestDroppable:
         update_from_run(conn, db, ran_tests=[ONE], repo_root=root, scope_complete=complete)
 
     def test_a_changed_source_must_have_been_measured_by_a_complete_run(
-            self, conn: sqlite3.Connection, tmp_path: Path) -> None:
+            self, conn: sqlite3.Connection, tmp_path: Path, record_reads) -> None:
         root, source = self.layout(tmp_path)
+        record_reads(conn, [ONE])
         self.fold(conn, root, source, complete=False, tmp_path=tmp_path, n=1)
         assert droppable_test_files(conn, root, [source]) == frozenset()
         self.fold(conn, root, source, complete=True, tmp_path=tmp_path, n=2)
         assert droppable_test_files(conn, root, [source]) == {FILE_X}
 
     def test_a_changed_test_or_script_asks_nothing_of_the_run(
-            self, conn: sqlite3.Connection, tmp_path: Path) -> None:
+            self, conn: sqlite3.Connection, tmp_path: Path, record_reads) -> None:
         """Neither is something coverage measures, so neither can be in a
         run's file list, and neither may hold narrowing back by being absent
         from it. A source file the run did not measure does."""
         root, source = self.layout(tmp_path)
+        record_reads(conn, [ONE])
         self.fold(conn, root, source, complete=True, tmp_path=tmp_path, n=1)
         unmeasurable = [str(root / "packages" / "p" / "tests" / "test_new.py"),
                         str(root / "scripts" / "tool"), str(root / "docs" / "a.md")]

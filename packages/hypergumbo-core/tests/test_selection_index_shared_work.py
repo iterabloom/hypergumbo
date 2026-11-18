@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.prose_only import RECORDER_VERSION
 from hypergumbo_core.selection_index import (
     SHARED_CONTEXT,
     blocks_run_at_import,
@@ -202,7 +203,8 @@ def _record(reads: Path, users: dict[str, list[str]]) -> None:
     reads.mkdir(parents=True)
     bucket = {"reads": [], "opaque": [], "docs": [], "lines": []}
     (reads / "main-1.json").write_text(json.dumps({
-        "version": 2, "observed": True, "expected": {}, "sources": {}, "failed": [],
+        "version": RECORDER_VERSION, "observed": True, "expected": {}, "sources": {},
+        "failed": [],
         "tests": {test: {**bucket, "fixtures": keys} for test, keys in users.items()},
         "fixtures": {}, "nested": {}, "modules": {}, "unattributed": bucket}))
 

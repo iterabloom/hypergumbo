@@ -466,6 +466,16 @@ def test_a_test_that_starts_a_process_runs_unless_the_program_is_inert(tmp_path:
         TEST_A: "starts a process (os.fork)"}
 
 
+def test_git_in_another_repository_is_inert_here_and_git_in_this_one_is_not(
+        tmp_path: Path) -> None:
+    """The recorder writes a git that cannot reach this repository (for the
+    rule that asks whether a child could run Python). It cannot read a file
+    of this repository, which is all this rule asks."""
+    assert _selected(tmp_path / "a", _bucket(opaque=["subprocess.Popen:git-elsewhere"])) == {}
+    assert _selected(tmp_path / "b", _bucket(opaque=["subprocess.Popen:git"])) == {
+        TEST_A: "starts a process (subprocess.Popen:git)"}
+
+
 def test_a_test_recorded_without_runtime_observation_runs(tmp_path: Path) -> None:
     got = _selected(tmp_path, _bucket(), observed=False)
     assert list(got) == [TEST_A] and "runtime observation" in got[TEST_A]

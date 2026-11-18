@@ -48,6 +48,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Imports inside functions run at import count as dependencies.**
 - **Every test using a shared fixture is paired with its code.**
 - **A test in an xdist group is stored under one name.**
+- **Narrowing keeps tests that start a child able to run Python.**
 
 ## [10.0.0] - 2026-11-16
 

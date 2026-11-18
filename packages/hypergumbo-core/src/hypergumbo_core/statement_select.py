@@ -46,6 +46,18 @@ inherited one. That last rule is a guess at "the tests that use this class",
 not a measurement; a subclass in another file that inherits the new method is
 reached only if its tests also reach the class's own code.
 
+WHOM IT NEVER NARROWS. A test coverage cannot speak for
+(:func:`selection_index.coverage_cannot_speak_for`): one whose own call ran
+no measured code, one recorded starting a program that can run Python, one
+with no read record. Coverage did not see what such a test's child ran, so
+"it reached the function and ran none of the changed statements" is not
+known of it. Where such a test reached a changed block it is selected whole;
+where it has no row at all the selector says nothing about it, and
+``Selection.cannot_speak`` names every one of them so that a caller narrowing
+a run keeps those another rule selected. (The unmeasured ones are also left
+out of ``tests``, as before: their rows are their fixtures', and the rules
+for unmeasured tests select them.)
+
 NOTHING ACTS ON THIS YET. ``coverage-select shadow`` stores its answer beside
 what a run really ran and which tests failed; whether it may select is decided
 on that record.
@@ -60,6 +72,7 @@ from typing import Mapping, Optional
 from .selection_index import (
     BlockKey,
     blocks_run_at_import,
+    coverage_cannot_speak_for,
     statement_records,
     statement_records_at,
     touching_tests,
@@ -99,6 +112,10 @@ class Selection:
     #: is also in ``tests`` is the selector holding where it could have
     #: missed; a failed test outside it was never this selector's to lose.
     narrowed: frozenset[str]
+    #: Every test coverage cannot speak for, in the index's spelling. The
+    #: selector did not narrow any of them, and a test here that is not in
+    #: ``tests`` is one it says nothing about: not one the change spares.
+    cannot_speak: frozenset[str] = frozenset()
 
 
 def _stored_digests(conn: sqlite3.Connection, path: str) -> dict[str, str]:
@@ -109,13 +126,16 @@ def _stored_digests(conn: sqlite3.Connection, path: str) -> dict[str, str]:
 
 def select_by_statement(
     conn: sqlite3.Connection, base_sources: Mapping[str, Optional[str]],
+    repo_root: Optional[Path] = None,
 ) -> Selection:
     """The tests a change needs, by statement where the records allow.
 
     ``base_sources`` maps each changed file (as the index spells its path) to
     its source at the base commit, ``None`` for a file the change adds: the
     same input as :func:`selection_index.select_tests`. The current source is
-    read from disk; a file that is not there was deleted.
+    read from disk; a file that is not there was deleted. ``repo_root`` lets
+    an index that spells a test id absolutely be matched to the read record,
+    which spells it relative to the repository.
     """
     tests: set[str] = set()
     by_block: set[str] = set()
@@ -123,7 +143,8 @@ def select_by_statement(
     import_time: set[BlockKey] = set()
     unknown: set[BlockKey] = set()
     narrowed: set[str] = set()
-    unmeasured = {str(row[0]) for row in conn.execute("SELECT test_id FROM unmeasured_test")}
+    blind = coverage_cannot_speak_for(conn, repo_root)
+    unmeasured, held = blind.unmeasured, blind.never_narrowed
     for path, base in base_sources.items():
         try:
             current: Optional[str] = Path(path).read_text(encoding="utf-8")
@@ -188,9 +209,10 @@ def select_by_statement(
             else:
                 tests |= {test for test, ran in was.items()
                           if ran is None or ran & change.ran}
-                narrowed |= reached
+                tests |= reached & held
+                narrowed |= reached - held
                 answers[key] = BY_STATEMENT
     return Selection(
         tests=frozenset(tests - unmeasured), by_block=frozenset(by_block - unmeasured),
         answers=answers, import_time=frozenset(import_time), unknown=frozenset(unknown),
-        narrowed=frozenset(narrowed - unmeasured))
+        narrowed=frozenset(narrowed - unmeasured), cannot_speak=blind.tests)

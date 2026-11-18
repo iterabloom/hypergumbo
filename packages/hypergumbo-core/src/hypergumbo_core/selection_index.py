@@ -146,6 +146,26 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    state an object keeps after a shared fixture returned it. Each is work
    done once under one test's label, with no fixture boundary to see.
 
+7. **A child process is not measured, so a test that starts one that can
+   run Python is one coverage cannot speak for.** A test that runs some
+   measured code itself AND starts a child that runs package source is
+   "measured" (semantic 3), yet has no row for what the child ran: its
+   silence about a block is not evidence. Coverage inside the children was
+   tried and not chosen (cost x1.3 to x4 per child, and three ways to lose a
+   child's data with no error). The recorder plugin already writes every
+   process a test starts (``read_test.opaque``, kept in this file by
+   :mod:`~hypergumbo_core.prose_only`), and
+   :func:`coverage_cannot_speak_for` reads it: a test with a recorded start
+   of a program not listed in
+   :data:`hypergumbo_core.started_programs.CANNOT_RUN_PYTHON`, a test its
+   file's latest record expected and has no record of, and a test of a file
+   with no record at all, join the unmeasured tests. No narrowing drops such
+   a test: :func:`speakable_test_files` leaves its file out, and the
+   by-statement selector selects it whole wherever it reached a changed
+   block. A ROW IS STILL A ROW: :func:`select_tests` goes on naming such a
+   test when it has a row on a changed block. The exemptions are by program
+   name, so this rests on the name telling what the program can do.
+
 SOUNDNESS BOUNDARY, stated because it is the thing that would bite. The index
 knows "tests I have OBSERVED executing block B", a subset of "tests that execute
 B", until every test has run since B appeared. So this selector is sound as of
@@ -212,6 +232,7 @@ from hypergumbo_core.block_hash import (
     line_owner,
     statement_owner,
 )
+from hypergumbo_core.started_programs import RECORDER_VERSION, may_run_python
 
 #: ``(path, block name)`` — the join key. Deliberately not line-based.
 BlockKey = tuple[str, str]
@@ -1589,30 +1610,118 @@ def touching_test_files(
     return files_of(rebase_to_repo(touching_tests(conn, paths), repo_root))
 
 
+@dataclass(frozen=True)
+class CoverageBlind:
+    """The tests whose silence about a piece of code is not evidence
+    (semantic 7 of the module docstring), by reason. A test can be in more
+    than one. Ids are spelled as the index spells them; a test only the read
+    record knows is spelled as the record spells it."""
+
+    #: Their own call ran no measured code (semantic 3).
+    unmeasured: frozenset[str]
+    #: Test -> the programs it is recorded starting that can run Python.
+    started: Mapping[str, tuple[str, ...]]
+    #: No read record: a test its file's latest record expected and did not
+    #: get (it failed, or its worker died), and every test of a file with no
+    #: record at all. What such a test started is not known.
+    unrecorded: frozenset[str]
+
+    @property
+    def never_narrowed(self) -> frozenset[str]:
+        """The tests held for what a child may have run, or for want of a
+        record that would say: measured or not."""
+        return frozenset(self.started) | self.unrecorded
+
+    @property
+    def tests(self) -> frozenset[str]:
+        return self.unmeasured | self.never_narrowed
+
+
+def _read_record(conn: sqlite3.Connection) -> tuple[dict[str, str], set[str]]:
+    """``(test -> its recorded spawns, the tests expected)`` from the tables
+    :mod:`~hypergumbo_core.prose_only` keeps in this file. Both empty when
+    the tables are not there or were written by another recorder version:
+    what a spawn list of another version leaves out is not known here."""
+    tables = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN "
+        "('read_meta', 'read_test', 'read_expected')")}
+    if len(tables) != 3:
+        return {}, set()
+    version = conn.execute("SELECT value FROM read_meta WHERE key = 'recorder'").fetchone()
+    if version is None or version[0] != str(RECORDER_VERSION):
+        return {}, set()
+    spawns = {str(test): str(opaque) for test, opaque in conn.execute(
+        "SELECT test_id, opaque FROM read_test")}
+    return spawns, {str(row[0]) for row in conn.execute("SELECT test_id FROM read_expected")}
+
+
+def coverage_cannot_speak_for(
+    conn: sqlite3.Connection, repo_root: Optional[Path] = None,
+) -> CoverageBlind:
+    """Every test no narrowing may drop for having no row on a change.
+
+    The read record names tests relative to the repository; an index id that
+    is absolute is matched through ``repo_root``. THE READ RECORD IS WALKED,
+    NOT THE INDEX: the index keeps the ids of tests that were renamed or
+    removed (nothing prunes it), and such an id, with no record in a file
+    that has records, is not a test to hold anything back for. An index id is
+    judged for itself only when its whole FILE has no record.
+    """
+    prefix = f"{repo_root}/" if repo_root is not None else None
+
+    def as_recorded(test_id: str) -> str:
+        if prefix is not None and test_id.startswith(prefix):
+            return test_id[len(prefix):]
+        return test_id
+
+    unmeasured = {str(row[0]) for row in conn.execute("SELECT test_id FROM unmeasured_test")}
+    spelled: dict[str, set[str]] = {}
+    for test_id in {str(row[0]) for row in conn.execute("SELECT test_id FROM test")} | unmeasured:
+        spelled.setdefault(as_recorded(test_id), set()).add(test_id)
+    spawns, expected = _read_record(conn)
+    recorded_files = files_of(spawns)
+
+    started: dict[str, tuple[str, ...]] = {}
+    for recorded, opaque in spawns.items():
+        programs = tuple(may_run_python(opaque))
+        if programs:
+            for test_id in spelled.get(recorded, {recorded}):
+                started[test_id] = programs
+    unrecorded: set[str] = set()
+    for recorded in expected - spawns.keys():
+        unrecorded |= spelled.get(recorded, {recorded})
+    for recorded, ids in spelled.items():
+        if recorded.split("::")[0] not in recorded_files:
+            unrecorded |= ids
+    return CoverageBlind(
+        unmeasured=frozenset(unmeasured), started=started, unrecorded=frozenset(unrecorded))
+
+
 def speakable_test_files(
     conn: sqlite3.Connection, repo_root: Path,
 ) -> frozenset[str]:
-    """Test FILES the index has coverage rows for, none of them unmeasured.
+    """Test FILES the index has coverage rows for, with no test coverage
+    cannot speak for (:func:`coverage_cannot_speak_for`).
 
     NECESSARY FOR DROPPING A FILE, NOT SUFFICIENT: rows say what a test ran
     in the files its run measured, so :func:`droppable_test_files` also asks
     what that run measured. A file qualifies here when it has coverage
-    rows AND none of its tests are recorded ``unmeasured``. Both halves matter:
-    a file absent from the index was never observed at all, and a file with an
-    unmeasured test ran without leaving a trace, so in neither case does the
-    index's silence mean "this test is irrelevant".
+    rows AND none of its tests is unmeasured, is recorded starting a program
+    that can run Python, or lacks a read record. All of it matters: a file
+    absent from the index was never observed at all, a file with an
+    unmeasured test ran without leaving a trace, and a child process ran
+    whatever it ran unseen, so in none of these cases does the index's
+    silence mean "this test is irrelevant".
 
-    The unmeasured check is at FILE granularity because the run set is, which
+    The check is at FILE granularity because the run set is, which
     is conservative in a way worth naming: most files with unmeasured tests
     are only PARTLY unmeasured — a single unmeasured test holds back a file of
     hundreds — so this rule keeps considerably more than node-granularity
     would.
     """
     measured = files_of(rebase_to_repo(measured_tests(conn), repo_root))
-    unmeasured = files_of(rebase_to_repo(
-        {r[0] for r in conn.execute("SELECT test_id FROM unmeasured_test")},
-        repo_root))
-    return measured - unmeasured
+    blind = coverage_cannot_speak_for(conn, repo_root).tests
+    return measured - files_of(rebase_to_repo(blind, repo_root))
 
 
 def informed_test_files(
