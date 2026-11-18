@@ -1,0 +1,53 @@
+- op: create  # dc49
+  at: '2026-11-17T22:57:15Z'  # dc49
+  by: agent  # dc49
+  actor: jgstern_agent  # dc49
+  clock: 1  # dc49
+  nonce: dc49  # dc49
+  data:  # dc49
+    kind: invariant  # dc49
+    title: "A test file whose module runs changed import-time code through an import inside a function is not selected: the import graph does not follow function-level imports even when the function runs at import"  # dc49
+    status: violated  # dc49
+    priority: 1  # dc49
+    parent:  # dc49
+    tags:  # dc49
+    - smart_test  # dc49
+    - trunk_green  # dc49
+    - ci_infrastructure  # dc49
+    isbefore: []  # dc49
+    duplicate_of: []  # dc49
+    not_duplicate_of: []  # dc49
+    pr_ref:  # dc49
+    description: "FOUND 2026-11-17 22:58 UTC, while verifying the fix for INV-podom on the real pipeline.\n\nWHAT IS WRONG. For a change to import-time code, smart-test adds the test files whose imports reach the changed file (coverage-select import-closure; hypergumbo_core.import_closure). The import graph deliberately leaves out an import written INSIDE A FUNCTION of a source module (\"counting those put cli's whole closure under every test file of the real tree\"; the bed's known miss, test_reads_lazily). But a function can run while its module is imported, and then the import inside it runs at import too:\n\n  hypergumbo_lang_common/haskell.py:738   <module>  calls _derive_haskell_gated_names()\n  hypergumbo_lang_common/haskell.py:733   _derive_haskell_gated_names  imports and calls io_boundary.load_catalog\n  hypergumbo_lang_mainstream/py.py:942    <module>  calls _derive_external_constructor_types()  (py.py is loaded by jupyter.py:73)\n  hypergumbo_lang_mainstream/py.py:923    _derive_external_constructor_types  imports and calls io_boundary.load_catalog\n\nSo loading haskell.py or jupyter.py runs io_boundary.load_catalog, and neither file has an import edge to io_boundary.py in the graph.\n\nLIVE REPRO (real commands, live index, dev 1e39f0f3b, 2026-11-17 22:56 UTC), one statement inserted at the top of io_boundary.load_catalog:\n  scripts/coverage-select graph-walk --changed-files <io_boundary.py> --output W     -> 750 files, 556 test files\n  scripts/coverage-select import-closure --changed-files <io_boundary.py> --base HEAD -> 523 test files (the function is marked as run at import since PR #2240)\nOf the 9 test_haskell*.py / test_jupyter*.py files, 3 are in both answers and 6 are in NEITHER: test_haskell_equation_span.py, test_haskell_handle_argument_origin.py, test_haskell_zero_arg_actions.py, test_jupyter.py, test_jupyter_cyclomatic.py, test_jupyter_producer_stable_ids.py. Each loads a module whose import runs the edited function. They are not in the manifest for that change.\nNotebook: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/import_time_functions.txt.\n\nTHE SAME GAP FOR A MODULE-BODY CHANGE of io_boundary.py: not checked directly, but the graph is the same graph.\n\nWHAT THE INDEX NOW KNOWS THAT CAN CLOSE IT. Since PR #2240 the index marks the functions a run saw execute under no test's context (at_import_block): _derive_haskell_gated_names and _derive_external_constructor_types are such functions. An import inside a MARKED function runs at import, and can be an edge of the import graph without bringing back the cost that got function-level imports excluded.\n\nNOT ESTABLISHED: whether a merged change ever lost a failing test this way."  # dc49
+    fields:  # dc49
+      statement: "A test file that loads a module whose import executes changed import-time code is in the selection, whatever the syntactic position of the import that carries the dependency."  # dc49
+      root_cause: "import_closure counts an import as an edge only where it runs at definition (module level, class body, decorators, defaults). An import inside a function that the module calls while loading runs at import too, and is not counted."  # dc49
+- op: discuss  # c610
+  at: '2026-11-18T00:05:41Z'  # c610
+  by: agent  # c610
+  actor: jgstern_agent  # c610
+  clock: 2  # c610
+  nonce: c610  # c610
+  message: "Merged as PR #2242, dev SHA fc2d2d8a9c82."  # c610
+- op: update  # 2e6d
+  at: '2026-11-18T00:06:10Z'  # 2e6d
+  by: agent  # 2e6d
+  actor: jgstern_agent  # 2e6d
+  clock: 3  # 2e6d
+  nonce: 2e6d  # 2e6d
+  set:  # 2e6d
+    status: satisfied  # 2e6d
+- op: discuss  # 020c
+  at: '2026-11-18T00:06:10Z'  # 020c
+  by: agent  # 020c
+  actor: jgstern_agent  # 020c
+  clock: 4  # 020c
+  nonce: 020c  # 020c
+  message: "Fixed in PR #2242 (dev fc2d2d8a9). import_closure.build takes the functions the index saw run under no test's context (selection_index.functions_run_at_import) and counts an import inside one as an import of the file; coverage-select import-closure passes them. BEHAVIOURAL EVIDENCE, the item's own repro re-run on the live index (2026-11-18 00:05 UTC; output in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/import_time_functions.txt): the same one-statement edit to io_boundary.load_catalog, real 'coverage-select import-closure' -> exit 0, '1 file(s) with changed import-time code are loaded by 583 test file(s)', and all 9 test_haskell*.py / test_jupyter*.py files are in the answer (3 before; the 6 named in the description were in neither answer). In the selection bed, a new module (derives_at_import.py: imports limits inside _derive() and calls _derive() as it loads) has its test in the manifest for a change to the constant, where the slice misses it; with the marks not passed to the graph the bed test fails. 12 mutations red. MEASURED COST on this tree (lazyimport/closure_sizes.txt, computed before the merge with 153 marks): 19 import edges added in 10 files; mean closure over 372 source files 206.5 -> 229.8 test files, median 16 -> 18, 21 closures grew. NOT CLOSED BY THIS: (1) the graph WALK still does not reach those 6 files; the closure adds them, and the closure fires only for a change to import-time code (a module or class body, or a marked function). A change to an UNMARKED function of io_boundary.py that a marked function calls at import is not such a change and is selected by the walk and the coverage record alone. I have not checked whether that shape loses a test. (2) An import inside a function that does not run at import is still not followed (the bed's known miss, test_reads_lazily). (3) A function that newly starts to run at import is unmarked until a folded run sees it."  # 020c
+- op: discuss  # c7ab
+  at: '2026-11-18T00:06:19Z'  # c7ab
+  by: agent  # c7ab
+  actor: jgstern_agent  # c7ab
+  clock: 5  # c7ab
+  nonce: c7ab  # c7ab
+  message: "CORRECTION to point (1) of my closing note. I wrote that a change to an UNMARKED function which a marked function calls at import is selected by the walk and the coverage record alone, and that I had not checked whether that loses a test. That shape cannot occur as described: a function that executes during an import has its statements run under no test's context, so the fold marks IT too (the mark is per function that ran, not per function called from a module body). io_boundary.load_catalog is itself marked for exactly that reason. What remains true in (1): the graph walk does not reach the six files, and the import closure is what adds them. Points (2) and (3) stand."  # c7ab
