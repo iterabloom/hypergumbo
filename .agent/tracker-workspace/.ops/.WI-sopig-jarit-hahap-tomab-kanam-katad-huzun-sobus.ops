@@ -1,0 +1,22 @@
+- op: create  # 310a
+  at: '2026-11-18T03:02:48Z'  # 310a
+  by: agent  # 310a
+  actor: jgstern_agent  # 310a
+  clock: 1  # 310a
+  nonce: 310a  # 310a
+  data:  # 310a
+    kind: work_item  # 310a
+    title: "A test that starts a child able to run Python is one coverage cannot speak for: never narrowed (gitleaks exempt by name)"  # 310a
+    status: todo_hard  # 310a
+    priority: 2  # 310a
+    parent:  # 310a
+    tags:  # 310a
+    - smart_test  # 310a
+    - fast_smart_test_plan  # 310a
+    isbefore:  # 310a
+    - WI-gojov-rohul-savug-mulap-rirur-diguh-havij-dosih  # 310a
+    duplicate_of: []  # 310a
+    not_duplicate_of: []  # 310a
+    pr_ref:  # 310a
+    description: "WHY. Coverage does not measure a child process. A test that runs some measured code itself AND starts a child that runs package source is 'measured' in the index, yet has no row for what the child ran: selecting by function or by statement can drop it. Campaign case: tests in test_import_closure.py. Size from the live index on 2026-11-18: 1,600 tests in 153 files start a child that is not in INERT_PROGRAMS; 1,408 of them are already in unmeasured_test; 192 are the mixed ones this item is about.\n\nOWNER'S CHOICE (2026-11-18). Measuring coverage inside the children was tried on a toy project and works, at a cost of x1.3 to x4 per child, with three ways to lose a child's data with no error (an environment without the variables, python -S, SIGKILL). The owner chose the cheaper rule below.\n\nWHAT EXISTS. The recorder plugin already writes every process start per test, and prose_only.fold_run stores it as read_test.opaque.\n\nWHAT TO BUILD. In the by-statement selector, and in the file-level narrowing that is live today: a test with a recorded start of a program that can run Python, or with no read record at all, is one coverage cannot speak for. It is never narrowed; it is selected by the rules for unmeasured tests (WI-gapal). A program that cannot run Python is exempt, listed by name with the reason, apart from INERT_PROGRAMS (that list means 'cannot read a .py file', a different property): gitleaks, a Go binary, which is 30 of the 192 tests and 2,113 of the 2,240 test-seconds the mixed tests hold in the graph-named sets of 183 source changes. git is NOT exempt: it runs hooks.\n\nCLOSE CONDITION. A test: a measured test that starts python is not dropped by a change it has no row for; one that starts only gitleaks is narrowed as before. The counts restated from the index at merge: tests newly kept from narrowing, by program. A mutation control on the test_import_closure.py case: the failing tests inside the selection.\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 310a
+    fields: {}  # 310a

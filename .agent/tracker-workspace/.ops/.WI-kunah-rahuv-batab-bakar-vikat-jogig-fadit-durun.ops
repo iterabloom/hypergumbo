@@ -1,0 +1,21 @@
+- op: create  # 019b
+  at: '2026-11-18T03:02:54Z'  # 019b
+  by: agent  # 019b
+  actor: jgstern_agent  # 019b
+  clock: 1  # 019b
+  nonce: 019b  # 019b
+  data:  # 019b
+    kind: work_item  # 019b
+    title: "The CI manifest lists test ids where the by-statement selector narrowed, so PR CI gains from it"  # 019b
+    status: todo_hard  # 019b
+    priority: 3  # 019b
+    parent:  # 019b
+    tags:  # 019b
+    - smart_test  # 019b
+    - fast_smart_test_plan  # 019b
+    isbefore: []  # 019b
+    duplicate_of: []  # 019b
+    not_duplicate_of: []  # 019b
+    pr_ref:  # 019b
+    description: "WHY. The CI manifest (.ci/affected-tests.txt) lists test FILES. Once the by-statement selector is live it selects TESTS; a manifest of files makes CI run every test of a file that holds one selected test, so CI gains nothing from the selector.\n\nWHAT. After the selector is switched on: the manifest lists test ids where the selector narrowed, and files where it did not; PR CI runs exactly those. The scheduled full run is not narrowed.\n\nCLOSE CONDITION. A PR whose manifest lists test ids, with CI's test count beside the count the same change selects by file. The per-package split CI uses still enforces coverage on changed files (measured on that PR).\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 019b
+    fields: {}  # 019b
