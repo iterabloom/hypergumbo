@@ -99,6 +99,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import functools
 import hashlib
 import json
 import linecache
@@ -315,6 +316,15 @@ class SourceReads:
         self.building: list[str] = []
         #: Per piece of shared work, the shared work done INSIDE it.
         self.nested: dict[str, set[str]] = {}
+        #: The running test's node id, and the thread the tests run on.
+        self.nodeid: Optional[str] = None
+        self.thread = threading.get_ident()
+        #: Cached functions: what each one's body did (audit events), which
+        #: tests called each, and the key of each function's code (None: not
+        #: repository code).
+        self.caches: dict[str, _Bucket] = {}
+        self.test_caches: dict[str, set[str]] = {}
+        self.cache_keys: dict[Any, Optional[str]] = {}
         self.flush_seconds = flush_seconds
         self.root = os.path.realpath(root) + os.sep
         self.prefix = os.path.realpath(sys.prefix) + os.sep
@@ -496,7 +506,7 @@ class SourceReads:
         finalizers = getattr(fixturedef, "_finalizers", None)
         before = len(finalizers) if isinstance(finalizers, list) else 0
         try:
-            with self._shared_work(key, bucket):
+            with self._shared_work(f"fixture|{key}", bucket):
                 yield
         finally:
             # What the fixture registered while it was set up is its own
@@ -522,10 +532,10 @@ class SourceReads:
             controller.cov.switch_context(context)
 
     @contextlib.contextmanager
-    def _shared_work(self, key: str, bucket: _Bucket) -> Iterator[None]:
-        """Run shared fixture ``key`` under its own coverage context, and
-        attribute what the audit hook sees to it."""
-        name = f"fixture|{key}"
+    def _shared_work(self, name: str, bucket: _Bucket) -> Iterator[None]:
+        """Run one piece of shared work (``fixture|<key>``, ``cache|<key>``)
+        under its own coverage context, and attribute what the audit hook
+        sees to it."""
         if self.building:
             self.nested.setdefault(self.building[-1], set()).add(name)
         self.building.append(name)
@@ -541,9 +551,70 @@ class SourceReads:
     def _as_shared_work(self, key: str, bucket: _Bucket,
                         finalizer: Callable[[], object]) -> Callable[[], object]:
         def torn_down() -> object:
-            with self._shared_work(key, bucket):
+            with self._shared_work(f"fixture|{key}", bucket):
                 return finalizer()
         return torn_down
+
+    # -- cached functions --------------------------------------------------
+    def cache_key(self, code: Any, qualname: str) -> Optional[str]:
+        """``<file>::<qualified name>`` of a cached function of the
+        repository, None for any other code. Judged once per function."""
+        try:
+            return self.cache_keys[code]
+        except KeyError:
+            filename = os.path.realpath(code.co_filename)
+            key = (f"{filename[len(self.root):]}::{qualname}"
+                   if self._is_repo_code(filename) else None)
+            self.cache_keys[code] = key
+            return key
+
+    def unwrapped_caches(self) -> list[str]:
+        """Keys of the repository's cached functions this plugin did NOT
+        wrap: made by ``functools.lru_cache`` before the plugin was imported,
+        or by a reference to it taken before then. Found by looking, in every
+        loaded module of the repository and in its classes, for functools'
+        own wrapper object: a function this plugin wrapped is an ordinary
+        function there. Their bodies run under whichever test called first,
+        and the reader of this list is told so."""
+        found: set[str] = set()
+        for module in list(sys.modules.values()):
+            filename = getattr(module, "__file__", None)
+            if not isinstance(filename, str) or not self._is_repo_code(
+                    os.path.realpath(filename)):
+                continue
+            holders = [module, *(value for value in list(vars(module).values())
+                                 if isinstance(value, type)
+                                 and value.__module__ == module.__name__)]
+            for holder in holders:
+                for value in list(vars(holder).values()):
+                    value = getattr(value, "__func__", value)
+                    inner = getattr(value, "__wrapped__", None)
+                    code = getattr(inner, "__code__", None)
+                    if isinstance(value, _LRU_WRAPPER) and code is not None:
+                        key = self.cache_key(code, inner.__qualname__)
+                        if key is not None:
+                            found.add(key)
+        return sorted(found)
+
+    def used_cache(self, key: str) -> None:
+        """A call of cached function ``key``, hit or miss: the running test
+        used it, and so did the shared work the call was made inside."""
+        if not self.active:
+            return
+        if self.building and threading.get_ident() == self.thread:
+            self.nested.setdefault(self.building[-1], set()).add(f"cache|{key}")
+        if self.nodeid is not None:
+            self.test_caches.setdefault(self.nodeid, set()).add(key)
+
+    def cache_body(self, key: str) -> Any:
+        """The context to run a cached function's body in, or None when it
+        must run as it is: outside every test (the code is then recorded
+        under no test, which the index treats as run at import), and on a
+        thread other than the one the tests run on (coverage has ONE current
+        context for the whole process, and this plugin one stack)."""
+        if not self.active or not self.phase or threading.get_ident() != self.thread:
+            return None
+        return self._shared_work(f"cache|{key}", self.caches.setdefault(key, _Bucket()))
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_runtest_setup(self, item: Any) -> None:
@@ -555,6 +626,8 @@ class SourceReads:
 
     def pytest_runtest_logstart(self, nodeid: str) -> None:
         self.test = self.tests.setdefault(nodeid, _Bucket())
+        self.nodeid = nodeid
+        self.thread = threading.get_ident()
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_teardown(self, item: Any) -> Any:
@@ -577,6 +650,7 @@ class SourceReads:
 
     def pytest_runtest_logfinish(self) -> None:
         self.test = None
+        self.nodeid = None
         if time.monotonic() - self.written >= self.flush_seconds:
             self.write()
 
@@ -599,12 +673,15 @@ class SourceReads:
             "failed": sorted(self.failed),
             "tests": {
                 nodeid: {**bucket.dump(),
-                         "fixtures": sorted(self.test_fixtures.get(nodeid, ()))}
+                         "fixtures": sorted(self.test_fixtures.get(nodeid, ())),
+                         "caches": sorted(self.test_caches.get(nodeid, ()))}
                 for nodeid, bucket in self.tests.items()
                 # A test still running has not made all its reads.
                 if bucket is not self.test
             },
             "fixtures": {key: b.dump() for key, b in self.fixtures.items()},
+            "caches": {key: b.dump() for key, b in self.caches.items()},
+            "unwrapped_caches": self.unwrapped_caches(),
             "nested": {key: sorted(inner) for key, inner in self.nested.items()},
             "modules": {key: b.dump() for key, b in self.modules.items()},
             "unattributed": self.unattributed.dump(),
@@ -676,6 +753,80 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
 
 
 sys.addaudithook(_hook)
+
+
+# ── cached functions ────────────────────────────────────────────────────────
+#
+# A function under ``functools.lru_cache`` (or ``functools.cache``, which
+# calls it) runs its body once per argument per process. Coverage labels the
+# body, and everything it calls, with the test that happened to call first;
+# every later caller is handed the stored value and has no row for that code.
+# So ``functools.lru_cache`` is replaced, when this module is imported and
+# before any module of the repository is, by a decorator that makes the same
+# cache and two more things: the BODY runs under a coverage context of the
+# function's own (``|shared|cache|<file>::<qualified name>``), and every
+# CALL, hit or miss, is recorded as a use by the running test. A test then
+# inherits the rows of every cached function it used (the fold does that).
+#
+# With no recorder (the option was not given) both wrappers pass straight
+# through. A function that is not repository code is cached as before and
+# gets no context. ``cache_info``, ``cache_clear``, ``cache_parameters`` and
+# ``__wrapped__`` are the cache's own.
+
+_REAL_LRU_CACHE = functools.lru_cache
+#: Where the interpreter and its installed packages live.
+_INSTALLED = tuple({os.path.realpath(prefix) + os.sep for prefix in (sys.prefix, sys.base_prefix)}
+                   | {os.path.dirname(os.path.realpath(os.__file__)) + os.sep})
+#: The type of functools' own cache wrapper (a C type with no public name).
+_LRU_WRAPPER = type(_REAL_LRU_CACHE(maxsize=1)(lambda: None))
+
+
+def _recorded_cache(fn: Any, maxsize: Any, typed: bool) -> Any:
+    code = getattr(fn, "__code__", None)
+    # A builtin, a class or a callable object has no code to label. The
+    # standard library and installed packages are decided here, once, so that
+    # their cached functions stay exactly what functools makes.
+    if code is None or code.co_filename.startswith(_INSTALLED) \
+            or "site-packages" in code.co_filename:
+        return _REAL_LRU_CACHE(maxsize=maxsize, typed=typed)(fn)
+    qualname = getattr(fn, "__qualname__", code.co_name)
+
+    @functools.wraps(fn)
+    def body(*args: Any, **kwargs: Any) -> Any:
+        recorder = _STATE["recorder"]
+        key = recorder.cache_key(code, qualname) if recorder is not None else None
+        context = recorder.cache_body(key) if key is not None else None
+        if context is None:
+            return fn(*args, **kwargs)
+        with context:
+            return fn(*args, **kwargs)
+
+    cached = _REAL_LRU_CACHE(maxsize=maxsize, typed=typed)(body)
+
+    @functools.wraps(fn)
+    def call(*args: Any, **kwargs: Any) -> Any:
+        recorder = _STATE["recorder"]
+        if recorder is not None:
+            key = recorder.cache_key(code, qualname)
+            if key is not None:
+                recorder.used_cache(key)
+        return cached(*args, **kwargs)
+
+    call.cache_info = cached.cache_info  # type: ignore[attr-defined]
+    call.cache_clear = cached.cache_clear  # type: ignore[attr-defined]
+    call.cache_parameters = cached.cache_parameters  # type: ignore[attr-defined]
+    return call
+
+
+def _lru_cache(maxsize: Any = 128, typed: bool = False) -> Any:
+    """``functools.lru_cache``, with the body labelled and the calls recorded
+    (see above). Both spellings: ``@lru_cache`` and ``@lru_cache(...)``."""
+    if callable(maxsize) and isinstance(typed, bool):
+        return _recorded_cache(maxsize, 128, typed)
+    return lambda fn: _recorded_cache(fn, maxsize, typed)
+
+
+functools.lru_cache = _lru_cache  # type: ignore[assignment]
 
 _real_getlines = linecache.getlines
 

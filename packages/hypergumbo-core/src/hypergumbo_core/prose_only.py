@@ -429,7 +429,9 @@ def fold_run(
     another version of the plugin is skipped. Per test the stored events are
     its own, those of every fixture it used (unioned across processes by
     fixture key, because one worker may build what another reuses) and those
-    made while its module was imported.
+    made while its module was imported. The same for every cached function
+    it called (``functools.lru_cache``): what the cached body read or
+    started happened once, in whichever test filled the cache.
 
     ONE SPELLING PER TEST: a worker of a pytest-xdist group names a test
     ``<id>@<group>`` everywhere but in its list of expected tests. Every id
@@ -446,6 +448,8 @@ def fold_run(
     observed: dict[str, bool] = {}
     used: dict[str, set[str]] = {}
     fixtures: dict[str, _Events] = {}
+    called: dict[str, set[str]] = {}
+    caches: dict[str, _Events] = {}
     modules: dict[str, _Events] = {}
     expected: dict[str, set[str]] = {}
     loose = _events()
@@ -467,9 +471,12 @@ def fold_run(
             test_id = without_xdist_group(recorded_id)
             _merge(tests.setdefault(test_id, _events()), bucket)
             used.setdefault(test_id, set()).update(bucket.get("fixtures", ()))
+            called.setdefault(test_id, set()).update(bucket.get("caches", ()))
             observed[test_id] = bool(data.get("observed")) and observed.get(test_id, True)
         for key, bucket in data.get("fixtures", {}).items():
             _merge(fixtures.setdefault(key, _events()), bucket)
+        for key, bucket in data.get("caches", {}).items():
+            _merge(caches.setdefault(key, _events()), bucket)
         for key, bucket in data.get("modules", {}).items():
             _merge(modules.setdefault(key, _events()), bucket)
         for test_file, ids in data.get("expected", {}).items():
@@ -508,6 +515,8 @@ def fold_run(
             _merge(events, modules.get(test_file, {}))
             for key in used.get(test_id, ()):
                 _merge(events, fixtures.get(key, {}))
+            for key in called.get(test_id, ()):
+                _merge(events, caches.get(key, {}))
             cur.execute("DELETE FROM read_edge WHERE test_id = ?", (test_id,))
             cur.execute(
                 "INSERT INTO read_test (test_id, test_file, opaque, observed) "
@@ -545,7 +554,8 @@ def shared_work_used(reads_dir: Path) -> dict[str, frozenset[str]]:
 
     Read from the same record files as :func:`fold_run`, before it removes
     them. Per test the plugin lists the keys of the module, class and session
-    fixtures it used; ``nested`` lists, per piece of shared work, the shared
+    fixtures it used and of the cached functions it called (hit or miss);
+    ``nested`` lists, per piece of shared work, the shared
     work done INSIDE it, each named ``<kind>|<key>`` (the context name
     without its prefix). A test that uses the outer one
     depends on the inner one's code, and when the outer one was already built
@@ -568,8 +578,9 @@ def shared_work_used(reads_dir: Path) -> dict[str, frozenset[str]]:
         if data.get("version") != RECORDER_VERSION:
             continue
         for test_id, bucket in data.get("tests", {}).items():
-            used.setdefault(test_id, set()).update(
-                f"fixture|{key}" for key in bucket.get("fixtures", ()))
+            names = used.setdefault(test_id, set())
+            names.update(f"fixture|{key}" for key in bucket.get("fixtures", ()))
+            names.update(f"cache|{key}" for key in bucket.get("caches", ()))
         for key, inner in data.get("nested", {}).items():
             nested.setdefault(key, set()).update(inner)
     out: dict[str, frozenset[str]] = {}
@@ -583,6 +594,23 @@ def shared_work_used(reads_dir: Path) -> dict[str, frozenset[str]]:
                 pending.extend(nested.get(name, ()))
         out[test_id] = frozenset(SHARED_CONTEXT + name for name in reached)
     return out
+
+
+def unwrapped_caches(reads_dir: Path) -> frozenset[str]:
+    """Cached functions of the repository the recorder could NOT wrap in a
+    run (``<file>::<qualified name>``, the file relative to the repository):
+    made before the plugin was imported. Their bodies ran under whichever
+    test called first, and no record says who else used the value. Read from
+    the same files as :func:`shared_work_used`, with the same skips."""
+    found: set[str] = set()
+    for part in sorted(reads_dir.glob("*.json")):
+        try:
+            data = json.loads(part.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if data.get("version") == RECORDER_VERSION:
+            found.update(data.get("unwrapped_caches", ()))
+    return frozenset(found)
 
 
 # ── Deciding ────────────────────────────────────────────────────────────────
