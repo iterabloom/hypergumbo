@@ -145,7 +145,8 @@ def _bucket(**events: list[str]) -> dict[str, list[str]]:
 
 
 def _fold(tmp_path: Path, tests: dict[str, dict[str, list[str]]], *,
-          failed: tuple[str, ...] = (), skip: tuple[str, ...] = ()):
+          failed: tuple[str, ...] = (), skip: tuple[str, ...] = (),
+          expected: tuple[str, ...] = (ONE, TWO)):
     """Fold a record as an xdist worker writes it: ``expected`` without the
     suffix (collection), everything else with it."""
     root = tmp_path / "repo"
@@ -155,7 +156,7 @@ def _fold(tmp_path: Path, tests: dict[str, dict[str, list[str]]], *,
     reads.mkdir()
     (reads / "gw0-1.json").write_text(json.dumps({
         "version": po.RECORDER_VERSION, "observed": True,
-        "expected": {TEST_FILE: [ONE, TWO]}, "failed": list(failed),
+        "expected": {TEST_FILE: list(expected)}, "failed": list(failed),
         "tests": tests, "fixtures": {}, "modules": {}, "unattributed": _bucket()}))
     conn = open_index(tmp_path / "index.sqlite")
     po.fold_run(conn, reads, root, skip=skip)
@@ -191,3 +192,13 @@ def test_two_processes_records_of_one_test_merge_across_spellings(tmp_path: Path
     assert set(conn.execute(
         "SELECT target FROM read_edge WHERE test_id = ?", (ONE,))) == {
             ("pkg/a.py",), ("pkg/b.py",)}
+
+
+def test_an_expected_list_written_after_the_renaming_is_stored_the_same(tmp_path: Path) -> None:
+    """The recorder takes its list before xdist renames the tests because its
+    collection hook runs first. Nothing here depends on that order."""
+    conn, root = _fold(tmp_path, {f"{ONE}@group": _bucket(), f"{TWO}@group": _bucket()},
+                       expected=(f"{ONE}@group", f"{TWO}@group"))
+    assert {row[0] for row in conn.execute("SELECT test_id FROM read_expected")} == {ONE, TWO}
+    assert po.tests_for_prose(conn, root, [TEST_FILE], {"pkg/mod.py": po.DOCSTRINGS},
+                              {"pkg/mod.py": frozenset({"f"})}) == {}

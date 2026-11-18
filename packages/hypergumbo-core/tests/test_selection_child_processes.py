@@ -188,6 +188,16 @@ def test_a_later_run_in_which_the_test_starts_nothing_frees_it(repo: Checkout) -
     assert _file(GIT) not in repo.droppable()
 
 
+def test_a_test_only_the_read_record_knows_is_named_too(repo: Checkout) -> None:
+    """It has no coverage row of any kind (the index has never seen it), and
+    the record shows it starting python. It is named as the record spells it."""
+    unseen = "tests/test_plain.py::test_the_index_has_never_seen"
+    repo.fold_coverage()
+    repo.fold_reads((*ALL, unseen), started={unseen: ["python"]})
+    assert coverage_cannot_speak_for(repo.conn, repo.root).started == {unseen: ("python",)}
+    assert _file(PLAIN) not in repo.droppable()
+
+
 # ── no read record ──────────────────────────────────────────────────────────
 
 
