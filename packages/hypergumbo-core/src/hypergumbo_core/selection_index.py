@@ -123,6 +123,29 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    keeps nothing, and :data:`FORMAT` does not move (the file is shared by
    every checkout on the machine, older ones included).
 
+6. **Work done once and shared belongs to every test that used it.** A
+   module, class or session fixture runs once per worker, inside the setup
+   of whichever test needs it first (its post-yield half inside the teardown
+   of whichever is last). Labelled with the running test, the code it ran
+   belonged to ONE of the tests that depend on it, and a change to that code
+   selected that one. A planted-fault campaign found failing tests the index
+   did not pair with the changed function for exactly this reason. So the
+   recorder plugin (``scripts/pytest_plugins/pytest_source_reads.py``) runs
+   such work under a coverage context of its own
+   (:func:`shared_context`: ``|shared|fixture|<key>``) and records which
+   tests used it, and :func:`update_from_run` gives the rows of that context
+   to every one of them (``shared_users``), statement record included.
+   Three things follow from what the rows are. They never make a test
+   "measured" (semantic 3): its own call ran none of that code. A shared
+   context is never stored as a test. And rows NOBODY IS RECORDED USING (the
+   worker was killed before it wrote its record; the fold was given no
+   record) are neither dropped nor given to a guess: they are stored as code
+   run under no test, the function is marked like one that runs at import
+   (semantic 2), and narrowing treats a change to it as import-time code.
+   NOT COVERED: a value a function keeps for later callers (a cache), and
+   state an object keeps after a shared fixture returned it. Each is work
+   done once under one test's label, with no fixture boundary to see.
+
 SOUNDNESS BOUNDARY, stated because it is the thing that would bite. The index
 knows "tests I have OBSERVED executing block B", a subset of "tests that execute
 B", until every test has run since B appeared. So this selector is sound as of
@@ -949,6 +972,36 @@ def _strip_phase(context: str) -> str:
 #: fixture code, and a fixture can run for every test.
 _FIXTURE_PHASES = ("|setup", "|teardown")
 
+#: What a coverage context starts with when it belongs to no test: to work
+#: done once and shared (semantic 6 of the module docstring). pytest-cov names
+#: a context ``<node id>|<phase>`` and a node id starts with a path, so no
+#: test's context starts with the separator.
+SHARED_CONTEXT = "|shared|"
+
+
+def shared_context(kind: str, key: str) -> str:
+    """The coverage context of one piece of shared work: ``kind`` says what it
+    is (``fixture``), ``key`` which one. The recorder plugin spells the same
+    name; ``tests/test_shared_fixture_contexts.py`` holds the two together."""
+    return f"{SHARED_CONTEXT}{kind}|{key}"
+
+
+def is_shared_context(context: str) -> bool:
+    return context.startswith(SHARED_CONTEXT)
+
+
+@dataclass(frozen=True)
+class SharedWork:
+    """What one fold did with the run's shared-work contexts."""
+
+    #: Shared contexts that had a row in the measured files.
+    contexts: int
+    #: Tests that were given rows of at least one of them.
+    inheriting_tests: int
+    #: Contexts no test of the run is recorded using. Their rows were stored
+    #: as code run under no test.
+    unused: tuple[str, ...]
+
 
 def normalize_test_id(node_id: str, repo_root: Optional[Path]) -> str:
     """Rewrite a pytest node id to be repo-relative, or leave it untouched.
@@ -998,7 +1051,8 @@ def update_from_run(
     full_run: bool = False,
     repo_root: Optional[Path] = None,
     scope_complete: bool = False,
-) -> None:
+    shared_users: Optional[Mapping[str, Iterable[str]]] = None,
+) -> SharedWork:
     """Fold one run's coverage contexts into the index.
 
     Blocks are re-hashed from the CURRENT source. That is correct only if this
@@ -1014,6 +1068,13 @@ def update_from_run(
     statement that coverage measured every package of the checkout; a
     ``full_run`` is one by definition. ``repo_root`` names the checkout the
     run belongs to.
+
+    ``shared_users`` maps a test of this run to the shared-work contexts it
+    used (:func:`hypergumbo_core.prose_only.shared_work_used` reads it from
+    the recorder's files). The rows of such a context go to every test that
+    used it; rows of a context no test is recorded using, and every shared
+    row when the mapping is absent, are stored as code run under no test
+    (semantic 6 of the module docstring). Returns what was done with them.
     """
     src = sqlite3.connect(f"file:{coverage_db}?mode=ro", uri=True)
     try:
@@ -1054,6 +1115,27 @@ def update_from_run(
     import_blocks: dict[str, set[str]] = {}
     # Function blocks a statement of which ran under no test's context.
     at_import: set[BlockKey] = set()
+    def under_no_test(path: str, linenos: list[int], names: set[str]) -> None:
+        import_blocks.setdefault(path, set()).update(names)
+        ran_statements = {statement_owners[path][n][0]
+                          for n in linenos if n in statement_owners[path]}
+        at_import.update((path, name) for name in ran_statements - import_kind[path])
+
+    def under_test(test_id: str, path: str, linenos: list[int], names: set[str]) -> None:
+        edges.setdefault(test_id, set()).update((path, n) for n in names)
+        statement_of = statement_owners[path]
+        in_this_phase: dict[BlockKey, int] = {}
+        for n in linenos:
+            found = statement_of.get(n)
+            if found is not None:
+                key = (path, found[0])
+                in_this_phase[key] = in_this_phase.get(key, 0) | (1 << found[1])
+        per_test = ran.setdefault(test_id, {})
+        for key, bits in in_this_phase.items():
+            per_test[key] = per_test.get(key, 0) | bits
+
+    # Rows of work done once and shared, by its context: handed out below.
+    shared_rows: dict[str, list[tuple[str, list[int], set[str]]]] = {}
     for context, path, numbits in rows:
         own = owner_for(path)
         linenos = list(_numbits_to_linenos(numbits))
@@ -1061,25 +1143,37 @@ def update_from_run(
         if not names:
             continue
         if context == "":
-            import_blocks.setdefault(path, set()).update(names)
-            ran_statements = {statement_owners[path][n][0]
-                              for n in linenos if n in statement_owners[path]}
-            at_import.update((path, name) for name in ran_statements - import_kind[path])
+            under_no_test(path, linenos, names)
+        elif is_shared_context(context):
+            shared_rows.setdefault(context, []).append((path, linenos, names))
         else:
             test_id = normalize_test_id(_strip_phase(context), repo_root)
-            edges.setdefault(test_id, set()).update((path, n) for n in names)
             if not context.endswith(_FIXTURE_PHASES):
                 spoke.add(test_id)
-            statement_of = statement_owners[path]
-            in_this_phase: dict[BlockKey, int] = {}
-            for n in linenos:
-                found = statement_of.get(n)
-                if found is not None:
-                    key = (path, found[0])
-                    in_this_phase[key] = in_this_phase.get(key, 0) | (1 << found[1])
-            per_test = ran.setdefault(test_id, {})
-            for key, bits in in_this_phase.items():
-                per_test[key] = per_test.get(key, 0) | bits
+            under_test(test_id, path, linenos, names)
+
+    # Shared work belongs to every test recorded using it. It never makes a
+    # test one that spoke: the test's own call ran none of it.
+    users_of: dict[str, set[str]] = {}
+    for test, used in (shared_users or {}).items():
+        for context in used:
+            users_of.setdefault(context, set()).add(normalize_test_id(test, repo_root))
+    inheriting: set[str] = set()
+    unused: list[str] = []
+    for context, found_rows in sorted(shared_rows.items()):
+        users = users_of.get(context)
+        if not users:
+            # Nobody is recorded using it (a worker that was killed wrote no
+            # record). Not dropped and not given to a guess: the selector
+            # does not narrow on a function that runs under no test.
+            unused.append(context)
+            for path, linenos, names in found_rows:
+                under_no_test(path, linenos, names)
+            continue
+        inheriting.update(users)
+        for test_id in sorted(users):
+            for path, linenos, names in found_rows:
+                under_test(test_id, path, linenos, names)
 
     # Import-time blocks run whenever the file is imported, so they belong to
     # every test that executes anything in that file. See §2 of the module
@@ -1138,6 +1232,8 @@ def update_from_run(
     if repo_root is not None:
         _forget_dead_checkouts(conn, checkout)
     conn.commit()
+    return SharedWork(contexts=len(shared_rows), inheriting_tests=len(inheriting),
+                      unused=tuple(unused))
 
 
 def _store_at_import(

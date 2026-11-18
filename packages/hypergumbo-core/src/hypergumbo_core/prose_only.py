@@ -90,6 +90,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
+from hypergumbo_core.selection_index import shared_context
+
 #: The record format this module reads; ``pytest_source_reads.VERSION``.
 RECORDER_VERSION = 2
 
@@ -540,6 +542,49 @@ def fold_run(
             (",".join(merged),))
     conn.commit()
     return len(tests)
+
+
+def shared_work_used(reads_dir: Path) -> dict[str, frozenset[str]]:
+    """The shared-work coverage contexts each test of a run used.
+
+    Read from the same record files as :func:`fold_run`, before it removes
+    them. Per test the plugin lists the keys of the module, class and session
+    fixtures it used; ``nested`` lists, per shared fixture, the shared
+    fixtures that were built INSIDE it. A test that uses the outer one
+    depends on the inner one's code, and when the outer one was already built
+    pytest does not put the inner one in that test's own list, so the answer
+    follows ``nested`` to its end. Lists are unioned across processes: one
+    worker builds what a test on another names.
+
+    A test is in the answer only if a readable record of this plugin version
+    names it. ABSENT is not "used nothing":
+    :func:`hypergumbo_core.selection_index.update_from_run` stores the rows
+    of a context nobody is recorded using as code run under no test.
+    """
+    used: dict[str, set[str]] = {}
+    nested: dict[str, set[str]] = {}
+    for part in sorted(reads_dir.glob("*.json")):
+        try:
+            data = json.loads(part.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if data.get("version") != RECORDER_VERSION:
+            continue
+        for test_id, bucket in data.get("tests", {}).items():
+            used.setdefault(test_id, set()).update(bucket.get("fixtures", ()))
+        for key, inner in data.get("nested", {}).items():
+            nested.setdefault(key, set()).update(inner)
+    out: dict[str, frozenset[str]] = {}
+    for test_id, keys in used.items():
+        reached: set[str] = set()
+        pending = list(keys)
+        while pending:
+            key = pending.pop()
+            if key not in reached:
+                reached.add(key)
+                pending.extend(nested.get(key, ()))
+        out[test_id] = frozenset(shared_context("fixture", key) for key in reached)
+    return out
 
 
 # ── Deciding ────────────────────────────────────────────────────────────────
