@@ -15,15 +15,15 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **384** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 127 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **62615** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14090, of which 8020 are functions, methods or classes
-- **251505** edges, test code included, by type:
-  - calls: 141746
-  - contains: 58277
-  - imports: 21730
-  - instantiates: 13420
-  - references: 11982
-  - module_attr_ref: 2422
+- **385** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 128 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **62637** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14098, of which 8023 are functions, methods or classes
+- **251587** edges, test code included, by type:
+  - calls: 141781
+  - contains: 58297
+  - imports: 21743
+  - instantiates: 13425
+  - references: 11990
+  - module_attr_ref: 2423
   - other: 1928
 
 ## Package Architecture
@@ -738,6 +738,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.value_flow`**: Static string-value flow inside one module, for the registry gates.
 - **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
 - **`hypergumbo_core.visibility`**: Canonical visibility axis (INV-jusot).
+- **`hypergumbo_core.wall_time`**: A local test run's wall time, said against its target.
 - **`hypergumbo_core.yaml_catalogs`**: Canonical registry of YAML catalog directories shipped under hyperg...
 
 ### Analyzers
@@ -1013,8 +1014,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: fda523f2f2e6
-  commit_count: 9439
+  commit: c80c16f1cb1b
+  commit_count: 9442
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
