@@ -41,7 +41,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Run records say what selecting by statement would run.**
 - **The index keeps a function's statement records across edits.**
 - **Narrowing keeps tests whose own call ran nothing measured.**
-- **A command counts the by-statement selector's bar.**
+- **A command counts the by-statement selector's bar, strictly.**
 - **Narrowing treats a function run at import as import-time code.**
 - **Imports inside functions run at import count as dependencies.**
 

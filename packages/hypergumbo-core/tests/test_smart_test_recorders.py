@@ -612,7 +612,8 @@ def test_a_run_record_says_what_selecting_by_statement_would_have_cost(repo: Pat
     # The bar, counted from that record: one run, and it is a miss.
     bar = _helper(repo, "statement-bar")
     assert bar.returncode == 1, bar.stdout + bar.stderr
-    assert "informative runs          : 1 / 30" in bar.stdout
+    assert "a failed test was at risk : 1" in bar.stdout
+    assert "AND THE SELECTOR LEFT TESTS OUT : 1 / 30" in bar.stdout
     assert "RUNS WITH A FAILED TEST LEFT OUT : 1" in bar.stdout
     assert "packages/p/tests/test_calc.py::test_early" in bar.stdout
     assert "verdict                   : MISSED" in bar.stdout
@@ -644,7 +645,7 @@ def test_the_by_statement_facts_say_when_the_index_had_no_record_of_the_base(rep
     assert len(facts["failed_reaching_a_changed_block"]) == 2
     assert facts["failed_reaching_a_narrowed_block"] == []
     bar = _helper(repo, "statement-bar")
-    assert bar.returncode == 1 and "informative runs          : 0 / 30" in bar.stdout
+    assert bar.returncode == 1 and "AND THE SELECTOR LEFT TESTS OUT : 0 / 30" in bar.stdout
     assert "verdict                   : NOT MET" in bar.stdout
 
 
@@ -654,12 +655,13 @@ def test_the_bar_command_exits_0_only_when_the_bar_is_met(repo: Path) -> None:
     rows = [{"at": "t", "kind": "explicit", "base": "b", "head": "h", "snapshot": f"s{n}",
              "failed": ["t::a"],
              "by_statement": {"unknown_blocks": 0, "failed_not_selected": [],
+                              "tests": 1, "by_block": 2,
                               "failed_reaching_a_narrowed_block": ["t::a"]}}
             for n in range(30)]
     runs.write_text("".join(json.dumps(row) + "\n" for row in rows))
     bar = _helper(repo, "statement-bar")
     assert bar.returncode == 0, bar.stdout + bar.stderr
-    assert "informative runs          : 30 / 30" in bar.stdout
+    assert "AND THE SELECTOR LEFT TESTS OUT : 30 / 30" in bar.stdout
     assert "verdict                   : MET" in bar.stdout
 
 
