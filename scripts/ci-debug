@@ -52,6 +52,12 @@ usage() {
   echo "                    [job] is a gate context (full-suite) or a STEP name; a step"
   echo "                    is found on ANY gate reporting on the commit (WI-ratam)"
   echo "  analyze-deps      Check tree-sitter packages vs pyproject.toml"
+  echo "  trace [workflow]  For a red scheduled run, the commits (and PRs) to look at,"
+  echo "                    per failure: from the verdicts on origin/badges (default"
+  echo "                    full-suite; nightly-3.10 etc. name a leg). Or give the range"
+  echo "                    yourself: trace --green SHA --red SHA --log STEP=FILE ..."
+  echo "                    (scripts/scheduled-trace --help)"
+  echo "  pr-of <sha>       The number of the pull request that merged a commit"
   echo ""
   echo "GitHub Actions (release.yml runs there; everything else is Woodpecker). Add --actions:"
   echo "  runs --actions [workflow.yml] [N]   Recent runs, newest first (default N=10)"
@@ -586,6 +592,47 @@ cmd_logs() {
   fi
 }
 
+# WI-finat: name what to look at for a red scheduled run. The work is in
+# scripts/scheduled-trace (tested by tests/test_scheduled_trace.py); it calls
+# back into this script for the two things that need the forge: `logs` and
+# `pr-of`. With no argument, or a workflow name, the range comes from the
+# verdicts on origin/badges; arguments starting with -- go to the helper as
+# they are (a run older than the published verdicts).
+cmd_trace() {
+  local root
+  root="$(dirname "$SCRIPT_DIR")"
+  local index="$HOME/hypergumbo_lab_notebook/selection_index.sqlite"
+  local index_args=()
+  [[ -f "$index" ]] && index_args=(--index "$index")
+  if [[ "${1:-}" == --* ]]; then
+    python3 "$SCRIPT_DIR/scheduled-trace" --repo-root "$root" \
+      --ci-debug "$SCRIPT_DIR/ci-debug" ${index_args[@]+"${index_args[@]}"} "$@"
+    return $?
+  fi
+  git -C "$root" fetch --quiet origin badges 2>/dev/null \
+    || echo "(could not fetch origin/badges; reading the copy already fetched)" >&2
+  python3 "$SCRIPT_DIR/scheduled-trace" --repo-root "$root" \
+    --from-badges "${1:-full-suite}" --ci-debug "$SCRIPT_DIR/ci-debug" \
+    ${index_args[@]+"${index_args[@]}"}
+}
+
+# The pull request that merged a commit (GitHub: /commits/<sha>/pulls), its
+# number alone on stdout; exit 1 when the forge does not say.
+cmd_pr_of() {
+  local sha root
+  root="$(dirname "$SCRIPT_DIR")"
+  sha=$(git -C "$root" rev-parse --verify --quiet "${1:-}^{commit}") || {
+    echo "not a commit: ${1:-<none>}" >&2; return 1; }
+  [[ "${FORGE_BACKEND:-forgejo}" == "github" ]] || {
+    echo "pr-of asks GitHub; the forge here is ${FORGE_BACKEND:-forgejo}" >&2; return 1; }
+  api_get "$API_BASE/commits/$sha/pulls" || { echo "the forge did not answer" >&2; return 1; }
+  printf '%s' "$API_RESPONSE" | python3 -c '
+import json, sys
+pulls = json.load(sys.stdin)
+merged = [p for p in pulls if p.get("merged_at")] or pulls
+sys.exit(1) if not merged else print(merged[0]["number"])'
+}
+
 cmd_analyze_deps() {
   echo "Analyzing tree-sitter dependencies..."
   echo ""
@@ -955,6 +1002,13 @@ case "${1:-runs}" in
     ;;
   analyze-deps)
     cmd_analyze_deps
+    ;;
+  trace)
+    shift
+    cmd_trace "$@"
+    ;;
+  pr-of)
+    cmd_pr_of "${2:-}"
     ;;
   -h|--help|help)
     usage

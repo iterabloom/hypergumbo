@@ -1,0 +1,466 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Name the commits to look at for a red scheduled run (``ci-debug trace``).
+
+WHY THIS EXISTS. The full suite was red in pipelines 6453 and 6480, and the
+nightly's first leg in 6447, from four causes merged over five days; finding
+them took a session of reading CI logs (PR #2217). This reads the same logs
+and the history between the last green scheduled commit and the red one, and
+says, for each failure, which commits to look at and why (WI-finat).
+
+THE RANGE is ``green..red``: every commit after the last green scheduled
+commit up to the red one. ``ci-debug trace`` finds both from the published
+verdicts on ``origin/badges``; for a run older than the verdicts, pass them.
+
+THE ARMS, one per kind of failure. Each names commits of the range, never a
+commit outside it, and says when it found none.
+
+* A FAILED TEST (``FAILED``/``ERROR`` lines of a step log):
+  - commits that changed the test's own file. Their PR's manifest RAN it (the
+    file is listed and the test is not deselected): the PR's CI passed it and
+    only the scheduled environment fails it (another Python, a step that
+    installs fewer packages) -> ``scheduled environment``. Their manifest did
+    not run it -> ``not run by its PR``;
+  - commits that changed a file the test's records touch (the selection
+    index, when given) and whose PR's manifest did not run it ->
+    ``not run by its PR``;
+  - none of those: no commit of the range touched it. The installed versions
+    of the green and red logs are compared, and every difference is named
+    (``dependency``); none either is said plainly.
+* A GATE, NOT A TEST (``  + <path>::<name>`` lines, which the test-only
+  reachability gate prints for each flagged callable): commits of the range
+  that added or removed an occurrence of the name (``git log -S``) -> ``gate``.
+* A COVERAGE GAP (the verdict's ``coverage.uncovered``, ``{file: [lines]}``):
+  a line a commit of the range last changed names that commit; an unchanged
+  line names the commits that changed or removed the tests the index records
+  on it -> ``coverage``.
+
+A PR'S MANIFEST is ``.ci/affected-tests.txt`` as of the first commit at or
+after the named one, in the range, that changed it: auto-pr's last commit of a
+branch is its manifest. A manifest lists files, and ``#- <id>`` lines name the
+tests of those files it deselected (WI-kunah).
+
+FROM THE PUBLISHED VERDICTS (``--from-badges <workflow>``): the red commit and
+its failed steps are the newest ``scheduled/<workflow>.json`` on
+``origin/badges``; the green commit is that of the newest older version whose
+status is ``passed``. The step logs are fetched with ``ci-debug logs``, at the
+red commit and, for the comparison of installed versions, at the green one.
+Each named commit's pull request is asked of ``ci-debug pr-of``. Nothing here
+talks to the network itself: ``--ci-debug`` names the script that does.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sqlite3
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable, Optional
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_FAILED = re.compile(r"^(?:FAILED|ERROR) (.+)$")
+_GATE = re.compile(r"^\s+\+ (\S+\.py)::(\S+)$")
+_INSTALLED = re.compile(r"^Successfully installed (.+)$")
+_PACKAGE = re.compile(r"^(.+)-(\d[^-]*)$")
+MANIFEST = ".ci/affected-tests.txt"
+
+
+@dataclass(frozen=True)
+class Commit:
+    sha: str
+    subject: str
+
+
+@dataclass
+class Finding:
+    """One failure and the commits named for it."""
+
+    step: str
+    what: str
+    arm: str
+    commits: list[tuple[Commit, str]] = field(default_factory=list)
+    note: str = ""
+
+
+def _lines(text: str) -> list[str]:
+    return [_ANSI.sub("", line).rstrip() for line in text.splitlines()]
+
+
+def _node_id(rest: str) -> tuple[str, str]:
+    """``(node id, message)`` of a summary line's text after the outcome. A
+    parameter may hold spaces and `` - ``, so a bracketed id ends at the
+    bracket that closes its first ``[``."""
+    head = rest.split(" ", 1)[0]
+    if "[" in head and not head.endswith("]"):
+        depth = 0
+        for i, char in enumerate(rest):
+            depth += {"[": 1, "]": -1}.get(char, 0)
+            if char == "]" and depth == 0:
+                return rest[:i + 1], rest[i + 1:].removeprefix(" - ").strip()
+    node, _, message = rest.partition(" - ")
+    return node.strip(), message.strip()
+
+
+def failed_tests(log: str) -> dict[str, str]:
+    """``{node id: message}`` from a pytest log's summary lines."""
+    found: dict[str, str] = {}
+    for line in _lines(log):
+        match = _FAILED.match(line)
+        if not match:
+            continue
+        node, message = _node_id(match.group(1))
+        if "::" in node or node.endswith(".py"):
+            found.setdefault(node, message)
+    return found
+
+
+def gate_flags(log: str) -> list[tuple[str, str]]:
+    """``(path, name)`` of every callable a gate log flags."""
+    return [(m.group(1), m.group(2)) for m in map(_GATE.match, _lines(log)) if m]
+
+
+def installed(log: str) -> dict[str, str]:
+    """``{package: version}`` from pip's ``Successfully installed`` lines."""
+    versions: dict[str, str] = {}
+    for line in _lines(log):
+        match = _INSTALLED.match(line.strip())
+        if not match:
+            continue
+        for spec in match.group(1).split():
+            parts = _PACKAGE.match(spec)
+            if parts:
+                versions[parts.group(1).lower()] = parts.group(2)
+    return versions
+
+
+def version_changes(green: dict[str, str], red: dict[str, str]) -> list[str]:
+    """``package green -> red`` for every package whose version differs or
+    that only one side installed."""
+    return [f"{name} {green.get(name, '(absent)')} -> {red.get(name, '(absent)')}"
+            for name in sorted(set(green) | set(red)) if green.get(name) != red.get(name)]
+
+
+class History:
+    """The range ``green..red`` of one repository, asked through git."""
+
+    def __init__(self, root: Path, green: str, red: str) -> None:
+        self.root, self.green, self.red = root, green, red
+        out = self._git("log", "--reverse", "--format=%H%x09%s", f"{green}..{red}")
+        self.commits = [Commit(*line.split("\t", 1)) for line in out.splitlines() if line]
+        self._order = {c.sha: i for i, c in enumerate(self.commits)}
+        self._manifest_commits = [c for c in self.commits if c.sha in set(
+            self._git("log", "--format=%H", f"{green}..{red}", "--", MANIFEST).split())]
+
+    def _git(self, *argv: str) -> str:
+        done = subprocess.run(["git", "-C", str(self.root), *argv],
+                              capture_output=True, text=True, check=True)
+        return done.stdout
+
+    def commit(self, sha: str) -> Optional[Commit]:
+        index = self._order.get(sha)
+        return None if index is None else self.commits[index]
+
+    def changing(self, *paths: str) -> list[Commit]:
+        """Commits of the range that changed any of ``paths``."""
+        if not paths:
+            return []
+        shas = set(self._git("log", "--format=%H", f"{self.green}..{self.red}", "--",
+                             *paths).split())
+        return [c for c in self.commits if c.sha in shas]
+
+    def naming(self, name: str) -> list[Commit]:
+        """Commits of the range that added or removed an occurrence of ``name``."""
+        shas = set(self._git("log", "--format=%H", "-S", name, f"{self.green}..{self.red}").split())
+        return [c for c in self.commits if c.sha in shas]
+
+    def last_changed(self, path: str, line: int) -> Optional[Commit]:
+        """The commit of the range that last changed ``path``'s ``line`` at red."""
+        try:
+            out = self._git("blame", "--porcelain", "-L", f"{line},{line}", self.red, "--", path)
+        except subprocess.CalledProcessError:
+            return None
+        return self.commit(out.split(" ", 1)[0])
+
+    def manifest_ran(self, commit: Commit, test: str) -> Optional[bool]:
+        """Whether the PR of ``commit`` ran ``test``: its manifest is the
+        first manifest commit at or after it. None: no manifest after it."""
+        at = self._order[commit.sha]
+        manifest = next((c for c in self._manifest_commits if self._order[c.sha] >= at), None)
+        if manifest is None:
+            return None
+        text = self._git("show", f"{manifest.sha}:{MANIFEST}")
+        files, _, selected = text.partition("# === SELECTED_TESTS ===")
+        deselected = {line[3:].strip() for line in files.splitlines() if line.startswith("#- ")}
+        listed = {line.strip() for line in selected.splitlines()
+                  if line.strip() and not line.startswith("#")}
+        return test.split("::")[0] in listed and test not in deselected
+
+
+def touched_files(index: Optional[Path], test: str, root: Path) -> list[str]:
+    """Repo-relative files the selection index records ``test`` running."""
+    if index is None or not index.exists():
+        return []
+    conn = sqlite3.connect(f"file:{index}?mode=ro", uri=True)
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT f.path FROM test t JOIN test_block tb ON tb.test = t.id "
+            "JOIN block b ON b.id = tb.block JOIN file f ON f.id = b.file "
+            "WHERE t.test_id IN (?, ?)", (test, f"{root}/{test}")).fetchall()
+    finally:
+        conn.close()
+    prefix = f"{root}/"
+    return sorted(str(p)[len(prefix):] if str(p).startswith(prefix) else str(p) for (p,) in rows)
+
+
+def tests_on_line(index: Optional[Path], path: str, line: int, root: Path,
+                  source: str) -> list[str]:
+    """Test FILES the index records running ``path``'s ``line`` as ``source``
+    has it, or paired with its block without a record of what they ran
+    (``selection_index.tests_of_line``)."""
+    if index is None or not index.exists():
+        return []
+    sys.path.insert(0, str(root / "packages" / "hypergumbo-core" / "src"))
+    from hypergumbo_core.selection_index import open_index, tests_of_line
+
+    conn = open_index(index)
+    try:
+        found = tests_of_line(conn, str(root / path), line, source=source)
+    finally:
+        conn.close()
+    prefix = f"{root}/"
+    return sorted({t.split("::")[0][len(prefix):] if t.startswith(prefix) else t.split("::")[0]
+                   for t in found.ran | found.unrecorded})
+
+
+def trace_test(history: History, step: str, test: str, message: str,
+               touched: Iterable[str], green_versions: Optional[dict[str, str]],
+               red_versions: dict[str, str]) -> Finding:
+    test_file = test.split("::")[0]
+    named: list[tuple[Commit, str]] = []
+    for commit in history.changing(test_file):
+        ran = history.manifest_ran(commit, test)
+        named.append((commit, "changed the test; its PR's CI ran it and passed"
+                      if ran else "changed the test; its PR's manifest did not run it"))
+    own = {c.sha for c, _ in named}
+    for commit in history.changing(*[p for p in touched if p != test_file]):
+        if commit.sha not in own and history.manifest_ran(commit, test) is False:
+            named.append((commit, "changed code the test runs; its PR's manifest did not run it"))
+    if named:
+        env = all(why.endswith("ran it and passed") for _, why in named)
+        return Finding(step, f"{test}: {message}", "scheduled environment" if env
+                       else "not run by its PR", named)
+    if green_versions is None:
+        return Finding(step, f"{test}: {message}", "dependency",
+                       note="no commit of the range changed the test or what it runs; "
+                            "no green log was given to compare installed versions")
+    changes = version_changes(green_versions, red_versions)
+    return Finding(step, f"{test}: {message}", "dependency",
+                   note=("no commit of the range changed the test or what it runs; installed "
+                         "versions that differ: " + "; ".join(changes)) if changes else
+                   "no commit of the range changed the test or what it runs, and the installed "
+                   "versions are the same: no cause found")
+
+
+def trace_gate(history: History, step: str, path: str, name: str) -> Finding:
+    commits = history.naming(name)
+    return Finding(step, f"{path}::{name}", "gate",
+                   [(c, f"added or removed an occurrence of {name}") for c in commits],
+                   "" if commits else f"no commit of the range added or removed {name}")
+
+
+def trace_coverage(history: History, path: str, line: int, index: Optional[Path]) -> Finding:
+    commit = history.last_changed(path, line)
+    if commit is not None:
+        return Finding("coverage", f"{path}:{line}", "coverage",
+                       [(commit, "last changed this line")])
+    try:
+        source = history._git("show", f"{history.red}:{path}")
+    except subprocess.CalledProcessError:
+        source = ""
+    tests = tests_on_line(index, path, line, history.root, source)
+    commits = history.changing(*tests)
+    return Finding("coverage", f"{path}:{line}", "coverage",
+                   [(c, "changed or removed a test recorded on this line") for c in commits],
+                   "" if commits else ("the line did not change in the range and no commit "
+                                       "changed a test recorded on it" if tests else
+                                       "the line did not change in the range; the index "
+                                       "records no test on it"))
+
+
+#: The failed tests of one file listed by name in a merged finding.
+_SHOWN = 5
+
+
+def merge_by_file(findings: list[Finding]) -> list[Finding]:
+    """One finding per (step, test file): the commits named for any of its
+    failed tests, each once, in the order first named. The arm is ``not run
+    by its PR`` if any test's is, else the one they share."""
+    merged: dict[tuple[str, str], list[Finding]] = {}
+    for f in findings:
+        merged.setdefault((f.step, f.what.split("::")[0]), []).append(f)
+    out: list[Finding] = []
+    for (step, test_file), group in merged.items():
+        arms = {f.arm for f in group}
+        arm = ("not run by its PR" if "not run by its PR" in arms
+               else group[0].arm if len(arms) == 1 else " / ".join(sorted(arms)))
+        commits: list[tuple[Commit, str]] = []
+        for f in group:
+            for commit, why in f.commits:
+                if all(commit.sha != c.sha for c, _ in commits):
+                    commits.append((commit, why))
+        shown = [f.what.split(": ", 1)[0].split("::", 1)[-1] for f in group[:_SHOWN]]
+        more = f" and {len(group) - _SHOWN} more" if len(group) > _SHOWN else ""
+        out.append(Finding(step, f"{test_file}: {len(group)} failed ({', '.join(shown)}{more}); "
+                                 f"first: {group[0].what.split(': ', 1)[-1][:120]}",
+                           arm, commits, group[0].note))
+    return out
+
+
+def trace(root: Path, green: str, red: str, logs: dict[str, str],
+          green_logs: dict[str, str], uncovered: dict[str, list[int]],
+          index: Optional[Path]) -> list[Finding]:
+    history = History(root, green, red)
+    findings: list[Finding] = []
+    for step, log in sorted(logs.items()):
+        red_versions = installed(log)
+        green_versions = installed(green_logs[step]) if step in green_logs else None
+        findings.extend(merge_by_file([
+            trace_test(history, step, test, message, touched_files(index, test, root),
+                       green_versions, red_versions)
+            for test, message in failed_tests(log).items()]))
+        for path, name in gate_flags(log):
+            findings.append(trace_gate(history, step, path, name))
+    for path, lines in sorted(uncovered.items()):
+        for line in lines:
+            findings.append(trace_coverage(history, path, line, index))
+    return findings
+
+
+def render(findings: list[Finding], green: str, red: str, commits: int,
+           ci_debug: Optional[str] = None) -> str:
+    """Findings with the same step, arm, commits and note are one block."""
+    out = [f"range {green[:10]}..{red[:10]}: {commits} commit(s)"]
+    if not findings:
+        out.append("no failed test, flagged callable or uncovered line found in what was given")
+    groups: dict[tuple, list[Finding]] = {}
+    for f in findings:
+        key = (f.step, f.arm, tuple((c.sha, why) for c, why in f.commits), f.note)
+        groups.setdefault(key, []).append(f)
+    prs: dict[str, str] = {}
+    for (step, arm, _, note), members in groups.items():
+        out.append(f"\n[{arm}] {step}:")
+        out.extend(f"  {f.what}" for f in members)
+        for commit, why in members[0].commits:
+            if commit.sha not in prs:
+                prs[commit.sha] = pr_of(ci_debug, commit.sha)
+            out.append(f"    -> {prs[commit.sha]}{commit.sha[:10]} {commit.subject}  ({why})")
+        if note:
+            out.append(f"    {note}")
+    return "\n".join(out)
+
+
+def badges_range(root: Path, workflow: str) -> tuple[dict, str]:
+    """``(the newest verdict, the commit of the newest passed one before it)``."""
+    path = f"scheduled/{workflow}.json"
+
+    def git(*argv: str) -> str:
+        return subprocess.run(["git", "-C", str(root), *argv], capture_output=True,
+                              text=True, check=True).stdout
+
+    try:
+        versions = git("log", "--format=%H", "origin/badges", "--", path).split()
+    except subprocess.CalledProcessError:
+        versions = []
+    if not versions:
+        raise SystemExit(f"no published verdict for {workflow} on origin/badges")
+    verdicts = [json.loads(git("show", f"{v}:{path}")) for v in versions]
+    red = verdicts[0]
+    green = next((v["commit"] for v in verdicts[1:] if v.get("status") == "passed"), None)
+    if red.get("status") == "passed":
+        raise SystemExit(f"the newest {workflow} verdict passed at {red['commit'][:10]}: "
+                         "nothing to trace")
+    if green is None:
+        raise SystemExit(f"no passed {workflow} verdict is published before "
+                         f"{red['commit'][:10]}; pass --green and --red")
+    return red, green
+
+
+def fetch_log(ci_debug: str, step: str, sha: str) -> str:
+    done = subprocess.run([ci_debug, "logs", step, sha], capture_output=True, text=True)
+    return done.stdout
+
+
+def pr_of(ci_debug: Optional[str], sha: str) -> str:
+    if ci_debug is None:
+        return ""
+    done = subprocess.run([ci_debug, "pr-of", sha], capture_output=True, text=True)
+    number = done.stdout.strip()
+    return f"PR #{number} " if done.returncode == 0 and number.isdigit() else ""
+
+
+def _pairs(values: list[str]) -> dict[str, str]:
+    pairs: dict[str, str] = {}
+    for value in values:
+        step, _, path = value.partition("=")
+        pairs[step] = Path(path).read_text(errors="replace")
+    return pairs
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--green", help="the last green scheduled commit")
+    parser.add_argument("--red", help="the red scheduled commit")
+    parser.add_argument("--from-badges", metavar="WORKFLOW",
+                        help="take the range, the failed steps and the coverage gap from "
+                             "the verdicts published on origin/badges (needs --ci-debug)")
+    parser.add_argument("--ci-debug", default=None,
+                        help="scripts/ci-debug: fetches step logs and names pull requests")
+    parser.add_argument("--log", action="append", default=[], metavar="STEP=FILE",
+                        help="a failed step's log (repeatable)")
+    parser.add_argument("--green-log", action="append", default=[], metavar="STEP=FILE",
+                        help="the same step's log at the green commit")
+    parser.add_argument("--verdict", default=None,
+                        help="the red run's published verdict (JSON), for its coverage gap")
+    parser.add_argument("--index", default=None, help="the selection index (sqlite)")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    root = Path(args.repo_root).resolve()
+    verdict: dict = {}
+    logs, green_logs = _pairs(args.log), _pairs(args.green_log)
+    if args.from_badges:
+        if not args.ci_debug:
+            parser.error("--from-badges needs --ci-debug")
+        verdict, args.green = badges_range(root, args.from_badges)
+        args.red = verdict["commit"]
+        for step in (s["name"] for s in verdict.get("steps", []) if s.get("result") != "passed"):
+            logs.setdefault(step, fetch_log(args.ci_debug, step, args.red))
+            green_logs.setdefault(step, fetch_log(args.ci_debug, step, args.green))
+        print(f"{args.from_badges}: red at {args.red[:10]} (pipeline {verdict.get('pipeline')}), "
+              f"last passed at {args.green[:10]}; failed steps: {', '.join(sorted(logs)) or 'none'}")
+    elif not (args.green and args.red):
+        parser.error("give --green and --red, or --from-badges")
+    if args.verdict:
+        verdict = json.loads(Path(args.verdict).read_text())
+    coverage = verdict.get("coverage") or {}
+    uncovered = {path: [int(n) for n in lines]
+                 for path, lines in (coverage.get("uncovered") or {}).items()}
+    if coverage.get("uncovered_truncated"):
+        print("the verdict lists only part of the uncovered lines (truncated)")
+    index = Path(args.index) if args.index else None
+    findings = trace(root, args.green, args.red, logs, green_logs, uncovered, index)
+    commits = len(History(root, args.green, args.red).commits)
+    if args.json:
+        print(json.dumps([{"step": f.step, "what": f.what, "arm": f.arm, "note": f.note,
+                           "commits": [{"sha": c.sha, "subject": c.subject, "why": why}
+                                       for c, why in f.commits]} for f in findings], indent=1))
+    else:
+        print(render(findings, args.green, args.red, commits, args.ci_debug))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
