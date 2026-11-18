@@ -179,3 +179,20 @@ def test_the_verdict_uses_refuses_for_an_added_file_or_refuses_for_the_surplus(
     assert refused is Verdict.ADDED_FILE
     assert why == ("pkg/data/one_fixture.txt was added since the stored graph and no other "
                    "changed file mentions it")
+
+
+def test_added_tracker_data_needs_no_analysis() -> None:
+    """A tracker op file is written by every ``tracker add``, nothing in a
+    change mentions it, and no analysis gives it a node (the stored graph of
+    2026-11-18 held 0 paths under ``.agent/tracker*``): a fresh analysis
+    would answer nothing for it. Once the stored graph was refused for one,
+    and the run spent 331 s analysing the repository (WI-pufug)."""
+    ops = [".agent/tracker-workspace/.ops/.WI-x.ops", ".agent/tracker/.ops/.INV-y.ops"]
+    judged = graph_select.judge_added(ops, {"pkg/src/a.py": "A = 2"})
+    assert judged.need_analysis == () and judged.run_themselves == ()
+    assert judged.mentioned == ()
+    assert judged.tracker_data == tuple(sorted(ops))
+    # Elsewhere under .agent the rule is unchanged.
+    other = graph_select.judge_added([".agent/hooks/_shared/new_hook.py"], {"pkg/src/a.py": "A = 2"})
+    assert other.need_analysis == ((".agent/hooks/_shared/new_hook.py",
+                                    "no other changed file mentions it"),)
