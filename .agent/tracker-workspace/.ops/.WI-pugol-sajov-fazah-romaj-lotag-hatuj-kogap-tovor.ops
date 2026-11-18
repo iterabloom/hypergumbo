@@ -56,3 +56,17 @@
   set: {}  # 1bce
   add:  # 1bce
     isbefore: [WI-kunah-rahuv-batab-bakar-vikat-jogig-fadit-durun]  # 1bce
+- op: discuss  # c674
+  at: '2026-11-18T21:34:40Z'  # c674
+  by: agent  # c674
+  actor: jgstern_agent  # c674
+  clock: 7  # c674
+  nonce: c674  # c674
+  message: "Merged as PR #2260, dev SHA 61b03763f00b."  # c674
+- op: discuss  # b769
+  at: '2026-11-18T21:35:25Z'  # b769
+  by: agent  # b769
+  actor: jgstern_agent  # b769
+  clock: 8  # b769
+  nonce: b769  # b769
+  message: "Merged as PR #2260 (dev 61b03763f): the switch. Bar: campaign 5 (WI-sadus), 42 runs that failed a test, 0 real misses; 0/42 bounds the per-run miss rate below about 7% (95%), not at zero. Pre-merge end-to-end (BASE_BRANCH=HEAD, one equivalent edit in limits.py): 217 files, 2,554 tests ran, 1,581 left out (0.4 s to decide), coverage gate 100%; the 2 failures were kept readers. STILL OWED for the close condition: a live selected run on dev under the new default, with test count and wall time."  # b769
