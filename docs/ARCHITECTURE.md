@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **386** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 129 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **62815** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14131, of which 8039 are functions, methods or classes
-- **252544** edges, test code included, by type:
-  - calls: 142274
-  - contains: 58463
-  - imports: 21819
-  - instantiates: 13440
-  - references: 12180
-  - module_attr_ref: 2431
-  - other: 1937
+- **388** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 131 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **62920** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14194, of which 8071 are functions, methods or classes
+- **253011** edges, test code included, by type:
+  - calls: 142480
+  - contains: 58558
+  - imports: 21882
+  - instantiates: 13450
+  - references: 12211
+  - module_attr_ref: 2490
+  - other: 1940
 
 ## Package Architecture
 
@@ -489,6 +489,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-id-construction` | Pre-commit / CI lint: a node or edge id is minted, never hand-spelled |
 | `check-io-allowlist` | CI gate: every risky I/O call site in ``packages/*/src`` is on a reviewed allowlist. |
 | `check-io-boundary-drift` | Pre-commit lint: ``*BOUNDAR*`` sets in the tree must be subsets of the |
+| `check-kept-work` | Fail on a function that writes module state or a lazy attribute and is |
 | `check-measurement-frame` | Every measurement record must declare the frame it was produced under. |
 | `check-meta-write-discipline` | Pre-commit / CI lint: a multi-writer meta slot must declare its write |
 | `check-multi-value-field-axis-declaration` | Pre-commit / CI lint: every str-typed field on a core dataclass |
@@ -667,6 +668,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.io_primitive_kinds`**: Canonical registry of I/O-primitive kinds — the io-primitive-kind a...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
 - **`hypergumbo_core.js_package_entry`**: The file a bare npm specifier names inside an in-tree package: Node...
+- **`hypergumbo_core.kept_work`**: Work a function keeps for later calls, shown to the test recorder.
+- **`hypergumbo_core.kept_work_guard`**: The guard over work kept by hand: every function of the repository ...
 - **`hypergumbo_core.library_signatures`**: The library-signature catalogue: what a library producer RETURNS.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
@@ -1015,8 +1018,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e4ac1c1ad854
-  commit_count: 9459
+  commit: 75bf858882e5
+  commit_count: 9462
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
