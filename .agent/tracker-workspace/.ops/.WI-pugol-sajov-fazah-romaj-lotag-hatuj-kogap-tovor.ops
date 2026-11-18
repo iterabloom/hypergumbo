@@ -26,3 +26,24 @@
   clock: 2  # 40e2
   nonce: '40e2'  # 40e2
   message: "Merged as PR #2238, dev SHA 1aa0f82728b8."  # 40e2
+- op: discuss  # 0ddd
+  at: '2026-11-18T01:01:43Z'  # 0ddd
+  by: agent  # 0ddd
+  actor: jgstern_agent  # 0ddd
+  clock: 3  # 0ddd
+  nonce: 0ddd  # 0ddd
+  message: "THE COUNT, 2026-11-18 01:00 UTC, and why the selector is NOT switched on. (1) The command (PR #2238) and a planted-fault campaign: 210 faults, one statement each, in functions of package source outside the selector's files; 106 were stopped by the type gate before any test ran; 104 ran the test files of every test that reached the function; 93 failed a test (653 failed tests). 'coverage-select statement-bar' prints: 88 informative runs / 30, 0 runs with a failed test left out, verdict MET. (2) That definition is too generous: in most of those runs the selector chose every test that reached the function, so nothing could be missed. Stricter count, runs in which it LEFT TESTS OUT: 40 (39 distinct faults), 781 of 1,423 reaching tests left out, none of them failed. The command still prints the generous number; changing it is owed. (3) THE MISS. 13 failed tests in 3 runs are tests coverage can speak for that the index does not pair with the changed function at all: a memoised function, a module-shared fixture, a test that also works through a subprocess (INV-kahit, filed with the cases). The run record does not count them (it counts only tests that reached the function), but a selector applied test by test would have left all 13 out. I count that as a miss: per the owner's ruling it stays off. (4) WHAT IS LEFT OF THE IDEA. Applied file by file, with files holding an unmeasured test kept as narrowing already requires, 0 of the 93 runs lose a failing test file, and it keeps 480 test files where 571 hold a test that reached the function. That is a smaller saving than the plan's test-level figures, and it is an observation over 93 runs, not a guarantee (a cache filled by a test in another file is not held). NOT BUILT, NOT DECIDED: a file-level switch. It needs its saving measured against today's narrowing (which keeps every file that touched the changed FILE) before it is worth building. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/ (campaign_*_summary.txt, file_level_summary.txt). ITEM STAYS OPEN."  # 0ddd
+- op: discuss  # 616a
+  at: '2026-11-18T01:07:28Z'  # 616a
+  by: agent  # 616a
+  actor: jgstern_agent  # 616a
+  clock: 4  # 616a
+  nonce: 616a  # 616a
+  message: "MEASURED 2026-11-18 01:10 UTC: what a FILE-level by-statement keep set would save over today's narrowing, on the campaign's faults with no test run (~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/bar/saving.py, saving_summary.txt, saving.json). For each of 209 single-statement faults (one more broke the graph walk itself and is left out): G = the test files the stored graph names for the changed file; today = the real 'coverage-select narrow' over G; by statement = the same droppable set with the keep set replaced by the files holding a test the selector selects. Summed over the faults: G 50,937 test files; today keeps 28,440 (55.8%); by statement keeps 15,972 (31.4%), i.e. 12,468 fewer than today (44%). It keeps fewer files in 164 of the 209, never a file today drops; median per fault 107 -> 79 files. Today's narrowing refused none of these (they are function-body changes; it refuses about 4 in 5 real commits, where neither selector narrows). UNITS: test FILES, not test time; the timing store was not joined. WHAT THIS DOES NOT ANSWER: whether the 44% is safe. Over the 93 faults that failed a test the file-level set lost no failing file, but INV-kahit's shapes (a cache filled by a test in another file) are not excluded by anything. MY RECOMMENDATION, not a decision: do not build the switch until INV-kahit has a rule (at least: a function under a cache decorator, and a function reached only in fixture setup, fall back to today's keep set), then shadow the FILE-level answer in the run record and count it the way the test-level one was counted."  # 616a
+- op: discuss  # 7946
+  at: '2026-11-18T01:38:24Z'  # 7946
+  by: agent  # 7946
+  actor: jgstern_agent  # 7946
+  clock: 5  # 7946
+  nonce: '7946'  # 7946
+  message: "Merged as PR #2244, dev SHA a88164ee646a."  # 7946
