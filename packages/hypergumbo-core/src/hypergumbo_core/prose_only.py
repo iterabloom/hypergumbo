@@ -90,7 +90,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
-from hypergumbo_core.selection_index import SHARED_CONTEXT, without_xdist_group
+from hypergumbo_core.selection_index import shared_context, without_xdist_group
 from hypergumbo_core.started_programs import RECORDER_VERSION, may_read_repository
 
 #: Above this share of test files with no usable record, the rule gives way
@@ -585,7 +585,7 @@ def shared_work_used(reads_dir: Path) -> dict[str, frozenset[str]]:
             if name not in reached:
                 reached.add(name)
                 pending.extend(nested.get(name, ()))
-        out[test_id] = frozenset(SHARED_CONTEXT + name for name in reached)
+        out[test_id] = frozenset(shared_context(*name.split("|", 1)) for name in reached)
     return out
 
 
