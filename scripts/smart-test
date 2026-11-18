@@ -39,6 +39,7 @@
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
 #   ./scripts/smart-test --no-narrow  # Keep the tests coverage narrowing would drop
+#   ./scripts/smart-test --no-by-statement  # Run every test of the selected files
 #   ./scripts/smart-test --no-read-union  # Leave out tests added for reading a changed file by path
 #   ./scripts/smart-test --no-import-union  # Leave out tests added for importing a file whose import-time code changed
 #   ./scripts/smart-test --no-stale-shadow  # Do not also walk an older stored graph for comparison
@@ -243,6 +244,17 @@ SELECT_UNION=true
 # manifest and is never narrowed. Opt out per run with --no-narrow.
 SELECT_NARROW=true
 
+# THE BY-STATEMENT SELECTOR (WI-pugol), ON BY DEFAULT for a LOCAL targeted run:
+# inside the selected files, a test that ran none of the changed statements,
+# that coverage can speak for and that reads no changed file is deselected
+# (hypergumbo_core.statement_narrow says when it refuses and what it puts
+# back to keep the coverage gate measured). Switched on by the agent at the
+# owner's bar, planted-fault campaign 5 (2026-11-18): 42 runs that failed a
+# test, none failed outside the selection. BELOW THE SEAM: the manifest, and so
+# PR CI, still lists files (WI-kunah); the full-suite cron is never narrowed.
+# Opt out per run with --no-by-statement.
+SELECT_BY_STATEMENT=true
+
 # THE PROSE-ONLY RULE: a changed .py file whose code is unchanged (comments
 # and docstrings only) selects just the tests recorded seeing its text, its
 # docstrings or its line numbers, not every test that imports it. It leaves a
@@ -363,6 +375,7 @@ for arg in "$@"; do
         --no-select-union) SELECT_UNION=false ;;
         --narrow) SELECT_NARROW=true ;;
         --no-narrow) SELECT_NARROW=false ;;
+        --no-by-statement) SELECT_BY_STATEMENT=false ;;
         --no-prose-rule) SELECT_PROSE=false ;;
         --no-read-union) SELECT_READERS=false ;;
         --no-import-union) SELECT_IMPORTERS=false ;;
@@ -401,6 +414,9 @@ if [[ -n "${CI:-}" ]] || [[ -n "$STARTED_UNDER_SMART_TEST" ]] || [[ "$TARGET_MOD
     # committed manifest and never slices; a smart-test started by a test, or
     # pointed at another repository, must not select from them.
     USE_STORED_GRAPH=false
+    # The index is this developer's; a test's or another repository's run
+    # runs every test of its files.
+    SELECT_BY_STATEMENT=false
 fi
 if [[ -n "${CI:-}" ]]; then
     SELECT_NARROW=false
@@ -1659,6 +1675,9 @@ rm -f "$STALE_MARK"
 # Matches test_*.py and BRANCHES_test_*.py (for branch coverage tests)
 AFFECTED_TESTS=$(grep -E 'packages/.*/tests/(test_|BRANCHES_test_).*\.py$' "$SLICE_OUTPUT" 2>/dev/null | \
     sed "s|^$REPO_ROOT/||" | sort -u || echo "")
+# What the code reached, before any rule below adds a file for another reason:
+# only these files may lose tests to the by-statement selector.
+SLICE_TESTS="$AFFECTED_TESTS"
 
 # WI-jozan: fold top-level source → top-level test matches into AFFECTED_TESTS.
 # hypergumbo slice --files only reaches packages/*/src/** — it does not know
@@ -2653,8 +2672,44 @@ except Exception:
     fi
 fi
 
+# ── THE BY-STATEMENT SELECTOR (WI-pugol; SELECT_BY_STATEMENT above) ─────────
+# Deselects, inside the run set's files, the tests the change does not need.
+# Only files the code reached may lose tests: the graph's answer and the
+# coverage union. A file any other rule added runs every test, because that
+# rule saw something statements do not (a changed test, fixture, conftest,
+# document a gate reads, a script's own suite). The helper writes the list
+# empty first and exits 0 whatever happens, so a failure deselects nothing.
+STATEMENT_ARGS=()
+STATEMENT_LINE=""
+if [[ "$SELECT_BY_STATEMENT" == "true" ]] && [[ -n "$LOCAL_CHANGED_FILES" ]] \
+        && [[ -f "$TOOLS_ROOT/scripts/pytest_plugins/pytest_statement_deselect.py" ]]; then
+    _st_changed=$(mktemp); _st_run=$(mktemp); _st_whole=$(mktemp)
+    STATEMENT_LEFT_OUT="$REPO_ROOT/.ci/statement-left-out.txt"
+    echo "$LOCAL_CHANGED_FILES" | sed '/^$/d' > "$_st_changed"
+    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_st_run"
+    {
+        comm -23 <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) \
+            <(printf '%s\n%s\n' "${SLICE_TESTS:-}" "${COVERAGE_UNION_NEW:-}" | sed '/^$/d' | sort -u)
+        printf '%s\n' "${CHANGED_TEST_FILES:-}" "${TOP_LEVEL_TESTS:-}" "${FIXTURE_TESTS:-}" \
+            "${CONFTEST_TESTS:-}" "${ROOT_SUITE:-}" "${PLAYBOOK_GATE_TESTS:-}" \
+            "${CATALOGUE_GATE_TESTS:-}" "${CATALOGUE_ROOT_SUITE:-}" "${DOC_GATE_TESTS:-}" \
+            "${CITATION_GATE_TESTS:-}" "${CONFIDENCE_GATE_TEST:-}" "${PROSE_TESTS:-}" \
+            "${IMPORT_NEW:-}" "${PER_PKG_FALLBACKS:-}" "${COV_DEPS_ADDS:-}"
+    } | sed '/^$/d' | sort -u > "$_st_whole"
+    STATEMENT_LINE=$("$TOOLS_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+        statement-narrow --changed-files "$_st_changed" --run-set "$_st_run" \
+        --whole "$_st_whole" --base "${BASELINE:-HEAD}" --out "$STATEMENT_LEFT_OUT" || echo "")
+    rm -f "$_st_changed" "$_st_run" "$_st_whole"
+    if [[ -n "$STATEMENT_LINE" ]]; then
+        echo "$STATEMENT_LINE (--no-by-statement runs them)"
+    fi
+    if [[ -s "$STATEMENT_LEFT_OUT" ]]; then
+        STATEMENT_ARGS=("-p" "pytest_statement_deselect" "--statement-deselect=$STATEMENT_LEFT_OUT")
+    fi
+fi
+
 # Run tests and collect coverage (don't enforce threshold yet)
-run_pytest "$RUN_ORDER" "${FAIL_GRACE_ARGS[@]}" "${SCOPED_PYTEST_ARGS[@]}"
+run_pytest "$RUN_ORDER" "${FAIL_GRACE_ARGS[@]}" ${STATEMENT_ARGS[@]+"${STATEMENT_ARGS[@]}"} "${SCOPED_PYTEST_ARGS[@]}"
 TEST_EXIT=$?
 
 # ── Coverage-directed selection, SHADOW PHASE ────────────────────────────────
@@ -2744,6 +2799,9 @@ if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$LOCAL_CHANGED_SOURCE_FILES" ]]; then
             echo "❌ Changed source files are not at 100% coverage:"
             cat "$_cov_out"
             echo "Run the full suite to see overall coverage: pytest --full"
+            if [[ ${#STATEMENT_ARGS[@]} -gt 0 ]]; then
+                echo "By-statement selection left tests out of this run; --no-by-statement runs them"
+            fi
         } | tee -a "$PYTEST_LOG"
         rm -f "$_cov_out"
         exit 1

@@ -108,6 +108,7 @@ package-lock.json
 .ci/smart-test-fallback.log
 # Rewritten by the coverage-directed selector on every run (shadow phase).
 .ci/selection-shadow.json
+.ci/statement-left-out.txt
 
 # Tracker
 **/config.yaml
