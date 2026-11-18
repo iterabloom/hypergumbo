@@ -667,6 +667,19 @@ steps:
           exit 1
         fi
 
+        # WI-kunah: the tests of the selected files that the by-statement
+        # selector left out, as the manifest's "#- <id>" lines (its
+        # DESELECTED_TESTS section; a comment to every older reader, which
+        # then runs whole files). The plugin deselects exactly those ids; a
+        # test the list does not name runs. No list, no plugin.
+        DESELECT_FILE="$(mktemp)"
+        sed -n 's/^#- //p' "$MANIFEST_SRC" > "$DESELECT_FILE"
+        DESELECT_ARGS=""
+        if [ -s "$DESELECT_FILE" ]; then
+          DESELECT_ARGS="-p pytest_statement_deselect --statement-deselect=$DESELECT_FILE"
+          echo "=== by statement: $(wc -l < "$DESELECT_FILE") test(s) of the selected files deselected ==="
+        fi
+
         echo "=== pytest ($(echo "$SELECTED_TESTS" | wc -w) selected files, -n $WORKERS) ==="
         # `|| TEST_EXIT=$?` rather than a bare call: `set -e` is active, so a
         # bare failing pytest aborts the block before the coverage gate and the
@@ -686,7 +699,7 @@ steps:
         # plus the old value, leaving a trailing colon (= the repo root) on
         # the path. Nothing else in this step sets PYTHONPATH.
         PYTHONPATH="scripts/pytest_plugins" \
-          pytest --rootdir=. -p pytest_fail_grace --fail-grace=15 -n "$WORKERS" --dist=loadgroup --tb=short --junit-xml="$JUNIT" $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
+          pytest --rootdir=. -p pytest_fail_grace --fail-grace=15 $DESELECT_ARGS -n "$WORKERS" --dist=loadgroup --tb=short --junit-xml="$JUNIT" $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
         # INV-tazur: exit 5 is "collected nothing". It already fails the step;
         # say so in words, because pytest's own line ("no tests ran") reads like
         # a skip rather than a failure of the selection.
