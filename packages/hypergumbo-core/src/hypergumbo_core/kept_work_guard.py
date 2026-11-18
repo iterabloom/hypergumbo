@@ -21,7 +21,16 @@ judged on their own):
 - ``lazy``: it assigns ``self.<attr>`` under ``if self.<attr> is None``,
   ``if not self.<attr>``, ``if not hasattr(self, ...)`` or ``if '<attr>' not
   in self.__dict__``;
-- ``cached_property``: it is decorated ``cached_property``.
+- ``cached_property``: it is decorated ``cached_property``;
+- ``closure``: it is defined inside a pytest fixture whose scope is not
+  ``function`` (``module``, ``class``, ``package``, ``session``, or a scope
+  chosen by a callable) and changes a container that fixture binds, or
+  assigns a name it declares ``nonlocal``. The fixture outlives one test, so
+  the closure it hands out is called by many, and what the first call fills
+  every later one is handed (INV-kazud: ``survey`` of
+  ``test_axiom_falsification.py`` ran the analysis under the first test per
+  fixture repo and 12 tests failed unselected). A function-scoped fixture's
+  closure dies with its test.
 
 WHAT IT CANNOT SEE: state reached through an alias (``d = _CACHE; d[k] =
 v``, a container passed to a function), a module's state written from
@@ -57,7 +66,7 @@ _SCANNED = ("packages/*/src/**/*.py", "packages/*/tests/**/*.py", "tests/**/*.py
 class StateWrite:
     """One place a function writes state."""
 
-    kind: str  # axis: bounded-enum — global, mutate, lazy, cached_property
+    kind: str  # axis: bounded-enum — global, mutate, lazy, cached_property, closure
     function: str  # axis: identity — <repository-relative path>::<qualified name>
     name: str  # axis: free-text — the module name or attribute written
     line: int
@@ -233,6 +242,47 @@ def _functions(body: Iterable[ast.stmt], prefix: str) -> Iterator[tuple[str, Fun
             yield from _functions(node.body, prefix + node.name + ".")
 
 
+def fixture_scope(fn: FunctionNode) -> Optional[str]:
+    """The scope of a pytest fixture (``"dynamic"`` when a callable picks
+    it), None when ``fn`` is not decorated ``fixture``/``pytest.fixture``."""
+    for decorator in fn.decorator_list:
+        call = decorator if isinstance(decorator, ast.Call) else None
+        target = call.func if call is not None else decorator
+        name = target.attr if isinstance(target, ast.Attribute) else (
+            target.id if isinstance(target, ast.Name) else None)
+        if name != "fixture":
+            continue
+        for keyword in call.keywords if call is not None else ():
+            if keyword.arg == "scope":
+                value = keyword.value
+                return str(value.value) if isinstance(value, ast.Constant) else "dynamic"
+        return "function"
+    return None
+
+
+def _closure_writes(fixture: FunctionNode,
+                    prefix: str) -> Iterator[tuple[str, str, int]]:
+    """(qualname, name, line) of each write a closure of ``fixture`` makes
+    to what outlives it: a container the fixture binds, or a ``nonlocal``."""
+    kept = frozenset(
+        target.id for node in _own_nodes(fixture)
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None
+        and _is_container(node.value)
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        if isinstance(target, ast.Name))
+    for qualname, inner in _functions(fixture.body, prefix):
+        for kind, name, line in _writes(inner, kept):
+            if kind == "mutate":
+                yield qualname, name, line
+        declared = {name for node in _own_nodes(inner) if isinstance(node, ast.Nonlocal)
+                    for name in node.names}
+        for node in _own_nodes(inner):
+            if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+                for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                    if isinstance(target, ast.Name) and target.id in declared:
+                        yield qualname, target.id, node.lineno
+
+
 def scan_source(source: str, rel: str) -> FileScan:
     """The state writes of one file, and the functions in it that mark."""
     tree = ast.parse(source)
@@ -242,6 +292,9 @@ def scan_source(source: str, rel: str) -> FileScan:
     used: set[str] = set()
     for qualname, fn in _functions(tree.body, ""):
         key = f"{rel}::{qualname}"
+        if fixture_scope(fn) not in (None, "function"):
+            writes.extend(StateWrite("closure", f"{rel}::{inner}", name, line)
+                          for inner, name, line in _closure_writes(fn, qualname + ".<locals>."))
         if marks_a_fill(fn):
             marked.add(key)
         if marks_a_use(fn):

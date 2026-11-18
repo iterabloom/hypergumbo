@@ -116,6 +116,17 @@ _PROJECT = {
         "def test_fills_a():\n    assert work.size_of('data_a') == 6\n\n\n"
         "def test_is_handed_a():\n    assert work.size_of('data_a') == 6\n\n\n"
         "def test_fills_b():\n    assert work.size_of('data_b') == 7\n"),
+    # A module-scoped fixture hands out a closure that keeps work: the
+    # first test to ask runs it, the next is handed it (INV-kazud).
+    "test_fixture.py": (
+        "import pytest\nimport work\nfrom hypergumbo_core import kept_work\n\n\n"
+        "@pytest.fixture(scope='module')\ndef survey():\n    cache = {}\n\n"
+        "    def run(name):\n        kept_work.used(run, name)\n"
+        "        if name not in cache:\n            with kept_work.filling(run, name):\n"
+        "                cache[name] = work.beneath() + len(name)\n"
+        "        return cache[name]\n    return run\n\n\n"
+        "def test_surveys_first(survey):\n    assert survey('x') == 6\n\n\n"
+        "def test_is_handed_the_survey(survey):\n    assert survey('x') == 6\n"),
 }
 
 TABLE = shared_context("cache", "work.py::table")
@@ -216,6 +227,13 @@ def test_after_a_fill_the_tests_own_context_is_back(run: Run) -> None:
     assert run.ran["test_a.py::test_kept_then_own|run"] >= {"own"}
 
 
+def test_a_closure_a_module_fixture_hands_out_is_work_kept_too(run: Run) -> None:
+    assert run.ran[shared_context("cache", "test_fixture.py::survey.<locals>.run")] == {"beneath"}
+    for test in ("test_surveys_first", "test_is_handed_the_survey"):
+        assert _caches(run, f"test_fixture.py::{test}") == {
+            "test_fixture.py::survey.<locals>.run"}, test
+
+
 def test_a_flag_set_once_is_work_kept_too(run: Run) -> None:
     assert run.ran[WARN] == {"warn_once"}
     for test in ("test_warns", "test_is_not_warned_again"):
@@ -256,6 +274,9 @@ def test_folded_every_user_is_paired_with_the_work(run: Run, tmp_path: Path) -> 
         records = statement_records(conn, work, function)
         assert {"test_a.py::test_fills", "test_a.py::test_hits"} <= set(records), function
         assert "test_a.py::test_uses_nothing_kept" not in records
+    assert {"test_fixture.py::test_surveys_first",
+            "test_fixture.py::test_is_handed_the_survey"} <= set(
+                statement_records(conn, work, "beneath"))
     warned = statement_records(conn, work, "warn_once")
     assert warned["test_a.py::test_is_not_warned_again"] == warned["test_a.py::test_warns"]
     assert done.unused == ()
