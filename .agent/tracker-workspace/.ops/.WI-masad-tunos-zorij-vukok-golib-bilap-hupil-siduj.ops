@@ -1,0 +1,22 @@
+- op: create  # 164c
+  at: '2026-11-18T03:01:40Z'  # 164c
+  by: agent  # 164c
+  actor: jgstern_agent  # 164c
+  clock: 1  # 164c
+  nonce: 164c  # 164c
+  data:  # 164c
+    kind: work_item  # 164c
+    title: "Selection index: the body of an lru_cache / cache function runs under its own coverage context, and every test that called it, hit or miss, inherits its rows"  # 164c
+    status: todo_hard  # 164c
+    priority: 2  # 164c
+    parent:  # 164c
+    tags:  # 164c
+    - smart_test  # 164c
+    - fast_smart_test_plan  # 164c
+    isbefore:  # 164c
+    - WI-gojov-rohul-savug-mulap-rirur-diguh-havij-dosih  # 164c
+    duplicate_of: []  # 164c
+    not_duplicate_of: []  # 164c
+    pr_ref:  # 164c
+    description: "WHY. A function under functools.lru_cache or functools.cache runs its body once per argument per process. Coverage records the body, and everything it calls, under the test that happened to call it first. Every later caller gets the stored value and has no row for that code. Campaign case: _get_php_parser. Size on 2026-11-17: 22 such decorators in package source.\n\nWHAT TO BUILD. The same mechanism as the shared-fixture item. In the recorder plugin (imported before any conftest), wrap functools.lru_cache and functools.cache for functions whose code is under the repository root: the BODY runs under a coverage context of the function's own; every CALL of the wrapper, hit or miss, records a use by the running test, or by the shared work (fixture or other cached function) it was called inside. At fold, a test inherits the rows of every cached function it used, through nesting. Why the body's whole context and not the function alone: a fault in an uncached function called beneath a cached one reaches every test that hits the cache. At import or collection (no test and no shared work running) nothing is switched; the at-import mark covers that code as today. A cached function decorated before the plugin was imported cannot be wrapped: the plugin reports each one and the selector does not narrow on it.\n\nCLOSE CONDITION. A test in which test A fills a cache and test B hits it, and B is paired with the cached function and with a function only its body calls. The wrapper keeps cache_clear, cache_info and __wrapped__ (a test for each). A full run folded, with the count of cache contexts, of tests that inherited rows, and of cached functions that could not be wrapped. A mutation control on _get_php_parser: every failing test inside the selection. The added wall time of a full run, measured.\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 164c
+    fields: {}  # 164c

@@ -1,0 +1,22 @@
+- op: create  # 1aec
+  at: '2026-11-18T03:01:46Z'  # 1aec
+  by: agent  # 1aec
+  actor: jgstern_agent  # 1aec
+  clock: 1  # 1aec
+  nonce: 1aec  # 1aec
+  data:  # 1aec
+    kind: work_item  # 1aec
+    title: "Shared work with no decorator and no fixture boundary (hand-written caches; lazy state on an object a shared fixture returns): enumerate, then pair or refuse to narrow"  # 1aec
+    status: todo_hard  # 1aec
+    priority: 2  # 1aec
+    parent:  # 1aec
+    tags:  # 1aec
+    - smart_test  # 1aec
+    - fast_smart_test_plan  # 1aec
+    isbefore:  # 1aec
+    - WI-gojov-rohul-savug-mulap-rirur-diguh-havij-dosih  # 1aec
+    duplicate_of: []  # 1aec
+    not_duplicate_of: []  # 1aec
+    pr_ref:  # 1aec
+    description: "WHY. Two shapes of shared work have no decorator and no fixture boundary, so the context mechanism of the fixture and cache items does not see them. (1) A hand-written cache: a function that fills module state on first use (a global assigned inside a function; a module-level dict, list or set a function adds to). (2) Lazy state on a shared object: a module or session fixture returns an object, test A makes it compute and keep something in A's own call, test B reads it. In both, the code that did the work is recorded under the first test only.\n\nWHAT. First ENUMERATE, by reading the syntax tree of package source and of the test files: functions that assign a name they declare global; functions that mutate a module-level container; functools.cached_property and hand-written memo attributes on classes whose instances a shared fixture returns. The count of `global` statements alone (30 in 14 files, 2026-11-17) leaves out a container mutated without `global`. Then choose per shape and say why: (a) sys.monitoring local events on the state-writing function, so that its body runs under its own context like a cached function (the cost per call is not measured); (b) rewrite the cache onto functools so the cache item covers it; (c) tests that share a fixture inherit each other's rows (coarse); (d) the selector does not narrow on a change beneath such a function.\n\nCLOSE CONDITION. The enumeration kept in the notebook with its counts and what the scan cannot see. For each shape a mechanism built and a mutation control with every failing test inside the selection, or the selector refusing to narrow there, with the number of functions affected. A guard that fails when a new state-writing function appears outside what the chosen mechanism covers.\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 1aec
+    fields: {}  # 1aec

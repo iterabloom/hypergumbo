@@ -1,0 +1,22 @@
+- op: create  # 62f5
+  at: '2026-11-18T03:01:28Z'  # 62f5
+  by: agent  # 62f5
+  actor: jgstern_agent  # 62f5
+  clock: 1  # 62f5
+  nonce: 62f5  # 62f5
+  data:  # 62f5
+    kind: work_item  # 62f5
+    title: "Re-run the planted-fault campaign weighted to shared work, counting every failed test the by-statement selector would leave out; zero before the switch"  # 62f5
+    status: todo_hard  # 62f5
+    priority: 2  # 62f5
+    parent:  # 62f5
+    tags:  # 62f5
+    - smart_test  # 62f5
+    - fast_smart_test_plan  # 62f5
+    isbefore:  # 62f5
+    - WI-pugol-sajov-fazah-romaj-lotag-hatuj-kogap-tovor  # 62f5
+    duplicate_of: []  # 62f5
+    not_duplicate_of: []  # 62f5
+    pr_ref:  # 62f5
+    description: "WHY. The first campaign (210 planted faults, 104 ran, 93 failed a test) found 13 failing tests in 3 runs that the index does not pair with the changed function: a memoised function, a shared fixture, tests that start a child process. The selector's own miss count read zero, because it only counts tests it had paired. The by-statement selector stays recording-only until this is re-run clean.\n\nWHAT. Re-run bar/campaign.py after the shared-work fixes are merged and a full run has folded the index, with the sample WEIGHTED to the shapes that failed: functions under a cache decorator, functions reached through a module, class or session fixture, functions that write module state, functions run by tests that start a child. For each planted fault run every test the stored graph names (not only the tests the index pairs with the function), and count EVERY failed test the selector would have left out, paired or not.\n\nCLOSE CONDITION. The campaign's summary kept in the notebook: faults planted, stopped by the type gate, run, failed a test; failed tests the selector would have left out = 0, with the count by shape. One miss: the selector stays off and the miss is filed. State with the count that a clean campaign bounds the miss rate and does not prove it zero.\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 62f5
+    fields: {}  # 62f5
