@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "workflow": "full-suite",
+  "leg": null,
+  "commit": "fc2d2d8a9c82da61490a27cd083bd20cf57482bc",
+  "pipeline": 6550,
+  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6550",
+  "finished_at": "2026-11-18T01:26:33Z",
+  "status": "passed",
+  "steps": [
+    {
+      "name": "prepare-git",
+      "result": "passed"
+    },
+    {
+      "name": "build-grammars",
+      "result": "passed"
+    },
+    {
+      "name": "test-all-packages",
+      "result": "passed"
+    },
+    {
+      "name": "self-tree-validation",
+      "result": "passed"
+    },
+    {
+      "name": "self-claims-gate",
+      "result": "passed"
+    },
+    {
+      "name": "io-allowlist",
+      "result": "passed"
+    },
+    {
+      "name": "allowlist-commands-trace",
+      "result": "passed"
+    },
+    {
+      "name": "test-agent-infra",
+      "result": "passed"
+    }
+  ],
+  "coverage": {
+    "percent": 100.0,
+    "statements": 102352,
+    "missing": 0,
+    "uncovered": {},
+    "uncovered_truncated": false
+  }
+}
