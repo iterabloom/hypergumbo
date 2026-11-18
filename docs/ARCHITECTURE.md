@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **388** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 131 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **62935** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14201, of which 8077 are functions, methods or classes
-- **253121** edges, test code included, by type:
-  - calls: 142538
-  - contains: 58573
-  - imports: 21886
-  - instantiates: 13455
-  - references: 12230
-  - module_attr_ref: 2499
-  - other: 1940
+- **389** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 132 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **62996** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14221, of which 8086 are functions, methods or classes
+- **253392** edges, test code included, by type:
+  - calls: 142665
+  - contains: 58628
+  - imports: 21916
+  - instantiates: 13466
+  - references: 12272
+  - module_attr_ref: 2501
+  - other: 1944
 
 ## Package Architecture
 
@@ -724,6 +724,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.spec_validator`**: Spec-vs-data validator stage (ADR-0033, INV-sugat).
 - **`hypergumbo_core.started_programs`**: What a program a test started could have done that the test's own p...
 - **`hypergumbo_core.statement_diff`**: Which tests a change to a function needs, from records made BEFORE ...
+- **`hypergumbo_core.statement_narrow`**: Which tests of a local run the by-statement selector leaves out.
 - **`hypergumbo_core.statement_select`**: The by-statement test selector: the tests that ran a changed statem...
 - **`hypergumbo_core.supply_chain`**: Supply chain classification for code analysis.
 - **`hypergumbo_core.survey_io`**: Consumer-side helper for reading hypergumbo survey maps (WI-mokim).
@@ -1018,8 +1019,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d2bbf2297a83
-  commit_count: 9477
+  commit: ab39a1427c0a
+  commit_count: 9484
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
