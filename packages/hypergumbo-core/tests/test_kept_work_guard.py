@@ -214,6 +214,77 @@ def test_nested_and_async_functions_are_judged_on_their_own() -> None:
              ("mutate", "outer.<locals>.Inner.m", "_R")}
 
 
+def test_a_closure_a_broader_scope_fixture_hands_out() -> None:
+    """The fixture lives across tests, so what its closure fills is handed
+    to every later test (INV-kazud): a container the fixture binds, changed
+    in place, and a name the closure declares ``nonlocal`` and assigns."""
+    assert _writes("""
+        import pytest
+        @pytest.fixture(scope="module")
+        def survey(tmp_path_factory):
+            cache: dict = {}
+            def run(name):
+                if name not in cache:
+                    cache[name] = len(name)
+                return cache[name]
+            return run
+        @fixture(scope="session")
+        def seen():
+            names = set()
+            last = None
+            def note(name):
+                nonlocal last
+                names.add(name)
+                last = name
+            return note
+        @pytest.fixture(scope=lambda **kw: "module")
+        def chosen():
+            kept = []
+            def add():
+                def deeper():
+                    kept.append(1)
+                deeper()
+            return add
+    """) == {("closure", "survey.<locals>.run", "cache"), ("closure", "seen.<locals>.note", "names"),
+             ("closure", "seen.<locals>.note", "last"),
+             ("closure", "chosen.<locals>.add.<locals>.deeper", "kept")}
+
+
+def test_a_closure_that_does_not_outlive_one_test_is_not_kept_work() -> None:
+    """A function-scoped fixture (bare, or scope='function'), a plain helper,
+    and a closure that rebinds the name or writes its own local."""
+    assert _writes("""
+        import pytest
+        @pytest.fixture
+        def bare():
+            cache = {}
+            def run(name):
+                cache[name] = 1
+            return run
+        @pytest.fixture(scope="function")
+        def per_test():
+            cache = {}
+            def run(name):
+                cache[name] = 1
+            return run
+        def helper():
+            cache = {}
+            def run(name):
+                cache[name] = 1
+            return run
+        @pytest.fixture(scope="module")
+        def rebinds():
+            cache = {}
+            other = 1
+            def run(name):
+                cache = {}
+                cache[name] = 1
+                mine = []
+                mine.append(other)
+            return run
+    """) == set()
+
+
 # ── what marks a fill ───────────────────────────────────────────────────────
 
 

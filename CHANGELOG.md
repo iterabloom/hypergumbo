@@ -51,6 +51,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Narrowing keeps tests that start a child able to run Python.**
 - **Every test calling a cached function is paired with its code.**
 - **Hand-written caches are paired with every test using them.**
+- **Caches inside shared test fixtures are paired too.**
 
 ## [10.0.0] - 2026-11-16
 

@@ -41,6 +41,7 @@ from typing import Any, Callable, Iterable
 
 import pytest
 
+from hypergumbo_core import kept_work
 from hypergumbo_core.cli import build_parser, cmd_verify_claims, run_behavior_map
 from hypergumbo_core.symbol_kinds import (
     AXIS_LANGUAGE_CONSTRUCT,
@@ -60,15 +61,21 @@ def _write(root: Path, files: dict[str, str]) -> Path:
 
 @pytest.fixture(scope="module")
 def survey(tmp_path_factory: pytest.TempPathFactory) -> Callable[[str, dict[str, str]], Map]:
-    """Survey a fixture once per module and hand back the behavior map."""
+    """Survey a fixture once per module and hand back the behavior map.
+
+    The survey runs under the first test that asks for a name; ``run`` marks
+    every call and the fill (``hypergumbo_core.kept_work``) so the tests
+    handed the kept map are paired with the analysis too (INV-kazud)."""
     cache: dict[str, Map] = {}
 
     def run(name: str, files: dict[str, str]) -> Map:
+        kept_work.used(run, name)
         if name not in cache:
-            repo = _write(tmp_path_factory.mktemp(name), files)
-            out = repo / "map.json"
-            run_behavior_map(repo_root=repo, out_path=out, include_sketch_precomputed=False)
-            cache[name] = json.loads(out.read_text())
+            with kept_work.filling(run, name):
+                repo = _write(tmp_path_factory.mktemp(name), files)
+                out = repo / "map.json"
+                run_behavior_map(repo_root=repo, out_path=out, include_sketch_precomputed=False)
+                cache[name] = json.loads(out.read_text())
         return cache[name]
 
     return run
