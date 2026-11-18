@@ -323,6 +323,11 @@ def test_a_full_fold_says_how_many_tests_are_held_and_for_what(
     db = repo.coverage(tests)
     reads = repo.reads(tests, started={**STARTED, second: ["python", "bash"]},
                        expected_too=("tests/test_plain.py::test_failed",))
+    # Unmeasured, and of a file with no read record: held twice over, and
+    # counted on the unmeasured line only.
+    repo.conn.execute("INSERT INTO unmeasured_test (test_id) VALUES (?)",
+                      ("tests/test_never_recorded.py::test_through_a_subprocess",))
+    repo.conn.commit()
     repo.conn.close()
     done = _update(repo, "update", "--coverage-db", str(db), "--sha", "0" * 40, "--full",
                    "--source-reads", str(reads))

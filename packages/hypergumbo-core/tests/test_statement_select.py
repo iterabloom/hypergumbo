@@ -354,6 +354,14 @@ def test_an_unmeasured_test_stays_out_of_the_selection_whatever_it_started(
     assert "t_unmeasured" in chosen.cannot_speak
 
 
+def test_an_unmeasured_test_with_a_clean_read_record_is_named_all_the_same(
+        tmp_path: Path) -> None:
+    """Named for being unmeasured alone: it has a record, and started nothing."""
+    records = {**EARLY, "t_unmeasured": {"f": {1, 2}}}
+    chosen = Repo(tmp_path, records=records).select(EDIT)
+    assert chosen.cannot_speak == {"t_unmeasured"}
+
+
 def test_every_other_answer_already_selects_such_a_test(tmp_path: Path) -> None:
     """Only the by-statement answer leaves a test that reached the block out,
     so only there is there anything to hold: a signature change selects

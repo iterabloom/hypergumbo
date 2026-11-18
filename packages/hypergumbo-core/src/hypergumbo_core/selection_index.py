@@ -1007,7 +1007,7 @@ def without_xdist_group(node_id: str) -> str:
     name contains ``]``; its tests keep two spellings.
     """
     head, sep, group = node_id.rpartition("@")
-    if not sep or not group or "]" in group or "::" in group or "::" not in head:
+    if not sep or not group or "]" in group or "::" not in head:
         return node_id
     return head
 
