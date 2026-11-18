@@ -19,6 +19,8 @@ catches broadly and exits 0 — see `main`.
     shadow  report what coverage WOULD have selected, without acting on it
     select  print the selection, for a caller that intends to ACT on it
     narrow  print a run set with provably-irrelevant test files REMOVED
+    statement-narrow  write the tests of a local run set the by-statement
+                      selector leaves out, and print one line saying how many
     prose-select  write the changed files that differ only in comments or
                   docstrings, and the tests recorded evidence says they need
     readers  print the test files recorded reading a changed file as data
@@ -86,6 +88,7 @@ from hypergumbo_core.selection_log import (
     sliceable_sources, sliced_test_files, stale_graph_row,
     store_snapshot,
 )
+from hypergumbo_core.statement_narrow import is_judged_source, narrow_by_statement
 from hypergumbo_core.statement_select import select_by_statement
 from hypergumbo_core.wall_time import junit_times, report as wall_report
 from hypergumbo_core.selection_shadow import (
@@ -418,6 +421,41 @@ def cmd_narrow(args: argparse.Namespace) -> int:
         if args.verbose:
             for f in sorted(result.dropped):
                 print(f"    - {f}", file=sys.stderr)
+    return 0
+
+
+def cmd_statement_narrow(args: argparse.Namespace) -> int:
+    """Write to ``--out`` the node ids of the local run set the by-statement
+    selector leaves out (``statement_narrow.narrow_by_statement``), one per
+    line, and print ONE line saying how many, or why none.
+
+    THE FILE IS WRITTEN WHATEVER HAPPENS, empty when nothing is left out, so
+    a caller that passes it to the deselect plugin never runs on a stale one.
+    """
+    out = Path(args.out)
+    out.write_text("")
+    root = Path(args.repo_root).resolve()
+    changed = _lines(args.changed_files)
+    run_files = _lines(args.run_set)
+    if not changed or not run_files:
+        print("by-statement: nothing to judge")
+        return 0
+    base_sources = {str(root / c): _base_source(root, args.base, c)
+                    for c in changed if is_judged_source(c)}
+    started = time.monotonic()
+    with contextlib.closing(open_index(Path(args.index))) as conn:
+        result = narrow_by_statement(conn, root, base_sources, changed, run_files,
+                                     _lines(args.whole))
+    seconds = time.monotonic() - started
+    if result.refusal is not None:
+        print(f"by-statement: left out nothing ({result.refusal})")
+        return 0
+    out.write_text("".join(f"{t}\n" for t in sorted(result.left_out)))
+    files = {t.split("::")[0] for t in result.left_out}
+    print(f"by-statement: left out {len(result.left_out)} of the {result.candidates} "
+          f"indexed test(s) it could judge, in {len(files)} file(s); "
+          f"{len(result.kept_for_coverage)} kept to cover the changed files "
+          f"({seconds:.1f} s)")
     return 0
 
 
@@ -1406,6 +1444,19 @@ def main(argv: list[str] | None = None) -> int:
     nw.add_argument("--base", default="HEAD",
                     help="git ref the working tree is diffed against")
     nw.set_defaults(func=cmd_narrow)
+
+    sn = sub.add_parser("statement-narrow")
+    sn.add_argument("--changed-files", default=None,
+                    help="every changed path, repo-relative, one per line")
+    sn.add_argument("--run-set", default=None,
+                    help="the test files the local run runs, one per line")
+    sn.add_argument("--whole", default=None,
+                    help="test files that run every test, one per line")
+    sn.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    sn.add_argument("--out", required=True,
+                    help="file the left-out node ids are written to")
+    sn.set_defaults(func=cmd_statement_narrow)
 
     ps = sub.add_parser("prose-select")
     ps.add_argument("--changed-files", default=None)
