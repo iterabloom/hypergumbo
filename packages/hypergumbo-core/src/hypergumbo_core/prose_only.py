@@ -90,7 +90,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
-from hypergumbo_core.selection_index import SHARED_CONTEXT
+from hypergumbo_core.selection_index import SHARED_CONTEXT, without_xdist_group
 
 #: The record format this module reads; ``pytest_source_reads.VERSION``.
 RECORDER_VERSION = 2
@@ -442,6 +442,11 @@ def fold_run(
     fixture key, because one worker may build what another reuses) and those
     made while its module was imported.
 
+    ONE SPELLING PER TEST: a worker of a pytest-xdist group names a test
+    ``<id>@<group>`` everywhere but in its list of expected tests. Every id
+    read here is stored as pytest collects it
+    (:func:`hypergumbo_core.selection_index.without_xdist_group`).
+
     REPLACE PER TEST, like the coverage index: a test in this run replaces its
     earlier record, others are untouched. A test file whose code digest
     changed loses all its records first, since they describe other code.
@@ -455,7 +460,7 @@ def fold_run(
     modules: dict[str, _Events] = {}
     expected: dict[str, set[str]] = {}
     loose = _events()
-    untrusted = set(skip)
+    untrusted = {without_xdist_group(test_id) for test_id in skip}
     edited: set[str] = set()
 
     for part in sorted(reads_dir.glob("*.json")):
@@ -465,11 +470,12 @@ def fold_run(
             continue
         if data.get("version") != RECORDER_VERSION:
             continue
-        untrusted.update(data.get("failed", ()))
+        untrusted.update(without_xdist_group(test_id) for test_id in data.get("failed", ()))
         for test_file, digest in data.get("sources", {}).items():
             if digest != _raw_digest(repo_root / test_file):
                 edited.add(test_file)
-        for test_id, bucket in data.get("tests", {}).items():
+        for recorded_id, bucket in data.get("tests", {}).items():
+            test_id = without_xdist_group(recorded_id)
             _merge(tests.setdefault(test_id, _events()), bucket)
             used.setdefault(test_id, set()).update(bucket.get("fixtures", ()))
             observed[test_id] = bool(data.get("observed")) and observed.get(test_id, True)
@@ -478,7 +484,8 @@ def fold_run(
         for key, bucket in data.get("modules", {}).items():
             _merge(modules.setdefault(key, _events()), bucket)
         for test_file, ids in data.get("expected", {}).items():
-            expected.setdefault(test_file, set()).update(ids)
+            expected.setdefault(test_file, set()).update(
+                without_xdist_group(test_id) for test_id in ids)
         _merge(loose, data.get("unattributed", {}))
     for test_id in list(tests):
         if test_id in untrusted or test_id.split("::", 1)[0] in edited:

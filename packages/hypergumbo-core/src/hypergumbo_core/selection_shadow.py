@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
-from hypergumbo_core.selection_index import Selection, files_of
+from hypergumbo_core.selection_index import Selection, files_of, without_xdist_group
 
 
 def _resolve_classname(classname: str, repo_root: Path) -> Optional[str]:
@@ -88,6 +88,10 @@ def _case_node_id(
     nothing in it ran. Reading such an entry as an ordinary one raised on the
     empty classname, on any machine where one optional import is missing, and
     the caller lost the whole run's observation.
+
+    A test in a pytest-xdist group is reported under its renamed id
+    (``name@group``); the id returned is the one pytest collects
+    (:func:`hypergumbo_core.selection_index.without_xdist_group`).
     """
     if not classname:
         return _resolve_classname(name, repo_root), False
@@ -96,7 +100,7 @@ def _case_node_id(
         return None, True
     module_parts = len(Path(path).with_suffix("").parts)
     classes = classname.split(".")[module_parts:]
-    return "::".join([path, *classes, name]), True
+    return without_xdist_group("::".join([path, *classes, name])), True
 
 
 def ran_tests_from_junit(junit_path: Path, repo_root: Path) -> set[str]:
