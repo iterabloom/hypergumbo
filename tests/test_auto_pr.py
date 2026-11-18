@@ -232,3 +232,81 @@ class TestAmendSitesRatchet:
             f"{unguarded}: call {GUARD_FN} first or HEAD may be a commit "
             "this branch does not own (WI-libok)"
         )
+
+
+GATE_FN = "_scheduled_run_gate"
+
+
+def _run_gate(tmp_path: Path, helper: str | None) -> subprocess.CompletedProcess:
+    """Run the extracted gate with ``helper`` as the scheduled-gate script
+    (None: no such script)."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    if helper is not None:
+        (scripts / "scheduled-gate").write_text(helper)
+        (scripts / "scheduled-gate").chmod(0o755)
+    harness = tmp_path / "harness.sh"
+    harness.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -Eeuo pipefail\n"
+        f'SCRIPT_DIR="{scripts}"\n'
+        f"{_extract_shell_function(GATE_FN)}\n"
+        f'{GATE_FN} "dev"\n'
+    )
+    return subprocess.run(["bash", str(harness)], capture_output=True, text=True)
+
+
+class TestScheduledRunGate:
+    """auto-pr stops a merge only on the helper's own "blocked" (WI-kidop).
+
+    The rule itself is scripts/scheduled-gate's and is tested there
+    (test_scheduled_gate.py). What auto-pr adds is the wiring, and each way
+    it can go wrong is silent: blocking every merge because the helper is
+    missing or crashed, or passing a red run because the exit code was
+    swallowed.
+    """
+
+    def test_blocked_is_the_helpers_exit_3_and_its_words_are_printed(self, tmp_path) -> None:
+        done = _run_gate(tmp_path, "#!/bin/sh\necho \"scheduled gate: RED: $*\"\nexit 3\n")
+        assert done.returncode == 1
+        # It asks about the base branch it was given and this branch's tip.
+        assert done.stdout.strip() == "scheduled gate: RED: check --base origin/dev --head HEAD"
+
+    def test_green_passes_with_the_helpers_line(self, tmp_path) -> None:
+        done = _run_gate(tmp_path, "#!/bin/sh\necho 'scheduled gate: the full suite passed'\n")
+        assert done.returncode == 0
+        assert done.stdout.strip() == "scheduled gate: the full suite passed"
+
+    def test_a_missing_helper_does_not_block_and_says_so(self, tmp_path) -> None:
+        done = _run_gate(tmp_path, None)
+        assert done.returncode == 0
+        assert "NOT KNOWN" in done.stdout and "scheduled-gate is missing" in done.stdout
+
+    def test_a_helper_that_crashes_does_not_block_and_says_so(self, tmp_path) -> None:
+        done = _run_gate(tmp_path, "#!/bin/sh\necho boom >&2\nexit 1\n")
+        assert done.returncode == 0
+        assert "boom" in done.stdout
+        assert "scheduled gate: NOT KNOWN (scheduled-gate exited 1); not blocking" in done.stdout
+
+    def test_it_is_asked_before_the_push_and_before_each_merge(self) -> None:
+        """Before anything is pushed (no pull request and no CI spent on a
+        merge that will be refused), and again before each of the two merges
+        (the verdict can turn red while CI is polled). A third merge site
+        added without it would merge past a red run."""
+        lines = AUTO_PR_PATH.read_text().splitlines()
+        calls = [i for i, line in enumerate(lines)
+                 if line.strip().startswith(f"if ! {GATE_FN} ")]
+        merges = [i for i, line in enumerate(lines) if "do_merge_guarded \"$PR_NUM\"" in line]
+        assert len(merges) == 2, "auto-pr's merge sites changed: gate the new one too"
+        for merge in merges:
+            assert any(merge - 30 < call < merge for call in calls), (
+                f"the merge at scripts/auto-pr line {merge + 1} is not behind {GATE_FN}")
+        first_push = next(i for i, line in enumerate(lines)
+                          if 'echo "preparing" >"$REPO_ROOT/.git/PR_PENDING"' in line
+                          and i > next(j for j, text in enumerate(lines) if text.startswith("do_pr()")))
+        assert any(first_push - 12 < call < first_push for call in calls), (
+            "do_pr does not ask the gate before it creates its pending marker and pushes")
+        # A block ends the run with its own recorded state, not a generic failure.
+        for call in calls:
+            assert any('_autopr_state_final="blocked_scheduled_red"' in line
+                       for line in lines[call:call + 8]), call + 1

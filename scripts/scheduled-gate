@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""May a change be merged while the last scheduled full run stands as it does?
+
+WHY THIS EXISTS. A red scheduled run blocked nothing. The full suite stood red
+through pipelines 6453 and 6480 for days while pull requests merged past it
+and a release was cut on top; every merge onto a red run adds change that the
+run has not measured and widens the range a search for the cause has to cover.
+Owner ruling, 2026-11-17: merges stop while the last full run is red, unless
+the change says it fixes or reverts the red step by naming it; "not known"
+does not block; a merged fix lifts the block.
+
+WHAT IT READS. ``scheduled/full-suite.json`` on ``origin/badges``, which the
+full suite's last step pushes (``scripts/publish-scheduled-verdict`` holds the
+schema). The same file the session-start line reads. One bounded ``git fetch``
+first; when that fails the ref is read as it stands.
+
+THREE STATES, and what each does (``check`` prints one line and exits 0, or
+prints why and exits 3):
+
+* GREEN (``status`` is ``passed``): merge.
+* NOT KNOWN: no ``origin/badges``, no verdict file, a verdict that does not
+  parse. Merge, and say so. A run that died with its runner publishes
+  nothing, so the verdict before it stands; that is a property of the
+  evidence, not something this can see past.
+* RED: every step whose result is not ``passed`` is a red step. Merging is
+  refused unless one of these holds:
+
+  - THE CHANGE NAMES A RED STEP. A commit of the change (``base..head``)
+    carries the trailer ``Fixes-scheduled-run: <step>`` for at least one red
+    step. The trailer is in the history, where a wrong claim can be read
+    later. A red caused by a dependency release has no pull request at fault;
+    its fix is a pull request all the same, and names the step.
+  - A FIX HAS MERGED. Commits already on the base since the verdict's commit
+    carry that trailer for EVERY red step. The full suite runs on a schedule,
+    so without this every change would wait up to twelve hours for the next
+    run after the fix. The block returns with the next red verdict: it is
+    judged against that verdict's own commit, and trailers before it do not
+    count.
+  - THE CHANGE TOUCHES ONLY TRACKER DATA (``.agent/tracker/``,
+    ``.agent/tracker-workspace/``). It changes nothing the suite runs.
+
+WHAT IT DOES NOT COVER, on purpose and stated. Only the full suite blocks; a
+red nightly leg is reported at session start and blocks nothing here (its
+legs are other Python versions of the same tests). A release pull request is
+merged by a person and is not gated. ``scripts/merge-pr`` does not call this:
+it is the manual path, and gating it is a separate decision.
+
+Exit codes: 0 merge may proceed; 3 blocked; 2 bad usage. Anything unexpected
+is NOT KNOWN and exits 0: a broken gate must not stop every merge.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional, Sequence
+
+WORKFLOW = "full-suite"
+VERDICT_PATH = f"scheduled/{WORKFLOW}.json"
+TRAILER = "Fixes-scheduled-run"
+#: Seconds the one fetch of the badges branch may take.
+FETCH_TIMEOUT = 20
+GIT_TIMEOUT = 20
+#: A change confined to these directories changes nothing the suite runs.
+TRACKER_DIRS = (".agent/tracker/", ".agent/tracker-workspace/")
+_TRAILER_LINE = re.compile(rf"^{TRAILER}:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+_REPO_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY")
+
+
+class NotKnown(Exception):
+    """The verdict cannot be read; the message says why."""
+
+
+def _git(root: Path, *args: str, timeout: int = GIT_TIMEOUT) -> Optional[str]:
+    """git's stdout, or None when the command failed or did not finish."""
+    env = {k: v for k, v in os.environ.items() if k not in _REPO_ENV}
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    try:
+        done = subprocess.run(  # noqa: S603 -- git on PATH; the arguments are ours
+            ["git", "-C", str(root), *args], capture_output=True, text=True,  # noqa: S607
+            env=env, check=False, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def read_verdict(root: Path, ref: str) -> dict[str, Any]:
+    """The full suite's last published verdict, or :class:`NotKnown`."""
+    if _git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}") is None:
+        raise NotKnown(f"no {ref}")
+    text = _git(root, "show", f"{ref}:{VERDICT_PATH}")
+    if text is None:
+        raise NotKnown(f"no {VERDICT_PATH} on {ref}")
+    try:
+        verdict = json.loads(text)
+    except ValueError as exc:
+        raise NotKnown(f"{VERDICT_PATH} on {ref} does not parse") from exc
+    if (not isinstance(verdict, dict) or verdict.get("status") not in ("passed", "failed")
+            or not isinstance(verdict.get("steps"), list)
+            or not isinstance(verdict.get("commit"), str)):
+        raise NotKnown(f"{VERDICT_PATH} on {ref} is not a verdict")
+    return verdict
+
+
+def red_steps(verdict: dict[str, Any]) -> list[str]:
+    """The steps of a failed verdict that did not pass."""
+    return [str(step.get("name")) for step in verdict["steps"]
+            if isinstance(step, dict) and step.get("result") != "passed"]
+
+
+def named_steps(root: Path, revision_range: str) -> Optional[set[str]]:
+    """Every step a ``Fixes-scheduled-run:`` trailer names in the commits of
+    ``revision_range``; None when the range cannot be read."""
+    log = _git(root, "log", "--format=%B%x00", revision_range)
+    if log is None:
+        return None
+    return {name.strip() for found in _TRAILER_LINE.findall(log)
+            for name in found.split(",") if name.strip()}
+
+
+def _age(verdict: dict[str, Any], now: datetime) -> str:
+    try:
+        then = datetime.strptime(str(verdict.get("finished_at")), "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return "age not known"
+    hours = (now - then.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+    return f"{hours:.0f} h ago" if hours >= 1 else "under an hour ago"
+
+
+def decide(root: Path, *, ref: str, base: str, head: str,
+           now: datetime) -> tuple[bool, str]:
+    """``(may merge, what to say)``."""
+    try:
+        verdict = read_verdict(root, ref)
+    except NotKnown as exc:
+        return True, f"scheduled gate: NOT KNOWN ({exc}); not blocking"
+    where = f"{verdict['commit'][:8]} ({_age(verdict, now)})"
+    if verdict["status"] == "passed":
+        return True, f"scheduled gate: the full suite passed at {where}"
+    red = red_steps(verdict)
+    state = f"scheduled gate: the full suite is RED at {where}: {', '.join(red) or 'no step named'}"
+    changed = _git(root, "diff", "--name-only", f"{base}...{head}")
+    if changed is not None and changed.split() and all(
+            path.startswith(TRACKER_DIRS) for path in changed.split()):
+        return True, f"{state}; this change touches only tracker data: not blocked"
+    mine = named_steps(root, f"{base}..{head}")
+    if mine is not None and mine & set(red):
+        return True, (f"{state}; this change names {', '.join(sorted(mine & set(red)))} "
+                      f"in a {TRAILER} trailer: allowed")
+    since = named_steps(root, f"{verdict['commit']}..{base}")
+    if red and since is not None and set(red) <= since:
+        return True, (f"{state}; commits on {base} since then name every red step in a "
+                      f"{TRAILER} trailer: not blocked until the next scheduled run says")
+    lines = [
+        state,
+        f"  {verdict.get('url') or 'no pipeline address in the verdict'}",
+        "  MERGING IS STOPPED while the last scheduled full run is red.",
+        "  To merge the fix or the revert, name the red step in one of its commits:",
+        *(f"      {TRAILER}: {step}" for step in red),
+        "  Once commits naming every red step are on the base branch, other changes merge again.",
+    ]
+    return False, "\n".join(lines)
+
+
+def main(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="scheduled-gate",
+        description="Say whether a change may merge given the last scheduled full run.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    check = sub.add_parser("check", help="exit 0 when merging may proceed, 3 when it is blocked")
+    check.add_argument("--base", default="origin/dev", help="the branch the change merges into")
+    check.add_argument("--head", default="HEAD", help="the change's tip")
+    check.add_argument("--remote", default="origin")
+    check.add_argument("--branch", default="badges")
+    check.add_argument("--no-fetch", action="store_true", help="read the ref as it stands")
+    args = parser.parse_args(list(argv))
+    try:
+        root_text = _git(Path.cwd(), "rev-parse", "--show-toplevel")
+        if root_text is None:
+            print("scheduled gate: NOT KNOWN (not inside a git repository); not blocking")
+            return 0
+        root = Path(root_text.strip())
+        if not args.no_fetch:
+            _git(root, "fetch", "-q", args.remote, args.branch, timeout=FETCH_TIMEOUT)
+        allowed, said = decide(root, ref=f"{args.remote}/{args.branch}", base=args.base,
+                               head=args.head, now=datetime.now(timezone.utc))
+    except Exception as exc:
+        print(f"scheduled gate: NOT KNOWN ({type(exc).__name__}: {exc}); not blocking")
+        return 0
+    print(said)
+    return 0 if allowed else 3
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

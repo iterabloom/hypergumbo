@@ -229,6 +229,34 @@ _autopr_warn_orphan_tracker_sync_prs() {
 	return 0
 }
 
+# --- The scheduled full run gates merging (WI-kidop; owner ruling 2026-11-17) ---
+# scripts/scheduled-gate reads the last full-suite verdict from origin/badges
+# and holds the rule (its docstring): a RED run stops the merge unless this
+# branch names a red step in a `Fixes-scheduled-run:` trailer, or commits on
+# the base since the red commit name every red step, or the change is tracker
+# data alone. GREEN and NOT KNOWN pass. Its one line is printed either way.
+# Returns 1 only on the helper's own "blocked" (exit 3): a missing or broken
+# helper must not stop every merge, and says so.
+# Called twice per run: before anything is pushed (no pull request, no CI,
+# spent on a merge that will be refused) and again just before the merge (the
+# verdict can turn red while CI is polled).
+_scheduled_run_gate() {
+	local base_branch="$1" out rc=0
+	if [[ ! -x "$SCRIPT_DIR/scheduled-gate" ]]; then
+		echo "scheduled gate: NOT KNOWN ($SCRIPT_DIR/scheduled-gate is missing); not blocking"
+		return 0
+	fi
+	out=$("$SCRIPT_DIR/scheduled-gate" check --base "origin/$base_branch" --head HEAD 2>&1) || rc=$?
+	[[ -n "$out" ]] && echo "$out"
+	if [[ $rc -eq 3 ]]; then
+		return 1
+	fi
+	if [[ $rc -ne 0 ]]; then
+		echo "scheduled gate: NOT KNOWN (scheduled-gate exited $rc); not blocking"
+	fi
+	return 0
+}
+
 _autopr_sync_gate_held() {
 	local gate_file="$REPO_ROOT/.git/TRACKER_SYNC_PENDING"
 	if [[ ! -f "$gate_file" ]]; then
@@ -1876,6 +1904,15 @@ Individual commits are preserved in the history."
 		exit "$poll_result"
 	fi
 
+	# WI-kidop: the verdict may have turned red while CI was polled.
+	if ! _scheduled_run_gate "$base_branch"; then
+		echo ""
+		echo "PR #$PR_NUM is open and its own CI passed; it is not merged."
+		echo "When the block lifts: ./scripts/merge-pr $PR_NUM"
+		_autopr_state_final="blocked_scheduled_red"
+		exit 1
+	fi
+
 	# Merge PR using fast-forward (default) or squash (if --squash flag)
 	echo "---------------------------------------------------"
 	echo "🔀 Merging PR #$PR_NUM..."
@@ -2264,6 +2301,13 @@ do_pr() {
 	local PUSH_DESC="${DESC//$'\n'/\\n}"
 
 	local push_remote="origin"
+
+	# WI-kidop: refuse before anything is pushed when the last scheduled
+	# full run is red and this branch does not name the red step.
+	if ! _scheduled_run_gate "$BASE_BRANCH"; then
+		_autopr_state_final="blocked_scheduled_red"
+		exit 1
+	fi
 
 	# --- INV-rahib fix: create gate BEFORE push ---
 	# Previously PR_PENDING was created after push + PR identification,
@@ -2676,6 +2720,15 @@ do_pr() {
 				git rebase --abort 2>/dev/null || true
 			fi
 		fi
+	fi
+
+	# WI-kidop: the verdict may have turned red while CI was polled.
+	if ! _scheduled_run_gate "$BASE_BRANCH"; then
+		echo ""
+		echo "PR #$PR_NUM is open and its own CI passed; it is not merged."
+		echo "When the block lifts: ./scripts/merge-pr $PR_NUM"
+		_autopr_state_final="blocked_scheduled_red"
+		exit 1
 	fi
 
 	# Merge PR using fast-forward (default) or squash (if --squash flag)

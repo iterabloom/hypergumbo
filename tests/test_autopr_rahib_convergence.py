@@ -700,7 +700,14 @@ CONVERGED_DELIBERATE = frozenset(
     # `queued_vpr` does: the run did exactly what it set out to do. It did not
     # merge, and it did not fail to merge — it handed the poll to a watcher
     # that outlives the caller's turn, and that watcher writes its own row.
-    {"queued_vpr", "governance_pending", "noop_empty_queue", "detached_watching"}
+    #
+    # `blocked_scheduled_red` (WI-kidop): the last scheduled full run is red
+    # and the change names no red step, so the run refused to push, or left
+    # its pull request open and unmerged. That is the owner's rule applied,
+    # not a failure of auto-pr; it is here and not under CONVERGED_FAILURE so
+    # that a day of blocked runs does not read as a day of failing ones.
+    {"queued_vpr", "governance_pending", "noop_empty_queue", "detached_watching",
+     "blocked_scheduled_red"}
 )
 
 # A FOURTH bucket, deliberately not folded into any of the three above. A run
