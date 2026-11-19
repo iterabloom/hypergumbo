@@ -252,6 +252,14 @@ sink zone** reads `inconclusive` (exit 4). A definition counts when it is
   `lambda` or generator expression, a JavaScript / TypeScript class field
   initialiser.
 
+A closure is read when it RUNS, so a definition placed after it reaches its
+read: `const get = () => x; x = process.env.K; console.log(x);
+fs.writeFileSync("o.txt", get())` reads `violated` (exit 1), not withheld. The
+same holds for a block body, a TypeScript arrow and a Python `lambda`, measured
+on that shape. A Rust `|| x` and a Java `() -> x` gain the same read; their
+verdict on that shape was already `violated`, because the walk escapes at the
+print call.
+
 The same walk earns no `sanitized` credit when a sanitizer sits in the
 source's own function: `t[0] = decrypt(ct); write(encrypt(t[0])); write(s[0])`
 reads `violated`, not sanitized. A non-production source counts only under

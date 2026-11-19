@@ -121,7 +121,7 @@ _ROWS: dict[tuple[str, str, str], tuple[str, str, str, str]] = {
     ("python", "target", "attribute"): ("python", "b.f = x", EXPOSURE_IN_PLACE_STORE, "b"),
     ("python", "nested_function", "function_definition"): ("python", "def h():\n    return x", EXPOSURE_CAPTURED, "x"),
     ("python", "nested_function", "class_definition"): ("python", "class K:\n    y = x", EXPOSURE_CAPTURED, "x"),
-    ("python", "capture_scope", "lambda"): ("python", "g = lambda: x", EXPOSURE_CAPTURED, "x"),
+    ("python", "nested_function", "lambda"): ("python", "g = lambda: x", EXPOSURE_CAPTURED, "x"),
     ("python", "capture_scope", "generator_expression"): ("python", "g = (x for _ in range(1))", EXPOSURE_CAPTURED, "x"),
     # --- typescript.yaml (javascript reads it too)
     ("typescript", "assignment", "assignment_expression"): ("typescript", "t[0] = x;", EXPOSURE_IN_PLACE_STORE, "t"),

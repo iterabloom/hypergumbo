@@ -127,3 +127,160 @@ def test_a_read_after_the_nested_function_binds_the_name_gets_no_edge(tmp_path: 
     dataflow_scope.ensure_def_use_extractors_registered()
     ddg = build_repo_ddg(tmp_path, languages=("python",))
     assert {e.use_line for e in ddg.ddg_edges if e.variable == "k" and e.def_line == 6} == {3}
+
+
+# An EXPRESSION-bodied closure reads late too (WI-pubat). ``() => x`` has no
+# statement in its body, so the region the builder hung off its definition held
+# nothing and no late edge could reach its read; the block-bodied ``() => {
+# return x; }`` was followed. Each form: (language, file, source, the line of
+# the later definition, the line of the closure's read).
+_EXPRESSION_BODIES = {
+    "javascript-arrow": ("javascript", "app.js", (
+        "function f() {\n"
+        "  let x = '';\n"
+        "  const get = () => x;\n"
+        "  x = process.env.K;\n"
+        "  return get;\n"
+        "}\n"
+    ), 4, 3),
+    "typescript-arrow": ("typescript", "app.ts", (
+        "export function f(): () => string {\n"
+        "  let x: string = '';\n"
+        "  const get = (): string => x;\n"
+        "  x = process.env.K ?? '';\n"
+        "  return get;\n"
+        "}\n"
+    ), 4, 3),
+    "python-lambda": ("python", "app.py", (
+        "import os\n"
+        "def f():\n"
+        "    x = ''\n"
+        "    get = lambda: x\n"
+        "    x = os.environ['K']\n"
+        "    return get\n"
+    ), 5, 4),
+    "rust-closure": ("rust", "lib.rs", (
+        "pub fn f() -> String {\n"
+        "    let mut x = String::new();\n"
+        "    let get = || x;\n"
+        "    x = std::env::var(\"K\").unwrap();\n"
+        "    get()\n"
+        "}\n"
+    ), 4, 3),
+    "java-lambda": ("java", "A.java", (
+        "class A {\n"
+        "  Supplier<String> f() {\n"
+        "    String x = \"\";\n"
+        "    Supplier<String> get = () -> x;\n"
+        "    x = System.getenv(\"K\");\n"
+        "    return get;\n"
+        "  }\n"
+        "}\n"
+    ), 5, 4),
+}
+
+
+@pytest.mark.parametrize("form", sorted(_EXPRESSION_BODIES))
+def test_an_expression_bodied_closure_reads_a_later_definition(
+    tmp_path: Path, form: str,
+) -> None:
+    """The definition after the closure gains an edge into its read."""
+    language, name, text, def_line, read_line = _EXPRESSION_BODIES[form]
+    (tmp_path / name).write_text(text)
+    dataflow_scope.ensure_def_use_extractors_registered()
+    ddg = build_repo_ddg(tmp_path, languages=(language,))
+    late = {e.use_line for e in ddg.ddg_edges if e.variable == "x" and e.def_line == def_line}
+    assert read_line in late
+
+
+_FS_CLAIMS = '''claims:
+  - id: SECRET-FS
+    text: Secrets never reach the file system.
+    constraint:
+      taint_flow:
+        source_taint: host_secret
+        prohibited_sink_zone: host_fs
+'''
+
+# The filed repro and the forms whose walk REMOVED or withheld the flow:
+# the secret's only other use terminates (``console.log`` / ``print``), so
+# without the late edge the walk never sees the closure hand it to the sink.
+_EXPRESSION_BODY_WRITES = {
+    "javascript-arrow": ("app.js", (
+        "const fs = require('fs');\n"
+        "function f() {\n"
+        "  let x = '';\n"
+        "  const get = () => %s;\n"
+        "  x = process.env.API_KEY;\n"
+        "  console.log(x);\n"
+        "  fs.writeFileSync('o.txt', get());\n"
+        "}\n"
+        "module.exports = { f };\n"
+    )),
+    "typescript-arrow": ("app.ts", (
+        "import * as fs from 'fs';\n"
+        "export function f(): void {\n"
+        "  let x: string = '';\n"
+        "  const get = (): string => %s;\n"
+        "  x = process.env.API_KEY ?? '';\n"
+        "  console.log(x);\n"
+        "  fs.writeFileSync('o.txt', get());\n"
+        "}\n"
+    )),
+    "python-lambda": ("app.py", (
+        "import os\n"
+        "def f():\n"
+        "    x = ''\n"
+        "    get = lambda: %s\n"
+        "    x = os.environ['API_KEY']\n"
+        "    print(x)\n"
+        "    open('o.txt', 'w').write(get())\n"
+    )),
+}
+
+
+def _fs_verdict(tmp_path: Path, name: str, text: str) -> dict[str, Any]:
+    """Run the shipped CLI on one file and return the SECRET-FS verdict."""
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    (repo / name).write_text(text)
+    claims = tmp_path / "claims.yaml"
+    claims.write_text(_FS_CLAIMS)
+    mp = pytest.MonkeyPatch()
+    mp.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf), \
+                contextlib.redirect_stderr(io.StringIO()):
+            main(["verify-claims", str(repo), "--claims", str(claims),
+                  "--format", "json"])
+    finally:
+        mp.undo()
+    verdicts = {v["claim_id"]: v for v in json.loads(buf.getvalue())["verdicts"]}
+    return verdicts["SECRET-FS"]
+
+
+@pytest.mark.parametrize("form", sorted(_EXPRESSION_BODY_WRITES))
+def test_an_expression_bodied_closure_carries_a_later_secret_to_the_sink(
+    tmp_path: Path, form: str,
+) -> None:
+    """The secret is stored into ``x`` after the closure is made and the
+    closure's result is written: violated. It read inconclusive (the capture
+    rule withheld the removal) and, before that rule, confirmed."""
+    name, text = _EXPRESSION_BODY_WRITES[form]
+    verdict = _fs_verdict(tmp_path, name, text % "x")
+    assert verdict["verdict"] == "violated"
+
+
+@pytest.mark.parametrize("form", sorted(_EXPRESSION_BODY_WRITES))
+def test_an_expression_bodied_closure_that_reads_no_secret_lets_the_walk_remove_it(
+    tmp_path: Path, form: str,
+) -> None:
+    """The control: the closure returns a literal and mentions no ``x``, so the
+    secret dies at the terminating print and the walk still removes the flow."""
+    name, text = _EXPRESSION_BODY_WRITES[form]
+    verdict = _fs_verdict(tmp_path, name, text % "'y'")
+    # TypeScript reads ``confirmed_with_caveats``: its analyzer emits no call
+    # edge for an external instance-method call, a caveat unrelated to closures.
+    assert verdict["verdict"].startswith("confirmed")
+    assert verdict["evidence"] == []

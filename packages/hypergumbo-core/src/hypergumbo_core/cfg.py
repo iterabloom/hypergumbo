@@ -602,8 +602,8 @@ class CfgNodeMapping:
     address_of: Optional[list[AddressOfMapping]] = None
     #: ``capture_scope`` (WI-buzup): node types that evaluate what they mention
     #: LATER, or elsewhere, than where they are written but are not
-    #: ``nested_function`` entries (a Python ``lambda`` or generator
-    #: expression, a class field initialiser). Read only by
+    #: ``nested_function`` entries (a Python generator expression, a class
+    #: field initialiser). Read only by
     #: :func:`exposed_definitions`, unioned there with the nested-function
     #: types; the CFG builder never reads it. ``None`` when the key is ABSENT,
     #: which the wiring gate refuses; an empty list is the declared answer.
@@ -1349,6 +1349,14 @@ class CfgBuilder:
         (Rust's ``|x| if x { .. } else { .. }``) -- is processed as that
         construct; any other expression body (Java's ``x -> f(x)``) as its
         parts, as the builder treats an unmapped compound node anywhere.
+
+        A body that is ONE TOKEN -- ``() => x``, ``|| x``, ``() -> x``,
+        ``lambda: x`` -- has no parts, so it is recorded as the statement
+        itself (WI-pubat). Without that statement the region is empty, nothing
+        records the read of ``x``, and :func:`late_capture_edges` has no read
+        to link a later ``x = secret`` to: the closure returns the secret and
+        the walk never sees it. A block always has its braces as children, so
+        an empty one still yields nothing.
         """
         if (
             body.type in self._mapping.atomic_statements
@@ -1356,6 +1364,8 @@ class CfgBuilder:
             or self._mapping.get_nested_function(body.type) is not None
         ):
             return self._process_node(body, source)
+        if body.child_count == 0:
+            return self._process_sequential(body, source)
         return self._process_children(body, source)
 
     def _attach_nested_function(
@@ -2520,9 +2530,8 @@ class DefinitionExposure:
       such a name is seen through the pointer.
     * ``captured`` -- names mentioned inside a nested function
       (``nested_function`` in ``cfg_nodes``) or another form that evaluates
-      them later (``capture_scope``: a Python ``lambda`` or generator
-      expression, a class field initialiser). A rebinding is seen by the
-      closure.
+      them later (``capture_scope``: a Python generator expression, a class
+      field initialiser). A rebinding is seen by the closure.
 
     A plain rebinding of an unexposed local creates a new value no earlier
     copy sees, which is why the walk may still refute through one.

@@ -104,9 +104,16 @@ atomic_statement:
 # is called, not where it is written. Its body is built as its own CFG region
 # that MAY run, hung off the def statement, rather than inlined in sequence,
 # where its assignments killed the enclosing function's variables of the same
-# name. A `lambda` holds one expression and no statement, so it needs no entry.
+# name.
 nested_function:
   - node_type: function_definition
+    body_child: "field:body"
+  # A `lambda` holds one expression and no statement, but it reads what it
+  # captures when it RUNS: `get = lambda: x` then `x = secret` returns the
+  # secret. As a region its body is a statement that late_capture_edges can
+  # link a later `x` to (WI-pubat); as a capture_scope entry nothing read it
+  # late, so the walk saw the secret die at a print and could only withhold.
+  - node_type: lambda
     body_child: "field:body"
   # A class body runs once, where it is written, but its bindings are CLASS
   # attributes, not this scope's names: inlined, `u = "x"` in a class killed the
@@ -142,5 +149,4 @@ address_of: []
 # not added are listed, with the observed verdict, in
 # test_definition_exposure.py (_CAPTURE_FORMS_NOT_ADDED).
 capture_scope:
-  - node_type: lambda
   - node_type: generator_expression
