@@ -9,11 +9,13 @@ templates stays unchecked until someone surveys a repository with ``.hbs`` files
 The grammar is decided at the producer, and the producer was never read.
 
 WHAT IT CHECKS. Every expression that can reach ``Symbol(id=...)`` or
-``Edge(id=...)`` — the argument, one in-function local, one same-module helper —
-against the grammar that id actually answers to:
+``Edge(id=...)``, or an edge endpoint (``src=`` / ``dst=`` of ``Edge(...)`` and
+``Edge.create(...)``, and ``Edge.create``'s first two positional arguments) —
+the argument, one in-function local, one same-module helper — against the
+grammar that id actually answers to:
 
-    Symbol.id   {lang}:{path}:{start}-{end}:{name}:{kind}   (ADR-0036)
-    Edge.id     edge:sha256:<16 lowercase hex>
+    Symbol.id, Edge.src, Edge.dst   {lang}:{path}:{start}-{end}:{name}:{kind}   (ADR-0036)
+    Edge.id                         edge:sha256:<16 lowercase hex>
 
 An f-string is NOT the offence; an ungrammatical id is. A synthetic linker
 stand-in legitimately writes ``0-0`` by hand, and 14 of the tree's 40 hand-built
@@ -53,7 +55,9 @@ def main() -> int:
         print(f"  {line}")
     print(
         "\nFix: mint the id through make_symbol_id(...) / make_file_id(...) "
-        "from analyze/base.py, or — for a synthetic stand-in that has no source "
+        "from analyze/base.py (an edge endpoint: also make_module_import_dst "
+        "or edge_target.external_target), or — for a synthetic stand-in that "
+        "has no source "
         "span — spell every slot of the ADR-0036 grammar, using 0-0 for "
         "'no span' and routing the name slot through sanitize_id_name_segment. "
         "See the module docstring of "
