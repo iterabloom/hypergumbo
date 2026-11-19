@@ -1,0 +1,20 @@
+- op: create  # 472f
+  at: '2026-11-19T13:59:54Z'  # 472f
+  by: agent  # 472f
+  actor: jgstern_agent  # 472f
+  clock: 1  # 472f
+  nonce: 472f  # 472f
+  data:  # 472f
+    kind: work_item  # 472f
+    title: "JavaScript: five :unresolved edge targets are hand-built f-strings outside the id factory"  # 472f
+    status: todo_hard  # 472f
+    priority: 3  # 472f
+    parent:  # 472f
+    tags:  # 472f
+    - identity  # 472f
+    isbefore: []  # 472f
+    duplicate_of: []  # 472f
+    not_duplicate_of: []  # 472f
+    pr_ref:  # 472f
+    description: "JavaScript: five ':unresolved' edge targets are still hand-built f-strings in js_ts.py (about lines 3320, 6542, 6567, 6814, 6905), outside make_unresolved_edge (which since PR 3 mints through make_symbol_id). No colon or empty-slot case was measured for them. Also a bare 'npm:' / 'node:' specifier gives hint 'external' but js_ts.py:3311 builds ExternalRef(module_path=\"external\").\n\nCLOSE WHEN each site mints through the factory (scripts/check-id-construction then sees them) and a fixture with a colon-bearing callee name gives a parseable id.\n\nFound by the PR 3 (stable-id v16) WI-rozod/WI-zolat build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/rozod/RESULTS.md (Residuals)."  # 472f
+    fields: {}  # 472f

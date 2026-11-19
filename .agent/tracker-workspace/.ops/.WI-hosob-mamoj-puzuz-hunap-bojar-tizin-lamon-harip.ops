@@ -1,0 +1,20 @@
+- op: create  # d8b9
+  at: '2026-11-19T13:59:38Z'  # d8b9
+  by: agent  # d8b9
+  actor: jgstern_agent  # d8b9
+  clock: 1  # d8b9
+  nonce: d8b9  # d8b9
+  data:  # d8b9
+    kind: work_item  # d8b9
+    title: "BibTeX: entries with blanks before the key yield no symbols (mathlib4 references.bib: 0 of 424)"  # d8b9
+    status: todo_hard  # d8b9
+    priority: 3  # d8b9
+    parent:  # d8b9
+    tags:  # d8b9
+    - identity  # d8b9
+    isbefore: []  # d8b9
+    duplicate_of: []  # d8b9
+    not_duplicate_of: []  # d8b9
+    pr_ref:  # d8b9
+    description: "BibTeX: an entry with blanks between '{' and its key (@Article{         ghys87:groupes,) parses as key_brace '' plus an ERROR node; _extract_entry returns None for every such entry, so the file yields 0 symbols.\n\nRepro: analyze_bibtex on ~/whole_bunch_of_repos/mathlib4/docs (references.bib, 424 entries) -> 0 symbols.\n\nCLOSE WHEN that file yields one symbol per entry, with a fixture holding the blank-before-key form.\n\nFound by the PR 3 (stable-id v16) WI-rozod/WI-zolat build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/rozod/RESULTS.md (Residuals)."  # d8b9
+    fields: {}  # d8b9
