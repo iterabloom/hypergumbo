@@ -1,0 +1,21 @@
+- op: create  # 792f
+  at: '2026-11-19T04:33:13Z'  # 792f
+  by: agent  # 792f
+  actor: jgstern_agent  # 792f
+  clock: 1  # 792f
+  nonce: 792f  # 792f
+  data:  # 792f
+    kind: work_item  # 792f
+    title: "Stand-in fingerprints are minted inline as bare 16-hex sha256 at about 15 linker sites, not through one factory or the fingerprint scheme's label"  # 792f
+    status: todo_hard  # 792f
+    priority: 3  # 792f
+    parent:  # 792f
+    tags:  # 792f
+    - identifier_factories  # 792f
+    - stable_id  # 792f
+    isbefore: []  # 792f
+    duplicate_of: []  # 792f
+    not_duplicate_of: []  # 792f
+    pr_ref:  # 792f
+    description: "Linkers mint the fingerprint of a language=None stand-in (ADR-0031 Class B) inline, as a bare 16-hex sha256 of its id, instead of through one factory and the fingerprint scheme.\n\nWHERE (origin/dev c32f61a57, grep for hashlib.sha256(<id>.encode()).hexdigest()[:16] in packages/*/src): linkers/annotation_convention.py 4, linkers/tauri_ipc.py 4 (680, 805, 915, 944), linkers/crypto_flow.py 2, linkers/message_dispatch.py 2, linkers/yjs_crdt.py 2; the backstop analyze/base.py:2082 (populate_synthetic_class_b_identity's helper) copies the same formula, its comment saying it matches the linkers. A research pass also named one r_lang site; I did not confirm it. repo_fingerprint.py and the tracker's race_log.py use sha256 for other things and are not in scope.\n\nWHY IT MATTERS. (1) ADR-0034 factory discipline: the formula is written out 15 times; a change to it has to find every copy. (2) ADR-0035 section 7 says every identity value carries a label derived from its scheme constant; grammar-backed fingerprints carry hgfp2:, these carry none. NOT CHECKED: whether the bare-hex values reach emitted output unlabelled, and whether a spec row exempts language=None nodes. stamp_symbol_fingerprints keeps bare hex on language=None nodes (fingerprint.py:637-643).\n\nASK. One factory for the stand-in fingerprint, every site routed through it; decide (owner, if the spec is silent) whether it carries the hgfp label. If the label changes, that is an identity change and goes in the next stable-id bump (identity PR, see ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md). Found by the 11-19 review of WI-tapak, which the owner ruled stays out of the identity PR because a SymbolFingerprint NewType would only wrap these copies."  # 792f
+    fields: {}  # 792f

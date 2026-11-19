@@ -27,3 +27,25 @@
   clock: 2  # 5c88
   nonce: 5c88  # 5c88
   message: "OWNER APPROVAL, 2026-11-18 ~03:50 UTC (in session). I asked: 'the fix is in .githooks/, which is a governance path outside the pre-approval you gave for the smart-test plan. Does listing it in the file [~/hypergumbo_lab_notebook/after_fast_smart_test.txt] mean you approve that change and its merge through auto-pr without --gov?' The owner answered: 'INV-kosok - yes'. Scope of the approval: the fix for this invariant in .githooks/ (limit repair-agent-perms.sh to the tracker directories it exists for, with a test that drives the git hook), merged by auto-pr without --gov. Not asked again and NOT answered: whether INV-todig is reopened. Re-measured 2026-11-18 03:26 UTC: .agent/.last_session_transcript.jsonl and .training-data.jsonl are rw-rw----, the archive directory rwxrws---, 714 of 714 archive entries have a group bit, all in group jgstern_agent (0 in project-dev). Work starts after the fast-smart-test plan, per the owner's instruction."  # 5c88
+- op: discuss  # 6087
+  at: '2026-11-19T06:07:59Z'  # 6087
+  by: agent  # 6087
+  actor: jgstern_agent  # 6087
+  clock: 3  # 6087
+  nonce: '6087'  # 6087
+  message: "Merged as PR #2274, dev SHA 6fe51888a87e."  # 6087
+- op: update  # c5c1
+  at: '2026-11-19T06:13:57Z'  # c5c1
+  by: agent  # c5c1
+  actor: jgstern_agent  # c5c1
+  clock: 4  # c5c1
+  nonce: c5c1  # c5c1
+  set:  # c5c1
+    status: satisfied  # c5c1
+- op: discuss  # 38b8
+  at: '2026-11-19T06:13:58Z'  # 38b8
+  by: agent  # 38b8
+  actor: jgstern_agent  # 38b8
+  clock: 5  # 38b8
+  nonce: 38b8  # 38b8
+  message: "SATISFIED. Fixed in PR #2274 (dev 769b52eec): .githooks/repair-agent-perms.sh repairs only .agent/tracker and .agent/tracker-workspace (an empty list returns, so find never searches the current directory). Owner-approved governance change (2026-11-18), merged by auto-pr without --gov.\nBEHAVIORAL EVIDENCE. (1) Production-path test: tests/test_transcript_perms.py::TestGitHooksKeepTranscriptsOwnerOnly drives the REAL post-checkout and post-merge hooks through a real branch checkout and a real merge in a throwaway repository (a fake `id` reports another primary group so the two-user branch fires): a 600 transcript and 700 archive dirs stay so; both tracker trees still get g+rw / g+rwxs. Red before the fix (transcript 0660). Mutations kosok/muts.tsv: 4 of 4 red. (2) The item's own repro on this checkout, 2026-11-19 ~06:40Z, after tightening the files earlier checkouts had loosened (once, with transcript_perms.sh's harden helpers): stat -> 600 .last_session_transcript.jsonl, 600 .training-data.jsonl, 700 .archived-transcripts; `git checkout -- .ci/affected-tests.txt` -> same; `git checkout -b tmp/kosok-check && git checkout dev` -> same; 0 of the top-level transcript files and 0 of 720 archive/rotation-queue/deprecated-datasets entries carry a group or other bit; .agent/tracker and tracker/.ops stay drwxrwsr-x project-dev. A live merge was not exercised (origin/dev had nothing to merge); the hook-driven test covers it.\nNOT DECIDED HERE (owner's call, not asked again): whether INV-todig is reopened."  # 38b8
