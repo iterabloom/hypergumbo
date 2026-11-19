@@ -3030,7 +3030,7 @@ router.get('/users', handleUsers);
         assert routes[0].name == "GET /users"
         assert routes[0].meta.get("http_method") == "GET"
         assert routes[0].stable_id is not None
-        assert len(routes[0].stable_id) == len(STABLE_ID_PREFIX) + 16  # hgstableid15:<16hex>
+        assert len(routes[0].stable_id) == len(STABLE_ID_PREFIX) + 16  # hgstableid<N>:<16hex>
         assert routes[0].meta.get("handler_ref") == "handleUsers"
 
     def test_express_chained_route_syntax(self, tmp_path: Path) -> None:

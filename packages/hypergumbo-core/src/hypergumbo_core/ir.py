@@ -720,9 +720,11 @@ class Symbol:
             fingerprint (``hgrepofp<N>:``) cannot be mistaken for one
             another, and two ids from different algorithms never compare
             equal (ADR-0035 §"Value labels"). Each label is derived from its
-            scheme constant (``identity_schemes.value_label``). The labels are labels
-            only: stableid-v15 wrote the digest stableid-v14 wrote after
-            ``sha256:``.
+            scheme constant (``identity_schemes.value_label``). The label
+            and the digest are versioned together: a scheme bump relabels
+            every value and moves the digests its change touches (stableid-v15
+            was labels only; which digests each later scheme moved is in the
+            spec's ``stable_id_scheme`` version history).
         shape_id: Structural *skeleton* hash — the parse subtree with
             identifiers, literals, comments, and punctuation STRIPPED
             (spec §6 ``shape_id``; compute_shape_id), so two symbols with the same

@@ -841,7 +841,7 @@ func main() {
         assert len(routes) == 1
         assert (routes[0].meta or {}).get("handler_name") == "submitHandler"
         assert (routes[0].meta or {}).get("framework_role") == "route"
-        assert len(routes[0].stable_id) == len(STABLE_ID_PREFIX) + 16  # hgstableid15:<16hex> (ADR-0035 §3)
+        assert len(routes[0].stable_id) == len(STABLE_ID_PREFIX) + 16  # hgstableid<N>:<16hex> (ADR-0035 §3)
 
     def test_no_routes_in_non_web_code(self, tmp_path: Path) -> None:
         """No routes detected in code without web framework patterns."""
@@ -1972,7 +1972,7 @@ func listUsers(w http.ResponseWriter, r *http.Request) {}
         # Mount stable_id uses hash-based format (ADR-0035 §3)
         assert mount.stable_id is not None
         # make_route_stable_id returns raw hex digest
-        assert len(mount.stable_id) == len(STABLE_ID_PREFIX) + 16  # hgstableid15:<16hex>
+        assert len(mount.stable_id) == len(STABLE_ID_PREFIX) + 16  # hgstableid<N>:<16hex>
 
     def test_mount_creates_edge_to_handler(self, tmp_path: Path) -> None:
         """Mount creates a calls edge from enclosing function to handler."""

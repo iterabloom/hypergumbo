@@ -533,9 +533,9 @@ def _symbol_spec() -> ClassSpec:
                     "rust-analyzer (SCIP) arm (scip_stable_id_scheme). The "
                     "label names the value and its scheme, so a stable_id "
                     "never equals a shape_id (hgshapeid<N>:) or an id from "
-                    "the other algorithm; it is a label only, and the digest "
-                    "after it is what stableid-v14 wrote after sha256: "
-                    "(ADR-0035 'Value labels')."
+                    "the other algorithm (ADR-0035 'Value labels'). A scheme "
+                    "bump relabels every value and moves the digests its "
+                    "change touches (spec: stable_id_scheme version history)."
                 ),
             },
             "shape_id": {"description": (

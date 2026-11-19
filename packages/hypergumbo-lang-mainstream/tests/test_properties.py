@@ -210,7 +210,7 @@ database.name=mydb
         result = analyze_properties(tmp_path)
         prop = next((s for s in result.symbols if s.kind == "property"), None)
         assert prop is not None
-        # WI-banod: stable_id is now the canonical hgstableid15:<16hex> (not the
+        # WI-banod: stable_id is now the canonical hgstableid<N>:<16hex> (not the
         # composite node.id); node.id remains the location key.
         assert prop.stable_id.startswith(STABLE_ID_PREFIX)
         assert prop.id != prop.stable_id

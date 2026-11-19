@@ -513,7 +513,7 @@ class TestEventSourcingLinker:
         assert (symbol.meta or {}).get("framework_role") == "event_publisher"
         assert symbol.meta["event_name"] == "user:created"
         assert symbol.meta["framework"] == "event_bus"
-        # stable_id uses the canonical ``hgstableid15:<16hex>`` shape from
+        # stable_id uses the canonical ``hgstableid<N>:<16hex>`` shape from
         # ``make_protocol_stable_id`` (INV-hunup). The event_name stays
         # addressable via ``meta["event_name"]`` (asserted above) for any
         # downstream consumer that needs the human-readable identity

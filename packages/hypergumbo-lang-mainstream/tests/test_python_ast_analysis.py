@@ -1648,7 +1648,7 @@ def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
     assert len(functions) == 1
 
     func = functions[0]
-    # Non-route functions should still have hgstableid15:... stable_id
+    # Non-route functions should still have hgstableid<N>:... stable_id
     assert func["stable_id"].startswith(STABLE_ID_PREFIX)
 
 
@@ -2610,7 +2610,7 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     assert "UserView.post" in method_by_name
     get_sid = method_by_name["UserView.get"]["stable_id"]
     post_sid = method_by_name["UserView.post"]["stable_id"]
-    assert len(get_sid) == len(STABLE_ID_PREFIX) + 16  # hgstableid15:<16hex> canonical form (Phase 6 PR1)
+    assert len(get_sid) == len(STABLE_ID_PREFIX) + 16  # hgstableid<N>:<16hex> canonical form (Phase 6 PR1)
     assert len(post_sid) == len(STABLE_ID_PREFIX) + 16
     assert get_sid != post_sid  # Different methods must not collide
 
@@ -2687,7 +2687,7 @@ def test_django_route_stable_id_no_collision(tmp_path: Path) -> None:
     assert len(routes) == 2
     stable_ids = [r["stable_id"] for r in routes]
     assert stable_ids[0] != stable_ids[1], f"stable_id collision: {stable_ids}"
-    # Both should be hgstableid15:<16hex> values
+    # Both should be hgstableid<N>:<16hex> values
     assert all(len(sid) == len(STABLE_ID_PREFIX) + 16 for sid in stable_ids)
 
 

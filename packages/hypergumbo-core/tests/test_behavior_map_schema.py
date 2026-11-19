@@ -9,7 +9,7 @@ def test_new_behavior_map_has_required_top_level_fields():
     assert bm["schema_version"] == SCHEMA_VERSION
     assert bm["view"] == "behavior_map"
     assert bm["confidence_model"] == "hypergumbo-evidence-v2.2"
-    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v15"
+    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v16"
     assert bm["shape_id_scheme"] == "hypergumbo-shapeid-v4"
     assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v3"
     assert bm["scip_stable_id_scheme"] == "hypergumbo-scip-stableid-v1"
@@ -67,7 +67,7 @@ def test_each_value_label_is_derived_from_its_scheme_constant() -> None:
     from hypergumbo_core import schema
 
     pairs = (
-        (schema.STABLE_ID_PREFIX, "stableid", schema.STABLE_ID_SCHEME, "hgstableid15:"),
+        (schema.STABLE_ID_PREFIX, "stableid", schema.STABLE_ID_SCHEME, "hgstableid16:"),
         (schema.SHAPE_ID_PREFIX, "shapeid", schema.SHAPE_ID_SCHEME, "hgshapeid4:"),
         (schema.REPO_FINGERPRINT_PREFIX, "repofp", schema.REPO_FINGERPRINT_SCHEME, "hgrepofp3:"),
         (schema.SCIP_STABLE_ID_PREFIX, "scipid", schema.SCIP_STABLE_ID_SCHEME, "hgscipid1:"),
@@ -78,7 +78,7 @@ def test_each_value_label_is_derived_from_its_scheme_constant() -> None:
     for prefix, word, scheme, literal in pairs:
         assert prefix == schema.value_label(word, scheme) == literal
     # The number is the constant's: a bumped constant gives a bumped label.
-    assert schema.value_label("stableid", "hypergumbo-stableid-v16") == "hgstableid16:"
+    assert schema.value_label("stableid", "hypergumbo-stableid-v17") == "hgstableid17:"
     # The six labels are distinct, so no value reads as another kind.
     assert len({p for p, *_ in pairs}) == 6
 

@@ -183,4 +183,4 @@ def test_codebase_and_state_change_patterns_preserve_defect_content() -> None:
     # a 'state change' NOT framed as 'the canonical ... state-change' is content
     assert "state change" in deleak.strip_tokens("a CFG state change at the loop header")
     # 'the canonical ...' without a trailing state-change is content
-    assert "canonical" in deleak.strip_tokens("the canonical hgstableid15: stable_id convention")
+    assert "canonical" in deleak.strip_tokens("the canonical hgstableid<N>: stable_id convention")

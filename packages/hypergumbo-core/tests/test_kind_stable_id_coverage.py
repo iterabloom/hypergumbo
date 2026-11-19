@@ -247,7 +247,7 @@ class TestBackstopBehavior:
 
 
 class TestKindSpecificFactories:
-    """Each ``make_*_stable_id`` factory returns a non-empty hgstableid15:-prefixed string."""
+    """Each ``make_*_stable_id`` factory returns a non-empty hgstableid<N>:-prefixed string."""
 
     @pytest.mark.parametrize("factory_name,args", [
         ("make_file_stable_id", ("python", "src/main.py")),

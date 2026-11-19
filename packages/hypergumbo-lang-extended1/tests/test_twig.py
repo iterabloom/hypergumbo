@@ -223,7 +223,7 @@ Hello, {{ user.name }}!
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """Every emitted symbol's stable_id is the canonical sha256 form.
 
-        WI-rijup: stable_id must be ``hgstableid15:<16hex>`` rather than the raw
+        WI-rijup: stable_id must be ``hgstableid<N>:<16hex>`` rather than the raw
         composite ``Symbol.id``. Reuses the complete-template fixture so the
         assertion runs over blocks, for_loops, conditionals, and call_sites.
         """

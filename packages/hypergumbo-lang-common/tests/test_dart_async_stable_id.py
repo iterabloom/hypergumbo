@@ -5,7 +5,8 @@ Dart writes the marker on the function BODY, not the signature. A function
 that returns a ``Future`` without ``async`` keeps the unmarked id (pinned):
 the keyword is the signal, not the return type (ADR-0035 §1). The pinned
 value hashes the whole return type ``Future<int>``; it was
-``hgstableid15:ee2ecac25472836f`` while the return type was hashed as ``Future``.
+``hgstableid15:ee2ecac25472836f`` (a stableid-v15 id) while the return type
+was hashed as ``Future``.
 """
 
 from __future__ import annotations
