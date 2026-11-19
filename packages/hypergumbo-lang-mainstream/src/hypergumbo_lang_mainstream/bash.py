@@ -980,7 +980,8 @@ class BashAnalyzer(TreeSitterAnalyzer):
 
         :func:`shell_text` keeps byte length, so both of the base class's rules
         for this hook hold: every span still points at the real file, and the
-        returned tree is the tree of the returned bytes.
+        hook is idempotent (its output holds no NUL, so ``shell_text`` returns
+        it unchanged and Pass 2's re-parse through the hook gives this tree).
         """
         text = shell_text(source)
         return text, parser.parse(text)
