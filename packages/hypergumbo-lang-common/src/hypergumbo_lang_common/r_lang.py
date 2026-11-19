@@ -372,7 +372,7 @@ def _extract_r_symbols(
                                                     arity=None,
                                                 ),
                                                 shape_id=None,
-                                                fingerprint=hashlib.sha256(file_path.encode()).hexdigest()[:16],
+                                                fingerprint=None,  # the central stamp_symbol_fingerprints owns this (was dead bare-hex of the path)
                                                 kind="source",
                                                 name=file_path,
                                                 path=rel_path,

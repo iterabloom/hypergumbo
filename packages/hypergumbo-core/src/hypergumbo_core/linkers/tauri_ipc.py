@@ -73,9 +73,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import hashlib
 
-from ..analyze.base import make_symbol_id
+from ..analyze.base import make_symbol_id, mint_stand_in_fingerprint
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -677,7 +676,7 @@ def link_tauri_ipc(
                     stable_id=None,
                     shape_id=None,
                     display_label=f"invoke('{cmd_name}')",  # ADR-0032
-                    fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
+                    fingerprint=mint_stand_in_fingerprint(src_id),
                     # Canonical kind="function"; the role is carried in
                     # meta["framework_role"] (ADR-0027, audit-findings 0013).
                     kind="function",
@@ -802,9 +801,7 @@ def link_tauri_ipc(
                         stable_id=None,
                         shape_id=None,
                         display_label=f"{func_name}()",  # ADR-0032
-                        fingerprint=hashlib.sha256(
-                            caller_id.encode(),
-                        ).hexdigest()[:16],
+                        fingerprint=mint_stand_in_fingerprint(caller_id),
                         # Canonical kind="function"; the role is carried in
                         # meta["framework_role"] (ADR-0027, audit-findings 0013).
                         kind="function",
@@ -912,7 +909,7 @@ def link_tauri_ipc(
                             stable_id=None,
                             shape_id=None,
                             display_label=f"emit('{event_name}')",  # ADR-0032
-                            fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
+                            fingerprint=mint_stand_in_fingerprint(src_id),
                             # Role in meta["framework_role"], not the kind
                             # (ADR-0027, audit-findings 0013).
                             kind="function",
@@ -941,7 +938,7 @@ def link_tauri_ipc(
                             stable_id=None,
                             shape_id=None,
                             display_label=f"listen('{event_name}')",  # ADR-0032
-                            fingerprint=hashlib.sha256(dst_id.encode()).hexdigest()[:16],
+                            fingerprint=mint_stand_in_fingerprint(dst_id),
                             # Role in meta["framework_role"], not the kind
                             # (ADR-0027, audit-findings 0013).
                             kind="function",
