@@ -111,3 +111,106 @@ def test_swift_clause_whitespace_does_not_move_the_id(tmp_path: Path) -> None:
     [a] = _swift_ids(tmp_path / "a", ["extension Box where T: P { func g() {} }"], "Box.g", "method")
     [b] = _swift_ids(tmp_path / "b", ["extension Box\n    where T:   P\n{ func g() {} }"], "Box.g", "method")
     assert a == b
+
+
+# --- Rust: the header of the ``impl`` block a member is declared in ---------
+#
+# Rust's analogue: one type may have several ``impl`` blocks, and two of them
+# may each define a method of the same name and signature when they differ in
+# the self type's arguments (``impl Foo<A>`` / ``impl Foo<B>``), a bound
+# (``impl<T: X> Foo<T>`` / ``impl<T: Y> Foo<T>``), a ``where`` clause, or the
+# trait (``impl Display for Foo`` / ``impl Debug for Foo``, each with its
+# ``fmt``). Through scheme v15 a member hashed only ``Owner::name``, so those
+# tied. A non-plain impl's header (type parameters by position, trait, self
+# type, ``where`` clause) is now a label in the hashed scope chain; a plain
+# ``impl Foo`` adds no label, so its members hash what they did.
+
+_RUST_HEAD = (
+    "pub struct Foo<T>(T);\npub struct Bar;\npub struct A;\npub struct B;\n"
+    "pub trait X {}\npub trait Y {}\npub trait T1 { fn k(&self); }\npub trait T2 { fn k(&self); }\n"
+    "pub trait G<P> { fn k(&self); }\npub struct L<'a>(&'a u8);\npub trait H { type T; }\n"
+)
+
+# (case, impl block A, impl block B, symbol name): the two blocks differ only
+# in their header and each declares the same member.
+_RUST_PAIRS = [
+    ("type-arguments", "impl Foo<A> { pub fn f(&self) {} }", "impl Foo<B> { pub fn f(&self) {} }", "Foo::f"),
+    ("bound", "impl<T: X> Foo<T> { pub fn f(&self) {} }", "impl<T: Y> Foo<T> { pub fn f(&self) {} }", "Foo::f"),
+    ("where", "impl<T> Foo<T> where T: X { pub fn f(&self) {} }",
+     "impl<T> Foo<T> where T: Y { pub fn f(&self) {} }", "Foo::f"),
+    ("trait", "impl T1 for Bar { fn k(&self) {} }", "impl T2 for Bar { fn k(&self) {} }", "Bar::k"),
+    ("trait-arguments", "impl G<A> for Bar { fn k(&self) {} }", "impl G<B> for Bar { fn k(&self) {} }", "Bar::k"),
+    ("reference-self-type", "impl T1 for Bar { fn k(&self) {} }", "impl T1 for &Bar { fn k(&self) {} }", "Bar::k"),
+    ("nested-function", "impl T1 for Bar { fn k(&self) { fn helper() {} } }",
+     "impl T2 for Bar { fn k(&self) { fn helper() {} } }", "Bar::helper"),
+]
+
+
+def _rust_ids(root: Path, blocks: list[str], name: str) -> list[str]:
+    from hypergumbo_lang_mainstream.rust import analyze_rust
+
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "lib.rs").write_text(_RUST_HEAD + "\n".join(blocks) + "\n")
+    found = [s for s in analyze_rust(root).symbols if s.name == name and s.path.endswith("lib.rs")]
+    assert len(found) == len(blocks), [(s.name, s.kind) for s in analyze_rust(root).symbols]
+    found.sort(key=lambda s: s.span.start_line if s.span else 0)
+    assert all(s.stable_id for s in found)
+    return [str(s.stable_id) for s in found]
+
+
+@pytest.mark.parametrize(("case", "block_a", "block_b", "name"), _RUST_PAIRS,
+                         ids=[p[0] for p in _RUST_PAIRS])
+def test_rust_members_of_two_impl_blocks_hash_apart(
+    tmp_path: Path, case: str, block_a: str, block_b: str, name: str,
+) -> None:
+    a, b = _rust_ids(tmp_path / "both", [block_a, block_b], name)
+    assert a != b, case
+    [alone] = _rust_ids(tmp_path / "alone", [block_b], name)
+    assert b == alone, case
+
+
+@pytest.mark.parametrize(("case", "block", "renamed"), [
+    ("type-parameter", "impl<T: X> Foo<T> where T: Y { pub fn f(&self) {} }",
+     "impl<U: X> Foo<U> where U: Y { pub fn f(&self) {} }"),
+    ("lifetime", "impl<'a> T1 for &'a Bar { fn k(&self) {} }", "impl<'b> T1 for &'b Bar { fn k(&self) {} }"),
+    ("const", "impl<const N: usize> Foo<[u8; N]> { pub fn f(&self) {} }",
+     "impl<const M: usize> Foo<[u8; M]> { pub fn f(&self) {} }"),
+    ("whitespace", "impl<T: X> Foo<T> { pub fn f(&self) {} }",
+     "impl<T: X>\n    Foo<T>\n{ pub fn f(&self) {} }"),
+    ("member-after-path", "impl<T: H> Foo<T> where T::T: X { pub fn f(&self) {} }",
+     "impl<S: H> Foo<S> where S::T: X { pub fn f(&self) {} }"),
+    ("lifetime-bound-left-out", "impl<'a, T: X + 'a> Foo<T> where T: 'a { pub fn f(&self) {} }",
+     "impl<T: X> Foo<T> { pub fn f(&self) {} }"),
+    ("comment-left-out", "impl<T: X> /* c */ Foo<T> { pub fn f(&self) {} }",
+     "impl<T: X> Foo<T> { pub fn f(&self) {} }"),
+], ids=["type-parameter", "lifetime", "const", "whitespace", "member-after-path",
+        "lifetime-bound-left-out", "comment-left-out"])
+def test_rust_renaming_an_impl_parameter_moves_no_id(
+    tmp_path: Path, case: str, block: str, renamed: str,
+) -> None:
+    name = "Foo::f" if "Foo" in block else "Bar::k"
+    [a] = _rust_ids(tmp_path / "a", [block], name)
+    [b] = _rust_ids(tmp_path / "b", [renamed], name)
+    assert a == b, case
+
+
+@pytest.mark.parametrize(("case", "block", "name"), [
+    ("plain", "impl Bar { pub fn f(&self) {} }", "Bar::f"),
+    ("path", "impl crate::Bar { pub fn f(&self) {} }", "crate::Bar::f"),
+    ("lifetimes-only", "impl<'a> L<'a> { pub fn f(&self) {} }", "L::f"),
+    ("elided-lifetime", "impl L<'_> { pub fn f(&self) {} }", "L::f"),
+], ids=["plain", "path", "lifetimes-only", "elided-lifetime"])
+def test_rust_a_plain_impl_adds_no_label(tmp_path: Path, case: str, block: str, name: str) -> None:
+    """A plain block (once its lifetimes are left out) hashes ``Owner::f`` as
+    its qualified name, exactly as before."""
+    from hypergumbo_core.analyze.base import (
+        make_file_stable_id, make_typed_stable_id, visibility_from_modifiers,
+    )
+    from hypergumbo_lang_mainstream.rust import normalize_rust_signature
+
+    [sid] = _rust_ids(tmp_path, [block], name)
+    expected = make_typed_stable_id(
+        "method", normalize_rust_signature("(&self)"), visibility_from_modifiers(["pub"]), name="f",
+        qualified_name=name, file_stable_id=make_file_stable_id("rust", "lib.rs"),
+    )
+    assert sid == expected, case

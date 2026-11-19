@@ -93,7 +93,11 @@ through ``rust_hashed_qualified_name`` (``a::Inner::go``, not
 key). Without the scope, two ``struct Inner`` in ``mod a`` and ``mod b`` and
 their members would tie, and deleting the first would move the second's ids.
 A top-level item has an empty scope, so its id is the unscoped value
-(INV-fabih).
+(INV-fabih). A non-plain ``impl`` block is in the scope too
+(``_rust_impl_label``: its header, lifetimes left out, its own parameters
+by position), so ``fmt`` in ``impl Display for Foo`` and in ``impl Debug
+for Foo``, or ``f`` in ``impl Foo<A>`` and ``impl Foo<B>``, do not tie (they
+did until scheme v15); a plain ``impl Foo`` adds nothing.
 
 Parity with the SCIP backend
 ----------------------------
@@ -891,13 +895,101 @@ def _rust_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     second's id. The crate-level module is the file itself, which the file
     anchor identifies, so a top-level item's scope is empty. ``rust_scip``
     hashes the same chain (WI-zakub parity).
+
+    A non-plain ``impl`` block is a label too (:func:`_rust_impl_label`):
+    one type may have several impl blocks that each define the same member,
+    told apart only by the block's header (WI-lonoh).
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type == "impl_item":
+            return _rust_impl_label(n, source)
         if n.type not in ("mod_item", "function_item"):
             return None
         name_node = _find_child_by_field(n, "name")
         return node_text(name_node, source) if name_node is not None else None
     return ancestor_labels(node, label)
+
+
+#: Nodes a hashed impl header leaves out: lifetimes (Rust's coherence rules
+#: ignore them, so two impls that differ only in lifetimes overlap and cannot
+#: both define a member) and comments.
+_RUST_HEADER_DROPPED = frozenset({
+    "lifetime", "lifetime_parameter", "line_comment", "block_comment",
+})
+#: List-shaped header nodes, rebuilt from their remaining items once the
+#: lifetimes are gone: (opening token, separator, closing token).
+_RUST_HEADER_LISTS = {
+    "type_parameters": ("<", ",", ">"), "type_arguments": ("<", ",", ">"),
+    "where_clause": ("where", ",", ""), "trait_bounds": (":", "+", ""),
+    "bounded_type": ("", "+", ""),
+}
+
+
+def _rust_header_tokens(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The tokens of an impl-header node, its lifetimes left out.
+
+    A list (type parameters or arguments, bounds, a ``where`` clause) is
+    rebuilt from the items that remain, and dropped when none does
+    (``Foo<'a>`` -> ``Foo``); a ``where`` predicate on a lifetime, or left
+    with no bound (``T: 'a``), is dropped. Tokens, not text: a header hashes
+    the same however it is spaced.
+    """
+    if node.type in _RUST_HEADER_DROPPED:
+        return []
+    if node.type in _RUST_HEADER_LISTS:
+        opening, separator, closing = _RUST_HEADER_LISTS[node.type]
+        items = [t for c in node.named_children if (t := _rust_header_tokens(c, source))]
+        if not items:
+            return []
+        tokens = [opening] if opening else []
+        for index, item in enumerate(items):
+            tokens.extend([separator, *item] if index else item)
+        return [*tokens, closing] if closing else tokens
+    if node.type == "where_predicate":
+        bounds = node.child_by_field_name("bounds")
+        if bounds is None or not _rust_header_tokens(bounds, source):
+            return []
+    if node.child_count == 0:
+        return [node_text(node, source)]
+    return [t for c in node.children for t in _rust_header_tokens(c, source)]
+
+
+def _rust_impl_label(impl: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The header of a non-plain ``impl`` block, or ``None`` for a plain one.
+
+    Two impl blocks of one type may each define a member of the same name
+    and signature when their headers differ: the self type's arguments
+    (``impl Foo<A>`` / ``impl Foo<B>``), a bound (``impl<T: X> Foo<T>`` /
+    ``impl<T: Y> Foo<T>``), a ``where`` clause, the trait (``impl Display
+    for Foo`` / ``impl Debug for Foo``, each with its ``fmt``), or a
+    reference self type (``impl Tr for &Foo``). Through scheme v15 a member
+    hashed ``Owner::name`` only, so those tied and the within-file occurrence
+    split told them apart by order.
+
+    The label is the header's tokens (every child of the block but its body,
+    :func:`_rust_header_tokens`, so lifetimes and comments are left out)
+    joined by one space, with the block's own type and ``const`` parameters
+    written as their position, as a declaration's own clause is (WI-bubak):
+    ``impl<'a, T: X> Tr for &'a Foo<T>`` -> ``impl < $0 : X > Tr for & Foo <
+    $0 >``, so renaming one moves no id. A name after ``::`` is a member, not
+    the parameter, and is kept. A block that is PLAIN once its lifetimes are
+    gone -- no parameters, no trait, no ``where`` clause, a bare type name as
+    its self type (``impl Foo``, ``impl<'a> Foo<'a>``) -- has no label, so
+    its members hash what they did.
+    """
+    tokens = [t for i, c in enumerate(impl.children) if impl.field_name_for_child(i) != "body"
+              for t in _rust_header_tokens(c, source)]
+    if impl.child_by_field_name("trait") is None and tokens[0] == "impl" and all(
+            t == "::" or t.isidentifier() for t in tokens[1:]):
+        return None
+    params = impl.child_by_field_name("type_parameters")
+    declared = [
+        c.child_by_field_name("name") for c in (params.named_children if params is not None else [])
+        if c.type != "lifetime_parameter"
+    ]
+    names = {node_text(n, source): f"${i}" for i, n in enumerate(n for n in declared if n is not None)}
+    return " ".join(names.get(t, t) if i == 0 or tokens[i - 1] != "::" else t
+                    for i, t in enumerate(tokens))
 
 
 def rust_hashed_qualified_name(
