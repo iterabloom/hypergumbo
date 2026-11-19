@@ -39,6 +39,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Rust methods in different impl blocks get distinct ids.**
 - **C# and Swift ids hash qualified types as written.**
 - **Swift names containing `$` are no longer cut short.**
+- **Rust receivers spelled two ways hash the same.**
 - **`symbols` piped into `head` now exits 141, not 1.**
 
 ### Development tools and CI
