@@ -17,7 +17,7 @@ a test, 35 of them narrowed, no failed test outside the selection that fails
 on its own with the fault. That bounds the per-run miss rate below about 7%
 (95%); it does not show it is zero. smart-test asks twice: over the local run
 set, and over the manifest's files alone, whose answer the manifest carries
-for PR CI (``#- <id>`` lines). The twice-daily full run runs everything.
+for PR CI (``#- <id>`` lines). The scheduled full run runs everything.
 
 IT REFUSES, AND THE RUN IS NOT NARROWED, WHEN:
 

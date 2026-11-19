@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The self-claim drift gate runs on the twice-daily cron, and only there.
+"""The self-claim drift gate runs on the scheduled full-suite cron, and only there.
 
 WHERE IT RUNS, AND THE TRADE-OFF. The gate (``self-claims-gate`` in
 ``.woodpecker/full-suite.yml``) is not in the per-PR pipeline: it is slow

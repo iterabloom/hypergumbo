@@ -3,7 +3,7 @@
 # Woodpecker full-suite workflow — whole-codebase 100%-coverage validation.
 # Port of .github/workflows/full-suite.yml. CRON-ONLY, via a Woodpecker cron
 # named "full-suite" (configured in the repo's Woodpecker settings, NOT here —
-# intended schedule 0 1,13 * * *). The GHA source deliberately REMOVED the
+# schedule 0 1,9,21 * * *, set by the owner 2026-11-19). The GHA source deliberately REMOVED the
 # post-merge push trigger ("with 20+ merges/day and singleton concurrency the
 # queue never clears") and serialized runs via `concurrency: full-suite-singleton`.
 # Woodpecker has no in-file concurrency guard — if you ever add a push trigger,
@@ -208,7 +208,7 @@ steps:
   # tests/test_ci_self_claims_gate_scope.py pins that this arm survives, stays
   # unconditional, and actually invokes the script.
   #
-  # DETECTION IS NOW BOUNDED BY THE CRON CADENCE (~12h), not by one commit.
+  # DETECTION IS NOW BOUNDED BY THE CRON CADENCE (up to 12 h, 21:00 -> 09:00 UTC), not by one commit.
   # This workflow publishes ONE aggregate status for all six of its steps, so
   # on GitHub a drift verdict reads as "full-suite is red" — read it with
   # `ci-debug cron-status`, which finds the verdict on whatever commit carries

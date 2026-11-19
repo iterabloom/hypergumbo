@@ -25,7 +25,7 @@ Named for the mapper: `scripts/check-mypy-ratchet` resolves to
 `tests/test_check_mypy_ratchet*`, so editing the script selects this file.
 NOTE a real gap this cannot close — `ci.yml` is not a mapped source, so editing
 *it* selects nothing (the INV-kinin class). A silent revert of the flip is
-caught by the twice-daily full suite, not per-PR.
+caught by the scheduled full suite, not per-PR.
 """
 from __future__ import annotations
 

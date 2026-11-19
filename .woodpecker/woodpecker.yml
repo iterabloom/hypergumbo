@@ -411,7 +411,7 @@ steps:
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
 
   # ── self-claim drift gate: REMOVED FROM THIS PIPELINE (owner decision,
-  #    2026-08-30). It now runs ONLY on the twice-daily full-suite cron.
+  #    2026-08-30). It now runs ONLY on the scheduled full-suite cron.
   #
   # The history matters because this reverses a reversal. The gate was moved
   # INTO this pipeline under INV-bobor, after a self-claim regression
@@ -788,7 +788,7 @@ steps:
 #                   before Phase-4 release (the multi-Python verification the
 #                   release path relies on). Woodpecker crons are configured in
 #                   repo settings, NOT here — the human creates crons named
-#                   "full-suite" (0 1,13 * * *) and "nightly" (30 5 * * *).
+#                   "full-suite" (0 1,9,21 * * *) and "nightly" (30 5 * * *).
 # STILL DEFERRED:
 # tracker-ci.yml  → fold into the `tracker-validate` step above or a small sibling.
 # release.yml     → STAYS on GitHub Actions (locked decision: minimal tag-gated

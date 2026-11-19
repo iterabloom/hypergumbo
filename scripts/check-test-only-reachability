@@ -10,7 +10,7 @@ exit codes.
 WHY THIS IS NOT A PER-PR GATE. It needs a behaviour map of this repository, and
 building one takes **13m40s and produces 236MB** (measured 2026-09-02). That is
 an order of magnitude past a per-PR check, so this reads a map somebody else
-already built and is wired into the twice-daily full-suite instead. Given a
+already built and is wired into the scheduled full-suite instead. Given a
 map, the gate itself runs in seconds.
 
 EXIT CODES, following the mypy ratchet's contract deliberately — an

@@ -11,7 +11,7 @@ grammar build: the python grammar is a wheel dependency of lang-mainstream.
 WHY A GUARD AND NOT THE GATE. scripts/check-self-claims compares eighteen
 verdicts against the recorded snapshot and needs the full map (~17 min cold);
 its per-PR arm was removed for that cost on 2026-08-30, so a regression now
-surfaces on the twice-daily cron. Four of the five drift incidents since were
+surfaces on the scheduled full-suite cron. Four of the five drift incidents since were
 one shape -- a shipped call into a module the catalogue could not classify --
 and that shape is decidable from the python analyzer's edges alone. This is the
 cheap arm for that shape; everything else the gate checks still waits for the

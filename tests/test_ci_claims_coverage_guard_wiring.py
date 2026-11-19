@@ -2,7 +2,7 @@
 """The self-claims COVERAGE guard runs per PR (INV-jojog).
 
 ``test_ci_self_claims_gate_scope.py`` pins that the DRIFT gate has no per-PR
-arm, for cost, leaving detection to the twice-daily cron. The commonest drift --
+arm, for cost, leaving detection to the scheduled full-suite cron. The commonest drift --
 a shipped call into a module the I/O catalogue cannot classify -- is decidable
 from the python analyzer's edges alone, cheaply enough to run per PR. This pins
 the cheap arm that decides it:
