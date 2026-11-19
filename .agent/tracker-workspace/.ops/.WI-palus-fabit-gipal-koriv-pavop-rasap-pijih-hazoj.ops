@@ -25,3 +25,10 @@
   clock: 2  # 2bce
   nonce: 2bce  # 2bce
   message: "OWNER RULING 2026-11-19 (in session): goes in an additional stable-id PR at the end of the plan (a second bump after v16), with WI-lonoh's argument-label and static-vs-instance parts."  # 2bce
+- op: discuss  # 9927
+  at: '2026-11-19T18:48:18Z'  # 9927
+  by: agent  # 9927
+  actor: jgstern_agent  # 9927
+  clock: 3  # 9927
+  nonce: '9927'  # 9927
+  message: "Same class found in Rust impl headers by PR 3 agent 6 (commit 68fa21b7e hashes a non-plain impl's header): fmt::Display vs std::fmt::Display in an impl header hash apart. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md residual 5."  # 9927

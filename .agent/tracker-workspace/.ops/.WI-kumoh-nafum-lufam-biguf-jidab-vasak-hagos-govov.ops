@@ -18,3 +18,10 @@
     pr_ref:  # ebc2
     description: "Typed stable ids hash signature layout: reflowing a signature (newlines, spaces) moves its id.\n\nREPROS (PR 3 branch, after f580de52d):\n- Dart: normalize_dart_signature(\"({\\n  required String text,\\n  int sid,\\n})\") gives '({\\n  required String,int,})' while the one-line form gives '({required String,int)'. dart format reflows parameter lists with a trailing comma onto separate lines, so this is common in Flutter code.\n- Rust: (x: & mut T) and (x: &mut T) hash differently.\n- Swift: multi-line return types hash their newlines (TCA Sources/ComposableArchitecture/Reducer/ReducerBuilder.swift:87, _Conditional._reduce).\nNot swept: other languages. A formatter run should not move an id. Fixing it moves the id of every signature whose hashed text contains layout, so it needs a stable-id bump. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md residuals 2 and 4."  # ebc2
     fields: {}  # ebc2
+- op: discuss  # 1dac
+  at: '2026-11-19T18:49:39Z'  # 1dac
+  by: agent  # 1dac
+  actor: jgstern_agent  # 1dac
+  clock: 2  # 1dac
+  nonce: 1dac  # 1dac
+  message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump): layout must not be an id input; normalize whitespace in every hashed signature / scope-label text, all languages, with per-language churn measured."  # 1dac

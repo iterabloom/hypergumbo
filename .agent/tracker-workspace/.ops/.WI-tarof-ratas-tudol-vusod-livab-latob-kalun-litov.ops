@@ -1,0 +1,20 @@
+- op: create  # 1c8a
+  at: '2026-11-19T18:48:12Z'  # 1c8a
+  by: agent  # 1c8a
+  actor: jgstern_agent  # 1c8a
+  clock: 1  # 1c8a
+  nonce: 1c8a  # 1c8a
+  data:  # 1c8a
+    kind: work_item  # 1c8a
+    title: "swift: same-named local types in two overloads of one generic function tie (function labelled by name only)"  # 1c8a
+    status: todo_hard  # 1c8a
+    priority: 3  # 1c8a
+    parent:  # 1c8a
+    tags:  # 1c8a
+    - stable_id  # 1c8a
+    isbefore: []  # 1c8a
+    duplicate_of: []  # 1c8a
+    not_duplicate_of: []  # 1c8a
+    pr_ref:  # 1c8a
+    description: "Swift: same-named local types inside two overloads of one generic function tie, because a function is labelled in the scope chain by name only.\n\nSibling shape of INV-fabih (nearest-owner hashing). Found by PR 3 agent 6 while building the extension where-clause hash (d2a883697). Related, by design per ADR-0035 (no stability across a type-parameter rename): renaming an in-repo type's parameter (struct Box<T> -> <U>) moves the ids of members of its constrained extensions, since the extension clause is hashed as written. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md residual 6."  # 1c8a
+    fields: {}  # 1c8a

@@ -1,0 +1,20 @@
+- op: create  # 790a
+  at: '2026-11-19T21:22:49Z'  # 790a
+  by: agent  # 790a
+  actor: jgstern_agent  # 790a
+  clock: 1  # 790a
+  nonce: 790a  # 790a
+  data:  # 790a
+    kind: work_item  # 790a
+    title: "typescript: a callback's scope label is the enclosing callback's body text, so editing the body moves nested ids"  # 790a
+    status: todo_hard  # 790a
+    priority: 2  # 790a
+    parent:  # 790a
+    tags:  # 790a
+    - stable_id  # 790a
+    isbefore: []  # 790a
+    duplicate_of: []  # 790a
+    not_duplicate_of: []  # 790a
+    pr_ref:  # 790a
+    description: "TypeScript: a callback's scope label can be the source text of the enclosing callback's body, so editing that body moves the ids of everything nested in it.\n\nREPRO: analyse koel resources/assets/js/components/ai/AiChatMessage.spec.ts: symbols _cb_anonymous hash qualified_name \"{\\n  const h = createHarness()\\n\\n  it('renders assistant message content', ...\" ; also _cb_useListSelection with a destructuring pattern as its label. A minimal describe('x', () => { it('a', () => {}) }) does NOT reproduce it; not narrowed further. Since PR 3 commit 8996a2812 layout is no longer hashed, but the content is. Fixing it moves ids, so it needs a stable-id bump. Found by PR 3 agent 7: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent7/RESULTS.md R3."  # 790a
+    fields: {}  # 790a
