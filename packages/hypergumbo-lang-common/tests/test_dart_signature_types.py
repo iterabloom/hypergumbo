@@ -333,6 +333,12 @@ class Widget {
 # Stable ids of the hole-free declarations above, taken from the analyzer
 # before the holes were filled (dev 3da1f85b37, file ``clean.dart`` at the
 # root of the analysed tree), except where a comment says an id moved.
+# WI-kumoh (stable-id v16): layout is not hashed; a text is hashed in one
+# canonical spacing, the one most texts already had. named, fnTyped and
+# fragment were spelled otherwise: the hashed text leaves a named group's
+# ``{`` open, so its commas read as a type's (canonical ``, ``) and the ``{``
+# takes a space after it (``({ required int, int, List<int>?)Foo``). Each was:
+# named 1bb432604e33ccde, fnTyped 5b29217af303859d, fragment 5f06492ec22f4a50.
 PINNED = {
     ("function", "add"): f"{STABLE_ID_PREFIX}b25ded629f362a02",
     ("function", "dyn"): f"{STABLE_ID_PREFIX}39de927c48988b68",
@@ -340,14 +346,14 @@ PINNED = {
     # no longer hashes ``[int c =`` (opt was 3df1e40f64b5cae0) and ``{int b =
     # 2}`` no longer hashes ``int b`` (named was 724b4ce75e477e92).
     ("function", "opt"): f"{STABLE_ID_PREFIX}6b61da94e22d753c",
-    ("function", "named"): f"{STABLE_ID_PREFIX}1bb432604e33ccde",
-    ("function", "fnTyped"): f"{STABLE_ID_PREFIX}5b29217af303859d",
+    ("function", "named"): f"{STABLE_ID_PREFIX}cc03281d65f04681",
+    ("function", "fnTyped"): f"{STABLE_ID_PREFIX}2efe8e614ed4e81c",
     # Moved twice in stable-id v16: by the shared FQN strip fix (the
     # renderer's default-value fragment closed the parameter list early, and
     # v15's strip cut the rest at its last dot, dropping ``Foo f``: was
     # 788a1f68d49853d8, then 520d66bf5aa2d402), and by WI-doboh (each default
     # is written ``...`` whole and not hashed: the text is ``({Size,Foo)``).
-    ("function", "fragment"): f"{STABLE_ID_PREFIX}5f06492ec22f4a50",
+    ("function", "fragment"): f"{STABLE_ID_PREFIX}5c870688c98590d7",
     ("function", "commented"): f"{STABLE_ID_PREFIX}a980655d150d1db1",
     ("field", "Widget.count"): f"{STABLE_ID_PREFIX}b9ad19582563bf1f",
     ("field", "Widget.foo"): f"{STABLE_ID_PREFIX}52b2647c5aac5b99",

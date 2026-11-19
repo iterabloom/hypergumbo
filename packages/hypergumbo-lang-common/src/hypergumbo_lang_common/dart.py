@@ -292,6 +292,28 @@ def _dart_group_text(group: "tree_sitter.Node", source: bytes) -> str:
 #: A default value as the signature text writes it (``_dart_group_text``).
 _DART_DEFAULT_RE = re.compile(r"\s*[=:]\s*\.\.\.(?=\s*[,}\]])")
 
+#: The layout ``dart format`` adds when it splits a list over lines: a
+#: trailing comma, line breaks and indentation, and the whitespace inside a
+#: bracket or before a comma.
+_DART_TRAILING_COMMA_RE = re.compile(r",\s*(?=[)\]}])")
+_DART_WHITESPACE_RE = re.compile(r"\s+")
+_DART_INNER_SPACE_RE = re.compile(r"(?<=[(\[{<]) | (?=[)\]}>,])")
+
+
+def _dart_one_line(signature: str) -> str:
+    """``signature`` in the one-line form ``dart format`` writes it in (WI-kumoh).
+
+    The types-first rule drops a parameter's last word, its name, and a
+    named or optional group's closing bracket goes with it only when they
+    touch: the reflowed ``{\\n  int sid,\\n}`` kept ``sid`` where the one-line
+    ``{int sid}`` did not. So the text is read as one line first: no trailing
+    comma (it separates nothing in a Dart list), every whitespace run one
+    space, none after an opening bracket or before a closing one or a comma.
+    The text a declaration displays keeps its layout.
+    """
+    one_line = _DART_WHITESPACE_RE.sub(" ", _DART_TRAILING_COMMA_RE.sub("", signature))
+    return _DART_INNER_SPACE_RE.sub("", one_line).strip()
+
 
 #: Words that may stand before a parameter's type (``required``, ``covariant``
 #: and ``final`` in Dart; ``const`` and ``late`` are accepted by the grammar).
@@ -447,7 +469,9 @@ def normalize_dart_signature(
     the same parameter without one: neither the value nor its presence is
     hashed, and the types-first rule drops the parameter's name, not the
     ``=`` (until WI-doboh ``{bool loud = ...}`` hashed ``{bool loud =``). No
-    string literal is skipped (``_DART_QUOTES``).
+    string literal is skipped (``_DART_QUOTES``). The text is then read in
+    its one-line form (``_dart_one_line``), so a list ``dart format`` split
+    over lines hashes as the same list on one line (WI-kumoh).
     """
     from hypergumbo_core.analyze.base import (
         find_matching_paren,
@@ -456,7 +480,7 @@ def normalize_dart_signature(
     )
 
     if signature is not None:
-        signature = _DART_DEFAULT_RE.sub("", signature)
+        signature = _dart_one_line(_DART_DEFAULT_RE.sub("", signature))
     shared = normalize_signature_types_first(signature, type_params, quotes=_DART_QUOTES)
     if shared is None or signature is None:
         return None

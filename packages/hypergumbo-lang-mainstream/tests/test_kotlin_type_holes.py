@@ -200,11 +200,16 @@ class Plain(val a: Int, var b: String?) {
 }
 """
 
+# WI-kumoh (stable-id v16): layout is not hashed; a text is hashed in one
+# canonical spacing, the one most texts already had. These three were spelled
+# otherwise: ``suspend ()`` (canonical ``suspend()``), ``$0 : Any`` (canonical
+# ``$0: Any``). Each was: cSuspendType 9c15b6c19b92f167, cBound
+# c3a280018d2b0237, cWhere dcb5982900f7a714.
 _CLEAN_PINS = {
     "cPlain": f"{STABLE_ID_PREFIX}b7b34c46e09dc869",
     "cNullable": f"{STABLE_ID_PREFIX}af36abebae2237c5",
     "cFun": f"{STABLE_ID_PREFIX}60420bdcb1a07587",
-    "cSuspendType": f"{STABLE_ID_PREFIX}9c15b6c19b92f167",
+    "cSuspendType": f"{STABLE_ID_PREFIX}abbc218e3cdd2e40",
     # Moved by the shared FQN strip fix (stable-id v16): v15 cut the receiver
     # function type ``StringBuilder.() -> Unit`` at its dot, to ``() -> Unit``
     # (was 7687ff26be87c825).
@@ -214,8 +219,8 @@ _CLEAN_PINS = {
     # Moved by WI-bubak (stable-id v16): a declaration's own type-parameter
     # clause is hashed, its names by position (was 56cc8cccaca74124,
     # eb662138077f8f03, 47917587af406244).
-    "cBound": f"{STABLE_ID_PREFIX}c3a280018d2b0237",
-    "cWhere": f"{STABLE_ID_PREFIX}dcb5982900f7a714",
+    "cBound": f"{STABLE_ID_PREFIX}793a000de8b3845a",
+    "cWhere": f"{STABLE_ID_PREFIX}b77b121541a37d9c",
     "cReified": f"{STABLE_ID_PREFIX}7bc4eaa5c559c104",
     "cDefault": f"{STABLE_ID_PREFIX}572450cc72dfa7d8",
     "cSuspend": f"{STABLE_ID_PREFIX}d6f66cb0c812e82a",
