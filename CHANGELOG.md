@@ -32,6 +32,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Development tools and CI
 
+- **The id-construction check now reads edge endpoints.**
 - **mypy now rejects a hand-built node id.**
 - **CI steps installing pytest alone pin its version.**
 - **Scheduled CI runs publish their step-by-step verdict.**

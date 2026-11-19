@@ -556,6 +556,133 @@ class TestTheNodeIdWrapping:
         assert find_id_construction_drift(root) == []
 
 
+class TestTheEdgeEndpoints:
+    """``src=`` / ``dst=`` of an edge answer to the NODE grammar (WI-tatop).
+
+    An endpoint is a node's id, so a hand-built one is judged by ADR-0036's
+    five-slot grammar through the same three hops as ``Symbol(id=...)``. About
+    40 endpoints in 23 producers were spelled ``f"{rel_path}:file"``,
+    ``f"meson:subdir:{d}"``, ``f"r:external:{pkg}::{f}"``: none parses, and
+    finalize folded every edge of one spelling into one ``<unknown>`` node.
+    """
+
+    @pytest.mark.parametrize("call", [
+        'Edge.create(src=f"{path}:file", dst=d, edge_type="imports", line=1)',
+        'Edge.create(src=s, dst=f"meson:subdir:{name}", edge_type="includes", line=1)',
+        'Edge(id=i, src=s, dst=f"r:external:{pkg}::{name}", edge_type="calls")',
+        'Edge.create(f"file:{path}", d, "imports", 1)',
+        'Edge.create(s, f"twig:template:{name}", "includes", 1)',
+    ])
+    def test_a_hand_built_endpoint_is_judged(self, tmp_path: Path, call: str) -> None:
+        root = _write(tmp_path, f'''
+            def f(path, name, pkg, s, d, i):
+                return {call}
+        ''')
+        drift = find_id_construction_drift(root)
+        assert len(drift) == 1
+        assert "edge_endpoint" in drift[0]
+
+    def test_through_a_local(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(s, name, found):
+                dst_id = found
+                if dst_id is None:
+                    dst_id = f"racket:unresolved:{name}"
+                return Edge.create(src=s, dst=dst_id, edge_type="calls", line=1)
+        ''')
+        drift = find_id_construction_drift(root)
+        assert len(drift) == 1
+        assert "wrong_field_count" in drift[0]
+
+    def test_through_a_same_module_helper(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def _dst(name):
+                return f"verilog:external:{name}:module"
+
+            def f(s, name):
+                return Edge.create(src=s, dst=_dst(name), edge_type="calls", line=1)
+        ''')
+        assert len(find_id_construction_drift(root)) == 1
+
+    @pytest.mark.parametrize("expr", [
+        'sym.id if sym is not None else f"pony:{path}"',
+        'found or f"robot:{path}"',
+        'found or (a and f"x:{path}")',
+    ])
+    def test_each_branch_of_a_choice_is_judged(self, tmp_path: Path, expr: str) -> None:
+        root = _write(tmp_path, f'''
+            def f(sym, found, a, path):
+                src = {expr}
+                return Edge.create(src=src, dst=found, edge_type="calls", line=1)
+        ''')
+        drift = find_id_construction_drift(root)
+        assert len(drift) == 1
+        assert "edge_endpoint (src)" in drift[0]
+
+    def test_a_bare_literal_endpoint_is_judged(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(s):
+                return Edge.create(src=s, dst="amsmath", edge_type="imports", line=1)
+        ''')
+        assert len(find_id_construction_drift(root)) == 1
+
+    def test_a_concatenated_endpoint_is_refused(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(s, name):
+                return Edge.create(src=s, dst="x:" + name, edge_type="calls", line=1)
+        ''')
+        drift = find_id_construction_drift(root)
+        assert len(drift) == 1
+        assert "concatenated" in drift[0]
+
+    @pytest.mark.parametrize("endpoint", [
+        'make_file_id("latex", path)',
+        'external_target("nix", name)[0]',
+        'f"{lang}:{path}:0-0:{name}:unresolved"',
+        'NodeId(f"go:{path}:0-0:{name}:unresolved")',
+        'sym.id',
+    ])
+    def test_a_minted_or_conformant_endpoint_passes(
+        self, tmp_path: Path, endpoint: str,
+    ) -> None:
+        root = _write(tmp_path, f'''
+            def f(lang, path, name, sym):
+                return Edge.create(src={endpoint}, dst={endpoint}, edge_type="calls", line=1)
+        ''')
+        assert find_id_construction_drift(root) == []
+
+    def test_an_empty_initializer_is_not_an_endpoint(self, tmp_path: Path) -> None:
+        """``ref = ""`` before a loop that sets it is a sentinel the producer
+        tests before building the edge, not a value the edge can carry."""
+        root = _write(tmp_path, '''
+            def f(path, nodes):
+                ref = ""
+                for n in nodes:
+                    ref = make_file_id("latex", n)
+                if ref:
+                    return Edge.create(src=ref, dst=ref, edge_type="imports", line=1)
+        ''')
+        assert find_id_construction_drift(root) == []
+
+    def test_positions_after_a_starred_argument_are_not_guessed(
+        self, tmp_path: Path,
+    ) -> None:
+        root = _write(tmp_path, '''
+            def f(parts, name):
+                return Edge.create(*parts, dst=f"nix:external:{name}", line=1)
+        ''')
+        drift = find_id_construction_drift(root)
+        assert len(drift) == 1
+        assert "edge_endpoint (dst)" in drift[0]
+
+    def test_another_classes_create_is_not_an_edge(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(path):
+                return AnalysisRun.create(src=f"{path}:file", dst="x")
+        ''')
+        assert find_id_construction_drift(root) == []
+
+
 class TestTheLiveTree:
     def test_live_tree_passes(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

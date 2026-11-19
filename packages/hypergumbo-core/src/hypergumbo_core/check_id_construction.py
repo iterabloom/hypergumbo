@@ -45,6 +45,24 @@ both constructors, an id built by a ``+`` chain is reported as
 ``concatenated_id``, because a concatenation cannot be checked against
 either grammar.
 
+EDGE ENDPOINTS ARE NODE IDS. An edge's ``src`` and ``dst`` name nodes, so an
+endpoint written by hand answers to the NODE grammar, read through the same
+three hops: the ``src=`` / ``dst=`` keywords of ``Edge(...)`` and
+``Edge.create(...)``, and ``Edge.create``'s first two positional arguments
+(:func:`_edge_endpoints`), each branch of a conditional or ``or`` chain
+judged on its own (:func:`_alternatives`: ``found or f"robot:{path}"``).
+About 40 endpoints in 23 producers were spelled
+``f"{rel_path}:file"``, ``f"meson:subdir:{d}"``, ``f"r:external:{p}::{f}"``
+(WI-tatop); none parses, and finalize folded every edge of one spelling into
+one ``<unknown>`` node, a defect the runtime count
+(``AnalysisRun.non_id_edge_endpoints``) sees only on a run whose tree holds
+the construct. A bare string literal is judged too (``dst="amsmath"``), but
+not the EMPTY string: ``ref = ""`` is the sentinel a producer assigns before
+the loop that sets it, and the hop reads every assignment to the local. An
+endpoint passed through a parameter, a helper of another module or a
+computed expression is not seen (the three-hop boundary); a
+``make_unresolved_edge`` / helper-built endpoint is minted by a factory.
+
 THE KIND SLOT AGAINST THE SYMBOL'S KIND. A grammatical id can still name the
 wrong kind: ADR-0036 Ruling 2 says the kind slot IS ``Symbol.kind``. Four
 producers broke it while passing the grammar check, two of them by calling the
@@ -120,6 +138,10 @@ KNOWN_KIND_SLOT_HOLES: dict[tuple[str, str, str], str] = {}
 #: they get two rules.
 _NODE_ID_CONSTRUCTORS = frozenset({"Symbol"})
 _EDGE_ID_CONSTRUCTORS = frozenset({"Edge"})
+
+#: The keywords that hold an edge's endpoints, and their positions in
+#: ``Edge.create(src, dst, ...)``.
+_EDGE_ENDPOINTS = ("src", "dst")
 
 #: ``Edge.id``'s canonical shape, minted at ``ir.py``'s ``edge:sha256:{hash}``
 #: and copied into per-language ``_make_edge_id`` helpers.
@@ -207,6 +229,58 @@ def _callee_name(call: ast.Call) -> str | None:
     if isinstance(func, ast.Name):
         return func.id
     return None
+
+
+def _edge_endpoints(call: ast.Call) -> list[tuple[str, ast.expr]]:
+    """``(side, expression)`` for each endpoint an edge construction passes.
+
+    ``Edge(src=..., dst=...)`` and ``Edge.create(src=..., dst=...)`` by
+    keyword; ``Edge.create(src, dst, ...)`` by position as well. Any other
+    call (another class's ``create``) has none.
+    """
+    func = call.func
+    is_create = (
+        isinstance(func, ast.Attribute) and func.attr == "create"
+        and isinstance(func.value, ast.Name) and func.value.id == "Edge"
+    )
+    if not (is_create or (isinstance(func, ast.Name) and func.id == "Edge")):
+        return []
+    found: list[tuple[str, ast.expr]] = [
+        (k.arg, k.value) for k in call.keywords
+        if k.arg is not None and k.arg in _EDGE_ENDPOINTS
+    ]
+    if is_create:
+        for side, arg in zip(_EDGE_ENDPOINTS, call.args[:2], strict=False):
+            if isinstance(arg, ast.Starred):
+                break  # positions after a ``*args`` are not known
+            found.append((side, arg))
+    return found
+
+
+def _alternatives(expr: ast.expr) -> list[ast.expr]:
+    """The values *expr* can take where it chooses between written ones.
+
+    ``a if c else f"pony:{path}"`` and ``found or f"robot:{path}"`` each
+    hold a hand-built fallback the hop would otherwise see as one opaque
+    expression; both branches of a conditional and every operand of a
+    boolean chain are judged.
+    """
+    if isinstance(expr, ast.IfExp):
+        return _alternatives(expr.body) + _alternatives(expr.orelse)
+    if isinstance(expr, ast.BoolOp):
+        return [alt for value in expr.values for alt in _alternatives(value)]
+    return [expr]
+
+
+def _endpoint_problem(expr: ast.expr) -> str | None:
+    """The grammar problem of one expression an endpoint can hold, or ``None``.
+
+    An f-string or a non-empty literal is judged as a node-id template; a
+    ``+`` chain cannot be. The empty string is an initializer, not a value.
+    """
+    if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+        return id_template_problem(expr.value) if expr.value else None
+    return _problem_of(expr, id_template_problem)
 
 
 def _local_assignments(fn: _FuncDef) -> dict[str, list[ast.expr]]:
@@ -403,6 +477,23 @@ def _problems_in_file(path: Path) -> list[_Finding]:
         for node in ast.walk(fn):
             if not isinstance(node, ast.Call):
                 continue
+            for side, endpoint in _edge_endpoints(node):
+                reached = [
+                    alt
+                    for value in _alternatives(endpoint)
+                    for held in _resolve(value, assigns, module_functions)
+                    for alt in _alternatives(held)
+                ]
+                for expr in reached:
+                    problem = _endpoint_problem(expr)
+                    if problem is not None:
+                        found.setdefault(expr.lineno, (
+                            f"edge_endpoint ({side}): {problem} — an endpoint "
+                            "is a node id: mint it (make_file_id, "
+                            "make_module_import_dst, edge_target."
+                            "external_target) or take a symbol's id",
+                            None,
+                        ))
             callee = _callee_name(node)
             # The public classifiers, so the rule the tests pin is the rule
             # the lint runs, not a private twin that can drift (WI-mifup).

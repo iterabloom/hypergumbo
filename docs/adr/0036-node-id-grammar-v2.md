@@ -244,7 +244,8 @@ Three layers, extending ADR-0034's:
    `dst` that is not an id.
 3. **Static linter** (`check_id_construction.py`, run as
    `scripts/check-id-construction`) checks every expression that reaches
-   `Symbol(id=...)` or `Edge(id=...)` against the id grammar, in the source.
+   `Symbol(id=...)`, `Edge(id=...)` or an edge endpoint (`src=` / `dst=` of
+   `Edge(...)` / `Edge.create(...)`) against the id grammar, in the source.
 
 **Kind registrations this grammar depends on.** GraphQL `mutation` and
 `subscription` are registered `language_construct` kinds beside `query` and
