@@ -21,7 +21,7 @@ Shared Components
   ``super().analyze`` (as cpp, dart, elixir and scala do).
   Per file, Pass 1 parses through the ``parse_source`` hook (an override may
   rewrite the bytes, length-preserving, for a grammar that lags its
-  language), records a tree that needed error recovery in
+  language; Pass 2 re-parses the stored bytes through it too), records a tree that needed error recovery in
   ``limits.failed_files`` (``record_partial_parse``), and fills any unset
   ``shape_id`` (``compute_shape_id``) and ``docstring``
   (``extract_doc_comment``) for symbols the analyzer mapped in
@@ -4457,9 +4457,12 @@ class TreeSitterAnalyzer:
         1. **The rewrite must preserve byte length**, so every span the analyzer
            reports still points at the real file. Substituting one character for
            another is fine; deleting or inserting is not.
-        2. **The returned tree must be the tree of the returned bytes.** Pass 1
-           stores the source it was given and Pass 2 re-parses THAT, so returning
-           rewritten bytes with the original tree would desynchronise the passes.
+        2. **The hook must be idempotent on its own output.** Pass 1 stores the
+           returned bytes and Pass 2 re-parses THEM through this hook, so
+           ``parse_source(parser, returned_bytes)`` must give the returned tree
+           again. The tree may be the parse of a respelling of the returned
+           bytes that the analyzer never reads text from (Swift parses ``_$foo``
+           spelled ``__foo`` and reads the name from the real bytes; WI-jujog).
 
         Returns:
             The bytes to record for this file, and their parse tree.
@@ -5378,7 +5381,7 @@ class TreeSitterAnalyzer:
             _check_memory_pressure()  # Between-file memory safety check
             all_symbols.extend(analysis.symbols)
 
-            tree = parser.parse(source)
+            _, tree = self.parse_source(parser, source)
             rel_path = str(source_file.relative_to(repo_root))
 
             self._current_file_symbols = analysis.symbols

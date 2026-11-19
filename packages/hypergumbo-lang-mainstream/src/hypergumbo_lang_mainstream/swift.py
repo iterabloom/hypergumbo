@@ -34,6 +34,12 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   extension's ``where`` clause joins its label (``Array where Element: P``),
   so the same member in two differently constrained extensions of one type
   does not tie (it did until scheme v15)
+- Names are read whole, ``$`` included (``_$isIdentityEqual``, ``A$B``):
+  tree-sitter-swift accepts ``$`` only at an identifier's start, so
+  ``SwiftAnalyzer.parse_source`` parses a copy with every inner ``$`` spelled
+  ``_`` (``_swift_parse_bytes``, one byte for one) and names are read from
+  the real bytes. Until scheme v16 ``func _$foo`` was emitted as ``_`` and a
+  call ``_$foo()`` called ``_``
 - Initialisers (``constructor``, ``Type.init``, with ``meta["arg_labels"]`` and
   ``meta["parameters"]``) and deinitialisers (``method``, ``Type.deinit``)
 - Enum cases and protocol requirements as ``field`` / member symbols
@@ -3895,24 +3901,51 @@ def _swift_canonical_raw_identifiers(
     return bytes(out)
 
 
+#: A ``$`` after an identifier character (``_$foo``, ``a$b``, ``trail$``):
+#: Swift reads it as part of the identifier, tree-sitter-swift only at an
+#: identifier's start. A byte of 0x80 or above is part of a UTF-8 letter.
+_SWIFT_INNER_DOLLAR_RE = re.compile(rb"(?<=[\w\x80-\xff])\$")
+
+
+def _swift_parse_bytes(source: bytes) -> bytes:
+    """The bytes the grammar parses: ``source`` with every ``$`` that follows
+    an identifier character spelled ``_`` (WI-jujog).
+
+    tree-sitter-swift accepts ``$`` only at the start of an identifier
+    (``$0``, ``$binding``), so ``func _$isIdentityEqual`` parsed as ``_`` and
+    an ERROR node: the function was named ``_``, ``struct A$B`` was ``A``,
+    ``var _$reg`` was a wildcard pattern and emitted nothing, and a call
+    ``_$m()`` called ``_``. Spelled ``_``, the grammar reads one identifier;
+    the substitution is one byte for one, so every span is unchanged, and
+    the analyzer reads every name from the real bytes (``_$isIdentityEqual``).
+    A ``$`` in a string or a comment changes nothing the analyzer reads: the
+    literal or comment stays one node.
+    """
+    return _SWIFT_INNER_DOLLAR_RE.sub(b"_", source)
+
+
 class SwiftAnalyzer(TreeSitterAnalyzer):
     """Swift language analyzer using tree-sitter-swift."""
 
     def parse_source(
         self, parser: "tree_sitter.Parser", source: bytes,
     ) -> "tuple[bytes, tree_sitter.Tree]":
-        """Parse, then re-parse once if a raw identifier needed canonical spelling.
+        """Parse the grammar's spelling of ``source``; re-spell raw identifiers.
 
-        INV-bisok: see :func:`_swift_canonical_raw_identifiers`. The rewrite is
-        length-preserving, so the re-parse has the same shape and every span is
-        unchanged; it exists so that node text read from the tree and from the
-        returned bytes agree.
+        The tree is always the parse of :func:`_swift_parse_bytes` of the
+        returned bytes (WI-jujog: a ``$`` inside an identifier), and the
+        returned bytes are the real file, or, when a raw identifier needed
+        canonical spelling, that spelling (INV-bisok, see
+        :func:`_swift_canonical_raw_identifiers`). Both rewrites are
+        length-preserving, so every span is unchanged, and both are
+        idempotent, so Pass 2's re-parse of the returned bytes through this
+        hook gives the same tree.
         """
-        tree = parser.parse(source)
+        tree = parser.parse(_swift_parse_bytes(source))
         canonical = _swift_canonical_raw_identifiers(tree, source)
         if canonical is None:
             return source, tree
-        return canonical, parser.parse(canonical)
+        return canonical, parser.parse(_swift_parse_bytes(canonical))
 
     lang = "swift"
     file_patterns: ClassVar[list[str]] = ["*.swift"]
