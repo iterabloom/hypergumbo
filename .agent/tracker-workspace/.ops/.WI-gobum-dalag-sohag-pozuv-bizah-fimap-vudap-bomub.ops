@@ -1,0 +1,20 @@
+- op: create  # 9d61
+  at: '2026-11-19T12:59:02Z'  # 9d61
+  by: agent  # 9d61
+  actor: jgstern_agent  # 9d61
+  clock: 1  # 9d61
+  nonce: 9d61  # 9d61
+  data:  # 9d61
+    kind: work_item  # 9d61
+    title: "Nix: import <nixpkgs> {} emits the same import edge twice"  # 9d61
+    status: todo_hard  # 9d61
+    priority: 4  # 9d61
+    parent:  # 9d61
+    tags:  # 9d61
+    - identity  # 9d61
+    isbefore: []  # 9d61
+    duplicate_of: []  # 9d61
+    not_duplicate_of: []  # 9d61
+    pr_ref:  # 9d61
+    description: "Nix: import <nixpkgs> {} is two nested applications and the analyzer emits the same import edge twice (same id; finalize keeps one). Pre-existing, not caused by PR 3.\n\nCLOSE WHEN the analyzer emits one edge for it.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 9d61
+    fields: {}  # 9d61

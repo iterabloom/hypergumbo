@@ -1,0 +1,20 @@
+- op: create  # 5b19
+  at: '2026-11-19T13:59:45Z'  # 5b19
+  by: agent  # 5b19
+  actor: jgstern_agent  # 5b19
+  clock: 1  # 5b19
+  nonce: 5b19  # 5b19
+  data:  # 5b19
+    kind: work_item  # 5b19
+    title: "Tcl: braced literal arguments parse as scripts, so regsub {__} makes a false call edge"  # 5b19
+    status: todo_hard  # 5b19
+    priority: 4  # 5b19
+    parent:  # 5b19
+    tags:  # 5b19
+    - identity  # 5b19
+    isbefore: []  # 5b19
+    duplicate_of: []  # 5b19
+    not_duplicate_of: []  # 5b19
+    pr_ref:  # 5b19
+    description: "Tcl: tree-sitter-tcl parses braced literal arguments of ordinary commands as scripts, so regsub -all {::} $x {__} w still emits a call edge to an unresolved '__' (PR 3 removed the '::' form only).\n\nRepro: a .tcl file with that line -> a calls edge to a '__' stand-in.\n\nCLOSE WHEN braced arguments of commands that take no script (regsub, string map, ...) make no call edge.\n\nFound by the PR 3 (stable-id v16) WI-rozod/WI-zolat build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/rozod/RESULTS.md (Residuals)."  # 5b19
+    fields: {}  # 5b19
