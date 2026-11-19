@@ -206,7 +206,6 @@ from typing import (
     TypeVar,
 )
 
-from rich.console import Console
 from rich.table import Table
 
 from . import __version__, run_status
@@ -239,6 +238,7 @@ from .catalog import get_default_catalog, is_available, suggest_passes_for_langu
 from .finalize import FinalizeContext, _relativize_ir_paths, finalize
 from .linkers.registry import LinkerContext, run_all_linkers
 from .pass_metadata import build_pass_metadata
+from .pipe_console import PipeConsole
 from .pass_clock import PassClock
 from .pass_silence import silence_reason_for_candidates
 from .safety_zones import (
@@ -5518,7 +5518,9 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         + kind_width + in_width + out_width + deg_width
         + _SYMBOLS_COLUMN_PADDING
     )
-    console = Console(width=max(detected_width, required_width))
+    # PipeConsole, not rich's Console: a reader leaving the pipe is a
+    # BrokenPipeError main() answers with 141, not rich's SystemExit(1).
+    console = PipeConsole(width=max(detected_width, required_width))
     table = Table(show_header=True, header_style="bold", box=None)
 
     table.add_column(

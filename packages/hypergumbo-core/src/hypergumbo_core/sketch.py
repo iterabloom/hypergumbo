@@ -279,11 +279,12 @@ def display_representativeness_table(
         stats_16x: Stats from sketch at 16x the token budget.
         console: Optional Rich console to use. If None, creates one.
     """
-    from rich.console import Console
     from rich.table import Table
 
+    from .pipe_console import PipeConsole
+
     if console is None:
-        console = Console(stderr=True)
+        console = PipeConsole(stderr=True)
 
     # Create the table
     table = Table(
