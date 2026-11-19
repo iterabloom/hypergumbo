@@ -210,7 +210,10 @@ def test_a_text_that_is_no_signature_normalizes_to_none(signature: str | None) -
 
 # Hole-free declarations: the hashed text and the stable_id are those the
 # analyzer wrote before (pinned from the base arm, fd65842b25, on this exact
-# file at the root of the analyzed tree).
+# file at the root of the analyzed tree). The text is the normalizer's; the
+# id hashes it in canonical spacing (WI-kumoh, stable-id v16), where a union is
+# ``int | float``: so plain and K.n moved (were 9986f7cf938cb60d and
+# f66f14ed3b34a50f).
 _HOLE_FREE = """namespace App;
 function plain(int $a, ?string $b, int|float $c, $d, \\Foo\\Bar $e): ?static {}
 function untyped($x, $y) {}
@@ -221,11 +224,11 @@ class K {
 }"""
 
 _PINNED = {
-    "plain": ("(int,?string,int|float,$d,\\Foo\\Bar)?static", f"{STABLE_ID_PREFIX}9986f7cf938cb60d"),
+    "plain": ("(int,?string,int|float,$d,\\Foo\\Bar)?static", f"{STABLE_ID_PREFIX}4ffcf7489e02e6e9"),
     "untyped": ("($x,$y)", f"{STABLE_ID_PREFIX}37f79e237ad0871f"),
     "returnsVoid": ("(array)", f"{STABLE_ID_PREFIX}b7aa9afb515e4391"),
     "K.m": ("(callable,iterable,mixed,object,self)\\Foo\\Bar", f"{STABLE_ID_PREFIX}522d753fbb322574"),
-    "K.n": ("(?int)int|false", f"{STABLE_ID_PREFIX}f66f14ed3b34a50f"),
+    "K.n": ("(?int)int|false", f"{STABLE_ID_PREFIX}8c5428e030b851c9"),
 }
 
 

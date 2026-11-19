@@ -61,7 +61,10 @@ Shared Components
   (``populate_kind_stable_ids``, ``populate_synthetic_class_b_identity``,
   ``widen_route_stable_ids``, ``dedup_logical_synthetic_identities``).
   Signature normalizers feed the typed variant so two spellings of one
-  signature hash alike. Their shared helpers (``strip_fqn_prefix``,
+  signature hash alike, and the typed variant hashes every text slot
+  ``layout_free`` (one canonical spacing, and in the signature without the
+  trailing commas and leading union bars a formatter adds), so reformatting
+  moves no id. Their shared helpers (``strip_fqn_prefix``,
   ``split_params_top_level``, ``find_matching_paren``) keep distinct types
   distinct: a type is cut only at a qualifier, and a parameter list is split
   only at commas outside every bracket pair and string literal.
@@ -1543,6 +1546,229 @@ def stable_id_hash_input(value: str) -> str:
     return value
 
 
+def _is_word_char(ch: str) -> bool:
+    """A character of a word (an identifier, keyword or number), ``$`` included:
+    it is an identifier character in Java, Kotlin, Scala, Swift, JavaScript and
+    PHP, and the positional type parameters are written ``$0``."""
+    return ch.isalnum() or ch in "_$"
+
+
+def _literal_end(text: str, start: int) -> int:
+    """The index of the quote closing the literal opened at ``text[start]``, or
+    ``-1`` when that character opens none (see :func:`layout_free`)."""
+    end = _string_end(text, start, text[start])
+    if text[start] != "'":
+        return end
+    # A ``'`` is a literal only when it closes, and not before a word character:
+    # Rust's ``(&'a str, &'b str)`` pairs no lifetimes into a string.
+    if end == start or text[end] != "'" or (end + 1 < len(text) and _is_word_char(text[end + 1])):
+        return -1
+    return end
+
+
+#: The languages whose untyped-tier names are code a formatter respaces, so
+#: they are hashed :func:`layout_free` (``assemble_stable_id``'s
+#: ``names_layout_free``; WI-kumoh). C++: ``operator void *`` and ``operator
+#: void*`` (a ``clang-format`` PointerAlignment switch), a qualified declarator
+#: split over lines. Not every language: in some a name's whitespace is meaning
+#: (a CSS selector's descendant combinator, ``.a .b`` is not ``.a.b``; a
+#: quoted TOML key; a Robot test name), and the untyped formula does not know
+#: its language.
+LAYOUT_FREE_NAME_LANGUAGES: frozenset[str] = frozenset({"cpp"})
+
+#: What a formatter writes before a closing bracket when it splits a list over
+#: lines (``dart format``, ``rustfmt``, prettier, ``gofmt``): a trailing
+#: separator, dropped from a hashed signature by :func:`layout_free`.
+_TRAILING_SEPARATORS = {")": (",",), "]": (",",), ">": (",",), "}": (",", ";")}
+#: A separator after one of these ends an EMPTY element, which is code, not
+#: layout: C#'s array rank ``int[,]`` (not ``int[]``), ``Dictionary<,>``,
+#: Haskell's ``(,)``, a sparse array ``[1,,]``.
+_EMPTY_ELEMENT_BEFORE = frozenset("([{<,;")
+#: After these, a ``|`` opens a union written one member per line (prettier's
+#: ``u:\\n  | 'a'\\n  | 'b'``): a leading bar, dropped from a hashed signature.
+_LEADING_BAR_AFTER = frozenset({"(", "<", "[", "{", ",", ":", "="})
+
+#: Operators read as one token by :func:`_hash_tokens` (longest first), and
+#: the ones written with a space on each side. ``>:`` is not one: a Scala lower
+#: bound is a ``>`` that closes no ``<``, and Rust's ``Cow<str>: ToSql`` is a
+#: closing ``>`` and a ``:``.
+_HASH_OPERATORS = ("<:<", "=:=", "...", "->", "=>", "<-", "::", "<:", "~>", "<~", "==", "!=")
+_SPACED_OPERATORS = frozenset({"->", "=>", "<:<", "=:=", "<:", "~>", "<~", "==", "!="})
+_OPERATOR_CHARS = frozenset("=!<>+-*/%&|^~?:.@#")
+_OPENERS, _CLOSERS = "([{<", ")]}>"
+
+#: A token of a hashed text: its text, its kind (``W`` a word, ``L`` a string
+#: or character literal, ``P`` punctuation or an operator), and whether
+#: whitespace stood before it.
+_HashToken = tuple[str, str, bool]
+
+
+def _hash_tokens(text: str) -> list[_HashToken]:
+    """``text`` as tokens: a literal whole, a run of word characters, an
+    operator of :data:`_HASH_OPERATORS`, else one character."""
+    out: list[_HashToken] = []
+    i, gap = 0, False
+    while i < len(text):
+        ch = text[i]
+        if ch.isspace():
+            gap, i = True, i + 1
+            continue
+        end = _literal_end(text, i) if ch in "\"'`" else -1
+        if end >= 0:
+            out.append((text[i:end + 1], "L", gap))
+            gap, i = False, end + 1
+            continue
+        if _is_word_char(ch):
+            j = i + 1
+            while j < len(text) and _is_word_char(text[j]):
+                j += 1
+            out.append((text[i:j], "W", gap))
+            gap, i = False, j
+            continue
+        token = next((op for op in _HASH_OPERATORS if text.startswith(op, i)
+                      and not (op == "<:" and text.startswith("::", i + 1))), ch)
+        out.append((token, "P", gap))
+        gap, i = False, i + len(token)
+    return out
+
+
+def _drop_formatter_separators(tokens: list[_HashToken]) -> list[_HashToken]:
+    """``tokens`` without a trailing ``,`` (``;`` before ``}``) that ends a
+    non-empty element, nor a leading union ``|`` (see :func:`layout_free`)."""
+    out: list[_HashToken] = []
+    for token in tokens:
+        text, kind = token[0], token[1]
+        if (kind == "P" and text in _TRAILING_SEPARATORS and len(out) > 1
+                and out[-1][1] == "P" and out[-1][0] in _TRAILING_SEPARATORS[text]
+                and out[-2][0][-1] not in _EMPTY_ELEMENT_BEFORE):
+            out.pop()
+        if kind == "P" and text == "|" and (not out or out[-1][0] in _LEADING_BAR_AFTER):
+            continue
+        out.append(token)
+    return out
+
+
+def _is_infix_operand(token: Optional[_HashToken]) -> bool:
+    """Whether ``token`` can end an operand, so an operator after it is infix
+    (``A & B``, ``Error + Send``) and not a prefix (``&mut T``, ``()&Self``)."""
+    return token is not None and (token[1] in ("W", "L") or token[0] in ("]", ">"))
+
+
+def _spaced(before: Optional[_HashToken], prev: _HashToken, cur: _HashToken,
+            after: Optional[_HashToken], list_comma: bool, closes_angle: bool) -> bool:
+    """Whether one space stands between ``prev`` and ``cur`` in the canonical
+    spelling (:func:`layout_free`), decided by the tokens alone. Each choice is
+    the spelling the analysed texts held most often (WI-kumoh; counted over
+    thirteen repositories, notebook pr3/agent7)."""
+    p, c = prev[0], cur[0]
+    if prev[1] == cur[1] == "P" and [t[0] for t in _hash_tokens(p + c)] != [p, c]:
+        return True  # ``- >`` is not ``->``, ``: :`` not ``::``
+    if c == ">" and not closes_angle:
+        return prev[1] in ("W", "L") or p in (")", "]")  # Scala ``A >: B``
+    if p == "." or c == ".":
+        return False
+    if c in (",", ";", ")", "]", ">") or p in ("(", "[", "<"):
+        return False
+    if p in (",", ";"):
+        return p == ";" or not list_comma
+    if p == ":" and c != ":":
+        return True
+    if prev[1] == cur[1] == "P" and p in _OPERATOR_CHARS and c in _OPERATOR_CHARS and p not in _CLOSERS:
+        return False
+    if p == "{" or c == "}":
+        return not (p == "{" and c == "}")
+    if c == "{":
+        return p in (")", "]")
+    if p in _SPACED_OPERATORS or c in _SPACED_OPERATORS:
+        return True
+    if p == "<-" or c == "<-" or c == ":":
+        return False
+    if p == "=":
+        return cur[1] in ("W", "L") or c in ("(", "[", "{")
+    if c == "=":
+        return after is not None and (after[1] in ("W", "L") or after[0] in ("(", "[", "{"))
+    if p == "|" or c == "|":
+        return True
+    if p in ("&", "+"):
+        return _is_infix_operand(before) or (p == "+" and before is not None and before[0] == ")")
+    if c in ("&", "+"):
+        return _is_infix_operand(prev) or (c == "+" and p == ")")
+    if c == "@":
+        return prev[1] == "W"  # ``@MainActor @Sendable``
+    if p == "?" and c in ("extends", "super"):
+        return True  # a Java wildcard ``? extends T``; PHP's nullable ``?string`` has none
+    if (p == ">" and cur[1] == "W") or (prev[1] == "L" and cur[1] == "W"):
+        return True
+    # A Swift attribute and the type it marks: ``@escaping (Int) -> Void``.
+    return c == "(" and prev[1] == "W" and before is not None and before[0] == "@"
+
+
+def layout_free(text: str, *, separators: bool = False) -> str:
+    """``text`` in its canonical spacing: what a typed stable id hashes (WI-kumoh).
+
+    Layout is not an id input, so a text is written in ONE spacing whatever
+    spacing it came with: it is read as tokens (:func:`_hash_tokens`) and the
+    space between two tokens is decided by the tokens alone (:func:`_spaced`).
+    None inside a bracket or before a comma; one after a comma inside a type
+    (``Map<String, Integer>``) and none after a comma of a list a normalizer
+    joined (the top-level parameter list, a decorator list: ``(String,int)``);
+    one around ``->``, ``=>``, ``|``, ``==``, an infix ``&`` or ``+``, and a
+    ``=`` before a value; one after ``:``. Each choice is the spelling the
+    analysed texts held most often, so those texts hash byte for byte as
+    before and only the other spellings move: ``& mut T`` hashes as ``&mut
+    T``, ``Map<String,\\n Integer>`` as ``Map<String, Integer>``,
+    ``vector<vector<int> >`` as ``vector<vector<int>>``.
+
+    Where whitespace is meaning it is kept as present or absent, as one space:
+    between two words (a word is a run of letters, digits, ``_`` and ``$``:
+    ``unsigned int``, ``impl Foo for Bar``) and between ``+ +`` or ``- -``
+    (``a + ++b`` is not ``a++ + b``). Two punctuation tokens that would read as
+    another token when joined keep a space (``- >`` is not ``->``). A string or
+    character literal is kept whole, whitespace included (``"a  b"`` is not
+    ``"a b"``): one opens at ``"`` or a backtick, and at a ``'`` that closes
+    before a non-word character (so a Rust lifetime or an OCaml type variable
+    opens none). So two texts that differ in more than layout stay apart.
+
+    With ``separators`` (a signature: types and default values, never a
+    name), the punctuation a formatter adds when it splits a list over lines
+    is layout too: a ``,`` before a closing bracket (``;`` before ``}``) that
+    ends a non-empty element (``int[,]`` keeps its comma), and a ``|`` that
+    leads a union. Not for names: ``(,)`` and ``(|>)`` are names.
+    A trailing comma separates nothing in a signature of any typed language
+    but one: Rust's one-tuple ``(T,)``, which then hashes as ``(T)``; Rust has
+    no overloading, so the two cannot share a scope and no ids tie.
+    """
+    tokens = _hash_tokens(text)
+    if separators:
+        tokens = _drop_formatter_separators(tokens)
+    out: list[str] = []
+    #: the open brackets, a top-level ``(`` (a list a normalizer joined) as "top"
+    stack: list[str] = []
+    for index, cur in enumerate(tokens):
+        if index:
+            prev = tokens[index - 1]
+            if prev[1] == cur[1] == "W" or (prev[0] == cur[0] and cur[0] in ("+", "-")):
+                space = cur[2]
+            else:
+                space = _spaced(
+                    tokens[index - 2] if index > 1 else None, prev, cur,
+                    tokens[index + 1] if index + 1 < len(tokens) else None,
+                    not stack or stack[-1] == "top", bool(stack) and stack[-1] == "<",
+                )
+            if space:
+                out.append(" ")
+        out.append(cur[0])
+        if cur[1] == "P" and cur[0] in _OPENERS:
+            stack.append("top" if cur[0] == "(" and not stack else cur[0])
+        elif cur[1] == "P" and cur[0] in _CLOSERS:
+            opener = _OPENERS[_CLOSERS.index(cur[0])]
+            while cur[0] != ">" and stack and stack[-1] == "<":
+                stack.pop()  # a ``<`` a comparison left open
+            if stack and stack[-1] in (opener, "top" if opener == "(" else opener):
+                stack.pop()
+    return "".join(out)
+
+
 def assemble_stable_id(
     kind: str,
     param_count: int,
@@ -1554,6 +1780,7 @@ def assemble_stable_id(
     occurrence_index: int = 0,
     *,
     is_async: bool = False,
+    names_layout_free: bool = False,
 ) -> StableId:
     """The single untyped-tier stable_id hash formula (ADR-0035 §1).
 
@@ -1579,11 +1806,20 @@ def assemble_stable_id(
     here would churn the class id on every member add/remove (violating §1 "survives body
     edits").
 
+    The untyped tier hashes its names as written, since in some languages a
+    name's whitespace is meaning (a CSS selector's descendant combinator).
+    ``names_layout_free`` (passed for the languages of
+    :data:`LAYOUT_FREE_NAME_LANGUAGES`) hashes ``name`` and
+    ``qualified_name`` :func:`layout_free` instead, for a language whose
+    names are code a formatter respaces (C++ ``operator void *``; WI-kumoh).
+
     ``occurrence_index`` is the §1 within-scope ordinal — a tiebreaker for two definitions that
     are otherwise hash-identical in one scope (e.g. conditional redefinition). It defaults to
     ``0``; the slot is present so populating it never requires a scheme bump (§6 "one atomic
     bump").
     """
+    if names_layout_free:
+        name, qualified_name = layout_free(name), layout_free(qualified_name)
     sig = (
         f"{kind}:{param_count}:{arity_flags}:{decorators}"
         f":{stable_id_hash_input(containing_stable_id)}:{name}:{qualified_name}:{occurrence_index}"
@@ -2401,6 +2637,12 @@ def make_typed_stable_id(
         sha256({kind}:{normalized_signature}:{visibility}:{decorators}
                :{containing_stable_id}:{name}:{qualified_name}[:async])
 
+    Every slot but ``containing_stable_id`` enters the hash :func:`layout_free`:
+    layout is not an input, so reflowing a signature, a scope label (a Swift
+    extension's ``where`` clause, a Rust ``impl`` header) or a name moves no
+    id. The analyzers' displayed texts keep their layout; only the hash
+    input drops it.
+
     The typed tier is preferred when type information is available (e.g. Java,
     C#, Kotlin, TypeScript, Dart, Go, Python with annotations).  It produces
     higher-quality identity than the untyped tier because it captures the full
@@ -2449,9 +2691,12 @@ def make_typed_stable_id(
     # stable_id_hash_input (its digest, not its label).
     if not containing_stable_id and file_stable_id:
         containing_stable_id = file_stable_id
+    # Layout is not an input (WI-kumoh): every text slot is hashed through
+    # layout_free, so a reformatted declaration keeps its id.
     sig = (
-        f"{kind}:{normalized_signature}:{visibility}"
-        f":{decorators}:{stable_id_hash_input(containing_stable_id)}:{name}:{qualified_name}"
+        f"{kind}:{layout_free(normalized_signature, separators=True)}:{layout_free(visibility)}"
+        f":{layout_free(decorators)}:{stable_id_hash_input(containing_stable_id)}"
+        f":{layout_free(name)}:{layout_free(qualified_name)}"
         f"{_ASYNC_SUFFIX if is_async else ''}"
     )
     return _short_sha256(sig)
@@ -5086,6 +5331,7 @@ class TreeSitterAnalyzer:
             qualified_name,
             occurrence_index,
             is_async=declares_async(node),
+            names_layout_free=self.lang in LAYOUT_FREE_NAME_LANGUAGES,
         )
 
     def _find_params_node(
