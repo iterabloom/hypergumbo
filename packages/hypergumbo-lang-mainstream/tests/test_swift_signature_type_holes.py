@@ -27,6 +27,7 @@ import pytest
 from hypergumbo_core.analyze.base import normalize_signature_names_first
 from hypergumbo_core.ir import Symbol
 from hypergumbo_lang_mainstream.swift import analyze_swift, normalize_swift_signature
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 _HEAD = "protocol P {}\nprotocol Q {}\n"
 
@@ -138,17 +139,17 @@ _HOLE_FREE = (
     "let top: [String] = []\n"
 )
 _PINNED = {
-    "f": "hgstableid15:5a2f000fa219a85c",
-    "h": "hgstableid15:140fa1de7861b2a7",
-    "S.init": "hgstableid15:3e28183fc36b3c3f",
-    "S.v": "hgstableid15:b97120ecdb3b499a",
-    "S.c": "hgstableid15:9d321b7f3c78b955",
-    "S.subscript(i:)": "hgstableid15:c3190acb35203179",
-    "S.g": "hgstableid15:e5190034f69ef295",
-    "S.deinit": "hgstableid15:1079eea70112982c",
-    "R.m": "hgstableid15:7359f05f4fa047d9",
-    "R.p": "hgstableid15:dc5dc570dda64d74",
-    "top": "hgstableid15:53fd55052be58942",
+    "f": f"{STABLE_ID_PREFIX}5a2f000fa219a85c",
+    "h": f"{STABLE_ID_PREFIX}140fa1de7861b2a7",
+    "S.init": f"{STABLE_ID_PREFIX}3e28183fc36b3c3f",
+    "S.v": f"{STABLE_ID_PREFIX}b97120ecdb3b499a",
+    "S.c": f"{STABLE_ID_PREFIX}9d321b7f3c78b955",
+    "S.subscript(i:)": f"{STABLE_ID_PREFIX}c3190acb35203179",
+    "S.g": f"{STABLE_ID_PREFIX}e5190034f69ef295",
+    "S.deinit": f"{STABLE_ID_PREFIX}1079eea70112982c",
+    "R.m": f"{STABLE_ID_PREFIX}7359f05f4fa047d9",
+    "R.p": f"{STABLE_ID_PREFIX}dc5dc570dda64d74",
+    "top": f"{STABLE_ID_PREFIX}53fd55052be58942",
 }
 
 

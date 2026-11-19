@@ -21,6 +21,7 @@ from hypergumbo_core.linkers.http import (
     _scan_ruby_file,
     link_http,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 class TestINVMopifCallSiteFold:
@@ -568,7 +569,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -596,7 +597,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -622,7 +623,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users/:id", "method": "GET"}]
             },
@@ -646,7 +647,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -670,7 +671,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -693,7 +694,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -740,7 +741,7 @@ class TestLinkHttp:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/data", "method": ""}]
             },
@@ -874,7 +875,7 @@ class TestVariableUrlPatterns:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={"concepts": [{"concept": "route", "path": path, "method": "GET"}]},
         )
 
@@ -917,7 +918,7 @@ class TestVariableUrlPatterns:
             path=str(tmp_path / "server.js"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1425,7 +1426,7 @@ class TestGoHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1831,7 +1832,7 @@ class TestRubyHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -1884,7 +1885,7 @@ class TestJavaHttpLinking:
             path=str(tmp_path / "server.py"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="python",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },
@@ -2044,8 +2045,8 @@ class TestCreateClientSymbolStableId:
         assert sym.stable_id != "POST"
         assert sym.stable_id != "post"
         # Should be the canonical hgstableid15:<16hex> shape (29 chars total).
-        assert sym.stable_id.startswith("hgstableid15:")
-        assert len(sym.stable_id) == len("hgstableid15:") + 16
+        assert sym.stable_id.startswith(STABLE_ID_PREFIX)
+        assert len(sym.stable_id) == len(STABLE_ID_PREFIX) + 16
 
     def test_different_methods_same_url_different_stable_ids(self, tmp_path: Path):
         """GET /api/users and POST /api/users are distinct."""
@@ -2921,7 +2922,7 @@ class TestJsTsClientLanguageFollowsFileSuffix:
             path=str(tmp_path / "server.ts"),
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="typescript",
-            stable_id="hgstableid15:abc123",
+            stable_id=f"{STABLE_ID_PREFIX}abc123",
             meta={
                 "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
             },

@@ -9,6 +9,7 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import purescript as purescript_module
 from hypergumbo_lang_common.purescript import analyze_purescript, find_purescript_files, is_purescript_tree_sitter_available
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_purescript_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a PureScript file in the temp directory."""
@@ -226,7 +227,7 @@ myFunc = 42
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("purescript:Test.purs:")
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", """module Test where

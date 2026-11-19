@@ -13,6 +13,7 @@ from hypergumbo_lang_mainstream.py import (
     _compute_line_span,
 )
 import ast
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def test_run_detects_python_function(tmp_path: Path) -> None:
@@ -1505,7 +1506,7 @@ def test_fastapi_get_decorator_metadata(tmp_path: Path) -> None:
     func = functions[0]
     assert func["name"] == "get_users"
     # stable_id is always a hash
-    assert func["stable_id"].startswith("hgstableid15:")
+    assert func["stable_id"].startswith(STABLE_ID_PREFIX)
     # Decorator metadata should be extracted
     decorators = func.get("meta", {}).get("decorators", [])
     assert len(decorators) == 1
@@ -1648,7 +1649,7 @@ def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
 
     func = functions[0]
     # Non-route functions should still have hgstableid15:... stable_id
-    assert func["stable_id"].startswith("hgstableid15:")
+    assert func["stable_id"].startswith(STABLE_ID_PREFIX)
 
 
 def test_containing_module_differentiates_stable_id(tmp_path: Path) -> None:
@@ -1685,8 +1686,8 @@ def test_containing_module_differentiates_stable_id(tmp_path: Path) -> None:
     bar_process = next(m for m in methods if m["name"] == "Bar.process")
 
     # Both should have sha256-based stable_ids
-    assert foo_process["stable_id"].startswith("hgstableid15:")
-    assert bar_process["stable_id"].startswith("hgstableid15:")
+    assert foo_process["stable_id"].startswith(STABLE_ID_PREFIX)
+    assert bar_process["stable_id"].startswith(STABLE_ID_PREFIX)
 
     # They must differ because containing classes have different stable_ids
     # (Bar has @my_decorator, Foo does not)
@@ -2609,8 +2610,8 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     assert "UserView.post" in method_by_name
     get_sid = method_by_name["UserView.get"]["stable_id"]
     post_sid = method_by_name["UserView.post"]["stable_id"]
-    assert len(get_sid) == 29  # hgstableid15:<16hex> canonical form (Phase 6 PR1)
-    assert len(post_sid) == 29
+    assert len(get_sid) == len(STABLE_ID_PREFIX) + 16  # hgstableid15:<16hex> canonical form (Phase 6 PR1)
+    assert len(post_sid) == len(STABLE_ID_PREFIX) + 16
     assert get_sid != post_sid  # Different methods must not collide
 
 
@@ -2635,7 +2636,7 @@ def test_drf_api_view_no_args_fallback(tmp_path: Path) -> None:
 
     func = functions[0]
     # Without HTTP methods, should fall back to hash-based stable_id
-    assert func["stable_id"].startswith("hgstableid15:")
+    assert func["stable_id"].startswith(STABLE_ID_PREFIX)
 
 
 def test_django_path_urlpattern(tmp_path: Path) -> None:
@@ -2687,7 +2688,7 @@ def test_django_route_stable_id_no_collision(tmp_path: Path) -> None:
     stable_ids = [r["stable_id"] for r in routes]
     assert stable_ids[0] != stable_ids[1], f"stable_id collision: {stable_ids}"
     # Both should be hgstableid15:<16hex> values
-    assert all(len(sid) == 29 for sid in stable_ids)
+    assert all(len(sid) == len(STABLE_ID_PREFIX) + 16 for sid in stable_ids)
 
 
 def test_django_path_empty_string_root_route(tmp_path: Path) -> None:
@@ -4005,7 +4006,7 @@ class TestPythonSignatureExtraction:
         assert "param_f: str" in method["signature"]
         # …while the stable_id is the untyped fallback (identity signature
         # is max_len=60 → truncated → normalize returns None).
-        assert method["stable_id"].startswith("hgstableid15:")
+        assert method["stable_id"].startswith(STABLE_ID_PREFIX)
 
     def test_signature_graceful_truncation_preserves_return_type(self) -> None:
         """WI-hopiz: a signature still over the display cap truncates the parameter

@@ -9,6 +9,7 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import meson as meson_module
 from hypergumbo_lang_common.meson import analyze_meson, find_meson_files, is_meson_tree_sitter_available
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_meson_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Meson file in the temp directory."""
@@ -192,7 +193,7 @@ executable('myapp', 'main.c')
         assert exe is not None
         assert exe.id != exe.stable_id
         assert exe.id.startswith("meson:meson.build:")
-        assert exe.stable_id.startswith("hgstableid15:")
+        assert exe.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", """project('test', 'c')

@@ -27,6 +27,7 @@ from hypergumbo_core.fingerprint import (
     stamp_symbol_fingerprints,
 )
 from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.identity_schemes import SYMBOL_FINGERPRINT_PREFIX
 
 
 def _span(start: int, end: int) -> Span:
@@ -74,8 +75,8 @@ class TestPythonFingerprint:
         source = b"def f(x):\n    return x + 1\n"
         fp = compute_symbol_fingerprint("python", _span(1, 2), source)
         assert fp is not None
-        assert fp.startswith("hgfp2:")
-        assert len(fp) == len("hgfp2:") + 16
+        assert fp.startswith(SYMBOL_FINGERPRINT_PREFIX)
+        assert len(fp) == len(SYMBOL_FINGERPRINT_PREFIX) + 16
 
     def test_whitespace_changes_dont_change_fingerprint(self) -> None:
         a = b"def f(x):\n    return x + 1\n"
@@ -122,7 +123,7 @@ class TestPythonFingerprint:
         # Method span: lines 2-3 (the ``def bar`` body, indented).
         fp = compute_symbol_fingerprint("python", _span(2, 3), source)
         assert fp is not None
-        assert fp.startswith("hgfp2:")
+        assert fp.startswith(SYMBOL_FINGERPRINT_PREFIX)
 
     def test_attribute_access_is_part_of_fingerprint(self) -> None:
         """ast.Attribute leaf — renaming the attribute changes the fingerprint."""
@@ -214,7 +215,7 @@ class TestTreeSitterFingerprint:
         source = b"function f(x) { return x + 1; }\n"
         fp = compute_symbol_fingerprint("javascript", _span(1, 1), source)
         assert fp is not None
-        assert fp.startswith("hgfp2:")
+        assert fp.startswith(SYMBOL_FINGERPRINT_PREFIX)
 
     def test_javascript_comment_filtered(self) -> None:
         a = b"function f(x) { return x + 1; }\n"
@@ -246,9 +247,9 @@ class TestStampOrchestrator:
         f = tmp_path / "a.py"
         f.write_text("def f(): pass\n")
         sym = _sym("python", "a.py", 1, 1)
-        sym.fingerprint = "hgfp2:0123456789abcdef"
+        sym.fingerprint = f"{SYMBOL_FINGERPRINT_PREFIX}0123456789abcdef"
         stamp_symbol_fingerprints([sym], tmp_path)
-        assert sym.fingerprint == "hgfp2:0123456789abcdef"
+        assert sym.fingerprint == f"{SYMBOL_FINGERPRINT_PREFIX}0123456789abcdef"
 
     def test_normalizes_noncanonical_fingerprint_on_source_node(
         self, tmp_path: Path,
@@ -263,7 +264,7 @@ class TestStampOrchestrator:
         sym.fingerprint = "deadbeefdeadbeef"  # bare 16-hex producer leak
         stamp_symbol_fingerprints([sym], tmp_path)
         assert sym.fingerprint is not None
-        assert sym.fingerprint.startswith("hgfp2:")
+        assert sym.fingerprint.startswith(SYMBOL_FINGERPRINT_PREFIX)
         assert sym.fingerprint != "deadbeefdeadbeef"
 
     def test_preserves_bare_hex_on_language_none_synthetic(
@@ -295,7 +296,7 @@ class TestStampOrchestrator:
         assert sym.fingerprint is None
         stamp_symbol_fingerprints([sym], tmp_path)
         assert sym.fingerprint is not None
-        assert sym.fingerprint.startswith("hgfp2:")
+        assert sym.fingerprint.startswith(SYMBOL_FINGERPRINT_PREFIX)
 
     def test_missing_file_leaves_null(self, tmp_path: Path) -> None:
         sym = _sym("python", "nonexistent.py", 1, 1)
@@ -512,7 +513,7 @@ class TestFallbackAndEdgePaths:
         region still fingerprints via the snippet-parse fallback."""
         fp = compute_symbol_fingerprint("python", _span(1, 2), self.BROKEN_TAIL)
         assert fp is not None
-        assert fp.startswith("hgfp2:")
+        assert fp.startswith(SYMBOL_FINGERPRINT_PREFIX)
 
     def test_broken_file_span_past_eof_returns_none(self) -> None:
         fp = compute_symbol_fingerprint("python", _span(99, 99), self.BROKEN_TAIL)
@@ -610,8 +611,8 @@ def test_prefix_is_hgfp2() -> None:
         "python", _span(1, 2), b"def f(x):\n    return x + 1\n",
     )
     assert fp is not None
-    assert fp.startswith("hgfp2:")
-    assert len(fp) == len("hgfp2:") + 16
+    assert fp.startswith(SYMBOL_FINGERPRINT_PREFIX)
+    assert len(fp) == len(SYMBOL_FINGERPRINT_PREFIX) + 16
 
 
 # These cover fingerprint.py paths (lines 310, 361) in core's OWN tests.

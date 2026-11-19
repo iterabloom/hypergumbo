@@ -132,6 +132,7 @@ from .identity_schemes import (
     SHAPE_ID_SCHEME as SHAPE_ID_SCHEME,
     STABLE_ID_PREFIX as STABLE_ID_PREFIX,
     STABLE_ID_SCHEME as STABLE_ID_SCHEME,
+    SYMBOL_FINGERPRINT_PREFIX as SYMBOL_FINGERPRINT_PREFIX,
     SYMBOL_FINGERPRINT_SCHEME as SYMBOL_FINGERPRINT_SCHEME,
     identity_digest as identity_digest,
     value_label as value_label,

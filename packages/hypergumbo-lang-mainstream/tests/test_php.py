@@ -4,6 +4,7 @@ import pytest
 import sys
 from pathlib import Path
 from unittest.mock import patch
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX
 
 
 
@@ -1845,7 +1846,7 @@ class TestPhpShapeId:
         result = analyze_php(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.php import analyze_php
@@ -1856,7 +1857,7 @@ class TestPhpShapeId:
         result = analyze_php(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("hgshapeid4:")
+        assert cls.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestPhpLinesOfCode:

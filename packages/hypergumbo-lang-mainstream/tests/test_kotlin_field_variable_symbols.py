@@ -18,6 +18,7 @@ from pathlib import Path
 
 from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 _SAMPLE = """
 package com.example
@@ -109,7 +110,7 @@ class TestKotlinFieldVariableSymbols:
         result = analyze_kotlin(tmp_path)
         v = next(s for s in _variables(result) if s.name == "topLevelConst")
         assert v.language == "kotlin"
-        assert v.stable_id and v.stable_id.startswith("hgstableid15:"), v.stable_id
+        assert v.stable_id and v.stable_id.startswith(STABLE_ID_PREFIX), v.stable_id
         assert v.qualified_name == "com.example.topLevelConst", v.qualified_name
         assert v.id.rsplit(":", 1)[-1] == "variable", v.id
 

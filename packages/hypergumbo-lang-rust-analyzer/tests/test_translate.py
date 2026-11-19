@@ -21,6 +21,7 @@ from hypergumbo_lang_rust_analyzer import (
     reassign_rust_stable_ids,
     translate_scip_to_hg,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 DEFINITION_ROLE = 0x01
@@ -155,7 +156,7 @@ class TestReassignRustStableIds:
         sym = self._symbol(span=Span(1, 1, 0, 0))
         out = reassign_rust_stable_ids([sym], lambda _p: source)
         assert out[0].stable_id != "scip-raw-id"
-        assert out[0].stable_id.startswith("hgstableid15:")
+        assert out[0].stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_production_shaped_span_keeps_the_scip_id_for_a_multi_line_function(self) -> None:
         """What production actually supplies, and what it gets (INV-dolud).

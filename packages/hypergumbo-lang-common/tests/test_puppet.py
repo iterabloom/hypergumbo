@@ -10,6 +10,7 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import puppet as puppet_module
 from hypergumbo_lang_common.puppet import analyze_puppet, find_puppet_files, is_puppet_tree_sitter_available
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_puppet_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Puppet file in the temp directory."""
@@ -239,7 +240,7 @@ node 'server' {
         assert re.match(r"^\d+-\d+$", _span), cls.id
         assert _kind == cls.kind, cls.id
         assert cls.stable_id != cls.id
-        assert cls.stable_id.startswith("hgstableid15:")
+        assert cls.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         # Reuse the complete-manifest fixture, which a passing test
@@ -283,7 +284,7 @@ node 'webserver.example.com' {
         result = analyze_puppet(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1
-        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+        canonical = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
         for sym in result.symbols:
             assert canonical.match(sym.stable_id), (
                 f"non-canonical stable_id for {sym.kind} {sym.name}: {sym.stable_id}"
@@ -531,7 +532,7 @@ class TestEveryClassNameIsReadInFull:
         assert ssl.signature == "class apache::mod::ssl(port)"
         for (sym,) in classes.values():
             assert _canonical_id(sym.id), sym.id
-            assert re.match(r"^hgstableid15:[0-9a-f]{16}$", sym.stable_id)
+            assert re.match(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$", sym.stable_id)
 
     def test_a_namespaced_class_opens_its_own_scope(self, tmp_path: Path) -> None:
         """Two same-titled resources in two namespaced classes are two

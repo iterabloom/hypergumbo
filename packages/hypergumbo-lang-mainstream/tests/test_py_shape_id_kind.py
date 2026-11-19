@@ -25,6 +25,7 @@ structural clones still share a shape_id (WI-vogij's one non-redundant power).
 from pathlib import Path
 
 from hypergumbo_lang_mainstream.py import analyze_python
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX
 
 
 def _by(result, kind: str, name: str):
@@ -142,8 +143,8 @@ def test_variable_symbols_carry_shape_id(tmp_path: Path) -> None:
     result = analyze_python(tmp_path)
     const = _by(result, "variable", "CONST")
     computed = _by(result, "variable", "COMPUTED")
-    assert const.shape_id is not None and const.shape_id.startswith("hgshapeid4:")
-    assert computed.shape_id is not None and computed.shape_id.startswith("hgshapeid4:")
+    assert const.shape_id is not None and const.shape_id.startswith(SHAPE_ID_PREFIX)
+    assert computed.shape_id is not None and computed.shape_id.startswith(SHAPE_ID_PREFIX)
     # Distinct assignment shapes (Constant vs Call) -> distinct shape_ids.
     assert const.shape_id != computed.shape_id
 
@@ -168,7 +169,7 @@ def test_field_symbols_carry_shape_id(tmp_path: Path) -> None:
     )
     result = analyze_python(tmp_path)
     fx = _by(result, "field", "C.x")
-    assert fx.shape_id is not None and fx.shape_id.startswith("hgshapeid4:")
+    assert fx.shape_id is not None and fx.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 def test_variable_and_field_shape_id_differ_by_kind(tmp_path: Path) -> None:

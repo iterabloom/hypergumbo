@@ -55,6 +55,7 @@ from hypergumbo_core.scip.index import (
     _span_from_range,
     scip_index_to_symbols,
 )
+from hypergumbo_core.identity_schemes import SCIP_STABLE_ID_PREFIX
 
 
 DEFINITION_ROLE = 0x01
@@ -139,7 +140,7 @@ def test_single_definition_becomes_symbol() -> None:
     # Document's path AND the moniker. The raw moniker is preserved in
     # meta["scip_symbol"].
     assert s.stable_id == mint_scip_stable_id(f"scip:mod.py:{sym}")
-    assert s.stable_id.startswith("hgscipid1:")
+    assert s.stable_id.startswith(SCIP_STABLE_ID_PREFIX)
     assert s.meta and s.meta.get("scip_symbol") == sym
 
 

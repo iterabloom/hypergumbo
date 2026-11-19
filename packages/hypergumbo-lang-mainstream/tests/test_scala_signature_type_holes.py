@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_lang_mainstream.scala import analyze_scala, normalize_scala_signature
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _symbol(root: Path, source: str, name: str):
@@ -207,14 +208,14 @@ HOLE_FREE = (
     "}\n"
 )
 HOLE_FREE_PINS = {
-    "O.p": ("(a: Int, b: List[String]): Map[Int, String]", "hgstableid15:bb4038a1b0306639"),
-    "O.q": ("(f: (Int, String) => Boolean, t: (Int, Int))", "hgstableid15:14d159e9ddc767c5"),
-    "O.r": ("(a: A | B, b: F[_]): Int", "hgstableid15:a67407c0019ffdd7"),
-    "O.s": ("(): Int", "hgstableid15:e5f6ef73b995c21d"),
-    "O.u": ("()", "hgstableid15:cb227b6fa4999140"),
-    "O.v": ("Int", "hgstableid15:efbf633667397858"),
-    "O.w": (None, "hgstableid15:b056729bff274ba9"),
-    "K.this": ("(s: String)", "hgstableid15:7e8221197b502170"),
+    "O.p": ("(a: Int, b: List[String]): Map[Int, String]", f"{STABLE_ID_PREFIX}bb4038a1b0306639"),
+    "O.q": ("(f: (Int, String) => Boolean, t: (Int, Int))", f"{STABLE_ID_PREFIX}14d159e9ddc767c5"),
+    "O.r": ("(a: A | B, b: F[_]): Int", f"{STABLE_ID_PREFIX}a67407c0019ffdd7"),
+    "O.s": ("(): Int", f"{STABLE_ID_PREFIX}e5f6ef73b995c21d"),
+    "O.u": ("()", f"{STABLE_ID_PREFIX}cb227b6fa4999140"),
+    "O.v": ("Int", f"{STABLE_ID_PREFIX}efbf633667397858"),
+    "O.w": (None, f"{STABLE_ID_PREFIX}b056729bff274ba9"),
+    "K.this": ("(s: String)", f"{STABLE_ID_PREFIX}7e8221197b502170"),
 }
 
 

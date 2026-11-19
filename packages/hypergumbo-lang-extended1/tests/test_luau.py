@@ -13,6 +13,7 @@ from hypergumbo_lang_extended1.luau import (
     find_luau_files,
     is_luau_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def make_luau_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -324,7 +325,7 @@ end
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("luau:test.luau:")
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", """

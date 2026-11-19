@@ -9,6 +9,7 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import properties as properties_module
 from hypergumbo_lang_mainstream.properties import analyze_properties, find_properties_files, is_properties_tree_sitter_available
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_properties_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a properties file in the temp directory."""
@@ -211,7 +212,7 @@ database.name=mydb
         assert prop is not None
         # WI-banod: stable_id is now the canonical hgstableid15:<16hex> (not the
         # composite node.id); node.id remains the location key.
-        assert prop.stable_id.startswith("hgstableid15:")
+        assert prop.stable_id.startswith(STABLE_ID_PREFIX)
         assert prop.id != prop.stable_id
         assert "properties:" in prop.id
         assert "test.properties" in prop.id

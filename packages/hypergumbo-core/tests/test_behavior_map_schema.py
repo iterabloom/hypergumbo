@@ -58,7 +58,10 @@ def test_confidence_model_matches_documented_grammar() -> None:
 def test_each_value_label_is_derived_from_its_scheme_constant() -> None:
     """ADR-0035 "Value labels": one source per label. Each prefix is
     ``value_label`` of its scheme constant, so bumping the constant relabels
-    every value; the literals pin what the labels are today."""
+    every value; the literals pin what the labels are today. They are the
+    one place a test writes a label out: every other test builds the values
+    it pins from the prefix constants, so a scheme bump edits this table and
+    no pinned value whose digest did not move."""
     from hypergumbo_core import schema
 
     pairs = (
@@ -66,13 +69,14 @@ def test_each_value_label_is_derived_from_its_scheme_constant() -> None:
         (schema.SHAPE_ID_PREFIX, "shapeid", schema.SHAPE_ID_SCHEME, "hgshapeid4:"),
         (schema.REPO_FINGERPRINT_PREFIX, "repofp", schema.REPO_FINGERPRINT_SCHEME, "hgrepofp3:"),
         (schema.SCIP_STABLE_ID_PREFIX, "scipid", schema.SCIP_STABLE_ID_SCHEME, "hgscipid1:"),
+        (schema.SYMBOL_FINGERPRINT_PREFIX, "fp", schema.SYMBOL_FINGERPRINT_SCHEME, "hgfp2:"),
     )
     for prefix, word, scheme, literal in pairs:
         assert prefix == schema.value_label(word, scheme) == literal
     # The number is the constant's: a bumped constant gives a bumped label.
     assert schema.value_label("stableid", "hypergumbo-stableid-v16") == "hgstableid16:"
-    # The four labels are distinct, so no value reads as another kind.
-    assert len({p for p, *_ in pairs}) == 4
+    # The five labels are distinct, so no value reads as another kind.
+    assert len({p for p, *_ in pairs}) == 5
 
 
 def test_value_label_rejects_a_scheme_without_a_version_number() -> None:

@@ -34,6 +34,7 @@ from hypergumbo_lang_mainstream.csharp import (
     analyze_csharp,
     normalize_csharp_signature,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _members(tmp_path: Path, body: str, name: str) -> list[Symbol]:
@@ -204,13 +205,13 @@ namespace Fx
 # Stable ids of the hole-free members above, taken from the analyzer before
 # the holes were filled (dev 3da1f85b37, file ``Clean.cs`` at the root).
 PINNED = {
-    ("constructor", "Clean.Clean"): "hgstableid15:ad210095a4bc8b3e",
-    ("method", "Clean.H"): "hgstableid15:857b56ab37223405",
-    ("method", "Clean.G"): "hgstableid15:fd5db1288a1f18fd",
-    ("method", "Clean.Def"): "hgstableid15:c1657d9473d0a6bb",
-    ("method", "Clean.RoRet"): "hgstableid15:05fd7e7aaaaae32c",
-    ("subscript", "Clean.this[]"): "hgstableid15:220ec7dbd954342f",
-    ("method", "Clean.operator-"): "hgstableid15:1f7384d67b5de455",
+    ("constructor", "Clean.Clean"): f"{STABLE_ID_PREFIX}ad210095a4bc8b3e",
+    ("method", "Clean.H"): f"{STABLE_ID_PREFIX}857b56ab37223405",
+    ("method", "Clean.G"): f"{STABLE_ID_PREFIX}fd5db1288a1f18fd",
+    ("method", "Clean.Def"): f"{STABLE_ID_PREFIX}c1657d9473d0a6bb",
+    ("method", "Clean.RoRet"): f"{STABLE_ID_PREFIX}05fd7e7aaaaae32c",
+    ("subscript", "Clean.this[]"): f"{STABLE_ID_PREFIX}220ec7dbd954342f",
+    ("method", "Clean.operator-"): f"{STABLE_ID_PREFIX}1f7384d67b5de455",
 }
 
 

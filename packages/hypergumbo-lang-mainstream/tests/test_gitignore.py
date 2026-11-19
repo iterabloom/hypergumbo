@@ -14,6 +14,7 @@ from hypergumbo_lang_mainstream.gitignore import (
     find_gitignore_files,
     is_gitignore_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_gitignore_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a gitignore file in the temp directory."""
@@ -294,7 +295,7 @@ node_modules/
         # is now a canonical sha256 hash (it no longer reuses the composite id).
         import re
         assert pattern.stable_id != pattern.id
-        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", pattern.stable_id)
+        assert re.match(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$", pattern.stable_id)
         assert "gitignore:" in pattern.id
 
     def test_span_info(self, tmp_path: Path) -> None:
@@ -419,7 +420,7 @@ class TestGitignoreStableIdCanonical:
         result = analyze_gitignore(tmp_path)
         patterns = [s for s in result.symbols if s.kind == "pattern"]
         assert len(patterns) >= 3
-        pat = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+        pat = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
         assert all(pat.match(s.stable_id) for s in patterns)
         assert len({s.stable_id for s in patterns}) == len(patterns)
 

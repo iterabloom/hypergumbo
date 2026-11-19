@@ -43,6 +43,7 @@ from hypergumbo_lang_extended1.twig import analyze_twig
 from hypergumbo_lang_extended1.v_lang import analyze_v
 from hypergumbo_lang_extended1.wolfram import analyze_wolfram
 from hypergumbo_lang_extended1.zig import analyze_zig
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _symbols(analyze: Callable, root: Path, rel: str, text: str) -> list:
@@ -258,8 +259,8 @@ def test_tcl_names_carry_every_enclosing_namespace_eval(tmp_path: Path) -> None:
     assert syms["a"].id == "tcl:src/n.tcl:1-5:a:namespace"
     assert syms["top"].meta is None
     assert {n: s.stable_id for n, s in syms.items()} == {
-        "a": "hgstableid15:5f8ecf75437ae496", "inner": "hgstableid15:67a662494d8be518",
-        "go": "hgstableid15:5a06c54a2c6ba3bd", "top": "hgstableid15:94b7459b9a4080ad",
+        "a": f"{STABLE_ID_PREFIX}5f8ecf75437ae496", "inner": f"{STABLE_ID_PREFIX}67a662494d8be518",
+        "go": f"{STABLE_ID_PREFIX}5a06c54a2c6ba3bd", "top": f"{STABLE_ID_PREFIX}94b7459b9a4080ad",
     }
 
 

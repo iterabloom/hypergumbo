@@ -78,7 +78,10 @@ Scheme tag
 The returned string is prefixed ``hgfp2:`` so consumers can detect the
 scheme version; values under different tags are not comparable. Any change
 to the walk that alters emitted values must bump the tag (e.g., a
-token-canonical walk that ignores renames would be ``hgfp3:``).
+token-canonical walk that ignores renames would be ``hgfp3:``). The tag is
+``SYMBOL_FINGERPRINT_PREFIX``, derived from ``SYMBOL_FINGERPRINT_SCHEME`` by
+``identity_schemes.value_label``, so bumping the scheme constant is the one
+edit that bumps it.
 """
 from __future__ import annotations
 
@@ -100,9 +103,16 @@ if TYPE_CHECKING:
 # version detection. The canonical definition lives in
 # ``hypergumbo_core.identity_schemes`` (re-exported here for consumers that
 # import it from this module).
-from .identity_schemes import SYMBOL_FINGERPRINT_SCHEME  # noqa: F401
+from .identity_schemes import (
+    SYMBOL_FINGERPRINT_PREFIX,
+    SYMBOL_FINGERPRINT_SCHEME,  # noqa: F401
+)
 
-_SCHEME_PREFIX = "hgfp2:"
+# The ``hgfp2:`` label every canonical fingerprint starts with: derived from
+# SYMBOL_FINGERPRINT_SCHEME through ``value_label`` as the other identity
+# labels are, so the label and the scheme constant cannot disagree. The
+# validator's output-boundary check reads it under this name.
+_SCHEME_PREFIX = SYMBOL_FINGERPRINT_PREFIX
 
 
 # Tree-sitter comment-like node types we filter from the walk so that

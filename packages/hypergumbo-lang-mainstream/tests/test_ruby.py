@@ -5,6 +5,7 @@ from pathlib import Path
 
 from hypergumbo_core.analyze.base import find_child_by_type
 from unittest.mock import patch, MagicMock
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 def _run_inherited_calls_pipeline(analyzer_result):
@@ -5191,9 +5192,9 @@ class TestRubyStableShapeId:
         result = analyze_ruby(tmp_path)
         method = next(s for s in result.symbols if s.kind == "method")
         assert method.stable_id is not None
-        assert method.stable_id.startswith("hgstableid15:")
+        assert method.stable_id.startswith(STABLE_ID_PREFIX)
         assert method.shape_id is not None
-        assert method.shape_id.startswith("hgshapeid4:")
+        assert method.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_class_has_stable_and_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
@@ -5204,9 +5205,9 @@ class TestRubyStableShapeId:
         result = analyze_ruby(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.stable_id is not None
-        assert cls.stable_id.startswith("hgstableid15:")
+        assert cls.stable_id.startswith(STABLE_ID_PREFIX)
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("hgshapeid4:")
+        assert cls.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestRubyLinesOfCode:

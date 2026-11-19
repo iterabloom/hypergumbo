@@ -54,6 +54,7 @@ from hypergumbo_core.analyze.base import (
     widen_route_stable_ids,
 )
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 if TYPE_CHECKING:
     pass
@@ -428,8 +429,8 @@ class TestMakeRouteStableId:
         ``id_format`` validator pins a single canonical form (INV-hunup).
         """
         result = make_route_stable_id("GET", "/users")
-        assert result.startswith("hgstableid15:")
-        suffix = result[len("hgstableid15:"):]
+        assert result.startswith(STABLE_ID_PREFIX)
+        suffix = result[len(STABLE_ID_PREFIX):]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -472,8 +473,8 @@ class TestMakeSiteStableId:
 
     def test_canonical_shape(self) -> None:
         result = make_site_stable_id("http", "app.py", "GET:/users")
-        assert result.startswith("hgstableid15:")
-        suffix = result[len("hgstableid15:"):]
+        assert result.startswith(STABLE_ID_PREFIX)
+        suffix = result[len(STABLE_ID_PREFIX):]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -610,8 +611,8 @@ class TestMakeEntryStableId:
         for why the factory family shares one shape.
         """
         result = make_entry_stable_id("compute", "dispatch", "shaders/a.wgsl")
-        assert result.startswith("hgstableid15:")
-        suffix = result[len("hgstableid15:"):]
+        assert result.startswith(STABLE_ID_PREFIX)
+        suffix = result[len(STABLE_ID_PREFIX):]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -628,8 +629,8 @@ class TestMakeProtocolStableId:
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
         """Result uses the canonical ``hgstableid15:<16hex>`` shape."""
         result = make_protocol_stable_id("db_query", "SELECT", "users")
-        assert result.startswith("hgstableid15:")
-        suffix = result[len("hgstableid15:"):]
+        assert result.startswith(STABLE_ID_PREFIX)
+        suffix = result[len(STABLE_ID_PREFIX):]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -664,8 +665,8 @@ class TestMakeProtocolStableId:
         category) so the API doesn't blow up on a future caller.
         """
         result = make_protocol_stable_id("category_only")
-        assert result.startswith("hgstableid15:")
-        assert len(result) == len("hgstableid15:") + 16
+        assert result.startswith(STABLE_ID_PREFIX)
+        assert len(result) == len(STABLE_ID_PREFIX) + 16
 
 
 class TestMakeTypedStableId:
@@ -676,8 +677,8 @@ class TestMakeTypedStableId:
         result = make_typed_stable_id(
             "method", "(String,int)User", name="m", qualified_name="m"
         )
-        assert result.startswith("hgstableid15:")
-        assert len(result) == len("hgstableid15:") + 16
+        assert result.startswith(STABLE_ID_PREFIX)
+        assert len(result) == len(STABLE_ID_PREFIX) + 16
 
     def test_deterministic(self) -> None:
         """Same inputs produce same output."""
@@ -708,10 +709,10 @@ class TestMakeTypedStableId:
     def test_different_containing_produces_different_ids(self) -> None:
         """Same signature in different containers produces different hashes."""
         id1 = make_typed_stable_id(
-            "method", "(int)bool", "", "hgstableid15:aaa", name="m", qualified_name="m"
+            "method", "(int)bool", "", f"{STABLE_ID_PREFIX}aaa", name="m", qualified_name="m"
         )
         id2 = make_typed_stable_id(
-            "method", "(int)bool", "", "hgstableid15:bbb", name="m", qualified_name="m"
+            "method", "(int)bool", "", f"{STABLE_ID_PREFIX}bbb", name="m", qualified_name="m"
         )
         assert id1 != id2
 
@@ -720,7 +721,7 @@ class TestMakeTypedStableId:
         result = make_typed_stable_id(
             "function", "(int)bool", "", name="m", qualified_name="m"
         )
-        assert result.startswith("hgstableid15:")
+        assert result.startswith(STABLE_ID_PREFIX)
 
     def test_different_decorators_produce_different_ids(self) -> None:
         """Same signature with different decorators produces different hashes."""
@@ -2561,12 +2562,12 @@ class TestPopulateSyntheticClassBIdentity:
         from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
 
         s = self._class_b(
-            stable_id="hgstableid15:deadbeefdeadbeef",
+            stable_id=f"{STABLE_ID_PREFIX}deadbeefdeadbeef",
             display_label="prebuilt-label",
             fingerprint="cafebabecafebabe",
         )
         populate_synthetic_class_b_identity([s])
-        assert s.stable_id == "hgstableid15:deadbeefdeadbeef"
+        assert s.stable_id == f"{STABLE_ID_PREFIX}deadbeefdeadbeef"
         assert s.display_label == "prebuilt-label"
         assert s.fingerprint == "cafebabecafebabe"
 
@@ -2600,7 +2601,7 @@ class TestPopulateSyntheticClassBIdentity:
         gap = self._class_b()
         stamped = self._class_b(
             id="javascript:b.js:1-1:mq:function", name="mq:topic",
-            stable_id="hgstableid15:aaaabbbbccccdddd", display_label="kept",
+            stable_id=f"{STABLE_ID_PREFIX}aaaabbbbccccdddd", display_label="kept",
             fingerprint="1111222233334444",
         )
         before = {
@@ -2610,7 +2611,7 @@ class TestPopulateSyntheticClassBIdentity:
         populate_synthetic_class_b_identity([gap, stamped])
         # stamped: all fields byte-identical.
         assert (stamped.stable_id, stamped.fingerprint, stamped.display_label) == (
-            "hgstableid15:aaaabbbbccccdddd", "1111222233334444", "kept",
+            f"{STABLE_ID_PREFIX}aaaabbbbccccdddd", "1111222233334444", "kept",
         )
         # gap: positive half — the null fields actually transitioned to values
         # (a genuine revert detector: fails if the stamping body is neutered).
@@ -2641,7 +2642,7 @@ class TestMakeDocStableId:
     def test_canonical_sha256_shape(self) -> None:
         import re
         sid = make_doc_stable_id("markdown", "README.md", "section", "Intro", 1, 2)
-        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", sid), sid
+        assert re.match(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$", sid), sid
 
     def test_span_is_not_hashed_and_scope_separates(self) -> None:
         # Lines stay out of the hash (ADR-0035 §3; WI-tusad), so deleting a
@@ -2714,7 +2715,7 @@ class TestMakeDocSymbolIds:
     def test_stable_id_is_canonical_and_matches_factory(self) -> None:
         import re
         node_id, stable_id = make_doc_symbol_ids("vue", "src/App.vue", "prop", "title", 10, 12)
-        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", stable_id), stable_id
+        assert re.match(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$", stable_id), stable_id
         assert stable_id == make_doc_stable_id("vue", "src/App.vue", "prop", "title", 10, 12)
         assert node_id != stable_id
 

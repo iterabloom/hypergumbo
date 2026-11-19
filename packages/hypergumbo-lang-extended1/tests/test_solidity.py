@@ -9,6 +9,7 @@ from hypergumbo_lang_extended1.solidity import (
     find_solidity_files,
     is_solidity_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 # INV-lapas: these tests select the callable they care about; they do not
@@ -1682,7 +1683,7 @@ def test_callable_kinds_carry_stable_id(tmp_path: Path) -> None:
         assert syms, f"no {kind} symbols emitted"
         for s in syms:
             assert (
-                s.stable_id is not None and s.stable_id.startswith("hgstableid15:")
+                s.stable_id is not None and s.stable_id.startswith(STABLE_ID_PREFIX)
             ), f"{kind} {s.name} has stable_id={s.stable_id!r}"
 
 

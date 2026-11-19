@@ -32,11 +32,12 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
-_CANONICAL = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+_CANONICAL = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
 
 
-def _mq(line: int, name: str = "kafka:publish:topic", sid: str = "hgstableid15:aaaa000000000000") -> Symbol:
+def _mq(line: int, name: str = "kafka:publish:topic", sid: str = f"{STABLE_ID_PREFIX}aaaa000000000000") -> Symbol:
     """A LOGICAL message-queue Class-B stand-in (one per reference site)."""
     return Symbol(
         id=f"javascript:app.js:{line}-{line}:{name}:function",
@@ -50,7 +51,7 @@ def _mq(line: int, name: str = "kafka:publish:topic", sid: str = "hgstableid15:a
     )
 
 
-def _export(line: int, name: str = "FOO", sid: str = "hgstableid15:cccc000000000000", path: str = "s.sh") -> Symbol:
+def _export(line: int, name: str = "FOO", sid: str = f"{STABLE_ID_PREFIX}cccc000000000000", path: str = "s.sh") -> Symbol:
     """A SITE shell-export symbol."""
     return Symbol(
         id=f"bash:{path}:{line}-{line}:{name}:export",
@@ -158,7 +159,7 @@ def test_dedup_leaves_site_origin_call_sites_alone() -> None:
             id=f"python:a.py:{line}-{line}:GET /x:call_site",
             name="GET /x", kind="call_site", language=None, path="a.py",
             span=Span(start_line=line, end_line=line, start_col=0, end_col=5),
-            stable_id="hgstableid15:bbbb000000000000", protocol_origin="http",
+            stable_id=f"{STABLE_ID_PREFIX}bbbb000000000000", protocol_origin="http",
         )
     symbols = [http(5), http(9)]
     assert dedup_logical_synthetic_identities(symbols, []) == 0
@@ -185,8 +186,8 @@ def test_dedup_excludes_graphql_to_protect_client_call_sites() -> None:
 
 def test_dedup_noop_when_no_duplicates() -> None:
     """Distinct topics are untouched (different stable_ids)."""
-    a = _mq(5, sid="hgstableid15:1111000000000000")
-    b = _mq(9, sid="hgstableid15:2222000000000000")
+    a = _mq(5, sid=f"{STABLE_ID_PREFIX}1111000000000000")
+    b = _mq(9, sid=f"{STABLE_ID_PREFIX}2222000000000000")
     symbols = [a, b]
     assert dedup_logical_synthetic_identities(symbols, []) == 0
     assert len(symbols) == 2
@@ -206,7 +207,7 @@ def test_split_occurrence_indexes_within_file_collisions() -> None:
     ids = [s.stable_id for s in symbols]
     assert len(set(ids)) == 3
     # The smallest-span occurrence keeps the original id; all stay canonical.
-    assert s1.stable_id == "hgstableid15:cccc000000000000"
+    assert s1.stable_id == f"{STABLE_ID_PREFIX}cccc000000000000"
     assert s2.stable_id != s1.stable_id and s3.stable_id != s1.stable_id
     assert all(_CANONICAL.match(i) for i in ids)
 
@@ -214,8 +215,8 @@ def test_split_occurrence_indexes_within_file_collisions() -> None:
 def test_split_is_per_file_not_cross_file() -> None:
     """The same id in DIFFERENT files is NOT a within-file collision (that's the
     corpus umbrella's domain); the per-file pass leaves it alone."""
-    a = _export(1, path="a.sh", sid="hgstableid15:dddd000000000000")
-    b = _export(1, path="b.sh", sid="hgstableid15:dddd000000000000")
+    a = _export(1, path="a.sh", sid=f"{STABLE_ID_PREFIX}dddd000000000000")
+    b = _export(1, path="b.sh", sid=f"{STABLE_ID_PREFIX}dddd000000000000")
     assert split_within_file_stable_id_collisions([a, b]) == 0
     assert a.stable_id == b.stable_id
 
@@ -224,10 +225,10 @@ def test_split_skips_pathless_and_null_stable_id() -> None:
     """Pathless and null-stable_id symbols are out of the in-a-file guarantee."""
     p1 = Symbol(id="x", name="n", kind="function", language="py", path="",
                 span=Span(start_line=1, end_line=1, start_col=0, end_col=1),
-                stable_id="hgstableid15:ffff000000000000")
+                stable_id=f"{STABLE_ID_PREFIX}ffff000000000000")
     p2 = Symbol(id="y", name="n", kind="function", language="py", path="",
                 span=Span(start_line=2, end_line=2, start_col=0, end_col=1),
-                stable_id="hgstableid15:ffff000000000000")
+                stable_id=f"{STABLE_ID_PREFIX}ffff000000000000")
     nul = Symbol(id="z", name="n", kind="function", language="py", path="a.py",
                  span=Span(start_line=1, end_line=1, start_col=0, end_col=1),
                  stable_id=None)

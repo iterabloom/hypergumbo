@@ -14,6 +14,7 @@ from hypergumbo_lang_extended1.pony import (
     find_pony_files,
     is_pony_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def make_pony_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -311,7 +312,7 @@ actor Main
         assert re.match(
             r"^pony:.*test\.pony:\d+-\d+:Main:actor$", actor.id
         ), actor.id
-        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", actor.stable_id)
+        assert re.match(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$", actor.stable_id)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", """
@@ -505,7 +506,7 @@ actor Main
         result = analyze_pony(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1
-        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+        canonical = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
         for sym in result.symbols:
             assert canonical.match(sym.stable_id), (sym.kind, sym.name, sym.stable_id)
 

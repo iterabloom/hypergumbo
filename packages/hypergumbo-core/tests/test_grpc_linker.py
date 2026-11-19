@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for gRPC/Protobuf linker."""
 from pathlib import Path
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 class TestGrpcLinkerBasics:
@@ -1110,7 +1111,7 @@ class TestGrpcProtoRouteSymbols:
         route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
         assert len(route_symbols) == 1
         assert route_symbols[0].stable_id is not None
-        assert route_symbols[0].stable_id.startswith("hgstableid15:")
+        assert route_symbols[0].stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_proto_rpc_route_creates_routes_to_edge(self, tmp_path: Path) -> None:
         """Route symbols get routes_to edges to the service symbol."""

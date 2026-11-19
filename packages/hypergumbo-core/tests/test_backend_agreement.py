@@ -32,6 +32,7 @@ from hypergumbo_core.backend_agreement import (
     to_json,
 )
 from hypergumbo_core.cli import main
+from hypergumbo_core.identity_schemes import SCIP_STABLE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 def _noop(repo_root: Any) -> AnalysisResult:  # pragma: no cover - never called
@@ -70,9 +71,9 @@ def _artifact() -> dict[str, Any]:
                               "stable_id": ["python"], "is_exported": ["python"]},
               "alternatives": {"kind": [{"value": "method", "origin": ["pyscip"]}],
                                "span": [{"value": {"start_line": 1, "end_line": 1, "start_col": 4, "end_col": 5}, "origin": ["pyscip"]}],
-                               "stable_id": [{"value": "hgscipid1:beef", "origin": ["pyscip"]}],
+                               "stable_id": [{"value": f"{SCIP_STABLE_ID_PREFIX}beef", "origin": ["pyscip"]}],
                                "is_exported": [{"value": False, "origin": ["pyscip"]}]},
-              "stable_id": "hgstableid15:cafe",
+              "stable_id": f"{STABLE_ID_PREFIX}cafe",
               # WI-pofih: `is_exported` is the one tracked attribute
               # `Symbol.to_dict()` does NOT put at the top level.
               "supply_chain": {"tier": 1, "is_exported": True}}

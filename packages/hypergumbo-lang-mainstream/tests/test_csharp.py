@@ -15,6 +15,7 @@ from hypergumbo_lang_mainstream.csharp import (
     is_csharp_tree_sitter_available,
     PASS_ID,
 )
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX
 
 
 @pytest.fixture
@@ -162,7 +163,7 @@ class TestCSharpSymbolExtraction:
         missing = [(s.kind, s.name) for s in body_bearing if s.shape_id is None]
         assert not missing, f"C# body-bearing symbols with shape_id=None: {missing}"
         for s in body_bearing:
-            assert s.shape_id.startswith("hgshapeid4:"), s.shape_id
+            assert s.shape_id.startswith(SHAPE_ID_PREFIX), s.shape_id
 
     def test_extracts_structs(self, csharp_repo: Path) -> None:
         """Should extract struct declarations."""
@@ -2630,13 +2631,13 @@ class TestStampShapeIds:
         from types import SimpleNamespace
         from hypergumbo_lang_mainstream.csharp import _stamp_shape_ids
 
-        existing = self._sym("keep", shape_id="hgshapeid4:preexisting")
+        existing = self._sym("keep", shape_id=f"{SHAPE_ID_PREFIX}preexisting")
         analysis = SimpleNamespace(
             node_for_symbol={"keep": object(), "absent": object()},
             symbols=[existing],
         )
         _stamp_shape_ids(object(), analysis)
-        assert existing.shape_id == "hgshapeid4:preexisting"
+        assert existing.shape_id == f"{SHAPE_ID_PREFIX}preexisting"
 
 
 class TestCSharpBareMethodMagnetGate:

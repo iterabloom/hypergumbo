@@ -14,6 +14,7 @@ from hypergumbo_lang_extended1.pascal import (
     find_pascal_files,
     is_pascal_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 def make_pascal_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -322,10 +323,10 @@ end.
         assert "test.pas" in func.id
         assert "MyFunc" in func.id
         assert func.stable_id is not None
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
         # shape_id is auto-computed via node_for_symbol
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "test.pas", """program Test;

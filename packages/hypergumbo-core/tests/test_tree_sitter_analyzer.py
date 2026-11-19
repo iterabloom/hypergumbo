@@ -41,6 +41,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 # ---------------------------------------------------------------------------
@@ -875,7 +876,7 @@ class TestComputeShapeId:
         """compute_shape_id should return hgshapeid4:{16-hex-chars} format."""
         node = MockNode(type="identifier")
         shape_id = self.analyzer.compute_shape_id(node)
-        assert shape_id.startswith("hgshapeid4:")
+        assert shape_id.startswith(SHAPE_ID_PREFIX)
         hex_part = shape_id.split(":")[1]
         assert len(hex_part) == 16
         int(hex_part, 16)  # should not raise
@@ -901,7 +902,7 @@ class TestComputeShapeId:
         node = _make_tree("block", MockNode(type="expression_statement"))
         structure = self.analyzer._cst_structure(node)
         expected = hashlib.sha256(structure.encode()).hexdigest()[:16]
-        assert self.analyzer.compute_shape_id(node) == f"hgshapeid4:{expected}"
+        assert self.analyzer.compute_shape_id(node) == f"{SHAPE_ID_PREFIX}{expected}"
 
     def test_node_becomes_leaf_when_only_anonymous_children(self) -> None:
         """A named node with only anonymous children should be treated as a leaf."""
@@ -935,7 +936,7 @@ class TestComputeShapeId:
             node = _make_tree(f"wrapper_{i}", node)
         # Should not raise RecursionError
         shape_id = self.analyzer.compute_shape_id(node)
-        assert shape_id.startswith("hgshapeid4:")
+        assert shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestShapeIdAutoComputation:
@@ -975,7 +976,7 @@ class TestShapeIdAutoComputation:
         sym = result.symbols[0]
 
         assert sym.shape_id is not None
-        assert sym.shape_id.startswith("hgshapeid4:")
+        assert sym.shape_id.startswith(SHAPE_ID_PREFIX)
         assert sym.shape_id == analyzer.compute_shape_id(mock_node)
 
     def test_shape_id_not_overwritten_if_already_set(self, tmp_path: Path) -> None:
@@ -996,7 +997,7 @@ class TestShapeIdAutoComputation:
                     span=Span(start_line=1, start_col=0, end_line=10, end_col=0),
                     origin=self.pass_id,
                     origin_run_id=run.execution_id,
-                    shape_id="hgshapeid4:preset_value_abc",
+                    shape_id=f"{SHAPE_ID_PREFIX}preset_value_abc",
                 )
                 analysis.symbols.append(sym)
                 analysis.symbol_by_name["test"] = sym
@@ -1008,7 +1009,7 @@ class TestShapeIdAutoComputation:
         sym = result.symbols[0]
 
         # Should keep the preset value, not overwrite
-        assert sym.shape_id == "hgshapeid4:preset_value_abc"
+        assert sym.shape_id == f"{SHAPE_ID_PREFIX}preset_value_abc"
 
     def test_no_node_for_symbol_no_shape_id(self, tmp_path: Path) -> None:
         """Symbols without entries in node_for_symbol keep shape_id=None."""
@@ -1178,7 +1179,7 @@ class TestComputeStableId:
         """compute_stable_id should return hgstableid15:{16-hex-chars} format."""
         node = self._make_function_node()
         sid = self.analyzer.compute_stable_id(node, kind="function")
-        assert sid.startswith("hgstableid15:")
+        assert sid.startswith(STABLE_ID_PREFIX)
         hex_part = sid.split(":")[1]
         assert len(hex_part) == 16
         int(hex_part, 16)
@@ -1213,8 +1214,8 @@ class TestComputeStableId:
     def test_containing_stable_id_differentiates(self) -> None:
         """Different containing_stable_id values produce different hashes."""
         node = self._make_function_node()
-        sid_a = self.analyzer.compute_stable_id(node, "method", containing_stable_id="hgstableid15:classA")
-        sid_b = self.analyzer.compute_stable_id(node, "method", containing_stable_id="hgstableid15:classB")
+        sid_a = self.analyzer.compute_stable_id(node, "method", containing_stable_id=f"{STABLE_ID_PREFIX}classA")
+        sid_b = self.analyzer.compute_stable_id(node, "method", containing_stable_id=f"{STABLE_ID_PREFIX}classB")
         assert sid_a != sid_b
 
     def test_no_params_node(self) -> None:
@@ -1224,7 +1225,7 @@ class TestComputeStableId:
             _make_tree("block", MockNode(type="pass_statement")),
         ])
         sid = self.analyzer.compute_stable_id(node, kind="class")
-        assert sid.startswith("hgstableid15:")
+        assert sid.startswith(STABLE_ID_PREFIX)
 
     def test_hash_matches_manual(self) -> None:
         """The hash should match a manual sha256 of the canonical string."""
@@ -1243,7 +1244,7 @@ class TestComputeStableId:
         # ":" between the arity flags and the trailing "0".
         expected_sig = "function:2:False,False,False:::::0"
         expected_hash = hashlib.sha256(expected_sig.encode()).hexdigest()[:16]
-        assert sid == f"hgstableid15:{expected_hash}"
+        assert sid == f"{STABLE_ID_PREFIX}{expected_hash}"
 
     def test_name_disambiguates_same_shape(self) -> None:
         """Two same-shape symbols with different names produce different

@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from hypergumbo_lang_mainstream import java as java_module
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX
 
 
 def _run_inherited_calls_pipeline(analyzer_result):
@@ -4835,7 +4836,7 @@ class TestJavaShapeId:
         result = analyze_java(tmp_path)
         method = next(s for s in result.symbols if s.kind == "method")
         assert method.shape_id is not None
-        assert method.shape_id.startswith("hgshapeid4:")
+        assert method.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.java import analyze_java
@@ -4848,7 +4849,7 @@ class TestJavaShapeId:
         result = analyze_java(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("hgshapeid4:")
+        assert cls.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestJavaUnresolvedExternalEdges:

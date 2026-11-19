@@ -38,6 +38,7 @@ from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, _compute_run_sig
 from hypergumbo_core.limits import Limits
 from hypergumbo_core.pass_metadata import PassMeta, PassMetadataLookup
 from hypergumbo_core.spec_validator import ValidationViolation, validate_ir
+from hypergumbo_core.identity_schemes import REPO_FINGERPRINT_PREFIX
 
 _TC = {"name": "python", "version": "3.11"}
 
@@ -193,12 +194,12 @@ def test_stamp_empty_metadata_pass_version_leaves_empty(tmp_path: Path) -> None:
 
 # --- Sub-step 4: repo_fingerprint -------------------------------------------------------
 def test_repo_fingerprint_stamps_none_only(tmp_path: Path) -> None:
-    runs = [_ar("a", repo_fingerprint=None), _ar("b", repo_fingerprint="hgrepofp3:preset")]
+    runs = [_ar("a", repo_fingerprint=None), _ar("b", repo_fingerprint=f"{REPO_FINGERPRINT_PREFIX}preset")]
     ctx = _ctx(tmp_path, analysis_runs=runs)
     _finalize_repo_fingerprint(ctx)
     assert ctx.repo_fingerprint  # computed and stashed for _freeze
     assert ctx.analysis_runs[0]["repo_fingerprint"] == ctx.repo_fingerprint
-    assert ctx.analysis_runs[1]["repo_fingerprint"] == "hgrepofp3:preset"
+    assert ctx.analysis_runs[1]["repo_fingerprint"] == f"{REPO_FINGERPRINT_PREFIX}preset"
 
 
 # --- Sub-step 6: skipped_into_limits ----------------------------------------------------

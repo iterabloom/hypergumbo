@@ -40,6 +40,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 # The collision substrate: two classes sharing a method short-name, each method
 # calling a distinct same-file helper. Keyed by bare name, Beta.to_dict would
@@ -69,16 +70,16 @@ WIJAFAT_FIXTURE = (
 # A producer-side algorithm bump legitimately changes them and needs a re-baseline;
 # call attribution, which this gate guards, must leave them byte-for-byte invariant.
 GOLDEN_STABLE_IDS = frozenset({
-    "hgstableid15:0fcbb9c686c93dae",  # helper_a
-    "hgstableid15:6d07134c1021d31f",  # Alpha
-    "hgstableid15:ba8ffea1ab1956c4",  # helper_b
-    "hgstableid15:c6933702c1cec3b9",  # Alpha.to_dict
-    "hgstableid15:fb9b04fa5f748655",  # Beta
-    "hgstableid15:fc784ee2fa5561fb",  # Beta.to_dict
+    f"{STABLE_ID_PREFIX}0fcbb9c686c93dae",  # helper_a
+    f"{STABLE_ID_PREFIX}6d07134c1021d31f",  # Alpha
+    f"{STABLE_ID_PREFIX}ba8ffea1ab1956c4",  # helper_b
+    f"{STABLE_ID_PREFIX}c6933702c1cec3b9",  # Alpha.to_dict
+    f"{STABLE_ID_PREFIX}fb9b04fa5f748655",  # Beta
+    f"{STABLE_ID_PREFIX}fc784ee2fa5561fb",  # Beta.to_dict
     # models.py has content nodes but no imports/calls, so it gets a synthesized
     # kind="file" anchor (file-anchor:F1, WI-dagif) — the only node beyond the
     # six symbols above.
-    "hgstableid15:dc483d5fde1117c1",  # models.py file anchor
+    f"{STABLE_ID_PREFIX}dc483d5fde1117c1",  # models.py file anchor
 })
 GOLDEN_IDS = frozenset({
     "python:models.py:1-3:Alpha:class",
@@ -94,9 +95,9 @@ GOLDEN_IDS = frozenset({
 # file anchor is synthesized without a shape_id (None), at parity with the
 # WI-ramuv dangling-edge file synthesizer.
 GOLDEN_SHAPE_IDS = frozenset({
-    "hgshapeid4:d1120c9e03c93625",  # both classes (shape_id v3, WI-linon)
-    "hgshapeid4:15c309444812a90d",  # both methods (shape_id v3, WI-linon)
-    "hgshapeid4:cd7f012340749ecd",  # both functions (shape_id v3, WI-linon)
+    f"{SHAPE_ID_PREFIX}d1120c9e03c93625",  # both classes (shape_id v3, WI-linon)
+    f"{SHAPE_ID_PREFIX}15c309444812a90d",  # both methods (shape_id v3, WI-linon)
+    f"{SHAPE_ID_PREFIX}cd7f012340749ecd",  # both functions (shape_id v3, WI-linon)
     None,  # WI-dagif file anchor (synthesized; no shape_id)
 })
 

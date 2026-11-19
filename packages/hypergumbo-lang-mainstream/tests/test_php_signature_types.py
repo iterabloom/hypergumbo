@@ -36,6 +36,7 @@ from hypergumbo_lang_mainstream.php import (
     analyze_php,
     normalize_php_signature,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _named(tmp_path: Path, source: str, name: str) -> list[Symbol]:
@@ -220,11 +221,11 @@ class K {
 }"""
 
 _PINNED = {
-    "plain": ("(int,?string,int|float,$d,\\Foo\\Bar)?static", "hgstableid15:9986f7cf938cb60d"),
-    "untyped": ("($x,$y)", "hgstableid15:37f79e237ad0871f"),
-    "returnsVoid": ("(array)", "hgstableid15:b7aa9afb515e4391"),
-    "K.m": ("(callable,iterable,mixed,object,self)\\Foo\\Bar", "hgstableid15:522d753fbb322574"),
-    "K.n": ("(?int)int|false", "hgstableid15:f66f14ed3b34a50f"),
+    "plain": ("(int,?string,int|float,$d,\\Foo\\Bar)?static", f"{STABLE_ID_PREFIX}9986f7cf938cb60d"),
+    "untyped": ("($x,$y)", f"{STABLE_ID_PREFIX}37f79e237ad0871f"),
+    "returnsVoid": ("(array)", f"{STABLE_ID_PREFIX}b7aa9afb515e4391"),
+    "K.m": ("(callable,iterable,mixed,object,self)\\Foo\\Bar", f"{STABLE_ID_PREFIX}522d753fbb322574"),
+    "K.n": ("(?int)int|false", f"{STABLE_ID_PREFIX}f66f14ed3b34a50f"),
 }
 
 

@@ -14,6 +14,7 @@ from hypergumbo_lang_mainstream.ini import (
     is_ini_tree_sitter_available,
     _categorize_section,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_ini_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an INI file in the temp directory."""
@@ -237,7 +238,7 @@ host = localhost
         assert section is not None
         # WI-banod: stable_id is now the canonical hgstableid15:<16hex> (not the
         # composite node.id); node.id remains the location key.
-        assert section.stable_id.startswith("hgstableid15:")
+        assert section.stable_id.startswith(STABLE_ID_PREFIX)
         assert section.id != section.stable_id
         assert "ini:" in section.id
 

@@ -7,6 +7,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import hypergumbo_lang_mainstream.c as c_module
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 class TestFindCFiles:
@@ -1905,7 +1906,7 @@ class TestCStableId:
         result = analyze_c(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_struct_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.c import analyze_c
@@ -1914,7 +1915,7 @@ class TestCStableId:
         result = analyze_c(tmp_path)
         struct = next(s for s in result.symbols if s.name == "Point")
         assert struct.stable_id is not None
-        assert struct.stable_id.startswith("hgstableid15:")
+        assert struct.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 class TestCUnresolvedExternalEdges:
@@ -2000,7 +2001,7 @@ class TestCShapeId:
         result = analyze_c(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_struct_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.c import analyze_c
@@ -2009,7 +2010,7 @@ class TestCShapeId:
         result = analyze_c(tmp_path)
         struct = next(s for s in result.symbols if s.name == "Point")
         assert struct.shape_id is not None
-        assert struct.shape_id.startswith("hgshapeid4:")
+        assert struct.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 # WI-gotuv: bare-identifier matching for C stdio globals

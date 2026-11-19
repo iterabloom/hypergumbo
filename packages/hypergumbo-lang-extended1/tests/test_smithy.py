@@ -13,6 +13,7 @@ from hypergumbo_lang_extended1.smithy import (
     find_smithy_files,
     is_smithy_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def make_smithy_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -286,7 +287,7 @@ service MyService {}
         assert svc is not None
         assert svc.id != svc.stable_id
         assert svc.id.startswith("smithy:test.smithy:")
-        assert svc.stable_id.startswith("hgstableid15:")
+        assert svc.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """

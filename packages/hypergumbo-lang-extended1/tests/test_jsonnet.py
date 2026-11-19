@@ -13,6 +13,7 @@ from hypergumbo_lang_extended1.jsonnet import (
     find_jsonnet_files,
     is_jsonnet_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def make_jsonnet_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -236,7 +237,7 @@ local myFunc(x) = x;
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("jsonnet:test.jsonnet:")
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """

@@ -17,6 +17,7 @@ from hypergumbo_lang_extended1.verilog import (
     analyze_verilog_files,
     find_verilog_files,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def test_pass_metadata():
@@ -300,7 +301,7 @@ def test_task_function_and_net_in_a_module_are_symbols(tmp_path):
     for kind, name in (("task", "run"), ("function", "f"), ("signal", "w")):
         sym = _one(result, kind, name, "a")
         assert sym.language == "verilog"
-        assert sym.stable_id and sym.stable_id.startswith("hgstableid15:")
+        assert sym.stable_id and sym.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 def test_same_named_members_of_two_modules_hold_different_ids(tmp_path):

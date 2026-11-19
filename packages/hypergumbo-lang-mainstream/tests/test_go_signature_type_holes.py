@@ -28,6 +28,7 @@ from hypergumbo_lang_mainstream.go import (
     _go_type_parameters_text,
     analyze_go,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _symbols(repo: Path, source: str) -> dict:
@@ -135,12 +136,12 @@ _HOLE_FREE = (
     "func (s *S) Do(x [4]byte, f func(int)) error { return nil }\n"
 )
 _BASE_IDS = {
-    "I.Get": "hgstableid15:c3d6e6c6be984913",
-    "Plain": "hgstableid15:b0498b443211caed",
-    "Handler": "hgstableid15:d6d25163f98eaf16",
-    "Ret": "hgstableid15:2ca5bcb183918520",
-    "Chan": "hgstableid15:97fc58949ca7e6f1",
-    "S.Do": "hgstableid15:c60b10f5dc28c3f1",
+    "I.Get": f"{STABLE_ID_PREFIX}c3d6e6c6be984913",
+    "Plain": f"{STABLE_ID_PREFIX}b0498b443211caed",
+    "Handler": f"{STABLE_ID_PREFIX}d6d25163f98eaf16",
+    "Ret": f"{STABLE_ID_PREFIX}2ca5bcb183918520",
+    "Chan": f"{STABLE_ID_PREFIX}97fc58949ca7e6f1",
+    "S.Do": f"{STABLE_ID_PREFIX}c60b10f5dc28c3f1",
 }
 
 

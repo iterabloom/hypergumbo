@@ -23,6 +23,7 @@ from hypergumbo_core.behaviours import (
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.beam_behaviour import beam_behaviour_linker
 from hypergumbo_core.linkers.registry import LinkerContext, get_all_linkers
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _sym(
@@ -118,7 +119,7 @@ class TestSharedEdgeShapes:
         """Arity, kind and file each change the id; the name alone does not
         make it collide with anything but another callback."""
         base = callback_stable_id("erlang", "src/shape.erl", "area/0", 0)
-        assert base.startswith("hgstableid15:")
+        assert base.startswith(STABLE_ID_PREFIX)
         assert base == callback_stable_id("erlang", "src\\shape.erl", "area/0", 0)
         assert base != callback_stable_id("erlang", "src/shape.erl", "area/0", 1)
         assert base != callback_stable_id("erlang", "src/other.erl", "area/0", 0)

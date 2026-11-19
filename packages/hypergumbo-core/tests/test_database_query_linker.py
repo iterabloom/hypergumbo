@@ -13,6 +13,7 @@ from hypergumbo_core.linkers.database_query import (
     link_database_queries,
 )
 from hypergumbo_core.ir import Symbol, Span
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 class TestTableExtraction:
@@ -612,7 +613,7 @@ class TestDatabaseQueryLinker:
         symbol = result.symbols[0]
         expected = make_site_stable_id("db_query", "app.py", "SELECT:users")
         assert symbol.stable_id == expected
-        assert symbol.stable_id.startswith("hgstableid15:")
+        assert symbol.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_case_insensitive_table_matching(self, tmp_path: Path):
         """Table matching is case-insensitive."""
