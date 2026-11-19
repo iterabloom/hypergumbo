@@ -128,7 +128,12 @@ The rest of the dataflow pipeline over a built CFG also lives here:
   function, and outside every nested function, into that nested function's
   reads of the same name, which the solve cannot connect because the nested
   body hangs off its definition point. ``ddg_build`` calls it for every
-  function whose solve did not bail out.
+  function whose solve did not bail out. Each such edge names the nested
+  function's line span (``DdgEdge.late_region``, WI-tivok) unless the function
+  is invoked where it is written (``_invoked_in_place``); the taint walk reads
+  that span to let a sink inside a deferred, ``go``-started or registered
+  closure run after a source written below it. A Go ``defer`` holding a
+  closure gives the closure a region like any other statement does.
 - ``select_ddg_targets`` holds the §1c target-selection policy; it has no
   production caller (see its docstring).
 """
@@ -577,6 +582,11 @@ class CfgNodeMapping:
     #: "forfeit everything" rather than "nothing uncovered" — the permitting
     #: case is enumerated, so an unconfigured language fails CLOSED.
     call_node_types: list[str] = field(default_factory=list)
+    #: ``later_call`` (WI-tivok): statement types that run the call they hold
+    #: LATER than where they are written, other than a ``deferred`` construct
+    #: (Go ``go``). A nested function invoked by one is not invoked in place
+    #: (:func:`_invoked_in_place`). Empty when the key is absent.
+    later_calls: list[str] = field(default_factory=list)
     # Atomic statement node types — types that the CFG builder treats
     # as a single CfgStatement, NOT as a control-flow construct. Without
     # this hint, _process_sequential decomposes every unmapped node into
@@ -892,6 +902,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         deferred=deferred,
         switch=switch,
         call_node_types=data.get("call_node_types", []),
+        later_calls=data.get("later_call", []),
         atomic_statements=data.get("atomic_statement", []),
         nested_functions=nested_functions,
         store_assignments=store_assignments,
@@ -2006,20 +2017,15 @@ class CfgBuilder:
         if body_node:
             self._deferred_nodes.append(body_node)
 
-        # Create a marker block for the defer statement
-        block = self._new_block()
-        block.statements.append(CfgStatement(
-            line=node.start_point[0] + 1,
-            col=node.start_point[1],
-            node_type=node.type,
-            code_snippet=self._node_text(node, source),
-        ))
-
-        return _PartialCfg(
-            entry_block=block.id,
-            fringe=[_FringeEdge(source_block=block.id, edge_type="always")],
-            blocks={block.id: block},
-        )
+        # A marker statement for the defer statement, which reads the deferred
+        # call's ARGUMENTS where it stands (Go evaluates them there). A nested
+        # function inside it -- ``defer func() { .. }()``, ``defer run(func()
+        # { .. })`` -- gets a region like any other closure (WI-tivok): with
+        # none, the closure's statements were never recorded, so
+        # :func:`late_capture_edges` had no read to link a later definition to,
+        # and the closure, which runs at return, read only what preceded it.
+        _control_flow, functions = self._embedded_regions(node)
+        return self._statement_with_functions(node, functions, source)
 
     def _insert_deferred(self, exit_block: BasicBlock, source: bytes) -> None:
         """Insert deferred nodes at function exit (LIFO order, per Go spec)."""
@@ -2693,6 +2699,14 @@ class DdgEdge:
     ask "does this function have DDG data" or index edges per function
     must key on ``symbol_id``; comparing a block id against a symbol id
     is a namespace error that silently never matches.
+
+    ``late_region`` is set on an edge :func:`late_capture_edges` added: the
+    first and last line of the nested function the use sits in. The edge says
+    a value defined AFTER that function was written may be read when it runs,
+    so a sink call inside those lines is not "before" a source the definition
+    follows (WI-tivok). ``None`` on every edge the solve produced, and on a
+    late edge into a function invoked where it is written, which has run by
+    then (:func:`_invoked_in_place`).
     """
 
     variable: str
@@ -2701,6 +2715,7 @@ class DdgEdge:
     use_block: str
     use_line: int
     symbol_id: str = ""
+    late_region: Optional[tuple[int, int]] = None
 
 
 @dataclass
@@ -2963,6 +2978,42 @@ def solve_reaching_defs(
     return result
 
 
+#: Tokens that make a nested function SUSPEND rather than run to completion
+#: when called: an ``async`` function stops at its first ``await``, a generator
+#: (``function*``) runs nothing until it is iterated. Both are the grammars'
+#: own anonymous-token spellings (tree-sitter JavaScript/TypeScript, Rust).
+_SUSPENDING_TOKENS: frozenset[str] = frozenset({"async", "*"})
+
+
+def _invoked_in_place(function: Any, mapping: CfgNodeMapping) -> bool:
+    """Is ``function`` called where it is written, and run to completion there?
+
+    True for the callee of a call (``func() { .. }()``, ``(() => ..)()``,
+    ``(lambda: ..)()``, ``(|| ..)()``) through any parentheses, when the call
+    is not the body of a ``deferred`` construct (Go ``defer``) or a
+    ``later_call`` statement (Go ``go``), both of which run the call later than
+    where it is written, and the function does not suspend
+    (:data:`_SUSPENDING_TOKENS`). A function passed as an argument, stored, or
+    returned may run at any later time: False. Grammar facts come from the
+    mapping (``call_node_types``, ``deferred``, ``later_call``); the field
+    name ``function`` and ``parenthesized_expression`` are spelled the same in
+    every grammar with a nested-function mapping.
+    """
+    if any(child.type in _SUSPENDING_TOKENS for child in function.children):
+        return False
+    callee = function
+    while callee.parent.type == "parenthesized_expression":
+        callee = callee.parent
+    call = callee.parent
+    if (
+        call.type not in mapping.call_node_types
+        or call.child_by_field_name("function") != callee
+    ):
+        return False
+    holder = call.parent.type
+    return mapping.get_deferred(holder) is None and holder not in mapping.later_calls
+
+
 def late_capture_edges(
     cfg: FunctionCfg,
     body_node: Any,
@@ -2995,6 +3046,12 @@ def late_capture_edges(
     adds paths, so a walk over the result can turn ``False`` into ``True`` or
     ``None`` and never the reverse.
 
+    Each edge carries the nested function's line span as ``late_region``
+    (WI-tivok) unless the function is invoked where it is written
+    (:func:`_invoked_in_place`): such a function has already run when the later
+    definition is made, so its edge is this function's over-approximation and
+    no evidence that a sink inside it runs after a source.
+
     Args:
         cfg: The function's CFG, after :func:`populate_def_use_for_cfg`.
         body_node: The tree-sitter node the CFG was built from.
@@ -3003,11 +3060,13 @@ def late_capture_edges(
         edges: The solve's edges, so an existing one is not duplicated.
     """
     regions: list[tuple[tuple[int, int], tuple[int, int]]] = []
+    in_place: list[bool] = []
     stack = list(reversed(body_node.named_children))
     while stack:
         node = stack.pop()
         if mapping.get_nested_function(node.type) is not None:
             regions.append((node.start_point, node.end_point))
+            in_place.append(_invoked_in_place(node, mapping))
         else:
             stack.extend(reversed(node.named_children))
     if not regions:
@@ -3054,9 +3113,13 @@ def late_capture_edges(
             if (var, stmt.line, use_line) in have:
                 continue
             have.add((var, stmt.line, use_line))
+            start, end = regions[region]
             out.append(DdgEdge(
                 variable=var, def_block=def_block, def_line=stmt.line,
                 use_block=use_block, use_line=use_line, symbol_id=cfg.symbol_id,
+                late_region=(
+                    None if in_place[region] else (start[0] + 1, end[0] + 1)
+                ),
             ))
     return out
 

@@ -80,6 +80,15 @@ try_catch: []
 call_node_types:
   - call_expression
 
+# Statements that run the call they hold LATER than where they are written,
+# besides the `deferred` construct above (WI-tivok): `go f()` starts f on
+# another goroutine. Its arguments are evaluated where it is written, as a
+# `defer`'s are. Read by cfg._invoked_in_place: a func_literal a `go` statement
+# calls is not invoked in place, so a sink inside it is not ordered by its
+# line.
+later_call:
+  - go_statement
+
 atomic_statement:
   - short_var_declaration
   - var_declaration

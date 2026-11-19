@@ -69,6 +69,7 @@ each with a `kind`. These are the kinds the tool can emit:
 | `analyzer_suppressed_methods` | The verdict rests on a language whose analyzer deliberately declines to model some method names, and the catalogue declares some of those names as I/O sinks. |
 | `analyzer_construct_blind` | The verdict rests on a language whose catalogue declares rows that source reaches by a construct which is **not a call**, so the analyzer emits no edge for them at all. Declared and dated, and derived against the shipped catalogue at render time, so the rows named are the ones your catalogue actually carries. **No language declares one as of 2026-09-10** — the only entry there has ever been was javascript's handler assignment (`ws.onmessage = handler`), retired by WI-dosuh when the analyzer learned to emit the registration edge — so this caveat cannot currently appear on any verdict. It is documented because the shape recurs: the next analyzer to meet a catalogued row reached only by a construct it does not model declares it here rather than leaving the verdict silently closed-world. |
 | `unreached_sink_shapes` | The claim's sink zone is `code_execution` or `dom_injection`, and in a language present in the repository some shapes of that zone emit no call edge — `new Function(s)`, a string `setTimeout`, an `innerHTML` assignment. The verdict holds for the sinks the analysis could see and names each shape it could not. (A language with **no** sink in the zone withholds the verdict instead: `inconclusive`.) |
+| `sink_before_source_only` | Every flow found for the claim has each sink call on an earlier line than its source in the same function, so the walk did not run and the flows are reported without carrying the verdict. See "A sink written before its source is ordered by its line, unless it runs later". |
 | `higher_fidelity_available` | A higher-fidelity analyzer for a language in this repository is **installed on this machine and was not used** (e.g. rust-analyzer without `--backend rust-analyzer`). |
 
 ## What a clean verdict does not mean
@@ -304,6 +305,75 @@ Known limits, measured on the shapes they name:
 - Java, C and Rust carry the same rule, but none of the measured alias shapes
   produced a refutation in those languages to begin with: their walks escape
   at the print call, which has no terminating summary.
+
+### A sink written before its source is ordered by its line, unless it runs later
+
+When every sink call of a flow sits on an earlier line than the source call in
+the same function, the walk does not run, and the flow cannot hold a claim at
+`violated`: it is reported as evidence under the caveat
+`sink_before_source_only`, and the verdict reads `confirmed_with_caveats`
+(exit 3), or `inconclusive` (exit 4) when another gate also withholds it.
+
+A sink inside a nested function (a closure, arrow function or `lambda`) is not
+ordered by its line when a definition made on or after the source's line
+reaches that function's reads: the function runs when it is called, and a
+definition placed after it reaches what it reads (see the section above). The
+walk then runs and decides. So
+
+```go
+k := ""
+defer func() { os.WriteFile("o.txt", []byte(k), 0o600) }()
+k = os.Getenv("API_KEY")
+fmt.Println(len(k))
+```
+
+reads `violated` (exit 1); it read `confirmed_with_caveats` (exit 3) before.
+Measured the same way, each `confirmed_with_caveats` or `inconclusive` before
+and `violated` (exit 1) after: Go `defer run(func() { … })` and
+`go func() { … }()`; Python `atexit.register(lambda: …)` and
+`stack.callback(lambda: …)` on a `contextlib.ExitStack`.
+
+Line order stands, measured `confirmed_with_caveats` (exit 3) before and after,
+for:
+
+- a deferred **direct** call, `defer os.WriteFile("o.txt", []byte(k), 0o600)`
+  above `k = os.Getenv("API_KEY")`. Go evaluates a deferred call's arguments
+  at the `defer` statement, so this writes the value `k` held there, not the
+  secret. A `go` statement's arguments are evaluated the same way.
+- a deferred closure that reads nothing defined on or after the source's line
+  (`m := "static"; defer func() { os.WriteFile("o.txt", []byte(m), 0o600) }()`).
+- a closure invoked where it is written: `func() { … }()`, `(() => { … })()`,
+  `(lambda: …)()`, `(|| …)()`. It has run before the assignment below it. An
+  `async` or generator function invoked that way, and a closure a `defer` or
+  `go` statement invokes, are not invoked in place.
+
+Already correct before, measured `violated` (exit 1) before and after: a
+Python `finally:` block (it is written after its `try` body, so line order is
+execution order), and JavaScript `process.on("exit", () => …)` and
+`promise.then(() => …)` (the analyzer makes each arrow function its own
+symbol, so the flow is call-graph reachability, `walk_blocked_by:
+cross_function`, not an ordered walk).
+
+Known limits, measured on the shapes they name:
+
+- **A function registered by name is not followed.** A Python local
+  `def flush(): open("o.txt", "w").write(k)` registered with
+  `atexit.register(flush)` above `k = os.environ["API_KEY"]` reads `confirmed`
+  (exit 0) with no flow, before and after. The call graph holds a `references`
+  edge from the enclosing function to `flush`, not a call, and taint
+  reachability follows calls only. This is not line order: the flow is never
+  found. Measured on Python only.
+- **Rust `Drop` is not followed.** A `Drop::drop` that writes a field the
+  function filled with the secret reads `confirmed_with_caveats` (exit 3) with
+  no flow (caveats `analyzer_suppressed_methods`, `higher_fidelity_available`):
+  the drop runs at the end of the scope through no call in the source.
+- **A closure stored and called before the assignment reads late.** The rule
+  asks whether a later definition reaches the closure, not when the closure is
+  called, so `f := func() { os.WriteFile("o.txt", []byte(k), 0o600) }; f();
+  k = os.Getenv("API_KEY")` reads `violated` (exit 1) though the write runs
+  first; it read `confirmed_with_caveats` (exit 3) before. The same closure
+  called AFTER the assignment, which does write the secret, read
+  `confirmed_with_caveats` (exit 3) before and reads `violated` (exit 1) now.
 
 ### A partially parsed file is read from the parser's error recovery, and no verdict consults it
 
