@@ -38,6 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Scheduled verdicts are pushed over port 443.**
 - **Merges stop while the scheduled full run is red.**
 - **smart-test in a worktree selects from stored graphs too.**
+- **A ledger shows what each scheduled run caught.**
 - **Two checkouts storing a graph at once both succeed.**
 - **Run records say what selecting by statement would run.**
 - **The index keeps a function's statement records across edits.**
