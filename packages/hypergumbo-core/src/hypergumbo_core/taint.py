@@ -6046,6 +6046,50 @@ class _WalkIndexes(NamedTuple):
     calls_at: dict[tuple[str, int], set[str]]
 
 
+def _late_capture_spans(
+    ddg_edges: Iterable[DdgEdge],
+) -> dict[str, list[tuple[int, int, int]]]:
+    """``symbol_id -> [(def_line, first_line, last_line), ...]`` (WI-tivok).
+
+    One entry per late-capture edge (``DdgEdge.late_region``, set only by
+    :func:`cfg.late_capture_edges`): a definition at ``def_line`` that the
+    nested function spanning ``first_line..last_line`` may read when it runs.
+    Read by :func:`_sink_runs_after_source`.
+    """
+    spans: dict[str, list[tuple[int, int, int]]] = defaultdict(list)
+    for edge in ddg_edges:
+        if edge.late_region is not None:
+            first, last = edge.late_region
+            spans[edge.symbol_id].append((edge.def_line, first, last))
+    return spans
+
+
+def _sink_runs_after_source(
+    sink_lines: Sequence[int],
+    source_lines: Sequence[int],
+    late_spans: Sequence[tuple[int, int, int]],
+) -> bool:
+    """May a sink call written BEFORE the source run after it? (WI-tivok).
+
+    Yes when the sink call sits in a nested function that a definition at or
+    after a source line reaches late: the function runs when it is called --
+    at return for a Go ``defer``, on another goroutine, at interpreter exit for
+    an ``atexit`` hook -- and the late-capture edge is the data evidence that
+    it may read a value the source produced. The walk then runs and follows
+    that edge; it is what decides.
+
+    A nested function no such definition reaches keeps line order, as does a
+    deferred DIRECT call (``defer os.WriteFile(p, b, m)``): its arguments are
+    evaluated where it is written, and no nested function holds the sink.
+    """
+    return any(
+        first <= sink_line <= last and def_line >= source_line
+        for def_line, first, last in late_spans
+        for sink_line in sink_lines
+        for source_line in source_lines
+    )
+
+
 def _walk_indexes(
     ddg_edges: list[DdgEdge],
     call_edges: list[dict[str, Any]],
@@ -6280,6 +6324,7 @@ def propagate_taint_ddg(
         ddg_edges, call_edges, stmt_defuse, language, include_community,
         function_summaries,
     )
+    late_spans = _late_capture_spans(ddg_edges)
 
     # Index sinks and sanitizers by name (same as structural) — a list per
     # name so _lookup_named_entry can disambiguate by module/ambiguity.
@@ -6551,7 +6596,11 @@ def propagate_taint_ddg(
             #     source: a loop back-edge, or the source nested in the sink's
             #     own arguments. Finding no dependence to such a site proves
             #     nothing, so the walk does not run and the row records
-            #     ``sink_before_source`` or ``sink_on_source_line``.
+            #     ``sink_before_source`` or ``sink_on_source_line``. EXCEPT a
+            #     sink inside a nested function that runs later and that a
+            #     definition on or after a source line reaches through a
+            #     late-capture edge (WI-tivok, :func:`_sink_runs_after_source`):
+            #     the walk follows that edge, so its answer is earned there.
             adjudicated = False
             # INV-zidur. ``adjudicated`` is the CONFIRMATION question and stays
             # a bool because every consumer of it below asks exactly that. It is
@@ -6584,11 +6633,16 @@ def propagate_taint_ddg(
                 )
                 # A parameter precedes every statement of its function, the
                 # one on its own line included (a one-line arrow handler).
+                # A sink in a closure that runs later is not "before" a source
+                # whose value reaches it late (WI-tivok).
                 sink_after_source = any(
                     sink_line > source_line
                     or (param_seed is not None and sink_line == source_line)
                     for sink_line in sink_call_lines
                     for source_line in source_call_lines
+                ) or _sink_runs_after_source(
+                    sink_call_lines, source_call_lines,
+                    late_spans.get(source_fn, ()),
                 )
                 if not sink_call_lines:
                     blocked_by = WALK_BLOCKED_NO_SINK_CALL_LINE
