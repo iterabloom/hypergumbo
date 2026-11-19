@@ -118,8 +118,6 @@ _FREE_NAME = (
 #: that changes is a visible change and may move a stable id). Each is a
 #: pre-existing defect to fix in a change that is allowed to move ids.
 HAND_BUILT_NODE_IDS: dict[tuple[str, str, str], tuple[int, str]] = {
-    (f"{_CORE}/linkers/event_sourcing.py", "_create_event_symbol", "NodeId"):
-        (1, f"Symbol.id; an event name (\"user:created\"): {_FREE_NAME}"),
     (f"{_CORE}/linkers/_view_template_core.py", "link_via_strategies", "NodeId"):
         (1, f"Symbol.id of a template; a file name: {_FREE_NAME}"),
     (f"{_COMMON}/handlebars.py", "_make_symbol_id", "NodeId"):
