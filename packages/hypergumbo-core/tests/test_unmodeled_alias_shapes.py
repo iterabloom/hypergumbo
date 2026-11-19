@@ -7,7 +7,10 @@ unrelated socket-receiver caveat) while the secret reached the sink through a
 name the §3a walk does not follow: the walk exhausted along the written name,
 refuted, and REMOVED the flow (``flows_removed_by_walk: 1``). Each now reads
 ``inconclusive`` (exit 4) with the flow WITHHELD; each ``__ctrl`` (identical
-code whose sink reads the walked name) still reads ``violated``.
+code whose sink reads the walked name) still reads ``violated``. Two shapes
+have since left the withheld set because the walk now FOLLOWS them: an
+expression-bodied closure's read is recorded as a late read of what it captures
+(WI-pubat), so ``_FOLLOWED`` reads ``violated``, the true answer.
 
 The must-still-refute set is the other half of the rule's contract: a plain
 rebinding, a value read into a fresh local and passed only to terminating
@@ -72,8 +75,8 @@ _SHAPES = sorted(
 def test_the_shape_population_is_the_reproduced_one() -> None:
     """39 shape-language pairs reproduced the unearned removal (Go 15,
     Python 13, JavaScript 10, TypeScript 1): the study's 35, plus the
-    late-evaluation captures ``capture_scope`` covers (a Python ``lambda`` and
-    generator expression, a JS / TS class field initialiser). A lost fixture
+    late-evaluation captures (a Python ``lambda`` and generator expression, a
+    JS / TS class field initialiser). A lost fixture
     directory must not shrink it."""
     by_language: dict[str, int] = {}
     for shape in _SHAPES:
@@ -82,7 +85,14 @@ def test_the_shape_population_is_the_reproduced_one() -> None:
     assert by_language == {"go": 15, "python": 13, "javascript": 10, "typescript": 1}
 
 
-@pytest.mark.parametrize("shape", _SHAPES)
+#: Shapes the walk follows since WI-pubat: ``get = () => x`` / ``g = lambda:
+#: x`` made before ``x = secret`` and called at the sink. The closure's body is
+#: a recorded read, the later definition gains a late edge into it, and the
+#: walk reaches the sink through the call.
+_FOLLOWED = ("javascript__S5_closure_capture", "python__S5L_lambda_capture")
+
+
+@pytest.mark.parametrize("shape", [s for s in _SHAPES if s not in _FOLLOWED])
 def test_the_alias_leak_is_withheld(
     tmp_path: Path, shape: str, monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -96,6 +106,19 @@ def test_the_alias_leak_is_withheld(
     assert out["dataflow_coverage"]["flows_removed_by_walk"] == 0
     assert out["dataflow_coverage"]["walk_verdicts"]["withheld"] == 1
     assert "does not follow aliases" in verdict["details"]
+
+
+@pytest.mark.parametrize("shape", _FOLLOWED)
+def test_a_closure_capture_the_walk_follows_violates(
+    tmp_path: Path, shape: str, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc, out = _run(tmp_path, f"{shape}__leak", *_claim_of(shape), monkeypatch, capsys)
+    verdict = out["verdicts"][0]
+    assert verdict["verdict"] == "violated", verdict
+    assert rc == 1
+    assert out["dataflow_coverage"]["flows_withheld_by_walk"] == 0
+    assert out["dataflow_coverage"]["flows_removed_by_walk"] == 0
 
 
 @pytest.mark.parametrize("shape", _SHAPES)
