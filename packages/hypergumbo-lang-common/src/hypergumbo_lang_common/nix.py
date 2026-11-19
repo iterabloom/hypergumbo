@@ -24,7 +24,8 @@ and result assembly. This module provides only the Nix-specific extraction logic
 4. Extract bindings, functions, derivations
 5. Create imports edges for import expressions and calls edges for function
    applications (callee resolved via NameResolver, falling back to
-   nix:external:<name>:function)
+   ``edge_target.external_target("nix", <name>)``; it was
+   ``nix:external:<name>:function``, no id, WI-tatop)
 
 An ``import`` edge starts at the file's node (``make_file_id``) and ends on
 the imported file's node when the target is a path of the tree (relative to
@@ -76,7 +77,7 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
-from hypergumbo_core.analyze.edge_target import in_tree_file_id
+from hypergumbo_core.analyze.edge_target import external_target, in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import declared_arity_stable_id
@@ -557,7 +558,7 @@ def _extract_nix_edges(
                             resolution_score = lookup_result.confidence
                         else:
                             # External/builtin function
-                            dst_id = f"nix:external:{target_name}:function"
+                            dst_id = external_target("nix", target_name)[0]
 
                         edges.append(Edge.create(
                             src=caller.id,

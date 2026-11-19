@@ -8,7 +8,8 @@ Symbols carry docstrings (extracted from the tree); functions also carry
 cyclomatic complexity and line span. Call confidence is derived from the
 evidence (ADR-0039): a call that resolves to a known symbol takes the
 ``ast_call_direct`` base; one that does not is still emitted as unresolved
-(ADR-0037), pointed at a synthetic ``racket:unresolved:<name>`` target, so an
+(ADR-0037), pointed at an ``edge_target.external_target`` stand-in (it was
+``racket:unresolved:<name>``, no id, WI-tatop), so an
 unresolved call is visible rather than absent.
 
 Racket is a general-purpose programming language in the Lisp/Scheme family,
@@ -52,6 +53,7 @@ from typing import Any, Iterator, Optional, ClassVar, TYPE_CHECKING
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -431,7 +433,7 @@ class _RacketExtractor:
                         # ``1.0 if hit else 0.6`` put every hit over the 0.85 ceiling.
                         resolved = callee_id is not None
                         if callee_id is None:
-                            callee_id = f"racket:unresolved:{call_name}"
+                            callee_id = external_target("racket", call_name)[0]
 
                         line = node.start_point[0] + 1
                         edge = Edge.create(

@@ -55,6 +55,7 @@ from hypergumbo_core.overload_arity import (
     nested_qualified_name,
     parameter_entry,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -362,7 +363,7 @@ def _extract_scheme_edges(
                     # ``1.0 if hit else 0.6`` put every hit over the 0.85 ceiling.
                     resolved = callee_id is not None
                     if callee_id is None:
-                        callee_id = f"scheme:unresolved:{call_name}"
+                        callee_id = external_target("scheme", call_name)[0]
 
                     line = node.start_point[0] + 1
                     edge = Edge.create(

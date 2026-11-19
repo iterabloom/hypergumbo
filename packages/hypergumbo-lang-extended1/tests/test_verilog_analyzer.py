@@ -9,6 +9,7 @@ Tests verify that the analyzer correctly extracts:
 - Always blocks
 """
 
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_core import __version__
@@ -487,7 +488,9 @@ endmodule
 """})
 
     targets = sorted(e.dst for e in result.edges if e.edge_type == "instantiates")
-    assert targets == ["verilog:external:other:module", "verilog:external:sub:module"]
+    assert targets == [
+        external_target("verilog", "other")[0], external_target("verilog", "sub")[0],
+    ]
 
 
 def test_a_member_lies_inside_its_module_and_spans_its_own_declaration(tmp_path):
@@ -696,10 +699,10 @@ endmodule
 """})
 
     assert _instantiations(result) == [
-        ("top", "verilog:external:vendor_two:module", 3),
-        ("top", "verilog:external:vendor_one:module", 4),
-        ("top", "verilog:external:vendor_none:module", 5),
-        ("top", "verilog:external:vendor_pos:module", 6),
+        ("top", external_target("verilog", "vendor_two")[0], 3),
+        ("top", external_target("verilog", "vendor_one")[0], 4),
+        ("top", external_target("verilog", "vendor_none")[0], 5),
+        ("top", external_target("verilog", "vendor_pos")[0], 6),
     ]
     assert {e.confidence for e in result.edges if e.edge_type == "instantiates"} == {0.70}
 

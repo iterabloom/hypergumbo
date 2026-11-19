@@ -28,8 +28,9 @@ and result assembly. This module provides only the HLSL-specific extraction logi
 7. Extract call edges (pass 2): for each call_expression, resolve the callee
    via the NameResolver and emit a 'calls' edge — to the resolved symbol
    (interpolated in the ast_call_direct band: 0.50 + 0.35 * resolver
-   confidence) or to an 'hlsl:external:<name>:function' target at the
-   unresolved base, 0.50.
+   confidence) or to an ``edge_target.external_target`` stand-in at the
+   unresolved base, 0.50 (it was 'hlsl:external:<name>:function', no id,
+   WI-tatop).
 
 A function records its parameters, types included, in ``meta["parameters"]``
 (``c_family_parameters``) and its stable_id hashes them
@@ -72,6 +73,7 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, nested_qualified_name, node_declared_arity_stable_id,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
@@ -269,7 +271,7 @@ def _extract_hlsl_edges(
                 dst_id: str = result.symbol.id
                 resolution_score = result.confidence
             else:
-                dst_id = f"hlsl:external:{target_name}:function"
+                dst_id = external_target("hlsl", target_name)[0]
 
             edge = Edge.create(
                 src=caller.id,

@@ -104,6 +104,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree, make_doc_symbol_ids, make_file_id, make_symbol_id, symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -428,10 +429,15 @@ def _relationship_edges(
             }
         else:
             meta = {"ref_construct": "puppet_require"}
+        # The reference text as written (``Package['nginx']``, WI-tuniz) is
+        # the stand-in's name, whole on ``dst_ref`` (the id's name slot is
+        # sanitized). It was ``puppet:resource:<text>``, no id (WI-tatop).
+        dst, dst_ref = external_target("puppet", attributes[attribute], "resource")
         edges.append(Edge.create(
             src=resource.id,
-            # Raw reference text, e.g. ``Package['nginx']`` (WI-tuniz).
-            dst=f"puppet:resource:{attributes[attribute]}",
+            dst=dst,
+            dst_ref=dst_ref,
+            is_resolved=False,
             edge_type="depends_on",
             line=line,
             origin=PASS_ID,

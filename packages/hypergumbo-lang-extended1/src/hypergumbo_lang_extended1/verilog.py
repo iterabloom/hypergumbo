@@ -31,7 +31,9 @@ is dropped. The target type is looked up case-insensitively, preferring
 ``kind="module"`` (``"interface"`` when the source is an interface, which can
 instantiate nothing else): a unique match gets confidence 0.90, several
 candidates 0.50 with ``disambiguation_fallback``, and no match
-``verilog:external:<type>:module`` at 0.70.
+an ``edge_target.external_target`` stand-in at 0.70 (it was
+``verilog:external:<type>:module``, no id: every undeclared module of a
+repository folded into one node, whose stable id hashes that text, WI-tatop).
 
 Only modules and interfaces are registered for that lookup
 (``register_symbol``): a net or a task named like an undeclared module must
@@ -179,6 +181,7 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.symbol_indexes import SymbolByName
@@ -728,7 +731,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
             elif node.type in _AMBIGUOUS_INSTANTIATIONS and module_type.lower() in other_units:
                 continue  # a real checker, UDP or program instance
             else:
-                dst_id = f"verilog:external:{module_type}:module"
+                dst_id = external_target("verilog", module_type)[0]
                 confidence = 0.70
 
             edges.append(Edge.create(

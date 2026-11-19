@@ -28,7 +28,8 @@ and ``let`` bindings are not extracted. In pass 2 each ``exp_apply`` inside a
 function becomes a ``calls`` edge unless its head is on a small builtins
 skip-list (``pure``, ``map``, ``show``, ``liftEffect``, ...). The callee is
 looked up by the bare name, then qualified with the current module: a hit is
-confidence 1.0, a miss goes to ``purescript:unresolved:<name>`` at 0.6.
+confidence 1.0, a miss goes to an ``edge_target.external_target`` stand-in at
+0.6 (it was ``purescript:unresolved:<name>``, no id, WI-tatop).
 
 One function, one symbol (WI-tusad scheme bump). A function is written as a
 type signature and one ``function`` node per equation (``fact 0 = 1`` /
@@ -58,6 +59,7 @@ from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -546,7 +548,7 @@ class _PureScriptExtractor:
                         # ``1.0 if hit else 0.6`` put every hit over the 0.85 ceiling.
                         resolved = callee_id is not None
                         if callee_id is None:
-                            callee_id = f"purescript:unresolved:{call_name}"
+                            callee_id = external_target("purescript", call_name)[0]
 
                         line = node.start_point[0] + 1
                         edge = Edge.create(

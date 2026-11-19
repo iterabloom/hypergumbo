@@ -72,6 +72,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.ir import Edge, NodeId, Span, StableId, Symbol, make_pass_id
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -918,8 +919,8 @@ def _extract_fortran_edges(
                     dst_id = lookup_result.symbol.id
                     resolution_score = lookup_result.confidence
                 else:
-                    # External subroutine not in our codebase
-                    dst_id = f"fortran:external:{call_name}"
+                    # A subroutine the tree does not declare: its stand-in.
+                    dst_id = external_target("fortran", call_name)[0]
 
                 edge = Edge.create(
                     src=current_symbol,

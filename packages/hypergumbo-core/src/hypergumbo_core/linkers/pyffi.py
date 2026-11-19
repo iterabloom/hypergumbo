@@ -55,6 +55,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ..paths import is_test_node
 from .registry import (
@@ -410,7 +411,10 @@ def link_pyffi(
                 ))
             elif is_stdlib:
                 # Stdlib call with no repo-local match — emit unresolved edge
-                dst = f"{PYFFI_STDLIB_PREFIX}{func_name}:unresolved"
+                # ``PYFFI_STDLIB_PREFIX`` + name + ``:unresolved``, built by the
+                # id factory so the name slot is sanitized and the static
+                # id check can read it.
+                dst = make_symbol_id("python", "C_stdlib", 0, 0, func_name, "unresolved")
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=dst,
