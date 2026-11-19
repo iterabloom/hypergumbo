@@ -1,0 +1,20 @@
+- op: create  # 506e
+  at: '2026-11-19T15:08:47Z'  # 506e
+  by: agent  # 506e
+  actor: jgstern_agent  # 506e
+  clock: 1  # 506e
+  nonce: 506e  # 506e
+  data:  # 506e
+    kind: work_item  # 506e
+    title: "C#/Swift typed ids cut a nested or module-qualified parameter type to its last segment (owner question: hash the path or keep the cut)"  # 506e
+    status: todo_hard  # 506e
+    priority: 3  # 506e
+    parent:  # 506e
+    tags:  # 506e
+    - stable_id  # 506e
+    isbefore: []  # 506e
+    duplicate_of: []  # 506e
+    not_duplicate_of: []  # 506e
+    pr_ref:  # 506e
+    description: "C# and Swift typed stable ids cut a nested or module-qualified parameter type to its last segment, so (A.B x) and (C.B x) hash alike.\n\nREPRO (PR 3 branch jgstern-agent/feat/stable-id-v16, commit 4e0163454): normalize_csharp_signature(\"(A.B x)\") == normalize_csharp_signature(\"(C.B x)\"); Swift (x: Feature.State) vs (x: Other.State) the same. Java, Kotlin, Scala and Groovy keep enclosing types since that commit (keep_type_path), because their packages are lower-case and can be told from an enclosing type. C# namespaces and Swift modules are upper-case, so the same rule cannot tell them apart.\n\nOWNER QUESTION: hash the whole path as written (spelling-dependent: System.String vs String hash apart) or keep the cut (overloads on two same-named nested types tie)? Not measured: how many ties the cut makes on real C#/Swift trees. Evidence: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tojov/RESULTS.md residual 1."  # 506e
+    fields: {}  # 506e

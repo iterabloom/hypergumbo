@@ -1,0 +1,20 @@
+- op: create  # f117
+  at: '2026-11-19T14:00:55Z'  # f117
+  by: agent  # f117
+  actor: jgstern_agent  # f117
+  clock: 1  # f117
+  nonce: f117  # f117
+  data:  # f117
+    kind: work_item  # f117
+    title: "_canonical_external_id accepts an empty path or name slot"  # f117
+    status: todo_hard  # f117
+    priority: 4  # f117
+    parent:  # f117
+    tags:  # f117
+    - identity  # f117
+    isbefore: []  # f117
+    duplicate_of: []  # f117
+    not_duplicate_of: []  # f117
+    pr_ref:  # f117
+    description: "_canonical_external_id has no guard against an empty path or name slot: a producer that passes one gets an id the id_format validator rejects, caught only after the fact. The fleet sweep for other analyzers emitting empty slots was not run.\n\nCLOSE WHEN the factory refuses or repairs an empty slot (with a test), and a fleet survey counts 0 empty-slot ids.\n\nFound by the PR 3 (stable-id v16) WI-rozod/WI-zolat build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/rozod/RESULTS.md (Residuals)."  # f117
+    fields: {}  # f117
