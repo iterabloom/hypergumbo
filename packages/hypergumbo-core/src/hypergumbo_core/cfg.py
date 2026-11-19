@@ -10,12 +10,14 @@ How It Works
 1. ``load_cfg_mapping()`` reads a per-language YAML file that maps tree-sitter
    node types to control-flow categories: conditional, loop, break, continue,
    return, try/catch, switch/match, and semantic hooks. Besides ``language``
-   and ``grammar``, seven further keys are not control-flow categories:
+   and ``grammar``, nine further keys are not control-flow categories:
    ``call_node_types``, ``atomic_statement``, ``nested_function``,
-   ``block_tail_returns`` (a block's last expression without ``;`` is a
-   return, read by ``ddg_build``'s return-span lift), and ``store_target`` /
-   ``address_of`` / ``capture_scope`` (the in-place store, address-of and
-   late-evaluation forms, read only by ``exposed_definitions``).
+   ``later_call``, ``block_tail_returns`` (a block's last expression without
+   ``;`` is a return, read by ``ddg_build``'s return-span lift), and
+   ``store_target`` /
+   ``address_of`` / ``capture_scope`` / ``receiver_address_of`` (the in-place
+   store, address-of, late-evaluation and pointer-receiver selector forms,
+   read only by ``exposed_definitions``).
 
 2. ``build_function_cfg()`` walks the tree-sitter AST for a function body and
    produces a ``FunctionCfg`` using the fringe-based recursive algorithm (same
@@ -117,7 +119,8 @@ The rest of the dataflow pipeline over a built CFG also lives here:
 - **Exposure** (WI-buzup, ADR-0017 §7b): ``exposed_definitions`` records the
   definitions a name the walk does not follow may reach -- an in-place store
   read from the assignment's target node, a definition that reads its own
-  target, an address taken, a nested-function capture -- as a
+  target, an address taken (``&v``, or Go's ``v.M`` through a pointer
+  receiver, WI-bamuj), a nested-function capture -- as a
   ``DefinitionExposure``. A §3a walk that relied on one is WITHHELD rather
   than refuted. It reads the def/use records and never changes them.
 - **Reaching definitions** (ADR-0017 §1b): ``solve_reaching_defs`` runs the
@@ -141,6 +144,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Literal, Optional, Protocol, Sequence, runtime_checkable
@@ -549,6 +553,31 @@ class AddressOfMapping:
     operator: str
 
 
+@dataclass(frozen=True)
+class ReceiverAddressMapping:
+    """A member selector that takes its operand's address when the member is a
+    method declared with a pointer receiver (Go) (WI-bamuj).
+
+    Go's ``t.Get``, where ``Get`` has receiver ``*Box`` and ``t`` is a ``Box``,
+    is ``(&t).Get``: the bound method value (or the call ``t.Get()``) holds
+    ``&t``, with no ``&`` written. The selector node is the same as a field
+    read's, so the method's DECLARATION decides: ``method`` declarations whose
+    ``receiver_field`` parameter has a ``receiver_type_field`` of type
+    ``pointer_type`` name the members (``name_field``) that take the address.
+    The selector's ``member_field`` is matched against those names and its
+    ``operand_field`` is the expression whose root name is taken.
+    """
+
+    selector: str
+    operand_field: str
+    member_field: str
+    method: str
+    name_field: str
+    receiver_field: str
+    receiver_type_field: str
+    pointer_type: str
+
+
 @dataclass
 class CfgNodeMapping:
     """Complete CFG node mapping for a language.
@@ -618,6 +647,11 @@ class CfgNodeMapping:
     #: types; the CFG builder never reads it. ``None`` when the key is ABSENT,
     #: which the wiring gate refuses; an empty list is the declared answer.
     capture_scopes: Optional[list[str]] = None
+    #: ``receiver_address_of`` (WI-bamuj): see :class:`ReceiverAddressMapping`.
+    #: ``None`` when the key is absent: the language binds no method to a
+    #: variable's address (a Python, JavaScript or Java bound method holds the
+    #: OBJECT, so rebinding the variable does not reach it).
+    receiver_address_of: Optional[ReceiverAddressMapping] = None
 
     def get_nested_function(self, node_type: str) -> Optional[NestedFunctionMapping]:
         """Return the nested-function mapping for a node type, if any."""
@@ -886,6 +920,10 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         [c["node_type"] for c in data["capture_scope"]]
         if "capture_scope" in data else None
     )
+    receiver = data.get("receiver_address_of")
+    receiver_address_of = (
+        ReceiverAddressMapping(**receiver) if receiver is not None else None
+    )
 
     return CfgNodeMapping(
         language=data["language"],
@@ -909,6 +947,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         store_targets=store_targets,
         address_of=address_of,
         capture_scopes=capture_scopes,
+        receiver_address_of=receiver_address_of,
     )
 
 
@@ -2532,8 +2571,10 @@ class DefinitionExposure:
       def/use record lists ``name`` in both ``defines`` and ``uses``
       (``s = append(s, x)``, ``s += x``).
     * ``address_taken`` -- names whose address the function takes anywhere
-      (``&v``, ``&v.f``; ``address_of`` in ``cfg_nodes``). A plain rebinding of
-      such a name is seen through the pointer.
+      (``&v``, ``&v.f``; ``address_of`` in ``cfg_nodes``), or takes with no
+      ``&`` written: Go's ``v.M`` / ``v.M()`` where ``M`` has a pointer
+      receiver (``receiver_address_of``, WI-bamuj). A plain rebinding of such
+      a name is seen through the pointer.
     * ``captured`` -- names mentioned inside a nested function
       (``nested_function`` in ``cfg_nodes``) or another form that evaluates
       them later (``capture_scope``: a Python generator expression, a class
@@ -2593,11 +2634,47 @@ def _first_token_is(node: Any, source: bytes, operator: Optional[str]) -> bool:
     return source[first.start_byte:first.end_byte].decode("utf-8", "replace") == operator
 
 
+def address_taking_members(
+    root: Any, source: bytes, mapping: CfgNodeMapping,
+) -> frozenset[str]:
+    """The method names in one file whose selector takes the operand's address.
+
+    WI-bamuj; see :class:`ReceiverAddressMapping`. Reads the root's own
+    children only: a Go method declaration is a top-level declaration. Empty
+    for a language without ``receiver_address_of``.
+
+    Matched later by NAME, without the operand's type, because the walk has
+    no types: a pointer-receiver method of ANY type in the repository makes
+    every selector of that name take its operand's address. That errs toward
+    withholding, the safe direction for a rule whose job is to stop a
+    refutation.
+    """
+    spec = mapping.receiver_address_of
+    if spec is None:
+        return frozenset()
+    names: set[str] = set()
+    for decl in root.children:
+        if decl.type != spec.method:
+            continue
+        name = decl.child_by_field_name(spec.name_field)
+        receiver = decl.child_by_field_name(spec.receiver_field)
+        if name is None or receiver is None:  # pragma: no cover - grammar gives both
+            continue
+        if any(
+            (rtype := param.child_by_field_name(spec.receiver_type_field)) is not None
+            and rtype.type == spec.pointer_type
+            for param in receiver.named_children
+        ):
+            names.add(source[name.start_byte:name.end_byte].decode("utf-8", "replace"))
+    return frozenset(names)
+
+
 def exposed_definitions(
     cfg: FunctionCfg,
     body_node: Any,
     source: bytes,
     mapping: CfgNodeMapping,
+    address_taking_members: AbstractSet[str] = frozenset(),
 ) -> DefinitionExposure:
     """The function's :class:`DefinitionExposure` (WI-buzup).
 
@@ -2606,6 +2683,12 @@ def exposed_definitions(
     changes them. A store is attributed to the line of the innermost RECORDED
     statement that contains it, which is the line the walk keys that
     statement's definitions on.
+
+    ``address_taking_members`` (WI-bamuj) are the method names
+    :func:`address_taking_members` collected over the language's files: a
+    ``receiver_address_of`` selector naming one takes its operand's address,
+    exactly as ``&t`` does. ``ddg_build`` collects them over every file first,
+    because a method is often declared in a file other than its caller's.
 
     ITERATIVE, for the reason :func:`unaccounted_names` is (INV-gotir).
     """
@@ -2626,6 +2709,7 @@ def exposed_definitions(
     nested = {nf.node_type for nf in mapping.nested_functions} | set(
         mapping.capture_scopes or (),
     )
+    receiver = mapping.receiver_address_of if address_taking_members else None
 
     def _is_target(node: Any) -> bool:
         return node.type in targets and any(
@@ -2661,6 +2745,18 @@ def exposed_definitions(
             taken = _root_name(node.named_children[-1], source)
             if taken is not None:
                 addressed.add(taken)
+        if receiver is not None and node.type == receiver.selector:
+            # WI-bamuj: ``t.Get`` through a ``*Box`` receiver is ``(&t).Get``.
+            member = node.child_by_field_name(receiver.member_field)
+            operand = node.child_by_field_name(receiver.operand_field)
+            if (
+                member is not None and operand is not None
+                and source[member.start_byte:member.end_byte].decode("utf-8", "replace")
+                in address_taking_members
+            ):
+                taken = _root_name(operand, source)
+                if taken is not None:
+                    addressed.add(taken)
         if inside_nested and _is_semantic_leaf(node):
             captured.add(
                 source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")

@@ -128,6 +128,26 @@ address_of:
   - node_type: unary_expression
     operator: "&"
 
+# Address-of with no `&` written (WI-bamuj). `t.Get`, where Get is declared
+# with a POINTER receiver (`func (b *Box) Get()`) and t is a Box, is
+# `(&t).Get` (Go spec, Method values / Calls): the bound method value, or the
+# call, holds &t, so `get := t.Get; t = Box{v: secret}; get()` returns the
+# secret. The selector is the same node as a field read, so the method's
+# declaration decides; names are collected over every Go file of the repo,
+# matched by name only (no types: errs toward withholding). A VALUE receiver
+# (`func (b Box) Get()`) copies t when the selector is evaluated and is not
+# listed. Read ONLY by cfg.exposed_definitions; row in
+# test_definition_exposure.py.
+receiver_address_of:
+  selector: selector_expression
+  operand_field: operand
+  member_field: field
+  method: method_declaration
+  name_field: name
+  receiver_field: receiver
+  receiver_type_field: type
+  pointer_type: pointer_type
+
 # Late-evaluation capture forms (WI-buzup), read ONLY by
 # cfg.exposed_definitions and unioned there with nested_function: a form that
 # reads enclosing names when it RUNS, later than where it is written, but

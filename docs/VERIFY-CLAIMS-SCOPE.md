@@ -247,7 +247,15 @@ sink zone** reads `inconclusive` (exit 4). A definition counts when it is
   target (`t[0] = …`, `b.f = …`, `*p = …`, `t[0] += …`), read from the
   assignment's target node;
 - a definition that also reads the variable (`s = append(s, k)`, `s += k`);
-- a variable whose address the function takes anywhere (`&buf`);
+- a variable whose address the function takes anywhere (`&buf`), including
+  a Go method value or call through a pointer receiver: `get := t.Get` or
+  `t.Get()`, where `Get` is declared `func (b *Box) Get()`, takes `&t`, so
+  `get := t.Get; t = Box{v: secret}; write(get())` reads `inconclusive` (exit
+  4), not `confirmed`. A value receiver (`func (b Box) Get()`) copies `t` when
+  `t.Get` is evaluated and keeps the refutation. Method names are matched by
+  name over the repository's own declarations, so a pointer-receiver method
+  of a type declared outside the repository (`u.String` on a `url.URL`) is
+  not seen;
 - a variable mentioned by a form that reads it later than where it is
   written: a closure, arrow function, local function or method, a Python
   `lambda` or generator expression, a JavaScript / TypeScript class field
@@ -284,9 +292,20 @@ Known limits, measured on the shapes they name:
   secret into a fresh local container and only prints it withholds the same
   way: the rule asks whether the walk relied on an exposed definition, not
   whether a second name was found.
-- **Not seen:** a store made by a call the walk treats as terminating; a
-  value that reaches another name through the slot a helper returns it in
-  (`mApp, _ := app.NewApp(...)`), where the walk follows no name at all.
+- **Not seen:** a store made by a call the walk treats as terminating:
+  `buf = io.StringIO(); print(x, file=buf); sock.sendall(buf.getvalue().encode())`
+  reads `confirmed_with_caveats` (exit 3) with the flow removed, because the
+  `builtins.print` summary terminates whatever `file=` names. A value that
+  reaches another name through the slot a helper returns it in: a Go helper
+  that stores the secret into the object it returns first and returns the
+  secret second (`a.key = k; return a, k`), called as `mApp, _ := NewApp()`
+  and followed by a write of `mApp.key`, reads `confirmed` (exit 0) with the
+  flow removed, because the return lift seeds only the second slot, which
+  binds nothing.
+- **A JavaScript / TypeScript `static` field initialiser counts as a capture
+  scope** although it runs where it is written: `class K { static v = x; }`
+  followed by `x = secret` and a write of `K.v` reads `inconclusive` (exit 4)
+  where the same function with `static v = ""` reads `confirmed` (exit 0).
 - **A value a helper RETURNS through an alias is not withheld.** The walk
   that decides whether a source's value reaches a function's `return` (and so
   is lifted into its callers) does not apply this rule. In
