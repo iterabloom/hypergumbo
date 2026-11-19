@@ -130,6 +130,28 @@ def _get_command_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
+def _callee_word(word: Optional[str]) -> Optional[str]:
+    """The command name a call names, or ``None`` when it names no proc.
+
+    A leading ``::`` is the global namespace, so ``::baz`` is the proc
+    ``baz`` and ``::foo::bar`` is ``foo::bar`` (both are written to reach
+    past a namespace's own command of that name); the name is resolved,
+    checked against the built-ins, and split for the stand-in without it. A
+    word whose namespace part or proc part is then empty names no proc --
+    ``::`` alone, or ``ns::`` -- and makes no edge: it would be an id with an
+    empty path or name slot (``tcl::0-0::unresolved``, git-gui's
+    ``regsub -all {::} ...``, whose braced literal the grammar parses as a
+    command; WI-zolat).
+    """
+    if word is None:
+        return None
+    if word.startswith("::"):
+        word = word[2:]
+    if not word or word.endswith("::") or word.startswith("::"):
+        return None
+    return word
+
+
 # Tcl built-in commands that should not generate call edges
 _BUILTINS = frozenset({
     "puts", "set", "expr", "return", "if", "else", "while",
@@ -329,7 +351,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
         if node.type in ("command_substitution", "command"):
             caller_id = _find_enclosing_proc(node, path, repo_root)
             if caller_id:
-                callee_name = _get_command_name(node)
+                callee_name = _callee_word(_get_command_name(node))
 
                 if callee_name and callee_name not in _BUILTINS:
                     callee_sym = global_symbols.get(callee_name)

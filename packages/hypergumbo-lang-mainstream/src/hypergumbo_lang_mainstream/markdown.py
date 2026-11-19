@@ -19,7 +19,11 @@ are collected during symbol extraction and flushed via post_process.
 Link destinations are reshaped by ``_make_link_dst_id`` into a 5-part
 external symbol id rather than being used raw: a bare URL in the id would
 land in the language slot when ``ir.create_boundary_nodes`` mints the
-boundary node (WI-diruj). Every emitted symbol also carries a canonical
+boundary node (WI-diruj). A link's destination is read as CommonMark reads
+it (``_link_destination``: past leading whitespace and a line ending, up to
+any title), and its text with each whitespace run made one space
+(``_link_text``), so a link wrapped across lines yields no id holding a
+newline and no edge to an empty path (WI-zolat). Every emitted symbol also carries a canonical
 sha256 ``stable_id`` from ``make_doc_stable_id``, scoped by the titles of the
 sections it sits in (``_section_scope``; the grammar nests one ``section`` per
 heading level): ``## Details`` under ``# Alpha`` and under ``# Beta``, and
@@ -102,6 +106,49 @@ def _section_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
             return None
         return _heading_text(first, source) or None
     return ancestor_labels(node, label_of)
+
+
+#: A link title after the destination: ``"..."``, ``'...'`` or ``(...)``.
+_DESTINATION_AND_TITLE = re.compile(
+    r"""(\S+)\s+("[^"]*"|'[^']*'|\([^)]*\))""", re.DOTALL,
+)
+
+
+def _link_destination(raw: str) -> str:
+    """The destination of an inline link, from what its parentheses hold.
+
+    CommonMark lets whitespace, one line ending included, sit before the
+    destination, and lets a quoted title follow it after whitespace
+    (``[t](guide.md "Title")``); a destination written in ``<...>`` may hold
+    spaces. Taken raw, a destination wrapped onto the next line began with a
+    newline: it read as internal and became an edge dst whose path slot held
+    the newline (poetry), and a title became part of the path (WI-zolat).
+
+    Text that is neither of those shapes is kept whole, each whitespace run
+    made one space: a Hugo shortcode (``{{< relref "cli#install" >}}``, all
+    over poetry's docs) is a destination only after the site generator runs,
+    and splitting it at its first blank would fold every one onto ``{{<``.
+    ``""`` when the parentheses hold nothing.
+    """
+    text = raw.strip()
+    if text.startswith("<"):
+        end = text.find(">")
+        return text[1:end] if end != -1 else ""
+    titled = _DESTINATION_AND_TITLE.fullmatch(text)
+    if titled:
+        return titled.group(1)
+    return " ".join(text.split())
+
+
+def _link_text(raw: str) -> str:
+    """Link text with each whitespace run, line endings included, one space.
+
+    A line ending inside link text is a soft break, rendered as a space, so
+    ``[Git source control management\\ntools](...)`` is one name however
+    the paragraph is wrapped: no node id holds a newline, and re-wrapping the
+    paragraph leaves the link's stable_id alone (WI-zolat).
+    """
+    return " ".join(raw.split())
 
 
 def _make_link_dst_id(url: str) -> str:
@@ -346,8 +393,10 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
         scope = _section_scope(node, source)
 
         for match in _LINK_PATTERN.finditer(content):
-            text = match.group(1)
-            url = match.group(2)
+            text = _link_text(match.group(1))
+            url = _link_destination(match.group(2))
+            if not text and not url:
+                continue  # ``[]( )`` links nothing and has no name
 
             symbol_id = make_symbol_id(
                 "markdown", rel_path, line, line,
@@ -361,8 +410,10 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
                 end_col=node.start_point[1] + match.end(),
             )
 
-            is_internal = url.startswith("./") or url.startswith("../") or (
-                not url.startswith("http") and not url.startswith("#")
+            is_internal = bool(url) and (
+                url.startswith("./") or url.startswith("../") or (
+                    not url.startswith("http") and not url.startswith("#")
+                )
             )
             is_anchor = url.startswith("#")
             is_external = url.startswith("http://") or url.startswith("https://")

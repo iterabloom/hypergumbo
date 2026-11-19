@@ -10939,6 +10939,51 @@ class TestJsTsUnresolvedExternalInheritance:
         assert _normalize_import_module_hint("node:fs") == "fs"
         assert _normalize_import_module_hint("@scope/pkg") == "@scope/pkg"
 
+    @pytest.mark.parametrize(
+        ("specifier", "hint"),
+        [
+            ("../../", ".."), ("../..", ".."), ("../", ".."), ("..", ".."),
+            ("./", "."), (".", "."), ("./lib/", "lib"), ("/", "/"),
+            ("", "external"), ("npm:", "external"), ("node:", "external"),
+        ],
+    )
+    def test_module_hint_is_never_empty(self, specifier: str, hint: str) -> None:
+        """A directory specifier with a trailing slash names the same module
+        as without it (``require('../../')`` is ``require('../..')``), and a
+        specifier that names no module is the ``external`` sentinel: the hint
+        is an id's path slot, which is never empty (express)."""
+        from hypergumbo_lang_mainstream.js_ts import _normalize_import_module_hint
+
+        assert _normalize_import_module_hint(specifier) == hint
+
+    def test_require_of_the_repository_root_keeps_a_path_slot(
+        self, tmp_path: Path,
+    ) -> None:
+        """``var express = require('../../')`` then ``express()`` /
+        ``express.static()``: every call edge's dst has a non-empty path slot
+        (express's examples; empty before, ``javascript::0-0:static:...``)."""
+        from hypergumbo_core.ir import symbol_path_slot
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "index.js").write_text("module.exports = function () {};\n")
+        example = tmp_path / "examples" / "a"
+        example.mkdir(parents=True)
+        (example / "index.js").write_text(
+            "var express = require('../../');\n"
+            "var app = express();\n"
+            "app.use(express.static('x'));\n"
+            "app.use(express.urlencoded());\n"
+        )
+        result = analyze_javascript(tmp_path)
+        calls = {
+            (e.meta or {}).get("callee_name") or e.dst.split(":")[-2]: e.dst
+            for e in result.edges if e.edge_type == "calls"
+        }
+        assert {"static", "urlencoded"} <= set(calls), calls
+        assert all(symbol_path_slot(dst) for dst in calls.values()), calls
+        assert symbol_path_slot(calls["static"]) == ".."
+        assert symbol_path_slot(calls["urlencoded"]) == ".."
+
     @pytest.mark.parametrize("ext", ["ts", "js"])
     def test_intra_repo_base_still_resolves_no_unresolved(
         self, tmp_path: Path, ext: str

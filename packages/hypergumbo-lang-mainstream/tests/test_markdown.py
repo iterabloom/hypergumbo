@@ -387,6 +387,87 @@ Does something.
         assert link.meta.get("is_external") is False
 
 
+class TestLinksWrappedAcrossLines:
+    """A link's text or destination may wrap onto the next line; no id holds
+    a newline and no edge dst has an empty path slot (poetry, git-gui)."""
+
+    def _links_and_edges(self, tmp_path: Path, content: str):
+        make_markdown_file(tmp_path, "README.md", content)
+        result = analyze_markdown(tmp_path)
+        links = [s for s in result.symbols if s.kind == "link"]
+        edges = [e for e in result.edges if e.edge_type == "references"]
+        return result, links, edges
+
+    def test_destination_on_the_next_line_is_the_url(self, tmp_path: Path) -> None:
+        """``[text](\\nhttps://...)``: the destination is the URL, so the link
+        is external and makes no edge (it made an internal one whose path
+        slot began with a newline)."""
+        _, (link,), edges = self._links_and_edges(
+            tmp_path, "keep the [recommendations for a README](\n"
+            "https://packaging.python.org/en/guides/readme/) in\nmind.\n",
+        )
+        assert link.meta["url"] == "https://packaging.python.org/en/guides/readme/"
+        assert link.meta["is_external"] is True
+        assert link.meta["is_internal"] is False
+        assert edges == []
+
+    def test_text_wrapped_across_lines_is_one_spaced_name(self, tmp_path: Path) -> None:
+        """A soft line break in link text renders as a space: the name, the
+        id's name slot and the stable_id see ``Git source control management
+        tools`` however the paragraph is wrapped."""
+        from hypergumbo_core.analyze.base import make_doc_stable_id
+
+        result, (link,), _ = self._links_and_edges(
+            tmp_path, "Use the [Git source control management\n"
+            "tools](https://git-scm.com/) via a GUI.\n",
+        )
+        assert link.name == "Git source control management tools"
+        assert "\n" not in link.id
+        assert link.id == (
+            "markdown:README.md:1-1:Git source control management tools:link"
+        )
+        assert link.stable_id == make_doc_stable_id(
+            "markdown", "README.md", "link",
+            "Git source control management tools", 1, 1,
+        )
+        assert all("\n" not in s.id for s in result.symbols)
+
+    def test_destination_and_title(self, tmp_path: Path) -> None:
+        """``[t](guide.md "Title")`` and the title on its own line: the
+        destination is ``guide.md`` alone."""
+        _, links, edges = self._links_and_edges(
+            tmp_path, '[a](guide.md "The guide") and [b](./x.md\n"X")\n'
+            "and [c](<my file.md>).\n",
+        )
+        assert [l.meta["url"] for l in links] == ["guide.md", "./x.md", "my file.md"]
+        assert [e.dst for e in edges] == [
+            "markdown:guide.md:0-0:guide.md:doc_link",
+            "markdown:./x.md:0-0:x.md:doc_link",
+            "markdown:my file.md:0-0:my file.md:doc_link",
+        ]
+
+    def test_a_shortcode_destination_is_kept_whole(self, tmp_path: Path) -> None:
+        """A Hugo shortcode is no CommonMark destination; it is kept whole
+        (one stand-in per target, as before), its line ending a space."""
+        _, links, edges = self._links_and_edges(
+            tmp_path, '[a]({{< relref "cli#install" >}}) and [b]({{< relref\n'
+            '"faq" >}})\n',
+        )
+        assert [l.meta["url"] for l in links] == [
+            '{{< relref "cli#install" >}}', '{{< relref "faq" >}}',
+        ]
+        assert len({e.dst for e in edges}) == 2
+        assert all("\n" not in e.dst for e in edges)
+
+    def test_empty_destination_makes_no_edge(self, tmp_path: Path) -> None:
+        _, links, edges = self._links_and_edges(
+            tmp_path, "[a](<>) and [b]( ) and []( )\n",
+        )
+        assert [l.name for l in links] == ["a", "b"]
+        assert all(l.meta["url"] == "" for l in links)
+        assert edges == []
+
+
 class TestMarkdownStableIdCanonical:
     """id-format:F2 4a: markdown section/code_block/link Symbols carry canonical
     sha256 stable_ids (previously reused the non-canonical composite Symbol.id),

@@ -636,12 +636,23 @@ def _normalize_import_module_hint(module: str) -> str:
         https://cdn/x     -> cdn/x
         ./utils           -> utils
         ../helpers/git    -> helpers/git
+        ../../            -> ..
+        ./                -> .
         @scope/pkg        -> @scope/pkg (unchanged)
+        npm: / ''         -> external
+
+    The hint is an id's PATH slot, which is never empty (WI-zolat). A
+    trailing ``/`` is dropped first: ``require('../../')`` names the same
+    directory module as ``require('../..')``, which keeps its last ``..``,
+    so the repository root required from ``examples/x/index.js`` (express)
+    is ``..``, not ``''``. A specifier that names no module at all (an empty
+    string, a bare scheme) is the ``external`` sentinel.
     """
     module = _strip_import_scheme(module)
+    module = module.rstrip("/") or module
     while module.startswith("./") or module.startswith("../"):
         module = module[2:] if module.startswith("./") else module[3:]
-    return module
+    return module or "external"
 
 
 def _strip_import_scheme(module: str) -> str:
