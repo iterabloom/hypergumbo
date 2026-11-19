@@ -284,7 +284,7 @@ def test_from_badges_refuses_what_it_cannot_trace(repo: Repo, tmp_path: Path) ->
     with pytest.raises(SystemExit, match="no passed full-suite verdict is published"):
         st.badges_range(repo.root, "full-suite")
     _publish(repo, [{"commit": repo.green, "status": "passed", "steps": []}])
-    with pytest.raises(SystemExit, match="passed .*nothing to trace"):
+    with pytest.raises(SystemExit, match=r"passed .*nothing to trace"):
         st.badges_range(repo.root, "full-suite")
 
 
