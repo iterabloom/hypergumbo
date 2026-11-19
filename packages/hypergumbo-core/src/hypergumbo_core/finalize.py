@@ -193,7 +193,7 @@ def _relativize_ir_paths(
         _relativize_meta(sym.meta)
     for edge in edges:
         if prefix in edge.src:
-            edge.src = edge.src.replace(prefix, "")
+            edge.src = relativize_node_id(edge.src, prefix)
         if prefix in edge.dst:
             edge.dst = edge.dst.replace(prefix, "")
         _relativize_meta(edge.meta)

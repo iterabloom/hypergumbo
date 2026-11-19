@@ -351,3 +351,35 @@ def test_the_resolver_is_required() -> None:
     edges whose src is a SCIP symbol string that names no node."""
     with pytest.raises(TypeError):
         scip_index_to_edges(scip_pb2.Index(), run_id="test")  # type: ignore[call-arg]
+
+
+def test_the_external_arm_answers_for_a_destination_and_never_for_a_source() -> None:
+    """WI-gisun: an edge starts at a node. ``resolve_external_dst`` stands in
+    for a related symbol the node resolver did not answer for; a carrier it
+    did not answer for starts no edge."""
+    impl, base = _sym("impl"), _sym("base")
+    idx = _idx_with_relationship(src_symbol=impl, rel_symbol=base, is_implementation=True)
+    asked: list[str] = []
+
+    def external(symbol: str) -> str:
+        asked.append(symbol)
+        return f"stub:{symbol}"
+
+    [e] = scip_index_to_edges(
+        idx,
+        resolve_symbol=lambda s, _doc: "impl-node" if s == impl else None,
+        resolve_external_dst=external,
+        run_id="test",
+    )
+    assert (e.src, e.dst, e.edge_type) == ("impl-node", f"stub:{base}", "implements")
+    assert asked == [base]
+    asked.clear()
+    assert scip_index_to_edges(
+        idx,
+        resolve_symbol=lambda s, _doc: "base-node" if s == base else None,
+        resolve_external_dst=external,
+        run_id="test",
+    ) == []
+    assert asked == []
+    [e] = scip_index_to_edges(idx, resolve_symbol=_raw, resolve_external_dst=external, run_id="test")
+    assert e.dst == base and asked == []

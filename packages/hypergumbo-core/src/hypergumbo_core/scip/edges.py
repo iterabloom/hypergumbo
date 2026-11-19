@@ -89,14 +89,20 @@ endpoint. The resolver is REQUIRED: the shim used to pass the raw SCIP
 symbol through when it was omitted, and an edge whose src is a SCIP
 symbol string names no node (WI-tatop, ahead of typing ``Edge.src`` as a
 node id). A test that wants the raw strings passes an identity resolver.
+
+The resolver answers in-repo only and returns a ``NodeId`` (an edge's src is
+one, WI-gisun). A caller with an external arm (scip-python's unresolved
+callee ids) passes it as ``resolve_external_dst``, which is asked about a
+DESTINATION the resolver returned ``None`` for and never about a source.
 """
 from __future__ import annotations
 
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from ..ir import Edge
 from ._generated import scip_pb2
 from .descriptor import is_local_symbol
+from .resolve import ExternalDstResolver, NodeResolver, resolve_dst
 
 
 _RELATION_EDGE_TYPES: "list[tuple[str, str]]" = [
@@ -113,8 +119,9 @@ _SCIP_EDGE_CONFIDENCE = 0.9  # Explicit SCIP relationship from the upstream inde
 def scip_index_to_edges(
     index: scip_pb2.Index,
     *,
-    resolve_symbol: Callable[[str, str], Optional[str]],
+    resolve_symbol: NodeResolver,
     run_id: str,
+    resolve_external_dst: Optional[ExternalDstResolver] = None,
 ) -> List[Edge]:
     """Emit hypergumbo ``Edge`` objects from a parsed SCIP ``Index``.
 
@@ -145,7 +152,9 @@ def scip_index_to_edges(
                 dst_raw = rel.symbol
                 if dst_raw == src_raw or is_local_symbol(dst_raw):
                     continue
-                dst_resolved = resolve_symbol(dst_raw, doc.relative_path)
+                dst_resolved = resolve_dst(
+                    dst_raw, doc.relative_path, resolve_symbol, resolve_external_dst,
+                )
                 if dst_resolved is None:
                     continue
                 emitted: set[str] = set()

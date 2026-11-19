@@ -39,11 +39,35 @@ from __future__ import annotations
 from collections import Counter
 from typing import Callable, Iterable, Optional
 
-from ..ir import Symbol
+from ..ir import NodeId, Symbol
 
 #: ``same_unit(record_path, occurrence_document)``: are the two Documents
 #: compiled into one unit?
 SameUnit = Callable[[str, str], bool]
+
+#: ``resolve_symbol(moniker, document)``: the in-repo node a moniker names,
+#: read in that Document, or ``None``. It answers for BOTH endpoints of an
+#: edge, so it returns a ``NodeId``: an edge starts at a node (WI-gisun).
+NodeResolver = Callable[[str, str], Optional[NodeId]]
+
+#: ``resolve_external_dst(moniker)``: the unresolved reference a DESTINATION
+#: the in-repo resolver did not answer for stands for, or ``None``. A plain
+#: ``str``, because it names no node yet (finalize makes the boundary node);
+#: it is never asked about a source.
+ExternalDstResolver = Callable[[str], Optional[str]]
+
+
+def resolve_dst(
+    moniker: str,
+    document: str,
+    resolve_symbol: NodeResolver,
+    resolve_external_dst: Optional[ExternalDstResolver],
+) -> Optional[str]:
+    """An edge destination: the in-repo node, else the external reference, else ``None``."""
+    found = resolve_symbol(moniker, document)
+    if found is not None or resolve_external_dst is None:
+        return found
+    return resolve_external_dst(moniker)
 
 
 class MonikerResolver:
@@ -52,7 +76,7 @@ class MonikerResolver:
     def __init__(
         self, symbols: Iterable[Symbol], same_unit: Optional[SameUnit] = None,
     ) -> None:
-        self._records: dict[str, list[tuple[str, str]]] = {}
+        self._records: dict[str, list[tuple[str, NodeId]]] = {}
         for sym in symbols:
             moniker = (sym.meta or {}).get("scip_symbol")
             if moniker:
@@ -65,7 +89,7 @@ class MonikerResolver:
         """Whether some record carries ``moniker`` (internal, perhaps ambiguous)."""
         return moniker in self._records
 
-    def __call__(self, moniker: str, document: str) -> Optional[str]:
+    def __call__(self, moniker: str, document: str) -> Optional[NodeId]:
         records = self._records.get(moniker)
         if not records:
             return None

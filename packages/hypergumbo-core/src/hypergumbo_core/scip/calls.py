@@ -109,17 +109,20 @@ the REQUIRED ``resolve_symbol(symbol, document)`` callable maps either
 endpoint, given the occurrence's Document (INV-sipod), to a node id;
 returning ``None`` for either endpoint drops the edge, preventing
 half-resolved artefacts in the output. There is no raw pass-through: an
-edge whose src is a SCIP symbol string names no node (WI-tatop).
+edge whose src is a SCIP symbol string names no node (WI-tatop). The
+optional ``resolve_external_dst`` is consulted for a destination only, as in
+:mod:`.edges`.
 """
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from ..ir import Edge
 from ._generated import scip_pb2
 from .descriptor import DescriptorKind, is_local_symbol, parse_scip_symbol
 from .index import symbol_information_kind_values
+from .resolve import ExternalDstResolver, NodeResolver, resolve_dst
 
 
 _ROLE_DEFINITION = 0x01
@@ -249,8 +252,9 @@ def _area(span: Tuple[int, int, int, int]) -> Tuple[int, int]:
 def scip_index_to_call_edges(
     index: scip_pb2.Index,
     *,
-    resolve_symbol: Callable[[str, str], Optional[str]],
+    resolve_symbol: NodeResolver,
     run_id: str,
+    resolve_external_dst: Optional[ExternalDstResolver] = None,
 ) -> List[Edge]:
     """Emit hypergumbo ``Edge`` objects for SCIP non-Definition Occurrences.
 
@@ -298,7 +302,9 @@ def scip_index_to_call_edges(
             # INV-sipod: both ends are read in this Document. The enclosing
             # Definition is in it by construction; the target may not be.
             src_resolved = resolve_symbol(enclosing, doc.relative_path)
-            dst_resolved = resolve_symbol(occ.symbol, doc.relative_path)
+            dst_resolved = resolve_dst(
+                occ.symbol, doc.relative_path, resolve_symbol, resolve_external_dst,
+            )
             if src_resolved is None or dst_resolved is None:
                 continue
 

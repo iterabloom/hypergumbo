@@ -155,7 +155,8 @@ RepoFingerprint = NewType("RepoFingerprint", str)
 NodeId = NewType("NodeId", str)
 """A node id: ``{lang}:{path}:{start}-{end}:{name}:{kind}`` (ADR-0036).
 
-Types ``Symbol.id``, ``UsageContext.symbol_ref`` and ``DataModel.symbol_id``.
+Types ``Symbol.id``, ``UsageContext.symbol_ref``, ``DataModel.symbol_id``,
+``Edge.src`` (and ``Edge.create``'s ``src``) and ``IoChain.io_edge_src``.
 Minted (the one ``NodeId(...)`` call each) only by the factories:
 ``make_symbol_id``, ``make_file_id`` and ``make_module_import_dst``
 (analyze/base.py) and ``_canonical_external_id`` (this module);
@@ -169,15 +170,19 @@ a factory would emit keep their text and wrap it at the site;
 ``test_id_newtypes.py`` lists each one and why. See StableId for what a
 NewType does and does not change.
 
-``Edge.src`` and ``Edge.dst`` stay ``str``. A dst is a node id OR an
-unresolved reference that finalize turns into a boundary node, and dozens of
-producers write references that are not in the node-id grammar. A src is a
-node id at every producer site: latex, nix, robot, gleam, odin, v and pony
-wrote a file reference outside the grammar at eleven sites until each drew
-it from ``make_file_id``, and the SCIP edge builders passed a raw SCIP
-symbol through when no resolver was given until the resolver became
-required (WI-tatop). ``Edge``'s field types are pinned by
-``tests/test_rct_public_api_pinned.py`` for the RCT variants.
+``Edge.dst`` stays ``str``. A dst is a node id OR an unresolved reference
+that finalize turns into a boundary node, and dozens of producers write
+references that are not in the node-id grammar. A src is a node id at every
+producer site, so mypy refuses a hand-built one (WI-gisun): latex, nix,
+robot, gleam, odin, v and pony wrote a file reference outside the grammar at
+eleven sites until each drew it from ``make_file_id``; the SCIP edge
+builders passed a raw SCIP symbol through when no resolver was given until
+the resolver became required (WI-tatop), and the scip-python translator
+started an edge at an external stand-in when a Definition had no Symbol
+until a source could only resolve in-repo (``scip.resolve.NodeResolver``).
+``Edge``'s field types are pinned by ``tests/test_rct_public_api_pinned.py``
+for the RCT variants; ``src`` being a NewType over ``str`` leaves every
+value they see a plain ``str``.
 """
 
 
@@ -1122,7 +1127,7 @@ class Edge:
     """
 
     id: str  # axis: identity
-    src: str  # axis: identity
+    src: NodeId  # axis: identity
     dst: str  # axis: identity
     edge_type: str  # axis: edge-type
     line: int
@@ -1171,7 +1176,7 @@ class Edge:
     @classmethod
     def create(
         cls,
-        src: str,
+        src: NodeId,
         dst: str,
         edge_type: str,
         line: int,

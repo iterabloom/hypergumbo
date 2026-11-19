@@ -84,7 +84,9 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from ..member_names import member_short_name
-from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id, stated_module_of
+from ..ir import (
+    PASS_VERSION, AnalysisRun, Edge, NodeId, make_pass_id, stated_module_of,
+)
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
@@ -256,8 +258,8 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
     class_ids: set[str] = {s.id for s in ctx.symbols if s.kind == "class"}
 
     # Build per-caller outgoing-edge indexes.
-    class_hints: dict[str, list[Edge]] = defaultdict(list)
-    unresolved: dict[str, list[tuple[str, Edge]]] = defaultdict(list)
+    class_hints: dict[NodeId, list[Edge]] = defaultdict(list)
+    unresolved: dict[NodeId, list[tuple[str, Edge]]] = defaultdict(list)
     resolved_targets: dict[str, set[str]] = defaultdict(set)
     for e in ctx.edges:
         if e.edge_type in _CLASS_HINT_EDGE_TYPES and e.dst in class_ids:

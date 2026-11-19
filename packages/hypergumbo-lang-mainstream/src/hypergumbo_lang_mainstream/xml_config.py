@@ -57,7 +57,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.edge_target import external_target, in_tree_file_id
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -168,7 +168,7 @@ def _process_maven_dependency(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
-    project_id: Optional[str],
+    project_id: Optional[NodeId],
     *,
     run_id: str,
 ) -> None:

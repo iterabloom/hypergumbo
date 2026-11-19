@@ -46,7 +46,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -279,7 +279,7 @@ def _extract_symbols_recursive(
 
 def _find_enclosing_function(
     node: "tree_sitter.Node", rel_path: str,
-) -> Optional[str]:
+) -> Optional[NodeId]:
     """Find the enclosing function for a node. Returns its stable ID."""
     current = node.parent
     while current is not None:

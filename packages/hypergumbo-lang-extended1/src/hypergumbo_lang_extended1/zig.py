@@ -61,7 +61,7 @@ Zig grammar key patterns:
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     ExternalRef,
@@ -552,7 +552,7 @@ def _extract_edges_from_tree(
                             import_aliases[var_name] = module_name
 
                         # Create file-level import edge
-                        src_id: str = make_symbol_id("zig", rel_path, 0, 0, "file", "file")
+                        src_id: NodeId = make_symbol_id("zig", rel_path, 0, 0, "file", "file")
                         dst_id = f"zig:{module_name}:0-0:{module_name}:module"
                         line = node.start_point[0] + 1
                         edge = Edge.create(

@@ -46,7 +46,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -233,7 +233,7 @@ def _extract_simple_shape(
 
 
 def _extract_service_object_refs(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -254,7 +254,7 @@ def _extract_service_object_refs(
 
 
 def _extract_array_refs(
-    node: "tree_sitter.Node", rel_path: str, src_id: str, edge_type: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId, edge_type: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -277,7 +277,7 @@ def _extract_array_refs(
 
 
 def _extract_operation_types(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -295,7 +295,7 @@ def _extract_operation_types(
 
 
 def _extract_operation_member(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -319,7 +319,7 @@ def _extract_operation_member(
 
 
 def _extract_error_refs(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -338,7 +338,7 @@ def _extract_error_refs(
 
 
 def _extract_member_types(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -356,7 +356,7 @@ def _extract_member_types(
 
 
 def _extract_shape_member_type(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -380,7 +380,7 @@ def _extract_shape_member_type(
 
 
 def _make_reference_edge(
-    rel_path: str, src_id: str, ref_name: str, edge_type: str,
+    rel_path: str, src_id: NodeId, ref_name: str, edge_type: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> Optional[Edge]:

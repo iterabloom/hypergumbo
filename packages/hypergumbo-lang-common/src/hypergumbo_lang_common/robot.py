@@ -63,7 +63,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -177,12 +177,12 @@ class _RobotExtractor:
         self._symbols: list[Symbol] = []
         self._edges: list[Edge] = []
         self._symbol_registry: dict[str, str] = {}  # name -> symbol_id
-        self._current_container: str | None = None
+        self._current_container: NodeId | None = None
         # The keyword or test each definition declares, by (file, first line):
         # a call is drawn from the definition that holds it. The name table
         # below is global, so a test ``Example`` in two files sent every
         # call of one to the other's symbol (WI-tatop).
-        self._declared_at: dict[tuple[str, int], str] = {}
+        self._declared_at: dict[tuple[str, int], NodeId] = {}
         self._execution_id = execution_id
         self._files_analyzed = 0
 

@@ -81,6 +81,42 @@ class TestTheTranslation:
         assert edge.dst_ref is None
 
 
+class TestTheSourceIsAnInRepoSymbol:
+    """WI-gisun: an edge's src is a node id. A Definition the translation
+    minted no Symbol for gets no edge; it used to start an edge at the
+    external arm's unresolved id (``python:m:0-0:f:unresolved``)."""
+
+    def test_a_caller_with_no_symbol_starts_no_edge(self) -> None:
+        caller, callee = f"{PKG} `m`/f().", "scip-python python python-stdlib 3.11 re/compile()."
+        doc = _doc("m.py", [], [(caller, DEF, [0, 0, 5, 0]), (callee, 0, [2, 4, 8])])
+        symbols, edges = translate_scip_python_to_hg(_index(doc), run_id="r")
+        assert symbols == [] and edges == []
+
+    def test_the_same_caller_with_a_symbol_still_reaches_the_external_callee(self) -> None:
+        caller, callee = f"{PKG} `m`/f().", "scip-python python python-stdlib 3.11 re/compile()."
+        doc = _doc("m.py", [caller], [(caller, DEF, [0, 0, 5, 0]), (callee, 0, [2, 4, 8])])
+        symbols, edges = translate_scip_python_to_hg(_index(doc), run_id="r")
+        [edge] = edges
+        assert edge.src == symbols[0].id
+        assert edge.dst == "python:re:0-0:compile:unresolved"
+
+    def test_a_relationship_from_a_symbol_the_translation_did_not_mint_is_dropped(self) -> None:
+        impl, base = f"{PKG} `m`/C#run().", f"{PKG} `m`/B#run()."
+        doc = scip_pb2.Document(
+            relative_path="m.py",
+            symbols=[
+                scip_pb2.SymbolInformation(
+                    symbol=impl, relationships=[scip_pb2.Relationship(symbol=base, is_implementation=True)],
+                ),
+                scip_pb2.SymbolInformation(symbol=base),
+            ],
+            occurrences=[scip_pb2.Occurrence(symbol=base, symbol_roles=DEF, range=[0, 4, 7])],
+        )
+        symbols, edges = translate_scip_python_to_hg(_index(doc), run_id="r")
+        assert {s.meta["scip_symbol"] for s in symbols} == {base}
+        assert edges == []
+
+
 class TestExternalEdgeCases:
     def test_a_repeated_external_callee_is_resolved_once_and_emitted_per_site(self) -> None:
         caller, callee = f"{PKG} `m`/f().", "scip-python python python-stdlib 3.11 pathlib/Path#glob()."

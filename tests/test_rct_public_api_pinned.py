@@ -158,11 +158,19 @@ def test_edge_rct_critical_fields_present() -> None:
     fine; renaming or removing these breaks the variants or the stable
     ID derivation.
     """
-    from hypergumbo_core.ir import Edge, ExternalRef
+    from hypergumbo_core.ir import Edge, ExternalRef, NodeId
     fields = Edge.__dataclass_fields__
+    # ``src`` is a ``NodeId``, a NewType over ``str``: the identity at run
+    # time, so every value the variants read or write is the ``str`` it was.
+    # The owner adopted the retype on 2026-11-19 as the coordination this
+    # file asks for (the variants do not touch ``Edge.src``).
+    assert NodeId.__supertype__ is str, (
+        "NodeId is no longer a NewType over str; Edge.src values would stop "
+        "being plain strings for the RCT variants. Coordinate before merging."
+    )
     critical = {
         "id": str,
-        "src": str,
+        "src": NodeId,
         "dst": str,
         "edge_type": str,
         "line": int,

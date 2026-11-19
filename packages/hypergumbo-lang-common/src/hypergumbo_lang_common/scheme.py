@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Iterator, Optional, Sequence, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -314,7 +314,7 @@ _BUILTINS = frozenset({
 def _find_enclosing_function(
     node: "tree_sitter.Node", path: Path, repo_root: Path,
     analyzer: "SchemeAnalyzer",
-) -> Optional[str]:
+) -> Optional[NodeId]:
     """Find the enclosing function for a node."""
     current = node.parent
     while current is not None:

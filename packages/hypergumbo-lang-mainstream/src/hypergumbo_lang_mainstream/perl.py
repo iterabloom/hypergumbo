@@ -95,7 +95,7 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
-from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -291,7 +291,7 @@ def _scalar_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 
 
 def _package_unresolved_edge(
-    caller_id: str,
+    caller_id: NodeId,
     package: str,
     name: str,
     line: int,
@@ -711,7 +711,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
 
     @staticmethod
     def _class_method_edge(
-        caller_id: str,
+        caller_id: NodeId,
         package: str,
         method_name: str,
         line: int,
