@@ -19,3 +19,18 @@
     pr_ref:  # 3962
     description: "A read inside an expression-bodied JavaScript arrow function (`() => x`) is not recorded as a late read of the captured variable.\n\nREPRO. Fixture: ~/hypergumbo_lab_notebook/post_release_11162026/side_defects/js_arrow/app.js; claims side_defects/claims_fs.yaml.\n\n  let x = \"\";\n  const get = () => x;\n  x = process.env.API_KEY;\n  console.log(x);\n  fs.writeFileSync(\"o.txt\", get());\n\n  Release 10.0.0: confirmed, exit 0, flows_removed_by_walk 1.\n  After WI-buzup: inconclusive, exit 4, flows_withheld_by_walk 1 (the capture clause of its rule withholds the removal).\nThe secret is written, so the true answer is violated. The block-bodied form `() => { return x; }` is followed (the build agent's fixture matrix reads violated for it).\n\nMECHANISM (as reported by the WI-buzup build; I did not read the code path myself): `cfg.late_capture_edges` records no read for the expression body of an arrow function, so the walk has no edge from the later definition of `x` to the closure's read.\n\nSWEEP: the same question for every expression-bodied closure form in the mapped grammars: Python `lambda`, Rust closure without a block, Java expression lambda, C# is not mapped. After WI-buzup these read inconclusive (Python lambda: measured) rather than violated.\n\nCLOSE WHEN js_arrow reads violated and each swept form is measured."  # 3962
     fields: {}  # 3962
+- op: update  # 9f66
+  at: '2026-11-19T11:25:29Z'  # 9f66
+  by: agent  # 9f66
+  actor: jgstern_agent  # 9f66
+  clock: 2  # 9f66
+  nonce: 9f66  # 9f66
+  set:  # 9f66
+    status: done  # 9f66
+- op: discuss  # 995e
+  at: '2026-11-19T11:25:29Z'  # 995e
+  by: agent  # 995e
+  actor: jgstern_agent  # 995e
+  clock: 3  # 995e
+  nonce: 995e  # 995e
+  message: "Fixed in PR #2276 (7b1a61e2e): cfg._process_body records a child_count==0 body as one statement, and python.yaml moves lambda to nested_function, so late_capture_edges sees the read. Live re-run on dev 3c109b3aa with claims_fs.yaml (fast_smart_test_build_11172026/closure_pr2/pubat_sweep.txt): filed repro js_arrow -> violated, rc 1 (was confirmed 0 at 10.0.0, inconclusive 4 after WI-buzup). Sweep, each with its control: py_lambda violated 1 (ctl violated 1); java_lambda and java_lambda_nouse violated 1 (ctls violated 1); rs_closure and rs_closure_nouse violated 1 (ctls violated 1); ts_arrow violated 1 (ctl violated 1); js_block violated 1; precision control ts_noread (closure reads no captured name) confirmed_with_caveats 3. C# is not mapped. Tests test_ddg_late_capture.py; 4/4 mutations red."  # 995e

@@ -20,3 +20,18 @@
     pr_ref:  # 3d21
     description: "Alias shapes the \"exposed referent\" rule (WI-buzup) does not see: verify-claims still reads confirmed.\n\nThe rule withholds a taint walk's refutation when the walk relied on an in-place store, a self-referencing definition, an address-taken variable or a captured variable. It reads the syntax tree. Shapes where the second name for the object is made without any of those forms are outside it.\n\nMEASURED (release 10.0.0 and the WI-buzup branch give the same result):\n\n1. Go method value with a pointer receiver. `t.Get`, where Get has receiver *Box and t is an addressable Box, takes &t implicitly.\n     var t Box\n     get := t.Get\n     t = Box{v: os.Getenv(\"API_KEY\")}\n     fmt.Println(len(t.v))\n     os.WriteFile(\"/tmp/out.txt\", []byte(get()), 0o600)\n   hypergumbo verify-claims go_method_value_ptr --claims claims_fs.yaml -> confirmed, exit 0, flows_removed_by_walk 1, flows_withheld_by_walk 0.\n   Control (go_method_value_ptr_ctrl, writes t.Get() directly): violated, exit 1.\n   Fixtures: ~/hypergumbo_lab_notebook/post_release_11162026/buzup_review/probes/. Telling a pointer-receiver method value from a field read needs the method's declaration (the selector node is the same).\n\nSTATED BY THE BUILD, NOT REPRODUCED BY ME:\n2. A store made by a call the walk treats as terminating (a declared summary says the callee keeps nothing, and it stores into its argument).\n3. A value that reaches another name through the slot a helper returns it in (`mApp, _ := app.NewApp(...)`), where the walk follows no name.\n\nNOT IN SCOPE HERE: the return-lift reader and the unfollowed-escape reader (their own item).\n\nAlso unmeasured cost inside the rule: a JavaScript / TypeScript `static` class field initialiser runs at class definition but shares its node type with instance fields, so names it mentions count as captured.\n\nCLOSE WHEN shape 1 does not read confirmed and its control still reads violated; shapes 2 and 3 are each reproduced with a fixture or shown not to occur."  # 3d21
     fields: {}  # 3d21
+- op: update  # 072a
+  at: '2026-11-19T11:25:30Z'  # 072a
+  by: agent  # 072a
+  actor: jgstern_agent  # 072a
+  clock: 2  # 072a
+  nonce: 072a  # 072a
+  set:  # 072a
+    status: done  # 072a
+- op: discuss  # a01c
+  at: '2026-11-19T11:25:30Z'  # a01c
+  by: agent  # a01c
+  actor: jgstern_agent  # a01c
+  clock: 3  # a01c
+  nonce: a01c  # a01c
+  message: "Fixed in PR #2276 (497ba9219): go.yaml receiver_address_of + cfg.address_taking_members + ddg_build._address_taking_members read the method's declaration, so t.Get with a *Box receiver is an address-take of t. Live re-run on dev 3c109b3aa: filed repro go_method_value_ptr -> inconclusive rc 4 (was confirmed 0; the walk's refutation is withheld under the exposed-referent rule), control go_method_value_ptr_ctrl violated rc 1. Shape 3 (value in the slot a helper returns) fixed by WI-zaboh in the same PR (go_helper_slot confirmed 0 -> violated 1). Shape 2 (terminating-summary callee that stores into its argument) was not reproduced. 10/10 mutations killed. Residuals filed as their own items: builtins.print(file=) treated as terminating; stdlib pointer receivers (url.URL.String) not seen; JS/TS static field initialisers counted as capture scopes."  # a01c

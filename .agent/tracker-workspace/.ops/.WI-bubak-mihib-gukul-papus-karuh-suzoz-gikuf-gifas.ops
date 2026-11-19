@@ -26,3 +26,10 @@
   clock: 2  # 7f1f
   nonce: 7f1f  # 7f1f
   message: "OWNER RULING 2026-11-19 (in session): the owner adopted all recommendations of the 11-19 review (three read-only research passes over the ADRs, the spec and the code; record ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md). For this item:\nA SPLIT. NOW, no bump: correct docs/hypergumbo-spec.md lines 645/652 (they promise positional renaming; the per-language rows say no type parameters are passed), and the duplicated rows (645 = 652; Java 657 vs 658 disagree on '...'). IN THE NEXT STABLE-ID BUMP: hash each declaration's own type-parameter clause (count and bounds / where-constraints), with names renamed by position in the clause and the signature. Why: a probe (Java, two overloads differing only in a bound) showed deleting one moves its id onto the other, the defect class the v9 bump fixed; ADR-0035 promises no stability across a type-parameter rename, so renaming alone does not justify a bump. Corrections to this item: Go already hashes its constraint list; Rust, JS/TS and Python (PEP 695) are also unpassed (13 wrappers take type_params, ~29 call sites pass none); 11 languages in 2 packages. GATE (pre-registered): before building, count same-scope typed ties that only a bound or a type-parameter count separates, on JVM, Swift and C# trees; if about 0, ship the spec correction alone and keep this item filed."  # 7f1f
+- op: discuss  # 00f3
+  at: '2026-11-19T11:25:31Z'  # 00f3
+  by: agent  # 00f3
+  actor: jgstern_agent  # 00f3
+  clock: 3  # 00f3
+  nonce: 00f3  # 00f3
+  message: "Spec correction shipped in PR #2276 (ee9fb07e5): docs/hypergumbo-spec.md now says generic type parameters are NOT renamed by position (no analyzer passes type_params; Go is the exception), and the older duplicate rows (normalized_signature, Go, Java) were removed. Item stays open for the bump: hash each type-parameter clause by position, gated on the pre-registered count of bound-only ties (owner ruling 2026-11-19)."  # 00f3
