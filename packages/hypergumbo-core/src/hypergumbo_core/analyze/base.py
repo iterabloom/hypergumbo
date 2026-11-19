@@ -1068,7 +1068,7 @@ def run_recording_log(
 
 def make_unresolved_edge(
     lang: str,
-    src_id: str,
+    src_id: NodeId,
     callee_name: str,
     line: int,
     pass_id: str,

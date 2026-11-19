@@ -54,7 +54,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -668,7 +668,7 @@ def _extract_symbols_recursive(
 
 
 def _extract_calls_from_block(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     current_class: Optional[str], symbol_registry: dict[str, str],
     run_id: str, edges: list[Edge],
 ) -> None:
@@ -691,7 +691,7 @@ def _extract_calls_from_block(
 
 
 def _extract_method_call(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     current_class: Optional[str], symbol_registry: dict[str, str],
     run_id: str, edges: list[Edge],
 ) -> None:
@@ -736,7 +736,7 @@ def _extract_method_call(
 
 
 def _extract_constructor_call(
-    node: "tree_sitter.Node", rel_path: str, src_id: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: NodeId,
     symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
 ) -> None:
     """Extract a constructor call (new ClassName()) edge."""
@@ -762,7 +762,7 @@ def _extract_constructor_call(
 
 
 def _add_call_edge(
-    rel_path: str, src_id: str, call_name: str, line: int,
+    rel_path: str, src_id: NodeId, call_name: str, line: int,
     symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
 ) -> None:
     """Add a call edge from ``src_id`` (the caller, found by position)."""
@@ -795,7 +795,7 @@ def _add_call_edge(
     edges.append(edge)
 
 
-def _caller_id(node: "tree_sitter.Node", rel_path: str, decl_index: SymbolsAt) -> str:
+def _caller_id(node: "tree_sitter.Node", rel_path: str, decl_index: SymbolsAt) -> NodeId:
     """The id of the method or constructor ``node`` declares, by POSITION.
 
     WI-jusah (WI-kosar family): never by its ``Class.method`` name, which the

@@ -75,8 +75,8 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol,
-    make_pass_id,
+    AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, Span, StableId,
+    Symbol, make_pass_id,
 )
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_symbol_id, node_text,
@@ -213,7 +213,7 @@ def _process_cmake_tree(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
-    target_registry: dict[str, str],
+    target_registry: dict[str, NodeId],
     *,
     run_id: str,
 ) -> None:
@@ -330,7 +330,7 @@ def _process_cmake_tree(
                         dst_ref: Optional[ExternalRef] = None
                         resolved = dep.lower() in target_registry
                         if resolved:
-                            dst_id = target_registry[dep.lower()]
+                            dst_id: str = target_registry[dep.lower()]
                             confidence = 0.90
                         else:
                             # A library no file read so far defines: a
@@ -554,7 +554,7 @@ class CMakeAnalyzer(TreeSitterAnalyzer):
 
         symbols: list[Symbol] = []
         edges: list[Edge] = []
-        target_registry: dict[str, str] = {}
+        target_registry: dict[str, NodeId] = {}
 
         cmake_files = list(find_cmake_files(repo_root))
 

@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Any, Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, StableId, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, StableId, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -455,7 +455,7 @@ class _RacketExtractor:
 
     def _find_enclosing_function(
         self, node: "tree_sitter.Node", path: Path
-    ) -> Optional[str]:
+    ) -> Optional[NodeId]:
         """Find the enclosing function for a node."""
         current = node.parent
         while current is not None:

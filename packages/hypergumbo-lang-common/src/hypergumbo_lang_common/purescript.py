@@ -57,7 +57,7 @@ from pathlib import Path
 from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -206,7 +206,7 @@ class _PureScriptExtractor:
         # extracted (the stable_id scope chain), and, per (path, start byte)
         # of every equation, the id of the function symbol it folded into.
         self._scope: list[str] = []
-        self._equation_owner: dict[tuple[str, int], str] = {}
+        self._equation_owner: dict[tuple[str, int], NodeId] = {}
 
     def analyze(self) -> AnalysisResult:
         """Analyze all PureScript files in the repository."""
@@ -570,7 +570,7 @@ class _PureScriptExtractor:
 
     def _find_enclosing_function(
         self, node: "tree_sitter.Node", path: Path
-    ) -> Optional[str]:
+    ) -> Optional[NodeId]:
         """Find the enclosing function for a node."""
         current = node.parent
         while current is not None:

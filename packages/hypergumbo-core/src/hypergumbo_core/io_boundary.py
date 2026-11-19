@@ -191,7 +191,7 @@ from .io_boundary_types import (
     find_io_boundary,
     opacity_names,
 )
-from .ir import symbol_name_slot, symbol_path_slot
+from .ir import NodeId, symbol_name_slot, symbol_path_slot
 from .module_sets import expand_module_slot
 from .owner_ancestry import ancestor_retry_hints
 from .yaml_catalogs import (
@@ -4054,7 +4054,7 @@ class IoChain:
 
     boundary: str  # axis: io-boundary
     primitive: str  # axis: free-text — the matched primitive's qualified name, carried for display and for the deduplicated ``primitives_used`` list; no consumer branches on it.
-    io_edge_src: str  # axis: identity
+    io_edge_src: NodeId  # axis: identity
     io_edge_dst: str  # axis: identity
     entry_points: list[str] = field(default_factory=list)
     dst_tier: Optional[int] = None

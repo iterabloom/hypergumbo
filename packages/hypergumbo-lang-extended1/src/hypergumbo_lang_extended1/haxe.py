@@ -31,7 +31,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -151,7 +151,7 @@ _BUILTINS = frozenset({
 
 def _find_enclosing_context(
     node: "tree_sitter.Node", path: Path, repo_root: Path,
-) -> tuple[Optional[str], Optional[str]]:
+) -> tuple[Optional[NodeId], Optional[str]]:
     """Find the enclosing function and class for a node.
 
     Returns:

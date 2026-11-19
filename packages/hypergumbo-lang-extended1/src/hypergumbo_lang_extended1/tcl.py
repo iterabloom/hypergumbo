@@ -29,7 +29,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -170,7 +170,7 @@ _BUILTINS = frozenset({
 
 def _find_enclosing_proc(
     node: "tree_sitter.Node", path: Path, repo_root: Path,
-) -> Optional[str]:
+) -> Optional[NodeId]:
     """Find the enclosing procedure for a node."""
     current = node.parent
     proc_name = None

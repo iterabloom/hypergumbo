@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .ir import Edge, StableId
+from .ir import Edge, NodeId, StableId
 from .overload_arity import ARITY_KEY, declared_arity, declared_arity_stable_id
 
 #: The modifier on a callback declaration -- the marking cpp and kotlin give
@@ -73,7 +73,7 @@ def callback_stable_id(
 
 def behaviour_implements_edge(
     *,
-    src: str,
+    src: NodeId,
     lang: str,
     behaviour: str,
     target_id: Optional[str],
@@ -113,7 +113,7 @@ def behaviour_implements_edge(
 
 def callback_dispatch_edge(
     *,
-    callback_id: str,
+    callback_id: NodeId,
     impl_id: str,
     line: int,
     origin: str,

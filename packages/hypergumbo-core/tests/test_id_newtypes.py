@@ -15,9 +15,10 @@ What is pinned, and why:
   complaining: ``StableId(f"...")`` anywhere else is a hand-built id that
   the factories exist to prevent. A new legitimate mint is added to the
   list on purpose, in review.
-- ``NodeId`` types ``Symbol.id``, ``UsageContext.symbol_ref`` and
-  ``DataModel.symbol_id``; ``Edge.src``, ``Edge.dst`` and the ``IoChain``
-  endpoints stay ``str`` (see the ``NodeId`` docstring in ir.py for why).
+- ``NodeId`` types ``Symbol.id``, ``UsageContext.symbol_ref``,
+  ``DataModel.symbol_id``, ``Edge.src`` (and ``Edge.create``'s ``src``) and
+  ``IoChain.io_edge_src``; ``Edge.dst`` and ``IoChain.io_edge_dst`` stay
+  ``str`` (see the ``NodeId`` docstring in ir.py for why).
   Its constructor is called by the
   factories in ``MINT_SITES``, by the one boundary ``read_node_id`` (whose own
   call sites are ``BOUNDARY_READS``), and at the sites in
@@ -289,21 +290,22 @@ def test_the_scip_mint_and_the_tree_sitter_mint_never_agree():
 # --- NodeId ---------------------------------------------------------------
 
 
-def test_the_node_id_fields_resolve_to_node_id_and_the_edge_endpoints_stay_str():
+def test_the_node_id_fields_and_the_edge_source_resolve_to_node_id():
     assert typing.get_type_hints(Symbol)["id"] is NodeId
     assert typing.get_type_hints(UsageContext)["symbol_ref"] == Optional[NodeId]
     assert typing.get_type_hints(UsageContext.create)["symbol_ref"] == Optional[NodeId]
     assert typing.get_type_hints(DataModel)["symbol_id"] is NodeId
-    edge_hints = typing.get_type_hints(Edge)
-    create_hints = typing.get_type_hints(Edge.create)
-    chain_hints = typing.get_type_hints(IoChain)
-    for hints, names in (
-        (edge_hints, ("src", "dst")),
-        (create_hints, ("src", "dst")),
-        (chain_hints, ("io_edge_src", "io_edge_dst")),
-    ):
-        for name in names:
-            assert hints[name] is str, name
+    assert typing.get_type_hints(Edge)["src"] is NodeId
+    assert typing.get_type_hints(Edge.create)["src"] is NodeId
+    assert typing.get_type_hints(IoChain)["io_edge_src"] is NodeId
+
+
+def test_the_edge_destination_stays_str():
+    """A dst is a node id OR an unresolved reference finalize turns into a
+    boundary node, so it is not a ``NodeId`` (see the NodeId docstring)."""
+    assert typing.get_type_hints(Edge)["dst"] is str
+    assert typing.get_type_hints(Edge.create)["dst"] is str
+    assert typing.get_type_hints(IoChain)["io_edge_dst"] is str
 
 
 @pytest.mark.parametrize("factory", [

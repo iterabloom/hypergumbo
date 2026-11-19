@@ -97,12 +97,15 @@ def translate_scip_python_to_hg(
     internal_of = MonikerResolver(symbols)
     external: Dict[str, Tuple[ExternalRef, str]] = {}
 
-    def _resolve(scip_symbol: str, document: str) -> Optional[str]:
-        # In-repo: the defining Symbol's id. External callable: the syntax
-        # arm's module-qualified unresolved id, remembered so the edge can be
-        # given its structured dst_ref below. Anything else: skip the edge.
+    def _external_dst(scip_symbol: str) -> Optional[str]:
+        # In-repo endpoints resolve through ``internal_of`` (a node id, the
+        # only answer a SOURCE gets: WI-gisun). A destination it does not
+        # answer for that is an external callable becomes the syntax arm's
+        # module-qualified unresolved id, remembered so the edge can be
+        # given its structured dst_ref below. An in-repo moniker refused as
+        # ambiguous never falls through here. Anything else: skip the edge.
         if internal_of.defines(scip_symbol):
-            return internal_of(scip_symbol, document)
+            return None
         if scip_symbol in external:
             return format_legacy_dst(external[scip_symbol][0])
         ref = _external_ref(scip_symbol)
@@ -112,8 +115,12 @@ def translate_scip_python_to_hg(
         return format_legacy_dst(ref[0])
 
     edges: List[Edge] = []
-    edges.extend(scip_index_to_edges(index, run_id=run_id, resolve_symbol=_resolve))
-    edges.extend(scip_index_to_call_edges(index, run_id=run_id, resolve_symbol=_resolve))
+    edges.extend(scip_index_to_edges(
+        index, run_id=run_id, resolve_symbol=internal_of, resolve_external_dst=_external_dst,
+    ))
+    edges.extend(scip_index_to_call_edges(
+        index, run_id=run_id, resolve_symbol=internal_of, resolve_external_dst=_external_dst,
+    ))
     report = internal_of.ambiguity_report()
     if report is not None and log is not None:
         log(report)

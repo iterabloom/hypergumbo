@@ -310,6 +310,47 @@ def test_resolve_symbol_none_for_either_endpoint_drops_edge() -> None:
     ) == []
 
 
+def test_the_external_arm_answers_for_a_destination_and_never_for_a_source() -> None:
+    """WI-gisun: an edge starts at a node. ``resolve_external_dst`` stands in
+    for a callee the node resolver did not answer for; a caller it did not
+    answer for starts no edge, whatever the external arm would say."""
+    caller = _sym("foo")
+    callee = _sym("bar")
+    doc = _doc_with(
+        occurrences=[
+            scip_pb2.Occurrence(symbol=caller, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0]),
+            scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0, 4]),
+        ],
+    )
+    asked: list[str] = []
+
+    def external(symbol: str) -> str:
+        asked.append(symbol)
+        return f"stub:{symbol}"
+
+    [edge] = scip_index_to_call_edges(
+        _idx(doc),
+        resolve_symbol=lambda s, _doc: "caller-node" if s == caller else None,
+        resolve_external_dst=external,
+        run_id="test",
+    )
+    assert (edge.src, edge.dst) == ("caller-node", f"stub:{callee}")
+    assert asked == [callee]
+    asked.clear()
+    assert scip_index_to_call_edges(
+        _idx(doc),
+        resolve_symbol=lambda s, _doc: "callee-node" if s == callee else None,
+        resolve_external_dst=external,
+        run_id="test",
+    ) == []
+    assert caller not in asked
+    # A destination the node resolver answers for never reaches the external arm.
+    [edge] = scip_index_to_call_edges(
+        _idx(doc), resolve_symbol=_raw, resolve_external_dst=external, run_id="test",
+    )
+    assert edge.dst == callee and asked == []
+
+
 # ---------------------------------------------------------------------------
 # Evidence / provenance
 # ---------------------------------------------------------------------------

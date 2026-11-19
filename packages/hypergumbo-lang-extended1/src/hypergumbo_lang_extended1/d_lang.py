@@ -78,7 +78,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.discovery import classify_dot_d_file, find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import nested_member_qualified_name
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -490,7 +490,7 @@ def _extract_imported_modules(
 
 def _process_import_declaration(
     source: bytes,
-    file_id: str,
+    file_id: NodeId,
     run_id: str,
     node: "tree_sitter.Node",
     module_registry: dict[str, str] | None = None,
