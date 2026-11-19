@@ -25,7 +25,12 @@ How It Works
 5. Create symbols for projects, dependencies, components, permissions
 6. Create edges for Maven dependencies (``depends_on``) and
    ``<mainClass>`` entry points (``defines_target``); the Android
-   manifest yields symbols only
+   manifest yields symbols only. A ``<mainClass>`` edge ends on the class's
+   source file of the tree (``src/main/java`` beside the pom first; that
+   path is ``meta.target_path``, which the build-target linker reads), else
+   on an ``edge_target.external_target`` stand-in for the class; it was the
+   bare path, no id (WI-tatop). A pom with no ``artifactId`` draws it from
+   the file's node.
 
 Why This Design
 ---------------
@@ -46,14 +51,17 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.analyze.edge_target import external_target, in_tree_file_id
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_file_id,
     make_symbol_id,
     node_text,
     sanitize_id_name_segment,
@@ -268,9 +276,37 @@ def _find_elements_recursive(
     return results
 
 
+def _main_class_dst(
+    file_path: Path, rel_path: str, class_name: str,
+) -> tuple[str, str, bool]:
+    """``(dst, target_path, in_tree)`` for a pom's ``<mainClass>``.
+
+    The class's source file of the tree, looked up where Maven compiles it
+    from (``src/main/java`` beside the pom), then beside the pom and at the
+    root (the paths the build-target linker tried before): its file node,
+    and that repository-relative path for ``meta.target_path``. A class the
+    tree does not hold ends on a stand-in for the class
+    (``edge_target.external_target``), with the path the class names. The
+    dst was that bare path, no id (WI-tatop).
+    """
+    written = _java_class_to_path(class_name)
+    pom_dir = posixpath.dirname(rel_path)
+    candidates = [
+        posixpath.join(pom_dir, "src/main/java", written),
+        posixpath.join(pom_dir, written),
+        written,
+    ]
+    for candidate in candidates:
+        found = in_tree_file_id(file_path, rel_path, [candidate])
+        if found is not None:
+            return found, posixpath.normpath(candidate), True
+    return external_target("java", class_name)[0], written, False
+
+
 def _process_maven_pom(
     root: "tree_sitter.Node",
     source: bytes,
+    file_path: Path,
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
@@ -348,21 +384,25 @@ def _process_maven_pom(
     # Extract <mainClass> from plugin configurations.
     # Appears in maven-jar-plugin (archive/manifest/mainClass),
     # exec-maven-plugin (configuration/mainClass), and Spring Boot plugin.
-    src_id = project_id or make_symbol_id("xml", rel_path, 1, 1, "project", "module")
+    # A pom with no artifactId has no project symbol: the file's node.
+    src_id = project_id or make_file_id("xml", rel_path)
     for main_class_elem in _find_elements_recursive(project_node, source, "mainClass"):
         class_name = _get_text_content(main_class_elem, source)
         if class_name:
-            target_path = _java_class_to_path(class_name)
+            dst, target_path, in_tree = _main_class_dst(file_path, rel_path, class_name)
             line = main_class_elem.start_point[0] + 1
             edges.append(
                 Edge.create(
                     src=src_id,
-                    dst=target_path,
+                    dst=dst,
                     edge_type="defines_target",
                     evidence_type="build_target_main",
                     line=line,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    is_resolved=in_tree,
+                    # The build-target linker resolves the target by path.
+                    meta={"target_path": target_path},
                 )
             )
 
@@ -622,7 +662,10 @@ class XmlAnalyzer(TreeSitterAnalyzer):
 
                 # Process based on type
                 if xml_type == "maven":
-                    _process_maven_pom(tree.root_node, source, rel_path, symbols, edges, run_id=run.execution_id)
+                    _process_maven_pom(
+                        tree.root_node, source, xml_path, rel_path, symbols, edges,
+                        run_id=run.execution_id,
+                    )
                 elif xml_type == "android_manifest":
                     _process_android_manifest(tree.root_node, source, rel_path, symbols, edges)
                 # Generic XML and layouts are not extracted (too noisy)

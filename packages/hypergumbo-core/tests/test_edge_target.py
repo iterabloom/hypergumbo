@@ -84,6 +84,30 @@ def test_in_tree_file_id_misses_outside_absent_and_languageless(tmp_path: Path) 
     assert in_tree_file_id(importer, "a.fish", misses) is None
 
 
+def test_in_tree_file_id_gives_the_callers_own_files_its_language(tmp_path: Path) -> None:
+    """A file the taxonomy names no language for is still a node when the
+    calling analyzer reads files of its suffix: ``own_lang`` names it."""
+    importer = _importer(tmp_path, "suite.robot")
+    _importer(tmp_path, "common.resource")
+    _importer(tmp_path, "notes.txt")
+    own = {"own_lang": "robot", "own_suffixes": (".robot", ".resource")}
+    assert in_tree_file_id(importer, "suite.robot", ["common.resource"], **own) == (
+        make_file_id("robot", "common.resource")
+    )
+    assert in_tree_file_id(importer, "suite.robot", ["common.resource"]) is None
+    # A suffix the caller does not read stays a miss.
+    assert in_tree_file_id(importer, "suite.robot", ["notes.txt"], **own) is None
+
+
+def test_in_tree_file_id_own_lang_does_not_override_the_taxonomy(tmp_path: Path) -> None:
+    importer = _importer(tmp_path, "a.robot")
+    _importer(tmp_path, "env.sh")
+    found = in_tree_file_id(
+        importer, "a.robot", ["env.sh"], own_lang="robot", own_suffixes=(".sh",),
+    )
+    assert found == make_file_id("bash", "env.sh")
+
+
 def test_external_target_with_a_module_matches_format_legacy_dst() -> None:
     dst, ref = external_target("starlark", "cc_binary", "@rules_cc//cc:defs.bzl")
     assert ref == ExternalRef(

@@ -67,6 +67,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_module_import_dst,
     make_symbol_id,
     node_text,
 )
@@ -877,8 +878,9 @@ def _extract_fortran_edges(
                     dst_id: str = lookup_result.symbol.id
                     resolved = True
                 else:
-                    # External module not in our codebase
-                    dst_id = f"fortran:external:{mod_name}"
+                    # A module the tree does not declare: its stand-in, not
+                    # ``fortran:external:<module>`` (no id, WI-tatop).
+                    dst_id = make_module_import_dst("fortran", mod_name)
                     resolved = False
 
                 edge = Edge.create(

@@ -27,16 +27,22 @@ Edges Extracted
 ---------------
 - **calls**: Keyword invocations from test cases and keywords. Invocations
   of names in ``_RobotExtractor.BUILTIN_KEYWORDS`` (keywords of the BuiltIn,
-  Collections and String libraries, such as ``Log``) emit no edge. An
-  invocation outside any keyword or test case uses the file-level
-  ``robot:<path>`` id as its source. The target is looked up by exact name
+  Collections and String libraries, such as ``Log``) emit no edge. The source
+  is the keyword or test whose definition holds the invocation, found by
+  position (the name table is global: a test ``Example`` in two files sent
+  one's calls to the other), else the file's node (``make_file_id``; it was
+  ``robot:<path>``, no id). The target is looked up by exact name
   in the cross-file keyword/test registry; a name not found there gets the
   synthetic ``robot:unresolved:<keyword>`` dst. The analyzer sets no
   confidence itself: ``Edge.create`` derives it from
   ``evidence_type="ast_call_direct"`` and ``is_resolved`` (0.85 resolved,
   0.5 unresolved)
-- **imports**: Resource settings only (file -> resource); Library settings
-  create a ``library`` symbol but no edge
+- **imports**: Resource settings only, from the file's node to the resource
+  file of the tree (relative to the importing file, then the root;
+  ``${CURDIR}`` is the file's directory), else to
+  ``make_module_import_dst("robot", <path as written>)``; it was
+  ``robot:resource:<path>``, no id (WI-tatop). Library settings create a
+  ``library`` symbol but no edge
 
 Why This Design
 ---------------
@@ -49,6 +55,7 @@ Why This Design
 
 from __future__ import annotations
 
+import posixpath
 import time
 import uuid
 from pathlib import Path
@@ -60,8 +67,11 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     make_doc_symbol_ids,
+    make_file_id,
+    make_module_import_dst,
     populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -167,6 +177,11 @@ class _RobotExtractor:
         self._edges: list[Edge] = []
         self._symbol_registry: dict[str, str] = {}  # name -> symbol_id
         self._current_container: str | None = None
+        # The keyword or test each definition declares, by (file, first line):
+        # a call is drawn from the definition that holds it. The name table
+        # below is global, so a test ``Example`` in two files sent every
+        # call of one to the other's symbol (WI-tatop).
+        self._declared_at: dict[tuple[str, int], str] = {}
         self._execution_id = execution_id
         self._files_analyzed = 0
 
@@ -269,6 +284,7 @@ class _RobotExtractor:
         )
         self._symbols.append(symbol)
         self._symbol_registry[name] = symbol_id
+        self._declared_at[(rel_path.as_posix(), span.start_line)] = symbol_id
 
     def _extract_test_case(self, node: "tree_sitter.Node", path: Path) -> None:
         """Extract a test case definition."""
@@ -343,6 +359,7 @@ class _RobotExtractor:
         )
         self._symbols.append(symbol)
         self._symbol_registry[name] = symbol_id
+        self._declared_at[(rel_path.as_posix(), span.start_line)] = symbol_id
 
     def _extract_variable(self, node: "tree_sitter.Node", path: Path) -> None:
         """Extract a suite-level variable definition."""
@@ -470,10 +487,14 @@ class _RobotExtractor:
             )
             self._symbols.append(symbol)
 
-            # Add import edge
+            # The resource file of the tree it names, else a stand-in for
+            # the path as written (WI-tatop: ``robot:<path>`` ->
+            # ``robot:resource:<file>`` was no id at either end).
+            dst, in_tree = self._resource_dst(path, setting_value)
             edge = Edge.create(
-                src=f"robot:{rel_path}",
-                dst=f"robot:resource:{setting_value}",
+                src=make_file_id("robot", rel_path.as_posix()),
+                dst=dst,
+                is_resolved=in_tree,
                 edge_type="imports",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
@@ -483,25 +504,32 @@ class _RobotExtractor:
             )
             self._edges.append(edge)
 
+    def _resource_dst(self, path: Path, written: str) -> tuple[str, bool]:
+        """The dst of ``Resource  <written>`` and whether it is a file of the tree.
+
+        Robot looks a resource up relative to the importing file's directory,
+        then on its module search path (taken here as the repository root).
+        ``${CURDIR}`` is the importing file's directory.
+        """
+        rel = path.relative_to(self.repo_root).as_posix()
+        here = posixpath.dirname(rel)
+        name = written.replace("${CURDIR}/", "./")
+        found = in_tree_file_id(
+            path, rel, [posixpath.join(here, name), name],
+            own_lang="robot", own_suffixes=(".robot",),
+        )
+        if found is not None:
+            return found, True
+        return make_module_import_dst("robot", written), False
+
     def extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
         """Extract call edges from the syntax tree."""
         # Track current container for source attribution
-        if node.type == "keyword_definition":
-            for child in node.children:
-                if child.type == "name":
-                    name = _get_node_text(child).strip()
-                    self._current_container = self._symbol_registry.get(name)
-                    break
-            self._extract_edges_from_children(node, path)
-            self._current_container = None
-            return
-
-        elif node.type == "test_case_definition":
-            for child in node.children:
-                if child.type == "name":
-                    name = _get_node_text(child).strip()
-                    self._current_container = self._symbol_registry.get(name)
-                    break
+        if node.type in ("keyword_definition", "test_case_definition"):
+            rel = path.relative_to(self.repo_root).as_posix()
+            self._current_container = self._declared_at.get(
+                (rel, node.start_point[0] + 1),
+            )
             self._extract_edges_from_children(node, path)
             self._current_container = None
             return
@@ -534,8 +562,8 @@ class _RobotExtractor:
         if keyword_name in self.BUILTIN_KEYWORDS:
             return
 
-        # Determine source
-        src = self._current_container or f"robot:{rel_path}"
+        # The definition holding the call, else the file's node.
+        src = self._current_container or make_file_id("robot", rel_path.as_posix())
 
         # Try to resolve the target
         resolved_id = self._symbol_registry.get(keyword_name)

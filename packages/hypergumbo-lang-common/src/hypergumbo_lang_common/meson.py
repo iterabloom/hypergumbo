@@ -33,6 +33,7 @@ per-platform pattern) is two identities and deleting the first branch moves
 nothing; a top-level target hashes no chain and keeps its value.
 """
 
+import posixpath
 import time
 import warnings
 from pathlib import Path
@@ -41,9 +42,11 @@ from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import (
-    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, make_symbol_id,
+    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, make_module_import_dst,
+    make_symbol_id,
     populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -292,6 +295,26 @@ def _extract_symbols_recursive(
         _extract_symbols_recursive(child, path, repo_root, symbols, target_registry, run_id, analyzer)
 
 
+def _subdir_dst(path: Path, repo_root: Path, subdir: str) -> tuple[str, bool]:
+    """The dst of ``subdir('<subdir>')`` and whether it is a file of the tree.
+
+    Meson reads ``<subdir>/meson.build`` relative to the calling build file.
+    That file, when the tree holds it, ends the edge on its node (in the
+    ``meson`` language: the taxonomy names none for ``meson.build``); else
+    the stand-in ``make_module_import_dst("meson", <dir>)``. It was
+    ``meson:subdir:<dir>``, no id (WI-tatop).
+    """
+    rel = path.relative_to(repo_root).as_posix()
+    target = posixpath.normpath(posixpath.join(posixpath.dirname(rel), subdir))
+    found = in_tree_file_id(
+        path, rel, [posixpath.join(target, "meson.build")],
+        own_lang="meson", own_suffixes=("meson.build",),
+    )
+    if found is not None:
+        return found, True
+    return make_module_import_dst("meson", target), False
+
+
 def _extract_edges_recursive(
     node: "tree_sitter.Node",
     path: Path,
@@ -353,9 +376,11 @@ def _extract_edges_recursive(
                         None
                     )
                     if project_sym:
+                        dst, in_tree = _subdir_dst(path, repo_root, subdir_name)
                         edge = Edge.create(
                             src=project_sym.id,
-                            dst=f"meson:subdir:{subdir_name}",
+                            dst=dst,
+                            is_resolved=in_tree,
                             edge_type="includes",
                             line=node.start_point[0] + 1,
                             origin=PASS_ID,

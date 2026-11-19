@@ -48,6 +48,8 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
 )
@@ -514,8 +516,11 @@ class VAnalyzer(TreeSitterAnalyzer):
                     import_path = _get_node_text(child)
                     line = node.start_point[0] + 1
                     edge = Edge.create(
-                        src=f"file:{rel_path}",
-                        dst=f"v:import:{import_path}",
+                        # The file's node -> the module's stand-in (it was
+                        # ``file:<path>`` -> ``v:import:<module>``, no
+                        # id at either end, WI-tatop).
+                        src=make_file_id("v", rel_path),
+                        dst=make_module_import_dst("v", import_path),
                         edge_type="imports",
                         line=line,
                         origin=PASS_ID,

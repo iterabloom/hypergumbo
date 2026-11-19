@@ -65,6 +65,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     enclosing_declared_symbol,
     make_doc_symbol_ids,
+    make_file_id,
     make_unresolved_edge,
     symbols_at,
 )
@@ -484,7 +485,7 @@ def _extract_call_edge(
         enclosing_declared_symbol(node, decl_index, _PONY_CALLABLE_NODES)
         or enclosing_declared_symbol(node, decl_index, _PONY_TYPE_NODES)
     )
-    src = enclosing.id if enclosing is not None else f"pony:{rel_path}"
+    src = enclosing.id if enclosing is not None else make_file_id("pony", rel_path)
 
     # Try to resolve the target
     resolved_id = _resolve_callee(callee_name, file_table, symbol_registry)

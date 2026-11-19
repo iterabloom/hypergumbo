@@ -42,6 +42,8 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
 )
@@ -287,8 +289,11 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                     import_path = _get_node_text(child)
                     line = node.start_point[0] + 1
                     edge = Edge.create(
-                        src=f"file:{rel_path}",
-                        dst=f"gleam:import:{import_path}",
+                        # The file's node -> the module's stand-in (it was
+                        # ``file:<path>`` -> ``gleam:import:<module>``, no
+                        # id at either end, WI-tatop).
+                        src=make_file_id("gleam", rel_path),
+                        dst=make_module_import_dst("gleam", import_path),
                         edge_type="imports",
                         line=line,
                         origin=PASS_ID,
