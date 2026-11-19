@@ -1,0 +1,21 @@
+- op: create  # 8ad9
+  at: '2026-11-19T11:26:56Z'  # 8ad9
+  by: agent  # 8ad9
+  actor: jgstern_agent  # 8ad9
+  clock: 1  # 8ad9
+  nonce: 8ad9  # 8ad9
+  data:  # 8ad9
+    kind: work_item  # 8ad9
+    title: "hypergumbo symbols exits 1 on a broken pipe: rich's Console.on_broken_pipe raises SystemExit(1) before main() sees it"  # 8ad9
+    status: todo_hard  # 8ad9
+    priority: 2  # 8ad9
+    parent:  # 8ad9
+    tags:  # 8ad9
+    - verify_claims  # 8ad9
+    - cli  # 8ad9
+    isbefore: []  # 8ad9
+    duplicate_of: []  # 8ad9
+    not_duplicate_of: []  # 8ad9
+    pr_ref:  # 8ad9
+    description: "`hypergumbo symbols <repo> | head -c 10` exits 1, not 141. Owner ruling 2026-11-19 (WI-nidun): a broken pipe exits 141 for the whole CLI, so 1 always means a violated claim.\n\nREPRO (dev 3c109b3aa): hypergumbo symbols packages/hypergumbo-tracker | head -c 10; echo ${PIPESTATUS[0]} -> 1, nothing on stderr. Control: hypergumbo sketch packages/hypergumbo-tracker | head -c 10 -> 141.\n\nMECHANISM (traced in-process): cmd_symbols (cli.py ~5521) prints through rich.console.Console. On EPIPE, rich calls Console.on_broken_pipe, which redirects stdout to /dev/null and raises SystemExit(1). SystemExit is not an Exception, so main()'s `except BrokenPipeError` (cli.py ~14072) never sees it.\n\nSCOPE: grep of packages/*/src finds two Console( sites: cli.py cmd_symbols (stdout) and sketch.py:286 (stderr=True). Only the stdout one is affected today.\n\nFIX DIRECTION: a Console subclass whose on_broken_pipe sets quiet and re-raises BrokenPipeError, plus a test that drives symbols into a closed pipe and asserts 141; consider a structural guard that every stdout Console is that subclass. cli.py change: ride a PR that already selects most of the suite."  # 8ad9
+    fields: {}  # 8ad9
