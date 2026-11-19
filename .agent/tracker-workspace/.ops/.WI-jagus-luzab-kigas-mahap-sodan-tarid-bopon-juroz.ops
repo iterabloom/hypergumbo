@@ -1,0 +1,36 @@
+- op: create  # 6c3b
+  at: '2026-11-19T00:35:51Z'  # 6c3b
+  by: agent  # 6c3b
+  actor: jgstern_agent  # 6c3b
+  clock: 1  # 6c3b
+  nonce: 6c3b  # 6c3b
+  data:  # 6c3b
+    kind: work_item  # 6c3b
+    title: "test-leaderboard stores every module-level test function under a path that does not exist (12,647 of 41,671 timing keys)"  # 6c3b
+    status: todo_hard  # 6c3b
+    priority: 3  # 6c3b
+    parent:  # 6c3b
+    tags:  # 6c3b
+    - smart_test  # 6c3b
+    - ci_infrastructure  # 6c3b
+    isbefore: []  # 6c3b
+    duplicate_of: []  # 6c3b
+    not_duplicate_of: []  # 6c3b
+    pr_ref:  # 6c3b
+    description: "WHAT (measured 2026-11-19). scripts/test-leaderboard _parse_junit_xml turns junit's classname into a path by treating its last dotted part as a test class. For a method of a class that is right (packages.hypergumbo-core.tests.test_x.TestK -> packages/hypergumbo-core/tests/test_x.py::TestK::name). For a module-level test function the last part is the MODULE, so packages.hypergumbo-core.tests.test_x -> packages/hypergumbo-core/tests.py::test_x::name, and tests.test_y -> tests.py::test_y::name. In ~/hypergumbo_lab_notebook/test_timings.json: 10,755 package keys and 1,892 root keys in that form (12,647 of 41,671, 30%); NO module-level function is stored under its correct id; corrected, all 12,647 are unique and every file exists (not collisions, not duplicates). EFFECT: every join of timings to test ids misses them, e.g. smart-test's 'estimated wall time' (matches key files against the selection) counts them as 0 s. FIX: when the last dotted part of classname is a module (it names a test_*.py / BRANCHES_test_*.py file, or does not start with an upper-case letter... decide by checking the file), build path::name; rewrite the stored keys once (merging runs if a correct key exists). CLOSE CONDITION: a test with a module-level function's junit row; the store holds 0 keys of the broken form after one ingest + the one-off rewrite."  # 6c3b
+    fields: {}  # 6c3b
+- op: update  # d488
+  at: '2026-11-19T01:05:01Z'  # d488
+  by: agent  # d488
+  actor: jgstern_agent  # d488
+  clock: 2  # d488
+  nonce: d488  # d488
+  set:  # d488
+    status: done  # d488
+- op: discuss  # a0e9
+  at: '2026-11-19T01:05:01Z'  # a0e9
+  by: agent  # a0e9
+  actor: jgstern_agent  # a0e9
+  clock: 3  # a0e9
+  nonce: a0e9  # a0e9
+  message: "Fixed in PR #2267 (merged). Close condition met: the pre-PR's last smart-test run ingested with the fixed code at 2026-11-19T00:54:50Z, and test_timings.json now holds 41,676 keys, 0 matching _BROKEN_KEY (was 12,647 of 41,671). Module-level functions are keyed by node id, e.g. tests/test_test_leaderboard.py::test_node_ids_are_pytests (run recorded 00:54:50Z). Root cause: _parse_junit_xml read junit classname's last dotted part as a class even when it was the module; it now takes the last part starting test_/BRANCHES_test_ as the module. Old broken keys are repaired on load and their runs merged."  # a0e9

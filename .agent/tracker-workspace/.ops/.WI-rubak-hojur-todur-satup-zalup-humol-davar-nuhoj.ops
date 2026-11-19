@@ -42,3 +42,24 @@
   clock: 4  # cddd
   nonce: cddd  # cddd
   message: "MEASURED (2026-11-19 00:30 UTC; PR #2265 adds 'ci-debug pipelines'; data and analysis in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/cadence/README.md). 2,000 Woodpecker pipelines 10-01..11-19. Last 14 days: full suite median 38.5-40.1 min (n=25; 3 more killed at the 60-min limit); nightly 108.5 min (n=12); PR pipeline 3.6 min median, p90 19.1. Runner busy 3.5-8.6 h/day, IDLE 15.4-20.5 h/day; at most 2 pipelines at once every day; queue wait median 0.0 min (worst PR 104.9 min, once). A PR's setup before its first test: pytest step starts a median 100 s into the pipeline, then 47-66 s of installs (8 logs): about 2.5 min per PR. Crons fire 01:0x and 13:0x (full suite), 05:3x (nightly, ends about 07:20); merges land at every UTC hour.\nTHE ONE PROPOSAL FOR THE OWNER: full suite at 01:00, 09:00, 13:00, 17:00, 21:00 UTC ('0 1,9,13,17,21 * * *'), nightly unchanged. A break waits at most 4 h by day, 8 h overnight (today up to 12 h). Cost: 3 more 40-min runs, about 2 runner-hours a day on a runner idle 15-20 h a day; 05:00 is skipped so a full run never shares the agent's two slots with the nightly. Watch after the change: PR queue wait (it is 0 today; a full run holds one of the two slots for 40 min). Only the owner can change the schedule (Woodpecker repository settings)."  # cddd
+- op: discuss  # 67c1
+  at: '2026-11-19T00:39:45Z'  # 67c1
+  by: agent  # 67c1
+  actor: jgstern_agent  # 67c1
+  clock: 5  # 67c1
+  nonce: 67c1  # 67c1
+  message: "OWNER RULING 2026-11-19: not 13:00 or 17:00 (they would clog CI for the owner); the other proposed times are fine. Schedule: full suite at 01:00, 09:00, 21:00 UTC ('0 1,9,21 * * *'), nightly unchanged (05:30). Longest wait for a break: 09:00 -> 21:00 = 12 h (as today's longest); overnight 21:00 -> 01:00 = 4 h, 01:00 -> 09:00 = 8 h. The owner changes the Woodpecker cron; the agent updates the docs and any code that assumes 01:00/13:00."  # 67c1
+- op: discuss  # 6352
+  at: '2026-11-19T01:38:28Z'  # 6352
+  by: agent  # 6352
+  actor: jgstern_agent  # 6352
+  clock: 6  # 6352
+  nonce: '6352'  # 6352
+  message: "Merged as PR #2268, dev SHA 9af35d028c1e."  # 6352
+- op: discuss  # c8c4
+  at: '2026-11-19T01:38:37Z'  # c8c4
+  by: agent  # c8c4
+  actor: jgstern_agent  # c8c4
+  clock: 7  # c8c4
+  nonce: c8c4  # c8c4
+  message: "Docs for the owner's schedule (0 1,9,21 * * *) merged in PR #2268: AGENTS.md, transcript hook summary, smart-test + ci-debug playbooks, Woodpecker comments give the times; docstrings, script headers, SECURITY.md, ADR-0010 now say 'scheduled'. Not changed: cron_status_nudge.py comment ('twice a day', 'every 12 h') -- governance file outside the pre-approval; its 26 h allowance still holds (longest gap 12 h). The 01:00Z run on 11-19 (pipeline 6614) passed every step. Close after cron-status shows a 09:00Z full-suite run."  # c8c4

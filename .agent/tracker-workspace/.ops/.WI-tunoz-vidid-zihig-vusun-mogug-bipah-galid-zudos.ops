@@ -19,3 +19,25 @@
     pr_ref:  # 521d
     description: "WHAT (owner ruling on decision 9). PRs run every selected test; nothing is cut. The budget machinery is built as a REPORT only, so that its numbers exist if the owner later wants to switch a cut on:\n- a ranking of the selected tests, cheapest covering test first (the timing store exists);\n- the at-risk statements of a change: statements all of whose covering tests pass through the change;\n- the inferred whole-tree coverage (the last full run's coverage minus at-risk statements not re-run), printed beside the measured figure.\nENFORCEMENT IS OUT OF SCOPE: it is a later switch for the owner, and decisions 10 (the coverage claim) and 11 (the spot check) are not ruled.\n\nEVIDENCE AND ITS LIMIT. Change plus at-risk fit 150 test-seconds in 1,497 of 1,500 sampled ONE-FUNCTION changes. That does not transfer to PRs: 16 of 37 replayed PRs need 109 test-seconds or more on changed statements alone. And inferred coverage is not the same as tests passing: it says nothing about tests that run the changed statement and would be cut.\n\nCLOSE CONDITION. The report on a real PR, with the inferred and the measured figure; where they differ, why. A test with a mutation control for the at-risk computation.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 521d
     fields: {}  # 521d
+- op: discuss  # cdad
+  at: '2026-11-19T02:17:10Z'  # cdad
+  by: agent  # cdad
+  actor: jgstern_agent  # cdad
+  clock: 2  # cdad
+  nonce: cdad  # cdad
+  message: "Merged as PR #2269, dev SHA b7abe83159c1."  # cdad
+- op: update  # fb7b
+  at: '2026-11-19T02:17:22Z'  # fb7b
+  by: agent  # fb7b
+  actor: jgstern_agent  # fb7b
+  clock: 3  # fb7b
+  nonce: fb7b  # fb7b
+  set:  # fb7b
+    status: done  # fb7b
+- op: discuss  # fba2
+  at: '2026-11-19T02:17:23Z'  # fba2
+  by: agent  # fba2
+  actor: jgstern_agent  # fba2
+  clock: 4  # fba2
+  nonce: fba2  # fba2
+  message: "Done in PR #2269 (merged). `scripts/coverage-select budget-report --at <commit>` reads the manifest committed at a commit (baseline -> commit is the change; selected files minus `#-` lines are the run) and prints the ranking, the at-risk statements of packages/*/src and how many the run did not re-run, the measured figure from origin/badges beside the inferred one, and what a cut to the ranking alone would leave. Nothing is cut.\n\nClose condition, the report on a real PR: PR #2261's manifest commit 3852addf6 (~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/tunoz/report_2261.txt): 2 tests (0.01 s) cover all 11 changed statements; at risk 11, 0 not re-run; measured 100.00% (102961/102961) = inferred 100.00%. They are equal because that manifest deselected no test (no `#-` lines; nor did any of the 5 replayed). A cut to the 2 ranking tests leaves 8 at-risk statements of graph_select.py unmeasured: 99.99% (102953/102961). Spot-check: graph_select.py:204 (verdict, statement 5) is run by exactly one test (coverage-select line-tests), a test through the change that the ranking does not hold.\n\nMutation control for at_risk (tunoz/muts.tsv): 6 behaviour-changing mutations all red (outside ignored, re-run ignored, scope ignored, through counted as outside, unrecorded pair run as everything, last block dropped); 2 equivalent mutations recorded and not counted.\n\nNot shown: a PR whose manifest deselects tests, where measured and inferred would differ for the run itself. That needs WI-kunah's src-only PR with `#-` lines."  # fba2
