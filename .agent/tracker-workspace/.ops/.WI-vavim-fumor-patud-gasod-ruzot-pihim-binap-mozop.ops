@@ -1,0 +1,20 @@
+- op: create  # dd96
+  at: '2026-11-19T21:24:03Z'  # dd96
+  by: agent  # dd96
+  actor: jgstern_agent  # dd96
+  clock: 1  # dd96
+  nonce: dd96  # dd96
+  data:  # dd96
+    kind: work_item  # dd96
+    title: "go: 'b chan <- int' emits spurious function symbols named chan and int"  # dd96
+    status: todo_hard  # dd96
+    priority: 3  # dd96
+    parent:  # dd96
+    tags:  # dd96
+    - analysis_quality  # dd96
+    isbefore: []  # dd96
+    duplicate_of: []  # dd96
+    not_duplicate_of: []  # dd96
+    pr_ref:  # dd96
+    description: "Go: a parameter written b chan <- int makes the analyzer emit spurious function symbols named chan and int.\n\nFound by PR 3 agent 7 while proving the layout fix on Go (~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent7/RESULTS.md R8). Not investigated: cause (likely tree-sitter-go error recovery on the spaced send-only channel type) or frequency in real trees."  # dd96
+    fields: {}  # dd96

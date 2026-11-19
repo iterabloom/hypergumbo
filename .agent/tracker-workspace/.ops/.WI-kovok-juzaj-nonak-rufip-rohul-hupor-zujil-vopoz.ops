@@ -1,0 +1,27 @@
+- op: create  # d48a
+  at: '2026-11-19T21:23:57Z'  # d48a
+  by: agent  # d48a
+  actor: jgstern_agent  # d48a
+  clock: 1  # d48a
+  nonce: d48a  # d48a
+  data:  # d48a
+    kind: work_item  # d48a
+    title: "dart: hashed signature text keeps some parameter names and loses a group's closing bracket"  # d48a
+    status: todo_hard  # d48a
+    priority: 3  # d48a
+    parent:  # d48a
+    tags:  # d48a
+    - stable_id  # d48a
+    isbefore: []  # d48a
+    duplicate_of: []  # d48a
+    not_duplicate_of: []  # d48a
+    pr_ref:  # d48a
+    description: "Dart: the hashed signature text keeps some parameter names, keeps inner names of function-typed parameters, and loses a group's closing bracket.\n\nREPRO: normalize_dart_signature(\"(int a, [int c = ..., String? d])\") gives \"(int,[int c, String?)\" - the name c survives (renaming it moves the id) and the ] is lost. Existing before PR 3's layout fix; found by PR 3 agent 7 (~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent7/RESULTS.md R7). Agent 7 also notes the Dart text leaves a named group's { open, so its commas read as commas inside a type. Fixing it moves Dart typed ids, so it needs a stable-id bump."  # d48a
+    fields: {}  # d48a
+- op: discuss  # 346a
+  at: '2026-11-19T21:24:43Z'  # 346a
+  by: agent  # 346a
+  actor: jgstern_agent  # 346a
+  clock: 2  # 346a
+  nonce: 346a  # 346a
+  message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump), one agent before the bump agent."  # 346a
