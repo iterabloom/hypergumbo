@@ -32,7 +32,10 @@
 #
 # What the human must do after:
 #   1. Review and merge the PR on Codeberg
-#   2. Run: ./scripts/tag-release VERSION
+#   2. Dispatch the Release workflow with dry_run=true on main, and wait for it
+#      to pass: its I/O manifest, audit and wheel jobs otherwise first run on
+#      the tag (WI-putib: v10.0.0's tag was recreated for that)
+#   3. Run: ./scripts/tag-release VERSION
 #
 set -euo pipefail
 
@@ -514,7 +517,12 @@ if [[ -n "$PR_URL" && "$PR_URL" != "(not created)" && "$PR_URL" != "(dry-run)" ]
     echo "     $PR_URL"
 fi
 echo ""
-echo "  2. After PR is merged, run:"
+echo "  2. After the PR is merged, dispatch the Release workflow on main with"
+echo "     dry_run=true and wait for it to pass. Its I/O manifest, audit and wheel"
+echo "     jobs otherwise run for the first time on the tag (v10.0.0's tag was"
+echo "     deleted and recreated for that)."
+echo ""
+echo "  3. Then run:"
 echo -e "     ${GREEN}./scripts/tag-release $VERSION${NC}"
 echo ""
 echo "  This will create a signed tag and push it, triggering the"

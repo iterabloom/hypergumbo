@@ -40,10 +40,12 @@ CI_FILES = (
     ".woodpecker/woodpecker.yml",
 )
 
-#: No-fix advisories in packages absent from every CI audit env (diskcache via
-#: llama_cpp_python). Named here so adding another is a visible decision, not
-#: a silent divergence.
-RELEASE_CHECK_LOCAL_ONLY = frozenset({"CVE-2025-69872"})
+#: No-fix advisories in packages absent from every CI audit env. Empty since
+#: release-check audits a fresh environment built as release.yml's (WI-putib):
+#: diskcache (CVE-2025-69872, via llama_cpp_python) was a package only this dev
+#: box carried. Named here so adding one is a visible decision, not a silent
+#: divergence.
+RELEASE_CHECK_LOCAL_ONLY: frozenset[str] = frozenset()
 
 _IGNORE = re.compile(r"--ignore-vuln\s+(\S+)")
 
