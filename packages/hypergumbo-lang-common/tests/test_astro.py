@@ -484,7 +484,7 @@ const description = 'A test page';
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         # WI-rijup: stable_id must be the canonical sha256 form
-        # (``hgstableid15:<16hex>``), produced by make_doc_stable_id — not the raw
+        # (``hgstableid<N>:<16hex>``), produced by make_doc_stable_id — not the raw
         # composite Symbol.id. Reuse the complete-component fixture so the
         # variable, slot, and directive sites are all exercised.
         make_astro_file(tmp_path, "Page.astro", """---

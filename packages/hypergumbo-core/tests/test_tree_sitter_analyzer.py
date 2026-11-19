@@ -1176,7 +1176,7 @@ class TestComputeStableId:
         return MockNode(type="function_definition", children=children)
 
     def test_format(self) -> None:
-        """compute_stable_id should return hgstableid15:{16-hex-chars} format."""
+        """compute_stable_id should return hgstableid<N>:{16-hex-chars} format."""
         node = self._make_function_node()
         sid = self.analyzer.compute_stable_id(node, kind="function")
         assert sid.startswith(STABLE_ID_PREFIX)

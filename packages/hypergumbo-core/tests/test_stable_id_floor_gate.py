@@ -1920,7 +1920,7 @@ def test_every_fixture_stable_id_is_canonical(runs) -> None:
     null, and moves nothing when a sibling is deleted, so the census and the
     deletion check both pass it (WI-banod). ``None`` is allowed (the
     census owns nulls); any other value must be the canonical
-    ``hgstableid15:<16hex>`` the validator's stable_id format check requires."""
+    ``hgstableid<N>:<16hex>`` the validator's stable_id format check requires."""
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
     bad = sorted(

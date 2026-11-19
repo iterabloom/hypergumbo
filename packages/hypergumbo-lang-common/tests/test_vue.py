@@ -590,7 +590,7 @@ export default {
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """WI-rijup: every emitted Symbol.stable_id is the canonical sha256
-        form (``hgstableid15:<16hex>``), not the raw composite ``vue:...`` id.
+        form (``hgstableid<N>:<16hex>``), not the raw composite ``vue:...`` id.
 
         Reuses the complete-component fixture (directives, slots, props, and a
         style block) so the assertion is non-vacuous.

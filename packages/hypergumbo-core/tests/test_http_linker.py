@@ -2032,7 +2032,7 @@ class TestCreateClientSymbolStableId:
         """stable_id must not be a bare HTTP method string.
 
         Phase 6 PR1 (INV-hunup): the underlying ``make_route_stable_id``
-        now returns the canonical ``hgstableid15:<16hex>`` shape (29 chars
+        now returns the canonical ``hgstableid<N>:<16hex>`` shape (29 chars
         total) rather than the raw 64-char hexdigest. The test still
         asserts non-bare-method semantics; the length expectation
         migrates.
@@ -2044,7 +2044,7 @@ class TestCreateClientSymbolStableId:
         sym = _create_client_symbol(call, tmp_path)
         assert sym.stable_id != "POST"
         assert sym.stable_id != "post"
-        # Should be the canonical hgstableid15:<16hex> shape (29 chars total).
+        # Should be the canonical hgstableid<N>:<16hex> shape (29 chars total).
         assert sym.stable_id.startswith(STABLE_ID_PREFIX)
         assert len(sym.stable_id) == len(STABLE_ID_PREFIX) + 16
 

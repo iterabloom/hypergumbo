@@ -423,7 +423,7 @@ class TestMakeRouteStableId:
         assert id1 == id2
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
-        """Result uses the canonical ``hgstableid15:<16hex>`` shape.
+        """Result uses the canonical ``hgstableid<N>:<16hex>`` shape.
 
         Every ``make_*_stable_id`` factory returns this shape, so the
         ``id_format`` validator pins a single canonical form (INV-hunup).
@@ -605,7 +605,7 @@ class TestMakeEntryStableId:
         assert id1 != id2
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
-        """Result uses the canonical ``hgstableid15:<16hex>`` shape.
+        """Result uses the canonical ``hgstableid<N>:<16hex>`` shape.
 
         See ``TestMakeRouteStableId.test_returns_canonical_sha256_prefixed_form``
         for why the factory family shares one shape.
@@ -627,7 +627,7 @@ class TestMakeProtocolStableId:
     """Tests for ``make_protocol_stable_id`` (INV-hunup)."""
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
-        """Result uses the canonical ``hgstableid15:<16hex>`` shape."""
+        """Result uses the canonical ``hgstableid<N>:<16hex>`` shape."""
         result = make_protocol_stable_id("db_query", "SELECT", "users")
         assert result.startswith(STABLE_ID_PREFIX)
         suffix = result[len(STABLE_ID_PREFIX):]
@@ -673,7 +673,7 @@ class TestMakeTypedStableId:
     """Tests for make_typed_stable_id — spec §6 typed tier typed-tier identity."""
 
     def test_returns_sha256_format(self) -> None:
-        """Result uses hgstableid15:{16-hex} format."""
+        """Result uses hgstableid<N>:{16-hex} format."""
         result = make_typed_stable_id(
             "method", "(String,int)User", name="m", qualified_name="m"
         )

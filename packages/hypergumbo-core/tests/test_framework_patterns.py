@@ -19584,7 +19584,7 @@ class TestMaterializeRouteSymbols:
     def test_stable_id_assigned(self) -> None:
         """Materialized route has a canonical-shape stable_id.
 
-        ``make_route_stable_id`` produces the ``hgstableid15:<16hex>`` shape
+        ``make_route_stable_id`` produces the ``hgstableid<N>:<16hex>`` shape
         (29 chars) shared by the rest of the ``make_*_stable_id``
         factory family (INV-hunup).
         """

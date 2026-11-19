@@ -1536,7 +1536,7 @@ def test_compute_stable_id_stats_counts_population_and_collisions() -> None:
     syms = [
         _make_sym_pathed(1, f"{STABLE_ID_PREFIX}1111111111111111", "a.py"),
         _make_sym_pathed(2, f"{STABLE_ID_PREFIX}2222222222222222", "a.py"),
-        # per-file collision in a.py (shares hgstableid15:1111... with sym 1)
+        # per-file collision in a.py (shares hgstableid<N>:1111... with sym 1)
         _make_sym_pathed(3, f"{STABLE_ID_PREFIX}1111111111111111", "a.py", name="dup"),
         # stable_id but NO path — exercises the `if path` false branch.
         _make_sym_with_stable_id(4, f"{STABLE_ID_PREFIX}4444444444444444"),
@@ -1552,7 +1552,7 @@ def test_compute_stable_id_stats_counts_population_and_collisions() -> None:
     assert stats["total_symbols"] == 5
     assert stats["non_null"] == 4
     assert stats["none_cohort"] == 1
-    assert stats["collision_groups"] == 1  # only hgstableid15:1111... is shared
+    assert stats["collision_groups"] == 1  # only hgstableid<N>:1111... is shared
     assert stats["collided_symbols"] == 2
     assert stats["per_file_collision_groups"] == 1
     assert stats["none_cohort_pct"] == 20.0  # 1/5
@@ -2135,7 +2135,7 @@ def test_stable_id_format_validator_rejects_a_shape_id_in_the_stable_id_field() 
 
 
 def test_stable_id_format_validator_flags_composite_form() -> None:
-    """A composite ``foo:bar``-style stable_id (no hgstableid15: prefix) is flagged.
+    """A composite ``foo:bar``-style stable_id (no hgstableid<N>: prefix) is flagged.
 
     This is the shape a linker produces if it joins key parts with colons
     instead of hashing them; the message reports the colon count.
@@ -2182,7 +2182,7 @@ def test_stable_id_format_violation_appears_in_validate_ir_report() -> None:
 
 
 def test_make_route_stable_id_emits_canonical_shape() -> None:
-    """``make_route_stable_id`` returns ``hgstableid15:<16hex>``."""
+    """``make_route_stable_id`` returns ``hgstableid<N>:<16hex>``."""
     from hypergumbo_core.analyze.base import make_route_stable_id
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
@@ -2191,7 +2191,7 @@ def test_make_route_stable_id_emits_canonical_shape() -> None:
 
 
 def test_make_entry_stable_id_emits_canonical_shape() -> None:
-    """``make_entry_stable_id`` returns ``hgstableid15:<16hex>``."""
+    """``make_entry_stable_id`` returns ``hgstableid<N>:<16hex>``."""
     from hypergumbo_core.analyze.base import make_entry_stable_id
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
@@ -2200,7 +2200,7 @@ def test_make_entry_stable_id_emits_canonical_shape() -> None:
 
 
 def test_make_protocol_stable_id_emits_canonical_shape() -> None:
-    """``make_protocol_stable_id`` returns ``hgstableid15:<16hex>``.
+    """``make_protocol_stable_id`` returns ``hgstableid<N>:<16hex>``.
 
     Sanity check on the factory the four protocol linkers
     (database_query / message_queue / event_sourcing / graphql_resolver)

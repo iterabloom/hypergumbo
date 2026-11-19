@@ -1061,7 +1061,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural identity hash within a (qualified_name, module_path) scope (ADR-0035 \u00a71; INV-bazij): survives body edits, NOT rename or move. Serialized as <label><16hex>: hgstableid<N>: from the tree-sitter / ast factories (stable_id_scheme hypergumbo-stableid-v<N>), hgscipid<N>: from the rust-analyzer (SCIP) arm (scip_stable_id_scheme). The label names the value and its scheme, so a stable_id never equals a shape_id (hgshapeid<N>:) or an id from the other algorithm; it is a label only, and the digest after it is what stableid-v14 wrote after sha256: (ADR-0035 'Value labels')."
+          "description": "Structural identity hash within a (qualified_name, module_path) scope (ADR-0035 \u00a71; INV-bazij): survives body edits, NOT rename or move. Serialized as <label><16hex>: hgstableid<N>: from the tree-sitter / ast factories (stable_id_scheme hypergumbo-stableid-v<N>), hgscipid<N>: from the rust-analyzer (SCIP) arm (scip_stable_id_scheme). The label names the value and its scheme, so a stable_id never equals a shape_id (hgshapeid<N>:) or an id from the other algorithm (ADR-0035 'Value labels'). A scheme bump relabels every value and moves the digests its change touches (spec: stable_id_scheme version history)."
         },
         "shape_id": {
           "oneOf": [

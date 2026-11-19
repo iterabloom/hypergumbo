@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Value labels are labels only: no digest moves when a value is relabelled.
 
-ADR-0035 §7 gave every identity value its scheme's label (``hgstableid15:``,
-``hgscipid1:``, ``hgshapeid4:``, ``hgrepofp3:``) in place of ``sha256:``,
-keeping each digest. A stable id is also hash INPUT: a containing scope's id,
+ADR-0035 §7 (stableid-v15, 2026-11-16) gave every identity value its
+scheme's label (then ``hgstableid15:``, ``hgscipid1:``, ``hgshapeid4:``,
+``hgrepofp3:``) in place of ``sha256:``, keeping each digest. A stable id is also hash INPUT: a containing scope's id,
 a file anchor, the id an occurrence or route re-mint extends. Folded with its
 new label, every nested id's digest would move, so a folded id enters the
 input as ``sha256:<hex>``, its text through scheme v14
