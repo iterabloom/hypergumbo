@@ -20,3 +20,18 @@
     pr_ref:  # e5cd
     description: "verify-claims reads confirmed_with_caveats (exit 3) when a Go deferred closure writes a secret assigned after the defer statement.\n\nREPRO (release 10.0.0 and the WI-buzup branch, same result). Fixture: ~/hypergumbo_lab_notebook/post_release_11162026/buzup_review/probes/go_defer_noalias/main.go; claims: side_defects/claims_fs.yaml (host_secret must not reach host_fs).\n\n  func leak() {\n      k := \"\"\n      defer func() { os.WriteFile(\"o.txt\", []byte(k), 0o600) }()\n      k = os.Getenv(\"API_KEY\")\n      fmt.Println(len(k))\n  }\n\n  hypergumbo verify-claims go_defer_noalias --claims claims_fs.yaml --format json\n  -> confirmed_with_caveats, exit 3, evidence_count 1, caveat sink_before_source_only.\nControl go_defer_noalias_ctrl (the write follows the assignment, no defer): violated, exit 1.\n\nThe deferred closure runs when leak returns, after `k` holds the secret, so the secret is written. The verdict treats the flow as one whose sink comes before its source, because the defer statement's line precedes the source line. For a deferred call, line order is the reverse of execution order.\n\nSWEEP BY MECHANISM before fixing: any construct that runs later than where it is written and holds the sink call. In Go: `defer` with a closure, `defer` with a direct call whose arguments are closures, a goroutine started before the assignment. Other languages: Python `atexit.register` / `contextlib.ExitStack.callback` / `finally` blocks, JavaScript `process.on('exit', ...)` and promise callbacks, Rust `Drop`. Each needs its own fixture; I checked only the Go `defer` closure.\n\nCLOSE WHEN go_defer_noalias does not read confirmed or confirmed_with_caveats, its control still reads violated, and the swept forms are each fixed or listed as stated limits in docs/VERIFY-CLAIMS-SCOPE.md."  # e5cd
     fields: {}  # e5cd
+- op: update  # 9b58
+  at: '2026-11-19T11:25:29Z'  # 9b58
+  by: agent  # 9b58
+  actor: jgstern_agent  # 9b58
+  clock: 2  # 9b58
+  nonce: 9b58  # 9b58
+  set:  # 9b58
+    status: done  # 9b58
+- op: discuss  # 7a2e
+  at: '2026-11-19T11:25:30Z'  # 7a2e
+  by: agent  # 7a2e
+  actor: jgstern_agent  # 7a2e
+  clock: 3  # 7a2e
+  nonce: 7a2e  # 7a2e
+  message: "Fixed in PR #2276 (c7962ddd2): cfg._process_deferred gives a deferred/later-run closure a region, DdgEdge.late_region carries it, go.yaml later_call [go_statement], taint._sink_runs_after_source orders by execution. Live re-run on dev 3c109b3aa: filed repro go_defer_noalias -> violated rc 1 (was confirmed_with_caveats 3), control go_defer_noalias_ctrl violated rc 1. Sweep (fast_smart_test_build_11172026/closure_pr2/tivok_sweep.txt), each with control violated: go_defer_closure, go_defer_closure_arg, go_goroutine, js_process_exit, js_then, py_atexit_lambda, py_exitstack, py_finally -> violated 1. Precision fixtures stay confirmed_with_caveats 3 as they should: go_defer_direct (args evaluated at defer), go_defer_static, go_iife. Stated limits in docs/VERIFY-CLAIMS-SCOPE.md: py_atexit (callback registered by name: confirmed 0, no flow; a references edge, not a call), rs_drop (Drop::drop: confirmed_with_caveats 3, no flow), go_stored_called_before (closure stored and called before the assignment: now violated, a false positive). Tests test_taint_deferred_sink_order.py (18); 13/13 mutations red."  # 7a2e
