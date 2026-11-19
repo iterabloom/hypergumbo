@@ -36,3 +36,18 @@
   clock: 3  # c82a
   nonce: c82a  # c82a
   message: "Owner, 2026-11-18, on the subprocess shape: asked whether measuring coverage inside child processes is feasible; shown the measurement (it works on a toy project; x1.3 to x4 per child; a child with a scrubbed environment, python -S or SIGKILL leaves nothing and no error; at most 4.0 percent of graph-named test time to gain against at most 2.4 percent given up by the rule, 0.14 percent with gitleaks exempt), the owner answered: 'cheaper alternative then'. So: a test that starts a child able to run Python is never narrowed, gitleaks exempt by name; no child-process coverage. Steps filed, none built: fixtures WI-zimiv-doguz-zabad-pivof-hupas-dutuh-kimol-fadas; decorator caches WI-masad-tunos-zorij-vukok-golib-bilap-hupil-siduj; hand-written caches and lazy state on shared objects WI-supar-ruluh-bozob-sahor-noduv-nohit-mazob-vuroz; the child-process rule WI-sopig-jarit-hahap-tomab-kanam-katad-huzun-sobus; the campaign re-run that all four block WI-gojov-rohul-savug-mulap-rirur-diguh-havij-dosih (it blocks the switch, WI-pugol-sajov-fazah-romaj-lotag-hatuj-kogap-tovor); the per-test CI manifest WI-kunah-rahuv-batab-bakar-vikat-jogig-fadit-durun (after the switch). Found while preparing: the recorder plugin (scripts/pytest_plugins/pytest_source_reads.py) already records per test the shared fixtures it used and the processes it started; the fixture and child-process steps build on it."  # c82a
+- op: update  # 72f6
+  at: '2026-11-19T04:31:25Z'  # 72f6
+  by: agent  # 72f6
+  actor: jgstern_agent  # 72f6
+  clock: 4  # 72f6
+  nonce: 72f6  # 72f6
+  set:  # 72f6
+    status: satisfied  # 72f6
+- op: discuss  # bf44
+  at: '2026-11-19T04:31:25Z'  # bf44
+  by: agent  # bf44
+  actor: jgstern_agent  # bf44
+  clock: 5  # bf44
+  nonce: bf44  # bf44
+  message: "SATISFIED ON THE FILED CASES; the general statement is NOT asserted.\nFILED CASES, each with its fix and production-path test: (1) memoised function (_get_php_parser, lru_cache): WI-masad, PR #2252, a cached body runs under its own |shared|cache| context and every caller inherits its rows. (2) module/session fixture (test_stable_id_floor_gate): WI-zimiv, PR #2249, the fixture runs under its own context and every user is paired with what it ran. (3) a test that runs code in a subprocess (test_import_closure): WI-sopig, PR #2251, a test that starts a child able to run Python is never narrowed (gitleaks exempt, owner 11-18). Hand-written caches and lazy state: WI-supar, PR #2253 (112 state-write sites enumerated; kept_work_guard). (4) Campaign 5's test-only cleanup fault (278 tests outside the selection): WI-kihah, PR #2271, a change to a block run in a fixture's teardown selects every test of its file; close test 278/278 selected.\nCAMPAIGN EVIDENCE: WI-gojov's weighted re-run (46 faults ran, 40 failed a test) and WI-pugol's count at the switch (campaign 5: 42 runs that failed a test, 0 failed tests outside the selection that fail alone with the fault; the 278 order-dependent ones are case 4, now selected).\nNOT ASSERTED: dependents that never touch the file of the code they depend on (a cache filled by a test in another file through a path coverage did not record); state a fixture's setup installs that no teardown resets; a child process that is not Python and not exempt by name runs code the index cannot see. A new planted-fault campaign is the instrument that would find the next shape."  # bf44

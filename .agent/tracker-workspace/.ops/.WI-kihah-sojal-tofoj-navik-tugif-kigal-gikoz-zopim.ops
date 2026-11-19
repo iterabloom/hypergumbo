@@ -26,3 +26,25 @@
   clock: 2  # 1993
   nonce: '1993'  # 1993
   message: "OWNER RULING 2026-11-19 (in session): OPTION 1. A changed block that runs during a fixture's setup or teardown (test-only cleanup such as linkers/registry.py::clear_registry) is not narrowed test by test: the by-statement selector selects every test the index records touching its file. Same principle as the 11-18 child-process ruling (work whose effect outlives the test's own coverage record is never narrowed). Measure the cost in the same PR (how often such blocks change in past PRs; how many tests the wider selection adds). Close test as filed: plant the clear_registry drop-call fault and show the 278 victims selected. If the index does not pair them with registry.py, report that before widening further."  # 1993
+- op: discuss  # 815a
+  at: '2026-11-19T04:29:13Z'  # 815a
+  by: agent  # 815a
+  actor: jgstern_agent  # 815a
+  clock: 3  # 815a
+  nonce: 815a  # 815a
+  message: "Merged as PR #2271, dev SHA 197fbacb21c4."  # 815a
+- op: update  # a655
+  at: '2026-11-19T04:31:24Z'  # a655
+  by: agent  # a655
+  actor: jgstern_agent  # a655
+  clock: 4  # a655
+  nonce: a655  # a655
+  set:  # a655
+    status: done  # a655
+- op: discuss  # 71fc
+  at: '2026-11-19T04:31:25Z'  # 71fc
+  by: agent  # 71fc
+  actor: jgstern_agent  # 71fc
+  clock: 5  # 71fc
+  nonce: 71fc  # 71fc
+  message: "DONE in PR #2271 (dev fe331532a + manifest 197fbacb2). OWNER RULING 2026-11-19 (in session): option 1, TEARDOWN ONLY. The fold marks every block it saw run under a test's |setup or |teardown context (table fixture_phase_block, phase bits; a partial run only adds, a full run re-marks, a gone file takes its marks). A change to a block marked TEARDOWN selects every test the index records touching its file (answer FIXTURE); setup-only blocks are marked, not widened (562 of them on the folded index are analyzer code that fixtures run: widening them would add up to 15,060 tests).\nEVIDENCE. (1) Close test, this item's own fault: campaign 5's clear_registry drop-call (_LINKER_REGISTRY.clear() -> pass) asked of select_by_statement on the folded index: 278 of 278 failed tests selected (2,582 selected vs 173 before); record fast_smart_test_build_11172026/kihah/close_test_teardown.json. (2) Production-path tests: packages/hypergumbo-core/tests/test_selection_fixture_phase.py, 7 tests with real coverage and the real fold, incl. a control (same change, no fixture mark) that leaves the victim out. Mutations kihah/muts.tsv: 7 of 7 red. (3) Cost: 9 teardown-marked blocks, all test-only cleanup (clear_registry, reset_cache_for_testing, clear_pattern_cache, ...); 0 of them changed in the last 400 first-parent commits (kihah/cost.txt). Full suite before the PR: 41,482 passed.\nNOT COVERED (stated in selection_index's docstring): a test that depends on cleanup but never touches the cleanup's file; state a fixture's SETUP installs that no teardown resets."  # 71fc
