@@ -18,8 +18,9 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   ``!`` beside a type -- and ``normalize_swift_signature`` keeps those
   decorations beside the FQN-stripped core. Until scheme v15 the renderers
   read six type node kinds and dropped the rest, so ``f(x: some P)`` hashed
-  as ``f()``. Argument labels, default values, ``throws`` and generic
-  clauses are not hashed
+  as ``f()``. Argument labels, default values and ``throws`` are not
+  hashed; a declaration's own generic clause leads the hashed text by
+  position (``normalize_with_type_parameters``)
 - Every stable_id hashes the FULL chain of enclosing types and functions
   (``_swift_scope``), so two nested ``class Inner`` in different outer types
   do not tie, and deleting one outer type does not move the other's ids;
@@ -29,7 +30,10 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   the type chain alone until scheme v15). The chain names types and
   ``func`` declarations only: two same-named local types in one function
   (two blocks, two overloads of it), or in a closure, a computed property,
-  an ``init`` or a subscript of one type, still share a chain
+  an ``init`` or a subscript of one type, still share a chain. An
+  extension's ``where`` clause joins its label (``Array where Element: P``),
+  so the same member in two differently constrained extensions of one type
+  does not tie (it did until scheme v15)
 - Initialisers (``constructor``, ``Type.init``, with ``meta["arg_labels"]`` and
   ``meta["parameters"]``) and deinitialisers (``method``, ``Type.deinit``)
 - Enum cases and protocol requirements as ``field`` / member symbols
@@ -166,6 +170,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     ancestor_labels,
+    declared_type_parameters,
     find_child_by_type,
     iter_tree,
     defer_bare_method_call,
@@ -559,13 +564,41 @@ def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     declarations are labels: a closure, an accessor, an ``init``, a
     subscript or a block adds nothing, so two same-named types local to two
     of those in one owner still share a chain.
+
+    An extension with a ``where`` clause is labelled by the extended type's
+    name followed by the clause (:func:`_swift_extension_clause`):
+    ``extension Array where Element: P`` and the same extension with
+    ``Element: Q`` may each declare an ``f()``, and the two are different
+    functions, which a name-only label made tie (WI-lonoh). An extension
+    without a clause keeps the bare name, so its members hash what they did.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type not in _SWIFT_ID_SCOPE_NODES:
             return None
         name_node = n.child_by_field_name("name")
-        return node_text(name_node, source) if name_node is not None else None
+        name = node_text(name_node, source) if name_node is not None else None
+        clause = _swift_extension_clause(n, source)
+        return f"{name} {clause}" if name is not None and clause else name
     return ancestor_labels(node, label)
+
+
+def _swift_extension_clause(decl: "tree_sitter.Node", source: bytes) -> str:
+    """The ``where`` clause of an ``extension`` declaration, whitespace-collapsed,
+    or ``""`` (no clause, or not an extension).
+
+    Read with :func:`declared_type_parameters`, the reader of a declaration's
+    own clause (WI-bubak). An extension declares no type parameters, so the
+    names in its clause are the extended type's and are kept as written:
+    ``where Key: P`` and ``where Value: P`` constrain different parameters. A
+    type's own declaration is not read here: a ``struct`` cannot be declared
+    twice, so its clause separates nothing, and hashing it would move every
+    member of every generic type. ``extension Array<Int>`` needs nothing: the
+    type arguments are part of the extension's name text.
+    """
+    kind = decl.child_by_field_name("declaration_kind")
+    if kind is None or kind.type != "extension":
+        return ""
+    return declared_type_parameters(decl, source)[1]
 
 
 def _swift_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
