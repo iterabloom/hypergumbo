@@ -261,12 +261,18 @@ def test_verify_claims_missing_input(tmp_path: Path) -> None:
     args.claims = str(claims_file)
     args.json_output = False
 
-    rc = cmd_verify_claims(args)
-    assert rc == 2  # bad input, never the violated code (WI-tajup)
+    from hypergumbo_core.survey_io import SubstrateError
+
+    # main() maps SubstrateError to 2, bad input, never the violated code
+    # (WI-tajup); every --input command refuses a missing path this way
+    # (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_verify_claims(args)
 
 
 def test_verify_claims_empty(tmp_path: Path, capsys) -> None:
-    """No claims in file → exit 0."""
+    """No claims in file → exit 2, bad input (WI-nidun, ruling of
+    2026-11-19): a gate pointed at an empty file must not pass."""
     claims_file = tmp_path / "claims.yaml"
     claims_file.write_text("claims: []\n")
 
@@ -277,7 +283,8 @@ def test_verify_claims_empty(tmp_path: Path, capsys) -> None:
     args.json_output = False
 
     rc = cmd_verify_claims(args)
-    assert rc == 0
+    assert rc == 2
+    assert "no claims to check" in capsys.readouterr().err
 
 
 def test_verify_claims_inconclusive_exits_4(tmp_path: Path, capsys) -> None:

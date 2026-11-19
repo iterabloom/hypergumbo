@@ -1851,7 +1851,7 @@ def _shape_error(
     string ``transforms:`` row (``AttributeError``), a scalar where a name
     list belongs (``TypeError``: not iterable), a list where a label or module
     name belongs (``TypeError``: unhashable) -- and the crash reached
-    ``cli.main``'s internal-error net, which exits 1, the code
+    ``cli.main``'s internal-error net, which then exited 1, the code
     ``verify-claims`` uses for ``violated``. ``where`` is the dotted path to
     the value (``transforms[0].functions.python``), so the message names what
     to fix, not the line of Python that tripped over it.

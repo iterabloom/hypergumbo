@@ -28,7 +28,7 @@ Each claim in ``claims`` specifies:
   **Boundary constraint** (ADR-0016):
   - ``boundary``: Which I/O boundary type to check (e.g., "net_send")
   - ``must_not_exist``: If true, the boundary must have zero chains
-  - ``max_chains``: Maximum allowed chain count for the boundary
+  - ``max_chains``: Maximum allowed chain count for the boundary (0 or more)
 
   **Taint-flow constraint** (ADR-0017):
   - ``taint_flow``: Sub-object with taint-flow verification parameters
@@ -68,9 +68,11 @@ Exit codes
 :func:`exit_code_for_verdicts` applies
 ``VERDICT_EXIT_PRECEDENCE``: any ``violated`` wins, then ``inconclusive``,
 then ``confirmed_with_caveats``. Bad input -- a claims file that is missing,
-unreadable or invalid, a ``--input`` map that is missing or not a usable
-behavior map, a catalogue that does not load -- exits 2 before any verdict is
-computed, so it never combines with a verdict code.
+unreadable, invalid or holds no claims, a ``--input`` map that is missing or
+not a usable behavior map, a catalogue that does not load -- exits 2 before
+any verdict is computed, so it never combines with a verdict code. Two codes
+are ``cli.main``'s, for every command: 70 for an internal error and 141 for a
+broken pipe (WI-nidun), so 1 means a violated claim and nothing else.
 
 For taint-flow claims the adjudication travels with the verdict rather than
 being asserted by this module. Structural analysis produces ``approximate``
@@ -92,8 +94,11 @@ rather than tracebacking or silently producing a degraded verdict stream. So
 does a field of the wrong type (``boundary``, ``source_taint`` and
 ``prohibited_sink_zone`` must be strings, ``must_not_exist`` a boolean,
 ``max_chains`` an integer): each used to crash past the loader into the CLI's
-internal-error net, which exits 1, the code for ``violated``, or -- for a
-string ``must_not_exist`` -- to be read as a flag.
+internal-error net, which then exited 1, the code for ``violated``, or -- for
+a string ``must_not_exist`` -- to be read as a flag. A claim's ``id`` and
+``text`` must be strings and ``max_chains`` 0 or more (WI-nidun): a negative
+limit read every boundary as violated. A file with no claims loads to ``[]``
+here; the CLI refuses it (exit 2).
 ``validate_taint_flow_vocabulary`` extends the same discipline to the taint
 half (INV-todas): an unresolvable ``source_taint`` or ``prohibited_sink_zone``
 raises rather than producing a claim that can never match anything and would
@@ -3329,7 +3334,13 @@ def _parse_claim(entry: object, index: int) -> Claim:
             f"claim #{index + 1} must be a mapping, "
             f"got {type(entry).__name__}.",
         )
+    # A claim's ``id`` and ``text`` are strings (WI-nidun, owner ruling of
+    # 2026-11-19): ``id: 5`` was emitted as an int ``claim_id`` in the JSON
+    # envelope. The id is checked before ``claim_id`` is built from it, so
+    # its message names the claim by position.
+    _require_field_type(entry, "id", str, "a string", f"#{index + 1}")
     claim_id = entry.get("id") or f"#{index + 1}"
+    _require_field_type(entry, "text", str, "a string", claim_id)
     _reject_unknown_keys(
         entry.keys(), _ALLOWED_CLAIM_KEYS, where=f"claim '{claim_id}'",
     )
@@ -3358,6 +3369,14 @@ def _parse_claim(entry: object, index: int) -> Claim:
     _require_field_type(
         constraint, "must_not_exist", bool, "true or false", claim_id)
     _require_field_type(constraint, "max_chains", int, "an integer", claim_id)
+    max_chains = constraint.get("max_chains")
+    if max_chains is not None and max_chains < 0:
+        # A negative limit read every boundary as violated, a chain count of
+        # 0 included (WI-nidun, owner ruling of 2026-11-19).
+        raise ClaimsFileError(
+            f"'max_chains' in claim '{claim_id}' must be 0 or more, got "
+            f"{max_chains}.",
+        )
     boundary = constraint.get("boundary", "") or ""
     if boundary and boundary not in KNOWN_IO_BOUNDARIES:
         raise ClaimsFileError(
@@ -3373,7 +3392,7 @@ def _parse_claim(entry: object, index: int) -> Claim:
         text=entry.get("text", ""),
         constraint_boundary=boundary,
         constraint_must_not_exist=constraint.get("must_not_exist", False),
-        constraint_max_chains=constraint.get("max_chains"),
+        constraint_max_chains=max_chains,
         constraint_taint_flow=taint_flow,
     )
 
@@ -3438,7 +3457,9 @@ def load_claims(path: Path) -> list[Claim]:
        directory), decode as UTF-8 text, and parse to a top-level mapping
        with a list-valued ``claims:`` key. An empty file, ``{}``,
        ``claims: []``, ``claims: null`` / ``~``, and an absent ``claims:``
-       key all mean "no claims" and load to ``[]``.
+       key all mean "no claims" and load to ``[]``. Such a file is well
+       formed; refusing it is the command's decision, not the loader's:
+       ``verify-claims`` exits 2 on it (WI-nidun).
     2. **YAML well-formedness** (INV-zurih): ``yaml.YAMLError`` is caught
        and re-raised naming the file and reason.
     3. **Field names** (WI-bopoz): every top-level, claim, constraint, and
@@ -3469,7 +3490,7 @@ def load_claims(path: Path) -> list[Claim]:
         ) from exc
     except OSError as exc:
         # A permission refusal reached the CLI's internal-error net, which
-        # exits 1 -- the code for ``violated`` (WI-tajup).
+        # then exited 1 -- the code for ``violated`` (WI-tajup).
         raise ClaimsFileError(
             f"could not read claims file {path}: {exc.strerror or exc}",
         ) from exc

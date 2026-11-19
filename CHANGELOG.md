@@ -21,6 +21,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`verify-claims` no longer confirms secrets written through an alias.**
 - **The spec states generic type parameters are hashed by name.**
+- **Breaking: crashes exit 70; empty claims files exit 2.**
 
 ### Development tools and CI
 

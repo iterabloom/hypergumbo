@@ -107,8 +107,9 @@ def test_background_thread_broken_pipe_does_not_kill_process() -> None:
 def test_main_catches_broken_stdout_pipe_and_exits_quietly(monkeypatch) -> None:
     # A dispatched command whose stdout write hits a closed downstream pipe
     # (e.g. ``hypergumbo cache-status | head``) raises BrokenPipeError. main()
-    # must catch it, suppress the shutdown re-raise, and return 1 (no
-    # traceback). build_parser() binds args.func from the module global, so
+    # must catch it, suppress the shutdown re-raise, and return 141 -- the
+    # status a shell reports for a process SIGPIPE killed, and no code a
+    # command answers with (WI-nidun) -- with no traceback. build_parser() binds args.func from the module global, so
     # patching the global before main() runs routes dispatch to our raiser.
     suppressed: list[bool] = []
     monkeypatch.setattr(
@@ -120,7 +121,7 @@ def test_main_catches_broken_stdout_pipe_and_exits_quietly(monkeypatch) -> None:
 
     monkeypatch.setattr(cli, "cmd_cache_status", _raise_broken_pipe)
     rc = cli.main(["cache-status"])
-    assert rc == 1
+    assert rc == 141
     assert suppressed == [True]
 
 

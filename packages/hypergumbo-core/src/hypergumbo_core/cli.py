@@ -118,8 +118,13 @@ on disk) exits 2 with a did-you-mean suggestion instead of falling through to
 sketch. The positional path and ``--path`` collapse into ``args.path``, and
 giving both exits 2. After the command, ``_maybe_offer_repo_tier_examples``
 runs (ADR-0047). ``CatalogueError`` and ``SubstrateError`` exit 2 with the
-loader's message, ``BrokenPipeError`` exits 1 quietly, and any other
-exception prints "internal error" and exits 1 (re-raised under ``--debug``).
+loader's message, ``BrokenPipeError`` exits 141 quietly
+(``EXIT_BROKEN_PIPE``), and any other exception prints "internal error" and
+exits 70 (``EXIT_INTERNAL_ERROR``; re-raised under ``--debug``). Neither code
+is one a command answers with, so 1 never means a crash (WI-nidun). Every
+``--input`` command reads its map through ``survey_io.load_substrate``,
+which raises ``SubstrateError`` for a path that is missing, a directory or
+unreadable.
 
 ``verify-claims`` is orchestrated here as well (``cmd_verify_claims`` and its
 helpers). I/O overlays stack in ascending precedence: the user's
@@ -131,9 +136,11 @@ community-provenance files (ADR-0061). Taint claims run per language over the
 DDG-backed or structural propagator. A taint-blindness check (a language with
 no catalogue, or a catalogued language that emitted no call edges) supplies
 the reason the verdict layer uses to report a would-be ``confirmed`` as
-``inconclusive``. The exit code is 0 when everything is confirmed, 1 when any
-claim is violated, 2 when any is inconclusive and none violated, and 3 when
-any is ``confirmed_with_caveats`` and none of the above.
+``inconclusive``. The exit code (``verify_claims.EXIT_*``) is 0 when every
+claim is confirmed, 1 when any is violated, 2 for bad input refused before
+any verdict (an empty claims file included), 3 when any is
+``confirmed_with_caveats`` and none violated or inconclusive, and 4 when any
+is inconclusive and none violated; 70 and 141 come from ``main``.
 
 ``dead-code-maybe`` is implemented here too (``cmd_dead_code_maybe`` and its
 helpers ``production_callables``, ``_bfs_reachable`` and
@@ -809,7 +816,7 @@ def _get_or_run_analysis(
     explicit_input: Optional[str] = None,
     show_progress: bool = True,
     minimal: bool = False,
-) -> tuple[Optional[Path], bool, list[Path]]:
+) -> tuple[Path, bool, list[Path]]:
     """Get cached behavior map or run analysis if needed.
 
     Provides seamless auto-analysis: commands that need a behavior map will
@@ -827,16 +834,17 @@ def _get_or_run_analysis(
 
     Returns:
         Tuple of (input_path, was_cached, generated_artifacts):
-        - input_path: Path to behavior map file, or None if explicit_input not found
+        - input_path: Path to behavior map file
         - was_cached: True if using cached results, False if freshly generated
         - generated_artifacts: List of generated file paths (empty if cached)
     """
-    # If explicit --input provided, use it directly
+    # If explicit --input provided, use it directly. A path that does not
+    # exist, or cannot be read, is refused by the caller's load_substrate as
+    # SubstrateError, which main() maps to exit 2 (WI-nidun). This returned
+    # None for a missing path, and each of eleven callers returned 1 on its
+    # own, the code verify-claims gives a violated claim.
     if explicit_input:
-        input_path = Path(explicit_input)
-        if not input_path.exists():
-            return None, False, []
-        return input_path, True, []  # Treat explicit input as "cached"
+        return Path(explicit_input), True, []  # Treat explicit input as "cached"
 
     # Try to discover cached results
     cached_path = _discover_input_file(repo_root)
@@ -893,7 +901,10 @@ def _get_or_run_analysis(
         None,
     )
     if new_path is None:  # pragma: no cover - run_survey always appends the main map
-        return None, False, generated_files
+        # A bug, not bad input: main() reports it as an internal error (70).
+        raise RuntimeError(
+            f"the analysis wrote no {CANONICAL_SURVEY_FILENAME} for {repo_root}"
+        )
 
     return new_path, False, generated_files
 
@@ -1184,10 +1195,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     cached_results = None
     input_path = getattr(args, "input", None)
     if input_path:
+        # A missing or unreadable path raises SubstrateError (exit 2).
         input_file = Path(input_path)
-        if not input_file.exists():
-            print(f"Error: Input file not found: {input_path}", file=sys.stderr)
-            return 1
         cached_results = _load_command_substrate(input_file)
 
         # Warn if results file is older than any source files in repo.
@@ -1948,9 +1957,6 @@ def cmd_slice(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
 
     behavior_map = _load_command_substrate(input_path)
 
@@ -2346,9 +2352,6 @@ def cmd_search(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
 
     # Load behavior map
     behavior_map = _load_command_substrate(input_path)
@@ -2518,9 +2521,6 @@ def cmd_routes(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
 
     # Load behavior map
     behavior_map = _load_command_substrate(input_path)
@@ -2926,9 +2926,6 @@ def cmd_explain(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
 
     # Load behavior map
     behavior_map = _load_command_substrate(input_path)
@@ -5356,9 +5353,6 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
 
     # Load behavior map
     behavior_map = _load_command_substrate(input_path)
@@ -5588,10 +5582,6 @@ def cmd_compact(args: argparse.Namespace) -> int:
         return 2
 
     input_path = Path(args.input).resolve()
-
-    if not input_path.exists():
-        print(f"Error: Input file not found: {input_path}", file=sys.stderr)
-        return 1
 
     # Load behavior map
     behavior_map = _load_command_substrate(input_path)
@@ -6110,12 +6100,6 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(
-            f"Error: Input file not found: {getattr(args, 'input', None)}",
-            file=sys.stderr,
-        )
-        return 1
 
     behavior_map = _load_command_substrate(input_path)
     raw_edges = behavior_map.get("edges", [])
@@ -7115,6 +7099,53 @@ _VERIFY_CLAIMS_MAP_RECORD_LISTS: tuple[tuple[str, bool], ...] = (
     ("request_ingress", True),
 )
 
+#: The record fields ``verify-claims`` reads, and the type each must have.
+#: Each one, given another type, crashed a loop that read it into ``main``'s
+#: internal-error net (WI-nidun; measured on dev by replacing each field of a
+#: full node / edge / entrypoint / request_ingress record with 5, "s", a list,
+#: a mapping and true). Fields no reader trips on (``confidence``,
+#: ``is_resolved``, ``line``, ...) are not listed, so a map is not refused for
+#: a field nothing reads. ``origin`` is not listed either, though a number
+#: there crashes: ``Symbol.origin`` is a string, a written map holds a list
+#: (``["php"]``), and no single type describes both. Null is "absent" for every one of them, as the
+#: readers already treat it. ``dst_ref``'s own three fields are checked in
+#: :func:`_verify_claims_record_field_error`, because ``ExternalRef.from_dict``
+#: indexes them.
+_VERIFY_CLAIMS_RECORD_FIELDS: Dict[str, tuple[tuple[str, type], ...]] = {
+    "nodes": (("id", str), ("name", str), ("kind", str), ("language", str),
+              ("path", str), ("meta", dict), ("span", dict)),
+    "edges": (("src", str), ("dst", str), ("type", str), ("meta", dict),
+              ("dst_ref", dict)),
+    "entrypoints": (("symbol_id", str), ("kind", str), ("label", str)),
+    "request_ingress": (("symbol_id", str), ("kind", str), ("label", str)),
+}
+
+_DST_REF_FIELDS: tuple[str, ...] = ("lang", "module_path", "name")
+
+
+def _type_described(expected: type) -> str:
+    return "a string" if expected is str else "an object"
+
+
+def _verify_claims_record_field_error(
+    key: str, index: int, record: Dict[str, Any],
+) -> Optional[str]:
+    """Why one record of ``key`` cannot be read, or ``None`` (WI-nidun)."""
+    where = f"{key}[{index}]"
+    for field, expected in _VERIFY_CLAIMS_RECORD_FIELDS[key]:
+        value = record.get(field)
+        if value is not None and not isinstance(value, expected):
+            return (f"not a usable behavior map: '{where}.{field}' must be "
+                    f"{_type_described(expected)}, got {type(value).__name__}")
+    dst_ref = record.get("dst_ref") if key == "edges" else None
+    if dst_ref:
+        for field in _DST_REF_FIELDS:
+            value = dst_ref.get(field)
+            if not isinstance(value, str):
+                return (f"not a usable behavior map: '{where}.dst_ref.{field}' "
+                        f"must be a string, got {type(value).__name__}")
+    return None
+
 
 def _verify_claims_map_shape_error(behavior_map: Dict[str, Any]) -> Optional[str]:
     """Why ``behavior_map``'s record lists cannot be walked, or ``None``.
@@ -7123,15 +7154,17 @@ def _verify_claims_map_shape_error(behavior_map: Dict[str, Any]) -> Optional[str
     ``nodes`` key; it does not look inside. A record list of the wrong type
     (``"edges": 5``) or a record that is not an object (``"nodes": [5]``)
     crashed the first loop that read it, and the crash reached ``main``'s
-    internal-error net, which exits 1 -- the code ``verify-claims`` uses for
-    ``violated`` (WI-tajup). Checked here, for this command only, rather than
+    internal-error net, which then exited 1 -- the code ``verify-claims``
+    uses for ``violated`` (WI-tajup). Checked here, for this command only, rather than
     in ``load_substrate``: every other ``--input`` consumer keeps its current
     behaviour.
 
-    NOT CHECKED: the fields inside a record (an edge whose ``src`` is a
-    number, a ``meta`` that is a string). A map hypergumbo wrote does not
-    carry them, and checking every field of every record of a 300 MB map is a
-    schema validation, not a shape check.
+    The fields inside each record that the command reads are checked too
+    (:data:`_VERIFY_CLAIMS_RECORD_FIELDS`, WI-nidun): an edge whose ``src``
+    is a number, a ``meta`` that is a string, a ``language`` that is a list
+    each crashed into the internal-error net. The message names the record
+    and the field. A field nothing reads is not checked; that would be a
+    schema validation, which a 300 MB map does not need to pass to be read.
     """
     for key, null_is_absent in _VERIFY_CLAIMS_MAP_RECORD_LISTS:
         if key not in behavior_map:
@@ -7146,6 +7179,9 @@ def _verify_claims_map_shape_error(behavior_map: Dict[str, Any]) -> Optional[str
             if not isinstance(record, dict):
                 return (f"not a usable behavior map: '{key}[{index}]' must be "
                         f"an object, got {type(record).__name__}")
+            field_error = _verify_claims_record_field_error(key, index, record)
+            if field_error is not None:
+                return field_error
     return None
 
 
@@ -7199,11 +7235,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     Exit codes (WI-tajup; the table lives in ``verify_claims``): 0 every
     claim confirmed; 1 at least one violated; 2 bad input; 3 at least one
     ``confirmed_with_caveats`` (and none violated or inconclusive); 4 at least
-    one inconclusive (and none violated). EVERY refusal of input below returns
-    ``EXIT_BAD_INPUT`` before a verdict exists -- the claims file, the
-    ``--input`` map, a catalogue -- so no bad input can read as a verdict.
-    Two paths used to return 1, the ``violated`` code: a missing claims file
-    and a missing ``--input`` map.
+    one inconclusive (and none violated). EVERY refusal of input below exits
+    ``EXIT_BAD_INPUT`` before a verdict exists -- the claims file (an empty
+    one included), the ``--input`` map, a catalogue -- either returned here or
+    raised as ``SubstrateError`` / ``CatalogueError``, which ``main`` maps to
+    2, so no bad input can read as a verdict. Two paths used to return 1, the
+    ``violated`` code: a missing claims file and a missing ``--input`` map.
 
     Built-in trust zones: the ``AUTO_SINK_ZONE_MAP`` zones in ``taint.py``
     (``host_fs``, ``subprocess``, ``network``, ``host_env``, ``ipc``,
@@ -7277,8 +7314,18 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return EXIT_BAD_INPUT
     if not claims:
-        print("No claims found in file.")
-        return 0
+        # An empty file, ``{}``, ``claims: null``, ``claims: []`` or no
+        # ``claims:`` key (WI-nidun, owner ruling of 2026-11-19). It exited 0
+        # with "No claims found in file." on stdout, under --format json too,
+        # so a gate pointed at the wrong file passed having checked nothing.
+        # ``load_claims`` still returns [] for it: the file is well formed,
+        # and the refusal is the command's, not the loader's.
+        print(
+            f"Error: claims file {claims_path} has no claims to check: add "
+            f"at least one entry under 'claims:'.",
+            file=sys.stderr,
+        )
+        return EXIT_BAD_INPUT
 
     # Get boundary map
     input_path, was_cached, generated_files = _get_or_run_analysis(
@@ -7287,26 +7334,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(
-            f"Error: Input file not found: {getattr(args, 'input', None)}",
-            file=sys.stderr,
-        )
-        return EXIT_BAD_INPUT
 
-    # A JSON or shape failure raises SubstrateError, which ``main`` maps to 2.
-    # An OSError (a directory, a permission refusal) and a record list of the
-    # wrong type would reach main's internal-error net instead, which exits 1
-    # -- the ``violated`` code (WI-tajup) -- so both are refused here.
-    try:
-        behavior_map = _load_command_substrate(input_path)
-    except OSError as exc:
-        print(
-            f"Error: could not read behavior map {input_path}: "
-            f"{exc.strerror or exc}",
-            file=sys.stderr,
-        )
-        return EXIT_BAD_INPUT
+    # A missing, unreadable, non-JSON or wrong-shape map raises
+    # SubstrateError, which ``main`` maps to 2. A record list or a record
+    # field of the wrong type would reach main's internal-error net instead
+    # (exit 70, "This is a bug"), so it is refused here (WI-tajup, WI-nidun).
+    behavior_map = _load_command_substrate(input_path)
     shape_error = _verify_claims_map_shape_error(behavior_map)
     if shape_error is not None:
         print(f"Error: {input_path}: {shape_error}", file=sys.stderr)
@@ -8219,7 +8252,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Exit codes (ADR-0033 Phase 3, WI-rolol; WI-tajup -- the table is
     # ``verify_claims.EXIT_*``):
-    #   0 = all confirmed (or no claims to check)
+    #   0 = all confirmed
     #   1 = at least one violated
     #   2 = bad input; returned above, before any verdict existed
     #   3 = at least one confirmed_with_caveats (and none violated or
@@ -8232,6 +8265,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     #   4 = at least one inconclusive (and zero violated) — distinguishes
     #       "machine-checkable claims all passed" from "couldn't actually
     #       check the claim" (INV-bitig).
+    #   70 / 141 = internal error / broken pipe, set by ``main`` for every
+    #       command (WI-nidun), never returned here.
     #
     # WHY A NEW CODE RATHER THAN PROSE. The verdict text names a
     # repo-supplied sanitizer, but a CI gate reads $?, not stdout. Without
@@ -8603,9 +8638,6 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
 
     # Load behavior map
     behavior_map = _load_command_substrate(input_path)
@@ -9404,9 +9436,6 @@ def cmd_repeat_finder(args: argparse.Namespace) -> int:
         repo_root, explicit_input=args.input, show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
     behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
     min_complexity = getattr(args, "min_complexity", 2)
@@ -9488,9 +9517,6 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         show_progress=True,
         minimal=getattr(args, "minimal", False),
     )
-    if input_path is None:
-        print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-        return 1
 
     behavior_map = _load_command_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
@@ -11999,11 +12025,13 @@ outside the vocabulary above produces a clear error and exit code 2 (not a
 silent pass).
 
 Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = bad input
-(a claims file or --input map that is missing, unreadable or invalid, a
-catalogue that does not load, a bad argument), reported before any verdict;
-3 = at least one `confirmed_with_caveats` (and none violated or
+(a claims file or --input map that is missing, unreadable, invalid or holds
+no claims, a catalogue that does not load, a bad argument), reported before
+any verdict; 3 = at least one `confirmed_with_caveats` (and none violated or
 inconclusive); 4 = at least one inconclusive (and none violated). When
-verdicts differ, violated wins, then inconclusive, then caveats.
+verdicts differ, violated wins, then inconclusive, then caveats. Every
+command shares two more: 70 = internal error (a bug in hypergumbo); 141 =
+broken pipe (the reader of stdout went away).
 
 Exit 4 is not a pass: the claim was not checked.
 
@@ -13861,6 +13889,18 @@ def _suppress_broken_stdout_pipe() -> None:
         pass
 
 
+#: ``main``'s two exit codes of its own, set once for every command
+#: (WI-nidun, owner ruling of 2026-11-19). A command answers with 0..4 --
+#: verify-claims' 1 is ``violated``, and ``install-extras --check`` uses 1 as
+#: an answer too -- so a crash or a reader leaving the pipe must not share a
+#: code with any of them. 70 is ``EX_SOFTWARE`` from BSD ``sysexits.h``
+#: ("internal software error"); 141 is 128 + SIGPIPE, the status a shell
+#: reports for a process the signal killed, so ``cmd | head`` reads the same
+#: whether Python caught the ``BrokenPipeError`` or the signal did.
+EXIT_INTERNAL_ERROR = 70
+EXIT_BROKEN_PIPE = 141
+
+
 def main(argv=None) -> int:
     import logging
 
@@ -14013,8 +14053,8 @@ def main(argv=None) -> int:
         # wrong shape. Same chokepoint posture as SubstrateError below: exit 2
         # with the loader's message, which names the file. Without it a family
         # whose command did not catch its own error would surface through the
-        # safety net as an "internal error" with exit 1 -- the code
-        # verify-claims uses for ``violated``.
+        # safety net as an "internal error" (exit 70), which reads as a bug
+        # in hypergumbo rather than a mistake in the user's file.
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     except SubstrateError as exc:
@@ -14029,14 +14069,14 @@ def main(argv=None) -> int:
     except BrokenPipeError:
         # The downstream reader closed the pipe (e.g. ``... | head``). Redirect
         # the stdout fd to /dev/null so Python's shutdown flush does not
-        # re-raise, then exit quietly with a non-zero status (a reader leaving
-        # mid-output is not a clean completion; under a shell pipeline the
-        # reader's own exit status dominates anyway).
+        # re-raise, then exit quietly with 141 (a reader leaving mid-output is
+        # not a clean completion; under a shell pipeline the reader's own exit
+        # status dominates anyway, unless ``pipefail`` is set).
         _suppress_broken_stdout_pipe()
-        return 1
+        return EXIT_BROKEN_PIPE
     except Exception as exc:  # deliberate top-level safety net (WI-himas)
         # A top-level catch-all so an *unanticipated* error surfaces
-        # as a clean message + rc=1 instead of a raw Python traceback dumped at
+        # as a clean message + rc=70 instead of a raw Python traceback dumped at
         # the user. Under --debug the original exception is re-raised so the
         # full traceback is available for diagnosis. Expected/typed failures are
         # handled by the specific excepts above; this catches only the genuinely
@@ -14053,7 +14093,7 @@ def main(argv=None) -> int:
             "This is a bug; re-run with --debug for a full traceback.",
             file=sys.stderr,
         )
-        return 1
+        return EXIT_INTERNAL_ERROR
     finally:
         set_trace_deps_override(None)
 

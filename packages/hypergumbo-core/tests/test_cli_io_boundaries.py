@@ -811,8 +811,11 @@ def test_cmd_io_boundaries_missing_input(tmp_path: Path) -> None:
     args.boundary = None
     args.primitive = None
 
-    rc = cmd_io_boundaries(args)
-    assert rc == 1
+    from hypergumbo_core.survey_io import SubstrateError
+
+    # main() maps SubstrateError to exit 2, bad input (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_io_boundaries(args)
 
 
 def test_cmd_io_boundaries_multiple_boundaries(tmp_path: Path, capsys) -> None:

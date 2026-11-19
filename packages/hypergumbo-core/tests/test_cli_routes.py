@@ -7,6 +7,8 @@ test path exclusion, and output formatting.
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.schema import SCHEMA_VERSION, READ_VIEW_SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_routes, main
 
@@ -363,9 +365,11 @@ def test_cmd_routes_input_not_found(tmp_path: Path) -> None:
     args.input = str(tmp_path / "nonexistent.json")
     args.language = None
 
-    result = cmd_routes(args)
+    from hypergumbo_core.survey_io import SubstrateError
 
-    assert result == 1
+    # main() maps SubstrateError to exit 2, bad input (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_routes(args)
 
 
 def test_cmd_routes_auto_runs_analysis(tmp_path: Path, capsys) -> None:

@@ -17,9 +17,14 @@ WHAT IS PINNED HERE, one test per condition:
 * every bad-input path the command has, each exiting 2 with an ``Error:``
   line and never the internal-error safety net: the claims file (missing,
   a directory, unreadable, not YAML, failing validation, a field of the
-  wrong type), the ``--input`` map (missing, a directory, not JSON, not a
-  behavior map, a record list of the wrong shape), the repository path, an
-  argparse refusal, and a taint catalogue whose shape the loader cannot read.
+  wrong type, a negative ``max_chains``, a non-string ``id`` or ``text``, no
+  claims at all), the ``--input`` map (missing, a directory, not JSON, not a
+  behavior map, a record list of the wrong shape, a record field of the wrong
+  type), the repository path, an argparse refusal, and a taint catalogue
+  whose shape the loader cannot read;
+* the help naming ``main``'s two codes, 70 (internal error) and 141 (broken
+  pipe), which WI-nidun took off 1 (pinned in ``test_cli_commands.py`` and
+  ``test_inv_vopuh_sigpipe.py``).
 
 Everything runs through ``main([...])``: the code a user's shell sees is
 ``main``'s return value, and the safety net that once turned a loader crash
@@ -252,12 +257,26 @@ def test_inconclusive_beside_a_caveat_exits_4(tmp_path: Path, capsys) -> None:
     assert rc == 4
 
 
-def test_an_empty_claims_file_still_exits_0(tmp_path: Path, capsys) -> None:
-    """``claims: []`` is documented as "no claims", not as bad input."""
+#: Every spelling of a claims file with nothing to check. Each exited 0 with
+#: "No claims found in file." on stdout, under ``--format json`` too, so a gate
+#: pointed at the wrong file passed (WI-nidun, ruling of 2026-11-19).
+_EMPTY_CLAIMS_FILES = ["", "{}\n", "claims: null\n", "claims: []\n",
+                       "extra_catalogs: {}\n"]
+
+
+@pytest.mark.parametrize("body", _EMPTY_CLAIMS_FILES,
+                         ids=["0-bytes", "empty-mapping", "claims-null",
+                              "claims-empty-list", "no-claims-key"])
+@pytest.mark.parametrize("fmt", [[], ["--format", "json"]], ids=["text", "json"])
+def test_an_empty_claims_file_exits_2(
+    tmp_path: Path, capsys, body: str, fmt: list[str],
+) -> None:
     path = tmp_path / "claims.yaml"
-    path.write_text("claims: []\n")
-    rc, _ = _run(capsys, [str(tmp_path), "--claims", str(path)])
-    assert rc == 0
+    path.write_text(body)
+    rc = main(["verify-claims", str(tmp_path), "--claims", str(path), *fmt])
+    out, err = capsys.readouterr()
+    _assert_bad_input(rc, err, "no claims to check", str(path))
+    assert out == ""
 
 
 # ---------------------------------------------------------------------------
@@ -343,6 +362,31 @@ def test_a_claim_field_of_the_wrong_type_exits_2(
     _assert_bad_input(rc, err, needle, "'X'")
 
 
+@pytest.mark.parametrize("claim,needle", [
+    # A negative limit read every boundary as violated (-1 < 0 chains).
+    ({"id": "X", "text": "x",
+      "constraint": {"boundary": "fs_read", "max_chains": -1}}, "max_chains"),
+    # A non-string id was emitted as an int ``claim_id``; a non-string text
+    # as whatever YAML made of it.
+    ({"id": 5, "text": "x",
+      "constraint": {"boundary": "net_send", "must_not_exist": True}}, "'id'"),
+    ({"id": ["X"], "text": "x",
+      "constraint": {"boundary": "net_send", "must_not_exist": True}}, "'id'"),
+    ({"id": "X", "text": 5,
+      "constraint": {"boundary": "net_send", "must_not_exist": True}}, "'text'"),
+    ({"id": "X", "text": {"a": 1},
+      "constraint": {"boundary": "net_send", "must_not_exist": True}}, "'text'"),
+])
+def test_a_claim_the_owner_ruled_bad_input_exits_2(
+    tmp_path: Path, capsys, claim: dict[str, Any], needle: str,
+) -> None:
+    """WI-nidun's Q3 and Q4 (ruling of 2026-11-19): each was accepted."""
+    claims = _claims(tmp_path, claim)
+    rc, err = _run(capsys, [str(tmp_path), "--claims", str(claims),
+                            "--input", str(_write_map(tmp_path, _map([_LISTDIR])))])
+    _assert_bad_input(rc, err, needle, "'#1'" if needle == "'id'" else "'X'")
+
+
 def test_a_well_typed_max_chains_still_loads(tmp_path: Path, capsys) -> None:
     """Control for the max_chains rows above: an int is a limit."""
     claim = {"id": "X", "text": "x",
@@ -402,6 +446,85 @@ def test_an_input_map_record_list_of_the_wrong_shape_exits_2(
     rc, err = _run(capsys, [str(tmp_path), "--claims", str(_ok_claims(tmp_path)),
                             "--input", str(_write_map(tmp_path, bmap))])
     _assert_bad_input(rc, err, needle)
+
+
+_GOOD_EDGE = dict(_LISTDIR, meta={"evidence_type": "x"}, origin=["python"],
+                  dst_ref={"lang": "python", "module_path": "os",
+                           "name": "listdir"})
+
+
+#: (record list, field, wrong value, what the message names). Each crashed a
+#: loop that read it into ``main``'s internal-error net, exit 1 -- the code
+#: for ``violated`` (WI-nidun). Measured on dev by replacing each field of a
+#: full node / edge / entrypoint / request_ingress record with 5, "s", a
+#: list, a mapping and true.
+_WRONG_TYPED_FIELDS: list[tuple[str, str, Any, str]] = [
+    ("edges", "src", 5, "'edges[0].src' must be a string, got int"),
+    ("edges", "dst", True, "'edges[0].dst' must be a string, got bool"),
+    ("edges", "type", ["calls"], "'edges[0].type' must be a string, got list"),
+    ("edges", "meta", "s", "'edges[0].meta' must be an object, got str"),
+    ("edges", "dst_ref", "s", "'edges[0].dst_ref' must be an object"),
+    ("edges", "dst_ref", {"name": "listdir"},
+     "'edges[0].dst_ref.lang' must be a string, got NoneType"),
+    ("nodes", "id", 5, "'nodes[0].id' must be a string"),
+    ("nodes", "name", 5, "'nodes[0].name' must be a string"),
+    ("nodes", "kind", ["function"], "'nodes[0].kind' must be a string"),
+    ("nodes", "language", ["python"], "'nodes[0].language' must be a string"),
+    ("nodes", "path", 5, "'nodes[0].path' must be a string"),
+    ("nodes", "meta", "s", "'nodes[0].meta' must be an object"),
+    ("nodes", "span", 5, "'nodes[0].span' must be an object"),
+    ("entrypoints", "symbol_id", ["x"], "'entrypoints[0].symbol_id' must be a string"),
+    ("entrypoints", "kind", {"k": 1}, "'entrypoints[0].kind' must be a string"),
+    ("entrypoints", "label", 5, "'entrypoints[0].label' must be a string"),
+    ("request_ingress", "symbol_id", 5,
+     "'request_ingress[0].symbol_id' must be a string"),
+    ("request_ingress", "kind", ["x"], "'request_ingress[0].kind' must be a string"),
+    ("request_ingress", "label", 5, "'request_ingress[0].label' must be a string"),
+]
+
+
+def _full_map() -> dict[str, Any]:
+    entry = {"symbol_id": _F, "kind": "http_route", "label": "GET /"}
+    bmap = _map([dict(_GOOD_EDGE)])
+    bmap["nodes"][0]["meta"] = {}
+    bmap["entrypoints"] = [dict(entry, confidence=0.9)]
+    bmap["request_ingress"] = [dict(entry)]
+    return bmap
+
+
+@pytest.mark.parametrize(
+    "key,field,value,needle", _WRONG_TYPED_FIELDS,
+    ids=[f"{key}.{field}={value!r}" for key, field, value, _ in _WRONG_TYPED_FIELDS],
+)
+def test_an_input_map_record_field_of_the_wrong_type_exits_2(
+    tmp_path: Path, capsys, key: str, field: str, value: Any, needle: str,
+) -> None:
+    bmap = _full_map()
+    bmap[key][0][field] = value
+    rc, err = _run(capsys, [str(tmp_path), "--claims", str(_ok_claims(tmp_path)),
+                            "--input", str(_write_map(tmp_path, bmap))])
+    _assert_bad_input(rc, err, needle)
+
+
+def test_the_full_map_with_every_checked_field_well_typed_loads(
+    tmp_path: Path, capsys,
+) -> None:
+    """Control for the table above."""
+    assert _verdict_run(tmp_path, capsys, _full_map(), _NO_NET) == 0
+
+
+@pytest.mark.parametrize("key,field", [
+    ("edges", "meta"), ("edges", "dst_ref"),
+    ("nodes", "meta"), ("nodes", "span"), ("nodes", "language"),
+])
+def test_a_null_record_field_is_read_as_absent(
+    tmp_path: Path, capsys, key: str, field: str,
+) -> None:
+    """Null is "absent" for a record field, as the readers already treat it:
+    the run reaches a verdict (a node of no language is ``inconclusive``)."""
+    bmap = _full_map()
+    bmap[key][0][field] = None
+    assert _verdict_run(tmp_path, capsys, bmap, _NO_NET) != EXIT_BAD_INPUT
 
 
 def test_a_null_request_ingress_is_read_as_absent(tmp_path: Path, capsys) -> None:
@@ -563,6 +686,8 @@ def test_the_well_formed_controls_still_load(
     "4 = at least one inconclusive (and none violated)",
     "violated wins, then inconclusive, then caveats",
     "Exit 4 is not a pass: the claim was not checked.",
+    "70 = internal error (a bug in hypergumbo)",
+    "141 = broken pipe",
 ])
 def test_the_help_states_each_code(capsys, statement: str) -> None:
     with pytest.raises(SystemExit):
