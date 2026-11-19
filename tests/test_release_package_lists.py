@@ -124,12 +124,21 @@ def _dirs(lockstep: dict[str, Path]) -> set[str]:
     return {p.parent.name for p in lockstep.values()}
 
 
-@pytest.mark.parametrize("array", ["PACKAGES", "INSTALL_ORDER"])
-def test_release_check_lists_every_lockstep_package(array: str):
+def test_release_check_builds_every_lockstep_package():
     script = (REPO_ROOT / "scripts" / "release-check").read_text()
-    listed = {Path(p).name for p in _bash_array(script, array)}
+    listed = {Path(p).name for p in _bash_array(script, "PACKAGES")}
     missing = _dirs(_lockstep()) - listed
-    assert not missing, f"release-check {array} misses {sorted(missing)}"
+    assert not missing, f"release-check PACKAGES misses {sorted(missing)}"
+
+
+def test_release_check_install_checks_every_package():
+    """The wheel check installs DEFAULT_SET into a fresh environment and
+    resolves OTHER_PACKAGES against it (WI-putib); together they name every
+    package, the tracker included."""
+    script = (REPO_ROOT / "scripts" / "release-check").read_text()
+    listed = set(_bash_array(script, "DEFAULT_SET")) | set(_bash_array(script, "OTHER_PACKAGES"))
+    missing = {p.parent.name for p in _manifests().values()} - listed
+    assert not missing, f"release-check's install check misses {sorted(missing)}"
 
 
 def test_release_workflow_builds_every_package():
