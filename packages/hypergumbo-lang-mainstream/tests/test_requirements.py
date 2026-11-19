@@ -14,6 +14,7 @@ from hypergumbo_lang_mainstream.requirements import (
     find_requirements_files,
     is_requirements_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_requirements_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a requirements file in the temp directory."""
@@ -231,7 +232,7 @@ git+https://github.com/user/repo.git@main
         assert req is not None
         # WI-banod: stable_id is now the canonical hgstableid15:<16hex> (not the
         # composite node.id); node.id remains the location key.
-        assert req.stable_id.startswith("hgstableid15:")
+        assert req.stable_id.startswith(STABLE_ID_PREFIX)
         assert req.id != req.stable_id
         assert "requirements:" in req.id
         assert "requirements.txt" in req.id

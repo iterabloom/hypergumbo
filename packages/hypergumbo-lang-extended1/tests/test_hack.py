@@ -13,6 +13,7 @@ from hypergumbo_lang_extended1.hack import (
     find_hack_files,
     is_hack_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def make_hack_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -288,7 +289,7 @@ function myFunc(): void {}
         assert func is not None
         assert func.id != func.stable_id
         assert func.id.startswith("hack:test.hack:")
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh

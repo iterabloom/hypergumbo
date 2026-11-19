@@ -10,6 +10,7 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import astro as astro_module
 from hypergumbo_lang_common.astro import analyze_astro, find_astro_files, is_astro_tree_sitter_available
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_astro_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an Astro file in the temp directory."""
@@ -513,7 +514,7 @@ const description = 'A test page';
         result = analyze_astro(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1
-        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+        canonical = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert canonical.match(symbol.stable_id), symbol.stable_id
 

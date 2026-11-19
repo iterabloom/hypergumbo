@@ -7,6 +7,7 @@ import pytest
 from hypergumbo_core.analyze.base import find_child_by_type
 from hypergumbo_lang_mainstream import groovy as groovy_module
 from unittest.mock import patch
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX
 
 class TestGroovyHelpers:
     """Tests for Groovy analyzer helper functions."""
@@ -1349,7 +1350,7 @@ class TestGroovyShapeId:
         result = analyze_groovy(tmp_path)
         method = next(s for s in result.symbols if s.kind == "method")
         assert method.shape_id is not None
-        assert method.shape_id.startswith("hgshapeid4:")
+        assert method.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
@@ -1360,7 +1361,7 @@ class TestGroovyShapeId:
         result = analyze_groovy(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("hgshapeid4:")
+        assert cls.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestGroovyCyclomaticComplexity:

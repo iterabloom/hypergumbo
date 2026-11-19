@@ -150,6 +150,7 @@ from hypergumbo_core.analyze.registry import ensure_discovered, get_all_analyzer
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 # Every test here runs on ONE xdist worker, so the module fixture is built
 # once per run (smart-test and CI pass --dist=loadgroup; see
@@ -1601,14 +1602,14 @@ def test_census_counts_floor_and_null_per_language_and_kind() -> None:
     floor = make_declaration_stable_id("function", "x", "a.x", "f")
     records = [
         _sym("f", "function", floor),
-        _sym("g", "function", "hgstableid15:producer00000000"),
+        _sym("g", "function", f"{STABLE_ID_PREFIX}producer00000000"),
         _sym("h", "method", None),
         _sym("h", "method", None, line=2),
         {"name": "p", "kind": "property", "language": "y", "path": "b.y",
          "stable_id": make_declaration_stable_id("property", "y", "b.y", "p")},
         _sym("C", "class", None),            # a table kind: only a null counts
         _sym("D", "class", make_declaration_stable_id("class", "x", "a.x", "D")),
-        _sym("rule", "target", "hgstableid15:producer00000001"),
+        _sym("rule", "target", f"{STABLE_ID_PREFIX}producer00000001"),
         {"name": "s", "kind": "function", "language": None, "path": "c",
          "stable_id": None},                 # no language: a synthetic stand-in
         {"name": "k", "kind": None, "language": "x", "path": "c",
@@ -1621,7 +1622,7 @@ def test_census_counts_floor_and_null_per_language_and_kind() -> None:
 
 
 def test_census_of_producer_ids_only_is_empty() -> None:
-    assert floor_census([_sym("f", "function", "hgstableid15:producer00000000")]) == {}
+    assert floor_census([_sym("f", "function", f"{STABLE_ID_PREFIX}producer00000000")]) == {}
 
 
 def test_census_breaches_fail_on_growth_new_cells_and_stale_cells() -> None:
@@ -1663,10 +1664,10 @@ def test_case_variants_and_line_mapping() -> None:
 
 
 def test_deletion_that_moves_nothing_reports_nothing() -> None:
-    before = [_sym("f", "function", None, line=2), _sym("f", "function", "hgstableid15:a", line=4),
-              _sym("g", "function", "hgstableid15:b", line=5), _sym("C", "class", "hgstableid15:c", line=1)]
-    after = [_sym("f", "function", "hgstableid15:a", line=2), _sym("g", "function", "hgstableid15:b", line=3),
-             _sym("C", "class", "hgstableid15:c", line=1)]
+    before = [_sym("f", "function", None, line=2), _sym("f", "function", f"{STABLE_ID_PREFIX}a", line=4),
+              _sym("g", "function", f"{STABLE_ID_PREFIX}b", line=5), _sym("C", "class", f"{STABLE_ID_PREFIX}c", line=1)]
+    after = [_sym("f", "function", f"{STABLE_ID_PREFIX}a", line=2), _sym("g", "function", f"{STABLE_ID_PREFIX}b", line=3),
+             _sym("C", "class", f"{STABLE_ID_PREFIX}c", line=1)]
     assert sibling_deletion_moves(_CASE, before, after) == []
 
 
@@ -1676,12 +1677,12 @@ def test_deletion_matches_each_survivor_by_position() -> None:
     def at(sid, line, col):
         return {"kind": "block", "name": "if", "stable_id": sid,
                 "span": {"start_line": line, "start_col": col}}
-    before = [at("hgstableid15:x", 4, 0), at("hgstableid15:y", 4, 9), at("hgstableid15:z", 5, 0),
-              at("hgstableid15:w", 5, 0)]
-    after = [at("hgstableid15:x", 2, 0), at("hgstableid15:y", 2, 9), at("hgstableid15:z", 3, 0),
-             at("hgstableid15:moved", 3, 0), at("hgstableid15:v", 3, 0)]
+    before = [at(f"{STABLE_ID_PREFIX}x", 4, 0), at(f"{STABLE_ID_PREFIX}y", 4, 9), at(f"{STABLE_ID_PREFIX}z", 5, 0),
+              at(f"{STABLE_ID_PREFIX}w", 5, 0)]
+    after = [at(f"{STABLE_ID_PREFIX}x", 2, 0), at(f"{STABLE_ID_PREFIX}y", 2, 9), at(f"{STABLE_ID_PREFIX}z", 3, 0),
+             at(f"{STABLE_ID_PREFIX}moved", 3, 0), at(f"{STABLE_ID_PREFIX}v", 3, 0)]
     assert sibling_deletion_moves(_CASE, before, after) == [
-        "block if (line 3): stable_id hgstableid15:w -> hgstableid15:moved (moved)",
+        f"block if (line 3): stable_id {STABLE_ID_PREFIX}w -> {STABLE_ID_PREFIX}moved (moved)",
         "block if (line 3): no counterpart before the deletion",
     ]
 
@@ -1690,46 +1691,46 @@ def test_deletion_reports_moved_null_and_unmatched() -> None:
     before = [{"kind": "function", "name": "f", "span": {"start_line": 4},
                "stable_id": None},
               {"kind": "function", "name": "g", "span": {"start_line": 5},
-               "stable_id": "hgstableid15:b"},
+               "stable_id": f"{STABLE_ID_PREFIX}b"},
               {"kind": "method", "name": "m", "span": {"start_line": 1},
-               "stable_id": "hgstableid15:m"}]
+               "stable_id": f"{STABLE_ID_PREFIX}m"}]
     after = [{"kind": "function", "name": "f", "span": {"start_line": 2},
-              "stable_id": "hgstableid15:f"},
+              "stable_id": f"{STABLE_ID_PREFIX}f"},
              {"kind": "function", "name": "g", "span": {"start_line": 3},
-              "stable_id": "hgstableid15:moved"},
+              "stable_id": f"{STABLE_ID_PREFIX}moved"},
              {"kind": "method", "name": "m", "span": {"start_line": 1},
-              "stable_id": "hgstableid15:m"},
+              "stable_id": f"{STABLE_ID_PREFIX}m"},
              {"kind": "function", "name": "h", "span": None, "stable_id": "x"}]
     got = sibling_deletion_moves(_CASE, before, after)
     assert got == [
-        "function f (line 2): stable_id None -> hgstableid15:f (null)",
-        "function g (line 3): stable_id hgstableid15:b -> hgstableid15:moved (moved)",
+        f"function f (line 2): stable_id None -> {STABLE_ID_PREFIX}f (null)",
+        f"function g (line 3): stable_id {STABLE_ID_PREFIX}b -> {STABLE_ID_PREFIX}moved (moved)",
         "function h (line 0): no counterpart before the deletion",
     ]
 
 
 def test_symbol_without_span_is_line_zero() -> None:
-    sym = _sym("f", "function", "hgstableid15:a")
+    sym = _sym("f", "function", f"{STABLE_ID_PREFIX}a")
     sym.span = None
     assert sibling_deletion_moves(_CASE, [], [sym]) == [
         "function f (line 0): no counterpart before the deletion"]
     assert _start(sym) == (0, 0)
     head_less = SiblingCase("a.x", "", "earlier\n", "later\n")
-    file_node = {"kind": "file", "name": "a.x", "stable_id": "hgstableid15:f",
+    file_node = {"kind": "file", "name": "a.x", "stable_id": f"{STABLE_ID_PREFIX}f",
                  "span": {"start_line": 1, "start_col": 0}}
     assert sibling_deletion_moves(head_less, [file_node], [file_node]) == []
-    assert _start(_sym("f", "function", "hgstableid15:a", line=7)) == (7, 0)
+    assert _start(_sym("f", "function", f"{STABLE_ID_PREFIX}a", line=7)) == (7, 0)
 
 
 def test_location_check_pairs_records_by_position() -> None:
-    here = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:b", line=2)]
-    same = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:b", line=2)]
+    here = [_sym("f", "function", f"{STABLE_ID_PREFIX}a", line=1), _sym("f", "function", f"{STABLE_ID_PREFIX}b", line=2)]
+    same = [_sym("f", "function", f"{STABLE_ID_PREFIX}a", line=1), _sym("f", "function", f"{STABLE_ID_PREFIX}b", line=2)]
     assert location_dependent_ids(here, same) == []
-    moved = [_sym("f", "function", "hgstableid15:a", line=1), _sym("f", "function", "hgstableid15:z", line=2)]
+    moved = [_sym("f", "function", f"{STABLE_ID_PREFIX}a", line=1), _sym("f", "function", f"{STABLE_ID_PREFIX}z", line=2)]
     assert location_dependent_ids(here, moved) == [
-        "a.x function f (line 2): hgstableid15:b here, hgstableid15:z elsewhere"]
+        f"a.x function f (line 2): {STABLE_ID_PREFIX}b here, {STABLE_ID_PREFIX}z elsewhere"]
     assert location_dependent_ids(here, same[:1]) == [
-        "a.x function f (line 2): hgstableid15:b here, (no counterpart) elsewhere"]
+        f"a.x function f (line 2): {STABLE_ID_PREFIX}b here, (no counterpart) elsewhere"]
 
 
 # -- unit: the two-parent guard ---------------------------------------------------

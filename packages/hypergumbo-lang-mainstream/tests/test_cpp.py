@@ -17,6 +17,7 @@ from hypergumbo_lang_mainstream.cpp import (
     is_cpp_tree_sitter_available,
     PASS_ID,
 )
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 @pytest.fixture
@@ -2313,7 +2314,7 @@ class TestCppStableId:
         result = analyze_cpp(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_class_has_stable_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.cpp import analyze_cpp
@@ -2324,7 +2325,7 @@ class TestCppStableId:
         result = analyze_cpp(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
         assert cls.stable_id is not None
-        assert cls.stable_id.startswith("hgstableid15:")
+        assert cls.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 class TestCppShapeId:
@@ -2339,7 +2340,7 @@ class TestCppShapeId:
         result = analyze_cpp(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.cpp import analyze_cpp
@@ -2350,7 +2351,7 @@ class TestCppShapeId:
         result = analyze_cpp(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("hgshapeid4:")
+        assert cls.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestCppUnresolvedExternalEdges:

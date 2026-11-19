@@ -28,6 +28,7 @@ from hypergumbo_lang_mainstream.groovy import (
     analyze_groovy,
     normalize_groovy_signature,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _symbols(root: Path, body: str, *, top_level: bool = False) -> dict[str, object]:
@@ -234,14 +235,14 @@ def script(String a) { a }
 """
 
 _PINNED = {
-    "Pinned.name": ("(String,List<String>)String", "hgstableid15:58141b54f6dc044f"),
+    "Pinned.name": ("(String,List<String>)String", f"{STABLE_ID_PREFIX}58141b54f6dc044f"),
     "Pinned.table": (
-        "(String[],int[][])Map<String, List<Integer>>", "hgstableid15:bba74ff853e0a9ba",
+        "(String[],int[][])Map<String, List<Integer>>", f"{STABLE_ID_PREFIX}bba74ff853e0a9ba",
     ),
-    "Pinned.dyn": ("(def)def", "hgstableid15:23dc82d5787f8d5f"),
-    "Pinned.run": ("(Closure<String>)", "hgstableid15:6b6efff128fde6e1"),
-    "Pinned.split": ("(String)String[]", "hgstableid15:d4329860e58cd08b"),
-    "script": ("(String)", "hgstableid15:8795b3125f7af9c9"),
+    "Pinned.dyn": ("(def)def", f"{STABLE_ID_PREFIX}23dc82d5787f8d5f"),
+    "Pinned.run": ("(Closure<String>)", f"{STABLE_ID_PREFIX}6b6efff128fde6e1"),
+    "Pinned.split": ("(String)String[]", f"{STABLE_ID_PREFIX}d4329860e58cd08b"),
+    "script": ("(String)", f"{STABLE_ID_PREFIX}8795b3125f7af9c9"),
 }
 
 

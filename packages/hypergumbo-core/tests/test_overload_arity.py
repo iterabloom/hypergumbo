@@ -40,6 +40,7 @@ from hypergumbo_core.overload_arity import (
     scoped_stable_id,
     scoped_table_stable_id,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _sym(name: str, line: int, params, path: str = "a.x") -> Symbol:
@@ -234,17 +235,17 @@ def test_arities_and_scopes_hash_apart() -> None:
             containing_stable_id=containing,
         )
 
-    assert len({sid(0), sid(1), sid(2), sid(1, "hgstableid15:0000000000000000")}) == 4
+    assert len({sid(0), sid(1), sid(2), sid(1, f"{STABLE_ID_PREFIX}0000000000000000")}) == 4
 
 
 def test_callback_stable_id_is_byte_identical_through_the_shared_helper() -> None:
     """WI-hidit's values, pinned before the helper took them over: a changed
     producer value would be a scheme bump (ADR-0035 §6)."""
     assert callback_stable_id("elixir", "lib/shape.ex", "Shape.area", 1) == (
-        "hgstableid15:35261acfab20d1d1"
+        f"{STABLE_ID_PREFIX}35261acfab20d1d1"
     )
     assert callback_stable_id("erlang", "src/shape.erl", "area", 0, "macro") == (
-        "hgstableid15:e47ba7cc993e0988"
+        f"{STABLE_ID_PREFIX}e47ba7cc993e0988"
     )
     assert callback_stable_id("elixir", "lib/shape.ex", "Shape.area", 1) == (
         assemble_stable_id(

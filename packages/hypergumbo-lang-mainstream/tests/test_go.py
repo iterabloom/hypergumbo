@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from hypergumbo_lang_mainstream import go as go_module
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 class TestFindGoFiles:
@@ -840,7 +841,7 @@ func main() {
         assert len(routes) == 1
         assert (routes[0].meta or {}).get("handler_name") == "submitHandler"
         assert (routes[0].meta or {}).get("framework_role") == "route"
-        assert len(routes[0].stable_id) == 29  # hgstableid15:<16hex> (ADR-0035 §3)
+        assert len(routes[0].stable_id) == len(STABLE_ID_PREFIX) + 16  # hgstableid15:<16hex> (ADR-0035 §3)
 
     def test_no_routes_in_non_web_code(self, tmp_path: Path) -> None:
         """No routes detected in code without web framework patterns."""
@@ -1971,7 +1972,7 @@ func listUsers(w http.ResponseWriter, r *http.Request) {}
         # Mount stable_id uses hash-based format (ADR-0035 §3)
         assert mount.stable_id is not None
         # make_route_stable_id returns raw hex digest
-        assert len(mount.stable_id) == 29  # hgstableid15:<16hex>
+        assert len(mount.stable_id) == len(STABLE_ID_PREFIX) + 16  # hgstableid15:<16hex>
 
     def test_mount_creates_edge_to_handler(self, tmp_path: Path) -> None:
         """Mount creates a calls edge from enclosing function to handler."""
@@ -7420,7 +7421,7 @@ class TestGoShapeId:
         result = analyze_go(tmp_path)
         func = next(s for s in result.symbols if s.name == "add")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_struct_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.go import analyze_go
@@ -7431,7 +7432,7 @@ class TestGoShapeId:
         result = analyze_go(tmp_path)
         struct = next(s for s in result.symbols if s.name == "Point")
         assert struct.shape_id is not None
-        assert struct.shape_id.startswith("hgshapeid4:")
+        assert struct.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestCobraAddCommandUsageContext:
@@ -8352,7 +8353,7 @@ def test_interface_method_declarations_carry_stable_id(tmp_path: Path) -> None:
     assert len(iface_methods) == 2, [s.name for s in iface_methods]
     for s in iface_methods:
         assert (
-            s.stable_id is not None and s.stable_id.startswith("hgstableid15:")
+            s.stable_id is not None and s.stable_id.startswith(STABLE_ID_PREFIX)
         ), f"{s.name} has stable_id={s.stable_id!r}"
     # Distinct methods -> distinct stable_ids.
     ids = {s.stable_id for s in iface_methods}

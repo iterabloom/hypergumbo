@@ -10,6 +10,7 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import scss as scss_module
 from hypergumbo_lang_common.scss import analyze_scss, find_scss_files, is_scss_tree_sitter_available
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_scss_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an SCSS file in the temp directory."""
@@ -355,7 +356,7 @@ $spacing: 16px;
         assert re.match(r"^\d+-\d+$", _span), var.id
         assert _kind == var.kind, var.id
         assert var.stable_id != var.id
-        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", var.stable_id)
+        assert re.match(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$", var.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """WI-rijup: every emitted symbol carries a canonical sha256 stable_id."""
@@ -398,7 +399,7 @@ $font-size: 14px;
         result = analyze_scss(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1
-        pattern = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+        pattern = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
         for sym in result.symbols:
             assert pattern.match(sym.stable_id), (sym.kind, sym.name, sym.stable_id)
 

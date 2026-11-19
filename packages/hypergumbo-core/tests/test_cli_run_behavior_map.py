@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.identity_schemes import REPO_FINGERPRINT_PREFIX
 
 
 def _has_sentence_transformers() -> bool:
@@ -504,8 +505,8 @@ def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
     assert runs
     # The AR-record field carries the scheme's ``hgrepofp3:`` label over the
     # full 64-hex digest (ADR-0035 "Value labels").
-    assert all(r["repo_fingerprint"].startswith("hgrepofp3:") for r in runs)
-    assert all(len(r["repo_fingerprint"][len("hgrepofp3:"):]) == 64 for r in runs)
+    assert all(r["repo_fingerprint"].startswith(REPO_FINGERPRINT_PREFIX) for r in runs)
+    assert all(len(r["repo_fingerprint"][len(REPO_FINGERPRINT_PREFIX):]) == 64 for r in runs)
 
     # §17: the unreadable file is surfaced in limits.failed_files.
     py_failed = [

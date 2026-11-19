@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_lang_mainstream.kotlin import analyze_kotlin, normalize_kotlin_signature
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _symbols(tmp_path: Path, text: str, rel: str = "M.kt") -> list:
@@ -200,26 +201,26 @@ class Plain(val a: Int, var b: String?) {
 """
 
 _CLEAN_PINS = {
-    "cPlain": "hgstableid15:b7b34c46e09dc869",
-    "cNullable": "hgstableid15:af36abebae2237c5",
-    "cFun": "hgstableid15:60420bdcb1a07587",
-    "cSuspendType": "hgstableid15:9c15b6c19b92f167",
-    "cFunReceiverType": "hgstableid15:7687ff26be87c825",
-    "cNamedLambda": "hgstableid15:bb51e3923da5dc74",
-    "cGeneric": "hgstableid15:d578ca9b48ce2f56",
-    "cBound": "hgstableid15:56cc8cccaca74124",
-    "cWhere": "hgstableid15:eb662138077f8f03",
-    "cReified": "hgstableid15:47917587af406244",
-    "cDefault": "hgstableid15:572450cc72dfa7d8",
-    "cSuspend": "hgstableid15:d6f66cb0c812e82a",
-    "cCross": "hgstableid15:8eb951c54c90d384",
-    "cDotted": "hgstableid15:517f144df997b496",
-    "cAnnotated": "hgstableid15:fd17c8c849403923",
-    "cRetFun": "hgstableid15:035de721da22c002",
-    "cUnit": "hgstableid15:733e8a396b5344ec",
-    "Plain.fUser": "hgstableid15:95ea475d1f874dd6",
-    "Plain.fInferred": "hgstableid15:47b982cf142034b2",
-    "Plain.method": "hgstableid15:f8579ec21a8b4fc4",
+    "cPlain": f"{STABLE_ID_PREFIX}b7b34c46e09dc869",
+    "cNullable": f"{STABLE_ID_PREFIX}af36abebae2237c5",
+    "cFun": f"{STABLE_ID_PREFIX}60420bdcb1a07587",
+    "cSuspendType": f"{STABLE_ID_PREFIX}9c15b6c19b92f167",
+    "cFunReceiverType": f"{STABLE_ID_PREFIX}7687ff26be87c825",
+    "cNamedLambda": f"{STABLE_ID_PREFIX}bb51e3923da5dc74",
+    "cGeneric": f"{STABLE_ID_PREFIX}d578ca9b48ce2f56",
+    "cBound": f"{STABLE_ID_PREFIX}56cc8cccaca74124",
+    "cWhere": f"{STABLE_ID_PREFIX}eb662138077f8f03",
+    "cReified": f"{STABLE_ID_PREFIX}47917587af406244",
+    "cDefault": f"{STABLE_ID_PREFIX}572450cc72dfa7d8",
+    "cSuspend": f"{STABLE_ID_PREFIX}d6f66cb0c812e82a",
+    "cCross": f"{STABLE_ID_PREFIX}8eb951c54c90d384",
+    "cDotted": f"{STABLE_ID_PREFIX}517f144df997b496",
+    "cAnnotated": f"{STABLE_ID_PREFIX}fd17c8c849403923",
+    "cRetFun": f"{STABLE_ID_PREFIX}035de721da22c002",
+    "cUnit": f"{STABLE_ID_PREFIX}733e8a396b5344ec",
+    "Plain.fUser": f"{STABLE_ID_PREFIX}95ea475d1f874dd6",
+    "Plain.fInferred": f"{STABLE_ID_PREFIX}47b982cf142034b2",
+    "Plain.method": f"{STABLE_ID_PREFIX}f8579ec21a8b4fc4",
 }
 
 
@@ -227,4 +228,4 @@ def test_hole_free_declarations_keep_their_ids(tmp_path: Path) -> None:
     by_name = {s.name: s for s in _symbols(tmp_path, _CLEAN_SOURCE, rel="Clean.kt")}
     assert {n: by_name[n].stable_id for n in _CLEAN_PINS} == _CLEAN_PINS
     # The one extension function in the file is the receiver hole, so it moves.
-    assert by_name["plus"].stable_id != "hgstableid15:367a0f601cc571ed"
+    assert by_name["plus"].stable_id != f"{STABLE_ID_PREFIX}367a0f601cc571ed"

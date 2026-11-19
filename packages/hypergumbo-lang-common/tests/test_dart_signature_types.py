@@ -42,6 +42,7 @@ from hypergumbo_lang_common.dart import (
     analyze_dart,
     normalize_dart_signature,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _symbol(root: Path, source: str, name: str) -> Symbol:
@@ -321,19 +322,19 @@ class Widget {
 # before the holes were filled (dev 3da1f85b37, file ``clean.dart`` at the
 # root of the analysed tree).
 PINNED = {
-    ("function", "add"): "hgstableid15:b25ded629f362a02",
-    ("function", "dyn"): "hgstableid15:39de927c48988b68",
-    ("function", "opt"): "hgstableid15:3df1e40f64b5cae0",
-    ("function", "named"): "hgstableid15:724b4ce75e477e92",
-    ("function", "fnTyped"): "hgstableid15:5b29217af303859d",
-    ("function", "fragment"): "hgstableid15:788a1f68d49853d8",
-    ("function", "commented"): "hgstableid15:a980655d150d1db1",
-    ("field", "Widget.count"): "hgstableid15:b9ad19582563bf1f",
-    ("field", "Widget.foo"): "hgstableid15:52b2647c5aac5b99",
-    ("field", "Widget.untyped"): "hgstableid15:67b1c3afbda56fb7",
-    ("field", "Widget.lateInt"): "hgstableid15:fcfa601122856289",
-    ("method", "Widget.build"): "hgstableid15:eec19e02b0716d60",
-    ("method", "Widget.pick"): "hgstableid15:f9b79352893d5d48",
+    ("function", "add"): f"{STABLE_ID_PREFIX}b25ded629f362a02",
+    ("function", "dyn"): f"{STABLE_ID_PREFIX}39de927c48988b68",
+    ("function", "opt"): f"{STABLE_ID_PREFIX}3df1e40f64b5cae0",
+    ("function", "named"): f"{STABLE_ID_PREFIX}724b4ce75e477e92",
+    ("function", "fnTyped"): f"{STABLE_ID_PREFIX}5b29217af303859d",
+    ("function", "fragment"): f"{STABLE_ID_PREFIX}788a1f68d49853d8",
+    ("function", "commented"): f"{STABLE_ID_PREFIX}a980655d150d1db1",
+    ("field", "Widget.count"): f"{STABLE_ID_PREFIX}b9ad19582563bf1f",
+    ("field", "Widget.foo"): f"{STABLE_ID_PREFIX}52b2647c5aac5b99",
+    ("field", "Widget.untyped"): f"{STABLE_ID_PREFIX}67b1c3afbda56fb7",
+    ("field", "Widget.lateInt"): f"{STABLE_ID_PREFIX}fcfa601122856289",
+    ("method", "Widget.build"): f"{STABLE_ID_PREFIX}eec19e02b0716d60",
+    ("method", "Widget.pick"): f"{STABLE_ID_PREFIX}f9b79352893d5d48",
 }
 
 

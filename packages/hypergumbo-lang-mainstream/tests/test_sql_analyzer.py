@@ -20,6 +20,7 @@ from hypergumbo_lang_mainstream.sql import (
     analyze_sql_files,
     find_sql_files,
 )
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
@@ -301,7 +302,7 @@ class TestSqlStableId:
         result = analyze_sql_files(tmp_path)
         tbl = next(s for s in result.symbols if s.name == "users")
         assert tbl.stable_id is not None
-        assert tbl.stable_id.startswith("hgstableid15:")
+        assert tbl.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 class TestSqlShapeId:
@@ -316,7 +317,7 @@ class TestSqlShapeId:
         result = analyze_sql_files(tmp_path)
         tbl = next(s for s in result.symbols if s.name == "users")
         assert tbl.shape_id is not None
-        assert tbl.shape_id.startswith("hgshapeid4:")
+        assert tbl.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestSqlCyclomaticComplexity:

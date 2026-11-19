@@ -10,8 +10,9 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import vue as vue_module
 from hypergumbo_lang_common.vue import analyze_vue, find_vue_files, is_vue_tree_sitter_available
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
-_CANONICAL_STABLE_ID_RE = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+_CANONICAL_STABLE_ID_RE = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
 
 def make_vue_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Vue file in the temp directory."""

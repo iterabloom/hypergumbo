@@ -10,6 +10,7 @@ from hypergumbo_core.linkers.message_queue import (
     message_queue_linker,
 )
 from hypergumbo_core.linkers.registry import LinkerContext
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 class TestKafkaPatterns:
@@ -806,7 +807,7 @@ class TestMessageQueueLinker:
         assert symbol.stable_id == make_protocol_stable_id(
             "message_queue", "kafka", "publish", "my-topic"
         )
-        assert symbol.stable_id.startswith("hgstableid15:")
+        assert symbol.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 class TestMessageQueueDataflowAnnotationsPreserved:

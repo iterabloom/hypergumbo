@@ -22,6 +22,7 @@ import jsonschema
 import pytest
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 def _has_hypergumbo_meta() -> bool:
@@ -182,8 +183,8 @@ class TestSchemaValidation:
             span=Span(start_line=1, end_line=5, start_col=0, end_col=10),
             origin="python",
             origin_run_id="uuid:12345",
-            stable_id="hgstableid15:stable123",
-            shape_id="hgshapeid4:shape456",
+            stable_id=f"{STABLE_ID_PREFIX}stable123",
+            shape_id=f"{SHAPE_ID_PREFIX}shape456",
             qualified_name="module.test_func",
             fingerprint="sha256:content789",
             quality={"score": 0.95, "reason": "well-documented"},

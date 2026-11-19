@@ -4,6 +4,7 @@ from pathlib import Path
 
 from hypergumbo_core.analyze.base import find_child_by_type
 from unittest.mock import patch, MagicMock
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 class TestObjCHelpers:
     """Tests for Objective-C analyzer helper functions."""
@@ -907,9 +908,9 @@ class TestObjCStableShapeId:
         result = analyze_objc(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.stable_id is not None
-        assert cls.stable_id.startswith("hgstableid15:")
+        assert cls.stable_id.startswith(STABLE_ID_PREFIX)
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("hgshapeid4:")
+        assert cls.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestObjcCyclomaticComplexity:

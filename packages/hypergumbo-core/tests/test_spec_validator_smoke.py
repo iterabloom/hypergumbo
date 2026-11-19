@@ -30,6 +30,11 @@ from hypergumbo_core.spec_validator import (
     emit_stderr_summary,
     validate_ir,
 )
+from hypergumbo_core.identity_schemes import (
+    SCIP_STABLE_ID_PREFIX,
+    STABLE_ID_PREFIX,
+    SYMBOL_FINGERPRINT_PREFIX,
+)
 
 
 def test_validate_ir_empty_inputs_returns_empty() -> None:
@@ -719,8 +724,8 @@ def test_cross_field_class_b_coherent_passes() -> None:
         # synthetic:F2).
         display_label="websocket:class-b",
         origin=["websocket-linker"],
-        stable_id="hgstableid15:" + "0" * 16,
-        fingerprint="hgfp2:" + "0" * 16,
+        stable_id=STABLE_ID_PREFIX + "0" * 16,
+        fingerprint=SYMBOL_FINGERPRINT_PREFIX + "0" * 16,
         qualified_name=None,
         dst_ref=None,
         dst=None,
@@ -1145,7 +1150,7 @@ def test_fingerprint_format_content_gated_skips_without_runs() -> None:
 
 
 def test_fingerprint_format_passes_canonical_hgfp2() -> None:
-    sym = _fp_sym(fingerprint="hgfp2:deadbeefdeadbeef")
+    sym = _fp_sym(fingerprint=f"{SYMBOL_FINGERPRINT_PREFIX}deadbeefdeadbeef")
     assert _fp_fmt(validate_ir([sym], [], [_run("run-1")])) == []
 
 
@@ -1324,7 +1329,7 @@ def _make_sym_with_stable_id(idx: int, sid: str, name: str = "f") -> _FakeSym:
 def test_cross_field_stable_id_zero_collisions_pass() -> None:
     """All-distinct stable_ids → no corpus umbrella. The ~0 threshold
     (ADR-0035 §5) does not fire when there is genuinely no collision."""
-    syms = [_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}") for i in range(100)]
+    syms = [_make_sym_with_stable_id(i, f"{STABLE_ID_PREFIX}{i:016x}") for i in range(100)]
     violations = validate_ir(syms, [], [])
     assert not any(
         v.validator_class == "cross_field"
@@ -1339,8 +1344,8 @@ def test_cross_field_stable_id_any_collision_flags() -> None:
     The stable_id contract is collision-free BY DESIGN, not collision-rare.
     """
     # 100 distinct + one collision group of 2 == 2/101 ≈ 2%.
-    syms = [_make_sym_with_stable_id(i, f"hgstableid15:{i + 1:016x}") for i in range(100)]
-    syms.append(_make_sym_with_stable_id(100, "hgstableid15:0000000000000001", name="dup"))
+    syms = [_make_sym_with_stable_id(i, f"{STABLE_ID_PREFIX}{i + 1:016x}") for i in range(100)]
+    syms.append(_make_sym_with_stable_id(100, f"{STABLE_ID_PREFIX}0000000000000001", name="dup"))
     violations = validate_ir(syms, [], [])
     matched = [
         v for v in violations
@@ -1357,10 +1362,10 @@ def test_cross_field_stable_id_collisions_flags_rate_and_top_groups() -> None:
     syms: list[_FakeSym] = []
     # 10 distinct stable_ids + 5 colliding == 5/15 = 33.3% of all Symbols.
     for i in range(10):
-        syms.append(_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}"))
+        syms.append(_make_sym_with_stable_id(i, f"{STABLE_ID_PREFIX}{i:016x}"))
     for i in range(5):
         syms.append(_make_sym_with_stable_id(
-            100 + i, "hgstableid15:cccccccccccccccc", name=f"colliding_{i}",
+            100 + i, f"{STABLE_ID_PREFIX}cccccccccccccccc", name=f"colliding_{i}",
         ))
     violations = validate_ir(syms, [], [])
     matched = [
@@ -1375,7 +1380,7 @@ def test_cross_field_stable_id_collisions_flags_rate_and_top_groups() -> None:
     assert v.severity == "warning"
     assert v.record_id is None
     assert "33.3%" in (v.observed or "")  # 5/15 over the all-Symbols denominator
-    assert "hgstableid15:cccccccccccccccc" in (v.message or "")
+    assert f"{STABLE_ID_PREFIX}cccccccccccccccc" in (v.message or "")
     assert "colliding_0" in (v.message or "")
 
 
@@ -1388,10 +1393,10 @@ def test_cross_field_stable_id_collision_discloses_none_cohort() -> None:
     syms: list[_FakeSym] = []
     # 10 distinct + 5 colliding + 3 None == 5 collided / 18 population = 27.8%.
     for i in range(10):
-        syms.append(_make_sym_with_stable_id(i, f"hgstableid15:{i:016x}"))
+        syms.append(_make_sym_with_stable_id(i, f"{STABLE_ID_PREFIX}{i:016x}"))
     for i in range(5):
         syms.append(_make_sym_with_stable_id(
-            100 + i, "hgstableid15:cccccccccccccccc", name=f"colliding_{i}",
+            100 + i, f"{STABLE_ID_PREFIX}cccccccccccccccc", name=f"colliding_{i}",
         ))
     # 3 Symbols with stable_id=None — COUNTED in the denominator.
     for i in range(3):
@@ -1453,15 +1458,15 @@ def test_per_file_stable_id_collision_flags_error() -> None:
     """Two Symbols in ONE file sharing a stable_id is a HARD error (ADR-0035
     §5 per-file uniqueness), one violation per colliding (path, id) group."""
     syms = [
-        _make_sym_pathed(1, "hgstableid15:aaaaaaaaaaaaaaaa", "a.py", name="alpha"),
-        _make_sym_pathed(2, "hgstableid15:aaaaaaaaaaaaaaaa", "a.py", name="beta"),
+        _make_sym_pathed(1, f"{STABLE_ID_PREFIX}aaaaaaaaaaaaaaaa", "a.py", name="alpha"),
+        _make_sym_pathed(2, f"{STABLE_ID_PREFIX}aaaaaaaaaaaaaaaa", "a.py", name="beta"),
     ]
     errors = _per_file_errors(validate_ir(syms, [], []))
     assert len(errors) == 1
     v = errors[0]
     assert v.severity == "error"
     assert "a.py" in (v.observed or "")
-    assert "hgstableid15:aaaaaaaaaaaaaaaa" in (v.observed or "")
+    assert f"{STABLE_ID_PREFIX}aaaaaaaaaaaaaaaa" in (v.observed or "")
     assert "alpha" in (v.observed or "") and "beta" in (v.observed or "")
 
 
@@ -1469,8 +1474,8 @@ def test_per_file_stable_id_same_id_distinct_files_no_error() -> None:
     """The SAME stable_id in DIFFERENT files is NOT a per-file error (the
     corpus umbrella still warns about it, but the hard check is per-file)."""
     syms = [
-        _make_sym_pathed(1, "hgstableid15:bbbbbbbbbbbbbbbb", "a.py"),
-        _make_sym_pathed(1, "hgstableid15:bbbbbbbbbbbbbbbb", "b.py"),
+        _make_sym_pathed(1, f"{STABLE_ID_PREFIX}bbbbbbbbbbbbbbbb", "a.py"),
+        _make_sym_pathed(1, f"{STABLE_ID_PREFIX}bbbbbbbbbbbbbbbb", "b.py"),
     ]
     violations = validate_ir(syms, [], [])
     assert _per_file_errors(violations) == []
@@ -1485,8 +1490,8 @@ def test_per_file_pathless_symbols_skipped() -> None:
     """Pathless symbols are out of scope for the per-file check (no file to
     be 'within'); the corpus umbrella covers them instead."""
     syms = [
-        _make_sym_with_stable_id(1, "hgstableid15:cccccccccccccccc"),
-        _make_sym_with_stable_id(2, "hgstableid15:cccccccccccccccc"),
+        _make_sym_with_stable_id(1, f"{STABLE_ID_PREFIX}cccccccccccccccc"),
+        _make_sym_with_stable_id(2, f"{STABLE_ID_PREFIX}cccccccccccccccc"),
     ]
     # _make_sym_with_stable_id sets no ``path`` attribute.
     assert _per_file_errors(validate_ir(syms, [], [])) == []
@@ -1498,12 +1503,12 @@ def test_compute_stable_id_stats_counts_population_and_collisions() -> None:
     fixture exercises all three branches: pathed, stable_id-but-no-path, None.
     """
     syms = [
-        _make_sym_pathed(1, "hgstableid15:1111111111111111", "a.py"),
-        _make_sym_pathed(2, "hgstableid15:2222222222222222", "a.py"),
+        _make_sym_pathed(1, f"{STABLE_ID_PREFIX}1111111111111111", "a.py"),
+        _make_sym_pathed(2, f"{STABLE_ID_PREFIX}2222222222222222", "a.py"),
         # per-file collision in a.py (shares hgstableid15:1111... with sym 1)
-        _make_sym_pathed(3, "hgstableid15:1111111111111111", "a.py", name="dup"),
+        _make_sym_pathed(3, f"{STABLE_ID_PREFIX}1111111111111111", "a.py", name="dup"),
         # stable_id but NO path — exercises the `if path` false branch.
-        _make_sym_with_stable_id(4, "hgstableid15:4444444444444444"),
+        _make_sym_with_stable_id(4, f"{STABLE_ID_PREFIX}4444444444444444"),
         # None cohort: no stable_id (and no path).
         _FakeSym(
             id="python:x.py:5-5:n:function", kind="function", language="python",
@@ -1555,7 +1560,7 @@ def test_compute_stable_id_stats_discloses_floor_cohort_and_abstentions() -> Non
         # 1. a floor id (equals its recomputed floor key): floor_cohort
         sym(1, "function", "greet/1", "a.erl", "erlang", floor),
         # 2. a producer id on a floor-eligible kind: not floor
-        sym(2, "function", "main/0", "a.erl", "erlang", "hgstableid15:aaaaaaaaaaaaaaaa"),
+        sym(2, "function", "main/0", "a.erl", "erlang", f"{STABLE_ID_PREFIX}aaaaaaaaaaaaaaaa"),
         # 3. a factory-table kind whose table formula has the declaration shape:
         #    a decided key, not the floor
         sym(3, "class", "W", "w.ts", "typescript",
@@ -1583,8 +1588,8 @@ def test_per_file_collision_record_id_is_order_deterministic() -> None:
     symbol-iteration order — it is the lexicographically-smallest id in the
     group, not the first-encountered (which would leak ranked-vs-append order).
     """
-    a = _make_sym_pathed(1, "hgstableid15:dddddddddddddddd", "a.py", name="alpha")
-    b = _make_sym_pathed(2, "hgstableid15:dddddddddddddddd", "a.py", name="beta")
+    a = _make_sym_pathed(1, f"{STABLE_ID_PREFIX}dddddddddddddddd", "a.py", name="alpha")
+    b = _make_sym_pathed(2, f"{STABLE_ID_PREFIX}dddddddddddddddd", "a.py", name="beta")
     rid_ab = _per_file_errors(validate_ir([a, b], [], []))[0].record_id
     rid_ba = _per_file_errors(validate_ir([b, a], [], []))[0].record_id
     assert rid_ab == rid_ba
@@ -1597,10 +1602,10 @@ def test_corpus_umbrella_message_is_order_deterministic() -> None:
     """
     def build() -> list[_FakeSym]:
         return [
-            _make_sym_with_stable_id(1, "hgstableid15:aaaaaaaaaaaaaaaa", name="a1"),
-            _make_sym_with_stable_id(2, "hgstableid15:aaaaaaaaaaaaaaaa", name="a2"),
-            _make_sym_with_stable_id(3, "hgstableid15:bbbbbbbbbbbbbbbb", name="b1"),
-            _make_sym_with_stable_id(4, "hgstableid15:bbbbbbbbbbbbbbbb", name="b2"),
+            _make_sym_with_stable_id(1, f"{STABLE_ID_PREFIX}aaaaaaaaaaaaaaaa", name="a1"),
+            _make_sym_with_stable_id(2, f"{STABLE_ID_PREFIX}aaaaaaaaaaaaaaaa", name="a2"),
+            _make_sym_with_stable_id(3, f"{STABLE_ID_PREFIX}bbbbbbbbbbbbbbbb", name="b1"),
+            _make_sym_with_stable_id(4, f"{STABLE_ID_PREFIX}bbbbbbbbbbbbbbbb", name="b2"),
         ]
 
     def umbrella_msg(syms) -> str:
@@ -1636,7 +1641,7 @@ def _make_sym_with_fingerprint(idx: int, fp: str | None, name: str) -> _FakeSym:
         display_label=None,
         origin=[],
         qualified_name=None,
-        stable_id=f"hgstableid15:{idx:016x}",
+        stable_id=f"{STABLE_ID_PREFIX}{idx:016x}",
         fingerprint=fp,
         name=name,
         dst_ref=None,
@@ -1648,7 +1653,7 @@ def test_cross_field_fingerprint_degeneracy_flags() -> None:
     """One fingerprint value shared by >= 10 distinctly-named symbols
     fires exactly ONE umbrella violation naming the degenerate value."""
     syms = [
-        _make_sym_with_fingerprint(i, "hgfp2:deaddeaddeaddead", f"pkg_{i}")
+        _make_sym_with_fingerprint(i, f"{SYMBOL_FINGERPRINT_PREFIX}deaddeaddeaddead", f"pkg_{i}")
         for i in range(12)
     ]
     violations = validate_ir(syms, [], [])
@@ -1661,7 +1666,7 @@ def test_cross_field_fingerprint_degeneracy_flags() -> None:
     v = matched[0]
     assert v.severity == "warning"
     assert v.record_id is None
-    assert "hgfp2:deaddeaddeaddead" in (v.message or "")
+    assert f"{SYMBOL_FINGERPRINT_PREFIX}deaddeaddeaddead" in (v.message or "")
     assert "12" in (v.observed or "")
     assert "pkg_0" in (v.message or "")
 
@@ -1672,7 +1677,7 @@ def test_cross_field_fingerprint_degeneracy_discloses_none_cohort() -> None:
     report's denominator is explicit rather than silent — the same
     disclosure the stable_id collision check makes (WI-niluv)."""
     syms = [
-        _make_sym_with_fingerprint(i, "hgfp2:deaddeaddeaddead", f"pkg_{i}")
+        _make_sym_with_fingerprint(i, f"{SYMBOL_FINGERPRINT_PREFIX}deaddeaddeaddead", f"pkg_{i}")
         for i in range(12)
     ]
     # 4 Symbols with fingerprint=None — excluded from the scan, but disclosed.
@@ -1695,7 +1700,7 @@ def test_cross_field_fingerprint_shared_by_same_name_passes() -> None:
     """Many symbols sharing a fingerprint under FEW distinct names is
     legitimate duplicate code (the design intent), not degeneracy."""
     syms = [
-        _make_sym_with_fingerprint(i, "hgfp2:feedfeedfeedfeed", "__init__")
+        _make_sym_with_fingerprint(i, f"{SYMBOL_FINGERPRINT_PREFIX}feedfeedfeedfeed", "__init__")
         for i in range(12)
     ]
     violations = validate_ir(syms, [], [])
@@ -1713,7 +1718,7 @@ def test_cross_field_fingerprint_qualified_same_simple_name_passes() -> None:
     degeneracy. Names compare by simple form."""
     syms = [
         _make_sym_with_fingerprint(
-            i, "hgfp2:beefbeefbeefbeef", f"TestClass{i}.tracker_set",
+            i, f"{SYMBOL_FINGERPRINT_PREFIX}beefbeefbeefbeef", f"TestClass{i}.tracker_set",
         )
         for i in range(12)
     ]
@@ -1728,7 +1733,7 @@ def test_cross_field_fingerprint_qualified_same_simple_name_passes() -> None:
 def test_cross_field_fingerprint_distinct_values_pass() -> None:
     """Distinct fingerprints (the healthy state) emit no umbrella."""
     syms = [
-        _make_sym_with_fingerprint(i, f"hgfp2:{i:016x}", f"pkg_{i}")
+        _make_sym_with_fingerprint(i, f"{SYMBOL_FINGERPRINT_PREFIX}{i:016x}", f"pkg_{i}")
         for i in range(12)
     ]
     violations = validate_ir(syms, [], [])
@@ -1768,8 +1773,8 @@ def test_cross_field_stable_id_none_values_skipped() -> None:
     """Symbols whose stable_id is None do not contribute to the
     collision count — only populated ones are scored (INV-hunup)."""
     syms = [
-        _make_sym_with_stable_id(0, "hgstableid15:0000000000000000"),
-        _make_sym_with_stable_id(1, "hgstableid15:1111111111111111"),
+        _make_sym_with_stable_id(0, f"{STABLE_ID_PREFIX}0000000000000000"),
+        _make_sym_with_stable_id(1, f"{STABLE_ID_PREFIX}1111111111111111"),
         # stable_id=None — must not crash the validator
         _FakeSym(
             id="python:test/fake.py:2-2:nosid:function",
@@ -2013,7 +2018,7 @@ def test_stable_id_format_validator_flags_raw_64_char_hex_without_prefix() -> No
     assert v.validator_class == "id_format"
     assert v.field_name == "Symbol.stable_id"
     assert "raw_hex_no_prefix" in v.message
-    assert v.expected == "hgstableid15:<16hex> or hgscipid1:<16hex>"
+    assert v.expected == f"{STABLE_ID_PREFIX}<16hex> or {SCIP_STABLE_ID_PREFIX}<16hex>"
 
 
 def test_stable_id_format_validator_flags_bare_name_no_prefix() -> None:
@@ -2036,7 +2041,7 @@ def test_stable_id_format_validator_flags_label_wrong_length() -> None:
 
     sym = _FakeSym(
         id="python:pkg/foo.py:1-1:bar:function",
-        stable_id="hgstableid15:deadbeef",  # 8 chars, not 16
+        stable_id=f"{STABLE_ID_PREFIX}deadbeef",  # 8 chars, not 16
     )
     violations = _check_stable_id_format([sym])
     assert len(violations) == 1
@@ -2049,7 +2054,7 @@ def test_stable_id_format_validator_flags_label_non_hex_suffix() -> None:
 
     sym = _FakeSym(
         id="python:pkg/foo.py:1-1:bar:function",
-        stable_id="hgstableid15:not-hex-chars-here",
+        stable_id=f"{STABLE_ID_PREFIX}not-hex-chars-here",
     )
     violations = _check_stable_id_format([sym])
     assert len(violations) == 1
@@ -2081,7 +2086,7 @@ def test_stable_id_format_validator_rejects_the_v14_sha256_label() -> None:
     violations = _check_stable_id_format([sym])
     assert len(violations) == 1
     assert "superseded_label" in violations[0].message
-    assert "'hgstableid15:'" in violations[0].message
+    assert f"'{STABLE_ID_PREFIX}'" in violations[0].message
 
 
 def test_stable_id_format_validator_rejects_a_shape_id_in_the_stable_id_field() -> None:
@@ -2244,7 +2249,7 @@ def test_cross_field_class_b_canary_is_umbrella_not_per_record() -> None:
         _class_b_sym(
             id=f"python:test/fake.py:{i}-{i}:class-b-{i}:function",
             stable_id=None,
-            fingerprint="hgfp2:" + "0" * 16,
+            fingerprint=SYMBOL_FINGERPRINT_PREFIX + "0" * 16,
             discovery_language="python",
             origin=["websocket-linker"],
         )
@@ -2262,8 +2267,8 @@ def test_cross_field_class_b_canary_is_umbrella_not_per_record() -> None:
 def test_cross_field_class_b_fully_stamped_passes_canary() -> None:
     """A fully-stamped Class B stand-in emits no canary violations."""
     sym = _class_b_sym(
-        stable_id="hgstableid15:" + "0" * 16,
-        fingerprint="hgfp2:" + "0" * 16,
+        stable_id=STABLE_ID_PREFIX + "0" * 16,
+        fingerprint=SYMBOL_FINGERPRINT_PREFIX + "0" * 16,
         discovery_language="python",
         origin=["websocket-linker"],
     )

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from hypergumbo_core.analyze.base import find_child_by_type
 from unittest.mock import patch, MagicMock
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX
 
 class TestFindKotlinFiles:
     """Tests for Kotlin file discovery."""
@@ -2412,7 +2413,7 @@ class TestKotlinShapeId:
         result = analyze_kotlin(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
     def test_class_has_shape_id(self, tmp_path: Path) -> None:
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
@@ -2423,7 +2424,7 @@ class TestKotlinShapeId:
         result = analyze_kotlin(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
-        assert cls.shape_id.startswith("hgshapeid4:")
+        assert cls.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestKotlinLinesOfCode:

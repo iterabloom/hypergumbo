@@ -35,6 +35,7 @@ from hypergumbo_core.analyze.registry import (
     register_analyzer,
 )
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol
+from hypergumbo_core.identity_schemes import SCIP_STABLE_ID_PREFIX, STABLE_ID_PREFIX
 
 RUN_PY, RUN_SCIP = "run-python", "run-pyscip"
 RUNS: list[dict[str, Any]] = [
@@ -77,10 +78,10 @@ def _paired_symbols() -> list[Symbol]:
     return [
         Symbol(id=CALLER, name="Counter.increment", kind="method", language="python",
                path="pkg/mod.py", span=Span(14, 17, 0, 0), origin="python",
-               origin_run_id=RUN_PY, stable_id="hgstableid15:incumbent"),
+               origin_run_id=RUN_PY, stable_id=f"{STABLE_ID_PREFIX}incumbent"),
         Symbol(id="python:pkg/mod.py:14-14:increment:method", name="increment", kind="method",
                language="python", path="pkg/mod.py", span=Span(14, 14, 11, 20), origin="scip",
-               origin_run_id=RUN_SCIP, stable_id="hgscipid1:moniker"),
+               origin_run_id=RUN_SCIP, stable_id=f"{SCIP_STABLE_ID_PREFIX}moniker"),
     ]
 
 

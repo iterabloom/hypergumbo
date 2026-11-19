@@ -20,6 +20,7 @@ from hypergumbo_core.analyze.file_records import (
     unify_file_pseudo_symbols,
 )
 from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _file(lang: str, path: str, origin: str = "javascript", end: int = 1,
@@ -167,7 +168,7 @@ class TestTwoRecordsOneId:
         analyzer = _file("typescript", "pkg/src/index.ts", end=30, meta={"module_system": "esm"})
         synthesized = _file("typescript", "pkg/src/index.ts",
                             origin="orchestrator_file_symbol_synthesis", end=31)
-        analyzer.stable_id = synthesized.stable_id = "hgstableid15:0123456789abcdef"
+        analyzer.stable_id = synthesized.stable_id = f"{STABLE_ID_PREFIX}0123456789abcdef"
         other = _file("typescript", "pkg/src/other.ts")
         symbols = [analyzer, other, synthesized]
         edge = _edge("json:pkg/package.json:5-5:main:file", analyzer.id, "defines_target")
@@ -176,7 +177,7 @@ class TestTwoRecordsOneId:
         assert symbols == [analyzer, other]
         assert symbols[0] is analyzer
         assert analyzer.origin == ["javascript", "orchestrator_file_symbol_synthesis"]
-        assert analyzer.span.end_line == 31 and analyzer.stable_id == "hgstableid15:0123456789abcdef"
+        assert analyzer.span.end_line == 31 and analyzer.stable_id == f"{STABLE_ID_PREFIX}0123456789abcdef"
         assert edge.dst == analyzer.id and edge.edge_key == key
 
     def test_a_same_id_pair_beside_another_language_slot(self) -> None:

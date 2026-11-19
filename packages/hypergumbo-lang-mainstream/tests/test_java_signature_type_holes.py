@@ -30,6 +30,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_lang_mainstream.java import analyze_java, normalize_java_signature
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _symbols(root: Path, body: str, *, header: str = "class C {") -> dict[str, object]:
@@ -182,13 +183,13 @@ _HOLE_FREE = """\
 """
 
 _BASE_IDS = {
-    "C.add": "hgstableid15:5c8b45367506a4e6",
-    "C.g": "hgstableid15:e5fef13ec33fe01e",
-    "C.h": "hgstableid15:bccce9530b4d4b7d",
-    "C.v": "hgstableid15:baca420412b946d3",
-    "C.C": "hgstableid15:167880bda81d22a7",
-    "C.name": "hgstableid15:66946f25afcc920b",
-    "C.table": "hgstableid15:33ffedc784a9392a",
+    "C.add": f"{STABLE_ID_PREFIX}5c8b45367506a4e6",
+    "C.g": f"{STABLE_ID_PREFIX}e5fef13ec33fe01e",
+    "C.h": f"{STABLE_ID_PREFIX}bccce9530b4d4b7d",
+    "C.v": f"{STABLE_ID_PREFIX}baca420412b946d3",
+    "C.C": f"{STABLE_ID_PREFIX}167880bda81d22a7",
+    "C.name": f"{STABLE_ID_PREFIX}66946f25afcc920b",
+    "C.table": f"{STABLE_ID_PREFIX}33ffedc784a9392a",
 }
 
 

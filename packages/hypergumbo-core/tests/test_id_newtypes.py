@@ -290,12 +290,12 @@ def test_mints_produce_their_label_and_the_unchanged_digest(tmp_path: Path):
 def test_each_mint_site_carries_its_own_label(tmp_path: Path):
     """A value minted at each site starts with that site's label, written out
     here as literals so the labels themselves are pinned."""
-    assert _short_sha256("p").startswith("hgstableid15:")
-    assert _canonical_external_stable_id("python", "a.py", "f").startswith("hgstableid15:")
-    assert mint_shape_id("p").startswith("hgshapeid4:")
-    assert scip_stable_id("src/lib.rs", "rust-analyzer cargo x 1.0 crate/").startswith("hgscipid1:")
+    assert _short_sha256("p").startswith(STABLE_ID_PREFIX)
+    assert _canonical_external_stable_id("python", "a.py", "f").startswith(STABLE_ID_PREFIX)
+    assert mint_shape_id("p").startswith(SHAPE_ID_PREFIX)
+    assert scip_stable_id("src/lib.rs", "rust-analyzer cargo x 1.0 crate/").startswith(SCIP_STABLE_ID_PREFIX)
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
-    assert compute_repo_fingerprint_field(tmp_path).startswith("hgrepofp3:")
+    assert compute_repo_fingerprint_field(tmp_path).startswith(REPO_FINGERPRINT_PREFIX)
 
 
 def test_the_scip_mint_and_the_tree_sitter_mint_never_agree():

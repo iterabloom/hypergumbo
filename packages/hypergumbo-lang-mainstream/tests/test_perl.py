@@ -22,6 +22,7 @@ import pytest
 
 from hypergumbo_lang_mainstream import perl as perl_module
 from hypergumbo_lang_mainstream.perl import _analyzer, analyze_perl, is_perl_tree_sitter_available
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 class TestIsPerlTreeSitterAvailable:
@@ -378,7 +379,7 @@ class TestPerlStableId:
         result = analyze_perl(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 class TestPerlShapeId:
@@ -391,7 +392,7 @@ class TestPerlShapeId:
         result = analyze_perl(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestPerlCyclomaticComplexity:

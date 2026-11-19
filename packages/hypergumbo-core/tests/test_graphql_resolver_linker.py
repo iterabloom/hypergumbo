@@ -13,6 +13,7 @@ from hypergumbo_core.linkers.graphql_resolver import (
 )
 from hypergumbo_core.linkers.registry import LinkerContext
 from hypergumbo_core.ir import Symbol, Span
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 class TestJavaScriptResolverPatterns:
@@ -534,7 +535,7 @@ class TestGraphQLResolverLinker:
         assert symbol.stable_id == make_protocol_stable_id(
             "graphql_resolver", "Query", "users"
         )
-        assert symbol.stable_id.startswith("hgstableid15:")
+        assert symbol.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 class TestGraphQLResolverLinkerRegistry:

@@ -10,13 +10,17 @@ every test file loaded ``schema.py`` and a change to any constant in it (a
 schema version bump) selected the whole suite. The constants they need are in
 ``identity_schemes.py``, which imports nothing from the package.
 
-These tests pin three things: the leaf is a leaf; the files every test loads
-do not import ``schema.py`` when they are imported; and ``schema.py`` still
-offers the same objects, so no consumer sees a second copy of a constant.
+These tests pin four things: the leaf is a leaf; the files every test loads
+do not import ``schema.py`` when they are imported; ``schema.py`` still
+offers the same objects, so no consumer sees a second copy of a constant; and
+no source or test file writes a label out except the leaf and the one test
+that pins the labels' text, so a scheme bump is an edit to the constant and to
+that test.
 """
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -31,7 +35,8 @@ SHARED_NAMES = (
     "STABLE_ID_SCHEME", "SHAPE_ID_SCHEME", "REPO_FINGERPRINT_SCHEME",
     "SCIP_STABLE_ID_SCHEME", "SYMBOL_FINGERPRINT_SCHEME",
     "STABLE_ID_PREFIX", "SHAPE_ID_PREFIX", "REPO_FINGERPRINT_PREFIX",
-    "SCIP_STABLE_ID_PREFIX", "value_label", "identity_digest",
+    "SCIP_STABLE_ID_PREFIX", "SYMBOL_FINGERPRINT_PREFIX", "value_label",
+    "identity_digest",
 )
 
 
@@ -84,3 +89,57 @@ def test_the_shared_names_are_all_the_leaf_offers() -> None:
     public = {name for name in vars(identity_schemes)
               if not name.startswith("_") and name not in {"annotations", "re"}}
     assert public == set(SHARED_NAMES)
+
+
+#: A string that starts with an identity value's label: a value or a prefix.
+_LABEL_LEADING = re.compile(r"hg[a-z]+\d+:")
+#: The files that write a label out: the leaf derives them, and
+#: ``test_behavior_map_schema.py`` pins what they are today.
+_LABEL_TEXT_OWNERS = {
+    CORE + "identity_schemes.py",
+    "packages/hypergumbo-core/tests/test_behavior_map_schema.py",
+}
+
+
+def _label_leading_literals(path: Path) -> list[str]:
+    """Each non-docstring string constant in ``path`` (an f-string's literal
+    parts included) that starts with a label, as ``path:line``."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                docstrings.add(id(first.value))
+    rel = path.relative_to(REPO).as_posix()
+    return [
+        f"{rel}:{node.lineno}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        and id(node) not in docstrings and _LABEL_LEADING.match(node.value)
+    ]
+
+
+def test_no_file_writes_an_identity_label_out() -> None:
+    """A label is written out in two files: the leaf (``value_label``) and the
+    test that pins what each label is today. Code takes it from the prefix
+    constants, so a scheme bump relabels its values with no second edit
+    (``fingerprint.py`` once held its own ``hgfp2:``); tests build the values
+    they pin from the same constants (``f"{STABLE_ID_PREFIX}<digest>"``), so a
+    bump that moves no digest edits no pinned value. Prose that mentions a
+    label (a docstring, a comment, a message that does not start with one) is
+    not a value and is not counted."""
+    roots = [*REPO.glob("packages/*/src"), *REPO.glob("packages/*/tests"), REPO / "tests"]
+    offenders = []
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            rel = path.relative_to(REPO).as_posix()
+            if rel in _LABEL_TEXT_OWNERS:
+                continue
+            if _LABEL_LEADING.search(path.read_text(encoding="utf-8")):
+                offenders += _label_leading_literals(path)
+    assert offenders == [], (
+        "build the value from the identity_schemes prefix constant "
+        f"(STABLE_ID_PREFIX, SHAPE_ID_PREFIX, ...): {offenders}"
+    )

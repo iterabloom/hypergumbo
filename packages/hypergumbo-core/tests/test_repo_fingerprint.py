@@ -30,6 +30,7 @@ from hypergumbo_core.repo_fingerprint import (
     compute_repo_fingerprint,
     compute_repo_fingerprint_field,
 )
+from hypergumbo_core.identity_schemes import REPO_FINGERPRINT_PREFIX
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +100,8 @@ class TestFieldRendering:
 
     def test_field_is_scheme_prefixed_full_digest(self, git_repo: Path) -> None:
         field = compute_repo_fingerprint_field(git_repo)
-        assert field.startswith("hgrepofp3:")
-        hex_part = field[len("hgrepofp3:"):]
+        assert field.startswith(REPO_FINGERPRINT_PREFIX)
+        hex_part = field[len(REPO_FINGERPRINT_PREFIX):]
         assert len(hex_part) == 64
         assert all(c in "0123456789abcdef" for c in hex_part)
 
@@ -109,13 +110,13 @@ class TestFieldRendering:
         # so the two never diverge in the underlying hash.
         assert (
             compute_repo_fingerprint_field(git_repo)
-            == "hgrepofp3:" + compute_repo_fingerprint(git_repo)
+            == REPO_FINGERPRINT_PREFIX + compute_repo_fingerprint(git_repo)
         )
 
     def test_field_works_for_non_git(self, non_git_repo: Path) -> None:
         field = compute_repo_fingerprint_field(non_git_repo)
-        assert field.startswith("hgrepofp3:")
-        assert len(field[len("hgrepofp3:"):]) == 64
+        assert field.startswith(REPO_FINGERPRINT_PREFIX)
+        assert len(field[len(REPO_FINGERPRINT_PREFIX):]) == 64
 
 
 # ---------------------------------------------------------------------------

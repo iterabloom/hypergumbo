@@ -49,6 +49,7 @@ import json
 from pathlib import Path
 
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 # Fixture: three first-party modules (the survivors) + one tier-4 DERIVED ``*_pb2.py`` file
 # whose file-level external imports become dangling sources once it is tier-filtered.
@@ -94,23 +95,23 @@ FIXTURE_FILES = {
 # A reader-order change to boundary synthesis cannot change any of these (content-derived).
 # Regenerate this frozenset if the fixture changes.
 GOLDEN_FIRSTPARTY_STABLE_IDS = frozenset({
-    "hgstableid15:eabef7c9b0ca629a",  # pkg/app.py setup:function
-    "hgstableid15:43dec3a64c659abd",  # pkg/app.py file
-    "hgstableid15:29e41c02cfe5b84e",  # pkg/service.py Service:class
-    "hgstableid15:70a8e859b1ee3b9c",  # pkg/app.py handler:function
-    "hgstableid15:eb937f52b3e30564",  # pkg/models.py Order.submit:method
-    "hgstableid15:81cf3c740bec2d42",  # pkg/service.py Service.run:method
-    "hgstableid15:13474f4add8dfeb3",  # pkg/models.py Item:class
-    "hgstableid15:d89075745234437a",  # pkg/models.py Item.total:method
-    "hgstableid15:36d8981e5e413f29",  # pkg/models.py Order:class
-    "hgstableid15:4e2034fe2ff7a100",  # pkg/service.py Service.stop:method
+    f"{STABLE_ID_PREFIX}eabef7c9b0ca629a",  # pkg/app.py setup:function
+    f"{STABLE_ID_PREFIX}43dec3a64c659abd",  # pkg/app.py file
+    f"{STABLE_ID_PREFIX}29e41c02cfe5b84e",  # pkg/service.py Service:class
+    f"{STABLE_ID_PREFIX}70a8e859b1ee3b9c",  # pkg/app.py handler:function
+    f"{STABLE_ID_PREFIX}eb937f52b3e30564",  # pkg/models.py Order.submit:method
+    f"{STABLE_ID_PREFIX}81cf3c740bec2d42",  # pkg/service.py Service.run:method
+    f"{STABLE_ID_PREFIX}13474f4add8dfeb3",  # pkg/models.py Item:class
+    f"{STABLE_ID_PREFIX}d89075745234437a",  # pkg/models.py Item.total:method
+    f"{STABLE_ID_PREFIX}36d8981e5e413f29",  # pkg/models.py Order:class
+    f"{STABLE_ID_PREFIX}4e2034fe2ff7a100",  # pkg/service.py Service.stop:method
     # WI-dagif (file-anchor:F1, node-bearing slice): service.py and models.py
     # have content nodes but no imports/calls, so they now get synthesized
     # kind="file" anchors (app.py already had one via its import edges). Proven
     # purely additive — the 10 identities above are UNCHANGED, so the
     # reorder-neutrality invariant still holds.
-    "hgstableid15:11d642e4bc07a11a",  # pkg/service.py file anchor
-    "hgstableid15:68d4dd5cd2cc022f",  # pkg/models.py file anchor
+    f"{STABLE_ID_PREFIX}11d642e4bc07a11a",  # pkg/service.py file anchor
+    f"{STABLE_ID_PREFIX}68d4dd5cd2cc022f",  # pkg/models.py file anchor
 })
 
 # The tier-4 DERIVED file-level symbol that must be filtered out (the defect precondition).

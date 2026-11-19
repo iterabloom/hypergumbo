@@ -14,6 +14,7 @@ from hypergumbo_lang_extended1.twig import (
     find_twig_files,
     is_twig_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def make_twig_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -217,7 +218,7 @@ Hello, {{ user.name }}!
         assert _head.startswith("twig:"), block.id
         assert re.match(r"^\d+-\d+$", _span), block.id
         assert _kind == block.kind, block.id
-        assert block.stable_id.startswith("hgstableid15:")
+        assert block.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """Every emitted symbol's stable_id is the canonical sha256 form.
@@ -245,7 +246,7 @@ Hello, {{ user.name }}!
 {% endblock %}""")
         result = analyze_twig(tmp_path)
         assert len(result.symbols) >= 1
-        pattern = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+        pattern = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
         for sym in result.symbols:
             assert pattern.match(sym.stable_id), (
                 f"non-canonical stable_id: {sym.stable_id!r} (kind={sym.kind})"

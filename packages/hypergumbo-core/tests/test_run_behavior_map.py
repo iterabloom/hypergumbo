@@ -7,6 +7,7 @@ from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.registry import LinkerResult
 from hypergumbo_core.schema import SCHEMA_VERSION
+from hypergumbo_core.identity_schemes import REPO_FINGERPRINT_PREFIX
 
 
 def test_run_behavior_map_writes_behavior_map_json(tmp_path):
@@ -54,8 +55,8 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
         # label, then the digest (ADR-0035 "Value labels").
         assert (
             isinstance(fp, str)
-            and fp.startswith("hgrepofp3:")
-            and len(fp[len("hgrepofp3:"):]) == 64
+            and fp.startswith(REPO_FINGERPRINT_PREFIX)
+            and len(fp[len(REPO_FINGERPRINT_PREFIX):]) == 64
         ), (
             f"AnalysisRun pass={run.get('pass')!r} has invalid "
             f"repo_fingerprint={fp!r}"
@@ -68,7 +69,7 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
 
     assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v3"
     # The field carries its scheme's label (ADR-0035 "Value labels").
-    assert all(fp.startswith("hgrepofp3:") for fp in fps)
+    assert all(fp.startswith(REPO_FINGERPRINT_PREFIX) for fp in fps)
 
 
 def test_sketch_precomputed_omits_vocabulary(tmp_path):

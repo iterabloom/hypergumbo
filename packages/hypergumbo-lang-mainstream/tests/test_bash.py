@@ -7,6 +7,7 @@ import pytest
 from hypergumbo_core.analyze.base import find_child_by_type
 from hypergumbo_lang_mainstream import bash as bash_module
 from unittest.mock import patch, MagicMock
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 class TestBashHelpers:
     """Tests for Bash analyzer helper functions."""
@@ -636,7 +637,7 @@ class TestBashStableId:
         result = analyze_bash(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 class TestBashShapeId:
@@ -649,7 +650,7 @@ class TestBashShapeId:
         result = analyze_bash(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestInvTajapShellScriptConcept:

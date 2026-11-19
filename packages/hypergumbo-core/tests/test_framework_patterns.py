@@ -28,6 +28,7 @@ from hypergumbo_core.framework_patterns import (
     strip_test_file_only_concepts,
 )
 from hypergumbo_core.ir import Span, Symbol, UsageContext
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 class TestStripTestFileOnlyConcepts:
@@ -19591,8 +19592,8 @@ class TestMaterializeRouteSymbols:
         routes = materialize_route_symbols([handler])
         assert len(routes) == 1
         assert routes[0].stable_id is not None
-        assert routes[0].stable_id.startswith("hgstableid15:")
-        assert len(routes[0].stable_id) == len("hgstableid15:") + 16
+        assert routes[0].stable_id.startswith(STABLE_ID_PREFIX)
+        assert len(routes[0].stable_id) == len(STABLE_ID_PREFIX) + 16
 
     def test_no_path_normalized_to_root(self) -> None:
         """Route with method but no path gets normalized to '/' (INV-nimik)."""

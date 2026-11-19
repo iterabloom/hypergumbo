@@ -13,6 +13,7 @@ from hypergumbo_lang_extended1.bitbake import (
     find_bitbake_files,
     is_bitbake_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def make_bitbake_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -233,7 +234,7 @@ SUMMARY = "Test"
         assert var is not None
         # WI-banod (stable_id scheme v10): the stable_id is a hash, not the
         # node id it used to copy; the id stays the location key.
-        assert var.stable_id.startswith("hgstableid15:") and len(var.stable_id) == 29
+        assert var.stable_id.startswith(STABLE_ID_PREFIX) and len(var.stable_id) == len(STABLE_ID_PREFIX) + 16
         assert var.id != var.stable_id
         assert "bitbake:" in var.id
         assert "test.bb" in var.id

@@ -10,6 +10,7 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import robot as robot_module
 from hypergumbo_lang_common.robot import analyze_robot, find_robot_files, is_robot_tree_sitter_available
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 def make_robot_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Robot Framework file in the temp directory."""
@@ -276,7 +277,7 @@ My Test Keyword
         ), keyword.id
         # stable_id is the canonical sha256 form, distinct from the raw id.
         assert keyword.stable_id != keyword.id
-        assert re.match(r"^hgstableid15:[0-9a-f]{16}$", keyword.stable_id)
+        assert re.match(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$", keyword.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         # Reuse the complete-file fixture, which yields one symbol of every kind
@@ -313,7 +314,7 @@ Valid Login
         result = analyze_robot(tmp_path)
         assert not result.skipped
         assert len(result.symbols) >= 1  # non-vacuous
-        canonical = re.compile(r"^hgstableid15:[0-9a-f]{16}$")
+        canonical = re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert canonical.match(symbol.stable_id), (
                 f"{symbol.kind} {symbol.name!r} has non-canonical "

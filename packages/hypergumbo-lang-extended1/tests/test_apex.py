@@ -13,6 +13,7 @@ from hypergumbo_lang_extended1.apex import (
     find_apex_files,
     is_apex_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def make_apex_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -424,7 +425,7 @@ public class Service {}
         assert cls is not None
         assert cls.id != cls.stable_id
         assert cls.id.startswith("apex:Service.cls:")
-        assert cls.stable_id.startswith("hgstableid15:")
+        assert cls.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Service.cls", """

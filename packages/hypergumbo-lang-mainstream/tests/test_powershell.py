@@ -19,6 +19,7 @@ from hypergumbo_lang_mainstream.powershell import (
     find_powershell_files,
     is_powershell_tree_sitter_available,
 )
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 @pytest.fixture
@@ -299,7 +300,7 @@ class TestPowerShellStableId:
         result = analyze_powershell(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function" and s.name == "Get-Greeting")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
 
 
 class TestPowerShellShapeId:
@@ -314,7 +315,7 @@ class TestPowerShellShapeId:
         result = analyze_powershell(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function" and s.name == "Get-Greeting")
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestPowerShellCyclomaticComplexity:

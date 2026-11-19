@@ -17,6 +17,7 @@ from hypergumbo_core.linkers.event_sourcing import (
     EventPattern,
 )
 from hypergumbo_core.linkers.registry import LinkerContext
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 class TestJavaScriptEventPatterns:
@@ -519,7 +520,7 @@ class TestEventSourcingLinker:
         assert symbol.stable_id == make_protocol_stable_id(
             "event_sourcing", "event_bus", "publish", "user:created"
         )
-        assert symbol.stable_id.startswith("hgstableid15:")
+        assert symbol.stable_id.startswith(STABLE_ID_PREFIX)
 
     def test_django_signal_linking(self, tmp_path: Path):
         """Links Django signal publishers to receivers."""

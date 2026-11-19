@@ -47,6 +47,7 @@ import pytest
 
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 _KINDS_REQUIRING_STABLE_ID = frozenset({
@@ -211,10 +212,10 @@ class TestBackstopBehavior:
         """Backstop must not clobber a producer-computed stable_id."""
         from hypergumbo_core.analyze.base import populate_kind_stable_ids
         sym = self._make_symbol(
-            "variable", name="X", stable_id="hgstableid15:custom_producer_value",
+            "variable", name="X", stable_id=f"{STABLE_ID_PREFIX}custom_producer_value",
         )
         populate_kind_stable_ids([sym])
-        assert sym.stable_id == "hgstableid15:custom_producer_value"
+        assert sym.stable_id == f"{STABLE_ID_PREFIX}custom_producer_value"
 
     def test_template_kind_gets_stable_id_distinct_from_file(self) -> None:
         """META-nomiz: view-template stand-ins (kind='template') are backstopped,
@@ -265,8 +266,8 @@ class TestKindSpecificFactories:
         factory = getattr(base_mod, factory_name)
         result = factory(*args)
         assert isinstance(result, str)
-        assert result.startswith("hgstableid15:")
-        assert len(result) > len("hgstableid15:")
+        assert result.startswith(STABLE_ID_PREFIX)
+        assert len(result) > len(STABLE_ID_PREFIX)
 
     def test_factory_outputs_are_deterministic(self) -> None:
         """Calling each factory twice with the same args produces the same output."""
@@ -319,8 +320,8 @@ class TestContainerKindStableId:
         populate_kind_stable_ids(syms)
         for s in syms:
             assert s.stable_id is not None, f"kind={s.kind} left at stable_id=None"
-            assert s.stable_id.startswith("hgstableid15:"), s.stable_id
-            assert len(s.stable_id) > len("hgstableid15:")
+            assert s.stable_id.startswith(STABLE_ID_PREFIX), s.stable_id
+            assert len(s.stable_id) > len(STABLE_ID_PREFIX)
 
     def test_container_kinds_distinct_by_kind(self) -> None:
         """A class and a same-named struct in the same file get distinct ids —
@@ -352,9 +353,9 @@ class TestContainerKindStableId:
         is never clobbered by the container backstop."""
         from hypergumbo_core.analyze.base import populate_kind_stable_ids
         sym = self._make_symbol("class", name="Config")
-        sym.stable_id = "hgstableid15:producer_typed_id"
+        sym.stable_id = f"{STABLE_ID_PREFIX}producer_typed_id"
         populate_kind_stable_ids([sym])
-        assert sym.stable_id == "hgstableid15:producer_typed_id"
+        assert sym.stable_id == f"{STABLE_ID_PREFIX}producer_typed_id"
 
     def test_backstop_idempotent_for_container_kinds(self) -> None:
         from hypergumbo_core.analyze.base import populate_kind_stable_ids
@@ -367,8 +368,8 @@ class TestContainerKindStableId:
     def test_declaration_factory_is_prefixed_and_deterministic(self) -> None:
         from hypergumbo_core.analyze.base import make_declaration_stable_id
         r = make_declaration_stable_id("class", "typescript", "widget.ts", "ItemDetail")
-        assert r.startswith("hgstableid15:")
-        assert len(r) > len("hgstableid15:")
+        assert r.startswith(STABLE_ID_PREFIX)
+        assert len(r) > len(STABLE_ID_PREFIX)
         assert r == make_declaration_stable_id("class", "typescript", "widget.ts", "ItemDetail")
 
     def test_declaration_factory_kind_language_path_name_all_matter(self) -> None:
@@ -576,9 +577,9 @@ class TestFloorWithAbstention:
 
     def test_producer_value_is_never_overridden(self) -> None:
         from hypergumbo_core.analyze.base import populate_kind_stable_ids
-        sym = self._sym(stable_id="hgstableid15:0123456789abcdef")
+        sym = self._sym(stable_id=f"{STABLE_ID_PREFIX}0123456789abcdef")
         populate_kind_stable_ids([sym])
-        assert sym.stable_id == "hgstableid15:0123456789abcdef"
+        assert sym.stable_id == f"{STABLE_ID_PREFIX}0123456789abcdef"
 
     def test_language_none_stand_in_is_left_to_its_own_chokepoint(self) -> None:
         """A ``language=None`` Symbol is a Class-B / external stand-in whose

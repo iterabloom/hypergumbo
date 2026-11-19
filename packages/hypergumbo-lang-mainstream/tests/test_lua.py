@@ -14,6 +14,7 @@ Test coverage includes:
 - Two-pass cross-file resolution
 """
 from pathlib import Path
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 
@@ -829,9 +830,9 @@ class TestLuaStableShapeId:
         result = analyze_lua(tmp_path)
         func = next(s for s in result.symbols if s.kind == "function" and s.name == "greet")
         assert func.stable_id is not None
-        assert func.stable_id.startswith("hgstableid15:")
+        assert func.stable_id.startswith(STABLE_ID_PREFIX)
         assert func.shape_id is not None
-        assert func.shape_id.startswith("hgshapeid4:")
+        assert func.shape_id.startswith(SHAPE_ID_PREFIX)
 
 
 class TestLuaCyclomaticComplexity:

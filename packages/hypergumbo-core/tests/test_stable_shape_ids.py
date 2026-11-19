@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
 def test_stable_id_computed_for_functions(tmp_path: Path) -> None:
@@ -18,7 +19,7 @@ def test_stable_id_computed_for_functions(tmp_path: Path) -> None:
     func_nodes = [n for n in data["nodes"] if n["kind"] == "function"]
     assert len(func_nodes) == 1
     assert func_nodes[0]["stable_id"] is not None
-    assert func_nodes[0]["stable_id"].startswith("hgstableid15:")
+    assert func_nodes[0]["stable_id"].startswith(STABLE_ID_PREFIX)
 
 
 def test_stable_id_computed_for_classes(tmp_path: Path) -> None:
@@ -33,7 +34,7 @@ def test_stable_id_computed_for_classes(tmp_path: Path) -> None:
     class_nodes = [n for n in data["nodes"] if n["kind"] == "class"]
     assert len(class_nodes) == 1
     assert class_nodes[0]["stable_id"] is not None
-    assert class_nodes[0]["stable_id"].startswith("hgstableid15:")
+    assert class_nodes[0]["stable_id"].startswith(STABLE_ID_PREFIX)
 
 
 def test_stable_id_survives_body_edits(tmp_path: Path) -> None:
@@ -126,7 +127,7 @@ def test_shape_id_computed_for_functions(tmp_path: Path) -> None:
     func_nodes = [n for n in data["nodes"] if n["kind"] == "function"]
     assert len(func_nodes) == 1
     assert func_nodes[0]["shape_id"] is not None
-    assert func_nodes[0]["shape_id"].startswith("hgshapeid4:")
+    assert func_nodes[0]["shape_id"].startswith(SHAPE_ID_PREFIX)
 
 
 def test_shape_id_same_for_same_structure(tmp_path: Path) -> None:
@@ -309,8 +310,8 @@ def test_stable_id_decorator_call(tmp_path: Path) -> None:
     # INV-bazij: name is a disambiguator — distinct function names split
     # stable_id even when decorators match.
     assert func_nodes[0]["stable_id"] != func_nodes[1]["stable_id"]
-    assert func_nodes[0]["stable_id"].startswith("hgstableid15:")
-    assert func_nodes[1]["stable_id"].startswith("hgstableid15:")
+    assert func_nodes[0]["stable_id"].startswith(STABLE_ID_PREFIX)
+    assert func_nodes[1]["stable_id"].startswith(STABLE_ID_PREFIX)
 
 
 def test_stable_id_decorator_attribute_call(tmp_path: Path) -> None:

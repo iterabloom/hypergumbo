@@ -4,7 +4,7 @@
 WHAT IS HERE. The five scheme constants that say how an identity value was
 computed (``stable_id``, ``shape_id``, ``repo_fingerprint``, the SCIP arm's
 ``stable_id``, ``Symbol.fingerprint``), :func:`value_label`, which derives a
-value's label from its scheme constant, the four labels derived that way, and
+value's label from its scheme constant, the five labels derived that way, and
 :func:`identity_digest`, which reads the digest back out of a labelled value.
 ``schema.py`` offers every one of these names again (the same objects), so a
 reader of the output format finds them beside ``SCHEMA_VERSION``.
@@ -34,9 +34,22 @@ what lives here: a scheme bump relabels every identity value in the output.
 
 Every identity value carries the label of the scheme that produced it
 (``hgstableid15:``, ``hgshapeid4:``, ``hgrepofp3:``, ``hgscipid1:``, and
-``hgfp2:`` for a symbol fingerprint, whose literal is in ``fingerprint.py``).
-The label names the value and its scheme version; the digest after it is what
-the algorithm computed (ADR-0035 §"Value labels").
+``hgfp2:`` for a symbol fingerprint). The label names the value and its scheme
+version; the digest after it is what the algorithm computed (ADR-0035
+§"Value labels").
+
+WHY TESTS BUILD PINNED VALUES FROM THE PREFIXES. A test that pins an identity
+value writes it as ``f"{STABLE_ID_PREFIX}<digest>"`` (and the shape-id,
+repo-fingerprint, SCIP and fingerprint equivalents), not with the label typed
+out. A scheme bump relabels every value but moves only the digests its change
+touches; with the label typed out, every pinned value in every test had to be
+rewritten at each bump even when its digest did not move. The label text
+itself is pinned in one place, ``test_behavior_map_schema.py``
+(``test_each_value_label_is_derived_from_its_scheme_constant``); the scheme
+constants' text is pinned in the same file (the empty-map test), and the
+fingerprint and repo-fingerprint schemes' text again in ``test_fingerprint.py``
+and ``test_run_behavior_map.py``. A bump edits those pins by hand and no other
+test.
 """
 from __future__ import annotations
 
@@ -89,8 +102,8 @@ def value_label(word: str, scheme: str) -> str:
     identity value starts with the label of the scheme that produced it, and
     the number is the scheme constant's, so bumping the constant relabels
     every value with no second edit. ``word`` names the value (``stableid``,
-    ``shapeid``, ``repofp``, ``scipid``); it is what tells a stable id from a
-    shape id when the value is read without its field.
+    ``shapeid``, ``repofp``, ``scipid``, ``fp``); it is what tells a stable id
+    from a shape id when the value is read without its field.
     """
     match = _SCHEME_NUMBER.search(scheme)
     if match is None:
@@ -106,6 +119,8 @@ SHAPE_ID_PREFIX = value_label("shapeid", SHAPE_ID_SCHEME)
 REPO_FINGERPRINT_PREFIX = value_label("repofp", REPO_FINGERPRINT_SCHEME)
 #: The label of a ``Symbol.stable_id`` the rust-analyzer (SCIP) arm minted.
 SCIP_STABLE_ID_PREFIX = value_label("scipid", SCIP_STABLE_ID_SCHEME)
+#: The label of every canonical ``Symbol.fingerprint`` (``fingerprint.py``).
+SYMBOL_FINGERPRINT_PREFIX = value_label("fp", SYMBOL_FINGERPRINT_SCHEME)
 
 
 def identity_digest(value: str) -> str:

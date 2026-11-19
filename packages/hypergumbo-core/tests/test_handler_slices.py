@@ -22,6 +22,7 @@ from hypergumbo_core.cli import (
     _handler_slice_filename,
     _is_route_symbol,
 )
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 
 
 def _concept_handler(name: str, path: str, http_method: str, route_path: str) -> Symbol:
@@ -34,7 +35,7 @@ def _concept_handler(name: str, path: str, http_method: str, route_path: str) ->
         language="python",
         path=path,
         span=Span(1, 5, 0, 10),
-        stable_id=f"hgstableid15:{name}",
+        stable_id=f"{STABLE_ID_PREFIX}{name}",
         meta={"concepts": [{"concept": "route", "method": http_method, "path": route_path}]},
     )
 
@@ -49,7 +50,7 @@ def _kind_route_handler(name: str, path: str, http_method: str, route_path: str)
         language="go",
         path=path,
         span=Span(1, 5, 0, 10),
-        stable_id=f"hgstableid15:route-{name}",
+        stable_id=f"{STABLE_ID_PREFIX}route-{name}",
         meta={"http_method": http_method, "route_path": route_path, "framework_role": "route"},
     )
 
@@ -63,7 +64,7 @@ def _non_route_symbol(name: str, path: str) -> Symbol:
         language="python",
         path=path,
         span=Span(1, 5, 0, 10),
-        stable_id=f"hgstableid15:{name}",
+        stable_id=f"{STABLE_ID_PREFIX}{name}",
     )
 
 
@@ -101,7 +102,7 @@ def test_is_route_symbol_rejects_non_route_concept() -> None:
     sym = Symbol(
         id=sym_id, name="User", kind="class", language="python", path="src/models.py",
         span=Span(1, 5, 0, 10),
-        stable_id="hgstableid15:User",
+        stable_id=f"{STABLE_ID_PREFIX}User",
         meta={"concepts": [{"concept": "model"}]},
     )
     assert _is_route_symbol(sym) is False
@@ -133,7 +134,7 @@ def test_extract_route_info_incomplete_kind_route_falls_back_to_concept() -> Non
     sym = Symbol(
         id=sym_id, name="h", kind="function", language="go", path="p.go",
         span=Span(1, 5, 0, 10),
-        stable_id="hgstableid15:h",
+        stable_id=f"{STABLE_ID_PREFIX}h",
         meta={"concepts": [{"concept": "route", "method": "GET", "path": "/y"}]},
     )
     assert _extract_route_info(sym) == {"method": "GET", "path": "/y"}
@@ -270,7 +271,7 @@ def test_emit_handler_slices_fallback_filename_without_route(tmp_path: Path) -> 
     sym = Symbol(
         id=sym_id, name="mystery", kind="function", language="go", path="p.go",
         span=Span(1, 5, 0, 10),
-        stable_id="hgstableid15:mystery",
+        stable_id=f"{STABLE_ID_PREFIX}mystery",
         meta={"framework_role": "route"},
     )
     bmap = _behavior_map([sym], [])
