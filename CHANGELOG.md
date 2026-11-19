@@ -34,6 +34,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Go pointer-receiver method values no longer hide secret leaks.**
 - **Secrets returned through an alias no longer read confirmed.**
 - **Typed ids no longer collapse tuple, function or nested types.**
+- **Generic overloads differing only in bounds get distinct ids.**
 
 ### Development tools and CI
 

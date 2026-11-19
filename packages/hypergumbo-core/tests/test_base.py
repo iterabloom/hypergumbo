@@ -880,6 +880,10 @@ class TestNormalizeGenericParams:
         result = normalize_generic_params("(T, T) -> T", ["T"])
         assert result == "($0, $0) -> $0"
 
+    def test_replaces_any_case_but_not_a_member_type(self) -> None:
+        assert normalize_generic_params("a => Map[a, x.a]", ["a"]) == "$0 => Map[$0, x.a]"
+        assert normalize_generic_params("T.Element", ["T"]) == "$0.Element"
+
     def test_does_not_replace_substrings(self) -> None:
         # "T" should not match inside "String" or "Int"
         result = normalize_generic_params("Map<String, Int>", ["T"])

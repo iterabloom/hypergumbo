@@ -211,9 +211,12 @@ _CLEAN_PINS = {
     "cFunReceiverType": f"{STABLE_ID_PREFIX}c51f667b38f5f0bc",
     "cNamedLambda": f"{STABLE_ID_PREFIX}bb51e3923da5dc74",
     "cGeneric": f"{STABLE_ID_PREFIX}d578ca9b48ce2f56",
-    "cBound": f"{STABLE_ID_PREFIX}56cc8cccaca74124",
-    "cWhere": f"{STABLE_ID_PREFIX}eb662138077f8f03",
-    "cReified": f"{STABLE_ID_PREFIX}47917587af406244",
+    # Moved by WI-bubak (stable-id v16): a declaration's own type-parameter
+    # clause is hashed, its names by position (was 56cc8cccaca74124,
+    # eb662138077f8f03, 47917587af406244).
+    "cBound": f"{STABLE_ID_PREFIX}c3a280018d2b0237",
+    "cWhere": f"{STABLE_ID_PREFIX}dcb5982900f7a714",
+    "cReified": f"{STABLE_ID_PREFIX}7bc4eaa5c559c104",
     "cDefault": f"{STABLE_ID_PREFIX}572450cc72dfa7d8",
     "cSuspend": f"{STABLE_ID_PREFIX}d6f66cb0c812e82a",
     "cCross": f"{STABLE_ID_PREFIX}8eb951c54c90d384",

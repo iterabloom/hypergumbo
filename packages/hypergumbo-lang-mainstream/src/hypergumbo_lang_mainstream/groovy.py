@@ -86,6 +86,7 @@ from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    normalize_with_type_parameters,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -743,7 +744,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     )
 
                     # Typed stable_id (spec §6 typed tier)
-                    norm_sig = normalize_groovy_signature(signature)
+                    norm_sig = normalize_with_type_parameters(
+                        normalize_groovy_signature, signature, node, source)
                     stable_id = make_typed_stable_id(
                         "method", norm_sig, visibility_from_modifiers(modifiers),
                         name=method_name,
@@ -790,7 +792,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     modifiers = _extract_modifiers_groovy(node)
 
                     # Typed stable_id (spec §6 typed tier)
-                    norm_sig = normalize_groovy_signature(signature)
+                    norm_sig = normalize_with_type_parameters(
+                        normalize_groovy_signature, signature, node, source)
                     stable_id = make_typed_stable_id(
                         "function", norm_sig, visibility_from_modifiers(modifiers),
                         name=func_name, qualified_name=func_name,
