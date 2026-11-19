@@ -45,6 +45,9 @@ catches broadly and exits 0 — see `main`.
                    graph; started detached by smart-test, stops for a test run
     line-tests  print which tests the index records running FILE:LINE
     line-records  print how many pairs of the index have statement records
+    budget-report  for one commit's test manifest: the cheapest covering tests,
+                   the at-risk statements and the inferred coverage (a report;
+                   nothing is cut)
 """
 from __future__ import annotations
 
@@ -68,6 +71,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent
                       / "packages" / "hypergumbo-core" / "src"))
 
 from hypergumbo_core import graph_rows, graph_select
+from hypergumbo_core import budget_report
 from hypergumbo_core.import_closure import build as build_import_graph
 from hypergumbo_core.prose_only import (
     fold_run, global_refusal, select_for_prose, shared_work_used, tests_reading,
@@ -1392,6 +1396,45 @@ def cmd_line_records(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_budget_report(args: argparse.Namespace) -> int:
+    """Print the budget report for the manifest committed at ``--at``: its
+    baseline to ``--at`` is the change, its selected files minus its
+    ``#-`` lines are the run (``budget_report`` holds every rule)."""
+    root = Path(args.repo_root).resolve()
+    text = _base_source(root, args.at, ".ci/affected-tests.txt")
+    manifest = budget_report.parse_manifest(text or "")
+    if manifest.baseline is None:
+        print(f"budget-report: no manifest with a baseline at {args.at}")
+        return 0
+    diff = subprocess.run(["git", "-C", str(root), "diff", "--name-only", manifest.baseline,
+                           args.at], capture_output=True, text=True, check=True).stdout
+    changed = [rel for rel in diff.splitlines() if budget_report.is_package_source(rel)]
+    versions = {str(root / rel): (_base_source(root, manifest.baseline, rel),
+                                  _base_source(root, args.at, rel)) for rel in changed}
+    verdict = _base_source(root, args.verdict_ref, "scheduled/full-suite.json")
+    measured = json.loads(verdict).get("coverage") if verdict else None
+    timings = budget_report.load_timings(Path(args.timings))
+    with contextlib.closing(open_index(Path(args.index))) as conn:
+        found = budget_report.changed_statements(conn, versions)
+        selected = budget_report.tests_of_files(conn, manifest.files)
+        ran = selected - manifest.deselected
+        ranking = budget_report.rank_cheapest_cover(
+            {t: s for t, s in found.covers.items() if t in ran}, timings)
+        def counts(path: str) -> bool:
+            return budget_report.is_package_source(budget_report.relative(path, root))
+
+        risk = budget_report.at_risk(conn, set(found.covers), ran, counts)
+        # What a cut to the ranking alone would leave unmeasured.
+        cut = budget_report.at_risk(conn, set(found.covers),
+                                    {step.test for step in ranking.steps}, counts)
+    print(f"budget-report: {args.at} against its baseline {manifest.baseline[:12]}; "
+          f"{len(changed)} package source file(s) changed")
+    print(budget_report.render(ranking, risk, measured, root, selected=len(selected),
+                               selected_seconds=sum(timings.get(t, 0.0) for t in selected),
+                               ran=len(ran), unrecorded=found.unrecorded, cut=cut))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", default=".")
@@ -1493,6 +1536,14 @@ def main(argv: list[str] | None = None) -> int:
     sr.set_defaults(func=cmd_stale_record)
 
     sub.add_parser("stale-report").set_defaults(func=cmd_stale_report)
+    br = sub.add_parser("budget-report")
+    br.add_argument("--at", default="HEAD",
+                    help="commit whose .ci/affected-tests.txt is reported on")
+    br.add_argument("--verdict-ref", default="origin/badges",
+                    help="ref holding scheduled/full-suite.json (the measured figure)")
+    br.add_argument("--timings", default=str(Path.home() / "hypergumbo_lab_notebook"
+                                             / "test_timings.json"))
+    br.set_defaults(func=cmd_budget_report)
     sub.add_parser("statement-bar").set_defaults(func=cmd_statement_bar)
     wr = sub.add_parser("wall-report")
     wr.add_argument("--total", type=float, required=True, help="wall seconds since the run began")

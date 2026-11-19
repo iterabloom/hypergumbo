@@ -59,6 +59,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`ci-debug pipelines` saves Woodpecker's pipeline records locally.**
 - **Test timings are stored under the right test id.**
 - **Docs state the full suite's three-a-day UTC schedule.**
+- **`coverage-select budget-report` prices what a test cut would cost.**
 - **By-statement selection keeps tests that read changed files.**
 - **Hashing analyzer sources no longer counts as reading them.**
 - **Tests no longer leak environment variables to later tests.**
