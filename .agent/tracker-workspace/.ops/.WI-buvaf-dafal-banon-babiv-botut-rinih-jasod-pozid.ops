@@ -47,3 +47,10 @@
   clock: 5  # b67c
   nonce: b67c  # b67c
   message: "Second outside-reader review, 2026-11-13 (self-run cache f36c63310c791188/results/c872eb7a7e793eab/ac34c56c06ec1788, re-checked on dev fed15705d7, 20 other repositories measured; ~/hypergumbo_lab_notebook/outside_reader_review2_11142026). EVIDENCE that the tiered path and the sketch disagree about the centre of one repository. Self-run: the 4k tier is one route marker and its handler from hypergumbo_tracker/serve.py, and 13 of the 37 nodes at 16k are in that file, while the sketch of the same run leads with ir.py, analyze/base.py, discovery.py and linkers/registry.py. Related, filed: WI-lihid-mosud-hifos-jihom-pigar-nahup-lisab-zasas (express's 64k tier holds 10 nodes with 94% of its budget unused; my unverified reading is the same seed-and-connectivity population)."  # b67c
+- op: discuss  # f468
+  at: '2026-11-19T04:32:36Z'  # f468
+  by: agent  # f468
+  actor: jgstern_agent  # f468
+  clock: 6  # f468
+  nonce: f468  # f468
+  message: "NEW FINDING 2026-11-19 (read on origin/dev c32f61a57; runtime effect NOT measured): compact.py:1910-1920 force-includes tiered seeds at entrypoint CONFIDENCE >= 0.7, and its comment assumes the test penalty lowers confidence ('brings test mains from 0.9 to 0.45'). Since ADR-0039 ruling 3 the penalties apply to rank_score only and confidence stays at its construction base, so a test main (base 0.80) now passes the gate. A gate keyed on a value that no longer carries what it assumes. Fix with this item's seed question: key the seeds on rank_score or is_key_symbol, measured."  # f468

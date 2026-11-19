@@ -63,3 +63,18 @@
   clock: 7  # c8c4
   nonce: c8c4  # c8c4
   message: "Docs for the owner's schedule (0 1,9,21 * * *) merged in PR #2268: AGENTS.md, transcript hook summary, smart-test + ci-debug playbooks, Woodpecker comments give the times; docstrings, script headers, SECURITY.md, ADR-0010 now say 'scheduled'. Not changed: cron_status_nudge.py comment ('twice a day', 'every 12 h') -- governance file outside the pre-approval; its 26 h allowance still holds (longest gap 12 h). The 01:00Z run on 11-19 (pipeline 6614) passed every step. Close after cron-status shows a 09:00Z full-suite run."  # c8c4
+- op: update  # a6e5
+  at: '2026-11-19T11:24:01Z'  # a6e5
+  by: agent  # a6e5
+  actor: jgstern_agent  # a6e5
+  clock: 8  # a6e5
+  nonce: a6e5  # a6e5
+  set:  # a6e5
+    status: done  # a6e5
+- op: discuss  # 9fb0
+  at: '2026-11-19T11:24:01Z'  # 9fb0
+  by: agent  # 9fb0
+  actor: jgstern_agent  # 9fb0
+  clock: 9  # 9fb0
+  nonce: 9fb0  # 9fb0
+  message: "Owner schedule 0 1,9,21 * * * is live. ci-debug pipelines at 09:53Z: full-suite pipeline 6636 created 2026-11-19T09:00:32Z on 6fe51888a, status success (ci-debug cron-status: all 10 steps OK incl. self-claims-gate and publish-verdict); 6614 at 01:00:32Z success. The last 13:00 slot fired 2026-11-18 (6582); none since. Measurements and ci-debug pipelines landed in PR #2265; schedule docs in PR #2268."  # 9fb0
