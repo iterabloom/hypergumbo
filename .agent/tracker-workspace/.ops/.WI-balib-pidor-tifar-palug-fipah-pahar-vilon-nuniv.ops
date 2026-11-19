@@ -1,0 +1,20 @@
+- op: create  # 015a
+  at: '2026-11-19T18:46:56Z'  # 015a
+  by: agent  # 015a
+  actor: jgstern_agent  # 015a
+  clock: 1  # 015a
+  nonce: 015a  # 015a
+  data:  # 015a
+    kind: work_item  # 015a
+    title: "swift: backtick-escaped names keep their backticks, so calls do not bind to them"  # 015a
+    status: todo_hard  # 015a
+    priority: 3  # 015a
+    parent:  # 015a
+    tags:  # 015a
+    - analysis_quality  # 015a
+    isbefore: []  # 015a
+    duplicate_of: []  # 015a
+    not_duplicate_of: []  # 015a
+    pr_ref:  # 015a
+    description: "Swift: backtick-escaped names keep their backticks, so calls do not bind to them.\n\nREPRO: struct S { func `default`() {}; func run() { self.default(); self.`default`() } } - both calls go to stand-ins instead of S.default. A raw identifier containing a dot is emitted with the dot (`a.b`); downstream effect not checked. Found by PR 3 agent 6 (stable-id v16 branch, 2026-11-19) while sweeping Swift name extraction for WI-jujog: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md."  # 015a
+    fields: {}  # 015a

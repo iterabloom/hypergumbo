@@ -1,0 +1,20 @@
+- op: create  # f751
+  at: '2026-11-19T18:47:08Z'  # f751
+  by: agent  # f751
+  actor: jgstern_agent  # f751
+  clock: 1  # f751
+  nonce: f751  # f751
+  data:  # f751
+    kind: work_item  # f751
+    title: "dart: a parameter annotation with a comma inside a string is mis-split"  # f751
+    status: todo_hard  # f751
+    priority: 4  # f751
+    parent:  # f751
+    tags:  # f751
+    - stable_id  # f751
+    isbefore: []  # f751
+    duplicate_of: []  # f751
+    not_duplicate_of: []  # f751
+    pr_ref:  # f751
+    description: "Dart: a parameter annotation with a comma inside a string is mis-split (@A(\"x,y\") int a), because the Dart split honours no string quote.\n\nFound by PR 3 agent 6 (commit f580de52d context): the shared splitter is configured with no quotes for Dart. Not measured on a real tree. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md residual 3."  # f751
+    fields: {}  # f751

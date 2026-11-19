@@ -1,0 +1,28 @@
+- op: create  # b567
+  at: '2026-11-19T17:20:17Z'  # b567
+  by: agent  # b567
+  actor: jgstern_agent  # b567
+  clock: 1  # b567
+  nonce: b567  # b567
+  data:  # b567
+    kind: work_item  # b567
+    title: "owner decision: language=None stand-in fingerprints are emitted as bare 16-hex without a scheme label"  # b567
+    status: todo_hard  # b567
+    priority: 3  # b567
+    parent:  # b567
+    tags:  # b567
+    - stable_id  # b567
+    - identifier_factories  # b567
+    isbefore: []  # b567
+    duplicate_of: []  # b567
+    not_duplicate_of: []  # b567
+    pr_ref:  # b567
+    description: "OWNER DECISION: language=None stand-in fingerprints are emitted as bare 16-hex without a scheme label.\n\nSince PR 3 commit 497cbc3d5 (WI-tovog) they are minted by one factory, analyze/base.py mint_stand_in_fingerprint. They reach output: mitmproxy has 221 language=None nodes, all bare 16-hex (http 111, message_dispatch 47, js_module 29, subprocess_cli 23, message_queue 6, event_sourcing 5). ADR-0035 section 7 says every identity value carries a scheme-derived label but its table lists only hgfp2:; the spec's fingerprint bullet says this shape \"carries no hgfp2: prefix by design\"; SYMBOL_FINGERPRINT_SCHEME names a different algorithm. Options (/home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent5/RESULTS.md): (a) keep bare hex and write the exemption into ADR-0035 section 7; (b) a new scheme constant and label (e.g. hgstandinfp1:); (c) label as hgfp2: (wrong algorithm); (d) drop the values."  # b567
+    fields: {}  # b567
+- op: discuss  # 0f50
+  at: '2026-11-19T18:17:53Z'  # 0f50
+  by: agent  # 0f50
+  actor: jgstern_agent  # 0f50
+  clock: 2  # 0f50
+  nonce: 0f50  # 0f50
+  message: "OWNER RULING 2026-11-19 (in session): option (b), in PR 3 (the stable-id v16 bump): a new scheme constant for the stand-in fingerprint in identity_schemes.py, its label derived via value_label (e.g. hgstandinfp1:), minted by mint_stand_in_fingerprint; ADR-0035 section 7's table and the spec's fingerprint bullet updated. Stable ids do not move; only language=None fingerprint values change."  # 0f50
