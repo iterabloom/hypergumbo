@@ -1,0 +1,20 @@
+- op: create  # ebc2
+  at: '2026-11-19T18:47:02Z'  # ebc2
+  by: agent  # ebc2
+  actor: jgstern_agent  # ebc2
+  clock: 1  # ebc2
+  nonce: ebc2  # ebc2
+  data:  # ebc2
+    kind: work_item  # ebc2
+    title: "typed stable ids hash signature layout (Dart multi-line groups, Rust '& mut', Swift multi-line returns): reflowing moves the id"  # ebc2
+    status: todo_hard  # ebc2
+    priority: 2  # ebc2
+    parent:  # ebc2
+    tags:  # ebc2
+    - stable_id  # ebc2
+    isbefore: []  # ebc2
+    duplicate_of: []  # ebc2
+    not_duplicate_of: []  # ebc2
+    pr_ref:  # ebc2
+    description: "Typed stable ids hash signature layout: reflowing a signature (newlines, spaces) moves its id.\n\nREPROS (PR 3 branch, after f580de52d):\n- Dart: normalize_dart_signature(\"({\\n  required String text,\\n  int sid,\\n})\") gives '({\\n  required String,int,})' while the one-line form gives '({required String,int)'. dart format reflows parameter lists with a trailing comma onto separate lines, so this is common in Flutter code.\n- Rust: (x: & mut T) and (x: &mut T) hash differently.\n- Swift: multi-line return types hash their newlines (TCA Sources/ComposableArchitecture/Reducer/ReducerBuilder.swift:87, _Conditional._reduce).\nNot swept: other languages. A formatter run should not move an id. Fixing it moves the id of every signature whose hashed text contains layout, so it needs a stable-id bump. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md residuals 2 and 4."  # ebc2
+    fields: {}  # ebc2
