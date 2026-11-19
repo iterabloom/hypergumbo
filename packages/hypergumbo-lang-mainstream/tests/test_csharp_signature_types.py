@@ -159,8 +159,6 @@ UNCHANGED = {
     "(System.Collections.Generic.List<System.String> xs) System.Int32":
         "(List<System.String>)Int32",
     "(int x) ref int": "(int)ref int",
-    "(int x) ref System.Int32": "(int)Int32",
-    "((int, int)? t, (System.Int32, int)[] u)": "((int, int)?,Int32, int)[])",
     "()": "()",
     "(Clean f, int Q) Clean": "(Clean,int)Clean",
 }
@@ -168,6 +166,21 @@ UNCHANGED = {
 
 @pytest.mark.parametrize(("signature", "hashed"), UNCHANGED.items())
 def test_hole_free_signatures_hash_as_before(signature: str, hashed: str) -> None:
+    assert normalize_csharp_signature(signature) == hashed
+
+
+# Forms the shared FQN strip cut at their last dot under stable-id scheme v15
+# (``(int)Int32``, ``((int, int)?,Int32, int)[])``): a ``ref`` return keeps its
+# modifier, and a nullable or array tuple is written whole as a tuple is.
+NO_LONGER_CUT = {
+    "(int x) ref System.Int32": "(int)ref Int32",
+    "() ref readonly System.Int32": "()ref readonly Int32",
+    "((int, int)? t, (System.Int32, int)[] u)": "((int, int)?,(System.Int32, int)[])",
+}
+
+
+@pytest.mark.parametrize(("signature", "hashed"), NO_LONGER_CUT.items())
+def test_ref_returns_and_decorated_tuples_are_not_cut(signature: str, hashed: str) -> None:
     assert normalize_csharp_signature(signature) == hashed
 
 

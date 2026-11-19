@@ -86,6 +86,7 @@ from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    keeps_v15_text_when_lossless,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -415,6 +416,7 @@ def _extract_groovy_signature(
 _GROOVY_VARARGS_RE = re.compile(r"\.\.\.(\s+[A-Za-z_$][\w$]*)(?=\s*[,)])")
 
 
+@keeps_v15_text_when_lossless
 def normalize_groovy_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -431,13 +433,15 @@ def normalize_groovy_signature(
     apart (the shared rule alone erases the marker, hashing both as
     ``(Object)``). Only a ``...`` followed by a parameter name and then
     ``,`` or ``)`` is rewritten; a signature without one reaches the shared
-    rule unchanged.
+    rule unchanged. A nested type keeps its enclosing types, as in Java
+    (``keep_type_path``: ``Foo.Bar`` and ``Baz.Bar`` hash apart).
     """
     from hypergumbo_core.analyze.base import normalize_signature_types_first
     if signature and "..." in signature:
         signature = _GROOVY_VARARGS_RE.sub(r"[]\1", signature)
     return normalize_signature_types_first(
         signature, type_params, skip_void_return=False, return_sep=":",
+        keep_type_path=True,
     )
 
 

@@ -200,6 +200,7 @@ from hypergumbo_core.ir import (
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
+    keeps_v15_text_when_lossless,
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
@@ -478,6 +479,7 @@ def _extract_java_signature(
     return signature
 
 
+@keeps_v15_text_when_lossless
 def normalize_java_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -493,11 +495,16 @@ def normalize_java_signature(
     annotation (``@A("...")``, rewritten too: the hash stays deterministic),
     ``...`` appears nowhere else in the text ``_extract_java_signature``
     writes.
+
+    A nested type keeps its enclosing types (``keep_type_path``):
+    ``Foo.Bar`` and ``Baz.Bar`` are two types, and v15 hashed both as ``Bar``;
+    a package qualifier (lower-case by convention) is still cut. Signatures
+    whose v15 text lost nothing keep it (``keeps_v15_text_when_lossless``).
     """
     from hypergumbo_core.analyze.base import normalize_signature_types_first
     if signature:
         signature = signature.replace("...", "[]")
-    return normalize_signature_types_first(signature, type_params)
+    return normalize_signature_types_first(signature, type_params, keep_type_path=True)
 
 
 def _extract_java_return_type_name(signature: str | None) -> str | None:

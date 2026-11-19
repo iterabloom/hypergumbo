@@ -111,6 +111,8 @@ from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Spa
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    find_matching_paren,
+    keeps_v15_text_when_lossless,
     record_partial_parse,
     AnalysisResult,
     FileAnalysis as _BaseFileAnalysis,
@@ -486,27 +488,15 @@ _CSHARP_PARAMETER_MODIFIERS: frozenset[str] = frozenset({
     "this", "scoped", "ref", "out", "in", "readonly", "params",
 })
 
-
-def _closing_paren(text: str) -> int:
-    """Index of the ``)`` that closes the ``(`` opening ``text``, else -1."""
-    if not text.startswith("("):
-        return -1
-    depth = 0
-    for i, ch in enumerate(text):
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1
+#: Modifiers written before a return type: ``ref`` and ``ref readonly``.
+_CSHARP_RETURN_MODIFIERS: frozenset[str] = frozenset({"ref", "readonly"})
 
 
 def _is_csharp_tuple_type(text: str) -> bool:
     """True when ``text`` is a tuple type, ``(int, string)``: it opens with a
     parenthesis that closes at its end (a nullable or array tuple,
     ``(int, int)?`` / ``(int, int)[]``, does not)."""
-    close = _closing_paren(text)
+    close = find_matching_paren(text, 0)
     return close > 0 and close == len(text) - 1
 
 
@@ -522,11 +512,14 @@ def _normalize_csharp_type(
     (``ref System.Int32 x`` would hash as ``Int32``) are taken off first and
     put back, and a tuple type is kept whole (``(int, System.String)`` would
     hash as ``String)``), its element types being the arguments of a
-    ``ValueTuple``, which the family keeps as written in a generic.
+    ``ValueTuple``, which the family keeps as written in a generic. A return
+    type's ``ref`` / ``ref readonly`` is taken off and put back likewise
+    (``ref System.Int32`` -> ``ref Int32``).
     """
     from hypergumbo_core.analyze.base import (
         normalize_generic_params,
         normalize_signature_types_first,
+        writes_v15_signature_text,
     )
 
     modifiers: list[str] = []
@@ -542,6 +535,14 @@ def _normalize_csharp_type(
         words = text.rsplit(None, 1)
         type_text = words[0]
     else:
+        # A ``ref`` / ``ref readonly`` return comes off the same way (v15 cut
+        # ``ref System.Int32`` to ``Int32``, losing the ``ref``).
+        head, _, rest = text.partition(" ")
+        while (head in _CSHARP_RETURN_MODIFIERS and rest.strip()
+               and not writes_v15_signature_text()):
+            modifiers.append(head)
+            text = rest.strip()
+            head, _, rest = text.partition(" ")
         type_text = text
     if _is_csharp_tuple_type(type_text):
         written = normalize_generic_params(type_text, type_params or [])
@@ -555,6 +556,7 @@ def _normalize_csharp_type(
     return " ".join([*modifiers, written])
 
 
+@keeps_v15_text_when_lossless
 def normalize_csharp_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -567,11 +569,15 @@ def normalize_csharp_signature(
     ``void`` omitted. Each parameter and the return type are normalized one
     at a time (``_normalize_csharp_type``), which writes the same text as the
     family's function does for the whole signature, and keeps the parameter
-    modifiers and tuple types that function's FQN strip would lose.
+    modifiers and tuple types that function's FQN strip would lose. A nullable
+    or array tuple (``(int, A.B)?``) and a ``ref`` return over a qualified type
+    (``ref A.B``) are written whole by the shared strip, which no longer cuts
+    them at their last dot. A signature whose v15 text lost nothing keeps it
+    (``keeps_v15_text_when_lossless``).
     """
     if not signature:
         return None
-    close = _closing_paren(signature)
+    close = find_matching_paren(signature, 0)
     if close < 0:
         return None
     from hypergumbo_core.analyze.base import split_params_top_level

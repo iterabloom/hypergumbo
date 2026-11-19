@@ -95,6 +95,8 @@ from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Spa
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    find_matching_paren,
+    keeps_v15_text_when_lossless,
     record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -570,19 +572,6 @@ def _extract_php_signature(
     return signature
 
 
-def _php_closing_paren(signature: str) -> int:
-    """Index of the parenthesis closing the one that opens ``signature``, or -1."""
-    depth = 0
-    for i, ch in enumerate(signature):
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1
-
-
 def _normalize_php_parameter(param: str, type_params: list[str] | None) -> str:
     """One parameter by the PHP rule, with a variadic ``...`` kept.
 
@@ -605,6 +594,7 @@ def _normalize_php_parameter(param: str, type_params: list[str] | None) -> str:
     return inner + "..." if variadic else inner
 
 
+@keeps_v15_text_when_lossless
 def normalize_php_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -618,14 +608,15 @@ def normalize_php_signature(
     same text as the rule does for the whole of a signature with no variadic
     parameter, and keeps the variadic ``...`` its FQN strip would lose. A
     leading by-reference ``&`` (``function &f()``) is kept in front:
-    ``&(int $x): int`` -> ``&(int)int``.
+    ``&(int $x): int`` -> ``&(int)int``. A signature whose v15 text lost
+    nothing keeps it (``keeps_v15_text_when_lossless``).
     """
     if not signature:
         return None
     by_ref = ""
     if signature.startswith("&"):
         by_ref, signature = "&", signature[1:]
-    close = _php_closing_paren(signature) if signature.startswith("(") else -1
+    close = find_matching_paren(signature, 0) if signature.startswith("(") else -1
     if close < 0:
         return None
     from hypergumbo_core.analyze.base import normalize_signature_php, split_params_top_level

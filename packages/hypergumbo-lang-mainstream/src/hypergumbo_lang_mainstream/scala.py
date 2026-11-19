@@ -137,6 +137,8 @@ from typing import TYPE_CHECKING, ClassVar, Final, Iterator, NamedTuple, Optiona
 
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    find_matching_paren,
+    keeps_v15_text_when_lossless,
     AnalysisResult,
     FileAnalysis,
     SymbolsAt,
@@ -1095,26 +1097,27 @@ def _split_scala_clauses(signature: str) -> "tuple[list[str], str] | None":
     """Split ``(a)(b): R`` into its clause bodies ``["a", "b"]`` and ``": R"``.
 
     Counts round brackets only (a type's ``[`` / ``{`` never holds an
-    unbalanced one). None when a clause does not close.
+    unbalanced one), outside string literals (``find_matching_paren`` with
+    Scala's quotes). None when a clause does not close.
     """
     clauses: list[str] = []
     i = 0
     while i < len(signature) and signature[i] == "(":
-        depth = 0
-        for j in range(i, len(signature)):
-            if signature[j] == "(":
-                depth += 1
-            elif signature[j] == ")":
-                depth -= 1
-                if depth == 0:
-                    break
-        if depth != 0:
+        j = find_matching_paren(signature, i, quotes=_SCALA_QUOTES)
+        if j < 0:
             return None
         clauses.append(signature[i + 1:j])
         i = j + 1
     return clauses, signature[i:]
 
 
+#: String-literal quotes in a Scala signature: no ``'``, which also opens a
+#: Scala 2 symbol literal (``'sym``) that has no closing quote.
+_SCALA_QUOTES = '"`'
+
+
+
+@keeps_v15_text_when_lossless
 def normalize_scala_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -1128,11 +1131,19 @@ def normalize_scala_signature(
     ``implicit o`` for a name) and put back in front of the clause's types. A
     one-clause signature without a keyword normalizes exactly as the shared
     normalizer alone does, so such a ``def``'s id is unchanged.
+
+    Every type keeps a nested type's enclosing types and a singleton type
+    whole (``keep_type_path``: ``Foo.Bar`` and ``Baz.Bar``, ``a.type`` and
+    ``b.type`` hash apart), and a function, tuple or annotated type is
+    written whole (the shared FQN strip no longer cuts it at its last dot).
+    A signature whose v15 text lost nothing keeps it
+    (``keeps_v15_text_when_lossless``).
     """
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     split = _split_scala_clauses(signature) if signature else None
     if split is None or not split[0]:
-        return normalize_signature_names_first(signature, type_params, return_sep=":")
+        return normalize_signature_names_first(
+            signature, type_params, return_sep=":", keep_type_path=True, quotes=_SCALA_QUOTES)
     clauses, rest = split
     parts: list[str] = []
     for index, clause in enumerate(clauses):
@@ -1142,7 +1153,8 @@ def normalize_scala_signature(
             clause = clause[len(keyword) + 1:]
         tail = rest if index == len(clauses) - 1 else ""
         normalized = normalize_signature_names_first(
-            f"({clause}){tail}", type_params, return_sep=":")
+            f"({clause}){tail}", type_params, return_sep=":", keep_type_path=True,
+            quotes=_SCALA_QUOTES)
         assert normalized is not None  # a "(...)" text always normalizes
         parts.append(f"({keyword} {normalized[1:]}" if keyword else normalized)
     return "".join(parts)

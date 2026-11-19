@@ -61,7 +61,12 @@ Shared Components
   (``populate_kind_stable_ids``, ``populate_synthetic_class_b_identity``,
   ``widen_route_stable_ids``, ``dedup_logical_synthetic_identities``).
   Signature normalizers feed the typed variant so two spellings of one
-  signature hash alike.
+  signature hash alike. Their shared helpers (``strip_fqn_prefix``,
+  ``split_params_top_level``, ``find_matching_paren``) keep distinct types
+  distinct; each language normalizer is wrapped in
+  ``keeps_v15_text_when_lossless``, which keeps the text stable-id scheme v15
+  hashed wherever that text lost no token, so a fix to a helper moves only
+  the ids whose signatures the old helper damaged.
 - **Availability checking**: is_grammar_available
 - **Memory-pressure guard**: ``_check_memory_pressure`` raises
   ``MemoryPressureError`` rather than letting a large repo take the process
@@ -142,17 +147,20 @@ module.
 
 from __future__ import annotations
 
+import collections
+import functools
 import hashlib
 import importlib.util
 import os
 import re as _re
 import time
 import warnings
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 import posixpath
 from pathlib import Path
 from collections.abc import Container, Sequence
-from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional, Sized
+from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional, ParamSpec, Sized
 
 from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
@@ -2699,26 +2707,76 @@ def populate_docstrings_from_tree(
 # ---------------------------------------------------------------------------
 
 
-def strip_fqn_prefix(type_name: str) -> str:
-    """Strip fully-qualified name prefix, keeping just the simple name.
+def strip_fqn_prefix_v15(type_name: str) -> str:
+    """The FQN strip as stable-id scheme v15 wrote it: the text after the last
+    dot of the text before the first ``<`` (or ``[``).
 
-    Handles dotted paths like ``java.lang.String`` → ``String``
-    and ``System.Collections.Generic.List`` → ``List``.
-    Preserves generic parameters: ``java.util.List<String>`` → ``List<String>``.
-
-    Does NOT strip if the name contains no dots (already simple).
+    Kept, unchanged, because it defines the v15 text (see
+    :func:`keeps_v15_text_when_lossless`) and because Go and Dart decide,
+    against exactly this cut, when a cut takes a qualifier only.
     """
-    # Split at first '<' to preserve generic params
     if "<" in type_name:
         base, rest = type_name.split("<", 1)
-        return strip_fqn_prefix(base) + "<" + rest
+        return strip_fqn_prefix_v15(base) + "<" + rest
     if "[" in type_name:
         # Go/Scala square-bracket generics
         base, rest = type_name.split("[", 1)
-        return strip_fqn_prefix(base) + "[" + rest
+        return strip_fqn_prefix_v15(base) + "[" + rest
     if "." in type_name:
         return type_name.rsplit(".", 1)[-1]
     return type_name
+
+
+_SIG_IDENT = r"(?:[^\W\d]|\$)[\w$]*"
+#: What a qualifier cut may remove: dotted (or C# ``alias::``) identifiers.
+_QUALIFIER_CUT_RE = _re.compile(rf"(?:{_SIG_IDENT}(?:\.|::))+")
+#: What a qualifier cut must leave: a text that starts with a type name, maybe
+#: annotated (Java's ``java.lang.@A String`` cuts to ``@A String``).
+_TYPE_NAME_HEAD_RE = _re.compile(rf"(?:@[\w$.]+(?:\([^()]*\))?\s*)*(?P<name>{_SIG_IDENT})")
+
+
+def strip_fqn_prefix(type_name: str, *, keep_type_path: bool = False) -> str:
+    """Strip the qualifier from the head of a type, keeping its simple name.
+
+    ``java.lang.String`` -> ``String``, ``System.Collections.Generic.List`` ->
+    ``List``, ``java.util.List<java.lang.String>`` -> ``List<java.lang.String>``
+    (generic arguments are kept as written), ``pkg.Foo?`` -> ``Foo?``.
+
+    Only a qualifier is cut: the cut is made where v15 made it (the last dot
+    before the first ``<`` or ``[``) when what it removes is a run of dotted
+    identifiers and what it leaves starts with a type name. Any other cut goes
+    through a type, so such a type is returned as written: a tuple
+    (``(Int, A.B)``, which v15 hashed as ``B)``), a function type (``(A) ->
+    B.C``, hashed ``C``: its parameters were swallowed), an annotated or
+    keyword-prefixed type (``@Ann a.B``, ``ref Foo.Bar``, ``suspend (a.B) ->
+    C``), a receiver function type (``String.() -> Unit``).
+
+    ``keep_type_path`` (Java, Kotlin, Scala, Groovy): the cut keeps the
+    enclosing types of a nested type, the segments from the first one that
+    starts with an upper-case letter (``java.util.Map.Entry`` -> ``Map.Entry``,
+    so ``Map.Entry`` and ``Other.Entry`` stay two types; ``java.lang.String``
+    -> ``String`` as before), and a Scala singleton type (``x.type``) is kept
+    whole. Those languages' packages start with a lower-case letter by
+    convention; in C# and Swift a namespace or module does not, so there a
+    nested type keeps v15's cut to its last segment.
+
+    Under :func:`keeps_v15_text_when_lossless`'s v15 pass this is the v15 cut.
+    """
+    cut = strip_fqn_prefix_v15(type_name)
+    if cut == type_name or _V15_SIGNATURE_TEXT.get():
+        return cut
+    removed = type_name[: len(type_name) - len(cut)]
+    head = _TYPE_NAME_HEAD_RE.match(cut)
+    if _QUALIFIER_CUT_RE.fullmatch(removed) is None or head is None:
+        return type_name
+    if keep_type_path:
+        if cut == "type":
+            return type_name
+        segments = removed.split(".")[:-1]
+        for index, segment in enumerate(segments):
+            if segment[:1].isupper():
+                return ".".join(segments[index:]) + "." + cut
+    return cut
 
 
 # Regex to match type parameter names in generic brackets.
@@ -2755,14 +2813,17 @@ def normalize_generic_params(
     return _TYPE_PARAM_RE.sub(_replace, text)
 
 
-def split_params_top_level(params_str: str) -> list[str]:
-    """Split a parameter list by commas, respecting generic nesting.
+#: Characters that open a string literal in a signature text, by default.
+#: Rust (lifetimes ``'a``) and Scala (symbol literals ``'s``) pass ``'"'`` or
+#: ``'"`'`` instead: there a ``'`` opens no string.
+SIGNATURE_QUOTES = "\"'`"
 
-    ``"Map<String, Integer>, int"`` → ``["Map<String, Integer>", "int"]``
+_CLOSER_OF = {"(": ")", "[": "]", "{": "}", "<": ">"}
 
-    Handles ``<>``, ``[]``, and ``()`` nesting.  Leading/trailing
-    whitespace on each part is stripped.
-    """
+
+def _split_params_top_level_v15(params_str: str) -> list[str]:
+    """The parameter split as stable-id scheme v15 wrote it (see
+    :func:`split_params_top_level`); Go splits a tuple result with it."""
     parts: list[str] = []
     depth = 0
     current: list[str] = []
@@ -2784,9 +2845,84 @@ def split_params_top_level(params_str: str) -> list[str]:
     return parts
 
 
-def _normalize_type(raw_type: str, type_params: list[str] | None) -> str:
+def _string_end(text: str, start: int, quotes: str) -> int:
+    """Index of the quote closing the string literal opened at ``start``, or
+    the last index when it is not closed. A ``\\`` escapes the next character
+    in a ``"`` or ``'`` string; a backtick string has no escapes."""
+    quote = text[start]
+    i = start + 1
+    while i < len(text):
+        if text[i] == "\\" and quote != "`":
+            i += 2
+            continue
+        if text[i] == quote:
+            return i
+        i += 1
+    return len(text) - 1
+
+
+def split_params_top_level(params_str: str, *, quotes: str = SIGNATURE_QUOTES) -> list[str]:
+    """Split a parameter list at its top-level commas.
+
+    ``"Map<String, Integer>, int"`` -> ``["Map<String, Integer>", "int"]``.
+    Leading/trailing whitespace on each part is stripped.
+
+    A comma is top-level outside every ``()``, ``[]``, ``{}`` and ``<>`` pair
+    and outside a string literal (opened by a character of ``quotes``). A
+    closer ends only the bracket it matches, so the ``>`` of ``->`` or ``=>``
+    and a comparison's ``>`` end nothing, and an unmatched closer is text. A
+    ``<`` opens a bracket only right after a name character (``List<``), so
+    Go's ``<-chan`` and a comparison ``a < b`` open none; one that does open
+    and is never closed (``f(a<b, c)``) closes with the bracket around it. As
+    in v15, an empty part between two commas is kept and an empty last part is
+    not. A ``{`` that starts
+    a parameter is a group bracket (Dart's ``{int a, int b}`` named
+    parameters), whose commas still split: only a brace inside a parameter
+    (``opts: {a: A, b: B}``) holds its commas.
+
+    Stable-id scheme v15 split differently (:func:`_split_params_top_level_v15`:
+    every ``<`` opened, every closer closed, braces and strings were text), so
+    ``a: ((Int) -> Int, (Int) -> Int)`` split at its inner comma and
+    ``opts: {a: A, b: B}`` lost ``b:``. Under
+    :func:`keeps_v15_text_when_lossless`'s v15 pass it splits as v15 did.
+    """
+    if _V15_SIGNATURE_TEXT.get():
+        return _split_params_top_level_v15(params_str)
+    parts: list[str] = []
+    stack: list[str] = []
+    start = 0
+    i = 0
+    while i < len(params_str):
+        ch = params_str[i]
+        prev = params_str[i - 1] if i else ""
+        if ch in quotes:
+            i = _string_end(params_str, i, quotes)
+        elif ch == "{" and not stack and not params_str[start:i].strip():
+            pass  # a group bracket: its commas split
+        elif ch in "([{" or (ch == "<" and (prev.isalnum() or prev in "_$")):
+            stack.append(ch)
+        elif ch == ">" and stack and stack[-1] == "<" and prev not in "-=":
+            stack.pop()
+        elif ch in ")]}" and ch in (_CLOSER_OF[o] for o in stack):
+            # A ``<`` still open here was a comparison (``f(a<b, c)``): it
+            # closes with the bracket around it.
+            while stack[-1] == "<" and _CLOSER_OF[stack[-1]] != ch:
+                stack.pop()
+            if _CLOSER_OF[stack[-1]] == ch:
+                stack.pop()
+        elif ch == "," and not stack:
+            parts.append(params_str[start:i].strip())
+            start = i + 1
+        i += 1
+    tail = params_str[start:].strip()
+    return [*parts, tail] if tail else parts
+
+
+def _normalize_type(
+    raw_type: str, type_params: list[str] | None, *, keep_type_path: bool = False,
+) -> str:
     """Apply FQN stripping and generic-param normalization to a single type."""
-    t = strip_fqn_prefix(raw_type.strip())
+    t = strip_fqn_prefix(raw_type.strip(), keep_type_path=keep_type_path)
     if type_params:
         t = normalize_generic_params(t, type_params)
     return t
@@ -2798,6 +2934,8 @@ def normalize_signature_types_first(
     *,
     skip_void_return: bool = True,
     return_sep: str = "",
+    keep_type_path: bool = False,
+    quotes: str = SIGNATURE_QUOTES,
 ) -> str | None:
     """Normalize a signature where params are ``Type name`` (Java, C#, Dart, Groovy).
 
@@ -2807,12 +2945,14 @@ def normalize_signature_types_first(
 
     Strips parameter names, FQN prefixes, and normalizes generic type
     parameters by position.  Used by Java, C#, Dart, Groovy, Objective-C.
+    ``keep_type_path`` and ``quotes`` are passed to :func:`strip_fqn_prefix`
+    and to :func:`split_params_top_level` / :func:`find_matching_paren`.
     """
     if not signature:
         return None
 
     # Split into params part and return type
-    paren_close = _find_matching_paren(signature, 0)
+    paren_close = find_matching_paren(signature, 0, quotes=quotes)
     if paren_close < 0:
         return None
 
@@ -2826,7 +2966,7 @@ def normalize_signature_types_first(
         return_str = rest
 
     # Parse params: "Type name" → extract Type
-    raw_params = split_params_top_level(params_str)
+    raw_params = split_params_top_level(params_str, quotes=quotes)
     types: list[str] = []
     for p in raw_params:
         p = p.strip()
@@ -2840,15 +2980,15 @@ def normalize_signature_types_first(
         # For most languages, split on last space
         parts = p.rsplit(None, 1)
         if len(parts) == 2:
-            types.append(_normalize_type(parts[0], type_params))
+            types.append(_normalize_type(parts[0], type_params, keep_type_path=keep_type_path))
         else:
             # Single token — it's either just a type or just a name
-            types.append(_normalize_type(parts[0], type_params))
+            types.append(_normalize_type(parts[0], type_params, keep_type_path=keep_type_path))
 
     norm_params = ",".join(types)
 
     if return_str and not (skip_void_return and return_str.lower() == "void"):
-        norm_return = _normalize_type(return_str, type_params)
+        norm_return = _normalize_type(return_str, type_params, keep_type_path=keep_type_path)
         return f"({norm_params}){norm_return}"
     return f"({norm_params})"
 
@@ -2859,6 +2999,8 @@ def normalize_signature_names_first(
     *,
     return_sep: str = ":",
     skip_self: bool = False,
+    keep_type_path: bool = False,
+    quotes: str = SIGNATURE_QUOTES,
 ) -> str | None:
     """Normalize a signature where params are ``name: Type`` (Kotlin, Scala, TS, Swift, Rust, Python).
 
@@ -2871,12 +3013,17 @@ def normalize_signature_names_first(
         type_params: Declared generic type parameter names.
         return_sep: Separator before return type (``":"`` or ``"->"``)
         skip_self: If True, skip ``self``/``cls`` parameters (Python/Rust).
+            Rust's receiver forms are told apart by ``normalize_rust_signature``
+            before this skip sees them.
+        keep_type_path: Passed to :func:`strip_fqn_prefix` (Kotlin, Scala).
+        quotes: The string-literal quotes of :func:`split_params_top_level`
+            and :func:`find_matching_paren` (Rust and Scala drop ``'``).
     """
     if not signature:
         return None
 
     # Split into params part and return type
-    paren_close = _find_matching_paren(signature, 0)
+    paren_close = find_matching_paren(signature, 0, quotes=quotes)
     if paren_close < 0:
         return None
 
@@ -2893,7 +3040,7 @@ def normalize_signature_names_first(
         return_str = rest.strip()
 
     # Parse params: "name: Type" → extract Type
-    raw_params = split_params_top_level(params_str)
+    raw_params = split_params_top_level(params_str, quotes=quotes)
     types: list[str] = []
     for p in raw_params:
         p = p.strip()
@@ -2906,7 +3053,7 @@ def normalize_signature_names_first(
         colon_idx = p.find(":")
         if colon_idx >= 0:
             type_part = p[colon_idx + 1:].strip()
-            types.append(_normalize_type(type_part, type_params))
+            types.append(_normalize_type(type_part, type_params, keep_type_path=keep_type_path))
         else:
             # No type annotation (e.g., bare name in Python)
             # Include as-is for untyped params
@@ -2915,7 +3062,7 @@ def normalize_signature_names_first(
     norm_params = ",".join(types)
 
     if return_str:
-        norm_return = _normalize_type(return_str, type_params)
+        norm_return = _normalize_type(return_str, type_params, keep_type_path=keep_type_path)
         return f"({norm_params}){norm_return}"
     return f"({norm_params})"
 
@@ -2931,7 +3078,7 @@ def normalize_signature_php(
     if not signature:
         return None
 
-    paren_close = _find_matching_paren(signature, 0)
+    paren_close = find_matching_paren(signature, 0)
     if paren_close < 0:
         return None
 
@@ -2983,21 +3130,23 @@ def normalize_signature_go(
     and ``T`` hash alike), and every leading ``*`` from a tuple result
     element; a package qualifier at the head of a type is stripped
     (``*http.Request`` -> ``Request``, ``pkg.List[int]`` -> ``List[int]``)
-    by :func:`strip_fqn_prefix`, which leaves a qualifier inside a type
+    by the v15 FQN cut (:func:`strip_fqn_prefix_v15`, which the Go rules
+    below are written against), which leaves a qualifier inside a type
     alone (``[]pkg.T``). Historical rewrites, kept because changing them
     would move identities that lose nothing: in a grouped ``a, b int`` the
     first name is hashed as written (``(a,int)``); a tuple result element
     keeps its name (``(n int,err error)``) unless a qualifier was cut, when
     the name goes with it (``r *http.Response`` -> ``Response``); a tuple
-    result is split by :func:`split_params_top_level`, which does not see
-    braces.
+    result is split by the v15 split (:func:`_split_params_top_level_v15`),
+    which does not see braces or strings and reads ``<-`` as a bracket: the
+    elements it makes are written whole, so it loses no type.
 
     What was lost by accident, and is now written: a parameter's type was
     its LAST whitespace token, so ``chan int``, ``<-chan int``, ``chan<-
     int`` and ``int`` hashed alike, ``func(int) error`` hashed as
     ``error``, ``map[string] int`` as ``int``, ``pkg.List[int, string]`` as
     ``string]``, and ``struct{ a int }`` / ``interface{ A() }`` as ``}``;
-    and ``strip_fqn_prefix`` cuts at the last dot of a type with no ``[``,
+    and the v15 FQN cut is at the last dot of a type with no ``[``,
     so ``chan pkg.T`` hashed as ``T`` and ``func(x pkg.A) error`` as ``A)
     error``, in a result as well as a parameter. A variadic ``...T`` (which
     the analyzer used to drop) is ``...`` followed by ``T`` normalized as a
@@ -3010,7 +3159,7 @@ def normalize_signature_go(
     if not signature:
         return None
 
-    paren_close = _find_matching_paren(signature, 0)
+    paren_close = find_matching_paren(signature, 0)
     if paren_close < 0:
         return None
 
@@ -3033,7 +3182,7 @@ def normalize_signature_go(
             # Tuple return: "(int, error)" → normalize each
             norm_ret = "(" + ",".join(
                 _go_tuple_result_element(r, type_params)
-                for r in split_params_top_level(ret[1:-1])
+                for r in _split_params_top_level_v15(ret[1:-1])
             ) + ")"
             return f"({norm_params}){norm_ret}"
         return f"({norm_params}){_go_result_type(ret, type_params)}"
@@ -3058,14 +3207,14 @@ _GO_CUT_REST_RE = _re.compile(rf"{_GO_IDENT}(?:\[.*\])?", _re.DOTALL)
 
 
 def _go_fqn_cut_is_deliberate(text: str, *, element: bool = False) -> bool:
-    """Whether ``strip_fqn_prefix(text)`` loses only what Go means to lose.
+    """Whether the v15 cut of ``text`` loses only what Go means to lose.
 
     True when it changes nothing, or when it removes a package qualifier
     (for a tuple result ``element``, also a name and pointer stars) and
     leaves a bare type name. False when the cut is through a type:
     ``chan pkg.T`` -> ``T``, ``func(pkg.T)`` -> ``T)``.
     """
-    out = strip_fqn_prefix(text)
+    out = strip_fqn_prefix_v15(text)
     if out == text:
         return True
     cut = text[: len(text) - len(out)]
@@ -3074,6 +3223,12 @@ def _go_fqn_cut_is_deliberate(text: str, *, element: bool = False) -> bool:
     if match is None or not _GO_CUT_REST_RE.fullmatch(out):
         return False
     return _GO_TYPE_KEYWORD_RE.fullmatch(match.groupdict().get("name") or "") is None
+
+
+def _go_cut_type(text: str, type_params: list[str] | None) -> str:
+    """A type whose v15 cut :func:`_go_fqn_cut_is_deliberate` accepted, cut so."""
+    t = strip_fqn_prefix_v15(text.strip())
+    return normalize_generic_params(t, type_params) if type_params else t
 
 
 def _go_strip_one_star(text: str) -> str:
@@ -3092,7 +3247,7 @@ def _go_type(text: str, type_params: list[str] | None) -> str:
         return "..." + _go_type(t[3:], type_params)
     t = _go_strip_one_star(t)
     if _GO_QUALIFIED_HEAD_RE.fullmatch(t):
-        t = strip_fqn_prefix(t)
+        t = strip_fqn_prefix_v15(t)
     return normalize_generic_params(t, type_params) if type_params else t
 
 
@@ -3107,7 +3262,7 @@ def _go_param_type(part: str, type_params: list[str] | None) -> str:
     # The old text: the last whitespace token, one "*" off, qualifier cut.
     old = _go_strip_one_star(part.split()[-1])
     if len(typ.split()) == 1 and _go_fqn_cut_is_deliberate(old):
-        return _normalize_type(old, type_params)
+        return _go_cut_type(old, type_params)
     return _go_type(typ, type_params)
 
 
@@ -3115,7 +3270,7 @@ def _go_result_type(ret: str, type_params: list[str] | None) -> str:
     """The hashed text of a single (unparenthesized) result type."""
     old = _go_strip_one_star(ret)
     if _go_fqn_cut_is_deliberate(old):
-        return _normalize_type(old, type_params)
+        return _go_cut_type(old, type_params)
     return _go_type(ret, type_params)
 
 
@@ -3123,7 +3278,7 @@ def _go_tuple_result_element(element: str, type_params: list[str] | None) -> str
     """The hashed text of one element of a parenthesized result list."""
     old = element.strip().lstrip("*")
     if _go_fqn_cut_is_deliberate(old, element=True):
-        return _normalize_type(old, type_params)
+        return _go_cut_type(old, type_params)
     t = " ".join(old.split())
     return normalize_generic_params(t, type_params) if type_params else t
 
@@ -3158,11 +3313,9 @@ def _go_split_top_level(params: str) -> list[str]:
     return parts
 
 
-def _find_matching_paren(s: str, start: int) -> int:
-    """Find the index of the closing paren matching the opening paren at *start*.
-
-    Returns -1 if not found or *s[start]* is not ``(``.
-    """
+def _find_matching_paren_v15(s: str, start: int) -> int:
+    """:func:`find_matching_paren` as stable-id scheme v15 wrote it: string
+    literals not skipped."""
     if start >= len(s) or s[start] != "(":
         return -1
     depth = 0
@@ -3174,6 +3327,96 @@ def _find_matching_paren(s: str, start: int) -> int:
             if depth == 0:
                 return i
     return -1
+
+
+def find_matching_paren(s: str, start: int, *, quotes: str = SIGNATURE_QUOTES) -> int:
+    """Index of the ``)`` closing the ``(`` at ``start``, or -1 when there is
+    none or ``s[start]`` is not ``(``.
+
+    A parenthesis inside a string literal (opened by a character of ``quotes``,
+    as in :func:`split_params_top_level`) is text: ``(@A(")") String x)``
+    closes at its last ``)``, where v15 closed it inside the string and read
+    the rest as the return type. Under :func:`keeps_v15_text_when_lossless`'s
+    v15 pass it does not skip strings, as v15 did not.
+    """
+    if _V15_SIGNATURE_TEXT.get():
+        return _find_matching_paren_v15(s, start)
+    if start >= len(s) or s[start] != "(":
+        return -1
+    depth = 0
+    i = start
+    while i < len(s):
+        ch = s[i]
+        if ch in quotes:
+            i = _string_end(s, i, quotes)
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+#: True while :func:`keeps_v15_text_when_lossless` runs a normalizer for the
+#: text stable-id scheme v15 wrote. The shared helpers read it.
+_V15_SIGNATURE_TEXT: ContextVar[bool] = ContextVar("_V15_SIGNATURE_TEXT", default=False)
+
+_P = ParamSpec("_P")
+
+
+def writes_v15_signature_text() -> bool:
+    """True inside the v15 pass of :func:`keeps_v15_text_when_lossless`: a
+    language's own correction of its signature text (a Swift metatype, a Rust
+    receiver) is skipped there, as the shared helpers' corrections are."""
+    return _V15_SIGNATURE_TEXT.get()
+
+
+def _signature_tokens(text: str) -> collections.Counter[str]:
+    """The tokens of a signature text (names and punctuation marks), counted;
+    layout is not a token."""
+    return collections.Counter(_re.findall(r"[\w$]+|[^\w\s]", text))
+
+
+def keeps_v15_text_when_lossless(
+    normalize: Callable[_P, Optional[str]],
+) -> Callable[_P, Optional[str]]:
+    """Make a ``normalize_<lang>_signature`` keep the text v15 hashed unless
+    v15's text lost something.
+
+    The wrapped normalizer runs twice: with the corrected shared helpers, and
+    with :data:`_V15_SIGNATURE_TEXT` set, under which :func:`strip_fqn_prefix`,
+    :func:`split_params_top_level` and :func:`find_matching_paren` (and the
+    corrections a language makes itself, :func:`writes_v15_signature_text`)
+    write what stable-id scheme v15 wrote. The v15 text is returned when it
+    holds every token of the corrected text (counted: names and punctuation,
+    not layout), so it lost nothing: the two differ in a space, or the v15
+    text holds MORE, as when a wrong split left a parameter's name in it
+    (``(implicit ev: B <:< AA, F: Functor[F])``, where v15 read ``<:<`` as an
+    unclosed bracket). Otherwise, when the corrected text holds a token the
+    v15 text dropped (a type cut off at a dot, a ``ref``, a receiver), the
+    corrected text is returned. So a typed stable_id moves only where the v15
+    helpers lost part of its signature. When the corrected pass cannot read
+    the signature (``None``), the v15 text is kept.
+
+    Nested wrappers run once inside a v15 pass. The cost is a second pass of
+    string work per signature.
+    """
+    @functools.wraps(normalize)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Optional[str]:
+        if _V15_SIGNATURE_TEXT.get():
+            return normalize(*args, **kwargs)
+        fixed = normalize(*args, **kwargs)
+        token = _V15_SIGNATURE_TEXT.set(True)
+        try:
+            v15 = normalize(*args, **kwargs)
+        finally:
+            _V15_SIGNATURE_TEXT.reset(token)
+        if fixed is None or (v15 is not None and not _signature_tokens(fixed) - _signature_tokens(v15)):
+            return v15
+        return fixed
+    return wrapper
 
 
 # ---------------------------------------------------------------------------

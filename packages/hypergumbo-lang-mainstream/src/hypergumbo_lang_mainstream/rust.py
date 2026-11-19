@@ -143,6 +143,7 @@ from hypergumbo_core.qualified_name_axis import (
     separator_for_language,
 )
 from hypergumbo_core.analyze.base import (
+    keeps_v15_text_when_lossless,
     constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
@@ -282,15 +283,42 @@ def _extract_rust_signature(
     return sig
 
 
+@keeps_v15_text_when_lossless
 def normalize_rust_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Rust signature for typed stable_id (spec §6 typed tier)."""
-    from hypergumbo_core.analyze.base import normalize_signature_names_first
-    return normalize_signature_names_first(
-        signature, type_params, return_sep="->", skip_self=True,
+    """Normalize a Rust signature for typed stable_id (spec §6 typed tier).
+
+    The names-first rule, with a method's receiver told apart: the shared
+    rule skips ``self``, ``&self`` and ``&mut self`` alike (v15 hashed
+    ``fn f(self)``, ``fn f(&self)`` and ``fn f(&mut self)`` as one text), so
+    ``self`` and ``&mut self`` are first written as the typed receivers they
+    are short for (``self: Self``, ``self: &mut Self``), which the rule
+    hashes as ``Self`` and ``&mut Self``. ``&self`` is still skipped, so a
+    ``&self`` method's text is unchanged; a receiver written with a lifetime
+    or ``mut self`` was already hashed as written. A ``'`` opens no string in
+    Rust (``&'a str``), so only ``"`` does.
+    """
+    from hypergumbo_core.analyze.base import (
+        normalize_signature_names_first,
+        writes_v15_signature_text,
     )
+    if signature and not writes_v15_signature_text():
+        signature = _RUST_SHORTHAND_RECEIVER_RE.sub(_typed_receiver, signature, count=1)
+    return normalize_signature_names_first(
+        signature, type_params, return_sep="->", skip_self=True, quotes='"',
+    )
+
+
+#: A shorthand by-value or ``&mut`` receiver opening a parameter list.
+_RUST_SHORTHAND_RECEIVER_RE = re.compile(r"^\(\s*(?P<receiver>&\s*mut\s+self|self)\s*(?=[,)])")
+
+
+def _typed_receiver(match: "re.Match[str]") -> str:
+    """``self`` -> ``(self: Self``, ``&mut self`` -> ``(self: &mut Self``."""
+    by_ref = match["receiver"] != "self"
+    return "(self: &mut Self" if by_ref else "(self: Self"
 
 
 _RUST_BUILTIN_RETURN_TYPES = frozenset({

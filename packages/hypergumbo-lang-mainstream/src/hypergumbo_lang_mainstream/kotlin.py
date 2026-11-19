@@ -191,6 +191,7 @@ from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
+    keeps_v15_text_when_lossless,
     AnalysisResult,
     SymbolsAt,
     TreeSitterAnalyzer,
@@ -893,19 +894,7 @@ def _extract_kotlin_signature(
     return signature
 
 
-def _kt_close_paren(signature: str) -> int:
-    """Index of the ``)`` that closes the parameter list opened at index 0."""
-    depth = 0
-    for i, ch in enumerate(signature):
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1  # pragma: no cover - only called on a text the shared normalizer parsed
-
-
+@keeps_v15_text_when_lossless
 def normalize_kotlin_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -925,12 +914,25 @@ def normalize_kotlin_signature(
     as Kotlin writes a receiver function type (``String.()Int``), FQN prefix
     stripped like a parameter type. A receiver-less text starts with ``(``,
     so the two cannot meet.
+
+    Every type keeps a nested type's enclosing types (``keep_type_path``:
+    a receiver ``Map.Entry<K, V>`` and ``Other.Entry<K, V>`` hash apart,
+    as do parameters ``Foo.Bar`` and ``Baz.Bar``), and a function, ``suspend``
+    or annotated type is written whole (the shared FQN strip no longer cuts
+    them at their last dot). A signature whose v15 text lost nothing keeps
+    it (``keeps_v15_text_when_lossless``).
     """
-    from hypergumbo_core.analyze.base import normalize_signature_names_first, split_params_top_level
-    norm = normalize_signature_names_first(signature, type_params, return_sep=":")
+    from hypergumbo_core.analyze.base import (
+        find_matching_paren,
+        normalize_signature_names_first,
+        split_params_top_level,
+        strip_fqn_prefix,
+    )
+    norm = normalize_signature_names_first(
+        signature, type_params, return_sep=":", keep_type_path=True)
     if norm is None or signature is None:
         return None
-    close = _kt_close_paren(signature)
+    close = find_matching_paren(signature, 0)
     params = split_params_top_level(signature[1:close])
     if any(p.startswith(_KT_VARARG_PREFIX) for p in params):
         types: list[str] = []
@@ -938,15 +940,15 @@ def normalize_kotlin_signature(
             is_vararg = p.startswith(_KT_VARARG_PREFIX)
             if is_vararg:
                 p = p[len(_KT_VARARG_PREFIX):]
-            one = normalize_signature_names_first(f"({p})", type_params, return_sep=":")
+            one = normalize_signature_names_first(
+                f"({p})", type_params, return_sep=":", keep_type_path=True)
             types.append((_KT_VARARG_PREFIX if is_vararg else "") + (one or "()")[1:-1])
         tail = normalize_signature_names_first(
-            "()" + signature[close + 1:], type_params, return_sep=":",
+            "()" + signature[close + 1:], type_params, return_sep=":", keep_type_path=True,
         )
         norm = f"({','.join(types)}){(tail or '()')[2:]}"
     if receiver:
-        from hypergumbo_core.analyze.base import strip_fqn_prefix
-        norm = f"{strip_fqn_prefix(receiver.strip())}.{norm}"
+        norm = f"{strip_fqn_prefix(receiver.strip(), keep_type_path=True)}.{norm}"
     return norm
 
 
