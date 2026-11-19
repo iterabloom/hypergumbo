@@ -1,0 +1,20 @@
+- op: create  # d591
+  at: '2026-11-19T22:12:36Z'  # d591
+  by: agent  # d591
+  actor: jgstern_agent  # d591
+  clock: 1  # d591
+  nonce: d591  # d591
+  data:  # d591
+    kind: work_item  # d591
+    title: "kotlin/swift/go/ts hash function-type parameter names (renaming a callback's inner parameter moves the id)"  # d591
+    status: todo_hard  # d591
+    priority: 4  # d591
+    parent:  # d591
+    tags:  # d591
+    - stable_id  # d591
+    isbefore: []  # d591
+    duplicate_of: []  # d591
+    not_duplicate_of: []  # d591
+    pr_ref:  # d591
+    description: "Kotlin, Swift, Go and TypeScript hash function-type parameter names, so renaming a callback parameter's inner name moves the id.\n\nREPRO: Kotlin fun f(cb: (x: Int) -> Unit) hashes ((x: Int) -> Unit); fun f(cb: (y: Int) -> Unit) hashes apart. Same for Swift, Go and TypeScript function types (hashed as written). Since PR 3 commit 2217d7f4a Dart drops these names, so Dart is now the only language that does. Spelling sensitivity, not a collapse. Moves ids: candidate for the final v17 stable-id PR. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent8/RESULTS.md R1."  # d591
+    fields: {}  # d591

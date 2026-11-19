@@ -18,3 +18,10 @@
     pr_ref:  # 790a
     description: "TypeScript: a callback's scope label can be the source text of the enclosing callback's body, so editing that body moves the ids of everything nested in it.\n\nREPRO: analyse koel resources/assets/js/components/ai/AiChatMessage.spec.ts: symbols _cb_anonymous hash qualified_name \"{\\n  const h = createHarness()\\n\\n  it('renders assistant message content', ...\" ; also _cb_useListSelection with a destructuring pattern as its label. A minimal describe('x', () => { it('a', () => {}) }) does NOT reproduce it; not narrowed further. Since PR 3 commit 8996a2812 layout is no longer hashed, but the content is. Fixing it moves ids, so it needs a stable-id bump. Found by PR 3 agent 7: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent7/RESULTS.md R3."  # 790a
     fields: {}  # 790a
+- op: discuss  # 01ef
+  at: '2026-11-19T21:24:42Z'  # 01ef
+  by: agent  # 01ef
+  actor: jgstern_agent  # 01ef
+  clock: 2  # 01ef
+  nonce: 01ef  # 01ef
+  message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump), one agent before the bump agent."  # 01ef

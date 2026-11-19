@@ -1,0 +1,20 @@
+- op: create  # 8374
+  at: '2026-11-19T21:24:09Z'  # 8374
+  by: agent  # 8374
+  actor: jgstern_agent  # 8374
+  clock: 1  # 8374
+  nonce: '8374'  # 8374
+  data:  # 8374
+    kind: work_item  # 8374
+    title: "layout-free stable-id inputs: remaining gaps (untyped names beyond C++, TS leading &, primes, regex literals, PHP union respacing)"  # 8374
+    status: todo_hard  # 8374
+    priority: 4  # 8374
+    parent:  # 8374
+    tags:  # 8374
+    - stable_id  # 8374
+    isbefore: []  # 8374
+    duplicate_of: []  # 8374
+    not_duplicate_of: []  # 8374
+    pr_ref:  # 8374
+    description: "Layout normalization of stable-id inputs: remaining gaps after PR 3 commit 8996a2812 (canonical spacing).\n\n1. Untyped-tier names are made layout-free only for C++ (LAYOUT_FREE_NAME_LANGUAGES = {cpp}); CUDA, D, Zig, Haxe, Odin and Objective-C were not checked for layout in untyped names (operator names, multi-line declarators).\n2. A TypeScript multi-line intersection's leading & is not dropped: layout_free(\"(x:\\n  & A\\n  & B)\", separators=True) = \"(x: &A & B)\" vs one-line \"(x: A & B)\" (a language-blind rule cannot drop it: Rust &self after a line break).\n3. Paired primes (a' -> b') are read as a string literal, so their inner layout stays hashed (no tie).\n4. Whitespace inside a TypeScript regex literal in a hashed default value is not protected (none observed).\n5. One language-blind spacing choice per token: PHP unions (Album|string, 109 ids moved on koel) and Swift subscript names / C# and C++ operator names are respaced; a per-language table would avoid this but the hash input carries no language.\n6. Not measured: Groovy, Julia, Solidity, rust_scip with rust-analyzer, JavaScript separately from TypeScript.\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent7/RESULTS.md (R1, R4, R5, R6, R9 and the variant C section)."  # 8374
+    fields: {}  # 8374
