@@ -553,7 +553,10 @@ def _symbol_spec() -> ClassSpec:
                 "Structural content hash of the symbol's parse subtree "
                 "(shape + identifiers + literals; whitespace/comment-"
                 "invariant), prefixed with the scheme tag declared in "
-                "symbol_fingerprint_scheme. Null when the span has no "
+                "symbol_fingerprint_scheme (hgfp<N>:). A language=None "
+                "stand-in has no source to hash: its value is a digest of "
+                "its node id, labelled hgstandinfp<N>: "
+                "(stand_in_fingerprint_scheme). Null when the span has no "
                 "parseable content or no grammar is available."
             )},
             "quality": {"description": (

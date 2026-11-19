@@ -737,7 +737,10 @@ class Symbol:
             comment-invariant, tagged with the scheme in
             ``symbol_fingerprint_scheme`` (``hgfp2:``). NOT a raw
             source-byte hash (ADR-0032). ``None`` for grammarless languages / parse errors /
-            synthetic spans. Producer: fingerprint.py.
+            synthetic spans. Producer: fingerprint.py. A ``language=None``
+            stand-in has no source to hash: its value is a digest of its id,
+            labelled by ``stand_in_fingerprint_scheme`` (``hgstandinfp1:``;
+            ``analyze.base.mint_stand_in_fingerprint``).
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
         supply_chain_tier: Supply-chain distance, from the project, of the code

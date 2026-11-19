@@ -71,8 +71,11 @@ CI ratchet holds those counts shrink-only):
    ``<unknown>`` path slot, finalize's fallback for a dst that is not an
    id, is flagged at ``warning``. The class
    also pins ``Edge.id`` to ``edge:sha256:<16hex>``
-   (``_check_edge_id_format``) and requires the ``hgfp2:`` prefix on every
-   non-null real-source ``Symbol.fingerprint`` (``_check_fingerprint_format``).
+   (``_check_edge_id_format``) and requires, on every non-null
+   ``Symbol.fingerprint``, the label of its shape's scheme: the subtree
+   walk's ``hgfp<N>:`` on a real source node, the stand-in scheme's
+   ``hgstandinfp<N>:`` on a ``language=None`` stand-in
+   (``_check_fingerprint_format``).
 
 Besides ``violations`` and ``violations_by_class``, the
 ``validation_report`` that ``build_validation_report`` emits carries a
@@ -154,7 +157,13 @@ from .ir import (
     VALID_CONFIDENCE_SOURCES,
     sanitize_id_name_segment,
 )
-from .identity_schemes import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
+from .identity_schemes import (
+    SCIP_STABLE_ID_PREFIX,
+    SHAPE_ID_PREFIX,
+    STABLE_ID_PREFIX,
+    STAND_IN_FINGERPRINT_PREFIX,
+    SYMBOL_FINGERPRINT_PREFIX,
+)
 
 VALIDATION_REPORT_SCHEMA_VERSION = "0.5"  # 0.5: name_slot_stats (ADR-0036 Ruling 1 round-trip, additive); 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
@@ -224,11 +233,14 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "run set; WI-mujor endpoint-integrity guard — the dst-absent "
                     "half deferred from the ADR-0037 is_resolved<->dst FK)."},
     {"check": "fingerprint_format", "validator_class": "id_format",
-     "description": "Every non-null Symbol.fingerprint on a real source node "
-                    "(language is not None) carries the canonical hgfp2: scheme "
-                    "prefix (content-gated on a non-empty run set; WI-vudul "
-                    "output-boundary format guard — Class-B language=None "
-                    "identity-hash stand-ins are exempt)."},
+     "description": "Every non-null Symbol.fingerprint carries the label of "
+                    "the scheme that computes its shape: "
+                    f"{SYMBOL_FINGERPRINT_PREFIX} on a real source node "
+                    "(language is not None), "
+                    f"{STAND_IN_FINGERPRINT_PREFIX} on a Class-B "
+                    "language=None identity-hash stand-in (content-gated on a "
+                    "non-empty run set; WI-vudul output-boundary format "
+                    "guard)."},
     {"check": "confidence_range", "validator_class": "cross_field",
      "description": "Edge.confidence sits within the derived [low, "
                     "base_confidence] band for its evidence_type — a WI-nurun "
@@ -2531,8 +2543,9 @@ def _check_dangling_endpoint(
 # Fingerprint output-boundary format guard (WI-vudul)
 # ----------------------------------------------------------------------
 #
-# Symbol.fingerprint is contractually the canonical ``hgfp2:<16hex>`` scheme on
-# real source nodes (a whitespace/comment-invariant structural-subtree hash).
+# Symbol.fingerprint is contractually the canonical ``SYMBOL_FINGERPRINT_PREFIX
+# <16hex>`` scheme on real source nodes (a whitespace/comment-invariant
+# structural-subtree hash).
 # The central post-pass (``stamp_symbol_fingerprints``) NORMALIZES
 # producer-side non-canonical values (WI-lisog). This is the matching
 # OUTPUT-boundary guard: it asserts the contract holds on the emitted
@@ -2541,8 +2554,10 @@ def _check_dangling_endpoint(
 # trips CI instead of silently shipping a non-canonical identity value
 # (INV-kurup's "fields emit non-canonical formats" class, at the fingerprint
 # field). Class-B synthetic stand-ins (``language is None``) carry an
-# identity-hash second shape (ADR-0031 / WI-lisog) and are EXEMPT; a ``None``
-# fingerprint (synthetic external_symbol / file nulls) is skipped.
+# identity-hash second shape (ADR-0031 / WI-lisog) under its own label,
+# ``STAND_IN_FINGERPRINT_PREFIX`` (ADR-0035 "Value labels"), and are held to
+# that label; a ``None`` fingerprint (synthetic external_symbol / file nulls)
+# is skipped.
 #
 # CONTENT-GATED on a non-empty run set, like the sibling FK/endpoint predicates:
 # isolated unit fixtures call ``validate_ir`` with ``analysis_runs=[]`` and some
@@ -2557,14 +2572,15 @@ def _check_fingerprint_format(
     edges: Iterable[Any],
     analysis_runs: Iterable[Any],
 ) -> list[ValidationViolation]:
-    """Output-boundary guard: every non-null Symbol.fingerprint on a real
-    source node (``language is not None``) carries the canonical ``hgfp2:``
-    prefix. Content-gated on ``analysis_runs`` (WI-vudul; WI-lisog single-shape
+    """Output-boundary guard: every non-null Symbol.fingerprint carries the
+    label of its shape's scheme: ``SYMBOL_FINGERPRINT_PREFIX`` on a real
+    source node (``language is not None``), ``STAND_IN_FINGERPRINT_PREFIX`` on
+    a Class-B ``language=None`` stand-in (ADR-0031; ADR-0035 "Value labels").
+    Content-gated on ``analysis_runs`` (WI-vudul; WI-lisog single-shape
     contract)."""
     runs = list(analysis_runs)
     if not runs:
         return []
-    from .fingerprint import _SCHEME_PREFIX
 
     violations: list[ValidationViolation] = []
     for sym in symbols:
@@ -2572,8 +2588,12 @@ def _check_fingerprint_format(
         if fingerprint is None:
             continue
         if _read(sym, "language", None) is None:
-            continue  # Class-B identity-hash second shape (ADR-0031)
-        if str(fingerprint).startswith(_SCHEME_PREFIX):
+            label, shape = STAND_IN_FINGERPRINT_PREFIX, (
+                "a language=None stand-in's identity-derived fingerprint")
+        else:
+            label, shape = SYMBOL_FINGERPRINT_PREFIX, (
+                "a source-node fingerprint (the canonical structural-subtree hash)")
+        if str(fingerprint).startswith(label):
             continue
         violations.append(ValidationViolation(
             severity="error",
@@ -2581,14 +2601,11 @@ def _check_fingerprint_format(
             field_name="Symbol.fingerprint",
             record_id=_read(sym, "id", None),
             observed=repr(fingerprint),
-            expected=(
-                f"a source-node fingerprint carrying the {_SCHEME_PREFIX!r} "
-                "scheme prefix (the canonical structural-subtree hash)."
-            ),
+            expected=f"{shape} carrying the {label!r} scheme label.",
             message=(
                 f"Symbol {_read(sym, 'id', None)!r} has a non-canonical "
-                f"fingerprint {fingerprint!r} (no {_SCHEME_PREFIX!r} prefix) on "
-                "a real source node — a producer bare-hex leak survived to "
+                f"fingerprint {fingerprint!r} (no {label!r} label) — a value "
+                "no fingerprint factory mints for this shape survived to "
                 "output (WI-vudul / WI-lisog single-shape contract)."
             ),
         ))

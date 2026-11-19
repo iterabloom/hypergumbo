@@ -176,6 +176,14 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "carry the hgscipid<N>: label"
                 )
             },
+            "stand_in_fingerprint_scheme": {
+                "type": "string",
+                "description": (
+                    "Identifier for the algorithm a language=None stand-in's "
+                    "Symbol.fingerprint is computed with (a digest of its node "
+                    "id); those values carry the hgstandinfp<N>: label"
+                )
+            },
             "view": {
                 "type": "string",
                 "enum": list(VIEW_NAMES),

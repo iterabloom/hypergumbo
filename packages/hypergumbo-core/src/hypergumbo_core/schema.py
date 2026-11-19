@@ -69,9 +69,13 @@ one: see that module's docstring.
 - **scip_stable_id_scheme**: How the rust-analyzer (SCIP) arm computes the
   stable_id values it mints (a second algorithm under one field, so a
   scheme and a value label of its own)
+- **stand_in_fingerprint_scheme**: How the Symbol.fingerprint of a
+  ``language=None`` stand-in is computed (a digest of its node id: it has
+  no source to walk, so a second algorithm under one field, with a scheme
+  and a value label of its own)
 
 Every identity value carries the label of the scheme that produced it
-(`hgstableid15:`, `hgshapeid4:`, `hgrepofp3:`, `hgscipid1:`, `hgfp2:`):
+(`hg<word><N>:`, e.g. `hgshapeid4:` for shape_id_scheme v4):
 `value_label()` derives each label from its scheme constant, so a scheme
 bump is one edit. The labels name the value and its scheme version; the
 digest after the label is what the algorithm computed.
@@ -132,6 +136,8 @@ from .identity_schemes import (
     SHAPE_ID_SCHEME as SHAPE_ID_SCHEME,
     STABLE_ID_PREFIX as STABLE_ID_PREFIX,
     STABLE_ID_SCHEME as STABLE_ID_SCHEME,
+    STAND_IN_FINGERPRINT_PREFIX as STAND_IN_FINGERPRINT_PREFIX,
+    STAND_IN_FINGERPRINT_SCHEME as STAND_IN_FINGERPRINT_SCHEME,
     SYMBOL_FINGERPRINT_PREFIX as SYMBOL_FINGERPRINT_PREFIX,
     SYMBOL_FINGERPRINT_SCHEME as SYMBOL_FINGERPRINT_SCHEME,
     identity_digest as identity_digest,
@@ -139,7 +145,7 @@ from .identity_schemes import (
 )
 from .installed_env import kept_per_environment
 
-SCHEMA_VERSION = "0.21.2"
+SCHEMA_VERSION = "0.21.3"
 # Breaking output changes bump MINOR and additions bump PATCH (spec "Breaking
 # output changes bump minor"; the one exception is noted in the module
 # docstring). The per-version record of what changed is CHANGELOG.md.
@@ -195,6 +201,7 @@ def new_behavior_map() -> Dict[str, Any]:
         "repo_fingerprint_scheme": REPO_FINGERPRINT_SCHEME,
         "symbol_fingerprint_scheme": SYMBOL_FINGERPRINT_SCHEME,
         "scip_stable_id_scheme": SCIP_STABLE_ID_SCHEME,
+        "stand_in_fingerprint_scheme": STAND_IN_FINGERPRINT_SCHEME,
         "view": "behavior_map",
         "generated_at": _now_iso_utc(),
         "analysis_incomplete": False,

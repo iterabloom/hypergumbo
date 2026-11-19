@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.21.2"
+      "const": "0.21.3"
     },
     "confidence_model": {
       "type": "string",
@@ -33,6 +33,10 @@
     "scip_stable_id_scheme": {
       "type": "string",
       "description": "Identifier for the algorithm the rust-analyzer (SCIP) arm computes its stable_id values with; those values carry the hgscipid<N>: label"
+    },
+    "stand_in_fingerprint_scheme": {
+      "type": "string",
+      "description": "Identifier for the algorithm a language=None stand-in's Symbol.fingerprint is computed with (a digest of its node id); those values carry the hgstandinfp<N>: label"
     },
     "view": {
       "type": "string",
@@ -1079,7 +1083,7 @@
               "type": "null"
             }
           ],
-          "description": "Structural content hash of the symbol's parse subtree (shape + identifiers + literals; whitespace/comment-invariant), prefixed with the scheme tag declared in symbol_fingerprint_scheme. Null when the span has no parseable content or no grammar is available."
+          "description": "Structural content hash of the symbol's parse subtree (shape + identifiers + literals; whitespace/comment-invariant), prefixed with the scheme tag declared in symbol_fingerprint_scheme (hgfp<N>:). A language=None stand-in has no source to hash: its value is a digest of its node id, labelled hgstandinfp<N>: (stand_in_fingerprint_scheme). Null when the span has no parseable content or no grammar is available."
         },
         "quality": {
           "oneOf": [

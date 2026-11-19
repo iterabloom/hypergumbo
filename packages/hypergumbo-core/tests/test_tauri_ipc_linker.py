@@ -863,8 +863,9 @@ class TestTauriIPCSyntheticSymbols:
         assert sym.qualified_name is None or sym.qualified_name == sym.name
         assert sym.meta == {"tauri_command": "greet", "framework_role": "ipc_publisher"}
         # tauri_ipc's fingerprint is the synthetic src_id hash (not source bytes); kept per ADR-0032.
-        assert sym.fingerprint is not None
-        assert len(sym.fingerprint) == 16  # sha256 hex truncated to 16
+        from hypergumbo_core.analyze.base import mint_stand_in_fingerprint
+
+        assert sym.fingerprint == mint_stand_in_fingerprint(sym.id)
         # INV-bonup / ADR-0041 §1: supply_chain_tier names distance ONLY. The
         # synthetic bridge is honest first-party (tier 1); _classify_symbols skips
         # it via its protocol_origin marker, not a borrowed tier-2 "lock".

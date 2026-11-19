@@ -165,9 +165,7 @@ _REACH: dict[str, Any] = {
         1 for r in bm["nodes"] + bm["edges"] if r.get("origin_run_id")
     ) if bm.get("analysis_runs") else 0,
     "dangling_endpoint": lambda bm: len(bm["edges"]) if bm.get("analysis_runs") else 0,
-    "fingerprint_format": lambda bm: sum(
-        1 for n in bm["nodes"] if n.get("fingerprint") and n.get("language")
-    ),
+    "fingerprint_format": lambda bm: sum(1 for n in bm["nodes"] if n.get("fingerprint")),
     "confidence_range": lambda bm: sum(
         1 for e in bm["edges"]
         if _meta(e).get("evidence_type") and e.get("confidence") is not None

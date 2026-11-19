@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Breaking and contract changes
+
+- **Stand-in `fingerprint` values now carry the `hgstandinfp1:` label.**
+
 ### Added
 
 - **Declare fixture directories as test input in `.hypergumbo.toml`.**
