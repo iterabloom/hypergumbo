@@ -36,6 +36,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Typed ids no longer collapse tuple, function or nested types.**
 - **Generic overloads differing only in bounds get distinct ids.**
 - **Members of differently constrained Swift extensions get distinct ids.**
+- **Rust methods in different impl blocks get distinct ids.**
 - **`symbols` piped into `head` now exits 141, not 1.**
 
 ### Development tools and CI
