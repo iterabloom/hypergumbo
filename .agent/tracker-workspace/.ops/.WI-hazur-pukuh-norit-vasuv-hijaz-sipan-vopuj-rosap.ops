@@ -1,0 +1,20 @@
+- op: create  # d60a
+  at: '2026-11-19T14:01:07Z'  # d60a
+  by: agent  # d60a
+  actor: jgstern_agent  # d60a
+  clock: 1  # d60a
+  nonce: d60a  # d60a
+  data:  # d60a
+    kind: work_item  # d60a
+    title: "C++ nested qualified attribute std::numbers::pi loses the middle qualifier"  # d60a
+    status: todo_hard  # d60a
+    priority: 4  # d60a
+    parent:  # d60a
+    tags:  # d60a
+    - identity  # d60a
+    isbefore: []  # d60a
+    duplicate_of: []  # d60a
+    not_duplicate_of: []  # d60a
+    pr_ref:  # d60a
+    description: "C++: a nested qualified attribute such as std::numbers::pi gets module 'std' and name 'pi'; 'numbers' is lost. Pre-existing at the boundary node; since PR 3 the raw edge dst carries the same last-component name.\n\nCLOSE WHEN the module slot keeps the whole qualifier (std::numbers), with a fixture.\n\nFound by the PR 3 (stable-id v16) WI-rozod/WI-zolat build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/rozod/RESULTS.md (Residuals)."  # d60a
+    fields: {}  # d60a

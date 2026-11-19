@@ -1,0 +1,20 @@
+- op: create  # e427
+  at: '2026-11-19T14:01:01Z'  # e427
+  by: agent  # e427
+  actor: jgstern_agent  # e427
+  clock: 1  # e427
+  nonce: e427  # e427
+  data:  # e427
+    kind: work_item  # e427
+    title: "Markdown link id name slot is text or url[:20] while its name is text or url; span is the paragraph's first line"  # e427
+    status: todo_hard  # e427
+    priority: 4  # e427
+    parent:  # e427
+    tags:  # e427
+    - identity  # e427
+    isbefore: []  # e427
+    duplicate_of: []  # e427
+    not_duplicate_of: []  # e427
+    pr_ref:  # e427
+    description: "Markdown links: the id's name slot is 'text or url[:20]' while Symbol.name is 'text or url', so an empty-text link with a long URL has a name slot that differs from its name (ADR-0036 Ruling 1 mismatch). Also a link's span line is its paragraph's first line, not the link's own line.\n\nCLOSE WHEN the name slot is derived from Symbol.name through the factory and the span is the link's own line (both move stable ids: next bump).\n\nFound by the PR 3 (stable-id v16) WI-rozod/WI-zolat build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/rozod/RESULTS.md (Residuals)."  # e427
+    fields: {}  # e427
