@@ -130,8 +130,8 @@ _UNCHANGED = [
      "(String,(Int) -> Unit)Int"),
     (normalize_scala_signature, "(a: scala.Int)(implicit o: Ordering[A]): A",
      "(Int)(implicit Ordering[A])A"),
-    (normalize_csharp_signature, "(ref System.Int32 x, (int, string) t) System.String",
-     "(ref Int32,(int, string))String"),
+    (normalize_csharp_signature, "(ref int x, (int, string) t) string",
+     "(ref int,(int, string))string"),
     (normalize_rust_signature, "(&self, x: &'a str, y: Vec<T>) -> bool", "(&'a str,Vec<T>)bool"),
     (normalize_rust_signature, "(mut self, x: i32)", "(mut self,i32)"),
     (normalize_rust_signature, "(x: &'a str, y: &'a T) -> &'a str", "(&'a str,&'a T)&'a str"),
@@ -157,7 +157,7 @@ def test_tuple_of_function_types_is_one_parameter() -> None:
         "(((Int) -> Int, (Int) -> Int))")
     assert normalize_swift_signature(
         "(a: Foundation.Date, b: ((Int) -> Int, (Int) -> Int)) -> Int") == (
-        "(Date,((Int) -> Int, (Int) -> Int))Int")
+        "(Foundation.Date,((Int) -> Int, (Int) -> Int))Int")
 
 
 def test_csharp_function_pointer_is_one_parameter() -> None:

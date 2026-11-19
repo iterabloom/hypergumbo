@@ -1130,11 +1130,10 @@ def _extract_swift_signature(
 
 #: The prefixes a Swift type text may carry before its core type: an
 #: attribute (``@escaping``, ``@Sendable``, ``@convention(c)``), an ownership
-#: or passing modifier, ``some`` / ``any``, a pack's ``repeat each``. Each
-#: matters only before a QUALIFIED core, which the shared FQN strip would
-#: otherwise cut at its last ``.`` together with the prefix. A suppressed
+#: or passing modifier, ``some`` / ``any``, a pack's ``repeat each``. Each is
+#: written once, followed by one space, in front of its core. A suppressed
 #: constraint's ``~`` is not here: the grammar reads ``~`` before one type
-#: identifier only, so no dot ever follows it.
+#: identifier only.
 _SWIFT_TYPE_PREFIX_RE = re.compile(
     r"@\w+(?:\([^()]*\))?\s*"
     r"|(?:inout|borrowing|consuming|__owned|__shared|sending|isolated"
@@ -1160,41 +1159,27 @@ def _swift_top_level_split(text: str, sep: str) -> list[str]:
     return parts
 
 
-#: A metatype: ``T.Type`` / ``P.Protocol``, optionally optional.
-_SWIFT_METATYPE_RE = re.compile(r"(?P<base>.+)\.(?P<kind>Type|Protocol)(?P<suffix>[?!]*)", re.DOTALL)
-
-
 def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     """One type of a Swift signature, normalized for the typed stable_id.
 
-    The shared rewrite (``strip_fqn_prefix`` and generic-parameter
-    numbering, as ``normalize_signature_names_first`` applies it) is applied
-    to the CORE type only. The decorations around it -- prefixes matched by
-    ``_SWIFT_TYPE_PREFIX_RE``, a variadic's ``...``, and the members of a
-    top-level ``A & B`` -- are kept beside it: the shared helper splits at
-    the last ``.``, which would turn ``Int...`` into ``""``, ``inout Foo.Bar``
-    into ``Bar`` and ``A.B & C.D`` into ``D``. An implicitly unwrapped ``!``
-    needs no handling: it follows the last ``.``, so the strip keeps it
-    (``Mod.T!`` -> ``T!``). A type with none of them normalizes exactly as
-    the shared normalizer does it.
-
-    A metatype keeps its instance type: ``Int.Type`` is ``Int`` written as
-    above followed by ``.Type`` (v15 cut it to ``Type``, so every metatype
-    parameter hashed alike), and ``P.Protocol`` likewise. A tuple or function
-    type is written whole by the shared strip, which no longer cuts it at
-    its last dot.
+    Every type is hashed AS WRITTEN, its qualifier included: ``Feature.State``
+    and ``Other.State`` hash apart, and so do ``Swift.Int`` and ``Int``
+    (WI-ririg owner ruling: the hash is spelling-dependent). Until the
+    WI-ririg commit the head of a qualified type was cut to its last segment
+    (``strip_fqn_prefix``), so two overloads on two same-named nested types
+    tied; v15 also cut a metatype ``Int.Type`` to ``Type``. Declared type
+    parameters are written as their position. The decorations around the
+    core -- prefixes matched by ``_SWIFT_TYPE_PREFIX_RE``, a variadic's
+    ``...``, and the members of a top-level ``A & B`` -- are taken off and
+    written back with single spaces (``A&B`` -> ``A & B``), as they were when
+    the strip needed them out of its way, so an unqualified type hashes the
+    text it hashed.
     """
-    from hypergumbo_core.analyze.base import (
-        normalize_generic_params,
-        strip_fqn_prefix,
-    )
+    from hypergumbo_core.analyze.base import normalize_generic_params
 
     def core(text: str) -> str:
-        meta = _SWIFT_METATYPE_RE.fullmatch(text.strip())
-        if meta is not None:
-            return core(meta["base"]) + "." + meta["kind"] + meta["suffix"]
-        normalized = strip_fqn_prefix(text.strip())
-        return normalize_generic_params(normalized, type_params) if type_params else normalized
+        written = text.strip()
+        return normalize_generic_params(written, type_params) if type_params else written
 
     rest = raw_type.strip()
     prefixes: list[str] = []
@@ -1217,11 +1202,10 @@ def normalize_swift_signature(
     """Normalize a Swift signature for typed stable_id (spec §6 typed tier).
 
     The names-first shape (``(name: Type, ...) -> Ret`` -> ``(Type,...)Ret``:
-    parameter names and argument labels dropped, ``strip_fqn_prefix`` on each
-    type) of ``normalize_signature_names_first``, with each type through
-    :func:`_swift_normalize_type`, so a decorated type keeps its decoration.
-    For a signature with no decorated type the result is exactly the shared
-    normalizer's.
+    parameter names and argument labels dropped) of
+    ``normalize_signature_names_first``, with each type through
+    :func:`_swift_normalize_type`, which writes it as written (no FQN strip)
+    and keeps a decorated type's decoration.
     """
     from hypergumbo_core.analyze.base import find_matching_paren, split_params_top_level
 

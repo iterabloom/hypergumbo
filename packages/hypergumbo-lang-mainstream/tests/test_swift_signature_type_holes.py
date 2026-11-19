@@ -145,7 +145,8 @@ _PINNED = {
     "S.v": f"{STABLE_ID_PREFIX}b97120ecdb3b499a",
     "S.c": f"{STABLE_ID_PREFIX}9d321b7f3c78b955",
     "S.subscript(i:)": f"{STABLE_ID_PREFIX}c3190acb35203179",
-    "S.g": f"{STABLE_ID_PREFIX}e5190034f69ef295",
+    # WI-ririg: ``Foo.Bar`` is hashed as written (was ``Bar``): e5190034f69ef295.
+    "S.g": f"{STABLE_ID_PREFIX}7ecf5b29510628c5",
     "S.deinit": f"{STABLE_ID_PREFIX}1079eea70112982c",
     "R.m": f"{STABLE_ID_PREFIX}7359f05f4fa047d9",
     "R.p": f"{STABLE_ID_PREFIX}dc5dc570dda64d74",
@@ -164,9 +165,7 @@ def test_hole_free_declarations_hash_as_before(tmp_path: Path) -> None:
 @pytest.mark.parametrize("signature", [
     "(x: Int, y: Int) -> Int",
     "(x: [String: Int]) -> Int?",
-    "(_: Foo.Bar) -> Set<Int>",
     "(cb: (Int) -> String, t: (Int, String))",
-    "(x: Result<Foo.A, Error>) -> Swift.Int",
     "(x: (Swift.Int) -> Foo.Bar)",
     "(x: Dictionary<String, [Int]>, y: Int?)",
     "(i: Int) -> Int",
@@ -183,20 +182,24 @@ def test_the_swift_normalizer_agrees_with_the_shared_one_on_hole_free_text(signa
 @pytest.mark.parametrize(("signature", "normalized"), [
     # A metatype keeps its instance type (v15's shared strip cut it to ``Type``).
     ("(x: Int.Type)", "(Int.Type)"),
-    ("(x: Swift.Int.Type?) -> P.Protocol", "(Int.Type?)P.Protocol"),
+    ("(x: Swift.Int.Type?) -> P.Protocol", "(Swift.Int.Type?)P.Protocol"),
     ("(x: Int...)", "(Int...)"),
-    ("(x: inout Foo.Bar)", "(inout Bar)"),
-    ("(x: Foo.A & Bar.B)", "(A & B)"),
+    ("(x: inout Foo.Bar)", "(inout Foo.Bar)"),
+    ("(x: Foo.A & Bar.B)", "(Foo.A & Bar.B)"),
+    ("(x: Foo.A&Bar.B)", "(Foo.A & Bar.B)"),
+    ("(_: Foo.Bar) -> Set<Int>", "(Foo.Bar)Set<Int>"),
+    ("(x: Result<Foo.A, Error>) -> Swift.Int", "(Result<Foo.A, Error>)Swift.Int"),
     ("(x: @escaping (Int) -> Void)", "(@escaping (Int) -> Void)"),
     ("(x: @convention(c) (Int) -> Void)", "(@convention(c) (Int) -> Void)"),
     ("(x: ~Copyable)", "(~Copyable)"),
-    ("(x: Int!) -> Foo.Bar!", "(Int!)Bar!"),
+    ("(x: Int!) -> Foo.Bar!", "(Int!)Foo.Bar!"),
     ("() -> some View", "()some View"),
     ("(x: repeat each T)", "(repeat each T)"),
 ])
 def test_a_decorated_type_keeps_its_decoration(signature: str, normalized: str) -> None:
-    """The shared rewrite splits at the last ``.``: ``Int...`` would hash as
-    ``""`` and ``inout Foo.Bar`` as ``Bar``. Only the core type takes it."""
+    """Each decoration is kept beside its core, which is written as written
+    (WI-ririg: no FQN strip, so ``inout Foo.Bar`` hashes ``inout Foo.Bar``;
+    v15's strip gave ``Bar``, and ``""`` for ``Int...``)."""
     assert normalize_swift_signature(signature) == normalized
 
 
@@ -240,12 +243,12 @@ def _decorated(word: str) -> str:
 #: it must normalize to). The attribute branch is three cases, one with a
 #: parenthesised argument.
 _PREFIX_CASES = sorted(
-    [(w, _decorated(w), "repeat each T" if w == "repeat" else f"{w} T")
+    [(w, _decorated(w), "repeat each Mod.T" if w == "repeat" else f"{w} Mod.T")
      for w in set(_PREFIX_WORDS_LITERAL) | _regex_words()]
     + [
-        ("@escaping", "@escaping Mod.T", "@escaping T"),
-        ("@Sendable", "@Sendable Mod.T", "@Sendable T"),
-        ("@convention(c)", "@convention(c) Mod.T", "@convention(c) T"),
+        ("@escaping", "@escaping Mod.T", "@escaping Mod.T"),
+        ("@Sendable", "@Sendable Mod.T", "@Sendable Mod.T"),
+        ("@convention(c)", "@convention(c) Mod.T", "@convention(c) Mod.T"),
     ],
 )
 
@@ -270,8 +273,8 @@ def test_a_prefix_before_a_qualified_type_is_hashed(
     tmp_path: Path, param_type: str, hashed: str,
 ) -> None:
     """Every entry of ``_SWIFT_TYPE_PREFIX_RE`` before a QUALIFIED core: the
-    hashed text keeps the prefix and the simple name (``some T``, not the
-    shared strip's ``T``), and the id differs from the undecorated
+    hashed text keeps the prefix and the qualified type as written
+    (``some Mod.T``; v15's strip gave ``T``), and the id differs from the undecorated
     declaration's and from the same declaration under another prefix.
 
     All eleven words and the three attributes go through the analyzer:
@@ -291,17 +294,16 @@ def test_a_prefix_before_a_qualified_type_is_hashed(
 
 
 @pytest.mark.parametrize(("param_type", "hashed"), [
-    ("Mod.T...", "T..."),
-    ("A.B & C.D", "B & D"),
-    ("Mod.T!", "T!"),
+    ("Mod.T...", "Mod.T..."),
+    ("A.B & C.D", "A.B & C.D"),
+    ("Mod.T!", "Mod.T!"),
 ])
 def test_a_suffix_or_composition_around_a_qualified_type_is_hashed(
     tmp_path: Path, param_type: str, hashed: str,
 ) -> None:
     """The variadic ``...`` and a top-level ``&`` are kept beside qualified
-    cores (the shared strip would give ``""`` and ``D``). ``Mod.T!`` needs no
-    branch -- the ``!`` follows the last ``.`` -- and is pinned so that stays
-    true."""
+    cores, each written as written (v15's strip gave ``""`` and ``D``);
+    ``Mod.T!`` is written whole."""
     decorated = _f_symbol(tmp_path / "decorated", param_type)
     plain = _f_symbol(tmp_path / "plain", "Mod.T")
     assert normalize_swift_signature(decorated.signature) == f"({hashed})"

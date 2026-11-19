@@ -132,8 +132,8 @@ FILLED = {
     "(ref int x, out int y, in int z)": "(ref int,out int,in int)",
     "(this string s, scoped ref int q, ref readonly int r)":
         "(this string,scoped ref int,ref readonly int)",
-    "(ref System.Int32 x, params System.Object[] xs)": "(ref Int32,params Object[])",
-    "(scoped System.Span<int> s)": "(scoped Span<int>)",
+    "(ref System.Int32 x, params System.Object[] xs)": "(ref System.Int32,params System.Object[])",
+    "(scoped System.Span<int> s)": "(scoped System.Span<int>)",
     "(__arglist)": "(__arglist)",
     "((int, System.String) t) (System.Int32 a, string b)":
         "((int, System.String))(System.Int32 a, string b)",
@@ -149,15 +149,17 @@ def test_the_hashed_text_of_a_filled_form(signature: str, hashed: str) -> None:
 
 # Signatures whose types use only the kinds that had a branch: the hashed text
 # is the shared types-first normalization's, unchanged (parameter names
-# dropped, FQN heads stripped, ``void`` omitted, generic arguments kept as
-# written, declared type parameters by position).
+# dropped, ``void`` omitted, generic arguments kept as written, declared type
+# parameters by position). A qualified type is written whole, its qualifier
+# included (WI-ririg; until then its head was cut to the last segment:
+# ``global::System.String`` hashed ``String``).
 UNCHANGED = {
     "(int x, string? s, int? n, int[,] m, int[][] j, global::System.String g)":
-        "(int,string?,int?,int[,],int[][],String)",
+        "(int,string?,int?,int[,],int[][],global::System.String)",
     "(int* p)": "(int*)",
     "(dynamic d) List<Dictionary<string, int>>": "(dynamic)List<Dictionary<string, int>>",
     "(System.Collections.Generic.List<System.String> xs) System.Int32":
-        "(List<System.String>)Int32",
+        "(System.Collections.Generic.List<System.String>)System.Int32",
     "(int x) ref int": "(int)ref int",
     "()": "()",
     "(Clean f, int Q) Clean": "(Clean,int)Clean",
@@ -173,8 +175,8 @@ def test_hole_free_signatures_hash_as_before(signature: str, hashed: str) -> Non
 # (``(int)Int32``, ``((int, int)?,Int32, int)[])``): a ``ref`` return keeps its
 # modifier, and a nullable or array tuple is written whole as a tuple is.
 NO_LONGER_CUT = {
-    "(int x) ref System.Int32": "(int)ref Int32",
-    "() ref readonly System.Int32": "()ref readonly Int32",
+    "(int x) ref System.Int32": "(int)ref System.Int32",
+    "() ref readonly System.Int32": "()ref readonly System.Int32",
     "((int, int)? t, (System.Int32, int)[] u)": "((int, int)?,(System.Int32, int)[])",
 }
 
@@ -219,7 +221,9 @@ namespace Fx
 # the holes were filled (dev 3da1f85b37, file ``Clean.cs`` at the root).
 PINNED = {
     ("constructor", "Clean.Clean"): f"{STABLE_ID_PREFIX}ad210095a4bc8b3e",
-    ("method", "Clean.H"): f"{STABLE_ID_PREFIX}857b56ab37223405",
+    # WI-ririg: ``global::System.String`` is hashed as written (was
+    # ``String``): 857b56ab37223405.
+    ("method", "Clean.H"): f"{STABLE_ID_PREFIX}831727aa0878f4b0",
     ("method", "Clean.G"): f"{STABLE_ID_PREFIX}fd5db1288a1f18fd",
     ("method", "Clean.Def"): f"{STABLE_ID_PREFIX}c1657d9473d0a6bb",
     ("method", "Clean.RoRet"): f"{STABLE_ID_PREFIX}05fd7e7aaaaae32c",
@@ -283,12 +287,11 @@ def test_every_parameter_modifier_survives_a_qualified_type(
     tmp_path: Path, modifier: str,
 ) -> None:
     words, qualified = _MODIFIER_SHAPES.get(modifier, (modifier, "System.Int32"))
-    simple = qualified.rsplit(".", 1)[-1]
     other = "out" if words == "ref" else "ref"
     modified, signature = _static_member_id(tmp_path, "modified", f"{words} {qualified} x")
     plain, _ = _static_member_id(tmp_path, "plain", f"{qualified} x")
     contrast, _ = _static_member_id(tmp_path, "contrast", f"{other} {qualified} x")
     assert signature == f"({words} {qualified} x)"
-    assert normalize_csharp_signature(signature) == f"({words} {simple})"
+    assert normalize_csharp_signature(signature) == f"({words} {qualified})"
     assert modified != plain
     assert modified != contrast
