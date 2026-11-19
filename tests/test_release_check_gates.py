@@ -203,7 +203,7 @@ def test_a_wheel_that_does_not_install_fails_and_a_missing_one_is_named(tmp_path
 
 def test_the_default_set_is_what_the_io_manifest_job_installs() -> None:
     block = _between(*WHEEL_BLOCK)
-    ours = re.search(r"DEFAULT_SET=\(([^)]*)\)", block).group(1).split()
+    ours = re.findall(r'"([^"]+)"', re.search(r"DEFAULT_SET=\(([^)]*)\)", block).group(1))
     theirs = re.findall(r"packages/(\S+)", _job("io-manifest").split("Trace the corpus")[0])
     assert ours == theirs and len(ours) == 5
 

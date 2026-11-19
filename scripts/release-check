@@ -444,8 +444,20 @@ echo "  Installing the built wheels into a fresh environment, as a user would...
 WHEEL_PY=${WHEEL_PY:-$(command -v python3.11 || command -v python3)}
 WHEEL_DIR=$(mktemp -d)
 WHEEL_VENV=""
-DEFAULT_SET=(hypergumbo-core hypergumbo-lang-mainstream hypergumbo-lang-common
-             hypergumbo-lang-extended1 hypergumbo)
+# DEFAULT_SET and OTHER_PACKAGES together name every package: a new one missing
+# from both would never be install-checked (tests/test_release_package_lists.py).
+DEFAULT_SET=(
+    "hypergumbo-core"
+    "hypergumbo-lang-mainstream"
+    "hypergumbo-lang-common"
+    "hypergumbo-lang-extended1"
+    "hypergumbo"
+)
+OTHER_PACKAGES=(
+    "hypergumbo-lang-rust-analyzer"
+    "hypergumbo-lang-scip-python"
+    "hypergumbo-tracker"
+)
 DEFAULT_WHEELS=()
 for name in "${DEFAULT_SET[@]}"; do
     w=$(ls dist/"${name//-/_}"-*.whl 2>/dev/null | head -1 || true)
@@ -460,7 +472,7 @@ else
     tail -20 "$WHEEL_DIR/install.log"
     fail "  The default package set does not install from the built wheels (pip says above)"
 fi
-for name in hypergumbo-lang-rust-analyzer hypergumbo-lang-scip-python hypergumbo-tracker; do
+for name in "${OTHER_PACKAGES[@]}"; do
     w=$(ls dist/"${name//-/_}"-*.whl 2>/dev/null | head -1 || true)
     [[ -n "$w" ]] || continue  # its build above already failed, loudly
     if [[ -n "$WHEEL_VENV" ]] && "$WHEEL_VENV/bin/pip" install --dry-run --find-links dist/ \
