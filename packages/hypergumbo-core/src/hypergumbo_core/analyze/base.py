@@ -1082,7 +1082,9 @@ def make_unresolved_edge(
 
     All language analyzers use this when a function/method call cannot be
     resolved to a project symbol.  The resulting edge has confidence 0.50
-    and a standardized dst ID format:  {lang}:{module_hint}:0-0:{name}:unresolved
+    and a standardized dst ID format:  {lang}:{module_hint}:0-0:{name}:unresolved,
+    minted by :func:`make_symbol_id` (``:`` in the name folds to ``.``; an
+    empty ``module_hint`` is ``external``).
 
     Args:
         lang: Language identifier (e.g., "c", "java", "rust")
@@ -1124,7 +1126,15 @@ def make_unresolved_edge(
             :mod:`hypergumbo_core.call_constructs`; any other raises
             ``ValueError``.
     """
-    dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
+    # Both slots through the factory (ADR-0036 Ruling 1): the name slot folds
+    # ':' to '.', so a selector, a Rust/C++ path or a PowerShell argument such
+    # as ``custom-columns=:.metadata.name`` cannot shift the right-anchored
+    # slots (the lossless name is ``meta["callee_name"]``, below); and an
+    # empty module hint is the "external" sentinel, never an empty path slot
+    # (WI-zolat). Finalize keys the boundary node on (lang, path, lossless
+    # name) either way, so the folded spelling moves no boundary id.
+    module_hint = module_hint or "external"
+    dst_id = make_symbol_id(lang, module_hint, 0, 0, callee_name, "unresolved")
     # ADR-0037 ruling 2: derive dst_ref from the components this helper already holds,
     # so producers need not remember to pass it (WI-zuhon). A caller-supplied richer ref
     # still wins. EXCEPTION (WI-huzuv): when module_hint is the "external" sentinel the
@@ -3733,9 +3743,20 @@ def emit_module_attribute_refs(
             carrier_receiver_fields, carrier_arguments_field,
             carrier_argument_wrapper_kinds,
         )
+        # Through the factory (ADR-0036 Ruling 1). A scoped path names its
+        # last component alone: ``std::env::consts::OS`` in the name slot
+        # would hold ``::`` and not parse, while the path slot already carries
+        # ``std::env::consts`` -- and the last component is exactly the name
+        # the boundary node took when finalize parsed the qualified spelling
+        # from the right (``std::numbers::pi`` under module ``std`` -> ``pi``),
+        # so no boundary node moves (R1 of WI-tatop; rust and cpp are the
+        # scoped_path languages).
         edges_out.append(Edge.create(
             src=(owner.id if owner is not None else caller_symbol.id),
-            dst=f"{lang}:{real_module}:0-0:{qname}:attribute",
+            dst=make_symbol_id(
+                lang, real_module, 0, 0,
+                qname.rsplit(sep, 1)[-1] if scoped_path else qname, "attribute",
+            ),
             edge_type="module_attr_ref",
             line=line_no,
             origin=pass_id,

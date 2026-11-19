@@ -834,12 +834,19 @@ class TestObjCSelectorExtraction:
 """)
         result = analyze_objc(tmp_path)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        unresolved_dsts = [e.dst for e in call_edges if "unresolved" in e.dst]
-        # Should have "removeItemAtPath:error:" not "removeItemAtPathpatherror"
-        matching = [d for d in unresolved_dsts if "removeItemAtPath:error:" in d]
+        unresolved = [e for e in call_edges if "unresolved" in e.dst]
+        # Should have "removeItemAtPath:error:" not "removeItemAtPathpatherror".
+        # The selector's lossless home is meta.callee_name; the dst's name slot
+        # folds ':' to '.' (ADR-0036 Ruling 1).
+        matching = [
+            e for e in unresolved
+            if (e.meta or {}).get("callee_name") == "removeItemAtPath:error:"
+        ]
         assert len(matching) >= 1, (
-            f"Expected unresolved edge with 'removeItemAtPath:error:', got: {unresolved_dsts}"
+            f"Expected unresolved edge with 'removeItemAtPath:error:', got: "
+            f"{[(e.dst, e.meta) for e in unresolved]}"
         )
+        assert matching[0].dst.endswith(":removeItemAtPath.error.:unresolved")
 
 
 class TestObjCParentBaseClasses:

@@ -135,7 +135,7 @@ class TestTheSelectorReachesTheNameSlot:
         # The MODULE slot is the property-typing's business (`session` is a
         # declared `NSURLSession` property); this test is about the NAME slot,
         # which must not hold the argument `req`.
-        assert got[0].dst.endswith(":dataTaskWithRequest::unresolved"), got[0].dst
+        assert got[0].dst.endswith(":dataTaskWithRequest.:unresolved"), got[0].dst
 
     def test_simple_selector_survives(
         self, tmp_path: Path, objc_available: None,
@@ -168,7 +168,7 @@ class TestTheCollidingLocalNoLongerTypesTheReceiver:
         # This site is typed from the DECLARED property rather than left at
         # the sentinel, which makes the point more sharply: the module is the
         # receiver's real class, not the colliding local's.
-        assert edge.dst == "objc:NSURLSession:0-0:writeData::unresolved", edge.dst
+        assert edge.dst == "objc:NSURLSession:0-0:writeData.:unresolved", edge.dst
 
     def test_the_borrowed_module_did_not_classify_a_boundary(
         self, tmp_path: Path, objc_available: None,

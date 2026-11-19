@@ -48,7 +48,7 @@ class TestObjcFastEnumerationBinding:
             "@end\n"
         )
         edge = _one(analyze_objc(tmp_path).edges, "writeToFile")
-        assert edge.dst == "objc:NSString:0-0:writeToFile:atomically::unresolved", edge.dst
+        assert edge.dst == "objc:NSString:0-0:writeToFile.atomically.:unresolved", edge.dst
 
     def test_the_declared_local_beside_it_still_works(self, tmp_path: Path) -> None:
         """The control: the shape that already worked, in the same fixture."""
@@ -62,7 +62,7 @@ class TestObjcFastEnumerationBinding:
             "@end\n"
         )
         edge = _one(analyze_objc(tmp_path).edges, "removeItemAtPath")
-        assert edge.dst == "objc:NSFileManager:0-0:removeItemAtPath:error::unresolved"
+        assert edge.dst == "objc:NSFileManager:0-0:removeItemAtPath.error.:unresolved"
 
     def test_a_c_style_for_loop_declares_nothing_here(self, tmp_path: Path) -> None:
         """`for (int i = 0; ...)` wraps its own `declaration` child, which the walker
@@ -162,5 +162,5 @@ class TestSwiftOptionalBinding:
         edges = analyze_objc(tmp_path).edges
         assert _one(edges, ":count:").dst == "objc:NSArray:0-0:count:unresolved"
         assert _one(edges, "writeToFile").dst == (
-            "objc:NSString:0-0:writeToFile:atomically::unresolved"
+            "objc:NSString:0-0:writeToFile.atomically.:unresolved"
         )

@@ -751,11 +751,11 @@ double get_pi() {
         attr_edges = [e for e in result.edges if e.edge_type == "module_attr_ref"]
         dsts = {e.dst for e in attr_edges}
 
-        assert "cpp:std:0-0:std::cout:attribute" in dsts, (
+        assert "cpp:std:0-0:cout:attribute" in dsts, (
             f"std::cout missing — emitted dsts: {sorted(dsts)}"
         )
-        assert "cpp:std:0-0:std::cerr:attribute" in dsts
-        assert "cpp:std:0-0:std::cin:attribute" in dsts
+        assert "cpp:std:0-0:cerr:attribute" in dsts
+        assert "cpp:std:0-0:cin:attribute" in dsts
 
     def test_nested_qualified_identifier_resolves_to_leftmost_std(
         self, tmp_path: Path
@@ -773,7 +773,7 @@ double get_pi() {
         attr_edges = [
             e for e in result.edges
             if e.edge_type == "module_attr_ref"
-            and "numbers" in e.dst
+            and e.dst.endswith(":pi:attribute")
         ]
         # Exactly one edge for std::numbers::pi; the inner node's
         # leftmost ('numbers') is not in the imports map so the inner
@@ -788,9 +788,11 @@ double get_pi() {
         # that led to INV-rilit; one id now carries one convention.
         # Catalogue matching is unaffected in either spelling: the
         # qualified index folds separators through
-        # ``normalize_module_separators``.
+        # ``normalize_module_separators``. The name slot now holds the last
+        # component alone (``::`` cannot sit in it, ADR-0036 Ruling 1): the
+        # name the boundary node took from the qualified spelling anyway.
         assert len(attr_edges) == 1
-        assert attr_edges[0].dst == "cpp:std:0-0:std::numbers::pi:attribute"
+        assert attr_edges[0].dst == "cpp:std:0-0:pi:attribute"
 
     def test_call_site_qualified_identifier_does_not_double_emit(
         self, tmp_path: Path
@@ -2749,4 +2751,4 @@ void g() { std::cout << "x"; }
         attr_dsts = [
             e.dst for e in result.edges if e.edge_type == "module_attr_ref"
         ]
-        assert "cpp:std:0-0:std::cout:attribute" in attr_dsts, attr_dsts
+        assert "cpp:std:0-0:cout:attribute" in attr_dsts, attr_dsts

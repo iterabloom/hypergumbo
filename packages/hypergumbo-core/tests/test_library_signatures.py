@@ -156,7 +156,7 @@ class TestThroughTheAnalyzers:
             e.dst for e in analyze_objc(tmp_path).edges
             if e.edge_type == "calls" and "removeItemAtPath" in e.dst
         }
-        assert dsts == {"objc:NSFileManager:0-0:removeItemAtPath:error::unresolved"}, dsts
+        assert dsts == {"objc:NSFileManager:0-0:removeItemAtPath.error.:unresolved"}, dsts
 
     def test_java_types_a_receiver_from_a_static_factory(self, tmp_path: Path) -> None:
         """`DriverManager.getConnection` is one of the nine rows WI-lalot measured as

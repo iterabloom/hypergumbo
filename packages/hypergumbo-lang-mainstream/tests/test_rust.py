@@ -2910,7 +2910,8 @@ class TestRustScopedIdentifierResolution:
             e for e in edges if not e.is_resolved
         ]
         assert len(unresolved) == 1
-        assert "Unknown::method" in unresolved[0].dst
+        assert unresolved[0].meta["callee_name"] == "Unknown::method"
+        assert unresolved[0].dst == "rust:external:0-0:Unknown..method:unresolved"
 
     def test_scoped_call_falls_back_to_short_name(self, tmp_path: Path) -> None:
         """When full scoped name not found, falls back to short name lookup.
@@ -5778,10 +5779,10 @@ class TestRustModuleAttrRefsScoped:
             e for e in result.edges if e.edge_type == "module_attr_ref"
         ]
         # The middle-level scoped_identifier ``std::env::consts`` emits
-        # an edge with dst ``rust:std::env:0-0:std::env::consts:attribute``.
+        # an edge with dst ``rust:std::env:0-0:consts:attribute``.
         # Outer / inner levels also emit but their dsts carry different
         # qnames ("std.env.consts.OS" and "std.env" respectively).
-        MIDDLE_DST = "rust:std::env:0-0:std::env::consts:attribute"
+        MIDDLE_DST = "rust:std::env:0-0:consts:attribute"
         middles = [e for e in attr_edges if e.dst == MIDDLE_DST]
         assert middles, (
             f"expected a module_attr_ref edge with dst {MIDDLE_DST!r}; "
@@ -6187,7 +6188,7 @@ pub fn os_name() -> &'static str {
         attr_dsts = [
             e.dst for e in result.edges if e.edge_type == "module_attr_ref"
         ]
-        assert "rust:std::env:0-0:std::env::consts:attribute" in attr_dsts, (
+        assert "rust:std::env:0-0:consts:attribute" in attr_dsts, (
             attr_dsts
         )
 
@@ -6236,12 +6237,12 @@ _VALUE_READS: tuple[tuple[str, str, str], ...] = (
     (
         "const_read",
         "pub fn f() -> &'static str { std::env::consts::OS }",
-        "rust:std::env:0-0:std::env::consts:attribute",
+        "rust:std::env:0-0:consts:attribute",
     ),
     (
         "const_read_after_use",
         "use std::env::*;\npub fn f() -> &'static str { std::env::consts::OS }",
-        "rust:std::env:0-0:std::env::consts:attribute",
+        "rust:std::env:0-0:consts:attribute",
     ),
 )
 

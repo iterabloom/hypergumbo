@@ -175,7 +175,7 @@ class TestThePropertyTypeReachesTheModuleSlot:
     ) -> None:
         edge, _ = _boundary(tmp_path, LINE_SEND)
         assert edge.dst == (
-            "objc:NSURLSession:0-0:dataTaskWithRequest::unresolved"
+            "objc:NSURLSession:0-0:dataTaskWithRequest.:unresolved"
         ), edge.dst
         assert (edge.meta or {}).get("receiver_type_hint") == "NSURLSession"
 
@@ -243,7 +243,7 @@ class TestAMacroIsNotAType:
     ) -> None:
         edge, prim = _boundary(tmp_path, LINE_OUTLET)
         assert "IBOutlet" not in edge.dst, edge.dst
-        assert edge.dst == "objc:NSFileHandle:0-0:writeData::unresolved", edge.dst
+        assert edge.dst == "objc:NSFileHandle:0-0:writeData.:unresolved", edge.dst
         assert prim is not None and prim.boundary == "fs_write"
 
     def test_a_generic_type_abstains_rather_than_guessing(

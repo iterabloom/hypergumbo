@@ -26,8 +26,10 @@ def _edges(root: Path, files: dict[str, str]) -> list[Edge]:
 
 
 def _send(edges: list[Edge], selector: str) -> Edge:
-    hits = [e for e in edges if e.edge_type == "calls" and not e.is_resolved and e.dst.endswith(f":{selector}:unresolved")]
-    assert len(hits) == 1, [e.dst for e in edges if selector in e.dst]
+    # The selector's lossless home; the dst's name slot folds ':' to '.'.
+    hits = [e for e in edges if e.edge_type == "calls" and not e.is_resolved
+            and (e.meta or {}).get("callee_name") == selector]
+    assert len(hits) == 1, [e.dst for e in edges if e.edge_type == "calls"]
     return hits[0]
 
 
@@ -55,7 +57,7 @@ class TestInRepoReturnTypes:
             "}"
         )})
         e = _send(edges, "fileExistsAtPath:")
-        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved", e.dst
+        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath.:unresolved", e.dst
         assert e.dst_ref is not None and e.dst_ref.module_path == "NSFileManager"
 
     def test_nested_receiver(self, tmp_path: Path) -> None:
@@ -64,7 +66,7 @@ class TestInRepoReturnTypes:
             "    [[f manager] fileExistsAtPath:p];\n"
             "}"
         )})
-        assert _send(edges, "fileExistsAtPath:").dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved"
+        assert _send(edges, "fileExistsAtPath:").dst == "objc:NSFileManager:0-0:fileExistsAtPath.:unresolved"
 
     def test_instancetype_is_the_owner_and_stays_a_project_hint(self, tmp_path: Path) -> None:
         edges = _edges(tmp_path / "inst", {"Factory.m": FACTORY, "Main.m": WRAP % (
@@ -118,4 +120,4 @@ class TestLibraryRowsFeedTheSameDict:
             f, parser, analysis.methods_by_name, NameResolver({}), run,
             method_return_types={"NSFileManager.alloc": "NSFileManager", "NSFileManager.init": "NSFileManager"},
         )
-        assert _send(edges, "fileExistsAtPath:").dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved"
+        assert _send(edges, "fileExistsAtPath:").dst == "objc:NSFileManager:0-0:fileExistsAtPath.:unresolved"

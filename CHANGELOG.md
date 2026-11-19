@@ -25,6 +25,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Event names holding a colon no longer break ids.**
 - **Colon-bearing BibTeX, Blade and Handlebars names keep ids parseable.**
 - **JavaScript, Tcl and Markdown ids keep every slot well-formed.**
+- **Unresolved call targets fold colons in their names too.**
 - **`verify-claims` no longer confirms secrets written through an alias.**
 - **The spec states generic type parameters are hashed by name.**
 - **Crashes now exit 70; empty claims files exit 2.**
