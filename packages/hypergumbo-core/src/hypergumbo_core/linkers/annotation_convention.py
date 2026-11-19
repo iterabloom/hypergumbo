@@ -60,7 +60,6 @@ lightweight annotation convention lets developers hint the analyzer directly.
 """
 from __future__ import annotations
 
-import hashlib
 import re
 import time
 from dataclasses import dataclass
@@ -69,7 +68,7 @@ from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
-from ..analyze.base import make_route_symbol, make_symbol_id
+from ..analyze.base import make_route_symbol, make_symbol_id, mint_stand_in_fingerprint
 from ..taxonomy import get_language
 from ._text_filters import read_source_text
 from .registry import (
@@ -230,7 +229,7 @@ def link_annotations(
                     stable_id=None,
                     shape_id=None,
                     display_label=f"@hg:publishes {channel}",  # ADR-0032
-                    fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
+                    fingerprint=mint_stand_in_fingerprint(pub_id),
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
                     kind="function",
@@ -267,7 +266,7 @@ def link_annotations(
                         stable_id=None,
                         shape_id=None,
                         display_label=f"@hg:subscribes {channel}",  # ADR-0032
-                        fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
+                        fingerprint=mint_stand_in_fingerprint(sub_id),
                         # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                         # leak.
                         kind="function",
@@ -344,9 +343,7 @@ def link_annotations(
         if route_sym.id not in seen_sym_ids:
             seen_sym_ids.add(route_sym.id)
             route_sym.display_label = f"@hg:route {route.argument}"  # ADR-0032
-            route_sym.fingerprint = hashlib.sha256(
-                route_sym.id.encode()
-            ).hexdigest()[:16]
+            route_sym.fingerprint = mint_stand_in_fingerprint(route_sym.id)
             route_sym.supply_chain_tier = 1
             route_sym.supply_chain_reason = "@hg:route annotation"
             route_sym.supply_chain_classified = True  # WI-lidig
@@ -381,7 +378,7 @@ def link_annotations(
                 stable_id=None,
                 shape_id=None,
                 display_label=f"@hg:dispatches {target_name}",  # ADR-0032
-                fingerprint=hashlib.sha256(disp_id.encode()).hexdigest()[:16],
+                fingerprint=mint_stand_in_fingerprint(disp_id),
                 # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
                 kind="function",
                 name=target_name,

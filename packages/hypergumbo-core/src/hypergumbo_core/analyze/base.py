@@ -2046,6 +2046,26 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
             group[0].stable_id = file_key[1]
 
 
+def mint_stand_in_fingerprint(node_id: str) -> str:
+    """The fingerprint of a ``language=None`` stand-in: the first 16 hex of ``sha256(node_id)``.
+
+    A Class-B stand-in (ADR-0031) has no source the central
+    ``stamp_symbol_fingerprints`` pass could hash, so its producer stamps an
+    identity-derived value and the post-pass keeps it (spec "``fingerprint``":
+    the one documented second shape). This is the one place the formula is
+    written (ADR-0034): the linkers that mint such nodes and the
+    :func:`make_synthetic_symbol_identity` backstop call it, and
+    ``test_stand_in_fingerprint.py`` fails on an inline copy.
+
+    The value is bare hex with no label. The spec gives it that shape "by
+    design"; ``hgfp2:`` names the source subtree walk
+    (``SYMBOL_FINGERPRINT_SCHEME``), a different algorithm, and no scheme
+    constant names this one (WI-tovog leaves the label to the owner). A
+    fingerprint is not a ``stable_id`` input.
+    """
+    return hashlib.sha256(node_id.encode()).hexdigest()[:16]
+
+
 def make_synthetic_symbol_identity(
     sym: Symbol, occurrence: int = 0,
 ) -> tuple[StableId, str, str]:
@@ -2089,10 +2109,9 @@ def make_synthetic_symbol_identity(
     # a display_label (META-huvuh).
     display_label = sym.name
     # fingerprint: the central ``stamp_symbol_fingerprints`` pass cannot
-    # fingerprint a ``language=None`` symbol (no grammar), so stamp here,
-    # matching the bare 16-hex shape the already-stamped Class-B linkers
-    # (yjs_crdt / crypto_flow) use.
-    fingerprint = hashlib.sha256(sym.id.encode()).hexdigest()[:16]
+    # fingerprint a ``language=None`` symbol (no grammar), so stamp here, with
+    # the factory the Class-B linkers that stamp their own also call.
+    fingerprint = mint_stand_in_fingerprint(sym.id)
     return stable_id, display_label, fingerprint
 
 

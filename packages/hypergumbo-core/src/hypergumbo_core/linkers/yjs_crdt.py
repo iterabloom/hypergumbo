@@ -89,14 +89,13 @@ reactive CRDT state.
 """
 from __future__ import annotations
 
-import hashlib
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..analyze.base import make_symbol_id
+from ..analyze.base import make_symbol_id, mint_stand_in_fingerprint
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -581,7 +580,7 @@ def link_yjs_crdt(
                     stable_id=None,
                     shape_id=None,
                     display_label=pub_label,  # ADR-0032
-                    fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
+                    fingerprint=mint_stand_in_fingerprint(pub_id),
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
                     kind="function",
@@ -612,7 +611,7 @@ def link_yjs_crdt(
                     stable_id=None,
                     shape_id=None,
                     display_label=sub_label,  # ADR-0032
-                    fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
+                    fingerprint=mint_stand_in_fingerprint(sub_id),
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
                     kind="function",
