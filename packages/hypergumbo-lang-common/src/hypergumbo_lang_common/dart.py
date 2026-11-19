@@ -55,7 +55,10 @@ FQN strip, which cut at a dot inside a function or record type
 an old-style function-typed parameter whose last word is not its name alone
 (``int g()``, ``int g(int)``) whole. A signature with none of these forms
 hashes exactly the shared rule's text, and a field with a plain or prefixed
-name type hashes what it did.
+name type hashes what it did. A default value is written ``...`` whole
+(``_dart_group_text`` reads it from the tree; a regex cut it at its first
+comma until scheme v16) and is not hashed: ``normalize_dart_signature`` takes
+it out first, so ``{bool loud = false}`` hashes as ``{bool loud}`` does.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Dart-specific
@@ -229,10 +232,10 @@ def _extract_dart_signature(
         void main()
 
     Returns signature like "(int x, int y) int" or "(String name, {bool loud = ...}) String".
-    Each parameter is its source text (a default value written ``...``); the
-    return type is its source text whatever node kind spells it
-    (``List<int>?``, ``p.Foo``, ``int Function(int)``, ``(int, String)``),
-    and ``void`` is omitted.
+    Each parameter is its source text, a default value written ``...``
+    whole (:func:`_dart_group_text`); the return type is its source text
+    whatever node kind spells it (``List<int>?``, ``p.Foo``, ``int
+    Function(int)``, ``(int, String)``), and ``void`` is omitted.
     """
     params: list[str] = []
     return_type = _dart_return_type(func_sig_node, source)
@@ -246,17 +249,48 @@ def _extract_dart_signature(
                     if param_text:
                         params.append(param_text)
                 elif param_child.type == "optional_formal_parameters":
-                    # Handle optional/named parameters
-                    opt_text = node_text(param_child, source).strip()
-                    if opt_text:
-                        # Replace default values with ...
-                        opt_text = re.sub(r'\s*=\s*[^,}\]]+', ' = ...', opt_text)
-                        params.append(opt_text)
+                    params.append(_dart_group_text(param_child, source))
 
     sig = "(" + ", ".join(params) + ")"
     if return_type and return_type != "void":
         sig += f" {return_type}"
     return sig
+
+
+#: The tokens that may follow a default value in a parameter group.
+_DART_GROUP_SEPARATORS = frozenset({",", "}", "]"})
+
+
+def _dart_group_text(group: "tree_sitter.Node", source: bytes) -> str:
+    """A named or optional parameter group's source text, each default value
+    written ``...`` whole.
+
+    The grammar puts a default in the group, after its ``formal_parameter``:
+    an ``=`` (or Dart 2's ``:``) and the expression. Everything from the end
+    of the parameter to the next ``,``, ``}`` or ``]`` of the group is written
+    `` = ...`` (`` : ...``), so the default is replaced however many commas,
+    brackets or strings it holds, and the rest of the group is kept as
+    written. Until WI-doboh a regex replaced the default only up to its first
+    ``,``, ``}`` or ``]``: ``{Size s = const Size(1, 2)}`` was written
+    ``{Size s = ..., 2)}``. A default with none of those characters is written
+    as the regex wrote it.
+    """
+    children = group.children
+    out: list[bytes] = []
+    pos = group.start_byte
+    for index, child in enumerate(children):
+        if child.type not in ("=", ":") or index == 0 or pos > child.start_byte:
+            continue
+        end = next((c.start_byte for c in children[index + 1:] if c.type in _DART_GROUP_SEPARATORS),
+                   group.end_byte)
+        out += [source[pos:children[index - 1].end_byte], b" = ..." if child.type == "=" else b": ..."]
+        pos = end
+    out.append(source[pos:group.end_byte])
+    return b"".join(out).decode("utf-8", errors="replace").strip()
+
+
+#: A default value as the signature text writes it (``_dart_group_text``).
+_DART_DEFAULT_RE = re.compile(r"\s*[=:]\s*\.\.\.(?=\s*[,}\]])")
 
 
 #: Words that may stand before a parameter's type (``required``, ``covariant``
@@ -271,8 +305,10 @@ _DART_LIBRARY_PREFIX = re.compile(r"(?:[A-Za-z_$][\w$]*\.)+")
 _DART_BRACKET_PAIRS = {")": "(", "]": "[", "}": "{", ">": "<"}
 
 
-#: Dart's signature text cuts a default value at its first comma (the
-#: renderer), so a quote in it may be a fragment's: no string is skipped.
+#: No string is skipped when a Dart signature text is split. The text holds
+#: no default value (``_dart_group_text`` writes it ``...``); a quote can only
+#: stand in a parameter's annotation, which the split has always read without
+#: skipping strings, and skipping them now would move those ids.
 _DART_QUOTES = ""
 
 
@@ -340,9 +376,8 @@ def _normalize_dart_type(text: str, type_params: list[str] | None) -> str:
 
 def _dart_parameter_words(param: str) -> tuple[str, str]:
     """``(type part, last word)`` of a parameter as the shared rule splits it:
-    a ``...`` (a default value) made a space, then the last word cut off."""
-    text = param.replace("...", " ").strip() if "..." in param else param
-    words = text.rsplit(None, 1)
+    the last word cut off."""
+    words = param.rsplit(None, 1)
     return words[0], (words[1] if len(words) == 2 else "")
 
 
@@ -407,9 +442,12 @@ def normalize_dart_signature(
     a time: those through the Dart rules above, the others through the
     shared rule's own step (``_shared_type_rule``).
 
-    No string literal is skipped (``_DART_QUOTES``). The
-    signature text's default values are still cut at their first comma by
-    the renderer (a residual of the renderer, not of these rules).
+    A default value (written ``= ...`` or ``: ...`` by the renderer) is taken
+    out first (``_DART_DEFAULT_RE``), so a parameter with a default hashes as
+    the same parameter without one: neither the value nor its presence is
+    hashed, and the types-first rule drops the parameter's name, not the
+    ``=`` (until WI-doboh ``{bool loud = ...}`` hashed ``{bool loud =``). No
+    string literal is skipped (``_DART_QUOTES``).
     """
     from hypergumbo_core.analyze.base import (
         find_matching_paren,
@@ -417,6 +455,8 @@ def normalize_dart_signature(
         split_params_top_level,
     )
 
+    if signature is not None:
+        signature = _DART_DEFAULT_RE.sub("", signature)
     shared = normalize_signature_types_first(signature, type_params, quotes=_DART_QUOTES)
     if shared is None or signature is None:
         return None
