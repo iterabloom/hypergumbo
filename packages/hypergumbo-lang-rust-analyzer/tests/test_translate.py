@@ -552,6 +552,25 @@ def test_a_rust_constant_is_the_registry_const_kind_and_edges_reach_it() -> None
     assert [(by_id[e.src].name, by_id[e.dst].name) for e in edges] == [("run", "LIMIT")]
 
 
+def test_the_const_refinement_mints_the_id_from_the_refined_fields() -> None:
+    """The refined record's id is ``make_symbol_id`` of its own fields, not
+    the old id with its last slot swapped: a record whose id text disagrees
+    with its fields comes out with the id its fields name (WI-rozod)."""
+    from hypergumbo_core.analyze.base import make_symbol_id
+    from hypergumbo_core.ir import NodeId
+    from hypergumbo_lang_rust_analyzer.translate import refine_rust_kinds
+
+    stale = Symbol(
+        id=NodeId("rust:old/path.rs:9-9:OLD:constant"),
+        name="LIMIT", kind="constant", language="rust", path="src/lib.rs",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=5),
+    )
+    (refined,) = refine_rust_kinds([stale])
+    assert refined.kind == "const"
+    assert refined.id == make_symbol_id("rust", "src/lib.rs", 1, 2, "LIMIT", "const")
+    assert stale.id == "rust:old/path.rs:9-9:OLD:constant"  # input not mutated
+
+
 def test_the_const_refinement_leaves_other_languages_constant() -> None:
     """The refinement is Rust's: a non-Rust ``Constant`` in the same index
     keeps the language-agnostic ``constant``."""

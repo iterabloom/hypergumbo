@@ -87,8 +87,6 @@ from hypergumbo_core.scip.index import scip_stable_id
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _CORE = "hypergumbo-core/src/hypergumbo_core"
-_COMMON = "hypergumbo-lang-common/src/hypergumbo_lang_common"
-_EXT1 = "hypergumbo-lang-extended1/src/hypergumbo_lang_extended1"
 
 #: (path under packages/, enclosing function, NewType) of every NewType
 #: constructor call in shipped source, with its number of calls. Each is
@@ -108,31 +106,15 @@ MINT_SITES = {
     (f"{_CORE}/ir.py", "relativize_node_id", "NodeId"): 1,
 }
 
-_FREE_NAME = (
-    "the name slot is a free string that may hold ':'; make_symbol_id would "
-    "rewrite it to '.', a visible id change"
-)
-
 #: Producers that keep a hand-built node id, wrapped in ``NodeId(...)`` at the
 #: site, because routing it through a factory would change its text (an id
-#: that changes is a visible change and may move a stable id). Each is a
-#: pre-existing defect to fix in a change that is allowed to move ids.
-HAND_BUILT_NODE_IDS: dict[tuple[str, str, str], tuple[int, str]] = {
-    (f"{_CORE}/linkers/_view_template_core.py", "link_via_strategies", "NodeId"):
-        (1, f"Symbol.id of a template; a file name: {_FREE_NAME}"),
-    (f"{_COMMON}/handlebars.py", "_make_symbol_id", "NodeId"):
-        (1, f"Symbol.id; a partial name: {_FREE_NAME}"),
-    (f"{_EXT1}/bibtex.py", "_make_symbol_id", "NodeId"):
-        (1, f"Symbol.id; a citation key (knuth:1984): {_FREE_NAME}"),
-    (f"{_EXT1}/blade.py", "_make_symbol_id", "NodeId"):
-        (1, f"Symbol.id; a quoted view name (package::view): {_FREE_NAME}"),
-    (
-        "hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/translate.py",
-        "refine_rust_kinds",
-        "NodeId",
-    ): (1, "rewrites the kind slot of a factory-minted id in place; re-minting "
-           "from the record's fields is not guaranteed to give the same text"),
-}
+#: that changes is a visible change and may move a stable id). Each would be a
+#: pre-existing defect to fix in a change that is allowed to move ids. Empty:
+#: the six producers it listed (event names, template file names, Handlebars
+#: partials, BibTeX keys, Blade view names, the rust-analyzer kind refinement)
+#: mint through the factories (WI-rozod).
+HAND_BUILT_NODE_IDS: dict[tuple[str, str, str], tuple[int, str]] = {}
+
 
 #: Every call of the boundary ``read_node_id``: where a ``str`` that holds a
 #: node id enters the typed world.

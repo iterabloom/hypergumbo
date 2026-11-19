@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, NamedTuple, Optional, Sequence, Tuple, Union
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..overload_arity import pass_minted_stable_id
 from .registry import LinkerContext, LinkerResult
@@ -279,11 +280,12 @@ def link_via_strategies(
                     continue
 
                 filename = candidate.path.name
-                # NodeId-wrapped, not routed through make_symbol_id: the name
-                # slot is a file name, which may hold a ':' that the factory
-                # would rewrite (test_id_newtypes.py).
-                template_id = NodeId(
-                    f"{candidate.language}:{candidate.path}:1-1:{filename}:template"
+                # Through the factory: a file name may hold a ':', which the
+                # name slot folds to '.' so the id parses back into its five
+                # slots (ADR-0036 Ruling 1); Symbol.name keeps the file name.
+                template_id = make_symbol_id(
+                    candidate.language, str(candidate.path), 1, 1, filename,
+                    "template",
                 )
                 if template_id not in seen_templates:
                     seen_templates.add(template_id)

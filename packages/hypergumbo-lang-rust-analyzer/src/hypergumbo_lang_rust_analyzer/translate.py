@@ -103,7 +103,8 @@ from __future__ import annotations
 import dataclasses
 from typing import Callable, Iterable, List, Optional
 
-from hypergumbo_core.ir import Edge, NodeId, Symbol
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_core.ir import Edge, Symbol
 from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.calls import scip_index_to_call_edges
 from hypergumbo_core.scip.edges import scip_index_to_edges
@@ -196,21 +197,21 @@ _RUST_KIND_REFINEMENT = {"constant": "const"}
 def refine_rust_kinds(symbols: Iterable[Symbol]) -> List[Symbol]:
     """Return *symbols* with Rust ``constant`` records re-kinded ``const``.
 
-    The rewritten record's ``id`` gets the new kind as its last segment, so it
-    stays the ``make_symbol_id`` of its own fields; every other field is kept.
-    Must run before edges are resolved, so they reach the re-minted id.
-    Inputs are not mutated.
+    The rewritten record's ``id`` is minted again by ``make_symbol_id`` from
+    its own fields with the refined kind, so the id and the fields cannot
+    disagree; every other field is kept. :func:`scip_index_to_symbols` minted
+    the original from the same fields, so only the kind slot changes. Must run
+    before edges are resolved, so they reach the re-minted id. Inputs are not
+    mutated.
     """
     out: List[Symbol] = []
     for sym in symbols:
         kind = _RUST_KIND_REFINEMENT.get(sym.kind) if sym.language == "rust" else None
-        if kind is not None:
-            # ``make_symbol_id`` ends ``:{kind}``; swap only that suffix.
-            # NodeId-wrapped: the kind slot of a factory-minted id is rewritten
-            # in place; re-minting from the fields is not guaranteed to give
-            # the same text (test_id_newtypes.py lists this site).
-            stem, _sep, _old_kind = sym.id.rpartition(":")
-            sym = dataclasses.replace(sym, kind=kind, id=NodeId(f"{stem}:{kind}"))
+        if kind is not None and sym.span is not None:
+            sym = dataclasses.replace(sym, kind=kind, id=make_symbol_id(
+                "rust", sym.path, sym.span.start_line, sym.span.end_line,
+                sym.name, kind,
+            ))
         out.append(sym)
     return out
 

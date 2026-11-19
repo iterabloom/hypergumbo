@@ -25,6 +25,7 @@ from hypergumbo_core.linkers._view_template_core import (
 )
 from hypergumbo_core.linkers.registry import LinkerContext
 from hypergumbo_core.overload_arity import pass_minted_stable_id
+from hypergumbo_core.spec_validator import _check_id_format
 
 
 def _method_symbol(name: str = "UsersController#index") -> Symbol:
@@ -154,6 +155,33 @@ class TestLinkViaStrategies:
         dsts = {e.dst for e in result.edges}
         assert "html:templates/show.html:1-1:show.html:template" in dsts
         assert "json:templates/show.json:1-1:show.json:template" in dsts
+
+    def test_template_file_name_with_a_colon_parses_back(
+        self, tmp_path: Path,
+    ) -> None:
+        """A template file named with a ':' keeps it in Symbol.name; the id's
+        name slot folds it, so the id parses back into its five slots."""
+        template_dir = tmp_path / "templates"
+        template_dir.mkdir()
+        (template_dir / "a:b.html").write_text("html")
+        method = _method_symbol()
+        emission = TemplateRenderEmission(
+            action_symbol_id=method.id,
+            line=3,
+            detection_pattern="implicit_convention",
+            candidates=(
+                TemplateCandidate(path=Path("templates/a:b.html"), language="html"),
+            ),
+        )
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[method])
+
+        result = link_via_strategies(ctx, [_StubStrategy([emission])])
+
+        (template_sym,) = result.symbols
+        assert template_sym.name == "a:b.html"
+        assert template_sym.id == "html:templates/a:b.html:1-1:a.b.html:template"
+        assert _check_id_format(result.symbols) == []
+        assert [e.dst for e in result.edges] == [template_sym.id]
 
     def test_dedup_template_symbols_across_emissions(self, tmp_path: Path) -> None:
         template_dir = tmp_path / "templates"

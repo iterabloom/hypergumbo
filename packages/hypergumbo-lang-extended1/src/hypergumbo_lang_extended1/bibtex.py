@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_doc_stable_id,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -66,12 +67,13 @@ def is_bibtex_tree_sitter_available() -> bool:
 
 
 def _make_symbol_id(path: Path, key: str, kind: str, line: int) -> NodeId:
-    """Create a stable symbol ID.
+    """The entry's node id, through the factory.
 
-    NodeId-wrapped, not routed through make_symbol_id: a citation key may hold
-    a ':' (``knuth:1984``) that the factory would rewrite (test_id_newtypes.py).
+    A citation key may hold a ':' (``knuth:1984``), which the name slot folds
+    to '.' so the id parses back into its five slots (ADR-0036 Ruling 1);
+    Symbol.name keeps the key.
     """
-    return NodeId(f"bibtex:{path}:{line}-{line}:{key}:{kind}")
+    return make_symbol_id("bibtex", str(path), line, line, key, kind)
 
 
 def _extract_entry(

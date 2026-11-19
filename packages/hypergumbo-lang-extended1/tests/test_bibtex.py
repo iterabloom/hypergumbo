@@ -228,3 +228,21 @@ class TestAnalyzeBibtex:
         make_bibtex_file(tmp_path, "refs.bib", "@article{test, author={A}}")
         result = analyze_bibtex(tmp_path)
         assert result.edges == []
+
+
+class TestIdParsesBack:
+    """A citation key may hold ':' (``knuth:1984``); the id's name slot folds
+    it to '.' so the id parses back into its five slots (ADR-0036 Ruling 1).
+    Symbol.name keeps the key."""
+
+    def test_colon_in_a_citation_key(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_symbol_id
+        from hypergumbo_core.spec_validator import _check_id_format
+
+        make_bibtex_file(tmp_path, "refs.bib", "\n@book{knuth:1984,\n  title = {T}\n}\n")
+        result = analyze_bibtex(tmp_path)
+        (sym,) = result.symbols
+        assert sym.name == "knuth:1984"
+        assert sym.id == make_symbol_id("bibtex", "refs.bib", 2, 2, "knuth:1984", "entry")
+        assert sym.id == "bibtex:refs.bib:2-2:knuth.1984:entry"
+        assert _check_id_format(result.symbols) == []

@@ -23,6 +23,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Imports in eleven languages start and end on real nodes.**
 - **Unresolved names in thirteen languages get their own nodes.**
 - **Event names holding a colon no longer break ids.**
+- **Colon-bearing BibTeX, Blade and Handlebars names keep ids parseable.**
 - **`verify-claims` no longer confirms secrets written through an alias.**
 - **The spec states generic type parameters are hashed by name.**
 - **Crashes now exit 70; empty claims files exit 2.**

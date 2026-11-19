@@ -212,3 +212,34 @@ class TestMalformedBlade:
         # an argument list that never closes is no directive
         assert _at(result, 10, "yield", "after_bad_args").stable_id == _sid(
             "yield", "after_bad_args", ("unclosed",))
+
+
+class TestIdParsesBack:
+    """A quoted view name may hold ':' (Laravel's ``package::view``); the id's
+    name slot folds it to '.' so the id parses back into its five slots
+    (ADR-0036 Ruling 1). Symbol.name and the edge's meta keep the literal."""
+
+    def test_package_view_name_in_a_symbol(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_symbol_id
+        from hypergumbo_core.spec_validator import _check_id_format
+
+        page = tmp_path / "t.blade.php"
+        page.write_text("@component('mail::button')\n@endcomponent\n")
+        result = analyze_blade(tmp_path)
+        (sym,) = result.symbols
+        assert sym.name == "mail::button"
+        assert sym.id == make_symbol_id(
+            "blade", str(page), 1, 1, "mail::button", "component",
+        )
+        assert sym.id.endswith(":1-1:mail..button:component")
+        assert _check_id_format(result.symbols) == []
+
+    def test_package_view_name_in_an_extends_target(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import symbol_name_slot
+
+        (tmp_path / "t.blade.php").write_text("@extends('pkg::layouts.app')\n")
+        result = analyze_blade(tmp_path)
+        (edge,) = result.edges
+        assert edge.meta["template"] == "pkg::layouts.app"
+        assert edge.dst.split(":")[-3:] == ["0-0", "pkg..layouts.app", "template"]
+        assert symbol_name_slot(edge.dst) == "pkg..layouts.app"
