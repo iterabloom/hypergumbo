@@ -42,8 +42,9 @@ This analyzer uses tree-sitter to parse C# files and extract:
   the method's return type is its ``returns`` field, whatever its kind. This
   text is hashed into the typed stable_id (``normalize_csharp_signature``,
   the types-first family's rule applied one type at a time, keeping the
-  modifiers and tuple types its FQN strip would lose), so ``F(ref int x)``
-  and ``F(int x)`` do not share an id. Before, only seven type node kinds
+  modifiers and tuple types, and each type's qualifier as written), so
+  ``F(ref int x)`` and ``F(int x)`` do not share an id, nor ``F(A.B x)`` and
+  ``F(C.B x)``. Before, only seven type node kinds
   were written and the rest of the parameter, or the return type, was
   dropped.
 - Enum members, each a ``field`` symbol named ``Enum.Member`` (WI-duguk)
@@ -506,15 +507,15 @@ def _normalize_csharp_type(
     """One parameter (``ref Foo x``) or return type (``Foo``), normalized.
 
     The types-first family's rule (``normalize_signature_types_first``,
-    shared with Java, Dart and Groovy) is applied to the type itself. Two C#
-    forms are kept out of it, because its FQN strip, which keeps what follows
-    the last dot of a type's head, would lose them: a parameter's modifiers
-    (``ref System.Int32 x`` would hash as ``Int32``) are taken off first and
-    put back, and a tuple type is kept whole (``(int, System.String)`` would
-    hash as ``String)``), its element types being the arguments of a
-    ``ValueTuple``, which the family keeps as written in a generic. A return
-    type's ``ref`` / ``ref readonly`` is taken off and put back likewise
-    (``ref System.Int32`` -> ``ref Int32``).
+    shared with Java, Dart and Groovy) is applied to the type itself, with
+    ``keep_qualifier``: a C# type is hashed AS WRITTEN, its namespace or
+    enclosing types included (``A.B`` and ``C.B`` hash apart, and so do
+    ``System.String`` and ``String``; WI-ririg owner ruling). Until the
+    WI-ririg commit the family's FQN strip cut a type's head to its last
+    segment. A parameter's modifiers (``ref``, ``out``, ...) are taken off
+    first and put back, a return type's ``ref`` / ``ref readonly`` likewise,
+    and a tuple type is kept whole; the family would otherwise read a
+    modifier as the type and a tuple's element as its name.
     """
     from hypergumbo_core.analyze.base import (
         normalize_generic_params,
@@ -547,7 +548,7 @@ def _normalize_csharp_type(
     else:
         shared = normalize_signature_types_first(
             f"({text})" if parameter else f"() {text}", type_params,
-            skip_void_return=False,
+            skip_void_return=False, keep_qualifier=True,
         )
         assert shared is not None  # the text opens with its own parameter list
         written = shared[1:-1] if parameter else shared[2:]
@@ -561,15 +562,11 @@ def normalize_csharp_signature(
     """Normalize a C# signature for typed stable_id (spec §6 typed tier).
 
     ``(Type name, ...) Return`` becomes ``(Type,...)Return`` by the
-    types-first family's rule: names dropped, the head of a qualified type
-    stripped to its simple name, declared type parameters by position,
-    ``void`` omitted. Each parameter and the return type are normalized one
-    at a time (``_normalize_csharp_type``), which writes the same text as the
-    family's function does for the whole signature, and keeps the parameter
-    modifiers and tuple types that function's FQN strip would lose. A nullable
-    or array tuple (``(int, A.B)?``) and a ``ref`` return over a qualified type
-    (``ref A.B``) are written whole by the shared strip, which no longer cuts
-    them at their last dot.
+    types-first family's rule: names dropped, every type as written (its
+    qualifier included: no FQN strip in C#), declared type parameters by
+    position, ``void`` omitted. Each parameter and the return type are
+    normalized one at a time (``_normalize_csharp_type``), which keeps the
+    parameter modifiers and tuple types.
     """
     if not signature:
         return None

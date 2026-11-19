@@ -2999,9 +2999,14 @@ def split_params_top_level(params_str: str, *, quotes: str = SIGNATURE_QUOTES) -
 
 def _normalize_type(
     raw_type: str, type_params: list[str] | None, *, keep_type_path: bool = False,
+    keep_qualifier: bool = False,
 ) -> str:
-    """Apply FQN stripping and generic-param normalization to a single type."""
-    t = strip_fqn_prefix(raw_type.strip(), keep_type_path=keep_type_path)
+    """Apply FQN stripping and generic-param normalization to a single type.
+
+    ``keep_qualifier`` (C#): no FQN strip, the type is hashed as written.
+    """
+    t = raw_type.strip() if keep_qualifier else strip_fqn_prefix(
+        raw_type.strip(), keep_type_path=keep_type_path)
     if type_params:
         t = normalize_generic_params(t, type_params)
     return t
@@ -3014,6 +3019,7 @@ def normalize_signature_types_first(
     skip_void_return: bool = True,
     return_sep: str = "",
     keep_type_path: bool = False,
+    keep_qualifier: bool = False,
     quotes: str = SIGNATURE_QUOTES,
 ) -> str | None:
     """Normalize a signature where params are ``Type name`` (Java, C#, Dart, Groovy).
@@ -3026,6 +3032,9 @@ def normalize_signature_types_first(
     parameters by position.  Used by Java, C#, Dart, Groovy, Objective-C.
     ``keep_type_path`` and ``quotes`` are passed to :func:`strip_fqn_prefix`
     and to :func:`split_params_top_level` / :func:`find_matching_paren`.
+    ``keep_qualifier`` (C#) skips the FQN strip: each type is hashed as
+    written, its qualifier included (``System.String`` and ``String`` hash
+    apart; WI-ririg owner ruling).
     """
     if not signature:
         return None
@@ -3059,15 +3068,18 @@ def normalize_signature_types_first(
         # For most languages, split on last space
         parts = p.rsplit(None, 1)
         if len(parts) == 2:
-            types.append(_normalize_type(parts[0], type_params, keep_type_path=keep_type_path))
+            types.append(_normalize_type(parts[0], type_params, keep_type_path=keep_type_path,
+                                        keep_qualifier=keep_qualifier))
         else:
             # Single token — it's either just a type or just a name
-            types.append(_normalize_type(parts[0], type_params, keep_type_path=keep_type_path))
+            types.append(_normalize_type(parts[0], type_params, keep_type_path=keep_type_path,
+                                        keep_qualifier=keep_qualifier))
 
     norm_params = ",".join(types)
 
     if return_str and not (skip_void_return and return_str.lower() == "void"):
-        norm_return = _normalize_type(return_str, type_params, keep_type_path=keep_type_path)
+        norm_return = _normalize_type(return_str, type_params, keep_type_path=keep_type_path,
+                                        keep_qualifier=keep_qualifier)
         return f"({norm_params}){norm_return}"
     return f"({norm_params})"
 

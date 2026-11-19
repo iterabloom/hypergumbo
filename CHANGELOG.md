@@ -37,6 +37,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Generic overloads differing only in bounds get distinct ids.**
 - **Members of differently constrained Swift extensions get distinct ids.**
 - **Rust methods in different impl blocks get distinct ids.**
+- **C# and Swift ids hash qualified types as written.**
 - **`symbols` piped into `head` now exits 141, not 1.**
 
 ### Development tools and CI
