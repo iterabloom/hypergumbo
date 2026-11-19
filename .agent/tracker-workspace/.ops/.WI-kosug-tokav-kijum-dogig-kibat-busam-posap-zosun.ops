@@ -1,0 +1,27 @@
+- op: create  # f9c9
+  at: '2026-11-19T18:48:06Z'  # f9c9
+  by: agent  # f9c9
+  actor: jgstern_agent  # f9c9
+  clock: 1  # f9c9
+  nonce: f9c9  # f9c9
+  data:  # f9c9
+    kind: work_item  # f9c9
+    title: "rust #[cfg] / swift #if alternatives with the same signature tie, split only by occurrence order"  # f9c9
+    status: todo_hard  # f9c9
+    priority: 3  # f9c9
+    parent:  # f9c9
+    tags:  # f9c9
+    - stable_id  # f9c9
+    isbefore: []  # f9c9
+    duplicate_of: []  # f9c9
+    not_duplicate_of: []  # f9c9
+    pr_ref:  # f9c9
+    description: "Conditional-compilation guards are not stable-id inputs: Rust items under different #[cfg] (and Swift #if branches) with the same signature tie and are split by occurrence order.\n\nREPRO: diesel ~/whole_bunch_of_repos/diesel diesel_derives/build.rs fn main at L118 and L328 (cfg-gated alternatives). These are 50 of diesel's remaining tie groups after PR 3's impl-header fix (68fa21b7e). The WI-bubak count also saw Swift ties made outside the declaration (#if branches) among its 72 identical-declaration groups. Whether hashing the guard is right (a cfg flip would then move the id) is a design question. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md residual 5."  # f9c9
+    fields: {}  # f9c9
+- op: discuss  # 0d10
+  at: '2026-11-19T18:49:39Z'  # 0d10
+  by: agent  # 0d10
+  actor: jgstern_agent  # 0d10
+  clock: 2  # 0d10
+  nonce: 0d10  # 0d10
+  message: "OWNER RULING 2026-11-19 (in session): goes to the additional stable-id PR at the end of the plan (v17 bump): whether a cfg / #if guard is part of identity is decided there."  # 0d10
