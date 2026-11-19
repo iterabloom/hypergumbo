@@ -216,3 +216,23 @@ class TestMalformed:
             "block", "each", ("each items",))
         assert _at(result, 2, "partial", "c").stable_id == _sid("partial", "c", ())
         assert _at(result, 3, "block", "if").stable_id == _sid("block", "if", ("if",))
+
+
+class TestIdParsesBack:
+    """A partial name may hold a ':'; the id's name slot folds it to '.' so
+    the id parses back into its five slots (ADR-0036 Ruling 1)."""
+
+    def test_colon_in_a_partial_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_symbol_id
+        from hypergumbo_core.spec_validator import _check_id_format
+
+        page = tmp_path / "page.hbs"
+        page.write_text("<p>\n{{> admin:header}}\n")
+        result = analyze_handlebars(tmp_path)
+        (sym,) = result.symbols
+        assert sym.name == "admin:header"
+        assert sym.id == make_symbol_id(
+            "handlebars", str(page), 2, 2, "admin:header", "partial",
+        )
+        assert sym.id.endswith(":2-2:admin.header:partial")
+        assert _check_id_format(result.symbols) == []

@@ -39,7 +39,10 @@ Edges Extracted
   Symbol kind was dropped in favour of this companion Edge so the
   layout-inheritance relationship keeps representation in the graph. ``src``
   is the blade file id; ``dst`` is a 6-part dangling id naming the parent
-  template (the local Blade scan does not enumerate layouts).
+  template (the local Blade scan does not enumerate layouts). Every id goes
+  through ``make_symbol_id``, so a ``package::view`` name keeps its ``::`` in
+  ``Symbol.name`` / ``meta.template`` and reads ``package..view`` in the id's
+  name slot, which parses back into its five slots.
 
 Why This Design
 ---------------
@@ -74,7 +77,7 @@ from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
+from hypergumbo_core.analyze.base import AnalysisResult, make_file_id, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.paths import to_relative_path
@@ -181,10 +184,10 @@ def _directives(content: str) -> Iterator[tuple[str, list[str] | None, int, int]
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> NodeId:
-    # NodeId-wrapped, not routed through make_symbol_id: a quoted name may hold
-    # a ':' (``package::view``) that the factory would rewrite
-    # (test_id_newtypes.py).
-    return NodeId(f"blade:{path}:{line}-{line}:{name}:{kind}")
+    # Through the factory: a quoted name may hold ':' (Laravel's
+    # ``package::view``), which the name slot folds to '.' so the id parses
+    # back into its five slots (ADR-0036 Ruling 1); Symbol.name keeps it.
+    return make_symbol_id("blade", path, line, line, name, kind)
 
 
 def find_blade_files(
@@ -249,7 +252,9 @@ def analyze_blade(
                 # registry of layouts at this analyzer scope).
                 edges.append(Edge.create(
                     src=make_file_id("blade", path_str),
-                    dst=f"blade:template:{name}:0-0:{name}:template",
+                    dst=make_symbol_id(
+                        "blade", f"template:{name}", 0, 0, name, "template",
+                    ),
                     edge_type="extends",
                     line=line_num,
                     origin=PASS_ID,

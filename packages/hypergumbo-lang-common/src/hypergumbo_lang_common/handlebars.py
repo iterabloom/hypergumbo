@@ -73,7 +73,7 @@ from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import NodeId, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.paths import to_relative_path
@@ -253,9 +253,10 @@ def _walk(content: str) -> Iterator[_Found]:
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> NodeId:
-    # NodeId-wrapped, not routed through make_symbol_id: a partial name may
-    # hold a ':' that the factory would rewrite (test_id_newtypes.py).
-    return NodeId(f"handlebars:{path}:{line}-{line}:{name}:{kind}")
+    # Through the factory: a partial name may hold a ':', which the name slot
+    # folds to '.' so the id parses back into its five slots (ADR-0036
+    # Ruling 1); Symbol.name keeps the name as written.
+    return make_symbol_id("handlebars", path, line, line, name, kind)
 
 
 def find_handlebars_files(
