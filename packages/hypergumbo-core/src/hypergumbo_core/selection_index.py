@@ -188,6 +188,26 @@ THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
    test when it has a row on a changed block. The exemptions are by program
    name, so this rests on the name telling what the program can do.
 
+8. **A function a fixture runs in setup or teardown reaches tests that never
+   run it.** A function-scoped fixture's code runs under the test's own
+   ``|setup`` / ``|teardown`` context, so the pairs say the fixture's tests
+   ran it. When that code is cleanup (``clear_registry``, resetting a
+   declaration, emptying a cache), the tests that depend on it are the ones
+   that run AFTER it, which never run it: campaign 5 of 2026-11-18 dropped
+   ``clear_registry``'s body and 278 tests of other files failed, none of
+   them paired with it. So the fold marks the function blocks it saw run in
+   a fixture phase, and which phase (``fixture_phase_block``:
+   :data:`FIXTURE_SETUP`, :data:`FIXTURE_TEARDOWN`;
+   :func:`blocks_run_in_fixtures`), kept like the import-time marks (added by
+   any run, re-marked by a full run, gone with a dead checkout's file), and
+   the by-statement selector answers a change to a block marked
+   :data:`FIXTURE_TEARDOWN` with every test that touched its file (owner
+   ruling 2026-11-19, WI-kihah: teardown only, because setup also runs the
+   analysis fixtures build, 562 blocks of ordinary code that day). The table
+   is an addition no reader depends on; :data:`FORMAT` does not move.
+   NOT COVERED: a test that depends on the cleanup and never touched its
+   file (it reaches the leaked state through code of another file only).
+
 SOUNDNESS BOUNDARY, stated because it is the thing that would bite. The index
 knows "tests I have OBSERVED executing block B", a subset of "tests that execute
 B", until every test has run since B appeared. So this selector is sound as of
@@ -318,6 +338,10 @@ CREATE TABLE IF NOT EXISTS test_run (
 CREATE INDEX IF NOT EXISTS test_run_by_run ON test_run (run, test);
 CREATE TABLE IF NOT EXISTS at_import_block (
     block INTEGER PRIMARY KEY
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS fixture_phase_block (
+    block  INTEGER PRIMARY KEY,
+    phases INTEGER NOT NULL
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS kept_version (
     id     INTEGER PRIMARY KEY,
@@ -1038,6 +1062,11 @@ def without_xdist_group(node_id: str) -> str:
 #: fixture code, and a fixture can run for every test.
 _FIXTURE_PHASES = ("|setup", "|teardown")
 
+#: ``fixture_phase_block.phases`` bits: the block ran in a test's setup, in
+#: its teardown (semantic 8 of the module docstring).
+FIXTURE_SETUP = 1
+FIXTURE_TEARDOWN = 2
+
 #: What a coverage context starts with when it belongs to no test: to work
 #: done once and shared (semantic 6 of the module docstring). pytest-cov names
 #: a context ``<node id>|<phase>`` and a node id starts with a path, so no
@@ -1198,6 +1227,9 @@ def update_from_run(
     import_blocks: dict[str, set[str]] = {}
     # Function blocks a statement of which ran under no test's context.
     at_import: set[BlockKey] = set()
+    # Blocks a statement of which ran in a test's setup or teardown, and in
+    # which of the two (semantic 8).
+    in_fixture: dict[BlockKey, int] = {}
     def under_no_test(path: str, linenos: list[int], names: set[str]) -> None:
         import_blocks.setdefault(path, set()).update(names)
         ran_statements = {statement_owners[path][n][0]
@@ -1233,6 +1265,10 @@ def update_from_run(
             test_id = normalize_test_id(_strip_phase(context), repo_root)
             if not context.endswith(_FIXTURE_PHASES):
                 spoke.add(test_id)
+            else:
+                phase = FIXTURE_SETUP if context.endswith("|setup") else FIXTURE_TEARDOWN
+                for name in names:
+                    in_fixture[(path, name)] = in_fixture.get((path, name), 0) | phase
             under_test(test_id, path, linenos, names)
 
     # Shared work belongs to every test recorded using it. It never makes a
@@ -1287,6 +1323,7 @@ def update_from_run(
                 statements=statements)
     cur = conn.cursor()
     _store_at_import(cur, at_import, measured, full_run=full_run)
+    _store_in_fixture(cur, in_fixture, measured, full_run=full_run)
     # A row from the test's own call is positive evidence at ANY coverage
     # scope, so clearing is always safe.
     cur.executemany(
@@ -1346,6 +1383,27 @@ def _store_at_import(
         "INSERT OR IGNORE INTO at_import_block (block) "
         "SELECT b.id FROM block b JOIN file f ON f.id = b.file "
         "WHERE f.path = ? AND b.name = ?", sorted(at_import))
+
+
+def _store_in_fixture(
+    cur: sqlite3.Cursor, in_fixture: Mapping[BlockKey, int], measured: Iterable[str],
+    *, full_run: bool,
+) -> None:
+    """Mark the blocks this run saw run in a fixture phase (semantic 8), as
+    :func:`_store_at_import` marks import-time blocks: a partial run adds to
+    a block's phases (it ran fewer tests), a full run marks the files it
+    measured afresh."""
+    if full_run:
+        cur.executemany(
+            "DELETE FROM fixture_phase_block WHERE block IN ("
+            "SELECT b.id FROM block b JOIN file f ON f.id = b.file WHERE f.path = ?)",
+            [(path,) for path in sorted(set(measured))])
+    cur.executemany(
+        "INSERT INTO fixture_phase_block (block, phases) "
+        "SELECT b.id, ? FROM block b JOIN file f ON f.id = b.file "
+        "WHERE f.path = ? AND b.name = ? "
+        "ON CONFLICT(block) DO UPDATE SET phases = phases | excluded.phases",
+        [(phases, path, name) for (path, name), phases in sorted(in_fixture.items())])
 
 
 def _tests_of_file(cur: sqlite3.Cursor, test_file: str) -> list[int]:
@@ -1438,6 +1496,9 @@ def _forget_dead_checkouts(conn: sqlite3.Connection, checkout: str) -> None:
             "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
         cur.execute(
             "DELETE FROM at_import_block WHERE block IN ("
+            "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
+        cur.execute(
+            "DELETE FROM fixture_phase_block WHERE block IN ("
             "SELECT b.id FROM temp.dead_file d JOIN block b ON b.file = d.id)")
         dead_versions = cur.execute(_DEAD_VERSIONS).fetchall()
         cur.executemany("DELETE FROM kept_record WHERE version = ?", dead_versions)
@@ -1534,6 +1595,20 @@ def blocks_run_at_import(
             "SELECT b.name FROM at_import_block a JOIN block b ON b.id = a.block "
             "JOIN file f ON f.id = b.file WHERE f.path = ?", (path,)))
     return frozenset(found)
+
+
+def blocks_run_in_fixtures(
+    conn: sqlite3.Connection, paths: Iterable[str],
+) -> dict[BlockKey, int]:
+    """The blocks of ``paths`` some run saw run in a test's setup or
+    teardown, each with its phases (:data:`FIXTURE_SETUP`,
+    :data:`FIXTURE_TEARDOWN`; semantic 8 of the module docstring)."""
+    found: dict[BlockKey, int] = {}
+    for path in paths:
+        found.update(((path, str(name)), int(phases)) for name, phases in conn.execute(
+            "SELECT b.name, x.phases FROM fixture_phase_block x JOIN block b ON b.id = x.block "
+            "JOIN file f ON f.id = b.file WHERE f.path = ?", (path,)))
+    return found
 
 
 def functions_run_at_import(conn: sqlite3.Connection) -> dict[str, frozenset[str]]:

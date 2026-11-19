@@ -58,6 +58,20 @@ a run keeps those another rule selected. (The unmeasured ones are also left
 out of ``tests``, as before: their rows are their fixtures', and the rules
 for unmeasured tests select them.)
 
+WHERE IT SELECTS THE WHOLE FILE. A block a fixture runs in a test's
+TEARDOWN (:func:`selection_index.blocks_run_in_fixtures`) is cleanup, and is
+depended on by the tests that run AFTER it, which never run it (campaign 5:
+``clear_registry`` with its body dropped, 278 failing tests of other files,
+none paired with it). A change to such a block is answered with every test
+that touched its file (``FIXTURE``), whatever kind of change it is. Owner
+ruling 2026-11-19 (WI-kihah), teardown only: on the index of that day 9
+blocks run in a teardown, every one test-only cleanup, none changed in the
+400 commits before; setup marks 562 more, nearly all analyzer code that
+fixtures run in setup, and widening those would have added up to 15,060
+tests to a one-function change. Not covered: a test that depends on the
+cleanup and never touched the file; a function that installs state in a
+fixture's SETUP and is never reset in a teardown.
+
 WHOM IT ADDS WHATEVER THE CHANGE. A test recorded reading a changed file as
 data (``prose_only.test_ids_reading``: a gate that scans source text, a test
 that pins a line) ran none of its statements and depends on every one of
@@ -86,6 +100,8 @@ from .prose_only import test_ids_reading
 from .selection_index import (
     BlockKey,
     blocks_run_at_import,
+    FIXTURE_TEARDOWN,
+    blocks_run_in_fixtures,
     coverage_cannot_speak_for,
     index_spellings,
     statement_records,
@@ -104,6 +120,7 @@ NO_BASE_RECORD = "no record of the block as it was: every test that reached it"
 UNKNOWN = "the index has never seen this block: it cannot say which tests reach it"
 IMPORT_TIME = "import time: the import rule"
 UNPARSABLE = "does not parse: every test that touched the file"
+FIXTURE = "runs in a fixture's teardown: every test that touched the file"
 
 
 @dataclass(frozen=True)
@@ -178,6 +195,8 @@ def select_by_statement(
             continue
         stored = _stored_digests(conn, path)
         ran_at_import = blocks_run_at_import(conn, [path])
+        in_fixture = blocks_run_in_fixtures(conn, [path])
+        file_tests: Optional[frozenset[str]] = None
         for name, change in changes.items():
             key = (path, name)
             if change.kind is Kind.PROSE:
@@ -214,6 +233,13 @@ def select_by_statement(
                 continue
             was = statement_records_at(conn, path, name, change.old_digest)
             reached = set(statement_records(conn, path, name)) | set(was or ())
+            if in_fixture.get(key, 0) & FIXTURE_TEARDOWN:
+                if file_tests is None:
+                    file_tests = touching_tests(conn, [path])
+                tests |= file_tests | reached
+                by_block |= file_tests | reached
+                answers[key] = FIXTURE
+                continue
             by_block |= reached
             if change.kind is Kind.GONE:
                 tests |= reached
