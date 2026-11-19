@@ -14,7 +14,7 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_core.analyze.base import make_module_import_dst, make_symbol_id
 from hypergumbo_lang_common.latex import analyze_latex
 
 def make_latex_file(tmp_path: Path, name: str, content: str) -> None:
@@ -192,8 +192,8 @@ Content.
         result = analyze_latex(tmp_path)
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         pkg_names = [e.dst for e in import_edges]
-        assert "amsmath" in pkg_names
-        assert "graphicx" in pkg_names
+        assert make_module_import_dst("latex", "amsmath") in pkg_names
+        assert make_module_import_dst("latex", "graphicx") in pkg_names
 
 class TestFileDiscovery:
     """Branch coverage for file discovery."""

@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **LaTeX edges start at the file and end on ids.**
 - **`verify-claims` no longer confirms secrets written through an alias.**
 - **The spec states generic type parameters are hashed by name.**
 - **Crashes now exit 70; empty claims files exit 2.**

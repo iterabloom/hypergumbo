@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 import hypergumbo_lang_common.latex as latex_module
+from hypergumbo_core.analyze.base import make_module_import_dst
 from hypergumbo_lang_common.latex import analyze_latex, is_latex_tree_sitter_available
 
 
@@ -147,8 +148,10 @@ Also see Equation~\eqref{eq:main}.
         result = analyze_latex(tmp_path)
 
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        [label] = [s for s in result.symbols if s.kind == "label"]
         targets = [e.dst for e in ref_edges]
-        assert "sec:intro" in targets
+        assert label.id in targets
+        assert "eq:main" in [e.dst_ref.name for e in ref_edges if e.dst_ref]
 
     def test_detects_citation_edges(self, tmp_path: Path) -> None:
         """Should detect citation edges."""
@@ -165,8 +168,8 @@ Multiple citations~\cite{jones2019,brown2021}.
         result = analyze_latex(tmp_path)
 
         cite_edges = [e for e in result.edges if e.meta and e.meta.get("ref_type") == "citation"]
-        targets = [e.dst for e in cite_edges]
-        assert "smith2020" in targets
+        targets = [e.dst_ref.name for e in cite_edges if e.dst_ref]
+        assert targets == ["smith2020", "jones2019", "brown2021"]
 
     def test_detects_include_edges(self, tmp_path: Path) -> None:
         """Should detect include edges."""
@@ -184,7 +187,10 @@ Multiple citations~\cite{jones2019,brown2021}.
 
         include_edges = [e for e in result.edges if e.edge_type == "includes"]
         targets = [e.dst for e in include_edges]
-        assert "chapter1" in targets or "chapter2" in targets
+        assert targets == [
+            make_module_import_dst("latex", "chapter1"),
+            make_module_import_dst("latex", "chapter2"),
+        ]
 
     def test_detects_package_imports(self, tmp_path: Path) -> None:
         """Should detect package imports."""
@@ -203,9 +209,9 @@ Content
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         packages = [e.dst for e in import_edges]
-        assert "amsmath" in packages
-        assert "graphicx" in packages
-        assert "hyperref" in packages
+        assert make_module_import_dst("latex", "amsmath") in packages
+        assert make_module_import_dst("latex", "graphicx") in packages
+        assert make_module_import_dst("latex", "hyperref") in packages
 
     def test_handles_sty_files(self, tmp_path: Path) -> None:
         """Should analyze .sty package files."""

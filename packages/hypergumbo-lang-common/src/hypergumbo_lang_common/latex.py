@@ -25,6 +25,21 @@ Pass 2 (Edge Extraction):
 - Include edges (``includes``): \input{}, \include{}
 - Package edges (``imports``): \usepackage{}
 
+Every item of a list argument is one edge (``\usepackage{a,b}``,
+``\cite{k1,k2}``, ``\cref{x,y}``). Every edge starts at the file's node
+(``make_file_id``) and ends on a node id (INV-zipaj): a ``\ref`` on the label
+symbol it names (this file's, else the one label of that name in the tree),
+an ``\input`` / ``\include`` / ``\usepackage`` on the ``.tex`` / ``.sty`` file
+of the tree it names (``edge_target.in_tree_file_id``). What the tree does not
+hold ends on a stand-in in the id grammar: a label or citation key through
+``edge_target.external_target`` (module slot ``label`` / ``citation``; the key
+as written, colons included, is on ``dst_ref.name``), a package or file
+through ``make_module_import_dst``. The analyzer used to write
+``src=f"{rel_path}:file"`` and ``dst=<raw name>``, which finalize parsed with
+the file path in the language slot and every ``\ref{sec:...}`` cut to ``sec``.
+Not read: ``\import``/``\subimport``, ``\bibliography``, ``\includegraphics``,
+``\documentclass`` (they emit no edge).
+
 LaTeX-Specific Considerations
 -----------------------------
 LaTeX documents are structured differently from programming languages:
@@ -41,8 +56,9 @@ are two symbols that the floor key ``(kind, path, name)`` nulled. Command and
 environment definitions are global and take no scope.
 """
 
+import posixpath
 from pathlib import Path
-from typing import TYPE_CHECKING, AbstractSet, Any, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, AbstractSet, Any, ClassVar, Iterable, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     claim_declaration_silence,
@@ -51,11 +67,14 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     iter_tree,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.edge_target import external_target, in_tree_file_id
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import ExternalRef, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -271,122 +290,140 @@ def _extract_symbols_from_file(
     return symbols
 
 
-def _extract_edges_from_file(
-    rel_path: str, source_bytes: bytes, tree: "tree_sitter.Tree", labels: set[str],
-    *, run_id: str,
-) -> list[Edge]:
-    """Extract edges from a parsed LaTeX file."""
-    edges = []
+def _group_items(
+    node: "tree_sitter.Node", source_bytes: bytes, item_types: AbstractSet[str],
+) -> list[str]:
+    r"""Every item of ``node``'s brace groups, in order: ``{a,b}`` is ``a``, ``b``.
 
+    The grammar parses a list argument (``\usepackage{a,b}``, ``\cite{a,b}``,
+    ``\cref{a,b}``) as one ``path`` / ``text`` / ``label`` child per item.
+    Reading only the first child, or the braces' whole text, lost every item
+    after the first, or made one name of ``a,b``.
+    """
+    items: list[str] = []
+    for child in node.children:
+        if not child.type.startswith("curly_group"):
+            continue
+        for inner in child.children:
+            if inner.type in item_types:
+                text = _extract_text(inner, source_bytes).strip()
+                if text:
+                    items.append(text)
+    return items
+
+
+def _label_target(
+    name: str, rel_path: str, labels: dict[str, list[Symbol]],
+) -> Optional[str]:
+    r"""The label symbol ``\ref{name}`` names: this file's, else the one in the tree.
+
+    LaTeX labels are global to a document, and a repository can hold several
+    documents. A label this file defines once is the one it refers to; else a
+    label defined once in the whole tree. Anything else (none, or several
+    elsewhere) is not guessed: the edge ends on a stand-in.
+    """
+    found = labels.get(name, [])
+    own = [s for s in found if s.path == rel_path]
+    if len(own) == 1:
+        return own[0].id
+    if not own and len(found) == 1:
+        return found[0].id
+    return None
+
+
+def _file_candidates(rel_path: str, written: str, suffix: str) -> list[str]:
+    """Repository-relative paths a file named ``written`` may be.
+
+    TeX looks a name up relative to the directory it compiles in, which for a
+    document split over directories is the main file's, not the including
+    file's; neither is known here, so both the including file's directory and
+    the repository root are tried, each with the suffix TeX appends and as
+    written.
+    """
+    here = posixpath.dirname(rel_path)
+    names = [written + suffix, written] if not written.endswith(suffix) else [written]
+    return [posixpath.join(here, n) for n in names] + names
+
+
+def _extract_edges_from_file(
+    file_path: Path, rel_path: str, source_bytes: bytes, tree: "tree_sitter.Tree",
+    labels: dict[str, list[Symbol]], *, run_id: str,
+) -> list[Edge]:
+    r"""Extract edges from a parsed LaTeX file.
+
+    Every edge starts at this file's node (``make_file_id``) and ends on a
+    node id (INV-zipaj): a label symbol, a file of the tree, or a stand-in in
+    the id grammar (``external_target`` for a label or citation key, which
+    keeps the name as written on ``dst_ref``; ``make_module_import_dst`` for a
+    package or file outside the tree).
+    """
+    edges: list[Edge] = []
+    src = make_file_id("latex", rel_path)
     root = tree.root_node
 
-    # Find label references (\ref, \autoref, \eqref, etc.)
-    ref_types = {"label_reference", "label_reference_range"}
-    for node in _find_all_descendants(root, ref_types):
-        ref_name = ""
-        for child in node.children:
-            # Handle both curly_group_label and curly_group_label_list
-            if child.type in {"curly_group_label", "curly_group_label_list"}:
-                # Extract the label text from inside the braces
-                label_text = _extract_text(child, source_bytes).strip()
-                if label_text.startswith("{") and label_text.endswith("}"):
-                    ref_name = label_text[1:-1].strip()
-                    break
+    def add(dst: str, edge_type: str, node: "tree_sitter.Node", evidence: str,
+            meta: dict[str, Any], *, resolved: bool,
+            dst_ref: Optional[ExternalRef] = None) -> None:
+        edges.append(Edge.create(
+            src=src,
+            dst=dst,
+            edge_type=edge_type,
+            line=node.start_point[0] + 1,
+            origin=PASS_ID,
+            evidence_type=evidence,
+            origin_run_id=run_id,
+            is_resolved=resolved,
+            dst_ref=dst_ref,
+            meta=meta,
+        ))
 
-        if ref_name:
-            edges.append(
-                Edge.create(
-                    src=f"{rel_path}:file",
-                    dst=ref_name,
-                    edge_type="references",
-                    line=node.start_point[0] + 1,
-                    origin=PASS_ID,
-                    evidence_type="ast_ref",
-                    origin_run_id=run_id,
-                )
-            )
-            edges[-1].meta = {"ref_type": "label"}
+    # Label references (\ref, \autoref, \eqref, \cref{a,b}, ...)
+    for node in _find_all_descendants(root, {"label_reference", "label_reference_range"}):
+        for name in _group_items(node, source_bytes, {"label"}):
+            target = _label_target(name, rel_path, labels)
+            if target is not None:
+                add(target, "references", node, "ast_ref", {"ref_type": "label"},
+                    resolved=True)
+            else:
+                dst, ref = external_target("latex", name, "label")
+                add(dst, "references", node, "ast_ref", {"ref_type": "label"},
+                    resolved=False, dst_ref=ref)
 
-    # Find citation references (\cite)
+    # Citations (\cite{key1,key2}): bibliography keys, outside the analysed files.
     for node in _find_all_descendants(root, {"citation"}):
-        cite_keys = ""
-        for child in node.children:
-            if child.type.startswith("curly_group"):
-                # Citations can have multiple keys
-                cite_keys = _get_curly_group_text(node, source_bytes)
-                break
+        for key in _group_items(node, source_bytes, {"text"}):
+            dst, ref = external_target("latex", key, "citation")
+            add(dst, "references", node, "ast_cite", {"ref_type": "citation"},
+                resolved=False, dst_ref=ref)
 
-        if cite_keys:
-            # Handle multiple citations (e.g., \cite{key1,key2})
-            for key in cite_keys.split(","):
-                key = key.strip()
-                if key:
-                    edges.append(
-                        Edge.create(
-                            src=f"{rel_path}:file",
-                            dst=key,
-                            edge_type="references",
-                            line=node.start_point[0] + 1,
-                            origin=PASS_ID,
-                            evidence_type="ast_cite",
-                            origin_run_id=run_id,
-                        )
-                    )
-                    edges[-1].meta = {"ref_type": "citation"}
-
-    # Find includes (\input, \include)
+    # Includes (\input, \include): a file of the tree, else the path as written.
     for node in _find_all_descendants(root, {"text_include", "latex_include"}):
-        included_file = ""
-        for child in node.children:
-            if child.type.startswith("curly_group"):
-                path_child = _find_child(child, "path")
-                if path_child:
-                    included_file = _extract_text(path_child, source_bytes).strip()
-                    break
-
-        if included_file:
-            edges.append(
-                Edge.create(
-                    src=f"{rel_path}:file",
-                    dst=included_file,
-                    edge_type="includes",
-                    line=node.start_point[0] + 1,
-                    origin=PASS_ID,
-                    evidence_type="ast_include",
-                    origin_run_id=run_id,
-                )
+        for written in _group_items(node, source_bytes, {"path"}):
+            found = in_tree_file_id(
+                file_path, rel_path, _file_candidates(rel_path, written, ".tex"),
             )
-            edges[-1].meta = {"include_type": node.type}
+            add(found or make_module_import_dst("latex", written), "includes", node,
+                "ast_include", {"include_type": node.type}, resolved=found is not None)
 
-    # Find package includes (\usepackage)
+    # Packages (\usepackage{a,b}): a .sty of the tree, else the package name.
     for node in _find_all_descendants(root, {"package_include"}):
-        packages = ""
-        for child in node.children:
-            if child.type == "curly_group_path_list":
-                path_child = _find_child(child, "path")
-                if path_child:
-                    packages = _extract_text(path_child, source_bytes).strip()
-                    break
-
-        if packages:
-            # Handle multiple packages (e.g., \usepackage{pkg1,pkg2})
-            for pkg in packages.split(","):
-                pkg = pkg.strip()
-                if pkg:
-                    edges.append(
-                        Edge.create(
-                            src=f"{rel_path}:file",
-                            dst=pkg,
-                            edge_type="imports",
-                            line=node.start_point[0] + 1,
-                            origin=PASS_ID,
-                            evidence_type="ast_package",
-                            origin_run_id=run_id,
-                        )
-                    )
-                    edges[-1].meta = {"import_type": "package"}
+        for pkg in _group_items(node, source_bytes, {"path"}):
+            found = in_tree_file_id(
+                file_path, rel_path, _file_candidates(rel_path, pkg, ".sty"),
+            )
+            add(found or make_module_import_dst("latex", pkg), "imports", node,
+                "ast_package", {"import_type": "package"}, resolved=found is not None)
 
     return edges
+
+
+def _labels_by_name(symbols: "Iterable[Symbol]") -> dict[str, list[Symbol]]:
+    r"""The run's label symbols by name, for ``\ref`` resolution."""
+    labels: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        if isinstance(sym, Symbol) and sym.kind == "label":
+            labels.setdefault(sym.name, []).append(sym)
+    return labels
 
 
 def is_latex_tree_sitter_available() -> bool:
@@ -441,10 +478,10 @@ class LatexAnalyzer(TreeSitterAnalyzer):
         override below, which calls the module-level _extract_edges_from_file()
         directly. Kept for interface compatibility with TreeSitterAnalyzer.
         """
-        # Build labels set from global symbols
-        labels = {sym.name for sym in global_symbols.values()
-                  if isinstance(sym, Symbol) and sym.kind == "label"}
-        return _extract_edges_from_file(rel_path, source, tree, labels, run_id=run.execution_id)
+        labels = _labels_by_name(global_symbols.values())
+        return _extract_edges_from_file(
+            file_path, rel_path, source, tree, labels, run_id=run.execution_id,
+        )
 
     def analyze(
         self, repo_root: Path, max_files: Optional[int] = None,
@@ -497,13 +534,15 @@ class LatexAnalyzer(TreeSitterAnalyzer):
             except (OSError, IOError):  # pragma: no cover
                 continue
 
-        # Build label set for edge resolution
-        labels = {s.name for s in symbols if s.kind == "label"}
+        labels = _labels_by_name(symbols)
 
         # Pass 2: Extract edges
         for file_path, (source_bytes, tree) in file_trees.items():
             rel_path = str(file_path.relative_to(repo_root))
-            file_edges = _extract_edges_from_file(rel_path, source_bytes, tree, labels, run_id=run.execution_id)
+            file_edges = _extract_edges_from_file(
+                file_path, rel_path, source_bytes, tree, labels,
+                run_id=run.execution_id,
+            )
             edges.extend(file_edges)
 
         # Update run stats
