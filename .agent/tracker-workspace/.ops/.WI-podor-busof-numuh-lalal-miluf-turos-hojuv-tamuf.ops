@@ -1,0 +1,20 @@
+- op: create  # 17c1
+  at: '2026-11-19T15:10:57Z'  # 17c1
+  by: agent  # 17c1
+  actor: jgstern_agent  # 17c1
+  clock: 1  # 17c1
+  nonce: 17c1  # 17c1
+  data:  # 17c1
+    kind: work_item  # 17c1
+    title: "swift: same-named local functions in different initializers tie (scope is the type, not the enclosing callable)"  # 17c1
+    status: todo_hard  # 17c1
+    priority: 3  # 17c1
+    parent:  # 17c1
+    tags:  # 17c1
+    - stable_id  # 17c1
+    isbefore: []  # 17c1
+    duplicate_of: []  # 17c1
+    not_duplicate_of: []  # 17c1
+    pr_ref:  # 17c1
+    description: "Swift: local functions with the same name in different enclosing initializers tie; their scope is the type, not the enclosing callable.\n\nREPRO: TCA Sources/ComposableArchitecture/Internal/Deprecations.swift, IfLetStore.open at L978 and L1012 (local functions in two different init bodies) share stable-id hash inputs and are split only by occurrence order, so editing one initializer can move the other's id. Found while counting WI-bubak: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/bubak/RESULTS.md. Not checked in other languages with local functions (Kotlin, C#, Rust)."  # 17c1
+    fields: {}  # 17c1

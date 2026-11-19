@@ -18,3 +18,10 @@
     pr_ref:  # eb9e
     description: "Rust: an explicit receiver self: &Self hashes differently from &self, two spellings of one receiver.\n\nREPRO (PR 3 branch, commit 4e0163454): normalize_rust_signature(\"(self: &Self)\") != normalize_rust_signature(\"(&self)\"). That commit writes &self as self: &Self and &mut self as self: &mut Self so the receivers stop colliding; the explicit long form is not mapped to the same text. Evidence: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tojov/RESULTS.md residual 3. Not measured: how often the explicit form appears in real trees."  # eb9e
     fields: {}  # eb9e
+- op: discuss  # 7a35
+  at: '2026-11-19T16:42:08Z'  # 7a35
+  by: agent  # 7a35
+  actor: jgstern_agent  # 7a35
+  clock: 2  # 7a35
+  nonce: 7a35  # 7a35
+  message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump)."  # 7a35

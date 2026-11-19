@@ -20,3 +20,17 @@
     pr_ref:  # 3047
     description: "WHAT (MOVES IDS).\n- Argument labels are not in the hashed signature: `f(a: Int)` and `f(b: Int)` share an id until the occurrence split. Hashing labels would move 8.0% of swift-composable-architecture and 28.6% of Alamofire (measured by the package, on top of the 11.85% / 9.13% v15 moved). Owner's call; left out of PR #2200.\n- Generic constraints and `where` clauses are not hashed; a `static` and an instance member of one name and signature share an id.\n- INV-fabih's wide statement still does not hold for five same-name-sibling shapes: two blocks of one function, two getters, label-only overloads, two inits, two closures.\n\nWHAT (does not move ids).\n- A method or static call on a function-local type, and a call to a local function, resolve by last-one-wins name.\n- Two same-named local types in two blocks of one function tie.\n- A dotted superclass is read as its head segment.\n\nFixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 3047
     fields: {}  # 3047
+- op: discuss  # d004
+  at: '2026-11-19T16:18:47Z'  # d004
+  by: agent  # d004
+  actor: jgstern_agent  # d004
+  clock: 2  # d004
+  nonce: d004  # d004
+  message: "Partly addressed on the PR 3 branch (stable-id v16, jgstern-agent/feat/stable-id-v16, commit 315063612, WI-bubak): a Swift declaration's OWN generic clause and where-constraints are now hashed, with type parameters renamed by position; the 3 TCA bound-only tie groups split. STILL OPEN: (1) an enclosing extension's where-clause is not hashed. Repro: extension Array where Element: P { func f() {} } next to the same extension with Element: Q gives both Array.f the same stable id (split only by occurrence order). Hashing an enclosing extension's constraints into its members was outside the WI-bubak ruling (own clause only); owner call. (2) argument labels and (3) static-vs-instance are untouched."  # d004
+- op: discuss  # b231
+  at: '2026-11-19T16:42:07Z'  # b231
+  by: agent  # b231
+  actor: jgstern_agent  # b231
+  clock: 3  # b231
+  nonce: b231  # b231
+  message: "OWNER RULING 2026-11-19 (in session): in PR 3 (v16 bump), hash an enclosing extension's where-clause into its members' ids (measure first), and check the Rust analogue (two impl blocks of one type with different type arguments or bounds both defining f). The argument-label and static-vs-instance parts go to an additional stable-id PR at the end of the plan (a second bump), with WI-palus, WI-podor and WI-hamuk."  # b231
