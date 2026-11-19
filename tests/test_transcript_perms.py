@@ -295,3 +295,110 @@ class TestEveryShellWriterIsWiredToTheOneHome:
             f"{writer} sources the helper but never sets the umask; new "
             f"files it creates still inherit the process umask"
         )
+
+
+class TestGitHooksKeepTranscriptsOwnerOnly:
+    """INV-kosok: the post-checkout / post-merge permission repair for the
+    two-user tracker setup (``.githooks/repair-agent-perms.sh``) ran ``find``
+    over the WHOLE of ``.agent/``, so every checkout made idle transcripts
+    660 and archive directories 2770 again. The repair is limited to the
+    tracker trees it exists for.
+
+    Drives the REAL hooks through real git operations in a throwaway
+    repository. The two-user setup is detected from a tracker directory whose
+    group is not the user's primary one; a fake ``id`` on PATH reports a
+    different primary group, so the detection fires on any runner without a
+    second group to ``chgrp`` to. The tracker half is asserted too: a fix that
+    stopped repairing anything would keep the transcripts tight and pass the
+    other half (the reach assertion).
+    """
+
+    HOOKS = ("post-checkout", "post-merge", "repair-agent-perms.sh")
+
+    def _repo(self, tmp_path: Path) -> tuple[Path, str]:
+        """The repository and the PATH that carries the fake ``id``."""
+        repo = tmp_path / "repo"
+        hooks = tmp_path / "hooks"
+        hooks.mkdir()
+        for name in self.HOOKS:
+            target = hooks / name
+            target.write_bytes((REPO_ROOT_REAL / ".githooks" / name).read_bytes())
+            target.chmod(0o755)
+        fake = tmp_path / "bin"
+        fake.mkdir()
+        (fake / "id").write_text(
+            '#!/bin/bash\nif [[ "$1" == "-g" ]]; then echo 99999; '
+            'else exec /usr/bin/id "$@"; fi\n')
+        (fake / "id").chmod(0o755)
+        env = {**os.environ, "PATH": f"{fake}:{os.environ['PATH']}"}
+
+        def git(*argv: str) -> None:
+            subprocess.run(["git", "-C", str(repo), *argv], check=True,
+                           capture_output=True, env=env)
+
+        repo.mkdir()
+        git("init", "-q", "-b", "dev")
+        git("config", "user.email", "t@example.invalid")
+        git("config", "user.name", "t")
+        git("config", "core.hooksPath", str(hooks))
+        ops = repo / ".agent" / "tracker" / ".ops"
+        ops.mkdir(parents=True)
+        (ops / ".WI-x.ops").write_text("op\n")
+        workspace = repo / ".agent" / "tracker-workspace" / ".ops"
+        workspace.mkdir(parents=True)
+        (workspace / ".WI-y.ops").write_text("op\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "base")
+        git("checkout", "-q", "-b", "other")
+        (ops / ".WI-x.ops").write_text("op\nop2\n")
+        git("commit", "-q", "-am", "other")
+        git("checkout", "-q", "dev")
+        # Owner-only transcript content, untracked, as the pipeline leaves it.
+        agent = repo / ".agent"
+        transcript = agent / ".last_session_transcript.jsonl"
+        transcript.write_text("{}\n")
+        transcript.chmod(0o600)
+        archive = agent / ".archived-transcripts" / "2026-11"
+        archive.mkdir(parents=True)
+        (archive / "t.jsonl.gz").write_bytes(b"x")
+        (archive / "t.jsonl.gz").chmod(0o600)
+        for d in (archive, archive.parent):
+            d.chmod(0o700)
+        for d in (agent / "tracker", ops, workspace.parent, workspace):
+            d.chmod(0o755)
+        for f in (ops / ".WI-x.ops", workspace / ".WI-y.ops"):
+            f.chmod(0o644)
+        return repo, env["PATH"]
+
+    def _git(self, repo: Path, env_path: str, *argv: str) -> None:
+        subprocess.run(["git", "-C", str(repo), *argv], check=True, capture_output=True,
+                       env={**os.environ, "PATH": env_path})
+
+    def _assert_owner_only(self, repo: Path) -> None:
+        agent = repo / ".agent"
+        assert _mode(agent / ".last_session_transcript.jsonl") == 0o600
+        assert _mode(agent / ".archived-transcripts") == 0o700
+        assert _mode(agent / ".archived-transcripts" / "2026-11") == 0o700
+        assert _mode(agent / ".archived-transcripts" / "2026-11" / "t.jsonl.gz") == 0o600
+
+    def _assert_tracker_repaired(self, repo: Path) -> None:
+        for tree, name in (("tracker", ".WI-x.ops"), ("tracker-workspace", ".WI-y.ops")):
+            ops = repo / ".agent" / tree / ".ops"
+            assert _mode(ops / name) & 0o060 == 0o060
+            for d in (ops, ops.parent):
+                assert stat.S_IMODE(d.stat().st_mode) & (stat.S_IWGRP | stat.S_ISGID) == (
+                    stat.S_IWGRP | stat.S_ISGID)
+
+    def test_a_branch_checkout_repairs_the_tracker_and_leaves_transcripts_alone(
+            self, tmp_path: Path) -> None:
+        repo, path = self._repo(tmp_path)
+        self._git(repo, path, "checkout", "-q", "other")
+        self._assert_tracker_repaired(repo)
+        self._assert_owner_only(repo)
+
+    def test_a_merge_repairs_the_tracker_and_leaves_transcripts_alone(
+            self, tmp_path: Path) -> None:
+        repo, path = self._repo(tmp_path)
+        self._git(repo, path, "merge", "-q", "--ff-only", "other")
+        self._assert_tracker_repaired(repo)
+        self._assert_owner_only(repo)

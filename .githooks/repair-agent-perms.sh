@@ -7,7 +7,11 @@
 # wizard (_check_group_permissions).  Git operations (checkout, merge)
 # restore files with 0644/0755 permissions, stripping group-write bits
 # that the two-user setup requires.  This script proactively re-applies
-# g+rw on files and g+rwxs on directories owned by the current user.
+# g+rw on files and g+rwxs on directories owned by the current user, in the
+# tracker trees only (.agent/tracker, .agent/tracker-workspace): they are
+# what the two users share.  The rest of .agent/ holds transcripts, which
+# stay owner-only (INV-todig); a repair over all of .agent/ re-opened them to
+# the group on every checkout and merge (INV-kosok).
 #
 # Called from post-checkout and post-merge hooks.  Designed to be
 # silent and best-effort: errors are swallowed so git operations are
@@ -43,12 +47,19 @@ repair_agent_perms() {
 
     $shared || return 0
 
+    local roots=()
+    for d in "$agent_dir/tracker" "$agent_dir/tracker-workspace"; do
+        [[ -d "$d" ]] && roots+=("$d")
+    done
+    # find with no path searches the current directory: never let it.
+    ((${#roots[@]})) || return 0
+
     # Fix directories: ensure group-write + setgid (only dirs we own).
-    find "$agent_dir" -type d -user "$my_uid" \
+    find "${roots[@]}" -type d -user "$my_uid" \
         \( ! -perm -g+w -o ! -perm -g+s \) \
         -exec chmod g+rwxs {} + 2>/dev/null || true
 
     # Fix files: ensure group read+write (only files we own).
-    find "$agent_dir" -type f -user "$my_uid" ! -perm -g+rw \
+    find "${roots[@]}" -type f -user "$my_uid" ! -perm -g+rw \
         -exec chmod g+rw {} + 2>/dev/null || true
 }
