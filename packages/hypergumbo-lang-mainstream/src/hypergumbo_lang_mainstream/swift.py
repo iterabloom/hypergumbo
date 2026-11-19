@@ -160,7 +160,6 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, NamedTuple,
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
-    keeps_v15_text_when_lossless,
     constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
@@ -1154,12 +1153,11 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     from hypergumbo_core.analyze.base import (
         normalize_generic_params,
         strip_fqn_prefix,
-        writes_v15_signature_text,
     )
 
     def core(text: str) -> str:
         meta = _SWIFT_METATYPE_RE.fullmatch(text.strip())
-        if meta is not None and not writes_v15_signature_text():
+        if meta is not None:
             return core(meta["base"]) + "." + meta["kind"] + meta["suffix"]
         normalized = strip_fqn_prefix(text.strip())
         return normalize_generic_params(normalized, type_params) if type_params else normalized
@@ -1178,7 +1176,6 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     return head + body + suffix
 
 
-@keeps_v15_text_when_lossless
 def normalize_swift_signature(
     signature: str | None,
     type_params: list[str] | None = None,

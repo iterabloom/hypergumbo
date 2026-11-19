@@ -273,7 +273,6 @@ from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, ShapeId, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
-    keeps_v15_text_when_lossless,
     AnalysisResult,
     assemble_stable_id,
     make_file_id,
@@ -399,7 +398,6 @@ def _is_python_top_level_exported(
     return True
 
 
-@keeps_v15_text_when_lossless
 def normalize_python_signature(
     signature: str | None,
     type_params: list[str] | None = None,

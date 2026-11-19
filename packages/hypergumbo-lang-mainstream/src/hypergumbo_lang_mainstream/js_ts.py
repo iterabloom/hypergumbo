@@ -259,7 +259,6 @@ from hypergumbo_core.symbol_resolution import (
     NameResolver,
 )
 from hypergumbo_core.analyze.base import (
-    keeps_v15_text_when_lossless,
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
@@ -1630,7 +1629,6 @@ def _extract_jsts_signature(
     return sig
 
 
-@keeps_v15_text_when_lossless
 def normalize_jsts_signature(
     signature: str | None,
     type_params: list[str] | None = None,

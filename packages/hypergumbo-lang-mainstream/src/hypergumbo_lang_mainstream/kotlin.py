@@ -191,7 +191,6 @@ from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
-    keeps_v15_text_when_lossless,
     AnalysisResult,
     SymbolsAt,
     TreeSitterAnalyzer,
@@ -894,7 +893,6 @@ def _extract_kotlin_signature(
     return signature
 
 
-@keeps_v15_text_when_lossless
 def normalize_kotlin_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -919,8 +917,7 @@ def normalize_kotlin_signature(
     a receiver ``Map.Entry<K, V>`` and ``Other.Entry<K, V>`` hash apart,
     as do parameters ``Foo.Bar`` and ``Baz.Bar``), and a function, ``suspend``
     or annotated type is written whole (the shared FQN strip no longer cuts
-    them at their last dot). A signature whose v15 text lost nothing keeps
-    it (``keeps_v15_text_when_lossless``).
+    them at their last dot).
     """
     from hypergumbo_core.analyze.base import (
         find_matching_paren,

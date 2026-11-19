@@ -15,10 +15,9 @@ types to one text, and the typed stable_id hashes that text:
 - ``_find_matching_paren`` (now ``find_matching_paren``) closed a parameter
   list on a ``)`` inside a string literal.
 
-The corrected helpers are checked here, and so is the guarantee that keeps
-every other id where it was: ``keeps_v15_text_when_lossless`` returns the v15
-text whenever it holds every token of the corrected text, so only a signature
-whose v15 text lost something hashes differently.
+The corrected helpers are checked here. Each language normalizer hashes the
+corrected text: an id moves when its signature's v15 text differed from it,
+which includes a v15 split that only lost a space or kept a parameter's name.
 """
 from __future__ import annotations
 
@@ -26,12 +25,10 @@ import pytest
 
 from hypergumbo_core.analyze.base import (
     find_matching_paren,
-    keeps_v15_text_when_lossless,
     normalize_signature_names_first,
     normalize_signature_types_first,
     split_params_top_level,
     strip_fqn_prefix,
-    writes_v15_signature_text,
 )
 
 
@@ -63,9 +60,9 @@ def test_compound_type_is_written_whole(text: str) -> None:
     ("pkg.Foo?", "Foo?"),
     ("x.y.Z[]", "Z[]"),
     ("global::System.String", "String"),
-    ("a.B | None", "B | None"),     # the cut takes a qualifier only: kept as v15 cut it
+    ("a.B | None", "B | None"),     # the cut takes a qualifier only
     ("java.lang.@A String", "@A String"),   # Java's annotated qualified type
-    ("Foo.Bar", "Bar"),              # no type-path rule asked: v15's cut
+    ("Foo.Bar", "Bar"),              # no type-path rule asked: the last segment
     ("String", "String"),
     ("", ""),
 ])
@@ -110,9 +107,14 @@ def test_nested_types_of_different_outers_stay_distinct() -> None:
     ("{int a, int b}", ["{int a", "int b}"]),        # a Dart named group splits as before
     ("int x, {int a, int b}", ["int x", "{int a", "int b}"]),
     ("a: Int)", ["a: Int)"]),                       # an unmatched closer is text
+    # A type argument list may follow a non-name character: C#'s function
+    # pointers (``delegate*<...>``, ``delegate* unmanaged[Cdecl]<...>``).
+    ("delegate*<int, void> p, int q", ["delegate*<int, void> p", "int q"]),
+    ("delegate* unmanaged[Cdecl]<int, void> p, int q",
+     ["delegate* unmanaged[Cdecl]<int, void> p", "int q"]),
     ("x = f(a<b, c), d", ["x = f(a<b, c)", "d"]),   # a comparison's "<" closes with its ")"
     ('s = "a, b', ['s = "a, b']),                   # an unclosed string runs to the end
-    ("a,,b, ", ["a", "", "b"]),                     # as v15: inner empty kept, last dropped
+    ("a,,b, ", ["a", "", "b"]),                     # inner empty kept, last dropped
 ])
 def test_split_respects_every_bracket_and_string(text: str, parts: list[str]) -> None:
     assert split_params_top_level(text) == parts
@@ -137,87 +139,38 @@ def test_matching_paren_without_open_paren() -> None:
     assert find_matching_paren("", 0) == -1
     assert find_matching_paren("(a", 0) == -1
 
-    @keeps_v15_text_when_lossless
-    def v15_unmatched(signature: str | None) -> str | None:
-        assert signature is not None
-        return f"{find_matching_paren(signature, 0)}{find_matching_paren(signature, 9)}"
-
-    assert v15_unmatched("(a") == "-1-1"
-
 
 def test_paren_in_annotation_string_no_longer_truncates_the_parameters() -> None:
     with_paren = normalize_signature_types_first('(@A(")") String x) int')
     assert with_paren is not None and with_paren.endswith(")int")
 
 
-# ---------------------------------------------------------------------------
-# The v15 text, and when it is kept
+# The names-first rule on the corrected split
 # ---------------------------------------------------------------------------
 
-@keeps_v15_text_when_lossless
 def _names_first(signature: str | None) -> str | None:
     return normalize_signature_names_first(signature, return_sep="->")
 
 
-def test_v15_text_kept_when_only_whitespace_differs() -> None:
-    # v15 split the tuple of function types at its inner comma; the corrected
-    # split does not. The texts differ by one space only: v15's is kept.
+def test_tuple_of_function_types_is_one_parameter() -> None:
+    # v15 split the tuple at its inner comma (its text lost the space after it).
     signature = "(a: ((Int) -> Int, (Int) -> Int), b: Int)"
-    assert _names_first(signature) == "(((Int) -> Int,(Int) -> Int),Int)"
+    assert _names_first(signature) == "(((Int) -> Int, (Int) -> Int),Int)"
 
 
-def test_v15_text_kept_when_it_holds_more() -> None:
-    # v15 read Scala's ``<:<`` as an unclosed bracket and kept the next
-    # parameter's name; it lost no type, so its text stays.
-    assert _names_first("(ev: B <:< AA, F: Functor[F]) -> X") == "(B <:< AA, F: Functor[F])X"
+def test_scala_subtype_evidence_no_longer_hashes_parameter_names() -> None:
+    # v15 read Scala's ``<:<`` as an unclosed bracket, never split the clause,
+    # and hashed ``F: Functor[F]`` with its parameter name.
+    assert _names_first("(ev: B <:< AA, F: Functor[F]) -> X") == "(B <:< AA,Functor[F])X"
 
 
-def test_corrected_text_when_v15_lost_a_type() -> None:
+def test_function_type_result_is_kept() -> None:
     assert _names_first("(f: (Int) -> a.B)") == "((Int) -> a.B)"
     assert _names_first("(f: (Str) -> a.B)") == "((Str) -> a.B)"
 
 
-def test_v15_mode_reproduces_the_v15_helpers() -> None:
-    seen: list[tuple[bool, str, list[str], int]] = []
-
-    @keeps_v15_text_when_lossless
-    def probe(signature: str | None) -> str | None:
-        seen.append((
-            writes_v15_signature_text(),
-            strip_fqn_prefix("(Int, A.B)"),
-            split_params_top_level("a: (Int) -> Int, b: {c, d}"),
-            find_matching_paren('(")")', 0),
-        ))
-        return signature
-
-    assert probe("x") == "x"
-    assert seen == [
-        (False, "(Int, A.B)", ["a: (Int) -> Int", "b: {c, d}"], 4),
-        (True, "B)", ["a: (Int) -> Int", "b: {c", "d}"], 2),
-    ]
-    assert writes_v15_signature_text() is False
-
-
-def test_nested_lossless_wrappers_run_once_in_v15_mode() -> None:
-    calls: list[bool] = []
-
-    @keeps_v15_text_when_lossless
-    def inner(signature: str | None) -> str | None:
-        calls.append(writes_v15_signature_text())
-        return signature
-
-    @keeps_v15_text_when_lossless
-    def outer(signature: str | None) -> str | None:
-        return inner(signature)
-
-    assert outer("s") == "s"
-    # outer: fixed run (inner: fixed + v15), then outer's v15 run (inner once).
-    assert calls == [False, True, True]
-
-
-def test_unparsable_corrected_text_falls_back_to_v15() -> None:
-    @keeps_v15_text_when_lossless
-    def only_v15(signature: str | None) -> str | None:
-        return signature if writes_v15_signature_text() else None
-
-    assert only_v15("(x)") == "(x)"
+def test_typescript_generic_function_type_is_one_parameter() -> None:
+    assert split_params_top_level("f: <T, U>(a: T) => U, x: X") == [
+        "f: <T, U>(a: T) => U", "x: X"]
+    assert split_params_top_level("f: (<T, U>(a: T) => U), x: X") == [
+        "f: (<T, U>(a: T) => U)", "x: X"]

@@ -100,7 +100,6 @@ from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
-    keeps_v15_text_when_lossless,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -308,19 +307,19 @@ def _dart_is_whole_parameter(text: str) -> bool:
 
 
 def _dart_type_is_kept(text: str) -> bool:
-    """True when the v15 FQN cut keeps every part of ``text`` but a
+    """True when ``strip_at_last_dot`` keeps every part of ``text`` but a
     library prefix (``p.Foo<q.Bar>?`` -> ``Foo<q.Bar>?``), or changes nothing.
     (The shared strip now writes any other type whole; Dart's own rules below
-    were written against the v15 cut, and still are.)
+    were written against that cut, and still are.)
 
     The strip keeps what follows the last dot of the text before its first
     ``<`` (or ``[``). On a function type or a record type that dot can sit
     inside the type (``int Function(p.A)`` -> ``A)``), and before a modifier
     or a group bracket it takes them too (``{required p.Foo`` -> ``Foo``).
     """
-    from hypergumbo_core.analyze.base import strip_fqn_prefix_v15
+    from hypergumbo_core.analyze.base import strip_at_last_dot
 
-    stripped = strip_fqn_prefix_v15(text)
+    stripped = strip_at_last_dot(text)
     if stripped == text:
         return True
     prefix = _DART_LIBRARY_PREFIX.match(text)
@@ -391,7 +390,6 @@ def _shared_type_rule(text: str, type_params: list[str] | None) -> str:
     return normalize_generic_params(written, type_params) if type_params else written
 
 
-@keeps_v15_text_when_lossless
 def normalize_dart_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -409,8 +407,7 @@ def normalize_dart_signature(
     a time: those through the Dart rules above, the others through the
     shared rule's own step (``_shared_type_rule``).
 
-    No string literal is skipped (``_DART_QUOTES``), and a signature whose
-    v15 text lost nothing keeps it (``keeps_v15_text_when_lossless``). The
+    No string literal is skipped (``_DART_QUOTES``). The
     signature text's default values are still cut at their first comma by
     the renderer (a residual of the renderer, not of these rules).
     """
