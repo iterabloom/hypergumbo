@@ -43,6 +43,8 @@ package m
 
 type T struct{ F int }
 
+func (b *T) M() int { return b.F }
+
 func f(t []int, b *T, p *int) {
 	x := 1
 {body}
@@ -114,6 +116,8 @@ _ROWS: dict[tuple[str, str, str], tuple[str, str, str, str]] = {
     ("go", "target", "unary_expression"): ("go", "*p = x", EXPOSURE_IN_PLACE_STORE, "p"),
     ("go", "address_of", "unary_expression"): ("go", "q := &x\n_ = q", EXPOSURE_ADDRESS_TAKEN, "x"),
     ("go", "nested_function", "func_literal"): ("go", "g := func() int { return x }\n_ = g", EXPOSURE_CAPTURED, "x"),
+    ("go", "receiver_address_of", "selector_expression"): (
+        "go", "var v T\ng := v.M\n_ = g", EXPOSURE_ADDRESS_TAKEN, "v"),
     # --- python.yaml
     ("python", "assignment", "assignment"): ("python", "t[0] = x", EXPOSURE_IN_PLACE_STORE, "t"),
     ("python", "assignment", "augmented_assignment"): ("python", "t[0] += x", EXPOSURE_IN_PLACE_STORE, "t"),
@@ -215,6 +219,8 @@ def _yaml_entries() -> set[tuple[str, str, str]]:
         out |= {(stem, "address_of", a.node_type) for a in mapping.address_of or []}
         out |= {(stem, "nested_function", n.node_type) for n in mapping.nested_functions}
         out |= {(stem, "capture_scope", c) for c in mapping.capture_scopes or []}
+        receiver = mapping.receiver_address_of
+        out |= {(stem, "receiver_address_of", receiver.selector)} if receiver else set()
     return out
 
 
@@ -246,8 +252,9 @@ _CAPTURE_FORMS_NOT_ADDED = {
         "(already a store) can be seen; the anonymous-class leak fixture reads "
         "violated (the walk escapes) on both arms",
     ("go", "method_value"): "``get := t.Get`` copies a value receiver when "
-        "evaluated, so the fixture's removal is correct (confirmed, removed 1); "
-        "a pointer receiver is reached through a store, already a store",
+        "evaluated, so the fixture's removal is correct (confirmed, removed 1). "
+        "A POINTER receiver takes ``&t`` and is the ``receiver_address_of`` key "
+        "(WI-bamuj): an address taken, not a capture",
     ("c", "none"): "C has no closure or late-evaluation form",
 }
 
@@ -293,6 +300,82 @@ def test_a_go_unary_minus_is_not_a_dereference(tmp_path: Path) -> None:
     exposure, _line = _exposure(tmp_path, "go", "y := -x\n_ = y")
     assert exposure.stores == frozenset()
     assert exposure.address_taken == frozenset()
+
+
+#: WI-bamuj. A file whose methods the selector rule reads: ``*Box`` methods
+#: take the receiver's address, ``Box`` methods copy it.
+_GO_METHODS = """\
+package m
+
+type Box struct{ v string }
+type Outer struct{ in Box }
+
+func (b *Box) Get() string { return b.v }
+func (*Box) Reset()        {}
+func (b Box) Val() string  { return b.v }
+"""
+
+
+def _go_exposure(
+    tmp_path: Path, body: str, *, methods_in_own_file: bool = False,
+) -> DefinitionExposure:
+    """The record for ``f``, whose body is ``body``, beside ``_GO_METHODS``."""
+    func = "func f() {\n" + textwrap.indent(body, "\t") + "\n}\n"
+    if methods_in_own_file:
+        (tmp_path / "box.go").write_text(_GO_METHODS)
+        (tmp_path / "m.go").write_text("package m\n\n" + func)
+    else:
+        (tmp_path / "m.go").write_text(_GO_METHODS + "\n" + func)
+    result = build_repo_ddg(tmp_path, ("go",))
+    syms = [s for s in result.exposure if s.split(":")[-2] == "f"]
+    assert len(syms) == 1, sorted(result.exposure)
+    return result.exposure[syms[0]]
+
+
+class TestPointerReceiverSelector:
+    """WI-bamuj. ``t.Get`` where ``Get`` has receiver ``*Box`` is ``(&t).Get``:
+    a method value (or call) through a pointer receiver takes the variable's
+    address with no ``&`` written, so a later ``t = Box{...}`` is seen through
+    the bound method. The selector alone cannot tell a method from a field;
+    the method's DECLARATION can."""
+
+    def test_a_method_value_takes_the_address(self, tmp_path: Path) -> None:
+        e = _go_exposure(tmp_path, "var t Box\nget := t.Get\nt = Box{}\n_ = get")
+        assert "t" in e.address_taken, e
+
+    def test_a_method_call_takes_the_address(self, tmp_path: Path) -> None:
+        e = _go_exposure(tmp_path, "var t Box\nt.Reset()\nt = Box{}\n_ = t")
+        assert "t" in e.address_taken, e
+
+    def test_the_root_of_a_field_operand_is_taken(self, tmp_path: Path) -> None:
+        e = _go_exposure(tmp_path, "var t Outer\nget := t.in.Get\nt = Outer{}\n_ = get")
+        assert "t" in e.address_taken, e
+
+    def test_a_method_declared_in_another_file_counts(self, tmp_path: Path) -> None:
+        e = _go_exposure(
+            tmp_path, "var t Box\nget := t.Get\nt = Box{}\n_ = get",
+            methods_in_own_file=True,
+        )
+        assert "t" in e.address_taken, e
+
+    def test_a_value_receiver_copies(self, tmp_path: Path) -> None:
+        """The precision half: ``t.Val`` copies ``t`` when evaluated."""
+        e = _go_exposure(tmp_path, "var t Box\nget := t.Val\nt = Box{}\n_ = get")
+        assert e.address_taken == frozenset(), e
+
+    def test_a_field_read_takes_nothing(self, tmp_path: Path) -> None:
+        e = _go_exposure(tmp_path, "var t Box\ns := t.v\nt = Box{}\n_ = s")
+        assert e.address_taken == frozenset(), e
+
+    def test_a_language_without_the_key_collects_nothing(self, tmp_path: Path) -> None:
+        from hypergumbo_core.cfg import address_taking_members
+        from tree_sitter_language_pack import get_parser
+
+        mapping = cfg_mod.load_cfg_mapping("python")
+        assert mapping is not None and mapping.receiver_address_of is None
+        src = b"class K:\n    def m(self):\n        pass\n"
+        root = get_parser("python").parse(src).root_node
+        assert address_taking_members(root, src, mapping) == frozenset()
 
 
 def test_a_go_tuple_target_reads_each_element(tmp_path: Path) -> None:

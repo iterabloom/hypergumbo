@@ -125,6 +125,16 @@ nested function to each read of that name inside it. The edges are a may
 relation and only add paths: a walk over them can lose a ``False``, never
 gain one.
 
+Methods That Take Their Receiver's Address (WI-bamuj)
+-----------------------------------------------------
+Go's ``t.Get`` through a pointer receiver is ``(&t).Get``, an address taken
+with no ``&`` written. Whether a selector is such a method or a field read is
+decided by the method's declaration, which may sit in any file of the
+package, so before walking a language that declares ``receiver_address_of``
+the walk parses every file once to collect those method names
+(:func:`cfg.address_taking_members`) and hands them to every
+``exposed_definitions`` call. Other languages parse nothing extra.
+
 Return Statements (INV-komoj)
 -----------------------------
 Taint follows a value a function RETURNS into that function's callers, and
@@ -170,6 +180,7 @@ generic loop, so adding a language does not require having an equivalent.
 """
 from __future__ import annotations
 
+import functools
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -950,15 +961,17 @@ def _walk_language(
     analyzer_symbols: AnalyzerSymbolIndex,
 ) -> None:
     """Walk every source file of one language under ``repo_root``."""
-    for path in _spec_files(repo_root, spec):
-        parser = parsers.get(grammar_for_path(path, spec.language))
-        if parser is None:
+    files = _spec_files(repo_root, spec)
+    members = _address_taking_members(files, spec, parsers, mapping)
+    if members:
+        deps = {**deps, "exposed_definitions": functools.partial(
+            deps["exposed_definitions"], address_taking_members=members,
+        )}
+    for path in files:
+        parsed = _parse_file(path, spec, parsers)
+        if parsed is None:
             continue
-        try:
-            source = path.read_bytes()
-        except OSError:  # pragma: no cover - defensive
-            continue
-        tree = parser.parse(source)
+        source, tree = parsed
         rel_path = path.relative_to(repo_root).as_posix()
         refine_ctx = _refine_context(spec, tree, source)
         root = tree.root_node
@@ -971,6 +984,42 @@ def _walk_language(
             tree.root_node, source, spec, rel_path, out, deps, mapping, refine_ctx,
             analyzer_symbols,
         )
+
+
+def _parse_file(
+    path: Path, spec: LanguageDdgSpec, parsers: _ParserCache,
+) -> Optional[tuple[bytes, Any]]:
+    """``(source, tree)`` for one file, or ``None`` when it cannot be parsed."""
+    parser = parsers.get(grammar_for_path(path, spec.language))
+    if parser is None:
+        return None
+    try:
+        source = path.read_bytes()
+    except OSError:  # pragma: no cover - defensive
+        return None
+    return source, parser.parse(source)
+
+
+def _address_taking_members(
+    files: Sequence[Path], spec: LanguageDdgSpec, parsers: _ParserCache, mapping: Any,
+) -> frozenset[str]:
+    """The method names whose selector takes its operand's address (WI-bamuj).
+
+    Collected over EVERY file of the language before any function is walked,
+    since a Go method is often declared in a file other than its callers'
+    (``cfg.address_taking_members``). A language without the
+    ``receiver_address_of`` key costs nothing: no file is parsed for it.
+    """
+    from .cfg import address_taking_members
+
+    if getattr(mapping, "receiver_address_of", None) is None:
+        return frozenset()
+    names: set[str] = set()
+    for path in files:
+        parsed = _parse_file(path, spec, parsers)
+        if parsed is not None:
+            names |= address_taking_members(parsed[1].root_node, parsed[0], mapping)
+    return frozenset(names)
 
 
 def _has_module_call(root: Any, mapping: Any) -> bool:

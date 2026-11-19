@@ -73,16 +73,17 @@ _SHAPES = sorted(
 
 
 def test_the_shape_population_is_the_reproduced_one() -> None:
-    """39 shape-language pairs reproduced the unearned removal (Go 15,
+    """41 shape-language pairs reproduced the unearned removal (Go 17,
     Python 13, JavaScript 10, TypeScript 1): the study's 35, plus the
     late-evaluation captures (a Python ``lambda`` and generator expression, a
-    JS / TS class field initialiser). A lost fixture
-    directory must not shrink it."""
+    JS / TS class field initialiser), plus a Go method value and a Go method
+    call through a pointer receiver, which take the variable's address with no
+    ``&`` written (WI-bamuj). A lost fixture directory must not shrink it."""
     by_language: dict[str, int] = {}
     for shape in _SHAPES:
         language = shape.split("__")[0]
         by_language[language] = by_language.get(language, 0) + 1
-    assert by_language == {"go": 15, "python": 13, "javascript": 10, "typescript": 1}
+    assert by_language == {"go": 17, "python": 13, "javascript": 10, "typescript": 1}
 
 
 #: Shapes the walk follows since WI-pubat: ``get = () => x`` / ``g = lambda:
@@ -140,6 +141,9 @@ def test_the_control_still_violates(
     ("javascript__N2_rebind_not_store__leak", "host_secret", "host_fs", 1),
     # beads cmd/bd/doctor/perf.go: a value read into a fresh local, read once.
     ("must_refute__go_beads", "host_description", "logging", 1),
+    # A Go method value with a VALUE receiver copies the variable when it is
+    # evaluated, so the later assignment does not reach it (WI-bamuj).
+    ("must_refute__go_method_value_val", "host_secret", "host_fs", 1),
     # A value received into ``_`` (WI-sitaf): no name is walked at all.
     ("must_refute__go_discard", "host_secret", "host_fs", 2),
     # hypergumbo-tracker cli.py _cmd_init and configure.py run_configure:
