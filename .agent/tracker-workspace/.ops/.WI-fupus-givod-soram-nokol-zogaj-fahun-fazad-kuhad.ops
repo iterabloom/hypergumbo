@@ -1,0 +1,20 @@
+- op: create  # 62e5
+  at: '2026-11-19T17:19:01Z'  # 62e5
+  by: agent  # 62e5
+  actor: jgstern_agent  # 62e5
+  clock: 1  # 62e5
+  nonce: '62e5'  # 62e5
+  data:  # 62e5
+    kind: work_item  # 62e5
+    title: "typescript: static vs instance is not a stable-id input (same-signature static and instance methods tie)"  # 62e5
+    status: todo_hard  # 62e5
+    priority: 3  # 62e5
+    parent:  # 62e5
+    tags:  # 62e5
+    - stable_id  # 62e5
+    isbefore: []  # 62e5
+    duplicate_of: []  # 62e5
+    not_duplicate_of: []  # 62e5
+    pr_ref:  # 62e5
+    description: "TypeScript: static vs instance is not a stable-id input; a static and an instance method with the same name and signature in one class tie and are split by occurrence order.\n\nREPRO: ~/whole_bunch_of_repos/nest/packages/common/services/logger.service.ts, Logger.error L140 (instance) and L226 (static); the same for warn, verbose, fatal, debug, log. Same defect class as the Swift static-vs-instance part of WI-lonoh. Moves ids, so it needs a stable-id bump: candidate for the additional stable-id PR at the end of the plan (owner ruling 2026-11-19 put WI-lonoh's static-vs-instance part there). Found by PR 3 agent 5: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent5/RESULTS.md."  # 62e5
+    fields: {}  # 62e5

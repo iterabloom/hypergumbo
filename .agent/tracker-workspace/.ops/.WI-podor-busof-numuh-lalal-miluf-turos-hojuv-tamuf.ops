@@ -18,3 +18,10 @@
     pr_ref:  # 17c1
     description: "Swift: local functions with the same name in different enclosing initializers tie; their scope is the type, not the enclosing callable.\n\nREPRO: TCA Sources/ComposableArchitecture/Internal/Deprecations.swift, IfLetStore.open at L978 and L1012 (local functions in two different init bodies) share stable-id hash inputs and are split only by occurrence order, so editing one initializer can move the other's id. Found while counting WI-bubak: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/bubak/RESULTS.md. Not checked in other languages with local functions (Kotlin, C#, Rust)."  # 17c1
     fields: {}  # 17c1
+- op: discuss  # b544
+  at: '2026-11-19T16:42:59Z'  # b544
+  by: agent  # b544
+  actor: jgstern_agent  # b544
+  clock: 2  # b544
+  nonce: b544  # b544
+  message: "OWNER RULING 2026-11-19 (in session): goes in an additional stable-id PR at the end of the plan (a second bump after v16), with WI-lonoh's argument-label and static-vs-instance parts."  # b544

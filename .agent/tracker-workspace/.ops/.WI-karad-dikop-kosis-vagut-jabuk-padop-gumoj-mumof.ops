@@ -1,0 +1,20 @@
+- op: create  # c17b
+  at: '2026-11-19T17:18:55Z'  # c17b
+  by: agent  # c17b
+  actor: jgstern_agent  # c17b
+  clock: 1  # c17b
+  nonce: c17b  # c17b
+  data:  # c17b
+    kind: work_item  # c17b
+    title: "typescript: abstract methods and declare-function overloads emit no symbol"  # c17b
+    status: todo_hard  # c17b
+    priority: 3  # c17b
+    parent:  # c17b
+    tags:  # c17b
+    - analysis_quality  # c17b
+    isbefore: []  # c17b
+    duplicate_of: []  # c17b
+    not_duplicate_of: []  # c17b
+    pr_ref:  # c17b
+    description: "TypeScript: abstract methods are not emitted as symbols, and declare-function overloads produce no symbol at all.\n\nREPRO: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent5/ts_overload_probe/ov.ts. abstract class Ab { abstract z<T extends A>(x: T): void; } gives a map with class Ab and no method z. A 'declare function d(...)' overload set gives no symbol. Class overload signatures are dropped in favour of the implementation (only the implementation is emitted); not checked whether the spec intends that. Interface method overloads ARE emitted separately. Found by PR 3 agent 5 (stable-id v16 branch, 2026-11-19) while counting TypeScript bound-only ties; RESULTS.md beside the probe."  # c17b
+    fields: {}  # c17b

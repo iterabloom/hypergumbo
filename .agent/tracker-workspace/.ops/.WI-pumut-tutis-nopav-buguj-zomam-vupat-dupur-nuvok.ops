@@ -1,0 +1,20 @@
+- op: create  # a7e8
+  at: '2026-11-19T17:19:07Z'  # a7e8
+  by: agent  # a7e8
+  actor: jgstern_agent  # a7e8
+  clock: 1  # a7e8
+  nonce: a7e8  # a7e8
+  data:  # a7e8
+    kind: work_item  # a7e8
+    title: "typescript: interface method overloads do not hash their type-parameter clause (0 ties measured)"  # a7e8
+    status: todo_hard  # a7e8
+    priority: 4  # a7e8
+    parent:  # a7e8
+    tags:  # a7e8
+    - stable_id  # a7e8
+    isbefore: []  # a7e8
+    duplicate_of: []  # a7e8
+    not_duplicate_of: []  # a7e8
+    pr_ref:  # a7e8
+    description: "TypeScript interface method overloads do not hash their type-parameter clause, so bound-only interface overloads would tie.\n\nWI-bubak (PR 3 commit 315063612) wired the positional type-parameter-clause hash for Java, Groovy, Kotlin, Scala, Swift and C#, not TypeScript. Measured 0 bound-only tie groups on koel (528 files, 4,306 callables) and nest/packages (819 files, 7,545 callables), so it was not wired. Interface method overloads are the only TS overloads emitted as separate symbols. Kept open as a stated limit; counter at /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent5/count_bound_ties_ts.py."  # a7e8
+    fields: {}  # a7e8
