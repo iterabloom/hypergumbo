@@ -160,6 +160,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, NamedTuple,
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
+    keeps_v15_text_when_lossless,
     constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
@@ -1126,6 +1127,10 @@ def _swift_top_level_split(text: str, sep: str) -> list[str]:
     return parts
 
 
+#: A metatype: ``T.Type`` / ``P.Protocol``, optionally optional.
+_SWIFT_METATYPE_RE = re.compile(r"(?P<base>.+)\.(?P<kind>Type|Protocol)(?P<suffix>[?!]*)", re.DOTALL)
+
+
 def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     """One type of a Swift signature, normalized for the typed stable_id.
 
@@ -1139,10 +1144,23 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     needs no handling: it follows the last ``.``, so the strip keeps it
     (``Mod.T!`` -> ``T!``). A type with none of them normalizes exactly as
     the shared normalizer does it.
+
+    A metatype keeps its instance type: ``Int.Type`` is ``Int`` written as
+    above followed by ``.Type`` (v15 cut it to ``Type``, so every metatype
+    parameter hashed alike), and ``P.Protocol`` likewise. A tuple or function
+    type is written whole by the shared strip, which no longer cuts it at
+    its last dot.
     """
-    from hypergumbo_core.analyze.base import normalize_generic_params, strip_fqn_prefix
+    from hypergumbo_core.analyze.base import (
+        normalize_generic_params,
+        strip_fqn_prefix,
+        writes_v15_signature_text,
+    )
 
     def core(text: str) -> str:
+        meta = _SWIFT_METATYPE_RE.fullmatch(text.strip())
+        if meta is not None and not writes_v15_signature_text():
+            return core(meta["base"]) + "." + meta["kind"] + meta["suffix"]
         normalized = strip_fqn_prefix(text.strip())
         return normalize_generic_params(normalized, type_params) if type_params else normalized
 
@@ -1160,6 +1178,7 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     return head + body + suffix
 
 
+@keeps_v15_text_when_lossless
 def normalize_swift_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -1173,20 +1192,11 @@ def normalize_swift_signature(
     For a signature with no decorated type the result is exactly the shared
     normalizer's.
     """
-    from hypergumbo_core.analyze.base import split_params_top_level
+    from hypergumbo_core.analyze.base import find_matching_paren, split_params_top_level
 
     if not signature or not signature.startswith("("):
         return None
-    depth = 0
-    close = -1
-    for i, ch in enumerate(signature):
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-            if depth == 0:
-                close = i
-                break
+    close = find_matching_paren(signature, 0)
     if close < 0:
         return None
     rest = signature[close + 1:].strip()

@@ -172,7 +172,6 @@ def test_hole_free_declarations_hash_as_before(tmp_path: Path) -> None:
     "(i: Int) -> Int",
     "() -> Void",
     "()",
-    "(x: Int.Type)",
     "(x)",
 ])
 def test_the_swift_normalizer_agrees_with_the_shared_one_on_hole_free_text(signature: str) -> None:
@@ -182,6 +181,9 @@ def test_the_swift_normalizer_agrees_with_the_shared_one_on_hole_free_text(signa
 
 
 @pytest.mark.parametrize(("signature", "normalized"), [
+    # A metatype keeps its instance type (v15's shared strip cut it to ``Type``).
+    ("(x: Int.Type)", "(Int.Type)"),
+    ("(x: Swift.Int.Type?) -> P.Protocol", "(Int.Type?)P.Protocol"),
     ("(x: Int...)", "(Int...)"),
     ("(x: inout Foo.Bar)", "(inout Bar)"),
     ("(x: Foo.A & Bar.B)", "(A & B)"),

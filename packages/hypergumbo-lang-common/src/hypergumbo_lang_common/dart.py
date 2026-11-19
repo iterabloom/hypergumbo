@@ -100,6 +100,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    keeps_v15_text_when_lossless,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -271,18 +272,9 @@ _DART_LIBRARY_PREFIX = re.compile(r"(?:[A-Za-z_$][\w$]*\.)+")
 _DART_BRACKET_PAIRS = {")": "(", "]": "[", "}": "{", ">": "<"}
 
 
-def _dart_closing_paren(text: str) -> int:
-    """Index of the ``)`` that closes the ``(`` opening ``text`` (the shared
-    types-first rule's own split point; that rule refuses a text without one)."""
-    depth = 0
-    for i, ch in enumerate(text):
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1  # pragma: no cover - the shared rule already refused the text
+#: Dart's signature text cuts a default value at its first comma (the
+#: renderer), so a quote in it may be a fragment's: no string is skipped.
+_DART_QUOTES = ""
 
 
 def _dart_balanced(text: str) -> bool:
@@ -316,17 +308,19 @@ def _dart_is_whole_parameter(text: str) -> bool:
 
 
 def _dart_type_is_kept(text: str) -> bool:
-    """True when the shared FQN strip keeps every part of ``text`` but a
+    """True when the v15 FQN cut keeps every part of ``text`` but a
     library prefix (``p.Foo<q.Bar>?`` -> ``Foo<q.Bar>?``), or changes nothing.
+    (The shared strip now writes any other type whole; Dart's own rules below
+    were written against the v15 cut, and still are.)
 
     The strip keeps what follows the last dot of the text before its first
     ``<`` (or ``[``). On a function type or a record type that dot can sit
     inside the type (``int Function(p.A)`` -> ``A)``), and before a modifier
     or a group bracket it takes them too (``{required p.Foo`` -> ``Foo``).
     """
-    from hypergumbo_core.analyze.base import strip_fqn_prefix
+    from hypergumbo_core.analyze.base import strip_fqn_prefix_v15
 
-    stripped = strip_fqn_prefix(text)
+    stripped = strip_fqn_prefix_v15(text)
     if stripped == text:
         return True
     prefix = _DART_LIBRARY_PREFIX.match(text)
@@ -397,6 +391,7 @@ def _shared_type_rule(text: str, type_params: list[str] | None) -> str:
     return normalize_generic_params(written, type_params) if type_params else written
 
 
+@keeps_v15_text_when_lossless
 def normalize_dart_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -413,17 +408,26 @@ def normalize_dart_signature(
     (``_dart_type_is_kept``) is written one parameter and one return type at
     a time: those through the Dart rules above, the others through the
     shared rule's own step (``_shared_type_rule``).
+
+    No string literal is skipped (``_DART_QUOTES``), and a signature whose
+    v15 text lost nothing keeps it (``keeps_v15_text_when_lossless``). The
+    signature text's default values are still cut at their first comma by
+    the renderer (a residual of the renderer, not of these rules).
     """
     from hypergumbo_core.analyze.base import (
+        find_matching_paren,
         normalize_signature_types_first,
         split_params_top_level,
     )
 
-    shared = normalize_signature_types_first(signature, type_params)
+    shared = normalize_signature_types_first(signature, type_params, quotes=_DART_QUOTES)
     if shared is None or signature is None:
         return None
-    close = _dart_closing_paren(signature)
-    params = [p.strip() for p in split_params_top_level(signature[1:close]) if p.strip()]
+    close = find_matching_paren(signature, 0, quotes=_DART_QUOTES)
+    params = [
+        p.strip() for p in split_params_top_level(signature[1:close], quotes=_DART_QUOTES)
+        if p.strip()
+    ]
     holes = [_dart_parameter_hole(p, type_params) for p in params]
     returned = signature[close + 1:].strip()
     if returned.lower() == "void":

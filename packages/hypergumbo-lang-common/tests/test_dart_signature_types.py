@@ -327,7 +327,11 @@ PINNED = {
     ("function", "opt"): f"{STABLE_ID_PREFIX}3df1e40f64b5cae0",
     ("function", "named"): f"{STABLE_ID_PREFIX}724b4ce75e477e92",
     ("function", "fnTyped"): f"{STABLE_ID_PREFIX}5b29217af303859d",
-    ("function", "fragment"): f"{STABLE_ID_PREFIX}788a1f68d49853d8",
+    # Moved by the shared FQN strip fix (stable-id v16): the renderer's
+    # default-value fragment closes the parameter list early, and v15's strip
+    # cut the rest at its last dot, dropping the parameter ``Foo f``; the rest
+    # is now written whole (was 788a1f68d49853d8).
+    ("function", "fragment"): f"{STABLE_ID_PREFIX}520d66bf5aa2d402",
     ("function", "commented"): f"{STABLE_ID_PREFIX}a980655d150d1db1",
     ("field", "Widget.count"): f"{STABLE_ID_PREFIX}b9ad19582563bf1f",
     ("field", "Widget.foo"): f"{STABLE_ID_PREFIX}52b2647c5aac5b99",

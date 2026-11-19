@@ -33,6 +33,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`verify-claims` catches secrets written by deferred closures and callbacks.**
 - **Go pointer-receiver method values no longer hide secret leaks.**
 - **Secrets returned through an alias no longer read confirmed.**
+- **Typed ids no longer collapse tuple, function or nested types.**
 
 ### Development tools and CI
 

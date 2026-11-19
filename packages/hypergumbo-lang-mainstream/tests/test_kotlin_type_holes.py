@@ -205,7 +205,10 @@ _CLEAN_PINS = {
     "cNullable": f"{STABLE_ID_PREFIX}af36abebae2237c5",
     "cFun": f"{STABLE_ID_PREFIX}60420bdcb1a07587",
     "cSuspendType": f"{STABLE_ID_PREFIX}9c15b6c19b92f167",
-    "cFunReceiverType": f"{STABLE_ID_PREFIX}7687ff26be87c825",
+    # Moved by the shared FQN strip fix (stable-id v16): v15 cut the receiver
+    # function type ``StringBuilder.() -> Unit`` at its dot, to ``() -> Unit``
+    # (was 7687ff26be87c825).
+    "cFunReceiverType": f"{STABLE_ID_PREFIX}c51f667b38f5f0bc",
     "cNamedLambda": f"{STABLE_ID_PREFIX}bb51e3923da5dc74",
     "cGeneric": f"{STABLE_ID_PREFIX}d578ca9b48ce2f56",
     "cBound": f"{STABLE_ID_PREFIX}56cc8cccaca74124",
