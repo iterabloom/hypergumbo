@@ -133,7 +133,7 @@ _UNCHANGED = [
     (normalize_csharp_signature, "(ref int x, (int, string) t) string",
      "(ref int,(int, string))string"),
     (normalize_rust_signature, "(&self, x: &'a str, y: Vec<T>) -> bool", "(&'a str,Vec<T>)bool"),
-    (normalize_rust_signature, "(mut self, x: i32)", "(mut self,i32)"),
+    (normalize_rust_signature, "(&self, x: i32)", "(i32)"),
     (normalize_rust_signature, "(x: &'a str, y: &'a T) -> &'a str", "(&'a str,&'a T)&'a str"),
     (normalize_go_signature, "(c <-chan int) (<-chan int, error)", "(<-chan int)(<-chan int, error)"),
     (normalize_go_signature, "() (r *http.Response, err error)", "()(Response,err error)"),

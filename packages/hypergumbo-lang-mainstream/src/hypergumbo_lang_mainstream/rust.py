@@ -292,32 +292,83 @@ def normalize_rust_signature(
 ) -> str | None:
     """Normalize a Rust signature for typed stable_id (spec §6 typed tier).
 
-    The names-first rule, with a method's receiver told apart: the shared
-    rule skips ``self``, ``&self`` and ``&mut self`` alike (v15 hashed
-    ``fn f(self)``, ``fn f(&self)`` and ``fn f(&mut self)`` as one text), so
-    ``self`` and ``&mut self`` are first written as the typed receivers they
-    are short for (``self: Self``, ``self: &mut Self``), which the rule
-    hashes as ``Self`` and ``&mut Self``. ``&self`` is still skipped, so a
-    ``&self`` method's text is unchanged; a receiver written with a lifetime
-    or ``mut self`` was already hashed as written. A ``'`` opens no string in
-    Rust (``&'a str``), so only ``"`` does.
+    The names-first rule, with a method's receiver written in one spelling
+    first (:func:`_rust_canonical_receiver`): the shared rule skips ``self``,
+    ``&self`` and ``&mut self`` alike (v15 hashed ``fn f(self)``, ``fn
+    f(&self)`` and ``fn f(&mut self)`` as one text), and hashed a typed
+    receiver (``self: &Self``) by its type, so each receiver is first given
+    the spelling its class hashes: ``&self`` (skipped, so a ``&self``
+    method's text is unchanged), ``self: &mut Self`` (``&mut Self``),
+    ``self: Self`` (``Self``), ``&'a self`` / ``&'a mut self`` as written.
+    A ``'`` opens no string in Rust (``&'a str``), so only ``"`` does.
     """
-    from hypergumbo_core.analyze.base import normalize_signature_names_first
-    if signature:
-        signature = _RUST_SHORTHAND_RECEIVER_RE.sub(_typed_receiver, signature, count=1)
+    from hypergumbo_core.analyze.base import (
+        find_matching_paren,
+        normalize_signature_names_first,
+        split_params_top_level,
+    )
+    if signature and signature.startswith("("):
+        close = find_matching_paren(signature, 0, quotes='"')
+        params = split_params_top_level(signature[1:close], quotes='"') if close > 0 else []
+        receiver = _rust_canonical_receiver(params[0]) if params else None
+        if receiver is not None:
+            signature = "(" + ", ".join([receiver, *params[1:]]) + signature[close:]
     return normalize_signature_names_first(
         signature, type_params, return_sep="->", skip_self=True, quotes='"',
     )
 
 
-#: A shorthand by-value or ``&mut`` receiver opening a parameter list.
-_RUST_SHORTHAND_RECEIVER_RE = re.compile(r"^\(\s*(?P<receiver>&\s*mut\s+self|self)\s*(?=[,)])")
+#: A short receiver: ``self``, ``mut self``, ``&self``, ``&'a mut self``.
+_RUST_SHORT_RECEIVER_RE = re.compile(
+    r"(?P<ref>&\s*(?:'(?P<lifetime>\w+)\s*)?(?P<mut>mut\s+)?)?(?:mut\s+)?self")
+#: A typed receiver: ``self: T`` / ``mut self: T``.
+_RUST_TYPED_RECEIVER_RE = re.compile(r"(?:mut\s+)?self\s*:\s*(?P<type>.+)", re.DOTALL)
+#: A typed receiver's type that is a reference to ``Self``.
+_RUST_SELF_REFERENCE_RE = re.compile(r"&\s*(?:'(?P<lifetime>\w+)\s*)?(?P<mut>mut\s+)?Self")
 
 
-def _typed_receiver(match: "re.Match[str]") -> str:
-    """``self`` -> ``(self: Self``, ``&mut self`` -> ``(self: &mut Self``."""
-    by_ref = match["receiver"] != "self"
-    return "(self: &mut Self" if by_ref else "(self: Self"
+def _rust_canonical_receiver(param: str) -> Optional[str]:
+    """The one spelling of a receiver parameter, or ``None`` for any other
+    parameter (WI-haras).
+
+    Every spelling of a receiver class is written as the spelling its
+    commonest form already hashed, so only the other spellings move:
+
+    - by value (``self``, ``mut self``, ``self: Self``, ``mut self: Self``)
+      -> ``self: Self``. ``mut`` on the binding is not part of the signature:
+      it lets the body reassign its own copy, and a caller sees the same
+      ``fn(Self)`` (v15 hashed ``mut self`` as written);
+    - shared reference (``&self``, ``&'_ self``, ``self: &Self``) -> ``&self``,
+      which the names-first rule skips: ``'_`` is an elided lifetime, i.e.
+      none;
+    - mutable reference (``&mut self``, ``&'_ mut self``, ``self: &mut
+      Self``) -> ``self: &mut Self``;
+    - a NAMED lifetime is kept, since it ties the receiver to other
+      parameters or the result: ``&'a self`` and ``self: &'a Self`` ->
+      ``&'a self`` (``&'a mut self`` likewise);
+    - any other typed receiver (``self: Box<Self>``, ``self: Pin<&mut
+      Self>``) -> ``self: <its type>``, so it keeps its type.
+    """
+    text = param.strip()
+    short = _RUST_SHORT_RECEIVER_RE.fullmatch(text)
+    if short is not None:
+        lifetime, by_ref, mutable = short["lifetime"], short["ref"] is not None, short["mut"] is not None
+    else:
+        typed = _RUST_TYPED_RECEIVER_RE.fullmatch(text)
+        if typed is None:
+            return None
+        written = " ".join(typed["type"].split())
+        if written == "Self":
+            return "self: Self"
+        reference = _RUST_SELF_REFERENCE_RE.fullmatch(written)
+        if reference is None:
+            return f"self: {written}"
+        lifetime, by_ref, mutable = reference["lifetime"], True, reference["mut"] is not None
+    if not by_ref:
+        return "self: Self"
+    if lifetime is not None and lifetime != "_":
+        return f"&'{lifetime} mut self" if mutable else f"&'{lifetime} self"
+    return "self: &mut Self" if mutable else "&self"
 
 
 _RUST_BUILTIN_RETURN_TYPES = frozenset({
