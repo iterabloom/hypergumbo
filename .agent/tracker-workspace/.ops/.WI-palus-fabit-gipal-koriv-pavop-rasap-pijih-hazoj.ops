@@ -1,0 +1,20 @@
+- op: create  # 2f91
+  at: '2026-11-19T15:09:55Z'  # 2f91
+  by: agent  # 2f91
+  actor: jgstern_agent  # 2f91
+  clock: 1  # 2f91
+  nonce: 2f91  # 2f91
+  data:  # 2f91
+    kind: work_item  # 2f91
+    title: "typed ids: a qualified type inside a compound type is hashed as written (spelling-sensitive)"  # 2f91
+    status: todo_hard  # 2f91
+    priority: 4  # 2f91
+    parent:  # 2f91
+    tags:  # 2f91
+    - stable_id  # 2f91
+    isbefore: []  # 2f91
+    duplicate_of: []  # 2f91
+    not_duplicate_of: []  # 2f91
+    pr_ref:  # 2f91
+    description: "Typed stable ids: a qualified type inside a compound type is hashed as written, so (java.lang.String) -> Unit and (String) -> Unit hash apart.\n\nSpelling sensitivity, not a collapse: the same declaration written with a qualified or an imported name gets a different typed id. Same choice the C# tuple and Dart function-type rules made in PR #2276. REPRO and context: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tojov/RESULTS.md residual 4 (PR 3 commit 4e0163454). Not measured on real trees."  # 2f91
+    fields: {}  # 2f91
