@@ -1,0 +1,21 @@
+- op: create  # 902b
+  at: '2026-11-19T11:29:16Z'  # 902b
+  by: agent  # 902b
+  actor: jgstern_agent  # 902b
+  clock: 1  # 902b
+  nonce: 902b  # 902b
+  data:  # 902b
+    kind: work_item  # 902b
+    title: "Return-lift shape 3 adds an error position when err itself is captured or address-taken (3 of 12 sampled)"  # 902b
+    status: todo_hard  # 902b
+    priority: 4  # 902b
+    parent:  # 902b
+    tags:  # 902b
+    - taint  # 902b
+    - verify_claims  # 902b
+    isbefore: []  # 902b
+    duplicate_of: []  # 902b
+    not_duplicate_of: []  # 902b
+    pr_ref:  # 902b
+    description: "Shape 3 of the return lift (PR #2276: positions include every variable the value was stored into) adds an error-return position when `err` itself is captured or address-taken. 3 of 12 sampled corpus functions gained a spurious err slot; 9 of 12 were correct. No verdict moved on the 39-repo corpus.\n\nCLOSE WHEN an err-captured fixture lifts only the value position. Evidence fast_smart_test_build_11172026/zaboh/."  # 902b
+    fields: {}  # 902b
