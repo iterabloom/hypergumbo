@@ -22,7 +22,9 @@ for source-code Symbols. It stamps every Symbol whose fingerprint is null,
 and it recomputes any non-``hgfp2:`` value on a Symbol that has a
 ``language`` (WI-lisog), so a producer-side hash never reaches the
 output. The one shape the post-pass leaves alone is the identity-derived
-fingerprint (a SHA-256 of the node id) that linkers stamp on synthetic
+fingerprint (a SHA-256 of the node id, labelled with its own scheme's
+``STAND_IN_FINGERPRINT_PREFIX``; ``analyze/base.py``
+``mint_stand_in_fingerprint``) that linkers stamp on synthetic
 ``language is None`` nodes, which have no source to hash.
 
 Why the parse is context-aware
@@ -111,7 +113,7 @@ from .identity_schemes import (
 # The ``hgfp2:`` label every canonical fingerprint starts with: derived from
 # SYMBOL_FINGERPRINT_SCHEME through ``value_label`` as the other identity
 # labels are, so the label and the scheme constant cannot disagree. The
-# validator's output-boundary check reads it under this name.
+# post-pass's skip rule reads it under this name.
 _SCHEME_PREFIX = SYMBOL_FINGERPRINT_PREFIX
 
 

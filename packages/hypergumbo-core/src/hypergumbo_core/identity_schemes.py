@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The identity schemes and the label each one puts on its values.
 
-WHAT IS HERE. The five scheme constants that say how an identity value was
+WHAT IS HERE. The six scheme constants that say how an identity value was
 computed (``stable_id``, ``shape_id``, ``repo_fingerprint``, the SCIP arm's
-``stable_id``, ``Symbol.fingerprint``), :func:`value_label`, which derives a
-value's label from its scheme constant, the five labels derived that way, and
+``stable_id``, ``Symbol.fingerprint`` of a source node and of a
+``language=None`` stand-in), :func:`value_label`, which derives a value's
+label from its scheme constant, the six labels derived that way, and
 :func:`identity_digest`, which reads the digest back out of a labelled value.
 ``schema.py`` offers every one of these names again (the same objects), so a
 reader of the output format finds them beside ``SCHEMA_VERSION``.
@@ -33,10 +34,10 @@ its import-time code selects the whole suite. That is the right answer for
 what lives here: a scheme bump relabels every identity value in the output.
 
 Every identity value carries the label of the scheme that produced it
-(``hgstableid15:``, ``hgshapeid4:``, ``hgrepofp3:``, ``hgscipid1:``, and
-``hgfp2:`` for a symbol fingerprint). The label names the value and its scheme
-version; the digest after it is what the algorithm computed (ADR-0035
-§"Value labels").
+(``value_label("stableid", STABLE_ID_SCHEME)`` and so on for each constant
+below; the labels' text today is pinned in ``test_behavior_map_schema.py``).
+The label names the value and its scheme version; the digest after it is what
+the algorithm computed (ADR-0035 §"Value labels").
 
 WHY TESTS BUILD PINNED VALUES FROM THE PREFIXES. A test that pins an identity
 value writes it as ``f"{STABLE_ID_PREFIX}<digest>"`` (and the shape-id,
@@ -90,6 +91,14 @@ SCIP_STABLE_ID_SCHEME = "hypergumbo-scip-stableid-v1"
 # hash). v2 corresponds to the ``hgfp2:`` prefix on every value; a change that
 # alters emitted values bumps both (history: WI-fanun, WI-falum).
 SYMBOL_FINGERPRINT_SCHEME = "hypergumbo-symbol-fp-v2"
+# The fingerprint of a ``language=None`` stand-in (ADR-0031 Class B): the
+# first 16 hex of ``sha256(node id)``, minted by ``analyze/base.py``
+# ``mint_stand_in_fingerprint``. A stand-in has no source for the subtree walk
+# to hash, so its value is a digest of its identity, a different algorithm
+# from SYMBOL_FINGERPRINT_SCHEME's, and carries a label of its own (ADR-0035
+# §"Value labels"). v1 is the first labelled form; the digest is the one the
+# unlabelled value had.
+STAND_IN_FINGERPRINT_SCHEME = "hypergumbo-standinfp-v1"
 
 #: ``-v<N>`` at the end of a scheme constant: the number a value label carries.
 _SCHEME_NUMBER = re.compile(r"-v(\d+)$")
@@ -102,8 +111,9 @@ def value_label(word: str, scheme: str) -> str:
     identity value starts with the label of the scheme that produced it, and
     the number is the scheme constant's, so bumping the constant relabels
     every value with no second edit. ``word`` names the value (``stableid``,
-    ``shapeid``, ``repofp``, ``scipid``, ``fp``); it is what tells a stable id
-    from a shape id when the value is read without its field.
+    ``shapeid``, ``repofp``, ``scipid``, ``fp``, ``standinfp``); it is what
+    tells a stable id from a shape id when the value is read without its
+    field.
     """
     match = _SCHEME_NUMBER.search(scheme)
     if match is None:
@@ -121,6 +131,8 @@ REPO_FINGERPRINT_PREFIX = value_label("repofp", REPO_FINGERPRINT_SCHEME)
 SCIP_STABLE_ID_PREFIX = value_label("scipid", SCIP_STABLE_ID_SCHEME)
 #: The label of every canonical ``Symbol.fingerprint`` (``fingerprint.py``).
 SYMBOL_FINGERPRINT_PREFIX = value_label("fp", SYMBOL_FINGERPRINT_SCHEME)
+#: The label of a ``language=None`` stand-in's ``Symbol.fingerprint``.
+STAND_IN_FINGERPRINT_PREFIX = value_label("standinfp", STAND_IN_FINGERPRINT_SCHEME)
 
 
 def identity_digest(value: str) -> str:

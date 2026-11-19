@@ -11,11 +11,13 @@ What is pinned, and why:
   linker sites and in the ``make_synthetic_symbol_identity`` backstop, whose
   comment said it "matches" the linkers (ADR-0034: one factory per kind of
   identity value). ``mint_stand_in_fingerprint`` is that one place now.
-- The value is unchanged: bare 16 lowercase hex, no label. The spec states
-  the shape and says it carries no ``hgfp2:`` label by design;
-  ``hgfp2:`` (``SYMBOL_FINGERPRINT_SCHEME``) names the source subtree walk,
-  a different algorithm, and no other scheme constant names this one.
-  Whether it should get a label of its own is an owner decision (WI-tovog).
+- The value carries the label of its own scheme,
+  ``STAND_IN_FINGERPRINT_SCHEME`` (``STAND_IN_FINGERPRINT_PREFIX`` + 16
+  lowercase hex), like every other identity value (ADR-0035 "Value
+  labels"). Not ``hgfp2:``: that label names the source subtree walk
+  (``SYMBOL_FINGERPRINT_SCHEME``), a different algorithm. The digest after
+  the label is the one the unlabelled value had, so a consumer comparing
+  across the relabel strips the label (``identity_digest``).
 - The gate: no shipped source computes a fingerprint, or a 16-hex digest of
   an id, inline. A new copy fails ``test_no_inline_copy_in_shipped_source``
   and names its file and line.
@@ -32,6 +34,11 @@ from hypergumbo_core.analyze.base import (
     mint_stand_in_fingerprint,
 )
 from hypergumbo_core.fingerprint import stamp_symbol_fingerprints
+from hypergumbo_core.identity_schemes import (
+    STAND_IN_FINGERPRINT_PREFIX,
+    SYMBOL_FINGERPRINT_PREFIX,
+    identity_digest,
+)
 from hypergumbo_core.ir import Span, Symbol
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -40,11 +47,23 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 _FACTORY = ("hypergumbo-core/src/hypergumbo_core/analyze/base.py", "mint_stand_in_fingerprint")
 
 
-def test_the_factory_writes_the_value_the_inline_copies_wrote() -> None:
+def test_the_factory_writes_the_digest_the_inline_copies_wrote() -> None:
+    """The digest is the one the inline copies wrote (the first 16 hex of
+    ``sha256(node id)``); the factory puts its scheme's label before it."""
     node_id = "typescript:web/doc.ts:4-4:meta:function"
     expected = hashlib.sha256(node_id.encode()).hexdigest()[:16]
-    assert mint_stand_in_fingerprint(node_id) == expected
-    assert re.fullmatch(r"[0-9a-f]{16}", mint_stand_in_fingerprint("x"))
+    assert mint_stand_in_fingerprint(node_id) == STAND_IN_FINGERPRINT_PREFIX + expected
+    assert identity_digest(mint_stand_in_fingerprint(node_id)) == expected
+    assert re.fullmatch(
+        re.escape(STAND_IN_FINGERPRINT_PREFIX) + r"[0-9a-f]{16}",
+        mint_stand_in_fingerprint("x"),
+    )
+
+
+def test_the_label_is_not_the_source_fingerprint_label() -> None:
+    """A stand-in's value never reads as a subtree-walk fingerprint."""
+    assert STAND_IN_FINGERPRINT_PREFIX != SYMBOL_FINGERPRINT_PREFIX
+    assert not mint_stand_in_fingerprint("x").startswith(SYMBOL_FINGERPRINT_PREFIX)
 
 
 def test_the_backstop_mints_through_the_factory() -> None:
@@ -69,6 +88,21 @@ def test_the_post_pass_keeps_a_stand_in_fingerprint(tmp_path: Path) -> None:
     before = sym.fingerprint
     stamp_symbol_fingerprints([sym], tmp_path)
     assert sym.fingerprint == before
+
+
+def test_the_post_pass_replaces_a_stand_in_label_on_a_source_node(tmp_path: Path) -> None:
+    """The stand-in label is kept only where the stand-in shape belongs: on a
+    node with a language the central pass owns the field and writes its own
+    ``hgfp2:`` value over it."""
+    (tmp_path / "a.py").write_text("def orders():\n    return 1\n", encoding="utf-8")
+    sym = Symbol(
+        id="python:a.py:1-2:orders:function", name="orders", kind="function",
+        language="python", path="a.py", span=Span(1, 2, 0, 12), origin="t",
+        fingerprint=mint_stand_in_fingerprint("python:a.py:1-2:orders:function"),
+    )
+    stamp_symbol_fingerprints([sym], tmp_path)
+    assert sym.fingerprint is not None
+    assert sym.fingerprint.startswith(SYMBOL_FINGERPRINT_PREFIX)
 
 
 def _offences(path: Path, rel: str) -> list[str]:

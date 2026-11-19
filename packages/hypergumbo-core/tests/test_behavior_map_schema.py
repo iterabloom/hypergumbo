@@ -13,6 +13,8 @@ def test_new_behavior_map_has_required_top_level_fields():
     assert bm["shape_id_scheme"] == "hypergumbo-shapeid-v4"
     assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v3"
     assert bm["scip_stable_id_scheme"] == "hypergumbo-scip-stableid-v1"
+    assert bm["symbol_fingerprint_scheme"] == "hypergumbo-symbol-fp-v2"
+    assert bm["stand_in_fingerprint_scheme"] == "hypergumbo-standinfp-v1"
 
     # Basic structure
     assert bm["analysis_incomplete"] is False
@@ -70,13 +72,15 @@ def test_each_value_label_is_derived_from_its_scheme_constant() -> None:
         (schema.REPO_FINGERPRINT_PREFIX, "repofp", schema.REPO_FINGERPRINT_SCHEME, "hgrepofp3:"),
         (schema.SCIP_STABLE_ID_PREFIX, "scipid", schema.SCIP_STABLE_ID_SCHEME, "hgscipid1:"),
         (schema.SYMBOL_FINGERPRINT_PREFIX, "fp", schema.SYMBOL_FINGERPRINT_SCHEME, "hgfp2:"),
+        (schema.STAND_IN_FINGERPRINT_PREFIX, "standinfp", schema.STAND_IN_FINGERPRINT_SCHEME,
+         "hgstandinfp1:"),
     )
     for prefix, word, scheme, literal in pairs:
         assert prefix == schema.value_label(word, scheme) == literal
     # The number is the constant's: a bumped constant gives a bumped label.
     assert schema.value_label("stableid", "hypergumbo-stableid-v16") == "hgstableid16:"
-    # The five labels are distinct, so no value reads as another kind.
-    assert len({p for p, *_ in pairs}) == 5
+    # The six labels are distinct, so no value reads as another kind.
+    assert len({p for p, *_ in pairs}) == 6
 
 
 def test_value_label_rejects_a_scheme_without_a_version_number() -> None:

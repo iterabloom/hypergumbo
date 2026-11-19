@@ -507,7 +507,9 @@ class Symbol:
                                # fingerprint. The clone-detection key.
     fingerprint: Optional[str] # structural CONTENT hash: shape PLUS identifiers and
                                # literals, whitespace/comment-invariant, tagged with
-                               # symbol_fingerprint_scheme (`hgfp2:`). None for
+                               # symbol_fingerprint_scheme (`hgfp2:`); a language=None
+                               # stand-in's is a digest of its id, tagged with
+                               # stand_in_fingerprint_scheme (`hgstandinfp1:`). None for
                                # grammarless languages, parse errors, synthetic spans.
                                # The raw source-byte Format-1 scheme was demolished by
                                # ADR-0032.
@@ -700,7 +702,7 @@ Future axis declarations (possible `supply_chain.tier`, `Edge.meta` key vocabula
   - **DOES change** when: an identifier is renamed, a literal's value changes, or structure changes
   - Purpose: Detect meaningful modifications; duplicate-code detection; per-symbol cache invalidation
   - `None` when: the language has no grammar in the language pack (regex-only analyzers), the span has no parseable content, or the located subtree contains parse errors — an honest null, never a degenerate constant (enforced by the spec validator's fingerprint-degeneracy umbrella check). Synthetic boundary / `external_symbol` nodes (span `0-0`, no in-repo source bytes) are `None` for the same reason — there is no content to hash (WI-lisog facet b)
-  - **Single producer, single shape.** The central post-pass solely owns this field for source-code nodes (`language is not None`): it recomputes any non-canonical value an analyzer may have stamped — a producer-side bare-hex `sha256(source[start:end])[:16]` leak — so only the canonical `hgfp2:` form (or `None`) ever reaches the output (WI-lisog). The **one** documented second shape is an identity-derived bare 16-hex fingerprint on `language is None` Class-B synthetic stand-ins (e.g. protocol-linker synthesized nodes): they have no source to hash, so the producer stamps `sha256(symbol_id)[:16]` as a stable identity marker and the post-pass preserves it (it is not a source-content hash and carries no `hgfp2:` prefix by design). Every producer mints it through the one factory `analyze/base.py` `mint_stand_in_fingerprint` (the linkers that stamp their own and the Class-B backstop); a test fails on an inline copy
+  - **Single producer, single shape.** The central post-pass solely owns this field for source-code nodes (`language is not None`): it recomputes any non-canonical value an analyzer may have stamped — a producer-side bare-hex `sha256(source[start:end])[:16]` leak — so only the canonical `hgfp2:` form (or `None`) ever reaches the output (WI-lisog). The **one** documented second shape is an identity-derived fingerprint on `language is None` Class-B synthetic stand-ins (e.g. protocol-linker synthesized nodes), `hgstandinfp1:` + `sha256(symbol_id)[:16]`: they have no source to hash, so the producer stamps a digest of the node id as a stable identity marker and the post-pass preserves it. It is not a source-content hash, so it carries its own scheme's label (`stand_in_fingerprint_scheme`, ADR-0035 §7), never `hgfp2:`; the spec validator's `fingerprint_format` check holds each shape to its label. Every producer mints it through the one factory `analyze/base.py` `mint_stand_in_fingerprint` (the linkers that stamp their own and the Class-B backstop); a test fails on an inline copy. Before `stand_in_fingerprint_scheme` v1 the value was the same 16 hex with no label
 
 **Route and entry-point stable_id variants** (ADR-0035 §3). Symbols that name framework endpoints rather than language constructs use distinct, smaller-input hash bases. Per ADR-0035 §3/§4, route and entry identity now fold in the declaring file (and language for routes), so the same logical route or entry in different files or languages is distinct:
 
@@ -733,8 +735,9 @@ The exact algorithms for identity and provenance fields are governed by scheme i
 * `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`, and the label the value carries (`hgrepofp<N>:`). Current value: `hypergumbo-repofp-v3`. v3 (2026-11-16, ADR-0035 §7) is a label only: the v2 value `sha256:<64hex>` is `hgrepofp3:<64hex>` with the same 64 hex digits. v2 (WI-bosog) added the `sha256:` prefix to the bare digest of v1.
 * `scip_stable_id_scheme`: identifies the algorithm the rust-analyzer (SCIP) arm computes its `stable_id` values with (`sha256("scip:{Document.relative_path}:{moniker}")`, above), and their label (`hgscipid<N>:`). Current value: `hypergumbo-scip-stableid-v1`, the first value: the algorithm is the one `stable_id_scheme` v11 introduced, declared as a scheme of its own in v15. Always present, like the other scheme fields, whether or not the arm ran.
 * `symbol_fingerprint_scheme`: identifies the algorithm used to compute `fingerprint` (`hgfp2:`; unchanged by ADR-0035 §7, which follows its form).
+* `stand_in_fingerprint_scheme`: identifies the algorithm used to compute the `fingerprint` of a `language=None` stand-in (`sha256(symbol_id)[:16]`, minted by `mint_stand_in_fingerprint`), and the label it carries (`hgstandinfp<N>:`). Current value: `hypergumbo-standinfp-v1`, the first value: the 16 hex digits are the ones the value had with no label before v1. Always present, like the other scheme fields.
 
-**Value labels (ADR-0035 §7).** Each identity value carries the label of the scheme that produced it, `hg<value><N>:`, derived from the scheme constant: `hgstableid15:` / `hgscipid1:` (`stable_id`), `hgshapeid4:` (`shape_id`), `hgrepofp3:` (`repo_fingerprint`), `hgfp2:` (`fingerprint`). A value read without its field still says what it is and which scheme version produced it. `analysis_runs[].pass_version`, `config_fingerprint` and `run_signature` keep `sha256:`: each is a content digest of its inputs, named by its field, with no scheme of its own. `Edge.id` (`edge:sha256:`), `edge_key` (`edgekey:sha256:`) and `UsageContext.id` (`usage:sha256:`) keep their own namespaces. No field declares digest-compatibility with an earlier scheme: the release that ships the labels also carries the digest-changing `stable_id` bumps v10 to v15.
+**Value labels (ADR-0035 §7).** Each identity value carries the label of the scheme that produced it, `hg<value><N>:`, derived from the scheme constant: `hgstableid15:` / `hgscipid1:` (`stable_id`), `hgshapeid4:` (`shape_id`), `hgrepofp3:` (`repo_fingerprint`), `hgfp2:` / `hgstandinfp1:` (`fingerprint` of a source node / of a `language=None` stand-in). A value read without its field still says what it is and which scheme version produced it. `analysis_runs[].pass_version`, `config_fingerprint` and `run_signature` keep `sha256:`: each is a content digest of its inputs, named by its field, with no scheme of its own. `Edge.id` (`edge:sha256:`), `edge_key` (`edgekey:sha256:`) and `UsageContext.id` (`usage:sha256:`) keep their own namespaces. No field declares digest-compatibility with an earlier scheme: the release that ships the labels also carries the digest-changing `stable_id` bumps v10 to v15.
 
 Any change that would alter computed values MUST bump the corresponding scheme identifier. Two `stable_id` changes are not alterations under this rule (ADR-0035 §6): filling a `null` (a backstop or floor value where none was emitted), and replacing a **floor** value with a producer-computed one. The floor is a provisional value, recomputable from the node's own fields (`floor_cohort` above), so its replacement is a correction rather than an algorithm change.
 
@@ -1047,6 +1050,7 @@ Single file: `survey.json`
   "repo_fingerprint_scheme": "hypergumbo-repofp-v3",
   "symbol_fingerprint_scheme": "hypergumbo-symbol-fp-v2",
   "scip_stable_id_scheme": "hypergumbo-scip-stableid-v1",
+  "stand_in_fingerprint_scheme": "hypergumbo-standinfp-v1",
   "view": "behavior_map",
   "generated_at": "2026-01-15T10:30:00Z",
   "analysis_incomplete": false,
@@ -1079,7 +1083,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 **DRY Principle:** The Python dataclasses (`Symbol`, `Edge`, `Span`, `AnalysisRun`) are the single source of truth. The JSON Schema and this spec document the *meaning* of fields; the dataclasses define the *structure*.
 
-**Scheme identifiers** (`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`, `symbol_fingerprint_scheme`, `scip_stable_id_scheme`): Identify the algorithms used to compute their respective fields, and the label each value carries. See [§6 Identity and provenance scheme versioning](#identity-and-provenance-scheme-versioning) for definitions and the versioning mandate.
+**Scheme identifiers** (`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`, `symbol_fingerprint_scheme`, `scip_stable_id_scheme`, `stand_in_fingerprint_scheme`): Identify the algorithms used to compute their respective fields, and the label each value carries. See [§6 Identity and provenance scheme versioning](#identity-and-provenance-scheme-versioning) for definitions and the versioning mandate.
 
 **analysis_incomplete** (boolean, default: false):
 - Set to `true` if analysis terminated early due to errors, timeouts, or resource limits
@@ -2611,7 +2615,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 Output carries version numbers along **three deliberately independent axes** (WI-bobog / WI-romup). Consumers must not conflate them, and producers must not consolidate them onto one number or rename the wire fields (each has consumers, so a rename is a breaking change):
 
-1. **Top-level format version** — `schema_version` (currently `0.21.2`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
+1. **Top-level format version** — `schema_version` (currently `0.21.3`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
 2. **Tool/package version** — `__version__`, surfaced under **three** names that are **not** schema versions: `reproducibility_context.hypergumbo_version` (bare, e.g. `7.0.0`), `analysis_runs[].version` (bare, e.g. `7.0.0`), and `limits.analyzer_version` (prefixed, `hypergumbo-<__version__>`). Increments every release; says nothing about output format. **Only `limits.analyzer_version` carries the `hypergumbo-` prefix**, and that is deliberate — it is the one surface that names the *producing tool* rather than reporting the version of a record the tool is already the author of. Consumers joining these for an equality check must strip the prefix from `analyzer_version`; they are the same underlying `__version__` (WI-tinul, which recorded the three-way disagreement and the failed join).
 3. **Per-view / per-sub-schema versions** — several JSON surfaces version their own wire shape independently of axes 1–2:
    - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `repeat-finder`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder for the views that have not needed to evolve independently. A view that does need to promotes to its own named constant, and `dead-code-maybe` already has: it carries `DEAD_CODE_MAYBE_SCHEMA_VERSION` (currently `0.2.0`), not the shared placeholder.
@@ -2619,7 +2623,7 @@ Output carries version numbers along **three deliberately independent axes** (WI
 
 ### Algorithm-identification fields and `stable_id_scheme` version history
 
-`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`, `symbol_fingerprint_scheme` and `scip_stable_id_scheme` (top-level fields in the survey) identify the algorithm used to compute the corresponding hash, and the label its values carry (ADR-0035 §7). `shape_id_scheme` and `repo_fingerprint_scheme` keep no per-transition table here; each one's current value and transitions are stated in its bullet under [§6](#identity-and-provenance-scheme-versioning). They are **not** schema-version fields; the schema-version is `schema_version` and changes independently.
+`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`, `symbol_fingerprint_scheme`, `scip_stable_id_scheme` and `stand_in_fingerprint_scheme` (top-level fields in the survey) identify the algorithm used to compute the corresponding hash, and the label its values carry (ADR-0035 §7). `shape_id_scheme` and `repo_fingerprint_scheme` keep no per-transition table here; each one's current value and transitions are stated in its bullet under [§6](#identity-and-provenance-scheme-versioning). They are **not** schema-version fields; the schema-version is `schema_version` and changes independently.
 
 * Current value: `stable_id_scheme = "hypergumbo-stableid-v15"`.
 

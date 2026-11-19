@@ -30,9 +30,11 @@ from hypergumbo_core.spec_validator import (
     emit_stderr_summary,
     validate_ir,
 )
+from hypergumbo_core.analyze.base import mint_stand_in_fingerprint
 from hypergumbo_core.identity_schemes import (
     SCIP_STABLE_ID_PREFIX,
     STABLE_ID_PREFIX,
+    STAND_IN_FINGERPRINT_PREFIX,
     SYMBOL_FINGERPRINT_PREFIX,
 )
 
@@ -1171,11 +1173,40 @@ def test_fingerprint_format_flags_bare_hex_on_source_node() -> None:
     assert "non-canonical" in matched[0].message
 
 
-def test_fingerprint_format_exempts_class_b_language_none() -> None:
-    """Class-B synthetic stand-ins (language is None) carry an identity-hash
-    second shape, not hgfp2 — exempt (ADR-0031 / WI-lisog)."""
-    sym = _fp_sym(language=None, fingerprint="deadbeefdeadbeef")
+def test_fingerprint_format_passes_a_labelled_class_b_stand_in() -> None:
+    """Class-B synthetic stand-ins (language is None) carry the identity-hash
+    second shape under its own label, not hgfp2 (ADR-0031 / ADR-0035 "Value
+    labels")."""
+    sym = _fp_sym(language=None, fingerprint=mint_stand_in_fingerprint("m:1-1:f"))
     assert _fp_fmt(validate_ir([sym], [], [_run("run-1")])) == []
+
+
+def test_fingerprint_format_flags_an_unlabelled_class_b_stand_in() -> None:
+    """A stand-in's fingerprint carries its scheme's label too: bare hex on a
+    language=None node is the unlabelled form no producer mints any more."""
+    sym = _fp_sym(language=None, fingerprint="deadbeefdeadbeef")
+    matched = _fp_fmt(validate_ir([sym], [], [_run("run-1")]))
+    assert len(matched) == 1
+    assert STAND_IN_FINGERPRINT_PREFIX in matched[0].expected
+
+
+def test_fingerprint_format_flags_each_label_on_the_other_shape() -> None:
+    """The two labels are not interchangeable: the subtree-walk label on a
+    stand-in, and the stand-in label on a source node, each fail."""
+    stand_in = _fp_sym(language=None, fingerprint=f"{SYMBOL_FINGERPRINT_PREFIX}deadbeefdeadbeef")
+    source = _fp_sym(fingerprint=f"{STAND_IN_FINGERPRINT_PREFIX}deadbeefdeadbeef")
+    for sym in (stand_in, source):
+        assert len(_fp_fmt(validate_ir([sym], [], [_run("run-1")]))) == 1
+
+
+def test_fingerprint_format_description_names_both_labels() -> None:
+    """The check's catalogue text is built from the label constants, so a
+    scheme bump cannot leave it naming an old label."""
+    from hypergumbo_core.spec_validator import _WIRED_CHECKS
+
+    (row,) = [r for r in _WIRED_CHECKS if r["check"] == "fingerprint_format"]
+    assert SYMBOL_FINGERPRINT_PREFIX in row["description"]
+    assert STAND_IN_FINGERPRINT_PREFIX in row["description"]
 
 
 # ----------------------------------------------------------------------

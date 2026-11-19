@@ -178,7 +178,12 @@ from ..ir import (
 # (``_canonical_external_id``) and importing it from here would be a cycle;
 # ``analyze.base`` remains the producer-facing surface (INV-divuf).
 from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
-from ..identity_schemes import SCIP_STABLE_ID_PREFIX, SHAPE_ID_PREFIX, STABLE_ID_PREFIX
+from ..identity_schemes import (
+    SCIP_STABLE_ID_PREFIX,
+    SHAPE_ID_PREFIX,
+    STABLE_ID_PREFIX,
+    STAND_IN_FINGERPRINT_PREFIX,
+)
 from ..axis_meta_keys import write_meta_key
 from ..call_constructs import require_declared as _require_declared_construct
 from ..symbol_resolution import NameResolver
@@ -2283,7 +2288,7 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
 
 
 def mint_stand_in_fingerprint(node_id: str) -> str:
-    """The fingerprint of a ``language=None`` stand-in: the first 16 hex of ``sha256(node_id)``.
+    """The fingerprint of a ``language=None`` stand-in: its label and the first 16 hex of ``sha256(node_id)``.
 
     A Class-B stand-in (ADR-0031) has no source the central
     ``stamp_symbol_fingerprints`` pass could hash, so its producer stamps an
@@ -2293,13 +2298,14 @@ def mint_stand_in_fingerprint(node_id: str) -> str:
     :func:`make_synthetic_symbol_identity` backstop call it, and
     ``test_stand_in_fingerprint.py`` fails on an inline copy.
 
-    The value is bare hex with no label. The spec gives it that shape "by
-    design"; ``hgfp2:`` names the source subtree walk
-    (``SYMBOL_FINGERPRINT_SCHEME``), a different algorithm, and no scheme
-    constant names this one (WI-tovog leaves the label to the owner). A
-    fingerprint is not a ``stable_id`` input.
+    The value carries the label of its own scheme,
+    ``STAND_IN_FINGERPRINT_PREFIX`` (``STAND_IN_FINGERPRINT_SCHEME``), as
+    every identity value carries its scheme's (ADR-0035 §"Value labels").
+    Not ``SYMBOL_FINGERPRINT_PREFIX``: that label names the source subtree
+    walk, a different algorithm. The digest after the label is the value
+    the unlabelled form had. A fingerprint is not a ``stable_id`` input.
     """
-    return hashlib.sha256(node_id.encode()).hexdigest()[:16]
+    return STAND_IN_FINGERPRINT_PREFIX + hashlib.sha256(node_id.encode()).hexdigest()[:16]
 
 
 def make_synthetic_symbol_identity(

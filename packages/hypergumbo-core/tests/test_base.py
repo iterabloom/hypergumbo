@@ -54,7 +54,7 @@ from hypergumbo_core.analyze.base import (
     widen_route_stable_ids,
 )
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol
-from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX, STAND_IN_FINGERPRINT_PREFIX
 
 if TYPE_CHECKING:
     pass
@@ -2492,7 +2492,9 @@ class TestPopulateSyntheticClassBIdentity:
             "ipc", "function", "app.js", "ipc:request:chan", "0",
         )
         assert s.display_label == "ipc:request:chan"
-        assert s.fingerprint == hashlib.sha256(s.id.encode()).hexdigest()[:16]
+        assert s.fingerprint == (
+            STAND_IN_FINGERPRINT_PREFIX + hashlib.sha256(s.id.encode()).hexdigest()[:16]
+        )
 
     def test_same_key_siblings_are_occurrence_indexed_and_line_independent(self) -> None:
         from hypergumbo_core.ir import Span
