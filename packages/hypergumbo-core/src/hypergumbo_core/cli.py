@@ -7904,6 +7904,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         for n in behavior_map.get("nodes", [])
                         if (n.get("meta") or {}).get("non_local_store_lines")
                     },
+                    # WI-zaboh: a value stored through one name may reach a
+                    # construct through another.
+                    exposure=ddg_exposure,
                 ))
             from .function_summaries import load_function_summaries
             from .taint import withheld_community_summaries

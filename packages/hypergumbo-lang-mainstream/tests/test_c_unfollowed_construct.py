@@ -245,3 +245,47 @@ def test_a_found_flow_and_a_clean_function_are_unchanged(
         "  strcpy(tmp, \"x\");\n  return p != 0;\n}\n"
     ))
     assert clean["verdict"] == "confirmed"
+
+
+# --- WI-zaboh: the value reaches the construct through another name ----------
+
+_ALIAS_HEAD = (
+    "#include <stdlib.h>\n#include <string.h>\n#include <sys/socket.h>\n"
+    "struct conf { char pass[64]; };\nstruct conf g_conf;\n"
+    "static void set_pass(const char *v, struct conf *c) {\n  strncpy(c->pass, v, 63);\n}\n"
+    "void go(int fd) {\n  send(fd, g_conf.pass, 8, 0);\n}\n"
+)
+
+_ALIAS_SHAPES = {
+    # The store goes through ``t``; the construct is handed ``box[0]``.
+    "element_store": (
+        "void init(void) {\n  char *box[1];\n  char **t = box;\n"
+        "  t[0] = getenv(\"PASS\");\n  set_pass(box[0], &g_conf);\n}\n", "t"),
+    # The store goes through ``*pp``; the construct is handed ``p``.
+    "dereference_store": (
+        "void init(void) {\n  char *p = 0;\n  char **pp = &p;\n"
+        "  *pp = getenv(\"PASS\");\n  set_pass(p, &g_conf);\n}\n", "pp"),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(_ALIAS_SHAPES))
+def test_a_secret_reaching_the_construct_through_an_alias_is_not_confirmed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shape: str,
+) -> None:
+    """Both read ``confirmed`` (exit 0) before WI-zaboh: the walk followed the
+    stored-into name, never reached the construct, and only ``True`` counted."""
+    body, variable = _ALIAS_SHAPES[shape]
+    verdict = _verdict(tmp_path, monkeypatch, _ALIAS_HEAD + body)
+    assert verdict["verdict"] == "inconclusive", verdict["details"]
+    assert f"if a name the walk does not follow holds `{variable}`" in verdict["details"]
+
+
+def test_the_alias_control_storing_through_the_handed_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    verdict = _verdict(tmp_path, monkeypatch, _ALIAS_HEAD + (
+        "void init(void) {\n  char *box[1];\n  box[0] = getenv(\"PASS\");\n"
+        "  set_pass(box[0], &g_conf);\n}\n"))
+    assert verdict["verdict"] == "inconclusive"
+    assert "out_parameter_call" in verdict["details"]
+    assert "if a name the walk does not follow" not in verdict["details"]

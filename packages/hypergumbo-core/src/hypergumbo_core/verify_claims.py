@@ -1018,7 +1018,9 @@ def _withhold_for_unfollowed_escapes(
         return verdict
     lost = sorted({
         f"{e.construct} at {_symbol_path_slot(e.source_symbol)}:{e.site_line} "
-        f"({e.source})"
+        f"({e.source}"
+        + (f", if a name the walk does not follow holds `{e.alias}`" if e.alias else "")
+        + ")"
         for e in escapes
         if e.taint_label == label and (
             include_non_production
@@ -1080,6 +1082,8 @@ def _withhold_for_unmodeled_alias(
     sites = sorted({
         f"{label} from {f.source} {_EXPOSURE_WORDING.get(f.site.exposure, f.site.exposure)}"
         f" `{f.site.variable}` at {_symbol_path_slot(f.function)}:{f.site.line}"
+        + (f", so {symbol_name_slot(f.function)} returns it only if "
+           f"another name holds it" if f.returned else "")
         for f in matching
     })
     return _require_coverage_to_confirm(verdict, (

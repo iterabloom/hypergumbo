@@ -295,32 +295,56 @@ Known limits, measured on the shapes they name:
 - **Not seen:** a store made by a call the walk treats as terminating:
   `buf = io.StringIO(); print(x, file=buf); sock.sendall(buf.getvalue().encode())`
   reads `confirmed_with_caveats` (exit 3) with the flow removed, because the
-  `builtins.print` summary terminates whatever `file=` names. A value that
-  reaches another name through the slot a helper returns it in: a Go helper
-  that stores the secret into the object it returns first and returns the
-  secret second (`a.key = k; return a, k`), called as `mApp, _ := NewApp()`
-  and followed by a write of `mApp.key`, reads `confirmed` (exit 0) with the
-  flow removed, because the return lift seeds only the second slot, which
-  binds nothing.
+  `builtins.print` summary terminates whatever `file=` names.
 - **A JavaScript / TypeScript `static` field initialiser counts as a capture
   scope** although it runs where it is written: `class K { static v = x; }`
   followed by `x = secret` and a write of `K.v` reads `inconclusive` (exit 4)
   where the same function with `static v = ""` reads `confirmed` (exit 0).
-- **A value a helper RETURNS through an alias is not withheld.** The walk
-  that decides whether a source's value reaches a function's `return` (and so
-  is lifted into its callers) does not apply this rule. In
+- **A value a helper returns through an alias is withheld, not reported.**
+  The walk that decides whether a source's value reaches a function's
+  `return` (and so is lifted into its callers) follows names too. In
   `def load(): s = [""]; t = s; t[0] = os.getenv("K"); print(len(t)); return s`,
-  with a caller that writes `load()[0]` to a file, the walk follows `t`, does
-  not reach the `return s`, and the value is never lifted: the claim reads
-  `confirmed` (exit 0) with nothing removed and nothing withheld. The same
-  Go function reads the same way. The control that stores into `s` itself
-  (`s[0] = os.getenv("K")`, no alias) reads `violated`.
-- **A value that reaches an unfollowed construct through an alias does not
-  withhold.** The pass behind "A value the walk loses through an unfollowed
-  construct withholds the verdict" runs the same walk and does not apply this
-  rule either: a source value that reaches such a construct only through
-  another name for the same object is not reported, and that clean verdict is
-  not withheld on its account.
+  with a caller that writes `load()[0]` to a file, it follows `t` and never
+  reaches `return s`. When that walk relied on an exposed definition and
+  reached no return, the lift is TENTATIVE: it is made only into a return
+  statement that names a variable of the exposed one's alias group (the names
+  a call-free statement of the function connects it to: `t = s`,
+  `t := obj.items`, `p := &buf`), callers are seeded as usual, and every flow
+  that descends from it is withheld: a `confirmed` or `confirmed_with_caveats`
+  verdict on its (label, sink zone) reads `inconclusive` (exit 4), and the
+  details say "… stored into `t` at app.py:7, so load returns it only if
+  another name holds it". The Python and Go versions read `confirmed` (exit 0)
+  before; the control that stores into `s` itself (`s[0] = os.getenv("K")`)
+  reads `violated`, as before. A tentative flow is never reported as a
+  violation, because the analysis did not find that the returned object holds
+  the value. Not seen: a name that gets the object from a call (`s :=
+  wrap(t)`), since a call is not followed into the group; a return that names
+  no variable of the group (`return 0`) is not lifted. The group is
+  flow-insensitive and also joins the right-hand side of a field store
+  (`cmd.Dir = tmpDir` puts `tmpDir` in `cmd`'s group), so some tentative lifts
+  return an unrelated value. Measured on 39 repositories with the generic
+  claims: 879 functions read a source, rely on an exposed definition and reach
+  no return; 107 helpers lift tentatively; no verdict moved (none was
+  confirming); `flows_withheld_by_walk` rises by 156,524, counted per
+  source/sink pair without collapsing (141,401 of them in nats-server).
+- **The value comes back in every result position it was stored into.** A Go
+  helper that stores the secret into the object it returns first and returns
+  the secret second (`a.key = k; return a, k`), called as `mApp, _ :=
+  NewApp()` and followed by a write of `mApp.key`, read `confirmed` (exit 0)
+  with the flow removed, because the lift recorded only the second slot. The
+  lift now records the positions that name the walk's reaching variable AND
+  any variable the value was stored into on its way (an exposed definition on
+  its route), and that caller reads `violated`. An heir that is not a store
+  target (`v, err := f(secret)` makes `err` one) still adds no position.
+- **A value that reaches an unfollowed construct through an alias withholds
+  the verdict.** The pass behind "A value the walk loses through an unfollowed
+  construct withholds the verdict" applies the same rule: when its walk relied
+  on an exposed definition and did not see the value reach a construct, each
+  construct whose statement uses a name of that variable's alias group is an
+  escape. C's `char **t = box; t[0] = getenv("PASS"); set_pass(box[0],
+  &g_conf)` and `char **pp = &p; *pp = getenv("PASS"); set_pass(p, &g_conf)`
+  read `confirmed` (exit 0) before and `inconclusive` (exit 4) now, naming the
+  site "(stdlib.getenv, if a name the walk does not follow holds `t`)".
 - Java, C and Rust carry the same rule, but none of the measured alias shapes
   produced a refutation in those languages to begin with: their walks escape
   at the print call, which has no terminating summary.
