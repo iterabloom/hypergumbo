@@ -1,0 +1,20 @@
+- op: create  # 57f5
+  at: '2026-11-19T12:58:08Z'  # 57f5
+  by: agent  # 57f5
+  actor: jgstern_agent  # 57f5
+  clock: 1  # 57f5
+  nonce: 57f5  # 57f5
+  data:  # 57f5
+    kind: work_item  # 57f5
+    title: "Puppet: a require array becomes one stand-in named by the whole array text"  # 57f5
+    status: todo_hard  # 57f5
+    priority: 4  # 57f5
+    parent:  # 57f5
+    tags:  # 57f5
+    - identity  # 57f5
+    isbefore: []  # 57f5
+    duplicate_of: []  # 57f5
+    not_duplicate_of: []  # 57f5
+    pr_ref:  # 57f5
+    description: "Puppet: require => [A['x'], B['y']] (an array) becomes one stand-in named by the whole array text, instead of one edge per element.\n\nCLOSE WHEN each array element is its own edge to its own target.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 57f5
+    fields: {}  # 57f5

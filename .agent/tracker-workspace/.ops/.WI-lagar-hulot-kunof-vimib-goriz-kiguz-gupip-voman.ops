@@ -1,0 +1,20 @@
+- op: create  # 14cc
+  at: '2026-11-19T12:58:02Z'  # 14cc
+  by: agent  # 14cc
+  actor: jgstern_agent  # 14cc
+  clock: 1  # 14cc
+  nonce: 14cc  # 14cc
+  data:  # 14cc
+    kind: work_item  # 14cc
+    title: "Robot: FOR syntax and @/& variables parse as keyword calls; keyword resolution is one global table, last write wins"  # 14cc
+    status: todo_hard  # 14cc
+    priority: 3  # 14cc
+    parent:  # 14cc
+    tags:  # 14cc
+    - identity  # 14cc
+    isbefore: []  # 14cc
+    duplicate_of: []  # 14cc
+    not_duplicate_of: []  # 14cc
+    pr_ref:  # 14cc
+    description: "Robot Framework: FOR-loop syntax (.FOR) and list/dict variables (@, &) are parsed as keyword invocations. Since PR 3 gave each undeclared name its own stand-in, they show as their own stand-ins on harbor tests (before, hidden in one shared 'unresolved' node). Separately, call resolution (_symbol_registry.get(keyword)) is one global name table, last write wins, so two files defining one keyword name resolve every call to whichever was registered last.\n\nCLOSE WHEN FOR syntax and variables make no call edge, and keyword resolution prefers the calling file's own and imported resources.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 14cc
+    fields: {}  # 14cc

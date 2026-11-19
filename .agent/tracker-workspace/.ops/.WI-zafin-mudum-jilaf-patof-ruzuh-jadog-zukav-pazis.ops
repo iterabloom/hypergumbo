@@ -1,0 +1,20 @@
+- op: create  # bff0
+  at: '2026-11-19T12:57:56Z'  # bff0
+  by: agent  # bff0
+  actor: jgstern_agent  # bff0
+  clock: 1  # bff0
+  nonce: bff0  # bff0
+  data:  # bff0
+    kind: work_item  # bff0
+    title: "LaTeX: \\import, \\subimport, \\bibliography, \\includegraphics and \\documentclass emit no edge"  # bff0
+    status: todo_hard  # bff0
+    priority: 4  # bff0
+    parent:  # bff0
+    tags:  # bff0
+    - identity  # bff0
+    isbefore: []  # bff0
+    duplicate_of: []  # bff0
+    not_duplicate_of: []  # bff0
+    pr_ref:  # bff0
+    description: "LaTeX: \\\\import{dir}{file} / \\\\subimport, \\\\bibliography, \\\\includegraphics and \\\\documentclass emit no edge. (\\\\input, \\\\include, \\\\usepackage, \\\\ref/\\\\cite do, after PR 3.)\n\nCLOSE WHEN each emits an imports/references edge to the in-tree file or a module stand-in, with a fixture.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # bff0
+    fields: {}  # bff0

@@ -1,0 +1,20 @@
+- op: create  # 0453
+  at: '2026-11-19T12:57:50Z'  # 0453
+  by: agent  # 0453
+  actor: jgstern_agent  # 0453
+  clock: 1  # 0453
+  nonce: '0453'  # 0453
+  data:  # 0453
+    kind: work_item  # 0453
+    title: "Meson: subdir() in a build file with no project() emits no edge"  # 0453
+    status: todo_hard  # 0453
+    priority: 4  # 0453
+    parent:  # 0453
+    tags:  # 0453
+    - identity  # 0453
+    isbefore: []  # 0453
+    duplicate_of: []  # 0453
+    not_duplicate_of: []  # 0453
+    pr_ref:  # 0453
+    description: "Meson: subdir() in a build file with no project() emits no edge (the edge src is the project symbol).\n\nRepro: root meson.build with subdir('lib'); lib/meson.build with subdir('x') -> only the root edge is emitted.\n\nCLOSE WHEN the nested subdir edge starts at its own build file's node.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 0453
+    fields: {}  # 0453
