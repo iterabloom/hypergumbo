@@ -209,15 +209,18 @@ class TestDeadCodeMaybe:
         assert result == 0
 
     def test_input_file_not_found(self, tmp_path: Path) -> None:
-        """Returns 1 when explicit input file doesn't exist."""
+        """A missing explicit input raises ``SubstrateError``, which ``main``
+        maps to exit 2 (WI-nidun)."""
         import argparse
+
+        from hypergumbo_core.survey_io import SubstrateError
 
         args = argparse.Namespace(
             path=str(tmp_path), input="/nonexistent/path.json", format="json",
             seeds="entrypoints", min_confidence=0.0,
         )
-        result = cmd_dead_code_maybe(args)
-        assert result == 1
+        with pytest.raises(SubstrateError, match="Input file not found"):
+            cmd_dead_code_maybe(args)
 
     def test_text_no_dead_code(self, tmp_path: Path) -> None:
         """Text format shows 'no dead functions' when everything is reachable."""

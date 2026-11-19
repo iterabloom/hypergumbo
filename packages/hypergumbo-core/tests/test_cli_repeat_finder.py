@@ -346,10 +346,13 @@ class TestRepeatFinderEnvelopeAndText:
         out = capsys.readouterr().out
         assert "and 2 more" in out
 
-    def test_bad_input_returns_1(self, tmp_path, capsys):
+    def test_a_missing_input_is_refused_as_bad_input(self, tmp_path, capsys):
+        """``SubstrateError``, which ``main`` maps to exit 2 (WI-nidun)."""
+        from hypergumbo_core.survey_io import SubstrateError
+
         args = argparse.Namespace(
             path=str(tmp_path), input=str(tmp_path / "missing.json"),
             format="json", min_complexity=2, include_tests=False, limit=20,
         )
-        rc = cmd_repeat_finder(args)
-        assert rc == 1
+        with pytest.raises(SubstrateError, match="Input file not found"):
+            cmd_repeat_finder(args)

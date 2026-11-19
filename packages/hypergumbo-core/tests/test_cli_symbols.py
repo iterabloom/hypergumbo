@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.schema import SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_symbols, main, _symbols_column_config
 
@@ -689,9 +691,11 @@ def test_cmd_symbols_input_not_found(tmp_path: Path) -> None:
     args.exclude_tests = False
     args.max_per_file = None
 
-    result = cmd_symbols(args)
+    from hypergumbo_core.survey_io import SubstrateError
 
-    assert result == 1
+    # main() maps SubstrateError to exit 2, bad input (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_symbols(args)
 
 
 def test_main_wrong_shape_input_exits_2_via_dispatch_guard(

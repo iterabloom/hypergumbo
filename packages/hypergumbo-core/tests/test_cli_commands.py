@@ -831,19 +831,21 @@ def test_cmd_slice_omitted_out_auto_generates_from_entry(
     assert "slice.hello" in capsys.readouterr().out
 
 
-def test_main_unexpected_exception_exits_1_with_clean_message(
+def test_main_unexpected_exception_exits_70_with_clean_message(
     monkeypatch, capsys,
 ) -> None:
     """An unexpected exception in a command surfaces through main()'s
-    top-level handler as a clean 'internal error' message + rc=1, not a raw
-    Python traceback dumped at the user (WI-himas)."""
+    top-level handler as a clean 'internal error' message + rc=70, not a raw
+    Python traceback dumped at the user (WI-himas). 70, not 1: 1 is a
+    command's own answer (``violated`` for verify-claims), so a crash must
+    not share it (WI-nidun, ruling of 2026-11-19)."""
     def _boom(_args):
         raise RuntimeError("kaboom")
     monkeypatch.setattr("hypergumbo_core.cli.cmd_catalog", _boom)
 
     rc = main(["catalog"])
 
-    assert rc == 1
+    assert rc == 70
     err = capsys.readouterr().err
     assert "internal error" in err
     assert "RuntimeError" in err
@@ -918,9 +920,11 @@ def test_cmd_slice_input_not_found(tmp_path: Path) -> None:
     args.reverse = False
     args.language = None
 
-    result = cmd_slice(args)
+    from hypergumbo_core.survey_io import SubstrateError
 
-    assert result == 1  # Error exit code
+    # main() maps SubstrateError to exit 2, bad input (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_slice(args)
 
 
 def test_cmd_slice_auto_runs_analysis(tmp_path: Path, capsys) -> None:
@@ -3236,11 +3240,11 @@ def test_cmd_sketch_input_file_not_found(tmp_path: Path, capsys) -> None:
     args.readme_debug = False
     args.input = str(tmp_path / "nonexistent.json")
 
-    result = cmd_sketch(args)
-    assert result == 1
+    from hypergumbo_core.survey_io import SubstrateError
 
-    _, err = capsys.readouterr()
-    assert "Error: Input file not found" in err
+    # main() maps SubstrateError to exit 2 (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_sketch(args)
 
 
 def test_cmd_sketch_input_uses_cached_results(tmp_path: Path, capsys) -> None:
@@ -4170,9 +4174,11 @@ def test_cmd_compact_file_not_found(tmp_path: Path) -> None:
     args.coverage = 0.8
     args.connectivity = False
 
-    result = cmd_compact(args)
+    from hypergumbo_core.survey_io import SubstrateError
 
-    assert result == 1
+    # main() maps SubstrateError to exit 2, bad input (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_compact(args)
 
 
 def test_wi_vusaf_compact_arg_validators() -> None:

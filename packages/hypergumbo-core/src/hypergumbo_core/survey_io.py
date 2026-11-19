@@ -27,8 +27,9 @@ Two layers sit on that read path. :func:`load_behavior_map` stays permissive
 :class:`SubstrateError` (which ``cli.main`` turns into ``rc=2``) on malformed
 or empty JSON, a non-object root, a missing ``nodes`` key, or a ``view`` that
 is present and differs from ``expected_view``; it only WARNS to stderr on an
-absent or mismatched ``schema_version`` (and on a legacy survey filename),
-and lets a missing path's ``FileNotFoundError`` propagate.
+absent or mismatched ``schema_version`` (and on a legacy survey filename).
+A path it cannot read (missing, a directory, refused, not UTF-8, a broken
+``.gz``) is a ``SubstrateError`` as well.
 :func:`reading_substrate` is the same load as a ``with`` block that also puts
 the map's declared test-input directories into effect (ADR-0004 point 10)
 and takes them out again on exit; ``load_substrate`` itself changes no
@@ -58,13 +59,13 @@ from .schema import SCHEMA_VERSION
 class SubstrateError(Exception):
     """A usable behavior-map substrate could not be obtained from the input.
 
-    Raised by :func:`load_substrate` when a ``--input`` file is not parseable
-    JSON, is not a top-level object, lacks the structural ``nodes`` key, or
-    carries the wrong ``view`` discriminator; and by ``cli._get_or_run_analysis``
-    when the positional path is not a directory to analyze and there is no
-    ``--input`` / cached map (INV-jibof). The CLI's top-level dispatch
-    (``cli.main``) catches this and converts it to a clean ``rc=2`` + stderr
-    message, so every consumer gets a typed failure instead of a raw traceback
+    Raised by :func:`load_substrate` when a ``--input`` file cannot be read,
+    is not parseable JSON, is not a top-level object, lacks the structural
+    ``nodes`` key, or carries the wrong ``view`` discriminator; and by
+    ``cli._get_or_run_analysis`` when the positional path is not a directory
+    to analyze and there is no ``--input`` / cached map (INV-jibof). The
+    CLI's top-level dispatch (``cli.main``) catches this and converts it to a
+    clean ``rc=2`` + stderr message, so every consumer gets a typed failure instead of a raw traceback
     (INV-sozop) or a silent ``rc=0`` "No X found" on wrong-shape/non-repo input
     (WI-jukah / INV-jibof).
     """
@@ -136,9 +137,14 @@ def load_substrate(
       a map from an older/newer build is usually still readable, and
       rejecting it would be over-strict.
 
-    Returns the parsed behavior-map dict. Propagates ``FileNotFoundError``
-    for a genuinely missing path (consumers check existence and print their
-    own message before calling this).
+    A path that cannot be read at all -- missing, a directory, refused, not
+    UTF-8, a broken ``.gz`` -- raises :class:`SubstrateError` too (WI-nidun).
+    A missing path exited 1 from eleven ``--input`` commands, each checking
+    on its own, and the rest reached ``cli.main``'s internal-error net from
+    every one but verify-claims. Refusing them here gives the twelve
+    commands one answer, exit 2.
+
+    Returns the parsed behavior-map dict.
 
     DECLARED TEST INPUTS (ADR-0004 point 10): this function does NOT install
     the map's ``supply_chain_summary.declared_test_inputs``, so loading a map
@@ -158,6 +164,17 @@ def load_substrate(
     except json.JSONDecodeError as exc:
         raise SubstrateError(
             f"{path}: not valid JSON ({exc})"
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise SubstrateError(f"{path}: not UTF-8 text ({exc.reason})") from exc
+    except FileNotFoundError as exc:
+        raise SubstrateError(f"Input file not found: {path}") from exc
+    except (OSError, EOFError) as exc:
+        # A directory, a permission refusal, a ``.gz`` that is not gzip
+        # (``BadGzipFile`` is an ``OSError``) or is cut short (``EOFError``).
+        raise SubstrateError(
+            f"could not read behavior map {path}: "
+            f"{getattr(exc, 'strerror', None) or exc}"
         ) from exc
     # ADR-0042 (WI-didif): a legacy alias still loads, but warn the caller to
     # migrate to survey.json (the aliases are removed at window-close).

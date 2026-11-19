@@ -4,6 +4,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.schema import SCHEMA_VERSION, READ_VIEW_SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_test_coverage, main
 
@@ -703,11 +705,11 @@ def test_cmd_test_coverage_input_not_found(tmp_path: Path, capsys) -> None:
     args.max_tests = None
     args.top = None
 
-    result = cmd_test_coverage(args)
+    from hypergumbo_core.survey_io import SubstrateError
 
-    assert result == 1
-    _, err = capsys.readouterr()
-    assert "Input file not found" in err
+    # main() maps SubstrateError to exit 2 (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_test_coverage(args)
 
 
 def test_cmd_test_coverage_auto_runs_analysis(tmp_path: Path, capsys) -> None:

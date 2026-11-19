@@ -26,7 +26,7 @@ Exit codes, in precedence order — the first that applies wins:
 
 | code | condition |
 |---:|---|
-| `2` | **bad input**, before any verdict: a claims file that is missing, unreadable or fails validation, a `--input` map that is missing or not a usable behavior map, a catalogue that does not load, a bad argument |
+| `2` | **bad input**, before any verdict: a claims file that is missing, unreadable, fails validation or holds no claims, a `--input` map that is missing, a directory or not a usable behavior map (a record field of the wrong type included), a catalogue that does not load, a bad argument |
 | `1` | any `violated` |
 | `4` | any `inconclusive` (and no violation) |
 | `3` | any `confirmed_with_caveats` (and none of the above) |
@@ -41,10 +41,17 @@ mistaken for success in a shell pipeline.
 **A gate written `verify-claims … || exit 1` fails on exit 3.** That is
 deliberate and fail-closed. If you want caveated verdicts to pass, accept `3`
 explicitly — do not widen the gate to "anything non-zero is fine", which would
-also swallow `1`, `2` and `4`.
+also swallow `1`, `2`, `4` and `70`.
 
-A crash inside hypergumbo itself (`hypergumbo: internal error: …`, "This is a
-bug") exits `1`, the same code as `violated`.
+Two codes are not verdicts and are the same for every hypergumbo command:
+
+| code | condition |
+|---:|---|
+| `70` | a crash inside hypergumbo itself (`hypergumbo: internal error: …`, "This is a bug") |
+| `141` | broken pipe: the reader of stdout went away (`… \| head`) |
+
+So `1` means a violated claim and nothing else; a crash and a broken pipe both
+exited `1` until hypergumbo gave them codes of their own.
 
 ## The caveat vocabulary
 

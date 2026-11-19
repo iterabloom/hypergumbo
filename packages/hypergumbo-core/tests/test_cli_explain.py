@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.schema import SCHEMA_VERSION
 from hypergumbo_core.cli import cmd_explain, main, _extract_path_from_symbol_id
 
@@ -411,9 +413,11 @@ def test_cmd_explain_input_not_found(tmp_path: Path) -> None:
     args.path = str(tmp_path)
     args.input = str(tmp_path / "nonexistent.json")
 
-    result = cmd_explain(args)
+    from hypergumbo_core.survey_io import SubstrateError
 
-    assert result == 1
+    # main() maps SubstrateError to exit 2, bad input (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_explain(args)
 
 
 def test_cmd_explain_auto_runs_analysis(tmp_path: Path, capsys) -> None:

@@ -406,9 +406,11 @@ def test_cmd_search_input_not_found(tmp_path: Path) -> None:
     args.language = None
     args.limit = 20
 
-    result = cmd_search(args)
+    from hypergumbo_core.survey_io import SubstrateError
 
-    assert result == 1
+    # main() maps SubstrateError to exit 2, bad input (WI-nidun).
+    with pytest.raises(SubstrateError, match="Input file not found"):
+        cmd_search(args)
 
 
 def test_cmd_search_auto_runs_analysis(tmp_path: Path, capsys) -> None:
