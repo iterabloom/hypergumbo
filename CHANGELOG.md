@@ -38,6 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Members of differently constrained Swift extensions get distinct ids.**
 - **Rust methods in different impl blocks get distinct ids.**
 - **C# and Swift ids hash qualified types as written.**
+- **JavaScript and TypeScript callback ids ignore destructuring patterns.**
 - **Swift names containing `$` are no longer cut short.**
 - **Rust receivers spelled two ways hash the same.**
 - **Dart default values no longer break signatures or ids.**

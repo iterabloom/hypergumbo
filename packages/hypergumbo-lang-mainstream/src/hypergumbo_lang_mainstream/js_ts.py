@@ -3854,13 +3854,28 @@ def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     functions ``a`` and ``b`` share it; hashing it alone would tie their ids,
     and deleting the first would move the second. A top-level symbol has an
     empty scope; a member of a top-level class has its class chain.
+
+    A declarator labels a scope only when it binds one ``identifier``, as a
+    variable-bound callable must to be named after it. Its ``name`` field is
+    a destructuring ``object_pattern`` / ``array_pattern`` in ``const { a, b }
+    = useX(cb)``, whose text is no name: hashing it made renaming a binding
+    move every id in ``cb``, and where tree-sitter-typescript's error recovery
+    takes a callback's whole body for a "pattern" (koel's ``vi.mock(...,
+    async original => original<typeof import('m')>())`` before a
+    ``describe``), the ids of every ``it`` callback hashed that body's text.
+    Such a declarator adds nothing; same-named callbacks it would have told
+    apart are numbered by occurrence, as at file scope.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type in _JSTS_NAMED_SCOPES:
             return _find_name_in_children(n, source)
         if n.type in ("internal_module", "module", "variable_declarator"):
             name = n.child_by_field_name("name")
-            return _node_text(name, source) if name is not None else None
+            if name is None or (
+                n.type == "variable_declarator" and name.type != "identifier"
+            ):
+                return None
+            return _node_text(name, source)
         return None
     return ancestor_labels(node, label)
 
