@@ -32,12 +32,18 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **extends**: template file -> ``twig:template:<name>`` for
-  {% extends "base.twig" %}
-- **includes**: template file -> ``twig:template:<name>`` for
-  {% include "partial.twig" %} and {{ include() }}; the function form
+- **extends**: template file -> ``make_module_import_dst("twig", <name>)``
+  for {% extends "base.twig" %}
+- **includes**: template file -> ``make_module_import_dst("twig", <name>)``
+  for {% include "partial.twig" %} and {{ include() }}; the function form
   (template name taken from its first argument) is marked
   ``meta.form="function"``
+
+The dst was ``twig:template:<name>``, no id: finalize folded every template
+of a repository into one ``twig:<unknown>:0-0:template`` node (WI-tatop). A
+template name is resolved by the application's loader paths, which the
+source does not state, so it is not looked up as a file of the tree: an
+in-tree template stays a stand-in named as written (``meta.template``).
 
 Spans and identity
 ------------------
@@ -72,6 +78,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     make_doc_symbol_ids,
     make_file_id,
+    make_module_import_dst,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -166,8 +173,7 @@ def _create_extends_edges(
 
     No per-extends Symbol is emitted: it would only duplicate this edge
     (audit-findings 0010, Cluster E sub-case (b)). Edge src is the using
-    template file id; dst is the parent template's dangling id (handled by
-    IR boundary materialization).
+    template file id; dst is the parent template's module stand-in.
     """
     line = _directive_span(node).start_line
     edges: list[Edge] = []
@@ -175,7 +181,7 @@ def _create_extends_edges(
     if template_name:
         edge = Edge.create(
             src=make_file_id("twig", str(rel_path)),
-            dst=f"twig:template:{template_name}",
+            dst=make_module_import_dst("twig", template_name),
             edge_type="extends",
             line=line,
             origin=PASS_ID,
@@ -221,8 +227,7 @@ def _create_include_edges(
 
     Cluster E sub-case (b) per audit-findings 0010: per-include Symbol
     was redundant. Edge src is the including template file id; dst is
-    the included template's dangling id (handled by IR boundary
-    materialization).
+    the included template's module stand-in.
     """
     line = _directive_span(node).start_line
     edges: list[Edge] = []
@@ -230,7 +235,7 @@ def _create_include_edges(
     if template_name:
         edge = Edge.create(
             src=make_file_id("twig", str(rel_path)),
-            dst=f"twig:template:{template_name}",
+            dst=make_module_import_dst("twig", template_name),
             edge_type="includes",
             line=line,
             origin=PASS_ID,
@@ -276,12 +281,12 @@ def _create_include_function_edges(
 
     Cluster E sub-case (b) per audit-findings 0010: per-include Symbol
     was redundant. Edge src is the including template file id; dst is
-    the included template's dangling id.
+    the included template's module stand-in.
     """
     line = _directive_span(node).start_line
     edge = Edge.create(
         src=make_file_id("twig", str(rel_path)),
-        dst=f"twig:template:{template_name}",
+        dst=make_module_import_dst("twig", template_name),
         edge_type="includes",
         line=line,
         origin=PASS_ID,

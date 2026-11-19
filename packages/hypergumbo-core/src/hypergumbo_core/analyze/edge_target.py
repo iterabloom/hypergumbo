@@ -93,6 +93,7 @@ _SPAN = re.compile(r"[0-9]+-[0-9]+")
 
 def in_tree_file_id(
     file_path: Path, rel_path: str, candidates: Iterable[str],
+    *, own_lang: Optional[str] = None, own_suffixes: Iterable[str] = (),
 ) -> Optional[NodeId]:
     """The file node of the first candidate that is a file of the repository.
 
@@ -107,13 +108,23 @@ def in_tree_file_id(
     disk is not the analysed tree, and a file id for such a file would have
     the synthesis pass mint a node for a file no analyzer read.
     Returns ``None`` when none is left: the target is outside the tree.
+
+    ``own_lang`` / ``own_suffixes``: the calling analyzer's language and the
+    endings of the file names it reads, for an analyzer whose files the
+    taxonomy names no language for (Robot ``.resource``, Meson
+    ``meson.build``). Such a file is still a node of the run, in the
+    analyzer's language; without these it would be a miss. The taxonomy's
+    language, when it names one, still wins.
     """
     repo_root = file_path.parents[len(Path(rel_path).parts) - 1]
+    endings = tuple(own_suffixes)
     for candidate in candidates:
         norm = posixpath.normpath(candidate.replace("\\", "/"))
         if norm == "." or norm == ".." or norm.startswith(("../", "/")):
             continue
         lang = get_language(Path(norm))
+        if lang is None and own_lang is not None and endings and norm.endswith(endings):
+            lang = own_lang
         target = repo_root / norm
         if lang is not None and target.is_file() and not is_excluded(target, repo_root):
             return make_file_id(lang, norm)

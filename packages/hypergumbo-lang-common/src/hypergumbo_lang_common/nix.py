@@ -26,6 +26,13 @@ and result assembly. This module provides only the Nix-specific extraction logic
    applications (callee resolved via NameResolver, falling back to
    nix:external:<name>:function)
 
+An ``import`` edge starts at the file's node (``make_file_id``) and ends on
+the imported file's node when the target is a path of the tree (relative to
+the importing file; a directory means its ``default.nix``), else on
+``make_module_import_dst("nix", <target as written>)`` (``<nixpkgs>``, a
+variable). It was ``nix:<path>:<line>:import`` -> ``nix:external:<target>``,
+neither an id (WI-tatop).
+
 Identity (WI-tusad): every symbol mints the ADR-0035 producer stable_id with
 ``overload_arity.declared_arity_stable_id`` (no arity: Nix has no overloading,
 and an attribute set binds a path once), qualified by its attribute-path chain:
@@ -51,6 +58,7 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -61,11 +69,14 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     TreeSitterAnalyzer,
     iter_tree,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     node_text,
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import declared_arity_stable_id
@@ -465,9 +476,29 @@ def _extract_nix_symbols(
     return symbols, symbol_registry
 
 
+def _import_dst(file_path: Path, rel_path: str, target: str) -> tuple[str, bool]:
+    """The dst of ``import <target>`` and whether it is a file of the tree.
+
+    A path (``./lib.nix``, ``../x``) is relative to the importing file; a
+    directory imports its ``default.nix``. Such a path that is a file of the
+    tree ends on that file's node. A search-path entry (``<nixpkgs>``), a
+    variable, or a path outside the tree ends on the module stand-in
+    (``make_module_import_dst``) for the target as written.
+    """
+    if target.startswith(("./", "../")):
+        here = posixpath.join(posixpath.dirname(rel_path), target)
+        found = in_tree_file_id(
+            file_path, rel_path, [here, posixpath.join(here, "default.nix")],
+        )
+        if found is not None:
+            return found, True
+    return make_module_import_dst("nix", target), False
+
+
 def _extract_nix_edges(
     root: "tree_sitter.Node",
     source: bytes,
+    file_path: Path,
     rel_path: str,
     decl_index: SymbolsAt,
     resolver: "NameResolver",
@@ -496,16 +527,16 @@ def _extract_nix_edges(
                 target = _find_import_target(node, source)
                 if target:
                     start_line = node.start_point[0] + 1
-                    src_id = f"nix:{rel_path}:{start_line}:import"
-                    dst_id = f"nix:external:{target}"
+                    dst_id, in_tree = _import_dst(file_path, rel_path, target)
 
                     edge = Edge.create(
-                        src=src_id,
+                        src=make_file_id("nix", rel_path),
                         dst=dst_id,
                         edge_type="imports",
                         line=start_line,
                         origin=PASS_ID,
                         evidence_type="static",
+                        is_resolved=in_tree,
                         origin_run_id=run_id,
                     )
                     edges.append(edge)
@@ -581,7 +612,7 @@ class NixAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from a Nix file."""
         return _extract_nix_edges(
-            tree.root_node, source, rel_path,
+            tree.root_node, source, file_path, rel_path,
             symbols_at(self.file_symbols(local_symbols)), resolver,
             run_id=run.execution_id,
         )

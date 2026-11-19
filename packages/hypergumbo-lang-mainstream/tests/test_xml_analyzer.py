@@ -7,6 +7,7 @@ Tests verify that the analyzer correctly extracts:
 """
 
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_core import __version__
 from hypergumbo_lang_mainstream.xml_config import (
@@ -141,9 +142,11 @@ def test_maven_main_class_defines_target(tmp_path):
     dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(dt_edges) >= 1, f"Expected defines_target edge for mainClass, got {len(dt_edges)}"
 
-    # The target path should be the Java file path derived from the class name
+    # The target path is the Java file path derived from the class name; the
+    # class is not in this tree, so the dst is its stand-in.
     edge = dt_edges[0]
-    assert edge.dst == "com/example/Main.java", f"Expected com/example/Main.java, got {edge.dst}"
+    assert edge.meta["target_path"] == "com/example/Main.java"
+    assert edge.dst == external_target("java", "com.example.Main")[0]
 
 
 def test_maven_exec_main_class_defines_target(tmp_path):
@@ -172,7 +175,7 @@ def test_maven_exec_main_class_defines_target(tmp_path):
 
     dt_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(dt_edges) >= 1
-    assert any(e.dst == "com/example/App.java" for e in dt_edges)
+    assert any(e.meta["target_path"] == "com/example/App.java" for e in dt_edges)
 
 
 def test_analyze_android_manifest_activities(tmp_path):

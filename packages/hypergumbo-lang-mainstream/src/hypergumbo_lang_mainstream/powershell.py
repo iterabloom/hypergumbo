@@ -25,7 +25,9 @@ How It Works
 1. Check if tree-sitter with PowerShell grammar is available
 2. If not available, return skipped result (not an error)
 3. Parse all PowerShell files and extract symbols
-4. Detect Import-Module and using statements for import edges
+4. Detect Import-Module and using statements for import edges (file node ->
+   ``make_module_import_dst("powershell", <module>)``; it was
+   ``powershell:?:?:<module>:module``, ``?`` in the span slot, WI-tatop)
 5. Detect command invocations for call edges
 
 Why This Design
@@ -57,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
@@ -220,7 +223,7 @@ def _process_import_module(
                 if module_text and not module_text.startswith("-"):
                     edges.append(Edge.create(
                         src=make_file_id("powershell", file_path),
-                        dst=f"powershell:?:?:{module_text}:module",
+                        dst=make_module_import_dst("powershell", module_text),
                         edge_type="imports",
                         evidence_type="import",
                         line=node.start_point[0] + 1,
@@ -250,7 +253,7 @@ def _process_using_command(
             module_name = tokens[1]
             edges.append(Edge.create(
                 src=make_file_id("powershell", file_path),
-                dst=f"powershell:?:?:{module_name}:module",
+                dst=make_module_import_dst("powershell", module_name),
                 edge_type="imports",
                 evidence_type="import",
                 line=node.start_point[0] + 1,

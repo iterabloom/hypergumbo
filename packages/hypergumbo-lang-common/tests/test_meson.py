@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, make_module_import_dst
 from hypergumbo_lang_common import meson as meson_module
 from hypergumbo_lang_common.meson import analyze_meson, find_meson_files, is_meson_tree_sitter_available
 from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
@@ -150,8 +150,11 @@ myapp = executable('myapp', 'main.c', dependencies : [mylib])
 subdir('src')
 """)
         result = analyze_meson(tmp_path)
+        # No src/meson.build in this tree: the edge ends on the stand-in
+        # for the directory as written.
         edge = next(
-            (e for e in result.edges if "subdir:src" in e.dst),
+            (e for e in result.edges
+             if e.dst == make_module_import_dst("meson", "src")),
             None
         )
         assert edge is not None

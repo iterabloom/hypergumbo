@@ -172,10 +172,11 @@ NewType does and does not change.
 ``Edge.src`` and ``Edge.dst`` stay ``str``. A dst is a node id OR an
 unresolved reference that finalize turns into a boundary node, and dozens of
 producers write references that are not in the node-id grammar. A src is a
-node id at every producer site but eleven (latex, nix, robot, gleam, odin, v
-and pony write a file reference outside the grammar) and the SCIP edge
-builders' no-resolver path (a raw SCIP symbol), and ``Edge``'s field types
-are pinned by ``tests/test_rct_public_api_pinned.py`` for the RCT variants.
+node id at every producer site but one, the SCIP edge builders' no-resolver
+path (a raw SCIP symbol); latex, nix, robot, gleam, odin, v and pony wrote a
+file reference outside the grammar at eleven sites until each drew it from
+``make_file_id`` (WI-tatop). ``Edge``'s field types are pinned by
+``tests/test_rct_public_api_pinned.py`` for the RCT variants.
 """
 
 
@@ -1284,8 +1285,8 @@ class Edge:
         # (ADR-0036: lang = everything up to the first colon; src is the
         # producer's own well-formed node) when the producer did not pass one,
         # so analyzer and linker edges carry it (WI-kuluh; ADR-0040).
-        # Catalog-guarded so a non-canonical src (e.g. a latex ``rel_path:file``
-        # id) yields None rather than a bogus path-segment "language". This is the
+        # Catalog-guarded so a non-canonical src (a hand-built ``<path>:file``
+        # string) yields None rather than a bogus path-segment "language". This is the
         # future ``lang`` input to the (language, evidence_type) confidence matrix
         # (ADR-0039); no consumer keys on it yet, so it changes no current value.
         if evidence_lang is None:
