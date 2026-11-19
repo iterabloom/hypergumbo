@@ -39,6 +39,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Merges stop while the scheduled full run is red.**
 - **smart-test in a worktree selects from stored graphs too.**
 - **A ledger shows what each scheduled run caught.**
+- **Git checkouts no longer reopen transcripts to the group.**
+- **release-check runs the release workflow's gates before tagging.**
 - **Two checkouts storing a graph at once both succeed.**
 - **Run records say what selecting by statement would run.**
 - **The index keeps a function's statement records across edits.**
