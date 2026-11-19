@@ -57,6 +57,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **PR CI skips tests no changed statement reaches.**
 - **`ci-debug trace` names PRs behind a red scheduled run.**
 - **`ci-debug pipelines` saves Woodpecker's pipeline records locally.**
+- **Test timings are stored under the right test id.**
 - **By-statement selection keeps tests that read changed files.**
 - **Hashing analyzer sources no longer counts as reading them.**
 - **Tests no longer leak environment variables to later tests.**

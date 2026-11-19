@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -36,14 +37,38 @@ TIMINGS_PATH = Path.home() / "hypergumbo_lab_notebook" / "test_timings.json"
 MAX_RUNS_PER_TEST = 5
 
 
+#: A test module's name: the dotted part of a junit classname that is a file.
+_MODULE_PREFIXES = ("test_", "BRANCHES_test_")
+
+#: A key this script wrote before it knew a module from a class: a module-level
+#: test function of ``a/tests/test_x.py`` stored as ``a/tests.py::test_x::name``
+#: (WI-jagus: 12,647 of 41,671 keys on 2026-11-19, every module-level function).
+_BROKEN_KEY = re.compile(r"^((?:.*/)?tests)\.py::((?:BRANCHES_)?test_[^:]+)::(.+)$")
+
+
+def _repaired(key: str) -> str:
+    """The node id a key means; a broken key is spelled again."""
+    match = _BROKEN_KEY.match(key)
+    return f"{match.group(1)}/{match.group(2)}.py::{match.group(3)}" if match else key
+
+
 def _load_timings() -> dict:
-    """Load existing timings or return empty dict."""
-    if TIMINGS_PATH.is_file():
-        try:
-            return json.loads(TIMINGS_PATH.read_text())
-        except (json.JSONDecodeError, OSError):
-            return {}
-    return {}
+    """Load existing timings or return empty dict. A key in the broken
+    spelling is read under its node id, its runs merged (oldest first) with
+    any the node id already has, so the next save stores it repaired."""
+    if not TIMINGS_PATH.is_file():
+        return {}
+    try:
+        raw = json.loads(TIMINGS_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    timings: dict = {}
+    for key, info in raw.items():
+        runs = timings.setdefault(_repaired(key), {"runs": []})["runs"]
+        runs.extend((info or {}).get("runs", []))
+    for info in timings.values():
+        info["runs"] = sorted(info["runs"], key=lambda r: r.get("timestamp", ""))[-MAX_RUNS_PER_TEST:]
+    return timings
 
 
 def _save_timings(data: dict) -> None:
@@ -76,10 +101,17 @@ def _parse_junit_xml(xml_path: str) -> list[tuple[str, float]]:
         except ValueError:
             duration = 0.0
 
-        # Build a node ID similar to pytest's format
-        # classname is typically "tests.test_foo.TestBar"
-        # name is "test_method" or "test_method[param]"
-        if classname:
+        # Build pytest's node id. classname is the module's dotted path,
+        # then any classes: "tests.test_foo.TestBar" or, for a module-level
+        # function, "tests.test_foo". The module is the last part named like
+        # a test module; everything after it is a class.
+        parts = classname.split(".") if classname else []
+        module_at = max((i for i, part in enumerate(parts) if part.startswith(_MODULE_PREFIXES)),
+                        default=None)
+        if module_at is not None:
+            module_path = "/".join(parts[:module_at + 1]) + ".py"
+            test_id = "::".join([module_path, *parts[module_at + 1:], name])
+        elif classname:
             # Convert dot-separated classname to path-like format
             # "tests.test_foo.TestBar" -> "tests/test_foo.py::TestBar"
             parts = classname.rsplit(".", 1)
