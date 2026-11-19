@@ -78,17 +78,17 @@ empty, so this arm is a contract for the other SCIP emitters.
 
 Symbol resolution:
 
-By default the shim emits Edges with ``src`` / ``dst`` set to the raw
-SCIP symbol strings. Callers are expected to resolve those against the
-Slice B output's ``Symbol.meta["scip_symbol"]`` (the raw SCIP string;
-``stable_id`` holds its sha256) to produce hypergumbo ``Symbol.id``
-values. A caller-
-provided ``resolve_symbol(symbol, document)`` callable remaps either
-endpoint, given the ``relative_path`` of the Document the SymbolInformation
-sits in (a moniker can name records in several Documents, INV-sipod; see
-:mod:`.resolve`); if it returns ``None`` for either endpoint, the Edge is
-dropped rather than emitted with a partial / raw endpoint. This matches the same-pass-
-emits-resolved pattern used by other hypergumbo shims.
+Every endpoint goes through the caller's ``resolve_symbol(symbol,
+document)``, which maps a SCIP symbol string, given the ``relative_path``
+of the Document the SymbolInformation sits in (a moniker can name records
+in several Documents, INV-sipod; see :mod:`.resolve`), to a hypergumbo
+``Symbol.id`` (Slice B's ``Symbol.meta["scip_symbol"]`` holds the raw
+string; ``stable_id`` its sha256). If it returns ``None`` for either
+endpoint, the Edge is dropped rather than emitted with a partial / raw
+endpoint. The resolver is REQUIRED: the shim used to pass the raw SCIP
+symbol through when it was omitted, and an edge whose src is a SCIP
+symbol string names no node (WI-tatop, ahead of typing ``Edge.src`` as a
+node id). A test that wants the raw strings passes an identity resolver.
 """
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ _SCIP_EDGE_CONFIDENCE = 0.9  # Explicit SCIP relationship from the upstream inde
 def scip_index_to_edges(
     index: scip_pb2.Index,
     *,
-    resolve_symbol: Optional[Callable[[str, str], Optional[str]]] = None,
+    resolve_symbol: Callable[[str, str], Optional[str]],
     run_id: str,
 ) -> List[Edge]:
     """Emit hypergumbo ``Edge`` objects from a parsed SCIP ``Index``.
@@ -123,9 +123,9 @@ def scip_index_to_edges(
 
     Args:
         index: A parsed ``scip_pb2.Index``.
-        resolve_symbol: Optional callable mapping a SCIP symbol string and
-            the Document it is read in to a hypergumbo Symbol ID. When provided, the Edge is dropped
-            if the resolver returns ``None`` for either endpoint.
+        resolve_symbol: Maps a SCIP symbol string and the Document it is
+            read in to a hypergumbo Symbol ID; the Edge is dropped if it
+            returns ``None`` for either endpoint.
 
     Returns:
         A list of ``Edge`` objects. Order follows the document /
@@ -138,14 +138,14 @@ def scip_index_to_edges(
             src_raw = sym_info.symbol
             if is_local_symbol(src_raw):
                 continue
-            src_resolved = _resolve(src_raw, doc.relative_path, resolve_symbol)
+            src_resolved = resolve_symbol(src_raw, doc.relative_path)
             if src_resolved is None:
                 continue
             for rel in sym_info.relationships:
                 dst_raw = rel.symbol
                 if dst_raw == src_raw or is_local_symbol(dst_raw):
                     continue
-                dst_resolved = _resolve(dst_raw, doc.relative_path, resolve_symbol)
+                dst_resolved = resolve_symbol(dst_raw, doc.relative_path)
                 if dst_resolved is None:
                     continue
                 emitted: set[str] = set()
@@ -170,19 +170,3 @@ def scip_index_to_edges(
                     ))
     return out
 
-
-def _resolve(
-    scip_symbol: str,
-    document: str,
-    resolver: Optional[Callable[[str, str], Optional[str]]],
-) -> Optional[str]:
-    """Apply the caller's resolver when present, else pass through.
-
-    The passthrough case keeps the shim usable as a pure translator in
-    contexts that want raw SCIP symbol strings on the Edge endpoints
-    (e.g. the Slice C unit tests, or a downstream caller that builds
-    its own mapping from the Slice B Symbol list afterwards).
-    """
-    if resolver is None:
-        return scip_symbol
-    return resolver(scip_symbol, document)

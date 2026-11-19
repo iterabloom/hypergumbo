@@ -46,6 +46,11 @@ from hypergumbo_core.scip.calls import scip_index_to_call_edges
 DEFINITION_ROLE = 0x01
 
 
+def _raw(symbol: str, _document: str) -> str:
+    """Identity resolver: the endpoint is the SCIP symbol string itself."""
+    return symbol
+
+
 def _sym(name: str) -> str:
     return f"scip-python pypi pkg 0.1.0 mod/{name}()."
 
@@ -69,7 +74,7 @@ def _idx(*docs):
 
 
 def test_empty_index_emits_no_edges() -> None:
-    assert scip_index_to_call_edges(scip_pb2.Index(), run_id="test") == []
+    assert scip_index_to_call_edges(scip_pb2.Index(), resolve_symbol=_raw, run_id="test") == []
 
 
 def test_ref_inside_definition_emits_edge() -> None:
@@ -89,7 +94,7 @@ def test_ref_inside_definition_emits_edge() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=DEFINITION_ROLE, range=[30, 0, 35, 0]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert isinstance(edge, Edge)
     assert edge.src == caller
     assert edge.dst == callee
@@ -111,7 +116,7 @@ def test_ref_outside_any_definition_is_dropped() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[1, 0, 5]),
         ],
     )
-    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
+    assert scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test") == []
 
 
 def test_innermost_definition_wins_when_nested() -> None:
@@ -133,7 +138,7 @@ def test_innermost_definition_wins_when_nested() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 4, 8]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert edge.src == inner
 
 
@@ -152,7 +157,7 @@ def test_single_line_definition_and_ref() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[10, 5, 8]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert edge.src == caller
 
 
@@ -166,7 +171,7 @@ def test_definition_occurrence_itself_does_not_emit_edge() -> None:
             scip_pb2.Occurrence(symbol=caller, symbol_roles=DEFINITION_ROLE, range=[0, 0, 5, 0]),
         ],
     )
-    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
+    assert scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test") == []
 
 
 def test_self_reference_is_dropped() -> None:
@@ -180,7 +185,7 @@ def test_self_reference_is_dropped() -> None:
             scip_pb2.Occurrence(symbol=foo, symbol_roles=0, range=[5, 4, 8]),
         ],
     )
-    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
+    assert scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test") == []
 
 
 def test_tie_break_picks_first_definition_in_document_order() -> None:
@@ -200,7 +205,7 @@ def test_tie_break_picks_first_definition_in_document_order() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0, 4]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert edge.src == a
 
 
@@ -220,7 +225,7 @@ def test_multiple_refs_in_same_definition_emit_multiple_edges() -> None:
             scip_pb2.Occurrence(symbol=y, symbol_roles=0, range=[10, 0, 4]),
         ],
     )
-    result = scip_index_to_call_edges(_idx(doc), run_id="test")
+    result = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     dsts = sorted(e.dst for e in result)
     assert dsts == [x, y]
 
@@ -244,7 +249,7 @@ def test_multiple_documents_scoped_independently() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0, 4]),
         ],
     )
-    result = scip_index_to_call_edges(_idx(doc_a, doc_b), run_id="test")
+    result = scip_index_to_call_edges(_idx(doc_a, doc_b), resolve_symbol=_raw, run_id="test")
     assert len(result) == 1
     assert result[0].src == caller
 
@@ -320,7 +325,7 @@ def test_edge_meta_carries_scip_provenance() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0x08, range=[5, 0, 4]),  # ReadAccess
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert edge.meta is not None
     assert edge.meta["scip_src_symbol"] == caller
     assert edge.meta["scip_dst_symbol"] == callee
@@ -344,7 +349,7 @@ def test_definition_with_malformed_range_is_ignored() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0, 4]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert edge.src == caller
     assert edge.dst == callee
 
@@ -360,7 +365,7 @@ def test_occurrence_with_unsupported_range_length_skipped() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0]),
         ],
     )
-    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
+    assert scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test") == []
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +388,7 @@ def test_ref_to_a_local_binding_emits_no_edge_even_in_raw_mode() -> None:
         # control: a global reference in the same body is still emitted
         scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[4, 4, 10]),
     ])
-    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    edges = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert [(e.src, e.dst) for e in edges] == [(outer, callee)]
 
 
@@ -396,7 +401,7 @@ def test_a_local_binding_never_encloses_a_reference() -> None:
         scip_pb2.Occurrence(symbol=local, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0]),
         scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 4, 10]),
     ])
-    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
+    assert scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test") == []
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +430,7 @@ def test_enclosing_range_attributes_a_body_reference_to_its_function() -> None:
         # a reference inside increment's body: line 16 (0-based 15), past the token
         scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 8, 14]),
     ])
-    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    edges = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert [(e.src, e.dst) for e in edges] == [(fn, callee)]
 
 
@@ -439,7 +444,7 @@ def test_without_enclosing_range_a_token_definition_cannot_enclose() -> None:
         scip_pb2.Occurrence(symbol=fn, symbol_roles=DEFINITION_ROLE, range=[13, 11, 20]),
         scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 8, 14]),
     ])
-    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    edges = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert [(e.src, e.dst) for e in edges] == [(ns, callee)]
 
 
@@ -454,7 +459,7 @@ def test_malformed_enclosing_range_falls_back_to_range() -> None:
         ),
         scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 8, 14]),
     ])
-    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    edges = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert [(e.src, e.dst) for e in edges] == [(ns, callee)]
 
 
@@ -477,7 +482,7 @@ def test_innermost_is_chosen_by_enclosing_range_when_items_nest() -> None:
         ),
         scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 8, 14]),
     ])
-    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    edges = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
     assert [(e.src, e.dst) for e in edges] == [(method, callee)]
 
 
@@ -521,7 +526,7 @@ def _one_ref(target_kind: int | None, *, callee_doc_path: str | None = None) -> 
                 path=callee_doc_path,
             ),
         ]
-    [edge] = scip_index_to_call_edges(_idx(*docs), run_id="test")
+    [edge] = scip_index_to_call_edges(_idx(*docs), resolve_symbol=_raw, run_id="test")
     return edge
 
 
@@ -566,7 +571,7 @@ class TestEdgeTypeFromTheTargetsDeclaredKind:
                 scip_pb2.Occurrence(symbol=callee, symbol_roles=DEFINITION_ROLE, range=[30, 0, 35, 0]),
             ],
         )
-        [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
+        [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=_raw, run_id="test")
         assert edge.edge_type == "references"
         assert edge.meta["symbol_roles"] == int(scip_pb2.SymbolRole.WriteAccess)
 
@@ -602,12 +607,12 @@ def _call_site(callee: str, *, declared_kind: int = 0) -> scip_pb2.Index:
 
 
 def test_an_undeclared_kind_falls_back_to_the_method_descriptor_for_calls() -> None:
-    [edge] = scip_index_to_call_edges(_call_site(_sym("callee")), run_id="test")
+    [edge] = scip_index_to_call_edges(_call_site(_sym("callee")), resolve_symbol=_raw, run_id="test")
     assert edge.edge_type == "calls"
 
 
 def test_an_undeclared_kind_with_a_term_descriptor_is_a_reference() -> None:
-    [edge] = scip_index_to_call_edges(_call_site(_term("value")), run_id="test")
+    [edge] = scip_index_to_call_edges(_call_site(_term("value")), resolve_symbol=_raw, run_id="test")
     assert edge.edge_type == "references"
 
 
@@ -615,5 +620,12 @@ def test_a_declared_non_callable_kind_beats_the_method_descriptor() -> None:
     from hypergumbo_core.scip.index import symbol_information_kind_values
 
     variable = symbol_information_kind_values()["Variable"]
-    [edge] = scip_index_to_call_edges(_call_site(_sym("callee"), declared_kind=variable), run_id="test")
+    [edge] = scip_index_to_call_edges(_call_site(_sym("callee"), declared_kind=variable), resolve_symbol=_raw, run_id="test")
     assert edge.edge_type == "references"
+
+
+def test_the_resolver_is_required() -> None:
+    """No raw pass-through: omitting the resolver is a TypeError, not
+    edges whose src is a SCIP symbol string that names no node."""
+    with pytest.raises(TypeError):
+        scip_index_to_call_edges(scip_pb2.Index(), run_id="test")  # type: ignore[call-arg]

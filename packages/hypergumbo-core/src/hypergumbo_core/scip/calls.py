@@ -60,8 +60,8 @@ Enclosure resolution:
   INV-kukiz). :mod:`.index` does not mint locals — the id is
   document-scoped, so the same string is a different binding in every
   file — and an edge naming one would name an endpoint no Symbol
-  carries. In resolved mode the resolver would drop it anyway; the
-  filter here makes raw mode tell the same truth.
+  carries. A resolver would drop it anyway; the filter here makes an
+  identity resolver (a test reading the raw strings) tell the same truth.
 
 * Self-edges (enclosing symbol == occurrence symbol) are dropped as
   noise. Recursive calls in particular show up here — rank / slice
@@ -105,10 +105,11 @@ Edge shape:
   relationship emission, so the floor is slightly lower.
 
 Symbol resolution contract matches :mod:`hypergumbo_core.scip.edges`:
-a caller-supplied ``resolve_symbol(symbol, document)`` callable remaps
-either endpoint, given the occurrence's Document (INV-sipod);
+the REQUIRED ``resolve_symbol(symbol, document)`` callable maps either
+endpoint, given the occurrence's Document (INV-sipod), to a node id;
 returning ``None`` for either endpoint drops the edge, preventing
-half-resolved artefacts in the output.
+half-resolved artefacts in the output. There is no raw pass-through: an
+edge whose src is a SCIP symbol string names no node (WI-tatop).
 """
 from __future__ import annotations
 
@@ -248,7 +249,7 @@ def _area(span: Tuple[int, int, int, int]) -> Tuple[int, int]:
 def scip_index_to_call_edges(
     index: scip_pb2.Index,
     *,
-    resolve_symbol: Optional[Callable[[str, str], Optional[str]]] = None,
+    resolve_symbol: Callable[[str, str], Optional[str]],
     run_id: str,
 ) -> List[Edge]:
     """Emit hypergumbo ``Edge`` objects for SCIP non-Definition Occurrences.
@@ -296,13 +297,8 @@ def scip_index_to_call_edges(
 
             # INV-sipod: both ends are read in this Document. The enclosing
             # Definition is in it by construction; the target may not be.
-            src_resolved: Optional[str]
-            dst_resolved: Optional[str]
-            if resolve_symbol is None:
-                src_resolved, dst_resolved = enclosing, occ.symbol
-            else:
-                src_resolved = resolve_symbol(enclosing, doc.relative_path)
-                dst_resolved = resolve_symbol(occ.symbol, doc.relative_path)
+            src_resolved = resolve_symbol(enclosing, doc.relative_path)
+            dst_resolved = resolve_symbol(occ.symbol, doc.relative_path)
             if src_resolved is None or dst_resolved is None:
                 continue
 
