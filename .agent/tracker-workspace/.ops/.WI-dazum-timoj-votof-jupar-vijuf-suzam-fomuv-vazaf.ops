@@ -1,0 +1,21 @@
+- op: create  # abd3
+  at: '2026-11-19T11:28:24Z'  # abd3
+  by: agent  # abd3
+  actor: jgstern_agent  # abd3
+  clock: 1  # abd3
+  nonce: abd3  # abd3
+  data:  # abd3
+    kind: work_item  # abd3
+    title: "Return-lift alias group joins field-store RHS, ignores statement order, and does not follow names returned by a call"  # abd3
+    status: todo_hard  # abd3
+    priority: 3  # abd3
+    parent:  # abd3
+    tags:  # abd3
+    - taint  # abd3
+    - verify_claims  # abd3
+    isbefore: []  # abd3
+    duplicate_of: []  # abd3
+    not_duplicate_of: []  # abd3
+    pr_ref:  # abd3
+    description: "The alias group used by the tentative return lift (taint._alias_group, PR #2276, WI-zaboh) is loose in three ways:\n1. It joins the right-hand side of a field store: `initCmd.Dir = tmpDir` pulls tmpDir into the group.\n2. It ignores statement order: 3 of the 4 tmate unfollowed escapes sit before the store.\n3. It does not follow a name that comes back from a call (`s := wrap(t)`).\n1 and 2 over-withhold (precision); 3 under-withholds (a confirm can survive).\n\nCLOSE WHEN each has a fixture with the right verdict, or is listed as a stated limit. Evidence fast_smart_test_build_11172026/zaboh/."  # abd3
+    fields: {}  # abd3

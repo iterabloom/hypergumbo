@@ -1,0 +1,21 @@
+- op: create  # 44a1
+  at: '2026-11-19T11:28:18Z'  # 44a1
+  by: agent  # 44a1
+  actor: jgstern_agent  # 44a1
+  clock: 1  # 44a1
+  nonce: 44a1  # 44a1
+  data:  # 44a1
+    kind: work_item  # 44a1
+    title: "flows_withheld_by_walk does not collapse tentative descendant flows (nats-server 141,401; 252 distinct combinations corpus-wide)"  # 44a1
+    status: todo_hard  # 44a1
+    priority: 3  # 44a1
+    parent:  # 44a1
+    tags:  # 44a1
+    - taint  # 44a1
+    - verify_claims  # 44a1
+    isbefore: []  # 44a1
+    duplicate_of: []  # 44a1
+    not_duplicate_of: []  # 44a1
+    pr_ref:  # 44a1
+    description: "Tentative descendant flows (PR #2276, WI-zaboh option c) are not collapsed in flows_withheld_by_walk. nats-server alone reports 141,401. Corpus-wide (39-repo WI-buzup set): 31,382 distinct records, 252 distinct (label, zone, helper, site) combinations.\n\nA count that large tells a reader nothing; the 252 combinations are the information.\n\nCLOSE WHEN the withheld report groups tentative descendants by (label, sink zone, helper, site) and the corpus total is re-measured. Evidence fast_smart_test_build_11172026/zaboh/RESULTS.md."  # 44a1
+    fields: {}  # 44a1

@@ -1,0 +1,21 @@
+- op: create  # d674
+  at: '2026-11-19T11:28:12Z'  # d674
+  by: agent  # d674
+  actor: jgstern_agent  # d674
+  clock: 1  # d674
+  nonce: d674  # d674
+  data:  # d674
+    kind: work_item  # d674
+    title: "verify-claims does not follow a Python callback registered by name (atexit.register(flush)): confirmed where violated"  # d674
+    status: todo_hard  # d674
+    priority: 3  # d674
+    parent:  # d674
+    tags:  # d674
+    - taint  # d674
+    - verify_claims  # d674
+    isbefore: []  # d674
+    duplicate_of: []  # d674
+    not_duplicate_of: []  # d674
+    pr_ref:  # d674
+    description: "A Python callback registered by name (`def flush(): write(k)`; `atexit.register(flush)` before `k = getenv(..)`) is not followed: the registration is a references edge, not a call, so no flow is formed and verify-claims reads confirmed (0). Listed as a stated limit in docs/VERIFY-CLAIMS-SCOPE.md by PR #2276 (WI-tivok).\n\nFixture: fast_smart_test_build_11172026/tivok/py_atexit (control py_atexit_ctrl violated). The lambda form py_atexit_lambda reads violated.\n\nAlso stated there: Rust Drop::drop (rs_drop, confirmed_with_caveats 3, no flow); a closure stored and called before the assignment now reads violated (go_stored_called_before, false positive).\n\nCLOSE WHEN py_atexit reads violated, or the owner rules the limit stays."  # d674
+    fields: {}  # d674
