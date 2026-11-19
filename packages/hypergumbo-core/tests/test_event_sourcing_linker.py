@@ -4,7 +4,9 @@
 from pathlib import Path
 from textwrap import dedent
 
+from hypergumbo_core.analyze.base import make_symbol_id
 from hypergumbo_core.ir import Symbol, Span, Edge
+from hypergumbo_core.spec_validator import _check_id_format
 from hypergumbo_core.linkers.event_sourcing import (
     _create_event_symbol,
     _find_source_files,
@@ -785,7 +787,8 @@ class TestVariableEventPatterns:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.dst.endswith("sub.js:1-1:user:created:function")
+        # The id's name slot folds ':' to '.'; the edge names the event.
+        assert edge.dst.endswith("sub.js:1-1:user.created:function")
         assert edge.meta["event_name"] == "user:created"
         assert edge.meta["publisher_event_type"] == "constant"
         assert edge.confidence == 0.85
@@ -874,6 +877,32 @@ class TestEventSymbolFormat:
         # ADR-0036 Ruling 2: kind-slot is "function"; role on meta.framework_role.
         assert sym.id.rsplit(":", 1)[-1] == "function"
         assert sym.meta["framework_role"] == "event_subscriber"
+
+    def test_event_name_with_a_colon_parses_back_into_five_slots(
+        self, tmp_path: Path,
+    ):
+        """An event string such as ``'mouse:up'`` is the symbol's NAME; the
+        ``:`` it holds is folded in the id's name slot, so the id parses back
+        into language, path, span, name and kind (fabric.js on pretix)."""
+        (tmp_path / "canvas.js").write_text(
+            "canvas.on('mouse:up', handler);\n"
+            "emitter.emit('user:created', data);\n"
+        )
+
+        result = link_events(tmp_path)
+
+        by_name = {s.name: s for s in result.symbols}
+        assert set(by_name) == {"mouse:up", "user:created"}
+        assert _check_id_format(result.symbols) == []
+        for name, line in (("mouse:up", 1), ("user:created", 2)):
+            sym = by_name[name]
+            assert sym.id == make_symbol_id(
+                "javascript", "canvas.js", line, line, name, "function",
+            )
+            assert sym.id.split(":") == [
+                "javascript", "canvas.js", f"{line}-{line}",
+                name.replace(":", "."), "function",
+            ]
 
     def test_link_events_produces_valid_symbol_ids(self, tmp_path: Path):
         """End-to-end: linked event symbols have valid IDs."""
