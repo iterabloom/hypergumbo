@@ -172,10 +172,11 @@ NewType does and does not change.
 ``Edge.src`` and ``Edge.dst`` stay ``str``. A dst is a node id OR an
 unresolved reference that finalize turns into a boundary node, and dozens of
 producers write references that are not in the node-id grammar. A src is a
-node id at every producer site but one, the SCIP edge builders' no-resolver
-path (a raw SCIP symbol); latex, nix, robot, gleam, odin, v and pony wrote a
-file reference outside the grammar at eleven sites until each drew it from
-``make_file_id`` (WI-tatop). ``Edge``'s field types are pinned by
+node id at every producer site: latex, nix, robot, gleam, odin, v and pony
+wrote a file reference outside the grammar at eleven sites until each drew
+it from ``make_file_id``, and the SCIP edge builders passed a raw SCIP
+symbol through when no resolver was given until the resolver became
+required (WI-tatop). ``Edge``'s field types are pinned by
 ``tests/test_rct_public_api_pinned.py`` for the RCT variants.
 """
 

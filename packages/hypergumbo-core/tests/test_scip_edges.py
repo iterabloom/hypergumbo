@@ -20,11 +20,10 @@ Behavioural contract pinned here:
 * ``src`` is the ``SymbolInformation.symbol`` that carries the
   relationship; ``dst`` is ``Relationship.symbol``. This direction is
   intuitive: "X implements Y" reads as edge ``X --implements--> Y``.
-* Edges ship unresolved by default — ``src`` and ``dst`` are raw SCIP
-  symbol strings, and downstream callers resolve them against Slice B's
-  Symbol ``stable_id`` field (also a SCIP symbol string) to produce
-  fully-qualified hypergumbo IDs. A caller-provided ``resolve_symbol``
-  callable can remap either endpoint on the way out.
+* Every endpoint goes through the REQUIRED ``resolve_symbol`` callable
+  (there is no raw pass-through: an edge whose src is a SCIP symbol
+  string names no node, WI-tatop). Most tests here pass :func:`_raw`, an
+  identity resolver, so they read the translation itself in SCIP strings.
 * Per WI-zakub §1 (rust-analyzer leaves ``relationships`` empty), a SCIP
   Index with zero populated ``Relationship`` entries produces an empty
   list silently. The translator does not log — callers that want the
@@ -35,10 +34,17 @@ Behavioural contract pinned here:
 """
 from __future__ import annotations
 
+import pytest
+
 from hypergumbo_core.edge_types import all_edge_type_names
 from hypergumbo_core.ir import Edge
 from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.edges import _RELATION_EDGE_TYPES, scip_index_to_edges
+
+
+def _raw(symbol: str, _document: str) -> str:
+    """Identity resolver: the endpoint is the SCIP symbol string itself."""
+    return symbol
 
 
 def _sym(name: str) -> str:
@@ -67,7 +73,7 @@ def _idx_with_relationship(
 
 
 def test_empty_index_emits_no_edges() -> None:
-    assert scip_index_to_edges(scip_pb2.Index(), run_id="test") == []
+    assert scip_index_to_edges(scip_pb2.Index(), resolve_symbol=_raw, run_id="test") == []
 
 
 def test_symbol_without_relationships_emits_no_edges() -> None:
@@ -77,14 +83,14 @@ def test_symbol_without_relationships_emits_no_edges() -> None:
             symbols=[scip_pb2.SymbolInformation(symbol=_sym("foo"))],
         )
     ])
-    assert scip_index_to_edges(idx, run_id="test") == []
+    assert scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test") == []
 
 
 def test_is_implementation_produces_implements_edge() -> None:
     src = _sym("Impl")
     dst = _sym("Trait")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_implementation=True)
-    [e] = scip_index_to_edges(idx, run_id="test")
+    [e] = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert isinstance(e, Edge)
     assert e.src == src
     assert e.dst == dst
@@ -96,7 +102,7 @@ def test_is_type_definition_produces_references_edge() -> None:
     src = _sym("x")
     dst = _sym("int")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_type_definition=True)
-    [e] = scip_index_to_edges(idx, run_id="test")
+    [e] = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert e.edge_type == "references"
     assert e.meta is not None
     assert e.meta["scip_relationship_flag"] == "is_type_definition"
@@ -106,7 +112,7 @@ def test_is_reference_produces_references_edge() -> None:
     src = _sym("a")
     dst = _sym("b")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_reference=True)
-    [e] = scip_index_to_edges(idx, run_id="test")
+    [e] = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert e.edge_type == "references"
 
 
@@ -114,7 +120,7 @@ def test_is_definition_produces_references_edge() -> None:
     src = _sym("alias")
     dst = _sym("canonical")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_definition=True)
-    [e] = scip_index_to_edges(idx, run_id="test")
+    [e] = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert e.edge_type == "references"
     assert e.meta is not None
     assert e.meta["scip_relationship_flag"] == "is_definition"
@@ -133,7 +139,7 @@ def test_multiple_flags_on_one_relationship_fan_out() -> None:
         is_implementation=True,
         is_type_definition=True,
     )
-    result = scip_index_to_edges(idx, run_id="test")
+    result = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     edge_types = sorted(e.edge_type for e in result)
     assert edge_types == ["implements", "references"]
 
@@ -146,7 +152,7 @@ def test_flags_sharing_an_edge_type_emit_it_once() -> None:
         src_symbol=_sym("Foo"), rel_symbol=_sym("Bar"),
         is_type_definition=True, is_reference=True, is_definition=True,
     )
-    [e] = scip_index_to_edges(idx, run_id="test")
+    [e] = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert e.edge_type == "references"
     assert e.meta is not None
     assert e.meta["scip_relationship_flag"] == "is_reference"
@@ -165,7 +171,7 @@ def test_multiple_relationships_each_emit_edges() -> None:
         )],
     )
     idx = scip_pb2.Index(documents=[doc])
-    result = scip_index_to_edges(idx, run_id="test")
+    result = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert len(result) == 2
     dsts = {e.dst for e in result}
     assert dsts == {_sym("A"), _sym("B")}
@@ -175,13 +181,13 @@ def test_relationship_with_no_flags_produces_no_edges() -> None:
     # Protobuf allows all-false relationships — skip them.
     src = _sym("x")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=_sym("y"))
-    assert scip_index_to_edges(idx, run_id="test") == []
+    assert scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test") == []
 
 
 def test_self_reference_relationship_is_dropped() -> None:
     sym = _sym("self")
     idx = _idx_with_relationship(src_symbol=sym, rel_symbol=sym, is_reference=True)
-    assert scip_index_to_edges(idx, run_id="test") == []
+    assert scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test") == []
 
 
 def test_multiple_documents_each_contribute() -> None:
@@ -200,7 +206,7 @@ def test_multiple_documents_each_contribute() -> None:
         )],
     )
     idx = scip_pb2.Index(documents=[d1, d2])
-    result = scip_index_to_edges(idx, run_id="test")
+    result = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert len(result) == 2
     types = {e.edge_type for e in result}
     assert types == {"implements", "references"}
@@ -269,7 +275,7 @@ def test_edge_carries_scip_evidence_type_and_origin() -> None:
     src = _sym("s")
     dst = _sym("d")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_implementation=True)
-    [e] = scip_index_to_edges(idx, run_id="test")
+    [e] = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert e.origin == ["scip"]
     assert e.evidence_type.startswith("scip_")
     assert e.confidence > 0.0
@@ -279,7 +285,7 @@ def test_edge_meta_includes_scip_endpoints() -> None:
     src = _sym("s")
     dst = _sym("d")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_implementation=True)
-    [e] = scip_index_to_edges(idx, run_id="test")
+    [e] = scip_index_to_edges(idx, resolve_symbol=_raw, run_id="test")
     assert e.meta is not None
     assert e.meta.get("scip_src_symbol") == src
     assert e.meta.get("scip_dst_symbol") == dst
@@ -298,11 +304,11 @@ def test_relationship_touching_a_local_binding_emits_no_edge() -> None:
     to_local = _idx_with_relationship(
         src_symbol=_sym("f"), rel_symbol="local 3", is_reference=True,
     )
-    assert scip_index_to_edges(to_local, run_id="test") == []
+    assert scip_index_to_edges(to_local, resolve_symbol=_raw, run_id="test") == []
     from_local = _idx_with_relationship(
         src_symbol="local 3", rel_symbol=_sym("f"), is_reference=True,
     )
-    assert scip_index_to_edges(from_local, run_id="test") == []
+    assert scip_index_to_edges(from_local, resolve_symbol=_raw, run_id="test") == []
 
 
 # ---------------------------------------------------------------------------
@@ -338,3 +344,10 @@ class TestRelationMapConformance:
         known = all_edge_type_names()
         pre_fix = [("is_type_definition", "has_type"), ("is_definition", "defined_by")]
         assert sorted({t for _f, t in pre_fix} - known) == ["defined_by", "has_type"]
+
+
+def test_the_resolver_is_required() -> None:
+    """No raw pass-through: omitting the resolver is a TypeError, not
+    edges whose src is a SCIP symbol string that names no node."""
+    with pytest.raises(TypeError):
+        scip_index_to_edges(scip_pb2.Index(), run_id="test")  # type: ignore[call-arg]
