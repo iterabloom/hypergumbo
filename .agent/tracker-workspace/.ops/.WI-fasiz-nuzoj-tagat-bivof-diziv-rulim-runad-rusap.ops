@@ -1,0 +1,20 @@
+- op: create  # 0542
+  at: '2026-11-19T12:56:57Z'  # 0542
+  by: agent  # 0542
+  actor: jgstern_agent  # 0542
+  clock: 1  # 0542
+  nonce: '0542'  # 0542
+  data:  # 0542
+    kind: work_item  # 0542
+    title: "Gleam, Odin, V and PowerShell imports of in-tree modules end on module stand-ins, not file nodes"  # 0542
+    status: todo_hard  # 0542
+    priority: 3  # 0542
+    parent:  # 0542
+    tags:  # 0542
+    - identity  # 0542
+    isbefore: []  # 0542
+    duplicate_of: []  # 0542
+    not_duplicate_of: []  # 0542
+    pr_ref:  # 0542
+    description: "Gleam, Odin, V and PowerShell module imports end on module stand-ins even when the module is a file of the tree (PR 3 routed them through make_module_import_dst only).\n\nCLOSE WHEN each language's import of an in-tree module ends on its file node (edge_target.in_tree_file_id), with a fixture per language.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 0542
+    fields: {}  # 0542

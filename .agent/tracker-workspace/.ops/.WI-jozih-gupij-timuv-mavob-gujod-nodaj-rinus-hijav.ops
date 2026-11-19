@@ -1,0 +1,20 @@
+- op: create  # 0b35
+  at: '2026-11-19T12:56:45Z'  # 0b35
+  by: agent  # 0b35
+  actor: jgstern_agent  # 0b35
+  clock: 1  # 0b35
+  nonce: 0b35  # 0b35
+  data:  # 0b35
+    kind: work_item  # 0b35
+    title: "check-id-construction cannot see an edge endpoint passed through a parameter or built by another module's helper"  # 0b35
+    status: todo_hard  # 0b35
+    priority: 4  # 0b35
+    parent:  # 0b35
+    tags:  # 0b35
+    - identity  # 0b35
+    isbefore: []  # 0b35
+    duplicate_of: []  # 0b35
+    not_duplicate_of: []  # 0b35
+    pr_ref:  # 0b35
+    description: "scripts/check-id-construction (extended in PR 3 to judge Edge src=/dst=) cannot see an endpoint passed in through a parameter (e.g. make_unresolved_edge's src_id) or built by another module's helper. The runtime count analysis_runs[].non_id_edge_endpoints is the only guard for those.\n\nCLOSE WHEN the check follows a parameter to its call sites (or a helper's return), or the limit is stated in the check's docstring and ADR-0034 with the runtime count named as the guard.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 0b35
+    fields: {}  # 0b35

@@ -1,0 +1,20 @@
+- op: create  # 3e87
+  at: '2026-11-19T12:56:51Z'  # 3e87
+  by: agent  # 3e87
+  actor: jgstern_agent  # 3e87
+  clock: 1  # 3e87
+  nonce: '3e87'  # 3e87
+  data:  # 3e87
+    kind: work_item  # 3e87
+    title: "Twig: an in-tree template named by include/extends stays a module stand-in, not its file node"  # 3e87
+    status: todo_hard  # 3e87
+    priority: 4  # 3e87
+    parent:  # 3e87
+    tags:  # 3e87
+    - identity  # 3e87
+    isbefore: []  # 3e87
+    duplicate_of: []  # 3e87
+    not_duplicate_of: []  # 3e87
+    pr_ref:  # 3e87
+    description: "Twig template names are not looked up as files of the tree: an in-tree template stays a module stand-in.\n\nRepro: synth/tpl/page.twig with {%% extends 'base.twig' %%} and tpl/base.twig present -> dst twig:base.twig:0-0:module:module (not the file node). Twig resolves templates through loader paths the source does not state, so a lookup needs a rule (same directory, then templates/ roots?).\n\nCLOSE WHEN an in-tree template the include names ends on its file node, with the rule stated.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 3e87
+    fields: {}  # 3e87
