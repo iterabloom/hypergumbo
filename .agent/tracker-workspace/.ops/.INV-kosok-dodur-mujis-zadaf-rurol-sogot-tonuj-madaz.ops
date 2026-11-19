@@ -27,3 +27,10 @@
   clock: 2  # 5c88
   nonce: 5c88  # 5c88
   message: "OWNER APPROVAL, 2026-11-18 ~03:50 UTC (in session). I asked: 'the fix is in .githooks/, which is a governance path outside the pre-approval you gave for the smart-test plan. Does listing it in the file [~/hypergumbo_lab_notebook/after_fast_smart_test.txt] mean you approve that change and its merge through auto-pr without --gov?' The owner answered: 'INV-kosok - yes'. Scope of the approval: the fix for this invariant in .githooks/ (limit repair-agent-perms.sh to the tracker directories it exists for, with a test that drives the git hook), merged by auto-pr without --gov. Not asked again and NOT answered: whether INV-todig is reopened. Re-measured 2026-11-18 03:26 UTC: .agent/.last_session_transcript.jsonl and .training-data.jsonl are rw-rw----, the archive directory rwxrws---, 714 of 714 archive entries have a group bit, all in group jgstern_agent (0 in project-dev). Work starts after the fast-smart-test plan, per the owner's instruction."  # 5c88
+- op: discuss  # 6087
+  at: '2026-11-19T06:07:59Z'  # 6087
+  by: agent  # 6087
+  actor: jgstern_agent  # 6087
+  clock: 3  # 6087
+  nonce: '6087'  # 6087
+  message: "Merged as PR #2274, dev SHA 6fe51888a87e."  # 6087

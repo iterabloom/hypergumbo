@@ -20,3 +20,25 @@
     pr_ref:  # 9359
     description: "WHAT. For each scheduled full run, one row: the PRs merged since the previous run, what each PR's manifest left out of the suite, and the run's measured result from the published verdict. The share of runs that find something a PR's selection had called safe is the error rate of the selection: the number that says whether the stored-graph and by-statement selectors are safe to keep, and later whether a budget cut would be.\n\nABSENT IS NOT EMPTY. A run that did not publish a verdict is a row saying so, never a row saying it found nothing.\n\nCLOSE CONDITION. Rows for at least three real scheduled runs, built from origin/badges and the merged PRs' manifests; a test for the row builder.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 9359
     fields: {}  # 9359
+- op: discuss  # ca42
+  at: '2026-11-19T04:58:06Z'  # ca42
+  by: agent  # ca42
+  actor: jgstern_agent  # ca42
+  clock: 2  # ca42
+  nonce: ca42  # ca42
+  message: "Merged as PR #2273, dev SHA d6395f4d2e21."  # ca42
+- op: update  # 49ad
+  at: '2026-11-19T04:59:05Z'  # 49ad
+  by: agent  # 49ad
+  actor: jgstern_agent  # 49ad
+  clock: 3  # 49ad
+  nonce: 49ad  # 49ad
+  set:  # 49ad
+    status: done  # 49ad
+- op: discuss  # 8a5c
+  at: '2026-11-19T04:59:06Z'  # 8a5c
+  by: agent  # 8a5c
+  actor: jgstern_agent  # 8a5c
+  clock: 4  # 8a5c
+  nonce: 8a5c  # 8a5c
+  message: "DONE in PR #2273 (dev 4d49f510e feature + d6395f4d2 manifest). CLOSE CONDITION, point by point.\n(1) ROWS FOR AT LEAST THREE REAL SCHEDULED RUNS, from origin/badges and the merged PRs' manifests. Re-run on dev after the merge: `./scripts/ci-debug trace --ledger full-suite --pipelines taguj/pipelines.jsonl` -> rc 0, 5 rows: pipelines 6550 (passed, range fd5448d16f..fc2d2d8a9c: 49 commits, 12 PR manifests), 6582 (failed: self-tree-validation, test-agent-infra; 31 commits, 7 PRs), 6614 (passed; 36 commits, 8 PRs), and 6480 / 6512, which published no verdict (rows saying so, never clean). Last line: \"selection misses: 0 of 3 run(s) with a verdict and a known range ...; 2 unknown\". Record: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/taguj/ (ledger_dev.txt, ledger.json, pipelines.jsonl).\n(2) A TEST FOR THE ROW BUILDER: tests/test_scheduled_trace.py, 6 new tests on throwaway git histories with published verdicts and a stub ci-debug (row per run, PR manifests and what they left out, a run with no verdict, unread logs = unknown, an uncovered line traced into the range, an unreadable range, JSON). Mutations taguj/muts.tsv: 13 planted, 13 red.\nFOUND ON THE WAY AND FIXED IN THE SAME PR: the trace arm charged a PR whose manifest commit did not hold the failing test's file (\"not run by its PR\"). On pipeline 6582 it named PR #2252 for tests/test_kept_work_contexts.py, which PR #2253 added later and whose manifest ran it; the first ledger read 1 miss of 3 because of it. The run now reads as the scheduled environment (the known cause). Also fixed before merge: test files are counted by pytest's python_files patterns at each commit (BRANCHES_*.py had made listed exceed the total), and a PR with two manifest commits is shown once, by its last.\nNOT DONE / NOT ASSERTED: the ledger does not group a PR's commits for the trace arm's \"first manifest at or after\" rule (a commit before a PR's first manifest is judged by that manifest, not the PR's last); 0 of 3 is three runs, not a rate anyone should lean on yet."  # 8a5c
