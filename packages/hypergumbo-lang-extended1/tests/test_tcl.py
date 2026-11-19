@@ -6,6 +6,7 @@ edge detection, and graceful degradation when tree-sitter is unavailable.
 """
 import pytest
 from pathlib import Path
+from hypergumbo_core.ir import symbol_path_slot
 from unittest.mock import patch
 
 from hypergumbo_lang_extended1.tcl import (
@@ -278,6 +279,51 @@ class TestUnresolvedCalls:
         assert call_edges[0].confidence == 0.50
         assert ":unresolved" in call_edges[0].dst
         assert "unknown_proc" in call_edges[0].dst
+
+
+class TestCalleeWordsThatNameNoProc:
+    """A callee word whose namespace or name part is empty never becomes an id
+    with an empty slot (git-gui ``regsub -all {::} ...`` gave
+    ``tcl::0-0::unresolved``)."""
+
+    def _calls(self, tmp_path: Path, body: str) -> list:
+        (tmp_path / "main.tcl").write_text(
+            "proc baz {} { return 1 }\n"
+            "proc main {} {\n" + body + "\n}\n"
+        )
+        result = analyze_tcl(tmp_path)
+        return [e for e in result.edges if e.edge_type == "calls"]
+
+    def test_a_bare_separator_or_trailing_separator_makes_no_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        # The grammar reads the braced literal {::} as a script whose
+        # command word is "::"; "ns::" names a namespace and no proc.
+        calls = self._calls(tmp_path, "    regsub -all {::} $x {__} w\n    ns::")
+        assert all("::0-0:" not in e.dst for e in calls), [e.dst for e in calls]
+        assert not [e for e in calls if (e.meta or {}).get("callee_name") in ("", "::")]
+        assert all(
+            e.dst.split(":")[-2] and symbol_path_slot(e.dst) for e in calls
+        ), [e.dst for e in calls]
+
+    def test_a_global_qualified_call_resolves_like_the_bare_name(
+        self, tmp_path: Path,
+    ) -> None:
+        """``::baz`` is ``baz`` in the global namespace: it reaches the proc."""
+        calls = self._calls(tmp_path, "    ::baz")
+        assert [e.dst for e in calls] == ["tcl:main.tcl:1-1:baz:function"]
+
+    def test_a_global_qualified_namespace_call_drops_the_leading_separator(
+        self, tmp_path: Path,
+    ) -> None:
+        """``::foo::bar`` and ``foo::bar`` name one proc: one stand-in, path
+        slot ``foo``."""
+        calls = self._calls(tmp_path, "    ::foo::bar\n    foo::bar")
+        assert {e.dst for e in calls} == {"tcl:foo:0-0:bar:unresolved"}
+        assert {e.dst_ref.module_path for e in calls} == {"foo"}
+
+    def test_a_global_qualified_builtin_is_a_builtin(self, tmp_path: Path) -> None:
+        assert self._calls(tmp_path, "    ::set x 1") == []
 
 
 class TestTclCyclomaticComplexity:
