@@ -1,0 +1,21 @@
+- op: create  # d904
+  at: '2026-11-19T11:28:06Z'  # d904
+  by: agent  # d904
+  actor: jgstern_agent  # d904
+  clock: 1  # d904
+  nonce: d904  # d904
+  data:  # d904
+    kind: work_item  # d904
+    title: "JS/TS static class field initialisers count as capture scopes under the exposed-referent rule (verdict 4 where 0 is correct)"  # d904
+    status: todo_hard  # d904
+    priority: 3  # d904
+    parent:  # d904
+    tags:  # d904
+    - taint  # d904
+    - verify_claims  # d904
+    isbefore: []  # d904
+    duplicate_of: []  # d904
+    not_duplicate_of: []  # d904
+    pr_ref:  # d904
+    description: "JavaScript/TypeScript `static` class field initialisers count as capture scopes under the exposed-referent rule. A static initialiser runs at class definition, but it shares its node type with instance fields, so names it mentions are treated as captured.\n\nMeasured by the WI-bamuj build agent: on its fixture the verdict moves to inconclusive (4) where the correct answer is confirmed (0). Evidence fast_smart_test_build_11172026/bamuj/.\n\nCLOSE WHEN the fixture reads confirmed and an instance-field control still withholds."  # d904
+    fields: {}  # d904
