@@ -18,3 +18,10 @@
     pr_ref:  # 95da
     description: "Swift: a function whose name starts with _$ is emitted with the name _, so every _$-prefixed function of a file shares one name.\n\nREPRO: TCA ~/whole_bunch_of_repos/swift-composable-architecture/Sources/ComposableArchitecture/Observation/ObservableState.swift L105 (_$isIdentityEqual) and L190 (_$willModify): the map's name field is _. The name is in the stable-id hash, so these functions are told apart only by signature text. Cause not investigated (likely the identifier node of tree-sitter-swift for a $-containing name). Found while counting WI-bubak: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/bubak/RESULTS.md."  # 95da
     fields: {}  # 95da
+- op: discuss  # d225
+  at: '2026-11-19T16:42:07Z'  # d225
+  by: agent  # d225
+  actor: jgstern_agent  # d225
+  clock: 2  # d225
+  nonce: d225  # d225
+  message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump)."  # d225

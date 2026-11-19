@@ -1,0 +1,20 @@
+- op: create  # a592
+  at: '2026-11-19T15:11:03Z'  # a592
+  by: agent  # a592
+  actor: jgstern_agent  # a592
+  clock: 1  # a592
+  nonce: a592  # a592
+  data:  # a592
+    kind: work_item  # a592
+    title: "java: same-signature methods of anonymous/inner classes in one file tie and split only by occurrence order"  # a592
+    status: todo_hard  # a592
+    priority: 3  # a592
+    parent:  # a592
+    tags:  # a592
+    - stable_id  # a592
+    isbefore: []  # a592
+    duplicate_of: []  # a592
+    not_duplicate_of: []  # a592
+    pr_ref:  # a592
+    description: "Java: same-signature methods of anonymous or inner classes in one file tie and are split only by occurrence order.\n\nREPRO: jedis src/main/java/redis/clients/jedis/BuilderFactory.java: build x2 (L449, L901), createDecoderMap x11. Their stable-id hash inputs are equal; split_within_file_stable_id_collisions re-mints them by occurrence, so inserting one moves the ids of every later one. Whether these are anonymous classes or named inner classes was not checked, nor whether the container field is empty for them. Found while counting WI-bubak: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/bubak/RESULTS.md."  # a592
+    fields: {}  # a592

@@ -18,3 +18,10 @@
     pr_ref:  # 506e
     description: "C# and Swift typed stable ids cut a nested or module-qualified parameter type to its last segment, so (A.B x) and (C.B x) hash alike.\n\nREPRO (PR 3 branch jgstern-agent/feat/stable-id-v16, commit 4e0163454): normalize_csharp_signature(\"(A.B x)\") == normalize_csharp_signature(\"(C.B x)\"); Swift (x: Feature.State) vs (x: Other.State) the same. Java, Kotlin, Scala and Groovy keep enclosing types since that commit (keep_type_path), because their packages are lower-case and can be told from an enclosing type. C# namespaces and Swift modules are upper-case, so the same rule cannot tell them apart.\n\nOWNER QUESTION: hash the whole path as written (spelling-dependent: System.String vs String hash apart) or keep the cut (overloads on two same-named nested types tie)? Not measured: how many ties the cut makes on real C#/Swift trees. Evidence: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tojov/RESULTS.md residual 1."  # 506e
     fields: {}  # 506e
+- op: discuss  # 8d73
+  at: '2026-11-19T16:42:07Z'  # 8d73
+  by: agent  # 8d73
+  actor: jgstern_agent  # 8d73
+  clock: 2  # 8d73
+  nonce: 8d73  # 8d73
+  message: "OWNER RULING 2026-11-19 (in session): hash the full path as written (spelling-dependent: System.String and String hash apart). Build in PR 3 (the stable-id v16 bump)."  # 8d73

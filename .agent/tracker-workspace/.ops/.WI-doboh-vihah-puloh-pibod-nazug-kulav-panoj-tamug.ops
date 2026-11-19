@@ -18,3 +18,10 @@
     pr_ref:  # ec5f
     description: "Dart's signature renderer cuts a default value at its first comma, and named parameters hash \"name =\".\n\nREPRO: void f({Size s = const Size(1, 2)}) renders the signature ({Size s = ..., 2)}). Cause: _extract_dart_signature's re.sub(r'\\s*=\\s*[^,}\\]]+', ...) stops at the first comma inside the default. Named parameters also keep \"name =\" in the hashed text. Found during WI-tojov (PR 3, commit 4e0163454): the item attributed Dart fragments to split_params_top_level, but they come from this regex. Evidence: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tojov/RESULTS.md residual 2. Changing it moves Dart typed ids, so it needs a scheme bump."  # ec5f
     fields: {}  # ec5f
+- op: discuss  # 2b04
+  at: '2026-11-19T16:42:08Z'  # 2b04
+  by: agent  # 2b04
+  actor: jgstern_agent  # 2b04
+  clock: 2  # 2b04
+  nonce: 2b04  # 2b04
+  message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump)."  # 2b04
