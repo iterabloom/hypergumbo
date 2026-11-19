@@ -1,0 +1,20 @@
+- op: create  # 3493
+  at: '2026-11-19T11:27:02Z'  # 3493
+  by: agent  # 3493
+  actor: jgstern_agent  # 3493
+  clock: 1  # 3493
+  nonce: '3493'  # 3493
+  data:  # 3493
+    kind: work_item  # 3493
+    title: "Bad input still exits 1 in sketch/run (missing or file path), slice --files, slice/explain lookup errors and tool commands"  # 3493
+    status: todo_hard  # 3493
+    priority: 3  # 3493
+    parent:  # 3493
+    tags:  # 3493
+    - cli  # 3493
+    isbefore: []  # 3493
+    duplicate_of: []  # 3493
+    not_duplicate_of: []  # 3493
+    pr_ref:  # 3493
+    description: "Bad input still exits 1 (the violated code) outside verify-claims, after PR #2276 moved --input path errors and verify-claims inputs to exit 2.\n\nLEFT AT 1, seen while building WI-nidun (not re-probed one by one): sketch and run with a path that is missing or is a file; slice --files; slice/explain symbol-lookup errors; tool commands. Spec L123: no two outcomes share a code.\n\nCLOSE WHEN each listed command exits 2 on bad input with a message naming the input, and a production-path test per command asserts it."  # 3493
+    fields: {}  # 3493

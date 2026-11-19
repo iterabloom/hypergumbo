@@ -1,0 +1,21 @@
+- op: create  # e02b
+  at: '2026-11-19T11:27:08Z'  # e02b
+  by: agent  # e02b
+  actor: jgstern_agent  # e02b
+  clock: 1  # e02b
+  nonce: e02b  # e02b
+  data:  # e02b
+    kind: work_item  # e02b
+    title: "Taint walk treats builtins.print as terminating even with file=, which writes to a file"  # e02b
+    status: todo_hard  # e02b
+    priority: 3  # e02b
+    parent:  # e02b
+    tags:  # e02b
+    - taint  # e02b
+    - verify_claims  # e02b
+    isbefore: []  # e02b
+    duplicate_of: []  # e02b
+    not_duplicate_of: []  # e02b
+    pr_ref:  # e02b
+    description: "The taint walk treats builtins.print as terminating (keeps nothing, writes nowhere) even when it has file=. `print(secret, file=fh)` writes to the file object, so a flow through it is a sink, and a walk refuting through it is wrong.\n\nSeen by the WI-bamuj build agent (evidence fast_smart_test_build_11172026/bamuj/). Not measured on a fixture with a claim yet.\n\nCLOSE WHEN a fixture `print(os.getenv(\"K\"), file=open(p, \"w\"))` reads violated against host_secret -> host_fs, with a no-file= control, and the summary row for print states the file= case."  # e02b
+    fields: {}  # e02b

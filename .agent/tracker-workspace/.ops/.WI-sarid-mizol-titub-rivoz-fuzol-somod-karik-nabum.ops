@@ -1,0 +1,21 @@
+- op: create  # f4e5
+  at: '2026-11-19T11:27:14Z'  # f4e5
+  by: agent  # f4e5
+  actor: jgstern_agent  # f4e5
+  clock: 1  # f4e5
+  nonce: f4e5  # f4e5
+  data:  # f4e5
+    kind: work_item  # f4e5
+    title: "Go method value through a standard-library pointer receiver (url.URL.String) is not seen as taking &t"  # f4e5
+    status: todo_hard  # f4e5
+    priority: 3  # f4e5
+    parent:  # f4e5
+    tags:  # f4e5
+    - taint  # f4e5
+    - verify_claims  # f4e5
+    isbefore: []  # f4e5
+    duplicate_of: []  # f4e5
+    not_duplicate_of: []  # f4e5
+    pr_ref:  # f4e5
+    description: "Go method values whose receiver is a standard-library pointer receiver (e.g. url.URL.String) are not seen as taking &t: the PR #2276 fix (WI-bamuj) reads the method's declaration, which exists only for methods declared in the analysed repo.\n\nCLOSE WHEN a fixture `var u url.URL; get := u.String; u = *parsed(secret); write(get())` does not read confirmed, or VERIFY-CLAIMS-SCOPE.md lists it as a stated limit with the fixture."  # f4e5
+    fields: {}  # f4e5
