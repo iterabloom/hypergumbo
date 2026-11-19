@@ -23,7 +23,8 @@ commit outside it, and says when it found none.
     not run it -> ``not run by its PR``;
   - commits that changed a file the test's records touch (the selection
     index, when given) and whose PR's manifest did not run it ->
-    ``not run by its PR``;
+    ``not run by its PR``. A PR whose manifest commit does not hold the test's
+    file could not have run it and is not named;
   - none of those: no commit of the range touched it. The installed versions
     of the green and red logs are compared, and every difference is named
     (``dependency``); none either is said plainly.
@@ -47,10 +48,36 @@ status is ``passed``. The step logs are fetched with ``ci-debug logs``, at the
 red commit and, for the comparison of installed versions, at the green one.
 Each named commit's pull request is asked of ``ci-debug pr-of``. Nothing here
 talks to the network itself: ``--ci-debug`` names the script that does.
+
+THE LEDGER (``--ledger <workflow>``, WI-taguj; plan step B5). One row per
+scheduled run: the PR manifests of its range (the commits after the previous
+run's commit up to its own), what each manifest left out (test files not
+listed, tests deselected by statement), and what the run found that a PR's
+manifest had not run: a failed test the arms above call ``not run by its PR``,
+or an uncovered line traced to a commit of the range. The share of runs that
+found one is the error rate of the selection, the number that says whether
+the stored-graph and by-statement selectors are safe to keep. A green run
+found nothing; a red run is traced over its own range, not back to the last
+green one, so a failure carried over from an earlier red run is not charged to
+the PRs after it. ABSENT IS NOT EMPTY: a run whose answer cannot be read is
+``unknown`` and says why (no verdict published, the failed steps' logs not
+read without ``--ci-debug``, a range this clone cannot read), and is left out
+of the error rate's count, never counted as clean. The runs are the published
+verdicts; with ``--pipelines`` (a file written by ``ci-debug pipelines``) a
+scheduled pipeline of the workflow that published no verdict is a row too, and
+without it the header says such runs are not listed. Rows are in pipeline
+order. A test file is one pytest collects by the ``python_files`` patterns of
+the root ``pyproject.toml`` at the manifest's commit (pytest's own default when
+it sets none). A PR with several manifest commits is shown by its last, the one
+its CI ran, when ``--ci-debug`` names the PRs; without it each manifest commit
+is a row and the range says the PRs are not named.
+Through ``ci-debug``: ``git fetch origin badges`` first, then
+``ci-debug trace --ledger full-suite [--pipelines FILE] [--json]``.
 """
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import re
 import sqlite3
@@ -186,17 +213,30 @@ class History:
 
     def manifest_ran(self, commit: Commit, test: str) -> Optional[bool]:
         """Whether the PR of ``commit`` ran ``test``: its manifest is the
-        first manifest commit at or after it. None: no manifest after it."""
+        first manifest commit at or after it. None: no manifest after it, or
+        the test's file did not exist at that manifest's commit (a PR merged
+        before the test was added could not have run it; pipeline 6582)."""
         at = self._order[commit.sha]
         manifest = next((c for c in self._manifest_commits if self._order[c.sha] >= at), None)
         if manifest is None:
             return None
-        text = self._git("show", f"{manifest.sha}:{MANIFEST}")
-        files, _, selected = text.partition("# === SELECTED_TESTS ===")
-        deselected = {line[3:].strip() for line in files.splitlines() if line.startswith("#- ")}
-        listed = {line.strip() for line in selected.splitlines()
-                  if line.strip() and not line.startswith("#")}
+        try:
+            self._git("cat-file", "-e", f"{manifest.sha}:{test.split('::')[0]}")
+        except subprocess.CalledProcessError:
+            return None
+        _, listed, deselected = read_manifest(self._git("show", f"{manifest.sha}:{MANIFEST}"))
         return test.split("::")[0] in listed and test not in deselected
+
+
+def read_manifest(text: str) -> tuple[str, set[str], set[str]]:
+    """``(mode, listed test files, deselected test ids)`` of a manifest."""
+    head, _, selected = text.partition("# === SELECTED_TESTS ===")
+    mode = next((line.split(":", 1)[1].strip() for line in head.splitlines()
+                 if line.startswith("# Mode:")), "")
+    deselected = {line[3:].strip() for line in head.splitlines() if line.startswith("#- ")}
+    listed = {line.strip() for line in selected.splitlines()
+              if line.strip() and not line.startswith("#")}
+    return mode, listed, deselected
 
 
 def touched_files(index: Optional[Path], test: str, root: Path) -> list[str]:
@@ -362,8 +402,8 @@ def render(findings: list[Finding], green: str, red: str, commits: int,
     return "\n".join(out)
 
 
-def badges_range(root: Path, workflow: str) -> tuple[dict, str]:
-    """``(the newest verdict, the commit of the newest passed one before it)``."""
+def published(root: Path, workflow: str) -> list[dict]:
+    """Every verdict of ``workflow`` published on ``origin/badges``, newest first."""
     path = f"scheduled/{workflow}.json"
 
     def git(*argv: str) -> str:
@@ -376,7 +416,12 @@ def badges_range(root: Path, workflow: str) -> tuple[dict, str]:
         versions = []
     if not versions:
         raise SystemExit(f"no published verdict for {workflow} on origin/badges")
-    verdicts = [json.loads(git("show", f"{v}:{path}")) for v in versions]
+    return [json.loads(git("show", f"{v}:{path}")) for v in versions]
+
+
+def badges_range(root: Path, workflow: str) -> tuple[dict, str]:
+    """``(the newest verdict, the commit of the newest passed one before it)``."""
+    verdicts = published(root, workflow)
     red = verdicts[0]
     green = next((v["commit"] for v in verdicts[1:] if v.get("status") == "passed"), None)
     if red.get("status") == "passed":
@@ -409,6 +454,209 @@ def _pairs(values: list[str]) -> dict[str, str]:
     return pairs
 
 
+@dataclass(frozen=True)
+class PrManifest:
+    """One PR of a run's range, as its manifest commit says."""
+
+    sha: str
+    pr: str
+    mode: str
+    listed: int
+    deselected: int
+    left_out: int
+    total: int
+    manifests: int = 1
+
+
+@dataclass
+class LedgerRow:
+    """One scheduled run. ``findings`` is None when the answer is not known
+    (``unknown`` says why); ``[]`` when the run found nothing."""
+
+    pipeline: Optional[int]
+    commit: str
+    finished: str
+    status: str
+    failed_steps: list[str] = field(default_factory=list)
+    verdict: dict = field(default_factory=dict, repr=False)
+    previous: Optional[str] = None
+    commits: Optional[int] = None
+    prs: list[PrManifest] = field(default_factory=list)
+    findings: Optional[list[Finding]] = None
+    unknown: str = ""
+
+    @property
+    def missed(self) -> Optional[bool]:
+        """Whether the run found what a PR's manifest left out; None: not known."""
+        if self.findings is None:
+            return None
+        return any(_is_miss(f) for f in self.findings)
+
+
+def _is_miss(finding: Finding) -> bool:
+    return finding.arm == "not run by its PR" or (finding.arm == "coverage"
+                                                  and bool(finding.commits))
+
+
+#: pytest's own ``python_files`` when the configuration sets none.
+_PYTEST_FILES = ("test_*.py", "*_test.py")
+_PYTHON_FILES = re.compile(r"^python_files\s*=\s*\[([^\]]*)\]", re.M)
+
+
+def _test_files(root: Path, sha: str) -> set[str]:
+    """Files pytest would collect at ``sha``, by the root configuration's patterns."""
+    def git(*argv: str) -> str:
+        return subprocess.run(["git", "-C", str(root), *argv], capture_output=True,
+                              text=True).stdout
+
+    found = _PYTHON_FILES.search(git("show", f"{sha}:pyproject.toml"))
+    patterns = tuple(re.findall(r"[\"']([^\"']+)[\"']", found.group(1))) if found else _PYTEST_FILES
+    return {p for p in git("ls-tree", "-r", "--name-only", sha).splitlines()
+            if any(fnmatch.fnmatchcase(p.rsplit("/", 1)[-1], pat) for pat in patterns)}
+
+
+def _runs(root: Path, workflow: str, pipelines: Optional[Path]) -> list[LedgerRow]:
+    rows: list[LedgerRow] = []
+    for verdict in reversed(published(root, workflow)):
+        passed = verdict.get("status") == "passed"
+        rows.append(LedgerRow(
+            verdict.get("pipeline"), verdict["commit"], verdict.get("finished_at", ""),
+            "passed" if passed else "failed",
+            [s["name"] for s in verdict.get("steps", []) if s.get("result") != "passed"],
+            verdict))
+    if pipelines is not None:
+        seen = {r.pipeline for r in rows}
+        for line in pipelines.read_text().splitlines():
+            record = json.loads(line) if line.strip() else {}
+            if (record.get("event") != "cron" or record.get("cron") != workflow
+                    or record.get("number") in seen):
+                continue
+            state = record.get("status")
+            rows.append(LedgerRow(record["number"], record["commit"], "", "no verdict",
+                                  unknown="no verdict was published"
+                                          + (f" (pipeline {state})" if state else "")))
+    # Stable: a verdict that names no pipeline keeps its publication order, first.
+    return sorted(rows, key=lambda r: r.pipeline or 0)
+
+
+def ledger(root: Path, workflow: str, ci_debug: Optional[str] = None,
+           pipelines: Optional[Path] = None, index: Optional[Path] = None) -> list[LedgerRow]:
+    """One row per scheduled run of ``workflow`` (see THE LEDGER above)."""
+    rows = _runs(root, workflow, pipelines)
+    universe: dict[str, set[str]] = {}
+    for previous, row in zip([None, *rows], rows, strict=False):
+        if previous is not None:
+            row.previous = previous.commit
+            try:
+                history = History(root, previous.commit, row.commit)
+            except subprocess.CalledProcessError:
+                row.unknown = row.unknown or (
+                    f"the range is not readable: {previous.commit[:10]} or "
+                    f"{row.commit[:10]} is not in this clone")
+            else:
+                row.commits = len(history.commits)
+                by_pr: dict[str, PrManifest] = {}
+                for commit in history._manifest_commits:
+                    mode, listed, deselected = read_manifest(
+                        history._git("show", f"{commit.sha}:{MANIFEST}"))
+                    tests = universe.setdefault(commit.sha, _test_files(root, commit.sha))
+                    pr = pr_of(ci_debug, commit.sha).strip()
+                    # The PR's later manifest replaces its earlier one: its CI ran the last.
+                    earlier = by_pr.pop(pr, None) if pr else None
+                    by_pr[pr or commit.sha] = PrManifest(
+                        commit.sha, pr, mode, len(listed), len(deselected),
+                        len(tests - listed), len(tests), 1 + (earlier.manifests if earlier else 0))
+                row.prs = list(by_pr.values())
+        if row.status == "passed":
+            row.findings = []
+        elif row.status == "failed":
+            if row.commits is None:
+                row.unknown = row.unknown or "no earlier run in the record: the range is not known"
+            elif row.failed_steps and ci_debug is None:
+                row.unknown = "the failed steps' logs were not read (no --ci-debug)"
+            else:
+                logs = {s: fetch_log(ci_debug, s, row.commit)
+                        for s in row.failed_steps} if ci_debug else {}
+                uncovered = {path: [int(n) for n in lines] for path, lines in
+                             ((row.verdict.get("coverage") or {}).get("uncovered") or {}).items()}
+                row.findings = trace(root, row.previous or "", row.commit, logs, {},
+                                     uncovered, index)
+    return rows
+
+
+def _shas(finding: Finding) -> str:
+    return ", ".join(c.sha[:10] for c, _ in finding.commits) or "no commit named"
+
+
+def render_ledger(rows: list[LedgerRow], workflow: str, pipelines: bool) -> str:
+    with_verdict = sum(r.status != "no verdict" for r in rows)
+    out = [f"{workflow} ledger: {len(rows)} run(s), {with_verdict} with a published verdict "
+           "(origin/badges as fetched)" + ("" if pipelines else
+           "; runs without a published verdict are not listed: pass --pipelines "
+           "(a file from `ci-debug pipelines`)")]
+    for row in rows:
+        state = {"passed": "passed", "no verdict": "no verdict published"}.get(
+            row.status, "failed" + (f" ({', '.join(row.failed_steps)})" if row.failed_steps
+                                    else ""))
+        when = f" ({row.finished})" if row.finished else ""
+        out.append(f"\nrun {row.pipeline if row.pipeline is not None else '?'} at "
+                   f"{row.commit[:10]}{when}: {state}")
+        if row.previous is None:
+            out.append("  range: no earlier run in the record")
+        elif row.commits is None:
+            out.append(f"  range: {row.unknown}")
+        else:
+            named = all(pr.pr for pr in row.prs)
+            out.append(f"  range {row.previous[:10]}..{row.commit[:10]}: {row.commits} "
+                       f"commit(s), {len(row.prs)} " + ("PR manifest(s)" if named else
+                       "manifest commit(s); the PRs are not named (no --ci-debug)"))
+            out.extend(f"    {pr.pr + ' ' if pr.pr else ''}{pr.sha[:10]} "
+                       f"{pr.mode or 'mode not stated'}: {pr.listed} test file(s) listed, "
+                       f"{pr.deselected} test(s) deselected, {pr.left_out} of {pr.total} "
+                       "test file(s) left out"
+                       + (f" (the last of its {pr.manifests} manifest commits)"
+                          if pr.manifests > 1 else "") for pr in row.prs)
+        if row.findings is None:
+            out.append(f"  found: unknown: {row.unknown}")
+            continue
+        if not row.findings:
+            out.append("  found: nothing: the run passed" if row.status == "passed" else
+                       "  found: no failed test, flagged callable or uncovered line in what "
+                       "was read")
+        tests = [f for f in row.findings if f.arm == "not run by its PR"]
+        gaps = [f for f in row.findings if f.arm == "coverage" and f.commits]
+        rest = [f for f in row.findings if f not in tests and f not in gaps]
+        if tests:
+            out.append(f"  found: {len(tests)} failure(s) a PR's manifest did not run")
+            out.extend(f"    {f.what.split('; first:')[0]} -> {_shas(f)}" for f in tests)
+        if gaps:
+            out.append(f"  found: {len(gaps)} uncovered line(s) traced to a commit of the range")
+            out.extend(f"    {f.what} -> {_shas(f)}" for f in gaps)
+        if rest:
+            out.append(f"  also found, not a selection miss: {len(rest)}")
+            out.extend(f"    [{f.arm}] {f.what.split('; first:')[0]}" for f in rest)
+        if (row.verdict.get("coverage") or {}).get("uncovered_truncated"):
+            out.append("  the verdict lists only part of the uncovered lines (truncated)")
+    known = [r for r in rows if r.previous is not None and r.commits is not None
+             and r.findings is not None]
+    out.append(f"\nselection misses: {sum(bool(r.missed) for r in known)} of {len(known)} "
+               "run(s) with a verdict and a known range found a failure a PR's manifest did "
+               "not run or an uncovered line traced into the range; "
+               f"{sum(r.findings is None for r in rows)} unknown (said above)")
+    return "\n".join(out)
+
+
+def _ledger_json(rows: list[LedgerRow]) -> list[dict]:
+    return [{"pipeline": r.pipeline, "commit": r.commit, "finished": r.finished,
+             "status": r.status, "failed_steps": r.failed_steps, "previous": r.previous,
+             "commits": r.commits, "prs": [vars(p) for p in r.prs], "unknown": r.unknown,
+             "missed": r.missed,
+             "findings": None if r.findings is None else [
+                 {"step": f.step, "what": f.what, "arm": f.arm, "note": f.note,
+                  "commits": [c.sha for c, _ in f.commits]} for f in r.findings]}
+            for r in rows]
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--repo-root", default=".")
@@ -426,9 +674,21 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--verdict", default=None,
                         help="the red run's published verdict (JSON), for its coverage gap")
     parser.add_argument("--index", default=None, help="the selection index (sqlite)")
+    parser.add_argument("--ledger", metavar="WORKFLOW",
+                        help="one row per scheduled run of WORKFLOW (see THE LEDGER)")
+    parser.add_argument("--pipelines", default=None,
+                        help="with --ledger: a `ci-debug pipelines` file, so a run that "
+                             "published no verdict is a row too")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     root = Path(args.repo_root).resolve()
+    if args.ledger:
+        rows = ledger(root, args.ledger, args.ci_debug,
+                      Path(args.pipelines) if args.pipelines else None,
+                      Path(args.index) if args.index else None)
+        print(json.dumps(_ledger_json(rows), indent=1) if args.json
+              else render_ledger(rows, args.ledger, args.pipelines is not None))
+        return 0
     verdict: dict = {}
     logs, green_logs = _pairs(args.log), _pairs(args.green_log)
     if args.from_badges:
