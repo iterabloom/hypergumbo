@@ -191,6 +191,7 @@ from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
+    normalize_with_type_parameters,
     AnalysisResult,
     SymbolsAt,
     TreeSitterAnalyzer,
@@ -921,6 +922,7 @@ def normalize_kotlin_signature(
     """
     from hypergumbo_core.analyze.base import (
         find_matching_paren,
+        normalize_generic_params,
         normalize_signature_names_first,
         split_params_top_level,
         strip_fqn_prefix,
@@ -945,7 +947,10 @@ def normalize_kotlin_signature(
         )
         norm = f"({','.join(types)}){(tail or '()')[2:]}"
     if receiver:
-        norm = f"{strip_fqn_prefix(receiver.strip(), keep_type_path=True)}.{norm}"
+        written = strip_fqn_prefix(receiver.strip(), keep_type_path=True)
+        if type_params:
+            written = normalize_generic_params(written, type_params)
+        norm = f"{written}.{norm}"
     return norm
 
 
@@ -1377,8 +1382,8 @@ def _extract_symbols_from_file(
                 # Typed stable_id (spec §6 typed tier). An extension
                 # function's receiver is hashed in front of its parameters.
                 receiver_node = _kt_receiver_type_node(node)
-                norm_sig = normalize_kotlin_signature(
-                    signature,
+                norm_sig = normalize_with_type_parameters(
+                    normalize_kotlin_signature, signature, node, source,
                     receiver=(
                         node_text(receiver_node, source)
                         if receiver_node is not None else None

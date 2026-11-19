@@ -160,6 +160,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, NamedTuple,
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
+    normalize_with_type_parameters,
     constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
@@ -1306,7 +1307,8 @@ def _extract_symbols_from_file(
                 modifiers = _extract_modifiers_swift(node)
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_swift_signature(signature)
+                norm_sig = normalize_with_type_parameters(
+                    normalize_swift_signature, signature, node, source)
                 # INV-fabih: the full type/function chain, not the nearest
                 # owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
@@ -1791,7 +1793,9 @@ def _extract_symbols_from_file(
                 # The producer formula over the parameter types, so two
                 # subscript overloads stay apart (WI-tusad).
                 stable_id=make_typed_stable_id(
-                    "subscript", normalize_swift_signature(signature) or signature or "",
+                    "subscript",
+                    normalize_with_type_parameters(normalize_swift_signature, signature, node, source)
+                    or signature or "",
                     visibility_from_modifiers(modifiers),
                     name=sub_label,
                     qualified_name=_swift_chain(node, source, sub_label),
@@ -1876,7 +1880,8 @@ def _swift_lifecycle_symbol(
         # ``struct Inner`` local to different functions, and by a local type
         # and a top-level one of its name.
         stable_id=make_typed_stable_id(
-            kind, normalize_swift_signature(signature) or "",
+            kind,
+            normalize_with_type_parameters(normalize_swift_signature, signature, node, source) or "",
             visibility_from_modifiers(modifiers),
             name=member, qualified_name=_swift_chain(node, source, member),
             file_stable_id=file_stable_id,

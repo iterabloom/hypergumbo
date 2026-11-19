@@ -137,6 +137,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Iterator, NamedTuple, Optiona
 
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    normalize_with_type_parameters,
     find_matching_paren,
     AnalysisResult,
     FileAnalysis,
@@ -1285,7 +1286,8 @@ def _extract_symbols_from_file(
                 meta = {"decorators": annotations} if annotations else None
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_scala_signature(signature)
+                norm_sig = normalize_with_type_parameters(
+                    normalize_scala_signature, signature, node, source)
                 # INV-fabih: the FULL owner chain, not the nearest owner
                 # (``full_name``), which two nested same-name owners share.
                 stable_id = make_typed_stable_id(
@@ -1349,7 +1351,8 @@ def _extract_symbols_from_file(
                 meta = {"decorators": annotations} if annotations else None
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_scala_signature(signature)
+                norm_sig = normalize_with_type_parameters(
+                    normalize_scala_signature, signature, node, source)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=func_name,

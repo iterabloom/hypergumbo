@@ -111,6 +111,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Spa
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    normalize_with_type_parameters,
     find_matching_paren,
     record_partial_parse,
     AnalysisResult,
@@ -1313,7 +1314,8 @@ def _extract_symbols_from_file(
                 modifiers = _extract_modifiers(node)
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_csharp_signature(signature)
+                norm_sig = normalize_with_type_parameters(
+                    normalize_csharp_signature, signature, node, source)
                 # INV-fabih: the full namespace/type chain, not the nearest
                 # owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
@@ -1369,7 +1371,8 @@ def _extract_symbols_from_file(
                 modifiers = _extract_modifiers(node)
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_csharp_signature(signature)
+                norm_sig = normalize_with_type_parameters(
+                    normalize_csharp_signature, signature, node, source)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
                     name=name, qualified_name=_csharp_member_chain(node, source, name),

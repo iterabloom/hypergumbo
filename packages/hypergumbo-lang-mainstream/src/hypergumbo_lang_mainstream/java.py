@@ -200,6 +200,7 @@ from hypergumbo_core.ir import (
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
+    normalize_with_type_parameters,
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
@@ -2123,7 +2124,8 @@ def _extract_symbols(
                             meta["inferred_return_type"] = inferred
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_java_signature(signature)
+                norm_sig = normalize_with_type_parameters(
+                    normalize_java_signature, signature, node, source)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
@@ -2183,7 +2185,8 @@ def _extract_symbols(
                 modifiers = _extract_modifiers(node, source)
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_java_signature(signature)
+                norm_sig = normalize_with_type_parameters(
+                    normalize_java_signature, signature, node, source)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,

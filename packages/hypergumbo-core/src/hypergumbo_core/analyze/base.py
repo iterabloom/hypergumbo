@@ -2776,20 +2776,17 @@ def strip_fqn_prefix(type_name: str, *, keep_type_path: bool = False) -> str:
     return cut
 
 
-# Regex to match type parameter names in generic brackets.
-# Matches single uppercase letter or conventional names like T1, TKey, etc.
-_TYPE_PARAM_RE = _re.compile(r"\b([A-Z][A-Za-z0-9]*)\b")
-
-
 def normalize_generic_params(
     text: str,
     type_params: list[str],
 ) -> str:
     """Replace declared type parameter names with positional markers.
 
-    ``T, U`` → ``$0, $1`` within the given text.  Only replaces
-    names that exactly match a declared type parameter — concrete
-    type names like ``String`` or ``Integer`` are untouched.
+    ``T, U`` -> ``$0, $1`` within the given text. Only a whole name that
+    exactly matches a declared type parameter is replaced, whatever its case
+    (Scala's ``[a]``, Kotlin's ``<reified T>``'s ``T``), and not one written
+    after a ``.`` (``Outer.T`` names a member type, not the parameter);
+    concrete type names like ``String`` or ``Integer`` are untouched.
 
     Args:
         text: The signature text to transform.
@@ -2801,13 +2798,89 @@ def normalize_generic_params(
     """
     if not type_params:
         return text
-    mapping = {tp: f"${i}" for i, tp in enumerate(type_params)}
+    mapping: dict[str, str] = {}
+    for i, tp in enumerate(type_params):
+        mapping.setdefault(tp, f"${i}")
+    names = "|".join(_re.escape(n) for n in sorted(mapping, key=len, reverse=True))
+    pattern = _re.compile(rf"(?<![\w$.])({names})(?![\w$])")
+    return pattern.sub(lambda m: mapping[m.group(1)], text)
 
-    def _replace(m: _re.Match[str]) -> str:
-        name = m.group(1)
-        return mapping.get(name, name)
 
-    return _TYPE_PARAM_RE.sub(_replace, text)
+#: Node types of a declaration's own type-parameter clause (Java, Groovy,
+#: Kotlin, Scala and Swift ``type_parameters``; C# ``type_parameter_list``) and
+#: of its constraint clauses (Kotlin and Swift ``type_constraints``, C#
+#: ``type_parameter_constraints_clause``), in the grammars that spell them so.
+_TYPE_PARAMETER_CLAUSE_NODES = frozenset({"type_parameters", "type_parameter_list"})
+_TYPE_CONSTRAINT_CLAUSE_NODES = frozenset({"type_constraints", "type_parameter_constraints_clause"})
+_TYPE_PARAMETER_NAME_NODES = frozenset({"identifier", "type_identifier", "simple_identifier"})
+
+
+def _type_parameter_names(clause: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names a type-parameter clause declares, in order.
+
+    Each ``type_parameter`` child declares the first name among its own
+    children (an annotation, a variance or ``reified`` modifier, a Swift
+    ``each`` or a bound is a separate node; Swift's ``name`` field is the
+    BOUND, so it is not read). Scala's clause has no ``type_parameter``
+    nodes: its names are the children in its ``name`` field.
+    """
+    names: list[str] = []
+    for index, child in enumerate(clause.children):
+        if child.type == "type_parameter":
+            for grandchild in child.children:
+                if grandchild.type in _TYPE_PARAMETER_NAME_NODES:
+                    names.append(node_text(grandchild, source))
+                    break
+        elif clause.field_name_for_child(index) == "name":
+            names.append(node_text(child, source))
+    return names
+
+
+def declared_type_parameters(decl: "tree_sitter.Node", source: bytes) -> tuple[list[str], str]:
+    """A declaration's own type parameters and its clause, renamed by position.
+
+    Returns ``(names, clause)``: the names its type-parameter clause declares,
+    in order, and the text of that clause and of its constraint clauses
+    (Kotlin / Swift / C# ``where``), whitespace-collapsed, in source order,
+    each name written as its position (``<T extends Comparable<T>>`` ->
+    ``<$0 extends Comparable<$0>>``). ``([], "")`` when the declaration has
+    none. Only the declaration's own children are read: a class's or an
+    extension's clause is not the declaration's (WI-bubak).
+    """
+    names: list[str] = []
+    texts: list[str] = []
+    for child in decl.children:
+        if child.type in _TYPE_PARAMETER_CLAUSE_NODES:
+            names.extend(_type_parameter_names(child, source))
+            texts.append(" ".join(node_text(child, source).split()))
+        elif child.type in _TYPE_CONSTRAINT_CLAUSE_NODES:
+            texts.append(" ".join(node_text(child, source).split()))
+    return names, normalize_generic_params(" ".join(texts), names)
+
+
+def normalize_with_type_parameters(
+    normalize: Callable[..., Optional[str]],
+    signature: Optional[str],
+    decl: "tree_sitter.Node",
+    source: bytes,
+    **kwargs: Any,
+) -> Optional[str]:
+    """Normalize ``signature`` with ``decl``'s own type-parameter clause hashed.
+
+    The language normalizer gets the declared names as ``type_params`` (so a
+    type parameter is written as its position in the signature, ``$0``), and
+    the positional clause of :func:`declared_type_parameters` is written in
+    front of its result: ``<T extends Number> void f(T x)`` hashes
+    ``<$0 extends Number>($0)``. Two overloads that differ only in a bound, a
+    ``where`` constraint or the number of type parameters hash apart, and
+    renaming a type parameter moves no id. A declaration without a clause
+    gets exactly the normalizer's result, so its id does not move.
+    """
+    names, clause = declared_type_parameters(decl, source)
+    normalized = normalize(signature, names or None, **kwargs)
+    if normalized is None or not clause:
+        return normalized
+    return clause + normalized
 
 
 #: Characters that open a string literal in a signature text, by default.

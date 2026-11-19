@@ -112,4 +112,5 @@ def test_type_params_still_rename_by_position() -> None:
     assert normalize_signature_go("(x T, c chan T) T", ["T"]) == "($0,chan $0)$0"
     assert normalize_signature_go("(xs ...T) (T, error)", ["T"]) == "(...$0)($0,error)"
     assert normalize_signature_go("() (c chan T, err error)", ["T"]) == "()(c chan $0,err error)"
-    assert normalize_signature_go("() (fn func(a.T), err error)", ["T"]) == "()(fn func(a.$0),err error)"
+    # ``a.T`` is package a's type T, not the type parameter: not renamed.
+    assert normalize_signature_go("() (fn func(a.T), err error)", ["T"]) == "()(fn func(a.T),err error)"
