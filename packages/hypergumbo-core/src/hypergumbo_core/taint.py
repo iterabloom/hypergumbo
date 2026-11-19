@@ -97,6 +97,13 @@ source value that reaches a construct taint does not follow, and
 verify-claims withholds every clean verdict on that label, since a missing
 finding there is ignorance, not an all-clear.
 
+Both of those readers take ``True`` alone as a positive answer, and the walk
+follows names, not objects. Where the walk relied on a definition another name
+may reach (ADR-0017 §7b) and did not answer ``True``, each reads that as "not
+known" rather than "no" (WI-zaboh): the lift is made tentatively and every
+flow descending from it is withheld, and the escape pass records the
+constructs that use the alias group (:func:`_alias_group`).
+
 Which Pairs Count
 -----------------
 Upstream of the §3a walk, both propagators share gates that decide what counts
@@ -4174,10 +4181,64 @@ ReachesReturn = Callable[
     Optional[tuple[str, int]],
 ]
 
+#: ``(function, source call lines, barrier lines, taint label, received) ->
+#: sites``: every exposed definition (:class:`WithheldSite`) the §3a walk visits
+#: from those lines when it runs to exhaustion, i.e. where the value was written
+#: into memory a name the walk does not follow may reach (WI-zaboh).
+ExposedOnRoute = Callable[
+    [str, list[int], list[int], str, Received],
+    "tuple[WithheldSite, ...]",
+]
+
+
+class TentativeLift(NamedTuple):
+    """Why a lifted source entry is TENTATIVE (WI-zaboh).
+
+    ``function`` returns the value only if a name the walk does not follow
+    holds it: the walk did not reach a return, but it relied on ``site``, a
+    definition another name may reach (ADR-0017 §7b). Flows that descend from
+    such an entry are withheld, never reported (:func:`propagate_taint_ddg`).
+    """
+
+    function: str
+    site: "WithheldSite"
+
+
 #: One source call site the propagators seed at, with the functions its value
 #: came back through on the way and the result positions it arrived in
 #: (INV-komoj). ``()`` / ``None`` for a direct read.
 SourceEntry = tuple[str, str, "TaintSource", tuple[str, ...], Received]
+
+
+def _alias_group(
+    names: AbstractSet[str],
+    statements: Iterable[tuple[int, tuple[str, ...], tuple[str, ...]]],
+    calls_on: Callable[[int], bool],
+) -> frozenset[str]:
+    """*names* and every name a call-free statement connects them to (WI-zaboh).
+
+    The walk follows names; the names that may hold the SAME object as an
+    exposed variable are the ones it was copied from or into without a call
+    in between: ``t = s``, ``t := obj.items``, ``p := &buf``, ``u = t``.
+    Connected components over every call-free statement of the function,
+    flow-insensitively, so ``t = s`` anywhere joins ``t`` and ``s``. A call
+    may return its argument (``t := f(s)``), and that is not followed: the
+    group is the syntax's own evidence of a shared object, not a proof that
+    no other name has one.
+    """
+    group = set(names)
+    edges: list[set[str]] = [
+        set(defines) | set(uses) for line, defines, uses in statements
+        if defines and uses and not calls_on(line)
+    ]
+    grown = True
+    while grown:
+        grown = False
+        for linked in edges:
+            if linked & group and not linked <= group:
+                group |= linked
+                grown = True
+    return frozenset(group)
 
 
 def _lift_returned_sources(
@@ -4188,6 +4249,9 @@ def _lift_returned_sources(
     io_names: AbstractSet[str],
     sanitizer_lines: Mapping[tuple[str, str], Sequence[int]],
     reaches_return: Optional[ReachesReturn],
+    exposed_on_route: Optional[ExposedOnRoute] = None,
+    tentative: Optional[dict[int, TentativeLift]] = None,
+    alias_names: Optional[Callable[[str, AbstractSet[str]], AbstractSet[str]]] = None,
 ) -> list[SourceEntry]:
     """Lift a source a function RETURNS into a source call site in its callers.
 
@@ -4236,6 +4300,17 @@ def _lift_returned_sources(
     direction left open, and it is left open deliberately: lifting on
     ignorance would seed every caller of every function a source value merely
     passed through.
+
+    EXCEPT THROUGH AN ALIAS (WI-zaboh). A walk that reached no return but
+    relied on an exposed definition (``exposed_on_route``: the value was
+    written into memory another name may reach, ``t = s; t[0] = secret;
+    return s``) lifts TENTATIVELY, only through a return that names a variable
+    of the exposed one's alias group (``alias_names``), at those positions.
+    The entry's index goes into ``tentative``, and a lift from it is tentative
+    too; :func:`propagate_taint_ddg` withholds every flow that descends from
+    one. Measured on the WI-buzup 39-repository corpus against reporting those
+    flows (one false verdict) and withholding every confirming verdict on the
+    label (87 claims exposed, against 45).
 
     WHAT IS NOT A RETURN OF THE VALUE, each the existing rule restated:
 
@@ -4293,10 +4368,20 @@ def _lift_returned_sources(
     for caller, callee, _src in source_callers:
         own_sources[caller].add(_qualified_callee(callee))
 
+    def aliased(
+        fn: str, lines: list[int], barriers: list[int], label: str,
+        received: Received,
+    ) -> tuple["WithheldSite", ...]:
+        """The exposed definitions on the value's route through *fn*."""
+        if exposed_on_route is None:
+            return ()
+        return exposed_on_route(fn, lines, barriers, label, received)
+
     def returns_value(
         fn: str, lines: list[int], label: str, received: Received, callee: str,
-    ) -> tuple[bool, Received]:
-        """Whether *fn* returns the value, and in which result positions."""
+    ) -> tuple[bool, Received, Optional["WithheldSite"]]:
+        """Whether *fn* returns the value, in which result positions, and
+        the exposed definition a TENTATIVE answer rests on (else ``None``)."""
         barriers = sorted(set(sanitizer_lines.get((fn, label), ())))
         open_spans = [
             span for span in return_spans.get(fn, ())
@@ -4307,16 +4392,16 @@ def _lift_returned_sources(
             )
         ]
         if not open_spans:
-            return False, None
+            return False, None, None
         direct = [span for span in open_spans
                   if any(span[0] <= line <= span[1] for line in lines)]
         if direct:
             arities = {len(span[2]) for span in direct}
             if arities == {1}:
                 # A tail call returns the callee's results as they are.
-                return True, received
+                return True, received, None
             if len(arities) != 1:
-                return True, None
+                return True, None, None
             # WI-kikar: the call itself sits in a result list (``return
             # os.Getenv("K"), nil``); its position is the one that names it.
             short = member_short_name(_extract_callee_name(callee))
@@ -4325,50 +4410,96 @@ def _lift_returned_sources(
                 for i, names in enumerate(_span_names(span))
                 if short in names
             )
-            return True, ((min(arities), positions) if positions else None)
+            return True, ((min(arities), positions) if positions else None), None
         if reaches_return is None:
-            return False, None
+            return False, None, None
         hit = reaches_return(
             fn, lines, sorted({span[0] for span in open_spans}), barriers,
             label, received,
         )
         if hit is None:
-            return False, None
+            # WI-zaboh: the walk follows names, not objects. When it relied on
+            # a definition another name may reach (``t = s; t[0] = secret;
+            # return s``), not reaching a return is not evidence the value is
+            # not returned. The lift is TENTATIVE, and only into a return that
+            # names a variable of the exposed one's alias group
+            # (:func:`_alias_group`): ``return err`` beside ``m[k] = secret``
+            # shares no name with ``m``.
+            sites = aliased(fn, lines, barriers, label, received)
+            names = {site.variable for site in sites}
+            if alias_names is not None and names:
+                names = set(alias_names(fn, names))
+            held_by = [
+                (span, frozenset(
+                    i for i, held in enumerate(span[2]) if held & names
+                ))
+                for span in open_spans
+            ]
+            carrying = [(span, at) for span, at in held_by if at]
+            if not carrying:
+                return False, None, None
+            arities = {len(span[2]) for span, _at in carrying}
+            if len(arities) != 1 or min(arities) < 2:
+                return True, None, sites[0]
+            positions = frozenset(i for _span, at in carrying for i in at)
+            return True, (min(arities), positions), sites[0]
         var, line = hit
         reached = [span for span in open_spans if span[0] == line]
         arities = {len(span[2]) for span in reached}
         if len(arities) != 1 or min(arities) < 2:
-            return True, None
+            return True, None, None
+        # The variable that decided the walk, and every name the value was
+        # written INTO on its way (WI-zaboh: ``a.key = k; return a, k`` returns
+        # it at ``a``'s position as well as ``k``'s, and a caller that keeps
+        # only ``a`` receives it). Not every heir: ``v, err := f(secret)``
+        # makes ``err`` an heir too, and seeding it climbs the error chain
+        # WI-kikar keeps the lift off.
+        names = {var} | {
+            site.variable for site in aliased(fn, lines, barriers, label, received)
+        }
         positions = frozenset(
-            i for span in reached for i, names in enumerate(span[2])
-            if var in names
+            i for span in reached for i, held in enumerate(span[2])
+            if held & names
         )
-        return True, ((min(arities), positions) if positions else None)
+        return True, ((min(arities), positions) if positions else None), None
 
-    seen: set[tuple[str, str, int]] = set()
-    queue: deque[SourceEntry] = deque(
-        entry for entry in entries
+    tentative_of: dict[int, TentativeLift] = (
+        tentative if tentative is not None else {}
+    )
+    # A definite and a tentative lift of one (caller, callee, source) are
+    # different facts, so each is made once: a definite route found after a
+    # tentative one still lifts.
+    seen: set[tuple[str, str, int, bool]] = set()
+    queue: deque[int] = deque(
+        index for index, entry in enumerate(entries)
         if _seeds_at_caller(entry[2]) and entry[2].return_tainted
     )
     while queue:
-        fn, callee, src, chain, received = queue.popleft()
+        index = queue.popleft()
+        fn, callee, src, chain, received = entries[index]
         lines = sorted(set(call_lines.get((fn, callee), ())))
         if not lines:
             continue
-        returned, positions = returns_value(
+        returned, positions, exposed_site = returns_value(
             fn, lines, src.taint_label, received, callee,
         )
         if not returned:
             continue
+        # A lift from a tentative entry is tentative, on the first helper's
+        # word: that is where the value's route left what the walk follows.
+        why = tentative_of.get(index) or (
+            TentativeLift(fn, exposed_site) if exposed_site is not None else None
+        )
         lifted_chain = tuple(sorted(set(chain) | {fn}))
         for caller in sorted(callers_of.get(fn, ())):
-            visit = (caller, fn, id(src))
+            visit = (caller, fn, id(src), why is not None)
             if visit in seen:
                 continue
             seen.add(visit)
-            entry = (caller, fn, src, lifted_chain, positions)
-            entries.append(entry)
-            queue.append(entry)
+            entries.append((caller, fn, src, lifted_chain, positions))
+            if why is not None:
+                tentative_of[len(entries) - 1] = why
+            queue.append(len(entries) - 1)
     return entries
 
 
@@ -4964,6 +5095,10 @@ class UnfollowedEscape(NamedTuple):
     source: str
     site_line: int
     construct: str
+    #: WI-zaboh: the variable whose exposed definition the walk relied on when
+    #: it did NOT see the value reach ``site_line`` -- another name for it may
+    #: (ADR-0017 §7b). Empty when the walk saw the value reach the construct.
+    alias: str = ""
 
 
 def find_unfollowed_escapes(
@@ -4979,6 +5114,7 @@ def find_unfollowed_escapes(
     include_community: bool = True,
     function_summaries: dict[str, "FunctionSummary"] | None = None,
     store_lines: Mapping[str, Sequence[int]] | None = None,
+    exposure: "Mapping[str, DefinitionExposure] | None" = None,
 ) -> list[UnfollowedEscape]:
     """Every source value the §3a walk sees reach a call site an analyzer
     stamped ``unfollowed_construct`` (INV-nohob).
@@ -4996,7 +5132,10 @@ def find_unfollowed_escapes(
 
     ONLY ``True`` COUNTS. A walk that escapes for an unrelated reason is a
     pre-existing gap with its own disclosure, and pooling it here would
-    withhold every verdict in a function with any stamped call. A construct
+    withhold every verdict in a function with any stamped call. The one
+    exception is an alias (WI-zaboh): a walk that relied on an exposed
+    definition (``exposure``) records an escape at each stamped site whose
+    statement uses a name of that variable's alias group, naming it. A construct
     called ON a source line (``strcpy(g, getenv("K"))``) is reached by
     construction -- the source defines no variable for the walk to seed.
 
@@ -5036,12 +5175,15 @@ def find_unfollowed_escapes(
             continue
         source_lines = sorted(set(ix.call_lines.get((caller, callee), [])))
         hit = next((line for line in sorted(sites) if line in source_lines), None)
+        relied_on: list[WithheldSite] = []
         if hit is None:
             reached: list[tuple[str, int]] = []
             if _ddg_taint_reaches(
                 caller, source_lines, sorted(sites), ix.ddg_uses,
                 ix.callee_names, ix.summaries,
                 defs_at=ix.defs_at, inherits=ix.inherits, reached=reached,
+                exposure=(exposure or {}).get(caller),
+                relied_on=relied_on,
             ) is True:
                 hit = reached[0][1]
         if hit is not None:
@@ -5049,6 +5191,31 @@ def find_unfollowed_escapes(
                 src.taint_label, caller, _qualify(src.module, src.name),
                 hit, sites[hit],
             ))
+        elif relied_on:
+            # WI-zaboh. The walk did not see the value reach a construct, but
+            # it relied on a definition another name may reach (``t = box;
+            # t[0] = getenv(..); set_pass(box[0], &g)``), and it does not
+            # follow that name. A construct whose statement uses a name of
+            # that variable's alias group (:func:`_alias_group`) may receive
+            # it: an escape, the same withheld clean verdict the label gets
+            # when the walk sees the value arrive.
+            rows = (stmt_defuse or {}).get(caller, ())
+            calls = {
+                line for (fn, line), called in ix.callee_names.items()
+                if fn == caller and called
+            }
+            group = _alias_group(
+                {site.variable for site in relied_on}, rows, calls.__contains__,
+            )
+            used_at: dict[int, set[str]] = defaultdict(set)
+            for line, _defines, uses in rows:
+                used_at[line].update(uses)
+            for line in sorted(sites):
+                if used_at[line] & group:
+                    escapes.append(UnfollowedEscape(
+                        src.taint_label, caller, _qualify(src.module, src.name),
+                        line, sites[line], alias=relied_on[0].variable,
+                    ))
     return escapes
 
 
@@ -5368,6 +5535,10 @@ class WithheldFlow(NamedTuple):
     source: str
     sink: str
     site: WithheldSite
+    #: WI-zaboh: the flow came back through ``function``'s return, which the
+    #: walk over ``function`` did not reach but relied on ``site`` for (a
+    #: tentative lift); ``False`` when the walk to the sink relied on it.
+    returned: bool = False
 
 
 def _ddg_taint_reaches(
@@ -5395,6 +5566,7 @@ def _ddg_taint_reaches(
     source_line_escapes: AbstractSet[int] | None = None,
     exposure: "DefinitionExposure | None" = None,
     withheld: list[WithheldSite] | None = None,
+    relied_on: list[WithheldSite] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -5561,6 +5733,13 @@ def _ddg_taint_reaches(
             is the sole reason the walk returned ``None`` instead of
             ``False`` -- which is what lets the §3a site report ``withheld``
             rather than ``escaped``.
+        relied_on: Optional out-param. Every exposed definition the walk
+            visited, in visit order, WHATEVER it returns (WI-zaboh): the return
+            lift and the unfollowed-escape pass ask "did the value pass through
+            memory another name may reach", and an unrelated escape beside the
+            exposure does not answer that. A ``True`` stops the walk, so on
+            ``True`` the list holds only what was visited before it; ask with
+            no targets for the whole route. Purely observational.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -5587,6 +5766,16 @@ def _ddg_taint_reaches(
         if seeds and seed_variables is not None:
             seeds = set(seeds) & set(seed_variables)
         if not seeds:
+            if relied_on is not None and exposure is not None:
+                # WI-zaboh. A store the DDG holds no edge for (``t[0] =
+                # getenv(..)`` with no later use of ``t``) is still a store:
+                # the value went into memory another name may reach.
+                relied_on.extend(
+                    WithheldSite(name, at, kind)
+                    for name, at in sorted(exposure.stores | exposure.self_references)
+                    if at == line and (seed_variables is None or name in seed_variables)
+                    and (kind := exposure.kind_for(name, at)) is not None
+                )
             escaped = True
             if escape_sites is not None:
                 escape_sites.append(
@@ -5613,6 +5802,8 @@ def _ddg_taint_reaches(
             # nowhere. Falls through like the L4 branch below: a ``True``
             # found later still wins.
             exposed.append(WithheldSite(var, line, kind))
+            if relied_on is not None:
+                relied_on.append(WithheldSite(var, line, kind))
             if escape_sites is not None:
                 escape_sites.append(EscapeSite(symbol_id, line, "unmodeled_alias"))
         if var in (unaccounted or frozenset()):
@@ -6454,10 +6645,42 @@ def propagate_taint_ddg(
             return reached[0]
         return None
 
+    def _walk_exposed_on_route(
+        fn: str, lines: list[int], barriers: list[int], _label: str,
+        received: Received,
+    ) -> tuple[WithheldSite, ...]:
+        # WI-zaboh: the same walk with NO targets runs to exhaustion, so
+        # ``relied_on`` holds every exposed definition on the value's route.
+        # Its answer is discarded; the INV-lupav gates are passed anyway, so
+        # the refutation-gate contract reads it like every other site.
+        if fn not in analyzed:  # pragma: no cover - the lift asked the walk first
+            return ()
+        relied_on: list[WithheldSite] = []
+        _ddg_taint_reaches(
+            fn, lines, [], ddg_uses, callee_names, summaries,
+            defs_at=defs_at, inherits=inherits,
+            barrier_lines=frozenset(barriers),
+            forfeit_refutation=fn in (forfeit_refutation or set()),
+            unaccounted=(unaccounted_names or {}).get(fn),
+            seed_variables=_received_seeds(
+                fn, lines, received, defines_at, positions_at,
+            ),
+            exposure=(exposure or {}).get(fn),
+            relied_on=relied_on,
+        )
+        return tuple(relied_on)
+
+    tentative_lifts: dict[int, TentativeLift] = {}
     source_entries = _lift_returned_sources(
         source_callers, call_edges, return_spans or {},
         io_names=_io_names, sanitizer_lines=sanitizer_lines,
         reaches_return=_walk_reaches_return,
+        exposed_on_route=_walk_exposed_on_route,
+        tentative=tentative_lifts,
+        alias_names=lambda fn, names: _alias_group(
+            names, (stmt_defuse or {}).get(fn, ()),
+            lambda line: bool(callee_names.get((fn, line))),
+        ),
     )
     # WI-sosov: a request handler's request PARAMETER, seeded without a call
     # edge. Each seed enters the loop as an entry whose "callee" is a pseudo
@@ -6476,10 +6699,12 @@ def propagate_taint_ddg(
 
     findings: list[TaintFlowFinding] = []
 
-    for caller_id, source_callee_id, taint_source, returned_by, received in (
-        source_entries
-    ):
+    for entry_index, (
+        caller_id, source_callee_id, taint_source, returned_by, received,
+    ) in enumerate(source_entries):
         taint_label = taint_source.taint_label
+        # WI-zaboh: a tentative lift's flows are withheld, never reported.
+        tentative_lift = tentative_lifts.get(entry_index)
         # Seed selection mirrors the structural pass — see propagate_taint_structural.
         seed_id = (
             source_callee_id
@@ -6903,6 +7128,23 @@ def propagate_taint_ddg(
                         walk_verdict=verdict,
                         path=path,
                         source_returned_by=returned_by,
+                    ))
+                continue
+            if tentative_lift is not None:
+                # WI-zaboh. The route rests on the helper returning a value
+                # only a name the walk does not follow may hold: not a finding,
+                # not nothing. Withheld, so a claim it would have violated
+                # reads inconclusive. A sanitized route violates nothing.
+                if not is_sanitized and withheld_flows is not None:
+                    withheld_flows.append(WithheldFlow(
+                        taint_label=taint_label,
+                        sink_zone=taint_sink.zone,
+                        source_symbol=seed_id,
+                        function=tentative_lift.function,
+                        source=_qualify(taint_source.module, taint_source.name),
+                        sink=_qualify(taint_sink.module, taint_sink.name),
+                        site=tentative_lift.site,
+                        returned=True,
                     ))
                 continue
 

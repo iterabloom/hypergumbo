@@ -146,16 +146,26 @@ def test_every_walk_site_is_still_found() -> None:
         if isinstance(n, ast.Call)
         and isinstance(n.func, ast.Name) and n.func.id == _WALK
     ]
-    assert len(sites) == 3, (
-        f"expected the §3a arm, the barrier arm and INV-komoj's return lift, "
-        f"found {len(sites)} call sites"
+    assert len(sites) == 4, (
+        f"expected the §3a arm, the barrier arm, INV-komoj's return lift and "
+        f"WI-zaboh's route walk, found {len(sites)} call sites"
     )
+    # WI-zaboh's route walk discards its answer (a bare expression statement)
+    # and reads only ``relied_on``; it passes the gates all the same.
+    discarded = {
+        id(n.value) for fn in ast.walk(tree)
+        if isinstance(fn, ast.FunctionDef) and fn.name == _PROPAGATOR
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+    }
+    assert len([s for s in sites if id(s) in discarded]) == 1
     # The return lift passes barrier_lines too, but collapses ``is True``:
     # only the barrier ARM both passes barriers and consumes the False.
     collapsed = _collapsed_calls(tree)
     gated = [
         s for s in sites
         if _BARRIER in {kw.arg for kw in s.keywords} and id(s) not in collapsed
+        and id(s) not in discarded
     ]
     assert len(gated) == 1, "exactly one consuming arm passes barrier_lines"
     assert len([s for s in sites if id(s) in collapsed]) == 1, (
