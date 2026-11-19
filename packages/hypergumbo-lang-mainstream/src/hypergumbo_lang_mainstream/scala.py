@@ -138,7 +138,6 @@ from typing import TYPE_CHECKING, ClassVar, Final, Iterator, NamedTuple, Optiona
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     find_matching_paren,
-    keeps_v15_text_when_lossless,
     AnalysisResult,
     FileAnalysis,
     SymbolsAt,
@@ -1117,7 +1116,6 @@ _SCALA_QUOTES = '"`'
 
 
 
-@keeps_v15_text_when_lossless
 def normalize_scala_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -1136,8 +1134,6 @@ def normalize_scala_signature(
     whole (``keep_type_path``: ``Foo.Bar`` and ``Baz.Bar``, ``a.type`` and
     ``b.type`` hash apart), and a function, tuple or annotated type is
     written whole (the shared FQN strip no longer cuts it at its last dot).
-    A signature whose v15 text lost nothing keeps it
-    (``keeps_v15_text_when_lossless``).
     """
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     split = _split_scala_clauses(signature) if signature else None

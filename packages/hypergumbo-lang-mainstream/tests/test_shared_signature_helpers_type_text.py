@@ -15,8 +15,8 @@ Each case below is analysed end to end. Declaration A and declaration B, each
 alone in a repository at the same relative path (so only the hashed text can
 tell them apart), get different ids; and B's id in a file that also declares A
 equals B's id alone, so neither takes the other's id when one is deleted.
-Signatures the v15 helpers lost nothing of keep their v15 text, checked
-directly on each language's normalizer.
+Signatures the v15 helpers handled whole keep their v15 text, checked directly
+on each language's normalizer.
 """
 from __future__ import annotations
 
@@ -118,8 +118,8 @@ def test_deleting_one_overload_leaves_the_other_id(
     assert both[1] == alone, case
 
 
-# (normalizer, signature, the text v15 hashed): signatures the v15 helpers lost
-# nothing of keep that text exactly.
+# (normalizer, signature, the text v15 hashed): signatures the v15 helpers
+# handled whole keep that text exactly.
 _UNCHANGED = [
     (normalize_java_signature, "(java.lang.String s, int x) java.util.List<String>",
      "(String,int)List<String>"),
@@ -130,8 +130,6 @@ _UNCHANGED = [
      "(String,(Int) -> Unit)Int"),
     (normalize_scala_signature, "(a: scala.Int)(implicit o: Ordering[A]): A",
      "(Int)(implicit Ordering[A])A"),
-    (normalize_swift_signature, "(a: Foundation.Date, b: ((Int) -> Int, (Int) -> Int)) -> Int",
-     "(Date,((Int) -> Int,(Int) -> Int))Int"),
     (normalize_csharp_signature, "(ref System.Int32 x, (int, string) t) System.String",
      "(ref Int32,(int, string))String"),
     (normalize_rust_signature, "(&self, x: &'a str, y: Vec<T>) -> bool", "(&'a str,Vec<T>)bool"),
@@ -152,10 +150,19 @@ def test_lossless_v15_text_is_kept(
     assert normalize(signature) == v15_text
 
 
-def test_split_inside_tuple_of_function_types_keeps_v15_spacing() -> None:
-    # v15 split this tuple at its inner comma and lost only a space: v15's text stays.
+def test_tuple_of_function_types_is_one_parameter() -> None:
+    # v15 split this tuple at its inner comma, so its text lost the space after
+    # it (``(((Int) -> Int,(Int) -> Int))``); the id moves once, at v16.
     assert normalize_swift_signature("(a: ((Int) -> Int, (Int) -> Int))") == (
-        "(((Int) -> Int,(Int) -> Int))")
+        "(((Int) -> Int, (Int) -> Int))")
+    assert normalize_swift_signature(
+        "(a: Foundation.Date, b: ((Int) -> Int, (Int) -> Int)) -> Int") == (
+        "(Date,((Int) -> Int, (Int) -> Int))Int")
+
+
+def test_csharp_function_pointer_is_one_parameter() -> None:
+    assert normalize_csharp_signature("(delegate* unmanaged[Cdecl]<int, void> p, int q)") == (
+        "(delegate* unmanaged[Cdecl]<int, void>,int)")
 
 
 def test_typescript_object_type_keeps_its_second_member() -> None:

@@ -143,7 +143,6 @@ from hypergumbo_core.qualified_name_axis import (
     separator_for_language,
 )
 from hypergumbo_core.analyze.base import (
-    keeps_v15_text_when_lossless,
     constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
@@ -283,7 +282,6 @@ def _extract_rust_signature(
     return sig
 
 
-@keeps_v15_text_when_lossless
 def normalize_rust_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -300,11 +298,8 @@ def normalize_rust_signature(
     or ``mut self`` was already hashed as written. A ``'`` opens no string in
     Rust (``&'a str``), so only ``"`` does.
     """
-    from hypergumbo_core.analyze.base import (
-        normalize_signature_names_first,
-        writes_v15_signature_text,
-    )
-    if signature and not writes_v15_signature_text():
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    if signature:
         signature = _RUST_SHORTHAND_RECEIVER_RE.sub(_typed_receiver, signature, count=1)
     return normalize_signature_names_first(
         signature, type_params, return_sep="->", skip_self=True, quotes='"',

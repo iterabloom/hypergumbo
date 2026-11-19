@@ -96,7 +96,6 @@ from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     find_matching_paren,
-    keeps_v15_text_when_lossless,
     record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -594,7 +593,6 @@ def _normalize_php_parameter(param: str, type_params: list[str] | None) -> str:
     return inner + "..." if variadic else inner
 
 
-@keeps_v15_text_when_lossless
 def normalize_php_signature(
     signature: str | None,
     type_params: list[str] | None = None,
@@ -608,8 +606,7 @@ def normalize_php_signature(
     same text as the rule does for the whole of a signature with no variadic
     parameter, and keeps the variadic ``...`` its FQN strip would lose. A
     leading by-reference ``&`` (``function &f()``) is kept in front:
-    ``&(int $x): int`` -> ``&(int)int``. A signature whose v15 text lost
-    nothing keeps it (``keeps_v15_text_when_lossless``).
+    ``&(int $x): int`` -> ``&(int)int``.
     """
     if not signature:
         return None

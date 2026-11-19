@@ -63,10 +63,8 @@ Shared Components
   Signature normalizers feed the typed variant so two spellings of one
   signature hash alike. Their shared helpers (``strip_fqn_prefix``,
   ``split_params_top_level``, ``find_matching_paren``) keep distinct types
-  distinct; each language normalizer is wrapped in
-  ``keeps_v15_text_when_lossless``, which keeps the text stable-id scheme v15
-  hashed wherever that text lost no token, so a fix to a helper moves only
-  the ids whose signatures the old helper damaged.
+  distinct: a type is cut only at a qualifier, and a parameter list is split
+  only at commas outside every bracket pair and string literal.
 - **Availability checking**: is_grammar_available
 - **Memory-pressure guard**: ``_check_memory_pressure`` raises
   ``MemoryPressureError`` rather than letting a large repo take the process
@@ -147,20 +145,17 @@ module.
 
 from __future__ import annotations
 
-import collections
-import functools
 import hashlib
 import importlib.util
 import os
 import re as _re
 import time
 import warnings
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 import posixpath
 from pathlib import Path
 from collections.abc import Container, Sequence
-from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional, ParamSpec, Sized
+from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional, Sized
 
 from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
@@ -2707,21 +2702,25 @@ def populate_docstrings_from_tree(
 # ---------------------------------------------------------------------------
 
 
-def strip_fqn_prefix_v15(type_name: str) -> str:
-    """The FQN strip as stable-id scheme v15 wrote it: the text after the last
-    dot of the text before the first ``<`` (or ``[``).
+def strip_at_last_dot(type_name: str) -> str:
+    """Cut a type at the last dot of its text before the first ``<`` (or ``[``).
 
-    Kept, unchanged, because it defines the v15 text (see
-    :func:`keeps_v15_text_when_lossless`) and because Go and Dart decide,
-    against exactly this cut, when a cut takes a qualifier only.
+    ``a.b.C<x.Y>`` -> ``C<x.Y>``, but also ``(Int, A.B)`` -> ``B)``: the cut is
+    blind to what it cuts through. :func:`strip_fqn_prefix` makes this cut and
+    keeps it only when it removed a qualifier. Go (``_go_fqn_cut_is_deliberate``,
+    ``_go_cut_type``, ``_go_type``) and Dart (``_dart_type_is_kept``) call it
+    directly: each writes its own rule for when a cut is deliberate (Go: a
+    tuple element's name and pointer stars may go with the qualifier; Dart: a
+    library prefix only), and the texts those languages hash were defined
+    against exactly this cut, so it stays as it is.
     """
     if "<" in type_name:
         base, rest = type_name.split("<", 1)
-        return strip_fqn_prefix_v15(base) + "<" + rest
+        return strip_at_last_dot(base) + "<" + rest
     if "[" in type_name:
         # Go/Scala square-bracket generics
         base, rest = type_name.split("[", 1)
-        return strip_fqn_prefix_v15(base) + "[" + rest
+        return strip_at_last_dot(base) + "[" + rest
     if "." in type_name:
         return type_name.rsplit(".", 1)[-1]
     return type_name
@@ -2742,11 +2741,11 @@ def strip_fqn_prefix(type_name: str, *, keep_type_path: bool = False) -> str:
     ``List``, ``java.util.List<java.lang.String>`` -> ``List<java.lang.String>``
     (generic arguments are kept as written), ``pkg.Foo?`` -> ``Foo?``.
 
-    Only a qualifier is cut: the cut is made where v15 made it (the last dot
-    before the first ``<`` or ``[``) when what it removes is a run of dotted
+    Only a qualifier is cut: the cut is made by :func:`strip_at_last_dot` (the
+    last dot before the first ``<`` or ``[``) when what it removes is a run of dotted
     identifiers and what it leaves starts with a type name. Any other cut goes
     through a type, so such a type is returned as written: a tuple
-    (``(Int, A.B)``, which v15 hashed as ``B)``), a function type (``(A) ->
+    (``(Int, A.B)``, which stable-id scheme v15 hashed as ``B)``), a function type (``(A) ->
     B.C``, hashed ``C``: its parameters were swallowed), an annotated or
     keyword-prefixed type (``@Ann a.B``, ``ref Foo.Bar``, ``suspend (a.B) ->
     C``), a receiver function type (``String.() -> Unit``).
@@ -2758,12 +2757,10 @@ def strip_fqn_prefix(type_name: str, *, keep_type_path: bool = False) -> str:
     -> ``String`` as before), and a Scala singleton type (``x.type``) is kept
     whole. Those languages' packages start with a lower-case letter by
     convention; in C# and Swift a namespace or module does not, so there a
-    nested type keeps v15's cut to its last segment.
-
-    Under :func:`keeps_v15_text_when_lossless`'s v15 pass this is the v15 cut.
+    nested type is still cut to its last segment.
     """
-    cut = strip_fqn_prefix_v15(type_name)
-    if cut == type_name or _V15_SIGNATURE_TEXT.get():
+    cut = strip_at_last_dot(type_name)
+    if cut == type_name:
         return cut
     removed = type_name[: len(type_name) - len(cut)]
     head = _TYPE_NAME_HEAD_RE.match(cut)
@@ -2821,30 +2818,6 @@ SIGNATURE_QUOTES = "\"'`"
 _CLOSER_OF = {"(": ")", "[": "]", "{": "}", "<": ">"}
 
 
-def _split_params_top_level_v15(params_str: str) -> list[str]:
-    """The parameter split as stable-id scheme v15 wrote it (see
-    :func:`split_params_top_level`); Go splits a tuple result with it."""
-    parts: list[str] = []
-    depth = 0
-    current: list[str] = []
-    for ch in params_str:
-        if ch in ("<", "[", "("):
-            depth += 1
-            current.append(ch)
-        elif ch in (">", "]", ")"):
-            depth = max(0, depth - 1)
-            current.append(ch)
-        elif ch == "," and depth == 0:
-            parts.append("".join(current).strip())
-            current = []
-        else:
-            current.append(ch)
-    tail = "".join(current).strip()
-    if tail:
-        parts.append(tail)
-    return parts
-
-
 def _string_end(text: str, start: int, quotes: str) -> int:
     """Index of the quote closing the string literal opened at ``start``, or
     the last index when it is not closed. A ``\\`` escapes the next character
@@ -2861,6 +2834,17 @@ def _string_end(text: str, start: int, quotes: str) -> int:
     return len(text) - 1
 
 
+def _opens_type_arguments(text: str, i: int) -> bool:
+    """Whether the ``<`` at ``text[i]`` opens a type-argument list (see
+    :func:`split_params_top_level`)."""
+    prev = text[i - 1] if i else ""
+    if prev.isalnum() or prev in "_$*]":
+        return True
+    before = text[:i].rstrip()
+    after = text[i + 1:i + 2]
+    return (not before or before[-1] in ":(,=|&") and (after.isalpha() or after in "_$")
+
+
 def split_params_top_level(params_str: str, *, quotes: str = SIGNATURE_QUOTES) -> list[str]:
     """Split a parameter list at its top-level commas.
 
@@ -2870,24 +2854,27 @@ def split_params_top_level(params_str: str, *, quotes: str = SIGNATURE_QUOTES) -
     A comma is top-level outside every ``()``, ``[]``, ``{}`` and ``<>`` pair
     and outside a string literal (opened by a character of ``quotes``). A
     closer ends only the bracket it matches, so the ``>`` of ``->`` or ``=>``
-    and a comparison's ``>`` end nothing, and an unmatched closer is text. A
-    ``<`` opens a bracket only right after a name character (``List<``), so
-    Go's ``<-chan`` and a comparison ``a < b`` open none; one that does open
-    and is never closed (``f(a<b, c)``) closes with the bracket around it. As
-    in v15, an empty part between two commas is kept and an empty last part is
-    not. A ``{`` that starts
-    a parameter is a group bracket (Dart's ``{int a, int b}`` named
-    parameters), whose commas still split: only a brace inside a parameter
-    (``opts: {a: A, b: B}``) holds its commas.
+    and a comparison's ``>`` end nothing, and an unmatched closer is text.
 
-    Stable-id scheme v15 split differently (:func:`_split_params_top_level_v15`:
-    every ``<`` opened, every closer closed, braces and strings were text), so
-    ``a: ((Int) -> Int, (Int) -> Int)`` split at its inner comma and
-    ``opts: {a: A, b: B}`` lost ``b:``. Under
-    :func:`keeps_v15_text_when_lossless`'s v15 pass it splits as v15 did.
+    A ``<`` opens a type-argument list (:func:`_opens_type_arguments`) right
+    after a name character (``List<``), a ``*`` or a ``]`` (C#'s
+    ``delegate*<int, void>`` and ``delegate* unmanaged[Cdecl]<int, void>``),
+    and where a type starts, after ``:``, ``(``, ``,``, ``=``, ``|`` or ``&``
+    and before a name (TypeScript's generic function type
+    ``f: <T, U>(a: T) => U``). So Go's ``<-chan`` and a comparison ``a < b``
+    open none; one that does open and is never closed (``f(a<b, c)``)
+    closes with the bracket around it. An empty part between two commas is
+    kept and an empty last part is not. A ``{`` that starts a parameter is a
+    group bracket (Dart's ``{int a, int b}`` named parameters), whose commas
+    still split: only a brace inside a parameter (``opts: {a: A, b: B}``)
+    holds its commas.
+
+    Stable-id scheme v15 split differently (every ``<`` opened, every closer
+    closed, braces and strings were text), so ``a: ((Int) -> Int, (Int) ->
+    Int)`` split at its inner comma, ``opts: {a: A, b: B}`` lost ``b:``, and
+    Scala's ``<:<`` left an implicit clause unsplit, hashing its parameter
+    names.
     """
-    if _V15_SIGNATURE_TEXT.get():
-        return _split_params_top_level_v15(params_str)
     parts: list[str] = []
     stack: list[str] = []
     start = 0
@@ -2899,7 +2886,7 @@ def split_params_top_level(params_str: str, *, quotes: str = SIGNATURE_QUOTES) -
             i = _string_end(params_str, i, quotes)
         elif ch == "{" and not stack and not params_str[start:i].strip():
             pass  # a group bracket: its commas split
-        elif ch in "([{" or (ch == "<" and (prev.isalnum() or prev in "_$")):
+        elif ch in "([{" or (ch == "<" and _opens_type_arguments(params_str, i)):
             stack.append(ch)
         elif ch == ">" and stack and stack[-1] == "<" and prev not in "-=":
             stack.pop()
@@ -3130,23 +3117,23 @@ def normalize_signature_go(
     and ``T`` hash alike), and every leading ``*`` from a tuple result
     element; a package qualifier at the head of a type is stripped
     (``*http.Request`` -> ``Request``, ``pkg.List[int]`` -> ``List[int]``)
-    by the v15 FQN cut (:func:`strip_fqn_prefix_v15`, which the Go rules
-    below are written against), which leaves a qualifier inside a type
+    by :func:`strip_at_last_dot` (which the Go rules below are written
+    against), which leaves a qualifier inside a type
     alone (``[]pkg.T``). Historical rewrites, kept because changing them
     would move identities that lose nothing: in a grouped ``a, b int`` the
     first name is hashed as written (``(a,int)``); a tuple result element
     keeps its name (``(n int,err error)``) unless a qualifier was cut, when
     the name goes with it (``r *http.Response`` -> ``Response``); a tuple
-    result is split by the v15 split (:func:`_split_params_top_level_v15`),
-    which does not see braces or strings and reads ``<-`` as a bracket: the
-    elements it makes are written whole, so it loses no type.
+    result is split by :func:`_go_split_tuple_result`, which does not see
+    braces or strings and reads ``<-`` as a bracket: the elements it makes
+    are written whole, so it loses no type.
 
     What was lost by accident, and is now written: a parameter's type was
     its LAST whitespace token, so ``chan int``, ``<-chan int``, ``chan<-
     int`` and ``int`` hashed alike, ``func(int) error`` hashed as
     ``error``, ``map[string] int`` as ``int``, ``pkg.List[int, string]`` as
     ``string]``, and ``struct{ a int }`` / ``interface{ A() }`` as ``}``;
-    and the v15 FQN cut is at the last dot of a type with no ``[``,
+    and the FQN cut is at the last dot of a type with no ``[``,
     so ``chan pkg.T`` hashed as ``T`` and ``func(x pkg.A) error`` as ``A)
     error``, in a result as well as a parameter. A variadic ``...T`` (which
     the analyzer used to drop) is ``...`` followed by ``T`` normalized as a
@@ -3182,7 +3169,7 @@ def normalize_signature_go(
             # Tuple return: "(int, error)" → normalize each
             norm_ret = "(" + ",".join(
                 _go_tuple_result_element(r, type_params)
-                for r in _split_params_top_level_v15(ret[1:-1])
+                for r in _go_split_tuple_result(ret[1:-1])
             ) + ")"
             return f"({norm_params}){norm_ret}"
         return f"({norm_params}){_go_result_type(ret, type_params)}"
@@ -3207,14 +3194,14 @@ _GO_CUT_REST_RE = _re.compile(rf"{_GO_IDENT}(?:\[.*\])?", _re.DOTALL)
 
 
 def _go_fqn_cut_is_deliberate(text: str, *, element: bool = False) -> bool:
-    """Whether the v15 cut of ``text`` loses only what Go means to lose.
+    """Whether :func:`strip_at_last_dot` on ``text`` loses only what Go means to lose.
 
     True when it changes nothing, or when it removes a package qualifier
     (for a tuple result ``element``, also a name and pointer stars) and
     leaves a bare type name. False when the cut is through a type:
     ``chan pkg.T`` -> ``T``, ``func(pkg.T)`` -> ``T)``.
     """
-    out = strip_fqn_prefix_v15(text)
+    out = strip_at_last_dot(text)
     if out == text:
         return True
     cut = text[: len(text) - len(out)]
@@ -3226,8 +3213,8 @@ def _go_fqn_cut_is_deliberate(text: str, *, element: bool = False) -> bool:
 
 
 def _go_cut_type(text: str, type_params: list[str] | None) -> str:
-    """A type whose v15 cut :func:`_go_fqn_cut_is_deliberate` accepted, cut so."""
-    t = strip_fqn_prefix_v15(text.strip())
+    """A type whose cut :func:`_go_fqn_cut_is_deliberate` accepted, cut so."""
+    t = strip_at_last_dot(text.strip())
     return normalize_generic_params(t, type_params) if type_params else t
 
 
@@ -3247,7 +3234,7 @@ def _go_type(text: str, type_params: list[str] | None) -> str:
         return "..." + _go_type(t[3:], type_params)
     t = _go_strip_one_star(t)
     if _GO_QUALIFIED_HEAD_RE.fullmatch(t):
-        t = strip_fqn_prefix_v15(t)
+        t = strip_at_last_dot(t)
     return normalize_generic_params(t, type_params) if type_params else t
 
 
@@ -3283,6 +3270,36 @@ def _go_tuple_result_element(element: str, type_params: list[str] | None) -> str
     return normalize_generic_params(t, type_params) if type_params else t
 
 
+def _go_split_tuple_result(params_str: str) -> list[str]:
+    """Split a Go tuple result ``(a, b)`` at its commas, the way every
+    analyzer split a parameter list through stable-id scheme v15: each of
+    ``<``, ``[`` and ``(`` opens a level and each of ``>``, ``]`` and ``)``
+    closes one, braces and strings are text. Go keeps it for its tuple
+    results only: each element it makes is written whole, so it loses no
+    type, and splitting there with :func:`split_params_top_level` would move
+    ids that lose nothing (``(<-chan int, error)`` would lose a space).
+    """
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in params_str:
+        if ch in ("<", "[", "("):
+            depth += 1
+            current.append(ch)
+        elif ch in (">", "]", ")"):
+            depth = max(0, depth - 1)
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
 def _go_split_top_level(params: str) -> list[str]:
     """Split a Go parameter list at its top-level commas.
 
@@ -3313,34 +3330,15 @@ def _go_split_top_level(params: str) -> list[str]:
     return parts
 
 
-def _find_matching_paren_v15(s: str, start: int) -> int:
-    """:func:`find_matching_paren` as stable-id scheme v15 wrote it: string
-    literals not skipped."""
-    if start >= len(s) or s[start] != "(":
-        return -1
-    depth = 0
-    for i in range(start, len(s)):
-        if s[i] == "(":
-            depth += 1
-        elif s[i] == ")":
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1
-
-
 def find_matching_paren(s: str, start: int, *, quotes: str = SIGNATURE_QUOTES) -> int:
     """Index of the ``)`` closing the ``(`` at ``start``, or -1 when there is
     none or ``s[start]`` is not ``(``.
 
     A parenthesis inside a string literal (opened by a character of ``quotes``,
     as in :func:`split_params_top_level`) is text: ``(@A(")") String x)``
-    closes at its last ``)``, where v15 closed it inside the string and read
-    the rest as the return type. Under :func:`keeps_v15_text_when_lossless`'s
-    v15 pass it does not skip strings, as v15 did not.
+    closes at its last ``)``, where stable-id scheme v15 closed it inside the
+    string and read the rest as the return type.
     """
-    if _V15_SIGNATURE_TEXT.get():
-        return _find_matching_paren_v15(s, start)
     if start >= len(s) or s[start] != "(":
         return -1
     depth = 0
@@ -3357,66 +3355,6 @@ def find_matching_paren(s: str, start: int, *, quotes: str = SIGNATURE_QUOTES) -
                 return i
         i += 1
     return -1
-
-
-#: True while :func:`keeps_v15_text_when_lossless` runs a normalizer for the
-#: text stable-id scheme v15 wrote. The shared helpers read it.
-_V15_SIGNATURE_TEXT: ContextVar[bool] = ContextVar("_V15_SIGNATURE_TEXT", default=False)
-
-_P = ParamSpec("_P")
-
-
-def writes_v15_signature_text() -> bool:
-    """True inside the v15 pass of :func:`keeps_v15_text_when_lossless`: a
-    language's own correction of its signature text (a Swift metatype, a Rust
-    receiver) is skipped there, as the shared helpers' corrections are."""
-    return _V15_SIGNATURE_TEXT.get()
-
-
-def _signature_tokens(text: str) -> collections.Counter[str]:
-    """The tokens of a signature text (names and punctuation marks), counted;
-    layout is not a token."""
-    return collections.Counter(_re.findall(r"[\w$]+|[^\w\s]", text))
-
-
-def keeps_v15_text_when_lossless(
-    normalize: Callable[_P, Optional[str]],
-) -> Callable[_P, Optional[str]]:
-    """Make a ``normalize_<lang>_signature`` keep the text v15 hashed unless
-    v15's text lost something.
-
-    The wrapped normalizer runs twice: with the corrected shared helpers, and
-    with :data:`_V15_SIGNATURE_TEXT` set, under which :func:`strip_fqn_prefix`,
-    :func:`split_params_top_level` and :func:`find_matching_paren` (and the
-    corrections a language makes itself, :func:`writes_v15_signature_text`)
-    write what stable-id scheme v15 wrote. The v15 text is returned when it
-    holds every token of the corrected text (counted: names and punctuation,
-    not layout), so it lost nothing: the two differ in a space, or the v15
-    text holds MORE, as when a wrong split left a parameter's name in it
-    (``(implicit ev: B <:< AA, F: Functor[F])``, where v15 read ``<:<`` as an
-    unclosed bracket). Otherwise, when the corrected text holds a token the
-    v15 text dropped (a type cut off at a dot, a ``ref``, a receiver), the
-    corrected text is returned. So a typed stable_id moves only where the v15
-    helpers lost part of its signature. When the corrected pass cannot read
-    the signature (``None``), the v15 text is kept.
-
-    Nested wrappers run once inside a v15 pass. The cost is a second pass of
-    string work per signature.
-    """
-    @functools.wraps(normalize)
-    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Optional[str]:
-        if _V15_SIGNATURE_TEXT.get():
-            return normalize(*args, **kwargs)
-        fixed = normalize(*args, **kwargs)
-        token = _V15_SIGNATURE_TEXT.set(True)
-        try:
-            v15 = normalize(*args, **kwargs)
-        finally:
-            _V15_SIGNATURE_TEXT.reset(token)
-        if fixed is None or (v15 is not None and not _signature_tokens(fixed) - _signature_tokens(v15)):
-            return v15
-        return fixed
-    return wrapper
 
 
 # ---------------------------------------------------------------------------

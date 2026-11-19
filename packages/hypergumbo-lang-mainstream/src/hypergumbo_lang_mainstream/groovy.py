@@ -86,7 +86,6 @@ from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
-    keeps_v15_text_when_lossless,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -416,7 +415,6 @@ def _extract_groovy_signature(
 _GROOVY_VARARGS_RE = re.compile(r"\.\.\.(\s+[A-Za-z_$][\w$]*)(?=\s*[,)])")
 
 
-@keeps_v15_text_when_lossless
 def normalize_groovy_signature(
     signature: str | None,
     type_params: list[str] | None = None,
