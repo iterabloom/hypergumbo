@@ -12,18 +12,29 @@ as the parameter's name: ``{bool loud = ...}`` hashed ``{bool loud =`` where
 
 The renderer now reads each default from the tree (the ``=`` or ``:`` and
 the expression after it) and writes it ``...`` whole, leaving the rest of
-the group as written. The normalizer takes a default out before the
-types-first rule, so a parameter hashes its modifiers and type, as one
-without a default does: neither a default's value nor its presence is
-hashed (a caller calls ``f({int? x = 1})`` and ``f({int? x})`` alike).
+the group as written. The hashed text, read from the tree one parameter at
+a time (``_dart_hashed_signature``), leaves the default out, so a parameter
+hashes its modifiers and type, as one without a default does: neither a
+default's value nor its presence is hashed (a caller calls ``f({int? x =
+1})`` and ``f({int? x})`` alike).
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+from tree_sitter_language_pack import get_parser
 
-from hypergumbo_lang_common.dart import analyze_dart, normalize_dart_signature
+from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_lang_common.dart import _dart_hashed_signature, analyze_dart
+
+
+def _hashed(decl: str) -> str:
+    """The hashed text of the one function ``decl`` declares."""
+    source = decl.encode()
+    tree = get_parser("dart").parse(source)
+    [sig] = [n for n in iter_tree(tree.root_node) if n.type == "function_signature"]
+    return _dart_hashed_signature(sig, source)
 
 
 def _signature(tmp_path: Path, decl: str, name: str = "f") -> str:
@@ -55,21 +66,23 @@ def test_a_default_value_is_written_whole(tmp_path: Path, decl: str, rendered: s
 
 
 @pytest.mark.parametrize(("with_default", "without"), [
-    ("({bool loud = ...})", "({bool loud})"),
-    ("({bool loud = ...})", "({bool quiet})"),
-    ("([int c = ..., String? d])", "([int c, String? d])"),
-    ("(int a, {required p.Foo x, int b = ..., List<int>? c}) Foo",
-     "(int a, {required p.Foo x, int b, List<int>? c}) Foo"),
-    ("({int b: ...})", "({int b})"),
-    ("({\n  required String text,\n  int sid = ...,\n})", "({\n  required String text,\n  int sid,\n})"),
+    ("void f({bool loud = false}) {}", "void f({bool loud}) {}"),
+    ("void f({bool loud = false}) {}", "void f({bool quiet}) {}"),
+    ("void f([int c = 1, String? d]) {}", "void f([int c, String? d]) {}"),
+    ("Foo f(int a, {required p.Foo x, int b = 2, List<int>? c}) => a;",
+     "Foo f(int a, {required p.Foo x, int b, List<int>? c}) => a;"),
+    ("void f({int b: 3}) {}", "void f({int b}) {}"),
+    ("void f({\n  required String text,\n  int sid = 0,\n}) {}",
+     "void f({\n  required String text,\n  int sid,\n}) {}"),
+    ('void f({String t = "x,y", Size s = const Size(1, 2)}) {}', "void f({String t, Size s}) {}"),
 ])
 def test_a_default_is_not_hashed(with_default: str, without: str) -> None:
-    assert normalize_dart_signature(with_default) == normalize_dart_signature(without)
+    assert _hashed(with_default) == _hashed(without)
 
 
 def test_a_named_parameter_hashes_its_type() -> None:
-    assert normalize_dart_signature("({bool loud = ...}) int") == "({bool)int"
-    assert normalize_dart_signature("({bool loud = ...})") != normalize_dart_signature("({int loud = ...})")
+    assert _hashed("int f({bool loud = false}) => 1;") == "({bool})int"
+    assert _hashed("void f({bool loud = false}) {}") != _hashed("void f({int loud = 1}) {}")
 
 
 def test_two_defaults_hash_alike_and_the_types_after_them_are_kept(tmp_path: Path) -> None:

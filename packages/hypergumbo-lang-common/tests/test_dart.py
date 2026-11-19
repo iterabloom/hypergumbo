@@ -1210,19 +1210,25 @@ void publicFunc() {}
 
 
 class TestNormalizeDartSignature:
-    """Tests for Dart signature normalization (spec §6 typed tier)."""
+    """Tests for Dart signature normalization (spec §6 typed tier): the
+    hashed text is read from the ``function_signature`` node."""
+
+    @staticmethod
+    def _hashed(decl: str) -> str:
+        from tree_sitter_language_pack import get_parser
+
+        from hypergumbo_core.analyze.base import iter_tree
+        from hypergumbo_lang_common.dart import _dart_hashed_signature
+        source = decl.encode()
+        tree = get_parser("dart").parse(source)
+        [sig] = [n for n in iter_tree(tree.root_node) if n.type == "function_signature"]
+        return _dart_hashed_signature(sig, source)
 
     def test_basic_function(self) -> None:
-        from hypergumbo_lang_common.dart import normalize_dart_signature
-        assert normalize_dart_signature("(int a, int b) int") == "(int,int)int"
+        assert self._hashed("int f(int a, int b) => a;") == "(int,int)int"
 
     def test_void_function(self) -> None:
-        from hypergumbo_lang_common.dart import normalize_dart_signature
-        assert normalize_dart_signature("(String name)") == "(String)"
-
-    def test_none(self) -> None:
-        from hypergumbo_lang_common.dart import normalize_dart_signature
-        assert normalize_dart_signature(None) is None
+        assert self._hashed("void f(String name) {}") == "(String)"
 
 
 class TestDartCyclomaticComplexity:
