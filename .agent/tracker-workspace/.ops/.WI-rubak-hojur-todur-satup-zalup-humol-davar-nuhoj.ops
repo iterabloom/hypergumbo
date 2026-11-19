@@ -20,3 +20,25 @@
     pr_ref:  # 778e
     description: "WHY. The full suite runs at 01:00 and 13:00 UTC, so a break can wait up to 12 hours before anything measures it. Twice daily was set when every PR ran its whole selection; a run after every merge was removed because with 20 or more merges a day and one run at a time the queue never cleared.\n\nWHAT (owner ruling: measure, then propose; it stays twice daily meanwhile). Measure from Woodpecker's pipeline records: how long a full run and a nightly take; how long the runner sits idle per day; how long a PR's CI takes BEFORE its first test starts (container, install, grammar build). Then bring the owner ONE proposed schedule. The schedule lives in Woodpecker's repository settings; only the owner can change it.\n\nALSO FROM THIS MEASUREMENT. Whether a CI wall-time target can be stated at all (the owner ruled: no CI target until this is known).\n\nCLOSE CONDITION. The three measurements with the pipelines they came from; the proposal posted to the owner; the item moves to needs_human_review until the owner rules.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 778e
     fields: {}  # 778e
+- op: discuss  # d704
+  at: '2026-11-19T00:34:37Z'  # d704
+  by: agent  # d704
+  actor: jgstern_agent  # d704
+  clock: 2  # d704
+  nonce: d704  # d704
+  message: "Merged as PR #2265, dev SHA af73d3d37f26."  # d704
+- op: update  # 64f5
+  at: '2026-11-19T00:34:57Z'  # 64f5
+  by: agent  # 64f5
+  actor: jgstern_agent  # 64f5
+  clock: 3  # 64f5
+  nonce: 64f5  # 64f5
+  set:  # 64f5
+    status: needs_human_review  # 64f5
+- op: discuss  # cddd
+  at: '2026-11-19T00:34:57Z'  # cddd
+  by: agent  # cddd
+  actor: jgstern_agent  # cddd
+  clock: 4  # cddd
+  nonce: cddd  # cddd
+  message: "MEASURED (2026-11-19 00:30 UTC; PR #2265 adds 'ci-debug pipelines'; data and analysis in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/cadence/README.md). 2,000 Woodpecker pipelines 10-01..11-19. Last 14 days: full suite median 38.5-40.1 min (n=25; 3 more killed at the 60-min limit); nightly 108.5 min (n=12); PR pipeline 3.6 min median, p90 19.1. Runner busy 3.5-8.6 h/day, IDLE 15.4-20.5 h/day; at most 2 pipelines at once every day; queue wait median 0.0 min (worst PR 104.9 min, once). A PR's setup before its first test: pytest step starts a median 100 s into the pipeline, then 47-66 s of installs (8 logs): about 2.5 min per PR. Crons fire 01:0x and 13:0x (full suite), 05:3x (nightly, ends about 07:20); merges land at every UTC hour.\nTHE ONE PROPOSAL FOR THE OWNER: full suite at 01:00, 09:00, 13:00, 17:00, 21:00 UTC ('0 1,9,13,17,21 * * *'), nightly unchanged. A break waits at most 4 h by day, 8 h overnight (today up to 12 h). Cost: 3 more 40-min runs, about 2 runner-hours a day on a runner idle 15-20 h a day; 05:00 is skipped so a full run never shares the agent's two slots with the nightly. Watch after the change: PR queue wait (it is 0 today; a full run holds one of the two slots for 40 min). Only the owner can change the schedule (Woodpecker repository settings)."  # cddd

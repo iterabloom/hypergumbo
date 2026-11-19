@@ -70,3 +70,18 @@
   clock: 8  # b769
   nonce: b769  # b769
   message: "Merged as PR #2260 (dev 61b03763f): the switch. Bar: campaign 5 (WI-sadus), 42 runs that failed a test, 0 real misses; 0/42 bounds the per-run miss rate below about 7% (95%), not at zero. Pre-merge end-to-end (BASE_BRANCH=HEAD, one equivalent edit in limits.py): 217 files, 2,554 tests ran, 1,581 left out (0.4 s to decide), coverage gate 100%; the 2 failures were kept readers. STILL OWED for the close condition: a live selected run on dev under the new default, with test count and wall time."  # b769
+- op: update  # 4804
+  at: '2026-11-18T22:18:49Z'  # 4804
+  by: agent  # 4804
+  actor: jgstern_agent  # 4804
+  clock: 9  # 4804
+  nonce: '4804'  # 4804
+  set:  # 4804
+    status: done  # 4804
+- op: discuss  # 5062
+  at: '2026-11-18T22:18:49Z'  # 5062
+  by: agent  # 5062
+  actor: jgstern_agent  # 5062
+  clock: 10  # 5062
+  nonce: '5062'  # 5062
+  message: "CLOSE CONDITION MET. (1) The count at the switch: campaign 5 (bar/campaign5_summary.txt): 42 runs that failed a test, 35 narrowed, 0 failed tests outside the selection that fail alone with the fault (278 order-dependent from one test-only cleanup fault; gap filed WI-kihah). 0/42 bounds the per-run miss rate below about 7% (95%), not at zero. (2) The switch merged: PR #2260 (dev 61b03763f). (3) Live selected run under the new default, dev 3852addf6, one equivalent edit in graph_select.mentions on a throwaway branch, plain 'scripts/smart-test': stored graph 30; 100 test files; 'by-statement: left out 12 of the 19 indexed test(s) it could judge, in 1 file(s); 2 kept to cover the changed files (0.3 s)'; 2,559 passed, 4 skipped; coverage gate 100%; 251 s to the end of the tests (tests 242 s), 4m28s wall. The saving there is small: 34 of the 100 files were the read-record union's, which run whole. Pre-merge e2e on limits.py: 2,554 ran, 1,581 left out. The CI manifest still lists files (WI-kunah next)."  # 5062

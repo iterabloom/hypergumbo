@@ -1,0 +1,20 @@
+- op: create  # e63e
+  at: '2026-11-19T00:08:38Z'  # e63e
+  by: agent  # e63e
+  actor: jgstern_agent  # e63e
+  clock: 1  # e63e
+  nonce: e63e  # e63e
+  data:  # e63e
+    kind: work_item  # e63e
+    title: "CI's ruff ~=0.15.0 installs 0.15.22 while the local venv has 0.15.0: a rule added inside 0.15 passes pre-commit and fails CI"  # e63e
+    status: todo_hard  # e63e
+    priority: 3  # e63e
+    parent:  # e63e
+    tags:  # e63e
+    - ci_infrastructure  # e63e
+    isbefore: []  # e63e
+    duplicate_of: []  # e63e
+    not_duplicate_of: []  # e63e
+    pr_ref:  # e63e
+    description: "WHAT (2026-11-19, PR #2264). .woodpecker/woodpecker.yml line 119 installs 'ruff~=0.15.0', which resolves to the newest 0.15.x (0.15.22 that day); the local venv has ruff 0.15.0. RUF043 (a pytest.raises match= pattern with metacharacters, not raw) passed the pre-commit ruff and failed the PR's lint step, costing a CI round. Lines 176 and 478 install ruff unpinned. FIX: one ruff version for both: pin exactly in CI and in the dev requirements, or raise the venv's to CI's and keep them in step (a test that compares the two pins). CLOSE CONDITION: the pins agree and a test fails when they differ."  # e63e
+    fields: {}  # e63e

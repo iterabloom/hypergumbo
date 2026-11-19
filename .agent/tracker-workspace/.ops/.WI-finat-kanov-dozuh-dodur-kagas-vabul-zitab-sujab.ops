@@ -20,3 +20,25 @@
     pr_ref:  # 8e08
     description: "WHY. When pipelines 6453 and 6480 (full suite) and 6447 (nightly leg 1) were red, finding the four causes took a session of reading CI logs (fixed in PR #2217).\n\nWHAT (owner ruling on decision 20: INSIDE `scripts/ci-debug`; its merge is approved in advance, by auto-pr without --gov). One subcommand that, given a red scheduled run, names the PRs to look at. The range is the last green scheduled commit to the red one. It reads the published verdict (`scheduled/<workflow>.json` on origin/badges: the commit, each step passed or not_passed, the coverage figure, at most 200 uncovered lines with a truncation flag) and the step logs.\n\nARMS. The plan had two; the known answer needs five.\n- a failed test: the PRs in the range that changed a file the test's records touch, or the test itself, and whose manifest did not run it;\n- a coverage gap: an uncovered line changed in the range names its PR; an unchanged line names the PRs that changed or removed the tests the last full run recorded on it;\n- a failure only the scheduled environment shows: the PR's own CI ran the test and it passed (another Python version, a step that installs fewer packages). The PR that ADDED or changed the test is the answer although its manifest ran it;\n- a gate, not a test (self-tree-validation, the test-only-reachability gate, the claims gate, the allowlist gates): the PRs that added or changed what the gate flags;\n- no PR at fault: a dependency released between the green and the red run. Say so, and name the installed versions that differ.\n\nKNOWN ANSWER FIRST. The red run of 2026-11-16 had four causes (~/hypergumbo_lab_notebook/post_release_11162026/STATUS.md, the entry of 11-16; logs in post_release_11162026/cron_red/): pytest installed unpinned -> 9.2.0, which broke --dist=loadgroup; tests/test_measure_go_import_versioning.py (added 0bedb1624b) imports a package its step does not install; five new test-only callables at the test-only-reachability gate; test_py_annotation_rendering.py (f8161537ab) a SyntaxError on Python 3.10. The command must name each, or say plainly which it cannot. No red scheduled run with a COVERAGE gap has been looked for: if history holds none, build one in the smart-test bed.\n\nRELATED. INV-libib-kila: `ci-debug logs` cannot address a matrix leg, which this command needs for a nightly leg.\n\nCLOSE CONDITION. The command's output on the 11-16 red run beside the four known causes; a test per arm with a mutation control.\n\nSOURCE. ~/hypergumbo_lab_notebook/fast_smart_test_plan_11152026.md; the owner's rulings of 2026-11-17 are its second 'Made' table. Measurements: ~/hypergumbo_lab_notebook/fast_smart_test_followup_11172026/README.md, slice_graph_11152026/README.md, stale_graph_1a_11152026/README.md, fast_smart_test_11152026/README.md (the 37-PR replay)."  # 8e08
     fields: {}  # 8e08
+- op: discuss  # 4f6e
+  at: '2026-11-19T00:08:13Z'  # 4f6e
+  by: agent  # 4f6e
+  actor: jgstern_agent  # 4f6e
+  clock: 2  # 4f6e
+  nonce: 4f6e  # 4f6e
+  message: "Merged as PR #2264, dev SHA 34176eb0482a."  # 4f6e
+- op: update  # c70a
+  at: '2026-11-19T00:08:37Z'  # c70a
+  by: agent  # c70a
+  actor: jgstern_agent  # c70a
+  clock: 3  # c70a
+  nonce: c70a  # c70a
+  set:  # c70a
+    status: done  # c70a
+- op: discuss  # ae3c
+  at: '2026-11-19T00:08:37Z'  # ae3c
+  by: agent  # ae3c
+  actor: jgstern_agent  # ae3c
+  clock: 4  # ae3c
+  nonce: ae3c  # ae3c
+  message: "Merged as PR #2264. 'ci-debug trace [workflow]' (scripts/scheduled-trace; ci-debug trace + pr-of). Known answers, outputs in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/trace/known_*.txt: (1) 11-16 full suite, range c88002f1..425477b6 (271 commits; last green found by walking ci-debug cron-status): the five test-only-reachability callables -> de84ccde1c/20772527dc (PR #2198), e46e89a9a8 (#2168), af2f345dd2 (#2189), d5c1c31fd4 (#2190), 7a8ccdf094 (#2163); tests/test_measure_go_import_versioning.py -> 0bedb1624b (#2151), arm 'scheduled environment'; tests/test_smart_test_loadgroup.py -> d0e8adfa45 (#2136), 'scheduled environment' (pytest was 9.2.0 at the green run too: the new test, not a dependency release, is what changed). (2) nightly 3.10 leg, b0df778e..3da1f85b: test_py_annotation_rendering.py -> f8161537ab (#2183). (3) 11-18 from the published verdicts (533011328 from fc2d2d8a9): shared_context -> 0ec2953c4 (#2249) among 4 commits; test_kept_work_contexts.py -> fe1af591e0 (#2253). All four causes of 11-16 named. Tests: tests/test_scheduled_trace.py, 20, an arm each plus parsing and the command; 9 mutations (manifest check, deselect lines, env arm, code arm, gate by name, coverage blame, version compare, bracket ids, green-must-pass) each turn a test red. GAP: no red scheduled run with a coverage gap exists in the published history; that arm is tested on a constructed repository only (not in the smart-test bed). INV-libib (matrix-leg logs) not addressed: a nightly leg's log is fetched by step name and may fail."  # ae3c
