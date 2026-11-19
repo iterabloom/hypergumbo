@@ -66,3 +66,10 @@
   clock: 7  # 9b4b
   nonce: 9b4b  # 9b4b
   message: "NodeId SHIPPED in PR #2214 (dev 6a90d10faf: e34ee538bc, f8fa9b8408, f30ae62914, 0592b0ff29), 2026-11-16. NodeId is a NewType over str; the id factories return it; Symbol.id, UsageContext.symbol_ref and DataModel.symbol_id are typed, so a hand-built id in those slots is a mypy error the strict ratchet counts. Maps equal node-for-node and edge-for-edge on a 70-file fixture (297 / 233), meson (23,602 / 62,664) and mitmproxy (14,310 / 44,777); 0 stable ids moved; mypy strict the same count before and after. Tables in packages/hypergumbo-core/tests/test_id_newtypes.py pin 11 mint sites, 6 hand-built wraps, 1 boundary read; dropping any of the 18 fails a test. LEFT AS str: Edge.dst (a node id OR an unresolved reference) and Edge.src (RCT-pinned; 11 non-id producer sites). OWNER 2026-11-16: yes to typing Edge.src and yes to fixing the six wrapped producers, as follow-ups: both filed in this batch. THIS ITEM STAYS OPEN for the four other types it names (EdgeId, RunId, EdgeKey, SymbolFingerprint), unscheduled."  # 9b4b
+- op: discuss  # e3ee
+  at: '2026-11-19T04:31:27Z'  # e3ee
+  by: agent  # e3ee
+  actor: jgstern_agent  # e3ee
+  clock: 8  # e3ee
+  nonce: e3ee  # e3ee
+  message: "OWNER RULING 2026-11-19 (in session): the owner adopted all recommendations of the 11-19 review (three read-only research passes over the ADRs, the spec and the code; record ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md). For this item:\nEdgeId, RunId, EdgeKey and SymbolFingerprint stay OUT of the identity PR (no change to the 11-16 'unscheduled'). EdgeId and EdgeKey: one factory each, already checked by check-id-construction. RunId: ~890 sites; its defect (empty or dangling run ids) is caught at run time by the origin_run_id_fk validator. SymbolFingerprint: a NewType would wrap and ratify 15 inline sha256(id)[:16] sites that bypass the chokepoint; that family is filed as its own item."  # e3ee
