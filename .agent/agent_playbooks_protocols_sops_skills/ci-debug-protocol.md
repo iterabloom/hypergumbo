@@ -39,6 +39,10 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 ./scripts/ci-debug trace --green <sha> --red <sha> --log test-agent-infra=red.log \
     --green-log test-agent-infra=green.log
 ./scripts/ci-debug pr-of <sha>             # the PR that merged a commit
+# Woodpecker's pipeline records (event, created, started, finished, status), 50 a
+# page, to a local file; the newest N again in full with every step's times
+# (WI-rubak: run lengths, runner idle time, a PR's setup before its first test).
+./scripts/ci-debug pipelines /tmp/p.jsonl 40 120
 
 # Analyze tree-sitter dependencies (finds missing packages)
 ./scripts/ci-debug analyze-deps
