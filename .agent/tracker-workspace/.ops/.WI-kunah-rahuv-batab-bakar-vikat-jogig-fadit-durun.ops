@@ -19,3 +19,17 @@
     pr_ref:  # 019b
     description: "WHY. The CI manifest (.ci/affected-tests.txt) lists test FILES. Once the by-statement selector is live it selects TESTS; a manifest of files makes CI run every test of a file that holds one selected test, so CI gains nothing from the selector.\n\nWHAT. After the selector is switched on: the manifest lists test ids where the selector narrowed, and files where it did not; PR CI runs exactly those. The scheduled full run is not narrowed.\n\nCLOSE CONDITION. A PR whose manifest lists test ids, with CI's test count beside the count the same change selects by file. The per-package split CI uses still enforces coverage on changed files (measured on that PR).\n\nSOURCE. INV-kahit (the invariant this serves) and the owner's direction of 2026-11-18: make by-statement selection work test by test, not file by file. Measurements and the design notes: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/STATUS.md (sections of 11-18), bar/ (the planted-fault campaign), childcov/ (child-process coverage, measured and not chosen)."  # 019b
     fields: {}  # 019b
+- op: discuss  # f37d
+  at: '2026-11-18T23:09:31Z'  # f37d
+  by: agent  # f37d
+  actor: jgstern_agent  # f37d
+  clock: 2  # f37d
+  nonce: f37d  # f37d
+  message: "Merged as PR #2263, dev SHA bb754b1b9d2f."  # f37d
+- op: discuss  # c05a
+  at: '2026-11-18T23:09:41Z'  # c05a
+  by: agent  # c05a
+  actor: jgstern_agent  # c05a
+  clock: 3  # c05a
+  nonce: c05a  # c05a
+  message: "Merged as PR #2263. The manifest carries the by-statement selector's left-out ids for its own files as '#- <id>' lines (DESELECTED_TESTS section, header '# By statement: ...'); Woodpecker's pytest step hands them to pytest_statement_deselect. Pre-merge e2e (equivalent edit in graph_select.mentions, BASE_BRANCH=HEAD smart-test --manifest): 101 files, 12 ids; the manifest's files run CI-style with the plugin: 2,573 passed, graph_select.py 100%, junit: 7 of test_graph_select.py's 19 tests ran. This PR's own manifest refused (scripts and .woodpecker changed). STILL OWED for the close: a src-only PR whose CI log shows the deselected count beside the file-level count."  # c05a
