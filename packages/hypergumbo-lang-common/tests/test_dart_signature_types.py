@@ -116,8 +116,9 @@ PARAMETERS = [
     ("void f({required p.Foo x}) {}", "void f({p.Foo x}) {}", "({required Foo)"),
     ("void f(int a, {required covariant p.Foo x}) {}", "void f(int a, {p.Foo x}) {}",
      "(int,{required covariant Foo)"),
+    # A default value is not hashed (WI-doboh; it hashed ``{Foo x =``).
     ("void f({p.Foo x = const p.Foo()}) {}", "void f({covariant p.Foo x = const p.Foo()}) {}",
-     "({Foo x =)"),
+     "({Foo)"),
     # An old-style function-typed parameter whose last word is not its name.
     ("void f(int g()) {}", "void f(int g) {}", "(int g())"),
     ("void f(int g(int)) {}", "void f(int g(String)) {}", "(int g(int))"),
@@ -233,8 +234,8 @@ FILLED = {
         "(final Foo,{required Foo,covariant Bar?)",
     "(int g(int), [void cb()]) p.Foo": "(int g(int),[void cb()])Foo",
     "(int a, int g(int)) int": "(int,int g(int))int",
-    # A default value's fragment (``2]``) beside a hole keeps the shared text.
-    "({List<int> l = ..., 2], int g()})": "({List<int> l,2],int g()})",
+    # A default value beside a hole is taken out like any other (WI-doboh).
+    "({List<int> l = ..., int g()})": "({List<int>,int g()})",
 }
 
 
@@ -251,22 +252,14 @@ def test_declared_type_parameters_are_by_position_in_a_filled_form() -> None:
 
 # Signatures in which the shared rule keeps every type: the hashed text is
 # exactly the shared rule's (parameter names dropped, a library prefix
-# stripped from a type's head, ``void`` omitted, generic arguments as written,
-# the leftovers of a default value with a comma kept as they were).
+# stripped from a type's head, ``void`` omitted, generic arguments as written).
 UNCHANGED = [
     "(int a, int b) int",
     "(String name)",
     "()",
     "() void",
     "(p.Foo f, Map<String, p.Bar> m) dynamic",
-    "(covariant int a, final int b, [int c = ..., String? d])",
-    "({required int a, int b = ..., List<int>? c}) Foo",
     "(int g(int a), void Function(int)? cb, int Function<T>(T) gf, (int, {String n}) r) Widget",
-    "({Size s = ..., 2), Foo f = ..., a.b + c)})",
-    "({Size s = ..., 2), int g()})",
-    "({List<int> l = ..., 2]})",
-    "({List<X> l = ..., const b(2)]})",
-    "([Foo f = ..., a.b + c)])",
     "(var x, final y, dynamic z) p.Foo?",
     "({int a: 1}) p.Foo<int>",
     "(int g<T>(T a)) List<p.Foo>",
@@ -276,6 +269,25 @@ UNCHANGED = [
 @pytest.mark.parametrize("signature", UNCHANGED)
 def test_hole_free_signatures_hash_as_before(signature: str) -> None:
     assert normalize_dart_signature(signature) == normalize_signature_types_first(signature)
+
+
+# Signatures with a default value (as the renderer writes it, ``= ...`` whole):
+# the shared rule's text of the same signature without its defaults
+# (WI-doboh). Until then a default left ``name =`` in the hashed text, and one
+# holding a comma left a fragment the split took for a parameter.
+WITH_DEFAULTS = {
+    "(covariant int a, final int b, [int c = ..., String? d])":
+        "(covariant int a, final int b, [int c, String? d])",
+    "({required int a, int b = ..., List<int>? c}) Foo": "({required int a, int b, List<int>? c}) Foo",
+    "({Size s = ..., Foo f = ...})": "({Size s, Foo f})",
+    "([Foo f = ...])": "([Foo f])",
+    "({int a: ...}) p.Foo<int>": "({int a}) p.Foo<int>",
+}
+
+
+@pytest.mark.parametrize(("signature", "without"), WITH_DEFAULTS.items())
+def test_a_default_hashes_as_its_absence(signature: str, without: str) -> None:
+    assert normalize_dart_signature(signature) == normalize_signature_types_first(without)
 
 
 def test_a_signature_that_does_not_open_a_parameter_list_does_not_normalize() -> None:
@@ -320,24 +332,30 @@ class Widget {
 
 # Stable ids of the hole-free declarations above, taken from the analyzer
 # before the holes were filled (dev 3da1f85b37, file ``clean.dart`` at the
-# root of the analysed tree).
+# root of the analysed tree), except where a comment says an id moved.
 PINNED = {
     ("function", "add"): f"{STABLE_ID_PREFIX}b25ded629f362a02",
     ("function", "dyn"): f"{STABLE_ID_PREFIX}39de927c48988b68",
-    ("function", "opt"): f"{STABLE_ID_PREFIX}3df1e40f64b5cae0",
-    ("function", "named"): f"{STABLE_ID_PREFIX}724b4ce75e477e92",
+    # Moved by WI-doboh: a default value is not hashed, so ``[int c = 1]``
+    # no longer hashes ``[int c =`` (opt was 3df1e40f64b5cae0) and ``{int b =
+    # 2}`` no longer hashes ``int b`` (named was 724b4ce75e477e92).
+    ("function", "opt"): f"{STABLE_ID_PREFIX}6b61da94e22d753c",
+    ("function", "named"): f"{STABLE_ID_PREFIX}1bb432604e33ccde",
     ("function", "fnTyped"): f"{STABLE_ID_PREFIX}5b29217af303859d",
-    # Moved by the shared FQN strip fix (stable-id v16): the renderer's
-    # default-value fragment closes the parameter list early, and v15's strip
-    # cut the rest at its last dot, dropping the parameter ``Foo f``; the rest
-    # is now written whole (was 788a1f68d49853d8).
-    ("function", "fragment"): f"{STABLE_ID_PREFIX}520d66bf5aa2d402",
+    # Moved twice in stable-id v16: by the shared FQN strip fix (the
+    # renderer's default-value fragment closed the parameter list early, and
+    # v15's strip cut the rest at its last dot, dropping ``Foo f``: was
+    # 788a1f68d49853d8, then 520d66bf5aa2d402), and by WI-doboh (each default
+    # is written ``...`` whole and not hashed: the text is ``({Size,Foo)``).
+    ("function", "fragment"): f"{STABLE_ID_PREFIX}5f06492ec22f4a50",
     ("function", "commented"): f"{STABLE_ID_PREFIX}a980655d150d1db1",
     ("field", "Widget.count"): f"{STABLE_ID_PREFIX}b9ad19582563bf1f",
     ("field", "Widget.foo"): f"{STABLE_ID_PREFIX}52b2647c5aac5b99",
     ("field", "Widget.untyped"): f"{STABLE_ID_PREFIX}67b1c3afbda56fb7",
     ("field", "Widget.lateInt"): f"{STABLE_ID_PREFIX}fcfa601122856289",
-    ("method", "Widget.build"): f"{STABLE_ID_PREFIX}eec19e02b0716d60",
+    # WI-doboh: ``[bool flag = false]`` no longer hashes ``[bool flag =``
+    # (was eec19e02b0716d60).
+    ("method", "Widget.build"): f"{STABLE_ID_PREFIX}9bfc0a5c64dd995c",
     ("method", "Widget.pick"): f"{STABLE_ID_PREFIX}f9b79352893d5d48",
 }
 
