@@ -4,14 +4,15 @@
 ``dart format`` splits a parameter list that does not fit on one line, one
 parameter per line, and adds a trailing comma; it joins it again (and drops
 the comma) when it fits. Through stable-id scheme v15 the hashed text kept
-that layout: ``normalize_dart_signature("({\\n  required String text,\\n
-int sid,\\n})")`` was ``({\\n  required String,int,})`` where the one-line
-form gave ``({required String,int)`` (the last parameter's name is dropped
-with the group's closing bracket only when they touch), so reformatting a
-file moved ids (WI-kumoh).
+that layout: the text ``({\\n  required String text,\\n  int sid,\\n})``
+hashed ``({\\n  required String,int,})`` where the one-line form gave
+``({required String,int)`` (the last parameter's name was dropped with the
+group's closing bracket only when they touched), so reformatting a file moved
+ids (WI-kumoh).
 
-``normalize_dart_signature`` now reads the text in its one-line form
-(``_dart_one_line``), and the typed formula hashes it layout-free
+The hashed text is now read from the syntax tree one parameter at a time
+(``_dart_hashed_signature``): a trailing comma separates nothing and no name
+is in the text, and the typed formula hashes what is left layout-free
 (``make_typed_stable_id``). The displayed ``signature`` keeps its layout.
 """
 from __future__ import annotations
@@ -19,30 +20,41 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tree_sitter_language_pack import get_parser
 
-from hypergumbo_lang_common.dart import _dart_one_line, analyze_dart, normalize_dart_signature
+from hypergumbo_core.analyze.base import iter_tree, layout_free
+from hypergumbo_lang_common.dart import _dart_hashed_signature, analyze_dart
 
-# (case, one-line text, the same reflowed)
+
+def _hashed(decl: str) -> str:
+    """The hashed text of the one function ``decl`` declares, as the typed
+    formula reads it (``layout_free``)."""
+    source = decl.encode()
+    tree = get_parser("dart").parse(source)
+    [sig] = [n for n in iter_tree(tree.root_node) if n.type == "function_signature"]
+    return layout_free(_dart_hashed_signature(sig, source), separators=True)
+
+
+# (case, one-line declaration, the same reflowed)
 _REFLOWED = [
-    ("named-group", "({required String text, int sid})",
-     "({\n  required String text,\n  int sid,\n})"),
-    ("name-on-its-own-line", "({required String text, int sid})",
-     "({\n    required String\n        text,\n    int sid,\n  })"),
-    ("optional-group", "(int a, [String? b]) List<Map<String, int>>",
-     "(int a, [\n    String?   b,\n  ]) List<\n      Map<String,\n          int>>"),
-    ("default", "(Map<String, int> x, {int y = ...}) Map<String, int>",
-     "(Map< String , int >   x, {\n    int y = ...,\n  }) Map<String, int>"),
-    ("plain-list", "(int a, int b)", "(\n  int a,\n  int b,\n)"),
+    ("named-group", "void f({required String text, int sid}) {}",
+     "void f({\n  required String text,\n  int sid,\n}) {}"),
+    ("name-on-its-own-line", "void f({required String text, int sid}) {}",
+     "void f({\n    required String\n        text,\n    int sid,\n  }) {}"),
+    ("optional-group", "List<Map<String, int>> f(int a, [String? b]) => [];",
+     "List<\n      Map<String,\n          int>> f(int a, [\n    String?   b,\n  ]) => [];"),
+    ("default", "Map<String, int> f(Map<String, int> x, {int y = 1}) => x;",
+     "Map<String, int> f(Map< String , int >   x, {\n    int y = 1,\n  }) => x;"),
+    ("plain-list", "void f(int a, int b) {}", "void f(\n  int a,\n  int b,\n) {}"),
 ]
 
 
 @pytest.mark.parametrize(("case", "one_line", "reflowed"), _REFLOWED,
                          ids=[c[0] for c in _REFLOWED])
-def test_a_reflowed_signature_reads_as_its_one_line_form(
+def test_a_reflowed_signature_hashes_as_its_one_line_form(
     case: str, one_line: str, reflowed: str,
 ) -> None:
-    assert _dart_one_line(reflowed) == _dart_one_line(one_line) == one_line
-    assert normalize_dart_signature(reflowed) == normalize_dart_signature(one_line)
+    assert _hashed(reflowed) == _hashed(one_line)
 
 
 _ONE_LINE = """\

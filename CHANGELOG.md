@@ -42,6 +42,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Swift names containing `$` are no longer cut short.**
 - **Rust receivers spelled two ways hash the same.**
 - **Dart default values no longer break signatures or ids.**
+- **Dart ids hash parameter types only, never parameter names.**
 - **Reformatting a declaration no longer changes its stable id.**
 - **`symbols` piped into `head` now exits 141, not 1.**
 
