@@ -58,6 +58,10 @@ usage() {
   echo "                    yourself: trace --green SHA --red SHA --log STEP=FILE ..."
   echo "                    (scripts/scheduled-trace --help)"
   echo "  pr-of <sha>       The number of the pull request that merged a commit"
+  echo "  pipelines <out.jsonl> [pages] [details]"
+  echo "                    Woodpecker's pipeline records, 50 a page, newest first, one"
+  echo "                    JSON object a line; [details] newest ones again in full (their"
+  echo "                    workflows and steps with times) to <out>.details.jsonl"
   echo ""
   echo "GitHub Actions (release.yml runs there; everything else is Woodpecker). Add --actions:"
   echo "  runs --actions [workflow.yml] [N]   Recent runs, newest first (default N=10)"
@@ -633,6 +637,61 @@ merged = [p for p in pulls if p.get("merged_at")] or pulls
 sys.exit(1) if not merged else print(merged[0]["number"])'
 }
 
+# WI-rubak: Woodpecker's own records of every pipeline (event, created,
+# started, finished, status), for measuring how long scheduled and PR runs
+# take and how long the runner sits idle. Only GETs; the records land in a
+# local file and nothing is printed from them but counts. The repository's
+# Woodpecker id is WOODPECKER_REPO_ID (default 1, the id in every status URL
+# this repository's pipelines post).
+cmd_pipelines() {
+  local out="${1:-}" pages="${2:-10}" details="${3:-0}"
+  local repo="${WOODPECKER_REPO_ID:-1}" host="${WOODPECKER_SERVER:-}"
+  host="${host%/}"
+  [[ -n "$out" ]] || { echo "usage: $0 pipelines <out.jsonl> [pages] [details]" >&2; return 1; }
+  if ! _wp_have_credentials; then
+    echo "pipelines needs WOODPECKER_SERVER, WOODPECKER_TOKEN, CF_ACCESS_CLIENT_ID and" >&2
+    echo "CF_ACCESS_CLIENT_SECRET in .env" >&2
+    return 1
+  fi
+  local tmp page code n
+  tmp=$(mktemp)
+  : > "$out"
+  for ((page = 1; page <= pages; page++)); do
+    code=$(_wp_curl -o "$tmp" -w '%{http_code}' \
+      "$host/api/repos/$repo/pipelines?page=$page&perPage=50" 2>/dev/null) || code=000
+    if [[ "$code" != "200" ]]; then
+      echo "page $page: HTTP $code; stopped" >&2
+      rm -f "$tmp"
+      return 1
+    fi
+    n=$(python3 -c '
+import json, sys
+rows = json.load(open(sys.argv[1]))
+with open(sys.argv[2], "a") as out:
+    for row in rows:
+        out.write(json.dumps(row) + "\n")
+print(len(rows))' "$tmp" "$out")
+    [[ "$n" -gt 0 ]] || break
+  done
+  echo "$(wc -l < "$out") pipeline record(s) in $out"
+  if (( details > 0 )); then
+    local full="${out%.jsonl}.details.jsonl" number
+    : > "$full"
+    for number in $(head -n "$details" "$out" | python3 -c '
+import json, sys
+for line in sys.stdin:
+    print(json.loads(line)["number"])'); do
+      if _wp_pipeline_json "$repo" "$number" "$tmp"; then
+        python3 -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$tmp" >> "$full"
+      else
+        echo "pipeline $number: HTTP $WP_HTTP_CODE" >&2
+      fi
+    done
+    echo "$(wc -l < "$full") full record(s) in $full"
+  fi
+  rm -f "$tmp"
+}
+
 cmd_analyze_deps() {
   echo "Analyzing tree-sitter dependencies..."
   echo ""
@@ -1009,6 +1068,9 @@ case "${1:-runs}" in
     ;;
   pr-of)
     cmd_pr_of "${2:-}"
+    ;;
+  pipelines)
+    cmd_pipelines "${2:-}" "${3:-}" "${4:-}"
     ;;
   -h|--help|help)
     usage
