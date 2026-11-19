@@ -69,7 +69,7 @@ LIMITS, stated because they are where this would bite:
 * The evidence is as old as the last run that recorded each test. A code
   change elsewhere that makes an already-recorded test start reading a file is
   invisible until that test runs again. Every local run records, and the
-  twice-daily full suite in CI runs every test regardless of this rule.
+  scheduled full suite in CI runs every test regardless of this rule.
 * A value computed from a file's text by one test and kept in a module global
   for another (outside a fixture, outside import time, outside ``linecache``)
   is not seen.

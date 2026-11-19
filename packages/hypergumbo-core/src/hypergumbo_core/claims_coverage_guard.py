@@ -5,7 +5,7 @@ WHAT THIS PREVENTS. A shipped-code call into a Python name the I/O catalogue
 neither rows nor enumerates makes the cron ``self-claims-gate`` withhold every
 self-claim verdict at once -- ``confirmed_with_caveats`` -> ``inconclusive``,
 the ``opaque_boundary`` caveat gone from all of them. The full gate runs only on
-the twice-daily cron (its per-PR arm costs too much critical path;
+the scheduled full-suite cron (its per-PR arm costs too much critical path;
 ``test_ci_self_claims_gate_scope`` carries that decision), so without this
 guard such a call reaches ``dev`` and leaves it red for up to twelve hours,
 followed by a bisect. (history: INV-bofab, INV-fugus, INV-jojog, INV-konad)

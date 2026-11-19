@@ -21,7 +21,7 @@ condition (a flag value, ``dry_run=True``), so where the graph over-reaches a
 JUDGED cut (:data:`CUTS`) removes one edge for named commands, with its reason.
 A cut that removes nothing is reported, so a judgement cannot outlive its code.
 
-``--trace`` (twice-daily cron, ~10 min; Python 3.12+): every subcommand runs
+``--trace`` (scheduled full-suite cron, ~10 min; Python 3.12+): every subcommand runs
 in a scratch fixture under a ``sys.monitoring`` line tracer (``scripts/
 allowlist_trace``), carried into child processes by ``sitecustomize``, in the
 variants that change a path: cold and warm results cache, an evicting cache,

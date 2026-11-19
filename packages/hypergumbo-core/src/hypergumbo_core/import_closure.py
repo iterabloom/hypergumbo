@@ -69,7 +69,7 @@ through a function-level import in a source module (test -> ``reader.py``,
 whose function imports the changed file), in a function that does NOT run at
 import, is not in the answer. When such a
 test reads a changed constant it is not selected for the pull request; the
-twice-daily full suite is what runs it. The smart-test bed holds the shape
+scheduled full suite is what runs it. The smart-test bed holds the shape
 (``bedcore/reads_lazily.py``) and its test asserts the miss.
 
 MODULE NAMES come from the layout smart-test selects over: a file under
