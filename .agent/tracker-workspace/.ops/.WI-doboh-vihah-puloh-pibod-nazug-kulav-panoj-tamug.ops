@@ -1,0 +1,20 @@
+- op: create  # ec5f
+  at: '2026-11-19T15:09:43Z'  # ec5f
+  by: agent  # ec5f
+  actor: jgstern_agent  # ec5f
+  clock: 1  # ec5f
+  nonce: ec5f  # ec5f
+  data:  # ec5f
+    kind: work_item  # ec5f
+    title: "dart: the signature renderer cuts a default value at its first comma; named parameters hash 'name ='"  # ec5f
+    status: todo_hard  # ec5f
+    priority: 3  # ec5f
+    parent:  # ec5f
+    tags:  # ec5f
+    - stable_id  # ec5f
+    isbefore: []  # ec5f
+    duplicate_of: []  # ec5f
+    not_duplicate_of: []  # ec5f
+    pr_ref:  # ec5f
+    description: "Dart's signature renderer cuts a default value at its first comma, and named parameters hash \"name =\".\n\nREPRO: void f({Size s = const Size(1, 2)}) renders the signature ({Size s = ..., 2)}). Cause: _extract_dart_signature's re.sub(r'\\s*=\\s*[^,}\\]]+', ...) stops at the first comma inside the default. Named parameters also keep \"name =\" in the hashed text. Found during WI-tojov (PR 3, commit 4e0163454): the item attributed Dart fragments to split_params_top_level, but they come from this regex. Evidence: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tojov/RESULTS.md residual 2. Changing it moves Dart typed ids, so it needs a scheme bump."  # ec5f
+    fields: {}  # ec5f

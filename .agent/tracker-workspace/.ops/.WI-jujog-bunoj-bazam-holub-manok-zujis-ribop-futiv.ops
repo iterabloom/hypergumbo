@@ -1,0 +1,20 @@
+- op: create  # 95da
+  at: '2026-11-19T15:10:01Z'  # 95da
+  by: agent  # 95da
+  actor: jgstern_agent  # 95da
+  clock: 1  # 95da
+  nonce: 95da  # 95da
+  data:  # 95da
+    kind: work_item  # 95da
+    title: "swift: a function named _$foo is emitted with the name _"  # 95da
+    status: todo_hard  # 95da
+    priority: 3  # 95da
+    parent:  # 95da
+    tags:  # 95da
+    - stable_id  # 95da
+    isbefore: []  # 95da
+    duplicate_of: []  # 95da
+    not_duplicate_of: []  # 95da
+    pr_ref:  # 95da
+    description: "Swift: a function whose name starts with _$ is emitted with the name _, so every _$-prefixed function of a file shares one name.\n\nREPRO: TCA ~/whole_bunch_of_repos/swift-composable-architecture/Sources/ComposableArchitecture/Observation/ObservableState.swift L105 (_$isIdentityEqual) and L190 (_$willModify): the map's name field is _. The name is in the stable-id hash, so these functions are told apart only by signature text. Cause not investigated (likely the identifier node of tree-sitter-swift for a $-containing name). Found while counting WI-bubak: /home/jgstern_agent/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/bubak/RESULTS.md."  # 95da
+    fields: {}  # 95da
