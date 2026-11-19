@@ -1557,7 +1557,7 @@ class TestEmitModuleAttributeRefsScopedPath:
         )
         dsts = [e.dst for e in edges]
         assert any(
-            d == "rust:std::env::consts:0-0:std::env::consts::OS:attribute"
+            d == "rust:std::env::consts:0-0:OS:attribute"
             for d in dsts
         ), dsts
 
@@ -3035,7 +3035,7 @@ class TestScopedPathSkipsImportAndTypePositions:
         middle depth is the one io_primitives/rust.yaml declares."""
         source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
         edges = self._emit_rust(source, self.RUST_SKIP)
-        assert "rust:std::env:0-0:std::env::consts:attribute" in [
+        assert "rust:std::env:0-0:consts:attribute" in [
             e.dst for e in edges
         ], [e.dst for e in edges]
 
@@ -3050,7 +3050,7 @@ class TestScopedPathSkipsImportAndTypePositions:
             "}\n"
         )
         dsts = [e.dst for e in self._emit_rust(source, self.RUST_SKIP)]
-        assert "rust:std::env:0-0:std::env::consts:attribute" in dsts, dsts
+        assert "rust:std::env:0-0:consts:attribute" in dsts, dsts
         assert not any("std.io" in d for d in dsts), dsts
 
     def test_cpp_using_declaration_emits_no_attribute_read(self) -> None:
@@ -3167,7 +3167,7 @@ class TestScopedPathSkipsImportAndTypePositions:
         """POSITIVE CONTROL. ``std::cout`` is a catalogued C++ I/O attribute."""
         source = "void g() { std::cout << \"x\"; }\n"
         dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
-        assert "cpp:std:0-0:std::cout:attribute" in dsts, dsts
+        assert "cpp:std:0-0:cout:attribute" in dsts, dsts
 
     def test_omitting_the_tuple_changes_nothing_for_other_languages(self) -> None:
         """NON-DESTRUCTION. Languages that pass no ``skip_context_kinds``

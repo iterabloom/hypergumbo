@@ -33,7 +33,8 @@ a deferred follow-up. It is safe only once the lossless home is filled:
 sanitising folds ``writeToFile:atomically:`` to ``writeToFile.atomically.``,
 which cannot be unambiguously reversed (a name may contain a literal dot), so
 without ``meta['callee_name']`` it would destroy the very value this file
-protects.
+protects. With the home filled, the producer now folds too
+(``TestTheProducerIdIsFolded``).
 """
 
 import pytest
@@ -104,6 +105,48 @@ class TestTheProducerFillsTheLosslessHome:
     ])
     def test_whatever_the_producer_saw_is_what_is_carried(self, callee: str) -> None:
         assert (_edge(callee).meta or {}).get("callee_name") == callee
+
+
+class TestTheProducerIdIsFolded:
+    """The deferred half of Ruling 1 (ORDERING CONSTRAINT above): with the
+    lossless home filled, ``make_unresolved_edge`` mints its dst through
+    ``make_symbol_id``, so the edge's own dst parses back into five slots
+    before finalize ever sees it (R1 of WI-tatop: PowerShell
+    ``custom-columns=:.metadata.name``, Rust and C++ ``::`` paths)."""
+
+    @pytest.mark.parametrize("callee,module,expected", [
+        ("writeToFile:atomically:", "external",
+         "objc:external:0-0:writeToFile.atomically.:unresolved"),
+        ("custom-columns=:.metadata.name", "external",
+         "objc:external:0-0:custom-columns=..metadata.name:unresolved"),
+        ("Vec::with_capacity", "std::vec",
+         "objc:std::vec:0-0:Vec..with_capacity:unresolved"),
+        ("plain", "", "objc:external:0-0:plain:unresolved"),
+    ])
+    def test_the_dst_parses_back(self, callee: str, module: str, expected: str) -> None:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        edge = _edge(callee, module_hint=module)
+        assert edge.dst == expected
+        assert [end for end, _ in non_id_edge_endpoints([], [edge])] == ["src"]
+        assert (edge.meta or {}).get("callee_name") == callee
+
+    def test_an_empty_module_hint_is_the_unknown_module(self) -> None:
+        """No fabricated ``ExternalRef(module_path='')`` (WI-huzuv's cell)."""
+        assert _edge("f", module_hint="").dst_ref is None
+
+    def test_folding_moves_no_boundary_node(self) -> None:
+        """Finalize keys the node on the lossless name, so the folded dst
+        lands on the node the raw one did."""
+        import dataclasses
+
+        folded = _edge()
+        raw = dataclasses.replace(folded, dst=_RAW_EDGE["dst"])
+        nodes_raw, _ = create_boundary_nodes([], [raw])
+        nodes_new, _ = create_boundary_nodes([], [folded])
+        assert [(n.id, n.stable_id, n.name) for n in nodes_raw] == [
+            (n.id, n.stable_id, n.name) for n in nodes_new
+        ]
 
 
 class TestTheBoundaryNodeCarriesTheRealName:

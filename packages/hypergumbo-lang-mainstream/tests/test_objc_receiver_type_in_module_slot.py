@@ -28,8 +28,10 @@ def _edges(root: Path, src: str) -> list[Edge]:
 
 
 def _send(edges: list[Edge], selector: str) -> Edge:
-    hits = [e for e in edges if e.edge_type == "calls" and not e.is_resolved and e.dst.endswith(f":{selector}:unresolved")]
-    assert len(hits) == 1, [e.dst for e in edges if selector in e.dst]
+    # The selector's lossless home; the dst's name slot folds ':' to '.'.
+    hits = [e for e in edges if e.edge_type == "calls" and not e.is_resolved
+            and (e.meta or {}).get("callee_name") == selector]
+    assert len(hits) == 1, [e.dst for e in edges if e.edge_type == "calls"]
     return hits[0]
 
 
@@ -45,7 +47,7 @@ class TestDeclaredReceiverCarriesItsClass:
             "}"
         ))
         e = _send(edges, "fileExistsAtPath:")
-        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved", e.dst
+        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath.:unresolved", e.dst
         assert e.dst_ref is not None and e.dst_ref.module_path == "NSFileManager"
         assert (e.meta or {}).get("receiver_type_hint") == "NSFileManager"
         assert tag_io_boundaries(edges, {"objc": load_catalog("objc")}) >= 1
@@ -56,7 +58,7 @@ class TestDeclaredReceiverCarriesItsClass:
             "    return [fm fileExistsAtPath:p];\n"
             "}"
         ))
-        assert _send(edges, "fileExistsAtPath:").dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved"
+        assert _send(edges, "fileExistsAtPath:").dst == "objc:NSFileManager:0-0:fileExistsAtPath.:unresolved"
 
     def test_rebinding_takes_the_new_declaration(self, tmp_path: Path) -> None:
         edges = _edges(tmp_path / "r", WRAP % (
@@ -103,7 +105,7 @@ class TestCategoriesDoNotMakeProjectClasses:
         ))
         result = analyze_objc(root)
         e = _send(result.edges, "writeToFile:atomically:")
-        assert e.dst == "objc:NSData:0-0:writeToFile:atomically::unresolved", e.dst
+        assert e.dst == "objc:NSData:0-0:writeToFile.atomically.:unresolved", e.dst
         cat = [s for s in result.symbols if s.kind == "class" and s.name == "NSData"]
         assert cat and (cat[0].meta or {}).get("category") == "Extras"
 
@@ -159,7 +161,7 @@ class TestAClassMessageToAProjectClassIsHintOnly:
         a logging call such as ``[DDLog log:...]``."""
         edges = self._project(tmp_path / "b", "- (void)run {\n    [Svc log:@\"x\"];\n}")
         e = _send(edges, "log:")
-        assert e.dst == "objc:external:0-0:log::unresolved", e.dst
+        assert e.dst == "objc:external:0-0:log.:unresolved", e.dst
         assert e.dst_ref is None
         assert (e.meta or {}).get("receiver_type_hint") == "Svc"
 
@@ -215,7 +217,7 @@ class TestANonClassTypeSpellingIsNotADeclaredClass:
             "}"
         ))
         e = _send(edges, "fileExistsAtPath:")
-        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved", e.dst
+        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath.:unresolved", e.dst
         assert (e.meta or {}).get("receiver_type_hint") == "NSFileManager"
         assert tag_io_boundaries(edges, {"objc": load_catalog("objc")}) >= 1
 
@@ -257,7 +259,7 @@ class TestANullabilityQualifierIsSkippedForTheClassAfterIt:
             "}"
         ))
         e = _send(edges, "fileExistsAtPath:")
-        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved", e.dst
+        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath.:unresolved", e.dst
         assert tag_io_boundaries(edges, {"objc": load_catalog("objc")}) >= 1
 
     def test_null_unspecified_and_null_resettable_are_skipped_too(self, tmp_path: Path) -> None:

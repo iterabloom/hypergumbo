@@ -96,15 +96,11 @@ class TestTheNameSlotIsColonFreeByRule:
         well_formed = "objc:external:0-0:writeToFile.atomically.:unresolved"
         assert well_formed.split(":")[-2] == symbol_name_slot(well_formed)
 
-    def test_the_unresolved_edge_producer_bypasses_it(self) -> None:
-        """THE ROOT CAUSE, pinned as an xfail-shaped assertion of CURRENT
-        behaviour rather than of desired behaviour, because which way it gets
-        fixed is an open architectural question (INV-divuf).
-
-        ``make_unresolved_edge`` hand-rolls the id with an f-string, so an objc
-        selector reaches the name slot unsanitised and violates Ruling 1. When
-        the fork is settled this test changes with it; until then it documents
-        that the violation is real and where it originates."""
+    def test_the_unresolved_edge_producer_folds_it(self) -> None:
+        """THE ROOT CAUSE, now closed at the producer (INV-divuf's arm A, the
+        deferred half of ADR-0036 Ruling 1): ``make_unresolved_edge`` mints
+        through ``make_symbol_id``, so an objc selector reaches the name slot
+        folded and the selector itself lives on ``meta['callee_name']``."""
         from hypergumbo_core.analyze.base import make_unresolved_edge
 
         edge = make_unresolved_edge(
@@ -115,11 +111,9 @@ class TestTheNameSlotIsColonFreeByRule:
             pass_id="objc",
             run_id="test",
         )
-        assert edge.dst == OBJC_SELECTOR
-        assert ":" in symbol_name_slot(edge.dst), (
-            "the name slot carries a raw colon — ADR-0036 Ruling 1 violated at "
-            "the producer, which is where INV-divuf says the fix belongs"
-        )
+        assert edge.dst == "objc:external:0-0:writeToFile.atomically.:unresolved"
+        assert symbol_name_slot(edge.dst) == "writeToFile.atomically."
+        assert edge.meta["callee_name"] == "writeToFile:atomically:"
 
 
 class TestTheDisclosureNamesTheWholeCallee:

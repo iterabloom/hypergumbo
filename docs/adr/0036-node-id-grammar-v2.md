@@ -192,6 +192,10 @@ Three layers, extending ADR-0034's:
    `sanitize_id_name_segment` (`:` → `.`), so every id it builds has a
    colon-free name slot. The boundary synthesizer (`ir._canonical_external_id`)
    does the same for every `external_symbol` and passes the node's own `name`.
+   `analyze.base.make_unresolved_edge` mints its stand-in dst through
+   `make_symbol_id` as well (an empty module hint becomes `external`), so an
+   unresolved call's dst is well-formed before finalize remaps it; the
+   callee's name as written lives on the edge's `meta.callee_name`.
    `make_file_id` builds the file triple `1-1:file:file`. A factory guarantees
    that the slot is colon-free, not that it equals `Symbol.name`: a producer
    that hands the factory another string than the name it stores still mints
