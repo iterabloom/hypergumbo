@@ -12,6 +12,7 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.base import make_symbol_id
 from hypergumbo_lang_common.r_lang import _make_edge_id, analyze_r_files, find_r_files
 
@@ -155,7 +156,10 @@ main <- function(x) {
 """)
         result = analyze_r_files(tmp_path)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        builtin_calls = [e for e in call_edges if "builtin" in e.dst]
+        # A plain call the tree does not declare: an ``external`` stand-in.
+        builtin_calls = [
+            e for e in call_edges if e.dst == external_target("r", "sqrt")[0]
+        ]
         assert len(builtin_calls) >= 1
 
 class TestNamespaceQualifiedCalls:

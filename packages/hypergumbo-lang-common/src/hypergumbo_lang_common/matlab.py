@@ -30,7 +30,8 @@ bare symbol name (methods too, not ``Class.method``) to its id across
 functions, methods and classes; it is last-writer-wins, so same-named symbols
 in different files or classes collapse to whichever was collected last.
 Pass 2 emits a ``calls`` edge for each ``function_call`` inside a function: a
-registry hit at confidence 1.0, otherwise ``matlab:unresolved:<name>`` at 0.6.
+registry hit at confidence 1.0, otherwise an ``edge_target.external_target``
+stand-in at 0.6 (it was ``matlab:unresolved:<name>``, no id, WI-tatop).
 Calls outside any function are dropped.
 """
 
@@ -45,6 +46,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, make_symbol_id,
     populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -280,7 +282,7 @@ def _extract_edges_recursive(
                 # ``1.0 if hit else 0.6`` put every hit over the 0.85 ceiling.
                 resolved = callee_id is not None
                 if callee_id is None:
-                    callee_id = f"matlab:unresolved:{callee_name}"
+                    callee_id = external_target("matlab", callee_name)[0]
 
                 line = node.start_point[0] + 1
                 edge = Edge.create(

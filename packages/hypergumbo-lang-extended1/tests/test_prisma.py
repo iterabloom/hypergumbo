@@ -8,6 +8,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_lang_extended1.prisma import (
     analyze_prisma,
     find_prisma_files,
@@ -295,7 +296,7 @@ class TestUnresolvedRelations:
 
         # Should have lower confidence for unresolved target
         assert relation_edges[0].confidence == 0.6
-        assert "unresolved:Unknown" in relation_edges[0].dst
+        assert relation_edges[0].dst == external_target("prisma", "Unknown")[0]
 
 
 def test_same_model_in_two_schemas_keeps_its_relations(tmp_path: Path) -> None:

@@ -46,6 +46,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
 from .registry import (
@@ -271,7 +272,10 @@ def link_ruby_ffi(
                 ))
             else:
                 # Unresolved: external library (e.g., libzmq, libc)
-                dst = f"{RUBY_FFI_STDLIB_PREFIX}{func_name}:unresolved"
+                # ``RUBY_FFI_STDLIB_PREFIX`` + name + ``:unresolved``, built by the
+                # id factory so the name slot is sanitized and the static
+                # id check can read it.
+                dst = make_symbol_id("ruby", "C_ffi", 0, 0, func_name, "unresolved")
                 result_edges.append(Edge.create(
                     src=src_sym.id,
                     dst=dst,

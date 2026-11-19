@@ -33,7 +33,8 @@ Edges Extracted
   one's calls to the other), else the file's node (``make_file_id``; it was
   ``robot:<path>``, no id). The target is looked up by exact name
   in the cross-file keyword/test registry; a name not found there gets the
-  synthetic ``robot:unresolved:<keyword>`` dst. The analyzer sets no
+  ``edge_target.external_target`` stand-in (it was ``robot:unresolved:<keyword>``,
+  no id: every unresolved keyword folded into one node). The analyzer sets no
   confidence itself: ``Edge.create`` derives it from
   ``evidence_type="ast_call_direct"`` and ``is_resolved`` (0.85 resolved,
   0.5 unresolved)
@@ -71,7 +72,7 @@ from hypergumbo_core.analyze.base import (
     make_module_import_dst,
     populate_docstrings_from_tree,
 )
-from hypergumbo_core.analyze.edge_target import in_tree_file_id
+from hypergumbo_core.analyze.edge_target import external_target, in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -575,7 +576,7 @@ class _RobotExtractor:
             dst = resolved_id
         else:
             # Unresolved - could be from library or imported resource
-            dst = f"robot:unresolved:{keyword_name}"
+            dst = external_target("robot", keyword_name)[0]
 
         edge = Edge.create(
             src=src,

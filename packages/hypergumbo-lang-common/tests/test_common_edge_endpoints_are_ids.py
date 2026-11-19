@@ -18,13 +18,22 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+import pytest
+
 from hypergumbo_core.analyze.base import make_file_id, make_module_import_dst
-from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+from hypergumbo_core.analyze.edge_target import external_target, non_id_edge_endpoints
 from hypergumbo_core.ir import Edge
 from hypergumbo_lang_common.fortran import analyze_fortran_files
+from hypergumbo_lang_common.hlsl import analyze_hlsl
+from hypergumbo_lang_common.matlab import analyze_matlab
 from hypergumbo_lang_common.meson import analyze_meson
 from hypergumbo_lang_common.nix import analyze_nix_files
+from hypergumbo_lang_common.puppet import analyze_puppet
+from hypergumbo_lang_common.purescript import analyze_purescript
+from hypergumbo_lang_common.r_lang import analyze_r_files
+from hypergumbo_lang_common.racket import analyze_racket
 from hypergumbo_lang_common.robot import analyze_robot
+from hypergumbo_lang_common.scheme import analyze_scheme
 
 
 def _write(root: Path, files: dict[str, str]) -> Path:
@@ -130,3 +139,78 @@ def test_fortran_use_of_a_module_outside_the_tree_is_a_module_stand_in(
     assert [e.dst for e in imports] == [
         make_module_import_dst("fortran", "iso_fortran_env"),
     ]
+
+
+# -- a name the tree does not declare ends on a stand-in in the id grammar --
+#
+# Each analyzer below wrote such a dst as ``<lang>:unresolved:<name>``,
+# ``<lang>:external:<name>[:function]``, ``r:builtin:<name>``,
+# ``r:external:<pkg>::<name>`` or ``puppet:resource:<text>``: three or four
+# slots, or a ``::`` in the span slot. Finalize folded every one of a
+# language into ONE ``<lang>:<unknown>:0-0:<token>`` node (``unresolved``,
+# ``external``, ``builtin``): all of a repository's unresolved Racket calls
+# were one callee. Now each is ``edge_target.external_target``.
+
+_NAMES: dict[str, tuple[Callable, dict[str, str], list[str]]] = {
+    "fortran": (analyze_fortran_files, {
+        "calc.f90": "program calc\n  implicit none\n  call external_sub(1)\nend program calc\n",
+    }, ["external_sub"]),
+    "hlsl": (analyze_hlsl, {
+        "shade.hlsl": (
+            "float4 helper(float4 c) { return c; }\n"
+            "float4 main(float4 c : COLOR) : SV_Target {\n"
+            "    return extfunc(helper(c));\n}\n"
+        ),
+    }, ["extfunc"]),
+    "matlab": (analyze_matlab, {
+        "run.m": "function y = run(x)\n  y = unknown_fn(x);\nend\n",
+    }, ["unknown_fn"]),
+    "nix": (analyze_nix_files, {
+        "lib.nix": "{ f = x: builtins.toString (missingFn x); }\n",
+    }, ["missingFn"]),
+    "purescript": (analyze_purescript, {
+        "Main.purs": 'module Main where\n\nmain = do\n  log "hi"\n  undefinedThing 1\n',
+    }, ["undefinedThing"]),  # ``log`` is on the skip-list
+    "racket": (analyze_racket, {"a.rkt": "#lang racket\n(define (f x) (g x))\n"}, ["g"]),
+    "scheme": (analyze_scheme, {"b.scm": "(define (f x) (g x))\n"}, ["g"]),
+    "robot": (analyze_robot, {
+        "t.robot": "*** Test Cases ***\nT\n    Other Missing\n",
+    }, ["Other Missing"]),
+}
+
+
+@pytest.mark.parametrize("lang", sorted(_NAMES))
+def test_a_name_the_tree_lacks_ends_on_a_stand_in(tmp_path: Path, lang: str) -> None:
+    analyze, files, names = _NAMES[lang]
+    symbols, edges = _run(analyze, tmp_path, files)
+    misses = [e for e in edges if e.edge_type == "calls" and not e.is_resolved]
+    assert non_id_edge_endpoints(symbols, misses) == []
+    assert sorted(e.dst for e in misses) == sorted(
+        external_target(lang, n)[0] for n in names
+    )
+
+
+def test_r_qualified_and_plain_calls_end_on_stand_ins(tmp_path: Path) -> None:
+    symbols, edges = _run(analyze_r_files, tmp_path, {
+        "app.R": "f <- function(x) {\n  y <- dplyr::filter(x)\n  paste(y)\n}\n",
+    })
+    calls = [e for e in edges if e.edge_type == "calls"]
+    assert non_id_edge_endpoints(symbols, calls) == []
+    by_dst = {e.dst: e for e in calls}
+    qualified, ref = external_target("r", "filter", "dplyr")
+    assert by_dst[qualified].dst_ref == ref
+    assert external_target("r", "paste")[0] in by_dst
+
+
+def test_puppet_require_keeps_the_reference_text(tmp_path: Path) -> None:
+    symbols, edges = _run(analyze_puppet, tmp_path, {
+        "site.pp": (
+            "class web {\n  package { 'nginx': ensure => installed }\n"
+            "  service { 'nginx':\n    ensure  => running,\n"
+            "    require => Package['nginx'],\n  }\n}\n"
+        ),
+    })
+    deps = [e for e in edges if e.edge_type == "depends_on"]
+    assert non_id_edge_endpoints(symbols, deps) == []
+    dst, ref = external_target("puppet", "Package['nginx']", "resource")
+    assert [(e.dst, e.dst_ref) for e in deps] == [(dst, ref)]

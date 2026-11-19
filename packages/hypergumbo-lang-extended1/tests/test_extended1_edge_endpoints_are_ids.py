@@ -17,11 +17,14 @@ from typing import Callable
 import pytest
 
 from hypergumbo_core.analyze.base import make_file_id, make_module_import_dst
-from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+from hypergumbo_core.analyze.edge_target import external_target, non_id_edge_endpoints
 from hypergumbo_lang_extended1.gleam import analyze_gleam
 from hypergumbo_lang_extended1.odin import analyze_odin
+from hypergumbo_lang_extended1.prisma import analyze_prisma
 from hypergumbo_lang_extended1.twig import analyze_twig
 from hypergumbo_lang_extended1.v_lang import analyze_v
+from hypergumbo_lang_extended1.verilog import analyze_verilog_files
+from hypergumbo_lang_extended1.vhdl import analyze_vhdl_files
 
 
 def _write(root: Path, files: dict[str, str]) -> Path:
@@ -82,3 +85,44 @@ def test_twig_extends_and_includes_end_on_template_stand_ins(tmp_path: Path) -> 
         for t in ("base.twig", "partial.twig", "card.twig")
     )
     assert {e.meta["template"] for e in refs} == {"base.twig", "partial.twig", "card.twig"}
+
+
+# -- a name the tree does not declare ends on a stand-in in the id grammar --
+
+
+def test_prisma_relation_to_an_undeclared_model_ends_on_a_stand_in(
+    tmp_path: Path,
+) -> None:
+    result = analyze_prisma(_write(tmp_path, {
+        "schema.prisma": (
+            "model Post {\n  id       Int  @id\n  authorId Int\n"
+            "  author   Ghost @relation(fields: [authorId], references: [id])\n}\n"
+        ),
+    }))
+    refs = [e for e in result.edges if e.edge_type == "references"]
+    assert non_id_edge_endpoints(result.symbols, refs) == []
+    assert [e.dst for e in refs] == [external_target("prisma", "Ghost")[0]]
+
+
+def test_verilog_instance_of_an_undeclared_module_ends_on_a_stand_in(
+    tmp_path: Path,
+) -> None:
+    """The stand-in's id is hashed into its stable id: ``verilog:external:
+    <type>:module`` folded every undeclared module into one node."""
+    result = analyze_verilog_files(_write(tmp_path, {
+        "top.sv": "module top(input clk);\n  missing_ip u0 (.clk(clk));\nendmodule\n",
+    }))
+    inst = [e for e in result.edges if e.edge_type == "instantiates"]
+    assert non_id_edge_endpoints(result.symbols, inst) == []
+    assert [e.dst for e in inst] == [external_target("verilog", "missing_ip")[0]]
+
+
+def test_vhdl_architecture_of_an_undeclared_entity_ends_on_a_stand_in(
+    tmp_path: Path,
+) -> None:
+    result = analyze_vhdl_files(_write(tmp_path, {
+        "arch.vhd": "architecture rtl of missing_ent is\nbegin\nend architecture rtl;\n",
+    }))
+    impl = [e for e in result.edges if e.edge_type == "implements"]
+    assert non_id_edge_endpoints(result.symbols, impl) == []
+    assert [e.dst for e in impl] == [external_target("vhdl", "missing_ent")[0]]

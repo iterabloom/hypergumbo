@@ -57,6 +57,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
     make_symbol_id,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 
@@ -316,7 +317,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                         dst_id = entity_sym.id
                         confidence = 0.90
                     else:
-                        dst_id = f"vhdl:external:{entity_name}:entity"
+                        dst_id = external_target("vhdl", entity_name)[0]
                         confidence = 0.70
 
                     edge = Edge.create(

@@ -23,7 +23,11 @@ How It Works
 5. Pass 2: create call edges, resolving callees across files through a
    NameResolver; a ``pkg::func`` call passes the package as a path hint
    and gets higher confidence. Calls that resolve to no repo symbol
-   target ``r:external:<pkg>::<func>`` (qualified) or ``r:builtin:<func>``
+   end on an ``edge_target.external_target`` stand-in: ``pkg::func`` in
+   module ``pkg`` with an ExternalRef, a plain name in module ``external``
+   (it was ``r:external:<pkg>::<func>`` / ``r:builtin:<func>``, no id, and
+   every plain miss of a repository folded into one ``builtin`` node,
+   WI-tatop)
 
 Why This Design
 ---------------
@@ -71,8 +75,9 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -482,12 +487,18 @@ def _extract_r_edges(
                 # external target derives the unresolved base (ADR-0037).
                 target = lookup_result.symbol if lookup_result.found else None
                 resolved = target is not None
+                # A miss is a stand-in in the id grammar: ``pkg::f`` names its
+                # package (an ExternalRef); a plain name's package is not known
+                # (``library()`` may have attached any). They were
+                # ``r:external:<pkg>::<f>`` and ``r:builtin:<f>``, no id: every
+                # plain miss of a repository folded into one ``builtin`` node.
+                dst_ref: Optional[ExternalRef] = None
                 if target is not None:
                     dst_id: str = target.id
                 elif path_hint:
-                    dst_id = f"r:external:{path_hint}::{func_name}"
+                    dst_id, dst_ref = external_target("r", func_name, path_hint)
                 else:
-                    dst_id = f"r:builtin:{func_name}"
+                    dst_id = external_target("r", func_name)[0]
 
                 if path_hint:
                     # ADR-0039 caller-valued: qualified_call is a pending-
@@ -506,6 +517,7 @@ def _extract_r_edges(
                         origin=PASS_ID,
                         evidence_type="qualified_call",
                         origin_run_id=run_id,
+                        dst_ref=dst_ref,
                     )
                 else:
                     edge = Edge.create(

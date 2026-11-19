@@ -8,6 +8,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_lang_common.racket import (
     analyze_racket,
     find_racket_files,
@@ -279,4 +280,4 @@ class TestUnresolvedCalls:
         # (ADR-0039; ADR-0037).
         assert call_edges[0].is_resolved is False
         assert call_edges[0].confidence == 0.50
-        assert "unresolved:unknown-function" in call_edges[0].dst
+        assert call_edges[0].dst == external_target("racket", "unknown-function")[0]

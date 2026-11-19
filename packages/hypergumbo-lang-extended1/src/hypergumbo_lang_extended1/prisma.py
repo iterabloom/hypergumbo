@@ -29,7 +29,8 @@ construct kept in ``meta["block_type"]``. Each ``@relation`` field yields a
 the ``model_block`` containing the field, found by POSITION
 (``symbol_declared_by``; WI-jusah, the WI-kosar family); the target is looked
 up by name in THIS schema first, then the repo-wide registry: a hit is
-confidence 1.0, a miss goes to ``prisma:unresolved:<Target>`` at 0.6. Before,
+confidence 1.0, a miss goes to an ``edge_target.external_target`` stand-in at
+0.6 (it was ``prisma:unresolved:<Target>``, no id, WI-tatop). Before,
 both were repo-wide name lookups, which keep one symbol per name, so two
 apps' schemas each declaring ``model User`` crossed their relations.
 """
@@ -49,6 +50,7 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -309,7 +311,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                 target_id: Optional[str] = target_sym.id if target_sym else None
                 confidence = 1.0 if target_id else 0.6
                 if target_id is None:
-                    target_id = f"prisma:unresolved:{target_model}"
+                    target_id = external_target("prisma", target_model)[0]
 
                 line = field_node.start_point[0] + 1
                 edge = Edge.create(
