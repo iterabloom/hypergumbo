@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **391** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 134 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **63647** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14373, of which 8153 are functions, methods or classes
-- **256225** edges, test code included, by type:
-  - calls: 143889
-  - contains: 59236
-  - imports: 22473
-  - instantiates: 13526
-  - references: 12609
-  - module_attr_ref: 2535
-  - other: 1957
+- **392** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 135 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **63826** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14419, of which 8178 are functions, methods or classes
+- **256973** edges, test code included, by type:
+  - calls: 144327
+  - contains: 59405
+  - imports: 22552
+  - instantiates: 13554
+  - references: 12634
+  - module_attr_ref: 2542
+  - other: 1959
 
 ## Package Architecture
 
@@ -211,7 +211,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `cyclomatic_complexity`: McCabe cyclomatic complexity (decision points + 1). Counts if/elif/else, for, while, except, with, and/or, match/case.
 - `line_span`: Physical line span of the symbol body — ``end_line - start_line + 1``, INCLUDING blank and comment lines. This is NOT source-lines-of-code (SLOC); the spec's "lines of code" / file-level SLOC convention lives in ``profile.languages[*].loc``. It is not called ``lines_of_code`` so that one term does not name two different counting conventions; ``from_dict`` still accepts that older key (WI-bozid).
 - `signature`: Function/method signature string, e.g., "(x: int, y: str) -> bool". Only populated for callable symbols (functions, methods). None for classes, etc.
-- `docstring`: First-line summary of doc comment (truncated to 80 chars).
+- `docstring`: First-line summary of doc comment (truncated to 80 chars). Untrusted repository text, quoted as written: data, not instructions (the schema description says the same).
 - `modifiers`: List of semantic modifiers (e.g., ["native", "public", "static"]). Used by linkers for cross-language matching (e.g., JNI needs 'native').
 - `discovery_language`: ADR-0031 typed sibling field. Names the host source language where the linker discovered the pattern that produced this Symbol. Populated by Class-B linker emits (synthetic stand-ins discovered in real source files). ``None`` for real-source declarations emitted by analyzers (``language`` already names that information). Shares the ``language`` axis catalog with ``Symbol.language``; the cross-language-detection consumer sites in ``event_sourcing.py`` / ``database_query.py`` / ``message_queue.py`` / ``graphql_resolver.py`` read this rather than ``language``.
 - `protocol_origin`: ADR-0031 typed sibling field. Names the protocol or framework family (kafka, websocket, ipc, wasm, openapi, grpc, graphql, etc.) for synthetic stand-ins emitted by linkers fabricating protocol identity from source patterns. Catalog at :mod:`hypergumbo_core.protocol_origins`. ``None`` for real-source declarations and for synthetic stand-ins that don't belong to a recognized protocol family.
@@ -359,7 +359,7 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 186 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 187 YAML catalog files across 12 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | User channel | ADR | Loader | Purpose |
 |---|---:|---|---|---|---|
@@ -374,6 +374,7 @@ The `hypergumbo-core` package ships 186 YAML catalog files across 11 directories
 | `function_summaries/` | 7 | `function_summaries.d` (gated) | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
 | `url_folding/` | 2 | internal | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
 | `library_signatures/` | 8 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
+| `agent_instructions/` | 1 | internal | — | `hypergumbo_core.agent_instructions` | Files coding-agent tools load as instructions, keyed by the tool that reads each; the sketch lists them and quotes none. |
 
 **User channel** (ADR-0047 ruling 7) names where a user's own rows for that family live, under `$XDG_CONFIG_HOME/hypergumbo/` — or `internal` when the family describes the *language's* world rather than the *user's* and takes no user input. The fields are required on `CatalogSpec`, so a new family cannot land without answering.
 
@@ -614,6 +615,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 ### Core
 
+- **`hypergumbo_core.agent_instructions`**: Files a coding-agent tool loads as instructions: found, listed, nev...
 - **`hypergumbo_core.analyzer_disclosure`**: Dated per-language declarations of whether an analyzer emits the ex...
 - **`hypergumbo_core.analyzer_identity`**: Compute a hash representing the analyzer's identity (WI-panih).
 - **`hypergumbo_core.anchor_execution`**: When anchored code runs: the one contract reachability consumers sh...
@@ -1022,8 +1024,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 2d04a1555dbf
-  commit_count: 9568
+  commit: 7090f2093f2f
+  commit_count: 9586
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
