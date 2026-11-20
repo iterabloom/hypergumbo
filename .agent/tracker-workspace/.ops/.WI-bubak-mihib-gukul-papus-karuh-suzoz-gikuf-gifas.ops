@@ -33,3 +33,18 @@
   clock: 3  # 00f3
   nonce: 00f3  # 00f3
   message: "Spec correction shipped in PR #2276 (ee9fb07e5): docs/hypergumbo-spec.md now says generic type parameters are NOT renamed by position (no analyzer passes type_params; Go is the exception), and the older duplicate rows (normalized_signature, Go, Java) were removed. Item stays open for the bump: hash each type-parameter clause by position, gated on the pre-registered count of bound-only ties (owner ruling 2026-11-19)."  # 00f3
+- op: update  # d059
+  at: '2026-11-20T01:46:01Z'  # d059
+  by: agent  # d059
+  actor: jgstern_agent  # d059
+  clock: 4  # d059
+  nonce: d059  # d059
+  set:  # d059
+    status: done  # d059
+- op: discuss  # 5afb
+  at: '2026-11-20T01:46:02Z'  # 5afb
+  by: agent  # 5afb
+  actor: jgstern_agent  # 5afb
+  clock: 5  # 5afb
+  nonce: 5afb  # 5afb
+  message: "Done in PR #2291 (dev 703dce32b; commit 0b0d013c6: each declaration's own type-parameter clause hashed by position for Java, Groovy, Kotlin, Scala, Swift, C#; spec correction earlier in PR #2276). Live on dev 703dce32b, hypergumbo survey on three variants: (a) Java class C { <T extends Number> void f(T x){} <T extends CharSequence> void f(T x){} <T> void g(T x){} } + Swift struct W { func h<T: P>(_ x: T){} func h<T: Q>(_ x: T){} }; (b) a with g's T renamed U; (c) a with the FIRST bound overload of f and of h deleted. Results: a: C.f hgstableid16:f51dd06ac9de5948 and hgstableid16:0dcdb53d8c4a0bb6 (distinct), W.h 0fc24e7d96bf458c / ca8b3ece1c929492 (distinct); b: C.g keeps c5e8f866a4c083ec after T->U (rename does not move it); c: the surviving C.f keeps 0dcdb53d8c4a0bb6 and W.h keeps ca8b3ece1c929492 (deleting one overload no longer moves its id onto the other, the probe defect named in the 11-19 ruling). Not wired, per the commit: Rust, Dart, Python, Go (constraint list already hashed), TypeScript; a class's or extension's clause is not hashed into its members. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/bubak.txt"  # 5afb

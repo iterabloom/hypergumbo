@@ -42,3 +42,18 @@
   set: {}  # 8c61
   add:  # 8c61
     isbefore: [WI-gisun-bosov-donum-kupuz-vubos-gadup-runij-fopif]  # 8c61
+- op: update  # a342
+  at: '2026-11-20T01:45:22Z'  # a342
+  by: agent  # a342
+  actor: jgstern_agent  # a342
+  clock: 5  # a342
+  nonce: a342  # a342
+  set:  # a342
+    status: done  # a342
+- op: discuss  # f897
+  at: '2026-11-20T01:45:22Z'  # f897
+  by: agent  # f897
+  actor: jgstern_agent  # f897
+  clock: 6  # f897
+  nonce: f897  # f897
+  message: "Done in PR #2291 (dev 703dce32b; commits 8410e1a55 latex, fd092c621 imports, a3badd248 stand-ins, f8c5a1ee1 rust/cpp raw-colon population, 4f4ae43af check-id-construction reads src=/dst=, 144d9b7f2 SCIP resolver required). Live on dev 703dce32b: (1) scripts/check-id-construction -> rc=0, no findings (its commit records 40 sites in 24 files on the pre-fix tree). (2) hypergumbo survey on a copy of pr3/tatop/synth (21 languages; 64 non-id endpoints over 21 passes before the fix) plus a rust file (std::io::Error::new, alloc::rc::Rc::new) and a cpp file (std::cout, std::uint8_t) -> rc=0; analysis_runs[].non_id_edge_endpoints = 0 for every pass, incl. fortran gleam hlsl latex matlab meson nix odin powershell prisma puppet purescript r racket robot scheme twig v verilog vhdl xml pony pyffi-linker ruby-ffi-linker rust cpp (sum 0); nodes with an <unknown> slot: 0; id_format violations: 0 (the one violation in the map is a cross_field display_label warning on a vhdl architecture, unrelated). Rust call dsts now rust:std::io::Error:0-0:new:external_symbol (name slot without '::'). Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/tatop.txt"  # f897
