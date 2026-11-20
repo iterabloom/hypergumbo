@@ -40,3 +40,18 @@
   clock: 4  # fc5c
   nonce: fc5c  # fc5c
   message: "OWNER RULING 2026-11-19 (in session): keep the top-level stand_in_fingerprint_scheme field and SCHEMA_VERSION 0.21.3. Grounds: ADR-0035 section 7 gives every label a scheme field (the SCIP arm is the direct analogue: own algorithm in a shared slot, own label, own field); spec Appendix C item 1 makes an added optional field a PATCH bump, as 0.21.0->0.21.1->0.21.2 did on 11-16. Caveats noted to the owner: the field restates the label, and no code reads any of the six scheme fields."  # fc5c
+- op: update  # 1093
+  at: '2026-11-20T01:50:19Z'  # 1093
+  by: agent  # 1093
+  actor: jgstern_agent  # 1093
+  clock: 5  # 1093
+  nonce: '1093'  # 1093
+  set:  # 1093
+    status: done  # 1093
+- op: discuss  # 29b7
+  at: '2026-11-20T01:50:19Z'  # 29b7
+  by: agent  # 29b7
+  actor: jgstern_agent  # 29b7
+  clock: 6  # 29b7
+  nonce: 29b7  # 29b7
+  message: "Done in PR #2291 (dev 703dce32b; commit 7ccd08a4b), option (b) per the 11-19 ruling, with the owner's later ruling to keep the top-level stand_in_fingerprint_scheme field and SCHEMA_VERSION 0.21.3. Live on dev 703dce32b: python -> STAND_IN_FINGERPRINT_SCHEME = 'hypergumbo-standinfp-v1', STAND_IN_FINGERPRINT_PREFIX = 'hgstandinfp1:', schema.SCHEMA_VERSION = '0.21.3', mint_stand_in_fingerprint('x:y:0-0:z:w') = 'hgstandinfp1:e907775064c57652'. hypergumbo survey on the stand-in fixture (copy of pr3/agent5/fixtures/tovog_fx2) -> rc=0; map schema_version 0.21.3, top-level stand_in_fingerprint_scheme 'hypergumbo-standinfp-v1'; 11 language=None nodes, 11 of 11 fingerprints match hgstandinfp1:<16hex> (e.g. javascript:web/recv.js:3-3:PING:function -> hgstandinfp1:3232ff27ef9d781c); source nodes keep hgfp2: (22); 0 fingerprint validation violations. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/kabuh.txt"  # 29b7

@@ -18,3 +18,10 @@
     pr_ref:  # d591
     description: "Kotlin, Swift, Go and TypeScript hash function-type parameter names, so renaming a callback parameter's inner name moves the id.\n\nREPRO: Kotlin fun f(cb: (x: Int) -> Unit) hashes ((x: Int) -> Unit); fun f(cb: (y: Int) -> Unit) hashes apart. Same for Swift, Go and TypeScript function types (hashed as written). Since PR 3 commit 2217d7f4a Dart drops these names, so Dart is now the only language that does. Spelling sensitivity, not a collapse. Moves ids: candidate for the final v17 stable-id PR. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent8/RESULTS.md R1."  # d591
     fields: {}  # d591
+- op: discuss  # f241
+  at: '2026-11-20T01:57:47Z'  # f241
+  by: agent  # f241
+  actor: jgstern_agent  # f241
+  clock: 2  # f241
+  nonce: f241  # f241
+  message: "OWNER RULING 2026-11-20 (in session): yes, drop parameter names inside function types from the hashed signature in Kotlin, Swift, Go and TypeScript, so renaming one no longer moves the id. In the final v17 PR (PR 5)."  # f241

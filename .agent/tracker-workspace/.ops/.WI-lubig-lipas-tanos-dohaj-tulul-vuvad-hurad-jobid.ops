@@ -1,0 +1,20 @@
+- op: create  # 6f3a
+  at: '2026-11-20T01:52:03Z'  # 6f3a
+  by: agent  # 6f3a
+  actor: jgstern_agent  # 6f3a
+  clock: 1  # 6f3a
+  nonce: 6f3a  # 6f3a
+  data:  # 6f3a
+    kind: work_item  # 6f3a
+    title: "hypergumbo sketch exits 120 when its stderr hits a closed pipe"  # 6f3a
+    status: todo_hard  # 6f3a
+    priority: 2  # 6f3a
+    parent:  # 6f3a
+    tags:  # 6f3a
+    - cli  # 6f3a
+    isbefore: []  # 6f3a
+    duplicate_of: []  # 6f3a
+    not_duplicate_of: []  # 6f3a
+    pr_ref:  # 6f3a
+    description: "`hypergumbo sketch` exits 120, not 141, when its stderr goes into a closed pipe. Owner ruling 2026-11-19 (WI-nidun): a broken pipe exits 141 for the whole CLI, so 1 means a violated claim; 120 is neither.\n\nREPRO (dev 4a65321dc, 2026-11-20):\n  hypergumbo sketch packages/hypergumbo-tracker 2>&1 | head -c 10 >/dev/null; echo ${PIPESTATUS[0]}            -> 120 (2 of 2 runs)\n  hypergumbo sketch packages/hypergumbo-tracker 2>&1 >/dev/null | head -c 10 >/dev/null; echo ${PIPESTATUS[0]}  -> 120 (stderr alone)\n  Control: hypergumbo sketch packages/hypergumbo-tracker 2>/dev/null | head -c 10 >/dev/null -> 141 (stdout alone).\n\nNOT A PR #2291 REGRESSION: the same main() call on dev 183ed8581 (before PR 3, a detached worktree on PYTHONPATH) also exits 120. PR 3's pipe_console commit (6a9092e8f on dev) routes sketch's stderr Console through PipeConsole, but the live exit shows that path does not end at 141.\n\nHYPOTHESIS (not traced): on a broken pipe, main() calls _suppress_broken_stdout_pipe (cli.py ~13880), which points only stdout at /dev/null; stderr stays on the dead pipe, so Python's interpreter-shutdown flush of stderr fails and the exit becomes 120. Check the analogue: every CLI command that writes progress to stderr (not only sketch).\n\nFound by the PR 3 closure agent while re-running WI-vavag-kuduh's repro: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/."  # 6f3a
+    fields: {}  # 6f3a

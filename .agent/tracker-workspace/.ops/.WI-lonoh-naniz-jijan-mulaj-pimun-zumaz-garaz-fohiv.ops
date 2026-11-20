@@ -34,3 +34,10 @@
   clock: 3  # b231
   nonce: b231  # b231
   message: "OWNER RULING 2026-11-19 (in session): in PR 3 (v16 bump), hash an enclosing extension's where-clause into its members' ids (measure first), and check the Rust analogue (two impl blocks of one type with different type arguments or bounds both defining f). The argument-label and static-vs-instance parts go to an additional stable-id PR at the end of the plan (a second bump), with WI-palus, WI-podor and WI-hamuk."  # b231
+- op: discuss  # bf55
+  at: '2026-11-20T01:50:28Z'  # bf55
+  by: agent  # bf55
+  actor: jgstern_agent  # bf55
+  clock: 4  # bf55
+  nonce: bf55  # bf55
+  message: "Shipped part re-checked on dev 703dce32b (PR #2291; commits 713233d8b Swift extension where-clause, 6b8d09ab3 Rust impl-header analogue). Live: hypergumbo survey on (a) extension Array where Element: P { func ext() {} } + extension Array where Element: Q { func ext() {} }, and Rust impl<T: X> Foo<T> { pub fn f(&self) {} } + impl<T: Y> Foo<T> { pub fn f(&self) {} }; (c) the same with the FIRST extension and the FIRST impl deleted. a: Array.ext hgstableid16:3921c709543e0af4 and 2515da982b0bdae0 (distinct), Foo::f a8816a29cccf0abc and 923f029fd97abf23 (distinct); c: the surviving Array.ext keeps 2515da982b0bdae0 and Foo::f keeps 923f029fd97abf23 (deleting one no longer moves its id onto the other). STILL OPEN, per the 11-19 ruling, for the later v17 stable-id PR: argument labels (f(a: Int) vs f(b: Int)) and static-vs-instance; the does-not-move-ids bullets (local-type call binding, same-named local types, dotted superclass) were not checked here. Status left unchanged. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/lonoh.txt"  # bf55
