@@ -18,9 +18,14 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
   (``_java_hash_scope``): a local class in two methods, or an anonymous
   class's members in two methods, share one emitted dotted name, so hashing
   the method chain too keeps their ids distinct and keeps them from moving
-  when the other method is deleted. Outside a method body the two chains are
-  equal. A ``record`` (no table kind) mints the producer formula over that
-  chain (``_java_type_stable_id``; INV-fabih)
+  when the other method is deleted. Outside a method body or an initializer
+  the two chains are equal. A ``record`` (no table kind) mints the producer
+  formula over that chain (``_java_type_stable_id``; INV-fabih). Since scheme
+  v17 a method or constructor labels the chain by name and hashed signature
+  (``_java_callable_label``; overloads differ), and the field or variable an
+  initializer binds, an anonymous class (``new Builder<String>``) and an enum
+  constant's body are labels too, so anonymous-class members in two fields
+  of one type, two overloads or two enum constants no longer tie
 - A method's or constructor's typed stable_id hashes its signature text
   (``_extract_java_signature``), which writes every parameter and return
   type as its source text whatever the type's node kind; a type left out
@@ -210,6 +215,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     iter_tree,
     file_anchor_symbol,
+    layout_free,
     make_file_id,
     record_partial_parse,
     make_file_stable_id,
@@ -1575,22 +1581,92 @@ def _get_class_ancestors(
     return list(reversed(ancestors))
 
 
+def _java_callable_hashed(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The normalized signature a method's or constructor's typed stable_id
+    hashes: its signature text (a compact constructor's read off its record's
+    components) through :func:`normalize_java_signature`, its own type
+    parameters by position. The one reader for the symbol's id and for its
+    label in the scope chain (:func:`_java_callable_label`), so the two
+    cannot disagree."""
+    sig_node = node
+    if (
+        node.type == "compact_constructor_declaration"
+        and node.parent is not None and node.parent.parent is not None
+    ):
+        sig_node = node.parent.parent
+    signature = _extract_java_signature(
+        sig_node, source, is_constructor=node.type in _JAVA_CONSTRUCTOR_NODES,
+    )
+    return normalize_with_type_parameters(
+        normalize_java_signature, signature, node, source)
+
+
+def _java_callable_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """A method's or constructor's label in the scope chain: its name and
+    its hashed signature, canonically spaced (``o(int)int``, ``A(String)``).
+
+    A name alone is shared by every overload, so anonymous and local classes
+    declared in ``o(int)`` and in ``o(String)`` tied with their members
+    (WI-hamuk). A callable whose hashed text is ``()`` (``void m()``, ``A()``)
+    keeps its bare name, so what it declares hashes what it did; a name
+    followed by ``(`` is never a bare name, so the two spellings cannot meet.
+    """
+    name = _get_method_name(node, source)
+    if name is None:  # pragma: no cover - a declaration always names itself
+        return None
+    text = layout_free(_java_callable_hashed(node, source) or "", separators=True)
+    return name if text in ("", "()") else name + text
+
+
+def _java_anonymous_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """An anonymous class's label in the scope chain: ``new`` and the type it
+    instantiates as written, canonically spaced (``new Builder<String>``);
+    ``None`` for an ``object_creation_expression`` without a body."""
+    if not any(c.type == "class_body" for c in node.children):
+        return None
+    type_node = node.child_by_field_name("type")
+    if type_node is None:  # pragma: no cover - a creation always names its type
+        return None
+    return "new " + layout_free(_node_text(type_node, source))
+
+
 def _java_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """The types AND methods/constructors enclosing ``node``, outermost first
-    (INV-fabih).
+    """The scopes enclosing ``node``, outermost first (INV-fabih): types,
+    methods and constructors, and since scheme v17 the field or variable an
+    initializer binds, an anonymous class, and an enum constant's body.
 
     What a Java stable_id hashes. :func:`_get_class_ancestors` (the emitted
     name's chain) skips methods, so a local class ``Inner`` in methods ``a``
     and ``b`` -- or an anonymous class's ``run`` in two methods -- share
     ``N.Inner`` with their members; hashing the method chain keeps them from
     tying, and keeps deleting one method from moving the other's ids. For
-    every symbol not inside a method body the two chains are equal.
+    every symbol not inside a method body or an initializer the two chains
+    are equal.
+
+    Labels (WI-hamuk): a type by its name; a method or constructor by
+    :func:`_java_callable_label` (name and hashed signature, so two overloads
+    differ); a ``variable_declarator`` (a field or a local) by the name it
+    binds; an anonymous class by :func:`_java_anonymous_label`; an enum
+    constant by its name. Until scheme v17 an anonymous class, the declarator
+    holding it and an enum constant's body added nothing and an overload was
+    labelled by its bare name, so jedis's ``BuilderFactory`` ``build`` of
+    ``A = new Builder<String>() {...}`` and of ``B = new Builder<String>()
+    {...}``, ``run`` of ``new Runnable() {...}`` and of ``new Thread()
+    {...}`` in one method, and ``apply`` of ``PLUS { ... }`` and ``MINUS {
+    ... }`` tied (split only by occurrence order). Two anonymous classes of
+    one type that bind no name in one scope (``submit(new Runnable() {...})``
+    twice) still share a chain.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type in _JAVA_NAMED_TYPE_NODES:
             return _get_class_name(n, source)
         if n.type == "method_declaration" or n.type in _JAVA_CONSTRUCTOR_NODES:
-            return _get_method_name(n, source)
+            return _java_callable_label(n, source)
+        if n.type == "object_creation_expression":
+            return _java_anonymous_label(n, source)
+        if n.type in ("variable_declarator", "enum_constant"):
+            name_node = n.child_by_field_name("name")
+            return _node_text(name_node, source) if name_node is not None else None
         return None
     return ancestor_labels(node, label)
 
@@ -2124,8 +2200,7 @@ def _extract_symbols(
                             meta["inferred_return_type"] = inferred
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_with_type_parameters(
-                    normalize_java_signature, signature, node, source)
+                norm_sig = _java_callable_hashed(node, source)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
@@ -2185,8 +2260,7 @@ def _extract_symbols(
                 modifiers = _extract_modifiers(node, source)
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_with_type_parameters(
-                    normalize_java_signature, signature, node, source)
+                norm_sig = _java_callable_hashed(node, source)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
