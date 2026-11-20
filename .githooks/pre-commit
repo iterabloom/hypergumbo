@@ -542,6 +542,65 @@ else
     echo -e "${YELLOW}skipped (no audit-findings, registry, or producer files staged)${NC}"
 fi
 
+# Line citations (WI-havob, owner-approved 2026-11-20). The registries in
+# module_key_axis.py and signature_axis.py cite other source files by path,
+# line number and anchor text, and an edit above a cited line puts the
+# citation off its anchor. The tests that check them were found only about
+# ten minutes into the pre-PR run (PR 3: 12 citations; PR 4: 2), and
+# `repin-line-citations --check` finds the same in about a second. It runs
+# only when a staged file is a registry or a file a registry cites; that
+# list comes from the script (--list-paths), which reads it out of the
+# registries, so it is never kept here by hand. The script's own contract:
+# 0 every citation on its anchor, 1 off or anchor gone, 2 could not run.
+check_line_citations() {
+    local cited staged log rc=0
+    echo -n "  Line citations... "
+    log=$(mktemp)
+    ./scripts/repin-line-citations --list-paths > "$log" 2>&1 || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo -e "${RED}✗${NC}"
+        echo ""
+        echo -e "${RED}./scripts/repin-line-citations --list-paths could not run (exit ${rc}), so the citations are unchecked:${NC}"
+        tail -5 "$log"
+        rm -f "$log"
+        exit 1
+    fi
+    cited=$(cat "$log")
+    staged=$(git diff --cached --name-only | grep -Fx -f <(printf '%s\n' "$cited") || true)
+    if [[ -z "$cited" || -z "$staged" ]]; then
+        echo -e "${YELLOW}skipped (no cited file staged)${NC}"
+        rm -f "$log"
+        return 0
+    fi
+    ./scripts/repin-line-citations --check > "$log" 2>&1 || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$log"
+        return 0
+    fi
+    echo -e "${RED}✗${NC}"
+    echo ""
+    if [[ $rc -ne 1 ]]; then
+        echo -e "${RED}./scripts/repin-line-citations --check could not run (exit ${rc}), so the citations are unchecked:${NC}"
+        tail -5 "$log"
+    elif grep -q "CANNOT RE-PIN" "$log"; then
+        echo -e "${RED}A cited anchor is gone from its file (./scripts/repin-line-citations --check says):${NC}"
+        cat "$log"
+        echo "  The cited code changed: fix that citation in its registry by hand,"
+        echo "  then run ./scripts/repin-line-citations for any others it lists."
+    else
+        echo -e "${RED}Line citations are off their anchors (./scripts/repin-line-citations --check says):${NC}"
+        cat "$log"
+        echo ""
+        echo "  Fix: ./scripts/repin-line-citations"
+        echo "  then re-stage each registry named in [brackets] above:"
+        grep -o '\[[^]:]*:' "$log" | tr -d '[:' | sort -u | sed 's/^/    git add /'
+    fi
+    rm -f "$log"
+    exit 1
+}
+check_line_citations
+
 # Check affected-tests.txt manifest mode (must not be full-suite for CI)
 echo -n "  Test manifest... "
 MANIFEST=".ci/affected-tests.txt"
