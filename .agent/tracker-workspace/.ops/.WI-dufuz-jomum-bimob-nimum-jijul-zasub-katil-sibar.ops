@@ -1,0 +1,20 @@
+- op: create  # c7d7
+  at: '2026-11-20T09:01:37Z'  # c7d7
+  by: agent  # c7d7
+  actor: jgstern_agent  # c7d7
+  clock: 1  # c7d7
+  nonce: c7d7  # c7d7
+  data:  # c7d7
+    kind: work_item  # c7d7
+    title: "slice --entry auto picks a tool or generator main in a production path (lazygit, podman, forgejo)"  # c7d7
+    status: todo_soft  # c7d7
+    priority: 3  # c7d7
+    parent:  # c7d7
+    tags:  # c7d7
+    - entrypoints  # c7d7
+    isbefore: []  # c7d7
+    duplicate_of: []  # c7d7
+    not_duplicate_of: []  # c7d7
+    pr_ref:  # c7d7
+    description: "After PR 4 (WI-fupap), `slice --entry auto` applies the entry list's path penalties to its whole score: test ×0.1, example/utility ×0.5, vendored ×0.3. That fixed alertmanager, where an examples/ main had won. Three repositories still pick a tool or code-generator main that sits in a production path, so no penalty applies. All three picks are the same as on dev, so PR 4 did not cause them:\n\n- lazygit: pkg/integration/clients/injector/main.go\n- podman: pkg/bindings/generator/generator.go\n- forgejo: build/backport-locales.go\n\nThe program's own main is cmd/podman, root main.go and so on. The question is what tells a program's main apart from a tool main structurally: for example the manifest or build target, the directory depth under cmd/, or reachability. A name or path list tuned to these three repositories is not the answer.\n\nAlternative already measured: one-hop out-degree in the slice score also fixes alertmanager, but changes 7 of 23 picks, vite's among them onto a false route. It was not taken.\n\nRepro: `hypergumbo slice --entry auto` on each repository. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/out/f3/COMPARE_F3.txt."  # c7d7
+    fields: {}  # c7d7

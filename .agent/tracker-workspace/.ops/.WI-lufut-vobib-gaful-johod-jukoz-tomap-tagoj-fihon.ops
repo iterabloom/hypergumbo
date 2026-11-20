@@ -33,3 +33,18 @@
   clock: 3  # feb6
   nonce: feb6  # feb6
   message: "OWNER RULING 2026-11-20 (in session): a README that an instruction file imports (e.g. CLAUDE.md '@README.md') still gives the sketch its short README description, under QUOTED_TEXT_NOTICE; its whole-file content is still never printed (Additional Files / Source Files Content). Reason: a README is written for people, and the description is the sketch's one-line project summary. Follow-up to PR 4 commit dd161cf12, which held the description back."  # feb6
+- op: update  # 48ba
+  at: '2026-11-20T10:28:35Z'  # 48ba
+  by: agent  # 48ba
+  actor: jgstern_agent  # 48ba
+  clock: 4  # 48ba
+  nonce: 48ba  # 48ba
+  set:  # 48ba
+    status: done  # 48ba
+- op: discuss  # bd7d
+  at: '2026-11-20T10:28:35Z'  # bd7d
+  by: agent  # bd7d
+  actor: jgstern_agent  # bd7d
+  clock: 5  # bd7d
+  nonce: bd7d  # bd7d
+  message: "Fixed in PR #2298 (merged to dev 308a326ad). Agent instruction files (16-row catalogue agent-instruction-files.yaml, plus @path imports) are listed in the sketch Overview and never quoted in any sketch section; explain holds back their source. Owner ruling 2026-11-20 (keep description): a README imported by an instruction file keeps its short description, under QUOTED_TEXT_NOTICE; its body is never printed. LIVE REPRO on dev: (1) hypergumbo sketch /tmp/pr4_fx/agentfiles -t 16000 --with-source --no-comparison-sketches -> exit 0, 0 SENTINEL lines, the Overview lists 8 files with their tools and importers. (2) hypergumbo explain AGENTS.md /tmp/pr4_fx/agentfiles --first -> exit 0, 0 SENTINEL lines, '[Source held back: AGENTS.md is an agent instruction file ...]'. (3) hypergumbo sketch /tmp/pr4_fx/readmeimport -t 16000 --with-source -> description paragraph printed under the notice, READMEBODYSENTINEL count 0, README listed as '(imported by CLAUDE.md)'. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/lufut/RESULTS.md, README_FOLLOWUP.md. Known limit: the description is whatever the README extractor picks (up to 300 chars), so an injected paragraph can be picked, as for any README; the notice marks it as data."  # bd7d

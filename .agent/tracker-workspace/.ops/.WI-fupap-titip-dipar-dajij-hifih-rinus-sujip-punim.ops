@@ -26,3 +26,25 @@
   clock: 2  # 60e8
   nonce: '60e8'  # 60e8
   message: "OWNER RULING 2026-11-19 (in session): the owner adopted all recommendations of the 11-19 review (three read-only research passes over the ADRs, the spec and the code; record ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md). For this item:\nQ1: ties at equal rank_score order by entry KIND first (manifest-declared script, then a program start: main / main guard, then routes and the rest), not by detection confidence; amend ADR-0039 ruling 3 and spec ~L1418 accordingly (confidence is detection reliability only, ADR-0039 ruling 1; the 0.80 for main was set for ranking reasons). Separately re-derive main's per-language confidence from detection evidence. Re-measure the 23 repositories. Item 2 (routes just under 1.0): leave. Item 3: the sketch's per-group cut uses the same dealing (_take_dealing_ties). Item 4: the route-label dedup chooses by the full total order (see also WI-rorug). Item 5: _connectivity_fallback ends its sort with the total order; compact.py's tiered force-include is on WI-buvaf."  # 60e8
+- op: discuss  # cb01
+  at: '2026-11-20T10:27:16Z'  # cb01
+  by: agent  # cb01
+  actor: jgstern_agent  # cb01
+  clock: 3  # cb01
+  nonce: cb01  # cb01
+  message: "Merged as PR #2298, dev SHA 308a326ade2f."  # cb01
+- op: update  # 51ef
+  at: '2026-11-20T10:28:34Z'  # 51ef
+  by: agent  # 51ef
+  actor: jgstern_agent  # 51ef
+  clock: 4  # 51ef
+  nonce: 51ef  # 51ef
+  set:  # 51ef
+    status: done  # 51ef
+- op: discuss  # e87f
+  at: '2026-11-20T10:28:34Z'  # e87f
+  by: agent  # e87f
+  actor: jgstern_agent  # e87f
+  clock: 5  # e87f
+  nonce: e87f  # e87f
+  message: "Fixed in PR #2298 (merged to dev 308a326ad). Ties now order by entry kind: rank 0 manifest_declared, rank 1 main_function/main_guard/cli_main (PROGRAM_START_KINDS), rank 2 the rest; then the existing tie keys. ADR-0039 ruling 3 amended in place. main confidence re-derived per language from a 358-repository census (Go/Java/Rust/C/C++/C#/Kotlin/Scala 0.95, Python/Haskell 0.90, Erlang 0.50). Items 3, 4, 5 built (sketch group cut deals ties, route-label dedup keeps the entry-order first, _connectivity_fallback total order). Owner ruling 2026-11-20 fixed two side effects in the same PR: the library-export demotion counts only production entries, and a bare createServer counts as a route only when imported from http/https/http2 (vite keeps its 61 TypeScript exports); slice --entry auto applies the list's path penalty to its whole score (alertmanager picks cmd/alertmanager/main.go). LIVE REPRO on dev 308a326ad: hypergumbo slice --list-entries on the fixture ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/fixtures/q1_tie -> [cli_command] apptool (0.99) first, then [main_function] app/main.py main (0.90) second; before the fix main came 5th, after four routes. 23-repository before/after: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/RESULTS.md, out/COMPARE.txt, out/f3/COMPARE_F3.txt. Residuals filed: WI-jalom, WI-mulaj, WI-holud, WI-nihov, WI-dufuz; WI-rorug (label-only dedup key) stays open."  # e87f
