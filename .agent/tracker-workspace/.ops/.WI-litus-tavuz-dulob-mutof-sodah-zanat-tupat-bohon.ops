@@ -18,3 +18,18 @@
     pr_ref:  # 22a7
     description: "`hypergumbo explain <instruction file>` prints a coding-agent instruction file's whole text (default --with-source), while the sketch now lists such files and never quotes them (WI-lufut (b), PR 4).\n\nREPRO (PR 4 branch jgstern-agent/feat/pr4-entry-order-agent-files, commit dd161cf12): a fixture with AGENTS.md holding a sentinel line; `hypergumbo explain AGENTS.md <fixture> --first` prints the sentinel, in both the base and the fixed arm (the fixed arm prints QUOTED_TEXT_NOTICE first, WI-lufut (e)). Owner ruling (b) named the sketch only, so explain was left as it is.\n\nQUESTION: explain is asked for a named target, so printing it may be intended; decide whether explain holds back an instruction file's content the way the sketch does (agent_instructions.py already recognises them). Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/lufut/RESULTS.md."  # 22a7
     fields: {}  # 22a7
+- op: update  # f024
+  at: '2026-11-20T17:08:49Z'  # f024
+  by: agent  # f024
+  actor: jgstern_agent  # f024
+  clock: 2  # f024
+  nonce: f024  # f024
+  set:  # f024
+    status: done  # f024
+- op: discuss  # 984d
+  at: '2026-11-20T17:08:49Z'  # 984d
+  by: agent  # 984d
+  actor: jgstern_agent  # 984d
+  clock: 3  # 984d
+  nonce: 984d  # 984d
+  message: "Fixed in PR #2298 (merged to dev 308a326ad), commit 'fix(sketch): an imported README keeps its description; explain holds back': explain now holds back the source of every agent instruction file. LIVE REPRO on dev after the merge: hypergumbo explain AGENTS.md /tmp/pr4_fx/agentfiles --first -> exit 0, 0 SENTINEL lines in stdout, prints '[Source held back: AGENTS.md is an agent instruction file (OpenAI Codex, GitHub Copilot, Cursor, Amp; imported by CLAUDE.md)]'. Before: the whole file was printed. Tests: test_sketch_agent_instructions.py (test_an_imported_readme_is_not_printed_by_explain, test_explain_holds_back_instruction_file_sources_of_callers_and_callees)."  # 984d
