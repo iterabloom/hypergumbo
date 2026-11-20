@@ -18,3 +18,10 @@
     pr_ref:  # 6fe9
     description: "PR 4 (WI-fupap) orders tied entry points by kind:\n- rank 0: manifest-declared;\n- rank 1: kind main_function, main_guard or cli_main;\n- rank 2: the rest.\n\nThe kind main_function is shared by two other concepts besides the language-convention main:\n- `application`: Flask(), FastAPI(), Tornado, IOApp, ZIO, SwiftUI and others;\n- `entrypoint`: argparse, fire, kong, akka newServerAt.\n\nBoth land in rank 1. On mitmproxy, the \"Tornado application\" now comes before the controllers.\n\nTwo kinds of question:\n1. Ranking: are a web-framework application object and a CLI-framework parser program starts in the sense of the ruling (\"manifest script > main/main guard > routes and the rest\")? The narrower alternative is to put in rank 1 only main_function from the language-convention concept, plus main_guard and cli_main.\n2. Concept: is filing `application` and `entrypoint` under kind main_function a conceptual leak (one kind name carrying three concepts)? This is a candidate for the fundamental concept audit.\n\nRepro: survey mitmproxy, then read the top 10 of the entry-point list. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/RESULTS.md."  # 6fe9
     fields: {}  # 6fe9
+- op: discuss  # f080
+  at: '2026-11-20T17:23:07Z'  # f080
+  by: agent  # f080
+  actor: jgstern_agent  # f080
+  clock: 2  # f080
+  nonce: f080  # f080
+  message: "OWNER RULING 2026-11-20: this is the domain of the overdue fundamental concept audit (run after PR 6), not a PR 6 item. Record: after_fast_smart_test_grouping.md amendment 6."  # f080

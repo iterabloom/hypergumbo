@@ -1,0 +1,20 @@
+- op: create  # 02a7
+  at: '2026-11-20T18:33:29Z'  # 02a7
+  by: agent  # 02a7
+  actor: jgstern_agent  # 02a7
+  clock: 1  # 02a7
+  nonce: 02a7  # 02a7
+  data:  # 02a7
+    kind: work_item  # 02a7
+    title: "java: unbound same-type anonymous classes, local classes in two blocks, static vs instance init blocks still tie"  # 02a7
+    status: todo_soft  # 02a7
+    priority: 4  # 02a7
+    parent:  # 02a7
+    tags:  # 02a7
+    - stable_id  # 02a7
+    isbefore: []  # 02a7
+    duplicate_of: []  # 02a7
+    not_duplicate_of: []  # 02a7
+    pr_ref:  # 02a7
+    description: "After PR 5 (WI-hamuk), Java scopes are labelled by:\n- method or constructor name plus hashed signature;\n- field or variable declarator name;\n- `new <Type>` for anonymous classes;\n- enum constant name.\n\nStill tied, split only by occurrence order:\n1. Two anonymous classes of one type that bind no name in one scope (`submit(new Runnable(){...})` twice). These are the 3 tie groups left in jedis.\n2. Same-named local classes in two blocks of one method.\n3. Anonymous classes in a `static {}` block and an instance `{}` block.\n\nAlso: Kotlin `object :` expressions share the anonymous-class defect (two `val`s of one type, two locals). Kotlin uses its own scope function; see WI-finam for the Kotlin locals sibling.\n\nRepros: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/hamuk/RESULTS.md and fixtures there."  # 02a7
+    fields: {}  # 02a7
