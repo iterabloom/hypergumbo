@@ -25,3 +25,18 @@
   clock: 2  # 1dac
   nonce: 1dac  # 1dac
   message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump): layout must not be an id input; normalize whitespace in every hashed signature / scope-label text, all languages, with per-language churn measured."  # 1dac
+- op: update  # 17e6
+  at: '2026-11-20T01:49:22Z'  # 17e6
+  by: agent  # 17e6
+  actor: jgstern_agent  # 17e6
+  clock: 3  # 17e6
+  nonce: '17e6'  # 17e6
+  set:  # 17e6
+    status: done  # 17e6
+- op: discuss  # c734
+  at: '2026-11-20T01:49:22Z'  # c734
+  by: agent  # c734
+  actor: jgstern_agent  # c734
+  clock: 4  # c734
+  nonce: c734  # c734
+  message: "Done in PR #2291 (dev 703dce32b; commit 8833ccabe: layout_free at make_typed_stable_id, so every typed language and scope label). Live on dev 703dce32b, hypergumbo survey on one-line vs reflowed variants of the same declarations; stable ids equal in every pair: Dart w({required String text, int sid = 0}) vs the dart-format form over 4 lines -> both hgstableid16:2ab1a830c7ce5930 (hashed text '({required String,int})' for both, via ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/dart_hashed.py); Rust g(x: &mut Vec<u8>) vs g(x: & mut Vec<u8>) -> both 89d2970107bada78; Swift func ret(_ x: Int) -> Dictionary<String, Int> vs the same with parameters and return type over 5 lines -> both 51bd32296bc68214; also Java put(Map<String, Integer> m, int x) vs Map<String,\\n Integer> m,\\n int   x -> both c6ff444a43f17cba; TypeScript t(a, b): Map<string, number> vs trailing-comma multi-line form -> both 0ac39383d4a98c69; Kotlin k(a: String, b: Int): Map<String, Int> vs multi-line with trailing comma -> both fa3eb2db166f4d79. Displayed signatures keep their layout (unchanged by design). Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/kumoh.txt"  # c734

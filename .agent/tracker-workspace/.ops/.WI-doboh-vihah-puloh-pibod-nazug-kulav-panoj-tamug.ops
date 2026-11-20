@@ -25,3 +25,18 @@
   clock: 2  # 2b04
   nonce: 2b04  # 2b04
   message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump)."  # 2b04
+- op: update  # e974
+  at: '2026-11-20T01:48:52Z'  # e974
+  by: agent  # e974
+  actor: jgstern_agent  # e974
+  clock: 3  # e974
+  nonce: e974  # e974
+  set:  # e974
+    status: done  # e974
+- op: discuss  # ff89
+  at: '2026-11-20T01:48:52Z'  # ff89
+  by: agent  # ff89
+  actor: jgstern_agent  # ff89
+  clock: 4  # ff89
+  nonce: ff89  # ff89
+  message: "Done in PR #2291 (dev 703dce32b; commit 82e4bdff1, hashed text rebuilt from the tree in 0ba139f47). Live on dev 703dce32b: python ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/dart_hashed.py 'void f({Size s = const Size(1, 2)}) {}' -> displayed '({Size s = ...})' (item: '({Size s = ..., 2)}'), hashed '({Size})' (no 'name =', no default). hypergumbo survey on Dart variants: f({Size s = const Size(1, 2)}) in (a) and f({Size t = const Size(3, 4)}) in (b) share hgstableid16:7e4e0e9f0a7813ff (renaming the named parameter and changing its default do not move it); w({required String text, int sid = 0}) hashes the same in a and b (2ab1a830c7ce5930); control (c) with the parameter TYPE changed (f({int s = 1})) moves to 4326501be7b9ef5e. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/doboh.txt"  # ff89

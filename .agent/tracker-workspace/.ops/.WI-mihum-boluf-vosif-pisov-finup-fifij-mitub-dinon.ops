@@ -25,3 +25,18 @@
   clock: 2  # 72a8
   nonce: 72a8  # 72a8
   message: "Fixed on the PR 3 branch (jgstern-agent/feat/stable-id-v16, commit 2217d7f4a: Dart's hashed signature is rendered from the syntax tree). Repro by agent 8: void f(@A(\"(\") int a, int b) {} gave no typed id at tip 8996a2812, gives (@A(\"(\") int,int) after; void f(@A(\"x)\") int a, int b) {} gave (@A(\"x)\")int a, int b) at tip, (@A(\"x)\") int,int) after. Close after PR 3 merges, re-running the repro on dev. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent8/mihum_repro.txt."  # 72a8
+- op: update  # 1eec
+  at: '2026-11-20T01:48:53Z'  # 1eec
+  by: agent  # 1eec
+  actor: jgstern_agent  # 1eec
+  clock: 3  # 1eec
+  nonce: 1eec  # 1eec
+  set:  # 1eec
+    status: done  # 1eec
+- op: discuss  # 60f1
+  at: '2026-11-20T01:48:53Z'  # 60f1
+  by: agent  # 60f1
+  actor: jgstern_agent  # 60f1
+  clock: 4  # 60f1
+  nonce: 60f1  # 60f1
+  message: "Done in PR #2291 (dev 703dce32b; commit 0ba139f47, Dart hashed text read from the syntax tree). Re-ran the agent-8 repro on dev 703dce32b: python ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/dart_hashed.py -> 'void f(@A(\"(\") int a, int b) {}' hashed '(@A(\"(\") int,int)' (no typed text at tip 8996a2812); 'void f(@A(\"x)\") int a, int b) {}' -> '(@A(\"x)\") int,int)' (tip kept names: '(@A(\"x)\")int a, int b)'); 'void f(@A(\"x,y\") int a, int b) {}' -> '(@A(\"x,y\") int,int)'. hypergumbo survey: m(@A(\"(\") int a, int b) and n(@A(\"x,y\") int a, int b) keep their stable ids when both parameters are renamed (3b8bd57dc71a5f29, 0a68df1211525294 in variants a and b) and move when the first parameter's type changes to String (variant c: 3bc2faed26905008, d7834483ae09734d), i.e. a typed id that hashes types, not names. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/mihum.txt"  # 60f1
