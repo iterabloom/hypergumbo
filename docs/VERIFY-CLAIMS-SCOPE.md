@@ -48,7 +48,7 @@ Two codes are not verdicts and are the same for every hypergumbo command:
 | code | condition |
 |---:|---|
 | `70` | a crash inside hypergumbo itself (`hypergumbo: internal error: …`, "This is a bug") |
-| `141` | broken pipe: the reader of stdout went away (`… \| head`) |
+| `141` | broken pipe: the reader of stdout or stderr went away (`… \| head`, `… 2>&1 \| head`) |
 
 So `1` means a violated claim and nothing else; a crash and a broken pipe both
 exited `1` until hypergumbo gave them codes of their own.

@@ -116,7 +116,7 @@ def _current_matrix(parser) -> dict[str, list[str]]:
 
 def _main_injection_subcommands() -> set[str]:
     """The subcommand-name set ``main()`` keys its default-``sketch`` argv
-    injection off of (cli.py).
+    injection off of (cli.py; the parsing half of ``main`` is ``_main``).
 
     ``main`` derives the set from the parser, so the two cannot differ. This
     asserts the DERIVATION is still in place: a hand-written literal can
@@ -124,7 +124,7 @@ def _main_injection_subcommands() -> set[str]:
     mis-injects ``sketch`` at runtime — the subcommand parses correctly and is
     then rejected as "not a valid subcommand" with a suggestion to run a
     different one. (history: WI-talaz)"""
-    src = inspect.getsource(cli.main)
+    src = inspect.getsource(cli._main)
     assert "subcommands = _registered_subcommands(parser)" in src, (
         "main() no longer derives its subcommand set from the parser — if a "
         "literal has come back, so has the two-homes divergence this gate "
