@@ -57,6 +57,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The spec states generic type parameters are hashed by name.**
 - **Crashes now exit 70; empty claims files exit 2.**
 - **Any broken pipe, stderr or `--help` included, exits 141.**
+- **The spec's stated schema versions now match the code.**
 - **`verify-claims` follows secrets returned by one-expression closures.**
 - **`verify-claims` catches secrets written by deferred closures and callbacks.**
 - **Go pointer-receiver method values no longer hide secret leaks.**
