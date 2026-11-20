@@ -19,3 +19,18 @@
     pr_ref:  # 282c
     description: "WHAT. PR #2200 made each analyzer hand the whole type text to the shared normalizers in core analyze/base.py. Three shared helpers still reduce distinct types to one text:\n- strip_fqn_prefix keeps the last dotted segment: Java `Foo.Bar` = `Baz.Bar`; Swift `Int.Type` = `Type`, and a dotted name inside a tuple or function type; C# a nullable or array tuple with a qualified element, and a `ref` return; Kotlin function types, `suspend` types, annotated types and dotted receivers; Scala six pairs listed in the Scala package report; Groovy annotated types. It also swallows the parameters of a function type.\n- split_params_top_level treats `<` as a bracket and ignores braces (Go struct and interface literals; a Dart default value containing a comma leaves a fragment in the hashed text, and `{int a: 1}` hashes `a:`).\n- _find_matching_paren does not skip string literals.\n- skip_self: Rust `self` = `&mut self`.\n\nSEEN. Reported by the Java, Kotlin, Swift, C#, Scala, Go, Groovy and Dart packages on fixtures; not sized on real repositories.\n\nNOT COVERED by the owner's 2026-11-16 ruling (which named the nine analyzers' own renderers), so left filed. Fixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 282c
     fields: {}  # 282c
+- op: update  # 0b58
+  at: '2026-11-20T01:46:01Z'  # 0b58
+  by: agent  # 0b58
+  actor: jgstern_agent  # 0b58
+  clock: 2  # 0b58
+  nonce: 0b58  # 0b58
+  set:  # 0b58
+    status: done  # 0b58
+- op: discuss  # 73e9
+  at: '2026-11-20T01:46:01Z'  # 73e9
+  by: agent  # 73e9
+  actor: jgstern_agent  # 73e9
+  clock: 3  # 73e9
+  nonce: '73e9'  # 73e9
+  message: "Done in PR #2291 (dev 703dce32b; commits 34a08311d, cf35f03ff; Dart parts via WI-doboh/WI-kovok fixes 82e4bdff1, 0ba139f47). Live on dev 703dce32b: python ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/sig_repros.py tojov -> 'ALL OK (15/15)': Java/Groovy (Foo.Bar x) vs (Baz.Bar x) hash '(Foo.Bar)' / '(Baz.Bar)' (distinct); Swift (x: Int.Type) -> '(Int.Type)' vs String.Type distinct; Swift tuple (Int, A.B) vs (Int, C.D) distinct; Swift/Kotlin function types keep their parameters ('((Int) -> B)' vs '((String) -> B)'); Kotlin suspend, receiver function type (StringBuilder.() -> Unit vs () -> Unit), annotated @Ann a.B vs a.C distinct; C# 'ref Foo.Bar' vs 'ref Foo.Baz' and '((int, A.B)?)' vs '((int, A.C)?)' distinct; Scala Int => a.B vs Long => a.B and Chain.NonEmpty vs Other.NonEmpty distinct; Rust (self, x: i32) -> '(Self,i32)' vs (&mut self, x: i32) -> '(&mut Self,i32)'. split_params_top_level keeps 'a: ((Int) -> Int, (Int) -> Int)', 'a: Map<(Int) -> Int, String>', 'x: {a: A, b: B}', Go 'x struct{a, b int}' and 'x interface{ M(a, b int) }' each whole, and 's: String = \")\"' whole; find_matching_paren('(a: String = \")\", b: Int) -> X', 0) = 24, the real closer. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/tojov.txt"  # 73e9

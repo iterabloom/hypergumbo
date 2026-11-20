@@ -19,3 +19,18 @@
     pr_ref:  # a817
     description: "Six producers build a node id by hand whose text differs from what the id factory emits.\n\nWHERE. Listed with reasons in HAND_BUILT_NODE_IDS, packages/hypergumbo-core/tests/test_id_newtypes.py:\n- hypergumbo-core linkers/event_sourcing.py, _create_event_symbol: an event name (\"user:created\") in the name slot.\n- hypergumbo-core linkers/_view_template_core.py, link_via_strategies: a template file name in the name slot.\n- hypergumbo-lang-common handlebars.py, _make_symbol_id: a partial name.\n- hypergumbo-lang-extended1 bibtex.py, _make_symbol_id: a citation key (knuth:1984).\n- hypergumbo-lang-extended1 blade.py, _make_symbol_id: a quoted view name (package::view).\n- hypergumbo-lang-rust-analyzer translate.py, refine_rust_kinds: rewrites the kind slot of a factory-minted id in place.\n\nWHY IT MATTERS. In the first five the name can hold ':' and the id is written without the escaping make_symbol_id applies, so the id does not parse back into its slots (the same family as the 36 colon-in-name id_format violations counted for INV-dulah). The sixth edits an id's text after minting, so the id and the record's fields can disagree. Each is wrapped in NodeId(...) at the site today so the text stays byte-identical; that wrap is the thing to remove.\n\nWHAT TO DO. Route each through make_symbol_id (for the sixth: re-mint from the refined fields). Then remove its entry from HAND_BUILT_NODE_IDS; the table should end empty.\n\nTHIS CHANGES ID TEXT. Before merging, measure on real repositories that contain these constructs: which ids change, and whether any stable_id moves. Standing owner rule (10-01): a producer value that replaces a stable-id floor value is no scheme bump; a change to an INPUT of the hash is a bump. State which applies, with the count, and ask the owner if a bump is needed.\n\nOwner ruling 2026-11-16: yes, fix these as a follow-up to WI-tapak."  # a817
     fields: {}  # a817
+- op: update  # edda
+  at: '2026-11-20T01:45:45Z'  # edda
+  by: agent  # edda
+  actor: jgstern_agent  # edda
+  clock: 2  # edda
+  nonce: edda  # edda
+  set:  # edda
+    status: done  # edda
+- op: discuss  # 9b96
+  at: '2026-11-20T01:45:45Z'  # 9b96
+  by: agent  # 9b96
+  actor: jgstern_agent  # 9b96
+  clock: 3  # 9b96
+  nonce: 9b96  # 9b96
+  message: "Done in PR #2291 (dev 703dce32b; commits 35512a0d2 templates/bibtex/blade/handlebars/rust-analyzer refine, 0f2b88973 event-sourcing). Live on dev 703dce32b: hypergumbo survey on a fixture with refs.bib (@book{knuth:1984,...}), a Blade view (@extends('package::layouts.app')), Handlebars partials {{> shared/header}} and {{> ns:footer}}, and JS bus.on('user:created', ...) -> rc=0, validation_report.violations = 0. Ids: bibtex:refs.bib:1-1:knuth.1984:entry (name 'knuth:1984'), handlebars:hbs/page.hbs:2-2:ns.footer:partial (name 'ns:footer'), javascript:js/bus.js:4-4:user.created:function (name 'user:created'), Blade @extends dst blade:template:package::layouts.app:0-0:package..layouts.app:external_symbol; each id splits into 5 slots with the name slot free of ':'. Static: packages/hypergumbo-core/tests/test_id_newtypes.py:117 'HAND_BUILT_NODE_IDS ... = {}' (the table ends empty, as asked); test_id_newtypes.py passed in scripts/smart-test (mypy ratchet clean, 138 passed). Not exercised live by me: the view-template linker and rust-analyzer's refine_rust_kinds (no fixture/backend run); their re-mint is covered by the commit's measurement (aardvark-dns recording: 15 refined constants, 0 differ) and the empty table. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/rozod.txt, ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/smarttest_core.txt"  # 9b96
