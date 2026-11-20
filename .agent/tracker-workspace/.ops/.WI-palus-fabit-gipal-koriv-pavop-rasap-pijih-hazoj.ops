@@ -39,3 +39,10 @@
   clock: 4  # da27
   nonce: da27  # da27
   message: "OWNER RULING 2026-11-20 (in session): canonicalize via imports. Per file, using local information only: a type name the file imports (import x.y.Foo, use std::fmt) or a language-implicit one (java.lang, Kotlin/Scala default imports) is rewritten to its full path before hashing, so both spellings hash alike. Names that cannot be resolved locally stay as written; distinct same-named types stay distinct. Rejected: last segment only (collapses a.Foo and b.Foo); keep as written and close."  # da27
+- op: discuss  # a11d
+  at: '2026-11-20T20:03:47Z'  # a11d
+  by: agent  # a11d
+  actor: jgstern_agent  # a11d
+  clock: 5  # a11d
+  nonce: a11d  # a11d
+  message: "Built in 12b988cb5 (PR 5 branch). Choice made under the canonicalize-via-imports ruling: a qualified spelling of a language-default name (java.lang.String, Kotlin/Scala defaults, Rust prelude) is written as its simple name, rather than the bare name being written in full; same equivalence classes, lower churn (jedis 10.60% vs 26.83%, diesel 28.56% vs 39.29%). Switch point: FileTypeNames.resolve in analyze/base.py. Known limits kept as designed: a file that writes java.lang.X because a same-package X shadows it now ties with bare X (one file cannot decide this); Rust/Python imports in nested scopes are read file-wide, and a name two scopes bind differently is left as written. Residuals filed: WI-lubap, WI-korur, WI-bonof, WI-jogih, WI-bujit, WI-juzom, WI-rafis. Evidence: pr5/palus/RESULTS.md."  # a11d

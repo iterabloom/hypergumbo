@@ -32,3 +32,18 @@
   clock: 3  # 754c
   nonce: 754c  # 754c
   message: "OWNER RULING 2026-11-20 (in session): keep as built. A Swift local's scope label includes the enclosing callable's name plus its layout-free hashed signature (and static/accessor words), so locals of overloads and of two inits no longer tie; changing the enclosing signature's parameter types, labels or return type moves its locals' ids, while renaming an internal parameter name or reflowing does not. Rejected alternative: a name-only scope label (locals of overloads keep tying)."  # 754c
+- op: update  # 81b3
+  at: '2026-11-20T21:53:57Z'  # 81b3
+  by: agent  # 81b3
+  actor: jgstern_agent  # 81b3
+  clock: 4  # 81b3
+  nonce: 81b3  # 81b3
+  set:  # 81b3
+    status: done  # 81b3
+- op: discuss  # 002b
+  at: '2026-11-20T21:53:57Z'  # 002b
+  by: agent  # 002b
+  actor: jgstern_agent  # 002b
+  clock: 5  # 002b
+  nonce: 002b  # 002b
+  message: "Fixed in PR #2304 (merged to dev at ca820c2cc, scheme hypergumbo-stableid-v17). Locals are scoped by their enclosing callable. Repro: func a() { struct Helper {} } and func b() { struct Helper {} } in one file -> Helper ids 7aa0df10b2a0d3ae vs d9f8e31fb28c6470, 0 tied (before: tied). Live repro on dev ca820c2cc: hypergumbo run <fixture> --out x.json, fixtures and outputs in the session scratchpad pr5_repro/; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/podor/RESULTS.md."  # 002b
