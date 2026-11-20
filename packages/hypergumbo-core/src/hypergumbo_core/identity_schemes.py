@@ -56,7 +56,7 @@ from __future__ import annotations
 
 import re
 
-STABLE_ID_SCHEME = "hypergumbo-stableid-v16"
+STABLE_ID_SCHEME = "hypergumbo-stableid-v17"
 # Any change that alters computed stable_id values bumps the scheme (spec §6),
 # even when only one language's values move: the scheme names the whole
 # output, and there is no in-place migration. The per-transition record
