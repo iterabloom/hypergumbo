@@ -1,0 +1,20 @@
+- op: create  # 22a7
+  at: '2026-11-20T02:59:37Z'  # 22a7
+  by: agent  # 22a7
+  actor: jgstern_agent  # 22a7
+  clock: 1  # 22a7
+  nonce: 22a7  # 22a7
+  data:  # 22a7
+    kind: work_item  # 22a7
+    title: "explain prints a coding-agent instruction file's text, which the sketch now holds back"  # 22a7
+    status: todo_soft  # 22a7
+    priority: 3  # 22a7
+    parent:  # 22a7
+    tags:  # 22a7
+    - sketch  # 22a7
+    isbefore: []  # 22a7
+    duplicate_of: []  # 22a7
+    not_duplicate_of: []  # 22a7
+    pr_ref:  # 22a7
+    description: "`hypergumbo explain <instruction file>` prints a coding-agent instruction file's whole text (default --with-source), while the sketch now lists such files and never quotes them (WI-lufut (b), PR 4).\n\nREPRO (PR 4 branch jgstern-agent/feat/pr4-entry-order-agent-files, commit dd161cf12): a fixture with AGENTS.md holding a sentinel line; `hypergumbo explain AGENTS.md <fixture> --first` prints the sentinel, in both the base and the fixed arm (the fixed arm prints QUOTED_TEXT_NOTICE first, WI-lufut (e)). Owner ruling (b) named the sketch only, so explain was left as it is.\n\nQUESTION: explain is asked for a named target, so printing it may be intended; decide whether explain holds back an instruction file's content the way the sketch does (agent_instructions.py already recognises them). Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/lufut/RESULTS.md."  # 22a7
+    fields: {}  # 22a7

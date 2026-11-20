@@ -26,3 +26,10 @@
   clock: 2  # f60a
   nonce: f60a  # f60a
   message: "OWNER RULING 2026-11-19 (in session): the owner adopted all recommendations of the 11-19 review (three read-only research passes over the ADRs, the spec and the code; record ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md). For this item:\n(b) YES: files a coding-agent tool loads as instructions are listed with the reason their content is held back, never printed; recognised by the tool that reads them (a data catalogue, as main-functions.yaml), following their @path imports (CLAUDE.md -> AGENTS.md). (c) REFUSED, a decision: no option that leaves out all quoted prose; --no-source already removes the whole-file sections, the bulk of it. Re-open trigger: a user or consumer asks for it, or a real repository where injected text reaches a reader through --no-source output. (d) REFUSED: no delimiter on inline docstring summaries without an A/B showing it lowers how often a model obeys an injected docstring (cost: 46-206 lines per 32k sketch). (e) explain prints sketch.QUOTED_TEXT_NOTICE (it prints whole docstrings into a model's context); the JSON gets no inline line, the schema and spec field descriptions call docstring/README fields untrusted repository text."  # f60a
+- op: discuss  # feb6
+  at: '2026-11-20T03:30:11Z'  # feb6
+  by: agent  # feb6
+  actor: jgstern_agent  # feb6
+  clock: 3  # feb6
+  nonce: feb6  # feb6
+  message: "OWNER RULING 2026-11-20 (in session): a README that an instruction file imports (e.g. CLAUDE.md '@README.md') still gives the sketch its short README description, under QUOTED_TEXT_NOTICE; its whole-file content is still never printed (Additional Files / Source Files Content). Reason: a README is written for people, and the description is the sketch's one-line project summary. Follow-up to PR 4 commit dd161cf12, which held the description back."  # feb6

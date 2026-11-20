@@ -18,3 +18,10 @@
     pr_ref:  # c20f
     description: "Dart hashed signature: named-parameter names are not hashed, while non-type words are.\n\n1. OWNER DECISION. A Dart named parameter's name is visible to callers but not hashed: f({int a}) and f({int b}) share an id. Same question as Swift argument labels (WI-lonoh's labels part, owner-ruled to the final v17 PR).\n2. Words that are not types stay in the hashed text: final, var, const, covariant and annotations. f(final int x) and f(int x) hash apart; f(var x) and f(x) hash apart.\n3. Dart records keep positional field names: (int a, int b) and (int x, int y) hash apart (positional record field names are documentation only).\nState after PR 3 commit 2217d7f4a (_dart_hashed_signature renders from the syntax tree). All move ids: candidates for the final v17 PR. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent8/RESULTS.md R2-R4."  # c20f
     fields: {}  # c20f
+- op: discuss  # 6998
+  at: '2026-11-20T01:57:47Z'  # 6998
+  by: agent  # 6998
+  actor: jgstern_agent  # 6998
+  clock: 2  # 6998
+  nonce: '6998'  # 6998
+  message: "OWNER RULING 2026-11-20 (in session): yes, hash a Dart named parameter's name (callers write it: f(a: 1)), so f({int a}) and f({int b}) get distinct ids. Decided together with Swift argument labels (WI-lonoh's labels part) in the final v17 PR (PR 5)."  # 6998
