@@ -151,6 +151,7 @@ module.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import importlib.util
 import os
@@ -3360,25 +3361,23 @@ class FileTypeNames:
         return full
 
 
-_CHAIN_PATTERNS: Dict[tuple[str, str], "_re.Pattern[str]"] = {}
-
-
+@functools.lru_cache(maxsize=None)
 def _chain_pattern(separator: str, quotes: str) -> "_re.Pattern[str]":
-    """A string literal (group ``string``) or a name chain (group ``chain``)."""
-    key = (separator, quotes)
-    pattern = _CHAIN_PATTERNS.get(key)
-    if pattern is None:
-        strings = "|".join(
-            rf"{_re.escape(q)}(?:\\.|[^{_re.escape(q)}\\])*{_re.escape(q)}" for q in quotes
-        )
-        sep = _re.escape(separator)
-        chain = (
-            rf"(?<![\w$.#':])(?P<chain>{_SIG_IDENT}(?:{sep}{_SIG_IDENT})*)"
-            rf"(?![\w$])(?!\??:(?!:))"
-        )
-        pattern = _re.compile(rf"(?P<string>{strings})|{chain}" if strings else chain)
-        _CHAIN_PATTERNS[key] = pattern
-    return pattern
+    """A string literal (group ``string``) or a name chain (group ``chain``).
+
+    Cached with ``lru_cache`` rather than a module dict: a handful of
+    separator/quote pairs exist, and the kept-work recorder accounts for
+    functools caches itself (``kept_work_guard``).
+    """
+    strings = "|".join(
+        rf"{_re.escape(q)}(?:\\.|[^{_re.escape(q)}\\])*{_re.escape(q)}" for q in quotes
+    )
+    sep = _re.escape(separator)
+    chain = (
+        rf"(?<![\w$.#':])(?P<chain>{_SIG_IDENT}(?:{sep}{_SIG_IDENT})*)"
+        rf"(?![\w$])(?!\??:(?!:))"
+    )
+    return _re.compile(rf"(?P<string>{strings})|{chain}" if strings else chain)
 
 
 def file_type_names(

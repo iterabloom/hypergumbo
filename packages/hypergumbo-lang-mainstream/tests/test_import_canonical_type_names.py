@@ -370,6 +370,12 @@ def test_a_name_imported_from_two_places_is_left_as_written(tmp_path: Path) -> N
     assert a == b
 
 
+@pytest.mark.incumbent_fed(
+    "extraction contract: proves the helper agrees with rust.py on an imported "
+    "type when handed rust.py's own item span; claims nothing about what "
+    "production feeds it (INV-dolud) — test_rust_scip_stable_id.py's "
+    "recorded-span test is the production arm"
+)
 def test_rust_scip_parity_holds_through_the_use_declarations(tmp_path: Path) -> None:
     """``compute_rust_stable_id_from_source`` mints what rust.py mints for an
     imported type."""
