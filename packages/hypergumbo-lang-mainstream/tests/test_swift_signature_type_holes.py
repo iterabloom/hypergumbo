@@ -139,9 +139,12 @@ _HOLE_FREE = (
     "let top: [String] = []\n"
 )
 _PINNED = {
-    "f": f"{STABLE_ID_PREFIX}5a2f000fa219a85c",
-    "h": f"{STABLE_ID_PREFIX}140fa1de7861b2a7",
-    "S.init": f"{STABLE_ID_PREFIX}3e28183fc36b3c3f",
+    # Scheme v17: argument labels are hashed (``(x:Int,y:[String: Int])Int?``),
+    # so the three labelled callables moved: f was 5a2f000fa219a85c, h
+    # 140fa1de7861b2a7, S.init 3e28183fc36b3c3f.
+    "f": f"{STABLE_ID_PREFIX}53f0210e962d3ee8",
+    "h": f"{STABLE_ID_PREFIX}06c1e95565135157",
+    "S.init": f"{STABLE_ID_PREFIX}4544d827ad856b36",
     "S.v": f"{STABLE_ID_PREFIX}b97120ecdb3b499a",
     "S.c": f"{STABLE_ID_PREFIX}9d321b7f3c78b955",
     "S.subscript(i:)": f"{STABLE_ID_PREFIX}c3190acb35203179",

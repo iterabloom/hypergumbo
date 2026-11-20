@@ -18,9 +18,15 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   ``!`` beside a type -- and ``normalize_swift_signature`` keeps those
   decorations beside the FQN-stripped core. Until scheme v15 the renderers
   read six type node kinds and dropped the rest, so ``f(x: some P)`` hashed
-  as ``f()``. Argument labels, default values and ``throws`` are not
-  hashed; a declaration's own generic clause leads the hashed text by
-  position (``normalize_with_type_parameters``)
+  as ``f()``. A function's and an ``init``'s argument labels are hashed
+  (``labels=True``: ``f(from:)`` is not ``f(to:)``; an ``_`` parameter
+  hashes its type alone, an operator's parameter names and every internal
+  name are left out), and so are ``static`` / ``class`` (one word) and an
+  operator's ``prefix`` / ``postfix`` in the ``decorators`` slot
+  (``_swift_member_decorators``); until scheme v17 neither was, and each
+  such pair tied. Default values and ``throws`` are not hashed; a
+  declaration's own generic clause leads the hashed text by position
+  (``normalize_with_type_parameters``)
 - Every stable_id hashes the FULL chain of enclosing types and functions
   (``_swift_scope``), so two nested ``class Inner`` in different outer types
   do not tie, and deleting one outer type does not move the other's ids;
@@ -179,6 +185,7 @@ from hypergumbo_core.analyze.base import (
     declared_type_parameters,
     find_child_by_type,
     iter_tree,
+    labelled_parameter,
     defer_bare_method_call,
     defer_unresolved_tie,
     file_anchor_symbol,
@@ -1201,17 +1208,39 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     return head + body + suffix
 
 
+def _swift_hashed_label(written: str) -> Optional[str]:
+    """An argument label as a typed stable_id hashes it: ``None`` for ``_``
+    (the argument is passed with no label), and a backquoted label without
+    its backquotes (``\\`default\\` x`` and ``default x`` declare the label a call
+    spells ``default:``)."""
+    label = written.strip().strip("`")
+    return None if label in ("", "_") else label
+
+
 def normalize_swift_signature(
     signature: str | None,
     type_params: list[str] | None = None,
+    *,
+    labels: bool = False,
 ) -> str | None:
     """Normalize a Swift signature for typed stable_id (spec §6 typed tier).
 
-    The names-first shape (``(name: Type, ...) -> Ret`` -> ``(Type,...)Ret``:
-    parameter names and argument labels dropped) of
-    ``normalize_signature_names_first``, with each type through
+    The names-first shape (``(name: Type, ...) -> Ret`` -> ``(Type,...)Ret``)
+    of ``normalize_signature_names_first``, with each type through
     :func:`_swift_normalize_type`, which writes it as written (no FQN strip)
     and keeps a decorated type's decoration.
+
+    ``labels``: the word before each parameter's ``:`` is its ARGUMENT LABEL
+    (:func:`_swift_callable_signature` writes the first identifier, the label
+    or the name when the two coincide), and it is kept through the shared
+    :func:`~hypergumbo_core.analyze.base.labelled_parameter`:
+    ``(from: Int) -> Int`` -> ``(from:Int)Int``, ``(_: Int)`` -> ``(Int)``.
+    A call names its callee by these labels, so ``f(from:)`` and ``f(to:)``
+    are two functions; until scheme v17 both hashed ``(Int)Int`` and tied. A
+    function or an ``init`` passes it; a subscript does not (its word is the
+    internal name unless a second one is written, and the subscript's name
+    already carries it, :func:`_subscript_name`), nor does an operator (an
+    operator's parameters take no labels).
     """
     from hypergumbo_core.analyze.base import find_matching_paren, split_params_top_level
 
@@ -1228,8 +1257,12 @@ def normalize_swift_signature(
         if not param:
             continue  # pragma: no cover - the renderer writes no empty parameter
         colon = param.find(":")
+        if colon < 0:  # pragma: no cover - the renderer writes ``label: Type``
+            types.append(param)
+            continue
+        hashed = _swift_normalize_type(param[colon + 1:], type_params)
         types.append(
-            _swift_normalize_type(param[colon + 1:], type_params) if colon >= 0 else param,
+            labelled_parameter(_swift_hashed_label(param[:colon]), hashed) if labels else hashed,
         )
     normalized = f"({','.join(types)})"
     return normalized + _swift_normalize_type(return_str, type_params) if return_str else normalized
@@ -1275,6 +1308,52 @@ def _extract_modifiers_swift(node: "tree_sitter.Node") -> list[str]:
                 elif mod_node.type in SWIFT_MODIFIER_KEYWORDS:  # pragma: no cover
                     modifiers.append(mod_node.type)
     return modifiers
+
+
+#: The declaration words a member's typed stable_id hashes in its
+#: ``decorators`` slot, by the word it is hashed as. ``static`` and ``class``
+#: both make a TYPE member and are hashed alike: a type cannot declare both
+#: for one signature, and turning ``class func`` into ``static func`` changes
+#: whether a subclass may override it, not which function it is.
+_SWIFT_HASHED_DECLARATION_WORDS: dict[str, str] = {
+    "static": "static", "class": "static", "prefix": "prefix", "postfix": "postfix",
+}
+
+
+def _swift_member_decorators(node: "tree_sitter.Node") -> str:
+    """The ``decorators`` slot of a member's typed stable_id: ``static`` for a
+    type member (``static`` / ``class``), and an operator's ``prefix`` /
+    ``postfix``, comma-joined and sorted; ``""`` for an instance member.
+
+    A type may declare ``static func f()`` beside ``func f()``, ``static var
+    x`` beside ``var x`` (stored or computed), a ``static subscript`` beside a
+    ``subscript``, and a protocol may require both; and ``prefix func -(v:
+    V)`` beside ``postfix func -(v: V)``. Each pair is two members with one
+    name and one signature, and until scheme v17 each pair tied (split only
+    by occurrence order). An instance member hashes ``""`` as it did, so its
+    id does not move. Read from the node, not :func:`_extract_modifiers_swift`:
+    a bare ``class func f()`` parses its ``class`` OUTSIDE ``modifiers``
+    (``final class func`` inside), and ``prefix`` / ``postfix`` are not
+    modifiers the symbol lists.
+    """
+    words: set[str] = set()
+    for child in node.children:
+        if child.type == "class":
+            words.add("static")
+        elif child.type == "modifiers":
+            for kw in (k for mod in child.children for k in mod.children):
+                if kw.type in _SWIFT_HASHED_DECLARATION_WORDS:
+                    words.add(_SWIFT_HASHED_DECLARATION_WORDS[kw.type])
+    return ",".join(sorted(words))
+
+
+def _swift_is_operator(node: "tree_sitter.Node") -> bool:
+    """Whether a ``function_declaration`` declares an operator (``func +``):
+    its name is an operator token, not an identifier. An operator's
+    parameters take no argument labels -- ``a + b`` passes none -- so the
+    words before their ``:`` are names, which a typed stable_id leaves out."""
+    name = node.child_by_field_name("name")
+    return name is not None and name.type != "simple_identifier"
 
 
 def _extract_symbols_from_file(
@@ -1329,13 +1408,16 @@ def _extract_symbols_from_file(
                     analysis.method_return_types.setdefault(full_name, _ret_type)
                 modifiers = _extract_modifiers_swift(node)
 
-                # Typed stable_id (spec §6 typed tier)
+                # Typed stable_id (spec §6 typed tier): argument labels and
+                # ``static`` / ``class`` / ``prefix`` / ``postfix`` hashed.
                 norm_sig = normalize_with_type_parameters(
-                    normalize_swift_signature, signature, node, source)
+                    normalize_swift_signature, signature, node, source,
+                    labels=not _swift_is_operator(node))
                 # INV-fabih: the full type/function chain, not the nearest
                 # owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
+                    decorators=_swift_member_decorators(node),
                     name=func_name, qualified_name=_swift_chain(node, source, func_name),
                     file_stable_id=file_stable_id,
                     is_async=declares_async(node),
@@ -1636,6 +1718,7 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         kind, signature or "",
                         visibility_from_modifiers(modifiers),
+                        decorators=_swift_member_decorators(node),
                         name=member_name,
                         qualified_name=_swift_chain(node, source, member_name),
                         file_stable_id=file_stable_id,
@@ -1692,6 +1775,7 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "property", signature or "",
                             visibility_from_modifiers(modifiers),
+                            decorators=_swift_member_decorators(node),
                             name=prop_name,
                             qualified_name=_swift_chain(node, source, prop_name),
                             file_stable_id=file_stable_id,
@@ -1772,6 +1856,7 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         kind, prop_type or "",
                         visibility_from_modifiers(modifiers),
+                        decorators=_swift_member_decorators(node),
                         name=prop_name,
                         qualified_name=_swift_chain(node, source, prop_name),
                         file_stable_id=file_stable_id,
@@ -1820,6 +1905,7 @@ def _extract_symbols_from_file(
                     normalize_with_type_parameters(normalize_swift_signature, signature, node, source)
                     or signature or "",
                     visibility_from_modifiers(modifiers),
+                    decorators=_swift_member_decorators(node),
                     name=sub_label,
                     qualified_name=_swift_chain(node, source, sub_label),
                     file_stable_id=file_stable_id,
@@ -1904,7 +1990,8 @@ def _swift_lifecycle_symbol(
         # and a top-level one of its name.
         stable_id=make_typed_stable_id(
             kind,
-            normalize_with_type_parameters(normalize_swift_signature, signature, node, source) or "",
+            normalize_with_type_parameters(
+                normalize_swift_signature, signature, node, source, labels=True) or "",
             visibility_from_modifiers(modifiers),
             name=member, qualified_name=_swift_chain(node, source, member),
             file_stable_id=file_stable_id,

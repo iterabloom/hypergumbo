@@ -178,7 +178,7 @@ def test_a_non_local_types_lifecycle_ids_keep_the_type_chain_formula(tmp_path: P
         kind = "constructor" if sym.name.endswith(".init") else "method"
         member = sym.name.rsplit(".", 1)[1]
         expected = make_typed_stable_id(
-            kind, normalize_swift_signature(sym.signature) or "",
+            kind, normalize_swift_signature(sym.signature, labels=True) or "",
             visibility_from_modifiers(sym.modifiers),
             name=member, qualified_name=sym.qualified_name, file_stable_id=fsid,
         )

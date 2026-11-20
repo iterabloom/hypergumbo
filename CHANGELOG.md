@@ -33,6 +33,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Swift ids hash argument labels and static versus instance members.**
 - **Sketch entry groups deal tied lines across files, like the cap.**
 - **Route dedup and the connectivity fallback break ties by total order.**
 - **Test, example and vendored entry points no longer demote library exports.**
