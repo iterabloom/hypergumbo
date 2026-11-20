@@ -26,7 +26,11 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   (``_swift_member_decorators``); until scheme v17 neither was, and each
   such pair tied. Default values and ``throws`` are not hashed; a
   declaration's own generic clause leads the hashed text by position
-  (``normalize_with_type_parameters``)
+  (``normalize_with_type_parameters``). A function type's parameter names
+  are not hashed either, in any type (``_swift_without_function_type_names``:
+  ``(_ x: Int) -> Void`` reads ``(Int) -> Void``; a tuple's labels, which are
+  its type, stay); until scheme v17 renaming a callback's inner parameter
+  moved the id
 - Every stable_id hashes the FULL chain of enclosing types and functions
   (``_swift_scope``), so two nested ``class Inner`` in different outer types
   do not tie, and deleting one outer type does not move the other's ids;
@@ -1269,6 +1273,35 @@ def _swift_top_level_split(text: str, sep: str) -> list[str]:
     return parts
 
 
+#: What follows a function type's parameter list: its effects, then ``->``
+#: (``(Int) async throws(E) -> Void``). A tuple type is followed by none.
+_SWIFT_FUNCTION_ARROW_RE = re.compile(
+    r"\s*(?:(?:async|throws|rethrows|reasync)\b\s*(?:\([^()]*\)\s*)?)*->")
+#: A function-type parameter's names and its ``:`` (``_ x: `` in ``(_ x:
+#: Int) -> Void``; Swift requires the ``_``, a parser takes ``x: `` too).
+_SWIFT_FUNCTION_PARAMETER_NAME_RE = re.compile(
+    r"(?:(?:`[^`]*`|[^\W\d]\w*)\s+)?(?:`[^`]*`|[^\W\d]\w*)\s*:\s*")
+
+
+def _swift_without_function_type_names(text: str, *, declaration: bool = False) -> str:
+    """``text`` (a type, or a signature when ``declaration``) with each
+    function type's parameter names left out: ``(_ x: Int) -> Void`` reads
+    ``(Int) -> Void``, at any depth (stable-id v17;
+    :func:`~hypergumbo_core.analyze.base.drop_function_type_parameter_names`).
+
+    A Swift function type cannot carry argument labels (``_`` is required
+    before a name), so these names are documentation; a declaration's own
+    argument labels are another matter, hashed by
+    :func:`normalize_swift_signature`. A tuple type's element labels are its
+    type (``(x: Int, y: Int)``): a tuple is not followed by ``->`` and keeps
+    them.
+    """
+    from hypergumbo_core.analyze.base import drop_arrow_function_type_parameter_names
+
+    return drop_arrow_function_type_parameter_names(
+        text, _SWIFT_FUNCTION_ARROW_RE, _SWIFT_FUNCTION_PARAMETER_NAME_RE, declaration=declaration)
+
+
 def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     """One type of a Swift signature, normalized for the typed stable_id.
 
@@ -1291,7 +1324,7 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
         written = text.strip()
         return normalize_generic_params(written, type_params) if type_params else written
 
-    rest = raw_type.strip()
+    rest = _swift_without_function_type_names(raw_type.strip())
     prefixes: list[str] = []
     while (match := _SWIFT_TYPE_PREFIX_RE.match(rest)) is not None:
         prefixes.append(" ".join(match.group(0).split()))
@@ -1811,7 +1844,8 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     stable_id=make_typed_stable_id(
-                        kind, signature or "",
+                        kind,
+                        _swift_without_function_type_names(signature or "", declaration=is_function),
                         visibility_from_modifiers(modifiers),
                         decorators=_swift_member_decorators(node),
                         name=member_name,
@@ -1868,7 +1902,8 @@ def _extract_symbols_from_file(
                         modifiers=modifiers,
                         # The ADR-0035 producer formula (WI-tusad).
                         stable_id=make_typed_stable_id(
-                            "property", signature or "",
+                            "property",
+                            _swift_without_function_type_names(signature or "", declaration=True),
                             visibility_from_modifiers(modifiers),
                             decorators=_swift_member_decorators(node),
                             name=prop_name,
@@ -1949,7 +1984,7 @@ def _extract_symbols_from_file(
                         else None
                     ),
                     stable_id=make_typed_stable_id(
-                        kind, prop_type or "",
+                        kind, _swift_without_function_type_names(prop_type or ""),
                         visibility_from_modifiers(modifiers),
                         decorators=_swift_member_decorators(node),
                         name=prop_name,
@@ -1997,7 +2032,8 @@ def _extract_symbols_from_file(
                 # subscript overloads stay apart (WI-tusad).
                 stable_id=make_typed_stable_id(
                     "subscript",
-                    _swift_callable_hashed(node, source)[0] or signature or "",
+                    _swift_callable_hashed(node, source)[0]
+                    or _swift_without_function_type_names(signature or "", declaration=True),
                     visibility_from_modifiers(modifiers),
                     decorators=_swift_member_decorators(node),
                     name=sub_label,

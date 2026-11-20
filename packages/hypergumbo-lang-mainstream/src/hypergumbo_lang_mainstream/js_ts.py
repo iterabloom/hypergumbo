@@ -23,6 +23,12 @@ extract:
   is empty, and a member of a top-level class has its class as its scope.
   The emitted ``qualified_name`` carries the enclosing classes and
   TypeScript namespaces (``A.B.C.go``)
+- The typed stable_id leaves a function or constructor type's parameter
+  names out of every type it hashes (``_jsts_without_function_type_names``:
+  ``(x: number) => void`` reads ``(number) => void``; a rest keeps ``...``,
+  an optional ``?``, a ``this:`` parameter stays; a default value is hashed
+  as written). Through scheme v16 a function type was hashed as written, so
+  renaming a callback's inner parameter moved the id
 - ``field`` symbols for class properties and ``variable`` for module-level
   bindings
 - One ``file`` symbol per module, anchoring top-level calls
@@ -1629,12 +1635,125 @@ def _extract_jsts_signature(
     return sig
 
 
+#: What follows a function or constructor type's parameter list: its ``=>``.
+_TS_FUNCTION_ARROW_RE = re.compile(r"\s*=>")
+#: A function-type parameter's name and its ``:``, with the ``...`` before a
+#: rest parameter's name and the ``?`` after an optional one's.
+_TS_FUNCTION_PARAMETER_NAME_RE = re.compile(
+    r"(?P<rest>\.\.\.)?\s*(?P<name>[A-Za-z_$][\w$]*)\s*(?P<optional>\?)?\s*:\s*")
+#: What follows a destructuring pattern that stands in a parameter's name.
+_TS_AFTER_PATTERN_RE = re.compile(r"\s*(?P<optional>\?)?\s*:\s*")
+_TS_PATTERN_CLOSERS = {"{": "}", "[": "]"}
+
+
+def _ts_function_parameter_type(part: str) -> str:
+    """One parameter of a function type without its name: ``x: number`` ->
+    ``number``, ``...xs: number[]`` -> ``...number[]``, ``x?: number`` ->
+    ``?number`` (a rest or optional parameter is another type than a plain
+    one, so the marker stays), a destructuring pattern ``{ a, b }: O`` -> ``O``.
+    ``this: W`` is kept: it types ``this`` and names no parameter."""
+    match = _TS_FUNCTION_PARAMETER_NAME_RE.match(part)
+    if match is not None:
+        if match.group("name") == "this":
+            return part
+        return (match.group("rest") or "") + (match.group("optional") or "") + part[match.end():]
+    if part[:1] not in _TS_PATTERN_CLOSERS:
+        return part
+    depth = 0
+    for index, ch in enumerate(part):
+        if ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:
+                after = _TS_AFTER_PATTERN_RE.match(part, index + 1)
+                return (after.group("optional") or "") + part[after.end():] if after else part
+    return part  # pragma: no cover - an unclosed pattern does not parse as a type
+
+
+def _ts_split_parameters(inner: str) -> list[str]:
+    """A TypeScript parameter list split at its top-level commas, a brace
+    always a bracket: the shared split reads a ``{`` that starts a parameter
+    as a group bracket (Dart's named parameters) and splits a destructuring
+    pattern ``{ a, b }: O`` at its comma."""
+    from hypergumbo_core.analyze.base import split_params_top_level
+
+    masked = inner.replace("{", "(").replace("}", ")")
+    parts: list[str] = []
+    pos = 0
+    for part in split_params_top_level(masked):
+        start = masked.find(part, pos)
+        parts.append(inner[start:start + len(part)])
+        pos = start + len(part)
+    return parts
+
+
+def _ts_default_value_at(parameter: str) -> int:
+    """Where a declared parameter's default value starts (its top-level
+    ``=``), or the parameter's length when it has none. ``=>`` (a function
+    type's arrow) and a comparison are not one."""
+    depth = 0
+    index = 0
+    while index < len(parameter):
+        ch = parameter[index]
+        if ch in "\"'`":
+            close = parameter.find(ch, index + 1)
+            index = len(parameter) if close < 0 else close + 1
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif (ch == "=" and depth == 0 and parameter[index + 1:index + 2] not in ("=", ">")
+              and parameter[index - 1:index] not in ("=", "!", "<", ">")):
+            return index
+        index += 1
+    return len(parameter)
+
+
+def _jsts_without_function_type_names(text: str, *, declaration: bool = False) -> str:
+    """``text`` (a TypeScript type, or a signature when ``declaration``) with
+    each function or constructor type's parameter names left out:
+    ``(x: number) => void`` reads ``(number) => void``, at any depth
+    (stable-id v17; :func:`_ts_function_parameter_type`,
+    :func:`~hypergumbo_core.analyze.base.drop_function_type_parameter_names`).
+    A declaration's default value is written as it was: an arrow function
+    there (``cb = (x: number) => x``) is a value, not a type."""
+    from hypergumbo_core.analyze.base import (
+        drop_arrow_function_type_parameter_names,
+        find_matching_paren,
+    )
+
+    def drop(t: str) -> str:
+        return drop_arrow_function_type_parameter_names(
+            t, _TS_FUNCTION_ARROW_RE, _ts_function_parameter_type, split=_ts_split_parameters)
+
+    close = find_matching_paren(text, 0) if declaration else -1
+    if close < 0:
+        return drop(text)
+    inner = text[1:close]
+    out: list[str] = []
+    pos = 0
+    for parameter in _ts_split_parameters(inner):
+        start = inner.find(parameter, pos)
+        cut = _ts_default_value_at(parameter)
+        out += [inner[pos:start], drop(parameter[:cut]), parameter[cut:]]
+        pos = start + len(parameter)
+    out.append(inner[pos:])
+    return f"({''.join(out)})" + drop(text[close + 1:])
+
+
 def normalize_jsts_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a JS/TS signature for typed stable_id (spec §6 typed tier)."""
+    """Normalize a JS/TS signature for typed stable_id (spec §6 typed tier).
+
+    A function type's parameter names are left out of every type in it
+    (:func:`_jsts_without_function_type_names`; stable-id v17)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
+    if signature:
+        signature = _jsts_without_function_type_names(signature, declaration=True)
     return normalize_signature_names_first(signature, type_params, return_sep=":")
 
 
@@ -4331,7 +4450,8 @@ def _make_container_member_symbols(
             origin_run_id=run_id,
             signature=signature,
             stable_id=make_typed_stable_id(
-                kind, signature or "",
+                kind,
+                _jsts_without_function_type_names(signature or "", declaration=kind == "method"),
                 name=member_name,
                 qualified_name=_make_jsts_qualified_name(owner_scope, member_name, lang),
                 file_stable_id=file_stable_id,
@@ -5243,7 +5363,7 @@ def _extract_symbols(
                 # file fold make same-named fields in different classes/files
                 # distinct even when both are untyped (empty signature slot).
                 stable_id = make_typed_stable_id(
-                    "field", field_type or "",
+                    "field", _jsts_without_function_type_names(field_type or ""),
                     name=name,
                     qualified_name=_jsts_chain(node, source, name, lang),
                     file_stable_id=file_stable_id,

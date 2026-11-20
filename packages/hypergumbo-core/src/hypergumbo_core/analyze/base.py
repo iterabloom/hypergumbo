@@ -3521,6 +3521,11 @@ def normalize_signature_go(
     :func:`_go_result_type` and :func:`_go_tuple_result_element` each
     compute the old text and keep it when :func:`_go_fqn_cut_is_deliberate`
     says the only cut was a qualifier.
+
+    A function type's parameter and result names are left out first, at any
+    depth (:func:`drop_go_function_type_parameter_names`; stable-id v17):
+    ``(cb func(x int) error)`` hashes ``(func(int) error)``. Through v16 the
+    type was written whole, its names included.
     """
     if not signature:
         return None
@@ -3529,6 +3534,8 @@ def normalize_signature_go(
     if paren_close < 0:
         return None
 
+    signature = drop_go_function_type_parameter_names(signature)
+    paren_close = find_matching_paren(signature, 0)
     params_str = signature[1:paren_close]
     rest = signature[paren_close + 1:].strip()
 
@@ -3570,6 +3577,59 @@ _GO_ELEMENT_CUT_RE = _re.compile(
     rf"(?:(?P<name>{_GO_IDENT})\s+)?\**(?:{_GO_IDENT}\.)+")
 #: What a deliberate cut leaves: a bare type name, with type arguments.
 _GO_CUT_REST_RE = _re.compile(rf"{_GO_IDENT}(?:\[.*\])?", _re.DOTALL)
+
+
+#: A ``func`` keyword right before a group: the group is a function type's
+#: parameter list (``func(x int) error``), not a declaration's.
+_GO_FUNC_KEYWORD_BEFORE_RE = _re.compile(r"\bfunc\s*$")
+#: A Go parameter that names itself: a name, then its type (``x int``,
+#: ``xs ...int``, ``cb func(int)``).
+_GO_NAMED_PARAMETER_RE = _re.compile(rf"(?P<name>{_GO_IDENT})\s+(?=\S)")
+
+
+def _go_without_parameter_names(parts: list[str]) -> list[str]:
+    """A Go parameter or result list's parts with their names left out.
+
+    Go names all of a list's parameters or none: when one part is ``name
+    Type``, a part that is a lone identifier is a name that shares the type
+    of the next named part (``a, b int`` -> ``int, int``); when none is, a
+    lone identifier is a type (``func(int, error)``) and nothing changes."""
+    def name_end(part: str) -> int:
+        match = _GO_NAMED_PARAMETER_RE.match(part)
+        if match is None or _GO_TYPE_KEYWORD_RE.fullmatch(match.group("name")):
+            return -1
+        return match.end()
+
+    ends = [name_end(p) for p in parts]
+    if all(end < 0 for end in ends):
+        return parts
+    out: list[str] = []
+    for index, part in enumerate(parts):
+        if ends[index] >= 0:
+            out.append(part[ends[index]:])
+            continue
+        shared = next((j for j in range(index + 1, len(parts)) if ends[j] >= 0), None)
+        lone = _re.fullmatch(_GO_IDENT, part) is not None
+        out.append(parts[shared][ends[shared]:] if lone and shared is not None else part)
+    return out
+
+
+def drop_go_function_type_parameter_names(text: str) -> str:
+    """``text`` (a Go type or signature) with the parameter and result names
+    of each function type in it left out: ``func(x int) error`` reads
+    ``func(int) error``, ``func(a, b int) (n int, err error)`` reads
+    ``func(int, int) (int, error)``, at any depth (stable-id v17;
+    :func:`drop_function_type_parameter_names`). A function type's list is
+    a group the ``func`` keyword stands before, and its result list the group
+    right after it; a declaration's own lists are not (its result names stay
+    as :func:`normalize_signature_go` writes them)."""
+    return drop_function_type_parameter_names(
+        text,
+        lambda t, open_at, _close: _GO_FUNC_KEYWORD_BEFORE_RE.search(t, 0, open_at) is not None,
+        _go_without_parameter_names,
+        results_follow=True,
+        split=_go_split_top_level,
+    )
 
 
 def _go_fqn_cut_is_deliberate(text: str, *, element: bool = False) -> bool:
@@ -3734,6 +3794,124 @@ def find_matching_paren(s: str, start: int, *, quotes: str = SIGNATURE_QUOTES) -
                 return i
         i += 1
     return -1
+
+
+def drop_function_type_parameter_names(
+    text: str,
+    is_parameter_list: Callable[[str, int, int], bool],
+    drop_names: Callable[[list[str]], list[str]],
+    *,
+    declaration: bool = False,
+    results_follow: bool = False,
+    split: Callable[[str], list[str]] = split_params_top_level,
+    quotes: str = SIGNATURE_QUOTES,
+) -> str:
+    """``text`` with the parameter names of every function type in it left
+    out, at any depth; every other character as written.
+
+    A function type's parameter names are for the reader: a value of the type
+    is called positionally, so Kotlin ``(x: Int) -> Unit`` and ``(y: Int) ->
+    Unit`` are one type, as are Swift ``(_ x: Int) -> Void``, Go ``func(x
+    int)`` and TypeScript ``(x: number) => void`` with another name. A typed
+    stable_id hashes types, so it hashes none of them (stable-id v17; through
+    v16 a type was hashed as written, and renaming a callback's inner
+    parameter moved every id that mentioned it).
+
+    Each ``(...)`` group of ``text`` (strings skipped) for which
+    ``is_parameter_list(text, open, close)`` holds is a function type's
+    parameter list: it is split into parameters (``split``), ``drop_names``
+    takes the list and gives each parameter back without its name (the
+    language's rule: its spelling of a name, Go's ``a, b int`` sharing one
+    type), and each is rewritten again, for the function types inside it.
+    Any other group is rewritten inside. A parameter ``drop_names`` gives
+    back unchanged is written as it was, with the separators between
+    parameters, so a text with no named function-type parameter comes back
+    byte for byte and its id does not move.
+
+    ``declaration``: ``text`` is a declaration's signature, whose first
+    group is its own parameter list (Swift writes it ``(...) -> R``, which
+    reads as a function type), so that group is never a function type's.
+    ``results_follow`` (Go): a group right after a function type's parameter
+    list is its result list (``func() (n int, err error)``), rewritten the
+    same way.
+    """
+    def rewrite(t: str, first_is_declaration: bool) -> str:
+        if "(" not in t:
+            return t
+        out: list[str] = []
+        i = 0
+        result_list_at = -1
+        while i < len(t):
+            ch = t[i]
+            if ch in quotes:
+                end = _string_end(t, i, quotes)
+                out.append(t[i:end + 1])
+                i = end + 1
+                continue
+            if ch != "(":
+                out.append(ch)
+                i += 1
+                continue
+            close = find_matching_paren(t, i, quotes=quotes)
+            if close < 0:
+                out.append(t[i:])  # an unclosed group: the rest as written
+                break
+            inner = t[i + 1:close]
+            own = first_is_declaration and i == 0
+            if not own and (i == result_list_at or is_parameter_list(t, i, close)):
+                inner = _rewrite_parameters(inner)
+                after = close + 1
+                while after < len(t) and t[after].isspace():
+                    after += 1
+                result_list_at = after if results_follow and i != result_list_at else -1
+            else:
+                inner = rewrite(inner, False)
+            out.append(f"({inner})")
+            i = close + 1
+        return "".join(out)
+
+    def _rewrite_parameters(inner: str) -> str:
+        parts = split(inner)
+        stripped = [p.strip() for p in parts]
+        dropped = drop_names(stripped)
+        out: list[str] = []
+        pos = 0
+        for part, new in zip(stripped, dropped, strict=True):
+            start = inner.find(part, pos)
+            out += [inner[pos:start], rewrite(new, False)]
+            pos = start + len(part)
+        out.append(inner[pos:])
+        return "".join(out)
+
+    return rewrite(text, declaration and text.startswith("("))
+
+
+def drop_arrow_function_type_parameter_names(
+    text: str,
+    arrow: "_re.Pattern[str]",
+    without_name: "Callable[[str], str] | _re.Pattern[str]",
+    *,
+    declaration: bool = False,
+    split: Callable[[str], list[str]] = split_params_top_level,
+) -> str:
+    """:func:`drop_function_type_parameter_names` for a language whose
+    function type is a parameter list its ``arrow`` follows (Kotlin and Swift
+    ``->``, TypeScript ``=>``), each parameter's name dropped on its own:
+    ``without_name`` gives a parameter back without it, or is the pattern of
+    the name prefix to cut from the parameter's start (``x: ``)."""
+    def cut_prefix(part: str) -> str:
+        match = prefix.match(part) if prefix is not None else None
+        return part[match.end():] if match else part
+
+    prefix = without_name if isinstance(without_name, _re.Pattern) else None
+    rule = cut_prefix if isinstance(without_name, _re.Pattern) else without_name
+    return drop_function_type_parameter_names(
+        text,
+        lambda t, _open, close: arrow.match(t, close + 1) is not None,
+        lambda parts: [rule(p) for p in parts],
+        declaration=declaration,
+        split=split,
+    )
 
 
 # ---------------------------------------------------------------------------
