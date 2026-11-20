@@ -15,6 +15,11 @@ it, and the owner ruled both (2026-11-15, amended 2026-11-19):
   are dealt round-robin across source files: every file with a tied entry gets
   one before any file gets a second.
 
+The same order decides the other choices among entries: which of several
+same-label routes the dedup keeps, which five callables the connectivity
+fallback takes, and which entries of a sketch display group fit its share of
+the budget (dealt across files like the cap).
+
 Each test asserts a property of the ranked list or of the capped selection.
 """
 
@@ -23,6 +28,7 @@ from __future__ import annotations
 import math
 import random
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
@@ -30,16 +36,18 @@ from hypergumbo_core.entrypoints import (
     PROGRAM_START_KINDS,
     Entrypoint,
     EntrypointKind,
+    _connectivity_fallback,
     _detection_confidence,
     _diversity_cap,
-    _take_dealing_ties,
     apply_rank_floor_and_cap,
     compute_entrypoint_cap,
     detect_entrypoint_candidates,
     detect_entrypoints,
     entry_kind_tie_rank,
+    take_dealing_ties,
 )
 from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.sketch import _format_entrypoints
 
 
 def _sym(
@@ -438,7 +446,7 @@ def test_entries_above_the_tied_group_are_kept_and_first() -> None:
 
 def test_a_cut_of_no_slots_keeps_nothing() -> None:
     eps, where = _tied({"a.py": 2})
-    assert _take_dealing_ties(eps, 0, lambda ep: where[ep.symbol_id]) == []
+    assert take_dealing_ties(eps, 0, lambda ep: where[ep.symbol_id]) == []
 
 
 def _old_diversity_cap(entrypoints: list[Entrypoint], cap: int) -> list[Entrypoint]:
@@ -558,7 +566,7 @@ def test_dealing_a_tied_cut_never_returns_a_lower_score() -> None:
     files with no slot yet follow it. Only the 1.0 group is dealt: a, b, a."""
     eps, where = _scored([("a.py", 1.0, _K)] * 3 + [("b.py", 1.0, _K)]
                          + [("c.py", 0.9, _K), ("d.py", 0.9, _K)])
-    chosen = _take_dealing_ties(eps, 3, lambda ep: where[ep.symbol_id])
+    chosen = take_dealing_ties(eps, 3, lambda ep: where[ep.symbol_id])
     assert [eps[i].rank_score for i in chosen] == [1.0, 1.0, 1.0]
     assert [where[eps[i].symbol_id] for i in chosen] == ["a.py", "a.py", "b.py"]
 
@@ -667,3 +675,169 @@ def test_no_kept_entry_is_outscored_by_a_dropped_one_it_competed_with() -> None:
                     and (k.rank_score or 0.0) < sorted(scores, reverse=True)[quota - 1])
                 assert not certainly_deferred, (cap, d.symbol_id, k.symbol_id)
 
+
+# --------------------------- the route-label dedup chooses by the total order
+
+
+def _same_label_routes() -> tuple[Symbol, Symbol]:
+    """Two handlers of ``HTTP GET /x`` in two files, equal in every key but
+    the path."""
+    one = _route("one", "b/one.py", "/x")
+    two = _route("two", "a/two.py", "/x")
+    return one, two
+
+
+def test_label_dedup_keeps_the_same_duplicate_whatever_the_input_order() -> None:
+    """Equal confidence, kind, language and out-degree: the duplicate the
+    total order puts first (path a/two.py) is kept, in either input order.
+    Keyed on rank_score alone the first one detected was kept."""
+    one, two = _same_label_routes()
+    assert _order([one, two], []) == [two.id]
+    assert _order([two, one], []) == [two.id]
+
+
+def test_label_dedup_keeps_the_duplicate_with_the_higher_out_degree() -> None:
+    """The out-degree key decides before the path: the route that calls more
+    is kept although its path sorts later, in either input order."""
+    one, two = _same_label_routes()
+    helpers = _helpers("m/util.py", 3)
+    edges = _calls(one, helpers)
+    assert _order([one, two, *helpers], edges) == [one.id]
+    assert _order([two, one, *helpers], edges) == [one.id]
+
+
+def test_label_dedup_chooses_with_the_penalties_applied() -> None:
+    """A duplicate in a test file (x 0.1) loses to the production route even
+    where its path sorts first: the dedup reads the final rank_score. Read
+    before the penalties, the test duplicate was kept and then fell under the
+    floor, and the route left the list altogether."""
+    in_tests = _route("fake", "tests/views.py", "/x")
+    real = _route("real", "z/views.py", "/x")
+    for nodes in ([in_tests, real], [real, in_tests]):
+        kept = [ep.symbol_id for ep in detect_entrypoints(nodes, [])]
+        assert kept == [real.id]
+
+
+def test_label_dedup_keeps_the_dominant_language_duplicate() -> None:
+    """Both duplicates saturate at 1.0; language weight decides before
+    out-degree: the Python route is kept over the JavaScript one with the
+    same label, the earlier path and twice the calls."""
+    py = _route("py", "z/app.py", "/x")
+    js = _route("js", "a/app.js", "/x", language="javascript")
+    py_helpers = _helpers("m/util.py", 20)
+    js_helpers = _helpers("m/util.js", 12, language="javascript")
+    edges = _calls(py, py_helpers[:12]) + _calls(js, js_helpers + js_helpers)
+    nodes = [js, py, *py_helpers, *js_helpers]
+    order = _order(nodes, edges)
+    assert py.id in order
+    assert js.id not in order
+    swapped = _calls(js, js_helpers[:3])
+    assert js.id in _order(nodes, swapped), "the higher final score wins first"
+
+
+# ------------- the connectivity fallback ends its sort with the total order
+
+
+def _plain(name: str, path: str, line: int = 1) -> Symbol:
+    return _sym(name, path, line=line, concepts=[])
+
+
+def test_connectivity_fallback_takes_tied_callables_by_the_total_order() -> None:
+    """Seven callables of out-degree one: the five taken are the first five
+    by (path, line, name, id), whatever the order of the nodes."""
+    sink = _plain("sink", "z/sink.py")
+    callers = [_plain(f"c{i}", f"p{i}.py") for i in range(7)]
+    edges = [e for c in callers for e in _calls(c, [sink])]
+    expected = [c.id for c in callers[:5]]
+    for seed in range(5):
+        nodes = callers + [sink]
+        random.Random(seed).shuffle(nodes)  # noqa: S311 - reproducible shuffle
+        got = [ep.symbol_id for ep in _connectivity_fallback(nodes, edges)]
+        assert got == expected
+
+
+def test_connectivity_fallback_still_puts_out_degree_first() -> None:
+    sink = _plain("sink", "z/sink.py")
+    callers = [_plain(f"c{i}", f"p{i}.py") for i in range(6)]
+    wide = _plain("wide", "zz/wide.py")
+    edges = [e for c in callers for e in _calls(c, [sink])] + _calls(wide, [sink, sink])
+    got = [ep.symbol_id for ep in _connectivity_fallback([*callers, wide, sink], edges)]
+    assert got[0] == wide.id
+    assert got[1:] == [c.id for c in callers[:4]]
+
+
+# ------------- a sketch display group deals its tied share across files
+
+
+def _group_fixture(tmp: str) -> tuple[list[Entrypoint], list[Symbol]]:
+    """HTTP Routes group, all at rank 1.0 in the input's (ranked) order: six
+    routes in app.py, then one in scanner.js."""
+    symbols: list[Symbol] = []
+    eps: list[Entrypoint] = []
+    for i in range(6):
+        s = _plain(f"flask_{i}", f"{tmp}/app.py", line=10 * (i + 1))
+        symbols.append(s)
+        eps.append(Entrypoint(symbol_id=s.id, kind=EntrypointKind.HTTP_ROUTE,
+                              confidence=0.95, label=f"HTTP GET /f{i}",
+                              rank_score=1.0))
+    scan = _plain("scan", f"{tmp}/scanner.js")
+    symbols.append(scan)
+    eps.append(Entrypoint(symbol_id=scan.id, kind=EntrypointKind.HTTP_ROUTE,
+                          confidence=0.95, label="HTTP POST /scan", rank_score=1.0))
+    return eps, symbols
+
+
+def _shown(section: str) -> list[str]:
+    return [ln for ln in section.splitlines() if ln.startswith("- `")]
+
+
+def test_sketch_group_share_deals_tied_entries_across_files(tmp_path: Path) -> None:
+    """A share of three slots cutting a tied group: scanner.js gets one before
+    app.py gets a second. Cut in list order, all three went to app.py."""
+    eps, symbols = _group_fixture(str(tmp_path))
+    section = _format_entrypoints(eps, symbols, tmp_path, max_entries=3)
+    shown = _shown(section)
+    assert len(shown) == 3
+    assert any("`scan`" in ln for ln in shown)
+    assert sum("`flask_" in ln for ln in shown) == 2
+    assert "and 4 more" in section
+
+
+def test_sketch_group_share_keeps_list_order_among_the_dealt(tmp_path: Path) -> None:
+    eps, symbols = _group_fixture(str(tmp_path))
+    shown = _shown(_format_entrypoints(eps, symbols, tmp_path, max_entries=3))
+    assert ["flask_0" in shown[0], "flask_1" in shown[1], "scan" in shown[2]] == [True] * 3
+
+
+def test_sketch_group_share_does_not_deal_a_lower_rank(tmp_path: Path) -> None:
+    """The deal is among the cut's EQUAL rank: a scanner.js route at 0.9
+    does not displace a tied app.py route."""
+    eps, symbols = _group_fixture(str(tmp_path))
+    eps[-1].rank_score = 0.9
+    shown = _shown(_format_entrypoints(eps, symbols, tmp_path, max_entries=3))
+    assert not any("`scan`" in ln for ln in shown)
+
+
+def test_sketch_group_share_deals_by_the_rank_a_route_line_takes(tmp_path: Path) -> None:
+    """A route marker takes the better of its own rank and its handler's;
+    the tied group at the cut is read on that rank. Here a marker at 0.8
+    whose handler ranks 1.0 joins the 1.0 group and, from its own file,
+    gets a slot of a share of two."""
+    eps, symbols = _group_fixture(str(tmp_path))
+    eps = eps[:6]
+    symbols = symbols[:6]
+    handler = _plain("do_list", f"{tmp_path}/views.py")
+    marker = Symbol(
+        id="python:routes.py:1-1:GET /items:route", name="GET /items",
+        kind="route", language="python", path=f"{tmp_path}/routes.py",
+        span=Span(1, 1, 0, 0),
+        meta={"framework_role": "route", "handler_ref": handler.id})
+    symbols += [handler, marker]
+    eps.insert(0, Entrypoint(symbol_id=handler.id, kind=EntrypointKind.HTTP_ROUTE,
+                             confidence=0.95, label="HTTP handler: do_list",
+                             rank_score=1.0))
+    eps.append(Entrypoint(symbol_id=marker.id, kind=EntrypointKind.HTTP_ROUTE,
+                          confidence=0.95, label="HTTP GET /items", rank_score=0.8))
+    shown = _shown(_format_entrypoints(eps, symbols, tmp_path, max_entries=2))
+    assert any("`GET /items`" in ln for ln in shown)
+    assert not any("`do_list` (" in ln for ln in shown)

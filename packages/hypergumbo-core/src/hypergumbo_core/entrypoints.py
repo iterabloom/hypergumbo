@@ -88,7 +88,8 @@ Connectivity Boost (concept-based only):
   formula, not this order. Confidence was the first tie key until the owner
   ruling of 2026-11-19: it measures how sure detection is, and with it
   first every convention main sorted after every framework route among
-  the entries saturated at 1.0.
+  the entries saturated at 1.0. The route-label dedup and the connectivity
+  fallback choose by the same order.
 - CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid
   double-counting; TEST_FUNCTION entries, symbols in test files and
   ``boost_suppressed_ids`` (build wrappers, and demoted library exports that
@@ -99,7 +100,8 @@ Connectivity-Based Fallback:
 - When no concept-based entrypoints are found, the system falls back to
   selecting the most-connected callable symbols (functions, methods, constructors)
 - Base confidence: 0.50 (below all concept-based entrypoints)
-- At most 5 fallback entrypoints are selected, ranked by out-degree
+- At most 5 fallback entrypoints are selected, ranked by out-degree, equal
+  out-degrees by path, start line, name and symbol id
 - This ensures --entry auto never hard-fails, even for repos with no
   matching YAML patterns (e.g., Rust libraries without pub tracking)
 
@@ -133,7 +135,10 @@ One Entrypoint Per Symbol (INV-liraj):
   favour of the definition; a file's MAIN_GUARD entry is dropped when the
   same file also has a MAIN_FUNCTION on a function (INV-hosuh, WI-tuvun);
   and route entries sharing one ``HTTP <METHOD> <path>`` or ``WS <path>``
-  label collapse to the highest-``rank_score`` one.
+  label collapse to the one the entry order puts first. That last dedup
+  runs after the ranking adjustments below, on the final ``rank_score`` and
+  then the tie-break above: detection order does not choose among equals,
+  and a duplicate in a test file does not displace the production route.
 
 Post-Processing Filters (INV-mahap):
 - Minimum confidence threshold (MIN_ENTRYPOINT_CONFIDENCE = 0.10): entries below
@@ -146,7 +151,7 @@ Post-Processing Filters (INV-mahap):
   ``_diversity_cap`` first gives each kind up to 40% of the cap, then fills
   any slots still empty from the overflow.
 - Where a cut (a kind's quota, the cap, the fill) falls inside a group of
-  EQUAL rank_score, ``_take_dealing_ties`` deals that group's slots
+  EQUAL rank_score, ``take_dealing_ties`` deals that group's slots
   round-robin across source files: every file with a tied entry gets one
   before any file gets a second. A cut by rank order alone gave every tied
   slot to the files whose entries sorted first, so a minority-language
@@ -1627,7 +1632,8 @@ def _connectivity_fallback(
     these never outrank pattern-detected entries in mixed scenarios.
 
     Returns at most _MAX_CONNECTIVITY_ENTRYPOINTS entries, sorted by
-    descending out-degree.
+    descending out-degree, equal out-degrees by the symbol's total order
+    (path, start line, name, id).
     """
     # Count outgoing edges per symbol
     outgoing: dict[str, int] = defaultdict(int)
@@ -1646,8 +1652,10 @@ def _connectivity_fallback(
     if not candidates:
         return []
 
-    # Sort by out-degree descending, take top N
-    candidates.sort(key=lambda x: x[1], reverse=True)
+    # Out-degree descending, then the total order on the symbol, so which
+    # callables of equal out-degree make the top N depends neither on node
+    # order nor on the hash seed.
+    candidates.sort(key=lambda x: (-x[1], *_symbol_total_order(x[0], x[0].id)))
     top = candidates[:_MAX_CONNECTIVITY_ENTRYPOINTS]
 
     entrypoints: List[Entrypoint] = []
@@ -1867,7 +1875,7 @@ def detect_entrypoint_candidates(
     unique_entrypoints = non_main_eps + deduped_main_eps
 
     # The order keys after rank_score read the graph only, so they are built
-    # once, here, for the final sort below.
+    # once, here, for the route-label dedup and the final sort below.
 
     # Language dominance: prefer entrypoints from the dominant language.
     # In a repo that's 95% C and 5% Python, a C main() should rank above
@@ -1944,48 +1952,6 @@ def detect_entrypoint_candidates(
             ),
             reverse=True,
         )
-
-    # Route-label deduplication: multiple symbols (route symbol, handler
-    # method, different registration sites) can produce HTTP_ROUTE entrypoints
-    # with the same (method, path). Group by label and keep the
-    # highest-rank_score entry per unique label.
-    _ROUTE_KINDS = frozenset({
-        EntrypointKind.HTTP_ROUTE,
-        EntrypointKind.EXPRESS_ROUTE,
-        EntrypointKind.SINATRA_ROUTE,
-        EntrypointKind.KTOR_ROUTE,
-        EntrypointKind.VAPOR_ROUTE,
-        EntrypointKind.PLUG_ROUTE,
-        EntrypointKind.HAPI_ROUTE,
-        EntrypointKind.FASTIFY_ROUTE,
-        EntrypointKind.KOA_ROUTE,
-        EntrypointKind.SLIM_ROUTE,
-        EntrypointKind.RUST_HANDLER,
-    })
-    route_label_groups: dict[str, list[Entrypoint]] = defaultdict(list)
-    non_route_eps: list[Entrypoint] = []
-    for ep in unique_entrypoints:
-        if ep.kind in _ROUTE_KINDS and ep.label.startswith("HTTP "):
-            route_label_groups[ep.label].append(ep)
-        elif ep.kind == EntrypointKind.WEBSOCKET_HANDLER and ep.label.startswith("WS "):
-            # Path-bearing WS routes ("WS /ws") dedup like HTTP routes so the
-            # handler concept and the minted route symbol collapse to one;
-            # pathless WS handlers ("<Framework> WebSocket handler") fall
-            # through and stay distinct (WI-kuvig/WI-lomoz).
-            route_label_groups[ep.label].append(ep)
-        else:
-            non_route_eps.append(ep)
-    for _label, eps in route_label_groups.items():
-        # ADR-0039 ruling 3: dedup keeps the most PROMINENT entrypoint per route
-        # label — a ranking decision, so key on rank_score (still equal to
-        # confidence here; the ranking adjustments come below).
-        # rank_score is populated from confidence in __post_init__, so it is
-        # non-None for constructed entrypoints; `or 0.0` guards a
-        # post-construction reset (the dataclass is not frozen) and keeps the
-        # sort key a plain float (None is not orderable).
-        eps.sort(key=lambda e: e.rank_score or 0.0, reverse=True)
-        non_route_eps.append(eps[0])
-    unique_entrypoints = non_route_eps
 
     # Connectivity-based fallback: when no concept-based entrypoints found,
     # select the most-connected callable symbols as pseudo-entrypoints.
@@ -2240,6 +2206,50 @@ def detect_entrypoint_candidates(
             connectivity_boost = raw_boost * lang_scale
             ep.rank_score = min(1.0, ep.rank_score + connectivity_boost)
 
+    # Route-label deduplication: multiple symbols (route symbol, handler
+    # method, different registration sites) can produce HTTP_ROUTE entrypoints
+    # with the same (method, path). Group by label and keep, per unique
+    # label, the entry the entry order puts first. It runs after the
+    # ranking adjustments: a route's own score does not depend on the other
+    # entries, and the library-export demotion above counts every detected
+    # route, so which duplicate is kept changes no other entry's score.
+    _ROUTE_KINDS = frozenset({
+        EntrypointKind.HTTP_ROUTE,
+        EntrypointKind.EXPRESS_ROUTE,
+        EntrypointKind.SINATRA_ROUTE,
+        EntrypointKind.KTOR_ROUTE,
+        EntrypointKind.VAPOR_ROUTE,
+        EntrypointKind.PLUG_ROUTE,
+        EntrypointKind.HAPI_ROUTE,
+        EntrypointKind.FASTIFY_ROUTE,
+        EntrypointKind.KOA_ROUTE,
+        EntrypointKind.SLIM_ROUTE,
+        EntrypointKind.RUST_HANDLER,
+    })
+    route_label_groups: dict[str, list[Entrypoint]] = defaultdict(list)
+    non_route_eps: list[Entrypoint] = []
+    for ep in unique_entrypoints:
+        if ep.kind in _ROUTE_KINDS and ep.label.startswith("HTTP "):
+            route_label_groups[ep.label].append(ep)
+        elif ep.kind == EntrypointKind.WEBSOCKET_HANDLER and ep.label.startswith("WS "):
+            # Path-bearing WS routes ("WS /ws") dedup like HTTP routes so the
+            # handler concept and the minted route symbol collapse to one;
+            # pathless WS handlers ("<Framework> WebSocket handler") fall
+            # through and stay distinct (WI-kuvig/WI-lomoz).
+            route_label_groups[ep.label].append(ep)
+        else:
+            non_route_eps.append(ep)
+    for _label, eps in route_label_groups.items():
+        # ADR-0039 ruling 3: dedup keeps the most PROMINENT entrypoint per
+        # route label, a ranking decision, so it is the entry order's first,
+        # read on the final rank_score. Ordered by rank_score alone,
+        # duplicates of equal score kept whichever was detected first; read
+        # before the penalties, a test-file duplicate could be kept and then
+        # fall under the floor, taking the route out of the list.
+        _rank_order(eps)
+        non_route_eps.append(eps[0])
+    unique_entrypoints = non_route_eps
+
     # Sort best first for better --entry auto behavior: rank_score, then the
     # tie-break among equal scores (``_rank_order``).
     _rank_order(unique_entrypoints)
@@ -2363,7 +2373,7 @@ def _diversity_cap(
 
     The cap cuts in three places: a kind's quota, the cap itself on the
     entries within quota, and the fill from the deferred ones. Each cut is
-    :func:`_take_dealing_ties`: entries of a higher score than the cut are
+    :func:`take_dealing_ties`: entries of a higher score than the cut are
     kept as they are, and when the cut falls inside a group of EQUAL
     rank_score, that group's slots are dealt round-robin across source files.
     At a quota cut the group is the kind's own tied entries, so a quota is
@@ -2394,45 +2404,52 @@ def _diversity_cap(
     within_quota: set[int] = set()
     for indexes in by_kind.values():
         kind_eps = [entrypoints[i] for i in indexes]
-        chosen = _take_dealing_ties(kind_eps, max_per_kind, file_of)
+        chosen = take_dealing_ties(kind_eps, max_per_kind, file_of)
         within_quota.update(indexes[j] for j in chosen)
 
     eligible = [ep for i, ep in enumerate(entrypoints) if i in within_quota]
     if len(eligible) >= cap:
-        return [eligible[j] for j in _take_dealing_ties(eligible, cap, file_of)]
+        return [eligible[j] for j in take_dealing_ties(eligible, cap, file_of)]
 
     # Fill remaining slots from overflow (kinds that exceeded their quota)
     overflow = [ep for i, ep in enumerate(entrypoints) if i not in within_quota]
     dealt: Counter[tuple[Optional[float], str]] = Counter(
         (ep.rank_score, file_of(ep)) for ep in eligible
     )
-    fill = _take_dealing_ties(overflow, cap - len(eligible), file_of, dealt)
+    fill = take_dealing_ties(overflow, cap - len(eligible), file_of, dealt)
     return eligible + [overflow[j] for j in fill]
 
 
-def _take_dealing_ties(
+def take_dealing_ties(
     entrypoints: Sequence[Entrypoint],
     n: int,
     file_of: Callable[[Entrypoint], str],
     dealt: Optional[Counter[tuple[Optional[float], str]]] = None,
+    score_of: Optional[Callable[[Entrypoint], Optional[float]]] = None,
 ) -> list[int]:
     """Indexes of the ``n`` entries a cut keeps from a best-first list.
 
-    Every entry of a higher ``rank_score`` than the ``n``-th is kept. The
-    entries of the ``n``-th entry's score compete for the slots left (all of
-    them fit unless the cut falls inside that group, so without a tie across
-    the cut this is the first ``n``): they are dealt one per source file in turn,
+    Every entry of a higher score than the ``n``-th is kept. The entries of
+    the ``n``-th entry's score compete for the slots left (all of them fit
+    unless the cut falls inside that group, so without a tie across the cut
+    this is the first ``n``): they are dealt one per source file in turn,
     files in the order of their best entry, then a second per file, and so
     on. ``dealt`` counts the slots each (score, file) already holds from an
     earlier cut; a file's k-th entry here is its ``dealt + k``-th slot.
     Returned in list order.
+
+    The score is ``rank_score`` unless ``score_of`` reads another one: the
+    sketch's Entry Points groups order by the rank a line takes (a route
+    marker takes the better of its own and its handler's) and cut by it
+    (``sketch._format_entrypoints``).
     """
     if n >= len(entrypoints):
         return list(range(len(entrypoints)))
     if n <= 0:
         return []
-    cut_score = entrypoints[n - 1].rank_score
-    group = [i for i, ep in enumerate(entrypoints) if ep.rank_score == cut_score]
+    score = score_of or (lambda ep: ep.rank_score)
+    cut_score = score(entrypoints[n - 1])
+    group = [i for i, ep in enumerate(entrypoints) if score(ep) == cut_score]
     above = list(range(group[0]))
     file_rank: dict[str, int] = {}
     seen: Counter[str] = Counter()

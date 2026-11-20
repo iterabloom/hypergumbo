@@ -176,7 +176,9 @@ from . import run_status
 from .ir import Symbol, Edge, is_external_boundary
 from .paths import is_test_node, names_no_source_file
 from .readme_prose import description_lines, plain_inline
-from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
+from .entrypoints import (
+    detect_entrypoints, Entrypoint, EntrypointKind, take_dealing_ties,
+)
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
     compute_dampened_centrality,
@@ -6143,12 +6145,14 @@ def _format_entrypoints(
     Controllers, etc.). Groups with zero entries are omitted. Test functions
     are excluded entirely — the Tests section already covers them.
 
-    Within each group, entries are sorted by rank_score (highest first).
-    ``max_entries`` is ONE budget shared by all groups (see
-    :func:`_share_entry_budget`), not a per-group cap: with a per-group cap,
-    a repo with hundreds of routes and hundreds of library exports would
-    print max_entries of each and the section would swallow most of the
-    sketch (INV-liraj).
+    Within each group, entries are sorted by rank_score (highest first),
+    equal ranks keeping the order of the entry list. ``max_entries`` is ONE
+    budget shared by all groups (see :func:`_share_entry_budget`), not a
+    per-group cap: with a per-group cap, a repo with hundreds of routes and
+    hundreds of library exports would print max_entries of each and the
+    section would swallow most of the sketch (INV-liraj). Where a group's
+    share cuts through entries of equal rank, their lines are dealt one per
+    source file in turn, as the entry cap deals its tied slots.
 
     A route marker (``meta.framework_role == "route"``) is named after its
     route, so its label would only repeat the name; its line names the
@@ -6238,6 +6242,21 @@ def _format_entrypoints(
                if grouped.get(name)]
     quotas = _share_entry_budget([len(eps) for _n, eps in present], max_entries)
 
+    # A group's share is a cut like the entry cap's: where it falls inside
+    # entries of EQUAL rank, their lines are dealt one per source file in
+    # turn (``take_dealing_ties``), so a file whose entries sort last among
+    # the tied is not left out. Cut in list order, eighty tied Flask routes
+    # of app.py took every line of a share and an Express route none.
+    def file_of(ep: Entrypoint) -> str:
+        sym = symbol_by_id.get(ep.symbol_id)
+        return sym.path if sym and sym.path else f"\0{ep.symbol_id}"
+
+    shown_per_group = [
+        [eps[j] for j in take_dealing_ties(
+            eps, quota, file_of, score_of=lambda e: rank[e.symbol_id])]
+        for (_name, eps), quota in zip(present, quotas, strict=True)
+    ]
+
     repo_root_str = str(repo_root)
 
     def rel(sym: Symbol) -> str:
@@ -6250,18 +6269,19 @@ def _format_entrypoints(
     # separate two entries of one file.
     shown_names: Counter[str] = Counter()
     shown_places: Counter[tuple[str, str]] = Counter()
-    for (_group_name, eps), quota in zip(present, quotas, strict=True):
-        for ep in eps[:quota]:
+    for shown_eps in shown_per_group:
+        for ep in shown_eps:
             shown = symbol_by_id.get(ep.symbol_id)
             if shown:
                 shown_names[shown.name] += 1
                 shown_places[(shown.name, rel(shown))] += 1
 
-    for (group_name, eps), quota in zip(present, quotas, strict=True):
+    for (group_name, eps), quota, shown_eps in zip(
+            present, quotas, shown_per_group, strict=True):
         lines.append(f"### {group_name}")
         lines.append("")
 
-        for ep in eps[:quota]:
+        for ep in shown_eps:
             sym = symbol_by_id.get(ep.symbol_id)
             if sym:
                 rel_path = rel(sym)
