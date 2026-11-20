@@ -1,0 +1,20 @@
+- op: create  # 00f7
+  at: '2026-11-20T20:02:21Z'  # 00f7
+  by: agent  # 00f7
+  actor: jgstern_agent  # 00f7
+  clock: 1  # 00f7
+  nonce: 00f7  # 00f7
+  data:  # 00f7
+    kind: work_item  # 00f7
+    title: "Go: renaming an import alias moves the ids of functions whose compound parameter types name that package."  # 00f7
+    status: todo_soft  # 00f7
+    priority: 4  # 00f7
+    parent:  # 00f7
+    tags:  # 00f7
+    - stable_id  # 00f7
+    isbefore: []  # 00f7
+    duplicate_of: []  # 00f7
+    not_duplicate_of: []  # 00f7
+    pr_ref:  # 00f7
+    description: "Go: renaming an import alias moves the ids of functions whose compound parameter types name that package.\n\nREPRO: import h \"net/http\" vs import hh \"net/http\", func f(m map[string]h.Header) - the id moves with the alias. Not changed under WI-palus (one Go file has a single spelling per package, so no tie defect, only this churn). Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # 00f7
+    fields: {}  # 00f7

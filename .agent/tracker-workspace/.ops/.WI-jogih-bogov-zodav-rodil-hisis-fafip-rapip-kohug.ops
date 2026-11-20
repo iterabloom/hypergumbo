@@ -1,0 +1,20 @@
+- op: create  # 4100
+  at: '2026-11-20T20:02:28Z'  # 4100
+  by: agent  # 4100
+  actor: jgstern_agent  # 4100
+  clock: 1  # 4100
+  nonce: '4100'  # 4100
+  data:  # 4100
+    kind: work_item  # 4100
+    title: "Scala: the _root_. prefix on a type name is not stripped before hashing, and SCALA_SHADOWED_JAVA_LANG omits StringBuilder."  # 4100
+    status: todo_soft  # 4100
+    priority: 4  # 4100
+    parent:  # 4100
+    tags:  # 4100
+    - stable_id  # 4100
+    isbefore: []  # 4100
+    duplicate_of: []  # 4100
+    not_duplicate_of: []  # 4100
+    pr_ref:  # 4100
+    description: "Scala: the _root_. prefix on a type name is not stripped before hashing, and SCALA_SHADOWED_JAVA_LANG omits StringBuilder.\n\nREPRO: def f(x: _root_.scala.collection.Seq[Int]) vs def f(x: scala.collection.Seq[Int]) hash apart. Separately, SCALA_SHADOWED_JAVA_LANG (feeds call-owner hints) lacks StringBuilder, which scala.StringBuilder shadows. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # 4100
+    fields: {}  # 4100

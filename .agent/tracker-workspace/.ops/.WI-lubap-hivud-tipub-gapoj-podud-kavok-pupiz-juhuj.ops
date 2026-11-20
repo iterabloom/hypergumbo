@@ -1,0 +1,20 @@
+- op: create  # 0c5e
+  at: '2026-11-20T20:02:09Z'  # 0c5e
+  by: agent  # 0c5e
+  actor: jgstern_agent  # 0c5e
+  clock: 1  # 0c5e
+  nonce: 0c5e  # 0c5e
+  data:  # 0c5e
+    kind: work_item  # 0c5e
+    title: "PHP: a fully qualified class name and the same class imported with use hash to different ids."  # 0c5e
+    status: todo_soft  # 0c5e
+    priority: 4  # 0c5e
+    parent:  # 0c5e
+    tags:  # 0c5e
+    - stable_id  # 0c5e
+    isbefore: []  # 0c5e
+    duplicate_of: []  # 0c5e
+    not_duplicate_of: []  # 0c5e
+    pr_ref:  # 0c5e
+    description: "PHP: a fully qualified class name and the same class imported with use hash to different ids.\n\nREPRO: function f(\\App\\Models\\User $u) vs use App\\Models\\User; function f(User $u) - the two give different stable ids, plain parameter types included. Not fixed under WI-palus because PHP was outside its listed languages, and the fix moves every PHP signature that names an imported class. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # 0c5e
+    fields: {}  # 0c5e

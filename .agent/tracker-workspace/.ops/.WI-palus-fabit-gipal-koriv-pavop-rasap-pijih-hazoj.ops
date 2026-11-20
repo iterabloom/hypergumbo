@@ -32,3 +32,10 @@
   clock: 3  # 9927
   nonce: '9927'  # 9927
   message: "Same class found in Rust impl headers by PR 3 agent 6 (commit 68fa21b7e hashes a non-plain impl's header): fmt::Display vs std::fmt::Display in an impl header hash apart. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md residual 5."  # 9927
+- op: discuss  # da27
+  at: '2026-11-20T18:35:26Z'  # da27
+  by: agent  # da27
+  actor: jgstern_agent  # da27
+  clock: 4  # da27
+  nonce: da27  # da27
+  message: "OWNER RULING 2026-11-20 (in session): canonicalize via imports. Per file, using local information only: a type name the file imports (import x.y.Foo, use std::fmt) or a language-implicit one (java.lang, Kotlin/Scala default imports) is rewritten to its full path before hashing, so both spellings hash alike. Names that cannot be resolved locally stay as written; distinct same-named types stay distinct. Rejected: last segment only (collapses a.Foo and b.Foo); keep as written and close."  # da27
