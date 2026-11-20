@@ -22,6 +22,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Declare fixture directories as test input in `.hypergumbo.toml`.**
 - **Each analysis pass counts edge endpoints that are not ids.**
 
+### Changed
+
+- **Unknown config settings now say a newer hypergumbo may be needed.**
+
 ### Fixed
 
 - **LaTeX edges start at the file and end on ids.**
