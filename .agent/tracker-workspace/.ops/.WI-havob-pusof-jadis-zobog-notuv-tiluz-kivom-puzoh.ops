@@ -18,3 +18,10 @@
     pr_ref:  # f274
     description: "Stale line citations stopped the pre-PR run twice in a row: PR 3 (12 citations) and PR 4 (2 citations, js_ts.py moved by 24 lines). The registries in module_key_axis.py (EmissionSite) and signature_axis.py (CitedSite / FactHome / LegacyValueParser) pin path, line and anchor text. Any edit above a cited line breaks test_every_cited_emission_site_still_exists, test_every_parser_citation_still_says_what_it_claimed and test_no_undeclared_value_parser_exists. Those tests are found only by the self-selected run, about 10 minutes into the pre-PR run (or in CI).\n\n`scripts/repin-line-citations --check` takes about 1 second and names each moved citation, and `scripts/repin-line-citations` fixes them.\n\nProposal: run `repin-line-citations --check` as a pre-commit check when a staged file is cited by either registry, and print the fix command. The pre-commit hook lives in .githooks, which is a governance file, so this needs owner approval. The alternative outside governance is a step at the start of prepr.\n\nRepro: edit any file cited in signature_axis.py above a cited line, then run scripts/repin-line-citations --check."  # f274
     fields: {}  # f274
+- op: discuss  # a03d
+  at: '2026-11-20T17:23:07Z'  # a03d
+  by: agent  # a03d
+  actor: jgstern_agent  # a03d
+  clock: 2  # a03d
+  nonce: a03d  # a03d
+  message: "OWNER RULING 2026-11-20: APPROVED. Add scripts/repin-line-citations --check to .githooks/pre-commit (when a staged file is cited by the module_key_axis or signature_axis registries), in PR 6; ship via auto-pr WITHOUT --gov (owner-approved governance change, like INV-kosok)."  # a03d

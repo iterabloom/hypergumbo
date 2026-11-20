@@ -1,0 +1,20 @@
+- op: create  # b936
+  at: '2026-11-20T18:33:35Z'  # b936
+  by: agent  # b936
+  actor: jgstern_agent  # b936
+  clock: 1  # b936
+  nonce: b936  # b936
+  data:  # b936
+    kind: work_item  # b936
+    title: "C/C++ #ifdef alternatives tie; Rust inner #![cfg] and cfg_attr not read; cfg predicates not normalized"  # b936
+    status: todo_soft  # b936
+    priority: 3  # b936
+    parent:  # b936
+    tags:  # b936
+    - stable_id  # b936
+    isbefore: []  # b936
+    duplicate_of: []  # b936
+    not_duplicate_of: []  # b936
+    pr_ref:  # b936
+    description: "After PR 5 (WI-kosug; owner ruling 2026-11-20 \"keep as built\"), Rust `#[cfg]` guards and Swift `#if`/`#elseif`/`#else` branches enter the stable id at every level of the scope chain. Three gaps remain:\n\n1. C and C++ `#ifdef`/`#if` alternatives still tie. Repro in kosug/other_languages: `open_file` x2, `struct S` x2, `K::run` x2. No ruling covers C/C++.\n2. Rust inner `#![cfg(...)]` and `cfg_attr(..., cfg(...))` are not read.\n3. Predicates are hashed as written, neither reordered nor evaluated, so `any(a, b)` and `any(b, a)` hash apart.\n\nEach fix moves ids and needs a scheme bump.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/kosug/RESULTS.md."  # b936
+    fields: {}  # b936
