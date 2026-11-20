@@ -32,3 +32,18 @@
   clock: 3  # 21ab
   nonce: 21ab  # 21ab
   message: "OWNER RULING 2026-11-20 (in session): keep as built. The guard text (layout dropped) enters the stable id at every level of the scope chain, for Rust #[cfg] and Swift #if/#elseif/#else alike. Ties: diesel 50->0, Alamofire 2->0, TCA 8->0. Churn accepted: diesel 1,853 of 9,411 rust (19.7%), Alamofire 760 of 3,615 swift (21.0%), TCA 331 of 10,817 (3.1%). Accepted ongoing cost: editing a predicate or wrapping code in a new guard moves the ids inside it. Rejected: Swift else-branches only; dropping from PR 5."  # 21ab
+- op: update  # d080
+  at: '2026-11-20T21:54:41Z'  # d080
+  by: agent  # d080
+  actor: jgstern_agent  # d080
+  clock: 4  # d080
+  nonce: d080  # d080
+  set:  # d080
+    status: done  # d080
+- op: discuss  # 5bc0
+  at: '2026-11-20T21:54:41Z'  # 5bc0
+  by: agent  # 5bc0
+  actor: jgstern_agent  # 5bc0
+  clock: 5  # 5bc0
+  nonce: 5bc0  # 5bc0
+  message: "Fixed in PR #2304 (merged to dev at ca820c2cc, scheme hypergumbo-stableid-v17). Rust #[cfg] guards and Swift #if branches enter the id. Repro: #[cfg(unix)] pub fn open() and #[cfg(windows)] pub fn open() -> 11be36928f4241c8 vs bff28df9fc20ab2e, 0 tied (before: tied). C/C++ #ifdef and Rust inner #![cfg]/cfg_attr: WI-sifar. Live repro on dev ca820c2cc: hypergumbo run <fixture> --out x.json, fixtures and outputs in the session scratchpad pr5_repro/; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/kosug/RESULTS.md."  # 5bc0

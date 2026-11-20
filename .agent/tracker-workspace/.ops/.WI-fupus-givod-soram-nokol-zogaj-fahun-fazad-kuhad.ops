@@ -25,3 +25,18 @@
   clock: 2  # b544
   nonce: b544  # b544
   message: "OWNER RULING 2026-11-19 (in session): goes in the additional stable-id PR at the end of the plan (the v17 bump), with WI-lonoh's static-vs-instance part."  # b544
+- op: update  # eeb5
+  at: '2026-11-20T21:54:40Z'  # eeb5
+  by: agent  # eeb5
+  actor: jgstern_agent  # eeb5
+  clock: 3  # eeb5
+  nonce: eeb5  # eeb5
+  set:  # eeb5
+    status: done  # eeb5
+- op: discuss  # 0cbc
+  at: '2026-11-20T21:54:40Z'  # 0cbc
+  by: agent  # 0cbc
+  actor: jgstern_agent  # 0cbc
+  clock: 4  # 0cbc
+  nonce: 0cbc  # 0cbc
+  message: "Fixed in PR #2304 (merged to dev at ca820c2cc, scheme hypergumbo-stableid-v17). Static vs instance JS/TS members hash apart. Repro: class K { static run(x: number); run(x: number) } -> K.run b624f18b104b5d9f vs 7549d5007c059f6d, 0 tied (before: tied). Live repro on dev ca820c2cc: hypergumbo run <fixture> --out x.json, fixtures and outputs in the session scratchpad pr5_repro/; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/fupus/RESULTS.md."  # 0cbc
