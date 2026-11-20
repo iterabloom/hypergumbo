@@ -67,7 +67,6 @@ def test_a_default_value_is_written_whole(tmp_path: Path, decl: str, rendered: s
 
 @pytest.mark.parametrize(("with_default", "without"), [
     ("void f({bool loud = false}) {}", "void f({bool loud}) {}"),
-    ("void f({bool loud = false}) {}", "void f({bool quiet}) {}"),
     ("void f([int c = 1, String? d]) {}", "void f([int c, String? d]) {}"),
     ("Foo f(int a, {required p.Foo x, int b = 2, List<int>? c}) => a;",
      "Foo f(int a, {required p.Foo x, int b, List<int>? c}) => a;"),
@@ -80,8 +79,11 @@ def test_a_default_is_not_hashed(with_default: str, without: str) -> None:
     assert _hashed(with_default) == _hashed(without)
 
 
-def test_a_named_parameter_hashes_its_type() -> None:
-    assert _hashed("int f({bool loud = false}) => 1;") == "({bool})int"
+def test_a_named_parameter_hashes_its_name_and_type() -> None:
+    """A caller writes a named parameter's name (``f(loud: true)``), so it is
+    hashed, as ``name:Type`` (stable-id v17); its default is not."""
+    assert _hashed("int f({bool loud = false}) => 1;") == "({loud:bool})int"
+    assert _hashed("void f({bool loud = false}) {}") != _hashed("void f({bool quiet}) {}")
     assert _hashed("void f({bool loud = false}) {}") != _hashed("void f({int loud = 1}) {}")
 
 

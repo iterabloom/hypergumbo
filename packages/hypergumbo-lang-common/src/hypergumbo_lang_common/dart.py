@@ -48,9 +48,10 @@ it was the first ``type_identifier`` only, so ``List<int> f()`` and
 nodes before its name (it was a lone ``type_identifier``; ``String?``,
 ``List<T>``, function and record types hashed the empty text).
 
-The hashed text holds types only, and is read from the syntax tree
-(``_dart_hashed_signature``), one parameter at a time: each parameter's
-annotations, modifiers and type, with every parameter name in it left out
+The hashed text holds types and the names a caller writes, and is read
+from the syntax tree (``_dart_hashed_signature``), one parameter at a time:
+each parameter's annotations, modifiers and type, with every positional
+parameter name in it left out
 (its own; an untyped ``x`` reads ``dynamic``; the names inside a function
 type, ``void Function(int n)`` -> ``void Function(int)``, at any depth and
 in a return or field type too); an old-style function-typed parameter as the
@@ -70,6 +71,17 @@ bracket to the split, so the group was one piece), a named group lost its
 hashed, and a bracket inside an annotation's string (``@A("x)")``)
 unbalanced the split. A default value is still DISPLAYED, written ``...``
 whole (``_dart_group_text`` reads it from the tree).
+
+A NAMED parameter is hashed with its name, as ``name:Type`` (stable-id v17):
+``void f({required int count})`` -> ``({count:required int})``, and inside
+a function type ``void Function({int z})`` -> ``void Function({z:int})``.
+A caller writes that name (``f(count: 1)``), so renaming it changes the API,
+as renaming a Swift argument label does, and both go through the shared
+``labelled_parameter`` so they are spelled alike. Until v17 the names were
+left out, and ``f({int a})`` / ``f({int b})`` shared an id. Left as they
+were: modifiers that are not types (``final``, ``covariant``, ``const``) and
+annotations stay in the text, and a record type's positional field names
+too. A constructor hashes no parameter at all (see "Identity" above).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Dart-specific
@@ -114,6 +126,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    LABEL_SEPARATOR,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -122,6 +135,7 @@ from hypergumbo_core.analyze.base import (
     defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
+    labelled_parameter,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -374,6 +388,31 @@ def _dart_is_old_style(param: "tree_sitter.Node") -> bool:
 #: field is a ``typed_identifier`` too, and is a field, not a parameter.
 _DART_PARAMETER_TYPE_NODES = frozenset({"normal_parameter_type", "named_parameter_types"})
 
+#: The tokens that end the run of nodes one member of a parameter list or
+#: group owns, going backwards from it (``required``, an annotation and a
+#: comment are the member's own).
+_DART_MEMBER_DELIMITERS = frozenset({"(", "[", "{", ","})
+
+
+def _dart_is_named_group(group: Optional["tree_sitter.Node"]) -> bool:
+    """True for a ``{...}`` group of a parameter list or of a function type's
+    parameter types: the parameters a caller passes by NAME."""
+    return (group is not None
+            and group.type in ("optional_formal_parameters", "named_parameter_types")
+            and group.children[0].type == "{")
+
+
+def _dart_label_start(member: "tree_sitter.Node") -> int:
+    """Where a named parameter's label goes: before the first node the member
+    owns (``required``, an annotation), comments aside, or before the member."""
+    start = member.start_byte
+    before = member.prev_sibling
+    while before is not None and before.type not in _DART_MEMBER_DELIMITERS:
+        if before.type not in _DART_COMMENT_NODE_TYPES:
+            start = before.start_byte
+        before = before.prev_sibling
+    return start
+
 
 def _dart_types_text(nodes: list["tree_sitter.Node"], source: bytes) -> str:
     """The source text from the first of ``nodes`` to the last, with every
@@ -388,6 +427,13 @@ def _dart_types_text(nodes: list["tree_sitter.Node"], source: bytes) -> str:
     type: left out, ``f(x)`` would read as ``f()``. Each other name goes with
     the whitespace before it, as a comment does. A record type's field names
     are kept: a named field's name is part of the record type.
+
+    A NAMED parameter's name (in a ``{...}`` group: ``z`` of ``void
+    Function({required int z})``, ``b`` of ``int g({int b})``) is a caller's
+    to write, so it is written again as the parameter's label, before what
+    the parameter owns: ``{z:required int}`` (``labelled_parameter``'s
+    spelling). The parameter ``nodes`` ends with is the caller's to label
+    (:func:`_dart_hashed_group`).
     """
     edits: list[tuple[int, int, str]] = []
     for top in nodes:
@@ -400,13 +446,20 @@ def _dart_types_text(nodes: list["tree_sitter.Node"], source: bytes) -> str:
             name: Optional["tree_sitter.Node"] = None
             if node.type == "formal_parameter":
                 name = _dart_parameter_name(node)
-                if name is not None and _dart_is_old_style(node):
-                    edits.append((name.start_byte, name.end_byte, "Function"))
-                    continue
             elif (node.type == "typed_identifier" and node.parent is not None
                   and node.parent.type in _DART_PARAMETER_TYPE_NODES):
                 name = node.children[-1]
-            if name is not None:
+            if name is None:
+                continue
+            # A named parameter: its name goes before it as its label. The
+            # parameter ``nodes`` ends with is labelled by its group instead
+            # (:func:`_dart_hashed_group`).
+            if _dart_is_named_group(node.parent) and node not in nodes:
+                label_at = _dart_label_start(node)
+                edits.append((label_at, label_at, node_text(name, source) + LABEL_SEPARATOR))
+            if node.type == "formal_parameter" and _dart_is_old_style(node):
+                edits.append((name.start_byte, name.end_byte, "Function"))
+            else:
                 before = name.prev_sibling
                 if before is None:
                     # An untyped ``x`` (also inside ``int g(x)``): its type.
@@ -444,15 +497,25 @@ def _dart_hashed_group(group: "tree_sitter.Node", source: bytes) -> str:
     parameter's hashed text (with what stands before it in the group: an
     annotation, ``required``), and its closing bracket. A default value is
     left out, value and presence (it follows the parameter, up to the next
-    ``,``); a comment between parameters too."""
+    ``,``); a comment between parameters too.
+
+    In a ``{...}`` group each parameter is hashed with its name, through
+    :func:`~hypergumbo_core.analyze.base.labelled_parameter` (``count:required
+    int``): a caller writes it (``f(count: 1)``), so it is identity, as a
+    Swift argument label is. An ``[...]`` group's names are a caller's to
+    leave out, and are."""
     members: list[str] = []
     pending: list["tree_sitter.Node"] = []
     in_default = False
+    named = _dart_is_named_group(group)
     for child in group.children[1:-1]:
         if child.type == ",":
             pending, in_default = [], False
         elif child.type == "formal_parameter":
-            members.append(_dart_hashed_parameter([*pending, child], source))
+            name = _dart_parameter_name(child) if named else None
+            members.append(labelled_parameter(
+                node_text(name, source) if name is not None else None,
+                _dart_hashed_parameter([*pending, child], source)))
             pending, in_default = [], True
         elif not in_default and (pending or child.type not in _DART_COMMENT_NODE_TYPES):
             pending.append(child)
@@ -468,8 +531,9 @@ def _dart_hashed_signature(func_sig_node: "tree_sitter.Node", source: bytes) -> 
     writes it, a named or optional group as :func:`_dart_hashed_group` does,
     joined by ``,``; then the return type (comments and function-type
     parameter names left out, its library prefix stripped as a parameter's;
-    ``void`` or none: nothing). No parameter name is in the text, so renaming
-    one moves no id, and a default value is not either. Each part is read
+    ``void`` or none: nothing). No positional parameter's name is in the
+    text, so renaming one moves no id, and a default value is not either; a
+    named parameter's name is (:func:`_dart_hashed_group`). Each part is read
     from the tree, so a string in an annotation (``@A("x)")``) or a default
     holds no separator, and layout is the hash's own concern (``layout_free``).
     """

@@ -139,13 +139,13 @@ PARAMETERS = [
     ("void f(covariant p.Foo x) {}", "void f(p.Foo x) {}", "(covariant Foo)"),
     ("void f(final p.Foo x) {}", "void f(p.Foo x) {}", "(final Foo)"),
     # A dot behind a named or optional group's bracket.
-    ("void f({p.Foo? x}) {}", "void f(p.Foo? x) {}", "({Foo?})"),
-    ("void f({required p.Foo x}) {}", "void f({p.Foo x}) {}", "({required Foo})"),
+    ("void f({p.Foo? x}) {}", "void f(p.Foo? x) {}", "({x:Foo?})"),
+    ("void f({required p.Foo x}) {}", "void f({p.Foo x}) {}", "({x:required Foo})"),
     ("void f(int a, {required covariant p.Foo x}) {}", "void f(int a, {p.Foo x}) {}",
-     "(int,{required covariant Foo})"),
+     "(int,{x:required covariant Foo})"),
     # A default value is not hashed (WI-doboh; it hashed ``{Foo x =``).
     ("void f({p.Foo x = const p.Foo()}) {}", "void f({covariant p.Foo x = const p.Foo()}) {}",
-     "({Foo})"),
+     "({x:Foo})"),
     # An old-style function-typed parameter whose last word is not its name:
     # written as the function type it declares, its names left out.
     ("void f(int g()) {}", "void f(int g) {}", "(int Function())"),
@@ -153,7 +153,7 @@ PARAMETERS = [
     ("void f(int g(int a)?) {}", "void f(int g(int a)) {}", "(int Function(int)?)"),
     ("void f([void cb()]) {}", "void f([void cb]) {}", "([void Function()])"),
     ("void f({required int g()}) {}", "void f({required int g}) {}",
-     "({required int Function()})"),
+     "({g:required int Function()})"),
     ("void f(T g<T>()) {}", "void f(T g) {}", "(T Function<T>())"),
 ]
 
@@ -245,7 +245,7 @@ def test_every_parameter_modifier_survives_the_prefix_strip(modifier: str) -> No
     back after; the shared strip alone would keep only ``Foo``. (``required``
     outside a group does not parse cleanly, and is still kept.)"""
     assert _hashed(f"void f({modifier} p.Foo x) {{}}") == f"({modifier} Foo)"
-    assert _hashed(f"void f({{{modifier} p.Foo x}}) {{}}") == f"({{{modifier} Foo}})"
+    assert _hashed(f"void f({{{modifier} p.Foo x}}) {{}}") == f"({{x:{modifier} Foo}})"
 
 
 def test_a_type_named_like_a_modifier_is_still_a_type() -> None:
@@ -259,14 +259,14 @@ FILLED = {
     "p.Foo<q.Bar>? f() => null;": "()Foo<q.Bar>?",
     "int Function(p.A) f() => null;": "()int Function(p.A)",
     "(p.A, int)? f() => null;": "()(p.A, int)?",
-    "void f(int Function(p.A) g, {p.Foo? q}) {}": "(int Function(p.A),{Foo?})",
+    "void f(int Function(p.A) g, {p.Foo? q}) {}": "(int Function(p.A),{q:Foo?})",
     "void f(final p.Foo x, {required p.Foo y, covariant p.Bar? z}) {}":
-        "(final Foo,{required Foo,covariant Bar?})",
+        "(final Foo,{y:required Foo,z:covariant Bar?})",
     # ``g(int)``'s ``int`` is a parameter NAME: the parameter is untyped.
     "p.Foo f(int g(int), [void cb()]) => x;": "(int Function(dynamic),[void Function()])Foo",
     "int f(int a, int g(int)) => a;": "(int,int Function(dynamic))int",
     # A default value beside a hole is left out like any other (WI-doboh).
-    "void f({List<int> l = const [], int g()}) {}": "({List<int>,int Function()})",
+    "void f({List<int> l = const [], int g()}) {}": "({l:List<int>,g:int Function()})",
 }
 
 
@@ -339,7 +339,10 @@ PINNED = {
     # ``(covariant int,final int,[int,String?])``; named left its ``{`` open
     # (was cc03281d65f04681), now ``({required int,int,List<int>?})Foo``.
     ("function", "opt"): f"{STABLE_ID_PREFIX}7959670ad49551cd",
-    ("function", "named"): f"{STABLE_ID_PREFIX}bda2449bb1d7dc6a",
+    # Moved in stable-id v17: a named parameter's name is hashed (callers
+    # write it), ``({a:required int,b:int,c:List<int>?})Foo`` (was
+    # bda2449bb1d7dc6a).
+    ("function", "named"): f"{STABLE_ID_PREFIX}d14b7f82c9c8e6ef",
     # ``int g(int a)`` hashed whole, its names included (was 2efe8e614ed4e81c);
     # now the type it declares, ``int Function(int)``.
     ("function", "fnTyped"): f"{STABLE_ID_PREFIX}eef1a4bbc5fa8286",
@@ -348,8 +351,10 @@ PINNED = {
     # v15's strip cut the rest at its last dot, dropping ``Foo f``: was
     # 788a1f68d49853d8, then 520d66bf5aa2d402), by WI-doboh (each default
     # is written ``...`` whole and not hashed: was 5c870688c98590d7, the text
-    # ``({Size,Foo)``), and by the closed group: ``({Size,Foo})``.
-    ("function", "fragment"): f"{STABLE_ID_PREFIX}828190b178b8920f",
+    # ``({Size,Foo)``), and by the closed group: ``({Size,Foo})``. Moved in
+    # stable-id v17 by the hashed named-parameter names: ``({s:Size,f:Foo})``
+    # (was 828190b178b8920f).
+    ("function", "fragment"): f"{STABLE_ID_PREFIX}5a5bebd70a4635af",
     ("function", "commented"): f"{STABLE_ID_PREFIX}a980655d150d1db1",
     ("field", "Widget.count"): f"{STABLE_ID_PREFIX}b9ad19582563bf1f",
     ("field", "Widget.foo"): f"{STABLE_ID_PREFIX}52b2647c5aac5b99",
