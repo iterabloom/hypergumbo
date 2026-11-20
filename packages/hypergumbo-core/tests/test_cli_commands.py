@@ -4854,3 +4854,64 @@ def test_io_boundaries_accepts_positional_path(
     result = main(["io-boundaries", str(tmp_path)])
     assert result == 0
     assert captured["path"] == str(tmp_path)
+
+
+def _go_fn(name: str, path: str, line: int = 1) -> dict:
+    return {
+        "id": f"go:{path}:{line}-{line + 2}:{name}:function", "name": name,
+        "kind": "function", "language": "go", "path": path,
+        "span": {"start_line": line, "end_line": line + 2, "start_col": 0, "end_col": 1},
+        "supply_chain": {"tier": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]} if name == "main" else {},
+    }
+
+
+def _call(i: int, src: dict, dst: dict) -> dict:
+    return {"id": f"edge:{i}", "src": src["id"], "dst": dst["id"], "type": "calls",
+            "line": i, "confidence": 0.9, "meta": {"evidence_type": "ast_call_direct"}}
+
+
+@pytest.mark.parametrize("example_dir", ["examples/webhook", "testdata/tool", "vendor/x/tool"])
+def test_slice_auto_prefers_the_programs_main_over_an_example_main(
+    tmp_path: Path, capsys, example_dir: str,
+) -> None:
+    """alertmanager's shape: cmd/app/main.go is a thin wrapper (main ->
+    run, run calls the program), clamped at rank 1.0; an example main calls
+    eight functions directly. The example main's rank keeps the x0.5
+    example penalty only on its base (the connectivity boost is added
+    after it), so on the slice's own score it beat the program's main.
+    The slice score applies the entry list's path penalty to the whole
+    score: the program's main is picked."""
+    main = _go_fn("main", "cmd/app/main.go")
+    run = _go_fn("run", "cmd/app/run.go")
+    work = [_go_fn(f"w{i}", "internal/app/work.go", 10 * (i + 1)) for i in range(30)]
+    ex_main = _go_fn("main", f"{example_dir}/main.go")
+    ex_work = [_go_fn(f"e{i}", f"{example_dir}/lib.go", 10 * (i + 1)) for i in range(8)]
+    if example_dir.startswith("vendor/"):
+        for n in (ex_main, *ex_work):
+            n["supply_chain"] = {"tier": 3}
+    edges = [_call(1, main, run)]
+    edges += [_call(10 + i, run, w) for i, w in enumerate(work)]
+    edges += [_call(100 + i, ex_main, w) for i, w in enumerate(ex_work)]
+    behavior_map = {"schema_version": "0.1.0",
+                    "nodes": [main, run, *work, ex_main, *ex_work], "edges": edges}
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    assert cmd_slice(args) == 0
+    out, _ = capsys.readouterr()
+    picked = out.split("Auto-detected entry:", 1)[1].splitlines()[1].strip()
+    assert picked == main["id"], out

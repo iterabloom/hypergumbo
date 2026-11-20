@@ -36,6 +36,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch entry groups deal tied lines across files, like the cap.**
 - **Route dedup and the connectivity fallback break ties by total order.**
 - **Test, example and vendored entry points no longer demote library exports.**
+- **`slice --entry auto` no longer seeds from an example `main`.**
 - **A bare `createServer` is an HTTP server only when imported from http.**
 - **LaTeX edges start at the file and end on ids.**
 - **Imports in eleven languages start and end on real nodes.**

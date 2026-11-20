@@ -1049,10 +1049,10 @@ This table is **canonical**. [§9](#9-behavior-map-json) groups the same bases b
 When multiple entrypoints exist, scoring selects the most useful ones:
 
 ```python
-score = rank_score * (1 + log(1 + outgoing_edges)) * kind_boost
+score = rank_score * (1 + log(1 + outgoing_edges)) * kind_boost * path_factors
 ```
 
-where `kind_boost` is 2.0 for the program-start kinds (`main_function`, `main_guard`, `cli_main`: the canonical application root, the same kinds the entry list puts second among ties) and 1.0 otherwise. This prefers well-connected entries, producing richer slices.
+where `kind_boost` is 2.0 for the program-start kinds (`main_function`, `main_guard`, `cli_main`: the canonical application root, the same kinds the entry list puts second among ties) and 1.0 otherwise, and `path_factors` are the entry list's own penalties for a test (×0.1), example / utility (×0.5) or vendored (×0.3) file, applied to the whole score. In `rank_score` they act on the base only (the boost is added after them and the score clamps at 1.0), so an example `main` with many direct calls outscored a program's thin-wrapper `main` (alertmanager). This prefers well-connected entries, producing richer slices.
 
 ## 9) Behavior map JSON
 
