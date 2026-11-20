@@ -46,3 +46,18 @@
   clock: 5  # a11d
   nonce: a11d  # a11d
   message: "Built in 12b988cb5 (PR 5 branch). Choice made under the canonicalize-via-imports ruling: a qualified spelling of a language-default name (java.lang.String, Kotlin/Scala defaults, Rust prelude) is written as its simple name, rather than the bare name being written in full; same equivalence classes, lower churn (jedis 10.60% vs 26.83%, diesel 28.56% vs 39.29%). Switch point: FileTypeNames.resolve in analyze/base.py. Known limits kept as designed: a file that writes java.lang.X because a same-package X shadows it now ties with bare X (one file cannot decide this); Rust/Python imports in nested scopes are read file-wide, and a name two scopes bind differently is left as written. Residuals filed: WI-lubap, WI-korur, WI-bonof, WI-jogih, WI-bujit, WI-juzom, WI-rafis. Evidence: pr5/palus/RESULTS.md."  # a11d
+- op: update  # 6837
+  at: '2026-11-20T21:54:41Z'  # 6837
+  by: agent  # 6837
+  actor: jgstern_agent  # 6837
+  clock: 6  # 6837
+  nonce: '6837'  # 6837
+  set:  # 6837
+    status: done  # 6837
+- op: discuss  # 0ab3
+  at: '2026-11-20T21:54:41Z'  # 0ab3
+  by: agent  # 0ab3
+  actor: jgstern_agent  # 0ab3
+  clock: 7  # 0ab3
+  nonce: 0ab3  # 0ab3
+  message: "Fixed in PR #2304 (merged to dev at ca820c2cc, scheme hypergumbo-stableid-v17). Type names are hashed through the file's imports. Repro: Java f(List<Callable<String>>) under import java.util.concurrent.Callable vs f(List<java.util.concurrent.Callable<java.lang.String>>) -> A.f ac476291c9169b1d in both (before: different). Residuals WI-lubap, WI-korur, WI-bonof, WI-jogih, WI-bujit, WI-juzom, WI-rafis. Live repro on dev ca820c2cc: hypergumbo run <fixture> --out x.json, fixtures and outputs in the session scratchpad pr5_repro/; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md."  # 0ab3

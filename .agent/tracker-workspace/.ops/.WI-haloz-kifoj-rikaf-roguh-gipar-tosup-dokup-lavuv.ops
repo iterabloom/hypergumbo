@@ -25,3 +25,18 @@
   clock: 2  # 6998
   nonce: '6998'  # 6998
   message: "OWNER RULING 2026-11-20 (in session): yes, hash a Dart named parameter's name (callers write it: f(a: 1)), so f({int a}) and f({int b}) get distinct ids. Decided together with Swift argument labels (WI-lonoh's labels part) in the final v17 PR (PR 5)."  # 6998
+- op: update  # 2520
+  at: '2026-11-20T21:54:40Z'  # 2520
+  by: agent  # 2520
+  actor: jgstern_agent  # 2520
+  clock: 3  # 2520
+  nonce: '2520'  # 2520
+  set:  # 2520
+    status: done  # 2520
+- op: discuss  # 133c
+  at: '2026-11-20T21:54:40Z'  # 133c
+  by: agent  # 133c
+  actor: jgstern_agent  # 133c
+  clock: 4  # 133c
+  nonce: 133c  # 133c
+  message: "Fixed in PR #2304 (merged to dev at ca820c2cc, scheme hypergumbo-stableid-v17). A Dart named parameter's name is hashed. Repro: class C { void f({int? a}) } vs same file with {int? b} -> C.f f49a90fcb6c27b67 vs d32dc8955dc035e8 (before: equal). Live repro on dev ca820c2cc: hypergumbo run <fixture> --out x.json, fixtures and outputs in the session scratchpad pr5_repro/; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/haloz/RESULTS.md."  # 133c

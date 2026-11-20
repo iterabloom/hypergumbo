@@ -25,3 +25,18 @@
   clock: 2  # c3de
   nonce: c3de  # c3de
   message: "OWNER RULING 2026-11-19 (in session): goes in an additional stable-id PR at the end of the plan (a second bump after v16), with WI-lonoh's argument-label and static-vs-instance parts."  # c3de
+- op: update  # c85b
+  at: '2026-11-20T21:54:41Z'  # c85b
+  by: agent  # c85b
+  actor: jgstern_agent  # c85b
+  clock: 3  # c85b
+  nonce: c85b  # c85b
+  set:  # c85b
+    status: done  # c85b
+- op: discuss  # 3b6a
+  at: '2026-11-20T21:54:41Z'  # 3b6a
+  by: agent  # 3b6a
+  actor: jgstern_agent  # 3b6a
+  clock: 4  # 3b6a
+  nonce: 3b6a  # 3b6a
+  message: "Fixed in PR #2304 (merged to dev at ca820c2cc, scheme hypergumbo-stableid-v17). Java anonymous classes are scoped by binding, type and overload. Repro: Runnable r1 = new Runnable(){run()}; Runnable r2 = new Runnable(){run()} in one method -> A.run 763869614da19628 vs 66ee8b4b9f5d1c01, 0 tied (before: tied). Unassigned anonymous classes still tie: WI-nivap. Live repro on dev ca820c2cc: hypergumbo run <fixture> --out x.json, fixtures and outputs in the session scratchpad pr5_repro/; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/hamuk/RESULTS.md."  # 3b6a

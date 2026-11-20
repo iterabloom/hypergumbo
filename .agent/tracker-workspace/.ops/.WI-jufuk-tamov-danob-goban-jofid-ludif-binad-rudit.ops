@@ -25,3 +25,18 @@
   clock: 2  # f241
   nonce: f241  # f241
   message: "OWNER RULING 2026-11-20 (in session): yes, drop parameter names inside function types from the hashed signature in Kotlin, Swift, Go and TypeScript, so renaming one no longer moves the id. In the final v17 PR (PR 5)."  # f241
+- op: update  # 4b1d
+  at: '2026-11-20T21:54:40Z'  # 4b1d
+  by: agent  # 4b1d
+  actor: jgstern_agent  # 4b1d
+  clock: 3  # 4b1d
+  nonce: 4b1d  # 4b1d
+  set:  # 4b1d
+    status: done  # 4b1d
+- op: discuss  # d9d2
+  at: '2026-11-20T21:54:40Z'  # d9d2
+  by: agent  # d9d2
+  actor: jgstern_agent  # d9d2
+  clock: 4  # d9d2
+  nonce: d9d2  # d9d2
+  message: "Fixed in PR #2304 (merged to dev at ca820c2cc, scheme hypergumbo-stableid-v17). Function-type parameter names are left out of the hash. Repro: TS on(cb: (event: string) => void) vs on(cb: (name: string) => void) -> both a710fc8bedd92650 (before: different). Live repro on dev ca820c2cc: hypergumbo run <fixture> --out x.json, fixtures and outputs in the session scratchpad pr5_repro/; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/jufuk/RESULTS.md."  # d9d2
