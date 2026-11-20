@@ -1,0 +1,21 @@
+- op: create  # 747b
+  at: '2026-11-20T11:09:54Z'  # 747b
+  by: agent  # 747b
+  actor: jgstern_agent  # 747b
+  clock: 1  # 747b
+  nonce: 747b  # 747b
+  data:  # 747b
+    kind: work_item  # 747b
+    title: "swift: locals of unbound closures, blocks, and async/sync overloads still tie"  # 747b
+    status: todo_soft  # 747b
+    priority: 4  # 747b
+    parent:  # 747b
+    tags:  # 747b
+    - swift  # 747b
+    - stable_id  # 747b
+    isbefore: []  # 747b
+    duplicate_of: []  # 747b
+    not_duplicate_of: []  # 747b
+    pr_ref:  # 747b
+    description: "PR 5 (WI-podor) labels Swift scopes by their enclosing callable, so same-named locals in two inits, overloads, accessors or subscripts no longer tie. Two Swift forms still tie, each fixed so far only by the occurrence split:\n\n1. Locals of two unbound closures, e.g. `.run { func h() }` twice in one body, or of two plain blocks in one body. There is no name to label the scope with.\n2. Locals of `func f()` and `func f() async`. `async` (and `throws`?) are not in the scope label. Verified on a fixture, where both `T.h` are hgstableid16:0754e5404cf2466f; not counted on real repositories.\n\nFound by PR 5 agent 1. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/podor/RESULTS.md."  # 747b
+    fields: {}  # 747b

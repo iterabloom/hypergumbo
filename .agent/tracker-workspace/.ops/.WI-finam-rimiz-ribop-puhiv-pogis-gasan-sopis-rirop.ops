@@ -1,0 +1,20 @@
+- op: create  # 3603
+  at: '2026-11-20T11:10:00Z'  # 3603
+  by: agent  # 3603
+  actor: jgstern_agent  # 3603
+  clock: 1  # 3603
+  nonce: '3603'  # 3603
+  data:  # 3603
+    kind: work_item  # 3603
+    title: "kotlin/python: same-named locals in different enclosing callables tie (the Swift WI-podor defect)"  # 3603
+    status: todo_soft  # 3603
+    priority: 3  # 3603
+    parent:  # 3603
+    tags:  # 3603
+    - stable_id  # 3603
+    isbefore: []  # 3603
+    duplicate_of: []  # 3603
+    not_duplicate_of: []  # 3603
+    pr_ref:  # 3603
+    description: "Same-named local functions in different enclosing callables tie in Kotlin and Python, the defect PR 5 fixed for Swift (WI-podor). Repros on dev code:\n\n- **Kotlin:**\n  - `fun open()` local to two constructors ties;\n  - `fun helper()` local to the overloads `f(a: Int)` / `f(b: String)` ties;\n  - `fun g()` local to two property getters ties.\n- **Python:**\n  - `def g()` local to a `@property` getter and its `@p.setter` ties;\n  - `def helper()` in two redefinitions of `def f` ties.\n\nRust (two methods, a trait default and its impl, two trait impls of one type) does not tie. Go emits no named local functions.\n\nThe Swift fix labels each scope with the enclosing callable's name plus its layout-free hashed signature, and with static/accessor words. It needs a scheme bump.\n\nRepros: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/podor/other_languages/."  # 3603
+    fields: {}  # 3603
