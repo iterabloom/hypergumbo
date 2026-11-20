@@ -166,7 +166,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=3585,
+                line=3645,
                 anchor="module_path=path_hint",
                 note=(
                     "The CORRECT shape, kept as the contrast case: the hint "
@@ -257,7 +257,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=3490,
+                line=3550,
                 anchor="_module = _external_type or import_aliases.get(callee_name)",
                 note=(
                     "WAS the conflation in its purest form, and the single "

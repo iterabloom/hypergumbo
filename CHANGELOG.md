@@ -33,6 +33,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Rust cfg and Swift #if alternatives no longer share one id.**
 - **Java anonymous classes are scoped by their field, variable and type.**
 - **JS/TS ids tell static members apart from instance members.**
 - **Swift ids hash argument labels and static versus instance members.**

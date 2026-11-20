@@ -47,7 +47,11 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   closures or two blocks of one body still share a chain. An
   extension's ``where`` clause joins its label (``Array where Element: P``),
   so the same member in two differently constrained extensions of one type
-  does not tie (it did until scheme v15)
+  does not tie (it did until scheme v15). The ``#if`` branches open at each
+  level join the chain too (``_swift_branches``: ``#if os(iOS)``, ``#if
+  os(iOS) #else``), so ``#if DEBUG func g()`` and ``#else func g()`` do not
+  tie (they did until scheme v17); a guard is hashed as written, so editing
+  it moves what it guards
 - Names are read whole, ``$`` included (``_$isIdentityEqual``, ``A$B``):
   tree-sitter-swift accepts ``$`` only at an identifier's start, so
   ``SwiftAnalyzer.parse_source`` parses a copy with every inner ``$`` spelled
@@ -189,7 +193,6 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
-    ancestor_labels,
     declared_type_parameters,
     find_child_by_type,
     iter_tree,
@@ -679,6 +682,12 @@ def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     ``Element: Q`` may each declare an ``f()``, and the two are different
     functions, which a name-only label made tie (WI-lonoh). An extension
     without a clause keeps the bare name, so its members hash what they did.
+
+    Since scheme v17 the ``#if`` branches enclosing a declaration are in the
+    chain too (:func:`_swift_branches`, WI-kosug), at the level they open in:
+    ``#if os(iOS) func f()`` and ``#else func f()`` in one type tied until
+    then (split only by occurrence order). A declaration outside every
+    ``#if`` has the chain it had.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type in _SWIFT_CALLABLE_DECL_NODES:
@@ -693,7 +702,58 @@ def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
         name = node_text(name_node, source) if name_node is not None else None
         clause = _swift_extension_clause(n, source)
         return f"{name} {clause}" if name is not None and clause else name
-    return ancestor_labels(node, label)
+    # ancestor_labels' walk, with each level's #if branches (innermost
+    # last) placed after the label of the node that holds the directives.
+    labels: list[str] = []
+    child, current = node, node.parent
+    while current is not None:
+        labels.extend(reversed(_swift_branches(child, current, source)))
+        own = label(current)
+        if own is not None:
+            labels.append(own)
+        child, current = current, current.parent
+    labels.reverse()
+    return labels
+
+
+def _swift_branches(
+    child: "tree_sitter.Node", parent: "tree_sitter.Node", source: bytes,
+) -> list[str]:
+    """The ``#if`` branches open at ``child`` among ``parent``'s children,
+    outermost first (WI-kosug).
+
+    tree-sitter-swift parses ``#if`` / ``#elseif`` / ``#else`` / ``#endif``
+    as ``directive`` siblings of the declarations they enclose, so the open
+    branches are read by walking the earlier siblings. A branch is named by
+    its chain's ``#if`` condition and, after the first, its own:
+    ``#if os(iOS)``, ``#if os(iOS) #elseif os(macOS)``, ``#if os(iOS)
+    #else``; each condition in canonical spacing (``layout_free``), as
+    written (not evaluated). Adding or removing another ``#elseif`` branch
+    leaves a branch's name alone. A stray ``#elseif`` / ``#else`` /
+    ``#endif`` with no open ``#if`` (error recovery) is ignored.
+    """
+    if not any(c.type == "directive" for c in parent.children):
+        return []
+    stack: list[tuple[str, str]] = []  # (the chain's "#if X", the open branch)
+    for sibling in parent.children:
+        if sibling.start_byte >= child.start_byte:
+            break
+        if sibling.type != "directive" or sibling.child_count == 0:
+            continue
+        keyword = sibling.children[0]
+        condition = layout_free(source[keyword.end_byte:sibling.end_byte].decode("utf-8", "replace"))
+        if keyword.type == "#if":
+            head = f"#if {condition}"
+            stack.append((head, head))
+        elif not stack:
+            continue
+        elif keyword.type == "#elseif":
+            stack[-1] = (stack[-1][0], f"{stack[-1][0]} #elseif {condition}")
+        elif keyword.type == "#else":
+            stack[-1] = (stack[-1][0], f"{stack[-1][0]} #else")
+        elif keyword.type == "#endif":
+            stack.pop()
+    return [branch for _head, branch in stack]
 
 
 def _swift_extension_clause(decl: "tree_sitter.Node", source: bytes) -> str:
