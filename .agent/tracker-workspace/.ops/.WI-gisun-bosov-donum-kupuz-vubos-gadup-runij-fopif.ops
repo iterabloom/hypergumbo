@@ -27,3 +27,18 @@
   clock: 2  # 8b15
   nonce: 8b15  # 8b15
   message: "OWNER RULING 2026-11-19 (in session): the owner adopted all recommendations of the 11-19 review (three read-only research passes over the ADRs, the spec and the code; record ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md). For this item:\nThe RCT pin (tests/test_rct_public_api_pinned.py) changes in the same PR: assert fields['src'].type is NodeId and NodeId.__supertype__ is str; no parallel field. RCT is a notebook trial parked since 2026-05 whose variants do not touch Edge.src; no emitted byte changes; hypergumbo-core ships no py.typed. Patch-level. The owner's adoption is the coordination the pin's docstring asks for."  # 8b15
+- op: update  # c4ba
+  at: '2026-11-20T01:47:14Z'  # c4ba
+  by: agent  # c4ba
+  actor: jgstern_agent  # c4ba
+  clock: 3  # c4ba
+  nonce: c4ba  # c4ba
+  set:  # c4ba
+    status: done  # c4ba
+- op: discuss  # b2a1
+  at: '2026-11-20T01:47:14Z'  # b2a1
+  by: agent  # b2a1
+  actor: jgstern_agent  # b2a1
+  clock: 4  # b2a1
+  nonce: b2a1  # b2a1
+  message: "Done in PR #2291 (dev 703dce32b; commit 7d1873dfc, after the non-id source sites were fixed in 8410e1a55 / fd092c621 / 144d9b7f2). Live on dev 703dce32b: python -c over hypergumbo_core.ir / io_boundary -> 'Edge.src type: hypergumbo_core.ir.NodeId | Edge.dst type: <class str>', 'Edge.create src annotation: NodeId', 'io_boundary.IoChain.io_edge_src type: NodeId', 'NodeId is a NewType over: <class str>'. RCT pin moved in the same PR per the 11-19 owner ruling: tests/test_rct_public_api_pinned.py:173 pins 'src': NodeId. scripts/smart-test over tests/test_rct_public_api_pinned.py, packages/hypergumbo-core/tests/test_id_newtypes.py and 4 more files -> 'mypy ratchet clean', 138 passed. Maps on dev: every edge src is an emitted node id on the 21-language tatop synth tree (100 edges, 0 not), the stand-in fixture (53, 0), the LaTeX fixture (5, 0) and the zolat fixture (13, 0), and analysis_runs[].non_id_edge_endpoints is 0 for every pass on the synth tree. Edge.dst stays str (out of scope, as the item says). Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/gisun.txt, ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/tatop.txt, ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/smarttest_core.txt"  # b2a1

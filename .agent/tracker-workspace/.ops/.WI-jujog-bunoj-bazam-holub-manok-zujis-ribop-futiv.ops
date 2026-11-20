@@ -25,3 +25,18 @@
   clock: 2  # d225
   nonce: d225  # d225
   message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump)."  # d225
+- op: update  # 6273
+  at: '2026-11-20T01:47:40Z'  # 6273
+  by: agent  # 6273
+  actor: jgstern_agent  # 6273
+  clock: 3  # 6273
+  nonce: '6273'  # 6273
+  set:  # 6273
+    status: done  # 6273
+- op: discuss  # 199a
+  at: '2026-11-20T01:47:40Z'  # 199a
+  by: agent  # 199a
+  actor: jgstern_agent  # 199a
+  clock: 4  # 199a
+  nonce: 199a  # 199a
+  message: "Done in PR #2291 (dev 703dce32b; commit da8e40f38). Live on dev 703dce32b, the item's own repro: hypergumbo survey on a copy of TCA Sources/ComposableArchitecture/Observation/ObservableState.swift -> rc=0; L105 function name '_$isIdentityEqual' (hgstableid16:a47d670380f3bc0c, sig '(_: T, _: T) -> Bool'), L190 function name '_$willModify' (hgstableid16:61af28a14eb8058c); 0 symbols named exactly '_' (was '_' for both). Fixture: struct Obs { func _$isIdentityEqual(...); func _$willModify() } -> methods Obs._$isIdentityEqual and Obs._$willModify with distinct stable ids. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/jujog.txt"  # 199a

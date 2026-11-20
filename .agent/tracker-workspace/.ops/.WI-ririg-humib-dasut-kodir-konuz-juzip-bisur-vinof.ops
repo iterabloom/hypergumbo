@@ -25,3 +25,18 @@
   clock: 2  # 8d73
   nonce: 8d73  # 8d73
   message: "OWNER RULING 2026-11-19 (in session): hash the full path as written (spelling-dependent: System.String and String hash apart). Build in PR 3 (the stable-id v16 bump)."  # 8d73
+- op: update  # 09d8
+  at: '2026-11-20T01:47:40Z'  # 09d8
+  by: agent  # 09d8
+  actor: jgstern_agent  # 09d8
+  clock: 3  # 09d8
+  nonce: 09d8  # 09d8
+  set:  # 09d8
+    status: done  # 09d8
+- op: discuss  # b67e
+  at: '2026-11-20T01:47:40Z'  # b67e
+  by: agent  # b67e
+  actor: jgstern_agent  # b67e
+  clock: 4  # b67e
+  nonce: b67e  # b67e
+  message: "Done in PR #2291 (dev 703dce32b; commit 561e35c7d), per the 11-19 owner ruling (hash the full path as written). Live on dev 703dce32b: python ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/sig_repros.py ririg -> 'ALL OK (4/4)': normalize_csharp_signature('(A.B x)') = '(A.B)' vs '(C.B x)' = '(C.B)' (distinct; the item's repro was equal); '(System.String s)' = '(System.String)' vs '(String s)' = '(String)' (spelling-dependent, as ruled); normalize_swift_signature('(x: Feature.State)') = '(Feature.State)' vs '(x: Other.State)' = '(Other.State)' (distinct); '(x: Combine.Subscriber)' vs '(x: Other.Subscriber)' distinct. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/ririg.txt"  # b67e

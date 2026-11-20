@@ -21,3 +21,10 @@
     pr_ref:  # 5ac0
     description: "WHAT. PR #2198 left every path with one file pseudo-symbol. Where two producers had minted one, the survivor is the file's own language. Where ONLY the JavaScript analyzer minted one (a component with a script and no template edges), the node stays typescript:X.vue / javascript:X.svelte: re-slotting it changes make_file_stable_id's input, a stable-id move.\n\nMEASURED. koel 62 of 297 components, workadventure play/src/front 187 of 440. If members are re-anchored on the new file id too, up to 1,925 (koel) and 3,844 (workadventure) member ids move.\n\nFOR THE BUMP, to check first: whether the containment linker roots typescript members under a svelte: file node; that the placeholder demotion (ADR-0057 section 14.1) survives once both producers mint one id. Blade paths keep php: because taxonomy.get_language reads the last suffix only (.blade.php -> blade is unreachable in _EXTENSION_MAP). Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 5ac0
     fields: {}  # 5ac0
+- op: discuss  # 42b0
+  at: '2026-11-20T01:47:27Z'  # 42b0
+  by: agent  # 42b0
+  actor: jgstern_agent  # 42b0
+  clock: 2  # 42b0
+  nonce: 42b0  # 42b0
+  message: "Checked 2026-11-20 on dev 703dce32b (after PR #2291): PR #2291 does not address this item (its pipe_console commit 6a9092e8f is WI-vavag-kuduh-sagad-hovih-pafof-gukud-dipok-dadug, which shares only the prefix). Live: hypergumbo survey on a fixture with Only.svelte (<script> only) and Only.vue (<script setup lang=ts> only) -> file nodes javascript:Only.svelte:1-1:file:file and typescript:Only.vue:1-1:file:file: a script-only component's file node is still in the javascript:/typescript: slot. Status unchanged. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/vavag_tapoh.txt"  # 42b0
