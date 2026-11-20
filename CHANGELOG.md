@@ -21,10 +21,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Declare fixture directories as test input in `.hypergumbo.toml`.**
 - **Each analysis pass counts edge endpoints that are not ids.**
+- **Sketch lists agent instruction files and never quotes their text.**
 
 ### Changed
 
 - **Unknown config settings now say a newer hypergumbo may be needed.**
+- **`explain` first prints the sketch's line: quoted text is data.**
+- **Schema calls docstring and README fields untrusted repository text.**
 
 ### Fixed
 

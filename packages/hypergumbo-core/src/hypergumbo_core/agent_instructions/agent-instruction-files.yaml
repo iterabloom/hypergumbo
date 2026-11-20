@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Files that coding-agent tools load as instructions, keyed by the tool that
+# reads each one (read by hypergumbo_core.agent_instructions).
+#
+# The sketch lists every file a row matches, with the tools that read it, and
+# never prints its content: text a tool loads AS INSTRUCTIONS is written to be
+# obeyed by a model, and a sketch is pasted into one. A row only ever holds
+# content back, so a row too many costs the reader one file's text, and a row
+# too few prints instructions into a model's context.
+#
+# A file one of these files imports with an `@path` reference is held back too
+# (CLAUDE.md containing `@AGENTS.md`). That rule is code, not a row: it is the
+# same for every tool (agent_instructions.py says how it resolves a path).
+#
+# PATTERNS are globs relative to the repository root, matched segment by
+# segment and case-sensitively. `**` is zero or more directories, `*` and `?`
+# match within one segment. `**/NAME` is a file a tool reads at any depth
+# (Claude Code, Codex and Gemini CLI read nested files for the subtree they
+# sit in); a pattern without `**/` is read at the root only.
+#
+# The rows were written from each tool's documentation as the author knew it
+# on 2026-11-19, without re-reading that documentation online. Not listed:
+# Aider's CONVENTIONS.md, which Aider reads only when a user passes it with
+# --read or names it in .aider.conf.yml, so the name alone says nothing.
+
+provenance: builtin
+id: agent-instruction-files
+
+tools:
+  - tool: Claude Code
+    files:
+      - "**/CLAUDE.md"
+      - "**/CLAUDE.local.md"
+      - ".claude/commands/**/*.md"
+      - ".claude/agents/**/*.md"
+      - ".claude/skills/**/SKILL.md"
+      - ".claude/rules/**/*.md"
+
+  - tool: OpenAI Codex
+    files:
+      - "**/AGENTS.md"
+      - "**/AGENTS.override.md"
+
+  - tool: Gemini CLI
+    files:
+      - "**/GEMINI.md"
+
+  - tool: Gemini Code Assist
+    files:
+      - ".gemini/styleguide.md"
+
+  - tool: GitHub Copilot
+    files:
+      - ".github/copilot-instructions.md"
+      - ".github/instructions/**/*.instructions.md"
+      - ".github/prompts/**/*.prompt.md"
+      - "**/AGENTS.md"
+
+  - tool: Cursor
+    files:
+      - ".cursorrules"
+      - "**/.cursor/rules/**/*.mdc"
+      - "**/.cursor/rules/**/*.md"
+      - "**/AGENTS.md"
+
+  - tool: Windsurf
+    files:
+      - ".windsurfrules"
+      - ".windsurf/rules/**/*.md"
+
+  - tool: Cline
+    files:
+      - ".clinerules"
+      - ".clinerules/**/*.md"
+
+  - tool: Roo Code
+    files:
+      - ".roorules"
+      - ".roo/rules/**/*"
+      - ".roo/rules-*/**/*"
+
+  - tool: Continue
+    files:
+      - ".continuerules"
+      - ".continue/rules/**/*.md"
+
+  - tool: Zed
+    files:
+      - ".rules"
+
+  - tool: Amp
+    files:
+      - "**/AGENT.md"
+      - "**/AGENTS.md"
+
+  - tool: JetBrains Junie
+    files:
+      - ".junie/guidelines.md"
+
+  - tool: Amazon Q Developer
+    files:
+      - ".amazonq/rules/**/*.md"
+
+  - tool: Kiro
+    files:
+      - ".kiro/steering/**/*.md"
+
+  - tool: OpenHands
+    files:
+      - ".openhands_instructions"
+      - ".openhands/microagents/**/*.md"

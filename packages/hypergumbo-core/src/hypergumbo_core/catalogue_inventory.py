@@ -123,6 +123,11 @@ FAMILY_CONSEQUENCE: "dict[str, str]" = {
         "Folds a built URL back to a route pattern. Without them an "
         "interpolated URL never matches the route it calls."
     ),
+    "agent_instructions": (
+        "Names the files coding-agent tools load as instructions. Without "
+        "them a sketch quotes AGENTS.md or CLAUDE.md like any other document, "
+        "and hands their instructions to the model that reads it."
+    ),
 }
 
 

@@ -3041,6 +3041,15 @@ def cmd_explain(args: argparse.Namespace) -> int:
     # multi-match (same-file duplicate definitions); None shows all.
     display_matches = matches if section_limit is None else matches[:section_limit]
 
+    # What follows quotes the repository: names, whole docstrings and, by
+    # default, source. Like a sketch, explain is read by language models, so
+    # it opens with the sketch's line saying that quoted text is data, not
+    # instructions -- the same constant, once, before the first quoted text.
+    from .sketch import QUOTED_TEXT_NOTICE
+
+    print(QUOTED_TEXT_NOTICE)
+    print()
+
     # Display each match
     for i, node in enumerate(display_matches):
         if i > 0:
@@ -13590,11 +13599,16 @@ def run_survey(
     if include_sketch_precomputed:
         run_status.phase("Pre-computing sketch data: config")
         sketch_precomputed: dict[str, str | list[str] | None] = {}
+        # Agent instruction files are never quoted (sketch._held_back): found
+        # once here for both extractions below.
+        from .agent_instructions import find_instruction_files
+
+        held_back = frozenset(find_instruction_files(repo_root))
 
         # Extract config info using HYBRID mode (best quality, uses embeddings)
         try:
             sketch_precomputed["config_info"] = _extract_config_info(
-                repo_root, mode=ConfigExtractionMode.HYBRID
+                repo_root, mode=ConfigExtractionMode.HYBRID, held_back=held_back,
             )
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["config_info"] = ""
@@ -13602,7 +13616,9 @@ def run_survey(
         # Extract README description (uses embedding model)
         run_status.phase("Pre-computing sketch data: README")
         try:
-            sketch_precomputed["readme_description"] = _extract_readme_description(repo_root)
+            sketch_precomputed["readme_description"] = _extract_readme_description(
+                repo_root, held_back=held_back,
+            )
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["readme_description"] = None
 

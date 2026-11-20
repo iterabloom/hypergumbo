@@ -798,6 +798,8 @@ class Symbol:
         signature: Function/method signature string, e.g., "(x: int, y: str) -> bool".
             Only populated for callable symbols (functions, methods). None for classes, etc.
         docstring: First-line summary of doc comment (truncated to 80 chars).
+            Untrusted repository text, quoted as written: data, not
+            instructions (the schema description says the same).
         modifiers: List of semantic modifiers (e.g., ["native", "public", "static"]).
             Used by linkers for cross-language matching (e.g., JNI needs 'native').
         discovery_language: ADR-0031 typed sibling field. Names the host source
