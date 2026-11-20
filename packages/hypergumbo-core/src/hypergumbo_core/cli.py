@@ -319,7 +319,7 @@ import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
 from .entrypoints import (
-    EntrypointKind, apply_rank_floor_and_cap, detect_entrypoint_candidates,
+    PROGRAM_START_KINDS, apply_rank_floor_and_cap, detect_entrypoint_candidates,
     detect_entrypoints, request_ingress_entries,
 )
 from .routes import is_route, method_token, protocol_method_token, route_of
@@ -2051,11 +2051,9 @@ def cmd_slice(args: argparse.Namespace) -> int:
         # Main functions are canonical application roots and should be
         # preferred over route handlers that may have more edges but
         # lead to dead ends (route-node edges rather than useful call edges).
-        _MAIN_KINDS = frozenset({
-            EntrypointKind.MAIN_FUNCTION,
-            EntrypointKind.MAIN_GUARD,  # WI-tuvun: a guard-only __main__.py is a root too
-            EntrypointKind.CLI_MAIN,
-        })
+        # The same kinds the entry list puts first among ties (a guard-only
+        # __main__.py is a root too, WI-tuvun).
+        _MAIN_KINDS = PROGRAM_START_KINDS
 
         def entry_score(ep: Any) -> float:
             """Score = rank_score * connectivity_boost * kind_boost.

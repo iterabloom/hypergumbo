@@ -1017,10 +1017,28 @@ Confidence scores reflect detection reliability, enabling meaningful ordering in
 | 🟩 **Decorator/Annotation** | 0.95 | Explicit code markers | `@app.route`, `@click.command`, `@Controller`, `@RequestMapping` |
 | 🟩 **Framework shape** | 0.90 | Framework match on a *shape* rather than a registration | Forms, serializers; generic `entrypoint` / `app_bootstrap` concepts |
 | 🟩 **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, shebang scripts, HTML entries |
-| 🟩 **Language convention** | 0.80 | Language-level convention | `main()` function, standalone script modules |
+| 🟩 **Language convention** | 0.80 | Language-level convention | standalone script modules, test functions; `main()` in a language not measured (below) |
 | 🟩 **Library export** | 0.75 | Export convention, no call site | A module's public surface (JS/TS index exports, Python `__init__.py`, Go uppercase) |
 | 🟩 **Naming** | 0.70 | Heuristic patterns | Class named `*Controller`, `*Handler`, `*Service` without annotations |
 | 🟩 **Connectivity fallback** | 0.50 | Top-N most-connected callables | Last resort when no concept-based entrypoint is found |
+
+**A convention `main()` takes its language's measured value** (`entrypoints.MAIN_FUNCTION_CONFIDENCE`; owner ruling 2026-11-19). `main-functions.yaml` matches a symbol by name, kind and language only, so the confidence says how often such a match is really where a program starts. It was measured on the local corpora (358 repositories) by reading the source of every matched definition; the share of matches shown to be right, counting every other match as wrong, is mapped down to the tier grid and capped at 0.95 (0.99 is for a declaration):
+
+| Language | Right / matched | Confidence | Wrong when |
+|---|---|---|---|
+| C, C++ | 4580 / 4608, 3175 / 3255 | 0.95 | no case found: the 10 flagged rows sampled were text in strings or comments, or a `main` indented under `#if` |
+| C# | 61 / 61 | 0.95 | `Main` not `static` |
+| Go | 1105 / 1146 | 0.95 | the file is not `package main` (the pattern does not check it): cobra `func main(cmd, args)` callbacks, renamed vendored tools |
+| Java | 1932 / 1961 | 0.95 | a builder or CLI-framework method named `main` |
+| Kotlin | 102 / 102 | 0.95 | a member `main` without `@JvmStatic` |
+| Scala | 2683 / 2733 | 0.95 | `main` without `Array[String]` |
+| Rust | 1333 / 1380 | 0.95 | `fn main` in a library module |
+| Python | 1918 / 2075 | 0.90 | a helper or a route handler named `main` (Python does not make the name special) |
+| Haskell | 418 / 459 | 0.90 | `main` in a module other than `Main` |
+| Erlang | 9 / 360 | 0.50 | the pattern also takes every `start` function: 344 OTP start functions |
+| any other | not measured | 0.80 | Swift: no top-level `func main` in 2,898 files; Dart, Zig: too few files |
+
+Until 2026-11-19 every `main()` carried 0.80, chosen as "lower than framework patterns", a ranking reason; the order among entries of equal `rank_score` now puts a program start before a route by its kind ([§9](#9-behavior-map-json), Sorting), not by this value.
 
 All eight bases are emitted by the detector. Naming-based detection serves as a fallback when no framework-specific patterns match. A ninth value — 0.05, frontend-route suppression — is a deliberate sentinel rather than a tier: it sits below `MIN_ENTRYPOINT_CONFIDENCE` (0.10) and is filtered out before output.
 
@@ -1031,10 +1049,10 @@ This table is **canonical**. [§9](#9-behavior-map-json) groups the same bases b
 When multiple entrypoints exist, scoring selects the most useful ones:
 
 ```python
-score = confidence * (1 + log(1 + outgoing_edges)) * kind_boost
+score = rank_score * (1 + log(1 + outgoing_edges)) * kind_boost
 ```
 
-where `kind_boost` is 2.0 for main/CLI-main entrypoints (the canonical application root) and 1.0 otherwise. This prefers well-connected entries, producing richer slices.
+where `kind_boost` is 2.0 for the program-start kinds (`main_function`, `main_guard`, `cli_main`: the canonical application root, the same kinds the entry list puts second among ties) and 1.0 otherwise. This prefers well-connected entries, producing richer slices.
 
 ## 9) Behavior map JSON
 
@@ -1391,7 +1409,8 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 **Fields:**
 - `symbol_id`: Reference to a node (matches `nodes[].id`)
 - `kind`: Entry point type (`http_route`, `cli_command`, `main_function`, `background_task`, `websocket_handler`, `library_export`, `shell_script`, `html_entry`, `script_module`, `connectivity_based`, etc.). The canonical, complete list is the `EntrypointKind` catalog, exposed as the lightweight catalog-derived `entrypoint-kind` axis via `entrypoints.all_known_entrypoint_kinds()` (WI-pupiz) — the single source the schema `Entrypoint.kind` enumeration is generated from. A *known* kind can be dark on a given corpus when no triggering construct is present (e.g. `cli_command` for argparse CLIs is a detection gap tracked under WI-lubap; `background_task` / `connectivity_based` are absent on a repo with no async-task decorators / where concept-based entrypoints were already found). The `shell_script` kind (INV-tajap) marks bash/sh executable scripts; emitted on the file-kind Symbol whenever the bash analyzer parses a file (every parsed bash file qualifies — `find_bash_files` already requires either a shebang or `.sh`/`.bash` extension). The `html_entry` kind (INV-tajap) marks SPA roots / convention-named `index.html` files; emitted on the file-kind Symbol when the filename is `index.html` (case-insensitive). The `script_module` kind (INV-tajap) marks TS/JS standalone-script files — file-kind Symbols in `typescript` / `javascript` that have **no inbound `imports` edges** (nobody imports the file) **and at least one outbound `calls` edge** (the file does work at module load). Unlike `shell_script` / `html_entry`, this rule requires the full edge set, so the detection runs in `detect_entrypoints` itself instead of via an analyzer-stamped `meta.concepts` entry. The `main_guard` kind (WI-tuvun) marks a Python module-level `if __name__ == "__main__":` script guard with no separate `main()` function — a **file**-target entrypoint, distinct from the **function**-target `main_function`, so `kind` alone disambiguates the target type (previously both were `main_function` and only the free-text label distinguished the file-vs-function target). When a script has both a `def main()` and the guard, the function-level `main_function` is canonical and supersedes the redundant same-path `main_guard` (INV-hosuh dedup). The `websocket_handler` kind (WI-kuvig) covers WebSocket endpoints — both definition-based handlers (NestJS gateways, Phoenix channels, etc., via a `websocket_handler` concept) and path-registered WebSocket routes (Starlette `WebSocketRoute`, whose minted route symbol carries the synthetic `meta.http_method == "WS"`); a route whose method is the `WS` marker classifies as `websocket_handler`, **not** `http_route` + `method=WS`, and the `WS` value is retained on the node's `meta.http_method` for backward-compat. Path-bearing WS routes use a `"WS <path>"` label (parallel to `"HTTP <method> <path>"`) so the handler-concept entrypoint and the route-symbol entrypoint for one route dedup to one.
-- `confidence`: Detection confidence (0.0–1.0), reflecting pattern strength, penalties for test/vendor code, and connectivity boost
+- `confidence`: Detection confidence (0.0–1.0): how sure detection is that the symbol is an entry point of this kind. It carries the detector's base only; the penalties for test/vendor code and the connectivity boost apply to `rank_score` (ADR-0039)
+- `rank_score`: Ranking prominence (0.0–1.0): starts at `confidence`, takes the penalties and the boost, clamps at 1.0; the list is sorted by it
 - `label`: Human-readable description
 - `meta`: Provenance dict mirroring `Edge.meta` (WI-rukam) so a consumer can interpret an entrypoint's `confidence` the way it interprets an edge's. Keys (registered on the `entrypoint_meta` axis in `axis_meta_keys.py`):
   - `id`: stable content-hash identity `entrypoint:sha256:<16hex>` of (kind, symbol_id, label) — always present, auto-stamped. Confidence is **not** part of the identity (it is a ranking value, not a record key). Mirrors `Edge.id`.
@@ -1403,7 +1422,7 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 - 0.95: Framework patterns (decorators, base classes; routes, websocket handlers) — `framework_pattern`
 - 0.90: Framework patterns whose match is a *shape* rather than a registration — forms, serializers — `framework_pattern`
 - 0.85: Structural (Python `if __name__ == "__main__"`, shebang scripts, HTML entries) — `structural`
-- 0.80: Language conventions (`main()` function) and standalone script modules — `language_convention` / `structural`
+- 0.80: Language conventions (test functions; `main()` in a language not measured) and standalone script modules — `language_convention` / `structural`. A `main()` takes its language's measured value, 0.95, 0.90 or 0.50 ([§8](#8-entrypoint-detection), Entrypoint Confidence Tiers)
 - 0.75: **Library exports** — a module's public surface, inferred from the export convention rather than from any call site — `language_convention`
 - 0.70: Naming heuristics (`*Controller`, `*Handler`, `cmd_*`) — `naming_heuristic`
 - 0.50: Connectivity-based fallback (top-N most-connected callables when no patterns match) — `connectivity_heuristic`
@@ -1420,7 +1439,7 @@ deletions-in-waiting.
 
 **One entrypoint per symbol:** when several detectors classify the same symbol, the entry with the highest `confidence` is kept, ties going to the earlier detector (INV-liraj). It previously kept the first-emitted entry, so a route marker (`meta.framework_role == "route"`) that also matched a language's library-export convention came out as `library_export` (0.75) rather than `http_route` (0.90). Route-family markers (`route`, `route_mount`, `route_include`) also no longer take the `library_export` concept during enrichment: a route registration is not importable API.
 
-**Sorting:** Ranked by `rank_score` (highest first), not by `confidence` — ranking prominence is what ordering is for, and the two diverge whenever a penalty or boost applies (ADR-0039). `rank_score` clamps at 1.0, so connected entries tie there; entries of equal `rank_score` are ordered by detection `confidence` (a manifest-declared script at 0.99 before a framework route at 0.95 or 0.90 before a convention `main` at 0.80), then language weight, then effective out-degree, then path, start line, name and symbol id, so the order depends neither on detection order nor on the hash seed. An entry without a numeric `confidence` is an error, not a 0 or a 1. ADR-0039 ruling 3 froze the score formula; this order among equal scores is outside it. Every reader of the list (the sketch's Entry Points groups, the Structure tree's entry files, `slice --list-entries`, `request_ingress`) inherits it.
+**Sorting:** Ranked by `rank_score` (highest first), not by `confidence` — ranking prominence is what ordering is for, and the two diverge whenever a penalty or boost applies (ADR-0039). `rank_score` clamps at 1.0, so connected entries tie there. Entries of equal `rank_score` are ordered by the entry's kind first: a manifest-declared script (`meta.evidence_type` is `manifest_declared`), then a program start (`kind` is `main_function`, `main_guard` or `cli_main`), then routes and every other kind. Then by detection `confidence`, then language weight, then effective out-degree, then path, start line, name and symbol id, so the order depends neither on detection order nor on the hash seed. The kind comes before `confidence` because `confidence` says how sure detection is, not which entry matters more (owner ruling 2026-11-19, ADR-0039 ruling 3 as amended): with `confidence` first, every convention `main` sorted after every framework route among the entries at 1.0. An entry without a numeric `confidence` is an error, not a 0 or a 1. ADR-0039 ruling 3 froze the score formula; this order among equal scores is outside it. Every reader of the list (the sketch's Entry Points groups, the Structure tree's entry files, `slice --list-entries`, `request_ingress`) inherits it.
 
 **Cap:** `compute_entrypoint_cap` (node count // 100, clamped to 50–500) bounds the list. Each kind first takes up to 40% of the cap, then the deferred entries fill any slots left. Each cut (a kind's quota, the cap on the entries within quota, the fill) keeps every entry of a higher score than the cut; when the cut falls inside a group of equal `rank_score`, the group's slots are dealt round-robin across source files, files in the order of their best entry, so every file with a tied entry gets one before any file gets a second. At a quota cut the group is that kind's tied entries, so no quota is exceeded; at the fill, the tied slots a file already holds count as dealt. The kept list is the entries within quota in rank order, then the fill in rank order.
 

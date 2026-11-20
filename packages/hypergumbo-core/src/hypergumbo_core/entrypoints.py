@@ -58,10 +58,12 @@ Base confidence is tiered: 0.99 manifest-declared CLI; 0.95 most
 framework-pattern concepts (route_handler, go_http_handler, form, serializer,
 servlet, ipc_handler and application take 0.90); 0.90 generic/route-marker
 pass; 0.85 structural (shell script, HTML entry, main guard); 0.80 language
-conventions (main, test functions, serialization callbacks, script modules)
-and C ``cmd_<name>`` commands; 0.75 library exports; 0.70 other naming
+conventions (test functions, serialization callbacks, script modules) and C
+``cmd_<name>`` commands; 0.75 library exports; 0.70 other naming
 heuristics; 0.50 connectivity fallback; 0.05 route-looking handlers in
-frontend files.
+frontend files. A convention ``main`` takes its language's measured value
+(``MAIN_FUNCTION_CONFIDENCE``: 0.95, 0.90 or 0.50; 0.80 where the language
+was not measured).
 
 Connectivity Boost (concept-based only):
 - Entrypoints with outgoing edges get a RANK_SCORE boost of
@@ -75,15 +77,18 @@ Connectivity Boost (concept-based only):
   is pure detection reliability and carries only the base; the penalties and
   the boost live on `rank_score`, which is what ordering uses (ADR-0039).
 - `rank_score` clamps at 1.0, so connected entries tie there. Entries of
-  EQUAL rank_score order by detection `confidence` (a manifest-declared
-  script, 0.99, before a framework route, 0.95 / 0.90, before a convention
-  main, 0.80), then language weight, then effective out-degree, then path,
-  start line, name and symbol id: a total order, so neither detection order
-  nor the hash seed decides it. An entry without a numeric `confidence`
-  raises (``_detection_confidence``) instead of sorting as 0 or 1. Ruling 3
-  of ADR-0039 froze the score formula, not this order. Without the
-  confidence key a [project.scripts] command (language toml, weight near
-  zero) ranked under every saturated Python main.
+  EQUAL rank_score order by what the entry IS (``entry_kind_tie_rank``): a
+  manifest-declared script, then a program start (``PROGRAM_START_KINDS``:
+  a ``main``, a ``__main__`` guard), then routes and every other kind; then
+  by detection `confidence`, then language weight, then effective
+  out-degree, then path, start line, name and symbol id: a total order, so
+  neither detection order nor the hash seed decides it (``_rank_order``).
+  An entry without a numeric `confidence` raises (``_detection_confidence``)
+  instead of sorting as 0 or 1. Ruling 3 of ADR-0039 froze the score
+  formula, not this order. Confidence was the first tie key until the owner
+  ruling of 2026-11-19: it measures how sure detection is, and with it
+  first every convention main sorted after every framework route among
+  the entries saturated at 1.0.
 - CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid
   double-counting; TEST_FUNCTION entries, symbols in test files and
   ``boost_suppressed_ids`` (build wrappers, and demoted library exports that
@@ -352,6 +357,45 @@ REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(k.value for k in (
 ))
 
 
+#: The entrypoint kinds that START A PROGRAM: a language-level ``main`` (and
+#: what detection files under that kind: an ``application`` object such as an
+#: IOApp, a CLI framework's top-level parse call), a module ``__main__``
+#: guard, and ``CLI_MAIN``. Among entries of equal ``rank_score`` they come
+#: after a manifest-declared script and before every other kind
+#: (:func:`entry_kind_tie_rank`); ``slice --entry auto`` prefers them too.
+PROGRAM_START_KINDS: frozenset[EntrypointKind] = frozenset({
+    EntrypointKind.MAIN_FUNCTION,
+    EntrypointKind.MAIN_GUARD,
+    EntrypointKind.CLI_MAIN,
+})
+
+
+def entry_kind_tie_rank(ep: "Entrypoint") -> int:
+    """The first key among entries of equal ``rank_score``: 0, 1 or 2.
+
+    0. a manifest-declared script (``meta.evidence_type ==
+       "manifest_declared"``: a package.json ``bin``, a Cargo ``[[bin]]``, a
+       pyproject ``[project.scripts]`` entry);
+    1. a program start (``kind`` in :data:`PROGRAM_START_KINDS`);
+    2. everything else: routes, handlers, commands a framework registers,
+       exports, scripts found by their shape.
+
+    Read from two fields the entry carries, never from its name or label.
+    The evidence type is needed because a manifest script shares its kind
+    (``cli_command``) with a framework command and a ``cmd_<name>``
+    function. An entry built without :meth:`Entrypoint.create` has no
+    evidence type and ranks by its kind. Owner ruling 2026-11-19 (ADR-0039,
+    ruling 3 as amended): the order among ties is by what the entry IS;
+    detection ``confidence`` measures how sure detection is and orders only
+    after this.
+    """
+    if (ep.meta or {}).get("evidence_type") == "manifest_declared":
+        return 0
+    if ep.kind in PROGRAM_START_KINDS:
+        return 1
+    return 2
+
+
 def all_known_entrypoint_kinds() -> frozenset[str]:
     """Single-source catalog of every entrypoint-kind value (WI-pupiz).
 
@@ -553,6 +597,68 @@ def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
     return bootstrap_fws[0]
 
 
+#: Detection confidence of a ``main_function`` match, per language: how
+#: often a match is really where a program starts. main-functions.yaml
+#: matches by name, symbol kind and language only, so what it can get wrong
+#: is the rest of the language's rule. Measured 2026-11-19 on the local
+#: corpora (358 repositories) by reading the source of every definition the
+#: pattern matches; a share of right matches, counting as wrong every match
+#: not shown to be right, is mapped DOWN to the tier grid (0.95, 0.90, ...,
+#: 0.50) and capped at 0.95, since 0.99 is for a declaration:
+#:
+#: - c 4580 of 4608 right, cpp 3175 of 3255: a file-scope ``main`` is the
+#:   hosted program's start (the 10 flagged rows sampled were code inside
+#:   string literals or comments, or a ``main`` indented under ``#if``).
+#: - csharp 61 of 61: ``static Main``.
+#: - go 1105 of 1146: right when the file is ``package main``, which the
+#:   pattern does not check; wrong for ``func main(cmd, args)`` cobra
+#:   callbacks in library packages and vendored tools whose package was
+#:   renamed.
+#: - java 1932 of 1961: ``static main(String[])`` (and JEP 512 instance
+#:   mains); wrong for builder or CLI-framework methods named ``main``.
+#: - kotlin 102 of 102 (a top-level ``fun main``; matches inside the string
+#:   literals of detekt's rule specs are not symbols and are not counted).
+#: - scala 2683 of 2733: ``def main(args: Array[String])``.
+#: - rust 1333 of 1380: ``fn main`` at the root of a binary crate, a
+#:   compile-test program, a meson case or a cargo script; wrong in a
+#:   library module.
+#: - python 1918 of 2075 and haskell 418 of 459: 0.90. Python does not make
+#:   the name special: right when the module calls it under the
+#:   ``__main__`` guard or a manifest names it; wrong for helpers and
+#:   FastAPI route handlers named ``main``. Haskell: wrong for ``main`` in a
+#:   module other than ``Main``.
+#: - erlang 9 of 360: 0.50. The pattern also takes every ``start`` function,
+#:   and 344 of the matches are OTP start functions, not program starts.
+#:
+#: A language not listed was not measured and keeps
+#: :data:`MAIN_FUNCTION_UNMEASURED_CONFIDENCE` (swift: no top-level ``func
+#: main`` in 2,898 files; dart and zig: too few files).
+MAIN_FUNCTION_CONFIDENCE: Mapping[str, float] = {
+    "c": 0.95,
+    "cpp": 0.95,
+    "csharp": 0.95,
+    "go": 0.95,
+    "java": 0.95,
+    "kotlin": 0.95,
+    "scala": 0.95,
+    "rust": 0.95,
+    "python": 0.90,
+    "haskell": 0.90,
+    "erlang": 0.50,
+}
+
+#: A ``main_function`` match in a language the census did not measure. The
+#: value is the one every language had before 2026-11-19; it was set as
+#: "lower than framework patterns", a ranking reason, and stays only because
+#: no evidence replaces it.
+MAIN_FUNCTION_UNMEASURED_CONFIDENCE: float = 0.80
+
+
+def main_function_confidence(language: Optional[str]) -> float:
+    """Detection confidence of a convention ``main`` in ``language``."""
+    return MAIN_FUNCTION_CONFIDENCE.get(language or "", MAIN_FUNCTION_UNMEASURED_CONFIDENCE)
+
+
 def _ws_route_label(path: str, framework: str = "") -> str:
     """Label for a WebSocket entrypoint (WI-kuvig/WI-lomoz).
 
@@ -611,7 +717,8 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "app_bootstrap" -> SPA_BOOTSTRAP (createRoot, ReactDOM.render, hydrateRoot)
 
     Detected concepts (language conventions, confidence=0.80):
-    - "main_function" -> MAIN_FUNCTION (function target: Go, Java, Python, C, etc.)
+    - "main_function" -> MAIN_FUNCTION (function target: Go, Java, Python, C,
+      etc.; confidence per language, ``main_function_confidence``)
     - "main_guard" -> MAIN_GUARD (file target: Python `if __name__ == "__main__"`
       with no separate main(); WI-tuvun — kind disambiguates target from
       MAIN_FUNCTION)
@@ -1073,7 +1180,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
                     kind=EntrypointKind.MAIN_FUNCTION,
-                    confidence=0.80,  # Lower than framework patterns
+                    confidence=main_function_confidence(sym.language),
                     label=f"{lang} main()",
                     source="concept_detector",
                     evidence_type="language_convention",
@@ -1491,6 +1598,20 @@ _CALLABLE_KINDS = frozenset({"function", "method", "constructor"})
 _MAX_CONNECTIVITY_ENTRYPOINTS = 5
 
 
+def _symbol_total_order(
+    sym: Optional[Symbol], symbol_id: str,
+) -> tuple[str, int, str, str]:
+    """The last key of every entry order: path, start line, name, symbol id.
+
+    Unique per symbol, so an order that ends with it depends neither on the
+    order entries were detected in nor on the hash seed.
+    """
+    if sym is None:  # pragma: no cover - defensive: entrypoints are built from nodes
+        return ("", 0, "", symbol_id)
+    line = sym.span.start_line if sym.span is not None else 0
+    return (sym.path or "", line, sym.name, symbol_id)
+
+
 def _connectivity_fallback(
     nodes: List[Symbol],
     edges: List[Edge],
@@ -1630,7 +1751,7 @@ def detect_entrypoint_candidates(
        - Highest confidence (0.95)
        - Detected via YAML patterns matching decorators, base classes, etc.
     2. Language conventions (main() functions)
-       - Lower confidence (0.80) - may have many in a repo
+       - Confidence per language (``MAIN_FUNCTION_CONFIDENCE``)
        - Detected via YAML patterns matching symbol name + kind + language
 
     Concept detection is YAML-driven via framework_patterns.py. Symbols are
@@ -1685,10 +1806,10 @@ def detect_entrypoint_candidates(
     # once from builtin/add.c (definition). They have different symbol_ids so the
     # above dedup doesn't catch them. When both exist for the same symbol name,
     # keep only the definition (non-declaration).
-    symbol_lookup_for_dedup: dict[str, Symbol] = {node.id: node for node in nodes}
+    symbol_lookup: dict[str, Symbol] = {node.id: node for node in nodes}
     name_groups: dict[str, list[Entrypoint]] = defaultdict(list)
     for ep in unique_entrypoints:
-        sym = symbol_lookup_for_dedup.get(ep.symbol_id)
+        sym = symbol_lookup.get(ep.symbol_id)
         if sym:
             name_groups[sym.name].append(ep)
     deduped_entrypoints: List[Entrypoint] = []
@@ -1699,7 +1820,7 @@ def detect_entrypoint_candidates(
                 ep for ep in eps
                 if "declaration" not in (
                     _sym.modifiers
-                    if (_sym := symbol_lookup_for_dedup.get(ep.symbol_id)) is not None
+                    if (_sym := symbol_lookup.get(ep.symbol_id)) is not None
                     else []
                 )
             ]
@@ -1728,7 +1849,7 @@ def detect_entrypoint_candidates(
         ):
             non_main_eps.append(ep)
             continue
-        sym = symbol_lookup_for_dedup.get(ep.symbol_id)
+        sym = symbol_lookup.get(ep.symbol_id)
         if sym is None or not sym.path:  # pragma: no cover - defensive: entrypoints are built from nodes
             non_main_eps.append(ep)
             continue
@@ -1740,10 +1861,89 @@ def detect_entrypoint_candidates(
             continue
         fn_eps = [
             ep for ep in eps
-            if symbol_lookup_for_dedup[ep.symbol_id].kind == "function"
+            if symbol_lookup[ep.symbol_id].kind == "function"
         ]
         deduped_main_eps.extend(fn_eps if fn_eps else eps)
     unique_entrypoints = non_main_eps + deduped_main_eps
+
+    # The order keys after rank_score read the graph only, so they are built
+    # once, here, for the final sort below.
+
+    # Language dominance: prefer entrypoints from the dominant language.
+    # In a repo that's 95% C and 5% Python, a C main() should rank above
+    # a Python script even when the script has higher connectivity.
+    # Weight = symbol_count / max_language_count, so the dominant language
+    # always gets 1.0 and minority languages get proportionally less.
+    lang_symbol_counts: dict[str, int] = defaultdict(int)
+    for node in nodes:
+        if node.language:
+            lang_symbol_counts[node.language] += 1
+    max_lang_count = max(lang_symbol_counts.values()) if lang_symbol_counts else 1
+
+    def _language_weight(symbol_id: str) -> float:
+        """Language dominance weight: 1.0 for dominant, less for minority."""
+        sym = symbol_lookup.get(symbol_id)
+        if not sym or not sym.host_language:
+            return 0.0
+        return lang_symbol_counts.get(sym.host_language, 0) / max_lang_count
+
+    # One-hop transitive reach: an entrypoint's effective out-degree
+    # includes the out-degree of its immediate callees (at 50% weight).
+    # This handles the "thin wrapper" pattern: main() → tryMain() (many edges)
+    # gets credit for tryMain's connectivity, outranking utility mains that
+    # call many small functions directly.
+    outgoing_counts: dict[str, int] = defaultdict(int)
+    incoming_counts: dict[str, int] = defaultdict(int)
+    direct_callees: dict[str, list[str]] = defaultdict(list)
+    for edge in edges:
+        outgoing_counts[edge.src] += 1
+        incoming_counts[edge.dst] += 1
+        direct_callees[edge.src].append(edge.dst)
+
+    def _effective_out_degree(symbol_id: str) -> float:
+        """Compute effective out-degree with one-hop transitive credit."""
+        direct = outgoing_counts.get(symbol_id, 0)
+        # Add callees' out-degree at 50% weight (one hop only, no recursion)
+        transitive = sum(
+            outgoing_counts.get(callee, 0) for callee in direct_callees[symbol_id]
+        )
+        return direct + 0.5 * transitive
+
+    def _rank_order(eps: list[Entrypoint]) -> None:
+        """Sort ``eps`` in place, best first, by the one entry order.
+
+        ``rank_score`` first (ADR-0039 ruling 3: the base confidence plus
+        the penalties, demotions and boosts). The score clamps at 1.0, so
+        connected entries tie there, and the order among EQUAL scores is
+        the tie-break (outside the frozen formula; owner ruling 2026-11-19):
+
+        1. The entry's kind (:func:`entry_kind_tie_rank`): a
+           manifest-declared script, then a program start (a ``main``, a
+           ``__main__`` guard), then routes and the rest.
+        2. Detection confidence: within one kind rank, the more surely
+           detected first (a 0.95 route before a 0.90 handler).
+        3. Language dominance: in a C-heavy repo, C main() ranks above a
+           Python script even if the script has higher connectivity.
+        4. Effective out-degree: the higher transitive reach first.
+        5. A total order on the symbol (path, start line, name, symbol id),
+           so the order depends neither on detection order nor on the hash
+           seed.
+
+        Two stable sorts: the total order ascending first, then the ranking
+        keys descending, which keeps the first order among their ties.
+        """
+        eps.sort(key=lambda ep: _symbol_total_order(
+            symbol_lookup.get(ep.symbol_id), ep.symbol_id))
+        eps.sort(
+            key=lambda ep: (
+                ep.rank_score,
+                -entry_kind_tie_rank(ep),
+                _detection_confidence(ep),
+                _language_weight(ep.symbol_id),
+                _effective_out_degree(ep.symbol_id),
+            ),
+            reverse=True,
+        )
 
     # Route-label deduplication: multiple symbols (route symbol, handler
     # method, different registration sites) can produce HTTP_ROUTE entrypoints
@@ -1793,9 +1993,6 @@ def detect_entrypoint_candidates(
     # matching YAML patterns (e.g., Rust libraries without pub tracking).
     if not unique_entrypoints:
         unique_entrypoints = _connectivity_fallback(nodes, edges)
-
-    # Build lookup from symbol_id to Symbol for penalty calculations
-    symbol_lookup: dict[str, Symbol] = {node.id: node for node in nodes}
 
     # Apply penalties for test files and vendor code (ADR-0039 ruling 3: these
     # are RANKING adjustments — they deprioritize an entrypoint without making
@@ -1984,52 +2181,13 @@ def detect_entrypoint_candidates(
                 ):
                     boost_suppressed_ids.add(ep.symbol_id)
 
-    # Language dominance: prefer entrypoints from the dominant language.
-    # In a repo that's 95% C and 5% Python, a C main() should rank above
-    # a Python script even when the script has higher connectivity.
-    # Weight = symbol_count / max_language_count, so the dominant language
-    # always gets 1.0 and minority languages get proportionally less.
-    lang_symbol_counts: dict[str, int] = defaultdict(int)
-    for node in nodes:
-        if node.language:
-            lang_symbol_counts[node.language] += 1
-    max_lang_count = max(lang_symbol_counts.values()) if lang_symbol_counts else 1
-
-    def _language_weight(symbol_id: str) -> float:
-        """Language dominance weight: 1.0 for dominant, less for minority."""
-        sym = symbol_lookup.get(symbol_id)
-        if not sym or not sym.host_language:
-            return 0.0
-        return lang_symbol_counts.get(sym.host_language, 0) / max_lang_count
-
-    # Boost rank_score (not confidence) based on connectivity (outgoing edges).
-    # Uses one-hop transitive reach: an entrypoint's effective out-degree
-    # includes the out-degree of its immediate callees (at 50% weight).
-    # This handles the "thin wrapper" pattern: main() → tryMain() (many edges)
-    # gets credit for tryMain's connectivity, outranking utility mains that
-    # call many small functions directly.
+    # Boost rank_score (not confidence) based on connectivity: the
+    # effective out-degree above (one-hop transitive reach).
     #
     # The boost is scaled by language dominance: entrypoints from the
     # dominant language get the full boost, while minority languages get
     # a reduced boost (minimum 50%). This prevents a Python script with
     # many outgoing edges from outranking a C main() in a 95% C codebase.
-    outgoing_counts: dict[str, int] = defaultdict(int)
-    incoming_counts: dict[str, int] = defaultdict(int)
-    direct_callees: dict[str, list[str]] = defaultdict(list)
-    for edge in edges:
-        outgoing_counts[edge.src] += 1
-        incoming_counts[edge.dst] += 1
-        direct_callees[edge.src].append(edge.dst)
-
-    def _effective_out_degree(symbol_id: str) -> float:
-        """Compute effective out-degree with one-hop transitive credit."""
-        direct = outgoing_counts.get(symbol_id, 0)
-        # Add callees' out-degree at 50% weight (one hop only, no recursion)
-        transitive = sum(
-            outgoing_counts.get(callee, 0) for callee in direct_callees[symbol_id]
-        )
-        return direct + 0.5 * transitive
-
     for ep in unique_entrypoints:
         # Skip connectivity boost for CONNECTIVITY_BASED entrypoints:
         # their selection already incorporates out-degree ranking, so
@@ -2082,37 +2240,9 @@ def detect_entrypoint_candidates(
             connectivity_boost = raw_boost * lang_scale
             ep.rank_score = min(1.0, ep.rank_score + connectivity_boost)
 
-    # Sort by rank_score (highest first) for better --entry auto behavior.
-    # ADR-0039 ruling 3: rank_score is the base confidence plus the
-    # penalties/demotions/boosts. The score clamps at 1.0, so connected
-    # entries tie there, and the order among EQUAL scores is the tie-break
-    # (outside the frozen formula):
-    # 1. Detection confidence: a manifest-declared script (0.99) before a
-    #    framework route (0.95 / 0.90) before a convention main (0.80).
-    # 2. Language dominance: in a C-heavy repo, C main() ranks above a
-    #    Python script even if the script has higher connectivity.
-    # 3. Effective out-degree: the higher transitive reach first.
-    # 4. A total order on the symbol (path, start line, name, symbol id), so
-    #    the order depends neither on detection order nor on the hash seed.
-    # Two stable sorts: the total order ascending first, then the ranking
-    # keys descending, which keeps the first order among their ties.
-    def _symbol_order(ep: Entrypoint) -> tuple[str, int, str, str]:
-        sym = symbol_lookup.get(ep.symbol_id)
-        if sym is None:  # pragma: no cover - defensive: entrypoints are built from nodes
-            return ("", 0, "", ep.symbol_id)
-        line = sym.span.start_line if sym.span is not None else 0
-        return (sym.path or "", line, sym.name, ep.symbol_id)
-
-    unique_entrypoints.sort(key=_symbol_order)
-    unique_entrypoints.sort(
-        key=lambda ep: (
-            ep.rank_score,
-            _detection_confidence(ep),
-            _language_weight(ep.symbol_id),
-            _effective_out_degree(ep.symbol_id),
-        ),
-        reverse=True,
-    )
+    # Sort best first for better --entry auto behavior: rank_score, then the
+    # tie-break among equal scores (``_rank_order``).
+    _rank_order(unique_entrypoints)
 
     return unique_entrypoints
 

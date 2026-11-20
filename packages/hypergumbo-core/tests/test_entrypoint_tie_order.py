@@ -4,12 +4,13 @@
 ``rank_score`` is clamped at 1.0, so connected routes and mains tie there and
 the order among them is the tie-break's. ADR-0039 ruling 3 froze the score
 formula; the tie-break and the cap's choice inside a tied group are outside
-it, and the owner ruled both (2026-11-15):
+it, and the owner ruled both (2026-11-15, amended 2026-11-19):
 
-- among entries of EQUAL ``rank_score``: detection ``confidence`` first, then
-  language weight, then effective out-degree, then a total order on the
-  symbol (path, start line, name, symbol id) so the result depends neither on
-  insertion order nor on the hash seed;
+- among entries of EQUAL ``rank_score``: the entry's kind first (a
+  manifest-declared script, then a program start, then the rest), then
+  detection ``confidence``, then language weight, then effective out-degree,
+  then a total order on the symbol (path, start line, name, symbol id) so the
+  result depends neither on insertion order nor on the hash seed;
 - where the cap cuts through a group of equal-score entries, the group's slots
   are dealt round-robin across source files: every file with a tied entry gets
   one before any file gets a second.
@@ -26,6 +27,7 @@ from collections import Counter
 import pytest
 
 from hypergumbo_core.entrypoints import (
+    PROGRAM_START_KINDS,
     Entrypoint,
     EntrypointKind,
     _detection_confidence,
@@ -35,6 +37,7 @@ from hypergumbo_core.entrypoints import (
     compute_entrypoint_cap,
     detect_entrypoint_candidates,
     detect_entrypoints,
+    entry_kind_tie_rank,
 )
 from hypergumbo_core.ir import Edge, Span, Symbol
 
@@ -88,9 +91,9 @@ def _rank(nodes: list[Symbol], edges: list[Edge]) -> dict[str, float]:
 
 
 def test_declared_console_script_precedes_convention_main_at_equal_score() -> None:
-    """A [project.scripts] entry (0.99, toml, near-zero language weight)
-    comes before a convention main (0.80) when both clamp to 1.0, although
-    the main has the higher language weight and out-degree."""
+    """A [project.scripts] entry (a manifest-declared script, toml, near-zero
+    language weight) comes before a convention main when both clamp to 1.0,
+    although the main has the higher language weight and out-degree."""
     helpers = _helpers("pkg/util.py", 12)
     mains = [
         _sym("main", f"pkg/tool_{i}.py", concepts=[{"concept": "main_function"}])
@@ -170,6 +173,138 @@ def test_different_scores_keep_score_order_against_confidence() -> None:
     assert by_id[script.id].confidence > by_id[main.id].confidence
     assert (by_id[script.id].rank_score or 0.0) < (by_id[main.id].rank_score or 0.0)
     assert [ep.symbol_id for ep in cands] == [main.id, script.id]
+
+
+# ------------------------------------------------- the entry's kind first
+
+
+def _main(path: str, *, language: str = "python", line: int = 1) -> Symbol:
+    return _sym("main", path, line=line, language=language,
+                concepts=[{"concept": "main_function"}])
+
+
+def test_program_main_precedes_tied_routes_of_higher_confidence() -> None:
+    """The defect the owner ruled on (2026-11-19): a convention main and
+    framework routes all clamp to 1.0; the main comes first, although every
+    route has the higher detection confidence and the earlier path."""
+    helpers = _helpers("m/util.py", 12)
+    main = _main("z/main.py")
+    routes = [_route(f"r{i}", "a/app.py", f"/r{i}", line=10 + i) for i in range(3)]
+    nodes = helpers + [main, *routes]
+    edges = _calls(main, helpers) + [e for r in routes for e in _calls(r, helpers)]
+    rank = _rank(nodes, edges)
+    assert {rank[s.id] for s in [main, *routes]} == {1.0}
+    cands = {ep.symbol_id: ep for ep in detect_entrypoint_candidates(nodes, edges)}
+    assert all(cands[r.id].confidence > cands[main.id].confidence for r in routes)
+    order = _order(nodes, edges)
+    assert order.index(main.id) < min(order.index(r.id) for r in routes)
+
+
+def test_main_guard_script_precedes_tied_routes() -> None:
+    """A ``__main__`` guard (a file target) is a program start too."""
+    helpers = _helpers("m/util.py", 12)
+    guard = _sym("tool.py", "z/tool.py", kind="file",
+                 concepts=[{"concept": "main_guard", "framework": "python"}])
+    route = _route("index", "a/app.py", "/")
+    nodes = helpers + [guard, route]
+    edges = _calls(guard, helpers) + _calls(route, helpers)
+    assert _rank(nodes, edges)[guard.id] == _rank(nodes, edges)[route.id] == 1.0
+    order = _order(nodes, edges)
+    assert order.index(guard.id) < order.index(route.id)
+
+
+def test_manifest_script_then_main_then_framework_command_at_equal_score() -> None:
+    """Three ranks: a manifest-declared script, a program start, the rest. A
+    framework CLI command is the same KIND as a manifest script
+    (``cli_command``) and has a higher confidence than the main, but it is
+    not declared in a manifest, so it comes after the main."""
+    helpers = _helpers("m/util.py", 12)
+    main = _main("y/main.py")
+    command = _sym("serve", "a/cli.py",
+                   concepts=[{"concept": "command", "framework": "click"}])
+    script = _sym("mytool", "z/pyproject.toml", language="toml", kind="script",
+                  concepts=[{"concept": "pyproject_script"}])
+    nodes = helpers + [main, command, script]
+    edges = (_calls(main, helpers) + _calls(command, helpers)
+             + _calls(script, [main]))
+    rank = _rank(nodes, edges)
+    assert rank[main.id] == rank[command.id] == rank[script.id] == 1.0
+    order = _order(nodes, edges)
+    assert order.index(script.id) < order.index(main.id) < order.index(command.id)
+
+
+def test_within_one_kind_rank_confidence_still_orders() -> None:
+    """Among the rest, the existing keys follow the kind: a route (0.95)
+    before a Go-style handler (0.90) of equal score, although the handler's
+    path sorts first."""
+    helpers = _helpers("m/util.py", 12)
+    route = _route("index", "z/app.py", "/")
+    handler = _sym("ServeHTTP", "a/h.py", concepts=[{"concept": "go_http_handler"}])
+    nodes = helpers + [route, handler]
+    edges = _calls(route, helpers) + _calls(handler, helpers)
+    assert _rank(nodes, edges)[route.id] == _rank(nodes, edges)[handler.id] == 1.0
+    order = _order(nodes, edges)
+    assert order.index(route.id) < order.index(handler.id)
+
+
+def test_kind_orders_only_among_equal_scores() -> None:
+    """A main in an examples/ file (x 0.5) scores below a route at 1.0 and
+    stays below it: the kind is a tie-break, not a score."""
+    helpers = _helpers("m/util.py", 12)
+    main = _main("examples/demo.py")
+    route = _route("index", "z/app.py", "/")
+    nodes = helpers + [main, route]
+    edges = _calls(main, helpers) + _calls(route, helpers)
+    rank = _rank(nodes, edges)
+    assert rank[main.id] < rank[route.id] == 1.0
+    order = _order(nodes, edges)
+    assert order.index(route.id) < order.index(main.id)
+
+
+def _created(kind: EntrypointKind, evidence: str) -> Entrypoint:
+    return Entrypoint.create(symbol_id="x:1", kind=kind, confidence=0.9,
+                             label="x", source="concept_detector",
+                             evidence_type=evidence)
+
+
+@pytest.mark.parametrize(("kind", "evidence", "tie_rank"), [
+    (EntrypointKind.CLI_COMMAND, "manifest_declared", 0),
+    (EntrypointKind.CLI_COMMAND, "framework_pattern", 2),
+    (EntrypointKind.CLI_COMMAND, "naming_heuristic", 2),
+    (EntrypointKind.MAIN_FUNCTION, "language_convention", 1),
+    (EntrypointKind.MAIN_FUNCTION, "framework_pattern", 1),
+    (EntrypointKind.MAIN_GUARD, "structural", 1),
+    (EntrypointKind.CLI_MAIN, "language_convention", 1),
+    (EntrypointKind.HTTP_ROUTE, "framework_pattern", 2),
+    (EntrypointKind.SHELL_SCRIPT, "structural", 2),
+    (EntrypointKind.SCRIPT_MODULE, "structural", 2),
+    (EntrypointKind.LIBRARY_EXPORT, "language_convention", 2),
+    (EntrypointKind.CONNECTIVITY_BASED, "connectivity_heuristic", 2),
+])
+def test_kind_tie_rank_reads_the_evidence_type_and_the_kind(
+    kind: EntrypointKind, evidence: str, tie_rank: int,
+) -> None:
+    """The rank comes from fields the entry carries: ``meta.evidence_type``
+    says manifest-declared, the ``kind`` says program start. Never the name
+    or the label."""
+    assert entry_kind_tie_rank(_created(kind, evidence)) == tie_rank
+
+
+def test_program_start_kinds_are_the_main_kinds() -> None:
+    assert PROGRAM_START_KINDS == frozenset({
+        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD,
+        EntrypointKind.CLI_MAIN})
+
+
+def test_an_entry_without_provenance_ranks_by_its_kind() -> None:
+    """An entry built without ``create`` has no evidence_type: it is not
+    taken for a manifest script, and its kind still places it."""
+    bare_main = Entrypoint(symbol_id="x:1", kind=EntrypointKind.MAIN_FUNCTION,
+                           confidence=0.8, label="main")
+    bare_cmd = Entrypoint(symbol_id="x:2", kind=EntrypointKind.CLI_COMMAND,
+                          confidence=0.99, label="cmd")
+    assert entry_kind_tie_rank(bare_main) == 1
+    assert entry_kind_tie_rank(bare_cmd) == 2
 
 
 @pytest.mark.parametrize("missing", [None, math.nan])
@@ -531,3 +666,4 @@ def test_no_kept_entry_is_outscored_by_a_dropped_one_it_competed_with() -> None:
                     len(scores) > quota
                     and (k.rank_score or 0.0) < sorted(scores, reverse=True)[quota - 1])
                 assert not certainly_deferred, (cap, d.symbol_id, k.symbol_id)
+
