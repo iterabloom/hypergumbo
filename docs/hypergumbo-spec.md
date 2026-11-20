@@ -165,7 +165,7 @@ Finds production callables unreachable from entrypoints (`dead = production −
 reachable`, the same `production_callables` denominator `test-coverage` uses).
 Each candidate carries a `reachability` field (`test_only` / `unreachable` / null)
 with both denominators published. Its JSON envelope has its own
-`DEAD_CODE_MAYBE_SCHEMA_VERSION` (0.2.0), not the shared `READ_VIEW_SCHEMA_VERSION`.
+`DEAD_CODE_MAYBE_SCHEMA_VERSION` (0.3.0), not the shared `READ_VIEW_SCHEMA_VERSION`.
 Code anchored on a file or class (module-level calls, class bodies, static
 initializers) runs when its container does -- a file when any symbol it contains
 is reached or a loaded file imports it -- and `dead-code-maybe`, `test-coverage`
@@ -1063,7 +1063,7 @@ Single file: `survey.json`
 ### Top-level structure
 ```json
 {
-  "schema_version": "0.20.6",
+  "schema_version": "0.21.3",
   "confidence_model": "hypergumbo-evidence-v2.2",
   "stable_id_scheme": "hypergumbo-stableid-v17",
   "shape_id_scheme": "hypergumbo-shapeid-v4",
@@ -2641,8 +2641,8 @@ Output carries version numbers along **three deliberately independent axes** (WI
 1. **Top-level format version** — `schema_version` (currently `0.21.3`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
 2. **Tool/package version** — `__version__`, surfaced under **three** names that are **not** schema versions: `reproducibility_context.hypergumbo_version` (bare, e.g. `7.0.0`), `analysis_runs[].version` (bare, e.g. `7.0.0`), and `limits.analyzer_version` (prefixed, `hypergumbo-<__version__>`). Increments every release; says nothing about output format. **Only `limits.analyzer_version` carries the `hypergumbo-` prefix**, and that is deliberate — it is the one surface that names the *producing tool* rather than reporting the version of a record the tool is already the author of. Consumers joining these for an equality check must strip the prefix from `analyzer_version`; they are the same underlying `__version__` (WI-tinul, which recorded the three-way disagreement and the failed join).
 3. **Per-view / per-sub-schema versions** — several JSON surfaces version their own wire shape independently of axes 1–2:
-   - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `repeat-finder`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder for the views that have not needed to evolve independently. A view that does need to promotes to its own named constant, and `dead-code-maybe` already has: it carries `DEAD_CODE_MAYBE_SCHEMA_VERSION` (currently `0.2.0`), not the shared placeholder.
-   - `io-boundaries` carries `IO_BOUNDARIES_SCHEMA_VERSION` (`2.5`), `verify-claims` carries `VERIFY_CLAIMS_SCHEMA_VERSION` (`3.1`), and the embedded `validation_report` block carries `VALIDATION_REPORT_SCHEMA_VERSION` (`0.5`) — each with its own changelog. A change to one of these bumps only that surface's version, **not** the top-level `schema_version`. (So `validation_report.schema_version` legitimately differs from the enclosing map's `schema_version` — they are different schemas.)
+   - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `repeat-finder`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder for the views that have not needed to evolve independently. A view that does need to promotes to its own named constant, and `dead-code-maybe` already has: it carries `DEAD_CODE_MAYBE_SCHEMA_VERSION` (currently `0.3.0`), not the shared placeholder.
+   - `io-boundaries` carries `IO_BOUNDARIES_SCHEMA_VERSION` (`2.5`), `verify-claims` carries `VERIFY_CLAIMS_SCHEMA_VERSION` (`3.2`), and the embedded `validation_report` block carries `VALIDATION_REPORT_SCHEMA_VERSION` (`0.5`) — each with its own changelog. A change to one of these bumps only that surface's version, **not** the top-level `schema_version`. (So `validation_report.schema_version` legitimately differs from the enclosing map's `schema_version` — they are different schemas.)
 
 ### Algorithm-identification fields and `stable_id_scheme` version history
 
