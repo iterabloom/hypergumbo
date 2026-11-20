@@ -162,15 +162,15 @@ modules:
       commands:
       - add-extras
       purpose: install the embedding extras (pip; downloads from PyPI)
-    - function: _suppress_broken_stdout_pipe
+    - function: _point_stream_at_devnull
       primitive: os.open
       family: fs_write
       count: 1
       zone: in_process
       commands:
       - <any>
-      purpose: os.open(os.devnull, O_WRONLY) to dup2 over a closed stdout after EPIPE; creates
-        nothing
+      purpose: os.open(os.devnull, O_WRONLY) to dup2 over a closed stdout or stderr after EPIPE;
+        creates nothing
     - function: _uninstall_embeddings_impl
       primitive: subprocess.run
       family: process

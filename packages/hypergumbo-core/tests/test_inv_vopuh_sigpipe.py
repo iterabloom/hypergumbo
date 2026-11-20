@@ -19,8 +19,9 @@ THE RULE. ``main()`` leaves SIGPIPE at Python's default disposition
 ``BrokenPipeError`` instead of killing the process. A background thread's
 ``BrokenPipeError`` is confined to that thread, so the sketch completes. The
 one case ``SIG_DFL`` would serve — ``hypergumbo explain | head`` exiting
-quietly — is handled explicitly by catching ``BrokenPipeError`` around command
-dispatch in ``main()``.
+quietly — is handled explicitly by ``main()``, which answers a
+``BrokenPipeError`` on either standard stream with 141
+(``test_cli_broken_pipe_streams.py``).
 """
 
 from __future__ import annotations
@@ -107,14 +108,22 @@ def test_background_thread_broken_pipe_does_not_kill_process() -> None:
 def test_main_catches_broken_stdout_pipe_and_exits_quietly(monkeypatch) -> None:
     # A dispatched command whose stdout write hits a closed downstream pipe
     # (e.g. ``hypergumbo cache-status | head``) raises BrokenPipeError. main()
-    # must catch it, suppress the shutdown re-raise, and return 141 -- the
-    # status a shell reports for a process SIGPIPE killed, and no code a
-    # command answers with (WI-nidun) -- with no traceback. build_parser() binds args.func from the module global, so
+    # must catch it, quiet the dead streams so the shutdown flush does not
+    # re-raise, and return 141 -- the status a shell reports for a process
+    # SIGPIPE killed, and no code a command answers with (WI-nidun) -- with
+    # no traceback. build_parser() binds args.func from the module global, so
     # patching the global before main() runs routes dispatch to our raiser.
-    suppressed: list[bool] = []
-    monkeypatch.setattr(
-        cli, "_suppress_broken_stdout_pipe", lambda: suppressed.append(True)
-    )
+    # (Which stream gets redirected: test_cli_broken_pipe_streams.py.) The
+    # flush reports no pending text here, as after a write whose data was
+    # dropped, so the 141 rests on the BrokenPipeError alone -- the safety
+    # net must not have turned it into 70.
+    silenced: list[bool] = []
+
+    def _silence() -> bool:
+        silenced.append(True)
+        return False
+
+    monkeypatch.setattr(cli, "_silence_broken_std_streams", _silence)
 
     def _raise_broken_pipe(_args):
         raise BrokenPipeError(32, "Broken pipe")
@@ -122,27 +131,7 @@ def test_main_catches_broken_stdout_pipe_and_exits_quietly(monkeypatch) -> None:
     monkeypatch.setattr(cli, "cmd_cache_status", _raise_broken_pipe)
     rc = cli.main(["cache-status"])
     assert rc == 141
-    assert suppressed == [True]
-
-
-def test_suppress_broken_stdout_pipe_redirects_stdout_to_devnull(
-    monkeypatch,
-) -> None:
-    # The helper points the stdout fd at /dev/null so Python's shutdown flush
-    # does not re-raise BrokenPipeError after the reader has gone.
-    dup2_calls: list[tuple[int, int]] = []
-    monkeypatch.setattr(cli.os, "open", lambda path, flags: 987)
-    monkeypatch.setattr(
-        cli.os, "dup2", lambda src, dst: dup2_calls.append((src, dst))
-    )
-
-    class _FakeStdout:
-        def fileno(self) -> int:
-            return 3
-
-    monkeypatch.setattr(cli.sys, "stdout", _FakeStdout())
-    cli._suppress_broken_stdout_pipe()
-    assert dup2_calls == [(987, 3)]
+    assert silenced == [True]
 
 
 def test_main_does_not_install_sigpipe_sig_dfl(monkeypatch) -> None:

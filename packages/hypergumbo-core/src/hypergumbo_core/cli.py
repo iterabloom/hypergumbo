@@ -118,8 +118,11 @@ on disk) exits 2 with a did-you-mean suggestion instead of falling through to
 sketch. The positional path and ``--path`` collapse into ``args.path``, and
 giving both exits 2. After the command, ``_maybe_offer_repo_tier_examples``
 runs (ADR-0047). ``CatalogueError`` and ``SubstrateError`` exit 2 with the
-loader's message, ``BrokenPipeError`` exits 141 quietly
-(``EXIT_BROKEN_PIPE``), and any other exception prints "internal error" and
+loader's message, a broken pipe on stdout or stderr exits 141 quietly
+(``EXIT_BROKEN_PIPE``) wherever it happens, argparse's ``--help`` and usage
+errors included: both streams are flushed before ``main`` returns and a dead
+one is pointed at /dev/null, so the interpreter's shutdown flush cannot turn
+it into 120. Any other exception prints "internal error" and
 exits 70 (``EXIT_INTERNAL_ERROR``; re-raised under ``--debug``). Neither code
 is one a command answers with, so 1 never means a crash (WI-nidun). Every
 ``--input`` command reads its map through ``survey_io.load_substrate``,
@@ -13930,20 +13933,45 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
         subparser.print_help()
 
 
-def _suppress_broken_stdout_pipe() -> None:
-    """Point the stdout fd at ``/dev/null`` after a downstream pipe closed.
+def _silence_broken_std_streams() -> bool:
+    """Flush stdout and stderr; point each one whose pipe is broken at /dev/null.
 
-    When a reader such as ``head`` exits early, the next write to stdout raises
-    ``BrokenPipeError``; even after we catch it, Python flushes the standard
-    streams at interpreter shutdown and would re-raise, printing a traceback
-    after otherwise-correct output. Redirecting the fd to ``/dev/null`` swallows
-    that final flush. Best-effort: if stdout is already unusable there is
-    nothing to suppress.
+    Returns True when either stream's flush failed with ``BrokenPipeError``.
+
+    WHY BOTH STREAMS. A write that fails with EPIPE leaves its text in the
+    stream's buffer, so every later flush fails too -- including the one
+    Python makes at interpreter shutdown, and an interpreter whose final
+    flush fails exits 120 whatever ``main`` returned. Pointing only stdout
+    at /dev/null (as this helper once did) left ``sketch ... 2>&1 | head``
+    and ``... 2>&1 >/dev/null | head`` at 120: the line that hit the dead
+    pipe was one of sketch's stderr lines (WI-lubig). Redirecting the fd
+    lets the pending text drain into /dev/null, so the shutdown flush is
+    quiet.
+
+    A healthy stream is only flushed, never redirected: its pending output
+    reaches its reader. A stream that fails for another reason (closed:
+    ``ValueError``; any other ``OSError``) is not a broken pipe and is left
+    alone.
     """
+    broken = False
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except BrokenPipeError:
+            broken = True
+            _point_stream_at_devnull(stream)
+        except (OSError, ValueError):
+            pass
+    return broken
+
+
+def _point_stream_at_devnull(stream: Any) -> None:
+    """``dup2`` /dev/null over ``stream``'s fd. Best-effort: an fd that is
+    already unusable has nothing left to quiet."""
     try:
         devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, sys.stdout.fileno())
-    except (OSError, ValueError):  # pragma: no cover - stdout already closed
+        os.dup2(devnull, stream.fileno())
+    except (OSError, ValueError):  # pragma: no cover - fd already unusable
         pass
 
 
@@ -13959,7 +13987,38 @@ EXIT_INTERNAL_ERROR = 70
 EXIT_BROKEN_PIPE = 141
 
 
-def main(argv=None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
+    """Run one ``hypergumbo`` command; return its exit code.
+
+    The exit-code chokepoint for a broken pipe (owner ruling 2026-11-19,
+    WI-nidun: 141 for the whole CLI, whichever stream broke and wherever).
+    ``_main`` parses and dispatches. Whichever way it ends -- a return, a
+    ``BrokenPipeError`` from anywhere in it (a command's output, the
+    did-you-mean refusal, the safety net's own message), or a
+    ``SystemExit`` (argparse's ``--help`` and usage errors, which swallow
+    the write error and exit) -- both standard streams are flushed here,
+    while the failure can still be answered, rather than at interpreter
+    shutdown, where it becomes exit 120 and an "Exception ignored" line
+    (INV-vopuh, WI-lubig). A broken stream answers 141 and is pointed at
+    /dev/null (``_silence_broken_std_streams``); a healthy one keeps the
+    command's answer, and a ``SystemExit`` propagates unchanged.
+    """
+    try:
+        result = _main(argv)
+    except BrokenPipeError:
+        _silence_broken_std_streams()
+        return EXIT_BROKEN_PIPE
+    except SystemExit:
+        if _silence_broken_std_streams():
+            return EXIT_BROKEN_PIPE
+        raise
+    if _silence_broken_std_streams():
+        return EXIT_BROKEN_PIPE
+    return result
+
+
+def _main(argv: Optional[List[str]]) -> int:
+    """Parse ``argv`` and dispatch to the command (see ``main``)."""
     import logging
 
     # Do NOT reset SIGPIPE to SIG_DFL (INV-vopuh). Python's default
@@ -13969,8 +14028,8 @@ def main(argv=None) -> int:
     # ``transformers`` safetensors-conversion *background thread* that fires
     # during ``model.encode()`` (sketch_embeddings.py), silently killing
     # ``sketch`` regardless of where the main thread was. Exiting quietly
-    # under ``hypergumbo explain | head`` is handled instead by catching
-    # ``BrokenPipeError`` around command dispatch below.
+    # under ``hypergumbo explain | head`` is handled instead by ``main``,
+    # which answers a ``BrokenPipeError`` on either stream with 141.
 
     parser = build_parser()
 
@@ -14098,12 +14157,8 @@ def main(argv=None) -> int:
         # inside the analysis pipeline is that the pipeline is reached from
         # many entry points and is the wrong place to read stdin.
         _maybe_offer_repo_tier_examples(args)
-        # Flush while we can still catch a closed downstream pipe *in-band*.
-        # stdout is block-buffered when piped, so a large write (e.g. a full
-        # sketch) is otherwise deferred to interpreter shutdown — where the
-        # EPIPE escapes as an "Exception ignored in: <stdout>" message and a
-        # 120 exit instead of being caught here (INV-vopuh, the `| head` UX).
-        sys.stdout.flush()
+        # ``main`` flushes both streams after this returns, while a closed
+        # downstream pipe can still be answered with 141 (INV-vopuh).
         return result
     except CatalogueError as exc:
         # A catalogue file -- a taint file, an I/O overlay, a function summary
@@ -14125,13 +14180,13 @@ def main(argv=None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     except BrokenPipeError:
-        # The downstream reader closed the pipe (e.g. ``... | head``). Redirect
-        # the stdout fd to /dev/null so Python's shutdown flush does not
-        # re-raise, then exit quietly with 141 (a reader leaving mid-output is
-        # not a clean completion; under a shell pipeline the reader's own exit
-        # status dominates anyway, unless ``pipefail`` is set).
-        _suppress_broken_stdout_pipe()
-        return EXIT_BROKEN_PIPE
+        # The downstream reader closed a pipe (e.g. ``... | head``). Not an
+        # internal error: ``main`` answers it with 141 (a reader leaving
+        # mid-output is not a clean completion; under a shell pipeline the
+        # reader's own exit status dominates anyway, unless ``pipefail`` is
+        # set). Listed before ``except Exception`` so the safety net below
+        # never turns it into 70.
+        raise
     except Exception as exc:  # deliberate top-level safety net (WI-himas)
         # A top-level catch-all so an *unanticipated* error surfaces
         # as a clean message + rc=70 instead of a raw Python traceback dumped at

@@ -2,9 +2,9 @@
 """A rich ``Console`` whose broken pipe is a ``BrokenPipeError``, not an exit.
 
 WHY. The CLI exits 141 when the reader of its output goes away
-(``hypergumbo ... | head``): ``main()`` catches ``BrokenPipeError`` around
-command dispatch, points stdout at /dev/null so the shutdown flush stays
-quiet, and returns ``EXIT_BROKEN_PIPE`` (owner ruling 2026-11-19, WI-nidun:
+(``hypergumbo ... | head``): ``main()`` catches ``BrokenPipeError``, points
+the dead stream (stdout, stderr or both) at /dev/null so the shutdown flush
+stays quiet, and returns ``EXIT_BROKEN_PIPE`` (owner ruling 2026-11-19, WI-nidun:
 one code for the whole CLI, so 1 always means an answer such as
 verify-claims' ``violated``). rich does not let that error through. When a
 write fails with EPIPE, ``Console._check_buffer`` calls
@@ -16,8 +16,9 @@ with nothing on stderr (WI-vavag).
 HOW. :class:`PipeConsole` overrides that hook: it stops further output
 (``quiet``) and raises ``BrokenPipeError``, which leaves ``_check_buffer``
 like the error a plain ``print`` would have raised, and ``main()`` handles it.
-It does not touch stdout itself: ``main()`` does that once for every command,
-and a console writing to stderr or to a file must not redirect stdout.
+It does not touch any fd itself: ``main()`` does that once for every command,
+for whichever standard stream is broken, and a console writing to stderr or to
+a file must not redirect stdout.
 
 WHERE. Every rich Console hypergumbo-core constructs is a ``PipeConsole``:
 ``cmd_symbols``' table on stdout and ``sketch``'s representativeness table on
