@@ -23,6 +23,10 @@ and type with every parameter name left out, a group as its bracket, its
 parameters and its closing bracket, an old-style function-typed parameter as
 the function type it declares (``int Function(int)``). Dart has no
 overloading, so each pair is analysed in two trees with the same file path.
+
+Since stable-id v17 a NAMED parameter's name is hashed too, as its label
+(``{a:required int}``): a caller writes it. Those cases live in
+``test_dart_named_parameter_labels.py``; the renames here are positional.
 """
 
 from __future__ import annotations
@@ -66,13 +70,15 @@ RENAMES = {
     "optional-group": ("void f(int a, [int c = 1, String? d]) {}",
                        "void f(int a, [int cc = 1, String? dd]) {}"),
     "optional-group-one": ("void f([int c]) {}", "void f([int cc]) {}"),
-    "named-group": ("void f({required int a, int b = 2}) {}",
-                    "void f({required int aa, int bb = 2}) {}"),
+    # A named parameter's NAME is hashed since stable-id v17 (callers write
+    # it); its default is not, and neither is a positional name beside it.
+    "named-group": ("void f(int x, {required int a, int b = 2}) {}",
+                    "void f(int y, {required int a, int b = 3}) {}"),
     "untyped": ("void f(x, int y) {}", "void f(z, int y) {}"),
     "untyped-is-dynamic": ("void f(x) {}", "void f(dynamic y) {}"),
     "untyped-in-old-style": ("void f(int g(a)) {}", "void f(int h(b)) {}"),
     "function-type": ("void f(void Function(int n, {required String s}) cb) {}",
-                      "void f(void Function(int m, {required String t}) cb) {}"),
+                      "void f(void Function(int m, {required String s}) cb) {}"),
     "function-type-optional": ("void f(void Function([int n]) cb) {}",
                                "void f(void Function([int m]) cb) {}"),
     "function-type-nested": ("void f(Map<String, void Function(int u)>? m) {}",
@@ -144,17 +150,17 @@ def test_a_type_difference_still_moves_the_id(tmp_path: Path, case: str) -> None
 #: The item's repro and its siblings, as hashed texts.
 HASHED = {
     "void f(int a, [int c = 1, String? d]) {}": "(int,[int,String?])",
-    "Foo f({required int a, int b = 2, List<int>? c}) => x;": "({required int,int,List<int>?})Foo",
+    "Foo f({required int a, int b = 2, List<int>? c}) => x;": "({a:required int,b:int,c:List<int>?})Foo",
     "void f(int Function(int numProcessedChunks, int total)? cb) {}": "(int Function(int, int)?)",
     "void f({\n  // c\n  required String text, // trailing\n  int sid = 1,\n}) {}":
-        "({required String,int})",
+        "({text:required String,sid:int})",
     'void f(@A("x)") int a, int b) {}': '(@A("x)") int,int)',
     # A comment inside a parameter is no type.
-    "void f(int /* c */ a, {required /* d */ int b}) {}": "(int,{required int})",
+    "void f(int /* c */ a, {required /* d */ int b}) {}": "(int,{b:required int})",
     "void f(int g(int a, [String b])?) {}": "(int Function(int, [String])?)",
     "void f(void cb<T>(T t), (int a, {String n}) r) {}": "(void Function<T>(T),(int a, {String n}))",
     "List<void Function(int x)> f(Map<String, void Function({required int z})>? m) => [];":
-        "(Map<String, void Function({required int})>?)List<void Function(int)>",
+        "(Map<String, void Function({z:required int})>?)List<void Function(int)>",
 }
 
 

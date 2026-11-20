@@ -35,6 +35,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Swift ids hash argument labels and static versus instance members.**
 - **Swift local functions are scoped by their enclosing initializer or accessor.**
+- **Dart ids hash named-parameter names, which callers write.**
 - **Sketch entry groups deal tied lines across files, like the cap.**
 - **Route dedup and the connectivity fallback break ties by total order.**
 - **Test, example and vendored entry points no longer demote library exports.**
