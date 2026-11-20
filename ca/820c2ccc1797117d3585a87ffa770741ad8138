@@ -1,0 +1,22 @@
+Original commit body from 8b6e0c90e7fe7ef76faebda67648d9f6a7310244:
+
+Stable ids move to scheme v17: one bump for every fix below that moves an id.
+
+Fixes (each its own commit):
+- Swift: argument labels and static vs instance members are hashed (overloads that differ only by label, or a static and an instance member of one name, no longer tie).
+- Swift: local declarations are scoped by their enclosing callable.
+- Dart: a named parameter's name is hashed (callers write it).
+- Function-type parameter names are left out of hashed types (Go, Kotlin, Swift, TypeScript).
+- JS/TS: static vs instance class members are hashed.
+- Java: anonymous classes are scoped by binding, type and overload.
+- Rust #[cfg] guards and Swift #if branches enter the id.
+- A type name is hashed through the file's imports: the qualified and the imported spelling of one type get one id. Language-default names (java.lang, Kotlin/Scala defaults, Rust prelude) are written by their simple name.
+- Guard fixes: lru_cache for chain patterns; the rust_scip parity test is marked incumbent_fed.
+
+SCHEMA_VERSION stays 0.21.3: no output field, kind or edge type changed (node, edge and edge-type counts equal dev in 21 measured trees).
+
+Ids moved, dev -> v17: Alamofire 41.7%, swift-nio 44.5%, TCA 10.9%, diesel 42.4%, jedis 11.7%, shaka-player 22.9%, nest 7.8%, okhttp (kotlin) 4.7%, cats 3.9%, fastapi 3.2%, caddy 0.15%; PHP and C++ controls 0. No symbol added or removed; stand-ins unchanged.
+
+Choices made without an owner ruling (kept): Swift label spelling label:Type; Dart named parameters hashed inside function types too; TS optional/rest spellings ?T and ...T; Java anonymous-class scoping rule.
+
+Pre-PR: self-selected run 42,804 passed; every package suite green; manifest targeted (1,546 test files).
