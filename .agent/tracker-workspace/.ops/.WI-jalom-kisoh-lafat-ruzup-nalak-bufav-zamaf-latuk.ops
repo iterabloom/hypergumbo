@@ -1,0 +1,20 @@
+- op: create  # 3086
+  at: '2026-11-20T06:52:54Z'  # 3086
+  by: agent  # 3086
+  actor: jgstern_agent  # 3086
+  clock: 1  # 3086
+  nonce: '3086'  # 3086
+  data:  # 3086
+    kind: work_item  # 3086
+    title: "compact default seeds by confidence, so a confidence recalibration reshuffles compact output"  # 3086
+    status: todo_soft  # 3086
+    priority: 3  # 3086
+    parent:  # 3086
+    tags:  # 3086
+    - entrypoints  # 3086
+    isbefore: []  # 3086
+    duplicate_of: []  # 3086
+    not_duplicate_of: []  # 3086
+    pr_ref:  # 3086
+    description: "compact's default output seeds connectivity selection by (-confidence, symbol_id) (compact.py near line 1407), so any change to an entry kind's confidence reorders the seeds and changes which nodes make the cut. PR 4 (WI-fupap) raised main to 0.95 in Go, Java, Rust, C, C#, Kotlin and Scala, and the 100-node compact output then differed on 9 of 12 repositories, by 7 to 38 nodes. On alertmanager, 22 of 100 nodes differ.\n\nUnchanged repositories: lazygit, mini-redis, ripgrep, sqlalchemy.\n\nQuestion: should compact seed in the same total entry order the entry-point list uses (kind rank, then the existing tie keys), so that a confidence recalibration cannot reshuffle compact on its own? Confidence is a probability that a symbol IS an entry; it is not a rank of how central it is.\n\nRepro: `hypergumbo compact --input <map>` on alertmanager in both arms. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/out/*.compact.ids and RESULTS.md."  # 3086
+    fields: {}  # 3086

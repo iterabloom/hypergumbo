@@ -1,0 +1,20 @@
+- op: create  # a780
+  at: '2026-11-20T06:53:00Z'  # a780
+  by: agent  # a780
+  actor: jgstern_agent  # a780
+  clock: 1  # a780
+  nonce: a780  # a780
+  data:  # a780
+    kind: work_item  # a780
+    title: "main-functions.yaml: Go does not check package main; Erlang main pattern takes every OTP start/N"  # a780
+    status: todo_hard  # a780
+    priority: 2  # a780
+    parent:  # a780
+    tags:  # a780
+    - entrypoints  # a780
+    isbefore: []  # a780
+    duplicate_of: []  # a780
+    not_duplicate_of: []  # a780
+    pr_ref:  # a780
+    description: "frameworks/main-functions.yaml matches a function by name and does not check the language's own rule for a program start. A census of 358 repositories (WI-fupap, PR 4) found two patterns that are wrong at scale:\n\n- Go: the pattern does not check that the file is `package main`. 41 of 1146 matches are wrong: cobra `func main(cmd, args)` callbacks, and vendored tools renamed into library packages.\n- Erlang: the pattern also matches every `start/N`. 344 of 360 matches are OTP application or supervisor start functions, not program starts; only 9 of 360 are right. PR 4 set Erlang main confidence to 0.50 for this reason. That value puts it under compact's tiered 0.7 seed gate (see WI-buvaf).\n\nSmaller cases, from the same census:\n- Haskell: `main` in a module other than `Main` (41/459).\n- Rust: `fn main` in a library module (47/1380).\n\nFix direction: check `package main` for Go, and the `Main` module for Haskell, then drop `start/N` from the Erlang main pattern (an OTP start is a different concept). Then re-derive the confidences from the same census.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/out/census.go.tsv, census.erlang.tsv, census.haskell.tsv, census.rust.tsv, and the census section of RESULTS.md."  # a780
+    fields: {}  # a780
