@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **390** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 133 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **63062** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14265, of which 8104 are functions, methods or classes
-- **253630** edges, test code included, by type:
-  - calls: 142801
-  - contains: 58685
-  - imports: 21939
-  - instantiates: 13472
-  - references: 12281
-  - module_attr_ref: 2502
-  - other: 1950
+- **391** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 134 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **63647** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14373, of which 8153 are functions, methods or classes
+- **256225** edges, test code included, by type:
+  - calls: 143889
+  - contains: 59236
+  - imports: 22473
+  - instantiates: 13526
+  - references: 12609
+  - module_attr_ref: 2535
+  - other: 1957
 
 ## Package Architecture
 
@@ -277,14 +277,14 @@ The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 2200.7 | hypergumbo_core/ir.py |
-| `node_text` | function | 1401.9 | hypergumbo_core/analyze/base.py |
+| `node_text` | function | 1410.4 | hypergumbo_core/analyze/base.py |
 | `Span` | class | 1259.5 | hypergumbo_core/ir.py |
 | `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
 | `Edge.create` | method | 973.3 | hypergumbo_core/ir.py |
-| `Edge` | class | 854.9 | hypergumbo_core/ir.py |
+| `Edge` | class | 862.1 | hypergumbo_core/ir.py |
 | `AnalysisRun` | class | 833.4 | hypergumbo_core/ir.py |
-| `iter_tree` | function | 789.9 | hypergumbo_core/analyze/base.py |
-| `make_symbol_id` | function | 652.7 | hypergumbo_core/analyze/base.py |
+| `iter_tree` | function | 792.2 | hypergumbo_core/analyze/base.py |
+| `make_symbol_id` | function | 692.5 | hypergumbo_core/analyze/base.py |
 | `register_analyzer` | function | 570.3 | hypergumbo_core/analyze/registry.py |
 | `AnalysisResult` | class | 568.0 | hypergumbo_core/analyze/base.py |
 | `find_files` | function | 558.1 | hypergumbo_core/discovery.py |
@@ -692,6 +692,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
 - **`hypergumbo_core.pass_silence`**: Canonical pass-silence-reason axis (INV-bikaj / INV-hujog).
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
+- **`hypergumbo_core.pipe_console`**: A rich ``Console`` whose broken pipe is a ``BrokenPipeError``, not ...
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
 - **`hypergumbo_core.prose_only`**: Prose-only changes: which tests a comment or docstring edit can aff...
@@ -1021,8 +1022,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 1bd738920e79
-  commit_count: 9507
+  commit: 2d04a1555dbf
+  commit_count: 9568
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
