@@ -329,7 +329,10 @@ class Widget {
 # named 1bb432604e33ccde, fnTyped 5b29217af303859d, fragment 5f06492ec22f4a50.
 PINNED = {
     ("function", "add"): f"{STABLE_ID_PREFIX}b25ded629f362a02",
-    ("function", "dyn"): f"{STABLE_ID_PREFIX}39de927c48988b68",
+    # Moved in stable-id v17 (WI-palus): a type name is hashed through the
+    # file's imports, so ``Map<String, p.Bar>`` under ``import ... as p`` hashes
+    # ``Map<String, import("package:x/x.dart").Bar>`` (was 39de927c48988b68).
+    ("function", "dyn"): f"{STABLE_ID_PREFIX}257ad0e35b6c05cc",
     # Moved by WI-doboh: a default value is not hashed, so ``[int c = 1]``
     # no longer hashes ``[int c =`` (opt was 3df1e40f64b5cae0) and ``{int b =
     # 2}`` no longer hashes ``int b`` (named was 724b4ce75e477e92).

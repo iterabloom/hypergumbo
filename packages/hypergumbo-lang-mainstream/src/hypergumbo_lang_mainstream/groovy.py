@@ -74,6 +74,12 @@ Why This Design
 - Two-pass allows cross-file call resolution
 - Same pattern as Kotlin/Java/Scala analyzers for consistency
 - Gradle build files are analyzed as Groovy code
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's single-type imports and the default imports
+(``_groovy_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -105,9 +111,13 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
     visibility_from_modifiers,
+    FileTypeNames,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_lang_mainstream.jvm_implicit_imports import groovy_default_spellings
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -479,6 +489,28 @@ def _groovy_type_imports(tree: "tree_sitter.Tree", source: bytes) -> dict[str, s
     return bound
 
 
+def _groovy_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-palus, scheme v17).
+
+    Bound: the single-type imports (:func:`_groovy_type_imports`; an alias
+    binds its alias, a wildcard nothing). Defaults: groovy's default imports
+    whose type lists are on hand (:func:`jvm_implicit_imports.groovy_default_spellings`:
+    ``java.lang``, ``java.util``, ``java.io``, ``java.net``, ``BigInteger``,
+    ``BigDecimal``), so ``java.util.List`` is hashed as ``List``. Declared:
+    every type the file declares, which keeps its name.
+    """
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _GROOVY_TYPE_DECLS:
+            name = find_child_by_type(node, "identifier")
+            if name is not None:
+                declared.add(node_text(name, source))
+    return file_type_names(
+        _groovy_type_imports(tree, source).items(), declared=declared,
+        defaults=groovy_default_spellings(),
+    )
+
+
 def _groovy_qualified_name(
     package: str, node: "tree_sitter.Node", source: bytes, name: str,
 ) -> str:
@@ -553,8 +585,22 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         """Extract symbols from a single Groovy file.
 
         Detects class, interface, trait, and enum declarations, method declarations
-        inside classes, and top-level function definitions (def keyword).
+        inside classes, and top-level function definitions (def keyword). Each
+        type a stable id hashes is written through the file's imports
+        (:func:`_groovy_type_names`).
         """
+        with resolving_type_names(_groovy_type_names(tree, source)):
+            return self._extract_parsed_symbols(tree, source, file_path, rel_path, run)
+
+    def _extract_parsed_symbols(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """The symbols of one parsed Groovy file (:meth:`extract_symbols_from_file`)."""
         analysis = FileAnalysis()
         # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
         # is the repo-relative path (the base orchestration loop passes it as

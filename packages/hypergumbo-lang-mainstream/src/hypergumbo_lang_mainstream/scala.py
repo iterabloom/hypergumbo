@@ -128,6 +128,12 @@ Why This Design
 - Uses tree-sitter-scala package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as other tree-sitter analyzers for consistency
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's imports (selectors and renames) and ``java.lang._`` / ``scala._`` / ``Predef._``
+(``_scala_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -161,6 +167,10 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
     visibility_from_modifiers,
+    FileTypeNames,
+    canonical_type_names,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
@@ -176,6 +186,7 @@ from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     is_known_library_method,
     is_std_output_receiver,
     java_lang_system_aliases,
+    scala_default_spellings,
     static_owner_module,
 )
 
@@ -300,6 +311,81 @@ def _import_declaration_hints(node: "tree_sitter.Node", source: bytes) -> dict[s
         hints[short_name] = full_path
 
     return hints
+
+
+def _scala_import_bindings(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> list[tuple[str, str]]:
+    """What each import binds, for a typed stable id (WI-palus): ``import
+    a.b.Foo`` binds ``Foo``; ``import a.b.{X, Y => Z}`` binds ``X`` and ``Z``
+    (to ``a.b.Y``); scala 3's ``import a.b.T as U`` binds ``U``. A wildcard
+    (``a.b._``, ``a.b.*``, a ``_`` / ``*`` / ``given`` selector) and a hidden
+    name (``Y => _``) bind nothing. (:func:`_import_declaration_hints`, the
+    call resolver's map, reads a wildcard import as binding its package's last
+    name and does not read ``as``.) The path is the import's text: a relative
+    import keeps its relative path."""
+    bindings: list[tuple[str, str]] = []
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_declaration":
+            continue
+        prefix: list[str] = []
+        for child in node.children:
+            if child.type == "identifier":
+                prefix.append(node_text(child, source))
+            elif child.type == "as_renamed_identifier":
+                names = [c for c in child.children if c.type == "identifier"]
+                if len(names) == 2:
+                    path = ".".join([*prefix, node_text(names[0], source)])
+                    bindings.append((node_text(names[1], source), path))
+                prefix = []
+            elif child.type == "namespace_selectors":
+                for selector in child.children:
+                    if selector.type == "identifier":
+                        name = node_text(selector, source)
+                        bindings.append((name, ".".join([*prefix, name])))
+                    elif selector.type == "arrow_renamed_identifier":
+                        names = [c for c in selector.children if c.type == "identifier"]
+                        if len(names) == 2:
+                            path = ".".join([*prefix, node_text(names[0], source)])
+                            bindings.append((node_text(names[1], source), path))
+                prefix = []
+            elif child.type == "namespace_wildcard":
+                prefix = []
+        if prefix:
+            bindings.append((prefix[-1], ".".join(prefix)))
+    return bindings
+
+
+#: The node types that declare a type name in a Scala file.
+_SCALA_TYPE_DECLARATION_NODES = frozenset({
+    "class_definition", "object_definition", "trait_definition",
+    "enum_definition", "type_definition",
+})
+
+
+def _scala_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-palus, scheme v17).
+
+    Bound: :func:`_scala_import_bindings`. Defaults: ``java.lang._``,
+    ``scala._`` and ``Predef._`` (:func:`jvm_implicit_imports.scala_default_spellings`),
+    so ``scala.Int`` and ``java.lang.String`` are hashed as ``Int`` and
+    ``String``. Declared: every class, object, trait, enum and type member the
+    file declares, which keeps its name. ``'`` opens no string (a symbol
+    literal).
+    """
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _SCALA_TYPE_DECLARATION_NODES:
+            name = next(
+                (c for c in node.children if c.type in ("identifier", "type_identifier")),
+                None,
+            )
+            if name is not None:
+                declared.add(node_text(name, source))
+    return file_type_names(
+        _scala_import_bindings(tree, source), declared=declared,
+        defaults=scala_default_spellings(), quotes=_SCALA_QUOTES,
+    )
 
 
 #: Where a TOP-LEVEL import sits: the file itself, or a braced package's body.
@@ -1203,6 +1289,20 @@ def _extract_symbols_from_file(
     run_id: str,
     element_types: "dict[str, str] | None" = None,
 ) -> FileAnalysis:
+    """Extract symbols from a single Scala file, each type a stable id hashes
+    written through the file's imports (:func:`_scala_type_names`)."""
+    with resolving_type_names(_scala_type_names(tree, source)):
+        return _extract_parsed_symbols(
+            tree, source, file_path, run_id, element_types=element_types)
+
+
+def _extract_parsed_symbols(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
+    element_types: "dict[str, str] | None" = None,
+) -> FileAnalysis:
     """Extract symbols from a single Scala file.
 
     ``element_types`` (WI-gokop), when given, receives ``<Owner>.<member>`` ->
@@ -1717,7 +1817,8 @@ def _extract_symbols_from_file(
                 # The declared type, whatever its node kind (``List[Int]``,
                 # ``m.T``, ``Int => Int``, ``A with B``): reading only a
                 # ``type_identifier`` child left every other kind out of the
-                # signature and the typed stable_id.
+                # signature and the typed stable_id. The stable id hashes it
+                # with each name written through the file's imports.
                 type_node = node.child_by_field_name("type")
                 prop_type = (
                     node_text(type_node, source) if type_node is not None else None
@@ -1729,7 +1830,7 @@ def _extract_symbols_from_file(
                 if scope == "field":
                     full_name = f"{owner}.{prop_name}"
                     stable_id = make_typed_stable_id(
-                        "field", prop_type or "",
+                        "field", canonical_type_names(prop_type or ""),
                         visibility_from_modifiers(modifiers),
                         name=prop_name,
                         qualified_name=_scala_scope_chain(node, source, prop_name),

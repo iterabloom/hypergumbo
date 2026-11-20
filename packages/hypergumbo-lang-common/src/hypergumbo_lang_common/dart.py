@@ -116,6 +116,12 @@ AST Structure Notes
   configurable_uri > uri > string_literal
 - Function calls: expression_statement containing identifier + selector
   with argument_part > arguments
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's prefixed imports and ``show`` lists
+(``_dart_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -147,6 +153,11 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
     visibility_from_modifiers,
     declares_async,
+    FileTypeNames,
+    canonical_type_names,
+    file_type_names,
+    normalize_type,
+    resolving_type_names,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -355,11 +366,70 @@ def _normalize_dart_type(text: str) -> str:
     """One type, normalized: its library prefix stripped when the shared FQN
     strip takes off that prefix only (or nothing), else the type as written (a
     function type's or a record type's inner types are kept as a generic's
-    arguments are)."""
-    from hypergumbo_core.analyze.base import strip_fqn_prefix
-
+    arguments are); every other name written through the file's imports
+    (:func:`_dart_type_names`, ``normalize_type``)."""
     text = text.strip()
-    return strip_fqn_prefix(text) if _dart_type_is_kept(text) else text
+    return normalize_type(text) if _dart_type_is_kept(text) else canonical_type_names(text)
+
+
+def _dart_import_bindings(tree: "tree_sitter.Tree", source: bytes) -> list[tuple[str, str]]:
+    """What each import binds, for a typed stable id (WI-palus): ``import 'x.dart'
+    as p;`` binds the prefix ``p`` to ``import("x.dart")``, so ``p.Foo`` is
+    ``import("x.dart").Foo``; ``import 'x.dart' show Foo;`` binds ``Foo`` to
+    ``import("x.dart").Foo``. An import with neither binds no name it spells
+    (every exported name, unlisted), and neither does a prefixed import's
+    ``show`` list (its names are reached through the prefix).
+    (:func:`_extract_import_hints`, the call resolver's map, binds a prefixed
+    import's shown names too.)"""
+    bindings: list[tuple[str, str]] = []
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_specification":
+            continue
+        uri = _extract_import_path(node, source)
+        if uri is None:  # pragma: no cover - an import always names a uri
+            continue
+        children = node.children
+        prefix = next((
+            c for i, c in enumerate(children)
+            if c.type == "identifier" and i and children[i - 1].type == "as"
+        ), None)
+        if prefix is not None:
+            bindings.append((node_text(prefix, source), f'import("{uri}")'))
+            continue
+        for combinator in children:
+            if combinator.type == "combinator" and combinator.children[0].type == "show":
+                for name in combinator.children[1:]:
+                    if name.type == "identifier":
+                        shown = node_text(name, source)
+                        bindings.append((shown, f'import("{uri}").{shown}'))
+    return bindings
+
+
+#: The node types that declare a type name in a Dart file.
+_DART_TYPE_DECLARATION_NODES = frozenset({
+    "class_definition", "mixin_declaration", "enum_declaration",
+    "extension_declaration", "type_alias",
+})
+
+
+def _dart_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-palus, scheme v17).
+
+    Bound: :func:`_dart_import_bindings`. Declared: every class, mixin, enum,
+    extension and typedef the file declares, which keeps its name. No
+    defaults: ``dart:core`` is imported into every file, but its types are
+    written with a prefix only after an explicit ``import 'dart:core' as
+    core;``, which binds the prefix like any other.
+    """
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _DART_TYPE_DECLARATION_NODES:
+            name = find_child_by_type(node, "identifier")
+            if name is None:
+                name = find_child_by_type(node, "type_identifier")
+            if name is not None:
+                declared.add(node_text(name, source))
+    return file_type_names(_dart_import_bindings(tree, source), declared=declared)
 
 
 def _dart_parameter_name(param: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
@@ -722,6 +792,18 @@ def _dart_value_names(
 
 
 def _extract_symbols_from_file(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
+) -> list[Symbol]:
+    """Extract all symbols from a parsed Dart file, each type a stable id
+    hashes written through the file's imports (:func:`_dart_type_names`)."""
+    with resolving_type_names(_dart_type_names(tree, source)):
+        return _extract_parsed_symbols(tree, source, file_path, run_id)
+
+
+def _extract_parsed_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,

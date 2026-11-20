@@ -137,6 +137,12 @@ inherits the *enum's* export status (its ``modifiers`` remain the
 variant's own). A default-bodied trait method and a method in an
 ``impl Trait for T`` block go through the ``pub`` test like any function,
 so they are never marked exported.
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's ``use`` declarations and the prelude
+(``_rust_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -172,6 +178,10 @@ from hypergumbo_core.analyze.base import (
     node_text,
     visibility_from_modifiers,
     declares_async,
+    FileTypeNames,
+    canonical_type_names,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
@@ -1079,8 +1089,9 @@ def _rust_impl_label(impl: "tree_sitter.Node", source: bytes) -> Optional[str]:
     split told them apart by order.
 
     The label is the header's tokens (every child of the block but its body,
-    :func:`_rust_header_tokens`, so lifetimes and comments are left out)
-    joined by one space, with the block's own type and ``const`` parameters
+    :func:`_rust_header_tokens`, so lifetimes and comments are left out),
+    each path written through the file's ``use`` declarations
+    (:func:`_rust_canonical_paths`), joined by one space, with the block's own type and ``const`` parameters
     written as their position, as a declaration's own clause is (WI-bubak):
     ``impl<'a, T: X> Tr for &'a Foo<T>`` -> ``impl < $0 : X > Tr for & Foo <
     $0 >``, so renaming one moves no id. A name after ``::`` is a member, not
@@ -1100,8 +1111,30 @@ def _rust_impl_label(impl: "tree_sitter.Node", source: bytes) -> Optional[str]:
         if c.type != "lifetime_parameter"
     ]
     names = {node_text(n, source): f"${i}" for i, n in enumerate(n for n in declared if n is not None)}
-    return " ".join(names.get(t, t) if i == 0 or tokens[i - 1] != "::" else t
-                    for i, t in enumerate(tokens))
+    return " ".join(_rust_canonical_paths(
+        [names.get(t, t) if i == 0 or tokens[i - 1] != "::" else t
+         for i, t in enumerate(tokens)]))
+
+
+def _rust_canonical_paths(tokens: list[str]) -> list[str]:
+    """``tokens`` with each path (``fmt :: Display``) written through the
+    file's ``use`` declarations (:func:`_rust_type_names`): ``impl fmt::Display
+    for X`` under ``use std::fmt`` and ``impl std::fmt::Display for X`` are one
+    header (WI-palus)."""
+    out: list[str] = []
+    i = 0
+    while i < len(tokens):
+        if not tokens[i].isidentifier() or (i and tokens[i - 1] == "::"):
+            out.append(tokens[i])
+            i += 1
+            continue
+        end = i + 1
+        while end + 1 < len(tokens) and tokens[end] == "::" and tokens[end + 1].isidentifier():
+            end += 2
+        path = canonical_type_names("::".join(tokens[i:end:2]))
+        out.extend(" :: ".join(path.split("::")).split(" "))
+        i = end
+    return out
 
 
 def rust_hashed_qualified_name(
@@ -1661,7 +1694,84 @@ def _is_rust_module_level_const(node: "tree_sitter.Node") -> bool:
     return False
 
 
+#: The prelude's types and traits (every edition's ``std::prelude``, and the
+#: 2021 edition's additions) by the ``core`` or ``alloc`` module that defines
+#: them; ``std`` re-exports each module under the same name (read from the standard library sources of
+#: rustc 1.94.0: ``library/core/src/prelude/{v1,mod}.rs``,
+#: ``library/std/src/prelude/v1.rs``). ``Debug`` and ``Hash`` there are the
+#: derive macros, not the traits, and are left out.
+_RUST_PRELUDE_PATHS: dict[str, tuple[str, ...]] = {
+    "core::marker": ("Copy", "Send", "Sized", "Sync", "Unpin"),
+    "core::ops": ("Drop", "Fn", "FnMut", "FnOnce", "AsyncFn", "AsyncFnMut", "AsyncFnOnce"),
+    "core::clone": ("Clone",),
+    "core::cmp": ("Eq", "Ord", "PartialEq", "PartialOrd"),
+    "core::convert": ("AsMut", "AsRef", "From", "Into", "TryFrom", "TryInto"),
+    "core::default": ("Default",),
+    "core::iter": ("DoubleEndedIterator", "ExactSizeIterator", "Extend", "IntoIterator",
+                   "Iterator", "FromIterator"),
+    "core::option": ("Option",),
+    "core::result": ("Result",),
+    "alloc::borrow": ("ToOwned",),
+    "alloc::boxed": ("Box",),
+    "alloc::string": ("String", "ToString"),
+    "alloc::vec": ("Vec",),
+}
+
+#: The node types that declare a name in a Rust file's type namespace.
+_RUST_TYPE_DECLARATION_NODES = frozenset({
+    "struct_item", "enum_item", "union_item", "trait_item", "type_item", "mod_item",
+})
+
+
+def _rust_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's ``use`` declarations make a path mean (WI-palus,
+    scheme v17).
+
+    Bound: what each ``use`` binds (:func:`_use_tree_bindings`, the same walk
+    as :func:`_extract_use_aliases`: ``use std::fmt;`` binds ``fmt``, ``use
+    a::B as C;`` binds ``C``, a glob nothing), so ``fmt::Display`` is hashed
+    as ``std::fmt::Display``. A ``use`` inside a function or ``mod`` block is
+    read with the file's; a name two of them bind to different paths is bound
+    to neither. Defaults: the prelude (:data:`_RUST_PRELUDE_PATHS`), so
+    ``std::option::Option`` is hashed as ``Option``. Declared: every struct,
+    enum, union, trait, type alias and module the file declares, which keeps
+    its name. A ``'`` opens no string (a lifetime).
+    """
+    bindings: list[tuple[str, str]] = []
+    for node in iter_tree(tree.root_node):
+        if node.type == "use_declaration":
+            bound: dict[str, str] = {}
+            for child in node.named_children:
+                _use_tree_bindings(child, "", source, bound)
+            bindings.extend(bound.items())
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _RUST_TYPE_DECLARATION_NODES:
+            name = node.child_by_field_name("name")
+            if name is not None:
+                declared.add(node_text(name, source))
+    defaults = {
+        f"{crate}::{module.split('::', 1)[1]}::{name}": name
+        for module, names in _RUST_PRELUDE_PATHS.items() for name in names
+        for crate in (module.split("::", 1)[0], "std")
+    }
+    return file_type_names(
+        bindings, declared=declared, defaults=defaults, separator="::", quotes='"')
+
+
 def _extract_symbols_from_file(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
+) -> FileAnalysis:
+    """Extract symbols from a single Rust file, each type a stable id hashes
+    written through the file's ``use`` declarations (:func:`_rust_type_names`)."""
+    with resolving_type_names(_rust_type_names(tree, source)):
+        return _extract_parsed_symbols(tree, source, file_path, run_id)
+
+
+def _extract_parsed_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
@@ -1876,7 +1986,7 @@ def _extract_symbols_from_file(
                         modifiers=f_modifiers,
                         signature=ftype,
                         stable_id=make_typed_stable_id(
-                            "field", ftype or "",
+                            "field", canonical_type_names(ftype or ""),
                             visibility_from_modifiers(f_modifiers),
                             name=fname,
                             qualified_name=rust_guarded_name(fdecl, source, type_scope, f_full),
@@ -1934,7 +2044,7 @@ def _extract_symbols_from_file(
                     ),
                     signature=var_type,
                     stable_id=make_typed_stable_id(
-                        v_kind, var_type or "",
+                        v_kind, canonical_type_names(var_type or ""),
                         visibility_from_modifiers(v_modifiers),
                         name=var_name,
                         qualified_name=rust_hashed_qualified_name(node, source, None, var_name),
@@ -1983,7 +2093,7 @@ def _extract_symbols_from_file(
                     modifiers=a_modifiers,
                     signature=aliased,
                     stable_id=make_typed_stable_id(
-                        "type_alias", aliased or "",
+                        "type_alias", canonical_type_names(aliased or ""),
                         visibility_from_modifiers(a_modifiers),
                         name=alias_name,
                         qualified_name=rust_hashed_qualified_name(node, source, None, alias_name),

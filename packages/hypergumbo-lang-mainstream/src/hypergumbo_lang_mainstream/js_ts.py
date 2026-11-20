@@ -243,6 +243,12 @@ Why This Design
   (``_collect_type_identifiers``, ``_extract_route_objects``,
   ``_extract_component_from_jsx``, ``_get_receiver_name``,
   ``_ts_value_to_python``, ``_pattern_binding_names``) still recurse
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's named, namespace and default imports
+(``_jsts_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -294,6 +300,10 @@ from hypergumbo_core.analyze.base import (
     make_variable_stable_id,
     node_text as _node_text,
     declares_async,
+    FileTypeNames,
+    canonical_type_names,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -4487,7 +4497,8 @@ def _make_container_member_symbols(
             signature=signature,
             stable_id=make_typed_stable_id(
                 kind,
-                _jsts_without_function_type_names(signature or "", declaration=kind == "method"),
+                canonical_type_names(_jsts_without_function_type_names(
+                    signature or "", declaration=kind == "method")),
                 name=member_name,
                 qualified_name=_make_jsts_qualified_name(owner_scope, member_name, lang),
                 file_stable_id=file_stable_id,
@@ -4747,7 +4758,66 @@ def _classify_anon_function(
     return None
 
 
+#: The node types that declare a type name in a TypeScript file.
+_TS_TYPE_DECLARATION_NODES = frozenset({
+    "class_declaration", "abstract_class_declaration", "class", "interface_declaration",
+    "type_alias_declaration", "enum_declaration", "internal_module", "module",
+})
+
+
+def _jsts_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-palus, scheme v17).
+
+    A TypeScript import names a module by its specifier, so a bound name is
+    written as TypeScript's own import type writes it: ``import { Foo } from
+    "./foo"`` binds ``Foo`` to ``import("./foo").Foo`` (an alias, ``Foo as
+    Bar``, binds ``Bar`` to the same), ``import * as ns from "./foo"`` (or a
+    plain ``require``) binds ``ns`` to ``import("./foo")``, so ``ns.Foo`` is
+    ``import("./foo").Foo`` too, and a default import binds its name to
+    ``import("./foo").default``. Read by the call resolver's readers
+    (:func:`_extract_named_imports`, :func:`_extract_namespace_imports`).
+    Declared: every class, interface, type alias, enum and namespace the file
+    declares, which keeps its name. No defaults: a global type (``Array``,
+    ``Promise``) has no second spelling to fold.
+    """
+    named, originals = _extract_named_imports(tree, source)
+    module_objects: set[str] = set()
+    namespaces = _extract_namespace_imports(tree, source, module_objects)
+    bindings = [
+        (local, f'import("{module}").{originals.get(local, local)}')
+        for local, module in named.items()
+    ] + [
+        (local, f'import("{module}")' if local in module_objects
+         else f'import("{module}").default')
+        for local, module in namespaces.items()
+    ]
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _TS_TYPE_DECLARATION_NODES:
+            name = node.child_by_field_name("name")
+            if name is not None:
+                declared.add(_node_text(name, source))
+    return file_type_names(bindings, declared=declared)
+
+
 def _extract_symbols(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    lang: str,
+    run: AnalysisRun,
+    line_offset: int = 0,
+    repo_root: Optional[Path] = None,
+    file_lang: Optional[str] = None,
+) -> list[Symbol]:
+    """Extract symbols from a parsed tree (pass 1), each type a stable id
+    hashes written through the file's imports (:func:`_jsts_type_names`)."""
+    with resolving_type_names(_jsts_type_names(tree, source)):
+        return _extract_tree_symbols(
+            tree, source, file_path, lang, run, line_offset, repo_root, file_lang)
+
+
+def _extract_tree_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: Path,
@@ -5400,7 +5470,7 @@ def _extract_symbols(
                 # file fold make same-named fields in different classes/files
                 # distinct even when both are untyped (empty signature slot).
                 stable_id = make_typed_stable_id(
-                    "field", _jsts_without_function_type_names(field_type or ""),
+                    "field", canonical_type_names(_jsts_without_function_type_names(field_type or "")),
                     decorators=_jsts_member_decorators(node),
                     name=name,
                     qualified_name=_jsts_chain(node, source, name, lang),

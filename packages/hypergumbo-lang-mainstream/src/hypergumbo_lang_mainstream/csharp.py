@@ -100,6 +100,12 @@ Population of ``is_exported`` follows C#'s access-modifier rule: a type
 or member is considered exported only when its declaration carries the
 ``public`` keyword (internal / protected / private items are not). An
 enum member has no modifier of its own and inherits its enum's status.
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's ``using`` aliases
+(``_csharp_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -136,6 +142,10 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     symbols_at,
     declares_async,
+    FileTypeNames,
+    canonical_type_names,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
@@ -512,7 +522,8 @@ def _normalize_csharp_type(
     enclosing types included (``A.B`` and ``C.B`` hash apart, and so do
     ``System.String`` and ``String``; WI-ririg owner ruling). Until the
     WI-ririg commit the family's FQN strip cut a type's head to its last
-    segment. A parameter's modifiers (``ref``, ``out``, ...) are taken off
+    segment. A ``using`` alias is written as the type it names
+    (:func:`_csharp_type_names`). A parameter's modifiers (``ref``, ``out``, ...) are taken off
     first and put back, a return type's ``ref`` / ``ref readonly`` likewise,
     and a tuple type is kept whole; the family would otherwise read a
     modifier as the type and a tuple's element as its name.
@@ -544,7 +555,8 @@ def _normalize_csharp_type(
             head, _, rest = text.partition(" ")
         type_text = text
     if _is_csharp_tuple_type(type_text):
-        written = normalize_generic_params(type_text, type_params or [])
+        written = normalize_generic_params(
+            canonical_type_names(type_text, skip=type_params or ()), type_params or [])
     else:
         shared = normalize_signature_types_first(
             f"({text})" if parameter else f"() {text}", type_params,
@@ -958,6 +970,37 @@ def _csharp_using_scope(
     return namespaces, aliases
 
 
+#: The node types that declare a type name in a C# file.
+_CSHARP_TYPE_DECLARATION_NODES = frozenset({
+    "class_declaration", "struct_declaration", "interface_declaration",
+    "enum_declaration", "record_declaration", "record_struct_declaration",
+    "delegate_declaration",
+})
+
+
+def _csharp_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's ``using`` directives make a type name mean (WI-palus,
+    scheme v17).
+
+    Bound: each alias, ``using Str = System.String;`` (and ``global using``),
+    to what it names (:func:`_csharp_using_scope`), so ``Str`` and
+    ``System.String`` hash alike, and ``Gen.List`` under ``using Gen =
+    System.Collections.Generic;`` is ``System.Collections.Generic.List``. A
+    ``using System;`` imports a namespace: it binds no name the file writes,
+    so ``String`` and ``System.String`` stay apart (a type is hashed as
+    written, WI-ririg). Declared: every type the file declares, which keeps its
+    name.
+    """
+    _, aliases = _csharp_using_scope(tree, source)
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _CSHARP_TYPE_DECLARATION_NODES:
+            name = node.child_by_field_name("name")
+            if name is not None:
+                declared.add(node_text(name, source))
+    return file_type_names(aliases.items(), declared=declared)
+
+
 def _csharp_base_hints(
     base_classes: list[str], ns_name: str | None,
     using_namespaces: list[str], using_aliases: dict[str, str],
@@ -1003,6 +1046,19 @@ def _extract_symbols_from_file(
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return FileAnalysis()
     record_partial_parse(run, rel_path, tree)  # WI-bulaz
+    # WI-palus: every type a stable id hashes is written through the aliases.
+    with resolving_type_names(_csharp_type_names(tree, source)):
+        return _extract_parsed_symbols(file_path, source, tree, run, rel_path)
+
+
+def _extract_parsed_symbols(
+    file_path: Path,
+    source: bytes,
+    tree: "tree_sitter.Tree",
+    run: AnalysisRun,
+    rel_path: str,
+) -> FileAnalysis:
+    """The symbols of one parsed C# file (:func:`_extract_symbols_from_file`)."""
 
     # File-identity anchor for this file's symbols (WI-bokab, v7). Built from the
     # repo-relative ``rel_path`` (NOT the absolute ``file_path``) so it byte-matches
@@ -1439,7 +1495,8 @@ def _extract_symbols_from_file(
                     # namespace is single per file: the file anchor has it).
                     stable_id=make_typed_stable_id(
                         "property",
-                        node_text(prop_type, source) if prop_type is not None else "",
+                        canonical_type_names(node_text(prop_type, source))
+                        if prop_type is not None else "",
                         visibility_from_modifiers(prop_modifiers),
                         name=name, qualified_name=_csharp_member_chain(node, source, name),
                         file_stable_id=file_stable_id,
@@ -1576,7 +1633,7 @@ def _extract_symbols_from_file(
                             origin_run_id=run.execution_id,
                             meta={"annotations": annotations} if annotations else None,
                             stable_id=make_typed_stable_id(
-                                "field", field_type or "",
+                                "field", canonical_type_names(field_type or ""),
                                 visibility_from_modifiers(modifiers),
                                 name=field_name,
                                 qualified_name=_csharp_member_chain(node, source, field_name),
