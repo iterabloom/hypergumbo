@@ -15,11 +15,11 @@
 # These are language conventions, not framework patterns. The patterns use
 # symbol_name + symbol_kind + language filters to identify main entry points.
 #
-# Note: Lower confidence (implicit via entrypoints.py handling) than framework
-# patterns because:
-# - A repo might have many main() functions (one per service)
-# - main() is sometimes not the "interesting" entry point
-# - Framework routes/handlers are often more relevant
+# The detection confidence of a match is set per language in entrypoints.py
+# (MAIN_FUNCTION_CONFIDENCE), from a census of how often a match is really a
+# program start; it is not a ranking value. These patterns check name, kind
+# and language only: Go's does not check `package main`, and Erlang's also
+# takes every `start` function, most of them OTP start functions.
 
 provenance: builtin
 id: main-functions

@@ -26,6 +26,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Changed
 
 - **Unknown config settings now say a newer hypergumbo may be needed.**
+- **Tied entry points list manifest scripts, then mains, then routes.**
+- **A `main` function's confidence now follows its language's measured reliability.**
 - **`explain` first prints the sketch's line: quoted text is data.**
 - **Schema calls docstring and README fields untrusted repository text.**
 

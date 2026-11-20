@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for entrypoint detection heuristics."""
+import math
+
 import pytest
 
 from hypergumbo_core.ir import Symbol, Edge, Span
@@ -15,6 +17,7 @@ from hypergumbo_core.entrypoints import (
     ENTRYPOINT_SOURCES,
     BASE_ENTRYPOINT_CAP,
     MAX_ENTRYPOINT_CAP,
+    main_function_confidence,
 )
 from hypergumbo_core.paths import is_test_file
 from hypergumbo_core.supply_chain import classify_file
@@ -1281,7 +1284,7 @@ class TestSemanticEntryDetection:
 
         assert len(entrypoints) == 1
         assert entrypoints[0].kind == EntrypointKind.MAIN_FUNCTION
-        assert entrypoints[0].confidence == 0.80  # Lower than framework patterns
+        assert entrypoints[0].confidence == main_function_confidence("go")
         assert "Go main()" in entrypoints[0].label
 
     def test_main_function_without_language_uses_unknown(self) -> None:
@@ -1663,8 +1666,8 @@ class TestSemanticEntryDetection:
         # its main_guard concept is skipped (a named main() supersedes the guard)
         main_eps = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
         assert len(main_eps) == 1
-        # So main_function's 0.80 is kept, even though main_guard scores 0.85
-        assert main_eps[0].confidence == 0.80
+        # The main_function entry is kept, at Python's main confidence, whatever
+        assert main_eps[0].confidence == main_function_confidence("python")
 
     def test_controller_by_name_entrypoint_detection(self) -> None:
         """Classes named *Controller are detected as entrypoints (naming heuristic)."""
@@ -2733,7 +2736,7 @@ class TestEntrypointRankingPenalties:
         # All surviving entries should be production
         for ep in entrypoints:
             assert "src/" in ep.symbol_id
-            assert ep.confidence == pytest.approx(0.80, rel=0.01)
+            assert ep.confidence == pytest.approx(main_function_confidence("python"), rel=0.01)
 
     def test_test_file_penalty(self) -> None:
         """Entrypoints in test files are filtered out by confidence threshold.
@@ -2762,7 +2765,7 @@ class TestEntrypointRankingPenalties:
         # Test entry filtered (0.80 * 0.1 = 0.08 < 0.10 threshold)
         assert len(entrypoints) == 1
         assert entrypoints[0].symbol_id == prod_main.id
-        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+        assert entrypoints[0].confidence == pytest.approx(main_function_confidence("python"), rel=0.01)
 
     def test_support_dir_entrypoint_penalized_via_broad_path_heuristic(
         self, tmp_path
@@ -2846,12 +2849,12 @@ class TestEntrypointRankingPenalties:
         fp_ep = next(e for e in entrypoints if "src/main.go" in e.symbol_id)
         vendor_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
 
-        # Base confidence is 0.80 for main_function (both); the 70% vendor
-        # penalty (0.80 * 0.3 = 0.24) is a ranking signal -> rank_score.
-        assert fp_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert vendor_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert fp_ep.rank_score == pytest.approx(0.80, rel=0.01)
-        assert vendor_ep.rank_score == pytest.approx(0.24, rel=0.01)
+        # Base confidence is Go's main confidence (both); the 70% vendor
+        # penalty (x 0.3) is a ranking signal -> rank_score.
+        assert fp_ep.confidence == pytest.approx(main_function_confidence("go"), rel=0.01)
+        assert vendor_ep.confidence == pytest.approx(main_function_confidence("go"), rel=0.01)
+        assert fp_ep.rank_score == pytest.approx(main_function_confidence("go"), rel=0.01)
+        assert vendor_ep.rank_score == pytest.approx(main_function_confidence("go") * 0.3, rel=0.01)
 
         # First-party should rank first
         assert entrypoints[0].symbol_id == first_party.id
@@ -3052,15 +3055,15 @@ class TestEntrypointRankingPenalties:
         entrypoints = detect_entrypoints([prod, vendor, test_main], [])
 
         by_id = {e.symbol_id: e for e in entrypoints}
-        # The test main (base 0.80 * 0.1 = rank 0.08 < MIN 0.10) is filtered out
-        # BY rank_score, even though its detection confidence (0.80) is high.
+        # The test main (base x 0.1 = rank under MIN 0.10) is filtered out
+        # BY rank_score, even though its detection confidence is high.
         assert test_main.id not in by_id
         # Surviving entrypoints: confidence is the in-band base for BOTH...
         for ep in entrypoints:
             assert 0.70 <= ep.confidence <= 0.99, ep.symbol_id
         # ...and the vendor penalty shows up only on rank_score.
-        assert by_id[prod.id].confidence == pytest.approx(0.80, rel=0.01)
-        assert by_id[vendor.id].confidence == pytest.approx(0.80, rel=0.01)
+        assert by_id[prod.id].confidence == pytest.approx(main_function_confidence("go"), rel=0.01)
+        assert by_id[vendor.id].confidence == pytest.approx(main_function_confidence("go"), rel=0.01)
         assert by_id[prod.id].rank_score > by_id[vendor.id].rank_score
 
     def test_test_and_vendor_penalties_stack(self) -> None:
@@ -3091,7 +3094,7 @@ class TestEntrypointRankingPenalties:
         # Vendor test entry filtered (0.024 < 0.10 threshold)
         assert len(entrypoints) == 1
         assert entrypoints[0].symbol_id == prod.id
-        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+        assert entrypoints[0].confidence == pytest.approx(main_function_confidence("python"), rel=0.01)
 
     def test_http_route_test_penalty(self) -> None:
         """HTTP routes in test files are filtered by confidence threshold.
@@ -3301,7 +3304,7 @@ class TestGoUtilityMainDemotion:
 
         assert len(entrypoints) == 1
         # pkg/cmd/ is at depth 1 — should NOT be penalized
-        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+        assert entrypoints[0].confidence == pytest.approx(main_function_confidence("go"), rel=0.01)
 
     def test_top_level_cmd_not_demoted(self) -> None:
         """Main in cmd/prometheus/ is NOT demoted."""
@@ -3314,7 +3317,7 @@ class TestGoUtilityMainDemotion:
         entrypoints = detect_entrypoints([prom_main], [])
 
         assert len(entrypoints) == 1
-        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+        assert entrypoints[0].confidence == pytest.approx(main_function_confidence("go"), rel=0.01)
 
     def test_codegen_filename_demoted_via_utility(self) -> None:
         """Main in gen.go files is demoted via utility file penalty."""
@@ -3339,9 +3342,9 @@ class TestGoUtilityMainDemotion:
         # Codegen should be demoted below server
         # ADR-0039 ruling 3: the utility/codegen demotion lives on rank_score.
         assert server_ep.rank_score > codegen_ep.rank_score
-        # Utility penalty: 0.80 * 0.5 = 0.40
-        assert codegen_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert codegen_ep.rank_score == pytest.approx(0.40, rel=0.01)
+        # Utility penalty: x 0.5
+        assert codegen_ep.confidence == pytest.approx(main_function_confidence("go"), rel=0.01)
+        assert codegen_ep.rank_score == pytest.approx(main_function_confidence("go") * 0.5, rel=0.01)
 
     def test_non_go_main_not_affected_by_nested_cmd(self) -> None:
         """The nested-cmd penalty only applies to Go main_function entries."""
@@ -3355,7 +3358,7 @@ class TestGoUtilityMainDemotion:
 
         assert len(entrypoints) == 1
         # Java main should NOT get the nested-cmd penalty
-        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
+        assert entrypoints[0].confidence == pytest.approx(main_function_confidence("java"), rel=0.01)
 
 
 class TestConnectivityFallback:
@@ -3988,11 +3991,13 @@ class TestLanguageDominanceRanking:
         assert go_ep is not None
         assert py_ep is not None
 
-        # Both should have the same confidence (language weights are equal)
-        assert go_ep.confidence == pytest.approx(py_ep.confidence, rel=0.01), (
-            f"Equal-language entrypoints should have same confidence: "
-            f"Go={go_ep.confidence:.3f}, Python={py_ep.confidence:.3f}"
-        )
+        # Equal language weights: both take the same, full boost on top of
+        # their own detection confidence (which differs by language).
+        boost = math.log(1 + 10) / 10
+        for ep in (go_ep, py_ep):
+            assert ep.rank_score == pytest.approx(min(1.0, ep.confidence + boost)), (
+                f"{ep.symbol_id}: rank {ep.rank_score:.3f}, confidence {ep.confidence:.3f}"
+            )
 
 
 class TestApplicationLibraryExportDemotion:
