@@ -18,3 +18,10 @@
     pr_ref:  # c7d7
     description: "After PR 4 (WI-fupap), `slice --entry auto` applies the entry list's path penalties to its whole score: test ×0.1, example/utility ×0.5, vendored ×0.3. That fixed alertmanager, where an examples/ main had won. Three repositories still pick a tool or code-generator main that sits in a production path, so no penalty applies. All three picks are the same as on dev, so PR 4 did not cause them:\n\n- lazygit: pkg/integration/clients/injector/main.go\n- podman: pkg/bindings/generator/generator.go\n- forgejo: build/backport-locales.go\n\nThe program's own main is cmd/podman, root main.go and so on. The question is what tells a program's main apart from a tool main structurally: for example the manifest or build target, the directory depth under cmd/, or reachability. A name or path list tuned to these three repositories is not the answer.\n\nAlternative already measured: one-hop out-degree in the slice score also fixes alertmanager, but changes 7 of 23 picks, vite's among them onto a false route. It was not taken.\n\nRepro: `hypergumbo slice --entry auto` on each repository. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/out/f3/COMPARE_F3.txt."  # c7d7
     fields: {}  # c7d7
+- op: discuss  # 911a
+  at: '2026-11-20T17:22:20Z'  # 911a
+  by: agent  # 911a
+  actor: jgstern_agent  # 911a
+  clock: 2  # 911a
+  nonce: 911a  # 911a
+  message: "OWNER RULING 2026-11-20: joins the fast-smart-test plan as part of PR 6 (after PR 5), with WI-dufuz, WI-jalom, WI-nihov (its export-list question), WI-lubig and WI-gigir, plus WI-havob. Record: ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md amendment 6."  # 911a

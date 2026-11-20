@@ -25,3 +25,10 @@
   clock: 2  # b544
   nonce: b544  # b544
   message: "OWNER RULING 2026-11-19 (in session): goes in an additional stable-id PR at the end of the plan (a second bump after v16), with WI-lonoh's argument-label and static-vs-instance parts."  # b544
+- op: discuss  # 754c
+  at: '2026-11-20T16:58:50Z'  # 754c
+  by: agent  # 754c
+  actor: jgstern_agent  # 754c
+  clock: 3  # 754c
+  nonce: 754c  # 754c
+  message: "OWNER RULING 2026-11-20 (in session): keep as built. A Swift local's scope label includes the enclosing callable's name plus its layout-free hashed signature (and static/accessor words), so locals of overloads and of two inits no longer tie; changing the enclosing signature's parameter types, labels or return type moves its locals' ids, while renaming an internal parameter name or reflowing does not. Rejected alternative: a name-only scope label (locals of overloads keep tying)."  # 754c

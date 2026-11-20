@@ -1,0 +1,21 @@
+- op: create  # a017
+  at: '2026-11-20T16:59:08Z'  # a017
+  by: agent  # a017
+  actor: jgstern_agent  # a017
+  clock: 1  # a017
+  nonce: a017  # a017
+  data:  # a017
+    kind: work_item  # a017
+    title: "dart: constructors hash no parameter list (named-parameter names in no id); factory constructors emit no symbol"  # a017
+    status: todo_hard  # a017
+    priority: 3  # a017
+    parent:  # a017
+    tags:  # a017
+    - stable_id  # a017
+    - analysis_quality  # a017
+    isbefore: []  # a017
+    duplicate_of: []  # a017
+    not_duplicate_of: []  # a017
+    pr_ref:  # a017
+    description: "Two Dart constructor gaps, found by PR 5 agent 2 (WI-haloz):\n\n1. A Dart constructor's stable id hashes no parameter list, only the owner-qualified name (WI-tusad's design). So the names of named parameters (`this.x`, `super.x`, typed named parameters) enter no id. PR 5 hashes named-parameter names for functions and methods only.\n   - Owner question: should a constructor hash its parameter list (with named-parameter labels, as functions and methods now do)? This would be a policy change that moves every Dart constructor id with parameters.\n2. Factory constructors emit no symbol at all. Repro: `class W { factory W.make({required int count}) => W._(); W._(); }` produces no symbol for `W.make`.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/haloz/RESULTS.md."  # a017
+    fields: {}  # a017

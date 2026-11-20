@@ -1,0 +1,20 @@
+- op: create  # dabe
+  at: '2026-11-20T16:59:01Z'  # dabe
+  by: agent  # dabe
+  actor: jgstern_agent  # dabe
+  clock: 1  # dabe
+  nonce: dabe  # dabe
+  data:  # dabe
+    kind: work_item  # dabe
+    title: "ts/go: object-type method and call signatures, interface-literal methods, interface members and type predicates still hash parameter names"  # dabe
+    status: todo_soft  # dabe
+    priority: 4  # dabe
+    parent:  # dabe
+    tags:  # dabe
+    - stable_id  # dabe
+    isbefore: []  # dabe
+    duplicate_of: []  # dabe
+    not_duplicate_of: []  # dabe
+    pr_ref:  # dabe
+    description: "PR 5 (WI-jufuk) drops parameter names inside function types from the hashed signature in Kotlin, Swift, Go and TypeScript. Four sibling forms still hash a name that callers never write, so renaming it moves an id:\n\n1. TS object-type method and call signatures: renaming `x` moves `g` in `function g(o: { m(x: number): void })`, and `h` in `h(o: { (x: number): void })`.\n2. Go interface-literal method specs: renaming `x` moves `F` in `func F(i interface{ M(x int) })`.\n3. TS interface method members hash the raw signature, outer parameter names included: renaming `m(cb: ...)` to `m(fn: ...)` moves `I.m`. This predates PR 5. It is the TS sibling of the Swift protocol-requirement raw-signature hashing (WI-lonoh, generic-constraint residual).\n4. TS type predicates: `(x: unknown) => x is T` normalizes to `((unknown) => x is string)`, so the predicate keeps the name. Checked on the normalizer only.\n\nEach fix moves ids and needs a scheme bump.\n\nRepros: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/jufuk/residual_fixtures/ and ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/jufuk/RESULTS.md."  # dabe
+    fields: {}  # dabe

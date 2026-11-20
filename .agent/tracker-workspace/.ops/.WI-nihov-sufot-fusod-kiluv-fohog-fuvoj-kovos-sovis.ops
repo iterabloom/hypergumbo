@@ -18,3 +18,10 @@
     pr_ref:  # 6e9e
     description: "Node HTTP server detection (frameworks/node-http.yaml and js_ts._NODE_HTTP_MODULES) has four gaps left after PR 4. PR 4 (WI-fupap) now requires a bare `createServer(...)` to be imported from http, https or http2. Before that, vite's own dev-server factory in packages/vite/src/node/cli.ts minted a false `HTTP ALL /` route.\n\n1. **Aliased import not detected.** `import { createServer as createHttpServer } from 'node:http'` is not followed. This was built and held back on purpose. In vite it finds the real server in packages/vite/src/node/server/ws.ts (production TypeScript). The library-export demotion then fires on TypeScript and vite loses all 61 exports from the entry list again. vite is the only one of the 23 measured repositories with this import form.\n   - Taking the alias form first needs an answer to whether a library that runs a real server in its production code should lose its export list. Today it does: any production semantic entry demotes every export of that language ×0.1.\n   - A test in test_entrypoints pins the current behaviour.\n2. **Receiver matched by text.** `http.createServer` is matched on the receiver's text, not on where `http` was imported from.\n3. **`require('http').createServer(...)` not detected.** It was not detected before PR 4 either.\n4. **Apollo function names matched by name alone.**\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/RESULTS.md, section 2026-11-20, and ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/out/probe/."  # 6e9e
     fields: {}  # 6e9e
+- op: discuss  # 3ee9
+  at: '2026-11-20T17:22:21Z'  # 3ee9
+  by: agent  # 3ee9
+  actor: jgstern_agent  # 3ee9
+  clock: 2  # 3ee9
+  nonce: 3ee9  # 3ee9
+  message: "OWNER RULING 2026-11-20: joins the fast-smart-test plan as part of PR 6 (after PR 5), with WI-dufuz, WI-jalom, WI-nihov (its export-list question), WI-lubig and WI-gigir, plus WI-havob. Record: ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md amendment 6."  # 3ee9

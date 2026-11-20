@@ -18,3 +18,10 @@
     pr_ref:  # 3086
     description: "compact's default output seeds connectivity selection by (-confidence, symbol_id) (compact.py near line 1407), so any change to an entry kind's confidence reorders the seeds and changes which nodes make the cut. PR 4 (WI-fupap) raised main to 0.95 in Go, Java, Rust, C, C#, Kotlin and Scala, and the 100-node compact output then differed on 9 of 12 repositories, by 7 to 38 nodes. On alertmanager, 22 of 100 nodes differ.\n\nUnchanged repositories: lazygit, mini-redis, ripgrep, sqlalchemy.\n\nQuestion: should compact seed in the same total entry order the entry-point list uses (kind rank, then the existing tie keys), so that a confidence recalibration cannot reshuffle compact on its own? Confidence is a probability that a symbol IS an entry; it is not a rank of how central it is.\n\nRepro: `hypergumbo compact --input <map>` on alertmanager in both arms. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/out/*.compact.ids and RESULTS.md."  # 3086
     fields: {}  # 3086
+- op: discuss  # b8b3
+  at: '2026-11-20T17:22:20Z'  # b8b3
+  by: agent  # b8b3
+  actor: jgstern_agent  # b8b3
+  clock: 2  # b8b3
+  nonce: b8b3  # b8b3
+  message: "OWNER RULING 2026-11-20: joins the fast-smart-test plan as part of PR 6 (after PR 5), with WI-dufuz, WI-jalom, WI-nihov (its export-list question), WI-lubig and WI-gigir, plus WI-havob. Record: ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md amendment 6."  # b8b3
