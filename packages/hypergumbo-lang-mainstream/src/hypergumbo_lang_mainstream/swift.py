@@ -33,10 +33,14 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   types mint ``overload_arity.scoped_table_stable_id`` (INV-fabih). An
   ``init`` / ``deinit`` is scoped as a method of its type is, so the inits of
   two function-local ``struct Inner`` in ``f`` and ``g`` differ (they hashed
-  the type chain alone until scheme v15). The chain names types and
-  ``func`` declarations only: two same-named local types in one function
-  (two blocks, two overloads of it), or in a closure, a computed property,
-  an ``init`` or a subscript of one type, still share a chain. An
+  the type chain alone until scheme v15). Every declaration that owns code
+  labels the chain: a type by its name, a ``func`` / ``init`` / ``deinit`` /
+  ``subscript`` by its name and hashed text (``_swift_callable_label``), a
+  property by its name, a setter / observer by its word -- so a local
+  function in an ``init``, an accessor or one of two overloads is scoped by
+  that callable (until scheme v17 only types and ``func`` names labelled it,
+  and the locals of two inits tied). Two same-named locals of two unbound
+  closures or two blocks of one body still share a chain. An
   extension's ``where`` clause joins its label (``Array where Element: P``),
   so the same member in two differently constrained extensions of one type
   does not tie (it did until scheme v15)
@@ -186,6 +190,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     labelled_parameter,
+    layout_free,
     defer_bare_method_call,
     defer_unresolved_tie,
     file_anchor_symbol,
@@ -554,29 +559,115 @@ def _get_swift_type_ancestors(
     return list(reversed(chain))
 
 
-#: Declarations whose name opens a scope a Swift stable_id hashes (not
+#: Type declarations whose name opens a scope a Swift stable_id hashes (not
 #: ``_SWIFT_SCOPE_NODES``, the type bodies a field/variable is classified by).
 #: tree-sitter-swift models class/struct/enum/actor and ``extension`` all as
 #: ``class_declaration``.
-_SWIFT_ID_SCOPE_NODES = frozenset({
-    "class_declaration", "protocol_declaration", "function_declaration",
-})
+_SWIFT_ID_TYPE_SCOPE_NODES = frozenset({"class_declaration", "protocol_declaration"})
+
+#: The accessor bodies that label a scope, by the word they are labelled
+#: with. A getter -- ``get { }`` or a shorthand body -- adds nothing: it is
+#: the property's only accessor when there is one, and writing ``get { }``
+#: around a shorthand body is layout, not a new scope.
+_SWIFT_ACCESSOR_LABELS: dict[str, str] = {
+    "computed_setter": "set", "computed_modify": "_modify",
+    "willset_clause": "willSet", "didset_clause": "didSet",
+}
+
+
+def _swift_callable_hashed(
+    node: "tree_sitter.Node", source: bytes,
+) -> tuple[Optional[str], str]:
+    """What a ``func``, ``init``, ``deinit`` or ``subscript`` declaration's
+    typed stable_id hashes beside its name and scope: its normalized
+    signature (``None`` when the signature text does not normalize) and its
+    ``decorators`` (:func:`_swift_member_decorators`).
+
+    Argument labels are in the signature of a function that is not an
+    operator and of an ``init`` (``normalize_swift_signature(labels=True)``),
+    not of a subscript or an operator. The one reader for the symbol's own id
+    and for its label in the scope chain of what it declares
+    (:func:`_swift_callable_label`), so the two cannot disagree.
+    """
+    labels = node.type == "init_declaration" or (
+        node.type == "function_declaration" and not _swift_is_operator(node)
+    )
+    hashed = normalize_with_type_parameters(
+        normalize_swift_signature, _swift_callable_signature(node, source), node, source,
+        labels=labels,
+    )
+    return hashed, _swift_member_decorators(node)
+
+
+def _swift_callable_label(node: "tree_sitter.Node", source: bytes) -> str:
+    """A callable's label in the scope chain (:func:`_swift_scope`): its name
+    and what its own id hashes beside it (:func:`_swift_callable_hashed`),
+    canonically spaced (``layout_free``): ``f(from:Int)Int``,
+    ``init(a:Int)``, ``static g``, ``subscript(i:)(Int)Int``.
+
+    A name alone is shared by two ``init``s of a type, two overloads, a
+    ``static`` and an instance ``func``, and two subscripts; the declarations
+    local to them tied (WI-podor: TCA's ``IfLetStore.open`` in two inits). A
+    callable whose hashed text is ``()`` with no decorator -- ``func f()``,
+    ``init()``, ``deinit`` -- keeps its bare name, so what it declares hashes
+    what it did; a name followed by ``(`` is never a bare name, so the two
+    spellings cannot meet.
+    """
+    if node.type == "init_declaration":
+        name = "init"
+    elif node.type == "deinit_declaration":
+        name = "deinit"
+    elif node.type == "subscript_declaration":
+        name = _subscript_name(node, source)
+    else:
+        name_node = node.child_by_field_name("name")
+        name = node_text(name_node, source) if name_node is not None else ""
+    hashed, decorators = _swift_callable_hashed(node, source)
+    text = layout_free(hashed or "", separators=True)
+    label = name if text in ("", "()") else name + text
+    return f"{decorators} {label}" if decorators else label
+
+
+def _swift_property_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """A ``property_declaration``'s label in the scope chain: its (first)
+    bound name, ``static`` first for a type property; ``None`` for a pattern
+    that binds no single name (``let (a, b) = ...``). A computed property's
+    body, an observer, and an initialiser closure are code the property owns,
+    so what they declare is scoped by it (two computed properties' local
+    ``func calc`` tied; so did two closures bound to ``let a`` and ``let b``).
+    """
+    pat = find_child_by_type(node, "pattern")
+    id_node = find_child_by_type(pat, "simple_identifier") if pat is not None else None
+    if id_node is None:
+        return None
+    decorators = _swift_member_decorators(node)
+    name = node_text(id_node, source)
+    return f"{decorators} {name}" if decorators else name
 
 
 def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """The names of the types and functions enclosing ``node``, outermost
-    first: what every Swift stable_id except an init's or a deinit's hashes
-    beside the symbol's own name (INV-fabih).
+    """The labels of the declarations enclosing ``node``, outermost first:
+    what every Swift stable_id hashes beside the symbol's own name
+    (INV-fabih).
 
     The full chain is needed because a nearest-owner name (``Inner.go``) is
     shared by two nested ``class Inner`` in ``A`` and ``B``, a bare type name
     by every same-named type, and a type-only chain by two function-local
     ``struct Inner``. The emitted ``qualified_name`` stays the type chain
     (:func:`_make_swift_qualified_name`). An ``init`` / ``deinit`` hashes this
-    chain too (:func:`_swift_lifecycle_symbol`). Only types and ``func``
-    declarations are labels: a closure, an accessor, an ``init``, a
-    subscript or a block adds nothing, so two same-named types local to two
-    of those in one owner still share a chain.
+    chain too (:func:`_swift_lifecycle_symbol`).
+
+    Every declaration that owns code is a label, by what identifies it among
+    its siblings: a type by its name; a ``func``, ``init``, ``deinit`` or
+    ``subscript`` by :func:`_swift_callable_label` (name, hashed signature,
+    ``static``); a property by :func:`_swift_property_label`; a setter /
+    ``_modify`` / ``willSet`` / ``didSet`` by its word. Until scheme v17 only
+    types and ``func`` names were labels, so a local function's scope was its
+    TYPE when it sat in an ``init``, an accessor or a subscript, and two
+    same-named locals of two inits, two overloads, two properties or a
+    getter and a setter tied (WI-podor). A closure and a block have no name
+    and add nothing: two same-named locals of two unbound closures, or of two
+    blocks of one body, still share a chain (split by occurrence order).
 
     An extension with a ``where`` clause is labelled by the extended type's
     name followed by the clause (:func:`_swift_extension_clause`):
@@ -586,7 +677,13 @@ def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     without a clause keeps the bare name, so its members hash what they did.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
-        if n.type not in _SWIFT_ID_SCOPE_NODES:
+        if n.type in _SWIFT_CALLABLE_DECL_NODES:
+            return _swift_callable_label(n, source)
+        if n.type == "property_declaration":
+            return _swift_property_label(n, source)
+        if n.type in _SWIFT_ACCESSOR_LABELS:
+            return _SWIFT_ACCESSOR_LABELS[n.type]
+        if n.type not in _SWIFT_ID_TYPE_SCOPE_NODES:
             return None
         name_node = n.child_by_field_name("name")
         name = node_text(name_node, source) if name_node is not None else None
@@ -1410,14 +1507,12 @@ def _extract_symbols_from_file(
 
                 # Typed stable_id (spec §6 typed tier): argument labels and
                 # ``static`` / ``class`` / ``prefix`` / ``postfix`` hashed.
-                norm_sig = normalize_with_type_parameters(
-                    normalize_swift_signature, signature, node, source,
-                    labels=not _swift_is_operator(node))
-                # INV-fabih: the full type/function chain, not the nearest
-                # owner (``full_name``) two nested owners share.
+                norm_sig, decorators = _swift_callable_hashed(node, source)
+                # INV-fabih: the full scope chain, not the nearest owner
+                # (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    decorators=_swift_member_decorators(node),
+                    decorators=decorators,
                     name=func_name, qualified_name=_swift_chain(node, source, func_name),
                     file_stable_id=file_stable_id,
                     is_async=declares_async(node),
@@ -1902,8 +1997,7 @@ def _extract_symbols_from_file(
                 # subscript overloads stay apart (WI-tusad).
                 stable_id=make_typed_stable_id(
                     "subscript",
-                    normalize_with_type_parameters(normalize_swift_signature, signature, node, source)
-                    or signature or "",
+                    _swift_callable_hashed(node, source)[0] or signature or "",
                     visibility_from_modifiers(modifiers),
                     decorators=_swift_member_decorators(node),
                     name=sub_label,
@@ -1990,8 +2084,7 @@ def _swift_lifecycle_symbol(
         # and a top-level one of its name.
         stable_id=make_typed_stable_id(
             kind,
-            normalize_with_type_parameters(
-                normalize_swift_signature, signature, node, source, labels=True) or "",
+            _swift_callable_hashed(node, source)[0] or "",
             visibility_from_modifiers(modifiers),
             name=member, qualified_name=_swift_chain(node, source, member),
             file_stable_id=file_stable_id,
