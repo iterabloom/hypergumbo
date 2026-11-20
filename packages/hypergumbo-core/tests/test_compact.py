@@ -5077,3 +5077,87 @@ class TestConnectivityDefaultFlip:
         p = self._parser()
         assert p.parse_args(["run", "."]).connectivity is True
         assert p.parse_args(["run", ".", "--no-connectivity"]).connectivity is False
+
+
+class TestSeedsInEntryOrder:
+    """compact seeds entry points in the entry list's own order.
+
+    The map's ``entrypoints`` list is written in the one entry order
+    (``entrypoints.detect_entrypoint_candidates``: rank_score, then the
+    entry's kind, then the tie keys). Detection ``confidence`` is how sure
+    detection is that a symbol IS an entry point, not how central it is, so
+    a recalibration that leaves that order alone must not change which
+    nodes compact selects. Seeding by ``(-confidence, id)`` did: raising one
+    kind's confidence reordered the seeds and moved 7 to 38 of 100 nodes.
+    """
+
+    _N = 6
+    #: The list order, deliberately not the symbol-id order, so an order
+    #: by id cannot pass for the list's.
+    _LISTED = (3, 0, 5, 1, 4, 2)
+
+    def _graph(self):
+        eps = [
+            make_symbol(f"entry{i}", path=f"src/e{i}.py") for i in range(self._N)
+        ]
+        symbols = list(eps)
+        edges = []
+        core = make_symbol("core", path="src/core.py")
+        symbols.append(core)
+        for i, ep in enumerate(eps):
+            prev = ep
+            for j in range(3):
+                helper = make_symbol(f"helper{i}_{j}", path=f"src/h{i}.py")
+                symbols.append(helper)
+                edges.append(make_edge(prev.id, helper.id))
+                prev = helper
+            edges.append(make_edge(prev.id, core.id))
+        return eps, symbols, edges
+
+    def _nodes(self, confidences, connectivity_aware):
+        """Selected node ids for one confidence per entry, list order fixed."""
+        eps, symbols, edges = self._graph()
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": ep.id, "kind": "main_function", "confidence": c,
+                 "rank_score": 1.0}
+                for ep, c in zip((eps[i] for i in self._LISTED), confidences, strict=True)
+            ],
+        }
+        result = format_compact_behavior_map(
+            behavior_map, symbols, edges,
+            CompactConfig(min_symbols=1, max_symbols=6),
+            force_include_entrypoints=True,
+            connectivity_aware=connectivity_aware,
+        )
+        return [n["id"] for n in result["nodes"]]
+
+    @pytest.mark.parametrize("connectivity_aware", [True, False])
+    def test_output_invariant_under_confidence_change(self, connectivity_aware):
+        """Every assignment of the same confidences to the entries, list
+        order unchanged, selects the same nodes in the same order."""
+        import itertools
+
+        values = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+        reference = self._nodes(values, connectivity_aware)
+        for perm in itertools.permutations(values):
+            assert self._nodes(list(perm), connectivity_aware) == reference, perm
+
+    @pytest.mark.parametrize("connectivity_aware", [True, False])
+    def test_first_listed_entries_are_seeded(self, connectivity_aware):
+        """Confidence rising down the list: the entries listed first are the
+        seeds, the most confident (listed last) is not."""
+        eps, _symbols, _edges = self._graph()
+        nodes = self._nodes([0.5, 0.6, 0.7, 0.8, 0.9, 0.95], connectivity_aware)
+        assert eps[self._LISTED[0]].id in nodes
+        assert eps[self._LISTED[-1]].id not in nodes
+
+    def test_centrality_seeds_are_the_listed_prefix(self):
+        """The centrality path seeds half its budget (3 of 6): exactly the
+        three entries listed first, whatever their confidence."""
+        eps, _symbols, _edges = self._graph()
+        nodes = self._nodes([0.5, 0.6, 0.7, 0.8, 0.9, 0.95], False)
+        chosen = [i for i in self._LISTED if eps[i].id in nodes]
+        assert chosen == list(self._LISTED[:3])
