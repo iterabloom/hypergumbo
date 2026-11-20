@@ -25,3 +25,18 @@
   clock: 2  # 346a
   nonce: 346a  # 346a
   message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump), one agent before the bump agent."  # 346a
+- op: update  # 4def
+  at: '2026-11-20T01:48:52Z'  # 4def
+  by: agent  # 4def
+  actor: jgstern_agent  # 4def
+  clock: 3  # 4def
+  nonce: 4def  # 4def
+  set:  # 4def
+    status: done  # 4def
+- op: discuss  # a753
+  at: '2026-11-20T01:48:53Z'  # a753
+  by: agent  # a753
+  actor: jgstern_agent  # a753
+  clock: 4  # a753
+  nonce: a753  # a753
+  message: "Done in PR #2291 (dev 703dce32b; commit 0ba139f47). Live on dev 703dce32b: python ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/dart_hashed.py 'void f(int a, [int c = 1, String? d]) {}' -> hashed '(int,[int,String?])' (item: '(int,[int c, String?)': name c kept, ] lost). hypergumbo survey: k(int a, [int c = 1, String? d]) in variant a and k(int a, [int cc = 2, String? dd]) in variant b share hgstableid16:eb0cc91411f9962d (renaming c/d does not move it); control c, k(int a, [int c = 1, int? d]) (type changed) -> e5a4560eba2a5187. Named group closes too: w({\\n required String text,\\n int sid,\\n}) and the one-line form both hash '({required String,int})'. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/kovok.txt"  # a753

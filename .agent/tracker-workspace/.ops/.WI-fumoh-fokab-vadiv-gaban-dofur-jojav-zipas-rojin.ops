@@ -25,3 +25,18 @@
   clock: 2  # 01ef
   nonce: 01ef  # 01ef
   message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump), one agent before the bump agent."  # 01ef
+- op: update  # 2881
+  at: '2026-11-20T01:49:22Z'  # 2881
+  by: agent  # 2881
+  actor: jgstern_agent  # 2881
+  clock: 3  # 2881
+  nonce: '2881'  # 2881
+  set:  # 2881
+    status: done  # 2881
+- op: discuss  # ffbb
+  at: '2026-11-20T01:49:22Z'  # ffbb
+  by: agent  # ffbb
+  actor: jgstern_agent  # ffbb
+  clock: 4  # ffbb
+  nonce: ffbb  # ffbb
+  message: "Done in PR #2291 (dev 703dce32b; commit ab15327ca: a pattern-bound declarator adds no scope label). Live on dev 703dce32b, the item's own files: hypergumbo survey on copies of koel resources/assets/js/components/ai/AiChatMessage.spec.ts and composables/useListSelection.spec.ts -> rc=0; 54 TS symbols, 0 whose qualified_name holds '{', a newline or '='; the six AiChatMessage.spec.ts it-callbacks have qualified_name '_cb_anonymous' (item: the describe body's source text), useListSelection.spec.ts:129 has '_cb_useListSelection'. Variant b adds one statement ('const extraUnused = 42') to describe's callback body: AiChatMessage.spec.ts stable ids 6 vs 6, moved 0. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/fumoh.txt (script ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/fumoh_cmp.py)"  # ffbb

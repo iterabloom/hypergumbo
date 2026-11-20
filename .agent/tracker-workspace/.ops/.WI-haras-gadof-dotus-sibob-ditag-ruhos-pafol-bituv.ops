@@ -25,3 +25,18 @@
   clock: 2  # 7a35
   nonce: 7a35  # 7a35
   message: "OWNER RULING 2026-11-19 (in session): build in PR 3 (the stable-id v16 bump)."  # 7a35
+- op: update  # 22f9
+  at: '2026-11-20T01:48:36Z'  # 22f9
+  by: agent  # 22f9
+  actor: jgstern_agent  # 22f9
+  clock: 3  # 22f9
+  nonce: 22f9  # 22f9
+  set:  # 22f9
+    status: done  # 22f9
+- op: discuss  # 84e8
+  at: '2026-11-20T01:48:36Z'  # 84e8
+  by: agent  # 84e8
+  actor: jgstern_agent  # 84e8
+  clock: 4  # 84e8
+  nonce: '84e8'  # 84e8
+  message: "Done in PR #2291 (dev 703dce32b; commit 8e52dccc0). Live on dev 703dce32b: python ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/sig_repros.py haras -> 'ALL OK (6/6)': normalize_rust_signature('(self: &Self)') = '()' == '(&self)' = '()' (the item's repro was !=); '(self: &mut Self)' == '(&mut self)' = '(&mut Self)'; '(mut self)' == '(self)' = '(Self)'; \"(&'_ self)\" == '(&self)'; controls stay distinct: '(&self)' vs '(&mut self)', and \"(&'a self)\" (named lifetime kept) vs '(&self)'. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/haras.txt"  # 84e8
