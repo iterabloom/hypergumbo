@@ -29,6 +29,12 @@ extract:
   an optional ``?``, a ``this:`` parameter stays; a default value is hashed
   as written). Through scheme v16 a function type was hashed as written, so
   renaming a callback's inner parameter moved the id
+- A static class member hashes ``static`` in the typed stable_id's
+  ``decorators`` slot (``_jsts_member_decorators``; methods, accessors and
+  fields, TypeScript and JavaScript), and a static method labels the scope
+  chain ``static <name>``; an instance member hashes ``""``, so its id is the
+  one it had. Through scheme v16 ``static error(m)`` and ``error(m)`` (and the
+  callbacks inside them) tied and were split only by occurrence order
 - ``field`` symbols for class properties and ``variable`` for module-level
   bindings
 - One ``file`` symbol per module, anchoring top-level calls
@@ -3923,6 +3929,28 @@ def jsts_method_kind(node: "tree_sitter.Node") -> str:
     return "method"
 
 
+def _jsts_is_static(node: "tree_sitter.Node") -> bool:
+    """Whether a class member (``method_definition``, ``public_field_definition``
+    / ``field_definition``) is declared ``static``: a ``static`` token among its
+    own children, wherever it sits beside ``async`` / ``get`` / ``readonly`` /
+    an accessibility modifier."""
+    return any(child.type == "static" for child in node.children)
+
+
+def _jsts_member_decorators(node: "tree_sitter.Node") -> str:
+    """The ``decorators`` slot of a class member's typed stable_id: ``static``
+    for a static member, ``""`` for an instance member.
+
+    A class may declare ``static error(m)`` beside ``error(m)``, ``static get
+    x()`` beside ``get x()``, ``static count`` beside ``count``; each pair is
+    two members with one name and one signature, and until scheme v17 each
+    pair tied (split only by occurrence order). The spelling is Swift's
+    (``_swift_member_decorators``). An instance member hashes ``""`` as it did,
+    so its id does not move; ``readonly`` / ``override`` / ``async`` / an
+    accessibility modifier are not hashed here."""
+    return "static" if _jsts_is_static(node) else ""
+
+
 def jsts_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """The name slot of a ``method_definition``: ``Class.method``, prefixed by
     the NEAREST enclosing ``class_declaration`` only, or the bare name outside
@@ -4008,8 +4036,16 @@ def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     ``describe``), the ids of every ``it`` callback hashed that body's text.
     Such a declarator adds nothing; same-named callbacks it would have told
     apart are numbered by occurrence, as at file scope.
+
+    A ``static`` method labels ``static <name>`` (scheme v17): a class may
+    declare ``static run()`` beside ``run()``, and with the bare name for both
+    every callback or local class inside the pair tied. An instance method
+    keeps its bare name, so what it holds keeps its id.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type == "method_definition" and _jsts_is_static(n):
+            member = _find_name_in_children(n, source)
+            return None if member is None else f"static {member}"
         if n.type in _JSTS_NAMED_SCOPES:
             return _find_name_in_children(n, source)
         if n.type in ("internal_module", "module", "variable_declarator"):
@@ -5303,6 +5339,7 @@ def _extract_symbols(
                     if norm_sig:
                         stable_id = make_typed_stable_id(
                             kind, norm_sig,
+                            decorators=_jsts_member_decorators(node),
                             name=name,
                             qualified_name=_jsts_chain(node, source, name, lang),
                             file_stable_id=file_stable_id,
@@ -5364,6 +5401,7 @@ def _extract_symbols(
                 # distinct even when both are untyped (empty signature slot).
                 stable_id = make_typed_stable_id(
                     "field", _jsts_without_function_type_names(field_type or ""),
+                    decorators=_jsts_member_decorators(node),
                     name=name,
                     qualified_name=_jsts_chain(node, source, name, lang),
                     file_stable_id=file_stable_id,
