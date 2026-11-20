@@ -33,6 +33,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Java anonymous classes are scoped by their field, variable and type.**
 - **JS/TS ids tell static members apart from instance members.**
 - **Swift ids hash argument labels and static versus instance members.**
 - **Swift local functions are scoped by their enclosing initializer or accessor.**
