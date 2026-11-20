@@ -39,7 +39,10 @@ patterns:
 
   # Destructured-import shape: ``import { createServer } from 'http'``
   # makes the function callable as bare ``createServer(...)``. UsageContext
-  # records this with ``context_name == "createServer"``.
+  # records this with ``context_name == "createServer"`` only when the file
+  # imports that name from http / https / http2: the bare name is also net's
+  # and tls's servers and many libraries' own factories
+  # (js_ts._NODE_HTTP_MODULES). An aliased import is not read (yet).
   - concept: route
     usage:
       kind: "^call$"

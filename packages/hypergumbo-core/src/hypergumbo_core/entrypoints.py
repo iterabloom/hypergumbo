@@ -115,9 +115,11 @@ Ranking Penalties (``rank_score`` only, applied before the boost):
 - Go ``main()`` under a ``cmd/`` directory preceded by 2+ path components:
   x 0.5, so plugin shims do not outrank the primary binary
 - Library-export demotion: x 0.1 for a LIBRARY_EXPORT whose OWN language has
-  a semantic entrypoint (route, command, main, controller, task, ...; ones in
-  utility/example files do not count), so a few Python helper scripts do not
-  bury a Lean library's exports. A vendored (tier >= 3) export is demoted in
+  a semantic entrypoint (route, command, main, controller, task, ...) in
+  PRODUCTION code: one in a test, utility / example or vendored file (any
+  ``path_rank_penalties`` names) does not count, so a few Python helper
+  scripts do not bury a Lean library's exports, and a library's test-tree
+  mains do not bury its API. One production entry is enough: no count. A vendored (tier >= 3) export is demoted in
   every language. A demoted export also skips the boost when it is vendored
   or sits on an infrastructure path (``paths.is_infrastructure_path``:
   telemetry/, metrics/, logging/, ...); an infrastructure-path export that
@@ -1595,6 +1597,40 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+def path_rank_penalties(sym: Symbol) -> list[float]:
+    """The ranking's factors for where a symbol's code lives, in order.
+
+    - x 0.1 test or test-support code: the BROAD ``paths.is_test_node``
+      heuristic (mocks/, fakes/, fixtures/, testdata/, benches/,
+      ``_test.<ext>``, ``spec_*``, test annotations), NOT the narrow
+      supply-chain role flag ``Symbol.is_test_file`` (spec §14: test *code*
+      only). The two are distinct-purpose predicates, not a coarse-vs-granular
+      pair (META-bifif): swapping onto ``sym.is_test_file`` would stop
+      deprioritizing mock / fixture / benchmark entrypoints. Re-evaluation
+      trigger: if ``supply_chain.is_test`` is broadened to that support-code
+      breadth, reconsider (guarded by
+      test_support_dir_entrypoint_penalized_via_broad_path_heuristic;
+      fundamental-concept audit KEEP verdict, WI-popok). x 0.1 because a
+      modest 0.5 left test mains high enough to dominate auto-slicing in
+      repos where most mains are tests (DMD).
+    - x 0.5 utility / example / docs files (``is_utility_file``):
+      demonstration code.
+    - x 0.3 vendored or derived code (supply-chain tier >= 3).
+
+    Empty for production code. Three readers: the entry list's rank_score,
+    the library-export demotion (only an entry with no factor says its
+    language hosts an application) and ``slice --entry auto``'s score.
+    """
+    factors: list[float] = []
+    if sym.path and is_test_node(sym.path, sym.meta):
+        factors.append(0.1)
+    if sym.path and is_utility_file(sym.path):
+        factors.append(0.5)
+    if sym.supply_chain_tier >= 3:
+        factors.append(0.3)
+    return factors
+
+
 # All members are language-construct symbol kinds (ADR-0027, WI-jukav).
 # Intentionally wider than ``ranking._CALLABLE_KINDS`` — connectivity-fallback
 # entrypoints can legitimately be constructors (e.g., a service object's
@@ -1978,38 +2014,12 @@ def detect_entrypoint_candidates(
         if sym is None:
             continue  # pragma: no cover - symbol should always exist
 
-        # Penalty for test files (90% reduction).
-        # Must be aggressive: in repos where most main() functions are in
-        # test files, a modest penalty (0.5) leaves test entrypoints at 0.40
-        # — high enough to dominate auto-slicing selections. 0.1 pushes
-        # them to 0.08, well below any production entrypoint.
-        #
-        # This deliberately uses the BROAD ``paths.is_test_file`` heuristic (the
-        # ranking notion of "test-OR-support" code: also mocks/, fakes/,
-        # fixtures/, testdata/, benches/, ``_test.<any-ext>``, ``spec_*`` …),
-        # NOT the narrow supply-chain role flag ``Symbol.is_test_file`` (which
-        # per spec §14 means "test *code*" only — examples/benches/fuzz carry
-        # other roles). The two are distinct-purpose predicates, not a
-        # coarse-vs-granular pair, so this is not a re-derivation to fold
-        # (META-bifif): swapping onto ``sym.is_test_file`` would silently stop
-        # deprioritizing mock/fixture/benchmark entrypoints and flood the entry
-        # list. Re-evaluation trigger: if ``supply_chain.is_test`` is ever
-        # broadened to cover that support-code breadth, reconsider
-        # consolidating (guarded by
-        # test_support_dir_entrypoint_penalized_via_broad_path_heuristic;
-        # fundamental-concept audit KEEP verdict, WI-popok).
-        if sym.path and is_test_node(sym.path, sym.meta):
-            ep.rank_score *= 0.1
-
-        # Penalty for utility/example/docs files (50% reduction)
-        # These are demonstration code, not production entrypoints
-        if sym.path and is_utility_file(sym.path):
-            ep.rank_score *= 0.5
-
-        # Penalty for vendor/external dependencies (70% reduction)
-        # Tier 3 = external deps, Tier 4 = derived/build artifacts
-        if sym.supply_chain_tier >= 3:
-            ep.rank_score *= 0.3
+        # Where the code lives: test x 0.1, utility / example / docs x 0.5,
+        # vendored or derived x 0.3 (``path_rank_penalties``, which says why
+        # each predicate is the one it is). Applied one factor at a time, in
+        # that order.
+        for factor in path_rank_penalties(sym):
+            ep.rank_score *= factor
 
         # WI-batit: demote Maven/Gradle build-wrapper scripts (mvnw/gradlew).
         # A checked-in wrapper is a tier-1 repo-root shell script, so none of
@@ -2115,12 +2125,17 @@ def detect_entrypoint_candidates(
             # rails, and a marker is a Class-B stand-in with language None
             # (WI-mupal); it still says the repo serves routes in that language.
             if sym and sym.host_language:
-                # Skip entrypoints from example/utility files — these are
-                # demonstration code, not real application entrypoints that
-                # should trigger library_export demotion. Otherwise example
-                # HTTP routes in a library's examples/ would demote its core
-                # library exports.
-                if sym.path and is_utility_file(sym.path):
+                # Only PRODUCTION code says the language hosts an
+                # application: an entry in a test, example / utility or
+                # vendored file (any the ranking penalizes,
+                # ``path_rank_penalties``) does not. Example routes in a
+                # library's examples/ would demote its core exports; so did
+                # the mains of a library's test tree (jedis: 13 test-tree
+                # mains, no production entry, 987 exports demoted;
+                # sqlalchemy the same) and a vendored main. No count
+                # threshold: an application with one production main
+                # (ripgrep: one binary beside 549 exports) is an application.
+                if path_rank_penalties(sym):
                     continue
                 langs_with_semantic.add(sym.host_language)
     for ep in unique_entrypoints:

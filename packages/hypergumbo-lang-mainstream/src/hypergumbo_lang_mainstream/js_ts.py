@@ -3054,10 +3054,16 @@ _HTTP_HANDLER_NAMES: frozenset[str] = frozenset({
     # Apollo Server v3 / v4 underlying HTTP-request entrypoints
     "runHttpQuery",
     "executeHTTPGraphQLRequest",
-    # Node.js HTTP server module (destructured-import shape:
-    # ``import { createServer } from 'http'`` then bare ``createServer(...)``)
-    "createServer",
 })
+
+# The Node modules whose ``createServer`` starts an HTTP server. A BARE
+# ``createServer(...)`` (destructured-import shape: ``import { createServer }
+# from 'http'``) counts only when the file imports the name from one of them:
+# the name alone also calls ``net`` / ``tls`` servers (TCP, TLS) and every
+# library's own factory. vite's ``import { createServer } from './server'``
+# in its CLI became an ``HTTP ALL /`` route on the file, which made
+# TypeScript an application language and demoted vite's whole exported API.
+_NODE_HTTP_MODULES: frozenset[str] = frozenset({"http", "https", "http2"})
 
 # Qualified forms for Node stdlib HTTP servers. Maps ``receiver.method`` →
 # context_name; the receiver may be ``http`` / ``https`` / ``http2`` (the
@@ -3081,8 +3087,14 @@ def _extract_http_handler_contexts(
 
     Detects module-level calls to functions like ``startStandaloneServer``
     (Apollo v4), ``runHttpQuery`` / ``executeHTTPGraphQLRequest`` (Apollo
-    v3/v4), the Node stdlib ``http.createServer`` family, and bare
-    ``createServer`` (destructured-import shape). Each emits a
+    v3/v4), the Node stdlib ``http.createServer`` family, and a bare
+    ``createServer`` (destructured-import shape) when the file imports it
+    from ``http`` / ``https`` / ``http2`` (``node:`` or not; ESM or CommonJS
+    destructuring). An ALIASED import (``createServer as createHttpServer``)
+    is not read: that would be new recall, and on vite it finds the dev
+    server's real HTTP server in ``server/ws.ts``, which makes TypeScript an
+    application language and demotes vite's exported API (owner decision
+    pending). Each emits a
     ``kind="call"`` UsageContext whose ``context_name`` matches the
     source-text callee form. ``graphql.yaml`` and ``node-http.yaml`` then
     route these UCs through ``match_usage_patterns`` to assign route
@@ -3090,6 +3102,16 @@ def _extract_http_handler_contexts(
     """
     contexts: list[UsageContext] = []
     seen_names: set[str] = set()  # dedupe repeated calls in one file
+
+    # Whether a bare ``createServer`` here is Node's: imported under that
+    # name from a Node HTTP module. Read only when the file mentions it.
+    node_create_server = False
+    if b"createServer" in source:
+        named_imports, originals = _extract_named_imports(tree, source)
+        node_create_server = (
+            originals.get("createServer") == "createServer"
+            and named_imports["createServer"].removeprefix("node:") in _NODE_HTTP_MODULES
+        )
 
     for node in iter_tree(tree.root_node):
         if node.type != "call_expression":
@@ -3104,6 +3126,8 @@ def _extract_http_handler_contexts(
         if callee.type == "identifier":
             name = _node_text(callee, source)
             if name in _HTTP_HANDLER_NAMES:
+                context_name = name
+            elif name == "createServer" and node_create_server:
                 context_name = name
         elif callee.type == "member_expression":
             qualified = _node_text(callee, source)
