@@ -186,6 +186,12 @@ constant or nested type) is implicitly public and is exported without the
 keyword unless it is declared ``private`` (JLS 9.4-9.6), and an enum
 constant (which has no access modifier of its own) is exported when its enum
 is.
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's single-type imports and ``java.lang``
+(``_java_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -224,6 +230,10 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     node_text as _node_text,
     visibility_from_modifiers,
+    FileTypeNames,
+    canonical_type_names,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
@@ -235,6 +245,7 @@ from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     STD_STREAM_TARGET_KIND,
     bare_system_is_java_lang,
     is_std_output_receiver,
+    java_lang_default_spellings,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -1620,14 +1631,15 @@ def _java_callable_label(node: "tree_sitter.Node", source: bytes) -> Optional[st
 
 def _java_anonymous_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """An anonymous class's label in the scope chain: ``new`` and the type it
-    instantiates as written, canonically spaced (``new Builder<String>``);
+    instantiates as written, each name through the file's imports
+    (:func:`_java_type_names`), canonically spaced (``new Builder<String>``);
     ``None`` for an ``object_creation_expression`` without a body."""
     if not any(c.type == "class_body" for c in node.children):
         return None
     type_node = node.child_by_field_name("type")
     if type_node is None:  # pragma: no cover - a creation always names its type
         return None
-    return "new " + layout_free(_node_text(type_node, source))
+    return "new " + layout_free(canonical_type_names(_node_text(type_node, source)))
 
 
 def _java_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -1896,7 +1908,8 @@ def _java_field_symbol(
     Class-scoped canonical identity (name + qualified_name + file fold):
     same-named fields in different classes/files stay distinct even when the
     type slot is empty. ``decorators`` is copied, because ``@Foo int a, b;``
-    must not alias one list across both fields.
+    must not alias one list across both fields. The type is hashed as
+    written, each name through the file's imports (:func:`_java_type_names`).
     """
     full_name = f"{'.'.join(ancestors)}.{field_name}"
     span = Span(
@@ -1917,7 +1930,7 @@ def _java_field_symbol(
         origin_run_id=run.execution_id,
         meta={"decorators": list(decorators)} if decorators else None,
         stable_id=make_typed_stable_id(
-            "field", field_type or "",
+            "field", canonical_type_names(field_type or ""),
             visibility_from_modifiers(modifiers),
             name=field_name,
             qualified_name=(
@@ -1934,7 +1947,48 @@ def _java_field_symbol(
     )
 
 
+#: The node types that declare a type name in a Java file.
+_JAVA_TYPE_DECLARATION_NODES: frozenset[str] = _JAVA_NAMED_TYPE_NODES | {
+    "annotation_type_declaration",
+}
+
+
+def _java_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-palus, scheme v17).
+
+    Bound: each single-type import (``import java.util.List;`` binds ``List``,
+    :func:`_extract_imports`). A type-import-on-demand (``import java.util.*;``)
+    binds nothing, and neither does a static import (it imports members).
+    Defaults: ``java.lang`` (JLS 7.3), through the closed list
+    :data:`jvm_implicit_imports.JAVA_LANG_TYPES`, so ``java.lang.String`` is
+    hashed as ``String``. Declared: every type the file declares, which keeps
+    its name. :func:`_extract_symbols` hashes the file's types through this.
+    """
+    declared = {
+        name for node in iter_tree(tree.root_node)
+        if node.type in _JAVA_TYPE_DECLARATION_NODES
+        and (name := _get_class_name(node, source))
+    }
+    return file_type_names(
+        _extract_imports(tree, source).items(), declared=declared,
+        defaults=java_lang_default_spellings(),
+    )
+
+
 def _extract_symbols(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    run: AnalysisRun,
+    repo_root: Optional[Path] = None,
+) -> list[Symbol]:
+    """Extract symbols from a parsed Java tree (pass 1), each hashed type
+    written through the file's imports (:func:`_java_type_names`)."""
+    with resolving_type_names(_java_type_names(tree, source)):
+        return _extract_file_symbols(tree, source, file_path, run, repo_root)
+
+
+def _extract_file_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: Path,

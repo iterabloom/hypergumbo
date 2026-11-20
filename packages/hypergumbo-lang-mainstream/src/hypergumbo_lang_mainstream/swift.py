@@ -178,6 +178,12 @@ declaration is exported only when its modifier list contains ``public`` or
 modifier list of its own: enum cases, protocol requirements, and the
 route-marker symbols added in ``post_process``. A type recovered from an
 ERROR node carries no modifiers and leaves ``is_exported`` unset (``None``).
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's kind imports (``import struct Foundation.URL``)
+(``_swift_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -214,6 +220,10 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     visibility_from_modifiers,
     declares_async,
+    FileTypeNames,
+    canonical_type_names,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.overload_arity import (
     OverloadChoice, choose_overload, parameter_entry, scoped_table_stable_id,
@@ -331,6 +341,36 @@ def _extract_import_hints(
                 hints[module_name] = module_name
 
     return hints
+
+
+#: The import keywords that name a type (``import struct Foundation.URL``).
+_SWIFT_TYPE_IMPORT_KEYWORDS = frozenset({"struct", "class", "enum", "protocol", "typealias"})
+
+
+def _swift_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-palus, scheme v17).
+
+    Bound: a kind import of one type, ``import struct Foundation.URL``, binds
+    ``URL`` to ``Foundation.URL``. A module import (``import Foundation``) binds
+    no name the file writes: every public name of the module comes in, unlisted,
+    so ``Date`` and ``Foundation.Date`` stay apart (a type is hashed as
+    written, WI-ririg), and so do ``Int`` and ``Swift.Int``. Declared: every
+    class, struct, enum, actor, protocol and typealias the file declares,
+    which keeps its name.
+    """
+    bindings: list[tuple[str, str]] = []
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type == "import_declaration":
+            path = find_child_by_type(node, "identifier")
+            if path is not None and any(c.type in _SWIFT_TYPE_IMPORT_KEYWORDS for c in node.children):
+                full = node_text(path, source)
+                bindings.append((full.rsplit(".", 1)[-1], full))
+        elif node.type in ("class_declaration", "protocol_declaration", "typealias_declaration"):
+            name = node.child_by_field_name("name")
+            if name is not None and name.type == "type_identifier":
+                declared.add(node_text(name, source))
+    return file_type_names(bindings, declared=declared)
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
@@ -677,7 +717,8 @@ def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     blocks of one body, still share a chain (split by occurrence order).
 
     An extension with a ``where`` clause is labelled by the extended type's
-    name followed by the clause (:func:`_swift_extension_clause`):
+    name followed by the clause (:func:`_swift_extension_clause`), each name
+    written through the file's imports (:func:`_swift_type_names`):
     ``extension Array where Element: P`` and the same extension with
     ``Element: Q`` may each declare an ``f()``, and the two are different
     functions, which a name-only label made tie (WI-lonoh). An extension
@@ -699,8 +740,11 @@ def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
         if n.type not in _SWIFT_ID_TYPE_SCOPE_NODES:
             return None
         name_node = n.child_by_field_name("name")
-        name = node_text(name_node, source) if name_node is not None else None
-        clause = _swift_extension_clause(n, source)
+        name = (
+            canonical_type_names(node_text(name_node, source))
+            if name_node is not None else None
+        )
+        clause = canonical_type_names(_swift_extension_clause(n, source) or "")
         return f"{name} {clause}" if name is not None and clause else name
     # ancestor_labels' walk, with each level's #if branches (innermost
     # last) placed after the label of the node that holds the directives.
@@ -1370,8 +1414,10 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     (WI-ririg owner ruling: the hash is spelling-dependent). Until the
     WI-ririg commit the head of a qualified type was cut to its last segment
     (``strip_fqn_prefix``), so two overloads on two same-named nested types
-    tied; v15 also cut a metatype ``Int.Type`` to ``Type``. Declared type
-    parameters are written as their position. The decorations around the
+    tied; v15 also cut a metatype ``Int.Type`` to ``Type``. A name the file
+    imports by kind (``import struct Foundation.URL``) is written as the path it
+    names (:func:`_swift_type_names`). Declared type parameters are written as
+    their position. The decorations around the
     core -- prefixes matched by ``_SWIFT_TYPE_PREFIX_RE``, a variadic's
     ``...``, and the members of a top-level ``A & B`` -- are taken off and
     written back with single spaces (``A&B`` -> ``A & B``), as they were when
@@ -1384,7 +1430,8 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
         written = text.strip()
         return normalize_generic_params(written, type_params) if type_params else written
 
-    rest = _swift_without_function_type_names(raw_type.strip())
+    rest = canonical_type_names(
+        _swift_without_function_type_names(raw_type.strip()), skip=type_params or ())
     prefixes: list[str] = []
     while (match := _SWIFT_TYPE_PREFIX_RE.match(rest)) is not None:
         prefixes.append(" ".join(match.group(0).split()))
@@ -1547,6 +1594,18 @@ def _swift_is_operator(node: "tree_sitter.Node") -> bool:
 
 
 def _extract_symbols_from_file(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
+) -> FileAnalysis:
+    """Extract symbols from a single Swift file, each type a stable id hashes
+    written through the file's imports (:func:`_swift_type_names`)."""
+    with resolving_type_names(_swift_type_names(tree, source)):
+        return _extract_parsed_symbols(tree, source, file_path, run_id)
+
+
+def _extract_parsed_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
@@ -1905,7 +1964,8 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     stable_id=make_typed_stable_id(
                         kind,
-                        _swift_without_function_type_names(signature or "", declaration=is_function),
+                        canonical_type_names(_swift_without_function_type_names(
+                            signature or "", declaration=is_function)),
                         visibility_from_modifiers(modifiers),
                         decorators=_swift_member_decorators(node),
                         name=member_name,
@@ -1963,7 +2023,8 @@ def _extract_symbols_from_file(
                         # The ADR-0035 producer formula (WI-tusad).
                         stable_id=make_typed_stable_id(
                             "property",
-                            _swift_without_function_type_names(signature or "", declaration=True),
+                            canonical_type_names(_swift_without_function_type_names(
+                                signature or "", declaration=True)),
                             visibility_from_modifiers(modifiers),
                             decorators=_swift_member_decorators(node),
                             name=prop_name,
@@ -2044,7 +2105,7 @@ def _extract_symbols_from_file(
                         else None
                     ),
                     stable_id=make_typed_stable_id(
-                        kind, _swift_without_function_type_names(prop_type or ""),
+                        kind, canonical_type_names(_swift_without_function_type_names(prop_type or "")),
                         visibility_from_modifiers(modifiers),
                         decorators=_swift_member_decorators(node),
                         name=prop_name,
@@ -2093,7 +2154,8 @@ def _extract_symbols_from_file(
                 stable_id=make_typed_stable_id(
                     "subscript",
                     _swift_callable_hashed(node, source)[0]
-                    or _swift_without_function_type_names(signature or "", declaration=True),
+                    or canonical_type_names(
+                        _swift_without_function_type_names(signature or "", declaration=True)),
                     visibility_from_modifiers(modifiers),
                     decorators=_swift_member_decorators(node),
                     name=sub_label,

@@ -76,7 +76,9 @@ from hypergumbo_lang_mainstream.py import (
     _compute_stable_id,
     _python_visibility_modifiers,
     python_callable_stable_id,
+    python_type_names,
 )
+from hypergumbo_core.analyze.base import resolving_type_names
 
 PASS_ID = make_pass_id("jupyter")
 
@@ -245,10 +247,21 @@ def _analyze_notebook_file(
             current = parents.get(id(current))
         return chain[::-1]
 
+    # WI-palus: each annotation a stable id hashes is written through the
+    # notebook's imports, as py.py writes a module's.
+    type_names = python_type_names(tree)
+
     def function_symbol(
         node: ast.FunctionDef | ast.AsyncFunctionDef, name: str,
     ) -> Symbol:
         end_line = node.end_lineno or node.lineno
+        with resolving_type_names(type_names):
+            stable_id = python_callable_stable_id(
+                node, "function", file_stable_id,
+                _python_visibility_modifiers(node.name),
+                name=node.name,
+                qualified_name=".".join(scope_chain(node) + [node.name]),
+            )
         return Symbol(
             id=_make_symbol_id(nb_path_str, node.lineno, end_line, name, "function"),
             name=name,
@@ -264,12 +277,7 @@ def _analyze_notebook_file(
             origin=PASS_ID,
             origin_run_id="",
             # WI-tusad: the Python producer's formula, on the notebook file.
-            stable_id=python_callable_stable_id(
-                node, "function", file_stable_id,
-                _python_visibility_modifiers(node.name),
-                name=node.name,
-                qualified_name=".".join(scope_chain(node) + [node.name]),
-            ),
+            stable_id=stable_id,
             # INV-loguk: Python-AST CC/LOC over the function node.
             cyclomatic_complexity=_compute_cyclomatic_complexity(node),
             line_span=_compute_line_span(node),

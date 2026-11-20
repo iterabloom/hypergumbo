@@ -176,6 +176,12 @@ Population of ``is_exported`` follows Kotlin's default-public rule: a
 declaration is exported unless its modifier list contains ``private``,
 ``internal``, or ``protected``. Extension functions are unconditionally
 treated as exported (see the ``receiver_type`` branch).
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's imports (an alias as what it names) and the default imports
+(``_kotlin_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 from __future__ import annotations
 
@@ -219,6 +225,10 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
     visibility_from_modifiers,
     declares_async,
+    FileTypeNames,
+    canonical_type_names,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
@@ -233,6 +243,7 @@ from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     is_known_library_method,
     is_std_output_receiver,
     java_lang_system_aliases,
+    kotlin_default_spellings,
     kotlin_import_path,
     static_owner_module,
 )
@@ -935,7 +946,8 @@ def normalize_kotlin_signature(
     ``receiver`` is an extension function's receiver type, written in front
     as Kotlin writes a receiver function type (``String.()Int``), FQN prefix
     stripped like a parameter type. A receiver-less text starts with ``(``,
-    so the two cannot meet.
+    so the two cannot meet. Every type's other names are written through the
+    file's imports (``normalize_type``, :func:`_kotlin_type_names`).
 
     Every type keeps a nested type's enclosing types (``keep_type_path``:
     a receiver ``Map.Entry<K, V>`` and ``Other.Entry<K, V>`` hash apart,
@@ -945,10 +957,9 @@ def normalize_kotlin_signature(
     """
     from hypergumbo_core.analyze.base import (
         find_matching_paren,
-        normalize_generic_params,
         normalize_signature_names_first,
+        normalize_type,
         split_params_top_level,
-        strip_fqn_prefix,
     )
     if signature is not None:
         signature = _kt_without_function_type_names(signature, declaration=True)
@@ -972,10 +983,9 @@ def normalize_kotlin_signature(
         )
         norm = f"({','.join(types)}){(tail or '()')[2:]}"
     if receiver:
-        written = strip_fqn_prefix(
-            _kt_without_function_type_names(receiver.strip()), keep_type_path=True)
-        if type_params:
-            written = normalize_generic_params(written, type_params)
+        written = normalize_type(
+            _kt_without_function_type_names(receiver.strip()), type_params,
+            keep_type_path=True)
         norm = f"{written}.{norm}"
     return norm
 
@@ -1272,6 +1282,60 @@ def _extract_imports(
     return imports
 
 
+#: The node types that declare a type name in a Kotlin file.
+_KT_TYPE_DECLARATION_NODES = frozenset({"class_declaration", "object_declaration", "type_alias"})
+
+
+def _kotlin_import_bindings(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> list[tuple[str, str]]:
+    """What each import binds: ``import a.b.Foo`` binds ``Foo``, ``import
+    a.b.Foo as Bar`` binds ``Bar``, both to ``a.b.Foo``; ``import a.b.*``
+    binds nothing. (:func:`_extract_imports`, the call resolver's map, reads
+    an alias's original name and a star import's package; neither is what
+    the file's text binds.)"""
+    bindings: list[tuple[str, str]] = []
+    for node in iter_tree(tree.root_node):
+        if node.type != "import" or any(c.type == "*" for c in node.children):
+            continue
+        path_node = find_child_by_type(node, "qualified_identifier")
+        if path_node is None:
+            path_node = find_child_by_type(node, "identifier")
+        if path_node is None:  # pragma: no cover - an import always names a path
+            continue
+        path = node_text(path_node, source)
+        alias = next((
+            c for i, c in enumerate(node.children)
+            if c.type == "identifier" and i > 0 and node.children[i - 1].type == "as"
+        ), None)
+        bound = node_text(alias, source) if alias is not None else path.rsplit(".", 1)[-1]
+        bindings.append((bound, path))
+    return bindings
+
+
+def _kotlin_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-palus, scheme v17).
+
+    Bound: :func:`_kotlin_import_bindings`. Defaults: kotlin's default imports
+    (:func:`jvm_implicit_imports.kotlin_default_spellings`), so
+    ``kotlin.String`` is hashed as ``String``. Declared: every class, object,
+    interface and typealias the file declares, which keeps its name.
+    """
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _KT_TYPE_DECLARATION_NODES:
+            name = next(
+                (c for c in node.children if c.type in ("identifier", "type_identifier")),
+                None,
+            )
+            if name is not None:
+                declared.add(node_text(name, source))
+    return file_type_names(
+        _kotlin_import_bindings(tree, source), declared=declared,
+        defaults=kotlin_default_spellings(),
+    )
+
+
 def _extract_delegation_specifiers(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1374,7 +1438,22 @@ def _extract_symbols_from_file(
         return FileAnalysis()
     # WI-bulaz: a parse that needed error recovery is recorded, not silent.
     record_partial_parse(run, str(file_path), tree)
+    # WI-palus: every type a stable id hashes is written through the imports.
+    with resolving_type_names(_kotlin_type_names(tree, source)):
+        return _extract_parsed_symbols(
+            file_path, source, tree, run, file_stable_id, rel_path=rel_path)
 
+
+def _extract_parsed_symbols(
+    file_path: Path,
+    source: bytes,
+    tree: "tree_sitter.Tree",
+    run: AnalysisRun,
+    file_stable_id: str,
+    *,
+    rel_path: str,
+) -> FileAnalysis:
+    """The symbols of one parsed Kotlin file (:func:`_extract_symbols_from_file`)."""
     analysis = FileAnalysis()
     analysis.imports = _extract_imports(tree, source)
     # Extract package once for qualified_name population (ADR-0032).
@@ -1699,8 +1778,9 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 # Every type node kind, as written (a field's hashed type is
-                # not normalized); an extension property's receiver goes in
-                # front of it, joined by ``.`` as the declaration writes it.
+                # not normalized), each name through the file's imports; an
+                # extension property's receiver goes in front of it, joined by
+                # ``.`` as the declaration writes it.
                 prop_type = _kt_declared_type_text(var_decl, source)
                 prop_receiver = _kt_receiver_type_node(node)
                 hashed_type = _kt_without_function_type_names(prop_type or "")
@@ -1709,6 +1789,7 @@ def _extract_symbols_from_file(
                         f"{_kt_without_function_type_names(node_text(prop_receiver, source))}"
                         f".{hashed_type}"
                     )
+                hashed_type = canonical_type_names(hashed_type)
                 prop_modifiers = _extract_modifiers(node)
                 prop_annotations = _extract_annotations(node, source)
                 prop_meta: dict[str, object] | None = None

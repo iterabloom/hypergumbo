@@ -140,6 +140,21 @@ def compute_rust_stable_id_from_source(
     # WI-bokab (v7): the file anchor, byte-identical to rust.py's for the same path.
     file_stable_id = make_file_stable_id("rust", normalize_path(rel_path)) if rel_path else ""
 
+    from hypergumbo_core.analyze.base import resolving_type_names
+    from hypergumbo_lang_mainstream.rust import _rust_type_names
+
+    # WI-palus: rust.py hashes each type through the file's ``use``
+    # declarations; so does this, or parity is lost for every imported type.
+    with resolving_type_names(_rust_type_names(tree, source)):
+        return _stable_id_at(tree, source, start_line, end_line, file_stable_id)
+
+
+def _stable_id_at(
+    tree: "tree_sitter.Tree", source: bytes, start_line: int, end_line: int,
+    file_stable_id: str,
+) -> Optional[StableId]:
+    """The stable_id rust.py assigns the function spanning the given lines
+    (:func:`compute_rust_stable_id_from_source`), or ``None``."""
     from hypergumbo_core.analyze.base import iter_tree
 
     for node in iter_tree(tree.root_node):

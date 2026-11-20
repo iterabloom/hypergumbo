@@ -259,6 +259,12 @@ Why This Design
   ``__all__``, when present, overrides the leading-underscore rule there
 - Import resolution handles both absolute and relative imports
 - Rich metadata feeds YAML-driven framework pattern enrichment (ADR-3aaa)
+
+IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
+stable id hashes is written through the file's ``from ... import`` and ``import ... as`` bindings
+(``python_type_names``, read once per file and set with ``resolving_type_names``), so an
+imported and a qualified spelling of one type hash alike; a name nothing
+binds, or the file declares, is hashed as written.
 """
 import ast
 import builtins
@@ -282,6 +288,9 @@ from hypergumbo_core.analyze.base import (
     make_route_symbol,
     make_typed_stable_id,
     visibility_from_modifiers,
+    FileTypeNames,
+    file_type_names,
+    resolving_type_names,
 )
 from hypergumbo_core.analyze.registry import (
     SPAN_ROLE_ITEM,
@@ -2480,6 +2489,47 @@ def _compute_stable_id(
     )
 
 
+def _py_import_bindings(tree: ast.AST) -> list[tuple[str, str]]:
+    """What each import binds, for a typed stable id (WI-palus): ``from a.b
+    import C`` binds ``C`` to ``a.b.C``, ``from . import m`` binds ``m`` to
+    ``.m`` (a relative import keeps its dots: the file's own module path is
+    not read), ``import a.b as c`` binds ``c`` to ``a.b``, and ``import a.b``
+    binds ``a`` to itself; ``from a import *`` binds nothing. Every import in
+    the file is read, at any depth (``if TYPE_CHECKING:``, a function body)."""
+    bindings: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = "." * node.level + (node.module or "")
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                path = f"{module}.{alias.name}" if node.module else f"{module}{alias.name}"
+                bindings.append((alias.asname or alias.name, path))
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    bindings.append((alias.asname, alias.name))
+                else:
+                    top = alias.name.split(".", 1)[0]
+                    bindings.append((top, top))
+    return bindings
+
+
+def python_type_names(tree: ast.AST) -> FileTypeNames:
+    """What the file's imports make a name in an annotation mean (WI-palus,
+    scheme v17): ``Optional[List[int]]`` under ``from typing import List``
+    and ``Optional[typing.List[int]]`` hash alike, as ``typing.List``.
+
+    Bound: :func:`_py_import_bindings`. Declared: every class the file
+    declares, which keeps its name (a type alias is an assignment, not read). No defaults: a builtin
+    (``int``, ``list``) is not written ``builtins.int``, so there is no second
+    spelling to fold. A string annotation (``"Foo"``) is a string and is left
+    as written. The head of each annotation keeps the name it is cut to
+    (``normalize_type``)."""
+    declared = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    return file_type_names(_py_import_bindings(tree), declared=declared)
+
+
 def python_callable_stable_id(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     kind: str,
@@ -3587,7 +3637,21 @@ def _extract_file_analysis(
         # ast.parse() performs no I/O, so broadening here only newly catches
         # read errors, not anything from parsing.
         return None, f"{type(e).__name__}: {e}"
+    # WI-palus: every annotation a stable id hashes is written through the
+    # file's imports.
+    with resolving_type_names(python_type_names(tree)):
+        return _analyze_parsed_file(py_file, repo_root, source_roots, source, tree), None
 
+
+def _analyze_parsed_file(
+    py_file: Path,
+    repo_root: Path | None,
+    source_roots: list[Path] | None,
+    source: str,
+    tree: ast.Module,
+) -> FileAnalysis:
+    """The symbols and imports of one parsed Python file
+    (:func:`_extract_file_analysis`)."""
     symbols = []
     symbol_by_name: dict[str, Symbol] = {}
 
@@ -4437,7 +4501,7 @@ def _extract_file_analysis(
             (ctx, parts, marker_by_ctx_id.get(id(ctx)))
             for ctx, parts in deferred_refs
         ],
-    ), None
+    )
 
 
 def _collect_call_func_attr_ids(block_nodes: list[ast.AST]) -> set[int]:

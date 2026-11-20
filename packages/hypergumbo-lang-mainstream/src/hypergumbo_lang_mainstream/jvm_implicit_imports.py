@@ -165,6 +165,342 @@ SCALA_SHADOWED_JAVA_LANG: Final[frozenset[str]] = frozenset({
 })
 
 
+#: kotlin's default imports (kotlinlang.org, "Packages and imports", Default
+#: imports: ``kotlin.*``, ``kotlin.annotation.*``, ``kotlin.collections.*``,
+#: ``kotlin.comparisons.*``, ``kotlin.io.*``, ``kotlin.ranges.*``,
+#: ``kotlin.sequences.*``, ``kotlin.text.*``, and on the JVM ``java.lang.*``
+#: and ``kotlin.jvm.*``), each with the public classes, interfaces, objects and
+#: typealiases its package declares: read from the kotlin stdlib sources
+#: (``libraries/stdlib`` at 3dc21510: ``src``, ``jvm/src``, ``jvm/builtins``,
+#: ``jvm/runtime``; ``internal`` and ``private`` declarations left out) and
+#: checked against kotlin-stdlib 1.9.0's class files and ``.kotlin_builtins``.
+#: ``kotlin.comparisons`` declares no public type. Experimental and opt-in
+#: marker annotations are left out. A name in two of these packages is one type
+#: (``kotlin.Throws`` is a typealias of ``kotlin.jvm.Throws``), and each java.lang
+#: name a kotlin package also declares is either in
+#: :data:`KOTLIN_SHADOWED_JAVA_LANG` or a JVM typealias of the java.lang type
+#: (``kotlin.Exception = java.lang.Exception``, stdlib ``jvm/runtime``).
+KOTLIN_DEFAULT_IMPORT_TYPES: Final[dict[str, frozenset[str]]] = {
+    "kotlin": frozenset({
+        "Annotation", "Any", "ArithmeticException", "Array", "AssertionError",
+        "AutoCloseable", "Boolean", "BooleanArray", "Byte", "ByteArray", "Char",
+        "CharArray", "CharSequence", "ClassCastException", "Comparable",
+        "Comparator", "ConcurrentModificationException", "DeepRecursiveFunction",
+        "DeepRecursiveScope", "Deprecated", "DeprecationLevel", "Double",
+        "DoubleArray", "DslMarker", "Enum", "Error", "Exception",
+        "ExtensionFunctionType", "Float", "FloatArray", "Function",
+        "IllegalArgumentException", "IllegalStateException",
+        "IndexOutOfBoundsException", "Int", "IntArray",
+        "KotlinNullPointerException", "KotlinVersion", "Lazy",
+        "LazyThreadSafetyMode", "Long", "LongArray", "Metadata",
+        "NoSuchElementException", "NoWhenBranchMatchedException",
+        "NotImplementedError", "Nothing", "NullPointerException", "Number",
+        "NumberFormatException", "OptIn", "Pair", "ParameterName", "PublishedApi",
+        "ReplaceWith", "RequiresOptIn", "Result", "RuntimeException", "Short",
+        "ShortArray", "SinceKotlin", "String", "Suppress", "Throwable", "Throws",
+        "Triple", "TypeCastException", "UByte", "UByteArray", "UInt", "UIntArray",
+        "ULong", "ULongArray", "UShort", "UShortArray",
+        "UninitializedPropertyAccessException", "Unit", "UnsafeVariance",
+        "UnsupportedOperationException",
+    }),
+    "kotlin.annotation": frozenset({
+        "AnnotationRetention", "AnnotationTarget", "MustBeDocumented",
+        "Repeatable", "Retention", "Target",
+    }),
+    "kotlin.collections": frozenset({
+        "AbstractCollection", "AbstractIterator", "AbstractList", "AbstractMap",
+        "AbstractMutableCollection", "AbstractMutableList", "AbstractMutableMap",
+        "AbstractMutableSet", "AbstractSet", "ArrayDeque", "ArrayList",
+        "BooleanIterator", "ByteIterator", "CharIterator", "Collection",
+        "DoubleIterator", "FloatIterator", "Grouping", "HashMap", "HashSet",
+        "IndexedValue", "IntIterator", "Iterable", "Iterator", "LinkedHashMap",
+        "LinkedHashSet", "List", "ListIterator", "LongIterator", "Map",
+        "MutableCollection", "MutableIterable", "MutableIterator", "MutableList",
+        "MutableListIterator", "MutableMap", "MutableSet", "RandomAccess", "Set",
+        "ShortIterator",
+    }),
+    "kotlin.io": frozenset({
+        "AccessDeniedException", "FileAlreadyExistsException",
+        "FileSystemException", "FileTreeWalk", "FileWalkDirection",
+        "NoSuchFileException", "OnErrorAction",
+    }),
+    "kotlin.ranges": frozenset({
+        "CharProgression", "CharRange", "ClosedFloatingPointRange", "ClosedRange",
+        "IntProgression", "IntRange", "LongProgression", "LongRange",
+        "OpenEndRange", "UIntProgression", "UIntRange", "ULongProgression",
+        "ULongRange",
+    }),
+    "kotlin.sequences": frozenset({"Sequence", "SequenceScope"}),
+    "kotlin.text": frozenset({
+        "Appendable", "CharCategory", "CharDirectionality",
+        "CharacterCodingException", "Charsets", "HexFormat", "MatchGroup",
+        "MatchGroupCollection", "MatchNamedGroupCollection", "MatchResult",
+        "Regex", "RegexOption", "StringBuilder", "Typography",
+    }),
+    "kotlin.jvm": frozenset({
+        "JvmField", "JvmInline", "JvmMultifileClass", "JvmName", "JvmOverloads",
+        "JvmRecord", "JvmSerializableLambda", "JvmStatic", "JvmSuppressWildcards",
+        "JvmSynthetic", "JvmWildcard", "KotlinReflectionNotSupportedError",
+        "PurelyImplements", "Strictfp", "Synchronized", "Throws", "Transient",
+        "Volatile",
+    }),
+}
+
+#: The types scala imports into every file besides ``java.lang`` (SLS 2,
+#: "Identifiers, Names and Scopes": ``java.lang._``, then ``scala._``, then
+#: ``scala.Predef._``), read from the scala 2.13 library sources
+#: (``src/library/scala`` at 71440b9): the classes, traits and objects
+#: ``package scala`` declares, the four the compiler adds (SLS 12.1: ``Any``,
+#: ``AnyRef``, ``Nothing``, ``Null``, and ``Singleton``), and the type
+#: aliases of the ``scala`` package object and of ``Predef``.
+SCALA_PACKAGE_TYPES: Final[frozenset[str]] = frozenset({
+    "Any", "AnyRef", "AnyVal", "App", "Array", "Boolean", "Byte", "Char",
+    "Console", "DelayedInit", "Double", "DummyImplicit", "Dynamic",
+    "Enumeration", "Equals", "Float", "Function", "Int", "Long", "MatchError",
+    "None", "NotImplementedError", "Nothing", "Null", "Option",
+    "PartialFunction", "Predef", "Product", "Proxy", "SerialVersionUID",
+    "Short", "Singleton", "Some", "Specializable", "StringContext", "Symbol",
+    "UninitializedError", "UninitializedFieldError", "Unit", "ValueOf",
+    *(f"Function{n}" for n in range(23)),
+    *(f"Product{n}" for n in range(1, 23)),
+    *(f"Tuple{n}" for n in range(1, 23)),
+})
+
+#: Type aliases scala imports into every file -> the type each one names,
+#: where that type is the same in every scala 2.12, 2.13 and 3 library: the
+#: ``scala`` package object's (``type List[+A] = scala.collection.immutable.List[A]``)
+#: and ``Predef``'s (``type String = java.lang.String``). Both spellings are
+#: one type, so both hash as the alias's name. Left out: an alias whose
+#: target moved between library versions (``Seq`` and ``IndexedSeq`` name
+#: ``scala.collection.Seq`` in 2.12 and ``scala.collection.immutable.Seq`` in
+#: 2.13; ``Traversable`` and ``TraversableOnce`` were traits before 2.13) and
+#: ``Predef.Function`` (the alias of ``Function1``, itself a default name); their
+#: ``scala.``-qualified spelling still maps (:data:`SCALA_ALIAS_NAMES`).
+SCALA_ALIAS_TARGETS: Final[dict[str, str]] = {
+    "Cloneable": "java.lang.Cloneable",
+    "Serializable": "java.io.Serializable",
+    "Throwable": "java.lang.Throwable",
+    "Exception": "java.lang.Exception",
+    "Error": "java.lang.Error",
+    "RuntimeException": "java.lang.RuntimeException",
+    "NullPointerException": "java.lang.NullPointerException",
+    "ClassCastException": "java.lang.ClassCastException",
+    "IndexOutOfBoundsException": "java.lang.IndexOutOfBoundsException",
+    "ArrayIndexOutOfBoundsException": "java.lang.ArrayIndexOutOfBoundsException",
+    "StringIndexOutOfBoundsException": "java.lang.StringIndexOutOfBoundsException",
+    "UnsupportedOperationException": "java.lang.UnsupportedOperationException",
+    "IllegalArgumentException": "java.lang.IllegalArgumentException",
+    "NoSuchElementException": "java.util.NoSuchElementException",
+    "NumberFormatException": "java.lang.NumberFormatException",
+    "AbstractMethodError": "java.lang.AbstractMethodError",
+    "InterruptedException": "java.lang.InterruptedException",
+    "IterableOnce": "scala.collection.IterableOnce",
+    "Iterable": "scala.collection.Iterable",
+    "Iterator": "scala.collection.Iterator",
+    "BufferedIterator": "scala.collection.BufferedIterator",
+    "List": "scala.collection.immutable.List",
+    "::": "scala.collection.immutable.::",
+    "Stream": "scala.collection.immutable.Stream",
+    "LazyList": "scala.collection.immutable.LazyList",
+    "Vector": "scala.collection.immutable.Vector",
+    "StringBuilder": "scala.collection.mutable.StringBuilder",
+    "Range": "scala.collection.immutable.Range",
+    "BigDecimal": "scala.math.BigDecimal",
+    "BigInt": "scala.math.BigInt",
+    "Equiv": "scala.math.Equiv",
+    "Fractional": "scala.math.Fractional",
+    "Integral": "scala.math.Integral",
+    "Numeric": "scala.math.Numeric",
+    "Ordered": "scala.math.Ordered",
+    "Ordering": "scala.math.Ordering",
+    "PartialOrdering": "scala.math.PartialOrdering",
+    "PartiallyOrdered": "scala.math.PartiallyOrdered",
+    "Either": "scala.util.Either",
+    "Left": "scala.util.Left",
+    "Right": "scala.util.Right",
+    # Predef
+    "String": "java.lang.String",
+    "Class": "java.lang.Class",
+    "Map": "scala.collection.immutable.Map",
+    "Set": "scala.collection.immutable.Set",
+    "OptManifest": "scala.reflect.OptManifest",
+    "Manifest": "scala.reflect.Manifest",
+}
+
+#: The alias names whose target is version-dependent: only their ``scala.`` /
+#: ``Predef.`` spelling maps (see :data:`SCALA_ALIAS_TARGETS`).
+SCALA_ALIAS_NAMES: Final[frozenset[str]] = frozenset({
+    "Seq", "IndexedSeq", "Traversable", "TraversableOnce",
+})
+
+#: The ``Predef`` aliases (the rest are the ``scala`` package object's).
+_SCALA_PREDEF_ALIASES: Final[frozenset[str]] = frozenset({
+    "String", "Class", "Map", "Set", "OptManifest", "Manifest",
+})
+
+#: java.lang names a scala default shadows WITH ANOTHER TYPE, for a typed id:
+#: :data:`SCALA_SHADOWED_JAVA_LANG` and ``StringBuilder`` (the ``scala``
+#: package object's alias of ``scala.collection.mutable.StringBuilder``).
+SCALA_SHADOWED_JAVA_LANG_TYPES: Final[frozenset[str]] = (
+    SCALA_SHADOWED_JAVA_LANG | {"StringBuilder"}
+)
+
+#: Groovy's default imports besides ``java.lang`` (groovy-lang.org,
+#: "Differences with Java", Default imports): ``java.util.*``, ``java.io.*``,
+#: ``java.net.*`` (their public top-level types, read from the JDK sources at
+#: e2005427, ``src/java.base/share/classes``) and ``java.math.BigInteger`` /
+#: ``java.math.BigDecimal``. ``groovy.lang.*`` and ``groovy.util.*`` are
+#: default imports too; no source of their type lists is on hand, so their
+#: names are not resolved.
+GROOVY_DEFAULT_IMPORT_TYPES: Final[dict[str, frozenset[str]]] = {
+    "java.util": frozenset({
+        "AbstractCollection", "AbstractList", "AbstractMap", "AbstractQueue",
+        "AbstractSequentialList", "AbstractSet", "ArrayDeque", "ArrayList",
+        "Arrays", "Base64", "BitSet", "Calendar", "Collection", "Collections",
+        "Comparator", "ConcurrentModificationException", "Currency", "Date",
+        "Deque", "Dictionary", "DoubleSummaryStatistics",
+        "DuplicateFormatFlagsException", "EmptyStackException", "EnumMap",
+        "EnumSet", "Enumeration", "EventListener", "EventListenerProxy",
+        "EventObject", "FormatFlagsConversionMismatchException", "Formattable",
+        "FormattableFlags", "Formatter", "FormatterClosedException",
+        "GregorianCalendar", "HashMap", "HashSet", "Hashtable", "HexFormat",
+        "IdentityHashMap", "IllegalFormatCodePointException",
+        "IllegalFormatConversionException", "IllegalFormatException",
+        "IllegalFormatFlagsException", "IllegalFormatPrecisionException",
+        "IllegalFormatWidthException", "IllformedLocaleException",
+        "InputMismatchException", "IntSummaryStatistics",
+        "InvalidPropertiesFormatException", "Iterator", "LinkedHashMap",
+        "LinkedHashSet", "LinkedList", "List", "ListIterator",
+        "ListResourceBundle", "Locale", "LongSummaryStatistics", "Map",
+        "MissingFormatArgumentException", "MissingFormatWidthException",
+        "MissingResourceException", "NavigableMap", "NavigableSet",
+        "NoSuchElementException", "Objects", "Observable", "Observer",
+        "Optional", "OptionalDouble", "OptionalInt", "OptionalLong",
+        "PrimitiveIterator", "PriorityQueue", "Properties", "PropertyPermission",
+        "PropertyResourceBundle", "Queue", "Random", "RandomAccess",
+        "ResourceBundle", "Scanner", "SequencedCollection", "SequencedMap",
+        "SequencedSet", "ServiceConfigurationError", "ServiceLoader", "Set",
+        "SimpleTimeZone", "SortedMap", "SortedSet", "Spliterator",
+        "Spliterators", "SplittableRandom", "Stack", "StringJoiner",
+        "StringTokenizer", "TimeZone", "Timer", "TimerTask",
+        "TooManyListenersException", "TreeMap", "TreeSet", "UUID",
+        "UnknownFormatConversionException", "UnknownFormatFlagsException",
+        "Vector", "WeakHashMap",
+    }),
+    "java.io": frozenset({
+        "BufferedInputStream", "BufferedOutputStream", "BufferedReader",
+        "BufferedWriter", "ByteArrayInputStream", "ByteArrayOutputStream",
+        "CharArrayReader", "CharArrayWriter", "CharConversionException",
+        "Closeable", "Console", "DataInput", "DataInputStream", "DataOutput",
+        "DataOutputStream", "EOFException", "Externalizable", "File",
+        "FileDescriptor", "FileFilter", "FileInputStream",
+        "FileNotFoundException", "FileOutputStream", "FilePermission",
+        "FileReader", "FileWriter", "FilenameFilter", "FilterInputStream",
+        "FilterOutputStream", "FilterReader", "FilterWriter", "Flushable",
+        "IOError", "IOException", "InputStream", "InputStreamReader",
+        "InterruptedIOException", "InvalidClassException",
+        "InvalidObjectException", "LineNumberInputStream", "LineNumberReader",
+        "NotActiveException", "NotSerializableException", "ObjectInput",
+        "ObjectInputFilter", "ObjectInputStream", "ObjectInputValidation",
+        "ObjectOutput", "ObjectOutputStream", "ObjectStreamClass",
+        "ObjectStreamConstants", "ObjectStreamException", "ObjectStreamField",
+        "OptionalDataException", "OutputStream", "OutputStreamWriter",
+        "PipedInputStream", "PipedOutputStream", "PipedReader", "PipedWriter",
+        "PrintStream", "PrintWriter", "PushbackInputStream", "PushbackReader",
+        "RandomAccessFile", "Reader", "SequenceInputStream", "Serial",
+        "Serializable", "SerializablePermission", "StreamCorruptedException",
+        "StreamTokenizer", "StringBufferInputStream", "StringReader",
+        "StringWriter", "SyncFailedException", "UTFDataFormatException",
+        "UncheckedIOException", "UnsupportedEncodingException",
+        "WriteAbortedException", "Writer",
+    }),
+    "java.net": frozenset({
+        "Authenticator", "BindException", "CacheRequest", "CacheResponse",
+        "ConnectException", "ContentHandler", "ContentHandlerFactory",
+        "CookieHandler", "CookieManager", "CookiePolicy", "CookieStore",
+        "DatagramPacket", "DatagramSocket", "DatagramSocketImpl",
+        "DatagramSocketImplFactory", "FileNameMap", "HttpCookie",
+        "HttpRetryException", "HttpURLConnection", "IDN", "Inet4Address",
+        "Inet6Address", "InetAddress", "InetSocketAddress", "InterfaceAddress",
+        "JarURLConnection", "MalformedURLException", "MulticastSocket",
+        "NetPermission", "NetworkInterface", "NoRouteToHostException",
+        "PasswordAuthentication", "PortUnreachableException",
+        "ProtocolException", "ProtocolFamily", "Proxy", "ProxySelector",
+        "ResponseCache", "SecureCacheResponse", "ServerSocket", "Socket",
+        "SocketAddress", "SocketException", "SocketImpl", "SocketImplFactory",
+        "SocketOption", "SocketOptions", "SocketPermission",
+        "SocketTimeoutException", "StandardProtocolFamily",
+        "StandardSocketOptions", "URI", "URISyntaxException", "URL",
+        "URLClassLoader", "URLConnection", "URLDecoder", "URLEncoder",
+        "URLPermission", "URLStreamHandler", "URLStreamHandlerFactory",
+        "UnixDomainSocketAddress", "UnknownHostException",
+        "UnknownServiceException",
+    }),
+    "java.math": frozenset({"BigInteger", "BigDecimal"}),
+}
+
+
+def _package_spellings(packages: dict[str, frozenset[str]]) -> dict[str, str]:
+    """``<package>.<Name>`` -> ``<Name>`` for each package's names."""
+    return {
+        f"{package}.{name}": name
+        for package, names in packages.items() for name in names
+    }
+
+
+def kotlin_default_spellings() -> dict[str, str]:
+    """The qualified spellings of kotlin's default-imported types -> their
+    simple names (``kotlin.String`` -> ``String``, ``java.lang.Thread`` ->
+    ``Thread``), for ``FileTypeNames.defaults`` (WI-palus):
+    :data:`KOTLIN_DEFAULT_IMPORT_TYPES` and the java.lang names kotlin does not
+    shadow."""
+    return {
+        **java_lang_default_spellings(KOTLIN_SHADOWED_JAVA_LANG),
+        **_package_spellings(KOTLIN_DEFAULT_IMPORT_TYPES),
+    }
+
+
+def scala_default_spellings() -> dict[str, str]:
+    """The qualified spellings of scala's default-imported types -> their
+    simple names, for ``FileTypeNames.defaults`` (WI-palus): ``scala.<Name>``
+    for :data:`SCALA_PACKAGE_TYPES`, every alias's ``scala.`` (or ``Predef.``
+    / ``scala.Predef.``) spelling and its version-stable target
+    (:data:`SCALA_ALIAS_TARGETS`), and the java.lang names scala does not
+    shadow with another type (:data:`SCALA_SHADOWED_JAVA_LANG_TYPES`)."""
+    spellings = java_lang_default_spellings(SCALA_SHADOWED_JAVA_LANG_TYPES)
+    spellings.update({f"scala.{name}": name for name in SCALA_PACKAGE_TYPES})
+    for name in (*SCALA_ALIAS_TARGETS, *SCALA_ALIAS_NAMES):
+        owners = ("Predef", "scala.Predef") if name in _SCALA_PREDEF_ALIASES else ("scala",)
+        spellings.update({f"{owner}.{name}": name for owner in owners})
+    spellings.update({target: name for name, target in SCALA_ALIAS_TARGETS.items()})
+    return spellings
+
+
+def groovy_default_spellings() -> dict[str, str]:
+    """The qualified spellings of groovy's default-imported types -> their
+    simple names (``java.util.List`` -> ``List``), for ``FileTypeNames.defaults``
+    (WI-palus): java.lang and :data:`GROOVY_DEFAULT_IMPORT_TYPES`."""
+    return {
+        **java_lang_default_spellings(),
+        **_package_spellings(GROOVY_DEFAULT_IMPORT_TYPES),
+    }
+
+
+def java_lang_default_spellings(
+    shadowed: frozenset[str] = frozenset(),
+) -> dict[str, str]:
+    """``java.lang.<Name>`` -> ``<Name>`` for each type of :data:`JAVA_LANG_TYPES`
+    the language does not shadow: the defaults a typed stable id writes a
+    qualified ``java.lang`` spelling as (``FileTypeNames.defaults``, WI-palus),
+    so ``java.lang.String`` and ``String`` hash alike. A shadowed name keeps
+    its qualified spelling: in kotlin ``java.lang.String`` is not ``String``.
+    """
+    return {
+        f"{IMPLICIT_IMPORT_PACKAGE}.{name}": name
+        for name in JAVA_LANG_TYPES if name not in shadowed
+    }
+
+
 def static_owner_module(
     receiver_name: str,
     imports: dict[str, str],

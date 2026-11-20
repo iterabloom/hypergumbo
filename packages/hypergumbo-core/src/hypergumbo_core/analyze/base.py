@@ -67,7 +67,10 @@ Shared Components
   moves no id. Their shared helpers (``strip_fqn_prefix``,
   ``split_params_top_level``, ``find_matching_paren``) keep distinct types
   distinct: a type is cut only at a qualifier, and a parameter list is split
-  only at commas outside every bracket pair and string literal.
+  only at commas outside every bracket pair and string literal. Since scheme
+  v17 a type name is written through the file's imports before it is hashed
+  (``FileTypeNames``, set per file by ``resolving_type_names``), so an imported
+  and a qualified spelling of one type hash alike.
 - **Availability checking**: is_grammar_available
 - **Memory-pressure guard**: ``_check_memory_pressure`` raises
   ``MemoryPressureError`` rather than letting a large repo take the process
@@ -154,10 +157,12 @@ import os
 import re as _re
 import time
 import warnings
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 import posixpath
 from pathlib import Path
-from collections.abc import Container, Sequence
+from collections.abc import Container, Iterable, Sequence
 from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional, Sized
 
 from ..library_signatures import load_library_signatures
@@ -3113,8 +3118,9 @@ def declared_type_parameters(decl: "tree_sitter.Node", source: bytes) -> tuple[l
     in order, and the text of that clause and of its constraint clauses
     (Kotlin / Swift / C# ``where``), whitespace-collapsed, in source order,
     each name written as its position (``<T extends Comparable<T>>`` ->
-    ``<$0 extends Comparable<$0>>``). ``([], "")`` when the declaration has
-    none. Only the declaration's own children are read: a class's or an
+    ``<$0 extends Comparable<$0>>``) and every other name through the file's
+    imports (:func:`canonical_type_names`). ``([], "")`` when the declaration
+    has none. Only the declaration's own children are read: a class's or an
     extension's clause is not the declaration's (WI-bubak).
     """
     names: list[str] = []
@@ -3125,7 +3131,8 @@ def declared_type_parameters(decl: "tree_sitter.Node", source: bytes) -> tuple[l
             texts.append(" ".join(node_text(child, source).split()))
         elif child.type in _TYPE_CONSTRAINT_CLAUSE_NODES:
             texts.append(" ".join(node_text(child, source).split()))
-    return names, normalize_generic_params(" ".join(texts), names)
+    clause = canonical_type_names(" ".join(texts), skip=names)
+    return names, normalize_generic_params(clause, names)
 
 
 def normalize_with_type_parameters(
@@ -3248,19 +3255,241 @@ def split_params_top_level(params_str: str, *, quotes: str = SIGNATURE_QUOTES) -
     return [*parts, tail] if tail else parts
 
 
-def _normalize_type(
-    raw_type: str, type_params: list[str] | None, *, keep_type_path: bool = False,
+# ---------------------------------------------------------------------------
+# Type names written through the file's imports (WI-palus, scheme v17)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FileTypeNames:
+    """What one file's imports make a type name mean, for a typed stable id.
+
+    One type has several spellings in one file: ``String`` and
+    ``java.lang.String``, ``Callable`` (imported) and
+    ``java.util.concurrent.Callable``, Rust's ``fmt::Display`` (``use
+    std::fmt``) and ``std::fmt::Display``. Until scheme v17 a type inside a
+    compound type (a generic argument, a function type, a tuple, an array)
+    was hashed as written, so two spellings of one declaration hashed apart.
+    Owner ruling 2026-11-20: rewrite a name through the file's imports, with
+    local information only, so both spellings hash alike.
+
+    :meth:`canonical` reads every name chain of a type text (identifiers
+    joined by :attr:`separator`) and writes it as:
+
+    - a chain whose first name the file BINDS by an import (``bound``, the
+      bound name -> the path it names; an alias binds its alias) -> that path
+      and the rest of the chain: ``Callable`` -> ``java.util.concurrent.Callable``,
+      ``fmt::Display`` -> ``std::fmt::Display``;
+    - then, a path that is a qualified spelling of a type the language imports
+      into every file (``defaults``, spelling -> simple name:
+      ``java.lang.String`` -> ``String``) -> that simple name, so a default
+      type is hashed by the name it is written with everywhere and only its
+      rarer qualified spelling moves. This is the one place the rule does not
+      write a full path: the default imports are the same for every file, so
+      the simple name names the same type in every file that does not declare
+      its own, and writing the full path instead would move every id whose
+      type mentions ``String`` without telling any two types apart;
+    - any other chain as written: a name the file does not import, or one a
+      star / glob import brings in (it names no type), or one the file
+      declares itself (:attr:`declared`: a local declaration shadows an
+      import), or a type parameter (``skip``).
+
+    So distinct types stay distinct: ``a.Foo`` and ``b.Foo`` are two paths,
+    and a name imported from two places in one file is bound to neither
+    (:func:`file_type_names`). Reordering imports or adding one that changes
+    no name's meaning changes no text.
+
+    A chain right after a ``.``, ``#``, ``'`` or ``:`` (a member, a Scala type
+    projection, a Rust lifetime) or right before a label's ``:`` (``a: T`` in
+    a TypeScript object type) is not a type name and is left alone, and so is
+    a string literal (opened by a character of :attr:`quotes`).
+    """
+
+    #: A name the file binds by an import -> the path it names.
+    bound: Dict[str, str]
+    #: A qualified spelling of a default-imported type -> its simple name.
+    defaults: Dict[str, str] = field(default_factory=dict)
+    #: The type names the file declares (they shadow imports and defaults).
+    declared: frozenset[str] = frozenset()
+    separator: str = "."  # axis: bounded-enum
+    quotes: str = SIGNATURE_QUOTES  # axis: bounded-enum
+
+    def canonical(
+        self, text: str, *, skip: Container[str] = (), keep_head: bool = False,
+    ) -> str:
+        """``text`` with each name chain written through the imports.
+
+        ``skip``: names left alone (the declaration's type parameters).
+        ``keep_head``: the head type name (after any annotations) is left
+        alone: a normalizer that already cut the head's qualifier
+        (:func:`strip_fqn_prefix`) hashes the head by its simple name, which
+        this rule does not change. That strip cuts only a dotted qualifier, so
+        a ``::`` language's head (Rust) is written through the imports anyway.
+        """
+        if not (self.bound or self.defaults) or not text:
+            return text
+        head = -1
+        if keep_head and self.separator == ".":
+            match = _TYPE_NAME_HEAD_RE.match(text)
+            if match is not None:
+                head = match.start("name")
+        pattern = _chain_pattern(self.separator, self.quotes)
+
+        def rewrite(m: "_re.Match[str]") -> str:
+            chain = m.group("chain")
+            if chain is None or m.start() == head:
+                return m.group(0)
+            return self.resolve(chain, skip)
+
+        return pattern.sub(rewrite, text)
+
+    def resolve(self, chain: str, skip: Container[str] = ()) -> str:
+        """One name chain written through the imports (see the class)."""
+        sep = self.separator
+        segments = chain.split(sep)
+        if segments[0] in skip or segments[0] in self.declared:
+            return chain
+        path = self.bound.get(segments[0])
+        full = chain if path is None else sep.join([path, *segments[1:]])
+        if self.defaults:
+            parts = full.split(sep)
+            for k in range(len(parts), 1, -1):
+                name = self.defaults.get(sep.join(parts[:k]))
+                if name is not None and name not in self.declared:
+                    return sep.join([name, *parts[k:]])
+        return full
+
+
+_CHAIN_PATTERNS: Dict[tuple[str, str], "_re.Pattern[str]"] = {}
+
+
+def _chain_pattern(separator: str, quotes: str) -> "_re.Pattern[str]":
+    """A string literal (group ``string``) or a name chain (group ``chain``)."""
+    key = (separator, quotes)
+    pattern = _CHAIN_PATTERNS.get(key)
+    if pattern is None:
+        strings = "|".join(
+            rf"{_re.escape(q)}(?:\\.|[^{_re.escape(q)}\\])*{_re.escape(q)}" for q in quotes
+        )
+        sep = _re.escape(separator)
+        chain = (
+            rf"(?<![\w$.#':])(?P<chain>{_SIG_IDENT}(?:{sep}{_SIG_IDENT})*)"
+            rf"(?![\w$])(?!\??:(?!:))"
+        )
+        pattern = _re.compile(rf"(?P<string>{strings})|{chain}" if strings else chain)
+        _CHAIN_PATTERNS[key] = pattern
+    return pattern
+
+
+def file_type_names(
+    bindings: Iterable[tuple[str, str]],
+    *,
+    declared: Iterable[str] = (),
+    defaults: Optional[Dict[str, str]] = None,
+    separator: str = ".",
+    quotes: str = SIGNATURE_QUOTES,
+) -> FileTypeNames:
+    """A file's :class:`FileTypeNames` from its import bindings.
+
+    ``bindings`` are ``(bound name, path)`` pairs in any order: what each
+    import binds (``import a.b.Foo`` -> ``("Foo", "a.b.Foo")``; an alias
+    ``import a.b.Foo as Bar`` -> ``("Bar", "a.b.Foo")``). A name bound to two
+    different paths in one file (two scopes' imports, a conditional import)
+    is bound to neither: which one a use means is not decided by the file's
+    text alone, and it stays as written. A name the file ``declared`` is
+    never bound. ``defaults`` maps a qualified spelling of a type the
+    language imports into every file to its simple name.
+    """
+    declared_names = frozenset(declared)
+    bound: Dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for name, path in bindings:
+        if name in declared_names or not name or not path:
+            continue
+        if bound.get(name, path) != path:
+            ambiguous.add(name)
+        bound[name] = path
+    for name in ambiguous:
+        del bound[name]
+    return FileTypeNames(
+        bound=bound, defaults=dict(defaults or {}), declared=declared_names,
+        separator=separator, quotes=quotes,
+    )
+
+
+_FILE_TYPE_NAMES: "ContextVar[Optional[FileTypeNames]]" = ContextVar(
+    "hypergumbo_file_type_names", default=None)
+
+
+@contextmanager
+def resolving_type_names(names: Optional[FileTypeNames]) -> Iterator[None]:
+    """Hash the types of the file being read through ``names`` (WI-palus).
+
+    An analyzer wraps the code that mints one file's typed stable ids in this
+    block; every hashed type text written inside it by the shared normalizers
+    (:func:`canonical_type_names`) is then rewritten through the file's
+    imports. Outside any block (``None``) every text is hashed as written.
+    """
+    token = _FILE_TYPE_NAMES.set(names)
+    try:
+        yield
+    finally:
+        _FILE_TYPE_NAMES.reset(token)
+
+
+def canonical_type_names(
+    text: str, *, skip: Container[str] = (), keep_head: bool = False,
+) -> str:
+    """``text`` written through the current file's imports
+    (:meth:`FileTypeNames.canonical`), or as it is outside
+    :func:`resolving_type_names`."""
+    names = _FILE_TYPE_NAMES.get()
+    if names is None:
+        return text
+    return names.canonical(text, skip=skip, keep_head=keep_head)
+
+
+def _strip_governs_head(text: str, *, keep_type_path: bool) -> bool:
+    """Whether :func:`strip_fqn_prefix` cuts the qualifier of ``text``'s head
+    type name, had it one: it does for ``List<x.Y>`` and ``Foo | null``, and
+    not for a receiver function type (``String.() -> Unit``), an annotated
+    type or a union whose last qualified name is not the head's. Probed by
+    qualifying the head with one segment and asking the strip."""
+    match = _TYPE_NAME_HEAD_RE.match(text)
+    if match is None:
+        return False
+    at = match.start("name")
+    probe = f"{text[:at]}q.{text[at:]}"
+    return strip_fqn_prefix(probe, keep_type_path=keep_type_path) != probe
+
+
+def normalize_type(
+    raw_type: str, type_params: list[str] | None = None, *, keep_type_path: bool = False,
     keep_qualifier: bool = False,
 ) -> str:
-    """Apply FQN stripping and generic-param normalization to a single type.
+    """Apply FQN stripping, import canonicalization and generic-param
+    normalization to a single type: the hashed text of one type.
 
-    ``keep_qualifier`` (C#): no FQN strip, the type is hashed as written.
+    ``keep_qualifier`` (C#): no FQN strip, the type is hashed as written, each
+    name through the file's imports (:func:`canonical_type_names`). Otherwise
+    the head's qualifier is cut (:func:`strip_fqn_prefix`), so the head is
+    hashed by its simple name (or its type path), and every other name is
+    written through the imports; a head the strip does not govern
+    (:func:`_strip_governs_head`) is written through them too.
     """
-    t = raw_type.strip() if keep_qualifier else strip_fqn_prefix(
-        raw_type.strip(), keep_type_path=keep_type_path)
+    if keep_qualifier:
+        t = canonical_type_names(raw_type.strip(), skip=type_params or ())
+    else:
+        t = strip_fqn_prefix(raw_type.strip(), keep_type_path=keep_type_path)
+        t = canonical_type_names(
+            t, skip=type_params or (),
+            keep_head=_strip_governs_head(t, keep_type_path=keep_type_path))
     if type_params:
         t = normalize_generic_params(t, type_params)
     return t
+
+
+_normalize_type = normalize_type
 
 
 def normalize_signature_types_first(
