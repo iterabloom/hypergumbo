@@ -114,3 +114,56 @@ def test_the_repositorys_own_citations_are_found_and_on_their_anchors() -> None:
     done = subprocess.run([sys.executable, str(SCRIPT), "--root", str(REPO_ROOT), "--check"],
                           capture_output=True, text=True)
     assert (done.returncode, done.stdout, done.stderr) == (0, "", "")
+
+
+def test_a_moved_citation_names_the_registry_line_to_re_stage(tmp_path: Path) -> None:
+    """The pre-commit hook tells the committer to re-stage the registry, so
+    the report says which registry (and which of its lines) it rewrites."""
+    _project(tmp_path, first=3)
+    done = _run(tmp_path, "--check")
+    assert done.returncode == 1
+    assert f"[{tmp_path / 'registry.py'}:5]" in done.stdout, done.stdout
+
+
+def _list_paths(tmp_path: Path, *registries: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--root", str(tmp_path), "--list-paths", *registries],
+        capture_output=True, text=True)
+
+
+def test_list_paths_names_each_registry_and_every_file_it_cites(tmp_path: Path) -> None:
+    """Every file whose edit can put a citation off its anchor: the cited
+    files, and the registry itself (its own ``line=`` literals). A citation
+    without literal keywords (``line=COMPUTED``) cites nothing checkable."""
+    _project(tmp_path)
+    (tmp_path / "second.py").write_text(
+        'B = Site(path="other.py", line=1, anchor="o")\n'
+        'C = Site(path="target.py", line=2, anchor="needle(")\n')
+    done = _list_paths(tmp_path, "registry.py", "second.py")
+    assert (done.returncode, done.stderr) == (0, "")
+    assert done.stdout.splitlines() == ["other.py", "registry.py", "second.py", "target.py"]
+
+
+def test_list_paths_rewrites_nothing_and_reports_nothing_off(tmp_path: Path) -> None:
+    registry = _project(tmp_path, first=3)
+    before = registry.read_text()
+    done = _list_paths(tmp_path, "registry.py")
+    assert done.returncode == 0 and "off" not in done.stdout
+    assert registry.read_text() == before
+
+
+def test_list_paths_of_an_unparsable_registry_is_an_error(tmp_path: Path) -> None:
+    (tmp_path / "registry.py").write_text("def (:\n")
+    done = _list_paths(tmp_path, "registry.py")
+    assert done.returncode == 2 and "registry.py" in done.stderr
+
+
+def test_the_repositorys_cited_paths_include_both_registries_and_exist() -> None:
+    done = subprocess.run([sys.executable, str(SCRIPT), "--root", str(REPO_ROOT), "--list-paths"],
+                          capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    listed = done.stdout.splitlines()
+    assert {"packages/hypergumbo-core/src/hypergumbo_core/module_key_axis.py",
+            "packages/hypergumbo-core/src/hypergumbo_core/signature_axis.py"} <= set(listed)
+    assert len(listed) > 2, "no cited file listed: the hook would never fire"
+    assert all((REPO_ROOT / path).is_file() for path in listed), listed
