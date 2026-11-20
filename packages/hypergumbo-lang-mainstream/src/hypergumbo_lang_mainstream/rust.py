@@ -97,7 +97,13 @@ A top-level item has an empty scope, so its id is the unscoped value
 (``_rust_impl_label``: its header, lifetimes left out, its own parameters
 by position), so ``fmt`` in ``impl Display for Foo`` and in ``impl Debug
 for Foo``, or ``f`` in ``impl Foo<A>`` and ``impl Foo<B>``, do not tie (they
-did until scheme v15); a plain ``impl Foo`` adds nothing.
+did until scheme v15); a plain ``impl Foo`` adds nothing. The ``#[cfg(...)]``
+guards of the item and of every enclosing ``mod`` / ``fn`` / ``impl`` /
+``trait`` / ``extern`` block are in the scope too (``_rust_cfg_label``, as
+written, layout dropped; struct fields and enum variants through
+``rust_guarded_name``; module-level ``const`` / ``static`` / ``type``
+through ``rust_hashed_qualified_name``), so ``#[cfg(unix)] fn open()`` and
+``#[cfg(windows)] fn open()`` do not tie (they did until scheme v17).
 
 Parity with the SCIP backend
 ----------------------------
@@ -157,6 +163,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     file_anchor_symbol,
+    layout_free,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -950,15 +957,69 @@ def _rust_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     A non-plain ``impl`` block is a label too (:func:`_rust_impl_label`):
     one type may have several impl blocks that each define the same member,
     told apart only by the block's header (WI-lonoh).
+
+    Since scheme v17 the ``#[cfg(...)]`` guards are in the chain
+    (:func:`_rust_cfg_label`, WI-kosug): an enclosing item's guards lead its
+    label (``#[cfg(unix)] imp``; an unlabelled item -- a plain ``impl``, a
+    ``trait``, an ``extern`` block -- labels by its guards alone), and
+    ``node``'s own guards end the chain. ``#[cfg(unix)] fn
+    open()`` and ``#[cfg(windows)] fn open()``, or a member of two ``impl
+    Foo`` blocks under ``feature = "std"`` and its negation, tied until then
+    (split only by occurrence order). An unguarded item's chain is what it
+    was.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
+        base: Optional[str] = None
         if n.type == "impl_item":
-            return _rust_impl_label(n, source)
-        if n.type not in ("mod_item", "function_item"):
-            return None
-        name_node = _find_child_by_field(n, "name")
-        return node_text(name_node, source) if name_node is not None else None
-    return ancestor_labels(node, label)
+            base = _rust_impl_label(n, source)
+        elif n.type in ("mod_item", "function_item"):
+            name_node = _find_child_by_field(n, "name")
+            base = node_text(name_node, source) if name_node is not None else None
+        guard = _rust_cfg_label(n, source) if n.type in _RUST_GUARDED_ITEMS else None
+        if guard is None:
+            return base
+        return guard if base is None else f"{guard} {base}"
+    own = _rust_cfg_label(node, source)
+    labels = ancestor_labels(node, label)
+    return [*labels, own] if own is not None else labels
+
+
+#: Items whose ``#[cfg]`` guards reach the symbols declared inside them
+#: (:func:`_rust_hash_scope`). A struct's or an enum's guards reach its fields
+#: and variants through the type's own chain (``type_scope``), which ends in
+#: them, so those items need no entry.
+_RUST_GUARDED_ITEMS = frozenset({
+    "mod_item", "function_item", "impl_item", "trait_item", "foreign_mod_item",
+})
+
+_RUST_CFG_ATTRIBUTE = re.compile(r"#\s*\[\s*cfg\s*\(")
+
+
+def _rust_cfg_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The ``#[cfg(...)]`` attributes written on ``node``, each as written in
+    canonical spacing (``layout_free``), sorted and joined by one space;
+    ``None`` when it has none (WI-kosug).
+
+    The predicate is hashed as written, not evaluated or reordered:
+    ``#[cfg(any(a, b))]`` and ``#[cfg(any(b, a))]`` hash apart, and editing
+    a guard moves the id of what it guards. ``cfg_attr`` decides whether an
+    attribute applies, not whether the item exists, so it is not read; nor is
+    an inner ``#![cfg]``.
+    """
+    guards = sorted(
+        layout_free(text) for text in _preceding_attribute_texts(node, source)
+        if _RUST_CFG_ATTRIBUTE.match(text)
+    )
+    return " ".join(guards) if guards else None
+
+
+def rust_guarded_name(node: "tree_sitter.Node", source: bytes, scope: list[str], name: str) -> str:
+    """``scope::<node's own guards>::name``: the hashed qualified name of a
+    member read off its container's ``scope`` (a struct field, an enum
+    variant), its own ``#[cfg]`` guards (:func:`_rust_cfg_label`) before its
+    name. Without guards it is ``scope::name``, as before scheme v17."""
+    own = _rust_cfg_label(node, source)
+    return "::".join((*scope, *((own,) if own is not None else ()), name))
 
 
 #: Nodes a hashed impl header leaves out: lifetimes (Rust's coherence rules
@@ -1818,7 +1879,7 @@ def _extract_symbols_from_file(
                             "field", ftype or "",
                             visibility_from_modifiers(f_modifiers),
                             name=fname,
-                            qualified_name="::".join((*type_scope, f_full)),
+                            qualified_name=rust_guarded_name(fdecl, source, type_scope, f_full),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=f_end - f_start + 1,
@@ -1875,7 +1936,8 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         v_kind, var_type or "",
                         visibility_from_modifiers(v_modifiers),
-                        name=var_name, qualified_name=v_qualified,
+                        name=var_name,
+                        qualified_name=rust_hashed_qualified_name(node, source, None, var_name),
                         file_stable_id=file_stable_id,
                     ),
                     line_span=end_line - start_line + 1,
@@ -1923,7 +1985,8 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         "type_alias", aliased or "",
                         visibility_from_modifiers(a_modifiers),
-                        name=alias_name, qualified_name=a_qualified,
+                        name=alias_name,
+                        qualified_name=rust_hashed_qualified_name(node, source, None, alias_name),
                         file_stable_id=file_stable_id,
                     ),
                     line_span=end_line - start_line + 1,
@@ -2030,7 +2093,7 @@ def _extract_symbols_from_file(
                             "field", "",
                             visibility_from_modifiers(v_modifiers),
                             name=vname,
-                            qualified_name="::".join((*type_scope, v_full)),
+                            qualified_name=rust_guarded_name(variant, source, type_scope, v_full),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=v_end - v_start + 1,
