@@ -163,7 +163,10 @@ that text through the shared names-first normalizer (names dropped, FQN
 prefixes stripped; Kotlin passes no type parameters, so generic names are
 hashed as written) with two Kotlin additions: ``vararg`` is kept in front of
 the parameter's type, and an extension function's receiver is written in
-front, ``String.()Int``. ``suspend`` is not in the text; it is the
+front, ``String.()Int``. A function type's parameter names are left out of
+every type hashed, a property's and a receiver's too
+(``_kt_without_function_type_names``: ``(x: Int) -> Unit`` reads ``(Int) ->
+Unit``; until scheme v17 renaming one moved the id). ``suspend`` is not in the text; it is the
 ``:async`` slot of ``make_typed_stable_id``. A class property hashes its
 declared type as written, of any kind, preceded by ``Receiver.`` when it is
 an extension property. A renderer that skipped a type kind made two
@@ -176,6 +179,7 @@ treated as exported (see the ``receiver_type`` branch).
 """
 from __future__ import annotations
 
+import re
 import time
 import warnings
 from dataclasses import dataclass, field
@@ -792,6 +796,25 @@ _KT_TYPE_SLOT_NODES: Final[frozenset[str]] = frozenset({
 #: its name as in the source (``vararg x: Int``).
 _KT_VARARG_PREFIX: Final[str] = "vararg "
 
+#: What follows a function type's parameter list: its ``->``.
+_KT_FUNCTION_ARROW_RE = re.compile(r"\s*->")
+#: A function-type parameter's name and its ``:`` (``x: `` in ``(x: Int) ->
+#: Unit``); a backquoted name too.
+_KT_FUNCTION_PARAMETER_NAME_RE = re.compile(r"(?:`[^`]*`|[^\W\d]\w*)\s*:(?!:)\s*")
+
+
+def _kt_without_function_type_names(text: str, *, declaration: bool = False) -> str:
+    """``text`` (a type, or a signature when ``declaration``) with each
+    function type's parameter names left out: ``(x: Int) -> Unit`` reads
+    ``(Int) -> Unit``, at any depth (stable-id v17;
+    :func:`~hypergumbo_core.analyze.base.drop_function_type_parameter_names`).
+    A function type is a group its ``->`` follows; Kotlin has no tuple type,
+    so no other group is followed by one."""
+    from hypergumbo_core.analyze.base import drop_arrow_function_type_parameter_names
+
+    return drop_arrow_function_type_parameter_names(
+        text, _KT_FUNCTION_ARROW_RE, _KT_FUNCTION_PARAMETER_NAME_RE, declaration=declaration)
+
 
 def _kt_is_vararg(parameter_modifiers: "tree_sitter.Node") -> bool:
     """True when a ``parameter_modifiers`` node carries ``vararg``.
@@ -927,6 +950,8 @@ def normalize_kotlin_signature(
         split_params_top_level,
         strip_fqn_prefix,
     )
+    if signature is not None:
+        signature = _kt_without_function_type_names(signature, declaration=True)
     norm = normalize_signature_names_first(
         signature, type_params, return_sep=":", keep_type_path=True)
     if norm is None or signature is None:
@@ -947,7 +972,8 @@ def normalize_kotlin_signature(
         )
         norm = f"({','.join(types)}){(tail or '()')[2:]}"
     if receiver:
-        written = strip_fqn_prefix(receiver.strip(), keep_type_path=True)
+        written = strip_fqn_prefix(
+            _kt_without_function_type_names(receiver.strip()), keep_type_path=True)
         if type_params:
             written = normalize_generic_params(written, type_params)
         norm = f"{written}.{norm}"
@@ -1677,9 +1703,12 @@ def _extract_symbols_from_file(
                 # front of it, joined by ``.`` as the declaration writes it.
                 prop_type = _kt_declared_type_text(var_decl, source)
                 prop_receiver = _kt_receiver_type_node(node)
-                hashed_type = prop_type or ""
+                hashed_type = _kt_without_function_type_names(prop_type or "")
                 if prop_receiver is not None:
-                    hashed_type = f"{node_text(prop_receiver, source)}.{hashed_type}"
+                    hashed_type = (
+                        f"{_kt_without_function_type_names(node_text(prop_receiver, source))}"
+                        f".{hashed_type}"
+                    )
                 prop_modifiers = _extract_modifiers(node)
                 prop_annotations = _extract_annotations(node, source)
                 prop_meta: dict[str, object] | None = None

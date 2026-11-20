@@ -214,7 +214,10 @@ _CLEAN_PINS = {
     # function type ``StringBuilder.() -> Unit`` at its dot, to ``() -> Unit``
     # (was 7687ff26be87c825).
     "cFunReceiverType": f"{STABLE_ID_PREFIX}c51f667b38f5f0bc",
-    "cNamedLambda": f"{STABLE_ID_PREFIX}bb51e3923da5dc74",
+    # Moved in stable-id v17: a function type's parameter names are not
+    # hashed, ``((Int) -> Unit)`` (was bb51e3923da5dc74). It now hashes as
+    # ``cFun``'s text does.
+    "cNamedLambda": f"{STABLE_ID_PREFIX}e4f54d579ee39f8d",
     "cGeneric": f"{STABLE_ID_PREFIX}d578ca9b48ce2f56",
     # Moved by WI-bubak (stable-id v16): a declaration's own type-parameter
     # clause is hashed, its names by position (was 56cc8cccaca74124,

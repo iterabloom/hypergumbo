@@ -323,6 +323,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    drop_go_function_type_parameter_names,
     emit_module_attribute_refs,
     populate_docstrings_from_tree,
     find_child_by_field,
@@ -589,7 +590,9 @@ def _go_type_parameters_text(
     typed ``stable_id``, so ``f[T any](x T)``, ``f[T comparable](x T)`` and a
     plain ``f(x T)`` hash three texts. Names and constraints are kept as
     written: no positional renaming (spec section 6 names it, but no analyzer
-    passes ``type_params``) and no package-prefix stripping. It is not shown
+    passes ``type_params``) and no package-prefix stripping; only a function
+    type's parameter names are left out of a constraint, as everywhere
+    (``drop_go_function_type_parameter_names``, stable-id v17). It is not shown
     in ``Symbol.signature``, which stays ``(params) result``.
 
     A method's receiver type parameters (``func (s *Stack[T]) Push(v T)``)
@@ -599,7 +602,8 @@ def _go_type_parameters_text(
     tp = find_child_by_field(node, "type_parameters")
     if tp is None:
         return ""
-    return " ".join(node_text(tp, source).split())
+    # A function type in a constraint names no parameter either (v17).
+    return drop_go_function_type_parameter_names(" ".join(node_text(tp, source).split()))
 
 
 def _go_parameters(
@@ -2074,7 +2078,8 @@ def _extract_symbols_from_file(
                                         modifiers=_go_visibility_modifiers(fname),
                                         signature=ftype,
                                         stable_id=make_typed_stable_id(
-                                            "field", ftype or "",
+                                            "field",
+                                            drop_go_function_type_parameter_names(ftype or ""),
                                             name=fname,
                                             qualified_name=f_qualified,
                                             file_stable_id=file_stable_id,

@@ -42,9 +42,10 @@ FILLED = {
     "(xs ...int)": "(...int)",  # (int)
     "(xs ...*pkg.T)": "(...T)",  # (T)
     "(...pkg.List[int, string])": "(...List[int, string])",
-    "(cb func(\n\ta int,\n) error)": "(func( a int, ) error)",  # (error)
+    # A function type's parameter names are not hashed (stable-id v17).
+    "(cb func(\n\ta int,\n) error)": "(func( int, ) error)",  # (error)
     "() chan pkg.T": "()chan pkg.T",  # ()T
-    "() func(x pkg.A) error": "()func(x pkg.A) error",  # ()A) error
+    "() func(x pkg.A) error": "()func(pkg.A) error",  # ()A) error
     "() interface{ M() pkg.T }": "()interface{ M() pkg.T }",  # ()T }
     "() **pkg.T": "()*pkg.T",  # ()T
     "() (chan pkg.T, error)": "()(chan pkg.T,error)",  # ()(T,error)
