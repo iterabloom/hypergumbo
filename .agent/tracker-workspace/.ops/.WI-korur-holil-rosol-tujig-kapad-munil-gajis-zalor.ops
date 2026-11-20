@@ -1,0 +1,20 @@
+- op: create  # d3a1
+  at: '2026-11-20T20:02:15Z'  # d3a1
+  by: agent  # d3a1
+  actor: jgstern_agent  # d3a1
+  clock: 1  # d3a1
+  nonce: d3a1  # d3a1
+  data:  # d3a1
+    kind: work_item  # d3a1
+    title: "C++: a using-declaration and the qualified spelling of the same type hash to different ids."  # d3a1
+    status: todo_soft  # d3a1
+    priority: 4  # d3a1
+    parent:  # d3a1
+    tags:  # d3a1
+    - stable_id  # d3a1
+    isbefore: []  # d3a1
+    duplicate_of: []  # d3a1
+    not_duplicate_of: []  # d3a1
+    pr_ref:  # d3a1
+    description: "C++: a using-declaration and the qualified spelling of the same type hash to different ids.\n\nREPRO: using std::string; void f(string s) vs void f(std::string s) give different stable ids. Not fixed under WI-palus. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # d3a1
+    fields: {}  # d3a1
