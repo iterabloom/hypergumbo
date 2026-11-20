@@ -224,7 +224,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
                     "packages/hypergumbo-core/src/hypergumbo_core/"
                     "linkers/method_call_recovery.py"
                 ),
-                line=199,
+                line=201,
                 anchor="HOLDS BOTH A VALUE TYPE AND A CALL SIGNATURE",
                 note=(
                     "The consumer that found the conflation, and the reason "
@@ -250,7 +250,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=330,
+        line=341,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
         populated_by=("go", "rust", "scala", "swift", "objc"),
@@ -292,7 +292,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=292,
+        line=303,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
         populated_by=("csharp", "cpp", "go", "rust", "swift"),
@@ -322,7 +322,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=663,
+        line=662,
         anchor="_extract_csharp_return_type_name(resolved_sym.signature)",
         fact="return_type",
         note="Resolves a class from the parsed return type.",
@@ -332,7 +332,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=2174,
+        line=2175,
         anchor="_count_signature_params(c.signature) == arg_count",
         fact="parameter_arity",
         note="Overload selection by counting rendered parameters.",
@@ -342,7 +342,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2451,
+        line=2455,
         anchor="resolved_nav_sym.signature",
         fact="return_type",
         note="Navigation-target return type.",
@@ -352,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2652,
+        line=2656,
         anchor="resolved_simple_sym.signature",
         fact="return_type",
         note="Simple-name receiver return type.",
@@ -362,14 +362,14 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=6620,
+        line=6646,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",
     ),
     LegacyValueParser(
         path="packages/hypergumbo-lang-common/src/hypergumbo_lang_common/dart.py",
-        line=1144,
+        line=1189,
         anchor="resolved_sym.signature",
         fact="return_type",
         note="Chained-call receiver typing.",
@@ -395,7 +395,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-core/src/hypergumbo_core/"
             "linkers/method_call_recovery.py"
         ),
-        line=210,
+        line=212,
         anchor='signature = (member.signature or "").strip()',
         fact="value_type",
         note=(
