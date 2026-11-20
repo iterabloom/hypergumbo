@@ -73,10 +73,12 @@ CASES = [
      "fun handle(req: Int): Int { return req }\n",
      "suspend fun handle(req: Int): Int { return req }\n",
      "handle", f"{STABLE_ID_PREFIX}44bcdf8eeda34284"),
+    # Moved in stable-id v17: ``req`` is an argument label, now hashed
+    # (``(req:Int)Int``; was 1f29aa0526ec7a45).
     ("swift", analyze_swift, "m.swift",
      "func handle(req: Int) -> Int { return req }\n",
      "func handle(req: Int) async -> Int { return req }\n",
-     "handle", f"{STABLE_ID_PREFIX}1f29aa0526ec7a45"),
+     "handle", f"{STABLE_ID_PREFIX}b9e51e7dcd721c36"),
 ]
 
 
