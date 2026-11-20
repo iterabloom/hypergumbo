@@ -18,3 +18,18 @@
     pr_ref:  # 7cfe
     description: "When a .hypergumbo.toml holds a setting this hypergumbo does not know, the error says only \"unknown setting '<key>'. Known settings: ...\" (user_config.py:422). The likeliest cause when a repository adopts a new key is an older hypergumbo, and the message does not say so.\n\nOWNER RULING 2026-11-19 (in session, adopting the 11-19 review): an unknown project-tier key STAYS AN ERROR (fail closed: a later key may be a withholding gate, and a warning would let an older version silently skip it; user_config.py's docstring and ADR-0045 ruling 2 give the same reason). The message names the likely cause, e.g. \"this file may need a newer hypergumbo (this is <version>)\".\n\nSCOPE. The message only; tests in test_user_config.py / test_arbitration.py that match the text. Not in scope: ADR-0045 open question 4 (how the file declares its schema version), still not ruled, noted on WI-dahoh."  # 7cfe
     fields: {}  # 7cfe
+- op: update  # b632
+  at: '2026-11-20T10:28:35Z'  # b632
+  by: agent  # b632
+  actor: jgstern_agent  # b632
+  clock: 2  # b632
+  nonce: b632  # b632
+  set:  # b632
+    status: done  # b632
+- op: discuss  # 0e04
+  at: '2026-11-20T10:28:36Z'  # 0e04
+  by: agent  # 0e04
+  actor: jgstern_agent  # 0e04
+  clock: 3  # 0e04
+  nonce: '0e04'  # 0e04
+  message: "Fixed in PR #2298 (merged to dev 308a326ad). A refused setting now says the file may need a newer hypergumbo and names the running version (unknown project- and user-tier keys, merge.prefer_by_attribute, backends.<name>, merge.prefer). LIVE REPRO on dev: .hypergumbo.toml 'withhold_secrets = true' -> hypergumbo sketch /tmp/pr4_fx/unknownkey exits 2 with '... unknown setting 'withhold_secrets'. Known settings: ... This file may need a newer hypergumbo (this is hypergumbo 10.0.0).' Before: the same exit 2 without the last sentence. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/kugah/RESULTS.md."  # 0e04
