@@ -81,13 +81,14 @@ A file a coding-agent tool loads as instructions (``AGENTS.md``,
 ``CLAUDE.md``, ``.cursor/rules/*.mdc``, ...), or one such a file imports with
 ``@path``, is found once per sketch (``agent_instructions``, a catalogue
 keyed by tool) and its text is never printed: it is not an Additional Files
-candidate, Source Files Content skips it, it is never the README
-description, the Configuration collectors do not read it
+candidate, Source Files Content skips it, the Configuration collectors do
+not read it
 (:func:`_held_back`), and the docstrings of symbols defined in it are dropped
 (:func:`_drop_held_back_docstrings`). The Overview names each one with the
 tools that read it (``format_instruction_files_disclosure``). Text written to
 be obeyed by a model is the one kind of quoted text the sketch withholds
-rather than only labels.
+rather than only labels. One exception (owner ruling 2026-11-20): a README
+such a file imports still gives the short description under the notice.
 
 Data source
 -----------
@@ -3995,8 +3996,7 @@ def _truncate_description(description: str, max_chars: int) -> str:
 
 
 def _extract_readme_description(
-    repo_root: Path, max_chars: int = 300,
-    held_back: Optional[AbstractSet[str]] = None,
+    repo_root: Path, max_chars: int = 300
 ) -> Optional[str]:
     """Extract a description from the project README file.
 
@@ -4008,20 +4008,18 @@ def _extract_readme_description(
     Args:
         repo_root: Path to the repository root.
         max_chars: Maximum characters to extract (default 300).
-        held_back: Agent instruction files (:func:`_held_back`); found here
-            (one walk) when not given. A README one of them imports is
-            instructions too, and is not described.
 
     Returns:
-        Extracted description string, or None if no README found or the
-        README is held back.
+        Extracted description string, or None if no README found.
+
+    A README an agent instruction file imports (``@README.md`` in
+    ``CLAUDE.md``) is still described here (owner ruling 2026-11-20, "keep
+    description"): the short description is printed under
+    ``QUOTED_TEXT_NOTICE`` like any README's. Its whole text stays held back
+    everywhere else (Additional Files, ``explain``).
     """
     readme_path = _find_readme_path(repo_root)
     if readme_path is None:
-        return None
-    if held_back is None:
-        held_back = frozenset(_instruction_files(repo_root))
-    if _held_back(readme_path, repo_root, held_back):
         return None
 
     # Try embedding-based extraction first (more accurate)
@@ -7263,14 +7261,12 @@ def _generate_sketch_impl(
     instruction_files = _instruction_files(repo_root)
     held_back = frozenset(instruction_files)
     prog.start_phase("readme", cached=using_cached_readme)
-    readme_path = _find_readme_path(repo_root)
-    if readme_path is not None and _held_back(readme_path, repo_root, held_back):
-        # Also when cached: a map is a file, and may predate the rule.
-        readme_desc = None
-    elif using_cached_readme:
+    # An imported README keeps its short description (owner ruling
+    # 2026-11-20); only its whole text is held back, below.
+    if using_cached_readme:
         readme_desc = cached_results["sketch_precomputed"].get("readme_description")
     else:
-        readme_desc = _extract_readme_description(repo_root, held_back=held_back)
+        readme_desc = _extract_readme_description(repo_root)
     prog.complete_phase("readme")
     # The title, then the line saying that what is quoted below is data
     # (QUOTED_TEXT_NOTICE). It goes after the title, which is the directory

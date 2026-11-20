@@ -1049,7 +1049,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "readme_description": {
                         "oneOf": [{"type": "string"}, {"type": "null"}],
                         "description": (
-                            "Extracted README description, or null (also when "
+                            "Extracted README description, or null (kept when "
                             "an agent instruction file imports the README). "
                             "Untrusted repository text: quoted as the analysed "
                             "repository wrote it, and it may be phrased as "

@@ -3048,6 +3048,24 @@ def cmd_explain(args: argparse.Namespace) -> int:
     print(QUOTED_TEXT_NOTICE)
     print()
 
+    # Agent instruction files (and the files they @-import) are named, never
+    # quoted: the sketch's rule, applied to every source dump below.
+    from .agent_instructions import find_instruction_files
+
+    instruction_files = find_instruction_files(repo_root)
+
+    def _held_back_reason(file_path: str) -> Optional[str]:
+        rel = file_path
+        if os.path.isabs(rel):
+            rel = os.path.relpath(rel, repo_root)
+        held = instruction_files.get(Path(rel).as_posix())
+        return None if held is None else held.reason()
+
+    def _quotable_source(file_path: str, start: int, end: int) -> Optional[str]:
+        if _held_back_reason(file_path) is not None:
+            return None
+        return _extract_source_lines(repo_root, file_path, start, end)
+
     # Display each match
     for i, node in enumerate(display_matches):
         if i > 0:
@@ -3071,7 +3089,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         # location, metrics, and call graph. Absent for symbols the
         # analyzer captured no doc comment for.
         docstring = node.get("docstring")
-        if docstring:
+        if docstring and _held_back_reason(path) is None:
             print(f"  Docstring: {docstring}")
 
         # Show origin passes (PROV wasAttributedTo)
@@ -3116,9 +3134,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         queried_symbol_source: Optional[str] = None
         queried_symbol_source_tokens = 0
         if with_source:
-            queried_symbol_source = _extract_source_lines(
-                repo_root, path, start_line, end_line
-            )
+            queried_symbol_source = _quotable_source(path, start_line, end_line)
             if queried_symbol_source:
                 queried_symbol_source_tokens = _estimate_tokens(queried_symbol_source)
                 # Queried symbol is always shown; reserve its tokens.
@@ -3203,7 +3219,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 else:  # pragma: no cover
                     continue
 
-                source = _extract_source_lines(repo_root, caller_path, start, end)
+                source = _quotable_source(caller_path, start, end)
                 if source:
                     tokens = _estimate_tokens(source)
                     caller_source_items.append((
@@ -3231,7 +3247,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 else:  # pragma: no cover
                     continue
 
-                source = _extract_source_lines(repo_root, callee_path, start, end)
+                source = _quotable_source(callee_path, start, end)
                 if source:
                     tokens = _estimate_tokens(source)
                     callee_source_items.append((
@@ -3287,7 +3303,13 @@ def cmd_explain(args: argparse.Namespace) -> int:
         # Now print all source dumps (queried symbol → callers → callees)
         # after both summaries.
         if with_source:
-            if queried_symbol_source:
+            held_reason = _held_back_reason(path)
+            if held_reason is not None:
+                print(
+                    f"\n  [Source held back: {path} is an agent instruction file "
+                    f"({held_reason})]"
+                )
+            elif queried_symbol_source:
                 print(f"\n  Source ({path}:{start_line}-{end_line}):")
                 for line in queried_symbol_source.splitlines():
                     print(f"    {line}")
@@ -13598,7 +13620,8 @@ def run_survey(
         run_status.phase("Pre-computing sketch data: config")
         sketch_precomputed: dict[str, str | list[str] | None] = {}
         # Agent instruction files are never quoted (sketch._held_back): found
-        # once here for both extractions below.
+        # once here for the configuration. The README description is kept
+        # even for an imported README (owner ruling 2026-11-20).
         from .agent_instructions import find_instruction_files
 
         held_back = frozenset(find_instruction_files(repo_root))
@@ -13614,9 +13637,7 @@ def run_survey(
         # Extract README description (uses embedding model)
         run_status.phase("Pre-computing sketch data: README")
         try:
-            sketch_precomputed["readme_description"] = _extract_readme_description(
-                repo_root, held_back=held_back,
-            )
+            sketch_precomputed["readme_description"] = _extract_readme_description(repo_root)
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["readme_description"] = None
 
