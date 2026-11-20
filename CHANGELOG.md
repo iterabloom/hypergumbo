@@ -14,7 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **Stable ids move to scheme v16; some digests change.**
+- **Stable ids move to scheme v17; many digests change.**
 - **Stand-in `fingerprint` values now carry the `hgstandinfp1:` label.**
 
 ### Added
