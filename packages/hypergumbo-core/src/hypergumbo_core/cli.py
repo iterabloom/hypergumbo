@@ -320,7 +320,7 @@ import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linke
 import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
 from .entrypoints import (
     PROGRAM_START_KINDS, apply_rank_floor_and_cap, detect_entrypoint_candidates,
-    detect_entrypoints, request_ingress_entries,
+    detect_entrypoints, path_rank_penalties, request_ingress_entries,
 )
 from .routes import is_route, method_token, protocol_method_token, route_of
 # INV-nosoz: one registry-backed answer to "is this an inheritance edge?"
@@ -2055,11 +2055,25 @@ def cmd_slice(args: argparse.Namespace) -> int:
         # __main__.py is a root too, WI-tuvun).
         _MAIN_KINDS = PROGRAM_START_KINDS
 
+        auto_symbols: Dict[str, Symbol] = {node.id: node for node in nodes}
+
         def entry_score(ep: Any) -> float:
-            """Score = rank_score * connectivity_boost * kind_boost.
+            """Score = rank_score * connectivity_boost * kind_boost * path factors.
 
             connectivity_boost = 1 + log(1 + outgoing_edges)
             kind_boost = 2.0 for main functions, 1.0 otherwise
+            path factors = the entry list's own penalties for a test (x 0.1),
+            example / utility (x 0.5) or vendored (x 0.3) file
+            (``path_rank_penalties``), applied to the WHOLE score.
+
+            In rank_score those penalties act on the base only: the
+            connectivity boost is added after them and the score clamps at
+            1.0. So a program's main that is a thin wrapper (main -> run;
+            alertmanager) sits at 1.0 with two out-edges, while an example
+            main with eight direct calls climbs back to 0.70, and this
+            score, which multiplies by the out-degree again, picked the
+            example. Applied to the whole score, the penalty keeps the seed
+            in production code whenever production code competes.
 
             Main functions get a 2x boost because they are the canonical
             application root.  Route handlers with more edges often point
@@ -2072,7 +2086,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
             out_edges = edge_src_counts.get(ep.symbol_id, 0)
             connectivity_boost = 1 + math.log(1 + out_edges)
             kind_boost = 2.0 if ep.kind in _MAIN_KINDS else 1.0
-            return ep.rank_score * connectivity_boost * kind_boost
+            score = ep.rank_score * connectivity_boost * kind_boost
+            # Entry points are detected from these nodes: the id is there.
+            for factor in path_rank_penalties(auto_symbols[ep.symbol_id]):
+                score *= factor
+            return score
 
         best = max(entrypoints, key=entry_score)
         entry = best.symbol_id
