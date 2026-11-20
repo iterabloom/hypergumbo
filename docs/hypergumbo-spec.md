@@ -306,7 +306,7 @@ test_input_dirs = ["packages/x/recorded", "internal/e2e"]
 
 `trace_deps` — package names (`["phoenix", "httpx"]`) or `"all"` — is the persistent form of [`--trace-deps`](#analysis-options): installed dependency source to analyse. A preference (it costs parse time and executes nothing), so either tier may carry it; the project tier replaces the user tier, and the flag outranks both for one command. Because it is part of the results-cache key, read commands (`search`, `slice`, `io-boundaries`, `verify-claims`, …) find a traced survey only through this key, not through a one-off flag.
 
-Unknown settings and wrong types are refused rather than ignored, naming the file and the setting.
+Unknown settings and wrong types are refused rather than ignored, naming the file and the setting (fail closed: a later key may be a withholding gate, and a warning would let an older hypergumbo skip it). When the likeliest cause is an older hypergumbo (an unknown setting, an attribute `[merge.prefer_by_attribute]` does not arbitrate, a backend no installed analyzer declares) the message says the file may need a newer hypergumbo and names the running version; for a backend it also names a package that is not installed as the other cause. A wrong type or a value out of range gets no such sentence.
 
 ### Catalogue tiers
 

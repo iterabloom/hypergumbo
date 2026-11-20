@@ -444,3 +444,95 @@ class TestANonExecutingBackendIsAnOrdinaryPreference:
         from hypergumbo_core.analyze.registry import config_optin_backends
 
         assert config_optin_backends() == frozenset({"scip_python"})
+
+
+class TestAnUnknownKeyNamesItsLikelyCause:
+    """An unknown key stays an error (fail closed: a later key may be a
+    withholding gate, and a warning would let an older hypergumbo skip it
+    silently). What changes is the message: when a repository adopts a key
+    a newer hypergumbo added, the likeliest cause is an older hypergumbo, so
+    the refusal says so and says which version this is.
+
+    The version is read from the package at the time of the refusal, never
+    written into the message: the monkeypatched ``__version__`` below is what
+    the message must carry."""
+
+    @pytest.fixture
+    def fake_version(self, monkeypatch: pytest.MonkeyPatch) -> str:
+        import hypergumbo_core
+
+        monkeypatch.setattr(hypergumbo_core, "__version__", "0.0.0-probe")
+        return "0.0.0-probe"
+
+    def _refusal(self, tmp_path: Path, text: str, *, user_tier: bool = False) -> str:
+        repo = tmp_path / "repo"
+        repo.mkdir(parents=True, exist_ok=True)
+        xdg = tmp_path / "xdg"
+        target = xdg / "hypergumbo" / "config.toml" if user_tier else repo / ".hypergumbo.toml"
+        _write(target, text)
+        with pytest.raises(ConfigError) as exc:
+            load_layered_config(repo_root=repo, environ={"XDG_CONFIG_HOME": str(xdg)})
+        return str(exc.value)
+
+    def test_a_project_tier_unknown_key_names_a_newer_hypergumbo(
+        self, tmp_path: Path, fake_version: str,
+    ) -> None:
+        message = self._refusal(tmp_path, 'withhold_secrets = true\n')
+        assert "unknown setting 'withhold_secrets'" in message
+        assert "may need a newer hypergumbo" in message
+        assert f"this is hypergumbo {fake_version}" in message
+
+    def test_a_user_tier_unknown_key_names_it_too(
+        self, tmp_path: Path, fake_version: str,
+    ) -> None:
+        """Same cause: the user tier is the file people sync between
+        machines, so a key written by a newer install reaches an older one."""
+        message = self._refusal(tmp_path, 'withhold_secrets = true\n', user_tier=True)
+        assert "config.toml" in message
+        assert "may need a newer hypergumbo" in message
+        assert fake_version in message
+
+    def test_an_unknown_arbitrated_attribute_names_it(
+        self, tmp_path: Path, fake_version: str,
+    ) -> None:
+        """A newer hypergumbo may arbitrate an attribute this one does not."""
+        message = self._refusal(
+            tmp_path, '[merge.prefer_by_attribute]\ncolour = ["scip"]\n',
+        )
+        assert "'colour' is not an arbitrated attribute" in message
+        assert "may need a newer hypergumbo" in message
+        assert fake_version in message
+
+    def test_an_unknown_backend_names_both_causes(
+        self, tmp_path: Path, fake_version: str,
+    ) -> None:
+        """A backend nothing declares is either a package that is not
+        installed or a backend a newer hypergumbo added; the message names
+        both and still does not claim a trust store."""
+        message = self._refusal(tmp_path, "[backends]\nquantum = true\n")
+        assert "unknown setting 'backends.quantum'" in message
+        assert "provides backend 'quantum' may not be installed" in message
+        assert "may need a newer hypergumbo" in message
+        assert fake_version in message
+        assert "trust" not in message.lower()
+
+    def test_a_merge_order_naming_an_undeclared_backend_names_both_causes(
+        self, tmp_path: Path, fake_version: str,
+    ) -> None:
+        message = self._refusal(tmp_path, '[merge]\nprefer = ["quantum"]\n')
+        assert "names backend 'quantum'" in message
+        assert "provides backend 'quantum' may not be installed" in message
+        assert fake_version in message
+
+    @pytest.mark.parametrize("text", [
+        'trace_deps = 3\n',                     # wrong type
+        'io_primitives = "one.yaml"\n',         # wrong type
+        '[merge]\ncorroborated_confidence = 2\n',  # out of range
+    ])
+    def test_a_refusal_with_another_cause_does_not_blame_the_version(
+        self, tmp_path: Path, text: str,
+    ) -> None:
+        """A wrong type or an out-of-range value is the file's own mistake in
+        every version that knows the key; naming an upgrade there would send
+        the reader the wrong way."""
+        assert "newer hypergumbo" not in self._refusal(tmp_path, text)

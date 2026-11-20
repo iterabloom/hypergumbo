@@ -53,7 +53,19 @@ ruling 2 gives for rejecting a trust key loudly rather than ignoring it. The
 cost is forward compatibility — an older hypergumbo reading a newer config
 refuses it instead of degrading — and that is the tradeoff ADR-0045 OQ4
 (schema versioning) is open on. Loud is the safer of the two failure modes
-while it stays open.
+while it stays open: a later key may be a withholding gate, and a warning
+would let an older version skip it without anyone noticing.
+
+Because that cost is real, a refusal whose likeliest cause is an OLDER
+HYPERGUMBO says so (:func:`_newer_version_hint`): an unknown key, an
+attribute ``[merge.prefer_by_attribute]`` does not arbitrate, and a backend
+no installed analyzer declares (where the message names the missing package
+as the other cause). It names the running version, read from the package when
+the refusal is raised, so the reader can compare it with whatever wrote the
+file. A wrong type, an out-of-range level, a malformed ``trace_deps`` or
+``test_input_dirs`` entry, a trust key and a user-tier ``test_input_dirs`` are
+refused WITHOUT the hint: each is wrong in every version that knows the key,
+and naming an upgrade there would send the reader the wrong way.
 
 RESULTS-CACHE KEY. :func:`config_cache_token` digests the WHOLE bytes of
 both tiers into the survey cache key (through :func:`file_digest_token`,
@@ -172,6 +184,27 @@ _MERGE_BY_ATTRIBUTE_PREFIX = "merge.prefer_by_attribute."
 _MERGE_PREFIX = "merge."
 
 
+def _newer_version_hint(*, backend: Optional[str] = None) -> str:
+    """The sentence that names an older hypergumbo as the likely cause.
+
+    The version is read from the package each time, never written into the
+    message: ``hypergumbo --version`` prints the same attribute, so the two
+    cannot disagree. ``backend`` names a backend nothing declares, whose
+    other likely cause is that the package providing it is not installed.
+    """
+    from . import __version__
+
+    newer = (
+        f"this file may need a newer hypergumbo (this is hypergumbo {__version__})"
+    )
+    if backend is None:
+        return f" {newer[0].upper()}{newer[1:]}."
+    return (
+        f" The package that provides backend '{backend}' may not be "
+        f"installed, or {newer}."
+    )
+
+
 def _type_name(expected: Union[type, Tuple[type, ...]]) -> str:
     if isinstance(expected, tuple):
         return " or ".join(t.__name__ for t in expected)
@@ -208,7 +241,8 @@ def _validate_merge(setting: str, value: Any, path: Path) -> None:
             if entry not in backends:
                 raise ConfigError(
                     f"{path}: '{setting}' names backend '{entry}', which no registered "
-                    f"analyzer declares. Declared backends: {', '.join(sorted(backends))}.",
+                    f"analyzer declares. Declared backends: {', '.join(sorted(backends))}."
+                    + _newer_version_hint(backend=entry),
                 )
         return
     if not 0 <= value <= 1:
@@ -411,16 +445,21 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
             if attribute not in attributes:
                 raise ConfigError(
                     f"{path}: '{setting}': '{attribute}' is not an arbitrated "
-                    f"attribute. Arbitrated attributes: {', '.join(sorted(attributes))}.",
+                    f"attribute. Arbitrated attributes: {', '.join(sorted(attributes))}."
+                    + _newer_version_hint(),
                 )
             expected = list
         else:
             expected = _KNOWN_SETTINGS.get(setting)
         if expected is None:
             known = ", ".join(sorted(_KNOWN_SETTINGS))
+            backend = (
+                setting[len(_BACKENDS_PREFIX):]
+                if setting.startswith(_BACKENDS_PREFIX) else None
+            )
             raise ConfigError(
                 f"{path}: unknown setting '{setting}'. Known settings: "
-                f"{known}.",
+                f"{known}." + _newer_version_hint(backend=backend),
             )
         # bool is an int subclass; a level spelled `true` is a typo, not 1.
         if not isinstance(value, expected) or (isinstance(value, bool) and expected is not bool):
