@@ -4044,6 +4044,49 @@ class TestApplicationLibraryExportDemotion:
         # Exports filtered out (0.75 * 0.1 = 0.075 < 0.10 threshold)
         assert len(export_eps) == 0
 
+    @staticmethod
+    def _library_with(trigger_path: str, tier: int = 1) -> tuple[list, str]:
+        """A Java library (two public exports) and one ``main`` at
+        ``trigger_path``; returns the nodes and one export's id."""
+        main = make_symbol(
+            "Bench.main", path=trigger_path, kind="method", language="java",
+            meta={"concepts": [{"concept": "main_function"}]},
+            supply_chain_tier=tier,
+        )
+        exports = [
+            make_symbol(
+                name, path=f"src/main/java/lib/{name}.java", kind="class",
+                language="java", start_line=1,
+                meta={"concepts": [{"concept": "library_export"}]},
+            )
+            for name in ("Jedis", "Pipeline")
+        ]
+        return [main, *exports], exports[0].id
+
+    @pytest.mark.parametrize(("trigger_path", "tier"), [
+        ("src/test/java/lib/codegen/Bench.java", 1),  # jedis: test-tree mains only
+        ("test/typing/plain_files/orm/Bench.java", 1),  # sqlalchemy's shape
+        ("examples/Bench.java", 1),                  # already excluded before
+        ("vendor/other/Bench.java", 3),              # vendored code
+    ])
+    def test_a_main_outside_production_code_does_not_demote_exports(
+        self, trigger_path: str, tier: int,
+    ) -> None:
+        """Only production code says the language hosts an application: a
+        main in a test, example or vendored file does not demote the
+        library's exports (jedis: 13 test-tree mains demoted 987 exports)."""
+        nodes, export_id = self._library_with(trigger_path, tier)
+        kept = {e.symbol_id: e for e in detect_entrypoints(nodes, [])}
+        assert export_id in kept
+        assert kept[export_id].rank_score == pytest.approx(0.75)
+
+    def test_one_production_main_still_demotes_exports(self) -> None:
+        """An application with a single production program start (ripgrep:
+        one binary main beside 549 exports) keeps the demotion: no count
+        threshold."""
+        nodes, export_id = self._library_with("src/main/java/app/Main.java")
+        assert export_id not in {e.symbol_id for e in detect_entrypoints(nodes, [])}
+
     def test_library_export_demoted_when_commands_exist(self) -> None:
         """library_export filtered when same-language CLI commands exist.
 

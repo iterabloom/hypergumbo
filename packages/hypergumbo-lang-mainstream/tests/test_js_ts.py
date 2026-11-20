@@ -8956,6 +8956,71 @@ class TestHttpHandlerUsageContext:
         ]
         assert len(ucs) == 1
 
+    @staticmethod
+    def _bare_createserver_ucs(tmp_path: Path, header: str, call: str) -> list:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "cli.ts").write_text(
+            f"{header}\n\nconst server = {call}({{ root: '.' }});\nserver.listen(3000);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        return [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "createServer"
+        ]
+
+    def test_bare_createserver_from_the_projects_own_module_is_not_http(
+        self, tmp_path: Path,
+    ) -> None:
+        """vite's cli.ts: ``import { createServer } from './server'`` names
+        the project's own dev-server factory, not Node's http server. The
+        bare name alone made it an ``HTTP ALL /`` route on the file."""
+        assert self._bare_createserver_ucs(
+            tmp_path, "import { createServer } from './server';", "createServer") == []
+
+    @pytest.mark.parametrize("module", ["net", "tls", "vite", "../lib/server"])
+    def test_bare_createserver_from_another_module_is_not_http(
+        self, tmp_path: Path, module: str,
+    ) -> None:
+        """``net`` / ``tls`` createServer is a TCP / TLS server; a library's
+        createServer is the library's."""
+        assert self._bare_createserver_ucs(
+            tmp_path, f"import {{ createServer }} from '{module}';", "createServer") == []
+
+    def test_another_export_renamed_createserver_is_not_http(self, tmp_path: Path) -> None:
+        """``import { request as createServer } from 'http'``: the local name
+        is createServer, the import is not Node's createServer."""
+        assert self._bare_createserver_ucs(
+            tmp_path, "import { request as createServer } from 'http';", "createServer") == []
+
+    def test_bare_createserver_with_no_import_is_not_http(self, tmp_path: Path) -> None:
+        """A local function named createServer."""
+        assert self._bare_createserver_ucs(
+            tmp_path, "function createServer(o) { return o; }", "createServer") == []
+
+    @pytest.mark.parametrize("header", [
+        "import { createServer } from 'http';",
+        "import { createServer } from 'node:https';",
+        "import { createServer } from 'http2';",
+        "const { createServer } = require('http');",
+        "const { createServer } = require('node:http');",
+    ])
+    def test_bare_createserver_imported_from_node_http_is_http(
+        self, tmp_path: Path, header: str,
+    ) -> None:
+        assert len(self._bare_createserver_ucs(tmp_path, header, "createServer")) == 1
+
+    def test_aliased_createserver_is_not_read(self, tmp_path: Path) -> None:
+        """``import { createServer as mk } from 'http'`` then ``mk(...)`` is
+        Node's server, but reading aliases is new recall, held back for the
+        owner: on vite it finds the dev server's ``server/ws.ts`` and demotes
+        vite's exported API. Neither the alias nor the original name is
+        taken."""
+        assert self._bare_createserver_ucs(
+            tmp_path, "import { createServer as mk } from 'http';", "mk") == []
+        assert self._bare_createserver_ucs(
+            tmp_path, "import { createServer as mk } from 'http';", "createServer") == []
+
     def test_no_uc_for_unrelated_calls(self, tmp_path: Path) -> None:
         """Calls outside the HTTP handler set do NOT produce these UCs."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
