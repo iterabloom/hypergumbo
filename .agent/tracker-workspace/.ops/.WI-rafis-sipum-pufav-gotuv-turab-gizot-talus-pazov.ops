@@ -1,0 +1,20 @@
+- op: create  # a6a5
+  at: '2026-11-20T20:03:33Z'  # a6a5
+  by: agent  # a6a5
+  actor: jgstern_agent  # a6a5
+  clock: 1  # a6a5
+  nonce: a6a5  # a6a5
+  data:  # a6a5
+    kind: work_item  # a6a5
+    title: "Typed stable ids not checked for import canonicalization: Objective-C, Julia, Solidity; TypeScript conditional type without a space before the colon."  # a6a5
+    status: todo_soft  # a6a5
+    priority: 4  # a6a5
+    parent:  # a6a5
+    tags:  # a6a5
+    - stable_id  # a6a5
+    isbefore: []  # a6a5
+    duplicate_of: []  # a6a5
+    not_duplicate_of: []  # a6a5
+    pr_ref:  # a6a5
+    description: "Typed stable ids not checked for import canonicalization: Objective-C, Julia, Solidity; TypeScript conditional type without a space before the colon.\n\nWI-palus did not check whether Objective-C, Julia or Solidity hash a qualified and an imported spelling of one type apart. Its TypeScript rewrite would skip C in a conditional type written 'A extends B ? C: D' (no space before the colon); not observed in the measured trees. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # a6a5
+    fields: {}  # a6a5

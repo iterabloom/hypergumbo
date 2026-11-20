@@ -1,0 +1,20 @@
+- op: create  # badd
+  at: '2026-11-20T20:03:27Z'  # badd
+  by: agent  # badd
+  actor: jgstern_agent  # badd
+  clock: 1  # badd
+  nonce: badd  # badd
+  data:  # badd
+    kind: work_item  # badd
+    title: "C# keyword types and Swift module-qualified types hash apart from their other spelling."  # badd
+    status: todo_soft  # badd
+    priority: 4  # badd
+    parent:  # badd
+    tags:  # badd
+    - stable_id  # badd
+    isbefore: []  # badd
+    duplicate_of: []  # badd
+    not_duplicate_of: []  # badd
+    pr_ref:  # badd
+    description: "C# keyword types and Swift module-qualified types hash apart from their other spelling.\n\nREPRO: C# void f(string s) vs void f(System.String s); Swift func f(_ x: Swift.Int) vs func f(_ x: Int). Neither is decided by imports, so WI-palus left both as written; C# global:: prefix not checked either. Decide whether the language's built-in alias table should canonicalize them. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # badd
+    fields: {}  # badd

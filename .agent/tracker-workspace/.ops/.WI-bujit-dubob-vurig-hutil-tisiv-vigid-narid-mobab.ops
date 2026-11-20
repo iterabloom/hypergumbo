@@ -1,0 +1,20 @@
+- op: create  # b85b
+  at: '2026-11-20T20:03:20Z'  # b85b
+  by: agent  # b85b
+  actor: jgstern_agent  # b85b
+  clock: 1  # b85b
+  nonce: b85b  # b85b
+  data:  # b85b
+    kind: work_item  # b85b
+    title: "Kotlin, Scala and Dart call-resolution import readers misread star imports and aliases."  # b85b
+    status: todo_soft  # b85b
+    priority: 3  # b85b
+    parent:  # b85b
+    tags:  # b85b
+    - stable_id  # b85b
+    isbefore: []  # b85b
+    duplicate_of: []  # b85b
+    not_duplicate_of: []  # b85b
+    pr_ref:  # b85b
+    description: "Kotlin, Scala and Dart call-resolution import readers misread star imports and aliases.\n\nWI-palus added separate small file-level readers for type canonicalization in these three languages because the existing call-resolution readers bind a star import as if it were a name, and mis-key aliases (import a.b.C as D). Call resolution still uses the old readers. Check the effect on call edges, then share one correct reader per language. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # b85b
+    fields: {}  # b85b
