@@ -3335,6 +3335,30 @@ def normalize_signature_types_first(
     return f"({norm_params})"
 
 
+#: What stands between a caller-visible parameter name and the parameter's
+#: hashed type in a typed stable_id's signature slot.
+LABEL_SEPARATOR = ":"
+
+
+def labelled_parameter(label: Optional[str], hashed_type: str) -> str:
+    """One parameter's text in a hashed signature, with the name a CALLER
+    writes for it: ``label:Type``, or ``Type`` when callers write none.
+
+    A parameter name is left out of a typed stable_id (renaming it is not a
+    change of identity), except the name a call has to spell: a Swift
+    argument label (``f(from: 1)`` calls ``func f(from x: Int)``, which is not
+    ``func f(to x: Int)``) and a Dart named parameter (``f(a: 1)``). Two
+    declarations that differ only there are two callables, and without the
+    name they shared an id. ``label`` is that caller-side name as the
+    language spells it in a call (a Swift ``_``, a positional parameter:
+    ``None``), so a parameter with no label hashes exactly its type, as it did
+    before labels were hashed. The separator cannot occur at the top level of
+    a hashed type text (a dictionary's ``[K: V]`` is bracketed), so
+    ``a:T`` is not some type's spelling.
+    """
+    return f"{label}{LABEL_SEPARATOR}{hashed_type}" if label else hashed_type
+
+
 def normalize_signature_names_first(
     signature: str | None,
     type_params: list[str] | None = None,
