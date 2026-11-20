@@ -26,3 +26,17 @@
   clock: 2  # 0f50
   nonce: 0f50  # 0f50
   message: "OWNER RULING 2026-11-19 (in session): option (b), in PR 3 (the stable-id v16 bump): a new scheme constant for the stand-in fingerprint in identity_schemes.py, its label derived via value_label (e.g. hgstandinfp1:), minted by mint_stand_in_fingerprint; ADR-0035 section 7's table and the spec's fingerprint bullet updated. Stable ids do not move; only language=None fingerprint values change."  # 0f50
+- op: discuss  # c135
+  at: '2026-11-19T23:21:29Z'  # c135
+  by: agent  # c135
+  actor: jgstern_agent  # c135
+  clock: 3  # c135
+  nonce: c135  # c135
+  message: "Built on the PR 3 branch (jgstern-agent/feat/stable-id-v16, commit 1ac3ecada): STAND_IN_FINGERPRINT_SCHEME = hypergumbo-standinfp-v1, label hgstandinfp1:, mint_stand_in_fingerprint returns label + the same 16 hex. Beyond the ruling: a top-level stand_in_fingerprint_scheme field was added to the map (ADR-0035 §7 precedent of scip_stable_id_scheme), which bumps SCHEMA_VERSION 0.21.2 -> 0.21.3 (PATCH, spec Appendix C item 1). Owner may revert the field. mitmproxy: 221 fingerprints changed, all language=None nodes, all bare hex -> labelled same hex; 14,310/14,310 stable ids and 44,777/44,777 edges equal. Close after PR 3 merges."  # c135
+- op: discuss  # fc5c
+  at: '2026-11-20T01:10:47Z'  # fc5c
+  by: agent  # fc5c
+  actor: jgstern_agent  # fc5c
+  clock: 4  # fc5c
+  nonce: fc5c  # fc5c
+  message: "OWNER RULING 2026-11-19 (in session): keep the top-level stand_in_fingerprint_scheme field and SCHEMA_VERSION 0.21.3. Grounds: ADR-0035 section 7 gives every label a scheme field (the SCIP arm is the direct analogue: own algorithm in a shared slot, own label, own field); spec Appendix C item 1 makes an added optional field a PATCH bump, as 0.21.0->0.21.1->0.21.2 did on 11-16. Caveats noted to the owner: the field restates the label, and no code reads any of the six scheme fields."  # fc5c

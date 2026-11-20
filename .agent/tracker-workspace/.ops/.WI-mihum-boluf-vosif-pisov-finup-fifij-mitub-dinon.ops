@@ -18,3 +18,10 @@
     pr_ref:  # f751
     description: "Dart: a parameter annotation with a comma inside a string is mis-split (@A(\"x,y\") int a), because the Dart split honours no string quote.\n\nFound by PR 3 agent 6 (commit f580de52d context): the shared splitter is configured with no quotes for Dart. Not measured on a real tree. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent6/RESULTS.md residual 3."  # f751
     fields: {}  # f751
+- op: discuss  # 72a8
+  at: '2026-11-19T22:14:00Z'  # 72a8
+  by: agent  # 72a8
+  actor: jgstern_agent  # 72a8
+  clock: 2  # 72a8
+  nonce: 72a8  # 72a8
+  message: "Fixed on the PR 3 branch (jgstern-agent/feat/stable-id-v16, commit 2217d7f4a: Dart's hashed signature is rendered from the syntax tree). Repro by agent 8: void f(@A(\"(\") int a, int b) {} gave no typed id at tip 8996a2812, gives (@A(\"(\") int,int) after; void f(@A(\"x)\") int a, int b) {} gave (@A(\"x)\")int a, int b) at tip, (@A(\"x)\") int,int) after. Close after PR 3 merges, re-running the repro on dev. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent8/mihum_repro.txt."  # 72a8

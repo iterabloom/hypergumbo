@@ -19,3 +19,18 @@
     pr_ref:  # c124
     description: "WHAT, after PR #2200 gave stable_id / shape_id / repo_fingerprint values a label derived from their scheme constant:\n- 506 lines in 97 test files pin an id with the label written out (`hgstableid15:<hex>`, `hgshapeid4:`, `hgrepofp3:`). Every future scheme bump changes the label of EVERY value, so every one of those lines must be rewritten even when its digest did not move. PR #2200 did it with a throwaway script (a per-file check that the digest multiset is unchanged); no script is in the tree. Options: commit such a script, or have tests build the literal from schema.STABLE_ID_PREFIX.\n- fingerprint.py holds its own `hgfp2:` literal; it is not derived from SYMBOL_FINGERPRINT_SCHEME through schema.value_label as the other four are.\n- slice.py:374's feature id is `sha256:` (a query digest; not named in WI-talos's scope list; left).\n- The frozen text `sha256:` inside hash inputs (analyze/base.py `_NESTED_ID_HASH_LABEL`) is now part of the formula: a folded id enters another id's hash input in its v14 text. Changing it is a scheme bump. Recorded in ADR-0035 section 7; listed here so it is findable.\n- Adding the top-level `scip_stable_id_scheme` did not bump SCHEMA_VERSION (folded into the unreleased 0.21.0, as `request_ingress` was). If the owner wants 0.21.1, that is one constant.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # c124
     fields: {}  # c124
+- op: update  # e43e
+  at: '2026-11-20T01:44:27Z'  # e43e
+  by: agent  # e43e
+  actor: jgstern_agent  # e43e
+  clock: 2  # e43e
+  nonce: e43e  # e43e
+  set:  # e43e
+    status: done  # e43e
+- op: discuss  # ef02
+  at: '2026-11-20T01:44:27Z'  # ef02
+  by: agent  # ef02
+  actor: jgstern_agent  # ef02
+  clock: 3  # ef02
+  nonce: ef02  # ef02
+  message: "Done in PR #2291 (dev 703dce32b; commit 458aa5f15, residuals in 54f775324). Re-checked on dev 703dce32b: (1) grep -rnE \"[\\\"']hg(stableid|shapeid|repofp|scipid|fp|standinfp)[0-9]+:\" packages/*/tests tests --include=*.py, excluding test_behavior_map_schema.py -> 0 lines (was 506 lines in 97 files); 100 test files build pins from STABLE_ID_PREFIX / SHAPE_ID_PREFIX / REPO_FINGERPRINT_PREFIX / SYMBOL_FINGERPRINT_PREFIX. (2) python: fingerprint._SCHEME_PREFIX == 'hgfp2:' and 'is identity_schemes.SYMBOL_FINGERPRINT_PREFIX' -> True, == value_label('fp', SYMBOL_FINGERPRINT_SCHEME) -> True; no \"hgfp2:\" string literal left in fingerprint.py. (3) scripts/smart-test over test_identity_schemes.py (incl. the new gate test_no_file_writes_an_identity_label_out) + 5 more files -> mypy ratchet clean, 138 passed. Bump property observed: the v16 bump 54f775324 edited 2 hand pins only (both in test_behavior_map_schema.py). Left as the item recorded: slice.py 'sha256:' feature id, analyze/base.py _NESTED_ID_HASH_LABEL frozen text, and the optional 0.21.1 schema bump for scip_stable_id_scheme (owner option, not taken). Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/jozil.txt, ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/smarttest_core.txt"  # ef02
