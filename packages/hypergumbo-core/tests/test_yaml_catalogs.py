@@ -187,7 +187,7 @@ def test_every_family_answers_the_extensibility_question():
 
 
 def test_ruling_10_table_is_the_shipped_registry():
-    """The eleven families carry exactly the ADR-0047 ruling-10 verdicts.
+    """The twelve families carry exactly the ADR-0047 ruling-10 verdicts.
 
     Pinned as a table rather than a count so a future edit that flips one
     family's channel has to change this test and say so, instead of drifting.
@@ -225,6 +225,10 @@ def test_ruling_10_table_is_the_shipped_registry():
         # exactly the row a user has and the shipped catalogue cannot — so it
         # gets a channel, ungated and unscoped.
         "library_signatures": ("library_signatures.d", None, None),
+        # The files coding-agent tools load as instructions: a fact about the
+        # TOOLS, neither the user's world nor the language's, and a row only
+        # ever holds text back, so a missing row is shipped, not configured.
+        "agent_instructions": (None, None, None),
     }
 
 

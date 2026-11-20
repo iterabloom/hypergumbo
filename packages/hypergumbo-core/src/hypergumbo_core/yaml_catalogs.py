@@ -14,8 +14,9 @@ of them.
 Why this exists. The catalog set grew organically — ``frameworks/`` landed in
 the initial pattern-system work, ``io_primitives/`` landed with ADR-0016, the
 ``dataflow_patterns/`` + ``cfg_nodes/`` + ``taint_*`` + ``function_summaries/``
-family landed across ADR-0015 / ADR-0017, and ADR-0047 added the user-channel
-and community-overlay families. With eleven registered directories holding
+family landed across ADR-0015 / ADR-0017, ADR-0047 added the user-channel
+and community-overlay families, and ``agent_instructions/`` came with the
+sketch's holdback of agent instruction files. With twelve registered directories holding
 well over a hundred YAML files (``enumerate_catalogs`` gives the live count)
 there is no longer a single place to enumerate them. Without a
 registry, new categories drift in and out of documentation, generate-architecture
@@ -270,6 +271,18 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         user_channel="library_signatures.d",
         no_channel_reason=None,
         channel_stage=CHANNEL_STAGE_ANALYSIS,
+    ),
+    CatalogSpec(
+        directory="agent_instructions",
+        purpose="Files coding-agent tools load as instructions, keyed by the "
+        "tool that reads each; the sketch lists them and quotes none.",
+        loader="hypergumbo_core.agent_instructions",
+        adr=None,
+        user_channel=None,
+        no_channel_reason="Rows name the files published coding-agent tools "
+        "load, a fact about those tools rather than about the user's code or "
+        "libraries, and a row only ever holds text back: a missing row is a "
+        "fix to ship to every user, not a local preference.",
     ),
 )
 

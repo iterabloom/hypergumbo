@@ -59,6 +59,7 @@ line is how you vouch for it, and it is then yours.
 | `function_summaries` | 4 | 3 | `function_summaries.d/`, rides the user-supplied caveat | Describes callees whose source is not analysed. A wrong 'terminates' verdict closes a branch that is really open and DELETES a real finding, which is why a user-supplied one rides a caveat. |
 | `url_folding` | 2 | 0 | none | Folds a built URL back to a route pattern. Without them an interpolated URL never matches the route it calls. |
 | `library_signatures` | 5 | 3 | `library_signatures.d/` | Says what a LIBRARY function returns, which is the only way a receiver bound to a library call can be typed at all — nothing in your repository declares it. Without them such a receiver stays on the `external` sentinel and every method-kind row keyed by its type is unreachable however correct that row is. |
+| `agent_instructions` | 1 | 0 | none | Names the files coding-agent tools load as instructions. Without them a sketch quotes AGENTS.md or CLAUDE.md like any other document, and hands their instructions to the model that reads it. |
 
 Families with no channel say why in the registry: their rows describe grammar node types or hypergumbo's own engines (`cfg_nodes`, `url_folding`), or they have a home already (`io_primitives_overlays` rows are overridden from `io_primitives.d/`).
 

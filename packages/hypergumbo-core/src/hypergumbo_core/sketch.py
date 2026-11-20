@@ -29,8 +29,9 @@ Sections in emission order:
 2.  Overview — language breakdown and LOC estimate, plus the
     installed-dependency-source disclosure line when deps were skipped,
     the generated-output disclosure line when generated output was pruned,
-    and the vendored-code disclosure line (``format_vendored_disclosure``)
-    when vendored code was analysed but left out of the language line
+    the vendored-code disclosure line (``format_vendored_disclosure``)
+    when vendored code was analysed but left out of the language line, and
+    the agent instruction files line (below) when the repository has any
 3.  Structure — tree of paths to important files across up to 10 root
     dirs (top-level listing when there are none), with a fixed-width LOC
     column per line (``_TreeLoc``; all kept files, vendored included; the
@@ -73,6 +74,20 @@ Sections in emission order:
 12. Source Files Content — full source for the top-ranked files
     (only when ``with_source=True``)
 13. Additional Files Content — full source for additional files
+
+Agent instruction files
+-----------------------
+A file a coding-agent tool loads as instructions (``AGENTS.md``,
+``CLAUDE.md``, ``.cursor/rules/*.mdc``, ...), or one such a file imports with
+``@path``, is found once per sketch (``agent_instructions``, a catalogue
+keyed by tool) and its text is never printed: it is not an Additional Files
+candidate, Source Files Content skips it, it is never the README
+description, the Configuration collectors do not read it
+(:func:`_held_back`), and the docstrings of symbols defined in it are dropped
+(:func:`_drop_held_back_docstrings`). The Overview names each one with the
+tools that read it (``format_instruction_files_disclosure``). Text written to
+be obeyed by a model is the one kind of quoted text the sketch withholds
+rather than only labels.
 
 Data source
 -----------
@@ -138,7 +153,7 @@ import os
 from collections import Counter
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, AbstractSet, Any, Callable, Iterable, Iterator, List, Optional
 
 if TYPE_CHECKING:
     from .declared_test_inputs import Declaration
@@ -154,6 +169,9 @@ from .discovery import (
 )
 from .profile import detect_profile, RepoProfile, _load_toml
 from .supply_chain import format_vendored_disclosure
+from .agent_instructions import (
+    InstructionFile, find_instruction_files, format_instruction_files_disclosure,
+)
 from . import run_status
 from .ir import Symbol, Edge, is_external_boundary
 from .paths import is_test_node, names_no_source_file
@@ -570,6 +588,49 @@ def _described(path: Path, repo_root: Path) -> bool:
     return not vcs_ignored(path, repo_root)
 
 
+def _held_back(path: Path, repo_root: Path, held_back: AbstractSet[str]) -> bool:
+    """Is ``path`` a file whose text the sketch must not print?
+
+    ``held_back`` is the set of repository-relative, ``/``-separated paths
+    of agent instruction files (:func:`.agent_instructions.find_instruction_files`):
+    files a coding-agent tool loads as instructions, and the files they
+    import. The sketch lists them in the Overview and quotes none of them.
+    """
+    if not held_back:
+        return False
+    try:
+        rel = Path(path).relative_to(repo_root).as_posix()
+    except ValueError:
+        return False
+    return rel in held_back
+
+
+def _instruction_files(repo_root: Path) -> "dict[str, InstructionFile]":
+    """The agent instruction files of ``repo_root`` (one walk)."""
+    return find_instruction_files(repo_root)
+
+
+def _drop_held_back_docstrings(
+    symbols: "list[Symbol]", repo_root: Path, held_back: AbstractSet[str],
+) -> None:
+    """Forget the docstrings of symbols defined in agent instruction files.
+
+    A docstring is the file's text: Source Files, Key Symbols, Entry Points
+    and Data Models would quote it. The symbol, its name and its signature
+    stay; they are structure, like the path. The symbols are this sketch's
+    own copies, built from the map, so the map is not changed.
+    """
+    if not held_back:
+        return
+    prefix = f"{repo_root}{os.sep}"
+    for symbol in symbols:
+        path = symbol.path
+        if path.startswith(prefix):
+            path = path[len(prefix):]
+        if symbol.docstring and Path(path).as_posix() in held_back:
+            symbol.docstring = None
+
+
 CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
     # JavaScript/TypeScript ecosystem
     "javascript": ["package.json"],
@@ -789,7 +850,9 @@ def _toml_table(data: dict[str, Any] | None, *keys: str) -> dict[str, Any]:
     return table if isinstance(table, dict) else {}
 
 
-def _extract_config_heuristic(repo_root: Path) -> list[str]:
+def _extract_config_heuristic(
+    repo_root: Path, held_back: AbstractSet[str] = frozenset(),
+) -> list[str]:
     """Extract config metadata using heuristic pattern matching.
 
     This is the fast path that extracts known fields from common config files
@@ -797,6 +860,9 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
 
     Args:
         repo_root: Path to repository root.
+        held_back: Agent instruction files (:func:`_held_back`), whose
+            fields are not quoted. The licence line names a licence TYPE
+            and quotes nothing, so it does not ask.
 
     Returns:
         List of extracted metadata lines.
@@ -1070,6 +1136,8 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
             if not (config_path.exists() and _described(config_path, repo_root)):
                 continue
+            if _held_back(config_path, repo_root, held_back):
+                continue
             prefix = f"{subdir}/" if subdir else ""
             lines.extend(extractor(config_path, prefix))
             seen_manifest_paths.add(config_path.resolve())
@@ -1097,6 +1165,8 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             if any(p.startswith(".") or p in _manifest_exclude for p in rel.parts[:-1]):
                 continue
             if under_content_rule_dir(repo_root, rel.parts[:-1]):
+                continue
+            if _held_back(match, repo_root, held_back):
                 continue
             prefix = f"{rel.parent.as_posix()}/"
             lines.extend(extractor(match, prefix))
@@ -1151,7 +1221,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
 
 
 def _collect_config_content(
-    repo_root: Path,
+    repo_root: Path, held_back: AbstractSet[str] = frozenset(),
 ) -> tuple[list[tuple[str, str]], set[Path]]:
     """Collect all config file content as (filename, content) pairs.
 
@@ -1160,6 +1230,7 @@ def _collect_config_content(
 
     Args:
         repo_root: Path to repository root.
+        held_back: Agent instruction files (:func:`_held_back`), not read.
 
     Returns:
         Tuple of (config_content, seen_paths) where config_content is a list
@@ -1173,6 +1244,8 @@ def _collect_config_content(
         for subdir in CONFIG_SUBDIRS:
             config_path = repo_root / subdir / config_name if subdir else repo_root / config_name
             if not (config_path.exists() and _described(config_path, repo_root)):
+                continue
+            if _held_back(config_path, repo_root, held_back):
                 continue
 
             try:
@@ -1208,6 +1281,8 @@ def _collect_config_content(
             if any(p.startswith(".") or p in _exclude_dirs for p in parts):
                 continue
             if under_content_rule_dir(repo_root, parts):
+                continue
+            if _held_back(match, repo_root, held_back):
                 continue
             try:
                 content = match.read_text(encoding="utf-8", errors="replace")
@@ -1458,6 +1533,7 @@ def _discover_config_files_embedding(
 def _collect_config_content_with_discovery(
     repo_root: Path,
     use_discovery: bool = True,
+    held_back: AbstractSet[str] = frozenset(),
 ) -> list[tuple[str, str]]:
     """Collect config file content, optionally with embedding-based discovery.
 
@@ -1467,12 +1543,13 @@ def _collect_config_content_with_discovery(
     Args:
         repo_root: Path to repository root.
         use_discovery: If True, use embedding-based discovery for additional files.
+        held_back: Agent instruction files (:func:`_held_back`), not read.
 
     Returns:
         List of (prefixed_filename, content) tuples.
     """
     # Start with standard config collection (includes monorepo discovery)
-    config_content, seen_paths = _collect_config_content(repo_root)
+    config_content, seen_paths = _collect_config_content(repo_root, held_back)
 
     # Also handle glob patterns from CONFIG_FILES
     for config_name in CONFIG_FILES:
@@ -1483,7 +1560,8 @@ def _collect_config_content_with_discovery(
                     for match in sorted(search_dir.glob(config_name)):
                         resolved = match.resolve()
                         if (match.is_file() and resolved not in seen_paths
-                                and _described(match, repo_root)):
+                                and _described(match, repo_root)
+                                and not _held_back(match, repo_root, held_back)):
                             try:
                                 content = match.read_text(encoding="utf-8", errors="replace")
                                 rel_path = match.relative_to(repo_root)
@@ -1508,7 +1586,7 @@ def _collect_config_content_with_discovery(
             continue
         try:
             rel_path = path.relative_to(repo_root)
-            if _is_config_excluded_path(str(rel_path)):
+            if _is_config_excluded_path(str(rel_path)) or _held_back(path, repo_root, held_back):
                 continue
             content = path.read_text(encoding="utf-8", errors="replace")
             config_content.append((str(rel_path), content))
@@ -1697,6 +1775,7 @@ def _extract_config_embedding(
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
     progress_callback: Callable[..., Any] | None = None,
+    held_back: AbstractSet[str] = frozenset(),
 ) -> list[str]:
     """Extract config metadata using dual-probe stratified embedding selection.
 
@@ -1720,6 +1799,7 @@ def _extract_config_embedding(
         max_config_files: Maximum number of config files to process.
         fleximax_lines: Base sample size for log-scaled line sampling.
         max_chunk_chars: Maximum characters per chunk for embedding.
+        held_back: Agent instruction files (:func:`_held_back`), not read.
 
     Returns:
         List of extracted metadata lines, ordered by file then relevance.
@@ -1734,10 +1814,11 @@ def _extract_config_embedding(
         import numpy as np
     except ImportError:  # pragma: no cover
         # Fall back to heuristic if sentence-transformers not available
-        return _extract_config_heuristic(repo_root)[:max_lines]
+        return _extract_config_heuristic(repo_root, held_back)[:max_lines]
 
     # Collect all config content (with embedding-based discovery)
-    config_content = _collect_config_content_with_discovery(repo_root, use_discovery=True)
+    config_content = _collect_config_content_with_discovery(
+        repo_root, use_discovery=True, held_back=held_back)
     if not config_content:
         return []  # pragma: no cover - defensive, caller checks for config files
 
@@ -1759,7 +1840,7 @@ def _extract_config_embedding(
         model = _load_embedding_model()
     except EmbeddingsUnavailable as exc:
         _warn_embeddings_unavailable(exc)
-        return _extract_config_heuristic(repo_root)[:max_lines]
+        return _extract_config_heuristic(repo_root, held_back)[:max_lines]
     _vlog(f"Model loaded in {_time.time() - _t_load:.1f}s")
 
     # === PASS 1a: Collect chunks from all files (no embedding yet) ===
@@ -2056,6 +2137,7 @@ def _extract_config_hybrid(
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
     progress_callback: Callable[..., Any] | None = None,
+    held_back: AbstractSet[str] = frozenset(),
 ) -> list[str]:
     """Extract config using hybrid approach: heuristics first, then embeddings.
 
@@ -2071,12 +2153,13 @@ def _extract_config_hybrid(
         fleximax_lines: Base sample size for log-scaled line sampling.
         max_chunk_chars: Maximum characters per chunk for embedding.
         progress_callback: Optional callback for progress updates (current, total).
+        held_back: Agent instruction files (:func:`_held_back`), not read.
 
     Returns:
         List of extracted metadata lines.
     """
     # Step 1: Get heuristic extraction (fast, reliable for known fields)
-    heuristic_lines = _extract_config_heuristic(repo_root)
+    heuristic_lines = _extract_config_heuristic(repo_root, held_back)
     heuristic_text = "\n".join(heuristic_lines)
 
     # If heuristics already fill the budget, we're done
@@ -2100,6 +2183,7 @@ def _extract_config_hybrid(
             fleximax_lines=fleximax_lines,
             max_chunk_chars=max_chunk_chars,
             progress_callback=progress_callback,
+            held_back=held_back,
         )
     except Exception:  # pragma: no cover
         # If embedding fails, just return heuristic results
@@ -2238,6 +2322,7 @@ def _extract_config_info(
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
     progress_callback: Callable[..., Any] | None = None,
+    held_back: Optional[AbstractSet[str]] = None,
 ) -> str:
     """Extract key metadata from config files via extractive summarization.
 
@@ -2257,11 +2342,15 @@ def _extract_config_info(
         fleximax_lines: Base sample size for log-scaled line sampling.
         max_chunk_chars: Maximum characters per chunk for embedding.
         progress_callback: Optional callback for progress updates (current, total).
+        held_back: Agent instruction files (:func:`_held_back`), whose text
+            is not quoted; found here (one walk) when not given.
 
     Returns:
         Extracted config metadata as a formatted string, or empty string
         if no config files found.
     """
+    if held_back is None:
+        held_back = frozenset(_instruction_files(repo_root))
     # Select extraction strategy based on mode.  WI-fumap: when the
     # requested mode requires sentence-transformers but the package
     # isn't available, warn (once) and degrade to heuristic explicitly
@@ -2280,6 +2369,7 @@ def _extract_config_info(
             fleximax_lines=fleximax_lines,
             max_chunk_chars=max_chunk_chars,
             progress_callback=progress_callback,
+            held_back=held_back,
         )
     elif mode == ConfigExtractionMode.HYBRID:
         lines = _extract_config_hybrid(
@@ -2289,9 +2379,10 @@ def _extract_config_info(
             fleximax_lines=fleximax_lines,
             max_chunk_chars=max_chunk_chars,
             progress_callback=progress_callback,
+            held_back=held_back,
         )
     else:  # HEURISTIC (default)
-        lines = _extract_config_heuristic(repo_root)
+        lines = _extract_config_heuristic(repo_root, held_back)
 
     # Check if output uses [filename] headers (embedding/hybrid modes)
     # If not, just join and truncate (heuristic mode)
@@ -3902,7 +3993,8 @@ def _truncate_description(description: str, max_chars: int) -> str:
 
 
 def _extract_readme_description(
-    repo_root: Path, max_chars: int = 300
+    repo_root: Path, max_chars: int = 300,
+    held_back: Optional[AbstractSet[str]] = None,
 ) -> Optional[str]:
     """Extract a description from the project README file.
 
@@ -3914,12 +4006,20 @@ def _extract_readme_description(
     Args:
         repo_root: Path to the repository root.
         max_chars: Maximum characters to extract (default 300).
+        held_back: Agent instruction files (:func:`_held_back`); found here
+            (one walk) when not given. A README one of them imports is
+            instructions too, and is not described.
 
     Returns:
-        Extracted description string, or None if no README found.
+        Extracted description string, or None if no README found or the
+        README is held back.
     """
     readme_path = _find_readme_path(repo_root)
     if readme_path is None:
+        return None
+    if held_back is None:
+        held_back = frozenset(_instruction_files(repo_root))
+    if _held_back(readme_path, repo_root, held_back):
         return None
 
     # Try embedding-based extraction first (more accurate)
@@ -4674,8 +4774,12 @@ def _select_additional_files(
     centrality_progress_callback: Callable[..., Any] | None = None,
     cached_centrality_scores: dict[str, float] | None = None,
     copies_out: dict[Path, list[Path]] | None = None,
+    held_back: AbstractSet[str] = frozenset(),
 ) -> tuple[list[Path], list[Path], dict[Path, set[str]], dict[str, int]]:
     """Select additional files using README-first hybrid ordering.
+
+    An agent instruction file (``held_back``, :func:`_held_back`) is never a
+    candidate: the Overview lists it, and this section would print its text.
 
     Files with the same bytes are folded into one candidate first
     (:func:`_group_identical_files`); ``copies_out``, when given, receives
@@ -4714,6 +4818,9 @@ def _select_additional_files(
         filename = filepath.name
 
         if any(p.startswith(".") for p in rel_path.parts):
+            return True
+
+        if _held_back(filepath, repo_root, held_back):
             return True
 
         if not is_additional_file_candidate(filepath):
@@ -5031,6 +5138,7 @@ def _format_additional_files(
     preselected_files: list[Path] | None = None,
     copies: dict[Path, list[Path]] | None = None,
     max_list_tokens: int | None = None,
+    held_back: AbstractSet[str] = frozenset(),
 ) -> tuple[str, list[Path], int]:
     """Format additional files (non-source) as a Markdown section.
 
@@ -5070,6 +5178,9 @@ def _format_additional_files(
             added in selection order until the next would pass it; the
             first is always listed. ``max_files`` still bounds how many
             files are selected.
+        held_back: Agent instruction files (:func:`_held_back`). Never
+            selected, and never printed even when ``preselected_files``
+            names one.
 
     Returns:
         Tuple of (Markdown section, the file paths listed or printed,
@@ -5106,6 +5217,7 @@ def _format_additional_files(
                 centrality_progress_callback=centrality_progress_callback,
                 cached_centrality_scores=cached_centrality_scores,
                 copies_out=copies,
+                held_back=held_back,
             )
         )
 
@@ -5178,6 +5290,8 @@ def _format_additional_files(
     for position, file_path in enumerate(selected_files):
         if remaining_budget <= 50:  # pragma: no cover - budget exhausted
             break
+        if _held_back(file_path, repo_root, held_back):
+            continue
 
         try:
             content = file_path.read_text(errors="replace")
@@ -7122,11 +7236,21 @@ def _generate_sketch_impl(
         and "sketch_precomputed" in cached_results
         and cached_results["sketch_precomputed"].get("readme_description") is not None
     )
+    # Agent instruction files (WI-lufut (b)): files a coding-agent tool loads
+    # as instructions, and the files they import. Found once; every section
+    # below that prints a file's text leaves them out, and the Overview
+    # lists them with the reason.
+    instruction_files = _instruction_files(repo_root)
+    held_back = frozenset(instruction_files)
     prog.start_phase("readme", cached=using_cached_readme)
-    if using_cached_readme:
+    readme_path = _find_readme_path(repo_root)
+    if readme_path is not None and _held_back(readme_path, repo_root, held_back):
+        # Also when cached: a map is a file, and may predate the rule.
+        readme_desc = None
+    elif using_cached_readme:
         readme_desc = cached_results["sketch_precomputed"].get("readme_description")
     else:
-        readme_desc = _extract_readme_description(repo_root)
+        readme_desc = _extract_readme_description(repo_root, held_back=held_back)
     prog.complete_phase("readme")
     # The title, then the line saying that what is quoted below is data
     # (QUOTED_TEXT_NOTICE). It goes after the title, which is the directory
@@ -7170,6 +7294,10 @@ def _generate_sketch_impl(
     vendored_line = format_vendored_disclosure(_scs.get("vendored_analysed"))
     if vendored_line:
         header = f"{header}\n\n{vendored_line}"
+    # And the agent instruction files, named and not quoted.
+    instructions_line = format_instruction_files_disclosure(instruction_files)
+    if instructions_line:
+        header = f"{header}\n\n{instructions_line}"
     sections.append(header)
 
     # Section 2: Structure (using tree format from the start)
@@ -7226,6 +7354,7 @@ def _generate_sketch_impl(
             fleximax_lines=fleximax_lines,
             max_chunk_chars=max_chunk_chars,
             progress_callback=config_progress,
+            held_back=held_back,
         )
     _log(f"Config extracted in {time.time() - t_config:.1f}s")
     prog.complete_phase("config")
@@ -7305,6 +7434,7 @@ def _generate_sketch_impl(
             _log("Using cached analysis results...")
             symbols = [Symbol.from_dict(n) for n in cached_results.get("nodes", [])]
             edges = [Edge.from_dict(e) for e in cached_results.get("edges", [])]
+            _drop_held_back_docstrings(symbols, repo_root, held_back)
 
             # Compute coverage stats from cached symbols/edges BEFORE filtering
             # (coverage needs test symbols to compute transitively tested functions)
@@ -7326,6 +7456,7 @@ def _generate_sketch_impl(
                 repo_root, profile, exclude_tests=exclude_tests,
                 progress_callback=analysis_progress_with_budget
             )
+            _drop_held_back_docstrings(symbols, repo_root, held_back)
 
         # Compute density scores for source file ordering using rank_files()
         # (canonical pipeline: edge filtering, hub saturation, full dampening).
@@ -7661,6 +7792,7 @@ def _generate_sketch_impl(
             exclude_tests=exclude_tests,
             copies=additional_copies,
             max_list_tokens=budget_for_files,
+            held_back=held_back,
         )
         if additional_files_section:
             sections.append(additional_files_section)
@@ -7709,6 +7841,8 @@ def _generate_sketch_impl(
             # Pre-filter eligible files (>= 5 lines) and read content once
             eligible: list[tuple[Path, str]] = []
             for src_file in ordered_files:
+                if _held_back(src_file, repo_root, held_back):
+                    continue
                 try:
                     content = src_file.read_text(errors="replace")
                     if len(content.splitlines()) >= 5:
@@ -7789,6 +7923,7 @@ def _generate_sketch_impl(
                     section_title="Additional Files Content",
                     preselected_files=additional_files_selected,
                     copies=additional_copies,
+                    held_back=held_back,
                 )
             )
 
