@@ -30,3 +30,18 @@
   clock: 2  # 9c3e
   nonce: 9c3e  # 9c3e
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: one .tex with usepackage/input/label+ref gives '[warn] 4 id_format validation violation(s)'; every edge src is a.tex:<unknown>:0-0:a.tex:external_symbol (non_canonical_language_prefix error) and dsts fontenc/chap1/sec:<unknown>..., is_resolved False. latex.py:299/326/350/378 unchanged. Also \\ref{sec:a} becomes dst 'sec:...' (label colon truncated). MECHANISM: LaTeX analyzer hand-spells edge endpoints (rel_path:file src, raw-name dst) instead of make_file_id and a reshaped external id. SHARES MECHANISM WITH: INV-habit,WI-modan."  # 9c3e
+- op: update  # 7ec1
+  at: '2026-11-20T01:44:10Z'  # 7ec1
+  by: agent  # 7ec1
+  actor: jgstern_agent  # 7ec1
+  clock: 3  # 7ec1
+  nonce: 7ec1  # 7ec1
+  set:  # 7ec1
+    status: satisfied  # 7ec1
+- op: discuss  # 64bb
+  at: '2026-11-20T01:44:10Z'  # 64bb
+  by: agent  # 64bb
+  actor: jgstern_agent  # 64bb
+  clock: 4  # 64bb
+  nonce: 64bb  # 64bb
+  message: "Satisfied by PR #2291 (merged to dev as 703dce32b; fix commit 8410e1a55). Live repro on dev 703dce32b, the item's own shape: a.tex with \\usepackage{fontenc}, \\usepackage{amsmath,amssymb}, \\label{sec:a} + \\ref{sec:a}, \\input{chap1}; ran 'hypergumbo survey <fixture> --out latex.json --include-docs --no-sketch-fan-out --no-handler-slices' -> rc=0, no '[warn] ... id_format' line on stderr, validation_report.violations = 0 (was 4 id_format on 11-01). Every edge src is the file node latex:a.tex:1-1:file:file (in the node set); dsts: references -> latex:a.tex:5-5:sec.a:label (the label symbol, colon folded), includes -> latex:chap1.tex:1-1:file:file, imports -> latex:fontenc:0-0:module:external_symbol / amsmath / amssymb (each list item its own edge, 5-slot stand-ins, all in the node set). analysis_runs[latex].non_id_edge_endpoints = 0. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/zipaj.txt"  # 64bb

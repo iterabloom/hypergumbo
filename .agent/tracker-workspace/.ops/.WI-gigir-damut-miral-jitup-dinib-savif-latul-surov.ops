@@ -1,0 +1,20 @@
+- op: create  # 44d6
+  at: '2026-11-19T23:21:17Z'  # 44d6
+  by: agent  # 44d6
+  actor: jgstern_agent  # 44d6
+  clock: 1  # 44d6
+  nonce: 44d6  # 44d6
+  data:  # 44d6
+    kind: work_item  # 44d6
+    title: "Spec top-level example shows a stale schema_version"  # 44d6
+    status: todo_soft  # 44d6
+    priority: 3  # 44d6
+    parent:  # 44d6
+    tags:  # 44d6
+    - docs  # 44d6
+    isbefore: []  # 44d6
+    duplicate_of: []  # 44d6
+    not_duplicate_of: []  # 44d6
+    pr_ref:  # 44d6
+    description: "The \"Top-level structure\" example in docs/hypergumbo-spec.md still shows \"schema_version\": \"0.20.6\"; the live SCHEMA_VERSION is 0.21.2 on dev (0.21.3 on the stable-id v16 branch).\n\nREPRO: grep -n '\"schema_version\": \"0.20' docs/hypergumbo-spec.md, then compare with SCHEMA_VERSION in packages/hypergumbo-core/src/hypergumbo_core/schema.py. Fix: either update the example, or have a test pin the example to the constant so it cannot drift again (the structural fix). Found by PR 3 agent 9 (2026-11-19): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/agent9/RESULTS.md residual 4."  # 44d6
+    fields: {}  # 44d6
