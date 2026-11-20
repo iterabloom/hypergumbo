@@ -1,0 +1,21 @@
+- op: create  # 3395
+  at: '2026-11-20T11:09:41Z'  # 3395
+  by: agent  # 3395
+  actor: jgstern_agent  # 3395
+  clock: 1  # 3395
+  nonce: '3395'  # 3395
+  data:  # 3395
+    kind: work_item  # 3395
+    title: "swift: a backquoted argument label keeps its backquotes in arg_labels, so calls to it stay unresolved"  # 3395
+    status: todo_soft  # 3395
+    priority: 3  # 3395
+    parent:  # 3395
+    tags:  # 3395
+    - swift  # 3395
+    - analysis_quality  # 3395
+    isbefore: []  # 3395
+    duplicate_of: []  # 3395
+    not_duplicate_of: []  # 3395
+    pr_ref:  # 3395
+    description: "Swift meta[\"arg_labels\"] keeps a backquoted label's backquotes, so a call that writes the label without them does not resolve. Given `func f(\\`default\\` x: Int)`, the call `s.f(default: 1)` is left unresolved; spell the label `dflt` and the same call binds. Call edges only: no stable id moves (PR 5's label hashing already strips the backquotes for the id).\n\nFound by PR 5 agent 1 (WI-lonoh). Repro: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/lonoh/residual_fixtures/R.swift."  # 3395
+    fields: {}  # 3395

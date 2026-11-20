@@ -1,0 +1,21 @@
+- op: create  # ef1f
+  at: '2026-11-20T11:09:47Z'  # ef1f
+  by: agent  # ef1f
+  actor: jgstern_agent  # ef1f
+  clock: 1  # ef1f
+  nonce: ef1f  # ef1f
+  data:  # ef1f
+    kind: work_item  # ef1f
+    title: "swift: an unlabelled subscript is named after its internal parameter name, so renaming it moves the id"  # ef1f
+    status: todo_soft  # ef1f
+    priority: 4  # ef1f
+    parent:  # ef1f
+    tags:  # ef1f
+    - swift  # ef1f
+    - stable_id  # ef1f
+    isbefore: []  # ef1f
+    duplicate_of: []  # ef1f
+    not_duplicate_of: []  # ef1f
+    pr_ref:  # ef1f
+    description: "A Swift subscript with no external label is named after its internal parameter name: `subscript(i: Int)` becomes `subscript(i:)`, so renaming `i`, which callers never write, moves its stable id. A subscript's external label (`subscript(key k: K)`) is identity; the internal name is not.\n\nThe fix moves every unlabelled subscript's id, so it needs a scheme bump. It was left out of PR 5 (v17) deliberately.\n\nFound by PR 5 agent 1 (WI-lonoh). Repro: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/lonoh/residual_fixtures/R.swift."  # ef1f
+    fields: {}  # ef1f
