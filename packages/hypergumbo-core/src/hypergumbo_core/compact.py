@@ -56,8 +56,14 @@ Compact entry point
 -------------------
 ``format_compact_behavior_map`` builds the ``view: "compact"`` map. Both of its
 selection paths draw seeds from one fixed, budget-independent order
-(entrypoints by confidence, then cross-cutting endpoints by edge count), which
-keeps a smaller ``--max-symbols`` budget's nodes contained in a larger one's:
+(entrypoints in the order the map's ``entrypoints`` list gives them, then
+cross-cutting endpoints by edge count), which keeps a smaller
+``--max-symbols`` budget's nodes contained in a larger one's. The entry list
+is already in the one total entry order (rank_score, then the entry's kind,
+then the tie keys; ``entrypoints.detect_entrypoint_candidates``), so compact
+does not sort it again: re-sorting by detection ``confidence``, as it once
+did, let a recalibration of one kind's confidence reshuffle compact while the
+entry list kept its order.
 
 - Centrality path (``connectivity_aware=False``, the function default;
   ``--no-connectivity`` on the CLI) narrows the population to ``key_symbols``
@@ -1405,23 +1411,24 @@ def format_compact_behavior_map(
             if not is_external_boundary(s) and not _is_test_node(s.path, s.meta)
         ]
 
-    # Extract entrypoint symbol_ids to force-include them, ranked by
-    # (-confidence, symbol_id) for a stable, budget-independent order.
+    # Entrypoint symbol_ids to force-include, in the ORDER THE MAP LISTS
+    # THEM. That list is written in the one entry order
+    # (``entrypoints.detect_entrypoint_candidates``: rank_score, then the
+    # entry's kind, detection confidence, language weight, out-degree and a
+    # total order on the symbol; then ``apply_rank_floor_and_cap``), which is
+    # total and budget-independent, so the seeds are the entry list's own
+    # first entries rather than a second ordering of them. Sorting here by
+    # (-confidence, symbol_id), as compact once did, ranked seeds by how sure
+    # detection is that a symbol IS an entry point: a recalibration of one
+    # kind's confidence then reordered the seeds and moved 7 to 38 of 100
+    # nodes on 9 of 12 repositories while the entry list kept its order.
     symbol_id_set = {s.id for s in symbols}
     sorted_eps: list[str] = []
     if force_include_entrypoints:
-        entrypoints_with_ids = []
         for ep in behavior_map.get("entrypoints", []):
             sid = ep.get("symbol_id")
             if sid and sid in symbol_id_set:
-                entrypoints_with_ids.append(ep)
-        sorted_eps = [
-            ep.get("symbol_id")
-            for ep in sorted(
-                entrypoints_with_ids,
-                key=lambda ep: (-ep.get("confidence", 0), ep.get("symbol_id", ""))
-            )
-        ]
+                sorted_eps.append(sid)
 
     # Cross-cutting edge endpoints, ranked by (-edge_count, id): seeded so
     # linker-produced edges survive the induced-subgraph filter.  Without
@@ -1440,7 +1447,7 @@ def format_compact_behavior_map(
     ranked_cc = sorted(cc_edge_count, key=lambda x: (-cc_edge_count[x], x))
 
     # The fixed, budget-independent seed order both policies draw from:
-    # entrypoints by (-confidence, id), then cross-cutting endpoints by
+    # entrypoints in the entry list's order, then cross-cutting endpoints by
     # (-edge_count, id). Building it once, above the branch, is what lets the
     # connectivity path hand the WHOLE order to the interleave and the
     # centrality path take a monotone prefix of it.
@@ -1467,8 +1474,8 @@ def format_compact_behavior_map(
         # The DEFAULT path's contract is --max-symbols containment
         # monotonicity (nodes(K1) ⊆ nodes(K2) for K1 <= K2).  Seeds are
         # therefore a prefix of ONE fixed-order list (seed_order, built above:
-        # entrypoints by confidence, then cross-cutting endpoints by edge
-        # count) under ONE quota that can only grow with the budget — nested
+        # entrypoints in the entry list's order, then cross-cutting endpoints
+        # by edge count) under ONE quota that can only grow with the budget — nested
         # by construction.  A cap that switches regimes with the budget, or a
         # cross-cutting allowance that shrinks as the forced set grows, would
         # let a larger budget drop seeds a smaller budget kept.  The quota of
