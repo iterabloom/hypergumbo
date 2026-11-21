@@ -1,0 +1,20 @@
+- op: create  # 4feb
+  at: '2026-11-21T08:34:53Z'  # 4feb
+  by: agent  # 4feb
+  actor: jgstern_agent  # 4feb
+  clock: 1  # 4feb
+  nonce: 4feb  # 4feb
+  data:  # 4feb
+    kind: work_item  # 4feb
+    title: "164 entry-feeding framework constructs have no detector: their rows never fired and were removed"  # 4feb
+    status: todo_hard  # 4feb
+    priority: 2  # 4feb
+    parent:  # 4feb
+    tags:  # 4feb
+    - frameworks  # 4feb
+    isbefore: []  # 4feb
+    duplicate_of: []  # 4feb
+    not_duplicate_of: []  # 4feb
+    pr_ref:  # 4feb
+    description: "The entry-kind PR removed 164 call-keyed decorator: rows in 27 framework files. None could fire (0 concepts from them on 23 repos; proof in RESULTS.md section 3), so behaviour did not change, but the rows were the only record that these constructs are meant to be detected. List with file, line and concept: sweep/deleted_rows.txt. By file: phoenix 15, koa 14, express 12, akka-http 11, cli-go 11, cli-js 10, cli-ruby 9, fastify 9, ktor 9, go-web 8, play 8, plug 8, slim 7, grape 6, hapi 4, aiohttp 3, cli 3, graphql-ruby 3, vapor 3, cli-rust 2, electron 2, sinatra 2, and 1 each in bottle, flask-restful, graphql, graphql-python, solid. By concept: middleware 61, route 28, command 28, error_handler 10, websocket_handler 8, task 6, entrypoint 6, controller 5, graphql_schema 5, ipc_handler 2, liveview 2, and 1 each of scheduled_task, event_handler, graphql_resolver. NOT CHECKED per row: whether another row, analyzer or linker already detects the same construct (Express and koa routes do come from usage rows; Phoenix routes come from the elixir analyzer). Known gap: the liveview concept is now listed as a ghost in docs/CONCEPTS.md (its only YAML producers were phoenix 'use Phoenix.LiveView' rows). Work: per construct, decide detected-elsewhere / build a detector / not wanted, starting with the route, command and middleware rows.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # 4feb
+    fields: {}  # 4feb

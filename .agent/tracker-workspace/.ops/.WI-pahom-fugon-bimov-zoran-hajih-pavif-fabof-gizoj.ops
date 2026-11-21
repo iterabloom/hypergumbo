@@ -1,0 +1,20 @@
+- op: create  # eaaa
+  at: '2026-11-21T08:34:47Z'  # eaaa
+  by: agent  # eaaa
+  actor: jgstern_agent  # eaaa
+  clock: 1  # eaaa
+  nonce: eaaa  # eaaa
+  data:  # eaaa
+    kind: work_item  # eaaa
+    title: "Electron IPC handlers (ipcMain.handle / on) are not entries"  # eaaa
+    status: todo_soft  # eaaa
+    priority: 3  # eaaa
+    parent:  # eaaa
+    tags:  # eaaa
+    - electron  # eaaa
+    isbefore: []  # eaaa
+    duplicate_of: []  # eaaa
+    not_duplicate_of: []  # eaaa
+    pr_ref:  # eaaa
+    description: "Repro: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/probe4_electron has ipcMain.handle('ping', ...); no event_handler entry is produced, on dev or on the entry-kind branch. The electron.yaml ipc_handler rows that claimed it were call-keyed decorator rows and never fired; the entry-kind PR removes them. No usage shape for ipcMain.handle exists in js_ts. The IPC linker does see these calls (it links channels); an entry would come from there or from a usage row.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # eaaa
+    fields: {}  # eaaa

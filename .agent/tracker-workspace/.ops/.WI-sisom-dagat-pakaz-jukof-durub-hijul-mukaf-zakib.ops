@@ -1,0 +1,20 @@
+- op: create  # 4a45
+  at: '2026-11-21T08:34:40Z'  # 4a45
+  by: agent  # 4a45
+  actor: jgstern_agent  # 4a45
+  clock: 1  # 4a45
+  nonce: 4a45  # 4a45
+  data:  # 4a45
+    kind: work_item  # 4a45
+    title: "105 call-keyed decorator: rows for non-entry concepts can never fire"  # 4a45
+    status: todo_soft  # 4a45
+    priority: 3  # 4a45
+    parent:  # 4a45
+    tags:  # 4a45
+    - frameworks  # 4a45
+    isbefore: []  # 4a45
+    duplicate_of: []  # 4a45
+    not_duplicate_of: []  # 4a45
+    pr_ref:  # 4a45
+    description: "A decorator: row matches meta.decorators, which only py, js_ts, java, kotlin, scala and groovy write, from decorator or annotation syntax. These 105 rows name calls, macros or DSL invocations (list: sweep/residual_rows.txt), so they match nothing: 0 concepts from any call-keyed row across 23 repos. 7 of them feed a concept that has a reader and have no working usage shape: fastify addSchema -> schema; phoenix / plug 'use Ecto.Schema' -> model; phoenix 'use Phoenix.Router' -> router. Each row is either converted to a shape that fires (with an A/B) or removed. The 164 call-keyed rows that fed entry kinds were removed in the entry-kind PR.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # 4a45
+    fields: {}  # 4a45
