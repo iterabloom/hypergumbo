@@ -1236,6 +1236,42 @@ runs can find prior work:
   Full write-up:
   `~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md`.
 
+- **2026-11-21 — entry-point kinds (`entry-point-kinds`).**
+  Trigger: cadence (766 commits against a threshold of 72), with the domain
+  chosen by the owner from a filed question (WI-holud): PR 4's tie order put
+  kind `main_function` in the program-start rank, and the kind carries three
+  concepts. **Confirmed.** `main_function` holds the language-convention
+  main, 33 `application` rows (Flask, FastAPI, Tornado, IOApp and others) and
+  8 `entrypoint` rows, of which six are decorator-keyed on a call and can
+  never fire. 24 of the 49 kinds have had no producer since #331. Five
+  hand-written kind sets (tie order, `slice --entry auto`'s boost, sketch
+  groups, request ingress, the main/guard dedup) disagree with each other.
+  Silent bug: the main/guard dedup drops a Tornado `Application` and a Flask
+  `app` from any file that also has a `def main()`.
+
+  The lesson worth carrying is from the review, not the audit. The first
+  proposals were checked against ADR-0024, ADR-0027, ADR-0028, ADR-0039 and
+  ADR-0056 before the owner ruled, and all four changed: "a registry of
+  roles" was ADR-0024's full-axis pattern, already owed because readers
+  branch on groups of values; the 24 producerless kinds were not one
+  omission (ADR-0056) but 1 delete, 22 folds and 1 keep that needs a
+  producer; and a claim made in that review (an Electron row "already
+  detects" the preload bridge) was false, found only because the revision
+  agent was told to verify it on a probe. A keep-with-trigger written as a
+  grep recipe has no watcher: the drift test of the full axis is the watcher.
+
+  Owner rulings (2026-11-21): program start is manifest bin, convention
+  main, main guard and `electron_main` only; server-hosted application
+  objects get their own kind, `hosted_application`, ranked with routes,
+  shipped only if a service with no main still auto-slices from its app or a
+  covering route; the producerless kinds are removed and `electron_preload`
+  gets a producer, at schema 0.22.0.
+
+  Filed: WI-jilik, WI-giron, WI-fasij (the build, one PR), WI-rafop,
+  WI-hamiz, with WI-duzif standing. Full write-up:
+  `docs/audits/0027-entry-point-kinds.md`; evidence
+  `~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/`.
+
 ## Relationship to other playbooks
 
 - **Structural Fix and Scope Expansion Protocol** — used when fixing a
