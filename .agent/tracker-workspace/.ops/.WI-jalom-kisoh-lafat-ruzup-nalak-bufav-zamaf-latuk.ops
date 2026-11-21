@@ -32,3 +32,18 @@
   clock: 3  # 08fc
   nonce: 08fc  # 08fc
   message: "OWNER RULING 2026-11-20: ship in PR 6 (d18dcceba). compact seeds in the entry list's order; the default 100-node output changes heavily (sqlalchemy 93, forgejo 81, lazygit 75 of 100 nodes; 23 repos: edges 6,078->7,035, components 86->86). Evidence: pr6/jalom/RESULTS.md."  # 08fc
+- op: update  # 1374
+  at: '2026-11-21T04:34:41Z'  # 1374
+  by: agent  # 1374
+  actor: jgstern_agent  # 1374
+  clock: 4  # 1374
+  nonce: '1374'  # 1374
+  set:  # 1374
+    status: done  # 1374
+- op: discuss  # dc66
+  at: '2026-11-21T04:34:42Z'  # dc66
+  by: agent  # dc66
+  actor: jgstern_agent  # dc66
+  clock: 5  # dc66
+  nonce: dc66  # dc66
+  message: "Fixed in PR #2309 (merged to dev, eaa18ee23). compact seeds in the entry list's order. Live repro on dev eaa18ee23, outputs in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/live_repro/: hypergumbo compact on lazygit (dev survey map) -> 100 nodes, identical to the branch arm, 75 nodes different from pre-PR dev. Recalibration property (pr6/jalom/RESULTS.md): Go main 0.95->0.90 with the entry list's order unchanged moved compact on 0 of 19 repos (pre-PR: 4). Property test TestSeedsInEntryOrder (720 permutations). Follow-ups: WI-duzif (list still starts from confidence), WI-buvaf note (tiered view)."  # dc66

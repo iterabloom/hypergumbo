@@ -1,0 +1,20 @@
+- op: create  # 121a
+  at: '2026-11-21T03:33:10Z'  # 121a
+  by: agent  # 121a
+  actor: jgstern_agent  # 121a
+  clock: 1  # 121a
+  nonce: 121a  # 121a
+  data:  # 121a
+    kind: work_item  # 121a
+    title: "Export-list exemption reads only package.json exports; jsr.json, deno.json and Java module-info exports are not read."  # 121a
+    status: todo_soft  # 121a
+    priority: 4  # 121a
+    parent:  # 121a
+    tags:  # 121a
+    - entrypoints  # 121a
+    isbefore: []  # 121a
+    duplicate_of: []  # 121a
+    not_duplicate_of: []  # 121a
+    pr_ref:  # 121a
+    description: "Export-list exemption reads only package.json exports; jsr.json, deno.json and Java module-info exports are not read.\n\nAfter PR 6 (WI-nihov option C3), a JS/TS package whose nearest package.json declares exports keeps its exports undemoted when the repo also has a production server entry. Other declarations of a package's API are not read. REPRO: a TS package with only jsr.json {\"exports\": \"./mod.ts\"} (no package.json exports) and a production node-http server -> its exports are demoted x0.1. Same question for Java module-info.java exports (not measured). Also: a list recomputed without the tree (detect_entrypoints(nodes, edges) with no repo_root) uses the old rule, so it can differ from the stored list (gemini-cli: 4 devtools exports). Found by PR 6 agent 3 (2026-11-20): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/nihov/BUILD.md."  # 121a
+    fields: {}  # 121a

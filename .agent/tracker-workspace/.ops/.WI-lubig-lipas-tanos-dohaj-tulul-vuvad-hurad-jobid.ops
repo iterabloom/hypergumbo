@@ -25,3 +25,25 @@
   clock: 2  # 6ce5
   nonce: 6ce5  # 6ce5
   message: "OWNER RULING 2026-11-20: joins the fast-smart-test plan as part of PR 6 (after PR 5), with WI-dufuz, WI-jalom, WI-nihov (its export-list question), WI-lubig and WI-gigir, plus WI-havob. Record: ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md amendment 6."  # 6ce5
+- op: discuss  # 69f7
+  at: '2026-11-21T04:26:05Z'  # 69f7
+  by: agent  # 69f7
+  actor: jgstern_agent  # 69f7
+  clock: 3  # 69f7
+  nonce: 69f7  # 69f7
+  message: "Merged as PR #2309, dev SHA eaa18ee23ae4."  # 69f7
+- op: update  # 2ca4
+  at: '2026-11-21T04:34:40Z'  # 2ca4
+  by: agent  # 2ca4
+  actor: jgstern_agent  # 2ca4
+  clock: 4  # 2ca4
+  nonce: 2ca4  # 2ca4
+  set:  # 2ca4
+    status: done  # 2ca4
+- op: discuss  # 1814
+  at: '2026-11-21T04:34:41Z'  # 1814
+  by: agent  # 1814
+  actor: jgstern_agent  # 1814
+  clock: 5  # 1814
+  nonce: '1814'  # 1814
+  message: "Fixed in PR #2309 (merged to dev, eaa18ee23). Every exit path flushes stdout and stderr, points a broken one at /dev/null and exits 141. Live repro on dev eaa18ee23, outputs in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/live_repro/ lubig.txt: hypergumbo sketch packages/hypergumbo-tracker with both streams / stderr only / stdout only into head -c 10 -> 141 / 141 / 141 (before: 120 / 120 / 141); hypergumbo --help into a pre-closed stdout -> 141 (before 120 + traceback); sketch --no-such-flag into a pre-closed stderr -> 141 (before 120). 36-form sweep: pr6/lubig/RESULTS.md. Residual: WI-rulub."  # 1814

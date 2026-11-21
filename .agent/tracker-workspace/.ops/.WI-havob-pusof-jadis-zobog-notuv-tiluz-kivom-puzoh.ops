@@ -25,3 +25,18 @@
   clock: 2  # a03d
   nonce: a03d  # a03d
   message: "OWNER RULING 2026-11-20: APPROVED. Add scripts/repin-line-citations --check to .githooks/pre-commit (when a staged file is cited by the module_key_axis or signature_axis registries), in PR 6; ship via auto-pr WITHOUT --gov (owner-approved governance change, like INV-kosok)."  # a03d
+- op: update  # b4dc
+  at: '2026-11-21T04:34:41Z'  # b4dc
+  by: agent  # b4dc
+  actor: jgstern_agent  # b4dc
+  clock: 3  # b4dc
+  nonce: b4dc  # b4dc
+  set:  # b4dc
+    status: done  # b4dc
+- op: discuss  # fbeb
+  at: '2026-11-21T04:34:41Z'  # fbeb
+  by: agent  # fbeb
+  actor: jgstern_agent  # fbeb
+  clock: 4  # fbeb
+  nonce: fbeb  # fbeb
+  message: "Fixed in PR #2309 (merged to dev, eaa18ee23). Live repro on dev eaa18ee23, outputs in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/live_repro/ havob_hook.log: on a throwaway branch, inserting a line atop symbol_introspection.py and staging it -> pre-commit 'Line citations... ✗', names the off citation [signature_axis.py:195], prints 'Fix: ./scripts/repin-line-citations' and the git add for the registry; hook exit 1. Clean dev: repin-line-citations --check exit 0. Runs only when a staged file is in repin-line-citations --list-paths."  # fbeb
