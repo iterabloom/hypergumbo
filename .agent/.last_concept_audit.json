@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "1f54c7e4925fe4459f8e6ce70254f6178378c9a4",
-  "last_audit_iso_date": "2026-10-30T17:54:53.581411-04:00",
-  "suspect_domain": "consumer-agreement",
-  "audits_run": 21
+  "last_audit_sha": "c54c3f52a5dfa8897e9d249d764576fa27ec7235",
+  "last_audit_iso_date": "2026-11-21T01:32:53.257556-05:00",
+  "suspect_domain": "entry-point-kinds",
+  "audits_run": 22
 }
