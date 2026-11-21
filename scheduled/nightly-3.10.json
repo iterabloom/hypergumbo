@@ -2,11 +2,11 @@
   "schema": 1,
   "workflow": "nightly",
   "leg": "3.10",
-  "commit": "f92a6fe1c3fe099e4aff7537abec89cfeffa30b0",
-  "pipeline": 6687,
-  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6687",
-  "finished_at": "2026-11-20T05:48:17Z",
-  "status": "passed",
+  "commit": "fafaa4a8f2a091385edebab48afe24f77c7ff5f6",
+  "pipeline": 6723,
+  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6723",
+  "finished_at": "2026-11-21T05:48:26Z",
+  "status": "failed",
   "steps": [
     {
       "name": "build-grammars",
@@ -14,7 +14,7 @@
     },
     {
       "name": "test-matrix",
-      "result": "passed"
+      "result": "not_passed"
     },
     {
       "name": "integration",
@@ -22,10 +22,14 @@
     }
   ],
   "coverage": {
-    "percent": 100.0,
-    "statements": 103686,
-    "missing": 0,
-    "uncovered": {},
+    "percent": 99.99904442469588,
+    "statements": 104649,
+    "missing": 1,
+    "uncovered": {
+      "packages/hypergumbo-core/src/hypergumbo_core/cli.py": [
+        14069
+      ]
+    },
     "uncovered_truncated": false
   }
 }
