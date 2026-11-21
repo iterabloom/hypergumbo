@@ -1,0 +1,20 @@
+- op: create  # d6d1
+  at: '2026-11-21T20:53:50Z'  # d6d1
+  by: agent  # d6d1
+  actor: jgstern_agent  # d6d1
+  clock: 1  # d6d1
+  nonce: d6d1  # d6d1
+  data:  # d6d1
+    kind: work_item  # d6d1
+    title: "Android Service, BroadcastReceiver, ContentProvider and Fragment lifecycle hooks are kind controller, so they count as request ingress"  # d6d1
+    status: todo_soft  # d6d1
+    priority: 3  # d6d1
+    parent:  # d6d1
+    tags:  # d6d1
+    - entrypoints  # d6d1
+    isbefore: []  # d6d1
+    duplicate_of: []  # d6d1
+    not_duplicate_of: []  # d6d1
+    pr_ref:  # d6d1
+    description: "The lifecycle_hook arm of _detect_from_concepts labels these Android component bases controller; controller has the request-ingress role, so they enter request_ingress, the verify-claims withhold and the taint seed set. Predates the role registry (the registry kept the behaviour). Question to settle: which of these receive outside input (a ContentProvider and an exported BroadcastReceiver do; a Fragment does not), and whether they are hosted-application members like android_activity.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/giron/RESULTS.md. Found while building the entry-kind PR (2026-11-21)."  # d6d1
+    fields: {}  # d6d1
