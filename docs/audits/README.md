@@ -88,7 +88,7 @@ write an ADR vs an audit-findings document."
 | [0024](0024-build-target-supersession-precision.md) | May the build-target linker demote the console-script / bin placeholder it consumed (ADR-0057 §14.1)? | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED: 16 of 16 correct across 12 repositories |
 | [0025](0025-js-module-supersession-precision.md) | May the JS module linker demote the import stub it consumed (ADR-0057 §14.1)? | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED, after three wrong routes were fixed: 6,792 resolutions over 7 repositories |
 | [0026](0026-consumer-agreement.md) | Consumer agreement — facts two consumers derive separately, and where they disagree (WI-borib) | consumer agreement (sibling format, `kind: consumer_agreement`) | Confirmed: 17 facts, 12 derived separately and 5 through one helper (3 with side paths that disagree); 14 items filed, WI-vosop decided |
-| [0027](0027-entry-point-kinds.md) | Entry-point kinds — `main_function` carries three concepts, and the five kind sets that read it (WI-holud) | concept leak pairs (sibling format, `kind: concept_leak_pairs`) | Confirmed: 9 pairs (4 DEPRECATE, 2 DOCUMENT, 2 KEEP WITH A TRIGGER, 1 already filed as WI-duzif); 24 of 49 kinds have no producer; 7 items proposed, 4 need an owner decision |
+| [0027](0027-entry-point-kinds.md) | Entry-point kinds — `main_function` carries three concepts, and the five kind sets that read it (WI-holud) | concept leak pairs (sibling format, `kind: concept_leak_pairs`) | Confirmed: 9 pairs (4 DEPRECATE, 2 DOCUMENT, 2 KEEP WITH A TRIGGER, 1 already filed as WI-duzif); per kind (ADR-0024) 25 CANONICAL, 22 FOLD, 1 DEPRECATE-NO-FOLD, 1 not ruled, plus new `hosted_application`; owner ruled 2026-11-21; filed WI-jilik → WI-giron → WI-fasij (one PR, schema 0.22.0) and WI-rafop |
 
 ## Sibling formats
 
@@ -141,10 +141,13 @@ Siblings:
   Step 6 output for a vocabulary that is not one of the three registries
   `audit_verdicts` is bound to: one row per suspect PAIR of values (or of
   concepts sharing one value), the result of each of the four leakage tests,
-  and one verdict (DEPRECATE / DOCUMENT / KEEP WITH A TRIGGER THAT CAN FIRE),
-  with the trigger written out for every KEEP and a proposed item per
-  action. Inventory and measurements precede the table; scripts live in the
-  lab notebook. First instance: `0027`.
+  and one verdict (DEPRECATE / DOCUMENT / KEEP WITH A TRIGGER THAT CAN FIRE,
+  the scheme the playbook's Step 6 defines), with the trigger and its
+  watcher written out for every KEEP; then the ADR-0024 verdict (CANONICAL /
+  FOLD / DEPRECATE-NO-FOLD) per value of the vocabulary, and the item filed
+  per action. Inventory and measurements precede the tables; scripts live in
+  the lab notebook. First instance: `0027`, whose per-value rows convert to
+  `audit_verdicts` when WI-giron lands an entrypoint-kind registry.
 
 ## File format
 
