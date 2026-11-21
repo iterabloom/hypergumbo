@@ -43,8 +43,9 @@ Declare the **entrypoint-kind axis** with ADR-0024's four artifacts:
 - **Registry:** `hypergumbo_core.entrypoint_kinds` (`EntrypointKind` moved
   there; `entrypoints` re-exports it). `ENTRYPOINT_KINDS` gives every kind one
   role, whether the role was ruled or proposed, its ADR-0024 verdict, and why a
-  framework- or mechanism-named kind keeps its name. `ENTRYPOINT_ROLES` gives
-  each role its sketch heading.
+  framework- or mechanism-named kind keeps its name, and the sketch heading the
+  kind shows under (`ENTRY_POINT_HEADINGS` gives the headings' order;
+  `ENTRYPOINT_ROLES` gives each role its description).
 - **By-axis view:** a section of `docs/concept-axes.md`, one subsection per
   role, rendered by `scripts/generate-concept-axes` from the registry.
 - **Drift check:** `find_kind_set_drift` reports any hand-written group of
@@ -63,12 +64,12 @@ Declare the **entrypoint-kind axis** with ADR-0024's four artifacts:
 
 ### 2. Roles
 
-| Role | Sketch heading | Readers that tell it apart |
+| Role | Sketch headings of its kinds | Readers that tell it apart |
 |---|---|---|
 | `program_start` | CLI & Scripts | first among ties (after a manifest's executable), `slice --entry auto` 2x boost and Go module-binary pick, the demotion |
 | `command` | CLI & Scripts | the demotion |
 | `hosted_application` | Hosted Applications | the demotion |
-| `request_ingress` | Request Handlers | `request_ingress`, verify-claims' withhold, taint seeds, the demotion |
+| `request_ingress` | HTTP Routes, Controllers, GraphQL, WebSocket Handlers, Middleware & Error Handlers | `request_ingress`, verify-claims' withhold, taint seeds, the demotion |
 | `scheduled` | Event & Background Tasks | the demotion |
 | `reflective` | Framework-Reflected Classes | none but the sketch |
 | `library_api` | Library API | the export-specific boosts and demotion |
@@ -102,18 +103,33 @@ calls and Template Haskell generators were deleted.
 Every other role assignment is proposed and marked so in the registry;
 `go_handler` is unruled (WI-hamiz) and keeps the role its behaviour implied.
 
+*Note 2026-11-21 (owner ruling, sketch headings).* As first built, the sketch
+showed one heading per role, which merged "HTTP Routes", "Controllers",
+"GraphQL" and "WebSocket Handlers" into one, "Request Handlers", and changed
+the heading on 14 of 26 measured repositories. Asked directly, the owner
+ruled: "The four headings stay. Middleware and error handlers, which fell to
+'Other', get a heading of their own. The registry stores a heading per kind."
+So headings are declared per KIND (one attribute on each kind's registry
+line), not per role: every kind that had a named heading before the registry
+keeps it, in the same order ("Mobile" is renamed "Hosted Applications", and
+`electron_preload` and the application objects moved there with their role);
+`middleware_handler` and `error_handler` show under "Middleware & Error
+Handlers", `form` and `serializer` under "Framework-Reflected Classes". The
+roles are as proposed; the ruling changes the headings only. "Request
+Handlers" was considered and not shipped.
+
 ### 3. Consumer pattern
 
 `entrypoint_kinds_on_axis(role) -> tuple[EntrypointKindSpec, ...]` (ADR-0024's
 shape), plus `kinds_with_role(*roles) -> frozenset[EntrypointKind]`, `role_of`
-and `role_heading`. Each reader's set is one call:
+and `kind_heading` / `role_headings`. Each reader's set is one call:
 
 | Reader | Set |
 |---|---|
 | tie order, slice boost, Go module-binary pick | `PROGRAM_START_KINDS = kinds_with_role(program_start)` |
 | request ingress | `REQUEST_INGRESS_KINDS` from `kinds_with_role(request_ingress)` |
 | library-export demotion | `APPLICATION_KINDS = kinds_with_role(*APPLICATION_ROLES)` |
-| sketch Entry Points | one group per `role_heading`, in role order |
+| sketch Entry Points | one group per heading of `ENTRY_POINT_HEADINGS`, in that order, holding the kinds whose spec declares it |
 
 A reader that compares ONE kind (the build-wrapper demotion on `shell_script`,
 the Go `cmd/` penalty on `main_function`, the INV-hosuh dedup, which drops a
@@ -143,15 +159,16 @@ watcher (both were greps nobody ran). The property test is the watcher now:
 
 - The five sets agree by construction. Membership changed where they had
   disagreed: `electron_main` is a program start in the tie order, the slice
-  boost and the dedup; the sketch files every kind under its role's heading,
-  so `middleware_handler`, `error_handler`, `form`, `serializer` and
-  `spa_bootstrap` leave "Other" and HTTP routes, controllers, GraphQL and
-  WebSocket handlers share "Request Handlers" (within a group's share each
-  kind's best entry is shown first, so no kind loses its last line to the
-  merge: the pre-registered refutation fired on thc, whose one controller
-  fell under 182 routes, before that rule); the demotion counts
-  `main_guard`, middleware, error handlers and the hosted-application kinds.
-  The measured effect is in WI-giron's evidence.
+  boost and the dedup; the sketch files every kind under the heading it
+  declares, so `middleware_handler`, `error_handler`, `form`, `serializer`
+  and `spa_bootstrap` leave "Other", while every kind the sketch had a named
+  heading for keeps it (the owner's ruling above). A heading may still hold
+  several kinds ("CLI & Scripts", "HTTP Routes", "Hosted Applications",
+  "Other"), so where a group's cut by rank would leave one of its kinds with
+  no line, each kind's best entry is shown first; a cut that shows every
+  kind is kept as it is. The demotion counts `main_guard`, middleware,
+  error handlers and the hosted-application kinds. The measured effect is
+  in WI-giron's evidence, and the headings' in the ruling's.
 - `Entrypoint.kind` carries `# axis: entrypoint-kind`. The multi-value-field
   linter does not scan `entrypoints.py` (its scope must match the pre-commit
   hook's regex, a governance file), so the comment is a declaration, not a
@@ -162,8 +179,8 @@ watcher (both were greps nobody ran). The property test is the watcher now:
 ## Not decided here
 
 - Whether hosted applications show beside the routes in the sketch (audit 0027
-  proposal A says "grouped with them"): under this ADR a heading is per role;
-  two roles may share one, so that is a one-line change to the role table.
+  proposal A says "grouped with them"): a heading is declared per kind, so
+  that is a one-line change to `hosted_application`'s registry line.
   WI-fasij left the heading as the registry gives it ("Hosted Applications"):
   the ruling's "ranked with routes" is about the entry list's order.
 - `go_handler`'s fold target (WI-hamiz).

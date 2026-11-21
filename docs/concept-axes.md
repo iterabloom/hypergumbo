@@ -648,8 +648,10 @@ Six readers branch on groups of kinds: the tie order among entries of equal
 taint's parameter seeds), the sketch's Entry Points groups, the INV-hosuh main
 dedup and the library-export demotion. Before the registry each held its own
 set, and they disagreed (audit 0027). The sections below are the roles; the
-table after them records, per kind, whether its role was ruled by the owner
-(2026-11-21) or proposed, and its ADR-0024 verdict.
+table after them records, per kind, the sketch heading it declares (the owner
+ruled on 2026-11-21 that the headings stay those the sketch showed before the
+registry, so a role's kinds may show under several), whether its role was ruled
+by the owner (2026-11-21) or proposed, and its ADR-0024 verdict.
 
 ### `program_start` — sketch group "CLI & Scripts"
 
@@ -676,7 +678,7 @@ An application object or component a server, platform or runtime instantiates an
 - **`hosted_application`** — An application object a server or runtime hosts (Flask, FastAPI, Tornado, aiohttp, Roda, Padrino, Hummingbird, ...: the `application` concept), or a Verilog top module (`top_module`). Ranks with routes, not with program starts.
 - **`spa_bootstrap`** — The call that mounts a single-page application into the page (`createRoot`, `ReactDOM.render`, `hydrateRoot`): the browser hosts it.
 
-### `request_ingress` — sketch group "Request Handlers"
+### `request_ingress` — sketch groups "HTTP Routes", "Controllers", "GraphQL", "WebSocket Handlers", "Middleware & Error Handlers"
 
 Receives an external request, handed over as a parameter or a framework global: listed in `request_ingress`, never a taint source by itself, and verify-claims withholds a clean `untrusted_input` / `net_recv` verdict while one exists (ADR-0049 ruling 3).
 
@@ -726,33 +728,33 @@ Found by its shape alone (a shell script, a standalone script file, an `index.ht
 
 ### Entrypoint kinds — role rulings and verdicts
 
-| Kind | Role | Role ruled? | ADR-0024 verdict | Why a framework or mechanism name stays |
-|---|---|---|---|---|
-| `android_activity` | `hosted_application` | proposed | CANONICAL | the name carries the platform (audit 0027: CANONICAL, not ruled) |
-| `android_application` | `hosted_application` | ruled 2026-11-21 | CANONICAL | the name carries the platform; no platform-neutral kind exists (audit 0027) |
-| `background_task` | `scheduled` | proposed | CANONICAL | — |
-| `cli_command` | `command` | proposed | CANONICAL | `cli` names the interface the command is entered through, not a framework (cli.yaml is the file of Python CLI frameworks) |
-| `connectivity_based` | `fallback` | proposed | CANONICAL, kept under a trigger | restates evidence_type = connectivity_heuristic (audit 0027 keep trigger) |
-| `controller` | `request_ingress` | proposed | CANONICAL | — |
-| `electron_main` | `program_start` | ruled 2026-11-21 | CANONICAL | no framework-neutral kind names Electron's main-process start (audit 0027) |
-| `electron_preload` | `hosted_application` | proposed | CANONICAL | the name carries the framework; kept with a producer (audit 0027 ruling) |
-| `error_handler` | `request_ingress` | proposed | CANONICAL | — |
-| `event_handler` | `scheduled` | proposed | CANONICAL | — |
-| `form` | `reflective` | proposed | CANONICAL | — |
-| `go_handler` | `request_ingress` | not ruled (WI-hamiz) | not ruled | language-named with a live producer; a FOLD candidate with no target decided (audit 0027, WI-hamiz) |
-| `graphql_server` | `request_ingress` | proposed | CANONICAL | named by protocol, as http_route is (audit 0027) |
-| `hosted_application` | `hosted_application` | ruled 2026-11-21 | CANONICAL | — |
-| `html_entry` | `fallback` | proposed | CANONICAL, kept under a trigger | named by how it is found (audit 0027 keep trigger) |
-| `http_route` | `request_ingress` | proposed | CANONICAL | named by protocol, as graphql_server is (audit 0027) |
-| `library_export` | `library_api` | proposed | CANONICAL | — |
-| `main_function` | `program_start` | ruled 2026-11-21 | CANONICAL | — |
-| `main_guard` | `program_start` | ruled 2026-11-21 | CANONICAL, kept under a trigger | the guard is how the start is recognised; kept beside main_function while no reader branches on one without the other (audit 0027 keep trigger) |
-| `middleware_handler` | `request_ingress` | proposed | CANONICAL | — |
-| `package_executable` | `program_start` | ruled 2026-11-21 | CANONICAL | — |
-| `scheduled_task` | `scheduled` | proposed | CANONICAL | — |
-| `script_module` | `fallback` | ruled 2026-11-21 | CANONICAL, kept under a trigger | named by how it is found; ruled fallback (audit 0027 keep trigger) |
-| `serializer` | `reflective` | proposed | CANONICAL | — |
-| `shell_script` | `fallback` | ruled 2026-11-21 | CANONICAL, kept under a trigger | named by how it is found; ruled fallback (audit 0027 keep trigger) |
-| `spa_bootstrap` | `hosted_application` | proposed | CANONICAL | — |
-| `test_function` | `test` | proposed | CANONICAL | — |
-| `websocket_handler` | `request_ingress` | proposed | CANONICAL | — |
+| Kind | Role | Sketch heading | Role ruled? | ADR-0024 verdict | Why a framework or mechanism name stays |
+|---|---|---|---|---|---|
+| `android_activity` | `hosted_application` | Hosted Applications | proposed | CANONICAL | the name carries the platform (audit 0027: CANONICAL, not ruled) |
+| `android_application` | `hosted_application` | Hosted Applications | ruled 2026-11-21 | CANONICAL | the name carries the platform; no platform-neutral kind exists (audit 0027) |
+| `background_task` | `scheduled` | Event & Background Tasks | proposed | CANONICAL | — |
+| `cli_command` | `command` | CLI & Scripts | proposed | CANONICAL | `cli` names the interface the command is entered through, not a framework (cli.yaml is the file of Python CLI frameworks) |
+| `connectivity_based` | `fallback` | Other | proposed | CANONICAL, kept under a trigger | restates evidence_type = connectivity_heuristic (audit 0027 keep trigger) |
+| `controller` | `request_ingress` | Controllers | proposed | CANONICAL | — |
+| `electron_main` | `program_start` | CLI & Scripts | ruled 2026-11-21 | CANONICAL | no framework-neutral kind names Electron's main-process start (audit 0027) |
+| `electron_preload` | `hosted_application` | Hosted Applications | proposed | CANONICAL | the name carries the framework; kept with a producer (audit 0027 ruling) |
+| `error_handler` | `request_ingress` | Middleware & Error Handlers | proposed | CANONICAL | — |
+| `event_handler` | `scheduled` | Event & Background Tasks | proposed | CANONICAL | — |
+| `form` | `reflective` | Framework-Reflected Classes | proposed | CANONICAL | — |
+| `go_handler` | `request_ingress` | HTTP Routes | not ruled (WI-hamiz) | not ruled | language-named with a live producer; a FOLD candidate with no target decided (audit 0027, WI-hamiz) |
+| `graphql_server` | `request_ingress` | GraphQL | proposed | CANONICAL | named by protocol, as http_route is (audit 0027) |
+| `hosted_application` | `hosted_application` | Hosted Applications | ruled 2026-11-21 | CANONICAL | — |
+| `html_entry` | `fallback` | Other | proposed | CANONICAL, kept under a trigger | named by how it is found (audit 0027 keep trigger) |
+| `http_route` | `request_ingress` | HTTP Routes | proposed | CANONICAL | named by protocol, as graphql_server is (audit 0027) |
+| `library_export` | `library_api` | Library API | proposed | CANONICAL | — |
+| `main_function` | `program_start` | CLI & Scripts | ruled 2026-11-21 | CANONICAL | — |
+| `main_guard` | `program_start` | CLI & Scripts | ruled 2026-11-21 | CANONICAL, kept under a trigger | the guard is how the start is recognised; kept beside main_function while no reader branches on one without the other (audit 0027 keep trigger) |
+| `middleware_handler` | `request_ingress` | Middleware & Error Handlers | proposed | CANONICAL | — |
+| `package_executable` | `program_start` | CLI & Scripts | ruled 2026-11-21 | CANONICAL | — |
+| `scheduled_task` | `scheduled` | Event & Background Tasks | proposed | CANONICAL | — |
+| `script_module` | `fallback` | Other | ruled 2026-11-21 | CANONICAL, kept under a trigger | named by how it is found; ruled fallback (audit 0027 keep trigger) |
+| `serializer` | `reflective` | Framework-Reflected Classes | proposed | CANONICAL | — |
+| `shell_script` | `fallback` | Other | ruled 2026-11-21 | CANONICAL, kept under a trigger | named by how it is found; ruled fallback (audit 0027 keep trigger) |
+| `spa_bootstrap` | `hosted_application` | Hosted Applications | proposed | CANONICAL | — |
+| `test_function` | `test` | (Tests section) | proposed | CANONICAL | — |
+| `websocket_handler` | `request_ingress` | WebSocket Handlers | proposed | CANONICAL | — |
