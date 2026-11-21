@@ -3,6 +3,9 @@
 #
 # Patterns for graphql-ruby gem.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -63,18 +66,6 @@ patterns:
   # graphql-ruby scalar type
   - concept: graphql_schema
     base_class: "^GraphQL::Schema::Scalar$"
-
-  # graphql-ruby field definition
-  - concept: graphql_schema
-    decorator: "^field$"
-
-  # graphql-ruby argument definition
-  - concept: graphql_schema
-    decorator: "^argument$"
-
-  # graphql-ruby connection
-  - concept: graphql_schema
-    decorator: "^connection$"
 
   # graphql-ruby schema class
   - concept: graphql_schema

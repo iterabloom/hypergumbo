@@ -4,6 +4,9 @@
 # Fastify is a fast Node.js web framework. Routes are defined using
 # fastify.get(), fastify.post(), etc. or via route schemas.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -34,44 +37,7 @@ patterns:
       method: "metadata.http_method"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
-  # Fastify route methods
-  - concept: route
-    decorator: "^(fastify|app|server)\\.(get|post|put|delete|patch|options|head|all)$"
-    extract_path: "args[0]"
-    extract_method: "decorator_suffix"
-
-  # Fastify route() with options object
-  - concept: route
-    decorator: "^(fastify|app|server)\\.route$"
-
-  # Fastify plugin registration
-  - concept: middleware
-    decorator: "^(fastify|app|server)\\.register$"
-
-  # Fastify decorators
-  - concept: middleware
-    decorator: "^(fastify|app|server)\\.(decorate|decorateRequest|decorateReply)$"
-
-  # Fastify hooks
-  - concept: middleware
-    decorator: "^(fastify|app|server)\\.(addHook|onRequest|onResponse|onSend|onError|preParsing|preValidation|preHandler|preSerialization)$"
-
-  # Fastify error handler
-  - concept: error_handler
-    decorator: "^(fastify|app|server)\\.setErrorHandler$"
-
-  # Fastify 404 handler
-  - concept: error_handler
-    decorator: "^(fastify|app|server)\\.setNotFoundHandler$"
 
   # Fastify schema
   - concept: schema
     decorator: "^(fastify|app|server)\\.addSchema$"
-
-  # Fastify content type parser
-  - concept: middleware
-    decorator: "^(fastify|app|server)\\.addContentTypeParser$"
-
-  # Fastify WebSocket (@fastify/websocket)
-  - concept: websocket_handler
-    decorator: "^(fastify|app|server)\\.websocket$"

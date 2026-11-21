@@ -4,6 +4,9 @@
 # Patterns for detecting command-line interface entrypoints:
 # clap, structopt, argh.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -29,17 +32,9 @@ patterns:
   - concept: schema
     annotation: "^ValueEnum$"
 
-  # clap command! macro
-  - concept: command
-    decorator: "^command!$"
-
   # clap arg! macro
   - concept: argument
     decorator: "^arg!$"
-
-  # clap Command::new
-  - concept: command
-    decorator: "^Command::new$"
 
   # ==================== STRUCTOPT PATTERNS (LEGACY) ====================
   # structopt derive macro

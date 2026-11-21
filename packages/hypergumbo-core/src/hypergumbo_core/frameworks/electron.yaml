@@ -8,6 +8,9 @@
 # app.whenReady() and app.on('ready') are call expressions, not decorators.
 # The JS/TS analyzer emits UsageContext records for these calls.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -35,9 +38,6 @@ patterns:
       position: "^caller$"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
-  # Electron main process IPC handlers
-  - concept: ipc_handler
-    decorator: "^ipcMain\\.(on|handle|handleOnce)$"
 
   # Electron renderer process IPC
   - concept: ipc_sender
@@ -82,10 +82,6 @@ patterns:
   # Electron session/cookies
   - concept: session
     decorator: "^session\\.(defaultSession|fromPartition)$"
-
-  # Electron webContents events
-  - concept: ipc_handler
-    decorator: "^webContents\\.(on|send)$"
 
   # Electron protocol handlers
   - concept: protocol

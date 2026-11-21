@@ -2,13 +2,17 @@
 # CLI entrypoint patterns - Python (ADR-3aaa)
 #
 # Patterns for detecting command-line interface entrypoints in Python:
-# Click, Typer, Fire, argparse, and Django management commands.
+# Click, Typer and Django management commands. Fire and argparse are calls
+# (fire.Fire(), argparse.ArgumentParser()), which no row detects.
 #
 # For other languages, see:
 # - cli-js.yaml (Commander, yargs, oclif)
 # - cli-rust.yaml (clap, structopt)
 # - cli-go.yaml (Cobra, urfave/cli)
 # - cli-ruby.yaml (Thor, GLI)
+
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
@@ -47,20 +51,6 @@ patterns:
   # Typer callback
   - concept: command
     decorator: "^app\\.callback$"
-
-  # Typer main app
-  - concept: command
-    decorator: "^typer\\.Typer$"
-
-  # ==================== FIRE PATTERNS ====================
-  # Google Fire
-  - concept: entrypoint
-    decorator: "^fire\\.Fire$"
-
-  # ==================== ARGPARSE PATTERNS ====================
-  # argparse ArgumentParser
-  - concept: entrypoint
-    decorator: "^argparse\\.ArgumentParser$"
 
   # ==================== DJANGO CLI PATTERNS ====================
   # Django management command

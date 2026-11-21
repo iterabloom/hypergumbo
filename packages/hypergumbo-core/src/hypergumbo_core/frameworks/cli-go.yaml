@@ -2,7 +2,10 @@
 # CLI entrypoint patterns - Go (ADR-3aaa)
 #
 # Patterns for detecting command-line interface entrypoints:
-# Cobra, urfave/cli, kong.
+# Cobra, urfave/cli, kong (each a call, which no `decorator:` row detects).
+
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
@@ -12,56 +15,12 @@ id: cli-go
 language: go
 
 patterns:
-  # ==================== COBRA PATTERNS ====================
-  # Cobra Command struct
-  - concept: command
-    decorator: "^cobra\\.Command$"
-
-  # Cobra AddCommand
-  - concept: command
-    decorator: "^AddCommand$"
-
-  # Cobra Run function
-  - concept: command
-    decorator: "^Run$"
-
-  # Cobra RunE function
-  - concept: command
-    decorator: "^RunE$"
-
-  # Cobra PersistentPreRun
-  - concept: middleware
-    decorator: "^PersistentPreRun$"
-
-  # Cobra PersistentPostRun
-  - concept: middleware
-    decorator: "^PersistentPostRun$"
 
   # ==================== URFAVE/CLI PATTERNS ====================
-  # urfave/cli App
-  - concept: command
-    decorator: "^cli\\.App$"
-
-  # urfave/cli Command
-  - concept: command
-    decorator: "^cli\\.Command$"
 
   # urfave/cli Flag
   - concept: option
     decorator: "^cli\\.(StringFlag|IntFlag|BoolFlag|Float64Flag)$"
-
-  # urfave/cli Action
-  - concept: command
-    decorator: "^Action$"
-
-  # ==================== KONG PATTERNS ====================
-  # kong Parse
-  - concept: entrypoint
-    decorator: "^kong\\.Parse$"
-
-  # kong Context
-  - concept: command
-    decorator: "^kong\\.Context$"
 
   # ==================== FLAG PATTERNS ====================
   # flag package (standard library)

@@ -7,6 +7,9 @@
 # Definition-based patterns (v1.0.x): Match use/import macros for behavior injection
 # Usage-based patterns (v1.1.x): Match router DSL calls via UsageContext
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -54,33 +57,12 @@ patterns:
   - concept: route
     framework_role: "^route$"
 
-  # Controllers - use Phoenix.Controller or MyAppWeb :controller
-  - concept: controller
-    decorator: "^use Phoenix\\.Controller$"
-
-  - concept: controller
-    decorator: "^use .*Web, :controller$"
-
-  # LiveView - real-time server-rendered views
-  - concept: liveview
-    decorator: "^use Phoenix\\.LiveView$"
-
-  - concept: liveview
-    decorator: "^use .*Web, :live_view$"
-
   # LiveComponent - reusable LiveView components
   - concept: component
     decorator: "^use Phoenix\\.LiveComponent$"
 
   - concept: component
     decorator: "^use .*Web, :live_component$"
-
-  # Channels - WebSocket handlers
-  - concept: websocket_handler
-    decorator: "^use Phoenix\\.Channel$"
-
-  - concept: websocket_handler
-    decorator: "^use .*Web, :channel$"
 
   # Ecto Schemas - database models
   - concept: model
@@ -89,13 +71,6 @@ patterns:
   # Ecto Changesets (often in schema modules)
   - concept: model
     decorator: "^import Ecto\\.Changeset$"
-
-  # Plugs - middleware
-  - concept: middleware
-    decorator: "^use Plug\\.Builder$"
-
-  - concept: middleware
-    decorator: "^use Plug\\.Router$"
 
   # Phoenix Router
   - concept: router
@@ -119,33 +94,6 @@ patterns:
   - concept: component
     decorator: "^use Phoenix\\.Component$"
 
-  # GenServer - background processes
-  - concept: task
-    decorator: "^use GenServer$"
-
   # Supervisor - process supervision
   - concept: supervisor
     decorator: "^use Supervisor$"
-
-  # Agent - simple state management
-  - concept: task
-    decorator: "^use Agent$"
-
-  # Task - async operations
-  - concept: task
-    decorator: "^use Task$"
-
-  # Oban workers (job processing)
-  - concept: task
-    decorator: "^use Oban\\.Worker$"
-
-  # Broadway (data ingestion)
-  - concept: task
-    decorator: "^use Broadway$"
-
-  # Absinthe GraphQL
-  - concept: graphql_schema
-    decorator: "^use Absinthe\\.Schema$"
-
-  - concept: graphql_resolver
-    decorator: "^use Absinthe\\.Schema\\.Notation$"

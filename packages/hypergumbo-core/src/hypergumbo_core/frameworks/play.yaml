@@ -8,6 +8,9 @@
 # - Definition-based: Match controller base classes and action blocks
 # - Usage-based: Match Action { } DSL patterns
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -31,41 +34,13 @@ patterns:
   - concept: controller
     base_class: "^(BaseController|AbstractController|InjectedController)$"
 
-  # Play Action blocks - def index = Action { ... }
-  - concept: route
-    decorator: "^Action$"
-
-  # Play async actions - def fetch = Action.async { ... }
-  - concept: route
-    decorator: "^Action\\.async$"
-
-  # Play ActionBuilder
-  - concept: route
-    decorator: "^(UserAction|AuthAction|SecuredAction|AdminAction)$"
-
-  # Play JSON body parser - Action(parse.json) { ... }
-  - concept: route
-    decorator: "^Action\\(parse\\.(json|tolerantJson|xml|text|raw)\\)$"
-
-  # Play WebSocket handlers
-  - concept: websocket_handler
-    decorator: "^WebSocket\\.(accept|acceptOrResult)$"
-
   # Play EventSource handlers
   - concept: event_source
     decorator: "^EventSource$"
 
-  # Play Forms and validation
-  - concept: middleware
-    decorator: "^Form$"
-
   # Play authentication helpers
   - concept: auth
     decorator: "^(Authenticated|OptionallyAuthenticated|Security\\.Authenticated)$"
-
-  # Play CSRF protection
-  - concept: middleware
-    decorator: "^(CSRFAddToken|CSRFCheck)$"
 
   # Play silhouette auth (common Play auth library)
   - concept: auth
@@ -86,7 +61,3 @@ patterns:
   # Play cache
   - concept: cache
     decorator: "^cache\\.(get|set|remove|getOrElseUpdate)$"
-
-  # Play i18n
-  - concept: middleware
-    decorator: "^Messages$"

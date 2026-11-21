@@ -4,6 +4,9 @@
 # Bottle is a fast, simple Python micro-framework similar to Flask.
 # Matches Bottle route decorators and plugin patterns.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -46,7 +49,3 @@ patterns:
   # Bottle error handler - @app.error(404)
   - concept: error_handler
     decorator: "^(app|bottle)\\.error$"
-
-  # Bottle plugins
-  - concept: middleware
-    decorator: "^(app|bottle)\\.install$"
