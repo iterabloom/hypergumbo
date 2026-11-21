@@ -1,0 +1,20 @@
+- op: create  # 7432
+  at: '2026-11-21T08:34:59Z'  # 7432
+  by: agent  # 7432
+  actor: jgstern_agent  # 7432
+  clock: 1  # 7432
+  nonce: '7432'  # 7432
+  data:  # 7432
+    kind: work_item  # 7432
+    title: "electron_preload: a preload path into build output, a bundler constant or a variable is not resolved"  # 7432
+    status: todo_soft  # 7432
+    priority: 3  # 7432
+    parent:  # 7432
+    tags:  # 7432
+    - electron  # 7432
+    isbefore: []  # 7432
+    duplicate_of: []  # 7432
+    not_duplicate_of: []  # 7432
+    pr_ref:  # 7432
+    description: "The producer resolves webPreferences.preload only when the value is a literal path off __dirname that names an analysed file (path.join / path.resolve / join / resolve of string segments, __dirname + '/x', a template literal). electron-vite and tsc layouts name build output (join(__dirname, '../preload/index.js') from src/main; path.resolve(__dirname, '..', 'dist', ...)), so they resolve to nothing. A preload file that calls contextBridge.exposeInMainWorld is still found by the other producer form. Repro: electron/ fixtures in the evidence directory.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # 7432
+    fields: {}  # 7432
