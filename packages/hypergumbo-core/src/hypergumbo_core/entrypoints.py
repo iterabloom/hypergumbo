@@ -119,7 +119,16 @@ Ranking Penalties (``rank_score`` only, applied before the boost):
   PRODUCTION code: one in a test, utility / example or vendored file (any
   ``path_rank_penalties`` names) does not count, so a few Python helper
   scripts do not bury a Lean library's exports, and a library's test-tree
-  mains do not bury its API. One production entry is enough: no count. A vendored (tier >= 3) export is demoted in
+  mains do not bury its API. One production entry is enough: no count.
+  The exception: the exports of a JavaScript / TypeScript package whose
+  nearest ``package.json`` declares a non-empty ``exports`` field (a string,
+  a subpath map, a conditions map) are not demoted. That field is the
+  package's own list of what consumers may import, so those symbols are its
+  API even when the package also runs a server (vite: the dev server and the
+  exported API are one package). ``main`` / ``module`` / ``types`` do not
+  count: applications declare them too. The manifest is read from
+  ``repo_root``; a list detected without one applies the plain demotion.
+  A vendored (tier >= 3) export is demoted in
   every language. A demoted export also skips the boost when it is vendored
   or sits on an infrastructure path (``paths.is_infrastructure_path``:
   telemetry/, metrics/, logging/, ...); an infrastructure-path export that
@@ -174,10 +183,13 @@ from enum import Enum
 from typing import Callable, List, Mapping, Optional, Sequence
 
 import re
+from pathlib import Path
 
 from .ir import Symbol, Edge
 from .routes import method_token, route_of
+from .js_package_entry import declares_exports_map, nearest_package_root
 from .paths import is_infrastructure_path, is_test_node, is_utility_file
+from .taxonomy import JS_TS_LANGUAGES
 
 
 # File path patterns that indicate frontend UI code (React, Vue, Angular, Svelte).
@@ -1826,9 +1838,38 @@ _BUILD_WRAPPER_BASENAMES: frozenset[str] = frozenset({
 })
 
 
+class _ExportsMapPackages:
+    """Whether a JS/TS symbol's package declares an ``exports`` map.
+
+    The package is Node's package scope: the nearest directory above the
+    symbol's file holding a ``package.json``, not above ``repo_root``
+    (``js_package_entry.nearest_package_root``); the field is read by
+    ``js_package_entry.declares_exports_map``. One answer per directory, kept
+    for this one detection call: the manifest is read once per package, and a
+    later call reads the tree as it is then. Without ``repo_root`` there is no
+    manifest to read and every answer is False (the plain demotion).
+    """
+
+    def __init__(self, repo_root: Optional[Path]) -> None:
+        self._root = repo_root
+        self._by_dir: dict[Path, bool] = {}
+
+    def __call__(self, sym: Symbol) -> bool:
+        if self._root is None or sym.language not in JS_TS_LANGUAGES or not sym.path:
+            return False
+        directory = (self._root / sym.path).parent
+        answer = self._by_dir.get(directory)
+        if answer is None:
+            package = nearest_package_root(directory, stop=self._root)
+            answer = package is not None and declares_exports_map(package)
+            self._by_dir[directory] = answer
+        return answer
+
+
 def detect_entrypoint_candidates(
     nodes: List[Symbol],
     edges: List[Edge],
+    repo_root: Optional[Path] = None,
 ) -> List[Entrypoint]:
     """Every entrypoint candidate, ranked, BEFORE the rank floor and the cap.
 
@@ -1860,6 +1901,10 @@ def detect_entrypoint_candidates(
     Args:
         nodes: All symbols in the codebase (with concept metadata from enrichment).
         edges: All edges (used for connectivity boost).
+        repo_root: The analysed tree, where the library-export demotion reads
+            ``package.json`` files: a JS/TS package that declares ``exports``
+            keeps its exports. None reads nothing (the plain demotion), so
+            every caller with a tree passes it.
 
     Returns:
         List of detected entrypoints carrying both `confidence` (detection
@@ -2185,6 +2230,7 @@ def detect_entrypoint_candidates(
                 if path_rank_penalties(sym):
                     continue
                 langs_with_semantic.add(sym.host_language)
+    declares_api = _ExportsMapPackages(repo_root)
     for ep in unique_entrypoints:
         if ep.kind == EntrypointKind.LIBRARY_EXPORT:
             sym = symbol_lookup.get(ep.symbol_id)
@@ -2195,7 +2241,14 @@ def detect_entrypoint_candidates(
             # a vendored one. Named for both so the predicate says what it
             # holds (WI-daruz).
             is_vendored_or_derived = sym is not None and sym.supply_chain_tier >= 3
-            if is_vendored_or_derived or (lang and lang in langs_with_semantic):
+            # A JS/TS package whose package.json declares ``exports`` has said
+            # what its API is, so its exports stay listed beside its server
+            # (vite: the dev server and the exported API are one package).
+            # Production entries elsewhere still demote every other export.
+            if is_vendored_or_derived or (
+                lang and lang in langs_with_semantic
+                and not (sym is not None and declares_api(sym))
+            ):
                 ep.rank_score *= 0.1  # 90% ranking reduction, same as test penalty
                 # A vendored or derived export is not the repo's own API in any
                 # repo, so the demotion must stick — suppress the boost
@@ -2380,6 +2433,7 @@ def apply_rank_floor_and_cap(
 def detect_entrypoints(
     nodes: List[Symbol],
     edges: List[Edge],
+    repo_root: Optional[Path] = None,
 ) -> List[Entrypoint]:
     """Detect entrypoints: the ranked candidates, floored and capped.
 
@@ -2390,7 +2444,7 @@ def detect_entrypoints(
     ``request_ingress`` (:func:`request_ingress_entries`).
     """
     return apply_rank_floor_and_cap(
-        detect_entrypoint_candidates(nodes, edges), nodes,
+        detect_entrypoint_candidates(nodes, edges, repo_root=repo_root), nodes,
     )
 
 

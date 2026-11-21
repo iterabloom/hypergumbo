@@ -7525,7 +7525,7 @@ def _generate_sketch_impl(
     entrypoints: list[Entrypoint] = []
 
     if _section_ok("Entry Points", remaining_tokens) and symbols:
-        entrypoints = detect_entrypoints(symbols, edges)
+        entrypoints = detect_entrypoints(symbols, edges, repo_root=repo_root)
         if entrypoints:  # pragma: no cover - requires framework patterns to detect entrypoints
             # Build symbol lookup for extracting file paths
             symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}

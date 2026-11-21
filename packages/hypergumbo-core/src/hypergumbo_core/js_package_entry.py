@@ -23,6 +23,14 @@ lives here rather than in either: ``exports`` / ``exports["."]`` (its
 ``main``, then ``index.<ext>``, then the package's own ``src/index.<ext>``
 when the declared entry is build output not in the tree.
 
+It also holds Node's package scope (``nearest_package_root``: the nearest
+directory above a file that holds a ``package.json``), which js_ts reads to
+find a file's package and entry ranking reads to find whose manifest speaks for
+an export, and ``declares_exports_map``: whether that manifest declares an
+``exports`` field, the package's own list of what consumers may import (Node
+refuses any other subpath). Entry ranking keeps such a package's exports out
+of the library-export demotion (``entrypoints.detect_entrypoint_candidates``).
+
 Reads go through ``linkers._text_filters.read_source_text``, which records the
 read against the active linker's read log when one is bound and is silent
 otherwise -- so the linker's ``files_analyzed`` still counts its
@@ -100,6 +108,46 @@ def probe_file(base_path: Path) -> Path | None:
     return None
 
 
+def _read_manifest(root: Path) -> dict:
+    """``root/package.json`` as a JSON object; ``{}`` when it is missing,
+    unreadable, not JSON (Node cannot load it either) or not an object."""
+    try:
+        data = json_module.loads(read_source_text(root / "package.json", errors="ignore"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def nearest_package_root(path: Path, stop: Path | None = None) -> Path | None:
+    """The nearest directory at or above *path* (a file's own directory when
+    *path* is a file) that holds a ``package.json``: Node's package scope.
+
+    *stop* bounds the walk (a repository root: a manifest above the analysed
+    tree is not the tree's); without it the walk goes to the filesystem root,
+    which itself is never checked. None when no directory on the way has one.
+    """
+    current = path.parent if path.is_file() else path
+    while current != current.parent:
+        if (current / "package.json").exists():
+            return current
+        if current == stop:
+            return None
+        current = current.parent
+    return None
+
+
+def declares_exports_map(root: Path) -> bool:
+    """Whether ``root/package.json`` declares a non-empty ``exports`` field.
+
+    Every form counts: a string (the package's one entry), an object of
+    subpaths, an object of conditions (nested to any depth), and a fallback
+    array. Each names what a consumer may import. A null, empty string,
+    empty object or empty array exposes nothing, and a manifest that is not
+    a JSON object declares nothing."""
+    exports = _read_manifest(root).get("exports")
+    return isinstance(exports, (str, dict, list)) and bool(exports)
+
+
 def package_entry(root: Path) -> Path | None:
     """A workspace package's entry file, the way Node finds it for a bare
     ``require``: a string ``exports`` or ``exports["."]`` (its ``import`` /
@@ -115,12 +163,7 @@ def package_entry(root: Path) -> Path | None:
     # but a relative DIRECTORY import (``require('..')``, WI-pulid) reaches
     # here with a manifest nobody has validated: an unreadable or non-object
     # one declares no entry, and the index probe below answers.
-    try:
-        data = json_module.loads(read_source_text(root / "package.json", errors="ignore"))
-    except (OSError, ValueError):
-        data = {}
-    if not isinstance(data, dict):
-        data = {}
+    data = _read_manifest(root)
     exports = data.get("exports")
     if isinstance(exports, dict):
         exports = exports.get(".", exports)
