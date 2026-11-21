@@ -631,10 +631,13 @@ class TestEntrypointKindIsTheWhat:
         assert "cli_command" not in entrypoint_kinds(bm)
         assert callable_target_violations(bm) == []
 
-    @pytest.mark.xfail(strict=True, reason="WI-dofiz: the Flask application variable is a main_function entrypoint")
     def test_a_flask_application_is_not_a_main_function(self, survey) -> None:
+        """WI-dofiz: the Flask ``app`` variable was a ``main_function`` entry.
+        It is a ``hosted_application`` (audit 0027, ruled 2026-11-21), a kind
+        that names an object, not a callable."""
         bm = survey("ep_flask_0", _ROUTE_TWINS["flask"][0])
         assert "http_route" in entrypoint_kinds(bm)  # reach
+        assert "hosted_application" in entrypoint_kinds(bm)
         assert callable_target_violations(bm) == []
 
 

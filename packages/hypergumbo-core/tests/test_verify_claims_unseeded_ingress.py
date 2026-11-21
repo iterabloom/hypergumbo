@@ -184,7 +184,7 @@ def test_the_handlers_are_the_request_ingress_entrypoints_only() -> None:
          "label": "HTTP route /save"},
         {"kind": "http_route", "symbol_id": "javascript:s.js:6-9:h:function",
          "label": "HTTP GET /h"},
-        {"kind": "main_function", "symbol_id": "python:app.py:3-3:app:variable",
+        {"kind": "hosted_application", "symbol_id": "python:app.py:3-3:app:variable",
          "label": "Flask application"},
         {"kind": "cli_command", "symbol_id": "python:cli.py:1-5:run:function",
          "label": "CLI run"},

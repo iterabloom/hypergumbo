@@ -28,7 +28,7 @@ Total concepts: **321** (live: 46, inert: 274, ghost: 1).
 | `api_route` | inert | nextjs | _(none)_ |
 | `api_view` | inert | flask-appbuilder | _(none)_ |
 | `app_bootstrap` | live | react, solid | `entrypoints.py` |
-| `application` | live | aiohttp, fastapi, flask, giraffe, http4s, hummingbird, javalin, openresty, padrino, plumber, qt, roda, scotty, servant, shiny, swiftui, tornado, yesod, zio | `entrypoints.py` |
+| `application` | live | aiohttp, fastapi, flask, giraffe, hummingbird, openresty, padrino, plumber, roda, servant, shiny, tornado, yesod | `entrypoints.py` |
 | `argument` | inert | cli, cli-js, cli-ruby, cli-rust | _(none)_ |
 | `asset` | inert | yii | _(none)_ |
 | `async` | inert | jax-rs, quarkus, remix, spring-boot, tornado | _(none)_ |
@@ -70,7 +70,7 @@ Total concepts: **321** (live: 46, inert: 274, ghost: 1).
 | `circuit_breaker` | inert | vertx | _(none)_ |
 | `client` | inert | http4k, http4s, quarkus, restify, vertx | _(none)_ |
 | `code_section` | inert | language-conventions | _(none)_ |
-| `command` | live | adonisjs, cakephp, cli, cli-js, cli-ruby, cli-rust, codeigniter, django, flask, fuelphp, laminas, laravel, lumen, masonite, symfony, vapor, yii | `entrypoints.py`, `linkers/subprocess_cli.py` |
+| `command` | live | adonisjs, cakephp, cli, cli-js, cli-ruby, cli-rust, codeigniter, django, flask, fuelphp, laminas, laravel, lumen, masonite, swiftui, symfony, vapor, yii | `entrypoints.py`, `linkers/subprocess_cli.py` |
 | `command_by_name` | live | naming-conventions | `entrypoints.py` |
 | `component` | inert | cakephp, jakarta-cdi, laravel, lit, nuxt, phoenix, react, spring-boot, yesod, yii | _(none)_ |
 | `composer_dependency` | inert | config-conventions | _(none)_ |
@@ -104,7 +104,7 @@ Total concepts: **321** (live: 46, inert: 274, ghost: 1).
 | `effect` | inert | solid | _(none)_ |
 | `encoder` | inert | http4s | _(none)_ |
 | `entity` | live | cakephp, codeigniter | `datamodels.py` |
-| `entrypoint` | live | electron, verilog.py | `entrypoints.py` |
+| `entrypoint` | live | electron, http4s, swiftui, verilog.py, zio | `entrypoints.py` |
 | `error` | inert | cli | _(none)_ |
 | `error_handler` | live | adonisjs, bottle, fastapi, feathers, flask, giraffe, javalin, jax-rs, laravel, litestar, lumen, micronaut, nuxt, openresty, padrino, pyramid, quart, remix, restify, ring-compojure, sanic, scalatra, scotty, servant, slim, spring-boot, sveltekit, tornado, vertx | `entrypoints.py` |
 | `event` | inert | adonisjs, fuelphp, laravel, masonite | _(none)_ |

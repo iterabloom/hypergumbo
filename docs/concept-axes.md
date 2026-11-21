@@ -656,7 +656,7 @@ table after them records, per kind, whether its role was ruled by the owner
 The operating system or a language runtime starts a process here. Ruled closed (2026-11-21): the package's declared executable, the convention main, the `__main__` guard and Electron's main-process script, and nothing else. Ranks first among ties, gets `slice --entry auto`'s 2x boost, and is the set the INV-hosuh dedup groups.
 
 - **`electron_main`** — Electron's main-process script (electron.yaml `app.whenReady` / `app.on`).
-- **`main_function`** — A language's convention `main` (main-functions.yaml); until WI-fasij also the `application` rows and the Verilog top module.
+- **`main_function`** — A language's convention `main` (main-functions.yaml), and a framework type the runtime starts as the program (`IOApp`, `ZIOApp`, SwiftUI `App`, an app delegate: the `entrypoint` concept); until WI-fasij also the Verilog top module.
 - **`main_guard`** — A Python module run as a script (`if __name__ == '__main__':`, no main()).
 - **`package_executable`** — An executable the package's manifest declares (package.json `bin`, Cargo `[[bin]]`, pyproject `[project.scripts]`); the entry is the manifest record.
 
@@ -673,6 +673,7 @@ An application object or component a server, platform or runtime instantiates an
 - **`android_activity`** — An Android `Activity` subclass's lifecycle hook: a component the platform instantiates and drives.
 - **`android_application`** — An Android `Application` subclass's lifecycle hook.
 - **`electron_preload`** — The script Electron loads into a window before its page (a contextBridge exposure, or the file a `webPreferences.preload` names).
+- **`hosted_application`** — An application object a server or runtime hosts (Flask, FastAPI, Tornado, aiohttp, Roda, Padrino, Hummingbird, ...: the `application` concept). Ranks with routes, not with program starts.
 - **`spa_bootstrap`** — The call that mounts a single-page application into the page (`createRoot`, `ReactDOM.render`, `hydrateRoot`): the browser hosts it.
 
 ### `request_ingress` — sketch group "Request Handlers"
@@ -740,6 +741,7 @@ Found by its shape alone (a shell script, a standalone script file, an `index.ht
 | `form` | `reflective` | proposed | CANONICAL | — |
 | `go_handler` | `request_ingress` | not ruled (WI-hamiz) | not ruled | language-named with a live producer; a FOLD candidate with no target decided (audit 0027, WI-hamiz) |
 | `graphql_server` | `request_ingress` | proposed | CANONICAL | named by protocol, as http_route is (audit 0027) |
+| `hosted_application` | `hosted_application` | ruled 2026-11-21 | CANONICAL | — |
 | `html_entry` | `fallback` | proposed | CANONICAL, kept under a trigger | named by how it is found (audit 0027 keep trigger) |
 | `http_route` | `request_ingress` | proposed | CANONICAL | named by protocol, as graphql_server is (audit 0027) |
 | `library_export` | `library_api` | proposed | CANONICAL | — |

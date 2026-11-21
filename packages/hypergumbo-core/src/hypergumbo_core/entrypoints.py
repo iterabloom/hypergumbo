@@ -305,9 +305,11 @@ REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(
 #: The entrypoint kinds that START A PROGRAM: the program-start role of the
 #: entrypoint-kind registry. Ruled closed on 2026-11-21 (audit 0027): the
 #: package's declared executables (``package_executable``), the convention
-#: ``main`` (and, until WI-fasij moves them, what detection files under that
-#: kind: an ``application`` object such as an IOApp, and the Verilog top
-#: module), a module ``__main__`` guard and Electron's main-process script.
+#: ``main`` (and a framework type the runtime starts as the program, such as
+#: an IOApp: the ``entrypoint`` concept), a module ``__main__`` guard and
+#: Electron's main-process script (and, until WI-fasij moves it, the Verilog
+#: top module). A server's application object is NOT a program start:
+#: ``hosted_application``.
 #: Among entries of equal ``rank_score`` the declared executables come first,
 #: then the other program starts, then every other kind
 #: (:func:`entry_kind_tie_rank`); ``slice --entry auto`` gives them all its
@@ -645,7 +647,11 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     - "go_http_handler" -> GO_HANDLER (Go http.Handler ServeHTTP; confidence=0.90)
 
     Detected concepts (generic entrypoint, confidence=0.90):
-    - "entrypoint" -> ELECTRON_MAIN (electron) / MAIN_FUNCTION (others)
+    - "entrypoint" -> ELECTRON_MAIN (electron) / MAIN_FUNCTION (others: a
+      framework type the runtime starts as the program, IOApp, ZIOApp,
+      SwiftUI App, an app delegate)
+    - "application" -> HOSTED_APPLICATION (an application object a server or
+      runtime hosts: Flask / FastAPI app, Tornado / aiohttp / Roda app class)
     - "api_bridge" / "preload_script" -> ELECTRON_PRELOAD (the preload FILE:
       a contextBridge exposure in it, or a window's literal
       webPreferences.preload path naming it)
@@ -1356,7 +1362,12 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
 
             # Generic entrypoint concept -> framework-specific or MAIN_FUNCTION
             # Emitted by electron.yaml's usage rows (app.whenReady, app.on /
-            # app.once) and by verilog.py's top-module stamp. The cli.yaml
+            # app.once) and by the rows of a framework type the runtime
+            # starts as the program: http4s.yaml (IOApp, IOApp.Simple),
+            # zio.yaml (ZIOApp, ZIOAppDefault), swiftui.yaml (App and the two
+            # app delegates). Until audit 0027 those rows emitted
+            # ``application``, which now means a hosted application object.
+            # verilog.py's top-module stamp emits it too. The cli.yaml
             # (fire.Fire, argparse.ArgumentParser), cli-go.yaml (kong.Parse),
             # cli-ruby.yaml (OptionParser) and akka-http.yaml
             # (Http().newServerAt) rows keyed those calls on ``decorator:``,
@@ -1452,26 +1463,33 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.ELECTRON_PRELOAD)
 
-            # Application concept -> MAIN_FUNCTION
-            # Used by http4s.yaml (extends IOApp, extends IOApp.Simple),
-            # zio.yaml (extends ZIOAppDefault), and similar patterns where
-            # a class/object IS the application entry point.
+            # A hosted application -> HOSTED_APPLICATION (audit 0027, ruled
+            # 2026-11-21). ``application``: an application object a server
+            # or runtime hosts and drives (flask.yaml / fastapi.yaml
+            # ``app = Flask(...)`` variables, tornado.yaml / aiohttp.yaml /
+            # roda.yaml / padrino.yaml / hummingbird.yaml base classes, ...).
+            # It starts no process, so it is not a program start: it ranks
+            # with routes (tie rank 2) and get no ``slice --entry auto``
+            # boost. A framework type the runtime starts AS the program
+            # (IOApp, ZIOApp, SwiftUI ``App``) carries ``entrypoint``
+            # instead (MAIN_FUNCTION, above). The framework stays on the
+            # symbol's concept and in the label, not in the kind (ADR-0027).
             elif concept_type == "application":
-                if EntrypointKind.MAIN_FUNCTION in added_kinds:
+                if EntrypointKind.HOSTED_APPLICATION in added_kinds:
                     continue
                 if framework:
                     label = f"{framework.title()} application"
                 else:
-                    label = "Application entrypoint"
+                    label = "Hosted application"
                 entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
-                    kind=EntrypointKind.MAIN_FUNCTION,
+                    kind=EntrypointKind.HOSTED_APPLICATION,
                     confidence=0.90,
                     label=label,
                     source="concept_detector",
                     evidence_type="framework_pattern",
                 ))
-                added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+                added_kinds.add(EntrypointKind.HOSTED_APPLICATION)
 
             # Servlet concept -> CONTROLLER
             # Emitted by scalatra.yaml (extends ScalatraServlet/ScalatraFilter)

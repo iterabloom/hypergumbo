@@ -5,6 +5,10 @@
 # Uses signals/slots for event handling, QObject for object model.
 # Widely used in desktop apps (KDE), automotive, embedded systems.
 
+# The `application` row on the call that starts the server was deleted (audit
+# 0027, ruled 2026-11-21): a start call made inside a main is not an entry of
+# its own. It never fired either: cpp.py emits no usage contexts.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -51,12 +55,6 @@ patterns:
     usage:
       kind: "^call$"
       name: "^(connect|QObject::connect)$"
-
-  # QApplication entry point
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^QApplication$"
 
   # QML types
   - concept: qml_type
