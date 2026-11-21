@@ -1,0 +1,3 @@
+Original commit body from 20a67264df8d8ad59ab48969075b64ab0c645719:
+
+Fundamental concept audit of the entry-point kind vocabulary (owner-chosen domain). Findings: kind main_function carries three concepts; 24 of 49 kinds have no producer; five hand-written kind sets disagree. Records the reviewed proposals (against ADR-0024/0027/0028/0039/0056) and the owner rulings of 2026-11-21, with the filed items and build order. Docs only: no code or vocabulary change. Adds the concept_leak_pairs sibling format to docs/audits/README.md until entrypoint-kind is a registered axis.
