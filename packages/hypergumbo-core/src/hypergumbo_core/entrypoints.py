@@ -154,7 +154,8 @@ One Entrypoint Per Symbol (INV-liraj):
 - Three further dedups follow: when several entries share a symbol NAME,
   C-style forward declarations (``declaration`` modifier) are dropped in
   favour of the definition; a file's MAIN_GUARD entry is dropped when the
-  same file also has a MAIN_FUNCTION on a function (INV-hosuh, WI-tuvun);
+  same file also has a MAIN_FUNCTION on a function, the main the guard runs,
+  and no other entry is dropped by it (INV-hosuh, WI-tuvun, audit 0027 B);
   and route entries sharing one ``HTTP <METHOD> <path>`` or ``WS <path>``
   label collapse to the one the entry order puts first. That last dedup
   runs after the ranking adjustments below, on the final ``rank_score`` and
@@ -1930,47 +1931,33 @@ def detect_entrypoint_candidates(
             deduped_entrypoints.extend(eps)
     unique_entrypoints = deduped_entrypoints
 
-    # INV-hosuh + WI-tuvun: collapse module-level main-guard + function-level
-    # main() in the same script to a single entry. The main-guard
-    # (kind=MAIN_GUARD on the module/file symbol, from the ``main_guard``
-    # concept) and the main() function (kind=MAIN_FUNCTION on the function
-    # symbol, from the ``main_function`` concept) both fire for the same
-    # script when both are present. The function-level entry is the canonical
-    # "real" entrypoint; the main-guard marker is redundant once we have it
-    # (the ``fn_eps`` filter keeps only function-target entries per path).
-    # Scripts that have only one of the two (e.g., __main__.py with no
-    # separate main() -> lone MAIN_GUARD, or a bare main() with no __main__
-    # block -> lone MAIN_FUNCTION) keep their single entry.
+    # INV-hosuh + WI-tuvun: a module-level ``__main__`` guard and the main()
+    # it runs are ONE program start. The guard (kind=MAIN_GUARD on the
+    # file symbol, from the ``main_guard`` concept) and the main() function
+    # (kind=MAIN_FUNCTION on a function symbol, from the ``main_function``
+    # concept) both fire for a script that has both; the function is the
+    # entry worth naming, so the guard is dropped when its file has a
+    # MAIN_FUNCTION entry on a function. A guard with no such main
+    # (__main__.py, or a guard beside an IOApp object) and every other
+    # entry are kept.
     #
-    # The kinds it groups are the program-start role (PROGRAM_START_KINDS,
-    # from the entrypoint-kind registry), so the dedup and the tie order read
-    # one set: the two members it was written for plus electron_main. What
-    # the dedup keeps is unchanged: per file, the function-target entries
-    # when there are any. Keying it on the guard / main pair instead of a
-    # kind set is WI-fasij (audit 0027 B: it drops non-function entries of
-    # kind main_function).
-    main_by_path: dict[str, list[Entrypoint]] = defaultdict(list)
-    non_main_eps: list[Entrypoint] = []
-    for ep in unique_entrypoints:
-        if ep.kind not in PROGRAM_START_KINDS:
-            non_main_eps.append(ep)
-            continue
-        sym = symbol_lookup.get(ep.symbol_id)
-        if sym is None or not sym.path:  # pragma: no cover - defensive: entrypoints are built from nodes
-            non_main_eps.append(ep)
-            continue
-        main_by_path[sym.path].append(ep)
-    deduped_main_eps: list[Entrypoint] = []
-    for _path, eps in main_by_path.items():
-        if len(eps) <= 1:
-            deduped_main_eps.extend(eps)
-            continue
-        fn_eps = [
-            ep for ep in eps
-            if symbol_lookup[ep.symbol_id].kind == "function"
-        ]
-        deduped_main_eps.extend(fn_eps if fn_eps else eps)
-    unique_entrypoints = non_main_eps + deduped_main_eps
+    # Keyed on that pair, not on a group of kinds (audit 0027 B, WI-fasij):
+    # until then the dedup grouped every program-start entry of a file and
+    # kept only those on a function, so a Flask ``app`` variable or a
+    # Tornado ``Application`` class (then filed as main_function) vanished
+    # from any file that also had ``def main()``, and an electron_main or a
+    # package_executable would have too.
+    files_with_a_function_main = {
+        sym.path for ep in unique_entrypoints
+        if ep.kind is EntrypointKind.MAIN_FUNCTION
+        and (sym := symbol_lookup.get(ep.symbol_id)) is not None
+        and sym.kind == "function"
+    }
+    unique_entrypoints = [
+        ep for ep in unique_entrypoints
+        if not (ep.kind is EntrypointKind.MAIN_GUARD
+                and symbol_lookup[ep.symbol_id].path in files_with_a_function_main)
+    ]
 
     # The order keys after rank_score read the graph only, so they are built
     # once, here, for the route-label dedup and the final sort below.

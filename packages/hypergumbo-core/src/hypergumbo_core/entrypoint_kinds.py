@@ -44,11 +44,13 @@ written out):
   (``entrypoints.REQUEST_INGRESS_KINDS``);
 - the sketch's Entry Points groups: one group per role heading
   (:func:`role_heading`), the test role left to the Tests section;
-- the INV-hosuh main dedup: the program-start role;
 - the library-export demotion: the roles in :data:`APPLICATION_ROLES`.
 
 Readers that compare ONE kind (the build-wrapper demotion on
 ``shell_script``, the Go ``cmd/`` penalty on ``main_function``, the
+INV-hosuh dedup on the ``main_guard`` / ``main_function`` pair (a guard and
+the function main of its file are one start; until WI-fasij it grouped the
+whole program-start role and dropped any start not on a function), the
 connectivity-boost skips, the route-label dedup's label scheme, taint's
 per-kind parameter contracts) ask about that kind's own behaviour, not about
 a group, and stay as they are; :data:`NOT_A_ROLE_QUESTION` lists the
@@ -192,8 +194,8 @@ ENTRYPOINT_ROLES: Final[tuple[EntrypointRoleSpec, ...]] = (
         "The operating system or a language runtime starts a process here. "
         "Ruled closed (2026-11-21): the package's declared executable, the "
         "convention main, the `__main__` guard and Electron's main-process "
-        "script, and nothing else. Ranks first among ties, gets `slice "
-        "--entry auto`'s 2x boost, and is the set the INV-hosuh dedup groups."),
+        "script, and nothing else. Ranks first among ties and gets `slice "
+        "--entry auto`'s 2x boost."),
     EntrypointRoleSpec(
         ROLE_COMMAND, "CLI & Scripts",
         "A subcommand a running program's command-line framework dispatches "
@@ -624,6 +626,12 @@ KNOWN_WATCHED_READS: Final[dict[tuple[str, str, str], str]] = {
      "detect_entrypoint_candidates", "SHELL_SCRIPT"): (
         "WI-batit: a checked-in mvnw / gradlew wrapper is a shell script by "
         "construction; the demotion is about that file, whatever the role"),
+    ("packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py",
+     "detect_entrypoint_candidates", "MAIN_GUARD"): (
+        "the INV-hosuh dedup: a guard and the function main of its file are "
+        "one program start, so the guard is dropped beside it. It reads "
+        "main_guard WITH main_function (the pair; audit 0027 B), which is "
+        "the dedup the keep trigger exempts, re-keyed by WI-fasij"),
     ("packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py",
      "detect_entrypoint_candidates", "CONNECTIVITY_BASED"): (
         "the connectivity boost skips an entry chosen FOR its connectivity, "

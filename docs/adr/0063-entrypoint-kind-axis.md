@@ -65,7 +65,7 @@ Declare the **entrypoint-kind axis** with ADR-0024's four artifacts:
 
 | Role | Sketch heading | Readers that tell it apart |
 |---|---|---|
-| `program_start` | CLI & Scripts | first among ties (after a manifest's executable), `slice --entry auto` 2x boost and Go module-binary pick, the INV-hosuh dedup, the demotion |
+| `program_start` | CLI & Scripts | first among ties (after a manifest's executable), `slice --entry auto` 2x boost and Go module-binary pick, the demotion |
 | `command` | CLI & Scripts | the demotion |
 | `hosted_application` | Hosted Applications | the demotion |
 | `request_ingress` | Request Handlers | `request_ingress`, verify-claims' withhold, taint seeds, the demotion |
@@ -110,13 +110,17 @@ and `role_heading`. Each reader's set is one call:
 
 | Reader | Set |
 |---|---|
-| tie order, slice boost, Go module-binary pick, INV-hosuh dedup | `PROGRAM_START_KINDS = kinds_with_role(program_start)` |
+| tie order, slice boost, Go module-binary pick | `PROGRAM_START_KINDS = kinds_with_role(program_start)` |
 | request ingress | `REQUEST_INGRESS_KINDS` from `kinds_with_role(request_ingress)` |
 | library-export demotion | `APPLICATION_KINDS = kinds_with_role(*APPLICATION_ROLES)` |
 | sketch Entry Points | one group per `role_heading`, in role order |
 
 A reader that compares ONE kind (the build-wrapper demotion on `shell_script`,
-the Go `cmd/` penalty on `main_function`, the connectivity-boost skips, the
+the Go `cmd/` penalty on `main_function`, the INV-hosuh dedup, which drops a
+`main_guard` beside a `main_function` on a function of its file and nothing
+else (until WI-fasij it read `PROGRAM_START_KINDS` and kept only a file's
+function-target starts, dropping any application object beside a `def main()`;
+audit 0027 B), the connectivity-boost skips, the
 route-label dedup's label scheme, taint's per-kind parameter contracts) asks
 about that kind's own behaviour and is not a role question.
 `NOT_A_ROLE_QUESTION` lists the one multi-kind collection that is not (the
@@ -130,7 +134,7 @@ watcher (both were greps nobody ran). The property test is the watcher now:
 | Audit trigger | Fires in |
 |---|---|
 | a reader branches on `main_guard` without `main_function` | a hand-written set: `find_kind_set_drift`; a single-kind branch: `find_watched_kind_reads` (ledger `KNOWN_WATCHED_READS`); a role split: `test_main_guard_shares_main_functions_role` |
-| a reader branches on a mechanism-named kind alone | `find_watched_kind_reads` (the two existing reads, the build-wrapper demotion and the connectivity-boost skip, are listed with their reasons) |
+| a reader branches on a mechanism-named kind alone | `find_watched_kind_reads` (the two existing reads, the build-wrapper demotion and the connectivity-boost skip, are listed with their reasons; so is the INV-hosuh dedup's read of the `main_guard` / `main_function` pair, the dedup the audit's trigger exempts) |
 | a kind with no role / a role with no kind / a role no reader tells apart | `test_every_kind_has_exactly_one_role`, `test_every_role_has_a_kind`, `test_every_role_is_told_apart_by_some_reader` |
 | a kind named by a framework or mechanism without a recorded verdict | `test_a_framework_or_mechanism_named_kind_records_why_the_name_stays` |
 | a kind whose only producer is a concept nothing emits | `test_every_kind_has_a_live_producer` (ledger `PRODUCERLESS_KINDS`, empty) |
