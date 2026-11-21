@@ -48,3 +48,10 @@
   clock: 5  # ec8b
   nonce: ec8b  # ec8b
   message: "Merged as PR #2304, dev SHA ca820c2ccc17."  # ec8b
+- op: discuss  # f032
+  at: '2026-11-20T21:55:35Z'  # f032
+  by: agent  # f032
+  actor: jgstern_agent  # f032
+  clock: 6  # f032
+  nonce: f032  # f032
+  message: "PR 5 part shipped in PR #2304 (dev ca820c2cc, v17): Swift argument labels and static vs instance members are hashed. Live repro on dev: struct S { func move(to:); func move(by:); static func make(); func make() } -> 4 distinct ids (move f133126bd9347467 / ca783e0d6c520808, make d254cc361a6fff10 / e2e9b34a29685aa8), 0 tied. Item stays open for its residual parts outside PR 5. Evidence: pr5/lonoh/RESULTS.md."  # f032

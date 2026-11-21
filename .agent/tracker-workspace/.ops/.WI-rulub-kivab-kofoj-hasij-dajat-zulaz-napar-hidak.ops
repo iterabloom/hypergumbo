@@ -1,0 +1,20 @@
+- op: create  # e92c
+  at: '2026-11-20T22:32:37Z'  # e92c
+  by: agent  # e92c
+  actor: jgstern_agent  # e92c
+  clock: 1  # e92c
+  nonce: e92c  # e92c
+  data:  # e92c
+    kind: work_item  # e92c
+    title: "hypergumbo sketch on a missing path exits 1, while symbols exits 2."  # e92c
+    status: todo_soft  # e92c
+    priority: 3  # e92c
+    parent:  # e92c
+    tags:  # e92c
+    - cli  # e92c
+    isbefore: []  # e92c
+    duplicate_of: []  # e92c
+    not_duplicate_of: []  # e92c
+    pr_ref:  # e92c
+    description: "hypergumbo sketch on a missing path exits 1, while symbols exits 2.\n\nREPRO: hypergumbo sketch /nonexistent/path; echo $?  -> 1. hypergumbo symbols /nonexistent/path; echo $?  -> 2. Owner ruling (WI-nidun, 2026-11-19): exit 1 means a violated claim only, so a bad path is a usage error (2). Sweep every command that takes a path. Found by PR 6 agent 1 (2026-11-20) during the broken-pipe sweep: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/lubig/RESULTS.md."  # e92c
+    fields: {}  # e92c

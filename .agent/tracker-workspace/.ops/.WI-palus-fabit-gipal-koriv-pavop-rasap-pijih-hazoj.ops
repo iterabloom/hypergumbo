@@ -61,3 +61,10 @@
   clock: 7  # 0ab3
   nonce: 0ab3  # 0ab3
   message: "Fixed in PR #2304 (merged to dev at ca820c2cc, scheme hypergumbo-stableid-v17). Type names are hashed through the file's imports. Repro: Java f(List<Callable<String>>) under import java.util.concurrent.Callable vs f(List<java.util.concurrent.Callable<java.lang.String>>) -> A.f ac476291c9169b1d in both (before: different). Residuals WI-lubap, WI-korur, WI-bonof, WI-jogih, WI-bujit, WI-juzom, WI-rafis. Live repro on dev ca820c2cc: hypergumbo run <fixture> --out x.json, fixtures and outputs in the session scratchpad pr5_repro/; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md."  # 0ab3
+- op: discuss  # 6ac0
+  at: '2026-11-20T21:55:43Z'  # 6ac0
+  by: agent  # 6ac0
+  actor: jgstern_agent  # 6ac0
+  clock: 8  # 6ac0
+  nonce: 6ac0  # 6ac0
+  message: "Repro fixtures and outputs copied to ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/live_repro/ (same for the other PR 5 closures: podor, haloz_a/b, jufuk/jufuk2, fupus, hamuk, kosug, lonoh)."  # 6ac0
