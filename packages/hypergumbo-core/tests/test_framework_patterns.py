@@ -13414,28 +13414,6 @@ class TestRodaPatterns:
 class TestJavalinPatterns:
     """Tests for Javalin framework pattern matching."""
 
-    def test_javalin_create_via_usage_context(self) -> None:
-        """Javalin.create() matches application pattern."""
-        clear_pattern_cache()
-        pattern_def = load_framework_patterns("javalin")
-
-        assert pattern_def is not None, "Javalin patterns YAML should exist"
-
-        ctx = UsageContext.create(
-            kind="call",
-            context_name="Javalin.create",
-            position="args[0]",
-            path="App.java",
-            span=Span(5, 5, 0, 50),
-            symbol_ref="test:App.java:5:create_app:other",
-            metadata={},
-        )
-
-        results = match_usage_patterns(ctx, [pattern_def])
-
-        assert len(results) == 1
-        assert results[0]["concept"] == "application"
-
     def test_javalin_get_route_via_usage_context(self) -> None:
         """Javalin app.get() matches route pattern with GET method."""
         clear_pattern_cache()
@@ -13964,7 +13942,7 @@ class TestHttp4sPatterns:
         assert results[0]["concept"] == "dsl"
 
     def test_http4s_ioapp_base_class(self) -> None:
-        """http4s IOApp trait matches application pattern."""
+        """http4s IOApp trait is a program start (entrypoint concept, audit 0027)."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("http4s")
 
@@ -13983,10 +13961,10 @@ class TestHttp4sPatterns:
         results = match_patterns(symbol, [pattern_def])
 
         assert len(results) == 1
-        assert results[0]["concept"] == "application"
+        assert results[0]["concept"] == "entrypoint"
 
     def test_http4s_ioapp_simple_base_class(self) -> None:
-        """http4s IOApp.Simple trait matches application pattern."""
+        """http4s IOApp.Simple trait is a program start (entrypoint concept, audit 0027)."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("http4s")
 
@@ -14005,14 +13983,14 @@ class TestHttp4sPatterns:
         results = match_patterns(symbol, [pattern_def])
 
         assert len(results) == 1
-        assert results[0]["concept"] == "application"
+        assert results[0]["concept"] == "entrypoint"
 
 
 class TestZioPatterns:
     """Tests for ZIO framework pattern matching."""
 
     def test_zio_app_default_base_class(self) -> None:
-        """ZIO ZIOAppDefault matches application pattern."""
+        """ZIO ZIOAppDefault is a program start (entrypoint concept, audit 0027)."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("zio")
 
@@ -14031,10 +14009,10 @@ class TestZioPatterns:
         results = match_patterns(symbol, [pattern_def])
 
         assert len(results) == 1
-        assert results[0]["concept"] == "application"
+        assert results[0]["concept"] == "entrypoint"
 
     def test_zio_app_base_class(self) -> None:
-        """ZIO ZIOApp matches application pattern."""
+        """ZIO ZIOApp is a program start (entrypoint concept, audit 0027)."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("zio")
 
@@ -14053,7 +14031,7 @@ class TestZioPatterns:
         results = match_patterns(symbol, [pattern_def])
 
         assert len(results) == 1
-        assert results[0]["concept"] == "application"
+        assert results[0]["concept"] == "entrypoint"
 
 
 class TestVertxPatterns:
@@ -15698,28 +15676,6 @@ class TestServantPatterns:
 
 class TestScottyPatterns:
     """Tests for Haskell Scotty framework pattern matching."""
-
-    def test_scotty_app_via_usage_context(self) -> None:
-        """Scotty scotty function matches application pattern."""
-        clear_pattern_cache()
-        pattern_def = load_framework_patterns("scotty")
-
-        assert pattern_def is not None, "Scotty patterns YAML should exist"
-
-        ctx = UsageContext.create(
-            kind="call",
-            context_name="scotty",
-            position="args[0]",
-            path="app/Main.hs",
-            span=Span(10, 20, 0, 0),
-            symbol_ref="test:Main.hs:10:main:other",
-            metadata={},
-        )
-
-        results = match_usage_patterns(ctx, [pattern_def])
-
-        assert len(results) == 1
-        assert results[0]["concept"] == "application"
 
     def test_scotty_get_route_via_usage_context(self) -> None:
         """Scotty get function matches route pattern."""
@@ -19962,7 +19918,8 @@ class TestSwiftUIPatterns:
         assert len(pattern_def.patterns) >= 5
 
     def test_swiftui_app_protocol_pattern(self) -> None:
-        """App protocol conformance enriches symbol with application concept."""
+        """App protocol conformance is the program start (entrypoint concept,
+        audit 0027: a program start by construction)."""
         symbol = Symbol(
             id="swift:Sources/App/MyApp.swift:1-10:MyApp:struct",
             name="MyApp",
@@ -19975,8 +19932,7 @@ class TestSwiftUIPatterns:
         pattern_def = load_framework_patterns("swiftui")
         assert pattern_def is not None
         results = match_patterns(symbol, [pattern_def])
-        app_concepts = [r for r in results if r["concept"] == "application"]
-        assert len(app_concepts) >= 1
+        assert [r["concept"] for r in results] == ["entrypoint"]
 
     def test_uiviewcontroller_pattern(self) -> None:
         """UIViewController subclass enriches symbol with controller concept."""
@@ -19996,7 +19952,8 @@ class TestSwiftUIPatterns:
         assert len(ctrl_concepts) >= 1
 
     def test_parsable_command_pattern(self) -> None:
-        """ParsableCommand conformance enriches with application concept."""
+        """ParsableCommand conformance is a command (audit 0027: every
+        subcommand conforms, so it is not a program start)."""
         symbol = Symbol(
             id="swift:Sources/CLI/MyCLI.swift:1-15:MyCLI:struct",
             name="MyCLI",
@@ -20009,8 +19966,7 @@ class TestSwiftUIPatterns:
         pattern_def = load_framework_patterns("swiftui")
         assert pattern_def is not None
         results = match_patterns(symbol, [pattern_def])
-        app_concepts = [r for r in results if r["concept"] == "application"]
-        assert len(app_concepts) >= 1
+        assert [r["concept"] for r in results] == ["command"]
 
 
 class TestHummingbirdPatterns:

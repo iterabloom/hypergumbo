@@ -5568,21 +5568,24 @@ class TestDiversityCap:
 
 
 class TestApplicationConceptDetection:
-    """Tests for 'application' concept -> MAIN_FUNCTION mapping.
+    """The two framework-object concepts (audit 0027, ruled 2026-11-21).
 
-    Covers cats-effect IOApp, ZIO ZIOAppDefault, and generic application
-    patterns for Scala functional apps.
+    ``application`` is an application object a server or runtime hosts
+    (Flask / FastAPI ``app``, a Tornado ``Application`` subclass):
+    HOSTED_APPLICATION. ``entrypoint`` (outside Electron) is a framework type
+    the runtime starts as the program (cats-effect IOApp, ZIO
+    ZIOAppDefault): MAIN_FUNCTION.
     """
 
-    def test_application_concept_ioapp(self) -> None:
-        """application concept with http4s framework -> MAIN_FUNCTION."""
+    def test_entrypoint_concept_ioapp(self) -> None:
+        """entrypoint concept with http4s framework -> MAIN_FUNCTION."""
         sym = make_symbol(
             "Main",
             path="src/Main.scala",
             kind="object",
             language="scala",
             meta={"concepts": [
-                {"concept": "application", "framework": "http4s"},
+                {"concept": "entrypoint", "framework": "http4s"},
             ]},
         )
         entrypoints = detect_entrypoints([sym], [])
@@ -5591,15 +5594,15 @@ class TestApplicationConceptDetection:
         assert ep[0].confidence >= 0.90
         assert "http4s" in ep[0].label.lower()
 
-    def test_application_concept_zio(self) -> None:
-        """application concept with zio framework -> MAIN_FUNCTION."""
+    def test_entrypoint_concept_zio(self) -> None:
+        """entrypoint concept with zio framework -> MAIN_FUNCTION."""
         sym = make_symbol(
             "MyApp",
             path="src/MyApp.scala",
             kind="object",
             language="scala",
             meta={"concepts": [
-                {"concept": "application", "framework": "zio"},
+                {"concept": "entrypoint", "framework": "zio"},
             ]},
         )
         entrypoints = detect_entrypoints([sym], [])
@@ -5608,36 +5611,36 @@ class TestApplicationConceptDetection:
         assert "zio" in ep[0].label.lower()
 
     def test_application_concept_generic(self) -> None:
-        """application concept without framework -> MAIN_FUNCTION."""
+        """application concept without framework -> HOSTED_APPLICATION."""
         sym = make_symbol(
-            "App",
-            path="src/App.scala",
-            kind="object",
-            language="scala",
+            "app",
+            path="src/app.py",
+            kind="variable",
+            language="python",
             meta={"concepts": [
                 {"concept": "application"},
             ]},
         )
         entrypoints = detect_entrypoints([sym], [])
-        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
-        assert len(ep) == 1
-        assert "application" in ep[0].label.lower()
-
+        assert [(e.kind, e.label) for e in entrypoints] == [
+            (EntrypointKind.HOSTED_APPLICATION, "Hosted application")]
 
     def test_application_concept_dedup(self) -> None:
-        """Only one MAIN_FUNCTION entrypoint per symbol even with multiple application concepts."""
+        """Only one HOSTED_APPLICATION entrypoint per symbol even with several
+        frameworks claiming it (tornado.yaml and aiohttp.yaml both match a
+        class whose base is ``Application``)."""
         sym = make_symbol(
-            "Main",
-            path="src/Main.scala",
-            kind="object",
-            language="scala",
+            "App",
+            path="src/app.py",
+            kind="class",
+            language="python",
             meta={"concepts": [
-                {"concept": "application", "framework": "http4s"},
-                {"concept": "application", "framework": "cats-effect"},
+                {"concept": "application", "framework": "tornado"},
+                {"concept": "application", "framework": "aiohttp"},
             ]},
         )
         entrypoints = detect_entrypoints([sym], [])
-        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
+        ep = [e for e in entrypoints if e.kind == EntrypointKind.HOSTED_APPLICATION]
         assert len(ep) == 1  # dedup
 
 
@@ -5705,7 +5708,7 @@ class TestSwiftApplicationConcept:
             kind="struct",
             language="swift",
             meta={"concepts": [
-                {"concept": "application", "framework": "swiftui"},
+                {"concept": "entrypoint", "framework": "swiftui"},
             ]},
         )
         entrypoints = detect_entrypoints([sym], [])
@@ -5721,7 +5724,7 @@ class TestSwiftApplicationConcept:
             kind="class",
             language="swift",
             meta={"concepts": [
-                {"concept": "application", "framework": "swiftui"},
+                {"concept": "entrypoint", "framework": "swiftui"},
             ]},
         )
         entrypoints = detect_entrypoints([sym], [])
@@ -5744,19 +5747,19 @@ class TestSwiftApplicationConcept:
         assert len(ep) == 1
 
     def test_parsable_command_concept(self) -> None:
-        """ParsableCommand conformance -> MAIN_FUNCTION entrypoint."""
+        """ParsableCommand conformance -> CLI_COMMAND (audit 0027: every
+        subcommand conforms, so it is a command, not a program start)."""
         sym = make_symbol(
             "MyCLI",
             path="Sources/CLI/MyCLI.swift",
             kind="struct",
             language="swift",
             meta={"concepts": [
-                {"concept": "application", "framework": "swiftui"},
+                {"concept": "command", "framework": "swiftui"},
             ]},
         )
         entrypoints = detect_entrypoints([sym], [])
-        ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
-        assert len(ep) == 1
+        assert [e.kind for e in entrypoints] == [EntrypointKind.CLI_COMMAND]
 
 
 class TestPerSymbolDedupKeepsMostConfidentKind:

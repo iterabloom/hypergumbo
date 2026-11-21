@@ -6,6 +6,11 @@
 # Uses WAI for the underlying web server.
 # Simple and minimal API for building web applications.
 
+# The three `application` rows on `scotty` / `scottyT` / `scottyOpts`, the calls
+# that start the server inside `main`, were deleted (audit 0027, ruled
+# 2026-11-21): a start call is not an entry of its own. They never fired
+# either: haskell.py emits no usage contexts.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -14,24 +19,6 @@ id: scotty
 language: haskell
 
 patterns:
-  # scotty application starter
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^scotty$"
-
-  # scottyT (transformer version)
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^scottyT$"
-
-  # scottyOpts (with options)
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^scottyOpts$"
-
   # GET route
   - concept: route
     usage:

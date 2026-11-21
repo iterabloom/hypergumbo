@@ -6,7 +6,7 @@
 # - UIKit apps: class conforming to UIApplicationDelegate
 # - AppKit apps: class conforming to NSApplicationDelegate
 # - View controllers: common UI entry points
-# - ParsableCommand: Swift Argument Parser CLI entry points
+# - ParsableCommand: Swift Argument Parser commands (cli_command)
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
@@ -16,16 +16,19 @@ id: swiftui
 language: swift
 
 patterns:
+  # The app's program start (`entrypoint` -> main_function): the type
+  # `@main` or the platform launches as the program (audit 0027, ruled
+  # 2026-11-21: program starts by construction).
   # SwiftUI App protocol conformance (iOS 14+, macOS 11+)
-  - concept: application
+  - concept: entrypoint
     base_class: "^App$"
 
   # UIKit application delegate
-  - concept: application
+  - concept: entrypoint
     base_class: "^UIApplicationDelegate$"
 
   # AppKit application delegate (macOS)
-  - concept: application
+  - concept: entrypoint
     base_class: "^NSApplicationDelegate$"
 
   # UIKit view controllers (common UI entry points)
@@ -48,10 +51,13 @@ patterns:
 
   # SwiftUI views are not entrypoints (too numerous), but the App struct is.
 
-  # Swift Argument Parser CLI entry points
-  - concept: application
+  # Swift Argument Parser commands (`command` -> cli_command): every
+  # subcommand conforms too, so a conformer is a command, not a program start
+  # (audit 0027, ruled 2026-11-21). These rows load only where SwiftUI is
+  # detected.
+  - concept: command
     base_class: "^ParsableCommand$"
-  - concept: application
+  - concept: command
     base_class: "^AsyncParsableCommand$"
 
   # XCTestCase — test lifecycle (lower confidence)

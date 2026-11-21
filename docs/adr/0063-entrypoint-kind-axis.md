@@ -86,7 +86,18 @@ convention main (`main_function`), `main_guard` and `electron_main`, and
 nothing else; `shell_script` and `script_module` stay fallback;
 `android_application` and the Verilog top module are hosted application (the
 top module is filed under `main_function` until WI-fasij moves it); a
-manifest's executable gets the program-start treatment in `slice --entry auto`.
+manifest's executable gets the program-start treatment in `slice --entry auto`;
+server-hosted application objects get a kind of their own,
+`hosted_application`, in the hosted-application role, "ranked with routes".
+
+*Note 2026-11-21 (WI-fasij).* `hosted_application` is in the registry: the
+`application` concept (a Flask / FastAPI `app` variable, a Tornado / aiohttp /
+Roda / Padrino / Hummingbird application type; 15 YAML rows) produces it. Its tie rank is 2, the routes' rank, because
+its role is not program start; nothing chose a weight for it. The 7 framework
+types the runtime starts as the program (IOApp, ZIOApp, SwiftUI `App`, the two
+app delegates) moved to the `entrypoint` concept and stay `main_function`; the
+two `ParsableCommand` rows emit `command` (`cli_command`); the 9 rows on start
+calls and Template Haskell generators were deleted.
 Every other role assignment is proposed and marked so in the registry;
 `go_handler` is unruled (WI-hamiz) and keeps the role its behaviour implied.
 
@@ -148,4 +159,6 @@ watcher (both were greps nobody ran). The property test is the watcher now:
 - Whether hosted applications show beside the routes in the sketch (audit 0027
   proposal A says "grouped with them"): under this ADR a heading is per role;
   two roles may share one, so that is a one-line change to the role table.
+  WI-fasij left the heading as the registry gives it ("Hosted Applications"):
+  the ruling's "ranked with routes" is about the entry list's order.
 - `go_handler`'s fold target (WI-hamiz).

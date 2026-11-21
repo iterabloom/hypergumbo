@@ -18,6 +18,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Stand-in `fingerprint` values now carry the `hgstandinfp1:` label.**
 - **Entry kinds nothing produced are removed: schema 0.22.0.**
 - **Manifest-declared executables get their own kind, `package_executable`.**
+- **Server application objects get their own kind, `hosted_application`.**
 
 ### Added
 
@@ -38,6 +39,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`slice --entry auto` boosts manifest executables like mains.**
 - **A `main` function's confidence now follows its language's measured reliability.**
 - **Compact seeds entry points in the entry list's order, not confidence.**
+- **Swift `ParsableCommand` types are commands, not program starts.**
 - **`explain` first prints the sketch's line: quoted text is data.**
 - **Schema calls docstring and README fields untrusted repository text.**
 

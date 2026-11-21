@@ -154,6 +154,7 @@ def test_ruled_roles_are_marked_ruled_and_go_handler_is_not_ruled() -> None:
         EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD,
         EntrypointKind.ELECTRON_MAIN, EntrypointKind.SHELL_SCRIPT,
         EntrypointKind.SCRIPT_MODULE, EntrypointKind.ANDROID_APPLICATION,
+        EntrypointKind.HOSTED_APPLICATION,
     }, RULING
     go = K._SPEC_BY_KIND[EntrypointKind.GO_HANDLER]
     # go_handler is unruled (WI-hamiz): it keeps the role its behaviour implied.
@@ -243,6 +244,7 @@ def test_electron_main_ranks_with_the_program_starts() -> None:
     ({"concept": "middleware", "framework": "express"}, "Request Handlers"),
     ({"concept": "error_handler", "framework": "flask"}, "Request Handlers"),
     ({"concept": "app_bootstrap", "framework": "react"}, "Hosted Applications"),
+    ({"concept": "application", "framework": "flask"}, "Hosted Applications"),
     ({"concept": "entrypoint", "framework": "electron"}, "CLI & Scripts"),
     ({"concept": "command", "framework": "click"}, "CLI & Scripts"),
     ({"concept": "npm_bin", "framework": "config-conventions"}, "CLI & Scripts"),
@@ -646,3 +648,159 @@ def test_a_group_of_one_kind_is_cut_by_rank_as_before() -> None:
     eps = [_ranked(s.id, EntrypointKind.HTTP_ROUTE, 1.0 - i / 10) for i, s in enumerate(syms)]
     out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=2)
     assert "`r0`" in out and "`r1`" in out and "`r2`" not in out
+
+
+# ---------------------------------------------------------------- hosted applications (WI-fasij)
+
+
+RULING_HOSTED = (
+    "OWNER RULING 2026-11-21 (audit 0027, WI-holud, rulings 1-2): server-hosted app "
+    "objects (15 rows) move to a new kind hosted_application ranked with routes "
+    "(role hosted application, tie rank 2; framework in meta); the other 18 "
+    "application rows split four ways: 7 program starts by construction stay "
+    "main_function, 6 start calls made inside a main produce no entry of their own, "
+    "2 ParsableCommand types become cli_command, 3 Yesod Template Haskell dispatch "
+    "generators stop being entries; the Verilog top module is hosted application.")
+
+def test_ruling_hosted_application_is_a_kind_in_the_hosted_role() -> None:
+    spec = K._SPEC_BY_KIND[EntrypointKind.HOSTED_APPLICATION]
+    assert spec.name == "hosted_application", RULING_HOSTED
+    assert spec.role == ROLE_HOSTED_APPLICATION and spec.ruling == K.RULED, RULING_HOSTED
+    assert spec.verdict == K.VERDICT_CANONICAL and not spec.name_basis, RULING_HOSTED
+
+
+def test_ruling_hosted_application_ranks_with_routes_not_with_program_starts() -> None:
+    app = Entrypoint(symbol_id="x:1", kind=EntrypointKind.HOSTED_APPLICATION,
+                     confidence=0.9, label="Flask application")
+    route = Entrypoint(symbol_id="x:2", kind=EntrypointKind.HTTP_ROUTE,
+                       confidence=0.95, label="HTTP GET /")
+    assert entry_kind_tie_rank(app) == entry_kind_tie_rank(route) == 2, RULING_HOSTED
+    assert EntrypointKind.HOSTED_APPLICATION not in PROGRAM_START_KINDS, RULING_HOSTED
+    # Never request ingress: an application object receives no request itself.
+    assert "hosted_application" not in REQUEST_INGRESS_KINDS, RULING_HOSTED
+    # Still says its language hosts an application (the export demotion), as
+    # it did while it was filed under main_function.
+    assert EntrypointKind.HOSTED_APPLICATION in APPLICATION_KINDS, RULING_HOSTED
+
+
+@pytest.mark.parametrize(("symbol_kind", "framework", "label"), [
+    ("variable", "flask", "Flask application"),
+    ("variable", "fastapi", "Fastapi application"),
+    ("class", "tornado", "Tornado application"),
+    ("class", "roda", "Roda application"),
+    ("struct", "hummingbird", "Hummingbird application"),
+])
+def test_ruling_an_application_object_is_a_hosted_application(
+    symbol_kind: str, framework: str, label: str,
+) -> None:
+    """The kind says what the entry is; the framework stays where the
+    analyzer put it, on the symbol's concept (``meta.concepts``), and in the
+    label. Confidence and evidence are what they were under main_function."""
+    concept = {"concept": "application", "framework": framework}
+    app = _sym("app", "srv/app.py", kind=symbol_kind, concepts=[concept])
+    (ep,) = detect_entrypoint_candidates([app], [])
+    assert ep.kind is EntrypointKind.HOSTED_APPLICATION, RULING_HOSTED
+    assert ep.label == label
+    assert (ep.confidence, ep.meta["evidence_type"]) == (0.90, "framework_pattern")
+    assert concept in app.meta["concepts"], RULING_HOSTED
+
+
+@pytest.mark.parametrize(("concept", "kind"), [
+    ({"concept": "entrypoint", "framework": "http4s"}, EntrypointKind.MAIN_FUNCTION),
+    ({"concept": "entrypoint", "framework": "swiftui"}, EntrypointKind.MAIN_FUNCTION),
+    ({"concept": "command", "framework": "swiftui"}, EntrypointKind.CLI_COMMAND),
+])
+def test_ruling_the_other_application_rows_keep_or_take_their_kind(
+    concept: dict, kind: EntrypointKind,
+) -> None:
+    """The 7 program starts by construction now carry the ``entrypoint``
+    concept (still main_function); the 2 ParsableCommand rows carry
+    ``command`` (cli_command)."""
+    sym = _sym("Main", "src/Main.scala", kind="object", language="scala", concepts=[concept])
+    (ep,) = detect_entrypoint_candidates([sym], [])
+    assert ep.kind is kind, RULING_HOSTED
+
+
+# The 33 rows audit 0027 read as the ``application`` concept, by file and
+# matcher, and the destination the ruling gives each. ``application`` now
+# means a server-hosted application object; ``entrypoint`` a framework's
+# program start; ``command`` a CLI command; ``None`` the row is gone.
+_APPLICATION_ROWS: tuple[tuple[str, str, str, str | None], ...] = (
+    # 15 server-hosted application objects -> hosted_application
+    ("aiohttp.yaml", "base_class", "^Application$", "application"),
+    ("fastapi.yaml", "meta_match", "(.*\\.)?FastAPI$", "application"),
+    ("flask.yaml", "meta_match", "(.*\\.)?Flask$", "application"),
+    ("giraffe.yaml", "usage", "^application$", "application"),
+    ("hummingbird.yaml", "base_class", "^ApplicationProtocol$", "application"),
+    ("openresty.yaml", "base_class", "^lapis\\.Application$", "application"),
+    ("padrino.yaml", "base_class", "^Padrino::Application$", "application"),
+    ("plumber.yaml", "usage", "^plumb$", "application"),
+    ("plumber.yaml", "usage", "^Plumber\\$new$", "application"),
+    ("roda.yaml", "base_class", "^Roda$", "application"),
+    ("servant.yaml", "base_class", "^Application$", "application"),
+    ("shiny.yaml", "usage", "^shinyApp$", "application"),
+    ("tornado.yaml", "base_class", "^Application$", "application"),
+    ("yesod.yaml", "base_class", "^Yesod$", "application"),
+    ("yesod.yaml", "base_class", "^(YesodSubsite|YesodSubDispatch)$", "application"),
+    # 7 program starts by construction -> main_function
+    ("http4s.yaml", "base_class", "^IOApp$", "entrypoint"),
+    ("http4s.yaml", "base_class", "^IOApp\\.Simple$", "entrypoint"),
+    ("swiftui.yaml", "base_class", "^App$", "entrypoint"),
+    ("swiftui.yaml", "base_class", "^UIApplicationDelegate$", "entrypoint"),
+    ("swiftui.yaml", "base_class", "^NSApplicationDelegate$", "entrypoint"),
+    ("zio.yaml", "base_class", "^ZIOAppDefault$", "entrypoint"),
+    ("zio.yaml", "base_class", "^ZIOApp$", "entrypoint"),
+    # 6 start calls made inside a main -> no entry of their own
+    ("javalin.yaml", "usage", "^Javalin\\.(create|start)$", None),
+    ("qt.yaml", "usage", "^QApplication$", None),
+    ("scotty.yaml", "usage", "^scotty$", None),
+    ("scotty.yaml", "usage", "^scottyT$", None),
+    ("scotty.yaml", "usage", "^scottyOpts$", None),
+    ("yesod.yaml", "usage", "^(warp|warpEnv|warpDebug|warpTLS|toWaiApp|toWaiAppPlain)$", None),
+    # 2 ParsableCommand types -> cli_command
+    ("swiftui.yaml", "base_class", "^ParsableCommand$", "command"),
+    ("swiftui.yaml", "base_class", "^AsyncParsableCommand$", "command"),
+    # 3 Yesod Template Haskell dispatch generators -> not entries
+    ("yesod.yaml", "usage", "^mkYesod$", None),
+    ("yesod.yaml", "usage", "^mkYesodData$", None),
+    ("yesod.yaml", "usage", "^(mkYesodSubData|mkYesodSubDispatch)$", None),
+)
+
+
+def _row_matcher(pat: dict) -> tuple[str, str] | None:
+    if "base_class" in pat:
+        return "base_class", pat["base_class"]
+    if "usage" in pat:
+        return "usage", pat["usage"].get("name", "")
+    if "meta_match" in pat:
+        return "meta_match", pat["meta_match"].get("constructed_from", "")
+    return None
+
+
+def _rows(file: str) -> list[dict]:
+    return read_catalogue_yaml(get_frameworks_dir() / file).get("patterns") or []
+
+
+def test_ruling_the_33_application_rows_split_15_7_6_2_3() -> None:
+    dest = [d for *_rest, d in _APPLICATION_ROWS]
+    counts = (dest.count("application"), dest.count("entrypoint"), dest[22:28].count(None),
+              dest.count("command"), dest[30:].count(None))
+    assert len(dest) == 33 and counts == (15, 7, 6, 2, 3), RULING_HOSTED
+
+
+@pytest.mark.parametrize(("file", "key", "value", "concept"), _APPLICATION_ROWS)
+def test_ruling_each_application_row_has_its_destination(
+    file: str, key: str, value: str, concept: str | None,
+) -> None:
+    found = [p["concept"] for p in _rows(file) if _row_matcher(p) == (key, value)]
+    assert found == ([concept] if concept else []), (file, value, RULING_HOSTED)
+
+
+def test_ruling_the_application_concept_is_the_15_hosted_rows_and_nothing_else() -> None:
+    """A row that newly emits ``application`` files its symbol under
+    hosted_application; this fails until it is added to the table above."""
+    hosted = {(f, k, v) for f, k, v, c in _APPLICATION_ROWS if c == "application"}
+    live = {(p.name, *m) for p in get_frameworks_dir().glob("*.yaml")
+            for pat in read_catalogue_yaml(p).get("patterns") or []
+            if pat.get("concept") == "application" and (m := _row_matcher(pat))}
+    assert live == hosted, RULING_HOSTED

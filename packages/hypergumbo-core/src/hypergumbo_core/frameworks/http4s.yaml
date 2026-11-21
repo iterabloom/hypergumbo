@@ -143,10 +143,12 @@ patterns:
   - concept: dsl
     base_class: "^Http4sDsl$"
 
-  # IOApp for application entry point (cats-effect)
-  - concept: application
+  # IOApp (cats-effect): the runtime starts the object as the program, so it
+  # is a program start (`entrypoint` -> main_function), not a hosted
+  # `application` object (audit 0027, ruled 2026-11-21).
+  - concept: entrypoint
     base_class: "^IOApp$"
-  - concept: application
+  - concept: entrypoint
     base_class: "^IOApp\\.Simple$"
 
   # Server trait implementation

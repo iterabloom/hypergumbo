@@ -14,6 +14,15 @@
 # - Route types derive `RenderRoute` / `ParseRoute`.
 # - Convention: quasi-quoter declarations via `mkYesod` or `mkYesodData`.
 #
+# Four `application` rows were deleted (audit 0027, ruled 2026-11-21): the
+# Template Haskell dispatch generators `mkYesod`, `mkYesodData` and
+# `mkYesodSubData` / `mkYesodSubDispatch` (code generation, not an entry; the
+# route table inside the quasi-quote is out of reach, and the handlers are
+# found by name below), and `warp` / `toWaiApp` (a start call made inside a
+# main). None fired: haskell.py emits no usage contexts. The `Yesod` /
+# `YesodSubsite` instance rows stand for a hosted application object; they do
+# not fire either, since haskell.py writes no `base_classes`.
+#
 # UAT-2026-04-13 BUG-16 flagged the gap on haskellers. WI-vabiv.
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
@@ -25,38 +34,11 @@ language: haskell
 
 patterns:
   # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
-  # mkYesod "App" [parseRoutes| ... |] — declares the route table.
-  # We can't parse the inside of the quasi-quoter without TH evaluation,
-  # but detecting the mkYesod call itself identifies the app root.
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^mkYesod$"
-
-  # mkYesodData for declaring route data type separately
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^mkYesodData$"
-
-  # mkYesodSubData / mkYesodSubDispatch — subsite boundaries
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^(mkYesodSubData|mkYesodSubDispatch)$"
-
   # parseRoutes quasi-quoter call (some projects use it directly)
   - concept: router
     usage:
       kind: "^call$"
       name: "^parseRoutes$"
-
-  # Warp runner — what actually serves the app (common Yesod pattern:
-  # `warpEnv . toWaiAppPlain`, `warp 3000 app`).
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^(warp|warpEnv|warpDebug|warpTLS|toWaiApp|toWaiAppPlain)$"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
 

@@ -5,6 +5,10 @@
 # Routes are defined using app.get(), app.post(), etc. with lambda handlers.
 # Known for simplicity and minimal boilerplate.
 
+# The `application` row on the call that starts the server was deleted (audit
+# 0027, ruled 2026-11-21): a start call made inside a main is not an entry of
+# its own. It never fired either: java.py emits no usage contexts.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -13,12 +17,6 @@ id: javalin
 language: java
 
 patterns:
-  # Javalin application creation
-  - concept: application
-    usage:
-      kind: "^call$"
-      name: "^Javalin\\.(create|start)$"
-
   # GET route handler - app.get("/path", ctx -> {...})
   - concept: route
     usage:

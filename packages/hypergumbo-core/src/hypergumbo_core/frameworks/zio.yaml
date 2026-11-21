@@ -16,10 +16,11 @@ id: zio
 language: scala
 
 patterns:
-  # ZIO application entry points
-  - concept: application
+  # ZIO application entry points: the runtime starts the object as the
+  # program (`entrypoint` -> main_function; audit 0027, ruled 2026-11-21).
+  - concept: entrypoint
     base_class: "^ZIOAppDefault$"
-  - concept: application
+  - concept: entrypoint
     base_class: "^ZIOApp$"
 
   # ZIO HTTP (zio-http) routes are NOT detected. Two rules here used a
