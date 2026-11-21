@@ -1,0 +1,11 @@
+Original commit body from 8671e3398dccb168ac715d241d1467a55a20b80f:
+
+Non-analyzer follow-ups to the fast-smart-test build (PR 6). No stable id moves.
+
+- CLI: a broken pipe exits 141 on every stream. Before, a closed stderr (sketch, run, dead-code-maybe, io-boundaries, verify-claims, usage errors) or --help into a closed stdout exited 120. 36 command forms swept.
+- Spec: every stated schema version and scheme value is pinned to the code by a test. Fixed: schema_version example 0.20.6 -> 0.21.3, dead-code-maybe 0.2.0 -> 0.3.0, verify-claims 3.1 -> 3.2.
+- GOVERNANCE (owner-approved 2026-11-20, WI-havob): .githooks/pre-commit runs scripts/repin-line-citations --check when a staged file is cited by the module_key_axis or signature_axis registries, and prints the fix. New --list-paths option.
+- compact seeds entry points in the entry list's order, not by confidence: a confidence recalibration no longer reshuffles compact where the list order holds (0 of 19 repos, dev 4). The default 100-node output changes (owner ruled ship).
+- slice --entry auto prefers the Go main that builds the module's own binary (go.mod naming rule, //go:build ignore excluded): lazygit, podman, forgejo, caddy now pick the program's main; 19 other picks of 23 unchanged.
+
+Pre-PR: self-selected run 33,242 passed; every package suite green; manifest targeted (1,117 test files).
