@@ -2103,11 +2103,12 @@ def cmd_slice(args: argparse.Namespace) -> int:
         for e in edges:
             edge_src_counts[e.src] = edge_src_counts.get(e.src, 0) + 1
 
-        # Main functions are canonical application roots and should be
+        # Program starts are canonical application roots and should be
         # preferred over route handlers that may have more edges but
         # lead to dead ends (route-node edges rather than useful call edges).
-        # The same kinds the entry list puts first among ties (a guard-only
-        # __main__.py is a root too, WI-tuvun).
+        # The same kinds the entry list puts first among ties: the
+        # program-start role of the entrypoint-kind registry (a guard-only
+        # __main__.py is a root too, WI-tuvun; so is Electron's main script).
         _MAIN_KINDS = PROGRAM_START_KINDS
 
         auto_symbols: Dict[str, Symbol] = {node.id: node for node in nodes}
@@ -2116,7 +2117,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
             """Score = rank_score * connectivity_boost * kind_boost * path factors.
 
             connectivity_boost = 1 + log(1 + outgoing_edges)
-            kind_boost = 2.0 for main functions, 1.0 otherwise
+            kind_boost = 2.0 for a program start, 1.0 otherwise
             path factors = the entry list's own penalties for a test (x 0.1),
             example / utility (x 0.5) or vendored (x 0.3) file
             (``path_rank_penalties``), applied to the WHOLE score.
@@ -2130,8 +2131,9 @@ def cmd_slice(args: argparse.Namespace) -> int:
             example. Applied to the whole score, the penalty keeps the seed
             in production code whenever production code competes.
 
-            Main functions get a 2x boost because they are the canonical
-            application root.  Route handlers with more edges often point
+            Program starts (``PROGRAM_START_KINDS``, the registry's
+            program-start role) get a 2x boost because they are the
+            canonical application root.  Route handlers with more edges often point
             to dead-end route nodes rather than useful call chains.
 
             ADR-0039 ruling 3: keys on rank_score (ranking prominence) — the

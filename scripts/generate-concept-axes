@@ -83,6 +83,10 @@ try:
         SIGNATURE_AXIOM,
         SIGNATURE_NOTIONS,
     )
+    from hypergumbo_core.entrypoint_kinds import (
+        ENTRYPOINT_KINDS,
+        ENTRYPOINT_ROLES,
+    )
 except ImportError as exc:
     sys.exit(could_not_run(exc))
 
@@ -407,6 +411,61 @@ capitalisation. The lint accepted it because a free-text justification must be
 """
 
 
+# entrypoint-kind section ordering (ADR-0063): one section per ROLE, in the
+# registry's role order, so a role added to the registry gets its section
+# without an edit here.
+_ENTRYPOINT_SECTIONS: tuple[tuple[str, str, str], ...] = tuple(
+    (
+        role.name,
+        f"`{role.name}`"
+        + (f" — sketch group \"{role.heading}\"" if role.heading else " — not in Entry Points"),
+        role.description,
+    )
+    for role in ENTRYPOINT_ROLES
+)
+
+
+_ENTRYPOINT_HEADER = """\
+
+---
+
+## `Entrypoint.kind` — the entrypoint-kind axis (ADR-0063)
+
+**Axiom.** An entrypoint's kind names what the entry IS; the framework that
+registered it and the mechanism that found it go in `meta`. Every kind has
+exactly one **role** (what starts or dispatches the code at that entry), and a
+reader that treats a group of kinds alike asks for a role
+(`entrypoint_kinds.kinds_with_role`), never for a list of kinds.
+
+Six readers branch on groups of kinds: the tie order among entries of equal
+`rank_score`, `slice --entry auto`'s 2x boost (and its Go module-binary pick),
+`request_ingress` (and with it verify-claims' unseeded-ingress withhold and
+taint's parameter seeds), the sketch's Entry Points groups, the INV-hosuh main
+dedup and the library-export demotion. Before the registry each held its own
+set, and they disagreed (audit 0027). The sections below are the roles; the
+table after them records, per kind, whether its role was ruled by the owner
+(2026-11-21) or proposed, and its ADR-0024 verdict.
+"""
+
+
+def _format_entrypoint_kind_table() -> str:
+    """One row per kind: role, ruling, ADR-0024 verdict, why the name stays."""
+    lines = [
+        "### Entrypoint kinds — role rulings and verdicts",
+        "",
+        "| Kind | Role | Role ruled? | ADR-0024 verdict | Why a framework or "
+        "mechanism name stays |",
+        "|---|---|---|---|---|",
+    ]
+    for spec in sorted(ENTRYPOINT_KINDS, key=lambda s: s.name):
+        lines.append(
+            f"| `{spec.name}` | `{spec.role}` | {spec.ruling} | {spec.verdict} "
+            f"| {spec.name_basis or '—'} |",
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 _SIGNATURE_HEADER = """\
 
 ---
@@ -680,6 +739,15 @@ def render() -> str:
         ),
     )
     sections.append(_format_fact_home_table())
+
+    # entrypoint-kind sections (ADR-0063).
+    sections.append(_ENTRYPOINT_HEADER)
+    sections.extend(
+        _render_axis_sections(
+            ENTRYPOINT_KINDS, _ENTRYPOINT_SECTIONS, "_ENTRYPOINT_SECTIONS",
+        ),
+    )
+    sections.append(_format_entrypoint_kind_table())
 
     return "\n".join(sections).rstrip() + "\n"
 

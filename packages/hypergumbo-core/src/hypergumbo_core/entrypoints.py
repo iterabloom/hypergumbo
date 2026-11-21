@@ -16,6 +16,11 @@ Detects entrypoints via semantic concepts from YAML framework patterns (ADR-3aaa
   shell scripts and HTML entry pages
 - Electron: the main-process script and the preload script
 
+Every kind has one ROLE in the entrypoint-kind registry
+(``entrypoint_kinds``, ADR-0063); each set of kinds this module reads is a
+role query (``REQUEST_INGRESS_KINDS``, ``PROGRAM_START_KINDS``,
+``APPLICATION_KINDS``), never a hand-written list.
+
 Two detectors do not read YAML concepts: the route-marker pass (symbols an
 analyzer or ``materialize_route_symbols`` minted with ``framework_role ==
 'route'``) and ``_detect_script_modules`` (TS/JS files with top-level calls
@@ -80,8 +85,10 @@ Connectivity Boost (concept-based only):
   the boost live on `rank_score`, which is what ordering uses (ADR-0039).
 - `rank_score` clamps at 1.0, so connected entries tie there. Entries of
   EQUAL rank_score order by what the entry IS (``entry_kind_tie_rank``): a
-  manifest-declared script, then a program start (``PROGRAM_START_KINDS``:
-  a ``main``, a ``__main__`` guard), then routes and every other kind; then
+  manifest-declared script, then a program start (``PROGRAM_START_KINDS``,
+  the program-start role of the entrypoint-kind registry: a ``main``, a
+  ``__main__`` guard, Electron's main script), then routes and every other
+  kind; then
   by detection `confidence`, then language weight, then effective
   out-degree, then path, start line, name and symbol id: a total order, so
   neither detection order nor the hash seed decides it (``_rank_order``).
@@ -117,8 +124,9 @@ Ranking Penalties (``rank_score`` only, applied before the boost):
 - Go ``main()`` under a ``cmd/`` directory preceded by 2+ path components:
   x 0.5, so plugin shims do not outrank the primary binary
 - Library-export demotion: x 0.1 for a LIBRARY_EXPORT whose OWN language has
-  a semantic entrypoint (route, command, main, controller, task, ...) in
-  PRODUCTION code: one in a test, utility / example or vendored file (any
+  an entry whose role says it hosts an application (``APPLICATION_KINDS``:
+  a program start, a command, a hosted application, a request handler, a
+  scheduled task) in PRODUCTION code: one in a test, utility / example or vendored file (any
   ``path_rank_penalties`` names) does not count, so a few Python helper
   scripts do not bury a Lean library's exports, and a library's test-tree
   mains do not bury its API. One production entry is enough: no count.
@@ -181,12 +189,19 @@ import hashlib
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Callable, List, Mapping, Optional, Sequence
 
 import re
 from pathlib import Path
 
+from .entrypoint_kinds import (
+    APPLICATION_ROLES,
+    ROLE_PROGRAM_START,
+    ROLE_REQUEST_INGRESS,
+    EntrypointKind as EntrypointKind,
+    all_known_entrypoint_kinds as all_known_entrypoint_kinds,
+    kinds_with_role,
+)
 from .ir import Symbol, Edge
 from .routes import method_token, route_of
 from .js_package_entry import declares_exports_map, nearest_package_root
@@ -272,95 +287,45 @@ def compute_entrypoint_cap(node_count: int) -> int:
     return min(scaled, MAX_ENTRYPOINT_CAP)
 
 
-class EntrypointKind(Enum):
-    """Types of entrypoints that can be detected.
-
-    A kind names what the entry IS; the framework that registered it and
-    the mechanism that found it go in ``meta`` (ADR-0027's rule for
-    ``Symbol.kind``, carried over by audit 0027). Every member has a
-    producer. The 21 framework-named route / controller kinds
-    (``django_view``, ``express_route``, ...) and ``electron_renderer``
-    were folded into ``http_route`` / ``controller`` and ``html_entry`` /
-    ``script_module``, and ``cli_main`` removed outright, at
-    ``SCHEMA_VERSION`` 0.22.0: nothing had produced them since their
-    detectors were removed (#331), so no map held them.
-    """
-
-    HTTP_ROUTE = "http_route"
-    CLI_COMMAND = "cli_command"
-    # Language-level main() entry points (detected via YAML patterns)
-    MAIN_FUNCTION = "main_function"
-    # Module-level script guard: `if __name__ == "__main__":` with no separate
-    # main() function. Targets the FILE node (not a callable), so it is a
-    # distinct kind from MAIN_FUNCTION — kind alone disambiguates the target
-    # type (function vs file) rather than the free-text label (WI-tuvun).
-    MAIN_GUARD = "main_guard"
-    # Electron: the main-process script (app.whenReady / app.on) and the
-    # preload script a window loads before its page (contextBridge
-    # exposure, or the file a webPreferences.preload names).
-    ELECTRON_MAIN = "electron_main"
-    ELECTRON_PRELOAD = "electron_preload"
-    GO_HANDLER = "go_handler"  # Go http.Handler ServeHTTP (WI-jonin)
-    GRAPHQL_SERVER = "graphql_server"
-    # Mobile app entry kinds
-    ANDROID_ACTIVITY = "android_activity"  # Android Activity.onCreate()
-    ANDROID_APPLICATION = "android_application"  # Android Application.onCreate()
-    # Semantic concept-based entry kinds (ADR-3aaa)
-    CONTROLLER = "controller"  # Generic controller from concept metadata
-    BACKGROUND_TASK = "background_task"  # Async/background task
-    WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
-    MIDDLEWARE_HANDLER = "middleware_handler"  # HTTP middleware handler
-    EVENT_HANDLER = "event_handler"  # Event/message handler
-    ERROR_HANDLER = "error_handler"  # HTTP / middleware exception handler
-    FORM = "form"  # Framework-reflected form class (is_valid/save/authorize)
-    SERIALIZER = "serializer"  # Framework-reflected serializer/DTO class (to_representation / dump / toArray)
-    SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
-    # Library entry points (exported API)
-    LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
-    # Executable scripts in non-Python languages (INV-tajap)
-    SHELL_SCRIPT = "shell_script"  # Bash/sh script (shebang or .sh/.bash file)
-    HTML_ENTRY = "html_entry"  # SPA root / convention-named index.html
-    SCRIPT_MODULE = "script_module"  # TS/JS file with top-level code, no inbound imports
-    # Test/benchmark entry points (from test-frameworks.yaml patterns)
-    TEST_FUNCTION = "test_function"  # Test function/method (pytest, JUnit, etc.)
-    # SPA bootstrap (createRoot, ReactDOM.render, hydrateRoot)
-    SPA_BOOTSTRAP = "spa_bootstrap"  # SPA app bootstrap function
-    # Connectivity-based fallback (no patterns matched)
-    CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
+#: The entrypoint kinds whose handler RECEIVES AN EXTERNAL REQUEST: the
+#: request-ingress role of the entrypoint-kind registry (an HTTP route, a
+#: controller action, a Go ``http.Handler``, a WebSocket handler, middleware,
+#: an error handler, a GraphQL server). A framework hands that request to the
+#: handler as a parameter or a framework global, not through a call the
+#: catalogue can match, so it is never a taint source by itself (WI-ritog);
+#: ``verify_claims`` withholds a clean ``untrusted_input`` / ``net_recv``
+#: verdict while such a handler exists (WI-fuzik, ADR-0049 ruling 3). Kinds
+#: that run on a schedule, a CLI, an in-process event or a test receive no
+#: request and have other roles.
+REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(
+    k.value for k in kinds_with_role(ROLE_REQUEST_INGRESS))
 
 
-#: The entrypoint kinds whose handler RECEIVES AN EXTERNAL REQUEST: an HTTP
-#: route, a controller action, a WebSocket handler, middleware, a GraphQL
-#: server. A framework hands that request to the handler as a parameter or a
-#: framework global, not through a call the catalogue can match, so it is
-#: never a taint source by itself (WI-ritog); ``verify_claims`` withholds a
-#: clean ``untrusted_input`` / ``net_recv`` verdict while such a handler exists
-#: (WI-fuzik, ADR-0049 ruling 3). Kinds that run on a schedule, a CLI, an
-#: in-process event or a test receive no request and are left out.
-REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(k.value for k in (
-    EntrypointKind.HTTP_ROUTE,
-    EntrypointKind.GO_HANDLER,
-    EntrypointKind.GRAPHQL_SERVER,
-    EntrypointKind.CONTROLLER,
-    EntrypointKind.WEBSOCKET_HANDLER,
-    EntrypointKind.MIDDLEWARE_HANDLER,
-    EntrypointKind.ERROR_HANDLER,
-))
-
-
-#: The entrypoint kinds that START A PROGRAM: a language-level ``main`` (and
-#: what detection files under that kind: an ``application`` object such as an
-#: IOApp, and the Verilog top module) and a module ``__main__`` guard. Among
-#: entries of equal ``rank_score`` they come after a manifest-declared script
-#: and before every other kind (:func:`entry_kind_tie_rank`); ``slice --entry
-#: auto`` prefers them too. A CLI framework's parse call (argparse, fire,
+#: The entrypoint kinds that START A PROGRAM: the program-start role of the
+#: entrypoint-kind registry. Ruled closed on 2026-11-21 (audit 0027): the
+#: convention ``main`` (and, until WI-fasij moves them, what detection files
+#: under that kind: an ``application`` object such as an IOApp, and the
+#: Verilog top module), a module ``__main__`` guard and Electron's
+#: main-process script. Among entries of equal ``rank_score`` they come after
+#: a manifest-declared script and before every other kind
+#: (:func:`entry_kind_tie_rank`); ``slice --entry auto`` gives them its 2x
+#: boost and picks the repository's own Go binary among them; the INV-hosuh
+#: dedup groups them by file. A CLI framework's parse call (argparse, fire,
 #: kong, OptionParser) is not detected: it is a call, and the YAML rows that
 #: named it were ``decorator:`` rows, which match decorator syntax only
 #: (audit 0027).
-PROGRAM_START_KINDS: frozenset[EntrypointKind] = frozenset({
-    EntrypointKind.MAIN_FUNCTION,
-    EntrypointKind.MAIN_GUARD,
-})
+PROGRAM_START_KINDS: frozenset[EntrypointKind] = kinds_with_role(ROLE_PROGRAM_START)
+
+
+#: The entrypoint kinds whose production entries say a language HOSTS AN
+#: APPLICATION, so the library-export demotion demotes that language's
+#: exports: the roles in ``entrypoint_kinds.APPLICATION_ROLES`` (program
+#: start, command, hosted application, request ingress, scheduled). Until the
+#: registry this was a hand-written ``_SEMANTIC_KINDS`` set inside
+#: :func:`detect_entrypoint_candidates`, which had left out ``main_guard``
+#: when WI-tuvun split it from ``main_function``, and middleware and error
+#: handlers.
+APPLICATION_KINDS: frozenset[EntrypointKind] = kinds_with_role(*APPLICATION_ROLES)
 
 
 def entry_kind_tie_rank(ep: "Entrypoint") -> int:
@@ -387,27 +352,6 @@ def entry_kind_tie_rank(ep: "Entrypoint") -> int:
     if ep.kind in PROGRAM_START_KINDS:
         return 1
     return 2
-
-
-def all_known_entrypoint_kinds() -> frozenset[str]:
-    """Single-source catalog of every entrypoint-kind value (WI-pupiz).
-
-    The canonical vocabulary IS the :class:`EntrypointKind` enum; this
-    resolver exposes it as a lightweight catalog-derived axis (ADR-0024
-    §4 "use judgment" carveout), mirroring ``edge_types.all_edge_type_names``
-    and ``catalog.all_known_languages``. Wired into
-    :func:`hypergumbo_core.multi_value_field_axis._known_axes` under the
-    ``entrypoint-kind`` axis name so any future ``str`` field carrying an
-    entrypoint-kind validates against the catalog, and used as the single
-    source for the schema ``Entrypoint.kind`` enumeration (``generate-schema``).
-
-    Distinct from the ``entrypoint_meta`` ``evidence_type`` axis (WI-rukam):
-    ``kind`` names WHAT the entrypoint is (an HTTP route, a CLI command),
-    while ``evidence_type`` names HOW it was detected. A kind that detection
-    does not yet reach in practice (e.g. ``cli_command`` for argparse CLIs,
-    a gap tracked under WI-lubap) is still a *known* kind and appears here.
-    """
-    return frozenset(k.value for k in EntrypointKind)
 
 
 # --- Entrypoint provenance vocabularies (WI-rukam) -------------------
@@ -473,7 +417,7 @@ class Entrypoint:
     """
 
     symbol_id: str
-    kind: EntrypointKind
+    kind: EntrypointKind  # axis: entrypoint-kind (ADR-0063; role per entrypoint_kinds)
     confidence: float
     label: str
     meta: dict = field(default_factory=dict)
@@ -1976,13 +1920,18 @@ def detect_entrypoint_candidates(
     # Scripts that have only one of the two (e.g., __main__.py with no
     # separate main() -> lone MAIN_GUARD, or a bare main() with no __main__
     # block -> lone MAIN_FUNCTION) keep their single entry.
+    #
+    # The kinds it groups are the program-start role (PROGRAM_START_KINDS,
+    # from the entrypoint-kind registry), so the dedup and the tie order read
+    # one set: the two members it was written for plus electron_main. What
+    # the dedup keeps is unchanged: per file, the function-target entries
+    # when there are any. Keying it on the guard / main pair instead of a
+    # kind set is WI-fasij (audit 0027 B: it drops non-function entries of
+    # kind main_function).
     main_by_path: dict[str, list[Entrypoint]] = defaultdict(list)
     non_main_eps: list[Entrypoint] = []
     for ep in unique_entrypoints:
-        if ep.kind not in (
-            EntrypointKind.MAIN_FUNCTION,
-            EntrypointKind.MAIN_GUARD,
-        ):
+        if ep.kind not in PROGRAM_START_KINDS:
             non_main_eps.append(ep)
             continue
         sym = symbol_lookup.get(ep.symbol_id)
@@ -2153,24 +2102,10 @@ def detect_entrypoint_candidates(
     # The demotion is language-agnostic — any app with routes+exports
     # benefits.
     #
-    # Only semantic entrypoints trigger demotion.  TEST_FUNCTION and
-    # LIBRARY_EXPORT themselves do not count (a library with tests but
-    # no routes should keep its exports at full confidence).
-    _SEMANTIC_KINDS = frozenset({
-        EntrypointKind.HTTP_ROUTE,
-        EntrypointKind.CLI_COMMAND,
-        EntrypointKind.MAIN_FUNCTION,
-        EntrypointKind.CONTROLLER,
-        EntrypointKind.GO_HANDLER,
-        EntrypointKind.GRAPHQL_SERVER,
-        EntrypointKind.BACKGROUND_TASK,
-        EntrypointKind.WEBSOCKET_HANDLER,
-        EntrypointKind.EVENT_HANDLER,
-        EntrypointKind.SCHEDULED_TASK,
-        EntrypointKind.ELECTRON_MAIN,
-        EntrypointKind.ANDROID_ACTIVITY,
-        EntrypointKind.ANDROID_APPLICATION,
-    })
+    # Only entries whose role says the language HOSTS AN APPLICATION
+    # (:data:`APPLICATION_KINDS`) trigger demotion. Tests, library exports,
+    # framework-reflected classes and shape fallbacks do not count (a library
+    # with tests but no routes keeps its exports at full confidence).
     # Per-language demotion: only demote library_export entries when their
     # own language has semantic entrypoints, so a few Python helper scripts
     # (with main()) do not suppress a Lean library's exports. Lean exports
@@ -2189,7 +2124,7 @@ def detect_entrypoint_candidates(
     # axis doing the work rather than a second hand-curated basename set.
     langs_with_semantic: set[str] = set()
     for ep in unique_entrypoints:
-        if ep.kind in _SEMANTIC_KINDS:
+        if ep.kind in APPLICATION_KINDS:
             sym = symbol_lookup.get(ep.symbol_id)
             # host_language: a route entrypoint sits ON its marker for go and
             # rails, and a marker is a Class-B stand-in with language None

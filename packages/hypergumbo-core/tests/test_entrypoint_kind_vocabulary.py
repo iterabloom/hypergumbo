@@ -80,9 +80,12 @@ def test_the_kept_kinds_stay() -> None:
             "html_entry", "script_module"} <= known
 
 
-def test_program_start_is_the_convention_main_and_the_guard() -> None:
+def test_program_start_is_the_ruled_set() -> None:
+    """The program-start role (audit 0027 owner ruling 2026-11-21); the
+    registry's own test pins each ruling."""
     assert PROGRAM_START_KINDS == frozenset({
-        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD})
+        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD,
+        EntrypointKind.ELECTRON_MAIN})
 
 
 def test_every_kind_a_reader_names_is_a_known_kind() -> None:
