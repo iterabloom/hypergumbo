@@ -42,8 +42,10 @@ written out):
 - ``request_ingress``, verify-claims' unseeded-ingress withhold and taint's
   parameter seeds: the request-ingress role
   (``entrypoints.REQUEST_INGRESS_KINDS``);
-- the sketch's Entry Points groups: one group per role heading
-  (:func:`role_heading`), the test role left to the Tests section;
+- the sketch's Entry Points groups: one group per heading of
+  :data:`ENTRY_POINT_HEADINGS`, holding the kinds that declare it (each
+  kind's spec names its heading; the test role has none and is left to the
+  Tests section);
 - the library-export demotion: the roles in :data:`APPLICATION_ROLES`.
 
 Readers that compare ONE kind (the build-wrapper demotion on
@@ -67,6 +69,16 @@ with program starts, which they had shared ``main_function`` with until
 WI-fasij (the same ruling). Each spec records whether
 its role was ruled or is proposed here; ``go_handler`` is unruled (WI-hamiz)
 and keeps the role its behaviour implies.
+
+SKETCH HEADINGS ARE DECLARED PER KIND. One heading per role had merged the
+sketch's "HTTP Routes", "Controllers", "GraphQL" and "WebSocket Handlers"
+into one, and changed the heading on 14 of 26 measured repositories. The
+owner ruled (2026-11-21, asked directly): "The four headings stay. Middleware
+and error handlers, which fell to 'Other', get a heading of their own. The
+registry stores a heading per kind." So each spec names its heading, one of
+:data:`ENTRY_POINT_HEADINGS` (the section's order), and a role's kinds may
+show under several (:func:`role_headings`); the roles themselves are as
+proposed.
 
 THE ROLE OUTSIDE THE AUDIT'S LIST. The audit named eight roles. A framework
 subcommand (``cli_command``: click, cobra, oclif, a C ``cmd_<name>``) fits
@@ -174,63 +186,62 @@ ROLE_FALLBACK: Final[str] = "fallback"
 
 @dataclass(frozen=True)
 class EntrypointRoleSpec:
-    """One role: its name, the sketch heading it shows under, and what it means.
+    """One role: its name and what it means.
 
-    ``heading`` is the Entry Points group of the sketch; two roles may share
-    one (a heading is a presentation of roles, never of kinds). ``None``
-    means the sketch shows the role elsewhere: the test role has its own
-    Tests section.
+    A role has no sketch heading of its own: each KIND declares the heading
+    it shows under (:class:`EntrypointKindSpec`), so the request-ingress
+    role spreads over five headings and the program-start and command roles
+    share one (the owner's ruling of 2026-11-21, below).
     """
 
     name: str
-    heading: Optional[str]
     description: str
 
 
-#: The roles, in the sketch's presentation order.
+#: The roles, in the registry's order (the by-axis view's section order).
 ENTRYPOINT_ROLES: Final[tuple[EntrypointRoleSpec, ...]] = (
     EntrypointRoleSpec(
-        ROLE_PROGRAM_START, "CLI & Scripts",
+        ROLE_PROGRAM_START,
         "The operating system or a language runtime starts a process here. "
         "Ruled closed (2026-11-21): the package's declared executable, the "
         "convention main, the `__main__` guard and Electron's main-process "
         "script, and nothing else. Ranks first among ties and gets `slice "
         "--entry auto`'s 2x boost."),
     EntrypointRoleSpec(
-        ROLE_COMMAND, "CLI & Scripts",
+        ROLE_COMMAND,
         "A subcommand a running program's command-line framework dispatches "
         "to from its arguments. Not one of audit 0027's eight roles: a "
         "subcommand is not a program start and receives no request."),
     EntrypointRoleSpec(
-        ROLE_HOSTED_APPLICATION, "Hosted Applications",
+        ROLE_HOSTED_APPLICATION,
         "An application object or component a server, platform or runtime "
         "instantiates and drives; the process starts elsewhere."),
     EntrypointRoleSpec(
-        ROLE_REQUEST_INGRESS, "Request Handlers",
+        ROLE_REQUEST_INGRESS,
         "Receives an external request, handed over as a parameter or a "
         "framework global: listed in `request_ingress`, never a taint source "
         "by itself, and verify-claims withholds a clean `untrusted_input` / "
         "`net_recv` verdict while one exists (ADR-0049 ruling 3)."),
     EntrypointRoleSpec(
-        ROLE_SCHEDULED, "Event & Background Tasks",
+        ROLE_SCHEDULED,
         "Runs when a scheduler, a task queue or an event bus dispatches it, "
         "not on an external request."),
     EntrypointRoleSpec(
-        ROLE_REFLECTIVE, "Framework-Reflected Classes",
+        ROLE_REFLECTIVE,
         "A class the framework instantiates and calls by reflection "
         "(`is_valid`, `to_representation`); reachable only through that "
         "dispatch, and not on its own a sign that the language hosts an "
         "application."),
     EntrypointRoleSpec(
-        ROLE_LIBRARY_API, "Library API",
+        ROLE_LIBRARY_API,
         "Part of the package's public API, entered by a caller outside the "
         "repository. Demoted when its language hosts an application."),
     EntrypointRoleSpec(
-        ROLE_TEST, None,
+        ROLE_TEST,
         "Run by a test or benchmark runner. The sketch shows these in its "
         "Tests section, not under Entry Points."),
     EntrypointRoleSpec(
-        ROLE_FALLBACK, "Other",
+        ROLE_FALLBACK,
         "Found by its shape alone (a shell script, a standalone script file, "
         "an `index.html`, the most-connected callable), with no evidence of "
         "what starts it."),
@@ -252,6 +263,37 @@ APPLICATION_ROLES: Final[tuple[str, ...]] = (
 
 
 # ---------------------------------------------------------------------------
+# The sketch's Entry Points headings.
+# ---------------------------------------------------------------------------
+
+H_CLI: Final[str] = "CLI & Scripts"
+H_HTTP_ROUTES: Final[str] = "HTTP Routes"
+H_CONTROLLERS: Final[str] = "Controllers"
+H_GRAPHQL: Final[str] = "GraphQL"
+H_WEBSOCKET: Final[str] = "WebSocket Handlers"
+H_MIDDLEWARE: Final[str] = "Middleware & Error Handlers"
+H_TASKS: Final[str] = "Event & Background Tasks"
+H_HOSTED: Final[str] = "Hosted Applications"
+H_REFLECTED: Final[str] = "Framework-Reflected Classes"
+H_LIBRARY: Final[str] = "Library API"
+H_OTHER: Final[str] = "Other"
+
+#: The Entry Points headings, in the section's order. OWNER RULING 2026-11-21
+#: (asked directly, after one heading per role had merged four): keep the
+#: headings the sketch showed before the registry, in their order: "CLI &
+#: Scripts", "HTTP Routes", "Controllers", "GraphQL", "WebSocket Handlers",
+#: "Event & Background Tasks", "Mobile" (renamed "Hosted Applications"),
+#: "Library API", "Other". Middleware and error handlers, which had fallen to
+#: "Other", get a heading of their own after the other request headings;
+#: forms and serializers get theirs before "Library API". The registry stores
+#: a heading per kind, in each kind's spec.
+ENTRY_POINT_HEADINGS: Final[tuple[str, ...]] = (
+    H_CLI, H_HTTP_ROUTES, H_CONTROLLERS, H_GRAPHQL, H_WEBSOCKET, H_MIDDLEWARE,
+    H_TASKS, H_HOSTED, H_REFLECTED, H_LIBRARY, H_OTHER,
+)
+
+
+# ---------------------------------------------------------------------------
 # The kinds.
 # ---------------------------------------------------------------------------
 
@@ -269,7 +311,12 @@ VERDICT_UNRULED: Final[str] = "not ruled"
 
 @dataclass(frozen=True)
 class EntrypointKindSpec:
-    """One kind: its role, whether the role is ruled, its ADR-0024 verdict.
+    """One kind: its role, its sketch heading, whether the role is ruled, its
+    ADR-0024 verdict.
+
+    ``heading`` is the Entry Points heading the sketch files the kind under
+    (one of :data:`ENTRY_POINT_HEADINGS`); ``None`` for the test role, which
+    the sketch shows in its Tests section instead.
 
     ``name_basis`` says why a kind whose name carries a framework, platform,
     language or detection mechanism keeps it (empty for a neutral name);
@@ -278,6 +325,7 @@ class EntrypointKindSpec:
 
     kind: EntrypointKind
     role: str
+    heading: Optional[str]
     ruling: str
     verdict: str
     name_basis: str
@@ -294,100 +342,100 @@ class EntrypointKindSpec:
 
 
 def _spec(
-    kind: EntrypointKind, role: str, ruling: str, verdict: str,
+    kind: EntrypointKind, role: str, heading: Optional[str], ruling: str, verdict: str,
     description: str, name_basis: str = "",
 ) -> EntrypointKindSpec:
-    return EntrypointKindSpec(kind, role, ruling, verdict, name_basis, description)
+    return EntrypointKindSpec(kind, role, heading, ruling, verdict, name_basis, description)
 
 
 _K = EntrypointKind
 
-#: ONE LINE PER ROLE ASSIGNMENT: the first line of each row is the kind, its
-#: role and whether the role is ruled.
+#: ONE LINE PER KIND: the first line of each row is the kind, its role, its
+#: sketch heading and whether the role is ruled.
 ENTRYPOINT_KINDS: Final[tuple[EntrypointKindSpec, ...]] = (
-    _spec(_K.PACKAGE_EXECUTABLE, ROLE_PROGRAM_START, RULED, VERDICT_CANONICAL,
+    _spec(_K.PACKAGE_EXECUTABLE, ROLE_PROGRAM_START, H_CLI, RULED, VERDICT_CANONICAL,
           "An executable the package's manifest declares (package.json `bin`, Cargo "
           "`[[bin]]`, pyproject `[project.scripts]`); the entry is the manifest record."),
-    _spec(_K.MAIN_FUNCTION, ROLE_PROGRAM_START, RULED, VERDICT_CANONICAL,
+    _spec(_K.MAIN_FUNCTION, ROLE_PROGRAM_START, H_CLI, RULED, VERDICT_CANONICAL,
           "A language's convention `main` (main-functions.yaml), and a framework type the "
           "runtime starts as the program (`IOApp`, `ZIOApp`, SwiftUI `App`, an app "
           "delegate: the `entrypoint` concept)."),
-    _spec(_K.MAIN_GUARD, ROLE_PROGRAM_START, RULED, VERDICT_KEPT_UNDER_TRIGGER,
+    _spec(_K.MAIN_GUARD, ROLE_PROGRAM_START, H_CLI, RULED, VERDICT_KEPT_UNDER_TRIGGER,
           "A Python module run as a script (`if __name__ == '__main__':`, no main()).",
           "the guard is how the start is recognised; kept beside main_function while "
           "no reader branches on one without the other (audit 0027 keep trigger)"),
-    _spec(_K.ELECTRON_MAIN, ROLE_PROGRAM_START, RULED, VERDICT_CANONICAL,
+    _spec(_K.ELECTRON_MAIN, ROLE_PROGRAM_START, H_CLI, RULED, VERDICT_CANONICAL,
           "Electron's main-process script (electron.yaml `app.whenReady` / `app.on`).",
           "no framework-neutral kind names Electron's main-process start (audit 0027)"),
-    _spec(_K.CLI_COMMAND, ROLE_COMMAND, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.CLI_COMMAND, ROLE_COMMAND, H_CLI, PROPOSED, VERDICT_CANONICAL,
           "A subcommand a CLI framework registers (click, cobra, oclif, ...) or a C "
           "`cmd_<name>` dispatch-table function.",
           "`cli` names the interface the command is entered through, not a framework "
           "(cli.yaml is the file of Python CLI frameworks)"),
-    _spec(_K.HOSTED_APPLICATION, ROLE_HOSTED_APPLICATION, RULED, VERDICT_CANONICAL,
+    _spec(_K.HOSTED_APPLICATION, ROLE_HOSTED_APPLICATION, H_HOSTED, RULED, VERDICT_CANONICAL,
           "An application object a server or runtime hosts (Flask, FastAPI, Tornado, "
           "aiohttp, Roda, Padrino, Hummingbird, ...: the `application` concept), or a "
           "Verilog top module (`top_module`). Ranks with routes, not with program starts."),
-    _spec(_K.ANDROID_APPLICATION, ROLE_HOSTED_APPLICATION, RULED, VERDICT_CANONICAL,
+    _spec(_K.ANDROID_APPLICATION, ROLE_HOSTED_APPLICATION, H_HOSTED, RULED, VERDICT_CANONICAL,
           "An Android `Application` subclass's lifecycle hook.",
           "the name carries the platform; no platform-neutral kind exists (audit 0027)"),
-    _spec(_K.ANDROID_ACTIVITY, ROLE_HOSTED_APPLICATION, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.ANDROID_ACTIVITY, ROLE_HOSTED_APPLICATION, H_HOSTED, PROPOSED, VERDICT_CANONICAL,
           "An Android `Activity` subclass's lifecycle hook: a component the platform "
           "instantiates and drives.",
           "the name carries the platform (audit 0027: CANONICAL, not ruled)"),
-    _spec(_K.ELECTRON_PRELOAD, ROLE_HOSTED_APPLICATION, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.ELECTRON_PRELOAD, ROLE_HOSTED_APPLICATION, H_HOSTED, PROPOSED, VERDICT_CANONICAL,
           "The script Electron loads into a window before its page (a contextBridge "
           "exposure, or the file a `webPreferences.preload` names).",
           "the name carries the framework; kept with a producer (audit 0027 ruling)"),
-    _spec(_K.SPA_BOOTSTRAP, ROLE_HOSTED_APPLICATION, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.SPA_BOOTSTRAP, ROLE_HOSTED_APPLICATION, H_HOSTED, PROPOSED, VERDICT_CANONICAL,
           "The call that mounts a single-page application into the page "
           "(`createRoot`, `ReactDOM.render`, `hydrateRoot`): the browser hosts it."),
-    _spec(_K.HTTP_ROUTE, ROLE_REQUEST_INGRESS, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.HTTP_ROUTE, ROLE_REQUEST_INGRESS, H_HTTP_ROUTES, PROPOSED, VERDICT_CANONICAL,
           "An HTTP route handler or route marker, the framework in `meta`.",
           "named by protocol, as graphql_server is (audit 0027)"),
-    _spec(_K.CONTROLLER, ROLE_REQUEST_INGRESS, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.CONTROLLER, ROLE_REQUEST_INGRESS, H_CONTROLLERS, PROPOSED, VERDICT_CANONICAL,
           "A request-handling controller class or action (also Android services, "
           "receivers and fragments; servlets; by-name handlers)."),
-    _spec(_K.GRAPHQL_SERVER, ROLE_REQUEST_INGRESS, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.GRAPHQL_SERVER, ROLE_REQUEST_INGRESS, H_GRAPHQL, PROPOSED, VERDICT_CANONICAL,
           "A GraphQL resolver or schema definition.",
           "named by protocol, as http_route is (audit 0027)"),
-    _spec(_K.WEBSOCKET_HANDLER, ROLE_REQUEST_INGRESS, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.WEBSOCKET_HANDLER, ROLE_REQUEST_INGRESS, H_WEBSOCKET, PROPOSED, VERDICT_CANONICAL,
           "A WebSocket endpoint: a gateway / channel handler or a `WS` route."),
-    _spec(_K.MIDDLEWARE_HANDLER, ROLE_REQUEST_INGRESS, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.MIDDLEWARE_HANDLER, ROLE_REQUEST_INGRESS, H_MIDDLEWARE, PROPOSED, VERDICT_CANONICAL,
           "HTTP middleware the framework runs on every request."),
-    _spec(_K.ERROR_HANDLER, ROLE_REQUEST_INGRESS, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.ERROR_HANDLER, ROLE_REQUEST_INGRESS, H_MIDDLEWARE, PROPOSED, VERDICT_CANONICAL,
           "An HTTP / middleware exception handler the framework calls when a handler "
           "raises."),
-    _spec(_K.GO_HANDLER, ROLE_REQUEST_INGRESS, NOT_RULED, VERDICT_UNRULED,
+    _spec(_K.GO_HANDLER, ROLE_REQUEST_INGRESS, H_HTTP_ROUTES, NOT_RULED, VERDICT_UNRULED,
           "A Go `http.Handler` (`ServeHTTP`), reached through the interface per request.",
           "language-named with a live producer; a FOLD candidate with no target decided "
           "(audit 0027, WI-hamiz)"),
-    _spec(_K.BACKGROUND_TASK, ROLE_SCHEDULED, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.BACKGROUND_TASK, ROLE_SCHEDULED, H_TASKS, PROPOSED, VERDICT_CANONICAL,
           "A task a queue runs (Celery, Laravel jobs, Rails jobs, ...)."),
-    _spec(_K.SCHEDULED_TASK, ROLE_SCHEDULED, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.SCHEDULED_TASK, ROLE_SCHEDULED, H_TASKS, PROPOSED, VERDICT_CANONICAL,
           "A cron / periodic job."),
-    _spec(_K.EVENT_HANDLER, ROLE_SCHEDULED, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.EVENT_HANDLER, ROLE_SCHEDULED, H_TASKS, PROPOSED, VERDICT_CANONICAL,
           "A handler an event bus, a signal or an IPC channel dispatches to (Django "
           "signals, CDI observers, Tauri commands, ...)."),
-    _spec(_K.FORM, ROLE_REFLECTIVE, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.FORM, ROLE_REFLECTIVE, H_REFLECTED, PROPOSED, VERDICT_CANONICAL,
           "A form class the framework builds from request data and validates by "
           "reflection."),
-    _spec(_K.SERIALIZER, ROLE_REFLECTIVE, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.SERIALIZER, ROLE_REFLECTIVE, H_REFLECTED, PROPOSED, VERDICT_CANONICAL,
           "A serializer / DTO class the framework calls by reflection."),
-    _spec(_K.LIBRARY_EXPORT, ROLE_LIBRARY_API, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.LIBRARY_EXPORT, ROLE_LIBRARY_API, H_LIBRARY, PROPOSED, VERDICT_CANONICAL,
           "A public export (and a Go encoding callback the library dispatches to)."),
-    _spec(_K.TEST_FUNCTION, ROLE_TEST, PROPOSED, VERDICT_CANONICAL,
+    _spec(_K.TEST_FUNCTION, ROLE_TEST, None, PROPOSED, VERDICT_CANONICAL,
           "A test, benchmark or example function."),
-    _spec(_K.SHELL_SCRIPT, ROLE_FALLBACK, RULED, VERDICT_KEPT_UNDER_TRIGGER,
+    _spec(_K.SHELL_SCRIPT, ROLE_FALLBACK, H_OTHER, RULED, VERDICT_KEPT_UNDER_TRIGGER,
           "A bash / sh file (shebang or extension).",
           "named by how it is found; ruled fallback (audit 0027 keep trigger)"),
-    _spec(_K.SCRIPT_MODULE, ROLE_FALLBACK, RULED, VERDICT_KEPT_UNDER_TRIGGER,
+    _spec(_K.SCRIPT_MODULE, ROLE_FALLBACK, H_OTHER, RULED, VERDICT_KEPT_UNDER_TRIGGER,
           "A TS/JS file with top-level calls that nothing imports.",
           "named by how it is found; ruled fallback (audit 0027 keep trigger)"),
-    _spec(_K.HTML_ENTRY, ROLE_FALLBACK, PROPOSED, VERDICT_KEPT_UNDER_TRIGGER,
+    _spec(_K.HTML_ENTRY, ROLE_FALLBACK, H_OTHER, PROPOSED, VERDICT_KEPT_UNDER_TRIGGER,
           "A convention-named `index.html`.",
           "named by how it is found (audit 0027 keep trigger)"),
-    _spec(_K.CONNECTIVITY_BASED, ROLE_FALLBACK, PROPOSED, VERDICT_KEPT_UNDER_TRIGGER,
+    _spec(_K.CONNECTIVITY_BASED, ROLE_FALLBACK, H_OTHER, PROPOSED, VERDICT_KEPT_UNDER_TRIGGER,
           "The most-connected callables, when no other entry was found.",
           "restates evidence_type = connectivity_heuristic (audit 0027 keep trigger)"),
 )
@@ -433,9 +481,15 @@ def role_of(kind: EntrypointKind) -> str:
     return _SPEC_BY_KIND[kind].role
 
 
-def role_heading(role: str) -> Optional[str]:
-    """The sketch's Entry Points heading for *role* (``None``: not shown there)."""
-    return _ROLE_BY_NAME[role].heading
+def kind_heading(kind: EntrypointKind) -> Optional[str]:
+    """The sketch's Entry Points heading for *kind* (``None``: not shown there)."""
+    return _SPEC_BY_KIND[kind].heading
+
+
+def role_headings(role: str) -> tuple[str, ...]:
+    """The headings the kinds of *role* show under, in the section's order."""
+    used = {s.heading for s in entrypoint_kinds_on_axis(role)}
+    return tuple(h for h in ENTRY_POINT_HEADINGS if h in used)
 
 
 def kind_tie_rank(kind: EntrypointKind) -> int:

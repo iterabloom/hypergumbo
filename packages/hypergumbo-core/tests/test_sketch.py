@@ -3182,7 +3182,7 @@ class TestFormatEntrypoints:
 
         result = _format_entrypoints(entrypoints, symbols, tmp_path, max_entries=3)
 
-        assert "### Request Handlers" in result
+        assert "### HTTP Routes" in result
         assert "... and 7 more" in result
 
     def test_empty_entrypoints_returns_empty(self, tmp_path: Path) -> None:
@@ -3220,11 +3220,11 @@ class TestFormatEntrypoints:
         result = _format_entrypoints(entrypoints, symbols, tmp_path)
 
         assert "### CLI & Scripts" in result
-        assert "### Request Handlers" in result
+        assert "### HTTP Routes" in result
         # Empty groups should NOT appear
+        assert "### Controllers" not in result
+        assert "### GraphQL" not in result
         assert "### Hosted Applications" not in result
-        assert "### Event & Background Tasks" not in result
-        assert "### Library API" not in result
 
     def test_excludes_test_functions(self, tmp_path: Path) -> None:
         """TEST_FUNCTION entries are excluded from output."""
@@ -3329,14 +3329,23 @@ class TestEntrypointSectionBudget:
             syms += s
             eps += e
         result = _format_entrypoints(eps, syms, tmp_path, max_entries=2)
-        for heading in ("### Request Handlers", "### Library API",
+        for heading in ("### HTTP Routes", "### Library API",
                         "### CLI & Scripts"):
             assert heading in result
 
     def test_route_overflow_points_at_routes_command(self, tmp_path: Path) -> None:
         syms, eps = self._eps(tmp_path, EntrypointKind.HTTP_ROUTE, 10, "route")
         result = _format_entrypoints(eps, syms, tmp_path, max_entries=3)
-        assert "- ... and 7 more (`hypergumbo routes` lists the routes)" in result
+        assert "- ... and 7 more (`hypergumbo routes` lists all)" in result
+
+    def test_only_the_route_overflow_points_at_routes_command(self, tmp_path: Path) -> None:
+        """The hint keys on the HTTP Routes heading: `routes` does not list
+        controllers."""
+        syms, eps = self._eps(tmp_path, EntrypointKind.CONTROLLER, 10, "ctl")
+        result = _format_entrypoints(eps, syms, tmp_path, max_entries=3)
+        assert "### Controllers" in result
+        assert "- ... and 7 more\n" in result + "\n"
+        assert "hypergumbo routes" not in result
 
 
 class TestRouteMarkerEntryLine:
@@ -3529,7 +3538,7 @@ class TestARouteIsListedOnce:
         lines = self._render(tmp_path, entries, max_entries=5)
         assert len(lines) == 6
         assert all(" → `view" in line for line in lines[:5])
-        assert lines[5] == "- ... and 3 more (`hypergumbo routes` lists the routes)"
+        assert lines[5] == "- ... and 3 more (`hypergumbo routes` lists all)"
 
     def test_only_a_dispatch_edge_says_what_serves_a_route(self, tmp_path: Path) -> None:
         """A marker may call or reference other entries; that is not serving."""

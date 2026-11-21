@@ -86,6 +86,7 @@ try:
     from hypergumbo_core.entrypoint_kinds import (
         ENTRYPOINT_KINDS,
         ENTRYPOINT_ROLES,
+        role_headings,
     )
 except ImportError as exc:
     sys.exit(could_not_run(exc))
@@ -413,14 +414,18 @@ capitalisation. The lint accepted it because a free-text justification must be
 
 # entrypoint-kind section ordering (ADR-0063): one section per ROLE, in the
 # registry's role order, so a role added to the registry gets its section
-# without an edit here.
+# without an edit here. A heading is declared per KIND, so a role's section
+# names the headings its kinds show under.
+def _sketch_headings(role: str) -> str:
+    headings = role_headings(role)
+    if not headings:
+        return " — not in Entry Points"
+    noun = "group" if len(headings) == 1 else "groups"
+    return f" — sketch {noun} " + ", ".join(f'"{h}"' for h in headings)
+
+
 _ENTRYPOINT_SECTIONS: tuple[tuple[str, str, str], ...] = tuple(
-    (
-        role.name,
-        f"`{role.name}`"
-        + (f" — sketch group \"{role.heading}\"" if role.heading else " — not in Entry Points"),
-        role.description,
-    )
+    (role.name, f"`{role.name}`" + _sketch_headings(role.name), role.description)
     for role in ENTRYPOINT_ROLES
 )
 
@@ -443,24 +448,27 @@ Six readers branch on groups of kinds: the tie order among entries of equal
 taint's parameter seeds), the sketch's Entry Points groups, the INV-hosuh main
 dedup and the library-export demotion. Before the registry each held its own
 set, and they disagreed (audit 0027). The sections below are the roles; the
-table after them records, per kind, whether its role was ruled by the owner
-(2026-11-21) or proposed, and its ADR-0024 verdict.
+table after them records, per kind, the sketch heading it declares (the owner
+ruled on 2026-11-21 that the headings stay those the sketch showed before the
+registry, so a role's kinds may show under several), whether its role was ruled
+by the owner (2026-11-21) or proposed, and its ADR-0024 verdict.
 """
 
 
 def _format_entrypoint_kind_table() -> str:
-    """One row per kind: role, ruling, ADR-0024 verdict, why the name stays."""
+    """One row per kind: role, sketch heading, ruling, ADR-0024 verdict,
+    why the name stays."""
     lines = [
         "### Entrypoint kinds — role rulings and verdicts",
         "",
-        "| Kind | Role | Role ruled? | ADR-0024 verdict | Why a framework or "
-        "mechanism name stays |",
-        "|---|---|---|---|---|",
+        "| Kind | Role | Sketch heading | Role ruled? | ADR-0024 verdict | Why a "
+        "framework or mechanism name stays |",
+        "|---|---|---|---|---|---|",
     ]
     for spec in sorted(ENTRYPOINT_KINDS, key=lambda s: s.name):
         lines.append(
-            f"| `{spec.name}` | `{spec.role}` | {spec.ruling} | {spec.verdict} "
-            f"| {spec.name_basis or '—'} |",
+            f"| `{spec.name}` | `{spec.role}` | {spec.heading or '(Tests section)'} "
+            f"| {spec.ruling} | {spec.verdict} | {spec.name_basis or '—'} |",
         )
     lines.append("")
     return "\n".join(lines)

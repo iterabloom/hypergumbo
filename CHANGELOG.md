@@ -34,7 +34,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Unknown config settings now say a newer hypergumbo may be needed.**
 - **Tied entry points list manifest scripts, then mains, then routes.**
 - **Electron's main script ranks and slices like a main.**
-- **Sketch entry groups follow roles; Request Handlers merges four.**
+- **Middleware and error handlers get their own sketch heading.**
+- **Forms and serializers get their own sketch heading.**
+- **The sketch's Mobile heading is now Hosted Applications.**
 - **A guard-only Python script now demotes exports like main.**
 - **`slice --entry auto` boosts manifest executables like mains.**
 - **A `main` function's confidence now follows its language's measured reliability.**

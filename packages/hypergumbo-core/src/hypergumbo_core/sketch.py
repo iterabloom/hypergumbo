@@ -53,8 +53,8 @@ Sections in emission order:
     embedding/hybrid (the CLI default) can surface ENV /
     ``environment:`` lines from Dockerfile and docker-compose files.
 7.  Entry Points — CLI commands, HTTP routes, IPC handlers,
-    cron / scheduler entries, grouped by the role of their kind (one
-    heading per role, ``entrypoint_kinds``); one entry budget is
+    cron / scheduler entries, grouped under the heading each kind
+    declares in ``entrypoint_kinds``; one entry budget is
     shared across the groups (``_share_entry_budget``) so a repo with
     hundreds of routes and exports cannot flood the sketch
 8.  Data Models — dataclasses, ORM entities, schema definitions,
@@ -182,7 +182,7 @@ from .entrypoints import (
     detect_entrypoints, Entrypoint, EntrypointKind, take_dealing_ties,
 )
 from .entrypoint_kinds import (
-    ENTRYPOINT_ROLES, ROLE_REQUEST_INGRESS, ROLE_TEST, kinds_with_role, role_heading, role_of,
+    ENTRY_POINT_HEADINGS, ENTRYPOINT_KINDS, H_HTTP_ROUTES, ROLE_TEST, role_of,
 )
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
@@ -5966,24 +5966,20 @@ def _run_analysis(
 
 
 def _entrypoint_groups() -> list[tuple[str, set[str]]]:
-    """The Entry Points display groups, computed from the entrypoint-kind roles.
+    """The Entry Points display groups, computed from the entrypoint-kind registry.
 
-    One group per role heading (``entrypoint_kinds.role_heading``), in the
-    registry's role order; two roles that share a heading share a group
-    (program starts and CLI commands show under "CLI & Scripts"). A group
-    holds the values of every kind whose role shows under it, so no kind
-    falls through to "Other" unless its role is a fallback, and no list of
-    kinds is written here (audit 0027: the hand-written groups had left nine
-    kinds in "Other" and made ``electron_main`` a program start here alone).
-    The test role has no heading: the Tests section covers it.
+    One group per heading of ``entrypoint_kinds.ENTRY_POINT_HEADINGS``, in
+    that order, holding the values of the kinds whose spec declares it. No
+    list of kinds is written here: the hand-written groups this replaced had
+    left nine kinds in "Other" and made ``electron_main`` a program start
+    here alone (audit 0027). The headings are the ones those groups showed
+    (the owner's ruling of 2026-11-21: "HTTP Routes", "Controllers",
+    "GraphQL" and "WebSocket Handlers" stay), plus one for middleware and
+    error handlers and one for framework-reflected classes. The test role
+    has no heading: the Tests section covers it.
     """
-    groups: dict[str, set[str]] = {}
-    for role in ENTRYPOINT_ROLES:
-        if role.heading is None:
-            continue
-        groups.setdefault(role.heading, set()).update(
-            k.value for k in kinds_with_role(role.name))
-    return list(groups.items())
+    return [(heading, {s.name for s in ENTRYPOINT_KINDS if s.heading == heading})
+            for heading in ENTRY_POINT_HEADINGS]
 
 
 # Display groups for entry points, in presentation order. Groups with zero
@@ -5998,27 +5994,37 @@ def _take_every_kind(
 ) -> list[Entrypoint]:
     """The lines a group's share keeps: each kind's best entry first.
 
-    A group is a ROLE's heading and holds several kinds (Request Handlers
-    holds routes, controllers, GraphQL, WebSocket handlers, middleware...).
-    Cut by rank alone, a kind whose entries all rank below the share's cut
-    shows no line, where it had a group of its own, and a share, before the
-    groups followed roles (measured: thc's one controller under 182 routes).
-    So the best entry of each kind is kept first (when the share is smaller
-    than the number of kinds, the kinds whose best entries rank first), and
-    the rest of the share is cut as before
-    (``take_dealing_ties``: by rank, ties dealt across files). A group of
-    one kind is cut exactly as before. Returned best first.
+    A heading may hold several kinds: "CLI & Scripts" holds the program
+    starts and the subcommands, "HTTP Routes" routes and Go handlers,
+    "Hosted Applications" five kinds, "Other" four. Cut by rank alone, a
+    kind whose entries all rank below the share's cut shows no line (a Go
+    ``ServeHTTP`` under a hundred routes, an Android activity under twenty
+    SPA bootstraps), and the section does not say the repository has one.
+    The plain cut (``take_dealing_ties``: by rank, ties dealt across files)
+    is kept whenever it shows every kind of the group, so a group of one
+    kind, and any group the cut does not starve, shows exactly the lines it
+    showed before the rule (dev's selection). Otherwise the best entry of
+    each kind is kept first (when the share is smaller than the number of
+    kinds, the kinds whose best entries rank first), and the rest of the
+    share is cut as before, its ties dealt counting the reserved lines as
+    their files' first slots (so the rule swaps the plain cut's last lines
+    for the starved kinds' best, and nothing else). Returned best first.
     """
+    plain = take_dealing_ties(eps, quota, file_of, score_of=score_of)
     best_of_kind: dict[EntrypointKind, int] = {}
     for i, ep in enumerate(eps):
         best_of_kind.setdefault(ep.kind, i)
-    if len(best_of_kind) <= 1:
-        return [eps[j] for j in take_dealing_ties(eps, quota, file_of, score_of=score_of)]
+    if {eps[j].kind for j in plain} == best_of_kind.keys():
+        return [eps[j] for j in plain]
     reserved = sorted(best_of_kind.values())[:max(quota, 0)]
     taken = set(reserved)
     rest = [i for i in range(len(eps)) if i not in taken]
+    # The reserved lines hold their files' first slots, so the rest is dealt
+    # as the plain cut would have dealt it around them.
+    dealt: Counter[tuple[Optional[float], str]] = Counter(
+        (score_of(eps[i]), file_of(eps[i])) for i in reserved)
     more = take_dealing_ties([eps[i] for i in rest], quota - len(reserved), file_of,
-                             score_of=score_of)
+                             dealt=dealt, score_of=score_of)
     return [eps[i] for i in sorted(reserved + [rest[j] for j in more])]
 
 
@@ -6135,9 +6141,10 @@ def _format_entrypoints(
 ) -> str:
     """Format detected entry points as a Markdown section grouped by role.
 
-    Entry points are organized into display groups, one per role heading of
-    the entrypoint-kind registry (CLI & Scripts, Hosted Applications,
-    Request Handlers, ...; :func:`_entrypoint_groups`). Groups with zero
+    Entry points are organized into display groups, one per heading of the
+    entrypoint-kind registry (CLI & Scripts, HTTP Routes, Controllers, ...;
+    :func:`_entrypoint_groups`), each kind under the heading it declares.
+    Groups with zero
     entries are omitted. The test role is excluded entirely — the Tests
     section already covers it.
 
@@ -6314,8 +6321,8 @@ def _format_entrypoints(
 
         if len(eps) > quota:
             more = f"- ... and {len(eps) - quota} more"
-            if group_name == role_heading(ROLE_REQUEST_INGRESS):
-                more += " (`hypergumbo routes` lists the routes)"
+            if group_name == H_HTTP_ROUTES:
+                more += " (`hypergumbo routes` lists all)"
             lines.append(more)
 
         lines.append("")

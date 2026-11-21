@@ -9,7 +9,8 @@ reader computes its set from roles. These tests are the axis's property test:
 * registry invariants: every kind has exactly one role, every role has a kind;
 * the owner's rulings of 2026-11-21, pinned one by one with the ruling's text
   in the failure message, so an edit to the registry that breaks a ruling
-  says which;
+  says which (among them the sketch headings: each kind declares its own, and
+  the four request headings the sketch showed before the registry stay);
 * every derived set equals its role query, and each reader behaves by role;
 * the drift check finds a hand-written group of kinds anywhere outside the
   registry (and found all five on the tree before the registry);
@@ -32,6 +33,7 @@ import pytest
 from hypergumbo_core import entrypoint_kinds as K
 from hypergumbo_core.entrypoint_kinds import (
     APPLICATION_ROLES,
+    ENTRY_POINT_HEADINGS,
     ENTRYPOINT_KINDS,
     ENTRYPOINT_ROLES,
     KNOWN_WATCHED_READS,
@@ -53,8 +55,9 @@ from hypergumbo_core.entrypoint_kinds import (
     find_watched_kind_reads,
     find_watched_kind_reads_in_source,
     kept_under_trigger,
+    kind_heading,
     kinds_with_role,
-    role_heading,
+    role_headings,
     role_of,
     unused_not_a_role_question_keys,
 )
@@ -112,8 +115,8 @@ def test_an_unknown_role_is_an_error() -> None:
 def test_every_role_is_told_apart_by_some_reader() -> None:
     """A role with no reader of its own is a role nothing needs: each role's
     treatment across the readers (tie rank, the slice boost, request
-    ingress, the demotion, the sketch heading) differs from every other
-    role's. Without the sketch heading, command / hosted application /
+    ingress, the demotion, the sketch headings of its kinds) differs from
+    every other role's. Without the headings, command / hosted application /
     scheduled would read alike, and so would reflective / fallback."""
     def signature(role: str) -> tuple[object, ...]:
         kinds = kinds_with_role(role)
@@ -121,7 +124,7 @@ def test_every_role_is_told_apart_by_some_reader() -> None:
             kinds <= PROGRAM_START_KINDS,
             {k.value for k in kinds} <= REQUEST_INGRESS_KINDS,
             kinds <= APPLICATION_KINDS,
-            role_heading(role),
+            role_headings(role),
             role == ROLE_LIBRARY_API,
         )
     sigs = [signature(r.name) for r in ENTRYPOINT_ROLES]
@@ -184,25 +187,93 @@ def test_application_kinds_is_the_role_query() -> None:
         ROLE_LIBRARY_API, ROLE_TEST, ROLE_FALLBACK, ROLE_REFLECTIVE)
 
 
-def test_sketch_groups_are_the_role_headings() -> None:
-    """Every kind with a heading is in exactly the group its role names, and
-    the groups come in the registry's role order."""
-    by_heading = dict(_ENTRYPOINT_GROUPS)
+def test_sketch_groups_are_the_kinds_headings() -> None:
+    """Every kind with a heading is in exactly the group it declares, and the
+    groups come in the registry's heading order (``ENTRY_POINT_HEADINGS``)."""
     for spec in ENTRYPOINT_KINDS:
-        heading = role_heading(spec.role)
         holders = [h for h, kinds in _ENTRYPOINT_GROUPS if spec.name in kinds]
-        assert holders == ([heading] if heading else []), spec.name
-    order: list[str] = []
-    for role in ENTRYPOINT_ROLES:
-        if role.heading and role.heading not in order:
-            order.append(role.heading)
-    assert [h for h, _ in _ENTRYPOINT_GROUPS] == order
-    assert set(by_heading) == set(order)
+        assert holders == ([spec.heading] if spec.heading else []), spec.name
+        assert kind_heading(spec.kind) == spec.heading
+    assert [h for h, _ in _ENTRYPOINT_GROUPS] == list(ENTRY_POINT_HEADINGS)
+    assert len(set(ENTRY_POINT_HEADINGS)) == len(ENTRY_POINT_HEADINGS)
 
 
 def test_the_test_role_has_no_entry_points_heading() -> None:
-    assert role_heading(ROLE_TEST) is None
-    assert all(role_heading(r.name) for r in ENTRYPOINT_ROLES if r.name != ROLE_TEST)
+    assert role_headings(ROLE_TEST) == ()
+    assert all(role_headings(r.name) for r in ENTRYPOINT_ROLES if r.name != ROLE_TEST)
+
+
+# ---------------------------------------------------------------- the headings ruling
+
+RULING_HEADINGS = (
+    "OWNER RULING 2026-11-21 (on a direct question, WI-giron): keep today's headings. "
+    "'The four headings stay. Middleware and error handlers, which fell to \"Other\", "
+    "get a heading of their own. The registry stores a heading per kind.' The roles "
+    "are accepted as proposed; only the sketch's headings change.")
+
+#: The headings the sketch showed before the registry (dev's hand-written
+#: groups at c54c3f52a), each with the kinds it held that still exist, in
+#: the section's order. "Mobile" is the one heading renamed ("Hosted
+#: Applications"), which the owner did not object to. electron_preload, under
+#: "CLI & Scripts" there, is a hosted application and left it (agent 2's
+#: proposal, accepted).
+DEV_HEADINGS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("CLI & Scripts", frozenset({"cli_command", "main_function", "main_guard",
+                                 "electron_main"})),
+    ("HTTP Routes", frozenset({"http_route", "go_handler"})),
+    ("Controllers", frozenset({"controller"})),
+    ("GraphQL", frozenset({"graphql_server"})),
+    ("WebSocket Handlers", frozenset({"websocket_handler"})),
+    ("Event & Background Tasks", frozenset({"event_handler", "background_task",
+                                            "scheduled_task"})),
+    ("Hosted Applications", frozenset({"android_activity", "android_application"})),
+    ("Library API", frozenset({"library_export"})),
+    ("Other", frozenset({"connectivity_based"})),
+)
+
+_FOUR = ("HTTP Routes", "Controllers", "GraphQL", "WebSocket Handlers")
+
+
+@pytest.mark.parametrize("heading", _FOUR)
+def test_ruling_the_four_request_headings_stay_with_the_kinds_they_held(heading: str) -> None:
+    """Exactly the kinds dev showed there: no kind joins or leaves them."""
+    groups = dict(_ENTRYPOINT_GROUPS)
+    assert heading in groups, RULING_HEADINGS
+    assert groups[heading] == dict(DEV_HEADINGS)[heading], RULING_HEADINGS
+
+
+def test_ruling_every_kind_dev_headed_keeps_its_heading() -> None:
+    for heading, kinds in DEV_HEADINGS:
+        for kind in kinds:
+            assert kind_heading(EntrypointKind(kind)) == heading, (kind, RULING_HEADINGS)
+
+
+def test_ruling_dev_headings_keep_their_order() -> None:
+    dev_order = [h for h, _ in DEV_HEADINGS]
+    assert [h for h in ENTRY_POINT_HEADINGS if h in dev_order] == dev_order, RULING_HEADINGS
+
+
+def test_ruling_no_heading_merges_the_request_kinds() -> None:
+    """One heading for the whole request-ingress role ("Request Handlers")
+    is what the owner declined."""
+    assert "Request Handlers" not in ENTRY_POINT_HEADINGS, RULING_HEADINGS
+    assert len(role_headings(ROLE_REQUEST_INGRESS)) == 5, RULING_HEADINGS
+
+
+def test_ruling_middleware_and_error_handlers_have_their_own_heading() -> None:
+    middleware = kind_heading(EntrypointKind.MIDDLEWARE_HANDLER)
+    assert middleware not in (None, "Other"), RULING_HEADINGS
+    assert kind_heading(EntrypointKind.ERROR_HANDLER) == middleware, RULING_HEADINGS
+    assert middleware not in dict(DEV_HEADINGS), RULING_HEADINGS
+    assert dict(_ENTRYPOINT_GROUPS)[middleware] == {
+        "middleware_handler", "error_handler"}, RULING_HEADINGS
+
+
+def test_ruling_every_kind_has_a_heading_but_the_test_role() -> None:
+    for spec in ENTRYPOINT_KINDS:
+        assert (spec.heading is None) == (spec.role == ROLE_TEST), (spec.name, RULING_HEADINGS)
+        assert spec.heading is None or spec.heading in ENTRY_POINT_HEADINGS, spec.name
+    assert all(any(s.heading == h for s in ENTRYPOINT_KINDS) for h in ENTRY_POINT_HEADINGS)
 
 
 # ---------------------------------------------------------------- readers, by behaviour
@@ -241,8 +312,10 @@ def test_electron_main_ranks_with_the_program_starts() -> None:
 
 @pytest.mark.parametrize(("concept", "heading"), [
     ({"concept": "form", "framework": "django"}, "Framework-Reflected Classes"),
-    ({"concept": "middleware", "framework": "express"}, "Request Handlers"),
-    ({"concept": "error_handler", "framework": "flask"}, "Request Handlers"),
+    ({"concept": "middleware", "framework": "express"}, "Middleware & Error Handlers"),
+    ({"concept": "error_handler", "framework": "flask"}, "Middleware & Error Handlers"),
+    ({"concept": "route", "path": "/", "method": "GET"}, "HTTP Routes"),
+    ({"concept": "controller", "framework": "rails"}, "Controllers"),
     ({"concept": "app_bootstrap", "framework": "react"}, "Hosted Applications"),
     ({"concept": "application", "framework": "flask"}, "Hosted Applications"),
     ({"concept": "top_module", "framework": "verilog"}, "Hosted Applications"),
@@ -250,7 +323,7 @@ def test_electron_main_ranks_with_the_program_starts() -> None:
     ({"concept": "command", "framework": "click"}, "CLI & Scripts"),
     ({"concept": "npm_bin", "framework": "config-conventions"}, "CLI & Scripts"),
 ])
-def test_sketch_files_each_kind_under_its_role(concept: dict, heading: str) -> None:
+def test_sketch_files_each_kind_under_its_heading(concept: dict, heading: str) -> None:
     """Four of these fell through to "Other" before the registry."""
     sym = _sym("thing", "app/thing.py", concepts=[concept])
     eps = detect_entrypoint_candidates([sym], [])
@@ -623,25 +696,74 @@ def _ranked(sid: str, kind: EntrypointKind, rank: float) -> Entrypoint:
     return ep
 
 
-def test_a_role_group_shows_every_kind_it_holds() -> None:
-    """Request Handlers holds several kinds. A controller ranked below ten
-    routes still gets a line when the share is three (it had a group, and so
-    a line, of its own before the groups followed roles)."""
+def test_a_heading_shows_every_kind_it_holds() -> None:
+    """HTTP Routes holds two kinds (routes and Go handlers, as it did before
+    the registry). A Go handler ranked below ten routes still gets a line
+    when the share is three: cut by rank alone, the share would hold three
+    routes and the section would not say the repository has a handler."""
+    syms = [_sym(f"r{i}", f"app/r{i}.go", language="go") for i in range(10)]
+    syms.append(_sym("ServeHTTP", "app/h.go", language="go"))
+    eps = [_ranked(s.id, EntrypointKind.HTTP_ROUTE, 1.0) for s in syms[:10]]
+    eps.append(_ranked(syms[10].id, EntrypointKind.GO_HANDLER, 0.5))
+    out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=3)
+    assert "`ServeHTTP`" in out
+    assert sum(line.startswith("- `r") for line in out.splitlines()) == 2
+    assert "### HTTP Routes" in out and "### Controllers" not in out
+
+
+def test_a_cut_that_shows_every_kind_is_the_plain_cut() -> None:
+    """Where the plain cut (by rank, ties dealt one per file) already shows
+    each kind of the heading, it is kept as it is: the lines are the ones
+    the sketch chose before the every-kind rule. Here the tied share of two
+    is dealt to a.go's route and b.go's handler; reserving each kind's FIRST
+    entry would show a.go's handler instead."""
+    syms = [_sym("r", "app/a.go", language="go", line=1),
+            _sym("h1", "app/a.go", language="go", line=10),
+            _sym("h2", "app/b.go", language="go", line=1)]
+    eps = [_ranked(syms[0].id, EntrypointKind.HTTP_ROUTE, 1.0),
+           _ranked(syms[1].id, EntrypointKind.GO_HANDLER, 1.0),
+           _ranked(syms[2].id, EntrypointKind.GO_HANDLER, 1.0)]
+    out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=2)
+    assert "`r`" in out and "`h2`" in out and "`h1`" not in out
+
+
+def test_the_rule_deals_the_rest_around_the_lines_it_reserved() -> None:
+    """When the rule does act, it changes only what it must: the reserved
+    lines count as their files' first slots, so the rest of the share is
+    dealt as the plain cut dealt it. Plain cut (one line per file in turn):
+    r0 (a.go), r2 (b.go), r3 (c.go), no handler. The rule shows the handler
+    in place of the last of those, not a second line of a.go."""
+    syms = [_sym("r0", "app/a.go", language="go", line=1),
+            _sym("r1", "app/a.go", language="go", line=10),
+            _sym("r2", "app/b.go", language="go", line=1),
+            _sym("r3", "app/c.go", language="go", line=1),
+            _sym("h", "app/d.go", language="go", line=1)]
+    eps = [_ranked(s.id, EntrypointKind.HTTP_ROUTE, 1.0) for s in syms[:4]]
+    eps.append(_ranked(syms[4].id, EntrypointKind.GO_HANDLER, 1.0))
+    out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=3)
+    shown = {line.split("`")[1] for line in out.splitlines() if line.startswith("- `")}
+    assert shown == {"r0", "r2", "h"}
+
+
+def test_a_controller_under_many_routes_keeps_its_own_heading() -> None:
+    """thc's case (one controller under 182 routes): the controller has a
+    heading of its own again, and so a share of its own."""
     syms = [_sym(f"r{i}", f"app/r{i}.py") for i in range(10)] + [_sym("C", "app/c.py")]
     eps = [_ranked(s.id, EntrypointKind.HTTP_ROUTE, 1.0) for s in syms[:10]]
     eps.append(_ranked(syms[10].id, EntrypointKind.CONTROLLER, 0.5))
     out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=3)
-    assert "`C`" in out
+    assert "### Controllers\n\n- `C`" in out
     assert sum(line.startswith("- `r") for line in out.splitlines()) == 2
 
 
 def test_a_share_smaller_than_its_kinds_keeps_the_best_ranked_kinds() -> None:
     syms = [_sym(n, f"app/{n}.py") for n in ("a", "b", "c")]
-    eps = [_ranked(syms[0].id, EntrypointKind.HTTP_ROUTE, 0.9),
-           _ranked(syms[1].id, EntrypointKind.CONTROLLER, 0.8),
-           _ranked(syms[2].id, EntrypointKind.MIDDLEWARE_HANDLER, 0.7)]
+    eps = [_ranked(syms[0].id, EntrypointKind.HOSTED_APPLICATION, 0.9),
+           _ranked(syms[1].id, EntrypointKind.SPA_BOOTSTRAP, 0.8),
+           _ranked(syms[2].id, EntrypointKind.ANDROID_ACTIVITY, 0.7)]
     out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=2)
     assert "`a`" in out and "`b`" in out and "`c`" not in out
+    assert "### Hosted Applications" in out
 
 
 def test_a_group_of_one_kind_is_cut_by_rank_as_before() -> None:
