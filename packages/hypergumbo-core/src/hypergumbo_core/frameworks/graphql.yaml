@@ -7,6 +7,9 @@
 # For Python GraphQL (Strawberry, Ariadne, Graphene), see graphql-python.yaml
 # For Ruby GraphQL (graphql-ruby), see graphql-ruby.yaml
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -75,10 +78,6 @@ patterns:
   # Type-GraphQL / NestJS authorization
   - concept: auth
     decorator: "^(Authorized|UseGuards)$"
-
-  # Mercurius (Fastify GraphQL) route
-  - concept: route
-    decorator: "^(fastify|app)\\.graphql$"
 
   # Apollo subscriptions
   - concept: websocket_handler

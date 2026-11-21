@@ -4,6 +4,9 @@
 # Patterns for detecting command-line interface entrypoints:
 # Commander.js, yargs, oclif, Inquirer, CAC.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -13,13 +16,6 @@ language: javascript
 
 patterns:
   # ==================== COMMANDER.JS PATTERNS ====================
-  # Commander command definition
-  - concept: command
-    decorator: "^(program|commander)\\.command$"
-
-  # Commander action handler
-  - concept: command
-    decorator: "^(program|commander)\\.action$"
 
   # Commander option
   - concept: option
@@ -29,18 +25,7 @@ patterns:
   - concept: argument
     decorator: "^(program|commander)\\.argument$"
 
-  # Commander version
-  - concept: command
-    decorator: "^(program|commander)\\.version$"
-
   # ==================== YARGS PATTERNS ====================
-  # yargs command
-  - concept: command
-    decorator: "^yargs\\.command$"
-
-  # yargs commandDir
-  - concept: command
-    decorator: "^yargs\\.commandDir$"
 
   # yargs option
   - concept: option
@@ -60,33 +45,12 @@ patterns:
     decorator: "^Flags\\.(string|boolean|integer)$"
 
   # ==================== CAC PATTERNS ====================
-  # CAC command
-  - concept: command
-    decorator: "^(cli|cac)\\.command$"
 
   # CAC option
   - concept: option
     decorator: "^(cli|cac)\\.option$"
 
-  # ==================== INQUIRER PATTERNS ====================
-  # Inquirer prompt
-  - concept: command
-    decorator: "^inquirer\\.prompt$"
-
-  # ==================== VORPAL PATTERNS ====================
-  # Vorpal command
-  - concept: command
-    decorator: "^vorpal\\.command$"
-
-  # Vorpal action
-  - concept: command
-    decorator: "^vorpal\\.action$"
-
   # ==================== GLUEGUN PATTERNS ====================
   # Gluegun command module
   - concept: command
     base_class: "^GluegunCommand$"
-
-  # Gluegun toolbox
-  - concept: command
-    decorator: "^toolbox\\.(print|prompt|filesystem)$"

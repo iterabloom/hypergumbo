@@ -7,6 +7,9 @@
 # Sinatra uses block-based routing: get '/path' do ... end
 # Usage-based patterns match against UsageContext records with has_block: true
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -39,17 +42,9 @@ patterns:
   - concept: helper
     decorator: "^helpers$"
 
-  # Sinatra before/after filters
-  - concept: middleware
-    decorator: "^(before|after)$"
-
   # Sinatra configure block
   - concept: config
     decorator: "^configure$"
-
-  # Sinatra error handlers
-  - concept: error_handler
-    decorator: "^(error|not_found)$"
 
   # Sinatra set configuration
   - concept: config

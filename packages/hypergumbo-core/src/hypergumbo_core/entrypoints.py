@@ -3,7 +3,8 @@
 
 Detects entrypoints via semantic concepts from YAML framework patterns (ADR-3aaa):
 - HTTP routes (Django, Flask, FastAPI, Express, Rails, Spring, etc.)
-- CLI commands (Click, Typer, argparse, Commander, Cobra, etc.)
+- CLI commands (Click, Typer, Cobra, oclif, etc.; an argparse CLI is a
+  detection gap)
 - WebSocket handlers
 - Background tasks (Celery, etc.)
 - Scheduled jobs
@@ -1408,9 +1409,12 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 added_kinds.add(EntrypointKind.TEST_FUNCTION)
 
             # Generic entrypoint concept -> framework-specific or MAIN_FUNCTION
-            # Used by electron.yaml (app.whenReady), cli.yaml (fire.Fire,
-            # argparse.ArgumentParser), cli-go.yaml (kong.Parse),
-            # cli-ruby.yaml (OptionParser), akka-http.yaml (Http().newServerAt).
+            # Emitted by electron.yaml's usage rows (app.whenReady, app.on /
+            # app.once) and by verilog.py's top-module stamp. The cli.yaml
+            # (fire.Fire, argparse.ArgumentParser), cli-go.yaml (kong.Parse),
+            # cli-ruby.yaml (OptionParser) and akka-http.yaml
+            # (Http().newServerAt) rows keyed those calls on ``decorator:``,
+            # never fired, and were deleted (audit 0027).
             elif concept_type == "entrypoint":
                 # Map to framework-specific kind when possible
                 fw_lower = framework.lower() if framework else ""

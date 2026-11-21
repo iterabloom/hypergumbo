@@ -4,6 +4,9 @@
 # Ktor is a Kotlin web framework using DSL-based routing.
 # Routes are defined using routing { }, get { }, post { }, etc.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -24,44 +27,7 @@ patterns:
       method: "metadata.http_method"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
-  # Ktor route handlers via routing DSL
-  - concept: route
-    decorator: "^(get|post|put|delete|patch|head|options)$"
-    extract_path: "args[0]"
-    extract_method: "decorator_name"
-
-  # Ktor Application extensions
-  - concept: controller
-    decorator: "^Application\\.(routing|install|intercept)$"
-
-  # Ktor routing module functions
-  - concept: controller
-    decorator: "^Route\\.(route|get|post|put|delete|patch|head|options)$"
 
   # Ktor authentication
   - concept: auth
     decorator: "^authenticate$"
-
-  # Ktor Sessions
-  - concept: middleware
-    decorator: "^sessions$"
-
-  # Ktor WebSocket handlers
-  - concept: websocket_handler
-    decorator: "^webSocket$"
-
-  # Ktor exception handling
-  - concept: error_handler
-    decorator: "^(statusPages|exception)$"
-
-  # Ktor Content Negotiation
-  - concept: middleware
-    decorator: "^(contentNegotiation|json|xml)$"
-
-  # Ktor CORS
-  - concept: middleware
-    decorator: "^CORS$"
-
-  # Ktor CallLogging
-  - concept: middleware
-    decorator: "^callLogging$"

@@ -5,7 +5,9 @@
 # Symbols matching these patterns get enriched with concept metadata.
 #
 # Koa is minimalist; most routing uses koa-router or @koa/router.
-# The decorator patterns here match against extracted call metadata.
+
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
@@ -15,43 +17,9 @@ id: koa
 language: javascript
 
 patterns:
-  # koa-router / @koa/router route handlers
-  - concept: route
-    decorator: "^router\\.(get|post|put|delete|patch|head|options|all)$"
-    extract_path: "args[0]"
-    extract_method: "decorator_suffix"
-
-  # Router prefix
-  - concept: route
-    decorator: "^router\\.prefix$"
-    extract_path: "args[0]"
-
-  # Router use - middleware on router
-  - concept: middleware
-    decorator: "^router\\.use$"
-
-  # Router param - parameter middleware
-  - concept: middleware
-    decorator: "^router\\.param$"
-
-  # Router allowedMethods
-  - concept: middleware
-    decorator: "^router\\.allowedMethods$"
-
-  # Koa app.use() - global middleware
-  - concept: middleware
-    decorator: "^(app|koa)\\.use$"
 
   # Koa context extensions - ctx.body, ctx.status, etc.
   # These are typically detected in function bodies rather than decorators
-
-  # koa-body / koa-bodyparser
-  - concept: middleware
-    decorator: "^(koaBody|bodyParser)$"
-
-  # koa-session
-  - concept: middleware
-    decorator: "^session$"
 
   # koa-passport
   - concept: auth_strategy
@@ -61,30 +29,6 @@ patterns:
   - concept: auth_middleware
     decorator: "^jwt$"
 
-  # koa-helmet (security headers)
-  - concept: middleware
-    decorator: "^helmet$"
-
-  # koa-cors
-  - concept: middleware
-    decorator: "^cors$"
-
-  # koa-static / koa-send
-  - concept: middleware
-    decorator: "^(serve|send|static)$"
-
   # koa-views / koa-ejs
   - concept: view_middleware
     decorator: "^(views|render)$"
-
-  # koa-logger
-  - concept: middleware
-    decorator: "^logger$"
-
-  # koa-compress
-  - concept: middleware
-    decorator: "^compress$"
-
-  # koa-mount (for mounting sub-applications)
-  - concept: middleware
-    decorator: "^mount$"

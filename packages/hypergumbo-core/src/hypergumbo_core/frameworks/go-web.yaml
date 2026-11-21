@@ -7,6 +7,9 @@
 # Definition-based patterns (v1.0.x): Match base_class for GORM, gRPC, etc.
 # Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -50,25 +53,6 @@ patterns:
   # Note: These decorator patterns are kept for backwards compatibility but
   # the primary route detection now uses UsageContext patterns above.
 
-  # net/http - HandleFunc
-  - concept: route
-    decorator: "^http\\.HandleFunc$"
-
-  - concept: route
-    decorator: "^(mux|router)\\.(Handle|HandleFunc)$"
-
-  # Middleware patterns
-  - concept: middleware
-    decorator: "^(c|ctx|r|router|e|echo|app)\\.(Use|Middleware)$"
-
-  # Gin middleware
-  - concept: middleware
-    decorator: "^gin\\.(Logger|Recovery|BasicAuth)$"
-
-  # Echo middleware
-  - concept: middleware
-    decorator: "^echo\\.middleware\\."
-
   # go-restful WebService (Kubernetes-style API frameworks)
   - concept: web_service
     base_class: "^restful\\.WebService$"
@@ -85,10 +69,6 @@ patterns:
   - concept: repository
     decorator: "^(e|x|engine|sess|session)\\.(Get|Find|Insert|Update|Delete|Exec|Query|Where|ID|Count|Exist|Iterate|Cols|Incr|Decr|SetExpr|AllCols)$"
 
-  # Go context handling
-  - concept: middleware
-    decorator: "^context\\.(WithValue|WithCancel|WithDeadline|WithTimeout)$"
-
   # gRPC service definitions
   - concept: grpc_service
     base_class: "^.*Server$"
@@ -96,11 +76,3 @@ patterns:
   # gRPC client definitions
   - concept: grpc_client
     base_class: "^.*Client$"
-
-  # Worker/background task patterns (using goroutines with common names)
-  - concept: task
-    decorator: "^go\\s+"
-
-  # Cron jobs (robfig/cron)
-  - concept: scheduled_task
-    decorator: "^c\\.(AddFunc|Schedule)$"

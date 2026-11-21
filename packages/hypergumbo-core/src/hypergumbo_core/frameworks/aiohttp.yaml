@@ -4,6 +4,9 @@
 # aiohttp is a Python async HTTP client/server framework.
 # Server routes use app.router.add_get() or @routes.get() decorators.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -30,12 +33,6 @@ patterns:
     extract_path: "args[0]"
     extract_method: "decorator_suffix"
 
-  # aiohttp router.add_* methods
-  - concept: route
-    decorator: "^(app\\.router|router)\\.(add_get|add_post|add_put|add_delete|add_patch|add_route|add_view|add_static)$"
-    extract_path: "args[0]"
-    extract_method: "decorator_suffix"
-
   # aiohttp View class-based views
   - concept: controller
     base_class: "^View$"
@@ -52,10 +49,6 @@ patterns:
   - concept: websocket_handler
     base_class: "^WebSocketResponse$"
 
-  # aiohttp cleanup context
-  - concept: middleware
-    decorator: "^cleanup_ctx$"
-
   # aiohttp on_startup/on_shutdown/on_cleanup
   - concept: lifecycle
     decorator: "^(on_startup|on_shutdown|on_cleanup)$"
@@ -67,7 +60,3 @@ patterns:
   # aiohttp testing
   - concept: test
     base_class: "^AioHTTPTestCase$"
-
-  # aiohttp_session
-  - concept: middleware
-    decorator: "^setup$"

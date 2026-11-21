@@ -4,6 +4,9 @@
 # Vapor is a Swift web framework. Routes are defined using
 # app.get(), app.post(), etc. Controllers extend RouteCollection.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -24,15 +27,6 @@ patterns:
       method: "metadata.http_method"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
-  # Vapor route methods
-  - concept: route
-    decorator: "^(app|routes|router)\\.(get|post|put|delete|patch|on)$"
-    extract_path: "args[0]"
-    extract_method: "decorator_suffix"
-
-  # Vapor grouped routes
-  - concept: route
-    decorator: "^(app|routes|router)\\.grouped$"
 
   # Vapor RouteCollection conformance (Controllers)
   - concept: controller
@@ -53,10 +47,6 @@ patterns:
   # Vapor Content (request/response types)
   - concept: dto
     base_class: "^Content$"
-
-  # Vapor WebSocket handlers
-  - concept: websocket_handler
-    decorator: "^webSocket$"
 
   # Vapor authentication
   - concept: auth

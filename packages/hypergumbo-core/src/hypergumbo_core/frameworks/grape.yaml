@@ -4,6 +4,9 @@
 # Grape is a Ruby REST-like API framework. APIs are defined as
 # classes inheriting from Grape::API with route DSL methods.
 
+# Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
+# reads decorator / annotation syntax only, so a call never matched them.
+
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
@@ -32,39 +35,13 @@ patterns:
   - concept: controller
     base_class: "^Grape::API::Instance$"
 
-  # Grape route methods
-  - concept: route
-    decorator: "^(get|post|put|patch|delete|options|head)$"
-    extract_path: "args[0]"
-    extract_method: "decorator_name"
-
-  # Grape resource/namespace grouping
-  - concept: route
-    decorator: "^(resource|resources|namespace|group|segment)$"
-
-  # Grape route_param
-  - concept: route
-    decorator: "^route_param$"
-
   # Grape helpers
   - concept: helper
     decorator: "^helpers$"
 
-  # Grape before/after filters
-  - concept: middleware
-    decorator: "^(before|after|before_validation|after_validation)$"
-
-  # Grape rescue_from (error handling)
-  - concept: error_handler
-    decorator: "^rescue_from$"
-
   # Grape params validation
   - concept: validation
     decorator: "^params$"
-
-  # Grape formatters
-  - concept: middleware
-    decorator: "^(format|formatter|content_type)$"
 
   # Grape authentication
   - concept: auth
