@@ -269,7 +269,9 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.supply_chain import own_package_name
-from hypergumbo_core.js_package_entry import is_node_core_module, package_entry, probe_file
+from hypergumbo_core.js_package_entry import (
+    is_node_core_module, nearest_package_root, package_entry, probe_file,
+)
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import (
     ListNameResolver,
@@ -985,10 +987,10 @@ def _in_tree_package_candidate(
     existing routes.
     """
     package = _js_package_name(specifier)
-    own_root = _find_package_root(file_path)
+    own_root = nearest_package_root(file_path)
     matches = []
     for candidate in candidates:
-        root = _find_package_root(Path(candidate.path))
+        root = nearest_package_root(Path(candidate.path))
         if root is not None and root != own_root and _package_json_name(root) == package:
             matches.append((root, candidate))
     subpath = specifier[len(package):].lstrip("/")
@@ -1156,7 +1158,7 @@ class _InTreeDefaultExports:
         self._symbols_by_name = symbols_by_name
         self._roots: dict[str, Path | None] = {}
         for pf in parsed_files:
-            root = _find_package_root(pf.path)
+            root = nearest_package_root(pf.path)
             name = _package_json_name(root) if root is not None else None
             if name is not None:
                 # Two roots declaring one name: no way to choose.
@@ -1172,7 +1174,7 @@ class _InTreeDefaultExports:
         else:
             package = _js_package_name(specifier)
             root = self._roots.get(package)
-            if root is None or root == _find_package_root(importer):
+            if root is None or root == nearest_package_root(importer):
                 return None
             subpath = specifier[len(package):].lstrip("/")
             entry = (
@@ -1194,14 +1196,6 @@ def _package_json_name(root: Path) -> str | None:
     return own_package_name(root / "package.json")
 
 
-def _find_package_root(file_path: Path) -> Path | None:
-    """Walk up from *file_path* to find the nearest directory containing package.json."""
-    current = file_path.parent if file_path.is_file() else file_path
-    while current != current.parent:
-        if (current / "package.json").exists():
-            return current
-        current = current.parent
-    return None
 
 
 
@@ -1224,10 +1218,10 @@ class _JsPackageIndex:
         self._deps: dict[Path, dict[str, str]] = {}
         self.in_repo_names: set[str] = set()
         for path in file_paths:
-            root = _find_package_root(path)
+            root = nearest_package_root(path)
             while root is not None and root not in self._deps:
                 self._deps[root] = self._read(root)
-                root = _find_package_root(root.parent) if root.parent != root else None
+                root = nearest_package_root(root.parent) if root.parent != root else None
 
     def _read(self, root: Path) -> dict[str, str]:
         try:
@@ -1247,12 +1241,12 @@ class _JsPackageIndex:
 
     def declared(self, file_path: Path, package: str) -> str | None:
         """The version spec the nearest declaring package.json gives ``package``."""
-        root = _find_package_root(file_path)
+        root = nearest_package_root(file_path)
         while root is not None:
             spec = self._deps.get(root, {}).get(package)
             if spec is not None:
                 return spec
-            root = _find_package_root(root.parent) if root.parent != root else None
+            root = nearest_package_root(root.parent) if root.parent != root else None
         return None
 
 
@@ -1294,7 +1288,7 @@ def _same_package_candidate(
     if not candidates or len(candidates) < 2:
         return None
 
-    pkg_root = _find_package_root(file_path)
+    pkg_root = nearest_package_root(file_path)
     if pkg_root is None:
         return None
 
@@ -1314,11 +1308,11 @@ def _is_cross_package(file_path: Path, target_path: str) -> bool:
     ancestor (can't determine package boundary) or when both are in the
     same package.
     """
-    src_root = _find_package_root(file_path)
+    src_root = nearest_package_root(file_path)
     if src_root is None:
         return False
     target = Path(target_path)
-    dst_root = _find_package_root(target)
+    dst_root = nearest_package_root(target)
     if dst_root is None:
         return False
     return src_root != dst_root

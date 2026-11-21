@@ -9012,10 +9012,11 @@ class TestHttpHandlerUsageContext:
 
     def test_aliased_createserver_is_not_read(self, tmp_path: Path) -> None:
         """``import { createServer as mk } from 'http'`` then ``mk(...)`` is
-        Node's server, but reading aliases is new recall, held back for the
-        owner: on vite it finds the dev server's ``server/ws.ts`` and demotes
-        vite's exported API. Neither the alias nor the original name is
-        taken."""
+        Node's server, but reading aliases is new recall, held back for a
+        later change. On vite it finds the dev server's ``server/ws.ts``;
+        vite's exported API would stay listed, because its package.json
+        declares ``exports`` (entrypoints' library-export demotion spares such
+        a package). Neither the alias nor the original name is taken."""
         assert self._bare_createserver_ucs(
             tmp_path, "import { createServer as mk } from 'http';", "mk") == []
         assert self._bare_createserver_ucs(

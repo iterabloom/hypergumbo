@@ -2026,7 +2026,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
     # Handle --list-entries: show detected entrypoints and exit
     if args.list_entries:
-        entrypoints = detect_entrypoints(nodes, edges)
+        entrypoints = detect_entrypoints(nodes, edges, repo_root=repo_root)
 
         # Apply --exclude-tests and --max-tier filters to entrypoint list
         # Build lookup from symbol_id to Symbol for filtering
@@ -2073,7 +2073,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     # Handle --entry auto: use detected entrypoints
     entry = args.entry
     if entry == "auto":
-        entrypoints = detect_entrypoints(nodes, edges)
+        entrypoints = detect_entrypoints(nodes, edges, repo_root=repo_root)
 
         # Apply --exclude-tests and --max-tier filters to entry candidates
         exclude_tests = getattr(args, "exclude_tests", False)
@@ -9693,7 +9693,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         ir_edges = [Edge.from_dict(e) for e in edges]
 
         min_conf = getattr(args, "min_confidence", 0.0)
-        for ep in detect_entrypoints(ir_nodes, ir_edges):
+        for ep in detect_entrypoints(ir_nodes, ir_edges, repo_root=repo_root):
             # ADR-0039 ruling 3: --min-confidence on entrypoint seeds is a
             # prominence filter, so it keys on rank_score, matching the entrypoint list's own ordering.
             if ep.rank_score >= min_conf:
@@ -13633,7 +13633,7 @@ def run_survey(
 
     # Detect and store entrypoints (computed from symbols, persisted for convenience)
     run_status.phase("Detecting entrypoints")
-    candidates = detect_entrypoint_candidates(all_symbols, all_edges)
+    candidates = detect_entrypoint_candidates(all_symbols, all_edges, repo_root=repo_root)
     behavior_map["entrypoints"] = [
         ep.to_dict()
         for ep in apply_rank_floor_and_cap(candidates, all_symbols)
