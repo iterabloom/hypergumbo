@@ -2,10 +2,10 @@
   "schema": 1,
   "workflow": "full-suite",
   "leg": null,
-  "commit": "fd456adeef68fb9c88e3dcb135c2aa004d214078",
-  "pipeline": 6712,
-  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6712",
-  "finished_at": "2026-11-21T01:24:30Z",
+  "commit": "567d7b6ed05e5255a83c837c83825d06f10c73a2",
+  "pipeline": 6737,
+  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6737",
+  "finished_at": "2026-11-21T09:23:39Z",
   "status": "passed",
   "steps": [
     {
@@ -43,7 +43,7 @@
   ],
   "coverage": {
     "percent": 100.0,
-    "statements": 104573,
+    "statements": 104649,
     "missing": 0,
     "uncovered": {},
     "uncovered_truncated": false
