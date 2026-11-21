@@ -223,9 +223,9 @@ def test_main_guard_script_precedes_tied_routes() -> None:
 
 def test_manifest_script_then_main_then_framework_command_at_equal_score() -> None:
     """Three ranks: a manifest-declared script, a program start, the rest. A
-    framework CLI command is the same KIND as a manifest script
-    (``cli_command``) and has a higher confidence than the main, but it is
-    not declared in a manifest, so it comes after the main."""
+    framework CLI command (``cli_command``) has a higher confidence than the
+    main, but it is a subcommand, not the package's declared executable
+    (``package_executable``), so it comes after the main."""
     helpers = _helpers("m/util.py", 12)
     main = _main("y/main.py")
     command = _sym("serve", "a/cli.py",
@@ -276,7 +276,10 @@ def _created(kind: EntrypointKind, evidence: str) -> Entrypoint:
 
 
 @pytest.mark.parametrize(("kind", "evidence", "tie_rank"), [
-    (EntrypointKind.CLI_COMMAND, "manifest_declared", 0),
+    (EntrypointKind.PACKAGE_EXECUTABLE, "manifest_declared", 0),
+    # evidence_type names the pathway, not what the entry is (ADR-0028):
+    # it no longer places an entry, whatever it says.
+    (EntrypointKind.CLI_COMMAND, "manifest_declared", 2),
     (EntrypointKind.CLI_COMMAND, "framework_pattern", 2),
     (EntrypointKind.CLI_COMMAND, "naming_heuristic", 2),
     (EntrypointKind.MAIN_FUNCTION, "language_convention", 1),
@@ -290,27 +293,27 @@ def _created(kind: EntrypointKind, evidence: str) -> Entrypoint:
     (EntrypointKind.LIBRARY_EXPORT, "language_convention", 2),
     (EntrypointKind.CONNECTIVITY_BASED, "connectivity_heuristic", 2),
 ])
-def test_kind_tie_rank_reads_the_evidence_type_and_the_kind(
+def test_kind_tie_rank_reads_the_kind(
     kind: EntrypointKind, evidence: str, tie_rank: int,
 ) -> None:
-    """The rank comes from fields the entry carries: ``meta.evidence_type``
-    says manifest-declared, the ``kind`` says program start. Never the name
-    or the label."""
+    """The rank comes from the entry's kind: ``package_executable`` first,
+    then the rest of the program-start role. Never the name, the label or
+    ``meta.evidence_type``."""
     assert entry_kind_tie_rank(_created(kind, evidence)) == tie_rank
 
 
 def test_program_start_kinds_are_the_ruled_program_starts() -> None:
-    """Owner ruling 2026-11-21 (audit 0027): the convention main, the
-    ``__main__`` guard and Electron's main-process script (the manifest's
-    executables rank before them, by ``evidence_type``)."""
+    """Owner ruling 2026-11-21 (audit 0027): a manifest's executable, the
+    convention main, the ``__main__`` guard and Electron's main-process
+    script."""
     assert PROGRAM_START_KINDS == frozenset({
-        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD,
-        EntrypointKind.ELECTRON_MAIN})
+        EntrypointKind.PACKAGE_EXECUTABLE, EntrypointKind.MAIN_FUNCTION,
+        EntrypointKind.MAIN_GUARD, EntrypointKind.ELECTRON_MAIN})
 
 
 def test_an_entry_without_provenance_ranks_by_its_kind() -> None:
-    """An entry built without ``create`` has no evidence_type: it is not
-    taken for a manifest script, and its kind still places it."""
+    """An entry built without ``create`` has no evidence_type, and its kind
+    places it as it places any entry."""
     bare_main = Entrypoint(symbol_id="x:1", kind=EntrypointKind.MAIN_FUNCTION,
                            confidence=0.8, label="main")
     bare_cmd = Entrypoint(symbol_id="x:2", kind=EntrypointKind.CLI_COMMAND,

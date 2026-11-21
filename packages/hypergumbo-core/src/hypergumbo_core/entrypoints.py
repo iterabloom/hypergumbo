@@ -61,7 +61,7 @@ repos.
 
 Confidence Scores
 -----------------
-Base confidence is tiered: 0.99 manifest-declared CLI; 0.95 most
+Base confidence is tiered: 0.99 a package's declared executable; 0.95 most
 framework-pattern concepts (route_handler, go_http_handler, form, serializer,
 servlet, ipc_handler and application take 0.90); 0.90 generic/route-marker
 pass; 0.85 structural (shell script, HTML entry, main guard); 0.80 language
@@ -85,10 +85,10 @@ Connectivity Boost (concept-based only):
   the boost live on `rank_score`, which is what ordering uses (ADR-0039).
 - `rank_score` clamps at 1.0, so connected entries tie there. Entries of
   EQUAL rank_score order by what the entry IS (``entry_kind_tie_rank``): a
-  manifest-declared script, then a program start (``PROGRAM_START_KINDS``,
-  the program-start role of the entrypoint-kind registry: a ``main``, a
-  ``__main__`` guard, Electron's main script), then routes and every other
-  kind; then
+  package's declared executable (``package_executable``), then a program
+  start (``PROGRAM_START_KINDS``, the program-start role of the
+  entrypoint-kind registry: a ``main``, a ``__main__`` guard, Electron's main
+  script), then routes and every other kind; then
   by detection `confidence`, then language weight, then effective
   out-degree, then path, start line, name and symbol id: a total order, so
   neither detection order nor the hash seed decides it (``_rank_order``).
@@ -200,6 +200,7 @@ from .entrypoint_kinds import (
     ROLE_REQUEST_INGRESS,
     EntrypointKind as EntrypointKind,
     all_known_entrypoint_kinds as all_known_entrypoint_kinds,
+    kind_tie_rank,
     kinds_with_role,
 )
 from .ir import Symbol, Edge
@@ -303,17 +304,18 @@ REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(
 
 #: The entrypoint kinds that START A PROGRAM: the program-start role of the
 #: entrypoint-kind registry. Ruled closed on 2026-11-21 (audit 0027): the
-#: convention ``main`` (and, until WI-fasij moves them, what detection files
-#: under that kind: an ``application`` object such as an IOApp, and the
-#: Verilog top module), a module ``__main__`` guard and Electron's
-#: main-process script. Among entries of equal ``rank_score`` they come after
-#: a manifest-declared script and before every other kind
-#: (:func:`entry_kind_tie_rank`); ``slice --entry auto`` gives them its 2x
-#: boost and picks the repository's own Go binary among them; the INV-hosuh
-#: dedup groups them by file. A CLI framework's parse call (argparse, fire,
-#: kong, OptionParser) is not detected: it is a call, and the YAML rows that
-#: named it were ``decorator:`` rows, which match decorator syntax only
-#: (audit 0027).
+#: package's declared executables (``package_executable``), the convention
+#: ``main`` (and, until WI-fasij moves them, what detection files under that
+#: kind: an ``application`` object such as an IOApp, and the Verilog top
+#: module), a module ``__main__`` guard and Electron's main-process script.
+#: Among entries of equal ``rank_score`` the declared executables come first,
+#: then the other program starts, then every other kind
+#: (:func:`entry_kind_tie_rank`); ``slice --entry auto`` gives them all its
+#: 2x boost and picks the repository's own Go binary among them; the
+#: INV-hosuh dedup groups them by file. A CLI framework's parse call
+#: (argparse, fire, kong, OptionParser) is not detected: it is a call, and
+#: the YAML rows that named it were ``decorator:`` rows, which match
+#: decorator syntax only (audit 0027).
 PROGRAM_START_KINDS: frozenset[EntrypointKind] = kinds_with_role(ROLE_PROGRAM_START)
 
 
@@ -331,27 +333,20 @@ APPLICATION_KINDS: frozenset[EntrypointKind] = kinds_with_role(*APPLICATION_ROLE
 def entry_kind_tie_rank(ep: "Entrypoint") -> int:
     """The first key among entries of equal ``rank_score``: 0, 1 or 2.
 
-    0. a manifest-declared script (``meta.evidence_type ==
-       "manifest_declared"``: a package.json ``bin``, a Cargo ``[[bin]]``, a
-       pyproject ``[project.scripts]`` entry);
-    1. a program start (``kind`` in :data:`PROGRAM_START_KINDS`);
+    0. the package's declared executable (``package_executable``: a
+       package.json ``bin``, a Cargo ``[[bin]]``, a pyproject
+       ``[project.scripts]`` entry);
+    1. any other program start (``kind`` in :data:`PROGRAM_START_KINDS`);
     2. everything else: routes, handlers, commands a framework registers,
        exports, scripts found by their shape.
 
-    Read from two fields the entry carries, never from its name or label.
-    The evidence type is needed because a manifest script shares its kind
-    (``cli_command``) with a framework command and a ``cmd_<name>``
-    function. An entry built without :meth:`Entrypoint.create` has no
-    evidence type and ranks by its kind. Owner ruling 2026-11-19 (ADR-0039,
-    ruling 3 as amended): the order among ties is by what the entry IS;
-    detection ``confidence`` measures how sure detection is and orders only
-    after this.
+    Read from the entry's kind alone (``entrypoint_kinds.kind_tie_rank``),
+    never from its name, label or ``evidence_type``. Owner ruling 2026-11-19
+    (ADR-0039, ruling 3 as amended): the order among ties is by what the
+    entry IS; detection ``confidence`` measures how sure detection is and
+    orders only after this.
     """
-    if (ep.meta or {}).get("evidence_type") == "manifest_declared":
-        return 0
-    if ep.kind in PROGRAM_START_KINDS:
-        return 1
-    return 2
+    return kind_tie_rank(ep.kind)
 
 
 # --- Entrypoint provenance vocabularies (WI-rukam) -------------------
@@ -997,12 +992,15 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.CLI_COMMAND)
 
-            # Manifest-declared CLI entry points (highest confidence)
+            # A package's declared executables -> PACKAGE_EXECUTABLE (a
+            # program start, ruled 2026-11-21; highest confidence).
             # npm_bin: package.json "bin" entries
             # cargo_binary: Cargo.toml [[bin]] entries
             # pyproject_script: pyproject.toml [project.scripts] entries
+            # Until SCHEMA_VERSION 0.22.0 these were CLI_COMMAND, the kind of
+            # a framework subcommand, told apart only by evidence_type.
             elif concept_type in ("npm_bin", "cargo_binary", "pyproject_script"):
-                if EntrypointKind.CLI_COMMAND in added_kinds:
+                if EntrypointKind.PACKAGE_EXECUTABLE in added_kinds:
                     continue
                 if concept_type == "npm_bin":
                     label = f"npm CLI: {sym.name}"
@@ -1012,13 +1010,13 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"Python CLI: {sym.name}"
                 entrypoints.append(Entrypoint.create(
                     symbol_id=sym.id,
-                    kind=EntrypointKind.CLI_COMMAND,
+                    kind=EntrypointKind.PACKAGE_EXECUTABLE,
                     confidence=0.99,  # Declared in manifest - highest confidence
                     label=label,
                     source="concept_detector",
                     evidence_type="manifest_declared",
                 ))
-                added_kinds.add(EntrypointKind.CLI_COMMAND)
+                added_kinds.add(EntrypointKind.PACKAGE_EXECUTABLE)
 
             # LiveView concept -> CONTROLLER (real-time UI is an entry point)
             elif concept_type == "liveview":

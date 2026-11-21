@@ -133,8 +133,8 @@ def test_every_role_is_told_apart_by_some_reader() -> None:
 
 def test_ruling_program_start_is_closed() -> None:
     assert kinds_with_role(ROLE_PROGRAM_START) == {
-        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD,
-        EntrypointKind.ELECTRON_MAIN,
+        EntrypointKind.PACKAGE_EXECUTABLE, EntrypointKind.MAIN_FUNCTION,
+        EntrypointKind.MAIN_GUARD, EntrypointKind.ELECTRON_MAIN,
     }, RULING
 
 
@@ -150,6 +150,7 @@ def test_ruling_android_application_is_a_hosted_application() -> None:
 def test_ruled_roles_are_marked_ruled_and_go_handler_is_not_ruled() -> None:
     ruled = {s.kind for s in ENTRYPOINT_KINDS if s.ruling == K.RULED}
     assert ruled == {
+        EntrypointKind.PACKAGE_EXECUTABLE,
         EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD,
         EntrypointKind.ELECTRON_MAIN, EntrypointKind.SHELL_SCRIPT,
         EntrypointKind.SCRIPT_MODULE, EntrypointKind.ANDROID_APPLICATION,
@@ -244,6 +245,7 @@ def test_electron_main_ranks_with_the_program_starts() -> None:
     ({"concept": "app_bootstrap", "framework": "react"}, "Hosted Applications"),
     ({"concept": "entrypoint", "framework": "electron"}, "CLI & Scripts"),
     ({"concept": "command", "framework": "click"}, "CLI & Scripts"),
+    ({"concept": "npm_bin", "framework": "config-conventions"}, "CLI & Scripts"),
 ])
 def test_sketch_files_each_kind_under_its_role(concept: dict, heading: str) -> None:
     """Four of these fell through to "Other" before the registry."""
@@ -573,6 +575,43 @@ def test_an_entry_built_directly_ranks_by_its_role() -> None:
     bare = Entrypoint(symbol_id="x:1", kind=EntrypointKind.ELECTRON_MAIN,
                       confidence=0.9, label="e")
     assert entry_kind_tie_rank(bare) == 1
+
+
+# ---------------------------------------------------------------- the manifest's executables
+
+
+def test_ruling_a_manifest_executable_is_a_program_start_in_slice_auto_too() -> None:
+    """The manifest's executables have a kind of their own, in the
+    program-start role: the slice boost reads PROGRAM_START_KINDS."""
+    assert EntrypointKind.PACKAGE_EXECUTABLE in PROGRAM_START_KINDS, RULING
+    assert role_of(EntrypointKind.PACKAGE_EXECUTABLE) == ROLE_PROGRAM_START, RULING
+
+
+@pytest.mark.parametrize(("concept", "kind", "language"), [
+    ("npm_bin", "bin", "json"),
+    ("cargo_binary", "binary", "toml"),
+    ("pyproject_script", "file", "toml"),
+])
+def test_each_manifest_concept_builds_a_package_executable(
+    concept: str, kind: str, language: str,
+) -> None:
+    sym = _sym("tool", f"manifest.{language}", kind=kind, language=language,
+               concepts=[{"concept": concept, "framework": "config-conventions"}])
+    (ep,) = detect_entrypoint_candidates([sym], [])
+    assert ep.kind is EntrypointKind.PACKAGE_EXECUTABLE
+    assert ep.meta["evidence_type"] == "manifest_declared" and ep.confidence == 0.99
+
+
+def test_the_tie_rank_reads_the_kind_not_the_evidence_type() -> None:
+    """ADR-0028: ``evidence_type`` names the pathway. A subcommand that some
+    producer stamped ``manifest_declared`` is still a subcommand."""
+    cmd = Entrypoint.create(symbol_id="x:1", kind=EntrypointKind.CLI_COMMAND,
+                            confidence=0.99, label="x", source="concept_detector",
+                            evidence_type="manifest_declared")
+    exe = Entrypoint(symbol_id="x:2", kind=EntrypointKind.PACKAGE_EXECUTABLE,
+                     confidence=0.99, label="y")
+    assert (entry_kind_tie_rank(cmd), entry_kind_tie_rank(exe)) == (2, 0)
+    assert K.kind_tie_rank(EntrypointKind.MAIN_GUARD) == 1
 
 
 def _ranked(sid: str, kind: EntrypointKind, rank: float) -> Entrypoint:
