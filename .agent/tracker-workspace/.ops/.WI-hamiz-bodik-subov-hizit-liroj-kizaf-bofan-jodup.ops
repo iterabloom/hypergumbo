@@ -1,0 +1,20 @@
+- op: create  # 367c
+  at: '2026-11-21T06:27:17Z'  # 367c
+  by: agent  # 367c
+  actor: jgstern_agent  # 367c
+  clock: 1  # 367c
+  nonce: 367c  # 367c
+  data:  # 367c
+    kind: work_item  # 367c
+    title: "Entry kind go_handler is language-named, has a live producer, and has no fold target."  # 367c
+    status: todo_soft  # 367c
+    priority: 3  # 367c
+    parent:  # 367c
+    tags:  # 367c
+    - entrypoints  # 367c
+    isbefore: []  # 367c
+    duplicate_of: []  # 367c
+    not_duplicate_of: []  # 367c
+    pr_ref:  # 367c
+    description: "Entry kind go_handler is language-named, has a live producer, and has no fold target.\n\nThe entry-point-kinds audit (docs/audits/0027) left go_handler unruled: it is named for a language (ADR-0027: a kind names what a thing is, not its language or framework), it has a live producer (a Go ServeHTTP method), and taint.py (~4630, ~4651) reads the value. The other framework-named kinds FOLD into http_route / controller, but a ServeHTTP method has no route path, so http_route does not fit as it stands. Options: a language-neutral request-handler kind (go_handler becomes one producer of it), or fold into http_route with an absent path. Needs an owner decision. Repro: survey caddy and list entries of kind go_handler; grep go_handler packages/hypergumbo-core/src/hypergumbo_core/taint.py."  # 367c
+    fields: {}  # 367c

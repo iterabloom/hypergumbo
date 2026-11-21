@@ -1,0 +1,20 @@
+- op: create  # 0487
+  at: '2026-11-21T08:33:51Z'  # 0487
+  by: agent  # 0487
+  actor: jgstern_agent  # 0487
+  clock: 1  # 0487
+  nonce: '0487'  # 0487
+  data:  # 0487
+    kind: work_item  # 0487
+    title: "15 framework rows are keyed on decorator: for attribute-shaped names the analyzers record elsewhere; none can match"  # 0487
+    status: todo_hard  # 0487
+    priority: 2  # 0487
+    parent:  # 0487
+    tags:  # 0487
+    - frameworks  # 0487
+    isbefore: []  # 0487
+    duplicate_of: []  # 0487
+    not_duplicate_of: []  # 0487
+    pr_ref:  # 0487
+    description: "Repro on dev: a C# method with [Fact] or [Test], or a Rust fn with #[test]: the node carries meta.annotations, gets no test_function concept, and the file's only entry is a library_export. Only py, js_ts, java, kotlin, scala and groovy write meta.decorators. Rows (sweep/wrong_field_rows.txt): test-frameworks.yaml x9 (test, bench, Test, Fact, Theory, TestMethod), language-conventions.yaml shader_entrypoint x3 (vertex, fragment, compute), laravel.yaml 'implements ShouldQueue' x2, plug.yaml 'conn'. The fix is the matcher key; it changes detection, so it needs an A/B on repos in those languages.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # 0487
+    fields: {}  # 0487

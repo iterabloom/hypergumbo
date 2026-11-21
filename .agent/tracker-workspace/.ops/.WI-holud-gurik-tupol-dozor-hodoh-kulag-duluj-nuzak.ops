@@ -25,3 +25,17 @@
   clock: 2  # f080
   nonce: f080  # f080
   message: "OWNER RULING 2026-11-20: this is the domain of the overdue fundamental concept audit (run after PR 6), not a PR 6 item. Record: after_fast_smart_test_grouping.md amendment 6."  # f080
+- op: discuss  # 2709
+  at: '2026-11-21T06:18:36Z'  # 2709
+  by: agent  # 2709
+  actor: jgstern_agent  # 2709
+  clock: 3  # 2709
+  nonce: '2709'  # 2709
+  message: "OWNER RULINGS 2026-11-21 (after the concept audit docs/audits/0027 and its review against ADR-0024/0027/0028/0039/0056): (1) program start = manifest bin, convention main, main_guard, electron_main only; shell_script/script_module stay fallback; android_application and the Verilog top module are hosted application. (2) server-hosted app objects (15 rows) move to a new kind hosted_application ranked with routes; the other 18 application rows split four ways; ships only if a service with no main still auto-slices from its app or a covering route (A/B). (3) delete cli_main, the 21 framework-named kinds and electron_renderer; add a producer for electron_preload; SCHEMA_VERSION 0.22.0. Built as one PR, in order: WI-jilik (dead kinds) -> WI-giron (entrypoint-kind axis registry, roles) -> WI-fasij (hosted_application + dedup fix). Residual: WI-rafop (concept names no detector reads). Ranking question 1 of this item is answered by rulings 1-2; the concept question 2 by the audit."  # 2709
+- op: discuss  # d859
+  at: '2026-11-21T06:32:48Z'  # d859
+  by: agent  # d859
+  actor: jgstern_agent  # d859
+  clock: 4  # d859
+  nonce: d859  # d859
+  message: "Merged as PR #2312, dev SHA c54c3f52a5df."  # d859

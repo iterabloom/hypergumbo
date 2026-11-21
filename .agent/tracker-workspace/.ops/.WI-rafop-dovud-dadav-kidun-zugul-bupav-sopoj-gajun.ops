@@ -1,0 +1,20 @@
+- op: create  # 3012
+  at: '2026-11-21T06:18:20Z'  # 3012
+  by: agent  # 3012
+  actor: jgstern_agent  # 3012
+  clock: 1  # 3012
+  nonce: '3012'  # 3012
+  data:  # 3012
+    kind: work_item  # 3012
+    title: "Framework YAML concept names that no detector arm reads produce nothing and no error."  # 3012
+    status: todo_soft  # 3012
+    priority: 3  # 3012
+    parent:  # 3012
+    tags:  # 3012
+    - entrypoints  # 3012
+    isbefore: []  # 3012
+    duplicate_of: []  # 3012
+    not_duplicate_of: []  # 3012
+    pr_ref:  # 3012
+    description: "Framework YAML concept names that no detector arm reads produce nothing and no error.\n\nCOBOL's program_entrypoint and micronaut's scheduled are concept names no entry detector reads, so the rows produce no entry and no warning: the concept vocabulary has no registry. Repro: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/yaml_inventory.py lists concept names per YAML against the detector arms. Fix direction: a concept-name registry with a load-time check (unknown concept = error), then decide each orphan (wire or delete). Found by the entry-point-kinds concept audit (docs/audits/0027), 2026-11-20."  # 3012
+    fields: {}  # 3012
