@@ -6,7 +6,9 @@
 #
 # Entrypoint detection uses USAGE-BASED patterns (v1.1.x) because
 # app.whenReady() and app.on('ready') are call expressions, not decorators.
-# The JS/TS analyzer emits UsageContext records for these calls.
+# The JS/TS analyzer emits UsageContext records for these calls, and for the
+# two facts that name a preload script (a contextBridge exposure, a literal
+# webPreferences.preload path).
 
 # Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
 # reads decorator / annotation syntax only, so a call never matched them.
@@ -37,15 +39,30 @@ patterns:
       name: "^app\\.(on|once)$"
       position: "^caller$"
 
-  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Electron preload script: a file that exposes an API to the page through
+  # contextBridge. The JS/TS analyzer emits a caller-position UsageContext on
+  # the FILE for the call (contextBridge.<method> or <x>.contextBridge.<method>),
+  # so the concept lands on the preload file -> electron_preload entry.
+  - concept: api_bridge
+    usage:
+      kind: "^call$"
+      name: "^contextBridge\\.(exposeInMainWorld|exposeInIsolatedWorld)$"
+      position: "^caller$"
 
+  # Electron preload script: the file a window's webPreferences.preload names,
+  # where the path is a literal off __dirname that resolves to an analysed file
+  # (path.join / path.resolve / join / resolve, __dirname + '...', or a
+  # template). The UsageContext's symbol_ref is that file -> electron_preload.
+  - concept: preload_script
+    usage:
+      kind: "^call$"
+      name: "^webPreferences\\.preload$"
+      position: "^webPreferences\\.preload$"
+
+  # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Electron renderer process IPC
   - concept: ipc_sender
     decorator: "^ipcRenderer\\.(send|invoke|sendSync)$"
-
-  # Electron contextBridge exposure
-  - concept: api_bridge
-    decorator: "^contextBridge\\.exposeInMainWorld$"
 
   # Electron BrowserWindow creation
   - concept: window

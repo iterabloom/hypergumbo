@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **320** (live: 44, inert: 275, ghost: 1).
+Total concepts: **321** (live: 46, inert: 274, ghost: 1).
 
 ## Inventory
 
@@ -19,7 +19,7 @@ Total concepts: **320** (live: 44, inert: 275, ghost: 1).
 | `admin` | inert | django, padrino | _(none)_ |
 | `android_component` | inert | config-conventions | _(none)_ |
 | `android_permission` | inert | config-conventions | _(none)_ |
-| `api_bridge` | inert | electron | _(none)_ |
+| `api_bridge` | live | electron | `entrypoints.py` |
 | `api_contract` | inert | vertx | _(none)_ |
 | `api_doc` | inert | javalin, scalatra | _(none)_ |
 | `api_handler` | inert | nextjs, nuxt | _(none)_ |
@@ -209,6 +209,7 @@ Total concepts: **320** (live: 44, inert: 275, ghost: 1).
 | `poetry_dependency` | inert | config-conventions | _(none)_ |
 | `poetry_dev_dependency` | inert | config-conventions | _(none)_ |
 | `policy` | inert | laravel, rails | _(none)_ |
+| `preload_script` | live | electron | `entrypoints.py` |
 | `program_entrypoint` | inert | language-conventions | _(none)_ |
 | `prompt_handler` | inert | mcp, mcp-python | _(none)_ |
 | `property` | inert | qt | _(none)_ |
