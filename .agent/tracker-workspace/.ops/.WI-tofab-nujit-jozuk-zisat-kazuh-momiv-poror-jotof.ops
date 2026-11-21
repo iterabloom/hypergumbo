@@ -1,0 +1,20 @@
+- op: create  # b7d9
+  at: '2026-11-21T20:52:40Z'  # b7d9
+  by: agent  # b7d9
+  actor: jgstern_agent  # b7d9
+  clock: 1  # b7d9
+  nonce: b7d9  # b7d9
+  data:  # b7d9
+    kind: work_item  # b7d9
+    title: "A class with base Application gets both the tornado and the aiohttp concept, so an aiohttp app is labelled 'Tornado application'"  # b7d9
+    status: todo_hard  # b7d9
+    priority: 3  # b7d9
+    parent:  # b7d9
+    tags:  # b7d9
+    - frameworks  # b7d9
+    isbefore: []  # b7d9
+    duplicate_of: []  # b7d9
+    not_duplicate_of: []  # b7d9
+    pr_ref:  # b7d9
+    description: "Repro: fixtures/rows/py in the evidence directory, class AApp(web.Application) from aiohttp: the entry is hosted_application with label 'Tornado application'. Both YAMLs key on the bare base-class name Application; the import that would tell them apart is not consulted. Check the same collision for every base-class row whose name is shared by two frameworks.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/fasij/RESULTS.md. Found while building the entry-kind PR (2026-11-21)."  # b7d9
+    fields: {}  # b7d9

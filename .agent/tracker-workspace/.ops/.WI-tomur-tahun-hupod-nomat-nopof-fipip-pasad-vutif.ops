@@ -1,0 +1,20 @@
+- op: create  # d4b0
+  at: '2026-11-21T08:35:54Z'  # d4b0
+  by: agent  # d4b0
+  actor: jgstern_agent  # d4b0
+  clock: 1  # d4b0
+  nonce: d4b0  # d4b0
+  data:  # d4b0
+    kind: work_item  # d4b0
+    title: "javalin rows such as ^@OpenApi$ include a literal @; whether java.py records annotation names with @ is not checked"  # d4b0
+    status: todo_soft  # d4b0
+    priority: 3  # d4b0
+    parent:  # d4b0
+    tags:  # d4b0
+    - frameworks  # d4b0
+    isbefore: []  # d4b0
+    duplicate_of: []  # d4b0
+    not_duplicate_of: []  # d4b0
+    pr_ref:  # d4b0
+    description: "If java.py writes annotation names without the @, these rows never match. Check: analyse a Java method annotated @OpenApi in a javalin project and read meta.decorators on the node; then grep every framework YAML for decorator patterns that require a leading @ (as opposed to ^@?Name$) and test each against its analyzer's recorded form.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # d4b0
+    fields: {}  # d4b0

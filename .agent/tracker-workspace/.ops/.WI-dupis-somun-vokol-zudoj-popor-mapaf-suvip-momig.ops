@@ -1,0 +1,20 @@
+- op: create  # 6f2d
+  at: '2026-11-21T20:52:34Z'  # 6f2d
+  by: agent  # 6f2d
+  actor: jgstern_agent  # 6f2d
+  clock: 1  # 6f2d
+  nonce: 6f2d  # 6f2d
+  data:  # 6f2d
+    kind: work_item  # 6f2d
+    title: "9 application-detecting framework rows can never fire: F#, R, Haskell and Lua analyzers emit no usage contexts or base classes"  # 6f2d
+    status: todo_hard  # 6f2d
+    priority: 2  # 6f2d
+    parent:  # 6f2d
+    tags:  # 6f2d
+    - frameworks  # 6f2d
+    isbefore: []  # 6f2d
+    duplicate_of: []  # 6f2d
+    not_duplicate_of: []  # 6f2d
+    pr_ref:  # 6f2d
+    description: "Rows that stay in the YAML after the entry-kind PR and match nothing: giraffe.yaml:77 (F# emits no usage contexts); plumber.yaml:17, plumber.yaml:23, shiny.yaml:17 (R emits no usage contexts); openresty.yaml:53 lapis (Lua writes no base classes); servant.yaml:90, yesod.yaml:64, yesod.yaml:68 (Haskell writes no base classes); http4s.yaml:149 IOApp.Simple (the Scala analyzer records no dotted base class). Line numbers at branch commit 89e5af4c1. So a Giraffe, Plumber, Shiny, Lapis, Servant or Yesod service gets no hosted_application entry. Repro: fixtures/rows/{fs,r,hs,lua,scala} in the evidence directory, both arms. The same cause made 9 more rows dead (javalin:17 Java usage context, qt:56 C++, scotty x3 and yesod:56 Haskell start calls, yesod x3 Template Haskell); those were removed by the PR's owner ruling. Fix is in the analyzers (usage contexts / base classes), per language, each with an A/B.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/fasij/RESULTS.md. Found while building the entry-kind PR (2026-11-21)."  # 6f2d
+    fields: {}  # 6f2d
