@@ -5820,3 +5820,54 @@ class TestPerSymbolDedupKeepsMostConfidentKind:
         )
         eps = detect_entrypoints([sym], [])
         assert [e.kind for e in eps] == [EntrypointKind.HTTP_ROUTE]
+
+
+class TestGoOwnBinary:
+    """The pure halves of ``slice --entry auto``'s own-program rule."""
+
+    @pytest.mark.parametrize(("constraint", "ignored"), [
+        ("ignore", True),
+        ("ignore && linux", True),
+        ("(ignore)", True),
+        ("linux && (ignore)", True),
+        ("ignore || linux", False),   # built on linux
+        ("ignore && linux || darwin", False),  # built on darwin
+        ("!ignore", False),
+        ("linux", False),
+        ("ignored_tag", False),
+        (None, False),
+        (7, False),                   # not a string: no constraint read
+    ])
+    def test_go_build_ignored(self, constraint, ignored):
+        from hypergumbo_core.entrypoints import go_build_ignored
+
+        meta = {} if constraint is None else {"build_constraint": constraint}
+        sym = make_symbol("main", path="gen.go", language="go", meta=meta)
+        assert go_build_ignored(sym) is ignored
+
+    @pytest.mark.parametrize(("module", "name"), [
+        ("github.com/caddyserver/caddy/v2", "caddy"),
+        ("github.com/containers/podman/v6", "podman"),
+        ("github.com/jesseduffield/lazygit", "lazygit"),
+        ("forgejo.org", "forgejo.org"),
+        ("v2", "v2"),                          # a one-element path keeps it
+        ("example.com/tool/v2beta", "v2beta"),  # not a major-version suffix
+    ])
+    def test_go_module_binary_name(self, module, name):
+        from hypergumbo_core.entrypoints import go_module_binary_name
+
+        assert go_module_binary_name(module) == name
+
+    @pytest.mark.parametrize(("package_dir", "builds"), [
+        ("", True),
+        ("cmd/caddy", True),
+        ("caddy", True),
+        ("cmd/caddy-helper", False),
+        ("cmd/amtool", False),
+        ("tools/caddy/gen", False),
+    ])
+    def test_builds_go_module_binary(self, package_dir, builds):
+        from hypergumbo_core.entrypoints import builds_go_module_binary
+
+        assert builds_go_module_binary(
+            package_dir, "github.com/caddyserver/caddy/v2") is builds

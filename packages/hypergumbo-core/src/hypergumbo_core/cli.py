@@ -322,8 +322,9 @@ import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
 from .entrypoints import (
-    PROGRAM_START_KINDS, apply_rank_floor_and_cap, detect_entrypoint_candidates,
-    detect_entrypoints, path_rank_penalties, request_ingress_entries,
+    PROGRAM_START_KINDS, apply_rank_floor_and_cap, builds_go_module_binary,
+    detect_entrypoint_candidates, detect_entrypoints, go_build_ignored,
+    path_rank_penalties, request_ingress_entries,
 )
 from .routes import is_route, method_token, protocol_method_token, route_of
 # INV-nosoz: one registry-backed answer to "is this an inheritance edge?"
@@ -353,6 +354,7 @@ from .selection.filters import is_excluded_kind
 from .limits import Limits
 from .tier_filter import apply_tier_filter
 from .supply_chain import (
+    own_package_name,
     DERIVED_PATH_PATTERNS,
     FileClassification,
     classify_file,
@@ -1938,6 +1940,56 @@ def _read_view_wants_json(args: argparse.Namespace) -> bool:
     )
 
 
+def _own_go_program_mains(
+    entrypoints: List[Any], symbols: Dict[str, Symbol], repo_root: Path,
+) -> List[Any]:
+    """The program starts that build the repository's own Go binary.
+
+    ``slice --entry auto`` prefers these over every other entry point. A
+    repository holds tool mains beside its program (podman's binding
+    generator, lazygit's test injector, forgejo's ``build/`` scripts), and
+    a tool that calls many functions directly outscores a program whose
+    ``main`` is a thin wrapper. What tells them apart is the build, not the
+    call graph: Go names a main package's binary after its directory (the
+    module root's after the module path), so the binary carrying the root
+    go.mod's module name is the repository's own program
+    (``entrypoints.builds_go_module_binary``).
+
+    A main counts when it is a program start in production code
+    (``path_rank_penalties`` empty), its file is in a build
+    (``go_build_ignored`` false), the nearest go.mod above it is the one at
+    ``repo_root`` (a nested go.mod is another module, kserve's ``qpext``),
+    and its directory builds that module's binary. Empty when there is no
+    go.mod at ``repo_root`` or no main matches; the pick is then the
+    score's alone.
+    """
+    module_path = own_package_name(repo_root / "go.mod")
+    if module_path is None:
+        return []
+    own: List[Any] = []
+    for ep in entrypoints:
+        sym = symbols[ep.symbol_id]
+        if (
+            ep.kind not in PROGRAM_START_KINDS
+            or sym.language != "go"
+            or path_rank_penalties(sym)
+            or go_build_ignored(sym)
+        ):
+            continue
+        # Node paths are relative to the repository root (the map's contract).
+        package_dir = Path(sym.path).parent
+        if any(
+            (repo_root / d / "go.mod").is_file()
+            for d in (package_dir, *package_dir.parents) if d != Path(".")
+        ):
+            continue  # a nested go.mod: another module's binary
+        if builds_go_module_binary(
+            "" if package_dir == Path(".") else package_dir.as_posix(), module_path,
+        ):
+            own.append(ep)
+    return own
+
+
 @_restores_declaration
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
@@ -2095,7 +2147,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
                 score *= factor
             return score
 
-        best = max(entrypoints, key=entry_score)
+        # The repository's own program first, when its build names one
+        # (``_own_go_program_mains``); the score picks among those, or among
+        # all entries when there is none.
+        own_program = _own_go_program_mains(entrypoints, auto_symbols, repo_root)
+        best = max(own_program or entrypoints, key=entry_score)
         entry = best.symbol_id
         out_edges = edge_src_counts.get(entry, 0)
         print(f"[hypergumbo slice] Auto-detected entry: {best.label}")

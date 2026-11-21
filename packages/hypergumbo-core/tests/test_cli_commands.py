@@ -4915,3 +4915,143 @@ def test_slice_auto_prefers_the_programs_main_over_an_example_main(
     out, _ = capsys.readouterr()
     picked = out.split("Auto-detected entry:", 1)[1].splitlines()[1].strip()
     assert picked == main["id"], out
+
+
+def _auto_pick(tmp_path: Path, capsys, nodes: list, edges: list,
+               go_mods: dict[str, str]) -> str:
+    """Run ``slice --entry auto`` on a map of ``nodes`` and ``edges`` in a
+    repository whose go.mod files are ``{directory: module path}``; the
+    symbol id picked."""
+    for d, module in go_mods.items():
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+        (tmp_path / d / "go.mod").write_text(f"module {module}\n\ngo 1.22\n")
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(
+        {"schema_version": "0.1.0", "nodes": nodes, "edges": edges}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    assert cmd_slice(args) == 0
+    out, _ = capsys.readouterr()
+    return out.split("Auto-detected entry:", 1)[1].splitlines()[1].strip()
+
+
+def _tool_and_program(program_path: str, tool_path: str, ignored: bool = False):
+    """A thin-wrapper program main (main -> run -> 30 functions) and a tool
+    main that calls 20 functions directly, so the tool wins on out-degree."""
+    main = _go_fn("main", program_path)
+    run = _go_fn("run", program_path.rsplit("/", 1)[0] + "/run.go"
+                 if "/" in program_path else "run.go")
+    work = [_go_fn(f"w{i}", "internal/app/work.go", 10 * (i + 1)) for i in range(30)]
+    tool = _go_fn("main", tool_path)
+    if ignored:
+        tool["meta"]["build_constraint"] = "ignore"
+    tool_work = [_go_fn(f"t{i}", tool_path.rsplit("/", 1)[0] + "/lib.go"
+                        if "/" in tool_path else "genlib.go", 10 * (i + 1))
+                 for i in range(20)]
+    edges = [_call(1, main, run)]
+    edges += [_call(10 + i, run, w) for i, w in enumerate(work)]
+    edges += [_call(100 + i, tool, w) for i, w in enumerate(tool_work)]
+    return main, tool, [main, run, *work, tool, *tool_work], edges
+
+
+@pytest.mark.parametrize(("module", "program", "tool"), [
+    # cmd/<name>, the name being the module's last element after /vN
+    ("example.com/podman/v6", "cmd/podman/main.go", "pkg/bindings/generator/generator.go"),
+    # the module root's own package
+    ("example.com/lazygit", "main.go", "pkg/integration/injector/main.go"),
+    ("forgejo.org", "main.go", "build/lint/bin/lint.go"),
+])
+def test_slice_auto_prefers_the_main_that_builds_the_modules_binary(
+    tmp_path: Path, capsys, module: str, program: str, tool: str,
+) -> None:
+    """A tool main in a production path (a code generator, a test injector)
+    with more direct calls outscored the program's thin-wrapper main. Go
+    names a main package's binary after its directory, and the module
+    root's after the module path (without a /vN suffix), so the main whose
+    binary carries the root module's name is the repository's own program:
+    it is picked whatever its out-degree."""
+    main, tool, nodes, edges = _tool_and_program(program, tool)
+    assert _auto_pick(tmp_path, capsys, nodes, edges, {"": module}) == main["id"]
+
+
+def test_slice_auto_a_build_ignored_file_is_no_module_binary(
+    tmp_path: Path, capsys,
+) -> None:
+    """``//go:build ignore`` keeps a file out of every build (a ``go run``
+    generator): a ``main`` in such a file at the module root is not the
+    module's binary, even though its directory is the root."""
+    main, tool, nodes, edges = _tool_and_program(
+        "cmd/app/main.go", "mkversion.go", ignored=True)
+    assert _auto_pick(tmp_path, capsys, nodes, edges,
+                      {"": "example.com/app"}) == main["id"]
+
+
+@pytest.mark.parametrize("go_mods", [
+    {},                                              # no go.mod at all
+    {"": "example.com/other"},                       # no main named for it
+    {"": "example.com/app", "sub": "example.com/app/sub"},  # main in a nested module
+])
+def test_slice_auto_without_the_modules_binary_keeps_the_score(
+    tmp_path: Path, capsys, go_mods: dict[str, str],
+) -> None:
+    """Without a main that builds the root module's binary (no go.mod, a
+    module named for none of the mains, or the only match inside another
+    module), the pick is the score's, as before."""
+    program = "sub/cmd/app/main.go" if "sub" in go_mods else "cmd/app/main.go"
+    main, tool, nodes, edges = _tool_and_program(program, "pkg/injector/main.go")
+    assert _auto_pick(tmp_path, capsys, nodes, edges, go_mods) == tool["id"]
+
+def test_slice_auto_a_module_named_main_under_examples_is_not_the_program(
+    tmp_path: Path, capsys,
+) -> None:
+    """A main in a directory named for the module counts only in production
+    code: ``examples/app`` is example code (penalized), so the score picks."""
+    program = _go_fn("main", "cmd/other/main.go")
+    other = _go_fn("helper", "cmd/other/helper.go")
+    tool = _go_fn("main", "examples/app/main.go")
+    work = [_go_fn(f"t{i}", "pkg/t/lib.go", 10 * (i + 1)) for i in range(8)]
+    edges = [_call(1, program, other)]
+    edges += [_call(100 + i, tool, w) for i, w in enumerate(work)]
+    picked = _auto_pick(tmp_path, capsys, [program, other, tool, *work], edges,
+                        {"": "example.com/app"})
+    assert picked == program["id"]
+
+
+def test_slice_auto_a_python_main_builds_no_go_binary(
+    tmp_path: Path, capsys,
+) -> None:
+    """A Python ``main`` in ``app/`` is not the Go module ``example.com/app``'s
+    binary, so it is not preferred: the score picks the Go tool."""
+    py_main = _go_fn("main", "app/main.py")
+    py_main.update(id="python:app/main.py:1-3:main:function", language="python")
+    main, tool, nodes, edges = _tool_and_program("cmd/other/main.go",
+                                                 "pkg/injector/main.go")
+    picked = _auto_pick(tmp_path, capsys, [*nodes, py_main], edges,
+                        {"": "example.com/app"})
+    assert picked == tool["id"]
+
+
+def test_slice_auto_only_a_program_start_builds_the_binary(
+    tmp_path: Path, capsys,
+) -> None:
+    """An exported Go function in ``app/`` (a library export, not a program
+    start) is not the module's binary: the score picks the Go tool."""
+    export = _go_fn("Serve", "app/serve.go")
+    export["meta"] = {"concepts": [{"concept": "library_export"}]}
+    helpers = [_go_fn(f"s{i}", "app/helpers.go", 10 * (i + 1)) for i in range(5)]
+    main, tool, nodes, edges = _tool_and_program("cmd/other/main.go",
+                                                 "pkg/injector/main.go")
+    edges += [_call(300 + i, export, h) for i, h in enumerate(helpers)]
+    picked = _auto_pick(tmp_path, capsys, [*nodes, export, *helpers], edges,
+                        {"": "example.com/app"})
+    assert picked == tool["id"]

@@ -1631,6 +1631,53 @@ def path_rank_penalties(sym: Symbol) -> list[float]:
     return factors
 
 
+def go_build_ignored(sym: Symbol) -> bool:
+    """True when ``sym``'s Go file is kept out of every build by ``ignore``.
+
+    A file whose ``//go:build`` constraint (``meta.build_constraint``, set
+    by the Go analyzer) requires the tag ``ignore`` is in no package build:
+    it is a standalone program run with ``go run file.go``, by convention a
+    code generator (podman's ``pkg/bindings/generator/generator.go``,
+    forgejo's ``build/*.go``). Required means the tag stands alone or in a
+    conjunction with no ``||``; ``!ignore`` does not count. The legacy
+    ``// +build ignore`` line is not read (the analyzer records only
+    ``//go:build``).
+    """
+    constraint = (sym.meta or {}).get("build_constraint")
+    if not isinstance(constraint, str) or "||" in constraint:
+        return False
+    terms = constraint.replace("(", " ").replace(")", " ").split("&&")
+    return any(term.strip() == "ignore" for term in terms)
+
+
+def go_module_binary_name(module_path: str) -> str:
+    """The name ``go build`` gives the binary of a module's root package.
+
+    The last element of the module path, a major-version suffix (``/v2``)
+    dropped: ``github.com/caddyserver/caddy/v2`` builds ``caddy``.
+    """
+    elements = module_path.strip("/").split("/")
+    if len(elements) > 1 and re.fullmatch(r"v[0-9]+", elements[-1]):
+        elements.pop()
+    return elements[-1]
+
+
+def builds_go_module_binary(package_dir: str, module_path: str) -> bool:
+    """Whether the main package in ``package_dir`` builds the module's binary.
+
+    ``package_dir`` is relative to the go.mod's directory (``""`` for the
+    module root). Go names a main package's binary after the last element
+    of its import path, so the binary named for the module is built by the
+    module root's package or by a directory of that name (``cmd/caddy`` in
+    ``github.com/caddyserver/caddy/v2``). Read from the toolchain's naming
+    rule and the go.mod, never from a list of directory names.
+    """
+    package_dir = package_dir.strip("/")
+    if not package_dir:
+        return True
+    return package_dir.rsplit("/", 1)[-1] == go_module_binary_name(module_path)
+
+
 # All members are language-construct symbol kinds (ADR-0027, WI-jukav).
 # Intentionally wider than ``ranking._CALLABLE_KINDS`` — connectivity-fallback
 # entrypoints can legitimately be constructors (e.g., a service object's
