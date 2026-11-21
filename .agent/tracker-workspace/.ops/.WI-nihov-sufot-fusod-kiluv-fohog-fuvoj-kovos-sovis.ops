@@ -32,3 +32,10 @@
   clock: 3  # b6b3
   nonce: b6b3  # b6b3
   message: "OWNER RULING 2026-11-20 (export-list question): option C3. A package.json exports map keeps that package's own JS/TS exports from the library-export demotion when a production server entry exists. Measured on the 23 PR 4 repos: vite keeps its 61 exports once the alias form is detected; ripgrep and web-app rulings hold; elsewhere only 4 gemini-cli devtools exports change, entry list unchanged. C3 is built in PR 6; the aliased createServer import (part 1) follows in a later PR. Options table: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/nihov/RESULTS.md."  # b6b3
+- op: discuss  # 5329
+  at: '2026-11-21T04:35:36Z'  # 5329
+  by: agent  # 5329
+  actor: jgstern_agent  # 5329
+  clock: 4  # 5329
+  nonce: '5329'  # 5329
+  message: "Export-list question answered and built: option C3 shipped in PR #2309 (dev eaa18ee23). A JS/TS export whose nearest package.json declares a non-empty exports is not demoted; detect_entrypoints takes repo_root. 23 repos: 22 identical, gemini-cli 4 devtools exports undemoted; vite with the alias simulated keeps 61 exports. Item stays open for parts 1-4 (aliased createServer import, receiver import-based match, require form, Apollo names). Evidence: pr6/nihov/BUILD.md. Residual: WI-lozib."  # 5329

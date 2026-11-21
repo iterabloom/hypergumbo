@@ -1,0 +1,20 @@
+- op: create  # 5316
+  at: '2026-11-21T06:17:23Z'  # 5316
+  by: agent  # 5316
+  actor: jgstern_agent  # 5316
+  clock: 1  # 5316
+  nonce: '5316'  # 5316
+  data:  # 5316
+    kind: work_item  # 5316
+    title: "Make entrypoint-kind a full axis: one registry declares each kind's role, and the five kind sets derive from it."  # 5316
+    status: todo_hard  # 5316
+    priority: 2  # 5316
+    parent:  # 5316
+    tags:  # 5316
+    - entrypoints  # 5316
+    isbefore: []  # 5316
+    duplicate_of: []  # 5316
+    not_duplicate_of: []  # 5316
+    pr_ref:  # 5316
+    description: "Make entrypoint-kind a full axis: one registry declares each kind's role, and the five kind sets derive from it.\n\nEntrypoint kind is a lightweight catalog-derived axis today (WI-pupiz), but five readers branch on hand-written sets that disagree: the tie order (PROGRAM_START_KINDS), slice --entry auto's 2x boost, sketch groups (9 kinds fall to Other; electron_main is a program start only there), request-ingress kinds, and the main/guard dedup. ADR-0024: readers branching on groups of values need the registry, by-axis view (docs/concept-axes.md), drift check and property test. Roles: program start, hosted application, request ingress, scheduled, reflective, library API, test, fallback. OWNER RULING 2026-11-21: program start = manifest bin, convention main (main_function), main_guard, electron_main, and nothing else; shell_script and script_module stay fallback; android_application and the Verilog top module are hosted application. A manifest bin gets the program-start treatment in slice --entry auto too. The drift test replaces the audit's grep-based keep triggers (main_function x main_guard; mechanism-named kinds). Repro: audit/kind_sets.py prints the five sets and their disagreements. Source: concept audit docs/audits/0027-entry-point-kinds.md (2026-11-20/21) and its review against ADR-0024/0027/0028/0039/0056; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/RESULTS.md. OWNER RULING 2026-11-21 approves this change; it ships in one PR with the other two entry-kind items and one schema bump to 0.22.0."  # 5316
+    fields: {}  # 5316

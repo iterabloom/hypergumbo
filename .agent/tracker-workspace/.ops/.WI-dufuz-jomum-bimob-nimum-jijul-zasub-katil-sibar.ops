@@ -32,3 +32,18 @@
   clock: 3  # 4286
   nonce: '4286'  # 4286
   message: "OWNER RULING 2026-11-20: accept caddy's new pick (cmd/caddy/main.go, a 3-node slice because cobra dispatch is not followed; tracked in WI-babuv). Built in PR 6 (a90772337): Go mains narrowed to the one that builds the module's binary per go.mod's naming rule, ignore-tagged files excluded. Fixes lazygit, podman, forgejo; 19 other picks unchanged. Evidence: pr6/dufuz/RESULTS.md."  # 4286
+- op: update  # 263f
+  at: '2026-11-21T04:35:36Z'  # 263f
+  by: agent  # 263f
+  actor: jgstern_agent  # 263f
+  clock: 4  # 263f
+  nonce: 263f  # 263f
+  set:  # 263f
+    status: done  # 263f
+- op: discuss  # adcc
+  at: '2026-11-21T04:35:36Z'  # adcc
+  by: agent  # adcc
+  actor: jgstern_agent  # adcc
+  clock: 5  # adcc
+  nonce: adcc  # adcc
+  message: "Fixed in PR #2309 (merged to dev, eaa18ee23). Live repro on dev eaa18ee23, outputs in ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/live_repro/ dufuz_lazygit.txt: hypergumbo slice ~/curriculum_repos/lazygit --entry auto -> 'Auto-detected entry: Go main() go:main.go:15-24' (pre-PR dev: pkg/integration/clients/injector/main.go). Measured on 23 repos (pr6/dufuz/RESULTS.md): podman -> cmd/podman/main.go, forgejo -> main.go, caddy -> cmd/caddy/main.go; 19 other picks unchanged. Residuals: WI-nuvav (non-Go), WI-babuv (cobra), WI-lifar, WI-hirim."  # adcc

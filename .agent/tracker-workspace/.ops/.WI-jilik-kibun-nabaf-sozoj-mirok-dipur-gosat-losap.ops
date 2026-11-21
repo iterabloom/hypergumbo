@@ -1,0 +1,20 @@
+- op: create  # 6b47
+  at: '2026-11-21T06:17:17Z'  # 6b47
+  by: agent  # 6b47
+  actor: jgstern_agent  # 6b47
+  clock: 1  # 6b47
+  nonce: 6b47  # 6b47
+  data:  # 6b47
+    kind: work_item  # 6b47
+    title: "Remove the entry kinds nothing produces; give electron_preload a producer."  # 6b47
+    status: todo_hard  # 6b47
+    priority: 2  # 6b47
+    parent:  # 6b47
+    tags:  # 6b47
+    - entrypoints  # 6b47
+    isbefore: []  # 6b47
+    duplicate_of: []  # 6b47
+    not_duplicate_of: []  # 6b47
+    pr_ref:  # 6b47
+    description: "Remove the entry kinds nothing produces; give electron_preload a producer.\n\n24 of 49 EntrypointKind values have had no producer since #331 (1b5d12767). OWNER RULING 2026-11-21: delete cli_main, the 21 framework-named route/controller kinds (django_view, express_route, ... : FOLD into http_route / controller with the framework in meta, which is what analyzers already do; no data to migrate) and electron_renderer (covered by html_entry / script_module) from the enum, the kind sets (PROGRAM_START_KINDS, _SEMANTIC_KINDS, request-ingress kinds, sketch groups), schema and spec. Add a producer for electron_preload (a real role: Electron loads the preload script when a window is created; electron.yaml already detects contextBridge.exposeInMainWorld as api_bridge). Also delete the six decorator-keyed 'entrypoint' rows that can never fire (cli.yaml argparse and fire, cli-go.yaml kong, cli-ruby.yaml x2, akka-http.yaml) and correct the PROGRAM_START_KINDS docstring and spec text that say the parse call is detected. Schema enum changes: SCHEMA_VERSION 0.22.0 (breaking = minor). Outside readers of the removed names were not checked. Repro: audit/kind_sets.py lists the producerless kinds; a Go probe with kong.Parse inside main carries no entrypoint concept. Source: concept audit docs/audits/0027-entry-point-kinds.md (2026-11-20/21) and its review against ADR-0024/0027/0028/0039/0056; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/RESULTS.md. OWNER RULING 2026-11-21 approves this change; it ships in one PR with the other two entry-kind items and one schema bump to 0.22.0."  # 6b47
+    fields: {}  # 6b47

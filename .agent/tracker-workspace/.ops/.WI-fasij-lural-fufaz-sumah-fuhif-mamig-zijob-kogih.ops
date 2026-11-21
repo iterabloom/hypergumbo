@@ -1,0 +1,20 @@
+- op: create  # 8c0c
+  at: '2026-11-21T06:17:29Z'  # 8c0c
+  by: agent  # 8c0c
+  actor: jgstern_agent  # 8c0c
+  clock: 1  # 8c0c
+  nonce: 8c0c  # 8c0c
+  data:  # 8c0c
+    kind: work_item  # 8c0c
+    title: "Give server-hosted application objects their own entry kind, hosted_application, ranked with routes."  # 8c0c
+    status: todo_hard  # 8c0c
+    priority: 2  # 8c0c
+    parent:  # 8c0c
+    tags:  # 8c0c
+    - entrypoints  # 8c0c
+    isbefore: []  # 8c0c
+    duplicate_of: []  # 8c0c
+    not_duplicate_of: []  # 8c0c
+    pr_ref:  # 8c0c
+    description: "Give server-hosted application objects their own entry kind, hosted_application, ranked with routes.\n\nKind main_function carries 33 'application' concept rows, so Flask/FastAPI/Tornado app objects rank as program starts (mitmproxy: 'Tornado application' at #3 ahead of 24 controllers of equal score, listed under 'CLI & Scripts'). OWNER RULING 2026-11-21, four-way split of the 33 rows: 15 server-hosted app objects (Flask, FastAPI, Tornado, aiohttp, ...) -> new kind hosted_application (role hosted application, rank 2 with routes; framework in meta); 7 program starts by construction (IOApp, ZIOApp, SwiftUI App, the two app delegates) stay main_function; 6 start calls made inside a main (app.run() ...) -> no entry of their own (at most a meta tag on the main); 2 ParsableCommand types -> cli_command; 3 Yesod Template Haskell dispatch generators -> not entries (their rows produce routes or are removed). The Verilog top module and android_application take the hosted-application role. Includes the dedup bug: the INV-hosuh main/guard dedup (entrypoints.py ~1968-2003) silently drops a Tornado Application and a Flask app from any file that also has def main(); key the dedup on the guard/main pair (repro: audit/probe3/, server.py vs other.py). SHIP CONDITION (owner): an A/B on mitmproxy, full-stack-fastapi-template and a Flask repo across every reader (tie order, slice --entry auto, sketch groups, request ingress, compact seeds); a service with no main must still auto-slice from its app or a route that covers it. If that fails, stop and report. Source: concept audit docs/audits/0027-entry-point-kinds.md (2026-11-20/21) and its review against ADR-0024/0027/0028/0039/0056; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/RESULTS.md. OWNER RULING 2026-11-21 approves this change; it ships in one PR with the other two entry-kind items and one schema bump to 0.22.0."  # 8c0c
+    fields: {}  # 8c0c
