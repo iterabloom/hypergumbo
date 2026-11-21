@@ -4615,10 +4615,12 @@ def _io_primitive_names(language: str, include_community: bool) -> frozenset[str
 
 
 #: WI-sosov. Which parameter of a request handler IS its request, per
-#: ``request_ingress`` kind. ``("positional", i)`` names the i-th parameter
-#: (Express hands ``(req, res)`` to every route handler); ``("typed", T)``
-#: names the parameter whose recorded ``meta.parameters`` type is ``T`` (a Go
-#: ``http.Handler`` takes ``r *http.Request`` in either position). A kind
+#: ``request_ingress`` kind. ``("positional", i)`` names the i-th parameter;
+#: ``("typed", T)`` names the parameter whose recorded ``meta.parameters``
+#: type is ``T`` (a Go ``http.Handler`` takes ``r *http.Request`` in either
+#: position). An Express route is an ``http_route``, contracted by language
+#: below; the ``express_route`` key this table had was a kind nothing
+#: produced, removed with the kind at SCHEMA_VERSION 0.22.0. A kind
 #: absent here has NO parameter seed: Flask's ``request`` is a framework
 #: global, not a parameter, and a servlet's accessors are call-seeded by rows
 #: (WI-ritog). SHIPPED, so a seed from it has the standing of a builtin
@@ -4626,7 +4628,6 @@ def _io_primitive_names(language: str, include_community: bool) -> frozenset[str
 #: trigger: a new ``REQUEST_INGRESS_KINDS`` member whose framework hands the
 #: request as a parameter, or a user overlay schema for contracts.
 REQUEST_PARAMETER_CONTRACTS: Mapping[str, tuple[str, Any]] = {
-    "express_route": ("positional", 0),
     "go_handler": ("typed", "*http.Request"),
 }
 
@@ -4647,7 +4648,6 @@ GENERIC_ROUTE_CONTRACTS: Mapping[str, tuple[str, Any]] = {
 #: The module slot a parameter seed's source names: what the finding reports
 #: the value as arriving from, by kind, or by language for the generic kind.
 _PARAMETER_SEED_MODULE: Mapping[str, str] = {
-    "express_route": "express",
     "go_handler": "net/http",
     "javascript": "express",
     "typescript": "express",

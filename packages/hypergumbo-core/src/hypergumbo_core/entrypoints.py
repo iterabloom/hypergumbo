@@ -271,10 +271,20 @@ def compute_entrypoint_cap(node_count: int) -> int:
 
 
 class EntrypointKind(Enum):
-    """Types of entrypoints that can be detected."""
+    """Types of entrypoints that can be detected.
+
+    A kind names what the entry IS; the framework that registered it and
+    the mechanism that found it go in ``meta`` (ADR-0027's rule for
+    ``Symbol.kind``, carried over by audit 0027). Every member has a
+    producer. The 21 framework-named route / controller kinds
+    (``django_view``, ``express_route``, ...) and ``electron_renderer``
+    were folded into ``http_route`` / ``controller`` and ``html_entry`` /
+    ``script_module``, and ``cli_main`` removed outright, at
+    ``SCHEMA_VERSION`` 0.22.0: nothing had produced them since their
+    detectors were removed (#331), so no map held them.
+    """
 
     HTTP_ROUTE = "http_route"
-    CLI_MAIN = "cli_main"
     CLI_COMMAND = "cli_command"
     # Language-level main() entry points (detected via YAML patterns)
     MAIN_FUNCTION = "main_function"
@@ -283,31 +293,12 @@ class EntrypointKind(Enum):
     # distinct kind from MAIN_FUNCTION — kind alone disambiguates the target
     # type (function vs file) rather than the free-text label (WI-tuvun).
     MAIN_GUARD = "main_guard"
+    # Electron: the main-process script (app.whenReady / app.on) and the
+    # preload script a window loads before its page (contextBridge
+    # exposure, or the file a webPreferences.preload names).
     ELECTRON_MAIN = "electron_main"
     ELECTRON_PRELOAD = "electron_preload"
-    ELECTRON_RENDERER = "electron_renderer"
-    DJANGO_VIEW = "django_view"
-    EXPRESS_ROUTE = "express_route"
-    NESTJS_CONTROLLER = "nestjs_controller"
-    SPRING_CONTROLLER = "spring_controller"
-    RAILS_CONTROLLER = "rails_controller"
-    PHOENIX_CONTROLLER = "phoenix_controller"
-    GO_HANDLER = "go_handler"
-    LARAVEL_CONTROLLER = "laravel_controller"
-    RUST_HANDLER = "rust_handler"
-    ASPNET_CONTROLLER = "aspnet_controller"
-    SINATRA_ROUTE = "sinatra_route"
-    KTOR_ROUTE = "ktor_route"
-    VAPOR_ROUTE = "vapor_route"
-    PLUG_ROUTE = "plug_route"
-    HAPI_ROUTE = "hapi_route"
-    FASTIFY_ROUTE = "fastify_route"
-    KOA_ROUTE = "koa_route"
-    GRAPE_API = "grape_api"
-    TORNADO_HANDLER = "tornado_handler"
-    AIOHTTP_VIEW = "aiohttp_view"
-    SLIM_ROUTE = "slim_route"
-    MICRONAUT_CONTROLLER = "micronaut_controller"
+    GO_HANDLER = "go_handler"  # Go http.Handler ServeHTTP (WI-jonin)
     GRAPHQL_SERVER = "graphql_server"
     # Mobile app entry kinds
     ANDROID_ACTIVITY = "android_activity"  # Android Activity.onCreate()
@@ -346,28 +337,7 @@ class EntrypointKind(Enum):
 #: in-process event or a test receive no request and are left out.
 REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(k.value for k in (
     EntrypointKind.HTTP_ROUTE,
-    EntrypointKind.DJANGO_VIEW,
-    EntrypointKind.EXPRESS_ROUTE,
-    EntrypointKind.NESTJS_CONTROLLER,
-    EntrypointKind.SPRING_CONTROLLER,
-    EntrypointKind.RAILS_CONTROLLER,
-    EntrypointKind.PHOENIX_CONTROLLER,
     EntrypointKind.GO_HANDLER,
-    EntrypointKind.LARAVEL_CONTROLLER,
-    EntrypointKind.RUST_HANDLER,
-    EntrypointKind.ASPNET_CONTROLLER,
-    EntrypointKind.SINATRA_ROUTE,
-    EntrypointKind.KTOR_ROUTE,
-    EntrypointKind.VAPOR_ROUTE,
-    EntrypointKind.PLUG_ROUTE,
-    EntrypointKind.HAPI_ROUTE,
-    EntrypointKind.FASTIFY_ROUTE,
-    EntrypointKind.KOA_ROUTE,
-    EntrypointKind.GRAPE_API,
-    EntrypointKind.TORNADO_HANDLER,
-    EntrypointKind.AIOHTTP_VIEW,
-    EntrypointKind.SLIM_ROUTE,
-    EntrypointKind.MICRONAUT_CONTROLLER,
     EntrypointKind.GRAPHQL_SERVER,
     EntrypointKind.CONTROLLER,
     EntrypointKind.WEBSOCKET_HANDLER,
@@ -378,14 +348,16 @@ REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(k.value for k in (
 
 #: The entrypoint kinds that START A PROGRAM: a language-level ``main`` (and
 #: what detection files under that kind: an ``application`` object such as an
-#: IOApp, a CLI framework's top-level parse call), a module ``__main__``
-#: guard, and ``CLI_MAIN``. Among entries of equal ``rank_score`` they come
-#: after a manifest-declared script and before every other kind
-#: (:func:`entry_kind_tie_rank`); ``slice --entry auto`` prefers them too.
+#: IOApp, and the Verilog top module) and a module ``__main__`` guard. Among
+#: entries of equal ``rank_score`` they come after a manifest-declared script
+#: and before every other kind (:func:`entry_kind_tie_rank`); ``slice --entry
+#: auto`` prefers them too. A CLI framework's parse call (argparse, fire,
+#: kong, OptionParser) is not detected: it is a call, and the YAML rows that
+#: named it were ``decorator:`` rows, which match decorator syntax only
+#: (audit 0027).
 PROGRAM_START_KINDS: frozenset[EntrypointKind] = frozenset({
     EntrypointKind.MAIN_FUNCTION,
     EntrypointKind.MAIN_GUARD,
-    EntrypointKind.CLI_MAIN,
 })
 
 
@@ -2159,31 +2131,9 @@ def detect_entrypoint_candidates(
     _SEMANTIC_KINDS = frozenset({
         EntrypointKind.HTTP_ROUTE,
         EntrypointKind.CLI_COMMAND,
-        EntrypointKind.CLI_MAIN,
         EntrypointKind.MAIN_FUNCTION,
         EntrypointKind.CONTROLLER,
-        EntrypointKind.DJANGO_VIEW,
-        EntrypointKind.EXPRESS_ROUTE,
-        EntrypointKind.NESTJS_CONTROLLER,
-        EntrypointKind.SPRING_CONTROLLER,
-        EntrypointKind.RAILS_CONTROLLER,
-        EntrypointKind.PHOENIX_CONTROLLER,
         EntrypointKind.GO_HANDLER,
-        EntrypointKind.LARAVEL_CONTROLLER,
-        EntrypointKind.RUST_HANDLER,
-        EntrypointKind.ASPNET_CONTROLLER,
-        EntrypointKind.SINATRA_ROUTE,
-        EntrypointKind.KTOR_ROUTE,
-        EntrypointKind.VAPOR_ROUTE,
-        EntrypointKind.PLUG_ROUTE,
-        EntrypointKind.HAPI_ROUTE,
-        EntrypointKind.FASTIFY_ROUTE,
-        EntrypointKind.KOA_ROUTE,
-        EntrypointKind.GRAPE_API,
-        EntrypointKind.TORNADO_HANDLER,
-        EntrypointKind.AIOHTTP_VIEW,
-        EntrypointKind.SLIM_ROUTE,
-        EntrypointKind.MICRONAUT_CONTROLLER,
         EntrypointKind.GRAPHQL_SERVER,
         EntrypointKind.BACKGROUND_TASK,
         EntrypointKind.WEBSOCKET_HANDLER,
@@ -2328,23 +2278,10 @@ def detect_entrypoint_candidates(
     # ranking adjustments: a route's own score does not depend on the other
     # entries, and the library-export demotion above counts every detected
     # route, so which duplicate is kept changes no other entry's score.
-    _ROUTE_KINDS = frozenset({
-        EntrypointKind.HTTP_ROUTE,
-        EntrypointKind.EXPRESS_ROUTE,
-        EntrypointKind.SINATRA_ROUTE,
-        EntrypointKind.KTOR_ROUTE,
-        EntrypointKind.VAPOR_ROUTE,
-        EntrypointKind.PLUG_ROUTE,
-        EntrypointKind.HAPI_ROUTE,
-        EntrypointKind.FASTIFY_ROUTE,
-        EntrypointKind.KOA_ROUTE,
-        EntrypointKind.SLIM_ROUTE,
-        EntrypointKind.RUST_HANDLER,
-    })
     route_label_groups: dict[str, list[Entrypoint]] = defaultdict(list)
     non_route_eps: list[Entrypoint] = []
     for ep in unique_entrypoints:
-        if ep.kind in _ROUTE_KINDS and ep.label.startswith("HTTP "):
+        if ep.kind == EntrypointKind.HTTP_ROUTE and ep.label.startswith("HTTP "):
             route_label_groups[ep.label].append(ep)
         elif ep.kind == EntrypointKind.WEBSOCKET_HANDLER and ep.label.startswith("WS "):
             # Path-bearing WS routes ("WS /ws") dedup like HTTP routes so the

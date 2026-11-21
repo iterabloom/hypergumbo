@@ -337,11 +337,7 @@ class TestSemanticEntryDetection:
         # (The .tsx exclusion prevents Express/Hapi detection)
         route_like_eps = [
             e for e in entrypoints
-            if e.kind in (
-                EntrypointKind.HTTP_ROUTE,
-                EntrypointKind.EXPRESS_ROUTE,
-                EntrypointKind.HAPI_ROUTE,
-            )
+            if e.kind == EntrypointKind.HTTP_ROUTE
         ]
         assert len(route_like_eps) == 0
 
@@ -5533,9 +5529,9 @@ class TestDiversityCap:
         """When kinds are diverse, all fit within cap."""
         eps = [
             self._make_ep(EntrypointKind.HTTP_ROUTE, 0),
-            self._make_ep(EntrypointKind.CLI_MAIN, 1),
+            self._make_ep(EntrypointKind.MAIN_FUNCTION, 1),
             self._make_ep(EntrypointKind.GRAPHQL_SERVER, 2),
-            self._make_ep(EntrypointKind.DJANGO_VIEW, 3),
+            self._make_ep(EntrypointKind.CONTROLLER, 3),
         ]
         result = _diversity_cap(eps, 10)
         assert len(result) == 4

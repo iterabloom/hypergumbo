@@ -185,7 +185,9 @@ def _edge(sym: str, var: str, def_line: int, use_line: int) -> DdgEdge:
 
 
 def test_the_contract_tables_name_the_shapes() -> None:
-    assert REQUEST_PARAMETER_CONTRACTS["express_route"] == ("positional", 0)
+    # An Express route is an http_route (the express_route kind had no
+    # producer and is gone, SCHEMA_VERSION 0.22.0): only go_handler is keyed.
+    assert set(REQUEST_PARAMETER_CONTRACTS) == {"go_handler"}
     assert REQUEST_PARAMETER_CONTRACTS["go_handler"] == ("typed", "*http.Request")
     # The analyzers file most handlers under the generic kind (the probes'
     # _GET_save_handler and Go's HandleFunc target are http_route), contracted
@@ -219,7 +221,7 @@ def test_the_generic_route_kind_is_contracted_per_language() -> None:
 
 def test_express_seeds_the_first_parameter_only_when_it_is_used() -> None:
     seeds = parameter_seeds(
-        _ingress((_JS_SAVE, "express_route"), (_JS_PING, "express_route")),
+        _ingress((_JS_SAVE, "http_route"), (_JS_PING, "http_route")),
         {_JS_SAVE: ("req", "res"), _JS_PING: ("req", "res")},
         [_edge(_JS_SAVE, "req", 6, 7), _edge(_JS_SAVE, "res", 6, 8), _edge(_JS_PING, "res", 11, 12)],
         {}, "javascript",
@@ -250,7 +252,7 @@ def test_no_seed_without_a_contract_a_ddg_or_a_typed_request_parameter() -> None
         [_edge("python:app.py:5-9:save:function", "x", 5, 6)], {}, "python",
     ) == []
     # A handler the DDG never walked.
-    assert parameter_seeds(_ingress((_JS_SAVE, "express_route")), {}, [], {}, "javascript") == []
+    assert parameter_seeds(_ingress((_JS_SAVE, "http_route")), {}, [], {}, "javascript") == []
     # A Go handler whose recorded parameters carry no *http.Request.
     assert parameter_seeds(
         _ingress((_GO_SAVE, "go_handler")), {_GO_SAVE: ("w", "r")}, [_edge(_GO_SAVE, "r", 10, 11)],
@@ -259,13 +261,13 @@ def test_no_seed_without_a_contract_a_ddg_or_a_typed_request_parameter() -> None
     ) == []
     # Another language's entries are not this language's seeds.
     assert parameter_seeds(
-        _ingress((_JS_SAVE, "express_route")), {_JS_SAVE: ("req",)}, [_edge(_JS_SAVE, "req", 6, 7)], {}, "go",
+        _ingress((_JS_SAVE, "http_route")), {_JS_SAVE: ("req",)}, [_edge(_JS_SAVE, "req", 6, 7)], {}, "go",
     ) == []
 
 
 def test_a_seeded_handler_is_a_represented_ingress_caller() -> None:
     seeds = parameter_seeds(
-        _ingress((_JS_SAVE, "express_route")), {_JS_SAVE: ("req", "res")},
+        _ingress((_JS_SAVE, "http_route")), {_JS_SAVE: ("req", "res")},
         [_edge(_JS_SAVE, "req", 6, 7)], {}, "javascript",
     )
     assert represented_ingress_callers([], [], frozenset(), "javascript", parameter_seeds=seeds) == {_JS_SAVE}

@@ -16,6 +16,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Stable ids move to scheme v17; many digests change.**
 - **Stand-in `fingerprint` values now carry the `hgstandinfp1:` label.**
+- **Entry kinds nothing produced are removed: schema 0.22.0.**
 
 ### Added
 

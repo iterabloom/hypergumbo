@@ -282,7 +282,6 @@ def _created(kind: EntrypointKind, evidence: str) -> Entrypoint:
     (EntrypointKind.MAIN_FUNCTION, "language_convention", 1),
     (EntrypointKind.MAIN_FUNCTION, "framework_pattern", 1),
     (EntrypointKind.MAIN_GUARD, "structural", 1),
-    (EntrypointKind.CLI_MAIN, "language_convention", 1),
     (EntrypointKind.HTTP_ROUTE, "framework_pattern", 2),
     (EntrypointKind.SHELL_SCRIPT, "structural", 2),
     (EntrypointKind.SCRIPT_MODULE, "structural", 2),
@@ -300,8 +299,7 @@ def test_kind_tie_rank_reads_the_evidence_type_and_the_kind(
 
 def test_program_start_kinds_are_the_main_kinds() -> None:
     assert PROGRAM_START_KINDS == frozenset({
-        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD,
-        EntrypointKind.CLI_MAIN})
+        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD})
 
 
 def test_an_entry_without_provenance_ranks_by_its_kind() -> None:
