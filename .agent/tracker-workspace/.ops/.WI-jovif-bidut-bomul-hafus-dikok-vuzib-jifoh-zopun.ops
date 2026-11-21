@@ -1,0 +1,20 @@
+- op: create  # f6da
+  at: '2026-11-21T08:35:48Z'  # f6da
+  by: agent  # f6da
+  actor: jgstern_agent  # f6da
+  clock: 1  # f6da
+  nonce: f6da  # f6da
+  data:  # f6da
+    kind: work_item  # f6da
+    title: "electron_preload: the file-kind check on the preload-path target has no test that can fail"  # f6da
+    status: todo_soft  # f6da
+    priority: 4  # f6da
+    parent:  # f6da
+    tags:  # f6da
+    - tests  # f6da
+    isbefore: []  # f6da
+    duplicate_of: []  # f6da
+    not_duplicate_of: []  # f6da
+    pr_ref:  # f6da
+    description: "Mutation run: dropping the check that the resolved preload target is a file symbol survives. The lookup is keyed by repo-relative path and no fixture returned a non-file symbol for a path key. Not checked: whether a TS 'declare module \"x.js\"' symbol can take a path key. Either build the fixture that returns a non-file, or prove the check unreachable and mark it so.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # f6da
+    fields: {}  # f6da
