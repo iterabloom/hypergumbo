@@ -39,6 +39,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`slice --entry auto` boosts manifest executables like mains.**
 - **A `main` function's confidence now follows its language's measured reliability.**
 - **Compact seeds entry points in the entry list's order, not confidence.**
+- **Verilog top modules are hosted applications, not mains.**
 - **Swift `ParsableCommand` types are commands, not program starts.**
 - **`explain` first prints the sketch's line: quoted text is data.**
 - **Schema calls docstring and README fields untrusted repository text.**

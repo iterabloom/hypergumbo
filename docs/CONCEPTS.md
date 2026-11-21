@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **321** (live: 46, inert: 274, ghost: 1).
+Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 
 ## Inventory
 
@@ -104,7 +104,7 @@ Total concepts: **321** (live: 46, inert: 274, ghost: 1).
 | `effect` | inert | solid | _(none)_ |
 | `encoder` | inert | http4s | _(none)_ |
 | `entity` | live | cakephp, codeigniter | `datamodels.py` |
-| `entrypoint` | live | electron, http4s, swiftui, verilog.py, zio | `entrypoints.py` |
+| `entrypoint` | live | electron, http4s, swiftui, zio | `entrypoints.py` |
 | `error` | inert | cli | _(none)_ |
 | `error_handler` | live | adonisjs, bottle, fastapi, feathers, flask, giraffe, javalin, jax-rs, laravel, litestar, lumen, micronaut, nuxt, openresty, padrino, pyramid, quart, remix, restify, ring-compojure, sanic, scalatra, scotty, servant, slim, spring-boot, sveltekit, tornado, vertx | `entrypoints.py` |
 | `event` | inert | adonisjs, fuelphp, laravel, masonite | _(none)_ |
@@ -303,6 +303,7 @@ Total concepts: **321** (live: 46, inert: 274, ghost: 1).
 | `theme` | inert | electron | _(none)_ |
 | `timer` | inert | openresty | _(none)_ |
 | `tool_handler` | inert | mcp, mcp-python | _(none)_ |
+| `top_module` | live | verilog.py | `entrypoints.py` |
 | `transformer` | inert | servant | _(none)_ |
 | `tray` | inert | electron | _(none)_ |
 | `typescript_config` | inert | config-conventions | _(none)_ |

@@ -84,15 +84,16 @@ reflective nor scheduled.
 by one in the property test: program start is a manifest's executable, the
 convention main (`main_function`), `main_guard` and `electron_main`, and
 nothing else; `shell_script` and `script_module` stay fallback;
-`android_application` and the Verilog top module are hosted application (the
-top module is filed under `main_function` until WI-fasij moves it); a
+`android_application` and the Verilog top module are hosted application; a
 manifest's executable gets the program-start treatment in `slice --entry auto`;
 server-hosted application objects get a kind of their own,
 `hosted_application`, in the hosted-application role, "ranked with routes".
 
 *Note 2026-11-21 (WI-fasij).* `hosted_application` is in the registry: the
 `application` concept (a Flask / FastAPI `app` variable, a Tornado / aiohttp /
-Roda / Padrino / Hummingbird application type; 15 YAML rows) produces it. Its tie rank is 2, the routes' rank, because
+Roda / Padrino / Hummingbird application type; 15 YAML rows) and the Verilog
+top module (`top_module`, which verilog.py had stamped as `entrypoint`, filed
+under `main_function`) produce it. Its tie rank is 2, the routes' rank, because
 its role is not program start; nothing chose a weight for it. The 7 framework
 types the runtime starts as the program (IOApp, ZIOApp, SwiftUI `App`, the two
 app delegates) moved to the `entrypoint` concept and stay `main_function`; the
