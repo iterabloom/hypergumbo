@@ -280,7 +280,11 @@ _HEADER = """\
      Sources of truth:
        packages/hypergumbo-core/src/hypergumbo_core/edge_types.py
        packages/hypergumbo-core/src/hypergumbo_core/symbol_kinds.py
-       packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py -->
+       packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py
+       packages/hypergumbo-core/src/hypergumbo_core/io_boundary_types.py
+       packages/hypergumbo-core/src/hypergumbo_core/module_key_axis.py
+       packages/hypergumbo-core/src/hypergumbo_core/signature_axis.py
+       packages/hypergumbo-core/src/hypergumbo_core/entrypoint_kinds.py -->
 
 # Concept Axes
 
@@ -291,9 +295,11 @@ declaration template (axis name, axiom, consumer pattern, enforcement);
 ADR-0023 (Edge.type) is the worked example, and ADR-0027 (Symbol.kind)
 is the second instantiation.
 
-The current axes apply to `Edge.type`, `Symbol.kind`, and
-`Edge.evidence_type`. Other multi-value fields (`supply_chain.tier`,
-etc.) will be added here as their axes are formally declared.
+The current axes apply to `Edge.type`, `Symbol.kind`,
+`Edge.evidence_type`, the I/O boundary, the module key, the callable
+signature and `Entrypoint.kind`. Other multi-value fields
+(`supply_chain.tier`, etc.) will be added here as their axes are
+formally declared.
 
 ## Why this doc exists
 
