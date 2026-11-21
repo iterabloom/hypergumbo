@@ -145,7 +145,7 @@ from .identity_schemes import (
 )
 from .installed_env import kept_per_environment
 
-SCHEMA_VERSION = "0.21.3"
+SCHEMA_VERSION = "0.22.0"
 # Breaking output changes bump MINOR and additions bump PATCH (spec "Breaking
 # output changes bump minor"; the one exception is noted in the module
 # docstring). The per-version record of what changed is CHANGELOG.md.

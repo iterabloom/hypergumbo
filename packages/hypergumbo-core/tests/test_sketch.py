@@ -3105,7 +3105,7 @@ class TestFormatEntrypoints:
                    path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
         ]
         entrypoints = [
-            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_COMMAND,
                        confidence=0.7, label="CLI main"),
         ]
 
@@ -3124,7 +3124,7 @@ class TestFormatEntrypoints:
                    docstring="Run the demo: greet the world and hail a user."),
         ]
         entrypoints = [
-            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_COMMAND,
                        confidence=0.7, label="CLI main"),
         ]
 
@@ -3141,7 +3141,7 @@ class TestFormatEntrypoints:
                    path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
         ]
         entrypoints = [
-            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_COMMAND,
                        confidence=0.7, label="CLI main"),
         ]
 
@@ -3193,7 +3193,7 @@ class TestFormatEntrypoints:
     def test_missing_symbol_fallback(self, tmp_path: Path) -> None:
         """Falls back to symbol_id when symbol not found."""
         entrypoints = [
-            Entrypoint(symbol_id="unknown:symbol", kind=EntrypointKind.CLI_MAIN,
+            Entrypoint(symbol_id="unknown:symbol", kind=EntrypointKind.CLI_COMMAND,
                        confidence=0.7, label="CLI main"),
         ]
 
@@ -3211,7 +3211,7 @@ class TestFormatEntrypoints:
                    path=str(tmp_path / "api.py"), span=Span(1, 1, 1, 10)),
         ]
         entrypoints = [
-            Entrypoint(symbol_id="cli_ep", kind=EntrypointKind.CLI_MAIN,
+            Entrypoint(symbol_id="cli_ep", kind=EntrypointKind.CLI_COMMAND,
                        confidence=0.9, label="CLI main"),
             Entrypoint(symbol_id="route_ep", kind=EntrypointKind.HTTP_ROUTE,
                        confidence=0.8, label="HTTP GET /"),
@@ -3235,7 +3235,7 @@ class TestFormatEntrypoints:
                    path=str(tmp_path / "test_cli.py"), span=Span(1, 1, 1, 10)),
         ]
         entrypoints = [
-            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_COMMAND,
                        confidence=0.9, label="CLI main"),
             Entrypoint(symbol_id="test_main", kind=EntrypointKind.TEST_FUNCTION,
                        confidence=0.95, label="pytest"),
@@ -3269,11 +3269,11 @@ class TestFormatEntrypoints:
                    path=str(tmp_path / "app.py"), span=Span(1, 1, 1, 10)),
         ]
         entrypoints = [
-            Entrypoint(symbol_id="ep1", kind=EntrypointKind.CLI_MAIN,
+            Entrypoint(symbol_id="ep1", kind=EntrypointKind.CLI_COMMAND,
                        confidence=0.9, label="CLI main"),
         ]
 
-        # Patch _ENTRYPOINT_GROUPS to an empty list so CLI_MAIN is ungrouped
+        # Patch _ENTRYPOINT_GROUPS to an empty list so CLI_COMMAND is ungrouped
         with patch.object(sketch_mod, "_ENTRYPOINT_GROUPS", [("Other", {EntrypointKind.CONNECTIVITY_BASED.value})]):
             result = _format_entrypoints(entrypoints, symbols, tmp_path)
 
@@ -3308,7 +3308,7 @@ class TestEntrypointSectionBudget:
     def test_budget_is_shared_across_groups(self, tmp_path: Path) -> None:
         s1, e1 = self._eps(tmp_path, EntrypointKind.HTTP_ROUTE, 100, "route")
         s2, e2 = self._eps(tmp_path, EntrypointKind.LIBRARY_EXPORT, 100, "lib")
-        s3, e3 = self._eps(tmp_path, EntrypointKind.CLI_MAIN, 2, "cli")
+        s3, e3 = self._eps(tmp_path, EntrypointKind.CLI_COMMAND, 2, "cli")
         result = _format_entrypoints(e1 + e2 + e3, s1 + s2 + s3, tmp_path,
                                      max_entries=20)
         shown = [ln for ln in result.splitlines()
@@ -3324,7 +3324,7 @@ class TestEntrypointSectionBudget:
         syms, eps = [], []
         for kind, prefix in ((EntrypointKind.HTTP_ROUTE, "r"),
                              (EntrypointKind.LIBRARY_EXPORT, "l"),
-                             (EntrypointKind.CLI_MAIN, "c")):
+                             (EntrypointKind.CLI_COMMAND, "c")):
             s, e = self._eps(tmp_path, kind, 5, prefix)
             syms += s
             eps += e
@@ -3602,7 +3602,7 @@ class TestEntryPointLinesIdentifyTheirEntry:
     @staticmethod
     def _entry(tmp_path: Path, sid: str, name: str, rel: str, *,
                language: str = "go", line: int = 1, docstring: str | None = None,
-               kind: EntrypointKind = EntrypointKind.CLI_MAIN,
+               kind: EntrypointKind = EntrypointKind.MAIN_FUNCTION,
                label: str = "Go main()") -> tuple[Symbol, Entrypoint]:
         sym = Symbol(id=sid, name=name, kind="function", language=language,
                      path=str(tmp_path / rel), span=Span(line, line + 3, 1, 2),
@@ -5947,7 +5947,7 @@ class TestCollectImportantFiles:
         # Use entrypoint to trigger add_file directly (covers line 2245)
         entrypoint = Entrypoint(
             symbol_id="root:external",
-            kind=EntrypointKind.CLI_MAIN,
+            kind=EntrypointKind.CLI_COMMAND,
             confidence=0.9,
             label="external",
         )

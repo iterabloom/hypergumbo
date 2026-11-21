@@ -182,7 +182,7 @@ def test_the_handlers_are_the_request_ingress_entrypoints_only() -> None:
     entrypoints = [
         {"kind": "http_route", "symbol_id": "python:app.py:7-11:save:function",
          "label": "HTTP route /save"},
-        {"kind": "express_route", "symbol_id": "javascript:s.js:6-9:h:function",
+        {"kind": "http_route", "symbol_id": "javascript:s.js:6-9:h:function",
          "label": "HTTP GET /h"},
         {"kind": "main_function", "symbol_id": "python:app.py:3-3:app:variable",
          "label": "Flask application"},

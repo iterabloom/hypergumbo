@@ -5966,41 +5966,18 @@ def _run_analysis(
 # Groups with zero entries are omitted from output.
 _ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = [
     ("CLI & Scripts", {
-        EntrypointKind.CLI_MAIN.value,
         EntrypointKind.CLI_COMMAND.value,
         EntrypointKind.MAIN_FUNCTION.value,
         EntrypointKind.MAIN_GUARD.value,  # WI-tuvun: module-guard script entry
         EntrypointKind.ELECTRON_MAIN.value,
         EntrypointKind.ELECTRON_PRELOAD.value,
-        EntrypointKind.ELECTRON_RENDERER.value,
     }),
     ("HTTP Routes", {
         EntrypointKind.HTTP_ROUTE.value,
-        EntrypointKind.DJANGO_VIEW.value,
-        EntrypointKind.EXPRESS_ROUTE.value,
-        EntrypointKind.SINATRA_ROUTE.value,
-        EntrypointKind.KTOR_ROUTE.value,
-        EntrypointKind.VAPOR_ROUTE.value,
-        EntrypointKind.PLUG_ROUTE.value,
-        EntrypointKind.HAPI_ROUTE.value,
-        EntrypointKind.FASTIFY_ROUTE.value,
-        EntrypointKind.KOA_ROUTE.value,
-        EntrypointKind.SLIM_ROUTE.value,
         EntrypointKind.GO_HANDLER.value,
-        EntrypointKind.RUST_HANDLER.value,
-        EntrypointKind.AIOHTTP_VIEW.value,
-        EntrypointKind.TORNADO_HANDLER.value,
     }),
     ("Controllers", {
         EntrypointKind.CONTROLLER.value,
-        EntrypointKind.NESTJS_CONTROLLER.value,
-        EntrypointKind.SPRING_CONTROLLER.value,
-        EntrypointKind.RAILS_CONTROLLER.value,
-        EntrypointKind.PHOENIX_CONTROLLER.value,
-        EntrypointKind.LARAVEL_CONTROLLER.value,
-        EntrypointKind.ASPNET_CONTROLLER.value,
-        EntrypointKind.MICRONAUT_CONTROLLER.value,
-        EntrypointKind.GRAPE_API.value,
     }),
     ("GraphQL", {
         EntrypointKind.GRAPHQL_SERVER.value,
