@@ -130,7 +130,10 @@ watcher (both were greps nobody ran). The property test is the watcher now:
   boost and the dedup; the sketch files every kind under its role's heading,
   so `middleware_handler`, `error_handler`, `form`, `serializer` and
   `spa_bootstrap` leave "Other" and HTTP routes, controllers, GraphQL and
-  WebSocket handlers share "Request Handlers"; the demotion counts
+  WebSocket handlers share "Request Handlers" (within a group's share each
+  kind's best entry is shown first, so no kind loses its last line to the
+  merge: the pre-registered refutation fired on thc, whose one controller
+  fell under 182 routes, before that rule); the demotion counts
   `main_guard`, middleware, error handlers and the hosted-application kinds.
   The measured effect is in WI-giron's evidence.
 - `Entrypoint.kind` carries `# axis: entrypoint-kind`. The multi-value-field

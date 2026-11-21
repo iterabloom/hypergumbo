@@ -331,6 +331,7 @@ def test_the_drift_check_reads_strings_attributes_and_dict_keys(source: str) -> 
 
 @pytest.mark.parametrize("source", [
     "TAGS = ['form', 'div', 'span']",
+    "MIXED = ('form', 'serializer', extra)",
     "ONE = {EntrypointKind.FORM}",
     "PAIR = ('main_function',)",
     "D = {**other}",
@@ -572,3 +573,37 @@ def test_an_entry_built_directly_ranks_by_its_role() -> None:
     bare = Entrypoint(symbol_id="x:1", kind=EntrypointKind.ELECTRON_MAIN,
                       confidence=0.9, label="e")
     assert entry_kind_tie_rank(bare) == 1
+
+
+def _ranked(sid: str, kind: EntrypointKind, rank: float) -> Entrypoint:
+    ep = Entrypoint(symbol_id=sid, kind=kind, confidence=0.9, label=sid)
+    ep.rank_score = rank
+    return ep
+
+
+def test_a_role_group_shows_every_kind_it_holds() -> None:
+    """Request Handlers holds several kinds. A controller ranked below ten
+    routes still gets a line when the share is three (it had a group, and so
+    a line, of its own before the groups followed roles)."""
+    syms = [_sym(f"r{i}", f"app/r{i}.py") for i in range(10)] + [_sym("C", "app/c.py")]
+    eps = [_ranked(s.id, EntrypointKind.HTTP_ROUTE, 1.0) for s in syms[:10]]
+    eps.append(_ranked(syms[10].id, EntrypointKind.CONTROLLER, 0.5))
+    out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=3)
+    assert "`C`" in out
+    assert sum(line.startswith("- `r") for line in out.splitlines()) == 2
+
+
+def test_a_share_smaller_than_its_kinds_keeps_the_best_ranked_kinds() -> None:
+    syms = [_sym(n, f"app/{n}.py") for n in ("a", "b", "c")]
+    eps = [_ranked(syms[0].id, EntrypointKind.HTTP_ROUTE, 0.9),
+           _ranked(syms[1].id, EntrypointKind.CONTROLLER, 0.8),
+           _ranked(syms[2].id, EntrypointKind.MIDDLEWARE_HANDLER, 0.7)]
+    out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=2)
+    assert "`a`" in out and "`b`" in out and "`c`" not in out
+
+
+def test_a_group_of_one_kind_is_cut_by_rank_as_before() -> None:
+    syms = [_sym(f"r{i}", f"app/r{i}.py") for i in range(4)]
+    eps = [_ranked(s.id, EntrypointKind.HTTP_ROUTE, 1.0 - i / 10) for i, s in enumerate(syms)]
+    out = _format_entrypoints(eps, syms, Path("/repo"), max_entries=2)
+    assert "`r0`" in out and "`r1`" in out and "`r2`" not in out
