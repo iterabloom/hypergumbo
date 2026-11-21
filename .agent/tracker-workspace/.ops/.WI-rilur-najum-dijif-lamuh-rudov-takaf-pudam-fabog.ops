@@ -1,0 +1,20 @@
+- op: create  # 26c1
+  at: '2026-11-21T20:53:31Z'  # 26c1
+  by: agent  # 26c1
+  actor: jgstern_agent  # 26c1
+  clock: 1  # 26c1
+  nonce: 26c1  # 26c1
+  data:  # 26c1
+    kind: work_item  # 26c1
+    title: "swiftui.yaml loads only when Package.swift declares a 'swiftui' dependency, which real SwiftUI apps do not; its rows are dark on real code"  # 26c1
+    status: todo_hard  # 26c1
+    priority: 2  # 26c1
+    parent:  # 26c1
+    tags:  # 26c1
+    - frameworks  # 26c1
+    isbefore: []  # 26c1
+    duplicate_of: []  # 26c1
+    not_duplicate_of: []  # 26c1
+    pr_ref:  # 26c1
+    description: "SwiftUI is a system framework: apps import it and declare no package dependency, and 'import SwiftUI' does not trigger the YAML. So the App, app-delegate and ParsableCommand rows (swiftui.yaml:20, :24, :28, :52, :54 at 89e5af4c1) fire only on a fixture that names the dependency. The audit measured 0 of 4,756 nodes on swift-argument-parser. Repro: fixtures/rows/swift (no entry) vs fixtures/rows/swiftui (entries). Also: ParsableCommand belongs to swift-argument-parser, not SwiftUI; its rows sit in the wrong file.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/fasij/RESULTS.md. Found while building the entry-kind PR (2026-11-21)."  # 26c1
+    fields: {}  # 26c1

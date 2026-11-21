@@ -1,0 +1,20 @@
+- op: create  # b5fa
+  at: '2026-11-21T20:53:37Z'  # b5fa
+  by: agent  # b5fa
+  actor: jgstern_agent  # b5fa
+  clock: 1  # b5fa
+  nonce: b5fa  # b5fa
+  data:  # b5fa
+    kind: work_item  # b5fa
+    title: "7 program-start types are main_function entries on class or object targets, against the axiom that a callable kind targets a callable"  # b5fa
+    status: todo_soft  # b5fa
+    priority: 3  # b5fa
+    parent:  # b5fa
+    tags:  # b5fa
+    - entrypoints  # b5fa
+    isbefore: []  # b5fa
+    duplicate_of: []  # b5fa
+    not_duplicate_of: []  # b5fa
+    pr_ref:  # b5fa
+    description: "IOApp, IOApp.Simple, ZIOApp x2 and the three SwiftUI App / app-delegate rows produce main_function on a class or object symbol. Repro: fixtures/rows/scala, object Server extends IOApp -> main_function on kind object. Either the entry targets the type's run/main method where one is declared, or the axiom states the exception.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/fasij/RESULTS.md. Found while building the entry-kind PR (2026-11-21)."  # b5fa
+    fields: {}  # b5fa
