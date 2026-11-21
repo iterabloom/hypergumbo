@@ -62,6 +62,19 @@ class _DeadPipe(io.StringIO):
         return self._fd
 
 
+class _BufferingDeadPipe(_DeadPipe):
+    """A dead pipe as a buffered stream meets it: ``write`` takes the text
+    into the buffer and succeeds; the flush is what raises EPIPE.
+
+    This is what a real block-buffered stdout does, and it reaches ``main``'s
+    ``SystemExit`` arm without relying on the writer to swallow an error.
+    """
+
+    def write(self, s: str) -> int:
+        self.pending = True
+        return len(s)
+
+
 @pytest.fixture
 def dup2_calls(monkeypatch) -> list[tuple[int, int]]:
     """Record which fds ``main`` points at /dev/null (as ``(987, fd)``)
@@ -156,9 +169,28 @@ def test_a_write_error_a_command_swallowed_still_exits_141(
 def test_help_into_a_dead_stdout_exits_141_not_system_exit(
     monkeypatch, dup2_calls,
 ) -> None:
-    # argparse writes the help, swallows the OSError and raises SystemExit(0).
+    # The write itself raises. Python 3.11+ argparse swallows the OSError and
+    # raises SystemExit(0); 3.10 argparse lets the BrokenPipeError out. Either
+    # way the answer is 141 -- but WHICH arm of ``main`` answers depends on the
+    # interpreter, so this test does not cover the SystemExit arm on 3.10. The
+    # next test does, on every version.
     monkeypatch.setattr(cli.sys, "stdout", _DeadPipe(fd=51))
     assert cli.main(["cache-status", "--help"]) == cli.EXIT_BROKEN_PIPE
+    assert dup2_calls == [(987, 51)]
+
+
+def test_help_buffered_for_a_dead_stdout_exits_141_from_the_system_exit_arm(
+    monkeypatch, dup2_calls,
+) -> None:
+    # argparse's write succeeds into the buffer, so it raises SystemExit(0) on
+    # every Python version; ``main``'s flush on the way out finds the dead
+    # pipe. Without this test the SystemExit arm's 141 is reached only where
+    # argparse swallows write errors (3.11+), and the 3.10 leg is one line
+    # short of full coverage.
+    stdout = _BufferingDeadPipe(fd=51)
+    monkeypatch.setattr(cli.sys, "stdout", stdout)
+    assert cli.main(["cache-status", "--help"]) == cli.EXIT_BROKEN_PIPE
+    assert stdout.pending  # argparse did write: the arm was SystemExit's
     assert dup2_calls == [(987, 51)]
 
 
