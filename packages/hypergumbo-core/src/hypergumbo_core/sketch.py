@@ -179,7 +179,7 @@ from .ir import Symbol, Edge, is_external_boundary
 from .paths import is_test_node, names_no_source_file
 from .readme_prose import description_lines, plain_inline
 from .entrypoints import (
-    detect_entrypoints, Entrypoint, take_dealing_ties,
+    detect_entrypoints, Entrypoint, EntrypointKind, take_dealing_ties,
 )
 from .entrypoint_kinds import (
     ENTRYPOINT_ROLES, ROLE_REQUEST_INGRESS, ROLE_TEST, kinds_with_role, role_heading, role_of,
@@ -5991,6 +5991,37 @@ def _entrypoint_groups() -> list[tuple[str, set[str]]]:
 _ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = _entrypoint_groups()
 
 
+def _take_every_kind(
+    eps: list[Entrypoint], quota: int,
+    file_of: Callable[[Entrypoint], str],
+    score_of: Callable[[Entrypoint], Optional[float]],
+) -> list[Entrypoint]:
+    """The lines a group's share keeps: each kind's best entry first.
+
+    A group is a ROLE's heading and holds several kinds (Request Handlers
+    holds routes, controllers, GraphQL, WebSocket handlers, middleware...).
+    Cut by rank alone, a kind whose entries all rank below the share's cut
+    shows no line, where it had a group of its own, and a share, before the
+    groups followed roles (measured: thc's one controller under 182 routes).
+    So the best entry of each kind is kept first (when the share is smaller
+    than the number of kinds, the kinds whose best entries rank first), and
+    the rest of the share is cut as before
+    (``take_dealing_ties``: by rank, ties dealt across files). A group of
+    one kind is cut exactly as before. Returned best first.
+    """
+    best_of_kind: dict[EntrypointKind, int] = {}
+    for i, ep in enumerate(eps):
+        best_of_kind.setdefault(ep.kind, i)
+    if len(best_of_kind) <= 1:
+        return [eps[j] for j in take_dealing_ties(eps, quota, file_of, score_of=score_of)]
+    reserved = sorted(best_of_kind.values())[:max(quota, 0)]
+    taken = set(reserved)
+    rest = [i for i in range(len(eps)) if i not in taken]
+    more = take_dealing_ties([eps[i] for i in rest], quota - len(reserved), file_of,
+                             score_of=score_of)
+    return [eps[i] for i in sorted(reserved + [rest[j] for j in more])]
+
+
 def _share_entry_budget(sizes: list[int], total: int) -> list[int]:
     """Split one entry budget across display groups (water-filling).
 
@@ -6217,8 +6248,7 @@ def _format_entrypoints(
         return sym.path if sym and sym.path else f"\0{ep.symbol_id}"
 
     shown_per_group = [
-        [eps[j] for j in take_dealing_ties(
-            eps, quota, file_of, score_of=lambda e: rank[e.symbol_id])]
+        _take_every_kind(eps, quota, file_of, lambda e: rank[e.symbol_id])
         for (_name, eps), quota in zip(present, quotas, strict=True)
     ]
 
