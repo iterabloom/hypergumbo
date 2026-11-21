@@ -282,6 +282,8 @@ def _created(kind: EntrypointKind, evidence: str) -> Entrypoint:
     (EntrypointKind.MAIN_FUNCTION, "language_convention", 1),
     (EntrypointKind.MAIN_FUNCTION, "framework_pattern", 1),
     (EntrypointKind.MAIN_GUARD, "structural", 1),
+    (EntrypointKind.ELECTRON_MAIN, "framework_pattern", 1),
+    (EntrypointKind.ELECTRON_PRELOAD, "framework_pattern", 2),
     (EntrypointKind.HTTP_ROUTE, "framework_pattern", 2),
     (EntrypointKind.SHELL_SCRIPT, "structural", 2),
     (EntrypointKind.SCRIPT_MODULE, "structural", 2),
@@ -297,9 +299,13 @@ def test_kind_tie_rank_reads_the_evidence_type_and_the_kind(
     assert entry_kind_tie_rank(_created(kind, evidence)) == tie_rank
 
 
-def test_program_start_kinds_are_the_main_kinds() -> None:
+def test_program_start_kinds_are_the_ruled_program_starts() -> None:
+    """Owner ruling 2026-11-21 (audit 0027): the convention main, the
+    ``__main__`` guard and Electron's main-process script (the manifest's
+    executables rank before them, by ``evidence_type``)."""
     assert PROGRAM_START_KINDS == frozenset({
-        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD})
+        EntrypointKind.MAIN_FUNCTION, EntrypointKind.MAIN_GUARD,
+        EntrypointKind.ELECTRON_MAIN})
 
 
 def test_an_entry_without_provenance_ranks_by_its_kind() -> None:

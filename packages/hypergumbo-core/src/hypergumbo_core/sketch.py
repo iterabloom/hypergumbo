@@ -53,7 +53,8 @@ Sections in emission order:
     embedding/hybrid (the CLI default) can surface ENV /
     ``environment:`` lines from Dockerfile and docker-compose files.
 7.  Entry Points — CLI commands, HTTP routes, IPC handlers,
-    cron / scheduler entries, grouped by kind; one entry budget is
+    cron / scheduler entries, grouped by the role of their kind (one
+    heading per role, ``entrypoint_kinds``); one entry budget is
     shared across the groups (``_share_entry_budget``) so a repo with
     hundreds of routes and exports cannot flood the sketch
 8.  Data Models — dataclasses, ORM entities, schema definitions,
@@ -178,7 +179,10 @@ from .ir import Symbol, Edge, is_external_boundary
 from .paths import is_test_node, names_no_source_file
 from .readme_prose import description_lines, plain_inline
 from .entrypoints import (
-    detect_entrypoints, Entrypoint, EntrypointKind, take_dealing_ties,
+    detect_entrypoints, Entrypoint, take_dealing_ties,
+)
+from .entrypoint_kinds import (
+    ENTRYPOINT_ROLES, ROLE_REQUEST_INGRESS, ROLE_TEST, kinds_with_role, role_heading, role_of,
 )
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
@@ -5961,46 +5965,30 @@ def _run_analysis(
     return all_symbols, all_edges, coverage_stats
 
 
-# Display groups for entry points, in presentation order.
-# Each group maps a heading to the EntrypointKind values it contains.
-# Groups with zero entries are omitted from output.
-_ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = [
-    ("CLI & Scripts", {
-        EntrypointKind.CLI_COMMAND.value,
-        EntrypointKind.MAIN_FUNCTION.value,
-        EntrypointKind.MAIN_GUARD.value,  # WI-tuvun: module-guard script entry
-        EntrypointKind.ELECTRON_MAIN.value,
-        EntrypointKind.ELECTRON_PRELOAD.value,
-    }),
-    ("HTTP Routes", {
-        EntrypointKind.HTTP_ROUTE.value,
-        EntrypointKind.GO_HANDLER.value,
-    }),
-    ("Controllers", {
-        EntrypointKind.CONTROLLER.value,
-    }),
-    ("GraphQL", {
-        EntrypointKind.GRAPHQL_SERVER.value,
-    }),
-    ("WebSocket Handlers", {
-        EntrypointKind.WEBSOCKET_HANDLER.value,
-    }),
-    ("Event & Background Tasks", {
-        EntrypointKind.EVENT_HANDLER.value,
-        EntrypointKind.BACKGROUND_TASK.value,
-        EntrypointKind.SCHEDULED_TASK.value,
-    }),
-    ("Mobile", {
-        EntrypointKind.ANDROID_ACTIVITY.value,
-        EntrypointKind.ANDROID_APPLICATION.value,
-    }),
-    ("Library API", {
-        EntrypointKind.LIBRARY_EXPORT.value,
-    }),
-    ("Other", {
-        EntrypointKind.CONNECTIVITY_BASED.value,
-    }),
-]
+def _entrypoint_groups() -> list[tuple[str, set[str]]]:
+    """The Entry Points display groups, computed from the entrypoint-kind roles.
+
+    One group per role heading (``entrypoint_kinds.role_heading``), in the
+    registry's role order; two roles that share a heading share a group
+    (program starts and CLI commands show under "CLI & Scripts"). A group
+    holds the values of every kind whose role shows under it, so no kind
+    falls through to "Other" unless its role is a fallback, and no list of
+    kinds is written here (audit 0027: the hand-written groups had left nine
+    kinds in "Other" and made ``electron_main`` a program start here alone).
+    The test role has no heading: the Tests section covers it.
+    """
+    groups: dict[str, set[str]] = {}
+    for role in ENTRYPOINT_ROLES:
+        if role.heading is None:
+            continue
+        groups.setdefault(role.heading, set()).update(
+            k.value for k in kinds_with_role(role.name))
+    return list(groups.items())
+
+
+# Display groups for entry points, in presentation order. Groups with zero
+# entries are omitted from output.
+_ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = _entrypoint_groups()
 
 
 def _share_entry_budget(sizes: list[int], total: int) -> list[int]:
@@ -6114,11 +6102,13 @@ def _format_entrypoints(
     exclude_tests: bool = False,
     edges: "list[Edge] | None" = None,
 ) -> str:
-    """Format detected entry points as a Markdown section grouped by kind.
+    """Format detected entry points as a Markdown section grouped by role.
 
-    Entry points are organized into display groups (CLI & Scripts, HTTP Routes,
-    Controllers, etc.). Groups with zero entries are omitted. Test functions
-    are excluded entirely — the Tests section already covers them.
+    Entry points are organized into display groups, one per role heading of
+    the entrypoint-kind registry (CLI & Scripts, Hosted Applications,
+    Request Handlers, ...; :func:`_entrypoint_groups`). Groups with zero
+    entries are omitted. The test role is excluded entirely — the Tests
+    section already covers it.
 
     Within each group, entries are sorted by rank_score (highest first),
     equal ranks keeping the order of the entry list. ``max_entries`` is ONE
@@ -6166,10 +6156,10 @@ def _format_entrypoints(
     # Build symbol lookup for path info
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
 
-    # Exclude test functions — the Tests section covers them
+    # Exclude the test role -- the Tests section covers it
     non_test_eps = [
         ep for ep in entrypoints
-        if ep.kind != EntrypointKind.TEST_FUNCTION
+        if role_of(ep.kind) != ROLE_TEST
     ]
 
     if not non_test_eps:
@@ -6294,8 +6284,8 @@ def _format_entrypoints(
 
         if len(eps) > quota:
             more = f"- ... and {len(eps) - quota} more"
-            if group_name == "HTTP Routes":
-                more += " (`hypergumbo routes` lists all)"
+            if group_name == role_heading(ROLE_REQUEST_INGRESS):
+                more += " (`hypergumbo routes` lists the routes)"
             lines.append(more)
 
         lines.append("")

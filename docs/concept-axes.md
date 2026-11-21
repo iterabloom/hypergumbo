@@ -630,3 +630,125 @@ A consumer needing one of these reads its home. The nine that parse the string i
 | `value_type` | `FileAnalysis.class_field_types` | csharp, cpp, go, rust, swift |
 
 **Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.
+
+
+---
+
+## `Entrypoint.kind` — the entrypoint-kind axis (ADR-0063)
+
+**Axiom.** An entrypoint's kind names what the entry IS; the framework that
+registered it and the mechanism that found it go in `meta`. Every kind has
+exactly one **role** (what starts or dispatches the code at that entry), and a
+reader that treats a group of kinds alike asks for a role
+(`entrypoint_kinds.kinds_with_role`), never for a list of kinds.
+
+Six readers branch on groups of kinds: the tie order among entries of equal
+`rank_score`, `slice --entry auto`'s 2x boost (and its Go module-binary pick),
+`request_ingress` (and with it verify-claims' unseeded-ingress withhold and
+taint's parameter seeds), the sketch's Entry Points groups, the INV-hosuh main
+dedup and the library-export demotion. Before the registry each held its own
+set, and they disagreed (audit 0027). The sections below are the roles; the
+table after them records, per kind, whether its role was ruled by the owner
+(2026-11-21) or proposed, and its ADR-0024 verdict.
+
+### `program_start` — sketch group "CLI & Scripts"
+
+The operating system or a language runtime starts a process here. Ruled closed (2026-11-21): the package's declared executable, the convention main, the `__main__` guard and Electron's main-process script, and nothing else. Ranks first among ties, gets `slice --entry auto`'s 2x boost, and is the set the INV-hosuh dedup groups.
+
+- **`electron_main`** — Electron's main-process script (electron.yaml `app.whenReady` / `app.on`).
+- **`main_function`** — A language's convention `main` (main-functions.yaml); until WI-fasij also the `application` rows and the Verilog top module.
+- **`main_guard`** — A Python module run as a script (`if __name__ == '__main__':`, no main()).
+
+### `command` — sketch group "CLI & Scripts"
+
+A subcommand a running program's command-line framework dispatches to from its arguments. Not one of audit 0027's eight roles: a subcommand is not a program start and receives no request.
+
+- **`cli_command`** — A subcommand a CLI framework registers (click, cobra, oclif, ...) or a C `cmd_<name>` dispatch-table function.
+
+### `hosted_application` — sketch group "Hosted Applications"
+
+An application object or component a server, platform or runtime instantiates and drives; the process starts elsewhere.
+
+- **`android_activity`** — An Android `Activity` subclass's lifecycle hook: a component the platform instantiates and drives.
+- **`android_application`** — An Android `Application` subclass's lifecycle hook.
+- **`electron_preload`** — The script Electron loads into a window before its page (a contextBridge exposure, or the file a `webPreferences.preload` names).
+- **`spa_bootstrap`** — The call that mounts a single-page application into the page (`createRoot`, `ReactDOM.render`, `hydrateRoot`): the browser hosts it.
+
+### `request_ingress` — sketch group "Request Handlers"
+
+Receives an external request, handed over as a parameter or a framework global: listed in `request_ingress`, never a taint source by itself, and verify-claims withholds a clean `untrusted_input` / `net_recv` verdict while one exists (ADR-0049 ruling 3).
+
+- **`controller`** — A request-handling controller class or action (also Android services, receivers and fragments; servlets; by-name handlers).
+- **`error_handler`** — An HTTP / middleware exception handler the framework calls when a handler raises.
+- **`go_handler`** — A Go `http.Handler` (`ServeHTTP`), reached through the interface per request.
+- **`graphql_server`** — A GraphQL resolver or schema definition.
+- **`http_route`** — An HTTP route handler or route marker, the framework in `meta`.
+- **`middleware_handler`** — HTTP middleware the framework runs on every request.
+- **`websocket_handler`** — A WebSocket endpoint: a gateway / channel handler or a `WS` route.
+
+### `scheduled` — sketch group "Event & Background Tasks"
+
+Runs when a scheduler, a task queue or an event bus dispatches it, not on an external request.
+
+- **`background_task`** — A task a queue runs (Celery, Laravel jobs, Rails jobs, ...).
+- **`event_handler`** — A handler an event bus, a signal or an IPC channel dispatches to (Django signals, CDI observers, Tauri commands, ...).
+- **`scheduled_task`** — A cron / periodic job.
+
+### `reflective` — sketch group "Framework-Reflected Classes"
+
+A class the framework instantiates and calls by reflection (`is_valid`, `to_representation`); reachable only through that dispatch, and not on its own a sign that the language hosts an application.
+
+- **`form`** — A form class the framework builds from request data and validates by reflection.
+- **`serializer`** — A serializer / DTO class the framework calls by reflection.
+
+### `library_api` — sketch group "Library API"
+
+Part of the package's public API, entered by a caller outside the repository. Demoted when its language hosts an application.
+
+- **`library_export`** — A public export (and a Go encoding callback the library dispatches to).
+
+### `test` — not in Entry Points
+
+Run by a test or benchmark runner. The sketch shows these in its Tests section, not under Entry Points.
+
+- **`test_function`** — A test, benchmark or example function.
+
+### `fallback` — sketch group "Other"
+
+Found by its shape alone (a shell script, a standalone script file, an `index.html`, the most-connected callable), with no evidence of what starts it.
+
+- **`connectivity_based`** — The most-connected callables, when no other entry was found.
+- **`html_entry`** — A convention-named `index.html`.
+- **`script_module`** — A TS/JS file with top-level calls that nothing imports.
+- **`shell_script`** — A bash / sh file (shebang or extension).
+
+### Entrypoint kinds — role rulings and verdicts
+
+| Kind | Role | Role ruled? | ADR-0024 verdict | Why a framework or mechanism name stays |
+|---|---|---|---|---|
+| `android_activity` | `hosted_application` | proposed | CANONICAL | the name carries the platform (audit 0027: CANONICAL, not ruled) |
+| `android_application` | `hosted_application` | ruled 2026-11-21 | CANONICAL | the name carries the platform; no platform-neutral kind exists (audit 0027) |
+| `background_task` | `scheduled` | proposed | CANONICAL | — |
+| `cli_command` | `command` | proposed | CANONICAL | `cli` names the interface the command is entered through, not a framework (cli.yaml is the file of Python CLI frameworks) |
+| `connectivity_based` | `fallback` | proposed | CANONICAL, kept under a trigger | restates evidence_type = connectivity_heuristic (audit 0027 keep trigger) |
+| `controller` | `request_ingress` | proposed | CANONICAL | — |
+| `electron_main` | `program_start` | ruled 2026-11-21 | CANONICAL | no framework-neutral kind names Electron's main-process start (audit 0027) |
+| `electron_preload` | `hosted_application` | proposed | CANONICAL | the name carries the framework; kept with a producer (audit 0027 ruling) |
+| `error_handler` | `request_ingress` | proposed | CANONICAL | — |
+| `event_handler` | `scheduled` | proposed | CANONICAL | — |
+| `form` | `reflective` | proposed | CANONICAL | — |
+| `go_handler` | `request_ingress` | not ruled (WI-hamiz) | not ruled | language-named with a live producer; a FOLD candidate with no target decided (audit 0027, WI-hamiz) |
+| `graphql_server` | `request_ingress` | proposed | CANONICAL | named by protocol, as http_route is (audit 0027) |
+| `html_entry` | `fallback` | proposed | CANONICAL, kept under a trigger | named by how it is found (audit 0027 keep trigger) |
+| `http_route` | `request_ingress` | proposed | CANONICAL | named by protocol, as graphql_server is (audit 0027) |
+| `library_export` | `library_api` | proposed | CANONICAL | — |
+| `main_function` | `program_start` | ruled 2026-11-21 | CANONICAL | — |
+| `main_guard` | `program_start` | ruled 2026-11-21 | CANONICAL, kept under a trigger | the guard is how the start is recognised; kept beside main_function while no reader branches on one without the other (audit 0027 keep trigger) |
+| `middleware_handler` | `request_ingress` | proposed | CANONICAL | — |
+| `scheduled_task` | `scheduled` | proposed | CANONICAL | — |
+| `script_module` | `fallback` | ruled 2026-11-21 | CANONICAL, kept under a trigger | named by how it is found; ruled fallback (audit 0027 keep trigger) |
+| `serializer` | `reflective` | proposed | CANONICAL | — |
+| `shell_script` | `fallback` | ruled 2026-11-21 | CANONICAL, kept under a trigger | named by how it is found; ruled fallback (audit 0027 keep trigger) |
+| `spa_bootstrap` | `hosted_application` | proposed | CANONICAL | — |
+| `test_function` | `test` | proposed | CANONICAL | — |
+| `websocket_handler` | `request_ingress` | proposed | CANONICAL | — |

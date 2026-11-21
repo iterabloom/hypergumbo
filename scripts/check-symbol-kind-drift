@@ -12,6 +12,14 @@ bug shape from ADR-0027 (consumer-side hardcoded sets that drift from
 the canonical list — both *missing values* runtime emits and *phantom
 values* runtime never emits).
 
+ALSO CHECKS THE SIBLING KIND AXIS (ADR-0063). The pre-commit hook runs this
+script for ``Symbol.kind``; the entrypoint-kind axis rides the same step, as
+the io-primitive-kind axis rides ``check-io-boundary-drift`` (ADR-0059):
+``entrypoint_kinds.find_kind_set_drift`` reports any hand-written group of
+``EntrypointKind`` members (or of kind-value strings) outside the registry,
+where a reader must ask for a role instead. It is the watcher for audit
+0027's two keep-with-a-trigger verdicts.
+
 Exit codes:
     0 — no drift detected.
     1 — drift detected; offenders printed to stdout, fix instructions
@@ -34,6 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 
 try:
+    from hypergumbo_core.entrypoint_kinds import find_kind_set_drift
     from hypergumbo_core.symbol_kinds import find_axis_drift
 except ImportError as exc:  # pragma: no cover — defensive
     print(
@@ -45,8 +54,19 @@ except ImportError as exc:  # pragma: no cover — defensive
 
 def main() -> int:
     offenders = find_axis_drift(REPO_ROOT)
+    entry_offenders = find_kind_set_drift(REPO_ROOT)
+    if entry_offenders:
+        print("entrypoint-kind axis check failed (ADR-0063):")
+        for line in entry_offenders:
+            print(f"  {line}")
+        print(
+            "Derive the set from a role: entrypoint_kinds.kinds_with_role(...).\n"
+            "If the collection is not a group of entries treated alike, add it\n"
+            "to entrypoint_kinds.NOT_A_ROLE_QUESTION with the reason.",
+            file=sys.stderr,
+        )
     if not offenders:
-        return 0
+        return 1 if entry_offenders else 0
 
     print("Symbol.kind axis-coherence check failed:")
     for line in offenders:

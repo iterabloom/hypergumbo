@@ -21,6 +21,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Added
 
 - **Electron preload scripts are entry points of their own kind.**
+- **Readers of entry kinds derive their sets from roles.**
 - **Declare fixture directories as test input in `.hypergumbo.toml`.**
 - **Each analysis pass counts edge endpoints that are not ids.**
 - **Agent instruction files are listed, never printed whole.**
@@ -30,6 +31,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Unknown config settings now say a newer hypergumbo may be needed.**
 - **Tied entry points list manifest scripts, then mains, then routes.**
+- **Electron's main script ranks and slices like a main.**
+- **Sketch entry groups follow roles; Request Handlers merges four.**
+- **A guard-only Python script now demotes exports like main.**
 - **A `main` function's confidence now follows its language's measured reliability.**
 - **Compact seeds entry points in the entry list's order, not confidence.**
 - **`explain` first prints the sketch's line: quoted text is data.**

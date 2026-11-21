@@ -23,14 +23,14 @@ below). The category must be one of:
   ``evidence-type``, ``language``, ``pass-id``, ``protocol-origin``,
   ``qualified-name``, ``io-boundary`` (ADR-0050), ``module-key``
   (ADR-0051), ``callable-signature`` (ADR-0058), ``io-primitive-kind``
-  (ADR-0059), ``entrypoint-kind``, ``visibility`` and
+  (ADR-0059), ``entrypoint-kind`` (ADR-0063), ``visibility`` and
   ``pass-silence-reason`` (INV-bikaj, arc T6). The field's value
   space is the legal set returned by the axis's all-names function.
   ``language`` and ``pass-id`` are derived from the analyzer/linker
   catalog (:func:`hypergumbo_core.catalog`); the rest live in dedicated
   registry modules (``*_types.py`` / ``*_origins.py`` / ``*_axis.py`` /
-  ``*_kinds.py``, plus ``entrypoints.py``, ``visibility.py`` and
-  ``pass_silence.py``).
+  ``*_kinds.py``, among them ``entrypoint_kinds.py``, plus
+  ``visibility.py`` and ``pass_silence.py``).
   The ``protocol-origin`` axis (ADR-0031) covers
   ``Symbol.protocol_origin`` values for synthetic stand-ins emitted by
   linkers that detect protocol patterns (Kafka, WebSocket, IPC, WASM,
@@ -142,7 +142,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     actually claims the axis.
     """
     from .edge_types import all_edge_type_names
-    from .entrypoints import all_known_entrypoint_kinds
+    from .entrypoint_kinds import all_known_entrypoint_kinds
     from .evidence_types import all_evidence_type_names
     from .io_boundary_types import all_io_boundary_names
     from .io_primitive_kinds import all_io_primitive_kind_names
@@ -178,7 +178,8 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         # policy (qualified-name / module-key shape): the resolver returns
         # the axis's NOTIONS, since signature strings are unenumerable.
         "callable-signature": all_signature_notions,
-        # WI-pupiz: entrypoint-kind catalog (single source = EntrypointKind).
+        # WI-pupiz / WI-giron (ADR-0063): the entrypoint-kind registry, which
+        # declares each kind's role. Registry-backed, heavyweight.
         "entrypoint-kind": all_known_entrypoint_kinds,
         # INV-jusot: canonical visibility levels (closed enum).
         "visibility": all_known_visibility_levels,
