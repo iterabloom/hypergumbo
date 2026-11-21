@@ -1,0 +1,20 @@
+- op: create  # cf00
+  at: '2026-11-21T01:33:25Z'  # cf00
+  by: agent  # cf00
+  actor: jgstern_agent  # cf00
+  clock: 1  # cf00
+  nonce: cf00  # cf00
+  data:  # cf00
+    kind: work_item  # cf00
+    title: "slice --entry auto still picks tool or script mains in Python, Java and JS repositories."  # cf00
+    status: todo_soft  # cf00
+    priority: 3  # cf00
+    parent:  # cf00
+    tags:  # cf00
+    - entrypoints  # cf00
+    isbefore: []  # cf00
+    duplicate_of: []  # cf00
+    not_duplicate_of: []  # cf00
+    pr_ref:  # cf00
+    description: "slice --entry auto still picks tool or script mains in Python, Java and JS repositories.\n\nREPRO: hypergumbo slice --entry auto on pydantic-core (picks wasm-preview/run_tests.py), killbill (LoadCatalog), mitmproxy (proxy/server.py), thc (a browser-extension script). PR 6's fix (WI-dufuz) narrows only Go mains to the one that builds the module's binary; other languages need their own structural signal (manifest scripts/bin, console_scripts, Maven exec/main class). Found by PR 6 agent 2 (2026-11-20) while building WI-dufuz: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/dufuz/RESULTS.md."  # cf00
+    fields: {}  # cf00

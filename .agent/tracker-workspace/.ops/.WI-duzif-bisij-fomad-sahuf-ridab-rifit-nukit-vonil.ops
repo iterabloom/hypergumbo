@@ -1,0 +1,20 @@
+- op: create  # 8729
+  at: '2026-11-21T02:17:25Z'  # 8729
+  by: agent  # 8729
+  actor: jgstern_agent  # 8729
+  clock: 1  # 8729
+  nonce: '8729'  # 8729
+  data:  # 8729
+    kind: work_item  # 8729
+    title: "Entry list order still starts from detection confidence, so recalibrating a kind's confidence reorders it."  # 8729
+    status: todo_soft  # 8729
+    priority: 3  # 8729
+    parent:  # 8729
+    tags:  # 8729
+    - entrypoints  # 8729
+    isbefore: []  # 8729
+    duplicate_of: []  # 8729
+    not_duplicate_of: []  # 8729
+    pr_ref:  # 8729
+    description: "Entry list order still starts from detection confidence, so recalibrating a kind's confidence reorders it.\n\nAfter WI-jalom (PR 6) compact follows the entry list's order, so compact moves only when the list moves. The list itself still moves under a confidence recalibration because rank_score starts from detection confidence: Go main 0.95 -> 0.90 reordered the entry list on 4 of 23 repos (kserve's compact then changed 44 nodes, alertmanager 1). Question for the owner: should the entry ranking start from kind rank and structural signals rather than confidence (a probability that a symbol IS an entry, not a rank of importance)? Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/jalom/RESULTS.md (recalibration arm)."  # 8729
+    fields: {}  # 8729

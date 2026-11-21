@@ -25,3 +25,10 @@
   clock: 2  # 3ee9
   nonce: 3ee9  # 3ee9
   message: "OWNER RULING 2026-11-20: joins the fast-smart-test plan as part of PR 6 (after PR 5), with WI-dufuz, WI-jalom, WI-nihov (its export-list question), WI-lubig and WI-gigir, plus WI-havob. Record: ~/hypergumbo_lab_notebook/after_fast_smart_test_grouping.md amendment 6."  # 3ee9
+- op: discuss  # b6b3
+  at: '2026-11-21T02:17:17Z'  # b6b3
+  by: agent  # b6b3
+  actor: jgstern_agent  # b6b3
+  clock: 3  # b6b3
+  nonce: b6b3  # b6b3
+  message: "OWNER RULING 2026-11-20 (export-list question): option C3. A package.json exports map keeps that package's own JS/TS exports from the library-export demotion when a production server entry exists. Measured on the 23 PR 4 repos: vite keeps its 61 exports once the alias form is detected; ripgrep and web-app rulings hold; elsewhere only 4 gemini-cli devtools exports change, entry list unchanged. C3 is built in PR 6; the aliased createServer import (part 1) follows in a later PR. Options table: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/nihov/RESULTS.md."  # b6b3
