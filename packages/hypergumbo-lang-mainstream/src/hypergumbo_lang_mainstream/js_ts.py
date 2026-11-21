@@ -201,7 +201,9 @@ How It Works
    - Pass 2: Detect calls and resolve against global symbol registry
    - Pass 3: Build framework UsageContexts straight from each file's AST
      (Express/Hapi routes, Next.js file routes, index-file library
-     exports, SPA/Electron bootstrap calls and HTTP-server handler calls)
+     exports, SPA/Electron bootstrap calls, HTTP-server handler calls, and
+     the Electron preload script: a ``contextBridge`` exposure or a literal
+     ``webPreferences.preload`` path)
 4. Post-passes over all files' symbols: ``extends`` / ``implements`` from
    ``meta.base_classes``, ``decorated_by`` from ``meta.decorators``, and
    ``references`` edges with evidence_type ``ast_type_ref`` from TypeScript
@@ -254,6 +256,7 @@ from __future__ import annotations
 
 import functools
 import json
+import posixpath
 import re
 import time
 import warnings
@@ -3288,6 +3291,192 @@ def _extract_http_handler_contexts(
         )
         contexts.append(ctx)
 
+    return contexts
+
+
+# Electron preload scripts (audit 0027, WI-jilik). ``contextBridge`` exists
+# only in the isolated world Electron gives a preload script, so a call to
+# one of these on ``contextBridge`` (or ``<x>.contextBridge``) marks its file.
+_CONTEXT_BRIDGE_EXPOSURES: frozenset[str] = frozenset({
+    "exposeInMainWorld", "exposeInIsolatedWorld",
+})
+
+# The ``path`` functions whose result, given ``__dirname`` and string
+# segments, is a path the source spells: ``path.join`` / ``path.resolve`` and
+# the destructured ``join`` / ``resolve``.
+_PATH_JOINERS: frozenset[str] = frozenset({
+    "path.join", "path.resolve", "join", "resolve",
+})
+
+
+def _js_string_value(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """The text of a string literal, or of a template with no substitution."""
+    if node.type == "string":
+        return _node_text(node, source)[1:-1]
+    if node.type == "template_string" and not any(
+        c.type == "template_substitution" for c in node.children
+    ):
+        return _node_text(node, source)[1:-1]
+    return None
+
+
+def _dirname_segments(node: "tree_sitter.Node", source: bytes) -> list[str] | None:
+    """The path segments after ``__dirname`` that ``node`` spells, or None.
+
+    Decided forms: ``path.join`` / ``path.resolve`` / ``join`` / ``resolve``
+    of ``__dirname`` and string literals; ``__dirname + '/<literal>'``; a
+    template ``${__dirname}/<literal>``. Anything else (a variable, a call to
+    another function, a substitution after ``__dirname``) is not decided.
+    """
+    if node.type == "call_expression":
+        callee = node.child_by_field_name("function")
+        args = node.child_by_field_name("arguments")
+        if callee is None or args is None or _node_text(callee, source) not in _PATH_JOINERS:
+            return None
+        values = [a for a in args.named_children if a.type != "comment"]
+        if not values or _node_text(values[0], source) != "__dirname":
+            return None
+        segments = [_js_string_value(v, source) for v in values[1:]]
+        if any(seg is None for seg in segments):
+            return None
+        return [seg for seg in segments if seg is not None]
+    if node.type == "binary_expression":
+        left = node.child_by_field_name("left")
+        right = node.child_by_field_name("right")
+        if left is None or right is None or _node_text(left, source) != "__dirname":
+            return None
+        tail = _js_string_value(right, source)
+        return _concatenated_tail(tail)
+    if node.type == "template_string":
+        parts = [c for c in node.children if c.type not in ("`",)]
+        if (not parts or parts[0].type != "template_substitution"
+                or _node_text(parts[0], source) != "${__dirname}"):
+            return None
+        if any(c.type == "template_substitution" for c in parts[1:]):
+            return None
+        return _concatenated_tail("".join(_node_text(c, source) for c in parts[1:]))
+    return None
+
+
+def _concatenated_tail(tail: str | None) -> list[str] | None:
+    """The segment a string glued onto ``__dirname`` adds: ``'/x.js'`` is
+    ``x.js`` under it; text without the leading ``/`` would extend the
+    directory's own name, which names no file under it."""
+    if tail is None or not tail.startswith("/"):
+        return None
+    return [tail[1:]]
+
+
+def _join_under(directory: str, segments: list[str]) -> str | None:
+    """``segments`` joined onto the repo-relative ``directory``, normalised;
+    None for an absolute segment or a path that leaves the repository."""
+    if any(seg.startswith("/") for seg in segments):
+        return None
+    joined = posixpath.normpath(posixpath.join(directory or ".", *segments))
+    if joined == ".." or joined.startswith("../"):
+        return None
+    return joined
+
+
+def _extract_electron_preload_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    rel_path: str,
+    module_symbol: Symbol,
+    global_symbols: dict[str, Symbol],
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """UsageContexts that name an Electron preload script (WI-jilik).
+
+    Two facts in the source name a preload script, and each becomes a
+    ``kind="call"`` UsageContext whose ``symbol_ref`` is that script's FILE
+    symbol, for electron.yaml's usage rows (``api_bridge``,
+    ``preload_script``) and through them the ``electron_preload`` entry:
+
+    * a ``contextBridge.exposeInMainWorld`` / ``exposeInIsolatedWorld`` call
+      anywhere in this file (receiver ``contextBridge`` or
+      ``<x>.contextBridge``): ``context_name`` is
+      ``contextBridge.<method>``, ``position`` ``caller``, the ref this file;
+    * a ``preload`` property of a ``webPreferences`` object whose value is a
+      literal path off ``__dirname`` (:func:`_dirname_segments`), resolved
+      against this file's directory, naming a file of the analysis
+      (``global_symbols`` keys a file by its repo-relative path):
+      ``context_name`` and ``position`` are ``webPreferences.preload``, the
+      ref that file, ``metadata.preload_path`` its path.
+
+    A path the source does not spell (a variable, a bundler constant such as
+    ``MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY``, ``app.getAppPath()``) or one that
+    names no analysed file gives nothing: the file Electron would load is not
+    decidable from the source. A path into a build output that mirrors the
+    sources (electron-vite's ``../preload/index.js`` from ``src/main``) names
+    no source file and gives nothing either.
+    """
+    contexts: list[UsageContext] = []
+    seen: set[tuple[str, str]] = set()
+    directory = posixpath.dirname(rel_path)
+
+    def span_of(node: "tree_sitter.Node") -> Span:
+        return Span(
+            start_line=node.start_point[0] + 1 + line_offset,
+            end_line=node.end_point[0] + 1 + line_offset,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+    for node in iter_tree(tree.root_node):
+        if node.type == "call_expression":
+            callee = node.child_by_field_name("function")
+            if callee is None or callee.type != "member_expression":
+                continue
+            obj = callee.child_by_field_name("object")
+            prop = callee.child_by_field_name("property")
+            if obj is None or prop is None:
+                continue  # pragma: no cover - grammar always fills both
+            method = _node_text(prop, source)
+            receiver = _node_text(obj, source)
+            if method not in _CONTEXT_BRIDGE_EXPOSURES or not (
+                receiver == "contextBridge" or receiver.endswith(".contextBridge")
+            ):
+                continue
+            name = f"contextBridge.{method}"
+            if (name, module_symbol.id) in seen:
+                continue
+            seen.add((name, module_symbol.id))
+            contexts.append(UsageContext.create(
+                kind="call", context_name=name, position="caller",
+                path=str(file_path), span=span_of(node),
+                symbol_ref=module_symbol.id,
+                metadata={"bridge_function": name},
+            ))
+        elif node.type == "pair":
+            key = node.child_by_field_name("key")
+            value = node.child_by_field_name("value")
+            if key is None or value is None:
+                continue  # pragma: no cover - grammar always fills both
+            if _node_text(key, source).strip("'\"") != "preload":
+                continue
+            holder = node.parent
+            outer = holder.parent if holder is not None else None
+            outer_key = outer.child_by_field_name("key") if (
+                outer is not None and outer.type == "pair") else None
+            if outer_key is None or _node_text(outer_key, source).strip("'\"") != "webPreferences":
+                continue
+            segments = _dirname_segments(value, source)
+            target_path = None if segments is None else _join_under(directory, segments)
+            target = global_symbols.get(target_path) if target_path else None
+            if target is None or target.kind != "file":
+                continue
+            if ("webPreferences.preload", target.id) in seen:
+                continue
+            seen.add(("webPreferences.preload", target.id))
+            contexts.append(UsageContext.create(
+                kind="call", context_name="webPreferences.preload",
+                position="webPreferences.preload",
+                path=str(file_path), span=span_of(node),
+                symbol_ref=target.id,
+                metadata={"preload_path": target_path, "declared_in": rel_path},
+            ))
     return contexts
 
 
@@ -8279,6 +8468,14 @@ def _analyze_javascript_impl(
                 pf.tree, pf.source, pf.path, file_mod_sym, pf.line_offset,
             )
             all_usage_contexts.extend(http_handler_contexts)
+
+            # Electron preload scripts: a contextBridge exposure in this
+            # file, or the file a webPreferences.preload literal names
+            # (electron.yaml api_bridge / preload_script; WI-jilik).
+            all_usage_contexts.extend(_extract_electron_preload_contexts(
+                pf.tree, pf.source, pf.path, pf_name, file_mod_sym,
+                global_symbols, pf.line_offset,
+            ))
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
     # Build multi-value class lookup for disambiguation (INV-015)

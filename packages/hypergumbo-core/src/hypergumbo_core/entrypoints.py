@@ -14,6 +14,7 @@ Detects entrypoints via semantic concepts from YAML framework patterns (ADR-3aaa
   ``__main__`` guards, library exports, test functions, controllers,
   middleware, error handlers, forms, serializers, SPA bootstrap calls,
   shell scripts and HTML entry pages
+- Electron: the main-process script and the preload script
 
 Two detectors do not read YAML concepts: the route-marker pass (symbols an
 analyzer or ``materialize_route_symbols`` minted with ``framework_role ==
@@ -706,6 +707,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
 
     Detected concepts (generic entrypoint, confidence=0.90):
     - "entrypoint" -> ELECTRON_MAIN (electron) / MAIN_FUNCTION (others)
+    - "api_bridge" / "preload_script" -> ELECTRON_PRELOAD (the preload FILE:
+      a contextBridge exposure in it, or a window's literal
+      webPreferences.preload path naming it)
     - "app_bootstrap" -> SPA_BOOTSTRAP (createRoot, ReactDOM.render, hydrateRoot)
 
     Detected concepts (language conventions, confidence=0.80):
@@ -1485,6 +1489,26 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     evidence_type="framework_pattern",
                 ))
                 added_kinds.add(EntrypointKind.EVENT_HANDLER)
+
+            # Electron preload script -> ELECTRON_PRELOAD (audit 0027,
+            # WI-jilik). electron.yaml's usage rows stamp the preload FILE:
+            # ``api_bridge`` for a contextBridge exposure in it,
+            # ``preload_script`` for the file a window's literal
+            # webPreferences.preload names. 0.90 like the other usage-keyed
+            # Electron row; above the file's 0.80 script_module entry, which
+            # the per-symbol dedup below therefore replaces.
+            elif concept_type in ("api_bridge", "preload_script"):
+                if EntrypointKind.ELECTRON_PRELOAD in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint.create(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.ELECTRON_PRELOAD,
+                    confidence=0.90,
+                    label=f"Electron preload script ({sym.path or sym.name})",
+                    source="concept_detector",
+                    evidence_type="framework_pattern",
+                ))
+                added_kinds.add(EntrypointKind.ELECTRON_PRELOAD)
 
             # Application concept -> MAIN_FUNCTION
             # Used by http4s.yaml (extends IOApp, extends IOApp.Simple),

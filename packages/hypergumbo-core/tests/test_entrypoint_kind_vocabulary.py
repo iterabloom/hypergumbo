@@ -106,3 +106,30 @@ def test_the_published_schema_lists_no_removed_kind() -> None:
     for value in REMOVED:
         assert f'"{value}"' not in text, value
         assert f" {value}," not in text and f" {value}\"" not in text, value
+
+
+def test_every_kind_has_a_producer() -> None:
+    """Each member is constructed somewhere in packages/*/src: an
+    ``Entrypoint.create(kind=EntrypointKind.X)`` / ``Entrypoint(kind=...)``
+    keyword, or a ``target_kind = EntrypointKind.X`` the next create reads.
+    A kind nothing produces is the defect audit 0027 removed 23 of."""
+    import ast
+
+    produced: set[str] = set()
+    root = Path(__file__).resolve().parents[2]
+    for src in root.glob("*/src/**/*.py"):
+        for node in ast.walk(ast.parse(src.read_text())):
+            value = None
+            if isinstance(node, ast.keyword) and node.arg == "kind":
+                value = node.value
+            elif (isinstance(node, ast.Assign) and len(node.targets) == 1
+                  and isinstance(node.targets[0], ast.Name)
+                  and node.targets[0].id == "target_kind"):
+                value = node.value
+            if value is None:
+                continue
+            for sub in ast.walk(value):
+                if (isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name)
+                        and sub.value.id == "EntrypointKind"):
+                    produced.add(sub.attr)
+    assert set(EntrypointKind.__members__) - produced == set()
