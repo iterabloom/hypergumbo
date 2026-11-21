@@ -1,0 +1,20 @@
+- op: create  # e682
+  at: '2026-11-21T01:33:19Z'  # e682
+  by: agent  # e682
+  actor: jgstern_agent  # e682
+  clock: 1  # e682
+  nonce: e682  # e682
+  data:  # e682
+    kind: work_item  # e682
+    title: "Slices from a Go program's main stop at cobra command dispatch."  # e682
+    status: todo_soft  # e682
+    priority: 3  # e682
+    parent:  # e682
+    tags:  # e682
+    - entrypoints  # e682
+    isbefore: []  # e682
+    duplicate_of: []  # e682
+    not_duplicate_of: []  # e682
+    pr_ref:  # e682
+    description: "Slices from a Go program's main stop at cobra command dispatch.\n\nREPRO: hypergumbo slice --entry auto on caddy (PR 6 branch, picks cmd/caddy/main.go) reaches 3 nodes; podman's main reaches 58. The call graph does not follow cobra's Command{RunE: ...} / AddCommand registration, so subcommand handlers are not reached from main. Found by PR 6 agent 2 (2026-11-20) while building WI-dufuz: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/dufuz/RESULTS.md."  # e682
+    fields: {}  # e682

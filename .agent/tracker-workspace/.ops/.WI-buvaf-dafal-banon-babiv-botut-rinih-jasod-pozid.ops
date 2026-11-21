@@ -54,3 +54,10 @@
   clock: 6  # f468
   nonce: f468  # f468
   message: "NEW FINDING 2026-11-19 (read on origin/dev c32f61a57; runtime effect NOT measured): compact.py:1910-1920 force-includes tiered seeds at entrypoint CONFIDENCE >= 0.7, and its comment assumes the test penalty lowers confidence ('brings test mains from 0.9 to 0.45'). Since ADR-0039 ruling 3 the penalties apply to rank_score only and confidence stays at its construction base, so a test main (base 0.80) now passes the gate. A gate keyed on a value that no longer carries what it assumes. Fix with this item's seed question: key the seeds on rank_score or is_key_symbol, measured."  # f468
+- op: discuss  # b0d4
+  at: '2026-11-21T01:33:31Z'  # b0d4
+  by: agent  # b0d4
+  actor: jgstern_agent  # b0d4
+  clock: 7  # b0d4
+  nonce: b0d4  # b0d4
+  message: "From PR 6 agent 2 (2026-11-20): after WI-jalom, compact's default and in-process paths seed in the entry list's order, but the tiered view (format_tiered_behavior_map, compact.py ~1937) still sorts seeds by -confidence with a 0.7 confidence gate, so a confidence recalibration still reshuffles it. Repro: hypergumbo run <repo> --budgets 4k under two confidence values. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/jalom/RESULTS.md."  # b0d4
