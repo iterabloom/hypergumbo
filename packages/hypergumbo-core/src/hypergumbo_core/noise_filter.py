@@ -57,7 +57,7 @@ node populations:
 * **pyproject ``[project.scripts]`` console-scripts** (``mycli = "pkg.mod:func"``):
   ``kind="file"``, ``language="toml"``, ``meta["entry_point"]`` naming a code
   target (plus a ``defines_target`` edge into it). The ``pyproject_script``
-  concept **is** recognized by ``detect_entrypoints`` → ``CLI_COMMAND`` @0.99
+  concept **is** recognized by ``detect_entrypoints`` → ``PACKAGE_EXECUTABLE`` @0.99
   (``manifest_declared``). These are entrypoint-bearing and MUST survive the
   noise filter, or the noise filter erases them before they are detected —
   exactly the defect ADR-0043 §5 named "C3".

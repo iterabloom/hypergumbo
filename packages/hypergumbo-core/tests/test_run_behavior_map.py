@@ -1090,10 +1090,10 @@ def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
     # The pyproject console-script (has entry_point) survives the noise filter...
     assert script_nodes(True), \
         "pyproject [project.scripts] console-script was wrongly filtered as noise"
-    # ...and is detected as a manifest-declared CLI_COMMAND entrypoint.
+    # ...and is detected as the package's declared executable.
     cli_eps = [
         ep for ep in data["entrypoints"]
-        if ep.get("kind") == "cli_command"
+        if ep.get("kind") == "package_executable"
         and (ep.get("meta") or {}).get("evidence_type") == "manifest_declared"
     ]
     # This assertion is environment-sensitive (it can fail in the CI

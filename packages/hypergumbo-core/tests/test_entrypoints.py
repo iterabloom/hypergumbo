@@ -1517,7 +1517,7 @@ class TestSemanticEntryDetection:
         assert lib_eps[0].confidence == 0.75
 
     def test_npm_bin_entrypoint_detection(self) -> None:
-        """npm bin entries (package.json "bin") are detected as CLI entrypoints."""
+        """npm bin entries (package.json "bin") are the package's executables."""
         # npm_bin concept comes from config-conventions.yaml matching kind="bin"
         sym = Symbol(
             id="json:package.json:5-5:my-cli:bin",
@@ -1532,14 +1532,15 @@ class TestSemanticEntryDetection:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.PACKAGE_EXECUTABLE]
         assert len(cli_eps) == 1
+        assert not [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
         assert cli_eps[0].confidence == 0.99  # Declared in manifest - highest confidence
         assert "npm CLI" in cli_eps[0].label
         assert "my-cli" in cli_eps[0].label
 
     def test_cargo_binary_entrypoint_detection(self) -> None:
-        """Cargo binary targets ([[bin]]) are detected as CLI entrypoints."""
+        """Cargo binary targets ([[bin]]) are the package's executables."""
         # cargo_binary concept comes from config-conventions.yaml matching kind="binary"
         sym = Symbol(
             id="toml:Cargo.toml:20-25:my-tool:binary",
@@ -1554,13 +1555,13 @@ class TestSemanticEntryDetection:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.PACKAGE_EXECUTABLE]
         assert len(cli_eps) == 1
         assert cli_eps[0].confidence == 0.99  # Declared in manifest
         assert "Cargo binary" in cli_eps[0].label
 
     def test_pyproject_script_entrypoint_detection(self) -> None:
-        """pyproject.toml [project.scripts] entries are detected as CLI entrypoints."""
+        """pyproject.toml [project.scripts] entries are the package's executables."""
         # pyproject_script concept will come from config-conventions.yaml
         sym = Symbol(
             id="toml:pyproject.toml:10-10:my-app:script",
@@ -1575,7 +1576,7 @@ class TestSemanticEntryDetection:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.PACKAGE_EXECUTABLE]
         assert len(cli_eps) == 1
         assert cli_eps[0].confidence == 0.99  # Declared in manifest
         assert "Python CLI" in cli_eps[0].label
@@ -2006,16 +2007,18 @@ class TestSemanticEntryDetection:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        # Should only create one CLI_COMMAND entry despite duplicate concepts
-        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        # Should only create one PACKAGE_EXECUTABLE entry despite duplicate concepts
+        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.PACKAGE_EXECUTABLE]
         assert len(cli_eps) == 1
 
     def test_command_and_manifest_concept_deduplicated(self) -> None:
-        """Symbol with both command and npm_bin concepts gets one CLI_COMMAND entry.
+        """Symbol with both command and npm_bin concepts gets one entry.
 
-        This tests the deduplication path when a command concept (0.95 confidence)
-        is processed before a manifest concept (0.99 confidence). The manifest concept
-        should be skipped since CLI_COMMAND is already added by command.
+        The two concepts build two kinds (CLI_COMMAND, PACKAGE_EXECUTABLE), so
+        the one-entry-per-symbol dedup (INV-liraj) chooses: the most confident,
+        the manifest's 0.99 over the command's 0.95, whichever concept comes
+        first. (Until SCHEMA_VERSION 0.22.0 both were CLI_COMMAND and the
+        first concept's entry was kept.)
         """
         sym = Symbol(
             id="json:package.json:5-5:my-cli:bin",
@@ -2035,12 +2038,9 @@ class TestSemanticEntryDetection:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        # Should only create one CLI_COMMAND entry (from command, not npm_bin)
-        cli_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
-        assert len(cli_eps) == 1
-        # The one that was created should be the command one (0.95)
-        assert cli_eps[0].confidence == 0.95
-        assert "Click command" in cli_eps[0].label
+        assert [(e.kind, e.confidence) for e in entrypoints] == [
+            (EntrypointKind.PACKAGE_EXECUTABLE, 0.99)]
+        assert "npm CLI" in entrypoints[0].label
 
 
 class TestConnectivityBasedRanking:
@@ -2632,7 +2632,7 @@ class TestEntrypointProvenance:
         eps = detect_entrypoints(nodes, edges)
         by_kind = {ep.kind: ep for ep in eps}
         assert by_kind[EntrypointKind.HTTP_ROUTE].meta["evidence_type"] == "framework_pattern"
-        assert by_kind[EntrypointKind.CLI_COMMAND].meta["evidence_type"] == "manifest_declared"
+        assert by_kind[EntrypointKind.PACKAGE_EXECUTABLE].meta["evidence_type"] == "manifest_declared"
         assert by_kind[EntrypointKind.MAIN_FUNCTION].meta["evidence_type"] == "language_convention"
         assert by_kind[EntrypointKind.CONTROLLER].meta["evidence_type"] == "naming_heuristic"
         assert by_kind[EntrypointKind.SHELL_SCRIPT].meta["evidence_type"] == "structural"

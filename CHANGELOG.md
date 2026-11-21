@@ -17,6 +17,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Stable ids move to scheme v17; many digests change.**
 - **Stand-in `fingerprint` values now carry the `hgstandinfp1:` label.**
 - **Entry kinds nothing produced are removed: schema 0.22.0.**
+- **Manifest-declared executables get their own kind, `package_executable`.**
 
 ### Added
 
@@ -34,6 +35,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Electron's main script ranks and slices like a main.**
 - **Sketch entry groups follow roles; Request Handlers merges four.**
 - **A guard-only Python script now demotes exports like main.**
+- **`slice --entry auto` boosts manifest executables like mains.**
 - **A `main` function's confidence now follows its language's measured reliability.**
 - **Compact seeds entry points in the entry list's order, not confidence.**
 - **`explain` first prints the sketch's line: quoted text is data.**

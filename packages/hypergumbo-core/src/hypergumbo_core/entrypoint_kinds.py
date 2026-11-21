@@ -35,8 +35,8 @@ THE READERS AND THE ROLE QUERY EACH ONE MAKES (each set is computed, never
 written out):
 
 - the tie order among entries of equal ``rank_score``
-  (``entrypoints.entry_kind_tie_rank``): a manifest-declared script, then
-  the program-start role, then the rest (ADR-0039 ruling 3);
+  (:func:`kind_tie_rank`): the package's declared executable, then the
+  rest of the program-start role, then the rest (ADR-0039 ruling 3);
 - ``slice --entry auto``'s 2x ``kind_boost`` and the Go module-binary pick:
   the program-start role (``entrypoints.PROGRAM_START_KINDS``);
 - ``request_ingress``, verify-claims' unseeded-ingress withhold and taint's
@@ -91,11 +91,19 @@ class EntrypointKind(Enum):
     ``electron_renderer`` were folded into ``http_route`` / ``controller``
     and ``html_entry`` / ``script_module``, and ``cli_main`` removed
     outright, at ``SCHEMA_VERSION`` 0.22.0: nothing had produced them since
-    their detectors were removed (#331), so no map held them.
+    their detectors were removed (#331), so no map held them. In the same
+    version ``package_executable`` took a manifest's executables off
+    ``cli_command``, which they had shared with framework subcommands, told
+    apart only by ``meta.evidence_type`` (ADR-0028: a pathway, not a
+    category).
     """
 
     HTTP_ROUTE = "http_route"
     CLI_COMMAND = "cli_command"
+    # An executable the package's manifest declares: a package.json "bin"
+    # entry, a Cargo [[bin]] target, a pyproject [project.scripts] entry.
+    # The entry is the manifest record; the mechanism is in meta.
+    PACKAGE_EXECUTABLE = "package_executable"
     # Language-level main() entry points (detected via YAML patterns)
     MAIN_FUNCTION = "main_function"
     # Module-level script guard: `if __name__ == "__main__":` with no separate
@@ -241,7 +249,7 @@ PROPOSED: Final[str] = "proposed"
 NOT_RULED: Final[str] = "not ruled (WI-hamiz)"
 
 #: ADR-0024 verdicts the registry records per kind (audit 0027's per-value
-#: table).
+#: table; ``package_executable``'s is WI-giron's).
 VERDICT_CANONICAL: Final[str] = "CANONICAL"
 VERDICT_KEPT_UNDER_TRIGGER: Final[str] = "CANONICAL, kept under a trigger"
 VERDICT_UNRULED: Final[str] = "not ruled"
@@ -285,6 +293,9 @@ _K = EntrypointKind
 #: ONE LINE PER ROLE ASSIGNMENT: the first line of each row is the kind, its
 #: role and whether the role is ruled.
 ENTRYPOINT_KINDS: Final[tuple[EntrypointKindSpec, ...]] = (
+    _spec(_K.PACKAGE_EXECUTABLE, ROLE_PROGRAM_START, RULED, VERDICT_CANONICAL,
+          "An executable the package's manifest declares (package.json `bin`, Cargo "
+          "`[[bin]]`, pyproject `[project.scripts]`); the entry is the manifest record."),
     _spec(_K.MAIN_FUNCTION, ROLE_PROGRAM_START, RULED, VERDICT_CANONICAL,
           "A language's convention `main` (main-functions.yaml); until WI-fasij also the "
           "`application` rows and the Verilog top module."),
@@ -408,6 +419,25 @@ def role_of(kind: EntrypointKind) -> str:
 def role_heading(role: str) -> Optional[str]:
     """The sketch's Entry Points heading for *role* (``None``: not shown there)."""
     return _ROLE_BY_NAME[role].heading
+
+
+def kind_tie_rank(kind: EntrypointKind) -> int:
+    """The first key among entries of equal ``rank_score``: 0, 1 or 2.
+
+    0. the package's declared executable (``package_executable``);
+    1. any other program start;
+    2. every other role.
+
+    ADR-0039 ruling 3 as amended 2026-11-19: among ties, a manifest script,
+    then a main / main guard, then the rest. Before ``package_executable``
+    existed, rank 0 read ``meta.evidence_type == "manifest_declared"``,
+    because the manifest's executables shared ``cli_command`` with framework
+    subcommands; ADR-0028 says that field names the inference pathway, so
+    reading it as a category was the leak audit 0027 documented.
+    """
+    if kind is EntrypointKind.PACKAGE_EXECUTABLE:
+        return 0
+    return 1 if role_of(kind) == ROLE_PROGRAM_START else 2
 
 
 # ---------------------------------------------------------------------------

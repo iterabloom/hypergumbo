@@ -658,6 +658,7 @@ The operating system or a language runtime starts a process here. Ruled closed (
 - **`electron_main`** — Electron's main-process script (electron.yaml `app.whenReady` / `app.on`).
 - **`main_function`** — A language's convention `main` (main-functions.yaml); until WI-fasij also the `application` rows and the Verilog top module.
 - **`main_guard`** — A Python module run as a script (`if __name__ == '__main__':`, no main()).
+- **`package_executable`** — An executable the package's manifest declares (package.json `bin`, Cargo `[[bin]]`, pyproject `[project.scripts]`); the entry is the manifest record.
 
 ### `command` — sketch group "CLI & Scripts"
 
@@ -745,6 +746,7 @@ Found by its shape alone (a shell script, a standalone script file, an `index.ht
 | `main_function` | `program_start` | ruled 2026-11-21 | CANONICAL | — |
 | `main_guard` | `program_start` | ruled 2026-11-21 | CANONICAL, kept under a trigger | the guard is how the start is recognised; kept beside main_function while no reader branches on one without the other (audit 0027 keep trigger) |
 | `middleware_handler` | `request_ingress` | proposed | CANONICAL | — |
+| `package_executable` | `program_start` | ruled 2026-11-21 | CANONICAL | — |
 | `scheduled_task` | `scheduled` | proposed | CANONICAL | — |
 | `script_module` | `fallback` | ruled 2026-11-21 | CANONICAL, kept under a trigger | named by how it is found; ruled fallback (audit 0027 keep trigger) |
 | `serializer` | `reflective` | proposed | CANONICAL | — |

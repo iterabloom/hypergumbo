@@ -545,16 +545,20 @@ def test_visibility_follows_the_languages_rule(survey, language: str, symbol: st
 
 #: One entrypoint, detected by two routes. The route shows in evidence_type
 #: or in the detection mechanism (ADR-3aaa: a decorator on the definition vs
-#: a registration call), and the kind must not follow it. The CLI function is
-#: not named ``main``, so the main() convention does not add a third kind; the
-#: package is not ``t/``, which the test-file heuristic reads as a Perl test
-#: directory.
+#: a registration call), and the kind must not follow it. The CLI twins are two
+#: subcommands, one a click command (framework_pattern), one a C ``cmd_<name>``
+#: dispatch-table function (naming_heuristic). The CLI function is not named
+#: ``main``, so the main() convention does not add a third kind; the package
+#: is not ``t/``, which the test-file heuristic reads as a Perl test
+#: directory. A pyproject ``[project.scripts]`` entry was the second CLI twin
+#: until SCHEMA_VERSION 0.22.0: it names the package's EXECUTABLE, a different
+#: thing from a subcommand, and has its own kind, ``package_executable``
+#: (ADR-0063), on the manifest record rather than on the function.
 _ROUTE_TWINS: dict[str, tuple[dict[str, str], dict[str, str]]] = {
     "cli": (
         {"requirements.txt": "click\n", "tool/__init__.py": "",
          "tool/app.py": "import click\n\n\n@click.command()\ndef run():\n    print('x')\n"},
-        {"pyproject.toml": '[project]\nname = "tool"\nversion = "0"\n[project.scripts]\ntool = "tool.app:run"\n',
-         "tool/__init__.py": "", "tool/app.py": "def run():\n    print('x')\n"},
+        {"tool/cmd.c": "int cmd_run(int argc, char **argv) {\n    return argc;\n}\n"},
     ),
     "flask": (
         {"app.py": "from flask import Flask\napp = Flask(__name__)\n\n\n@app.route('/u')\ndef users():\n    return ''\n"},
@@ -587,9 +591,6 @@ def callable_target_violations(bm: Map) -> list[str]:
     for ep in bm["entrypoints"]:
         target = nodes.get(ep["symbol_id"], {})
         if ep["kind"] in _CALLABLE_ENTRYPOINT_KINDS and target.get("kind") not in _CALLABLE_SYMBOL_KINDS:
-            # cli_command from a manifest names the script FILE by design.
-            if ep["meta"].get("evidence_type") == "manifest_declared" and target.get("kind") == "file":
-                continue
             out.append(f"{ep['kind']} -> {target.get('kind')} {target.get('name')}")
     return out
 
@@ -611,12 +612,24 @@ class TestEntrypointKindIsTheWhat:
     def test_control_the_cli_twins_really_took_two_routes(self, survey) -> None:
         one, two = (survey(f"ep_cli_{i}", files) for i, files in enumerate(_ROUTE_TWINS["cli"]))
         routes = [{ep["meta"]["evidence_type"] for ep in bm["entrypoints"]} for bm in (one, two)]
-        assert routes == [{"framework_pattern"}, {"manifest_declared"}]
+        assert routes == [{"framework_pattern"}, {"naming_heuristic"}]
 
     @pytest.mark.parametrize("name", ["cli", "express"])
     def test_a_callable_kind_targets_a_callable(self, survey, name: str) -> None:
         for i, files in enumerate(_ROUTE_TWINS[name]):
             assert callable_target_violations(survey(f"ep_{name}_{i}", files)) == []
+
+    def test_a_manifest_executable_is_its_own_kind_on_the_manifest_record(self, survey) -> None:
+        """The pyproject script names the package's executable: kind
+        ``package_executable``, a kind no callable-target rule covers, so the
+        manifest needs no exception in the checker (it had one while the entry
+        was a ``cli_command``)."""
+        bm = survey("ep_manifest", {
+            "pyproject.toml": '[project]\nname = "tool"\nversion = "0"\n[project.scripts]\ntool = "tool.app:run"\n',
+            "tool/__init__.py": "", "tool/app.py": "def run():\n    print('x')\n"})
+        assert "package_executable" in entrypoint_kinds(bm)
+        assert "cli_command" not in entrypoint_kinds(bm)
+        assert callable_target_violations(bm) == []
 
     @pytest.mark.xfail(strict=True, reason="WI-dofiz: the Flask application variable is a main_function entrypoint")
     def test_a_flask_application_is_not_a_main_function(self, survey) -> None:
