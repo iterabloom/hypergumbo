@@ -245,6 +245,7 @@ def test_electron_main_ranks_with_the_program_starts() -> None:
     ({"concept": "error_handler", "framework": "flask"}, "Request Handlers"),
     ({"concept": "app_bootstrap", "framework": "react"}, "Hosted Applications"),
     ({"concept": "application", "framework": "flask"}, "Hosted Applications"),
+    ({"concept": "top_module", "framework": "verilog"}, "Hosted Applications"),
     ({"concept": "entrypoint", "framework": "electron"}, "CLI & Scripts"),
     ({"concept": "command", "framework": "click"}, "CLI & Scripts"),
     ({"concept": "npm_bin", "framework": "config-conventions"}, "CLI & Scripts"),
@@ -681,6 +682,15 @@ def test_ruling_hosted_application_ranks_with_routes_not_with_program_starts() -
     # Still says its language hosts an application (the export demotion), as
     # it did while it was filed under main_function.
     assert EntrypointKind.HOSTED_APPLICATION in APPLICATION_KINDS, RULING_HOSTED
+
+
+def test_ruling_the_verilog_top_module_is_a_hosted_application() -> None:
+    top = _sym("top", "rtl/top.sv", kind="module", language="verilog",
+               concepts=[{"concept": "top_module", "framework": "verilog"}])
+    (ep,) = detect_entrypoint_candidates([top], [])
+    assert ep.kind is EntrypointKind.HOSTED_APPLICATION, RULING_HOSTED
+    assert ep.label == "Verilog top module"
+    assert (ep.confidence, ep.meta["evidence_type"]) == (0.90, "framework_pattern")
 
 
 @pytest.mark.parametrize(("symbol_kind", "framework", "label"), [

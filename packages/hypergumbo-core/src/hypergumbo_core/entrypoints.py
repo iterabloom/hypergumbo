@@ -63,7 +63,7 @@ Confidence Scores
 -----------------
 Base confidence is tiered: 0.99 a package's declared executable; 0.95 most
 framework-pattern concepts (route_handler, go_http_handler, form, serializer,
-servlet, ipc_handler and application take 0.90); 0.90 generic/route-marker
+servlet, ipc_handler, application and top_module take 0.90); 0.90 generic/route-marker
 pass; 0.85 structural (shell script, HTML entry, main guard); 0.80 language
 conventions (test functions, serialization callbacks, script modules) and C
 ``cmd_<name>`` commands; 0.75 library exports; 0.70 other naming
@@ -307,9 +307,8 @@ REQUEST_INGRESS_KINDS: frozenset[str] = frozenset(
 #: package's declared executables (``package_executable``), the convention
 #: ``main`` (and a framework type the runtime starts as the program, such as
 #: an IOApp: the ``entrypoint`` concept), a module ``__main__`` guard and
-#: Electron's main-process script (and, until WI-fasij moves it, the Verilog
-#: top module). A server's application object is NOT a program start:
-#: ``hosted_application``.
+#: Electron's main-process script. A server's application object and the
+#: Verilog top module are NOT program starts: ``hosted_application``.
 #: Among entries of equal ``rank_score`` the declared executables come first,
 #: then the other program starts, then every other kind
 #: (:func:`entry_kind_tie_rank`); ``slice --entry auto`` gives them all its
@@ -652,6 +651,8 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
       SwiftUI App, an app delegate)
     - "application" -> HOSTED_APPLICATION (an application object a server or
       runtime hosts: Flask / FastAPI app, Tornado / aiohttp / Roda app class)
+    - "top_module" -> HOSTED_APPLICATION (a Verilog module nothing
+      instantiates)
     - "api_bridge" / "preload_script" -> ELECTRON_PRELOAD (the preload FILE:
       a contextBridge exposure in it, or a window's literal
       webPreferences.preload path naming it)
@@ -1367,7 +1368,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # zio.yaml (ZIOApp, ZIOAppDefault), swiftui.yaml (App and the two
             # app delegates). Until audit 0027 those rows emitted
             # ``application``, which now means a hosted application object.
-            # verilog.py's top-module stamp emits it too. The cli.yaml
+            # Verilog's top module moved to ``top_module``. The cli.yaml
             # (fire.Fire, argparse.ArgumentParser), cli-go.yaml (kong.Parse),
             # cli-ruby.yaml (OptionParser) and akka-http.yaml
             # (Http().newServerAt) rows keyed those calls on ``decorator:``,
@@ -1468,16 +1469,20 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             # or runtime hosts and drives (flask.yaml / fastapi.yaml
             # ``app = Flask(...)`` variables, tornado.yaml / aiohttp.yaml /
             # roda.yaml / padrino.yaml / hummingbird.yaml base classes, ...).
-            # It starts no process, so it is not a program start: it ranks
+            # ``top_module``: a Verilog module no instantiation names, which
+            # a simulator or synthesis tool elaborates (verilog.py). Neither
+            # starts a process, so neither is a program start: they rank
             # with routes (tie rank 2) and get no ``slice --entry auto``
             # boost. A framework type the runtime starts AS the program
             # (IOApp, ZIOApp, SwiftUI ``App``) carries ``entrypoint``
             # instead (MAIN_FUNCTION, above). The framework stays on the
             # symbol's concept and in the label, not in the kind (ADR-0027).
-            elif concept_type == "application":
+            elif concept_type in ("application", "top_module"):
                 if EntrypointKind.HOSTED_APPLICATION in added_kinds:
                     continue
-                if framework:
+                if concept_type == "top_module":
+                    label = f"{framework.title() if framework else 'HDL'} top module"
+                elif framework:
                     label = f"{framework.title()} application"
                 else:
                     label = "Hosted application"

@@ -125,8 +125,10 @@ interface, a class and the compilation unit the field stays ``None``.
 
 A module no ``instantiates`` edge reaches is a top-level module (IEEE 1800
 §23.3.1): it is elaborated without being instantiated, so its body runs.
-``post_process`` gives it the ``entrypoint`` concept, which makes it a seed of
-reachability walks; an instantiated module is reached through its
+``post_process`` gives it the ``top_module`` concept, which makes it an entry
+(kind ``hosted_application``: a simulator or synthesis tool elaborates and
+drives it, it starts no process of its own; audit 0027, ruled 2026-11-21) and
+so a seed of reachability walks; an instantiated module is reached through its
 ``instantiates`` edge. This over-approximates where an instantiation resolved
 to another same-named module or sits in a module the grammar lost.
 
@@ -296,7 +298,7 @@ _EXPORTED_BY_SCOPE = {
 }
 
 #: The concept a top-level module carries; ``entrypoints`` reads it.
-_TOP_MODULE_CONCEPT = {"concept": "entrypoint", "framework": "verilog"}
+_TOP_MODULE_CONCEPT = {"concept": "top_module", "framework": "verilog"}
 
 
 @dataclass

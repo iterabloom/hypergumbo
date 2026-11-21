@@ -5625,6 +5625,13 @@ class TestApplicationConceptDetection:
         assert [(e.kind, e.label) for e in entrypoints] == [
             (EntrypointKind.HOSTED_APPLICATION, "Hosted application")]
 
+    def test_top_module_concept_without_framework(self) -> None:
+        sym = make_symbol("top", path="rtl/top.v", kind="module", language="verilog",
+                          meta={"concepts": [{"concept": "top_module"}]})
+        entrypoints = detect_entrypoints([sym], [])
+        assert [(e.kind, e.label) for e in entrypoints] == [
+            (EntrypointKind.HOSTED_APPLICATION, "HDL top module")]
+
     def test_application_concept_dedup(self) -> None:
         """Only one HOSTED_APPLICATION entrypoint per symbol even with several
         frameworks claiming it (tornado.yaml and aiohttp.yaml both match a

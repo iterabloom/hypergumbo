@@ -58,8 +58,7 @@ RULINGS. The owner ruled on 2026-11-21 (audit 0027, recorded on WI-holud):
 program start is the package's declared executable, the convention main
 (``main_function``), ``main_guard`` and ``electron_main``, and nothing else;
 ``shell_script`` and ``script_module`` stay fallback; ``android_application``
-and the Verilog top module are hosted application (the top module is filed
-under ``main_function`` until WI-fasij moves it). Server-hosted application
+and the Verilog top module are hosted application. Server-hosted application
 objects (a Flask ``app``, a Tornado ``Application``) have their own kind,
 ``hosted_application``, in that role: they rank with routes (tie rank 2), not
 with program starts, which they had shared ``main_function`` with until
@@ -100,8 +99,8 @@ class EntrypointKind(Enum):
     ``cli_command``, which they had shared with framework subcommands, told
     apart only by ``meta.evidence_type`` (ADR-0028: a pathway, not a
     category), and ``hosted_application`` took a server's application
-    objects off ``main_function``, the convention main's kind (audit
-    0027, ruled 2026-11-21).
+    objects and the Verilog top module off ``main_function``, the
+    convention main's kind (audit 0027, ruled 2026-11-21).
     """
 
     HTTP_ROUTE = "http_route"
@@ -124,7 +123,7 @@ class EntrypointKind(Enum):
     ELECTRON_PRELOAD = "electron_preload"
     # An application object a server or runtime hosts and drives (a Flask
     # or FastAPI ``app``, a Tornado ``Application`` subclass, a Roda app
-    # class, ...); the
+    # class, ...) or a Verilog top module a simulator elaborates; the
     # framework is on the symbol's concept, not in the kind.
     HOSTED_APPLICATION = "hosted_application"
     GO_HANDLER = "go_handler"  # Go http.Handler ServeHTTP (WI-jonin)
@@ -310,7 +309,7 @@ ENTRYPOINT_KINDS: Final[tuple[EntrypointKindSpec, ...]] = (
     _spec(_K.MAIN_FUNCTION, ROLE_PROGRAM_START, RULED, VERDICT_CANONICAL,
           "A language's convention `main` (main-functions.yaml), and a framework type the "
           "runtime starts as the program (`IOApp`, `ZIOApp`, SwiftUI `App`, an app "
-          "delegate: the `entrypoint` concept); until WI-fasij also the Verilog top module."),
+          "delegate: the `entrypoint` concept)."),
     _spec(_K.MAIN_GUARD, ROLE_PROGRAM_START, RULED, VERDICT_KEPT_UNDER_TRIGGER,
           "A Python module run as a script (`if __name__ == '__main__':`, no main()).",
           "the guard is how the start is recognised; kept beside main_function while "
@@ -325,8 +324,8 @@ ENTRYPOINT_KINDS: Final[tuple[EntrypointKindSpec, ...]] = (
           "(cli.yaml is the file of Python CLI frameworks)"),
     _spec(_K.HOSTED_APPLICATION, ROLE_HOSTED_APPLICATION, RULED, VERDICT_CANONICAL,
           "An application object a server or runtime hosts (Flask, FastAPI, Tornado, "
-          "aiohttp, Roda, Padrino, Hummingbird, ...: the `application` concept). Ranks "
-          "with routes, not with program starts."),
+          "aiohttp, Roda, Padrino, Hummingbird, ...: the `application` concept), or a "
+          "Verilog top module (`top_module`). Ranks with routes, not with program starts."),
     _spec(_K.ANDROID_APPLICATION, ROLE_HOSTED_APPLICATION, RULED, VERDICT_CANONICAL,
           "An Android `Application` subclass's lifecycle hook.",
           "the name carries the platform; no platform-neutral kind exists (audit 0027)"),

@@ -1024,7 +1024,9 @@ function int uf(int x); return x; endfunction
 def test_a_module_nothing_instantiates_is_an_entrypoint(tmp_path):
     """A module no instantiation statement names is a top-level module
     (IEEE 1800 §23.3.1), elaborated without being instantiated: it carries the
-    ``entrypoint`` concept. An instantiated module and an interface do not."""
+    ``top_module`` concept, which the entry detector files as a hosted
+    application (audit 0027 ruling 1). An instantiated module and an interface
+    do not."""
     result = _analyze(tmp_path, {"rtl/top.sv": """\
 interface bus_if; logic v; endinterface
 module leaf(input x); endmodule
@@ -1043,10 +1045,32 @@ module spare; endmodule
         s.name: (s.meta or {}).get("concepts")
         for s in result.symbols if s.kind in ("module", "interface")
     }
-    entry = [{"concept": "entrypoint", "framework": "verilog"}]
+    entry = [{"concept": "top_module", "framework": "verilog"}]
     assert concepts == {
         "bus_if": None, "leaf": None, "mid": None, "top": entry, "spare": entry,
     }
+
+
+def test_the_top_module_is_a_hosted_application_entry(tmp_path):
+    """End to end (``run_behavior_map``): the top module's entry is kind
+    ``hosted_application``, not the program-start ``main_function`` it was
+    filed under before (OWNER RULING 2026-11-21, audit 0027 ruling 1: "the
+    Verilog top module [is] hosted application")."""
+    import json
+
+    from hypergumbo_core.cli import run_behavior_map
+
+    (tmp_path / "rtl").mkdir()
+    (tmp_path / "rtl/top.sv").write_text(
+        "module leaf(input x); endmodule\n"
+        "module top; wire w; leaf u_leaf(.x(w)); endmodule\n")
+    map_file = tmp_path / "map.json"
+    run_behavior_map(repo_root=tmp_path, out_path=map_file, include_sketch_precomputed=False)
+    bm = json.loads(map_file.read_text())
+    names = {n["id"]: n["name"] for n in bm["nodes"]}
+    entries = {names[ep["symbol_id"]]: (ep["kind"], ep["label"]) for ep in bm["entrypoints"]}
+    assert entries == {"top": ("hosted_application", "Verilog top module")}, (
+        "OWNER RULING 2026-11-21 (audit 0027): the Verilog top module is hosted application")
 
 
 def _dead_code(repo, files: dict[str, str]) -> tuple[dict, set[str]]:
