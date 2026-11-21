@@ -1,0 +1,20 @@
+- op: create  # 615b
+  at: '2026-11-20T22:32:43Z'  # 615b
+  by: agent  # 615b
+  actor: jgstern_agent  # 615b
+  clock: 1  # 615b
+  nonce: 615b  # 615b
+  data:  # 615b
+    kind: work_item  # 615b
+    title: "Spec does not describe dead-code-maybe's cross_language_demoted field (schema 0.3.0)."  # 615b
+    status: todo_soft  # 615b
+    priority: 4  # 615b
+    parent:  # 615b
+    tags:  # 615b
+    - docs  # 615b
+    isbefore: []  # 615b
+    duplicate_of: []  # 615b
+    not_duplicate_of: []  # 615b
+    pr_ref:  # 615b
+    description: "Spec does not describe dead-code-maybe's cross_language_demoted field (schema 0.3.0).\n\nREPRO: grep -n cross_language_demoted docs/hypergumbo-spec.md -> nothing, while dead-code-maybe --format json writes it (DEAD_CODE_MAYBE_SCHEMA_VERSION 0.3.0). Found by PR 6 agent 1 (2026-11-20) while pinning the spec's version values: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/gigir/RESULTS.md."  # 615b
+    fields: {}  # 615b

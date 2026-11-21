@@ -1,0 +1,20 @@
+- op: create  # 06df
+  at: '2026-11-21T01:32:18Z'  # 06df
+  by: agent  # 06df
+  actor: jgstern_agent  # 06df
+  clock: 1  # 06df
+  nonce: 06df  # 06df
+  data:  # 06df
+    kind: work_item  # 06df
+    title: "sketch's _detect_project_binary_names keeps go.mod's major-version suffix as the binary name."  # 06df
+    status: todo_soft  # 06df
+    priority: 4  # 06df
+    parent:  # 06df
+    tags:  # 06df
+    - entrypoints  # 06df
+    isbefore: []  # 06df
+    duplicate_of: []  # 06df
+    not_duplicate_of: []  # 06df
+    pr_ref:  # 06df
+    description: "sketch's _detect_project_binary_names keeps go.mod's major-version suffix as the binary name.\n\nREPRO: calling _detect_project_binary_names on caddy and nats-server returns v2, on podman v6 (module paths github.com/caddyserver/caddy/v2 etc.; go build names the binary caddy). The new entrypoints.go_module_binary_name (PR 6) strips /vN and is the shared fix. Found by PR 6 agent 2 (2026-11-20) while building WI-dufuz: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/dufuz/RESULTS.md."  # 06df
+    fields: {}  # 06df

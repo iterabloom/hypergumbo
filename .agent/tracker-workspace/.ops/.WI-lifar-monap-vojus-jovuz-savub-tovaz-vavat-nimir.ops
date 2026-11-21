@@ -1,0 +1,20 @@
+- op: create  # 7531
+  at: '2026-11-21T01:32:11Z'  # 7531
+  by: agent  # 7531
+  actor: jgstern_agent  # 7531
+  clock: 1  # 7531
+  nonce: '7531'  # 7531
+  data:  # 7531
+    kind: work_item  # 7531
+    title: "Go: ignore-tagged mains in one directory are linked to each other, and the legacy // +build ignore form is not read."  # 7531
+    status: todo_soft  # 7531
+    priority: 3  # 7531
+    parent:  # 7531
+    tags:  # 7531
+    - entrypoints  # 7531
+    isbefore: []  # 7531
+    duplicate_of: []  # 7531
+    not_duplicate_of: []  # 7531
+    pr_ref:  # 7531
+    description: "Go: ignore-tagged mains in one directory are linked to each other, and the legacy // +build ignore form is not read.\n\nREPRO: a directory with three package-main files each tagged //go:build ignore -> go.py (~line 7049) emits 3 references edges between them as build_tag_alternative, which inflates their out-degree (they are separate programs run with go run, not alternatives of one build). Separately, a file tagged only with the legacy // +build ignore line is not recorded as build-ignored. Found by PR 6 agent 2 (2026-11-20) while building WI-dufuz: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/dufuz/RESULTS.md."  # 7531
+    fields: {}  # 7531
