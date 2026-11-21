@@ -1,0 +1,3 @@
+Original commit body from 851a28e44c94f5d5f0388f2a27cac9b7781cb00f:
+
+The nightly 3.10 leg is red on coverage at fafaa4a8 (pipeline 6723, test-matrix): one line of cli.py, the 141 return inside main's SystemExit arm, is not run there. Python 3.10's argparse lets a BrokenPipeError out of a failed write where 3.11+ swallows it, so the existing tests reach a different arm on 3.10. This adds one test with a stream whose write buffers and whose flush raises, which reaches the SystemExit arm on every version. Checked with 3.10's argparse write patched in (line trace) and by mutation. Not run on a real 3.10 interpreter: the next nightly is that check. Also regenerates ARCHITECTURE.md (25 commits old).
