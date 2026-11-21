@@ -653,7 +653,7 @@ table after them records, per kind, whether its role was ruled by the owner
 
 ### `program_start` — sketch group "CLI & Scripts"
 
-The operating system or a language runtime starts a process here. Ruled closed (2026-11-21): the package's declared executable, the convention main, the `__main__` guard and Electron's main-process script, and nothing else. Ranks first among ties, gets `slice --entry auto`'s 2x boost, and is the set the INV-hosuh dedup groups.
+The operating system or a language runtime starts a process here. Ruled closed (2026-11-21): the package's declared executable, the convention main, the `__main__` guard and Electron's main-process script, and nothing else. Ranks first among ties and gets `slice --entry auto`'s 2x boost.
 
 - **`electron_main`** — Electron's main-process script (electron.yaml `app.whenReady` / `app.on`).
 - **`main_function`** — A language's convention `main` (main-functions.yaml), and a framework type the runtime starts as the program (`IOApp`, `ZIOApp`, SwiftUI `App`, an app delegate: the `entrypoint` concept).

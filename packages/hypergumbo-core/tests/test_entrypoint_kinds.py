@@ -279,9 +279,9 @@ def test_a_reflective_class_does_not_demote_exports() -> None:
     assert both[export.id].rank_score == alone[export.id].rank_score
 
 
-def test_the_main_dedup_groups_the_program_start_role() -> None:
-    """INV-hosuh: a file's guard is dropped beside its function main. The
-    kinds it groups are the program-start role, which is what it reads."""
+def test_the_main_dedup_drops_a_guard_beside_its_function_main() -> None:
+    """INV-hosuh: a file's guard is dropped beside its function main (the
+    guard / main pair; the cases it must not touch are below, WI-fasij)."""
     main = _sym("main", "tool.py", concepts=[{"concept": "main_function"}])
     guard = _sym("tool.py", "tool.py", kind="file", concepts=[{"concept": "main_guard"}])
     kinds = {ep.kind for ep in detect_entrypoint_candidates([main, guard], [])}
@@ -663,6 +663,12 @@ RULING_HOSTED = (
     "2 ParsableCommand types become cli_command, 3 Yesod Template Haskell dispatch "
     "generators stop being entries; the Verilog top module is hosted application.")
 
+RULING_DEDUP = (
+    "OWNER RULING 2026-11-21 (audit 0027 B, WI-fasij): key the INV-hosuh dedup on the "
+    "guard / main pair (a main_guard and the main_function on a function in the same "
+    "file are one program start); it never removes an entry that is neither.")
+
+
 def test_ruling_hosted_application_is_a_kind_in_the_hosted_role() -> None:
     spec = K._SPEC_BY_KIND[EntrypointKind.HOSTED_APPLICATION]
     assert spec.name == "hosted_application", RULING_HOSTED
@@ -814,3 +820,70 @@ def test_ruling_the_application_concept_is_the_15_hosted_rows_and_nothing_else()
             for pat in read_catalogue_yaml(p).get("patterns") or []
             if pat.get("concept") == "application" and (m := _row_matcher(pat))}
     assert live == hosted, RULING_HOSTED
+
+
+# ---------------------------------------------------------------- the main / guard dedup (INV-hosuh)
+
+
+def _kinds_by_name(nodes: list[Symbol]) -> dict[str, str]:
+    by_id = {n.id: n.name for n in nodes}
+    return {by_id[ep.symbol_id]: ep.kind.value for ep in detect_entrypoint_candidates(nodes, [])}
+
+
+def test_ruling_the_dedup_keeps_application_objects_beside_a_main() -> None:
+    """audit 0027 B, ``probe3/server.py``: a Tornado ``Application`` and a
+    Flask ``app`` in a file with ``def main()`` and a guard were silently
+    dropped. Only the guard goes."""
+    main = _sym("main", "server.py", line=23, concepts=[{"concept": "main_function"}])
+    guard = _sym("server.py", "server.py", kind="file", concepts=[{"concept": "main_guard"}])
+    cls = _sym("Application", "server.py", kind="class", line=8,
+               concepts=[{"concept": "application", "framework": "tornado"}])
+    var = _sym("app", "server.py", kind="variable", line=5,
+               concepts=[{"concept": "application", "framework": "flask"}])
+    assert _kinds_by_name([main, guard, cls, var]) == {
+        "main": "main_function", "Application": "hosted_application",
+        "app": "hosted_application"}, RULING_DEDUP
+
+
+@pytest.mark.parametrize("concept", [
+    {"concept": "entrypoint", "framework": "electron"},          # electron_main
+    {"concept": "pyproject_script", "framework": "config-conventions"},  # package_executable
+    {"concept": "entrypoint", "framework": "http4s"},            # main_function on a class
+])
+def test_ruling_the_dedup_never_drops_a_program_start_that_is_not_the_guard(
+    concept: dict,
+) -> None:
+    """The dedup used to keep, per file, only the program starts on a
+    function. A program start on any other symbol in a file with a function
+    main is a second start, not the guard's double."""
+    main = _sym("main", "tool.py", line=20, concepts=[{"concept": "main_function"}])
+    guard = _sym("tool.py", "tool.py", kind="file", concepts=[{"concept": "main_guard"}])
+    other = _sym("Other", "tool.py", kind="class", line=5, concepts=[concept])
+    kinds = _kinds_by_name([main, guard, other])
+    assert set(kinds) == {"main", "Other"}, RULING_DEDUP
+
+
+def test_ruling_the_dedup_keeps_two_mains_and_drops_their_guard() -> None:
+    a = _sym("main", "tool.py", line=20, concepts=[{"concept": "main_function"}])
+    b = _sym("main", "tool.py", line=40, concepts=[{"concept": "main_function"}])
+    guard = _sym("tool.py", "tool.py", kind="file", concepts=[{"concept": "main_guard"}])
+    ids = {ep.symbol_id for ep in detect_entrypoint_candidates([a, b, guard], [])}
+    assert ids == {a.id, b.id}, RULING_DEDUP
+
+
+def test_ruling_a_guard_with_no_function_main_is_kept() -> None:
+    """A guard alone, or beside a main_function that is not a function (an
+    IOApp object), is the file's program start."""
+    guard = _sym("tool.py", "tool.py", kind="file", concepts=[{"concept": "main_guard"}])
+    obj = _sym("Main", "tool.py", kind="object", line=5,
+               concepts=[{"concept": "entrypoint", "framework": "http4s"}])
+    assert _kinds_by_name([guard]) == {"tool.py": "main_guard"}, RULING_DEDUP
+    assert _kinds_by_name([guard, obj]) == {
+        "tool.py": "main_guard", "Main": "main_function"}, RULING_DEDUP
+
+
+def test_ruling_a_guard_is_dropped_only_beside_a_main_in_its_own_file() -> None:
+    main = _sym("main", "a.py", line=20, concepts=[{"concept": "main_function"}])
+    guard = _sym("b.py", "b.py", kind="file", concepts=[{"concept": "main_guard"}])
+    assert _kinds_by_name([main, guard]) == {
+        "main": "main_function", "b.py": "main_guard"}, RULING_DEDUP
