@@ -1267,6 +1267,14 @@ runs can find prior work:
   covering route; the producerless kinds are removed and `electron_preload`
   gets a producer, at schema 0.22.0.
 
+  Built in one PR: the axis is declared in `docs/adr/0063-entrypoint-kind-axis.md`,
+  with its registry in `entrypoint_kinds.py` (one role per kind; every
+  reader asks for a role) and its drift check inside
+  `scripts/check-symbol-kind-drift`. Two later rulings the same day: the
+  sketch keeps its headings, declared per kind in the registry, and
+  `spa_bootstrap`, `electron_preload` and `android_activity` are hosted
+  applications.
+
   Filed: WI-jilik, WI-giron, WI-fasij (the build, one PR), WI-rafop,
   WI-hamiz, with WI-duzif standing. Full write-up:
   `docs/audits/0027-entry-point-kinds.md`; evidence
