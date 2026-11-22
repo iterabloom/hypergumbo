@@ -110,7 +110,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `event` | inert | adonisjs, fuelphp, laravel, masonite | _(none)_ |
 | `event_config` | inert | lit | _(none)_ |
 | `event_consumer` | inert | vertx | _(none)_ |
-| `event_handler` | live | aiohttp, celery, cli, django, electron, guice, hapi, jakarta-cdi, laravel, micronaut, nestjs, openresty, pyramid, qt, quarkus, rails, sanic, spring-boot, symfony, yii | `entrypoints.py` |
+| `event_handler` | live | aiohttp, celery, django, electron, guice, hapi, jakarta-cdi, laravel, micronaut, nestjs, openresty, pyramid, qt, quarkus, rails, sanic, spring-boot, symfony, yii | `entrypoints.py` |
 | `event_listener` | inert | cakephp, fuelphp, laminas, lumen | _(none)_ |
 | `event_publisher` | inert | quarkus, rails, vertx | _(none)_ |
 | `event_source` | inert | play | _(none)_ |

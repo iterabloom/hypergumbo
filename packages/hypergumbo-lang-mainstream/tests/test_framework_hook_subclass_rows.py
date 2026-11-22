@@ -2,7 +2,7 @@
 # covers: packages/hypergumbo-core/src/hypergumbo_core/frameworks/flask-restful.yaml
 """Framework hooks a repository writes by subclassing, asked of the analyzers.
 
-Three hooks a framework calls on a subclass the repository defines, with
+Two hooks a framework calls on a subclass the repository defines, with
 nothing in the repository calling them:
 
 - flask-restful: ``class JsonErrorApi(Api): def handle_error(self, e)`` - the
@@ -11,10 +11,6 @@ nothing in the repository calling them:
   ``setDefaultErrorHandler``; Slim calls it on an uncaught exception
   (``error_handler`` on the class: the PHP analyzer records no parent bases on
   a method, so the row reads the class's ``base_classes``).
-- argparse: ``class UpperAction(argparse.Action): def __call__(...)`` - argparse
-  calls it when the option is parsed (``event_handler``: no entry kind names a
-  parse callback; the action is a callback on the "option seen" event). The
-  row is in cli.yaml, which loads only where a CLI framework is detected.
 
 Each test runs the analyzer on source, gives its symbols to the shipped rows,
 asserts the symbol exists first, and has a control: the same method name or
@@ -86,18 +82,3 @@ def test_slim_error_handler_subclass(tmp_path: Path) -> None:
     assert _concepts(by_name["ErrorHandlerFactory"]) == []
     assert _concepts(by_name["LogRenderer"]) == []
 
-
-def test_argparse_action_subclass(tmp_path: Path) -> None:
-    source = (
-        "import argparse\n\n\n"
-        "class UpperAction(argparse.Action):\n"
-        "    def __call__(self, parser, namespace, values, option_string=None):\n"
-        "        setattr(namespace, self.dest, values.upper())\n\n"
-        "    def format(self):\n        return ''\n\n\n"
-        "class Callable:\n"
-        "    def __call__(self):\n        return 1\n"
-    )
-    by_name = _enriched(tmp_path, {"cli.py": source}, analyze_python, "cli")
-    assert ("event_handler", "cli") in _concepts(by_name["UpperAction.__call__"])
-    assert _concepts(by_name["UpperAction.format"]) == []
-    assert _concepts(by_name["Callable.__call__"]) == []

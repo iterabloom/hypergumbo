@@ -7,20 +7,24 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: tornado
 language: python
 
 patterns:
   # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
-  # Tornado URLSpec routing - (r"/path", Handler)
+  # Tornado URLSpec routing - url(r"/path", Handler), URLSpec(r"/path", Handler).
+  # The path is the first argument as written: url() calls are recorded by the
+  # Python analyzer's Django extractor (its metadata.args), URLSpec() calls by
+  # its registration extractor (the leading string arguments), and both
+  # write args[0]. route_path is the Django extractor's alone.
   - concept: route
     usage:
       kind: "^call$"
       name: "^(URLSpec|url)$"
       position: "^args\\[1\\]$"
     extract:
-      path: "metadata.route_path"
+      path: "metadata.args[0]"
       method: "literal:GET"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================

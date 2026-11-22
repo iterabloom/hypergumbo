@@ -45,14 +45,6 @@ patterns:
       name: "^([A-Za-z_]\\w*\\.)*cleanup_ctx\\.append$"
       position: "^args\\[0\\]$"
 
-  # aiohttp_jinja2.setup(app, context_processors=[proc]): each processor is
-  # called on every request by the context_processors_middleware it installs.
-  - concept: middleware
-    usage:
-      kind: "^call$"
-      name: "^aiohttp_jinja2\\.setup$"
-      position: "^kwargs\\[context_processors\\]\\[\\d+\\]$"
-
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # aiohttp RouteTableDef decorators - @routes.get("/path")
   - concept: route
