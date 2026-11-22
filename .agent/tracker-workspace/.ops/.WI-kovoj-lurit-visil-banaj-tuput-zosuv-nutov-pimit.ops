@@ -1,0 +1,20 @@
+- op: create  # 4c15
+  at: '2026-11-22T09:34:06Z'  # 4c15
+  by: agent  # 4c15
+  actor: jgstern_agent  # 4c15
+  clock: 1  # 4c15
+  nonce: 4c15  # 4c15
+  data:  # 4c15
+    kind: work_item  # 4c15
+    title: "Haskell: applied-type instances share one name, newtype has no symbol, instance bodies have no symbols"  # 4c15
+    status: todo_soft  # 4c15
+    priority: 3  # 4c15
+    parent:  # 4c15
+    tags:  # 4c15
+    - analysis_quality  # 4c15
+    isbefore: []  # 4c15
+    duplicate_of: []  # 4c15
+    not_duplicate_of: []  # 4c15
+    pr_ref:  # 4c15
+    description: "WHAT. Left open in haskell.py after PR #2329 (instances record their class; symbols carry <Module>.<name>):\n- instance Yesod (App a) / instance Yesod [Foo] keep the class-only name \"Yesod\", and a second such instance of one class in a file is dropped (seen_names); fixing the names moves stable ids.\n- newtype emits no symbol; a standalone deriving instance emits none; deriving clauses are not recorded.\n- Methods inside an instance body are not symbols, so a hosted_application entry on an instance has an empty forward slice.\n- On the yesod framework repository 18 hosted_application entries (many of them test-fixture apps) displace 9 main_function entries under the 50-entry cap.\n- Not measured on a mixed repository: a reference with no host language can now be answered at the qualified tier by a Haskell <Module>.<name>; framework_patterns._get_parent_class_name returns the module for a Haskell function (read only by JAX-RS / prefix_from_parent rows).\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # 4c15
+    fields: {}  # 4c15
