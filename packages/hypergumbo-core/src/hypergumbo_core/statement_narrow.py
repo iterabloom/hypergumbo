@@ -30,7 +30,9 @@ IT REFUSES, AND THE RUN IS NOT NARROWED, WHEN:
   change what a test does without changing a statement any test ran;
 * no package source changed (there is nothing for statements to say);
 * the selector met code it cannot answer by statement: a block the index has
-  never seen, import-time code, a file that does not parse.
+  never seen, a new method whose bases it cannot follow to source,
+  import-time code (a new decorated def among it), a file that does not
+  parse. A new def is named in the refusal.
 
 WHAT IT LEAVES OUT. A test of the run set's files, as the index spells it, that
 the selector did not select, coverage can speak for, and whose file is
@@ -65,7 +67,13 @@ from .selection_index import (
     statement_records,
     without_xdist_group,
 )
-from .statement_select import UNPARSABLE, Selection, select_by_statement
+from .statement_select import (
+    NEW_DECORATED,
+    UNPARSABLE,
+    UNRESOLVED_BASE,
+    Selection,
+    select_by_statement,
+)
 
 #: Changed paths outside package source that change no test's behaviour the
 #: selector could miss: prefixes, and suffixes allowed outside package source.
@@ -113,6 +121,12 @@ def unjudged(rel: str) -> bool:
     return not rel.endswith(_INERT_SUFFIXES)
 
 
+def _answered(selection: Selection, keys: Iterable[tuple[str, str]], answer: str) -> str:
+    """The first three of ``keys`` answered ``answer``, by block name."""
+    names = sorted(name for path, name in keys if selection.answers.get((path, name)) == answer)
+    return ", ".join(names[:3])
+
+
 def _refusal(changed: list[str], selection: Optional[Selection]) -> Optional[str]:
     unknown_paths = sorted(rel for rel in changed if unjudged(rel))
     if unknown_paths:
@@ -120,8 +134,14 @@ def _refusal(changed: list[str], selection: Optional[Selection]) -> Optional[str
     if selection is None:
         return "no package source changed"
     if selection.unknown:
+        bases = _answered(selection, selection.unknown, UNRESOLVED_BASE)
+        if bases:
+            return f"a new method whose bases are not source of this repository: {bases}"
         return f"{len(selection.unknown)} changed block(s) the index has never seen"
     if selection.import_time:
+        decorated = _answered(selection, selection.import_time, NEW_DECORATED)
+        if decorated:
+            return f"a new decorated def, which may register itself at import: {decorated}"
         return f"{len(selection.import_time)} changed block(s) of import-time code"
     if UNPARSABLE in selection.answers.values():
         return "a changed file does not parse"

@@ -39,12 +39,29 @@ selection whose ``unknown`` is not empty.
 WHAT IT DOES NOT DECIDE. Import-time blocks (a module body, a class body,
 and a function the index saw run while a module was imported): no record
 says which tests ran them; they are listed in ``import_time`` for the
-caller's import rule. A new function has no test of its own (a changed
-caller's). A new METHOD is given every test that reached any block of its
-class in the same file: an unchanged call may now reach it in place of an
-inherited one. That last rule is a guess at "the tests that use this class",
-not a measurement; a subclass in another file that inherits the new method is
-reached only if its tests also reach the class's own code.
+caller's import rule. A NEW def whose decorator is not known to be inert is
+import-time code too (``NEW_DECORATED``): the decorator runs where the
+``def`` does and may register the function where unchanged code finds it.
+
+NEW DEFS. A new function has no test of its own (a changed caller's), unless
+it is a second def of a name its scope already defines (``f#2``): every call
+of the name now runs it, so it is given every test that reached the first
+(``SHADOWS``; :mod:`block_hash` records this as a false negative of selecting
+by block, which that selector still has). A new METHOD of a class that existed is given every test that reached a block of
+its class in the same file, and every test that ran a method it OVERRIDES
+(``OVERRIDE``): an unchanged call that reached the inherited method now
+reaches the new one, and the test's only record is of the inherited one, in
+another class and often another file (INV-bifih). The overridden methods are
+read from the class statement's bases, followed through the file's imports to
+source of this repository (:mod:`new_def_reach`). When a base cannot be
+followed there (a builtin, the standard library, a computed base, a
+metaclass) what the method overrides is not known: ``UNRESOLVED_BASE``,
+listed in ``unknown``, so nothing is narrowed. A method of a NEW class keeps
+the first rule alone (its class body is import-time code). STILL NOT KNOWN:
+a new method on a class that a subclass lists before another base defining
+the name (``class D(Mixin, Base)``, ``Mixin`` gains ``m``): that needs every
+subclass in the repository, which the selector does not look for; and a new
+name reached only through ``getattr`` / ``hasattr``.
 
 WHOM IT NEVER NARROWS. A test coverage cannot speak for
 (:func:`selection_index.coverage_cannot_speak_for`): one whose own call ran
@@ -108,13 +125,20 @@ from .selection_index import (
     statement_records_at,
     touching_tests,
 )
-from .statement_diff import Kind, statement_changes
+from .new_def_reach import NewDefs
+from .statement_diff import BlockChange, Kind, statement_changes
 
 #: ``Selection.answers`` values that are not of the form ``whole: <why>``.
 BY_STATEMENT = "by statement"
 PROSE = "prose: no test"
 NEW = "new function: no test of its own"
 NEW_METHOD = "new method: every test that reached its class"
+OVERRIDE = ("new method overriding an inherited one: every test that reached its class "
+            "or ran the method it overrides")
+NEW_DECORATED = "new decorated def: its decorator may register it: the import rule"
+SHADOWS = "new def shadowing an earlier one of the same name: every test that reached that one"
+UNRESOLVED_BASE = ("new method of a class whose bases are not all source of this repository: "
+                   "it cannot say what the method overrides")
 GONE = "gone: every test that reached it"
 NO_BASE_RECORD = "no record of the block as it was: every test that reached it"
 UNKNOWN = "the index has never seen this block: it cannot say which tests reach it"
@@ -136,8 +160,9 @@ class Selection:
     answers: Mapping[BlockKey, str]
     #: Changed blocks that run at import: the caller's import rule answers.
     import_time: frozenset[BlockKey]
-    #: Changed blocks the index has never seen. Not empty: ``tests`` is NOT
-    #: every test the change needs, and nothing may be narrowed on it.
+    #: Changed blocks the index has never seen, and new methods whose bases
+    #: cannot be followed to source. Not empty: ``tests`` is NOT every test
+    #: the change needs, and nothing may be narrowed on it.
     unknown: frozenset[BlockKey]
     #: Every test that reached a block answered ``BY_STATEMENT``: the tests
     #: the selector had the chance to leave out. A failed test in here that
@@ -197,6 +222,7 @@ def select_by_statement(
         ran_at_import = blocks_run_at_import(conn, [path])
         in_fixture = blocks_run_in_fixtures(conn, [path])
         file_tests: Optional[frozenset[str]] = None
+        new_defs: Optional[NewDefs] = None
         for name, change in changes.items():
             key = (path, name)
             if change.kind is Kind.PROSE:
@@ -208,24 +234,18 @@ def select_by_statement(
                 import_time.add(key)
                 answers[key] = IMPORT_TIME
                 continue
-            if change.kind is Kind.NEW:
-                answers[key] = NEW
-                continue
-            if change.kind is Kind.NEW_METHOD:
-                owner = name.rsplit(".", 1)[0]
-                siblings = [block for block in stored
-                            if block == owner or block.startswith(owner + ".")]
-                class_is_new = owner in changes and changes[owner].kind is Kind.NEW
-                if not siblings and not class_is_new:
+            if change.kind in (Kind.NEW, Kind.NEW_METHOD):
+                # A new def is in the current source alone.
+                new_defs = new_defs or NewDefs(path, current or "")
+                answer, reached = _new_def(conn, new_defs, path, name, stored,
+                                           owner_is_new=_owner_is_new(name, changes))
+                answers[key] = answer
+                if answer == NEW_DECORATED:
+                    import_time.add(key)
+                elif answer in (UNKNOWN, UNRESOLVED_BASE):
                     unknown.add(key)
-                    answers[key] = UNKNOWN
-                    continue
-                reached: set[str] = set()
-                for sibling in siblings:
-                    reached |= set(statement_records(conn, path, sibling))
                 tests |= reached
                 by_block |= reached
-                answers[key] = NEW_METHOD
                 continue
             if name not in stored:
                 unknown.add(key)
@@ -262,6 +282,64 @@ def select_by_statement(
         by_block=frozenset(by_block - unmeasured),
         answers=answers, import_time=frozenset(import_time), unknown=frozenset(unknown),
         narrowed=frozenset(narrowed - unmeasured), cannot_speak=blind.tests, readers=readers)
+
+
+def _owner_is_new(name: str, changes: Mapping[str, BlockChange]) -> Optional[bool]:
+    """Whether the class a new method is defined in is new too; ``None`` for
+    a new def that is not a method."""
+    owner = name.rsplit(".", 1)[0]
+    if "." not in name or changes[name].kind is not Kind.NEW_METHOD:
+        return None
+    return owner in changes and changes[owner].kind is Kind.NEW
+
+
+def _new_def(conn: sqlite3.Connection, new_defs: NewDefs, path: str, name: str,
+             stored: Mapping[str, str], owner_is_new: Optional[bool]) -> tuple[str, set[str]]:
+    """How the new def ``name`` is answered, and the tests that answer selects.
+
+    A def whose decorator may register it is import-time code. A second def
+    of a name already defined in the same scope (``f#2``) shadows the first,
+    and is given every test that reached the first. A new function has no
+    test of its own. A new method: every test that reached a block of
+    its class in this file, and, for a class that existed, every test that ran
+    a method it overrides (:meth:`NewDefs.overrides`). A class of which the
+    index has no block, a base that is not source of this repository, and an
+    overridden method the index has never seen each leave tests the selector
+    cannot name: ``UNKNOWN`` / ``UNRESOLVED_BASE``, with the tests it can name
+    (those of the class) still selected.
+    """
+    if new_defs.registering(name):
+        return NEW_DECORATED, set()
+    prefix, _, label = name.rpartition(".")
+    if "#" in label:
+        # A second def of a name: every call of the name now runs this one.
+        first = f"{prefix}.{label.split('#')[0]}" if prefix else label.split("#")[0]
+        shadowed = [block for block in stored if block == first or block.startswith(first + "#")]
+        ran = {test for block in shadowed for test in statement_records(conn, path, block)}
+        return (SHADOWS if shadowed else UNKNOWN), ran
+    if owner_is_new is None:
+        return NEW, set()
+    owner, method = name.rsplit(".", 1)
+    method = method.split("#")[0]
+    siblings = [block for block in stored if block == owner or block.startswith(owner + ".")]
+    if not siblings and not owner_is_new:
+        return UNKNOWN, set()
+    reached: set[str] = set()
+    for sibling in siblings:
+        reached |= set(statement_records(conn, path, sibling))
+    if owner_is_new:
+        return NEW_METHOD, reached
+    found = new_defs.overrides(owner, method)
+    if found.unresolved:
+        return UNRESOLVED_BASE, reached
+    for there, cls in found.definers:
+        blocks = [block for block in _stored_digests(conn, there)
+                  if block == f"{cls}.{method}" or block.startswith(f"{cls}.{method}#")]
+        if not blocks:
+            return UNKNOWN, reached
+        for block in blocks:
+            reached |= set(statement_records(conn, there, block))
+    return (OVERRIDE if found.definers else NEW_METHOD), reached
 
 
 def _readers(conn: sqlite3.Connection, paths: Iterable[str],

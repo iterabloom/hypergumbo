@@ -35,7 +35,8 @@ have run, to run the changed code":
   the test. The exception is a new METHOD: a call that used to reach an
   inherited method reaches the new one with no caller changed, so a new
   method is reported as such (``NEW_METHOD``) for the caller of this module
-  to treat as a change to its class;
+  to answer with the tests of its class and of the method it overrides
+  (:mod:`statement_select`, :mod:`new_def_reach`);
 * a block that is GONE (deleted or renamed): every test that reached it.
 
 Measured before this was written (45 pull requests, 989 changed blocks that

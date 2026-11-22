@@ -441,3 +441,217 @@ def test_a_changed_path_outside_the_repository_is_matched_as_given(tmp_path: Pat
     elsewhere = tmp_path / "repository"
     chosen = ss.select_by_statement(repo.conn, {str(repo.path): BASE}, repo_root=elsewhere)
     assert chosen.readers == {"test_gate.py::t_scans"}
+
+
+# ── a new method that overrides an inherited one (INV-bifih's shape) ────────
+
+A_SRC = "class A:\n    def m(self):\n        return 1\n\n    def n(self):\n        return 2\n"
+B_SRC = "from .a import A\n\n\nclass B(A):\n    X = 1\n\n\ndef make():\n    return B()\n"
+#: ``B`` gains ``m``: a call ``B().m()`` ran ``A.m`` and now runs ``B.m``.
+B_OVERRIDES = B_SRC.replace("    X = 1\n", "    X = 1\n\n    def m(self):\n        return 3\n")
+
+
+class Tree:
+    """Source files under ``packages/p/src/p`` and an index in which each test
+    ran the named blocks (with a record of every statement)."""
+
+    def __init__(self, tmp_path: Path, files: dict[str, str],
+                 records: dict[str, list[tuple[str, str]]]) -> None:
+        self.root = tmp_path
+        self.pkg = tmp_path / "packages" / "p" / "src" / "p"
+        self.pkg.mkdir(parents=True)
+        self.files = {"__init__.py": "", **files}
+        for rel, text in self.files.items():
+            self.at(rel).parent.mkdir(parents=True, exist_ok=True)
+            self.at(rel).write_text(text)
+        self.conn = si.open_index(tmp_path / "index.sqlite")
+        edges = {test: [(str(self.at(rel)), block) for rel, block in ran]
+                 for test, ran in records.items()}
+        statements = {test: {key: _bitmap({0}) for key in keys} for test, keys in edges.items()}
+        digests = {str(self.at(rel)): {b.name: b.digest
+                                       for b in blocks_for_source(str(self.at(rel)), text)}
+                   for rel, text in self.files.items()}
+        si.store_edges(self.conn, edges, digests=digests, statements=statements)
+        po.ensure_schema(self.conn)
+        for test in records:
+            self.conn.execute("INSERT INTO read_test (test_id, test_file, opaque, observed) "
+                              "VALUES (?, ?, '', 1)", (test, test))
+        self.conn.commit()
+
+    def at(self, rel: str) -> Path:
+        return self.pkg / rel
+
+    def select(self, rel: str, new: str) -> ss.Selection:
+        self.at(rel).write_text(new)
+        return ss.select_by_statement(self.conn, {str(self.at(rel)): self.files[rel]},
+                                      repo_root=self.root)
+
+    def answer(self, chosen: ss.Selection, rel: str, block: str) -> str:
+        return chosen.answers[(str(self.at(rel)), block)]
+
+
+#: t_inh ran A.m through a B; t_n ran A.n; t_make ran make.
+INHERITED = {"t_inh": [("a.py", "A.m")], "t_n": [("a.py", "A.n")], "t_make": [("b.py", "make")]}
+
+
+def test_a_new_method_selects_the_tests_that_ran_the_method_it_overrides(
+        tmp_path: Path) -> None:
+    """t_inh is paired with ``A.m`` in a.py alone: no row on b.py, no pair with
+    ``B``. ``B.m`` now runs in place of ``A.m`` for it, and it is selected."""
+    tree = Tree(tmp_path, {"a.py": A_SRC, "b.py": B_SRC}, INHERITED)
+    chosen = tree.select("b.py", B_OVERRIDES)
+    assert "t_inh" in chosen.tests and "t_inh" in chosen.by_block
+    assert tree.answer(chosen, "b.py", "B.m") == ss.OVERRIDE
+    assert chosen.unknown == frozenset()
+    # A.n is not overridden; make is not changed.
+    assert chosen.tests == {"t_inh"}
+
+
+# ── a new function a decorator runs at import ───────────────────────────────
+
+REG_SRC = ("REGISTRY = []\n\n\ndef register(fn):\n    REGISTRY.append(fn)\n    return fn\n\n\n"
+           "@register\ndef first():\n    return 1\n")
+
+
+def test_a_new_decorated_function_is_import_time_code(tmp_path: Path) -> None:
+    """``@register`` appends the new function to a registry as the module
+    loads. A test that calls every registered function (t_reg, paired with
+    ``first`` alone) runs it with no caller changed: the new def is handed
+    to the import rule, which refuses narrowing."""
+    tree = Tree(tmp_path, {"reg.py": REG_SRC}, {"t_reg": [("reg.py", "first")]})
+    chosen = tree.select("reg.py", REG_SRC + "\n\n@register\ndef second():\n    return 2\n")
+    assert (str(tree.at("reg.py")), "second") in chosen.import_time
+    assert tree.answer(chosen, "reg.py", "second") == ss.NEW_DECORATED
+
+
+def test_the_override_is_followed_up_the_chain_to_the_nearest_definer(tmp_path: Path) -> None:
+    """``C(B)``, ``B(A)``, only ``A`` defines ``m``: a C that called ``m`` ran
+    ``A.m``. When ``B`` defines ``m`` too, a C ran ``B.m`` and never ``A.m``
+    through it, and the tests of ``A.m`` alone are not the change's."""
+    c_src = "from .b import B\n\n\nclass C(B):\n    X = 1\n"
+    c_new = c_src + "\n    def m(self):\n        return 4\n"
+    records = {"t_a": [("a.py", "A.m")], "t_b": [("b.py", "B.m")]}
+    chain = Tree(tmp_path / "chain", {"a.py": A_SRC, "b.py": B_SRC, "c.py": c_src}, records)
+    chosen = chain.select("c.py", c_new)
+    assert chain.answer(chosen, "c.py", "C.m") == ss.OVERRIDE
+    assert chosen.tests == {"t_a"}
+    nearer = Tree(tmp_path / "nearer", {"a.py": A_SRC, "b.py": B_OVERRIDES, "c.py": c_src},
+                  records)
+    assert nearer.select("c.py", c_new).tests == {"t_b"}
+
+
+def test_every_base_of_a_multiply_inheriting_class_is_followed(tmp_path: Path) -> None:
+    """A mixin before the base, both defining ``m``: either may have been the
+    one a call reached, and the tests of both are selected."""
+    mixin = "class Mixin:\n    def m(self):\n        return 0\n"
+    d_src = ("from .a import A\nfrom .mixin import Mixin\n\n\n"
+             "class D(Mixin, A):\n    X = 1\n")
+    tree = Tree(tmp_path, {"a.py": A_SRC, "mixin.py": mixin, "d.py": d_src},
+                {"t_a": [("a.py", "A.m")], "t_mixin": [("mixin.py", "Mixin.m")],
+                 "t_n": [("a.py", "A.n")]})
+    chosen = tree.select("d.py", d_src + "\n    def m(self):\n        return 5\n")
+    assert chosen.tests == {"t_a", "t_mixin"}
+
+
+def test_a_base_in_the_same_file_and_a_method_that_overrides_nothing(tmp_path: Path) -> None:
+    """The same-file base is followed. ``fresh`` is defined by no ancestor:
+    the rule for a plain new method, every test that reached the class."""
+    src = A_SRC + "\n\nclass B(A):\n    def k(self):\n        return 9\n"
+    tree = Tree(tmp_path, {"ab.py": src},
+                {"t_inh": [("ab.py", "A.m")], "t_k": [("ab.py", "B.k")]})
+    chosen = tree.select("ab.py", src + "\n    def m(self):\n        return 3\n")
+    assert tree.answer(chosen, "ab.py", "B.m") == ss.OVERRIDE
+    assert chosen.tests == {"t_inh", "t_k"}
+    fresh = tree.select("ab.py", src + "\n    def fresh(self):\n        return 3\n")
+    assert tree.answer(fresh, "ab.py", "B.fresh") == ss.NEW_METHOD
+    assert fresh.tests == {"t_k"}
+
+
+def test_a_base_that_is_not_source_of_the_repository_makes_the_method_unknown(
+        tmp_path: Path) -> None:
+    """``Exception.__str__`` ran for a test that printed a ``B`` error, and no
+    record of this repository says so. What the new method overrides is not
+    known: the block is unknown, so nothing is narrowed. The tests of the
+    class itself are still selected."""
+    src = "class B(Exception):\n    X = 1\n"
+    tree = Tree(tmp_path, {"err.py": src}, {"t_err": [("err.py", "B")]})
+    chosen = tree.select("err.py", src + "\n    def __str__(self):\n        return 'b'\n")
+    key = (str(tree.at("err.py")), "B.__str__")
+    assert chosen.answers[key] == ss.UNRESOLVED_BASE
+    assert key in chosen.unknown
+    assert chosen.tests == {"t_err"}
+
+
+def test_an_overridden_method_the_index_has_never_seen_is_unknown(tmp_path: Path) -> None:
+    """a.py resolves, and the index holds no block of it: who ran ``A.m`` is
+    not known, which is not "nobody"."""
+    tree = Tree(tmp_path, {"b.py": B_SRC}, {"t_make": [("b.py", "make")]})
+    tree.at("a.py").write_text(A_SRC)
+    chosen = tree.select("b.py", B_OVERRIDES)
+    assert tree.answer(chosen, "b.py", "B.m") == ss.UNKNOWN
+    assert (str(tree.at("b.py")), "B.m") in chosen.unknown
+    assert chosen.tests == frozenset(), "make's test never reached class B"
+
+
+def test_object_as_a_base_is_no_base(tmp_path: Path) -> None:
+    src = "class B(object):\n    def k(self):\n        return 1\n"
+    tree = Tree(tmp_path, {"o.py": src}, {"t_k": [("o.py", "B.k")]})
+    chosen = tree.select("o.py", src + "\n    def m(self):\n        return 2\n")
+    assert tree.answer(chosen, "o.py", "B.m") == ss.NEW_METHOD
+    assert chosen.tests == {"t_k"} and chosen.unknown == frozenset()
+
+
+def test_a_new_subclass_is_import_time_code_and_its_methods_keep_the_old_answer(
+        tmp_path: Path) -> None:
+    """A new class body is import-time code (narrowing refuses on it), and
+    no unchanged call reaches a method of a class nobody could construct."""
+    tree = Tree(tmp_path, {"a.py": A_SRC, "b.py": B_SRC}, INHERITED)
+    chosen = tree.select("b.py", B_SRC + "\n\nclass E(A):\n    def m(self):\n        return 6\n")
+    assert tree.answer(chosen, "b.py", "E") == ss.IMPORT_TIME
+    assert tree.answer(chosen, "b.py", "E.m") == ss.NEW_METHOD
+    assert chosen.tests == frozenset()
+
+
+def test_a_new_method_with_an_inert_decorator_is_answered_as_a_method(tmp_path: Path) -> None:
+    """``property`` and ``staticmethod`` register nothing; a decorator of the
+    project's own may."""
+    tree = Tree(tmp_path, {"a.py": A_SRC, "b.py": B_SRC}, INHERITED)
+    chosen = tree.select("b.py", B_SRC.replace(
+        "    X = 1\n", "    X = 1\n\n    @property\n    def m(self):\n        return 3\n\n"
+        "    @staticmethod\n    def s():\n        return 0\n"))
+    assert tree.answer(chosen, "b.py", "B.m") == ss.OVERRIDE
+    assert tree.answer(chosen, "b.py", "B.s") == ss.NEW_METHOD
+    assert chosen.import_time == frozenset()
+    assert "t_inh" in chosen.tests
+    registered = tree.select("b.py", B_SRC.replace(
+        "    X = 1\n", "    X = 1\n\n    @hook('m')\n    def m(self):\n        return 3\n"))
+    assert tree.answer(registered, "b.py", "B.m") == ss.NEW_DECORATED
+    assert (str(tree.at("b.py")), "B.m") in registered.import_time
+
+
+def test_an_undecorated_new_function_still_has_no_test_of_its_own(tmp_path: Path) -> None:
+    tree = Tree(tmp_path, {"reg.py": REG_SRC}, {"t_reg": [("reg.py", "first")]})
+    chosen = tree.select("reg.py", REG_SRC + "\n\ndef helper():\n    return 2\n")
+    assert tree.answer(chosen, "reg.py", "helper") == ss.NEW
+    assert chosen.import_time == frozenset() and chosen.tests == frozenset()
+
+
+def test_a_second_def_of_a_name_takes_the_tests_of_the_one_it_shadows(tmp_path: Path) -> None:
+    """``def first`` again, below the first: every call of ``first`` now runs
+    the new body, labelled ``first#2``, and no caller changed. The tests that
+    reached ``first`` are selected (block_hash records this as a false
+    negative of selecting by block)."""
+    tree = Tree(tmp_path, {"reg.py": REG_SRC + "\n\ndef other():\n    return 0\n"},
+                {"t_reg": [("reg.py", "first")], "t_other": [("reg.py", "other")]})
+    chosen = tree.select("reg.py", tree.files["reg.py"] + "\n\ndef first():\n    return 2\n")
+    assert chosen.tests == {"t_reg"}
+    assert tree.answer(chosen, "reg.py", "first#2") == ss.SHADOWS
+    method = Tree(tmp_path / "m", {"a.py": A_SRC}, {"t_inh": [("a.py", "A.m")]})
+    chosen = method.select("a.py", A_SRC + "\n    def m(self):\n        return 7\n")
+    assert method.answer(chosen, "a.py", "A.m#2") == ss.SHADOWS
+    assert chosen.tests == {"t_inh"}
+    unseen = Tree(tmp_path / "u", {"a.py": A_SRC}, {})
+    unseen.conn.execute("DELETE FROM block WHERE name = 'A.m'")
+    unseen.conn.commit()
+    chosen = unseen.select("a.py", A_SRC + "\n    def m(self):\n        return 7\n")
+    assert unseen.answer(chosen, "a.py", "A.m#2") == ss.UNKNOWN
