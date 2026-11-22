@@ -15,6 +15,8 @@ This analyzer uses tree-sitter to parse F# files and extract:
 - Open statements (import_decl)
 - Function call relationships, and calls, reads and constructions that reach
   a member or a type where the source names the target
+- A ``kind="call"`` UsageContext for every call, for the ``usage:`` rows of
+  the F# frameworks (``_extract_usage_contexts``; see "Usage contexts")
 
 If tree-sitter with F# support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -166,6 +168,27 @@ name alone), a member reached through a property or a longer chain
 this.Go``), interface dispatch from a slot to its implementations, and types
 brought into scope by ``[<AutoOpen>]``.
 
+Usage contexts
+--------------
+giraffe.yaml (Giraffe, and Saturn through the ``saturn`` alias) is all
+``usage:`` rows keyed on the name called: ``application { ... }`` makes a
+hosted application, ``route``/``routef`` a route, ``choose`` and ``router {
+... }`` a router. Until these were recorded no row of it could fire. Each
+call is one record, ``context_name`` the name as written: an application
+(``f x``, ``M.f x``, ``f<T> x``, ``(>=>) a b``), a computation expression
+(``application { ... }``, named after its builder), the function a pipe
+applies (``x |> json``) and an operator FSharp.Core does not define
+(``a >=> b``). ``symbol_ref`` is the caller (``position="caller"``), the
+declaration a call edge from the site is credited to, so the row's concept
+lands on ``let app = application { ... }``'s ``app``. A qualified name keeps
+its qualifier (``List.choose`` is no ``choose``), so ``Giraffe.Core.text``
+matches no row either. Not recorded: a value composed without being applied
+(``GET >=> ...``, ``clearResponse >=> ...``; the rows naming ``GET`` and
+``clearResponse`` match only a direct application of them), a member of an
+expression's result (``x.M(1).N y``), a lambda or parenthesised function,
+and the operands of ``>>`` / ``<<``. A call in no declaration (a script's
+top level) is recorded with no ``symbol_ref``.
+
 Visibility: the analyzer sets ``is_exported`` on no symbol. It records an
 access modifier (``private`` / ``internal``) on types and members, the
 narrower of a member's own and its type's; finalize derives ``visibility``
@@ -207,7 +230,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -1853,6 +1876,136 @@ def _extract_edges_from_file(
     return edges
 
 
+#: The operators FSharp.Core defines. An infix application of any other
+#: operator calls one a program or a library defines (``a >=> b`` is
+#: ``(>=>) a b``) and is recorded as a call of it; these are not, or every
+#: ``+`` and ``=`` would be one.
+_FSHARP_CORE_OPERATORS = frozenset({
+    "+", "-", "*", "/", "%", "**",
+    "=", "<>", "<", ">", "<=", ">=",
+    "&&", "||", "&", "or",
+    "&&&", "|||", "^^^", "<<<", ">>>",
+    "|>", "||>", "|||>", "<|", "<||", "<|||",
+    ">>", "<<", "::", "@", "^", ":=", "<-", ":>", ":?>", ":?",
+})
+
+#: The pipes, and the operand each applies: ``x |> f`` its right one (-1),
+#: ``f <| x`` its left one (0).
+_FSHARP_PIPE_FUNCTION = {"|>": -1, "||>": -1, "|||>": -1, "<|": 0, "<||": 0, "<|||": 0}
+
+
+def _fsharp_called_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name the function position of a call writes, or None.
+
+    ``f`` and ``M.f`` as written: a qualified name keeps its qualifier, so
+    ``List.choose`` is not read as an unqualified ``choose``. ``f<T>`` is
+    ``f`` and ``(>=>)`` the operator ``>=>``. An infix expression in
+    function position is how the grammar parses ``a >=> f x``: as
+    ``(a >=> f) x``, application taken before the operator, so the function
+    applied is the operator's right operand. A lambda, a parenthesised
+    expression or a member of an expression's result (``x.M(1).N``) names
+    no function.
+    """
+    if node.type == "infix_expression":
+        return _fsharp_called_name(node.children[-1], source)
+    op = find_child_by_type(node, "op_identifier") if node.type == "long_identifier_or_op" else None
+    if op is not None:
+        return "".join(node_text(op, source).strip("()").split())
+    receiver, names = _fsharp_callee_path(node, source)
+    return ".".join(names) if receiver is None and names else None
+
+
+def _fsharp_infix_calls(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[tuple[str, str]]:
+    """``(name, form)`` of the calls an infix expression makes by itself.
+
+    A pipe applies its function operand when that operand is a name
+    (``x |> json``); an applied one (``x |> f a``) is its own application.
+    An operator FSharp.Core does not define is a call of that operator. A
+    forward pipe in an application's function position (``x |> f a``,
+    parsed ``(x |> f) a``) names the application's own function, on the
+    application's own line: it is one record (the id), the application's.
+    """
+    op_node = find_child_by_type(node, "infix_op")
+    if op_node is None:  # pragma: no cover - the grammar always has the operator
+        return []
+    op = node_text(op_node, source)
+    side = _FSHARP_PIPE_FUNCTION.get(op)
+    if side is None:
+        return [] if op in _FSHARP_CORE_OPERATORS else [(op, "operator")]
+    operand = [c for c in _fsharp_parts(node) if c.id != op_node.id][side]
+    name = None if operand.type == "infix_expression" else _fsharp_called_name(operand, source)
+    return [(name, "pipe")] if name is not None else []
+
+
+def _extract_usage_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    file_symbols: list[Symbol],
+) -> list[UsageContext]:
+    """One ``kind="call"`` UsageContext per call in an F# file.
+
+    The framework rows of F# (giraffe.yaml) are ``usage:`` rows keyed on the
+    name called, so every call is recorded, as the Clojure analyzer records
+    every call: an application ``f x`` / ``M.f x`` / ``f<T> x`` / ``(op) a
+    b`` (form ``application``), a computation expression ``builder { ... }``
+    (``computation_expression``: Saturn's ``application``, ``router``,
+    ``controller``), a pipe's bare function (``pipe``) and a user-defined
+    operator (``operator``, ``a >=> b``). ``context_name`` is the name as
+    written, the qualifier kept.
+
+    ``symbol_ref`` is the caller (``position="caller"``, as js_ts.py's
+    bootstrap calls): the nearest enclosing declaration that has a symbol,
+    the same one a call edge from the site is credited to. A row stamps its
+    concept there, so ``let app = application { ... }`` gives the module
+    value ``app`` the ``application`` concept. A call at the top level of a
+    script, inside no declaration, has no caller: ``symbol_ref`` is None
+    and no row stamps anything for it.
+    """
+    decl_index = symbols_at(file_symbols)
+    contexts: list[UsageContext] = []
+    # The id hashes path, line, name and position: a second ``>=>`` on one
+    # line, and the function of ``(x |> f) a`` met as the application's and
+    # as the pipe's, are the same record, kept once.
+    seen: set[str] = set()
+    for node in iter_tree(tree.root_node):
+        calls: list[tuple[str, str]] = []
+        if node.type in ("application_expression", "ce_expression") and node.children:
+            name = _fsharp_called_name(node.children[0], source)
+            if name is not None:
+                form = "application" if node.type == "application_expression" else (
+                    "computation_expression"
+                )
+                calls.append((name, form))
+        elif node.type == "infix_expression":
+            calls = _fsharp_infix_calls(node, source)
+        if not calls:
+            continue
+        caller = _get_enclosing_function_fsharp(node, decl_index)
+        span = Span(
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+        for name, form in calls:
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=name,
+                position="caller",
+                path=file_path,
+                span=span,
+                symbol_ref=caller.id if caller is not None else None,
+                metadata={"form": form},
+            )
+            if ctx.id not in seen:
+                seen.add(ctx.id)
+                contexts.append(ctx)
+    return contexts
+
+
 class FsharpAnalyzer(TreeSitterAnalyzer):
     """F# language analyzer using tree-sitter-language-pack."""
 
@@ -1968,6 +2121,15 @@ class FsharpAnalyzer(TreeSitterAnalyzer):
             file_symbols, resolver,
             run.execution_id, self._fsharp_index,
             self._method_return_type_registry, module_aliases=import_aliases,
+        )
+
+    def extract_usage_contexts_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, symbol_by_name: dict[str, Symbol],
+    ) -> list[UsageContext]:
+        """Every call of the file, for the framework rows (``_extract_usage_contexts``)."""
+        return _extract_usage_contexts(
+            tree, source, str(file_path), self.file_symbols(symbol_by_name),
         )
 
 

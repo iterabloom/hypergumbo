@@ -1029,6 +1029,11 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "salvo": "rust-web",
     # Jenkins Stapler URL dispatch -> stapler.yaml
     "jenkins": "stapler",
+    # Saturn is built on Giraffe; its rows (``application { }``,
+    # ``router { }``, ``controller { }``) are in giraffe.yaml. A Saturn app
+    # references the Saturn package only (Giraffe comes with it), so without
+    # this it loaded no rows at all.
+    "saturn": "giraffe",
     # Java JAX-RS implementations -> jax-rs.yaml
     "dropwizard": "jax-rs",
     "jersey": "jax-rs",

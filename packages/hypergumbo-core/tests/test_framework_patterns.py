@@ -1793,6 +1793,18 @@ patterns:
         assert axum_result is not None
         assert axum_result.id == "rust-web"
 
+    def test_saturn_alias_resolves_to_giraffe(self) -> None:
+        """A Saturn-only app loads giraffe.yaml, which holds Saturn's rows."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("saturn")
+        assert pattern_def is not None
+        assert pattern_def.id == "giraffe"
+        assert any(
+            p.concept == "application" and p.usage is not None
+            and p.usage.name == "^application$"
+            for p in pattern_def.patterns
+        )
+
 
 class TestMatchPatterns:
     """Tests for match_patterns function."""

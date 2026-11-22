@@ -1657,9 +1657,9 @@ HTTP_REQUIREMENTS = [
     # absent although .elm files are scanned for CLIENT calls: no elm pass
     # emits a route.
     depends_on=[[
-        "clojure", "csharp", "elixir", "go", "groovy", "java", "javascript",
-        "kotlin", "php", "play-routes", "python", "r", "ruby", "rust", "scala",
-        "swift",
+        "clojure", "csharp", "elixir", "fsharp", "go", "groovy", "java",
+        "javascript", "kotlin", "php", "play-routes", "python", "r", "ruby",
+        "rust", "scala", "swift",
     ]],
     activation=always_on_unreviewed(),
 )
