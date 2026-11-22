@@ -91,6 +91,16 @@ patterns:
       name: "^(fire\\.)?Fire$"
       position: "^args\\[0\\]"
 
+  # ==================== ARGPARSE PATTERNS ====================
+  # A custom action: class UpperAction(argparse.Action) with __call__, which
+  # argparse calls when it parses the option (action=UpperAction). No entry
+  # kind names a parse callback; it is the callback of the "option seen"
+  # event. Loads where a CLI framework is detected (an argparse-only project
+  # declares none: argparse is the standard library).
+  - concept: event_handler
+    method_name: "^__call__$"
+    parent_base_class: "^(argparse\\.)?Action$"
+
   # ==================== DJANGO CLI PATTERNS ====================
   # Django management command
   - concept: command

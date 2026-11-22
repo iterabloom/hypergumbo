@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: slim
 language: php
 
@@ -43,6 +43,12 @@ patterns:
   # Slim ErrorMiddleware
   - concept: error_handler
     base_class: "^ErrorMiddleware$"
+
+  # A custom error handler: class HttpErrorHandler extends
+  # Slim\Handlers\ErrorHandler, handed to setDefaultErrorHandler(); Slim
+  # invokes it on an uncaught exception (its respond() is the override).
+  - concept: error_handler
+    base_class: "^ErrorHandler$"
 
   # PSR-7 Request (used by Slim)
   - concept: request
