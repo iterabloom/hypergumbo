@@ -15,7 +15,7 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **394** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 137 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **395** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 138 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
 - **64710** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14657, of which 8330 are functions, methods or classes
 - **260639** edges, test code included, by type:
   - calls: 146205
@@ -686,6 +686,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.module_sets`**: A disjunctive module slot is stored once and named by a short handl...
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
+- **`hypergumbo_core.new_def_reach`**: How unchanged code reaches a NEW def: the method it overrides, the ...
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
 - **`hypergumbo_core.overload_arity`**: Choose among same-named callables by the call's argument count.
 - **`hypergumbo_core.overview_rank`**: Order non-source files by how likely they are to explain the project.

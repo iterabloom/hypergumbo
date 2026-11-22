@@ -17,6 +17,7 @@ import pytest
 from hypergumbo_core import prose_only as po
 from hypergumbo_core import selection_index as si
 from hypergumbo_core import statement_narrow as sn
+from hypergumbo_core import statement_select as ss
 from hypergumbo_core.block_hash import blocks_for_source
 
 SOURCE_REL = "packages/p/src/p/m.py"
@@ -193,6 +194,21 @@ def test_a_never_seen_block_is_named_in_the_refusal(repo: Repo) -> None:
     repo.conn.commit()
     out = repo.narrow(EDIT_B.replace("return 1 ", "return 2 "))
     assert out.refusal == "1 changed block(s) the index has never seen"
+
+
+def test_a_new_decorated_def_is_named_in_the_refusal(repo: Repo) -> None:
+    out = repo.narrow(EDIT_B + "\n\n@register\ndef h():\n    return 1\n")
+    assert out.refusal == "a new decorated def, which may register itself at import: h"
+    assert out.left_out == frozenset()
+
+
+def test_a_new_method_whose_bases_cannot_be_followed_is_named_in_the_refusal() -> None:
+    key = (SOURCE_REL, "E.__str__")
+    unknown = ss.Selection(tests=frozenset(), by_block=frozenset(),
+                           answers={key: ss.UNRESOLVED_BASE}, import_time=frozenset(),
+                           unknown=frozenset({key}), narrowed=frozenset())
+    assert sn._refusal([SOURCE_REL], unknown) == (
+        "a new method whose bases are not source of this repository: E.__str__")
 
 
 def test_a_file_that_does_not_parse_refuses(repo: Repo) -> None:
