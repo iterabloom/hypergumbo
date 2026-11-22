@@ -17,7 +17,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: cli
 language: python
 
@@ -51,6 +51,32 @@ patterns:
   # Typer callback
   - concept: command
     decorator: "^app\\.callback$"
+
+  # Typer registration as a call, app.command()(download): the decorator of
+  # the row above applied by hand (transformers registers its CLI this way).
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^app\\.command\\(\\)$"
+      position: "^args\\[0\\]$"
+
+  # typer.run(main): the function becomes the program's single command.
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^typer\\.run$"
+      position: "^args\\[0\\]$"
+
+  # ==================== FIRE PATTERNS ====================
+  # fire.Fire(main), fire.Fire(Calculator), fire.Fire({"add": add}): Fire
+  # turns the function, the class's methods or the dict's values into
+  # commands. fire.Fire() with no argument (the module's globals) is not
+  # matched: it names no callable.
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^(fire\\.)?Fire$"
+      position: "^args\\[0\\]"
 
   # ==================== DJANGO CLI PATTERNS ====================
   # Django management command

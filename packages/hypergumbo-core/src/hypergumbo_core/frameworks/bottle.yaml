@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: bottle
 language: python
 
@@ -49,3 +49,13 @@ patterns:
   # Bottle error handler - @app.error(404)
   - concept: error_handler
     decorator: "^(app|bottle)\\.error$"
+
+  # ==================== USAGE-BASED PATTERNS ====================
+  # Plugins: app.install(stopwatch), app.install(AuthPlugin()), bottle.install(f),
+  # and install(f) imported from bottle. Bottle wraps every route callback with
+  # the plugin (a decorator function, or an object's apply method).
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^((app|bottle)\\.)?install$"
+      position: "^args\\[0\\]$"
