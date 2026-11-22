@@ -166,6 +166,12 @@ patterns:
     language: "^csharp$"
 
   # ====== Swift ======
+  # XCTest: a test case class. Here, not in a framework file: XCTest is only
+  # ever imported by test code, so no framework file keyed on it would load.
+  - concept: test_class
+    base_class: "^XCTestCase$"
+    language: "^swift$"
+
   # XCTest: test* methods
   - concept: test_function
     symbol_name: "^test"
