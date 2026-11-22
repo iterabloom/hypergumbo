@@ -32,6 +32,15 @@ Electron IPC (receive side — main and renderer):
                                               relationship, and slice walks reverse
                                               direction natively)
 
+Electron IPC handler dispatch (WI-pahom, WI-movur):
+- A receive node dispatches to the function its call hands over:
+  ``ipcMain.handle('ch', h)`` -> ``dispatches_to ipc:receive:ch -> h``
+  (meta ``dispatch_kind="listener"``, ``channel_kind="ipc"``), read from the
+  analyzer's ``callback_argument_reference`` at the site's line
+  (``_registration_sites``). No concept is stamped here: the handler's
+  ``ipc_handler`` concept and entry come from electron.yaml's registration
+  rows, which also cover a channel no sender in the repository joins.
+
 Electron contextBridge (preload → renderer):
 - contextBridge.exposeInMainWorld('ns', { method: () => ipcRenderer.invoke('ch') })
   Detects bridge definitions, then scans for window.ns.method() calls in renderer
@@ -141,6 +150,7 @@ from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs
+from ._registration_sites import site_dispatch_edges
 from ._text_filters import js_ts_language_from_path, read_source_bytes
 from ._name_args import (
     KIND_LITERAL,
@@ -1285,9 +1295,21 @@ def ipc_linker(ctx: LinkerContext) -> LinkerResult:
     This wraps link_ipc() to use the LinkerContext/LinkerResult interface.
     """
     result = link_ipc(ctx.repo_root)
+    # WI-pahom: a receive site dispatches to the function its call hands
+    # over (``ipcMain.handle('ch', h)`` -> ``h``), read from the analyzer's
+    # callback reference at the site's line (_registration_sites).
+    receivers = [
+        s for s in result.symbols
+        if (s.meta or {}).get("framework_role") == IPC_FRAMEWORK_ROLES["receive"]
+    ]
+    run_id = result.run.execution_id if result.run is not None else ""
+    dispatch = site_dispatch_edges(
+        receivers, ctx.symbols, ctx.edges, "ipc_handler", ctx.repo_root,
+        "ipc", PASS_ID, run_id,
+    )
 
     return LinkerResult(
         symbols=result.symbols,
-        edges=result.edges,
+        edges=result.edges + dispatch,
         run=result.run,
     )
