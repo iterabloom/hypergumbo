@@ -55,7 +55,6 @@ from hypergumbo_core.entrypoint_kinds import (
     find_watched_kind_reads,
     find_watched_kind_reads_in_source,
     kept_under_trigger,
-    kind_heading,
     kinds_with_role,
     role_headings,
     role_of,
@@ -193,7 +192,6 @@ def test_sketch_groups_are_the_kinds_headings() -> None:
     for spec in ENTRYPOINT_KINDS:
         holders = [h for h, kinds in _ENTRYPOINT_GROUPS if spec.name in kinds]
         assert holders == ([spec.heading] if spec.heading else []), spec.name
-        assert kind_heading(spec.kind) == spec.heading
     assert [h for h, _ in _ENTRYPOINT_GROUPS] == list(ENTRY_POINT_HEADINGS)
     assert len(set(ENTRY_POINT_HEADINGS)) == len(ENTRY_POINT_HEADINGS)
 
@@ -204,6 +202,12 @@ def test_the_test_role_has_no_entry_points_heading() -> None:
 
 
 # ---------------------------------------------------------------- the headings ruling
+
+
+def _heading(kind: EntrypointKind) -> str | None:
+    """The heading *kind*'s registry line declares."""
+    return next(s.heading for s in ENTRYPOINT_KINDS if s.kind == kind)
+
 
 RULING_HEADINGS = (
     "OWNER RULING 2026-11-21 (on a direct question, WI-giron): keep today's headings. "
@@ -245,7 +249,7 @@ def test_ruling_the_four_request_headings_stay_with_the_kinds_they_held(heading:
 def test_ruling_every_kind_dev_headed_keeps_its_heading() -> None:
     for heading, kinds in DEV_HEADINGS:
         for kind in kinds:
-            assert kind_heading(EntrypointKind(kind)) == heading, (kind, RULING_HEADINGS)
+            assert _heading(EntrypointKind(kind)) == heading, (kind, RULING_HEADINGS)
 
 
 def test_ruling_dev_headings_keep_their_order() -> None:
@@ -261,9 +265,9 @@ def test_ruling_no_heading_merges_the_request_kinds() -> None:
 
 
 def test_ruling_middleware_and_error_handlers_have_their_own_heading() -> None:
-    middleware = kind_heading(EntrypointKind.MIDDLEWARE_HANDLER)
+    middleware = _heading(EntrypointKind.MIDDLEWARE_HANDLER)
     assert middleware not in (None, "Other"), RULING_HEADINGS
-    assert kind_heading(EntrypointKind.ERROR_HANDLER) == middleware, RULING_HEADINGS
+    assert _heading(EntrypointKind.ERROR_HANDLER) == middleware, RULING_HEADINGS
     assert middleware not in dict(DEV_HEADINGS), RULING_HEADINGS
     assert dict(_ENTRYPOINT_GROUPS)[middleware] == {
         "middleware_handler", "error_handler"}, RULING_HEADINGS

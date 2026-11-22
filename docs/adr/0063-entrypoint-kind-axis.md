@@ -52,7 +52,11 @@ Declare the **entrypoint-kind axis** with ADR-0024's four artifacts:
   kinds (a set, tuple, list or dict keys naming two or more members, or two or
   more kind-value strings) outside the registry; `scripts/check-symbol-kind-drift`
   runs it in the pre-commit step of the sibling kind axis (the ADR-0059
-  precedent: a sibling axis rides an already wired step).
+  precedent: a sibling axis rides an already wired step). The same step runs
+  the allow-list's shrink-only check (`unused_not_a_role_question_keys`) and
+  the keep-trigger watcher (`find_watched_kind_reads` against
+  `KNOWN_WATCHED_READS`); until 2026-11-22 only the property test ran those
+  two, and the scheduled test-only-reachability gate reported them.
 - **Property test:** `tests/test_entrypoint_kinds.py`.
 
 ### 1. Axiom
@@ -122,7 +126,8 @@ Handlers" was considered and not shipped.
 
 `entrypoint_kinds_on_axis(role) -> tuple[EntrypointKindSpec, ...]` (ADR-0024's
 shape), plus `kinds_with_role(*roles) -> frozenset[EntrypointKind]`, `role_of`
-and `kind_heading` / `role_headings`. Each reader's set is one call:
+and `role_headings`; a kind's heading is its spec's `heading`. Each reader's
+set is one call:
 
 | Reader | Set |
 |---|---|
