@@ -1,0 +1,21 @@
+- op: create  # 47e4
+  at: '2026-11-22T23:43:22Z'  # 47e4
+  by: agent  # 47e4
+  actor: jgstern_agent  # 47e4
+  clock: 1  # 47e4
+  nonce: '47e4'  # 47e4
+  data:  # 47e4
+    kind: work_item  # 47e4
+    title: "Ruby registrations left open: base rows match the written base, Bundler-loaded gems demoted, false DSL call edges, block handlers"  # 47e4
+    status: todo_soft  # 47e4
+    priority: 3  # 47e4
+    parent:  # 47e4
+    tags:  # 47e4
+    - frameworks  # 47e4
+    - ruby  # 47e4
+    isbefore: []  # 47e4
+    duplicate_of: []  # 47e4
+    not_duplicate_of: []  # 47e4
+    pr_ref:  # 47e4
+    description: "Left open in Ruby by the WI-movur PR (audit 0029, group ruby):\n1. Base-class rows match the base as WRITTEN. A Thor class that inherits an application base (`Accounts < Base`, `Base < Thor`) is not matched: mastodon's 48 command methods stay unmarked (its 16 subcommand classes are now marked through `subcommand`), gitlab has 309 `< BaseObject` and 35 `< ::Types::BaseObject` graphql types. ruby.py already walks project ancestors (`_constant_ancestors`); recording the resolved ancestors and matching any of them, and dropping a leading `::`, would cover it. The abstract base itself is marked today (mastodon `Base`), which is the wrong one.\n2. Gems Bundler loads in a Rails app without a `require` are demoted to development frameworks: graphql-ruby and grape on gitlab give 0 concepts until a file requires them (WI-lohok exempted Rails only).\n3. A receiverless DSL call is bound by name to a method of an unrelated class: Thor `desc` -> `Report.desc` (confidence 0.85), legacy graphql `resolve ->` -> `Search#resolve` (0.78). Kotlin's twin is WI-fajib.\n4. `private` / `protected` are not recorded as modifiers. The new `parent_base_classes` on methods is written on public methods only (so a Thor helper is not a command); recording the visibility itself would change is_exported for every Ruby repository and was not measured.\n5. A bare no-argument call inside a class-body block gets no edge (`before do authenticate! end`): the identifier arm needs an enclosing method.\n6. sinatra.yaml has no base_class row: a `Sinatra::Base` subclass is not an entry.\n7. Rows parked because their handler is a block with no symbol (padrino controller / before / after / mailer / email / error / not_found, roda route, and every inline Grape / Sinatra / GLI / Commander form): tracker item WI-tavum's decision.\n8. Grape `error_formatter` / `parser` have no rows; the `rescue_from` row was measured on Rails controllers only, not on a Grape tree.\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/movur/triage_ruby.md, build_out_ruby/."  # 47e4
+    fields: {}  # 47e4

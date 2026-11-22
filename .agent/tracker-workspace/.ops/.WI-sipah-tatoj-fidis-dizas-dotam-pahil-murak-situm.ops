@@ -1,0 +1,22 @@
+- op: create  # 4551
+  at: '2026-11-22T23:43:49Z'  # 4551
+  by: agent  # 4551
+  actor: jgstern_agent  # 4551
+  clock: 1  # 4551
+  nonce: '4551'  # 4551
+  data:  # 4551
+    kind: work_item  # 4551
+    title: "Scala and Kotlin left open: no usage contexts, calls with type arguments emit no edge, Ktor modules named in application.conf"  # 4551
+    status: todo_soft  # 4551
+    priority: 3  # 4551
+    parent:  # 4551
+    tags:  # 4551
+    - frameworks  # 4551
+    - scala  # 4551
+    - kotlin  # 4551
+    isbefore: []  # 4551
+    duplicate_of: []  # 4551
+    not_duplicate_of: []  # 4551
+    pr_ref:  # 4551
+    description: "Left open in Scala and Kotlin by the WI-movur PR (audit 0029, group jvm):\n1. Neither analyzer emits usage contexts, so every akka-http, Play and Ktor label still waits (K10-K12, K18-K20, K23, K24, T8, T9, T15-T19, T23, P5-P7) and the surviving usage rows akka-http.yaml:24, ktor.yaml:20, play.yaml:24 have no producer. Same mechanism as the route forms of WI-dopuh and WI-pohis.\n2. A call with explicit type arguments emits no edge: Scala `WebSocket.accept[String, String] { }` (scala.py does not unwrap generic_function); Kotlin `exception<T> { }` / `cookie<T>(..)` is parsed as a binary expression.\n3. An implicit `ExceptionHandler` found through its declared type (K21) is not marked.\n4. A Ktor module named only in application.conf (`ktor.application.modules`) is marked by the new row and gets no edge: the config is not read. A module declared `suspend` / `internal` has no recorded extension_receiver (WI-kafum), so the row misses it.\n5. `object X extends App` is matched by the written base: an object extending the project's own type named App is marked too.\n6. Scala value references are recorded for call ARGUMENTS only: `val x = handler`, a returned function and a two-qualifier path (`A.B.fn`) get no edge.\n7. Seen, not this work's: a Play WebSocket endpoint is an http_route \"HTTP GET\"; a real Play controller hits tree-sitter-scala parse errors (`@Inject() (cc)(implicit mat: Materializer)`), so its actions become top-level functions; `bindAndHandle` in an object named LegacyServer is an entry only through a naming rule (kind controller); the old row marks any Scala method named main.\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/movur/triage_jvm.md."  # 4551
+    fields: {}  # 4551
