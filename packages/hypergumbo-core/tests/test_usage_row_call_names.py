@@ -133,3 +133,27 @@ def test_the_shipped_rows_are_read() -> None:
     assert usage_row_names_call("app.get", "javascript")
     assert not usage_row_names_call("app.get", "cobol")
     assert not usage_row_names_call("no_row_names_this_call_zz", "javascript")
+
+
+def test_a_position_given_must_match_the_rows_position(frameworks: Path) -> None:
+    """An analyzer that records one context per argument asks per argument:
+    ``rescue_from Err, with: :h`` is worth recording at ``kwargs[with]``, not
+    at ``args[0]`` (the exception class)."""
+    _file(frameworks, "rbfw", "ruby", """\
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^rescue_from$"
+      position: "^kwargs\\\\[with\\\\]$"
+  - concept: event_handler
+    usage:
+      kind: "^call$"
+      name: "^before_action$"
+""")
+
+    assert usage_row_names_call("rescue_from", "ruby", "kwargs[with]")
+    assert not usage_row_names_call("rescue_from", "ruby", "args[0]")
+    # No position asked: the name alone decides, as before.
+    assert usage_row_names_call("rescue_from", "ruby")
+    # A row without a position takes any.
+    assert usage_row_names_call("before_action", "ruby", "kwargs[only]")
