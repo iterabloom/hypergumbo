@@ -1,0 +1,24 @@
+Original commit body from 0ad8fbf9d75f72ece99e1ae69ed1d64e152d356e:
+
+The entry-kind PR deleted 164 framework rows that keyed a call name on `decorator:` and could never fire. This branch triages the 136 that audit 0028 had not (348 forms: 13 detected, 66 partly, 185 not detected, 83 that register no user code, 1 not measured) and builds detectors for 158 of the 251 open forms. The record is docs/audits/0029.
+
+How it works
+- An analyzer that finds a call handing LOCAL code to a library asks `framework_patterns.usage_row_names_call(name, language, position)` whether a `usage:` row is written against that call at that argument, and records a usage context only then. The rows are the only list of call names; a new row needs no analyzer change. JavaScript / TypeScript, Python, Go, Ruby and Elixir record such contexts.
+- Elixir modules record what they `use` (`meta["adopted_modules"]`); a new row key `adopts:` reads it, and Ruby's `included_modules`.
+- Scala and Kotlin: program-start rows (`@main`, `extends App`, `@JvmStatic main`), a Ktor module row, and two Scala call-graph fixes (class-body calls, functions passed as values).
+- Core: `find_non_test_files` classified a file by its absolute path, so a checkout under a folder named `test/` or `fixtures/` lost the output of every content-scanning linker. Fixed.
+
+What a reader sees
+Middleware, error handlers, CLI commands, cron jobs, IPC and WebSocket handlers, GenServers, Oban workers, LiveViews, plugs, Thor commands, GraphQL resolvers and Sidekiq workers become entry points, in the frameworks the audit lists.
+
+Measured (21 repositories, old code against new, plus each work package's own runs)
+- No declared symbol lost and no stable id moved on any tree. Nine trees in untouched languages do not change.
+- beads: 56 cobra handlers marked. plausible: 31 workers, 32 LiveViews, 24 plugs. mlflow: 67 of 67 click subcommands (1 before). gitlab app/graphql: 610 resolvers. Usage contexts grow the map by at most 3.06% (a small Electron tree), under 1.5% elsewhere.
+- Mutation controls: 18 on the core changes and 126 across the six work packages; 125 red and one equivalent mutant (a pre-check that only saves work). First tries that survived are named in the work packages' records with the test that was strengthened.
+
+Known costs, stated in the audit
+- The entry list is capped, so new entries displace others. On two Phoenix applications fewer routes are listed (plausible 49 -> 28): every kept entry ties at the top rank, ties are dealt one per source file, and routes share one router file. The rank formula is not changed.
+- The middleware-chain linker chains the newly detected middleware of one file in definition order, which is not always registration order (5 edges on polis).
+- Not built: inline handlers (no symbol), Scala / Kotlin usage contexts, PHP, kong, supervisor child specs, and the items the audit lists. Rails callback rows and the Phoenix controller-module row were removed rather than fed: each would have crowded the entry list.
+
+Addresses WI-movur-nubaz-vavuh-famad-bisil-pulud-tajit-vovak
