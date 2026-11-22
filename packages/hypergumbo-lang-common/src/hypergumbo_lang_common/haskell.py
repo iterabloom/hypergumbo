@@ -16,6 +16,16 @@ This analyzer uses tree-sitter to parse Haskell files and extract:
   graph with false resolutions. External calls take the ast_call unresolved
   base
 - ``implements`` edges from a typeclass instance to its class
+- ``meta["base_classes"]`` on an instance symbol: the class it is an instance
+  of, as written (``Yesod``, ``Y.Yesod``). Haskell has no inheritance; ``instance
+  Yesod App`` is how a program says "App is a Yesod", so this is what a
+  framework row's ``base_class:`` reads (yesod.yaml's application rows). It sits
+  on the instance, not on ``data App``: the instance is where the membership is
+  declared, the symbol the ``implements`` edge leaves from, and always in the
+  file being read, while the type may live in another module or package. Only
+  the instance HEAD's class counts: context constraints (``Yesod m =>``), a
+  class's superclasses and ``deriving`` clauses are not recorded, and a
+  standalone ``deriving instance`` emits no symbol
 
 If tree-sitter with Haskell support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -224,6 +234,39 @@ def _extract_module_exports(tree: "tree_sitter.Tree", source: bytes) -> Optional
     return None  # pragma: no cover - every Haskell file has a header
 
 
+def _instance_head(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str]]:
+    """``(class as written, instance type name)`` of an ``instance`` node.
+
+    ONE READER FOR BOTH PASSES: the symbol pass names the instance symbol from
+    this, and the edge pass finds that symbol again by the same name, so the
+    two cannot disagree about which instances exist.
+
+    The class is the HEAD's class: the ``name`` (``instance Yesod App``) or
+    ``qualified`` (``instance Y.Yesod App``) child of the node itself. A
+    context (``Yesod m => YesodSubDispatch Sub m``) is a child node of its own,
+    so its constraint classes are never read as the instance's class.
+
+    The type name is the first BARE type name of the head's type patterns, or
+    ``""`` when the first type is applied or bracketed (``(App a)``, ``[T]``):
+    the symbol is then named by the class alone, which is the name it has
+    always had (renaming it would move its stable id).
+    """
+    class_node = find_child_by_type(node, "name") or find_child_by_type(
+        node, "qualified",
+    )
+    if class_node is None:
+        return None  # pragma: no cover - the grammar always gives a head class
+    type_name = ""
+    type_patterns = find_child_by_type(node, "type_patterns")
+    if type_patterns:
+        inner_name = find_child_by_type(type_patterns, "name")
+        if inner_name:
+            type_name = node_text(inner_name, source)
+    return node_text(class_node, source), type_name
+
+
 #: Kinds minted here with the producer formula (``class`` takes its table
 #: formula downstream).
 _HS_PRODUCER_KINDS = frozenset({"function", "data", "instance"})
@@ -285,8 +328,13 @@ def _extract_symbols_from_file(
         name: str,
         kind: str,
         signature: Optional[str] = None,
+        instance_class: Optional[str] = None,
     ) -> None:
-        """Add a symbol if not already seen."""
+        """Add a symbol if not already seen.
+
+        *instance_class* is an instance's class as written; it becomes the
+        symbol's ``base_classes``.
+        """
         if not name or name in seen_names:
             return  # pragma: no cover - skip empty/duplicate names
         seen_names.add(name)
@@ -325,6 +373,11 @@ def _extract_symbols_from_file(
             if kind == "function":
                 patterns = find_child_by_type(node, "patterns")
                 meta = {ARITY_KEY: patterns.named_child_count if patterns else 0}
+            elif instance_class:
+                # ``instance Yesod App`` is Haskell's "App is a Yesod": the
+                # class membership a framework row's ``base_class:`` reads,
+                # on the symbol the ``implements`` edge already leaves from.
+                meta = {"base_classes": [instance_class]}
             stable_id = declared_arity_stable_id(
                 kind=kind, lang="haskell", path=file_path, name=name,
                 qualified_name=name, arity=declared_arity(meta),
@@ -392,18 +445,13 @@ def _extract_symbols_from_file(
 
         elif node.type == "instance":
             # Instance declaration
-            name_node = find_child_by_type(node, "name")
-            type_patterns = find_child_by_type(node, "type_patterns")
-            if name_node:
-                class_name = node_text(name_node, source)
-                type_name = ""
-                if type_patterns:
-                    # Get the type being instantiated
-                    inner_name = find_child_by_type(type_patterns, "name")
-                    if inner_name:
-                        type_name = node_text(inner_name, source)
+            head = _instance_head(node, source)
+            if head:
+                class_name, type_name = head
                 instance_name = f"{class_name} {type_name}".strip()
-                add_symbol(node, instance_name, "instance")
+                add_symbol(
+                    node, instance_name, "instance", instance_class=class_name,
+                )
 
     return symbols
 
@@ -1024,21 +1072,21 @@ def _extract_edges_from_file(
 
         elif node.type == "instance":
             # Typeclass instance → typeclass 'implements' edge
-            name_node = find_child_by_type(node, "name")
-            if name_node:
-                class_name = node_text(name_node, source)
+            head = _instance_head(node, source)
+            if head:
+                class_name, type_name = head
                 # Build instance symbol name to find the src symbol
-                type_patterns = find_child_by_type(node, "type_patterns")
-                type_name = ""
-                if type_patterns:
-                    inner_name = find_child_by_type(type_patterns, "name")
-                    if inner_name:
-                        type_name = node_text(inner_name, source)
                 instance_name = f"{class_name} {type_name}".strip()
                 instance_sym = local_symbols.get(instance_name)
                 if instance_sym:
-                    # Try to resolve the typeclass
-                    class_lookup = resolver.lookup(class_name)
+                    # Try to resolve the typeclass. A qualified class
+                    # (``S.Shape``) is looked up by its own name, with the
+                    # alias's module as the hint, as a qualified call is.
+                    # An unqualified class has no alias and so no hint.
+                    alias, _, bare_class = class_name.rpartition(".")
+                    class_lookup = resolver.lookup(
+                        bare_class, path_hint=import_aliases.get(alias),
+                    )
                     if class_lookup.found and class_lookup.symbol:
                         class_sym = class_lookup.symbol
                     else:

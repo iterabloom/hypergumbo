@@ -1089,7 +1089,7 @@
               "description": "Class Symbols (php, groovy, scala, csharp alias usings): for each BARE base in ``base_classes`` bound by a single-type import, the import's qualified name. The inheritance linker checks the base as that name instead of binding any in-repo class of the same short name (WI-pivap)."
             },
             "base_classes": {
-              "description": "List of base-class names on class / interface Symbols. Used by framework_patterns to identify Django Model, SQLAlchemy Base, etc."
+              "description": "Base-class names on class / interface Symbols; the class of a Haskell ``instance`` Symbol. framework_patterns reads it (Django Model, SQLAlchemy Base, Yesod, etc.)."
             },
             "block_type": {
               "description": "Block subtype for generic ``block`` Symbols where the construct admits sub-classification (e.g. 'datasource', 'generator' in Prisma). Fold residue per WI-runod Wave 6 PR 4."

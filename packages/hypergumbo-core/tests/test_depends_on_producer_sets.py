@@ -325,8 +325,9 @@ class TestInheritanceDeclaresItsMetadataProducers:
 
     def test_the_clause_is_exactly_this(self) -> None:
         assert _clause_containing("inheritance-linker", "java") == [
-            "apex", "cpp", "csharp", "go", "groovy", "java", "javascript",
-            "kotlin", "objc", "php", "python", "ruby", "scala", "swift",
+            "apex", "cpp", "csharp", "go", "groovy", "haskell", "java",
+            "javascript", "kotlin", "objc", "php", "python", "ruby", "scala",
+            "swift",
         ]
 
     def test_rust_dart_and_elixir_are_no_longer_declared(self) -> None:

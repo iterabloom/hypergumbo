@@ -811,11 +811,16 @@ def _create_inheritance_edges(
     # tree. ``rust``, ``dart`` and ``elixir`` are absent because they
     # contribute nothing here — rust emits ``implements`` EDGES directly (so
     # it is declared on ``type-hierarchy-linker``, which consumes those), and
-    # dart/elixir write neither key. (history: WI-rasal)
+    # dart/elixir write neither key. (history: WI-rasal) ``haskell`` writes
+    # ``base_classes`` on ``instance`` symbols (the typeclass an instance is
+    # of, for framework rows); this linker reads them and skips them, since
+    # ``instance`` is not a type-like kind, and haskell's ``implements`` edge
+    # is emitted by the analyzer itself.
     depends_on=[
         [
-            "apex", "cpp", "csharp", "go", "groovy", "java", "javascript",
-            "kotlin", "objc", "php", "python", "ruby", "scala", "swift",
+            "apex", "cpp", "csharp", "go", "groovy", "haskell", "java",
+            "javascript", "kotlin", "objc", "php", "python", "ruby", "scala",
+            "swift",
         ],
     ],
     activation=always_on_unreviewed(),
