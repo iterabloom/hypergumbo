@@ -8,83 +8,113 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: giraffe
 language: fsharp
 
+# fsharp.py records one context per call site, positioned "caller": its
+# symbol_ref is the declaration the call sits in. A row below fires only
+# where that declaration is the honest subject of its concept, and says so
+# with `position: "^caller$"`.
+
 patterns:
-  # HttpHandler composition (>=> operator)
+  # A binding that composes handlers with >=> is an HttpHandler.
   - concept: handler
     usage:
       kind: "^call$"
       name: "^>=>$"
+      position: "^caller$"
 
-  # Route functions
+  # CANNOT FIRE: fsharp.py emits no context that carries a route's path and
+  # handler. `route "/x" >=> h` composes a handler value; the subject of the
+  # route is h, and the binding holding the route table (which gets `router`
+  # from `choose`) is not a route: stamping it gave a path-less http_route
+  # entry on the table. Firing needs a per-route context whose symbol_ref is
+  # the handler (position args[last], as go.py and js_ts.py emit one).
   - concept: route
     usage:
       kind: "^call$"
       name: "^(route|routef|routeCi|routeCif)$"
+      position: "^args\\[last\\]$"
 
-  # HTTP method handlers
+  # CANNOT FIRE: Giraffe code does not call GET/POST/...: they are handler
+  # values composed with >=> (`GET >=> route "/x" >=> h`), and fsharp.py
+  # records calls only. Firing needs a context for the composition naming
+  # the handler it guards (position args[last]).
   - concept: route
     usage:
       kind: "^call$"
       name: "^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$"
+      position: "^args\\[last\\]$"
 
-  # Subroute grouping
+  # A binding that calls subRoute groups routes under a prefix.
   - concept: route_group
     usage:
       kind: "^call$"
       name: "^subRoute$"
+      position: "^caller$"
 
-  # choose - try multiple handlers
+  # A binding that calls choose is a router (tries its handlers in turn).
   - concept: router
     usage:
       kind: "^call$"
       name: "^choose$"
+      position: "^caller$"
 
-  # Response helpers
+  # Response writers: the caller writes the response. setStatusCode,
+  # setHttpHeader, setBody and setBodyFromString were `middleware`; they
+  # write the response too, and as middleware every handler that set a
+  # status became a middleware entry, chained to unrelated handlers.
   - concept: response
     usage:
       kind: "^call$"
       name: "^(json|text|htmlString|htmlView|htmlFile|redirectTo)$"
+      position: "^caller$"
 
-  # Request binding
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^(setStatusCode|setHttpHeader|setBody|setBodyFromString)$"
+      position: "^caller$"
+
+  # Request binding: the caller reads the request body or query.
   - concept: request
     usage:
       kind: "^call$"
       name: "^(bindJson|bindXml|bindForm|bindQueryString|bindModel)$"
+      position: "^caller$"
 
-  # Authentication/Authorization
+  # Authentication/Authorization: the caller guards what it composes.
   - concept: auth
     usage:
       kind: "^call$"
       name: "^(requiresAuthentication|requiresRole|requiresRoleOf)$"
+      position: "^caller$"
 
-  # Middleware
-  - concept: middleware
-    usage:
-      kind: "^call$"
-      name: "^(setStatusCode|setHttpHeader|setBody|setBodyFromString)$"
+  # No error_handler row. It named handleContext (builds a handler from a
+  # function of the context), warbler (defers building a handler to each
+  # request) and clearResponse (resets the response): none is error
+  # handling. clearResponse appears in error handlers, but it is a handler
+  # value, composed and never called (`clearResponse >=> setStatusCode 500`),
+  # so a call row on it could not fire either. Giraffe's error handler is the
+  # function passed to UseGiraffeErrorHandler, which no context records.
 
-  # Error handling
-  - concept: error_handler
-    usage:
-      kind: "^call$"
-      name: "^(handleContext|warbler|clearResponse)$"
-
-  # Saturn compatibility (Saturn builds on Giraffe)
+  # Saturn (built on Giraffe; detected `saturn` loads this file). Each is a
+  # computation expression whose builder names what the binding is.
   - concept: application
     usage:
       kind: "^call$"
       name: "^application$"
+      position: "^caller$"
 
   - concept: router
     usage:
       kind: "^call$"
       name: "^(router|scope|forward)$"
+      position: "^caller$"
 
   - concept: controller
     usage:
       kind: "^call$"
       name: "^controller$"
+      position: "^caller$"

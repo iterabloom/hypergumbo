@@ -12,8 +12,10 @@ end, that the Saturn application object gets its concept and its entry.
 from pathlib import Path
 
 from hypergumbo_core.entrypoints import EntrypointKind, detect_entrypoint_candidates
-from hypergumbo_core.framework_patterns import clear_pattern_cache, enrich_symbols
-from hypergumbo_core.ir import UsageContext
+from hypergumbo_core.framework_patterns import (
+    clear_pattern_cache, enrich_symbols, load_framework_patterns,
+)
+from hypergumbo_core.ir import Span, UsageContext
 
 from hypergumbo_lang_common.fsharp import analyze_fsharp
 
@@ -136,3 +138,74 @@ def test_the_saturn_application_object_is_a_hosted_application(tmp_path: Path) -
         if ep.kind is EntrypointKind.HOSTED_APPLICATION
     ]
     assert [ep.symbol_id for ep in hosted] == [app.id]
+
+
+GIRAFFE_APP = """module App
+open Giraffe
+
+let notFound =
+    setStatusCode 404 >=> text "Not Found"
+
+let teapot = setStatusCode 418
+
+let webApp =
+    choose [
+        GET >=> choose [
+            route "/" >=> htmlFile "index.html"
+            routef "/hello/%s" sayHello
+        ]
+        notFound ]
+"""
+
+
+def _giraffe(tmp_path: Path):
+    clear_pattern_cache()
+    (tmp_path / "App.fs").write_text(GIRAFFE_APP, encoding="utf-8")
+    result = analyze_fsharp(tmp_path)
+    symbols = enrich_symbols(result.symbols, ["giraffe"], result.usage_contexts)
+    by_name = {s.name: s for s in symbols}
+    name_of = {s.id: s.name for s in symbols}
+    entries = {
+        (name_of[ep.symbol_id], ep.kind)
+        for ep in detect_entrypoint_candidates(symbols, result.edges)
+    }
+    return by_name, entries
+
+
+def _concepts(sym) -> set[str]:
+    return {c["concept"] for c in (sym.meta or {}).get("concepts", [])}
+
+
+def test_a_route_table_holder_is_a_router_and_no_route(tmp_path: Path) -> None:
+    """End to end through giraffe.yaml: `route "/" >=> h` composes a handler
+    value; the binding holding the table is a router, not a path-less route."""
+    by_name, entries = _giraffe(tmp_path)
+    assert [e for e in entries if e[1] is EntrypointKind.HTTP_ROUTE] == []
+    assert {"router", "handler", "response"} <= _concepts(by_name["webApp"])
+    assert "route" not in _concepts(by_name["webApp"])
+
+
+def test_a_handler_that_sets_a_status_writes_a_response_and_is_no_middleware(
+    tmp_path: Path,
+) -> None:
+    by_name, entries = _giraffe(tmp_path)
+    assert [e for e in entries if e[1] is EntrypointKind.MIDDLEWARE_HANDLER] == []
+    assert _concepts(by_name["teapot"]) == {"response"}
+    assert "middleware" not in _concepts(by_name["notFound"])
+
+
+def test_the_application_row_matches_a_caller_context_only() -> None:
+    clear_pattern_cache()
+    pattern_def = load_framework_patterns("giraffe")
+    assert pattern_def is not None
+    (row,) = [p for p in pattern_def.patterns if p.concept == "application"]
+    span = Span(start_line=1, end_line=1, start_col=0, end_col=1)
+
+    def ctx(position: str) -> UsageContext:
+        return UsageContext.create(
+            kind="call", context_name="application", position=position,
+            path="App.fs", span=span, symbol_ref="fsharp:App.fs:1-1:app:variable",
+        )
+
+    assert row.matches_usage(ctx("caller")) == {"concept": "application"}
+    assert row.matches_usage(ctx("args[0]")) is None
