@@ -1,0 +1,20 @@
+Original commit body from 79814596b2114bbad83f86b25b4b858f4f593bcd:
+
+Test tooling: what smart-test says about coverage, and what the by-statement selector does for a new method. One commit per change (owner ruling 2026-11-13). Addresses WI-birog and WI-dibin's owed points. Every premise was first re-checked on the code (read-only probe); two of WI-birog's four findings had a different cause than filed and one was already fixed.
+
+smart-test (scripts/smart-test)
+1. The COVERAGE block printed "(all files at 100%)" over files it never saw: under `.coveragerc.no-embeddings` the report had no Missing column and the gap pattern required one; on the self-selected path there is no per-file report at all. It now lists every file below 100% whatever the columns, says so when the run produced no per-file report, and claims 100% only over a report it read. `show_missing` added to that config (its readers checked: they grep for "No data to report" or read TOTAL's last field).
+2. An explicit-path run never reached the 100% gate on changed files, committed or not, in any checkout (the filed "nothing uncommitted" and "worktree" conditions were not the cause). After a green explicit run it now prints NOT GATED with the merge base and each changed source file's percent in this run ("not measured in this run" where the run holds no data for it), and `--gate-changed` enforces 100% and exits 1 below it. The self-selected path gates what it gated; the two share the code. Cost measured: 0.17 s for the notice, 0.29 s with the flag.
+3. A directory argument (`smart-test tests`) took the self-selected path AND was passed to pytest, which ran the selection plus the directory. Any argument that is neither an option nor an option's value is now a target and makes the run explicit; option values are recognised from pytest's own option table (70 value-taking options with the installed plugins), so `-k tests` or `--basetemp DIR` stays self-selected.
+(Finding 4, test_generator_check under PYTHONPATH, was fixed on 2026-11-16 by bfe00bcd0; not touched.)
+
+Selector
+4. A run row names the changed files the selector has no rule for also when the change has no package source (the row was `by_statement: null`).
+5. The new-method rule, which its own docstring called a guess: a new method of an existing class also selects every test that ran the method it overrides, found through the class's bases and the file's imports (new module new_def_reach.py; no whole-repo analysis). A base that is not source of this repository answers UNRESOLVED_BASE and nothing is narrowed. A new decorated def (a decorator may register it at import) and a second def shadowing a name are handled the same safe way. Reproduced as a failing test first: `class B(A)` gains `m`, the test paired only with `A.m` was not selected and narrowing did not refuse.
+   On the 69 recorded (base, head) pairs re-diffed with the new code: 5 new methods of existing classes (2 without a base: unchanged; 2 under the repo's TreeSitterAnalyzer; 1 under ast.NodeVisitor, which now refuses narrowing), 36 new methods of new classes (unchanged), 197 new functions, 1 decorated (contextmanager, inert).
+
+Mutation controls: smart-test 14 mutations, selector 14, all red (two were first stopped by the mypy ratchet and rewritten).
+
+Not done: the smart-test bed cannot score the by-statement selector (target mode switches it off), so INV-bifih's bed scenario is not added; a class that gains a method a subclass lists before another base is not covered; the self-selected gate still reads the default coverage config; the smart-test playbook's list of refusals (a governance file) is not updated.
+
+Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr3/PROBE.md, RESIDUALS_TO_FILE.md
