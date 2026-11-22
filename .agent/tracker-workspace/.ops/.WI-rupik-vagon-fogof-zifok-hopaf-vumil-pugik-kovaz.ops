@@ -1,0 +1,20 @@
+- op: create  # ef61
+  at: '2026-11-22T09:33:05Z'  # ef61
+  by: agent  # ef61
+  actor: jgstern_agent  # ef61
+  clock: 1  # ef61
+  nonce: ef61  # ef61
+  data:  # ef61
+    kind: work_item  # ef61
+    title: "main rows left open: Erlang .escript files are not analysed; a Rust fn main in a library module is a main"  # ef61
+    status: todo_soft  # ef61
+    priority: 3  # ef61
+    parent:  # ef61
+    tags:  # ef61
+    - entrypoints  # ef61
+    isbefore: []  # ef61
+    duplicate_of: []  # ef61
+    not_duplicate_of: []  # ef61
+    pr_ref:  # ef61
+    description: "WHAT. Left open by the main-rows work (WI-mulaj, PR #2329):\n- Erlang .escript files are not analysed at all: 7 of the 9 escript mains the census found live in them. The Erlang main row is main/1 now and carries the unmeasured confidence (0.80): seven main/1 definitions in analysable files are too few to measure. An exported main/1 in a test suite module (rabbitmq python_SUITE.erl) matches too.\n- Rust: fn main in a library module is still a main_function (census: 21 of 1,380 after discounting integration-test mains). The rule is the crate root (src/main.rs, src/bin/*.rs, a Cargo [[bin]] path, examples/); rust.py's qualified name does not say it.\n- Haskell: .lhs and .hs-boot files are not analysed.\n\nASK. Add .escript to the Erlang analyzer's files (the shebang line must parse) and measure main/1 on a corpus; give Rust's row the crate-root condition.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # ef61
+    fields: {}  # ef61
