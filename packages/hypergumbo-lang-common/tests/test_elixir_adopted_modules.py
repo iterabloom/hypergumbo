@@ -18,13 +18,16 @@ decorator for Elixir). These tests pin:
   modules whose injected ``child_spec/1`` calls it (GenServer, Agent, Task,
   Supervisor) in place of Agent's ``init``, which Agent does not have;
 - end to end, the shipped ``adopts:`` rows stamp each concept on the
-  analyzer's own module symbol.
+  analyzer's own module symbol; ``use Phoenix.Controller`` gets none (routes
+  reach the actions, and a per-module controller entry pushed routes out of
+  the capped entry list), and a schema gets one ``model``, not one per file.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from hypergumbo_core.entrypoints import detect_entrypoints
 from hypergumbo_core.framework_patterns import clear_pattern_cache, enrich_symbols
 from hypergumbo_core.ir import Symbol
 from hypergumbo_lang_common.elixir import analyze_elixir
@@ -281,10 +284,11 @@ class TestTheShippedRowsStampTheModule:
 
     def test_phoenix_rows(self, tmp_path):
         symbols = self._enriched(tmp_path, "phoenix")
-        assert _concepts(_module(symbols, "MyAppWeb.PageController")) == {
-            "controller@phoenix"}
-        assert _concepts(_module(symbols, "MyAppWeb.RawController")) == {
-            "controller@phoenix"}
+        # No row on Phoenix.Controller: routes reach a controller's actions,
+        # and a controller entry per module pushed routes out of the capped
+        # entry list (test_a_routed_action_stays_an_http_route_entry).
+        assert _concepts(_module(symbols, "MyAppWeb.PageController")) == set()
+        assert _concepts(_module(symbols, "MyAppWeb.RawController")) == set()
         assert _concepts(_module(symbols, "MyAppWeb.DashLive")) == {"liveview@phoenix"}
         assert _concepts(_module(symbols, "MyAppWeb.RoomChannel")) == {
             "websocket_handler@phoenix"}
@@ -296,7 +300,7 @@ class TestTheShippedRowsStampTheModule:
     def test_plug_rows(self, tmp_path):
         symbols = self._enriched(tmp_path, "plug")
         assert _concepts(_module(symbols, "MyPlug.Router")) == {
-            "controller@plug", "error_handler@plug"}
+            "middleware@plug", "error_handler@plug"}
         assert _concepts(_module(symbols, "MyPlug.Pipeline")) == {"middleware@plug"}
         assert _concepts(_module(symbols, "MyPlug.Auth")) == set()
 
@@ -307,6 +311,32 @@ class TestTheShippedRowsStampTheModule:
         assert _concepts(_module(symbols, "MyApp.Tree")) == {"supervisor@otp"}
         assert _concepts(_module(symbols, "MyApp.Registry")) == set()
         assert _concepts(_module(symbols, "MyApp.Mailer")) == set()
+
+    def test_a_schema_is_one_model_with_plug_detected_too(self, tmp_path):
+        symbols = self._enriched(tmp_path, "phoenix", "plug")
+        assert _concepts(_module(symbols, "MyApp.Post")) == {"model@phoenix"}
+
+    def test_a_routed_action_stays_an_http_route_entry(self, tmp_path):
+        (tmp_path / "router.ex").write_text(
+            "defmodule MyAppWeb.Routes do\n"
+            "  use Phoenix.Router\n"
+            "  get \"/raw\", MyAppWeb.RawController, :index\n"
+            "end\n"
+        )
+        (tmp_path / "web.ex").write_text(_WEB)
+        (tmp_path / "phx.ex").write_text(_PHX)
+        result = analyze_elixir(tmp_path)
+        symbols = list(result.symbols)
+        assert _module(symbols, "MyAppWeb.RawController")
+        clear_pattern_cache()
+        enrich_symbols(symbols, {"phoenix"})
+        kinds = {
+            (s.name, e.kind.value)
+            for e in detect_entrypoints(symbols, list(result.edges))
+            for s in symbols if s.id == e.symbol_id
+        }
+        assert ("GET /raw", "http_route") in kinds
+        assert not [k for k in kinds if k[0] == "MyAppWeb.RawController"]
 
     def test_job_and_graphql_rows(self, tmp_path):
         symbols = self._enriched(tmp_path, "oban", "broadway", "absinthe")
