@@ -538,6 +538,9 @@ ELIXIR_FRAMEWORKS = {
     "ecto": ["ecto"],
     # GraphQL
     "absinthe": ["absinthe"],
+    # Jobs and pipelines
+    "oban": ["oban"],
+    "broadway": ["broadway"],
     # Testing
     "ex_unit": ["ex_unit"],
 }

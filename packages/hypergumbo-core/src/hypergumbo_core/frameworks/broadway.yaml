@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Broadway data-ingestion pipelines (WI-movur)
+#
+# ``use Broadway`` makes the module a pipeline: Broadway calls its
+# ``handle_message`` / ``handle_batch`` callbacks, and nothing in the
+# repository calls the module. The row reads ``meta["adopted_modules"]``
+# (``adopts:``), written by the Elixir analyzer. The callbacks themselves are
+# not linked from the module (the analyzer's callback table has no Broadway
+# row: its callback names were not read from Broadway's source).
+
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-11-22
+id: broadway
+language: elixir
+
+patterns:
+  # Broadway pipeline - the module Broadway calls handle_message/3 on
+  - concept: task
+    adopts: "^Broadway$"

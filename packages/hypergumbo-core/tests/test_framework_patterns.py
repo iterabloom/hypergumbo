@@ -5184,7 +5184,10 @@ class TestPhoenixPatterns:
     """Tests for Phoenix (Elixir) framework pattern matching."""
 
     def test_phoenix_ecto_schema_pattern(self) -> None:
-        """Ecto Schema macro matches model pattern."""
+        """A module that ``use``s Ecto.Schema matches the model pattern: the
+        row reads ``meta["adopted_modules"]``, which the Elixir analyzer
+        writes (WI-movur; the analyzer side is pinned end to end in
+        hypergumbo-lang-common's test_elixir_adopted_modules.py)."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("phoenix")
 
@@ -5197,18 +5200,14 @@ class TestPhoenixPatterns:
             language="elixir",
             path="lib/my_app/accounts/user.ex",
             span=Span(1, 40, 0, 0),
-            meta={
-                "decorators": [
-                    {"name": "use Ecto.Schema", "args": [], "kwargs": {}},
-                ],
-            },
+            meta={"adopted_modules": ["Ecto.Schema"]},
         )
 
         results = match_patterns(symbol, [pattern_def])
 
         assert len(results) == 1
         assert results[0]["concept"] == "model"
-        assert results[0]["matched_decorator"] == "use Ecto.Schema"
+        assert results[0]["matched_adopts"] == "Ecto.Schema"
 
     def test_phoenix_route_symbol_kind_pattern(self) -> None:
         """Phoenix route symbols (kind=route) match route pattern via symbol_kind.

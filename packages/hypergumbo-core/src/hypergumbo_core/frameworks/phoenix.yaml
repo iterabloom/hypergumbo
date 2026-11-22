@@ -9,11 +9,21 @@
 
 # Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
 # reads decorator / annotation syntax only, so a call never matched them.
+#
+# `adopts:` rows (WI-movur) read `meta["adopted_modules"]`, which the Elixir
+# analyzer writes on each module: the modules its `use` directives run and the
+# behaviours they declare, through in-repo `__using__` quotes and the generated
+# web module's dispatcher, so `use MyAppWeb, :live_view` adopts
+# Phoenix.LiveView. One row per construct covers both spellings. The OTP rows
+# (GenServer, Agent, Task, Supervisor) moved to otp.yaml, loaded for every
+# Elixir repository; Oban, Broadway and Absinthe have their own files.
+# The `decorator:` rows left below (component, view) feed concepts no entry
+# reads and still match nothing.
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: phoenix
 language: elixir
 
@@ -57,6 +67,28 @@ patterns:
   - concept: route
     framework_role: "^route$"
 
+  # Controllers - `use Phoenix.Controller` / `use MyAppWeb, :controller`.
+  # Phoenix calls an action through a route; a controller no route names is
+  # still marked (the deleted row's concept, restored as it was).
+  - concept: controller
+    adopts: "^Phoenix\\.Controller$"
+
+  # LiveView - `use Phoenix.LiveView` / `use MyAppWeb, :live_view`: Phoenix
+  # calls mount / render / handle_event on it, from a `live` route or a
+  # `live_render`.
+  - concept: liveview
+    adopts: "^Phoenix\\.LiveView$"
+
+  # Channels - `use Phoenix.Channel` / `use MyAppWeb, :channel`: the socket
+  # calls join / handle_in on it.
+  - concept: websocket_handler
+    adopts: "^Phoenix\\.Channel$"
+
+  # Plugs - a `use Plug.Builder` / `use Plug.Router` module is a plug: its
+  # call/2 runs in a plug pipeline.
+  - concept: middleware
+    adopts: "^Plug\\.(Builder|Router)$"
+
   # LiveComponent - reusable LiveView components
   - concept: component
     decorator: "^use Phoenix\\.LiveComponent$"
@@ -66,18 +98,15 @@ patterns:
 
   # Ecto Schemas - database models
   - concept: model
-    decorator: "^use Ecto\\.Schema$"
+    adopts: "^Ecto\\.Schema$"
 
   # Ecto Changesets (often in schema modules)
   - concept: model
     decorator: "^import Ecto\\.Changeset$"
 
-  # Phoenix Router
+  # Phoenix Router - `use Phoenix.Router` / `use MyAppWeb, :router`
   - concept: router
-    decorator: "^use Phoenix\\.Router$"
-
-  - concept: router
-    decorator: "^use .*Web, :router$"
+    adopts: "^Phoenix\\.Router$"
 
   # Phoenix View (deprecated in favor of components)
   - concept: view
@@ -93,7 +122,3 @@ patterns:
   # Phoenix Component (new in 1.7+)
   - concept: component
     decorator: "^use Phoenix\\.Component$"
-
-  # Supervisor - process supervision
-  - concept: supervisor
-    decorator: "^use Supervisor$"

@@ -621,11 +621,11 @@ def test_every_kind_has_a_live_producer() -> None:
 
 
 def test_the_concepts_the_detector_reads_and_nothing_emits() -> None:
-    """``liveview``'s only producers were phoenix.yaml ``use`` rows on the
-    decorator key, which never fired and were deleted (audit 0027, WI-jilik);
-    its arm builds a ``controller``, which other concepts produce. Concept
+    """Every concept an entry arm reads has a producer. ``liveview`` had
+    none from the deletion of the phoenix.yaml ``use`` rows on the decorator
+    key (audit 0027, WI-jilik) until the ``adopts:`` row (WI-movur). Concept
     names no detector reads, the other direction, are WI-rafop."""
-    assert _producerless_kinds()[1] == {"liveview"}
+    assert _producerless_kinds()[1] == set()
 
 
 def test_the_producer_reading_sees_each_detector() -> None:

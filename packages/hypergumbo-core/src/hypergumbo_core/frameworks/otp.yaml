@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Elixir OTP process modules (WI-movur)
+#
+# A module that ``use``s GenServer, Agent, Task or Supervisor is started by
+# the runtime, not called by the repository: a supervisor calls its
+# ``start_link/1`` through the ``child_spec/1`` the ``use`` injects, and OTP
+# then calls its callbacks (``init``, ``handle_call`` ...). Nothing in the
+# repository calls the module itself, so without a row it has no entry and
+# every callback hangs off it unreached.
+#
+# The rows read ``meta["adopted_modules"]`` (``adopts:``), which the Elixir
+# analyzer writes on each module: the modules its ``use`` directives run and
+# the behaviours they declare, through in-repo ``__using__`` quotes.
+#
+# Always loaded: these are the Elixir standard library, never a declared
+# dependency, so no framework detection can gate them. (The rows used to
+# live in phoenix.yaml, keyed on a ``decorator:`` nothing writes, so they
+# never fired; had they fired they would have reached Phoenix projects only.)
+
+# ADR-0061: GenServer, Agent, Task and Supervisor are Elixir's standard
+# library; no third-party library is named.
+provenance: builtin
+id: otp
+language: elixir
+
+patterns:
+  # GenServer - a server process; OTP calls init / handle_call / handle_cast ...
+  - concept: task
+    adopts: "^GenServer$"
+    language: "^elixir$"
+
+  # Agent - a state process started through the injected child_spec
+  - concept: task
+    adopts: "^Agent$"
+    language: "^elixir$"
+
+  # Task - a process started through the injected child_spec
+  - concept: task
+    adopts: "^Task$"
+    language: "^elixir$"
+
+  # Supervisor - process supervision (no entry kind reads this concept)
+  - concept: supervisor
+    adopts: "^Supervisor$"
+    language: "^elixir$"

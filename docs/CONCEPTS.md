@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **322** (live: 47, inert: 274, ghost: 1).
+Total concepts: **322** (live: 48, inert: 274, ghost: 0).
 
 ## Inventory
 
@@ -83,7 +83,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `contract` | inert | http4k | _(none)_ |
 | `contract_route` | inert | http4k | _(none)_ |
 | `control_flow` | inert | scotty | _(none)_ |
-| `controller` | live | adonisjs, aiohttp, aspnet, cakephp, codeigniter, controller_routes.py, django, falcon, fuelphp, giraffe, grape, hanami, kafka-connect, laminas, laravel, litestar, lumen, masonite, micronaut, nestjs, padrino, play, pyramid, rails, slim, spring-boot, stapler, swiftui, symfony, tornado, vapor, yii | `entrypoints.py`, `linkers/controller_routes.py` |
+| `controller` | live | adonisjs, aiohttp, aspnet, cakephp, codeigniter, controller_routes.py, django, falcon, fuelphp, giraffe, grape, hanami, kafka-connect, laminas, laravel, litestar, lumen, masonite, micronaut, nestjs, padrino, phoenix, play, plug, pyramid, rails, slim, spring-boot, stapler, swiftui, symfony, tornado, vapor, yii | `entrypoints.py`, `linkers/controller_routes.py` |
 | `controller_by_name` | live | naming-conventions | `entrypoints.py` |
 | `cors` | inert | aspnet, scalatra | _(none)_ |
 | `crud_handler` | inert | javalin | _(none)_ |
@@ -106,7 +106,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `entity` | live | cakephp, codeigniter | `datamodels.py` |
 | `entrypoint` | live | electron, http4s, swiftui, zio | `entrypoints.py` |
 | `error` | inert | cli | _(none)_ |
-| `error_handler` | live | adonisjs, bottle, fastapi, fastify, feathers, flask, flask-restful, go-web, grape, javalin, jax-rs, laravel, litestar, lumen, micronaut, nuxt, openresty, padrino, play, pyramid, quart, rails, remix, restify, ring-compojure, sanic, scalatra, scotty, servant, slim, spring-boot, sveltekit, tornado, vertx | `entrypoints.py` |
+| `error_handler` | live | adonisjs, bottle, fastapi, fastify, feathers, flask, flask-restful, go-web, grape, javalin, jax-rs, laravel, litestar, lumen, micronaut, nuxt, openresty, padrino, play, plug, pyramid, quart, rails, remix, restify, ring-compojure, sanic, scalatra, scotty, servant, slim, spring-boot, sveltekit, tornado, vertx | `entrypoints.py` |
 | `event` | inert | adonisjs, fuelphp, laravel, masonite | _(none)_ |
 | `event_config` | inert | lit | _(none)_ |
 | `event_consumer` | inert | vertx | _(none)_ |
@@ -129,8 +129,8 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `go_http_handler` | live | go-net-http | `entrypoints.py` |
 | `gpu_function` | inert | language-conventions | _(none)_ |
 | `gpu_kernel` | inert | language-conventions | _(none)_ |
-| `graphql_resolver` | live | graphql, graphql-python, graphql-ruby | `entrypoints.py` |
-| `graphql_schema` | live | graphql, graphql-python, graphql-ruby | `entrypoints.py` |
+| `graphql_resolver` | live | absinthe, graphql, graphql-python, graphql-ruby | `entrypoints.py` |
+| `graphql_schema` | live | absinthe, graphql, graphql-python, graphql-ruby | `entrypoints.py` |
 | `grpc_client` | inert | go-web | _(none)_ |
 | `grpc_service` | inert | go-web, micronaut | _(none)_ |
 | `guard` | inert | nestjs | _(none)_ |
@@ -161,7 +161,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `lifecycle` | inert | electron, fastapi, hapi, restify, ring-compojure, solid | _(none)_ |
 | `lifecycle_hook` | live | android, cocoa, lit, nex, quart, sanic | `entrypoints.py` |
 | `listener` | inert | adonisjs | _(none)_ |
-| `liveview` | ghost | _(none)_ | `entrypoints.py` |
+| `liveview` | live | phoenix | `entrypoints.py` |
 | `loader` | inert | graphql | _(none)_ |
 | `logger` | inert | fuelphp, laminas | _(none)_ |
 | `logging` | inert | logging-conventions | _(none)_ |
@@ -181,7 +181,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `menu` | inert | electron | _(none)_ |
 | `message_handler` | inert | micronaut | _(none)_ |
 | `metadata_generator` | inert | nextjs, nuxt, remix | _(none)_ |
-| `middleware` | live | adonisjs, aiohttp, aspnet, bottle, cakephp, codeigniter, django, express, falcon, fastapi, fastify, feathers, flask, flask-appbuilder, go-web, grape, graphql, hanami, hapi, http4k, http4s, hummingbird, jakarta-cdi, javalin, koa, laminas, laravel, litestar, lumen, masonite, micronaut, middleware_chain.py, nextjs, nuxt, openresty, padrino, pedestal, plug, plumber, quart, restify, ring-compojure, rust-web, sanic, scalatra, scotty, servant, slim, sveltekit, tornado, vapor, vertx, yii | `entrypoints.py`, `linkers/middleware_chain.py` |
+| `middleware` | live | adonisjs, aiohttp, aspnet, bottle, cakephp, codeigniter, django, express, falcon, fastapi, fastify, feathers, flask, flask-appbuilder, go-web, grape, graphql, hanami, hapi, http4k, http4s, hummingbird, jakarta-cdi, javalin, koa, laminas, laravel, litestar, lumen, masonite, micronaut, middleware_chain.py, nextjs, nuxt, openresty, padrino, pedestal, phoenix, plug, plumber, quart, restify, ring-compojure, rust-web, sanic, scalatra, scotty, servant, slim, sveltekit, tornado, vapor, vertx, yii | `entrypoints.py`, `linkers/middleware_chain.py` |
 | `migration` | inert | cakephp, codeigniter, fuelphp, vapor, yii | _(none)_ |
 | `model` | live | adonisjs, aspnet, cakephp, codeigniter, django, fastapi, flask, fuelphp, go-web, hanami, jakarta-cdi, laminas, laravel, litestar, lumen, masonite, padrino, phoenix, plug, pyramid, qt, quarkus, quart, rails, rust-web, spring-boot, sveltekit, vapor, yesod, yii | `datamodels.py`, `linkers/orm.py` |
 | `model_binding` | inert | adonisjs | _(none)_ |
@@ -284,9 +284,9 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `streaming` | inert | akka-http, play | _(none)_ |
 | `stylesheet` | inert | remix | _(none)_ |
 | `subrequest` | inert | openresty | _(none)_ |
-| `supervisor` | inert | phoenix | _(none)_ |
+| `supervisor` | inert | otp | _(none)_ |
 | `system` | inert | electron | _(none)_ |
-| `task` | live | celery, django, laravel, quarkus, rails, rust-web, spring-boot, symfony | `entrypoints.py` |
+| `task` | live | broadway, celery, django, laravel, oban, otp, quarkus, rails, rust-web, spring-boot, symfony | `entrypoints.py` |
 | `telemetry` | inert | electron | _(none)_ |
 | `template` | inert | fuelphp | _(none)_ |
 | `template_filter` | inert | django, flask | _(none)_ |
@@ -330,7 +330,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `websocket_connection` | inert | rails | _(none)_ |
 | `websocket_emitter` | inert | express | _(none)_ |
 | `websocket_gateway` | live | nestjs | `entrypoints.py` |
-| `websocket_handler` | live | aiohttp, cowboy, falcon, feathers, flask, graphql, laravel, litestar, micronaut, nestjs, quart, rails, sanic, socketio, starlette, tornado, vapor | `entrypoints.py` |
+| `websocket_handler` | live | aiohttp, cowboy, falcon, feathers, flask, graphql, laravel, litestar, micronaut, nestjs, phoenix, quart, rails, sanic, socketio, starlette, tornado, vapor | `entrypoints.py` |
 | `websocket_hub` | inert | aspnet | _(none)_ |
 | `websocket_middleware` | inert | javalin | _(none)_ |
 | `websocket_namespace` | inert | express | _(none)_ |
