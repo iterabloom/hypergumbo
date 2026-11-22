@@ -30,6 +30,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Electron preload scripts are `electron_preload` entry points.**
 - **C#, Rust and PHPUnit tests, WGSL shaders and Laravel queued jobs are detected.**
 - **SwiftUI, UIKit and AppKit apps are detected by their import**; Swift Argument Parser commands too.
+- **Yesod, Lapis, Shiny, Plumber and Saturn applications are hosted-application entries.**
+- **Scala `extends IOApp.Simple` is a program start**; dotted parent types are recorded.
+- **Haskell symbols carry module-qualified names**; an instance records its class.
+- **R and F# calls are recorded as usage contexts.**
 - **`analysis_runs[].non_id_edge_endpoints`** counts edge endpoints that are not node ids.
 
 ### Changed
