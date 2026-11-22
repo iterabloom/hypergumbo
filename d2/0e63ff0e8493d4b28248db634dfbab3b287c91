@@ -1,0 +1,18 @@
+Original commit body from 0c89d80d6a4e16a6d0feef56953704624cab3888:
+
+Three core fixes, one commit each, tested and measured together (owner ruling 2026-11-13). Addresses WI-sadod, WI-talug, WI-konil.
+
+1. Collection order (WI-sadod). run_all_analyzers and run_all_linkers read their thread pools with as_completed, so the symbol and edge lists were extended in the order threads finished. Both now collect in submission order, which is the registry's: priority, then name. The same loop in the file-centrality scan filled a dict that is written to the map.
+   Measured: mastodon sub-tree, two base runs differ in 22 edge positions; two fixed runs are identical. pretix src/pretix: two fixed runs identical. Content, base vs fixed, on nine trees (pretix, mastodon, ghostfolio, haskellers, flask-restful, alertmanager, cowboy, apollo-server, chatwoot): same node set and same edge multiset on eight. alertmanager: 2 edges retargeted (two Elm client calls now bind the Go API routes instead of same-path React page routes; a table in the HTTP linker that reads list order, to be filed).
+
+2. Name tables (WI-talug). resolve_deferred_symbol_refs and the enrichment name fallback kept one flat name table over every language, last write wins. They now use the route-handler linker's rule, moved to reference_candidates.py: candidates of the reference's host languages, a qualified name before a name, source order among equals. Several holders of one exact name are told apart by what the reference says (production before test code, the module it names, its own file), else the first in source order, counted as resolved_by_position. The Python analyzer now records the module a still-unresolved handler reference names (metadata.module_name); the resolver already read that key and nothing wrote it.
+   Measured on pretix src/pretix (586 usage contexts; 465 written with a module at the reference): bound to the right file 449 before, 464 after; the remaining mismatch is the checker's error. Without the module evidence the rule alone was a wash (447). No cross-language binding occurred in any arm of any tree measured, and the filed pretix flip did not reproduce in two base runs: the language restriction is shown by unit tests over every ordering of the symbols.
+
+3. Dead-code view (WI-konil). An unreached callable is reported only where the run holds a call edge (calls / instantiates) onto some in-repo callable of its language and kind. The others are withheld from dead_candidates and listed in no_call_evidence_withheld, with their groups in no_call_evidence_groups. DEAD_CODE_MAYBE_SCHEMA_VERSION 0.3.0 -> 0.4.0 (additive). The item left "withhold or label" open; this does both, as the view already does for its cross-language demoter.
+   Measured: a fixture of SQL, CMake and SCSS functions (analyzers that emit no call edges): 7 of 10 reported dead before, 0 after, 7 withheld. mastodon 84 -> 82 (5 JavaScript methods withheld). pretix 7,660 -> 7,657 (6 SCSS functions withheld).
+
+Mutation controls: 30 of 30 red (name tables 11, module evidence 9, dead-code rule 10); the collection-order tests were red on dev.
+
+Not done: one call edge clears a whole (language, kind) group; the JAX-RS subresource table still keys classes by short name; a reference whose module matches no holder is still bound by position; only the Python analyzer writes module_name; test-coverage's "no test reaches it" was not examined. pretix was analysed from src/pretix, not from the repository root.
+
+Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr1/RESULTS.md
