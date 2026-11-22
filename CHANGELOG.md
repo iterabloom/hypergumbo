@@ -14,136 +14,105 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **Stable ids move to scheme v17; many digests change.**
-- **Stand-in `fingerprint` values now carry the `hgstandinfp1:` label.**
-- **Entry kinds nothing produced are removed: schema 0.22.0.**
-- **Manifest-declared executables get their own kind, `package_executable`.**
-- **Server application objects get their own kind, `hosted_application`.**
+- **`stable_id_scheme` v15 → v17** (`hgstableid17:`): many digests change, most in Swift, Rust and Scala (spec: "`stable_id_scheme` version history").
+- **`SCHEMA_VERSION` 0.21.0 → 0.22.0**: entry `kind` loses 23 values nothing produced (`cli_main`, `electron_renderer`, 21 framework-named kinds).
+- **Manifest executables are kind `package_executable`**: npm `bin`, Cargo `[[bin]]`, `[project.scripts]`.
+- **Server app objects (Flask, FastAPI, Tornado) and Verilog top modules are kind `hosted_application`**, ranked with routes; Swift `ParsableCommand` types are `cli_command`.
+- **Exit codes**: a crash exits 70, a broken pipe 141 (both were 1); a missing `--input` or empty claims file exits 2, so `verify-claims` exit 1 always means a violated claim.
+- **`verify-claims --json` 3.1 → 3.2** adds `withheld_flows`.
+- **Stand-in `fingerprint` values carry the `hgstandinfp1:` label**; digests are unchanged.
+- **Some node ids change text**: see "Node ids and edges".
 
 ### Added
 
-- **Electron preload scripts are entry points of their own kind.**
-- **Readers of entry kinds derive their sets from roles.**
-- **Declare fixture directories as test input in `.hypergumbo.toml`.**
-- **Each analysis pass counts edge endpoints that are not ids.**
-- **Agent instruction files are listed, never printed whole.**
-- **Commits touching a cited file check its line citations.**
+- **`test_input_dirs` in `.hypergumbo.toml`** declares directories only tests read; every command treats them as test code, and `supply_chain_summary.declared_test_inputs` records them.
+- **Sketch lists agent instruction files (`AGENTS.md`, `CLAUDE.md`, …) and never prints their text**; `explain` holds their source back.
+- **Electron preload scripts are `electron_preload` entry points.**
+- **`analysis_runs[].non_id_edge_endpoints`** counts edge endpoints that are not node ids.
 
 ### Changed
 
-- **Unknown config settings now say a newer hypergumbo may be needed.**
-- **Tied entry points list manifest scripts, then mains, then routes.**
-- **Electron's main script ranks and slices like a main.**
-- **Middleware and error handlers get their own sketch heading.**
-- **Forms and serializers get their own sketch heading.**
-- **The sketch's Mobile heading is now Hosted Applications.**
-- **A guard-only Python script now demotes exports like main.**
-- **`slice --entry auto` boosts manifest executables like mains.**
-- **A `main` function's confidence now follows its language's measured reliability.**
-- **Compact seeds entry points in the entry list's order, not confidence.**
-- **Verilog top modules are hosted applications, not mains.**
-- **Swift `ParsableCommand` types are commands, not program starts.**
-- **`explain` first prints the sketch's line: quoted text is data.**
-- **Schema calls docstring and README fields untrusted repository text.**
+- **Every reader of entry kinds agrees on program starts** (ADR-0063): Electron's main script ranks like a `main`, and a guard-only Python script demotes exports like one.
+- **Tied entry points list manifest executables, then program starts, then the rest** (ADR-0039 ruling 3), not by confidence.
+- **A `main`'s confidence is measured per language**, from 0.50 (Erlang) to 0.95 (Go, Java, Rust).
+- **`compact` seeds entry points in the entry list's order**, not by confidence.
+- **Sketch headings**: "Middleware & Error Handlers" and "Framework-Reflected Classes" are new; "Mobile" is now "Hosted Applications".
+- **An unknown config setting's refusal says a newer hypergumbo may be needed.**
+- **`explain` first states that quoted repository text is data**; the schema calls docstring and README fields untrusted.
+
+### Removed
+
+- **Four functions only tests called**: `compact.estimate_behavior_map_tokens`, `selection_index._bitmap`, `selection_index.stored_edges`, `installed_env.forget_kept_answers`.
+- **164 framework pattern rows that could never match** (`argparse`, Go `kong`, Ruby `OptionParser`).
 
 ### Fixed
 
-- **Framework rows that keyed a call on `decorator:` are deleted.**
-- **A same-file `main` no longer drops application objects.**
+#### Stable ids
+
+- **Reformatting a declaration keeps its id.**
+- **Two spellings of one thing hash alike**: an imported and a qualified type name, Rust `self` and `mut self`.
+- **Renaming what callers never write keeps the id**: a callback type's inner parameter, a Dart positional parameter, a JS/TS destructuring pattern.
+- **Declarations that differ no longer share a hash**: bounded generic overloads, Swift argument labels, static and instance members (Swift, JS/TS), constrained Swift extensions, Rust `impl` blocks, `#[cfg]` and `#if` alternatives, Java anonymous classes, Dart named parameters.
+- **Swift names containing `$` are read whole.**
+
+#### Entry points
+
+- **A `main` no longer hides application objects in its file.**
+- **Test, example and vendored entry points no longer demote library exports**; a JS/TS package declaring `exports` keeps its own.
+- **A bare `createServer` is an HTTP server only when imported from `http`.**
+- **`slice --entry auto` picks the Go `main` that builds the module's binary**, and prefers production code to examples.
+- **Duplicate routes keep the production one, the same one every run.**
+- **Sketch deals tied Entry Points lines across files** and keeps a line per kind.
+
+#### Secret-leak claims (`verify-claims`)
+
+- **A secret that may leave through an alias is `inconclusive`, not confirmed**: a store through a copy, pointer or captured variable, a value returned under another name, a Go pointer-receiver method value.
+- **Closures that run later are followed**: `() => x`, `lambda: x`, Go `defer` closures, goroutines, `atexit` callbacks.
 - **Request-parameter seeding survives a colon in a file path.**
-- **`slice --entry auto` picks the Go main that builds the module's binary.**
-- **An imported and a qualified spelling of one type hash alike.**
-- **Rust cfg and Swift #if alternatives no longer share one id.**
-- **Java anonymous classes are scoped by their field, variable and type.**
-- **JS/TS ids tell static members apart from instance members.**
-- **Swift ids hash argument labels and static versus instance members.**
-- **Swift local functions are scoped by their enclosing initializer or accessor.**
-- **Dart ids hash named-parameter names, which callers write.**
-- **Renaming a callback type's inner parameter no longer moves ids.**
-- **Sketch entry groups deal tied lines across files, like the cap.**
-- **Route dedup and the connectivity fallback break ties by total order.**
-- **Test, example and vendored entry points no longer demote library exports.**
-- **A JS/TS package declaring `exports` keeps its exports listed.**
-- **`slice --entry auto` no longer seeds from an example `main`.**
-- **A bare `createServer` is an HTTP server only when imported from http.**
-- **LaTeX edges start at the file and end on ids.**
-- **Imports in eleven languages start and end on real nodes.**
-- **Unresolved names in thirteen languages get their own nodes.**
-- **Event names holding a colon no longer break ids.**
-- **Colon-bearing BibTeX, Blade and Handlebars names keep ids parseable.**
-- **JavaScript, Tcl and Markdown ids keep every slot well-formed.**
-- **Unresolved call targets fold colons in their names too.**
-- **`verify-claims` no longer confirms secrets written through an alias.**
-- **The spec states generic type parameters are hashed by name.**
-- **Crashes now exit 70; empty claims files exit 2.**
-- **Any broken pipe, stderr or `--help` included, exits 141.**
-- **The spec's stated schema versions now match the code.**
-- **`verify-claims` follows secrets returned by one-expression closures.**
-- **`verify-claims` catches secrets written by deferred closures and callbacks.**
-- **Go pointer-receiver method values no longer hide secret leaks.**
-- **Secrets returned through an alias no longer read confirmed.**
-- **Typed ids no longer collapse tuple, function or nested types.**
-- **Generic overloads differing only in bounds get distinct ids.**
-- **Members of differently constrained Swift extensions get distinct ids.**
-- **Rust methods in different impl blocks get distinct ids.**
-- **C# and Swift ids hash qualified types as written.**
-- **JavaScript and TypeScript callback ids ignore destructuring patterns.**
-- **Swift names containing `$` are no longer cut short.**
-- **Rust receivers spelled two ways hash the same.**
-- **Dart default values no longer break signatures or ids.**
-- **Dart ids hash parameter types only, never parameter names.**
-- **Reformatting a declaration no longer changes its stable id.**
-- **`symbols` piped into `head` now exits 141, not 1.**
+
+#### Node ids and edges
+
+- **LaTeX and eleven more analyzers (Nix, Robot, Meson, Fortran, …) start edges at a file node and end them on a real node or stand-in.**
+- **An unresolved name gets its own stand-in node in thirteen languages**; all of Racket's shared one.
+- **A colon in a name no longer breaks a node id**: event names (`mouse:up`), BibTeX keys, Blade views, Handlebars partials.
+- **No id slot is empty or holds a newline** (JavaScript, Tcl, Markdown).
 
 ### Development tools and CI
 
-- **Regenerating `docs/ARCHITECTURE.md` skips vendored grammars and side files.**
-- **Pre-commit now runs the entry-kind allow-list and watcher checks.**
-- **The id-construction check now reads edge endpoints.**
-- **mypy now rejects a hand-built node id.**
-- **CI steps installing pytest alone pin its version.**
-- **Scheduled CI runs publish their step-by-step verdict.**
-- **Session start reports a red or stale scheduled run.**
-- **README shows coverage and full-suite status badges.**
-- **Session hooks no longer time out on large transcripts.**
-- **A schema version bump no longer selects every test.**
-- **A time-stamped test id no longer stops parallel runs.**
-- **smart-test keeps a compact copy of each analysis graph.**
-- **smart-test selects from a stored graph in seconds.**
-- **smart-test rebuilds its baseline graph in the background.**
-- **A failed verdict publish says why within seconds.**
-- **Scheduled verdicts are pushed over port 443.**
-- **Merges stop while the scheduled full run is red.**
-- **smart-test in a worktree selects from stored graphs too.**
-- **A ledger shows what each scheduled run caught.**
-- **Git checkouts no longer reopen transcripts to the group.**
-- **release-check runs the release workflow's gates before tagging.**
-- **Two checkouts storing a graph at once both succeed.**
-- **Run records say what selecting by statement would run.**
-- **The index keeps a function's statement records across edits.**
-- **Narrowing keeps tests whose own call ran nothing measured.**
-- **A command counts the by-statement selector's bar, strictly.**
-- **smart-test reports its wall time against a 60 s target.**
-- **Narrowing treats a function run at import as import-time code.**
-- **Imports inside functions run at import count as dependencies.**
-- **Every test using a shared fixture is paired with its code.**
-- **A test in an xdist group is stored under one name.**
-- **Narrowing keeps tests that start a child able to run Python.**
-- **Every test calling a cached function is paired with its code.**
-- **Hand-written caches are paired with every test using them.**
-- **Caches inside shared test fixtures are paired too.**
-- **Local smart-test runs skip tests no changed statement reaches.**
-- **New tracker data no longer forces a fresh analysis.**
-- **PR CI skips tests no changed statement reaches.**
-- **`ci-debug trace` names PRs behind a red scheduled run.**
+#### Test selection (`smart-test`)
+
+- **Selection reads a stored copy of the analysis graph**: 14 s where an analysis took 345 s; worktrees share it, and it is rebuilt in the background.
+- **Local runs and PR CI skip tests no changed statement reaches**; `--no-by-statement` turns it off.
+- **Tests coverage cannot speak for are always kept**: those starting a child able to run Python, reading a changed file, or sharing changed fixture teardown code.
+- **Code that runs once is paired with every test using it**: shared fixtures, caches, code run at import.
+- **A `SCHEMA_VERSION` bump no longer selects every test.**
+- **Each local run reports its wall time against a 60 s target.**
+- **`coverage-select statement-bar` and `budget-report`** report the selector's record and a test cut's cost.
+- **Test ids are stored under one name** (xdist groups, the timing store).
+- **Tests no longer leak environment variables to later tests**, nor put the clock in a test id.
+
+#### Scheduled runs
+
+- **Scheduled runs publish a step-by-step verdict**, which README badges and session start read.
+- **`auto-pr` stops merging while the scheduled full suite is red**, unless a commit carries `Fixes-scheduled-run: <step>`.
+- **`ci-debug trace` names the commits and PRs behind a red scheduled run**; `--ledger` shows what each run caught.
 - **`ci-debug pipelines` saves Woodpecker's pipeline records locally.**
-- **Test timings are stored under the right test id.**
-- **Docs state the full suite's three-a-day UTC schedule.**
-- **`coverage-select budget-report` prices what a test cut would cost.**
-- **Changing fixture teardown code reruns every test of its file.**
-- **By-statement selection keeps tests that read changed files.**
-- **Hashing analyzer sources no longer counts as reading them.**
-- **Tests no longer leak environment variables to later tests.**
+- **Fixes for the scheduled runs' failing steps**: test-only reachability, a pytest pin; Python 3.10 runs skip PEP 646 cases.
+
+#### Checks, hooks and release
+
+- **mypy rejects a hand-built node id**, and `check-id-construction` reads edge endpoints.
+- **Pre-commit checks line citations and entry-kind drift.**
+- **`release-check` runs the release workflow's gates before tagging.**
+- **Session hooks no longer time out on large transcripts**; checkouts no longer reopen transcripts to the group.
+- **Regenerating `docs/ARCHITECTURE.md` skips vendored grammars and side files.**
+
+### Documentation
+
+- **ADR-0063** (entry kinds and roles) and [audit 0027](docs/audits/0027-entry-point-kinds.md); ADR-0039 ruling 3 and ADR-0017 §7b amended.
+- **The spec's stated schema versions match the code**; Appendix A states the 0.x version rule.
+- **`docs/VERIFY-CLAIMS-SCOPE.md`** lists alias and closure forms followed and not.
+- **Docs state the full suite's schedule**: 01:00, 09:00 and 21:00 UTC.
 
 ## [10.0.0] - 2026-11-16
 
