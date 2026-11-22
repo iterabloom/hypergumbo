@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: rails
 language: ruby
 
@@ -153,12 +153,26 @@ patterns:
     usage:
       kind: "^call$"
       name: "^(after_commit|after_create_commit|after_update_commit|after_destroy_commit|after_save|after_create|after_update|after_destroy|before_save|before_create|before_update|before_destroy|before_validation|after_validation|after_initialize|after_find|after_touch|around_save|around_create|around_update|around_destroy)$"
+      # the callback (a positional symbol) or its if: / unless: condition;
+      # not only: / except:, which name the actions it applies to
+      position: "^(args\\[\\d+\\]|kwargs\\[(if|unless)\\])$"
 
   # Controller callbacks (before_action, after_action, around_action)
   - concept: event_handler
     usage:
       kind: "^call$"
       name: "^(before_action|after_action|around_action|skip_before_action|prepend_before_action)$"
+      # the callback (a positional symbol) or its if: / unless: condition;
+      # not only: / except:, which name the actions it applies to
+      position: "^(args\\[\\d+\\]|kwargs\\[(if|unless)\\])$"
+
+  # Controller error handlers: rescue_from SomeError, with: :handler -- the
+  # local method Rails calls when the error is raised in an action.
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^rescue_from$"
+      position: "^kwargs\\[with\\]$"
 
   # ==================== WISPER PUB/SUB ====================
   # Wisper is a common Ruby pub/sub library used in Rails apps (e.g., chatwoot).

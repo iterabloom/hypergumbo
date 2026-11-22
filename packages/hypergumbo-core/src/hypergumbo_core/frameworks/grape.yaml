@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: grape
 language: ruby
 
@@ -25,6 +25,23 @@ patterns:
     extract:
       path: "metadata.route_path"
       method: "metadata.http_method"
+
+  # rescue_from SomeError, with: :handler -- the local method Grape calls
+  # when the error is raised. The analyzer records the call when the symbol
+  # names a method of the API class (helpers included) or an ancestor.
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^rescue_from$"
+      position: "^kwargs\\[with\\]$"
+
+  # formatter :csv, CsvFormatter -- a local module or class whose
+  # .call(object, env) renders the response body.
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^formatter$"
+      position: "^args\\[1\\]$"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Grape API class
