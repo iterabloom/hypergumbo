@@ -8,7 +8,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: restify
 language: javascript
 
@@ -94,12 +94,16 @@ patterns:
     usage:
       kind: "^call$"
       name: "^server\\.pre$"
+      # the handler arguments: server.pre(fn), server.pre(a, b) (WI-movur)
+      position: "^args\\[\\d+\\]$"
 
   # Use middleware (runs after routing)
   - concept: middleware
     usage:
       kind: "^call$"
       name: "^server\\.use$"
+      # the handler arguments: server.use(fn), server.use(a, b) (WI-movur)
+      position: "^args\\[\\d+\\]$"
 
   # Body parser plugins
   - concept: middleware

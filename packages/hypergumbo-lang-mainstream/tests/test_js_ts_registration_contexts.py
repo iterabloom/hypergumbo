@@ -167,6 +167,21 @@ class TestWhatIsNotRecorded:
         )})
         assert _seen(result) == [("app.use", "args[0]", "auth")]
 
+    def test_only_the_argument_a_row_is_about(self, tmp_path: Path) -> None:
+        # yargs.command's rows are about args[3] (and args[0].handler): the
+        # builder at args[2] is a local function too, and is not recorded.
+        # Promise.all's name passes the name gate (a fastify row names any
+        # ``.all``), but no row is about a bare args[0] of it.
+        result = _analyze(tmp_path, {"cli.js": (
+            "const yargs = require('yargs');\n"
+            "function builder(y) { return y; }\n"
+            "function serve(argv) {}\n"
+            "function task() {}\n"
+            "yargs.command('serve', 'd', builder, serve);\n"
+            "Promise.all(task);\n"
+        )})
+        assert _seen(result) == [("yargs.command", "args[3]", "serve")]
+
     def test_a_call_to_local_code_is_not_a_registration(self, tmp_path: Path) -> None:
         result = _analyze(tmp_path, {"app.js": (
             "class Pipeline { use(fn) { this.fn = fn; } }\n"
@@ -280,6 +295,18 @@ class TestShippedRowsStampTheHandler:
         assert concepts["onError"] == concepts["notFound"] == {"error_handler"}
         assert concepts["show"] == {"route"}
 
+    def test_restify(self, tmp_path: Path) -> None:
+        result = _analyze(tmp_path, {"server.js": (
+            "const restify = require('restify');\n"
+            "const server = restify.createServer();\n"
+            "function first(req, res, next) { next(); }\n"
+            "function auth(req, res, next) { next(); }\n"
+            "server.pre(first);\n"
+            "server.use(auth);\n"
+        )})
+        concepts = _concepts(result, {"restify"})
+        assert concepts["first"] == concepts["auth"] == {"middleware"}
+
     def test_hapi(self, tmp_path: Path) -> None:
         result = _analyze(tmp_path, {"server.js": (
             "const server = require('@hapi/hapi').server();\n"
@@ -325,7 +352,7 @@ class TestShippedRowsStampTheHandler:
         )})
         concepts = _concepts(result, {"cli-js"})
         assert concepts["build"] == concepts["serve"] == concepts["clean"] == {"command"}
-        # The builder is recorded (args[2]) but no row calls it a command.
+        # The builder (args[2]) is no command, and no row is about args[2].
         assert "builder" not in concepts
 
     def test_electron(self, tmp_path: Path) -> None:
