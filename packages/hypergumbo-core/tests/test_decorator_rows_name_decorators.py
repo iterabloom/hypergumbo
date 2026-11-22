@@ -104,21 +104,18 @@ def test_the_entry_concepts_are_read_from_the_detector() -> None:
             "application"} <= concepts
 
 
-#: Entry rows that cannot fire for ANOTHER reason, left in place and filed as
-#: a residual (WI-jilik report): attribute- or declaration-shaped names in a
-#: language whose analyzer records attributes elsewhere or not at all (C#
-#: writes ``annotations``; the Rust, PHP, F#, D analyzers write neither), and
-#: Plug's ``conn``, a variable. Their fix is the matcher key, not deletion.
+#: Entry rows that cannot fire for ANOTHER reason, left in place: attribute-
+#: shaped names in a language whose analyzer records no attribute (PHP, F#,
+#: D), and Plug's ``conn``, a variable. The rows whose analyzer records the
+#: attribute in another field (C# and Rust write ``annotations``) were
+#: re-keyed and left this list.
 _KEYED_ON_THE_WRONG_FIELD = frozenset({
-    ("laravel.yaml", "^implements ShouldQueue$"),
+    # Eleven of the fifteen were re-keyed on 2026-11-22 (Rust, C#, WGSL,
+    # Laravel: test_wrong_field_rows.py). These remain, marked CANNOT FIRE in
+    # their YAML: the analyzer records nothing a row could read.
     ("plug.yaml", "^conn$"),
-    ("test-frameworks.yaml", "^test$"),
-    ("test-frameworks.yaml", "^bench$"),
-    ("test-frameworks.yaml", "^Test$"),
-    ("test-frameworks.yaml", "^Fact$"),
-    ("test-frameworks.yaml", "^Theory$"),
-    ("test-frameworks.yaml", "^TestMethod$"),
-    ("test-frameworks.yaml", "^(Test|Fact|Theory)$"),
+    ("test-frameworks.yaml", "^test$"),               # PHP @test / #[Test]; D @("test")
+    ("test-frameworks.yaml", "^(Test|Fact|Theory)$"),  # F# attributes
 })
 
 

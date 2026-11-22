@@ -646,8 +646,10 @@ def test_a_decorator_row_counts_only_where_decorators_are_written() -> None:
                          {"concept": "c", "decorator": "^a$"})
     assert not _row_can_fire(Path("x.yaml"), {"language": "multi"},
                              {"concept": "c", "decorator": "^a$", "language": "^go$"})
+    # A row the wrong-field list still holds (F# attributes are not recorded).
     assert not _row_can_fire(Path("test-frameworks.yaml"), {"language": "multi"},
-                             {"concept": "test_function", "decorator": "^Fact$"})
+                             {"concept": "test_function",
+                              "decorator": "^(Test|Fact|Theory)$"})
     assert _row_can_fire(Path("x.yaml"), {"language": "go"}, {"concept": "c", "usage": {}})
 
 
