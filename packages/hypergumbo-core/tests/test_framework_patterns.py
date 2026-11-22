@@ -13298,7 +13298,7 @@ class TestRodaPatterns:
         ctx = UsageContext.create(
             kind="call",
             context_name="route",
-            position="args[0]",
+            position="block",
             path="app.rb",
             span=Span(3, 50, 0, 0),
             symbol_ref="test:app.rb:3:route_block:other",
@@ -13309,6 +13309,16 @@ class TestRodaPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "route_definition"
+
+        # The row's handler is the call's block (position "block"); the
+        # first argument is a name, not the handler, so a context there
+        # matches nothing (WI-movur: the registration contexts ruby.py
+        # records would otherwise mark whatever local symbol it names).
+        at_name = UsageContext.create(
+            kind="call", context_name=ctx.context_name, position="args[0]",
+            path=ctx.path, span=ctx.span, symbol_ref=ctx.symbol_ref, metadata={},
+        )
+        assert match_usage_patterns(at_name, [pattern_def]) == []
 
     def test_roda_root_route_via_usage_context(self) -> None:
         """Roda r.root matches route pattern."""
@@ -13415,7 +13425,7 @@ class TestRodaPatterns:
         assert results[0]["concept"] == "route_terminal"
 
     def test_roda_plugin_via_usage_context(self) -> None:
-        """Roda plugin call matches plugin pattern."""
+        """A Roda plugin name is not a handler: no recorded context matches."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("roda")
 
@@ -13431,11 +13441,9 @@ class TestRodaPatterns:
             },
         )
 
-        results = match_usage_patterns(ctx, [pattern_def])
-
-        assert len(results) == 1
-        assert results[0]["concept"] == "plugin"
-
+        # ``plugin :json`` names a library plugin, not code of the
+        # repository: the row matches no recorded position (WI-movur).
+        assert match_usage_patterns(ctx, [pattern_def]) == []
 
 class TestJavalinPatterns:
     """Tests for Javalin framework pattern matching."""
@@ -14671,7 +14679,7 @@ class TestPadrinoPatterns:
         ctx = UsageContext.create(
             kind="call",
             context_name="controller",
-            position="args[0]",
+            position="block",
             path="app/controllers/users.rb",
             span=Span(5, 50, 0, 0),
             symbol_ref="test:users.rb:5:users_controller:other",
@@ -14683,6 +14691,16 @@ class TestPadrinoPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "controller"
 
+        # The row's handler is the call's block (position "block"); the
+        # first argument is a name, not the handler, so a context there
+        # matches nothing (WI-movur: the registration contexts ruby.py
+        # records would otherwise mark whatever local symbol it names).
+        at_name = UsageContext.create(
+            kind="call", context_name=ctx.context_name, position="args[0]",
+            path=ctx.path, span=ctx.span, symbol_ref=ctx.symbol_ref, metadata={},
+        )
+        assert match_usage_patterns(at_name, [pattern_def]) == []
+
     def test_padrino_before_filter_via_usage_context(self) -> None:
         """Padrino before filter matches middleware pattern."""
         clear_pattern_cache()
@@ -14691,7 +14709,7 @@ class TestPadrinoPatterns:
         ctx = UsageContext.create(
             kind="call",
             context_name="before",
-            position="args[0]",
+            position="block",
             path="app/app.rb",
             span=Span(8, 12, 0, 0),
             symbol_ref="test:app.rb:8:auth_filter:other",
@@ -14703,6 +14721,16 @@ class TestPadrinoPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "middleware"
 
+        # The row's handler is the call's block (position "block"); the
+        # first argument is a name, not the handler, so a context there
+        # matches nothing (WI-movur: the registration contexts ruby.py
+        # records would otherwise mark whatever local symbol it names).
+        at_name = UsageContext.create(
+            kind="call", context_name=ctx.context_name, position="args[0]",
+            path=ctx.path, span=ctx.span, symbol_ref=ctx.symbol_ref, metadata={},
+        )
+        assert match_usage_patterns(at_name, [pattern_def]) == []
+
     def test_padrino_mailer_via_usage_context(self) -> None:
         """Padrino mailer call matches mailer pattern."""
         clear_pattern_cache()
@@ -14711,7 +14739,7 @@ class TestPadrinoPatterns:
         ctx = UsageContext.create(
             kind="call",
             context_name="mailer",
-            position="args[0]",
+            position="block",
             path="app/mailers/user_mailer.rb",
             span=Span(5, 20, 0, 0),
             symbol_ref="test:user_mailer.rb:5:user_mailer:other",
@@ -14723,6 +14751,15 @@ class TestPadrinoPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "mailer"
 
+        # The row's handler is the call's block (position "block"); the
+        # first argument is a name, not the handler, so a context there
+        # matches nothing (WI-movur: the registration contexts ruby.py
+        # records would otherwise mark whatever local symbol it names).
+        at_name = UsageContext.create(
+            kind="call", context_name=ctx.context_name, position="args[0]",
+            path=ctx.path, span=ctx.span, symbol_ref=ctx.symbol_ref, metadata={},
+        )
+        assert match_usage_patterns(at_name, [pattern_def]) == []
 
 class TestCakePHPPatterns:
     """Tests for CakePHP framework pattern matching."""
@@ -17592,7 +17629,7 @@ class TestRailsCallbackPatterns:
     """Tests for Rails callback and event patterns."""
 
     def test_rails_after_commit_callback(self) -> None:
-        """Rails after_commit callback matches event_handler via usage pattern."""
+        """Rails after_commit callback no longer matches event_handler via usage pattern."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("rails")
         assert pattern_def is not None
@@ -17606,12 +17643,13 @@ class TestRailsCallbackPatterns:
             metadata={},
         )
 
+        # The callback usage rows were removed (WI-movur): the targets have
+        # dispatches_to edges, and an entry per callback is an open decision.
         results = match_usage_patterns(ctx, [pattern_def])
-        assert len(results) == 1
-        assert results[0]["concept"] == "event_handler"
+        assert [r for r in results if r["concept"] == "event_handler"] == []
 
     def test_rails_before_action_callback(self) -> None:
-        """Rails before_action callback matches event_handler via usage pattern."""
+        """Rails before_action callback no longer matches event_handler via usage pattern."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("rails")
         assert pattern_def is not None
@@ -17625,12 +17663,13 @@ class TestRailsCallbackPatterns:
             metadata={},
         )
 
+        # The callback usage rows were removed (WI-movur): the targets have
+        # dispatches_to edges, and an entry per callback is an open decision.
         results = match_usage_patterns(ctx, [pattern_def])
-        assert len(results) == 1
-        assert results[0]["concept"] == "event_handler"
+        assert [r for r in results if r["concept"] == "event_handler"] == []
 
     def test_rails_after_save_callback(self) -> None:
-        """Rails after_save callback matches event_handler via usage pattern."""
+        """Rails after_save callback no longer matches event_handler via usage pattern."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("rails")
         assert pattern_def is not None
@@ -17644,12 +17683,13 @@ class TestRailsCallbackPatterns:
             metadata={},
         )
 
+        # The callback usage rows were removed (WI-movur): the targets have
+        # dispatches_to edges, and an entry per callback is an open decision.
         results = match_usage_patterns(ctx, [pattern_def])
-        assert len(results) == 1
-        assert results[0]["concept"] == "event_handler"
+        assert [r for r in results if r["concept"] == "event_handler"] == []
 
     def test_rails_after_create_commit_callback(self) -> None:
-        """Rails after_create_commit callback matches event_handler."""
+        """Rails after_create_commit callback no longer matches event_handler."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("rails")
         assert pattern_def is not None
@@ -17663,12 +17703,13 @@ class TestRailsCallbackPatterns:
             metadata={},
         )
 
+        # The callback usage rows were removed (WI-movur): the targets have
+        # dispatches_to edges, and an entry per callback is an open decision.
         results = match_usage_patterns(ctx, [pattern_def])
-        assert len(results) == 1
-        assert results[0]["concept"] == "event_handler"
+        assert [r for r in results if r["concept"] == "event_handler"] == []
 
     def test_rails_around_action_callback(self) -> None:
-        """Rails around_action callback matches event_handler."""
+        """Rails around_action callback no longer matches event_handler."""
         clear_pattern_cache()
         pattern_def = load_framework_patterns("rails")
         assert pattern_def is not None
@@ -17682,9 +17723,10 @@ class TestRailsCallbackPatterns:
             metadata={},
         )
 
+        # The callback usage rows were removed (WI-movur): the targets have
+        # dispatches_to edges, and an entry per callback is an open decision.
         results = match_usage_patterns(ctx, [pattern_def])
-        assert len(results) == 1
-        assert results[0]["concept"] == "event_handler"
+        assert [r for r in results if r["concept"] == "event_handler"] == []
 
     def test_rails_non_callback_not_matched(self) -> None:
         """Non-callback Rails call does not match event_handler pattern."""

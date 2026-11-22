@@ -152,25 +152,19 @@ patterns:
   # ==================== CALLBACKS (Event-Like Patterns) ====================
   # ActiveRecord lifecycle callbacks are primary side-effect mechanisms.
   # after_commit, after_save, before_action etc. define the actual
-  # control flow in Rails apps but have no call-graph edges.
+  # control flow in Rails apps; ruby.py links each symbol-named callback
+  # with a dispatches_to edge from its class (_extract_rails_callbacks).
 
-  # ActiveRecord model callbacks (usage-based: method calls in model class)
-  - concept: event_handler
-    usage:
-      kind: "^call$"
-      name: "^(after_commit|after_create_commit|after_update_commit|after_destroy_commit|after_save|after_create|after_update|after_destroy|before_save|before_create|before_update|before_destroy|before_validation|after_validation|after_initialize|after_find|after_touch|around_save|around_create|around_update|around_destroy)$"
-      # the callback (a positional symbol) or its if: / unless: condition;
-      # not only: / except:, which name the actions it applies to
-      position: "^(args\\[\\d+\\]|kwargs\\[(if|unless)\\])$"
-
-  # Controller callbacks (before_action, after_action, around_action)
-  - concept: event_handler
-    usage:
-      kind: "^call$"
-      name: "^(before_action|after_action|around_action|skip_before_action|prepend_before_action)$"
-      # the callback (a positional symbol) or its if: / unless: condition;
-      # not only: / except:, which name the actions it applies to
-      position: "^(args\\[\\d+\\]|kwargs\\[(if|unless)\\])$"
+  # (Removed) Two usage rows named the model lifecycle callbacks
+  # (after_commit, before_save, ...) and the controller callbacks
+  # (before_action, after_action, around_action, skip_before_action,
+  # prepend_before_action) with concept event_handler. No analyzer recorded a
+  # context for them until the registration contexts of WI-movur, so they
+  # never fired. The callback targets already have a caller: ruby.py's
+  # _extract_rails_callbacks writes a dispatches_to edge from the class to
+  # each one. Whether a callback should ALSO be an entry (event_handler)
+  # is an open decision: on gitlab app/controllers it was 527 new concepts
+  # and 34 of 87 capped entry places taken from controllers.
 
   # Controller error handlers: rescue_from SomeError, with: :handler -- the
   # local method Rails calls when the error is raised in an action.
