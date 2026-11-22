@@ -1,0 +1,20 @@
+- op: create  # 5a1f
+  at: '2026-11-22T14:06:06Z'  # 5a1f
+  by: agent  # 5a1f
+  actor: jgstern_agent  # 5a1f
+  clock: 1  # 5a1f
+  nonce: 5a1f  # 5a1f
+  data:  # 5a1f
+    kind: work_item  # 5a1f
+    title: "split_member_name mis-splits a member whose own name holds a separator (JS Foo.#x, string-named methods)"  # 5a1f
+    status: todo_soft  # 5a1f
+    priority: 4  # 5a1f
+    parent:  # 5a1f
+    tags:  # 5a1f
+    - analysis_quality  # 5a1f
+    isbefore: []  # 5a1f
+    duplicate_of: []  # 5a1f
+    not_duplicate_of: []  # 5a1f
+    pr_ref:  # 5a1f
+    description: "WHAT. member_names.split_member_name splits at the last separator (#, ::, .) that has text on both sides. A member whose OWN name holds a separator is therefore mis-split: a JavaScript private member written Foo.#secret would give owner \"Foo.\" and member \"secret\"; a Kotlin or Groovy method named by a string with a dot in it splits at that dot. Readers: containment, type hierarchy, method-call recovery, taint, and framework rows' method_name.\n\nSEEN. Not in output: no symbol name of the 26 trees of the PR #2337 A/B contains \".#\" (194,683 symbols on the base arm). Kotlin backtick names with a dot: not counted.\n\nNOT CHECKED. How js_ts.py names a private method, and whether any analyzer emits a name with a separator inside the member.\n\nASK. Check those two; if such names exist, the analyzer should hand over owner and member apart instead of one joined string.\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # 5a1f
+    fields: {}  # 5a1f

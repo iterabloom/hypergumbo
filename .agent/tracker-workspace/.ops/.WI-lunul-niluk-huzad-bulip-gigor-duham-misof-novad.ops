@@ -1,0 +1,20 @@
+- op: create  # 840f
+  at: '2026-11-22T14:05:53Z'  # 840f
+  by: agent  # 840f
+  actor: jgstern_agent  # 840f
+  clock: 1  # 840f
+  nonce: 840f  # 840f
+  data:  # 840f
+    kind: work_item  # 840f
+    title: "Connectivity fallback picks its five before the path penalties: test-code picks leave the list empty"  # 840f
+    status: todo_soft  # 840f
+    priority: 4  # 840f
+    parent:  # 840f
+    tags:  # 840f
+    - entrypoints  # 840f
+    isbefore: []  # 840f
+    duplicate_of: []  # 840f
+    not_duplicate_of: []  # 840f
+    pr_ref:  # 840f
+    description: "WHAT. The connectivity fallback takes its five most connected callables BEFORE the path penalties. Since PR #2337 it fires whenever no detected entry stays above the rank floor; if the five are themselves test code (x 0.1 = 0.05) they fall under the floor too and the entry list is empty, which is the failure the fallback exists to prevent.\n\nSEEN. Pinned by packages/hypergumbo-core/tests/test_entrypoints.py::TestConnectivityFallback::test_fallback_entries_in_test_code_are_penalised_like_any_other (two Ruby test methods, one calling the other: the candidate ranks 0.05 and detect_entrypoints returns []). Not seen on the 26 trees of the A/B: whisper.cpp's Ruby bindings, the one tree that reaches the fallback, has C functions as its five.\n\nASK. Choose the five among callables that would be kept (apply the path penalties before the cut, or prefer unpenalised callables), and say in the spec that the list can still be empty when every callable is test code.\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # 840f
+    fields: {}  # 840f

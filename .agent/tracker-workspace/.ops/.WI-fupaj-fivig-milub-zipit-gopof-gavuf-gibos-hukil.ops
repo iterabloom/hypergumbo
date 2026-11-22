@@ -1,0 +1,21 @@
+- op: create  # e7af
+  at: '2026-11-22T14:06:00Z'  # e7af
+  by: agent  # e7af
+  actor: jgstern_agent  # e7af
+  clock: 1  # e7af
+  nonce: e7af  # e7af
+  data:  # e7af
+    kind: work_item  # e7af
+    title: "type_hierarchy dispatches an instance method to a same-named class method (Ruby # and .)"  # e7af
+    status: todo_soft  # e7af
+    priority: 4  # e7af
+    parent:  # e7af
+    tags:  # e7af
+    - framework_dispatch_linkers  # e7af
+    - analysis_quality  # e7af
+    isbefore: []  # e7af
+    duplicate_of: []  # e7af
+    not_duplicate_of: []  # e7af
+    pr_ref:  # e7af
+    description: "WHAT. linkers/type_hierarchy matches an overriding member by its own name alone, so an instance method dispatches to a same-named CLASS method of a subclass (and the reverse). Ruby names the two apart (Class#method, Class.method); the linker does not look.\n\nSEEN. chatwoot, after the member-name fix of PR #2337 made the names of namespaced class methods readable: a new dispatches_to edge Crm::BaseProcessorService#crm_name -> Crm::Leadsquared::ProcessorService.crm_name (the base class has both #crm_name and .crm_name; the edge from .crm_name to the subclass's .crm_name is also there and is right). 1 of the 10 dispatches_to edges that PR added on chatwoot. For classes without a namespace the same pairing existed before the PR; not counted.\n\nASK. Where the language's member names say instance or class (Ruby # and .), dispatch only between members of the same sort. Count the existing edges of that shape on a Ruby corpus first.\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # e7af
+    fields: {}  # e7af
