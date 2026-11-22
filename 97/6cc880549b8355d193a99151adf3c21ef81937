@@ -1,0 +1,45 @@
+Original commit body from 6d27457ddd848d1191ecfdf4958bfeb89f688c21:
+
+The Unreleased section was 118 one-line bullets in four flat lists, in
+commit order: 24 stable-id lines, 9 entry-point lines and 35 smart-test
+lines stood apart from each other, and a reader had to assemble each
+change from its pieces.
+
+What changed (CHANGELOG.md only; the tracker changelog needs nothing:
+no commit since v10.0.0 touches packages/hypergumbo-tracker/).
+
+- Grouped as the 10.0.0 section is: Fixed under Stable ids, Entry
+  points, Secret-leak claims, Node ids and edges; Development tools and
+  CI under Test selection, Scheduled runs, Checks, hooks and release.
+  One bullet per change a reader would name: 118 bullets become 62,
+  1,068 words become 940 (under nine words for each of the 108 commits
+  that carried a line).
+- Added what was missing: every version transition (SCHEMA_VERSION
+  0.21.0 -> 0.22.0, stable_id_scheme v15 -> v17, verify-claims --json
+  3.1 -> 3.2), a Removed section (four functions only tests called, the
+  164 framework rows), a Documentation section (ADR-0063, audit 0027,
+  the amended ADR-0039 ruling 3 and ADR-0017 7b, the spec's Appendix A),
+  and the scheduled-run repairs that had no line.
+- Moved: the exit-code change (70, 141, 2) and the node-id text change
+  to Breaking and contract changes, where 10.0.0 lists their like; the
+  pre-commit citation check from Added to Development tools; the spec
+  and schedule lines from Fixed and Development tools to Documentation.
+- Removed one line that is no longer true: "The spec states generic
+  type parameters are hashed by name" (06c3a26d8) was overtaken in the
+  same window by 0b0d013c6, which hashes the clause by position in six
+  languages, and the spec says so now.
+- Dropped as a line of its own: "Unresolved call targets fold colons in
+  their names too" (f8c5a1ee1). That commit measured the published node
+  set, edge set and ids identical on four trees; what it changed is the
+  endpoint a pass emits, which the non_id_edge_endpoints and
+  check-id-construction lines cover.
+
+Checked against the code, not the old lines: SCHEMA_VERSION, the scheme
+constants, VERIFY_CLAIMS_SCHEMA_VERSION, the sketch's eleven headings
+(entrypoint_kinds.ENTRY_POINT_HEADINGS), MAIN_FUNCTION_CONFIDENCE, the
+four removed functions (absent), --no-by-statement, the coverage-select
+subcommands, and the two linked documents.
+
+Not checked: whether the Python 3.10 nightly is green since its two
+test changes; the line says what the changes do, not that the leg
+passes.
