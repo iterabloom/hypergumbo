@@ -473,3 +473,48 @@ class TestStatementBar:
         assert "verdict                   : MISSED" in text
         assert "not counted, written before narrowed tests were recorded: 1" in text
         assert "explicit: 30" in text
+
+    def test_a_failed_test_of_a_file_the_change_edits_is_not_the_selectors(self) -> None:
+        """A run of the tests reads a changed test file whole: the caller of
+        the selector never deselects one of its tests, and the selector's
+        record of such a test is of the test as it WAS. The row of 2026-11-19
+        that read MISSED was this: a test edited to expect another exit code,
+        run red before the source followed. It is neither a miss nor a run
+        that could have shown one."""
+        edited = "packages/p/tests/test_cli.py"
+        row = {**_run(failed=[f"{edited}::test_exit", "t::other"],
+                      at_risk=[f"{edited}::test_exit"], left_out=[f"{edited}::test_exit"]),
+               "changed_files": ["packages/p/src/p/cli.py", edited]}
+        bar = evaluate_statement_bar([row])
+        assert bar.misses == () and dict(bar.informative) == {} and dict(bar.left_out) == {}
+        assert (bar.recorded, bar.verdict) == (1, "not met")
+        assert bar.edited == (1, 1)
+        assert "failed tests of a changed test file, set aside : 1 in 1 run(s)" in bar.summary()
+
+        # Another failed test left out in the same row is still a miss, and
+        # the row is still evidence through it.
+        both = {**row, "by_statement": {
+            **row["by_statement"],  # type: ignore[dict-item]
+            "failed_not_selected": [f"{edited}::test_exit", "t::other"],
+            "failed_reaching_a_narrowed_block": [f"{edited}::test_exit", "t::other"]}}
+        bar = evaluate_statement_bar([both])
+        assert bar.misses == (("t", "explicit", "h", ("t::other",)),)
+        assert dict(bar.informative) == {"explicit": 1} and bar.edited == (1, 1)
+
+        # Set aside once per test, also when it was at risk and not left
+        # out (the selector happened to select it): still no evidence.
+        held = {**row, "by_statement": {
+            **row["by_statement"],  # type: ignore[dict-item]
+            "failed_not_selected": [],
+            "failed_reaching_a_narrowed_block": [f"{edited}::test_exit", f"{edited}::test_b"]}}
+        bar = evaluate_statement_bar([held, row])
+        assert bar.misses == () and dict(bar.informative) == {} and bar.edited == (3, 2)
+
+        # The file must be one the change names: a test file that merely
+        # shares a directory, or a row that names no changed files, sets
+        # nothing aside.
+        for changed in (["packages/p/tests/test_other.py"], None):
+            elsewhere = {**row, "changed_files": changed}
+            bar = evaluate_statement_bar([elsewhere])
+            assert len(bar.misses) == 1 and bar.edited == (0, 0), changed
+            assert "set aside" not in bar.summary()
