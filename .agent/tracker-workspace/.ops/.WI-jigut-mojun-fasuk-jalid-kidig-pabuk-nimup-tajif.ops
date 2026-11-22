@@ -1,0 +1,21 @@
+- op: create  # 0eae
+  at: '2026-11-22T19:07:13Z'  # 0eae
+  by: agent  # 0eae
+  actor: jgstern_agent  # 0eae
+  clock: 1  # 0eae
+  nonce: 0eae  # 0eae
+  data:  # 0eae
+    kind: work_item  # 0eae
+    title: "The selection index spells paths per checkout: a test run from another worktree is never narrowed by statement"  # 0eae
+    status: todo_soft  # 0eae
+    priority: 3  # 0eae
+    parent:  # 0eae
+    tags:  # 0eae
+    - smart_test  # 0eae
+    - developer_experience  # 0eae
+    isbefore: []  # 0eae
+    duplicate_of: []  # 0eae
+    not_duplicate_of: []  # 0eae
+    pr_ref:  # 0eae
+    description: "WHAT. The selection index stores a source file under the absolute path of the checkout that ran it. A test run from another worktree of the same repository finds none of its changed functions in the index: every block answers \"the index has never seen this block\", and the by-statement narrowing refuses. So work done in a worktree (every multi-agent PR, every `git worktree` branch) is never narrowed, and its runs record under paths no other checkout reads.\n\nSEEN (PR 3 probe, 2026-11-22, three_pr_plan_11222026/pr3/PROBE.md): 414 files under ~/hypergumbo and 53 under ~/hg_wt/zikul in one index; a run from a third worktree was UNKNOWN for every changed block.\n\nASK. Spell paths relative to the repository root in the index (the stored graphs already serve several worktrees since PR #2231), or map a worktree's paths onto the main checkout's when both are the same repository and the file's digest matches. The stored test-file digest formula must not change (all records would go stale).\n\nNot checked: how many of the 53 worktree-path files are stale; whether `_forget_dead_checkouts` removes a worktree's rows once the worktree is gone."  # 0eae
+    fields: {}  # 0eae

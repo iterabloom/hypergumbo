@@ -1,0 +1,20 @@
+- op: create  # eb47
+  at: '2026-11-22T23:40:54Z'  # eb47
+  by: agent  # eb47
+  actor: jgstern_agent  # eb47
+  clock: 1  # eb47
+  nonce: eb47  # eb47
+  data:  # eb47
+    kind: work_item  # eb47
+    title: "The entry cap deals tied places one per source file: routes in one router file lose places to entries in files of their own"  # eb47
+    status: needs_human_review  # eb47
+    priority: 3  # eb47
+    parent:  # eb47
+    tags:  # eb47
+    - entrypoints  # eb47
+    isbefore: []  # eb47
+    duplicate_of: []  # eb47
+    not_duplicate_of: []  # eb47
+    pr_ref:  # eb47
+    description: "WHAT. The entry list is capped (entrypoints._diversity_cap). When more entries tie at the top rank than the cap holds, take_dealing_ties hands out the tied places one per SOURCE FILE in turn. A framework that declares all its routes in one router file therefore gets one place per round for all of them, while every worker, LiveView or plug in a file of its own gets a place each.\n\nSEEN (the PR that built WI-movur's detectors; old code against new, one run each):\n- plausible (cap 123): http_route entries 49 -> 28. 240 of its 241 route markers are in lib/plausible_web/router.ex. In the new arm all 123 kept entries rank 1.0 (52 did before): 31 background_task, 32 LiveViews (kind controller), 24 middleware_handler, 5 error_handler.\n- livebook (cap 85): http_route 34 -> 26.\n- Smaller cases of the same cap, other kinds: beads 1 http_route and 15 shell_script out for 52 cli_command; chatwoot 2 http_route out; polis 1.\nThe new entries are right (workers, LiveViews, plugs are what the framework calls). The rank formula was not changed (ADR-0039 ruling 3 froze it).\n\nQUESTION FOR THE OWNER. Is dealing ties by file the wanted rule when one file holds a whole kind (a router)? Options seen: (a) deal by (file, kind) or by kind first; (b) let the per-kind quota, which already admits up to 40% of the cap per kind, decide before the file deal; (c) leave it: the list is a sample and 28 routes is enough.\n\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/movur/ab/corpus_one_line.txt (plausible, livebook lines), BUILD_RESULTS.md (elixir follow-up), docs/audits/0029."  # eb47
+    fields: {}  # eb47
