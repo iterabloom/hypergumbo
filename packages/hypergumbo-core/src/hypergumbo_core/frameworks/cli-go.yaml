@@ -10,11 +10,35 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: cli-go
 language: go
 
 patterns:
+  # ==================== COMMAND HANDLERS (usage contexts) ====================
+  # A local function or method given as a field of the library's command
+  # literal. go.py records ``<package>.<Type>.<Field>`` (position = the field)
+  # for a keyed field of an imported type whose value is a local function or
+  # method, and for ``app.Action = f`` on a variable of that type. The
+  # lifecycle hooks (PersistentPreRun, PreRun, PostRun, Before, After) have no
+  # row: no concept with an entry kind fits a CLI hook (``middleware`` would
+  # label it HTTP middleware). Inline ``func`` literals have no symbol and are
+  # not recorded: their calls belong to the enclosing variable or function.
+
+  # cobra: ``&cobra.Command{Run: run}`` / ``{RunE: runE}``
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^cobra\\.Command\\.(Run|RunE)$"
+      position: "^(Run|RunE)$"
+
+  # urfave/cli: ``&cli.App{Action: run}``, ``cli.Command{Action: run}``
+  # (also an element with its type elided), ``app.Action = run``
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^cli\\.(App|Command)\\.Action$"
+      position: "^Action$"
 
   # ==================== URFAVE/CLI PATTERNS ====================
 

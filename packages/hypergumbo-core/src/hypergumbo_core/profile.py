@@ -319,6 +319,8 @@ GO_FRAMEWORKS = {
     "xorm": ["xorm.io/xorm"],
     # CLI
     "cli-go": ["github.com/spf13/cobra", "github.com/urfave/cli", "github.com/alecthomas/kong"],
+    # Scheduler
+    "go-cron": ["github.com/robfig/cron"],
 }
 
 # PHP composer.json detection patterns

@@ -13,7 +13,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: go-web
 language: go
 
@@ -48,6 +48,18 @@ patterns:
       kind: "^call$"
       name: "\\.To$"
       position: "^args\\[0\\]$"
+
+  # Middleware - r.Use(auth), api.Use(a, b), e.Use(timing), router.Use(log):
+  # a LOCAL function or method passed to a library ``Use``. go.py records the
+  # callee as written (the receiver as written, ``r.Use``), one context per
+  # argument that names a local function, and only when the callee is not
+  # repository code. Library middleware (``gin.Logger()``) and a factory call
+  # (``r.Use(auth())``) are calls, not local function values: not recorded.
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "\\.Use$"
+      position: "^args\\[\\d+\\]$"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Note: These decorator patterns are kept for backwards compatibility but
