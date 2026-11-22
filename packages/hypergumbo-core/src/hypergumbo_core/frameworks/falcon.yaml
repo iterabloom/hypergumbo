@@ -13,7 +13,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: falcon
 language: python
 
@@ -25,37 +25,42 @@ patterns:
   # after classification: the concept is test-excluded by the always-loaded
   # python-http-server.yaml and the strip is by concept name (WI-losij).
 
+  # py.py names a method `Class.method`, so the responder's own name is
+  # read (`method_name`). A responder registered with a suffix
+  # (`app.add_route('/things', res, suffix='collection')`) is named
+  # `on_get_collection`.
+
   - concept: route_handler
-    symbol_name: "^on_get$"
+    method_name: "^on_get(_\\w+)?$"
     symbol_kind: "^method$"
 
   - concept: route_handler
-    symbol_name: "^on_post$"
+    method_name: "^on_post(_\\w+)?$"
     symbol_kind: "^method$"
 
   - concept: route_handler
-    symbol_name: "^on_put$"
+    method_name: "^on_put(_\\w+)?$"
     symbol_kind: "^method$"
 
   - concept: route_handler
-    symbol_name: "^on_delete$"
+    method_name: "^on_delete(_\\w+)?$"
     symbol_kind: "^method$"
 
   - concept: route_handler
-    symbol_name: "^on_patch$"
+    method_name: "^on_patch(_\\w+)?$"
     symbol_kind: "^method$"
 
   - concept: route_handler
-    symbol_name: "^on_head$"
+    method_name: "^on_head(_\\w+)?$"
     symbol_kind: "^method$"
 
   - concept: route_handler
-    symbol_name: "^on_options$"
+    method_name: "^on_options(_\\w+)?$"
     symbol_kind: "^method$"
 
   # WebSocket responder
   - concept: websocket_handler
-    symbol_name: "^on_websocket$"
+    method_name: "^on_websocket(_\\w+)?$"
     symbol_kind: "^method$"
 
   # ==================== DECORATOR-BASED PATTERNS ====================

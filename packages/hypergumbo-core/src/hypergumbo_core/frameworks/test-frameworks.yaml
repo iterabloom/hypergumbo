@@ -35,27 +35,58 @@
 #
 # Note: Some patterns use decorator matching (Java/C#/Rust) while others use
 # naming conventions (Python/Go/Swift).
+#
+# A NAME ROW IS WRITTEN AGAINST THE NAME THE ANALYZER RECORDS. Most analyzers
+# name a member with its owner (`MathTest.test_adds`, Ruby `MathTest#test_adds`,
+# a Python function nested in another `outer.inner`) and Erlang names a
+# function `name/arity`. `symbol_name:` is searched in that whole name;
+# `method_name:` is matched from the start of the member's own name. Rows
+# here that anchored a member's name with `symbol_name: "^..."` matched
+# nothing for years. Check a row by running the analyzer on a fixture and
+# reading the node, never against a symbol built by hand.
+#
+# A NAME ALONE IS NOT A TEST. A production class can have a `test_connection`
+# or a `testSetup` method. A name row therefore also asks for what makes the
+# runner collect it, which for these runners is the file. The file condition
+# of a `test_function` row accepts only paths that `paths.is_test_file` also
+# calls a test file: the entry ranking demotes a test by that rule alone, so
+# a test function the rule does not know would be listed as a prominent
+# entry point (see the Erlang rows).
+#
+# NOT A SYMBOL: a test written as a CALL with a block (RSpec `it "..." do`,
+# ExUnit `test "..." do`, ScalaTest and MUnit `test("...") { }`, a Spock
+# feature method named by a string) is recorded by no analyzer as a symbol.
+# The rows for them below are marked; they match only a definition that
+# happens to be NAMED `it` or `describe`.
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: test-frameworks
 language: multi
 
 patterns:
   # ====== Python ======
-  # pytest and unittest: test_* function naming convention
+  # pytest and unittest: a top-level test_* function. The whole name, with
+  # no dot in it: py.py names a function nested in another `outer.inner`,
+  # and a helper nested in a test function is not a test (`^test_` alone
+  # matched every one of them through the outer name).
   - concept: test_function
-    symbol_name: "^test_"
+    symbol_name: "^test_\\w*$"
     symbol_kind: "^function$"
     language: "^python$"
 
-  # pytest: test_* method in test classes
+  # pytest and unittest: test* methods of a class in a test file. pytest
+  # collects them from `test_*.py` and `*_test.py`; `tests.py` and a `test/`
+  # or `tests/` directory are where Django and most projects keep theirs.
+  # py.py names a method `Class.method`. The file is asked for because a
+  # name alone is not a test (`Backend.test_connection`).
   - concept: test_function
-    symbol_name: "^test_"
+    method_name: "^test"
     symbol_kind: "^method$"
     language: "^python$"
+    symbol_path: "(^|/)(test_[^/]*|[^/]*_test|tests)\\.py$|(^|/)tests?/"
 
   # pytest fixture functions (decorated with @pytest.fixture)
   - concept: test_fixture
@@ -114,19 +145,29 @@ patterns:
     language: "^(javascript|typescript)$"
 
   # ====== Ruby ======
-  # Minitest: test_* methods
+  # Minitest and Test::Unit: test_* methods of a test case, which live
+  # under `test/` or in a `*_test.rb` file. ruby.py names a method
+  # `Class#method`. The file is asked for because the name alone is not a
+  # test, and a `test_*.rb` file name is not asked for because that is not
+  # one either: chatwoot's `Instagram::TestEventService#test_message_params`
+  # in `app/services/instagram/test_event_service.rb` is production code.
   - concept: test_function
-    symbol_name: "^test_"
+    method_name: "^test_"
     symbol_kind: "^method$"
     language: "^ruby$"
+    symbol_path: "(^|/)tests?/|_test\\.rb$"
 
-  # RSpec: it/specify blocks (extracted as methods)
+  # RSpec: it/specify examples.
+  # NOT A SYMBOL: an example is a call with a block and ruby.py emits no
+  # symbol for it (chatwoot's spec/ has none). The row matches only a
+  # top-level method that is itself NAMED `it` or `specify`.
   - concept: test_function
     symbol_name: "^(it|specify)$"
     symbol_kind: "^(function|method)$"
     language: "^ruby$"
 
-  # RSpec: describe/context blocks
+  # RSpec: describe/context blocks.
+  # NOT A SYMBOL, as above.
   - concept: test_suite
     symbol_name: "^(describe|context)$"
     symbol_kind: "^(function|method)$"
@@ -172,17 +213,25 @@ patterns:
     base_class: "^XCTestCase$"
     language: "^swift$"
 
-  # XCTest: test* methods
+  # XCTest: test* methods of a test case. swift.py names a method
+  # `Class.method`. XCTest collects them from XCTestCase subclasses, which a
+  # SwiftPM package keeps under `Tests/` and which by convention sit in a
+  # `<Name>Tests.swift` file; the file is asked for because a name alone is
+  # not a test. NOT ASKED FOR: an Xcode group `<Name>Tests/` or
+  # `<Name>UITests/` holding a file of another name, which
+  # `paths.is_test_file` does not call a test file.
   - concept: test_function
-    symbol_name: "^test"
+    method_name: "^test"
     symbol_kind: "^method$"
     language: "^swift$"
+    symbol_path: "(^|/)[Tt]ests?/|Tests\\.swift$"
 
-  # XCTest: setUp/tearDown lifecycle methods
+  # XCTest: setUp/tearDown lifecycle methods, in the same files.
   - concept: test_lifecycle
-    symbol_name: "^(setUp|tearDown)(WithError)?$"
+    method_name: "^(setUp|tearDown)(WithError)?$"
     symbol_kind: "^method$"
     language: "^swift$"
+    symbol_path: "(^|/)[Tt]ests?/|Tests\\.swift$"
 
   # ====== PHP ======
   # PHPUnit: test* methods of a test case file. php.py names a method
@@ -216,41 +265,43 @@ patterns:
     language: "^(cpp|c)$"
 
   # ====== Elixir ======
-  # ExUnit: test "..." do blocks (extracted as functions named "test ...")
+  # ExUnit: test "..." do blocks.
+  # NOT A SYMBOL: elixir.py emits no symbol for a `test`, `describe` or
+  # `setup` block (phoenix's test/ holds 441 function symbols, none of them
+  # one), and it names a function `Module.function`, so none of these three
+  # rows can match.
   - concept: test_function
     symbol_name: "^test "
     symbol_kind: "^function$"
     language: "^elixir$"
 
-  # ExUnit: setup/setup_all callbacks
+  # ExUnit: setup/setup_all callbacks. NOT A SYMBOL, as above.
   - concept: test_lifecycle
     symbol_name: "^(setup|setup_all)$"
     symbol_kind: "^function$"
     language: "^elixir$"
 
-  # ExUnit: describe blocks
+  # ExUnit: describe blocks. NOT A SYMBOL, as above.
   - concept: test_suite
     symbol_name: "^describe "
     symbol_kind: "^function$"
     language: "^elixir$"
 
   # ====== Scala ======
-  # ScalaTest: test functions (often named with "test" or "should")
-  - concept: test_function
-    symbol_name: "^test"
-    symbol_kind: "^(function|method)$"
-    language: "^scala$"
-
-  # ScalaTest/Specs2: @Test annotation
+  # JUnit: @Test annotation. This is the one rule by which a Scala `def` is
+  # a test.
   - concept: test_function
     decorator: "^Test$"
     language: "^scala$"
 
-  # MUnit: test() calls create functions
-  - concept: test_function
-    symbol_name: "^test$"
-    symbol_kind: "^(function|method)$"
-    language: "^scala$"
+  # No name row. A Scala method is not a test by being named test*: JUnit
+  # asks for @Test (above), and ScalaTest, MUnit and Specs2 tests are calls
+  # (`test("...") { }`), which are NOT A SYMBOL. Two rows stood here,
+  # `symbol_name: "^test"` and `"^test$"`. scala.py names a method
+  # `Class.method`, so they matched only top-level functions (tapir's
+  # example helper `testWith`), and read against the method's own name they
+  # would have marked 111 of tapir's methods, none of which is a test (50
+  # are builders named `tests`, the rest `testServer`, `testClient` ...).
 
   # ====== Dart ======
   # Dart test package: test() function calls
@@ -318,13 +369,20 @@ patterns:
     language: "^haskell$"
 
   # ====== Erlang ======
-  # EUnit: *_test functions
+  # EUnit: *_test functions.
+  # MATCHES NOTHING, AND LEFT SO: erlang.py names a function `name/arity`,
+  # so `_test$` never matches (`_test/0$` would: EUnit's rule is the name
+  # and no argument). Not repaired here because EUnit tests live in `src/`,
+  # beside the code they test, where the entry ranking does not demote a
+  # test: with the repaired rows cowboy's 25 EUnit functions became its first
+  # 25 entry points, ahead of everything else. Repair these two rows
+  # together with that.
   - concept: test_function
     symbol_name: "_test$"
     symbol_kind: "^function$"
     language: "^erlang$"
 
-  # EUnit: *_test_ generators
+  # EUnit: *_test_ generators. MATCHES NOTHING, AND LEFT SO, as above.
   - concept: test_function
     symbol_name: "_test_$"
     symbol_kind: "^function$"
@@ -480,7 +538,9 @@ patterns:
     language: "^d$"
 
   # ====== Groovy ======
-  # Spock: feature methods (def "should ..."())
+  # Spock: feature methods (def "should ..."()).
+  # NOT A SYMBOL: groovy.py emits no symbol for a method named by a string,
+  # so this row cannot match.
   - concept: test_function
     symbol_name: "^(should|def) "
     symbol_kind: "^method$"
@@ -491,8 +551,12 @@ patterns:
     decorator: "^Test$"
     language: "^groovy$"
 
-  # Spock: setup/cleanup lifecycle
+  # Spock: setup/cleanup fixture methods of a specification, in a test
+  # source set (`src/test/`, `src/integTest/` ...), a `tests/` directory or
+  # a `*Spec.groovy` / `*Test.groovy` file. groovy.py names most methods
+  # `Class.method` and some without their class; `method_name` reads both.
   - concept: test_lifecycle
-    symbol_name: "^(setup|cleanup|setupSpec|cleanupSpec)$"
+    method_name: "^(setup|cleanup|setupSpec|cleanupSpec)$"
     symbol_kind: "^method$"
     language: "^groovy$"
+    symbol_path: "(^|/)src/\\w*[tT]est\\w*/|(^|/)tests?/|(Spec|Test|Specification)\\.groovy$"
