@@ -34,6 +34,24 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Scala `extends IOApp.Simple` is a program start**; dotted parent types are recorded.
 - **Haskell symbols carry module-qualified names**; an instance records its class.
 - **R and F# calls are recorded as usage contexts.**
+- **Usage rows now decide which calls analyzers record.**
+- **Framework rows gain `adopts:` for `use` and `include`.**
+- **Express, Koa, Fastify and hapi middleware are entry points.**
+- **CLI actions and Electron IPC handlers are entry points.**
+- **Socket.IO handlers are detected without Express.**
+- **Go CLI commands, middleware and cron jobs are entries.**
+- **Python handlers passed to library calls are entries.**
+- **Click, Typer and Ariadne decorators match by their maker.**
+- **Flask-RESTful and Slim error-handler subclasses are entries.**
+- **Vapor WebSocket handlers are entries; `use:` handlers get callers.**
+- **Ruby handlers named by symbol or class are entries.**
+- **Thor commands and dry-cli `#call` methods are entries.**
+- **dry-cli and Commander are detected; Sidekiq workers are tasks.**
+- **Elixir modules using OTP, Oban or Phoenix are entries.**
+- **Elixir plugs, sockets and fallback controllers are entries.**
+- **Scala `@main` / `App` and Kotlin `@JvmStatic main` start programs.**
+- **Ktor modules are hosted applications; `Application::module` reaches them.**
+- **Play CSRF error handlers are error-handler entries.**
 - **`analysis_runs[].non_id_edge_endpoints`** counts edge endpoints that are not node ids.
 
 ### Changed
@@ -52,6 +70,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Four functions only tests called**: `compact.estimate_behavior_map_tokens`, `selection_index._bitmap`, `selection_index.stored_edges`, `installed_env.forget_kept_answers`.
 - **164 framework pattern rows that could never match** (`argparse`, Go `kong`, Ruby `OptionParser`).
+- **Rails callback usage rows, which never fired, are removed.**
 
 ### Fixed
 
@@ -77,6 +96,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch deals tied Entry Points lines across files** and keeps a line per kind.
 - **Class test methods and Falcon responders are detected.**
 - **A tests-only library keeps its connectivity entry points.**
+- **A checkout under `test/` or `fixtures/` keeps linker output.**
 
 #### Secret-leak claims (`verify-claims`)
 
@@ -92,6 +112,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **No id slot is empty or holds a newline** (JavaScript, Tcl, Markdown).
 - **Node and edge list order no longer depends on thread timing.**
 - **Namespaced Ruby class methods sit under their own class.**
+- **Scala class-body calls reach the class's own methods.**
+- **Scala methods and fields passed as arguments are referenced.**
+- **IPC and WebSocket channels reach their handlers.**
+- **A cobra handler's edge starts at its command.**
 
 ### Development tools and CI
 
@@ -136,6 +160,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`docs/VERIFY-CLAIMS-SCOPE.md`** lists alias and closure forms followed and not.
 - **Docs state the full suite's schedule**: 01:00, 09:00 and 21:00 UTC.
 - **The smart-test playbook states explicit-run gating and new-def refusals.**
+- **Audit 0029 records the 136 deleted rows' verdicts.**
 
 ## [10.0.0] - 2026-11-16
 
