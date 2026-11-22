@@ -8,6 +8,9 @@ This analyzer parses R source files and extracts:
   Symbol; src is the file id, dst is a 5-part dangling package id)
 - Function calls
 - Source file references
+- A ``call`` UsageContext per called name per holder (see "Usage
+  contexts" below), which the ``usage:`` rows of plumber.yaml and
+  shiny.yaml read
 
 If tree-sitter-r is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -52,6 +55,40 @@ before this both shared the backstop floor key and were left null. Two
 definitions alike in scope, name and parameters are a same-scope tie the
 per-file occurrence pass orders. A ``source("x.R")`` symbol takes the same
 chain over the sourced path (``outer/x.R``), with no parameters.
+
+Usage contexts
+--------------
+R's framework rows are ``usage:`` rows keyed on a call's name (``shinyApp``,
+``plumb``, ``Plumber$new``, ``pr_get``, ``renderPlot``, ...), and a row stamps
+its concept on the symbol the context's ``symbol_ref`` names. Until this
+analyzer emitted contexts, none of those rows could fire, so a Shiny or
+Plumber service had no ``application`` concept and no ``hosted_application``
+entry. Every call whose callee has a name gets one ``call`` context,
+``position`` ``caller``:
+
+- ``context_name``: ``f`` for ``f()``; ``f`` for ``pkg::f()`` / ``pkg:::f()``
+  (``metadata["package"]`` keeps ``pkg``); ``obj$m`` / ``obj@m`` for a
+  method call, any ``pkg::`` before ``obj`` dropped (``plumber::Plumber$new``
+  is ``Plumber$new``). A callee that is a call (``f()()``, ``get_app()$run``),
+  a subset (``x[["f"]]``) or a string names nothing and gets no context.
+- ``symbol_ref``: the CALLER, i.e. the innermost named function
+  (``f <- function``) whose body holds the call, else the file. In R the
+  application is a value (``app <- shinyApp(ui, server)``) or no binding at
+  all (a bare ``shinyApp(ui, server)``, the last expression of ``app.R``),
+  and this analyzer makes no variable symbols, so the caller is the one
+  symbol that holds it; ``metadata["assigned_to"]`` records the bound name
+  when there is one. The JS/TS analyzer names the module the same way for a
+  module-level bootstrap call. A call inside an anonymous function
+  (``server = function(input, output) ...`` passed inline) belongs to the
+  named function or file around it. A pipe (``plumb(f) |> pr_run()``,
+  ``%>%``) is two calls with one holder.
+- One context per (holder, name): the first call of that name in the holder.
+  A row stamps a concept once per symbol; the repeats would add records and
+  nothing else.
+
+The file a context names gets its node from the orchestrator when the file
+holds a symbol or an ``imports`` edge leaves it; for a file with neither
+(``shiny::shinyApp(...)`` alone) this analyzer emits the file symbol itself.
 """
 from __future__ import annotations
 
@@ -75,7 +112,9 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id,
+)
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -231,7 +270,113 @@ def _find_enclosing_function_r(
                 if sym is not None:
                     return sym
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
+
+
+def _r_callee_name(
+    func_node: "tree_sitter.Node", source: bytes,
+) -> tuple[Optional[str], Optional[str]]:
+    """``(name, package)`` of a call's ``function`` node; ``(None, None)`` if unnamed.
+
+    ``f`` -> ``f``; ``pkg::f`` / ``pkg:::f`` -> ``f`` with package ``pkg``
+    (rows key on the bare name); ``obj$m`` / ``obj@m`` -> ``obj$m`` / ``obj@m``
+    with any ``pkg::`` before ``obj`` dropped, so ``plumber::Plumber$new`` is
+    ``Plumber$new``. A backquoted name loses its backquotes. A callee that is
+    itself a call, a subset (``x[["f"]]``), a string or a function literal
+    names nothing.
+    """
+    kind = func_node.type
+    if kind == "identifier":
+        return node_text(func_node, source).strip("`"), None
+    rhs = func_node.child_by_field_name("rhs")
+    if rhs is None or rhs.type != "identifier":
+        return None, None
+    rhs_name = node_text(rhs, source).strip("`")
+    lhs = func_node.child_by_field_name("lhs")
+    if kind == "namespace_operator":
+        package = node_text(lhs, source) if lhs is not None else None
+        return rhs_name, package
+    if kind == "extract_operator" and lhs is not None:
+        operator = func_node.child_by_field_name("operator")
+        owner, package = _r_callee_name(lhs, source)
+        if owner is not None and operator is not None:
+            return f"{owner}{node_text(operator, source)}{rhs_name}", package
+    return None, None
+
+
+def _r_assigned_name(call: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name ``call``'s value is bound to: ``x <- call`` / ``x = call`` /
+    ``x <<- call`` / ``call -> x`` / ``call ->> x``; None otherwise."""
+    parent = call.parent
+    if parent is None or parent.type != "binary_operator":
+        return None
+    operator = parent.child_by_field_name("operator")
+    op = node_text(operator, source) if operator is not None else ""
+    if op in ("<-", "=", "<<-"):
+        target, value = parent.child_by_field_name("lhs"), parent.child_by_field_name("rhs")
+    elif op in ("->", "->>"):
+        target, value = parent.child_by_field_name("rhs"), parent.child_by_field_name("lhs")
+    else:
+        return None
+    if value is None or value.id != call.id or target is None or target.type != "identifier":
+        return None
+    return node_text(target, source).strip("`")
+
+
+def _extract_r_usage_contexts(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+    rel_path: str,
+    decl_index: SymbolsAt,
+) -> list[UsageContext]:
+    """One ``call`` UsageContext per (holder, called name) in an R file.
+
+    The holder, the context's ``symbol_ref``, is the innermost NAMED function
+    whose body holds the call, else the file (``make_file_id``); ``position``
+    is ``caller``. See the module docstring for why. ``metadata`` carries the
+    ``package`` of a ``pkg::f`` call and the ``assigned_to`` name of a call
+    whose value is bound (``app <- shinyApp(...)``), each only when present.
+    Only the first call of a name per holder is kept: a row stamps a concept
+    once per symbol, and every repeat would add a record and nothing else.
+    """
+    file_id = make_file_id("r", rel_path)
+    contexts: list[UsageContext] = []
+    seen: set[tuple[str, str]] = set()
+    for node in iter_tree(root_node):
+        if node.type != "call":
+            continue
+        func_node = node.child_by_field_name("function")
+        if func_node is None:  # pragma: no cover - the grammar always fills it
+            continue
+        name, package = _r_callee_name(func_node, source)
+        if not name:
+            continue
+        holder = _find_enclosing_function_r(node, decl_index)
+        holder_id = holder.id if holder is not None else file_id
+        if (holder_id, name) in seen:
+            continue
+        seen.add((holder_id, name))
+        metadata: dict[str, object] = {}
+        if package:
+            metadata["package"] = package
+        assigned = _r_assigned_name(node, source)
+        if assigned:
+            metadata["assigned_to"] = assigned
+        contexts.append(UsageContext.create(
+            kind="call",
+            context_name=name,
+            position="caller",
+            path=rel_path,
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
+            symbol_ref=holder_id,
+            metadata=metadata,
+        ))
+    return contexts
 
 
 def _extract_r_symbols(
@@ -540,7 +685,8 @@ class RAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based analyzer for R source files.
 
     Extracts function definitions, library/require imports, source() calls,
-    and function call edges with NameResolver for cross-file resolution.
+    function call edges with NameResolver for cross-file resolution, and a
+    ``call`` UsageContext per called name per holder (module docstring).
     Uses language_pack_name for the r grammar with fallback to standalone tree_sitter_r.
     """
 
@@ -637,12 +783,43 @@ class RAnalyzer(TreeSitterAnalyzer):
         # Create resolver from global registry
         resolver = NameResolver(global_symbol_registry)
 
+        # The paths the orchestrator will give a file node of its own: one
+        # holding a symbol, or one an ``imports`` edge leaves (WI-dagif /
+        # WI-ramuv). Any other file a usage context names gets its file
+        # symbol here, or the context would name nothing.
+        anchored_paths = {s.path for s in symbols}
+        anchored_ids = {e.src for e in edges}
+        usage_contexts: list[UsageContext] = []
+
         # Pass 2: Extract edges using resolver
         for rel_path, source, tree, loaded_packages in parsed_files:
             # This file's functions by declaration position (INV-midag): a
             # name-keyed map keeps one symbol per name.
             decl_index = symbols_at(
                 [s for s in symbols if s.path == rel_path and s.kind == "function"])
+
+            file_contexts = _extract_r_usage_contexts(
+                tree.root_node, source, rel_path, decl_index)
+            usage_contexts.extend(file_contexts)
+            file_id = make_file_id("r", rel_path)
+            if (
+                rel_path not in anchored_paths and file_id not in anchored_ids
+                and any(c.symbol_ref == file_id for c in file_contexts)
+            ):
+                symbols.append(Symbol(
+                    id=file_id,
+                    name=rel_path,
+                    kind="file",
+                    language="r",
+                    path=rel_path,
+                    span=Span(
+                        start_line=1, start_col=0,
+                        end_line=tree.root_node.end_point[0] + 1,
+                        end_col=0,
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
 
             _extract_r_edges(
                 tree.root_node,
@@ -666,6 +843,7 @@ class RAnalyzer(TreeSitterAnalyzer):
         return AnalysisResult(
             symbols=symbols,
             edges=edges,
+            usage_contexts=usage_contexts,
             run=run,
         )
 

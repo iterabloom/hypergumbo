@@ -1658,7 +1658,7 @@ HTTP_REQUIREMENTS = [
     # emits a route.
     depends_on=[[
         "clojure", "csharp", "elixir", "go", "groovy", "java", "javascript",
-        "kotlin", "php", "play-routes", "python", "ruby", "rust", "scala",
+        "kotlin", "php", "play-routes", "python", "r", "ruby", "rust", "scala",
         "swift",
     ]],
     activation=always_on_unreviewed(),
