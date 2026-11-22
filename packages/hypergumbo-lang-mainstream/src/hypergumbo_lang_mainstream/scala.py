@@ -50,8 +50,10 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      the code holding the call to the project function, method or field it
      names: the enclosing type's member, else the one top-level function of
      that name. A name a parameter, lambda, pattern or local ``val`` binds is
-     that local value. Evidence ``eta_expansion`` for a function with
-     parameters, ``ast_name_read`` for a field or a ``()`` method (its value).
+     that local value. Evidence ``eta_expansion`` for a function or method
+     (with parameters or none: whether it has any is not read off the
+     rendered signature, ADR-0058, and scala records no parameter meta),
+     ``ast_name_read`` for a field (its value).
      The explicit ``f _`` has its own emitter; both are anchored as calls are.
    - A method call's receiver is typed by :class:`_ScalaReceiverTyper`: the
      nearest lexical binder when its type can be said, else the file-wide
@@ -2740,8 +2742,8 @@ def _extract_edges_from_file(
         """The project function, method or field an argument NAMES, if any.
 
         ``f(handler)``, ``f(Obj.handler)``, ``f(this.handler)``, ``f(x = handler)``:
-        a name passed as a value -- a function by automatic eta-expansion, or a
-        field / parameterless method by its value. A bare name is the enclosing
+        a name passed as a value -- a function or method (by automatic
+        eta-expansion, or a parameterless one by its value), or a field. A bare name is the enclosing
         type's member, else the one top-level function of that name in the
         project; a name a parameter, lambda, pattern or local ``val`` binds is
         that local value and names nothing here. ``Obj.member`` must name
@@ -3235,25 +3237,23 @@ def _extract_edges_from_file(
         # A name passed as a value (``handleWith(createItem)``,
         # ``handleExceptions(handler)``, ``mapping(..)(Data.fromForm)``): a
         # reference from the code holding the call to what it names
-        # (:func:`_named_value`). A function that takes parameters is passed
-        # as a function (eta-expansion); a field or a parameterless method,
-        # as its value.
+        # (:func:`_named_value`). A function or method is ``eta_expansion``
+        # whatever its parameters (ADR-0058: arity is not parsed out of the
+        # rendered signature); a field is a value read.
         elif node.type == "arguments":
             holder, owner = _anchor(node)
             for arg in node.named_children:
                 target = _named_value(arg, owner)
                 if target is None or target.id == holder.id:
                     continue
-                as_function = (
-                    target.kind != "field"
-                    and not (target.signature or "").startswith("()")
-                )
                 edges.append(Edge.create(
                     src=holder.id,
                     dst=target.id,
                     edge_type="references",
                     line=arg.start_point[0] + 1,
-                    evidence_type="eta_expansion" if as_function else "ast_name_read",
+                    evidence_type=(
+                        "ast_name_read" if target.kind == "field" else "eta_expansion"
+                    ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
