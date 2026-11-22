@@ -324,6 +324,46 @@ def test_a_marker_follows_a_dispatch_only_into_its_own_file() -> None:
     assert [(s.handler, s.parameter, s.represents) for s in seeds] == [(right, "req", marker)]
 
 
+def test_the_own_file_rule_compares_whole_paths_when_a_path_holds_a_colon() -> None:
+    """The path is the one slot of a symbol id that may hold a colon
+    (ADR-0036 D1a). Read as ``split(":")[1]``, ``routes/v1:beta/index.js`` and
+    ``routes/v1:old/index.js`` are both ``routes/v1``, so a marker in the
+    first followed a dispatch into the second and seeded ``ids`` as its
+    request."""
+    marker = "javascript:routes/v1:beta/index.js:40-40:GET /users:function"
+    wrong = "javascript:routes/v1:old/index.js:40-44:list:function"
+    right = "javascript:routes/v1:beta/index.js:60-64:list:function"
+    params = {wrong: ("ids",), right: ("req", "res")}
+    edges = [_edge(wrong, "ids", 40, 41), _edge(right, "req", 60, 61)]
+    assert parameter_seeds(
+        _ingress((marker, "http_route")), params, edges, {}, "javascript",
+        edges=[{"src": marker, "dst": wrong, "type": "dispatches_to"}],
+    ) == []
+    seeds = parameter_seeds(
+        _ingress((marker, "http_route")), params, edges, {}, "javascript",
+        edges=[{"src": marker, "dst": wrong, "type": "dispatches_to"},
+               {"src": marker, "dst": right, "type": "dispatches_to"}],
+    )
+    assert [(s.handler, s.parameter, s.represents) for s in seeds] == [(right, "req", marker)]
+
+
+def test_the_own_file_rule_holds_for_a_route_whose_name_holds_a_colon() -> None:
+    """Express names a route by its pattern, and a pattern may hold a colon
+    (``GET /users/:id``). The path is read up to the span, so the name's colon
+    moves neither path."""
+    marker = "javascript:routes/index.js:40-40:GET /users/:id:function"
+    wrong = "javascript:other/index.js:40-44:show:function"
+    right = "javascript:routes/index.js:60-64:show:function"
+    params = {wrong: ("ids",), right: ("req", "res")}
+    seeds = parameter_seeds(
+        _ingress((marker, "http_route")), params,
+        [_edge(wrong, "ids", 40, 41), _edge(right, "req", 60, 61)], {}, "javascript",
+        edges=[{"src": marker, "dst": wrong, "type": "dispatches_to"},
+               {"src": marker, "dst": right, "type": "dispatches_to"}],
+    )
+    assert [(s.handler, s.parameter, s.represents) for s in seeds] == [(right, "req", marker)]
+
+
 def test_express_error_middleware_takes_its_request_second() -> None:
     """``(err, req, res, next)`` is Express's error-handling signature, by
     arity: the request is parameter 1, and ``err`` is not a request."""

@@ -4682,8 +4682,16 @@ class ParameterSeed:
 
 
 def _symbol_start_line(symbol_id: str) -> int:
-    """The first line of ``lang:path:start-end:name:kind``."""
-    return int(symbol_id.split(":")[2].split("-")[0])
+    """The first line of ``lang:path:start-end:name:kind``.
+
+    The span is the token after the path slot, and the path may hold a colon
+    (ADR-0036 D1a), so the span is found past :func:`ir.symbol_path_slot`'s
+    answer and not as the third colon-separated token: that token of
+    ``javascript:routes/v1:beta/index.js:60-64:list:function`` is
+    ``beta/index.js``.
+    """
+    after_path = len(symbol_id.split(":", 1)[0]) + len(symbol_path_slot(symbol_id)) + 2
+    return int(symbol_id[after_path:].split("-", 1)[0])
 
 
 def parameter_seeds(
@@ -4747,10 +4755,11 @@ def parameter_seeds(
         # ``list(ids)``), and positional 0 would then seed ``ids``
         # as the request and represent a handler whose real flows are never
         # followed.
-        entry_path = entry_sym.split(":")[1]
+        # The path slot may hold a colon (ADR-0036 D1a): one parser reads it.
+        entry_path = symbol_path_slot(entry_sym)
         candidates = [entry_sym] if ddg_params.get(entry_sym) else [
             target for target in dispatch_targets.get(entry_sym, ())
-            if ddg_params.get(target) and target.split(":")[1] == entry_path
+            if ddg_params.get(target) and symbol_path_slot(target) == entry_path
         ]
         for handler in candidates:
             params = ddg_params[handler]
