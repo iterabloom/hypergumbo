@@ -1,0 +1,12 @@
+Original commit body from 9752df169be7dd56848a406aaeb0c0febb33e491:
+
+The smart-test playbook stated behaviour that the last test-tooling change altered.
+
+- The list of cases where by-statement narrowing refuses gains two: a new decorated def, and a new method of an existing class whose bases are not all source of this repository. It also says what a new method with followable bases selects.
+- A new paragraph states that a run given test paths gates no coverage: the NOT GATED notice and what it lists, the --gate-changed flag, and that a run with no test paths always gates the changed source files.
+
+Docs only. Each statement was read against scripts/smart-test and statement_select / statement_narrow.
+
+Governance file (.agent/**): the owner approved this edit and its merge in session on 2026-11-22.
+
+Addresses WI-pikuf-jurur-padol-latut-jihut-livun-sulof-fubun
