@@ -1,0 +1,21 @@
+- op: create  # add3
+  at: '2026-11-22T14:05:04Z'  # add3
+  by: agent  # add3
+  actor: jgstern_agent  # add3
+  clock: 1  # add3
+  nonce: add3  # add3
+  data:  # add3
+    kind: work_item  # add3
+    title: "paths.is_test_file disagrees with runner conventions: Xcode test groups, *_tests.py, src/integTest; test_*.rb service files"  # add3
+    status: todo_soft  # add3
+    priority: 3  # add3
+    parent:  # add3
+    tags:  # add3
+    - analysis_quality  # add3
+    - entrypoints  # add3
+    isbefore: []  # add3
+    duplicate_of: []  # add3
+    not_duplicate_of: []  # add3
+    pr_ref:  # add3
+    description: "WHAT. paths.is_test_file, the path rule the entry ranking, dead-code, slice and the linkers share, disagrees with the runners' own conventions in both directions.\n- Not a test file to it: an Xcode test group of another file name (AppUITests/Flow.swift, KingfisherTests/A.swift outside Tests/), Python *_tests.py and test.py, Gradle src/integTest/ and src/functionalTest/, a *Spec.groovy or *Test.groovy outside a test directory, src/FooTest.php (the PHPUnit row of test-frameworks.yaml accepts it, so a method there is a test_function the ranking does not demote).\n- A test file to it: any file named test_*.<ext>, so chatwoot's production app/services/instagram/test_event_service.rb is test code to every consumer.\n\nWHY IT MATTERS HERE. The WI-rasok PR keeps each test_function row's file condition inside this rule (a test the rule does not know would be listed as a prominent entry point), so the rows miss the first group.\n\nASK. Review the rule against the conventions above; each change moves ranking and dead-code output, so A/B it. Then widen the Swift and Python rows to match.\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # add3
+    fields: {}  # add3

@@ -1,0 +1,20 @@
+- op: create  # 2e26
+  at: '2026-11-22T14:04:51Z'  # 2e26
+  by: agent  # 2e26
+  actor: jgstern_agent  # 2e26
+  clock: 1  # 2e26
+  nonce: '2e26'  # 2e26
+  data:  # 2e26
+    kind: work_item  # 2e26
+    title: "groovy.py loses a class when a string-named method follows two methods (Spock specifications)"  # 2e26
+    status: todo_soft  # 2e26
+    priority: 3  # 2e26
+    parent:  # 2e26
+    tags:  # 2e26
+    - analysis_quality  # 2e26
+    isbefore: []  # 2e26
+    duplicate_of: []  # 2e26
+    not_duplicate_of: []  # 2e26
+    pr_ref:  # 2e26
+    description: "WHAT. groovy.py loses a class when a method named by a string follows two ordinary methods in it: it then records no class symbol, the methods before the string-named one WITHOUT their class (setup, not MathSpec.setup), and the methods after it not at all or as functions. A Spock specification has exactly this shape.\n\nSEEN. gradle's testing/ tree: 424 of 2,801 Groovy methods are recorded without a class. Minimal source (packages/hypergumbo-lang-mainstream/tests/test_member_name_rows.py, _GROOVY_SPEC_WITH_FEATURE): class MathSpec extends Specification { def setup() {}; def cleanupSpec() {}; def \"should add\"() { expect: 1 + 2 == 3 }; def helper() { 1 } } gives [method setup, method cleanupSpec]. With one method before the string-named one, or with the string-named one first, the class and all three ordinary methods are recorded (and the feature method is still no symbol).\n\nASK. Find what the grammar returns for that arrangement (an ERROR node is the likely cause; not checked) and recover the class and its members; then decide whether a feature method is a symbol (see the calls-not-symbols item).\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # 2e26
+    fields: {}  # 2e26

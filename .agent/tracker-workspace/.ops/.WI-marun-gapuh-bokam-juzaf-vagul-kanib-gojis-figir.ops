@@ -1,0 +1,21 @@
+- op: create  # 8b9c
+  at: '2026-11-22T14:04:37Z'  # 8b9c
+  by: agent  # 8b9c
+  actor: jgstern_agent  # 8b9c
+  clock: 1  # 8b9c
+  nonce: 8b9c  # 8b9c
+  data:  # 8b9c
+    kind: work_item  # 8b9c
+    title: "parent_base_class reads a field only three analyzers write: the Kotlin Android and Stapler rows cannot match"  # 8b9c
+    status: todo_hard  # 8b9c
+    priority: 3  # 8b9c
+    parent:  # 8b9c
+    tags:  # 8b9c
+    - frameworks  # 8b9c
+    - analysis_quality  # 8b9c
+    isbefore: []  # 8b9c
+    duplicate_of: []  # 8b9c
+    not_duplicate_of: []  # 8b9c
+    pr_ref:  # 8b9c
+    description: "WHAT. A row's parent_base_class condition reads Symbol.meta[\"parent_base_classes\"], which only java.py, objc.py and py.py write. For every other language a row with that condition cannot match. Shipped rows affected: android.yaml (6 rows, language java + kotlin) and stapler.yaml (2 rows, java + kotlin): the Kotlin half is dead.\n\nSEEN. Base maps of 2026-11-22: android-ndk-samples, sherpa-onnx/android, okhttp: 28 Kotlin methods named onCreate / onCreateView / onStartCommand / onBind / onReceive; 0 carry parent_base_classes; for 27 the enclosing class (found by position) has a base the Android rows name (ComponentActivity, AppCompatActivity, Activity, Application). None is a lifecycle_hook today.\n\nASK. A general source for \"the bases of the class that declares this member\": derive it in core from the declaring class by position (file_symbols / spans) where the analyzer did not write the key, instead of one write per analyzer. It would also let the test rows ask for the class's base (XCTestCase, Minitest::Test, Specification) beside the file, which they cannot do today outside Python. Direct bases only; say so.\n\nNOT CHECKED. Which other languages' rows would start to match (grep parent_base_class: android, cocoa, flask-restful, graphql-python, python-http-server, servlet, stapler).\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # 8b9c
+    fields: {}  # 8b9c
