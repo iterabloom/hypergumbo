@@ -1173,8 +1173,8 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "declared ``static`` in this class; a static member never "
                 "dispatches (WI-digaj)."),
     MetaKeySpec("parent_base_classes", AXIS_SYMBOL_META,
-                "Transitive ancestor base classes on class Symbols. "
-                "Populated by the type_hierarchy linker."),
+                "On a METHOD: the bases of its own class, as written (py, java, "
+                "objc, ruby analyzers). ``parent_base_class:`` rows read it."),
     MetaKeySpec("decorators", AXIS_SYMBOL_META,
                 "List of decorator names on function / method / "
                 "class Symbols. Used by framework_patterns to "

@@ -1013,6 +1013,10 @@ The framework pattern system supports multiple detection strategies:
 
 **Path inheritance (v1.3.x):** Patterns can use `prefix_from_parent` to inherit path prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"` to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`.
 
+**Registration contexts:** A framework is often told which code is its handler by a call, not a decorator: `app.use(auth)`, `cron.AddFunc("@daily", sweep)`, `&cobra.Command{RunE: runServe}`, `rescue_from NotFound, with: :render_404`, `plug :authenticate`. The JavaScript / TypeScript, Python, Go, Ruby and Elixir analyzers record a `call` usage context for an argument (in Go also a keyed field of a library type's composite literal, in Ruby and Elixir a class- or module-body DSL call) that names a function, method, class or module defined in the repository, when the thing called is not repository code. The context's `context_name` is the callee as written, its `position` the argument (`args[1]`, `kwargs[with]`, a field name), its `symbol_ref` the local code. To keep the list small the analyzer records one only when `framework_patterns.usage_row_names_call(name, language, position)` says a shipped (or user) `usage:` row could match a call of that name at that position, so the rows are the only list of call names: a new row needs no analyzer change. An inline handler (a block, closure or lambda) is recorded only where the analyzer already emits a symbol for it. Whether a row then fires still depends on its framework being detected. See [audit 0029](audits/0029-deleted-rows-triage-remaining.md) for the constructs measured and those not built.
+
+**Adopted modules:** `adopts:` matches a type by the modules it takes its behaviour from without inheriting: Elixir `use` (`meta["adopted_modules"]`: the modules a `use` runs and the behaviours they declare, through in-repo `__using__` quotes) and Ruby `include` / `extend` (`meta["included_modules"]`). It is a regex matched from the start of the full name (`^Oban\.Worker$`, `^Sidekiq::Worker$`), with no fallback to the last segment.
+
 See [ADR-3aaa](adr/3aaa-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/3ccc-usage-context-patterns.md) for call-based framework support.
 
 ### Entrypoint Confidence Tiers
@@ -1288,7 +1292,7 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 - `block_type` (optional): sub-classification of a generic `block` node (`datasource`, `generator`).
 
 *Declaration & visibility shape:*
-- `base_classes` / `parent_base_classes` (optional, list): direct / transitive ancestor base-class names (the latter from the `type_hierarchy` linker).
+- `base_classes` (optional, list): a class's direct base-class names, as written. `parent_base_classes` (optional, list): on a method, the base-class names of its own class, as written (Python, Java, Objective-C and Ruby analyzers; Ruby writes it on public instance methods only); `parent_base_class:` framework rows read it. No linker writes either.
 - `decorators` / `annotations` (optional, list): Python-style decorators / Java-Kotlin annotations (kept distinct).
 - `visibility_signal` (optional): which signal set the typed `Symbol.visibility` — `language_modifier` / `name_convention` / `default` (INV-jusot).
 - `exported` (optional, bool): exported from its file (ES `export`, Go capitalized name).

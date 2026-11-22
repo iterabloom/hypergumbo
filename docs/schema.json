@@ -1221,7 +1221,7 @@
               "description": "Short-form parameter-name list on function / method Symbols. Lighter-weight alternative to ``parameters`` for analyzers that don't extract types."
             },
             "parent_base_classes": {
-              "description": "Transitive ancestor base classes on class Symbols. Populated by the type_hierarchy linker."
+              "description": "On a METHOD: the bases of its own class, as written (py, java, objc, ruby analyzers). ``parent_base_class:`` rows read it."
             },
             "reference_syntax": {
               "description": "Use-site reference syntax of an external boundary Symbol (e.g. 'unresolved', 'attribute', 'module', 'namespace') whose canonical ``Symbol.kind`` is 'external_symbol'. Per ADR-0036 Ruling 2 the id kind-slot is a pure copy of ``Symbol.kind``, so the reference syntax that used to live there moves to this registered home. WI-pubiv."

@@ -647,6 +647,9 @@ BUILTIN_FRAMEWORK_FILES: dict[str, str] = {
     "python-http-server.yaml": "The Python standard library's http.server "
     "handler base classes (BaseHTTPRequestHandler and its stdlib subclasses); "
     "http.server is on the python line above.",
+    "otp.yaml": "The Elixir standard library's process behaviours (GenServer, "
+    "Agent, Task, Supervisor), which ship with the language; no library is "
+    "named, and no manifest could declare them.",
 }
 
 
