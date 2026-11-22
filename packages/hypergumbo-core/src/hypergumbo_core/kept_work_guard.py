@@ -404,6 +404,10 @@ EXEMPT: dict[str, str] = {
     _CORE + "module_sets.py::module_slot": _STORES_ITS_ARGUMENT,
     _CORE + "module_sets.py::register_module_sets":
         _STORES_ITS_ARGUMENT + " (the reader of a stored graph registers its table)",
+    _CORE + "reference_candidates.py::CandidatePool.candidates":
+        _per_run("one CandidatePool per call of a resolving pass"),
+    _CORE + "reference_candidates.py::CandidatePool.host_languages":
+        _per_run("one CandidatePool per call of a resolving pass"),
     _CORE + "run_status.py::worker_pass": _RESTORES,
     _CORE + "sketch.py::_TestAnalysis.__post_init__": _CONSTRUCTION,
     _CORE + "symbol_resolution.py::SymbolResolver.clear_indexes": _CLEARS,
