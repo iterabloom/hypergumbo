@@ -556,11 +556,14 @@ def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
 #: - rust 1333 of 1380: ``fn main`` at the root of a binary crate, a
 #:   compile-test program, a meson case or a cargo script; wrong in a
 #:   library module.
-#: - python 1918 of 2075 and haskell 418 of 459: 0.90. Python does not make
-#:   the name special: right when the module calls it under the
-#:   ``__main__`` guard or a manifest names it; wrong for helpers and
-#:   FastAPI route handlers named ``main``. Haskell: wrong for ``main`` in a
-#:   module other than ``Main``.
+#: - python 1918 of 2075: 0.90. Python does not make the name special: right
+#:   when the module calls it under the ``__main__`` guard or a manifest
+#:   names it; wrong for helpers and FastAPI route handlers named ``main``.
+#: - haskell 418 of 459 in the text census, the others being ``main`` in a
+#:   module other than ``Main``. The pattern checks the module since
+#:   2026-11-22: on those 459 files the analyzer emits 457 ``main`` symbols,
+#:   414 in module ``Main`` and 43 in another module, and the row keeps the
+#:   414: 0.95.
 #:
 #: A language not listed was not measured and keeps
 #: :data:`MAIN_FUNCTION_UNMEASURED_CONFIDENCE` (swift: no top-level ``func
@@ -581,7 +584,7 @@ MAIN_FUNCTION_CONFIDENCE: Mapping[str, float] = {
     "scala": 0.95,
     "rust": 0.95,
     "python": 0.90,
-    "haskell": 0.90,
+    "haskell": 0.95,
 }
 
 #: A ``main_function`` match in a language the census did not measure. The

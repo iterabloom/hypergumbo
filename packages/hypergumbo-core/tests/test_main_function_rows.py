@@ -128,6 +128,20 @@ class TestGoRow:
         )
 
 
+class TestHaskellRow:
+    """``main`` starts a program only in module ``Main``, which is also the
+    module of a file with no header; haskell.py records ``<Module>.<name>``."""
+
+    def test_main_of_module_main(self) -> None:
+        assert _is_main(_fn("haskell", "main", "Main.main", path="app/Main.hs"))
+
+    @pytest.mark.parametrize("qualified", ["Lib.Thing.main", "TSimpleType.main", None])
+    def test_main_of_another_module_is_not_a_program_start(
+        self, qualified: str | None,
+    ) -> None:
+        assert not _is_main(_fn("haskell", "main", qualified, path="src/Thing.hs"))
+
+
 class TestErlangRow:
     def test_main_of_arity_one_is_the_escript_entry(self) -> None:
         assert _is_main(_fn("erlang", "main/1", None, path="script/app_deps.erl"))
@@ -138,6 +152,9 @@ class TestErlangRow:
 
 
 class TestConfidence:
+    def test_haskell_is_at_the_top_tier_once_the_module_is_checked(self) -> None:
+        assert main_function_confidence("haskell") == 0.95
+
     def test_erlang_is_not_a_measured_language(self) -> None:
         """Seven ``main/1`` definitions in the census repositories are not a
         measurement: the value is the unmeasured one, not a number of its own."""

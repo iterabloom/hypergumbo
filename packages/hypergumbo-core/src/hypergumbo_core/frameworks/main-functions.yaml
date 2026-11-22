@@ -18,9 +18,9 @@
 # The detection confidence of a match is set per language in entrypoints.py
 # (MAIN_FUNCTION_CONFIDENCE), from a census of how often a match is really a
 # program start; it is not a ranking value. Most of these patterns check name,
-# kind and language only. Go's also checks where the language says a program
-# starts (`package main`), through the qualified name the analyzer records.
-# Haskell's does not check the module, nor Rust's that the file is a crate
+# kind and language only. Go's and Haskell's also check where the language
+# says a program starts (`package main`, module `Main`), through the qualified
+# name the analyzer records. Rust's does not check that the file is a crate
 # root.
 
 provenance: builtin
@@ -147,11 +147,13 @@ patterns:
     symbol_kind: "^function$"
     language: "^haxe$"
 
-  # Haskell: main :: IO () — standard entry point
+  # Haskell: main :: IO () of module Main (a file with no module header is
+  # module Main). The Haskell analyzer's qualified name is `<Module>.<name>`.
   - concept: main_function
     symbol_name: "^main$"
     symbol_kind: "^function$"
     language: "^haskell$"
+    qualified_name: "^Main\\.main$"
 
   # Erlang: main/1, the entry point `escript` calls. The Erlang analyzer names
   # a function `name/arity`. An OTP `start/2` is an application callback, not
