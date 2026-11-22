@@ -18,3 +18,19 @@
     pr_ref:  # a780
     description: "frameworks/main-functions.yaml matches a function by name and does not check the language's own rule for a program start. A census of 358 repositories (WI-fupap, PR 4) found two patterns that are wrong at scale:\n\n- Go: the pattern does not check that the file is `package main`. 41 of 1146 matches are wrong: cobra `func main(cmd, args)` callbacks, and vendored tools renamed into library packages.\n- Erlang: the pattern also matches every `start/N`. 344 of 360 matches are OTP application or supervisor start functions, not program starts; only 9 of 360 are right. PR 4 set Erlang main confidence to 0.50 for this reason. That value puts it under compact's tiered 0.7 seed gate (see WI-buvaf).\n\nSmaller cases, from the same census:\n- Haskell: `main` in a module other than `Main` (41/459).\n- Rust: `fn main` in a library module (47/1380).\n\nFix direction: check `package main` for Go, and the `Main` module for Haskell, then drop `start/N` from the Erlang main pattern (an OTP start is a different concept). Then re-derive the confidences from the same census.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr4/fupap/out/census.go.tsv, census.erlang.tsv, census.haskell.tsv, census.rust.tsv, and the census section of RESULTS.md."  # a780
     fields: {}  # a780
+- op: update  # 175a
+  at: '2026-11-22T09:35:30Z'  # 175a
+  by: agent  # 175a
+  actor: jgstern_agent  # 175a
+  clock: 2  # 175a
+  nonce: 175a  # 175a
+  set:  # 175a
+    status: done  # 175a
+    pr_ref: 'PR #2329'  # 175a
+- op: discuss  # 25fd
+  at: '2026-11-22T09:35:31Z'  # 25fd
+  by: agent  # 25fd
+  actor: jgstern_agent  # 25fd
+  clock: 3  # 25fd
+  nonce: 25fd  # 25fd
+  message: "DONE in PR #2329 for Go and Haskell; the item's Erlang half was wrong as filed; Rust is not done and is filed.\nGO: a pattern can read Symbol.qualified_name (new qualified_name: filter in framework_patterns.Pattern). go.py already wrote <package>.<name>; the row asks for ^main\\.main$. Measured on gvisor-tap-vsock: the main of vendored package unconvert and of package gofmt are no longer main_function entries; nothing else changed in 93,632 nodes. (The census's other six rows there were text inside a test-data string, never symbols.)\nHASKELL: haskell.py now records <Module>.<name> in qualified_name (a file with no header is module Main); the row asks for ^Main\\.main$. Confidence 0.90 to 0.95: on the census's 459 files the analyzer emits 457 main symbols, 414 Main.main and 43 in another module, and the row keeps the 414. haskellers (4 mains) and the yesod repository (38): every one is Main.main, no entry lost.\nERLANG, THE ITEM WAS WRONG: it said the row takes every OTP start/N (344 of 360 wrong). That came from a text census. erlang.py names a function name/arity, so the row (main|start) matched NOTHING: cowboy has 16 start/N functions and had 0 main_function concepts. The row is ^main/1$ now (the entry escript calls). recon +2 (docsite.erl, script/app_deps.erl) and rebar3 +2 (rebar3.erl main/1, vendored bbmustache.erl main/1), each read in source as an escript entry. Erlang left MAIN_FUNCTION_CONFIDENCE (the 0.50 described the text pattern) and takes the unmeasured 0.80: seven main/1 definitions in the census repositories are too few to set a value. So the WI-buvaf remark in this item (0.50 under compact's 0.7 gate) no longer applies to Erlang.\nNOT DONE: Rust fn main in a library module (filed). .escript files are not analysed at all (filed). Confidences were not re-derived for languages whose rows did not change.\nEvidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md.\n\nFILED FROM THIS: WI-rupik (.escript files, Rust library mains)."  # 25fd

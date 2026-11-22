@@ -1,0 +1,20 @@
+- op: create  # a47f
+  at: '2026-11-22T09:35:02Z'  # a47f
+  by: agent  # a47f
+  actor: jgstern_agent  # a47f
+  clock: 1  # a47f
+  nonce: a47f  # a47f
+  data:  # a47f
+    kind: work_item  # a47f
+    title: "Route forms nothing detects (audit 0028): aiohttp, akka-http, Ktor, Slim, Grape groups, Vapor forms, .all, inline handlers"  # a47f
+    status: todo_soft  # a47f
+    priority: 3  # a47f
+    parent:  # a47f
+    tags:  # a47f
+    - frameworks  # a47f
+    isbefore: []  # a47f
+    duplicate_of: []  # a47f
+    not_duplicate_of: []  # a47f
+    pr_ref:  # a47f
+    description: "WHAT. docs/audits/0028 (PR #2329): route forms no row, analyzer or linker detects (21 NOT DETECTED and the missing halves of 10 PARTLY). Each line is a construct, its language, and what would detect it.\n- aiohttp app.router.add_get/post/put/delete/patch, add_route, add_view, add_static (Python): py.py has no aiohttp extractor; the surviving aiohttp.yaml usage row has no producer.\n- akka-http method and path directives (Scala): nothing emitted; akka-http.yaml usage row has no producer.\n- Express / koa / fastify .all(path, h) (JS): js_ts HTTP_METHODS lacks all.\n- Express Router under another name (userRouter.get) (JS): the receiver set is fixed.\n- Go Handle(path, T{}) / Handle(path, &T{}).\n- Grape verbs inside resource / resources / group / segment / route_param (prefix dropped) and a bare \"get do\" (gitlab/lib/api: 96 such lines, 0 markers) (Ruby).\n- hapi server.route with an inline handler; koa router.<verb> with an inline handler (koa.yaml has no route usage row) (JS).\n- Ktor get(\"/p\"){} and route(\"/p\"){ get{} } (Kotlin): nothing emitted.\n- Plug.Router match (Elixir). Slim $app->get/... (PHP: php.py handles Laravel only).\n- Vapor use: namedHandler and app.on (no dispatches_to), a route call with a chained call after it, routes on a local let app = Application(...) (vapor Tests: 165 calls, 7 markers) (Swift).\n- Play Action forms: already INV-nabas.\n\nFixtures and the script that prints the table: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/movur_fixtures/.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # a47f
+    fields: {}  # a47f

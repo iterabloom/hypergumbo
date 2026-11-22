@@ -1,0 +1,20 @@
+- op: create  # 3f41
+  at: '2026-11-22T09:35:08Z'  # 3f41
+  by: agent  # 3f41
+  actor: jgstern_agent  # 3f41
+  clock: 1  # 3f41
+  nonce: 3f41  # 3f41
+  data:  # 3f41
+    kind: work_item  # 3f41
+    title: "The protocol AsyncParsableCommand is stamped a command on swift-argument-parser"  # 3f41
+    status: todo_soft  # 3f41
+    priority: 4  # 3f41
+    parent:  # 3f41
+    tags:  # 3f41
+    - frameworks  # 3f41
+    isbefore: []  # 3f41
+    duplicate_of: []  # 3f41
+    not_duplicate_of: []  # 3f41
+    pr_ref:  # 3f41
+    description: "WHAT. swift-argument-parser.yaml's base_class ^ParsableCommand$ row stamps the PROTOCOL AsyncParsableCommand as a command on swift-argument-parser's own repository (it refines ParsableCommand): 1 of 240 command concepts, and a cli_command entry. A protocol that refines the command protocol is not a command.\n\nASK. A symbol_kind condition on the two rows (struct, class, enum, actor; not protocol).\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # 3f41
+    fields: {}  # 3f41
