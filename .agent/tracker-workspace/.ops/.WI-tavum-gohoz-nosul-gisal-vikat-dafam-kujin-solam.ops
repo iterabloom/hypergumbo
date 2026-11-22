@@ -19,3 +19,10 @@
     pr_ref:  # 9dce
     description: "WHAT. A test written as a CALL with a block is recorded by no analyzer as a symbol, so no row can mark it and the tests of such a suite are invisible as tests: RSpec it / specify / describe / context (ruby.py), ExUnit test / describe / setup (elixir.py), ScalaTest and MUnit test(\"...\") { } (scala.py), a Spock feature method named by a string (groovy.py), Rails test \"name\" do.\n\nSEEN. chatwoot: spec/ holds 141 symbols, none an example (87 are helper methods). phoenix: test/ holds 441 function symbols, none a test block. Fixtures (rasok_11222026/fixtures/methfx: rb/spec, ex/test, sc/src/test, gr/src/test): no symbol for any of the forms. The six rows written for them in test-frameworks.yaml (Ruby 2, Elixir 3, Groovy 1) are marked NOT A SYMBOL since the WI-rasok PR; they match only a definition that is itself NAMED it or describe. The two Scala name rows were deleted in that PR (tapir: 0 of 111 test*-named methods is a test).\n\nASK. Decide whether a test block becomes a symbol (a callable named by its description, kind function, in the analyzer), and if so for which of the five forms first. Then the marked rows can be re-keyed or deleted.\n\nNOT CHECKED. Whether the same holds for the rows of Lua busted, R testthat, Dart test, Nim unittest, Haskell hspec, F# Expecto and C++ Catch (no file of those languages with tests was in the corpus; the C++ gtest TEST row does match: the C++ analyzer names the macro call TEST).\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # 9dce
     fields: {}  # 9dce
+- op: discuss  # 9f72
+  at: '2026-11-22T14:08:36Z'  # 9f72
+  by: agent  # 9f72
+  actor: jgstern_agent  # 9f72
+  clock: 2  # 9f72
+  nonce: 9f72  # 9f72
+  message: "Related, found after filing: INV-zopiz (ruby, kotlin, go and csharp drop a file with no symbols before the edge pass, so a top-level-only file such as an RSpec spec has no file node). A spec file whose examples became symbols would no longer be symbol-less. WI-somog holds the other rows no key can fix (PHP @test / #[Test], F#, D, Plug conn)."  # 9f72

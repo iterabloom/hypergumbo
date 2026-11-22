@@ -1,0 +1,21 @@
+- op: create  # fc23
+  at: '2026-11-22T19:07:02Z'  # fc23
+  by: agent  # fc23
+  actor: jgstern_agent  # fc23
+  clock: 1  # fc23
+  nonce: fc23  # fc23
+  data:  # fc23
+    kind: work_item  # fc23
+    title: "By-statement selection: a test left out of a run has no record of the function's new version, so the next change selects it whole"  # fc23
+    status: todo_soft  # fc23
+    priority: 4  # fc23
+    parent:  # fc23
+    tags:  # fc23
+    - smart_test  # fc23
+    - fast_smart_test_plan  # fc23
+    isbefore: []  # fc23
+    duplicate_of: []  # fc23
+    not_duplicate_of: []  # fc23
+    pr_ref:  # fc23
+    description: "WHAT. When the by-statement narrowing leaves a test out of a run that changes function f, the test gets no statement record of f's new version. The next change to f has no record to judge that test by and selects it whole (statement_select: \"for a test with no record of it, the test is selected\"). Sound, but it gives back narrowing on exactly the functions that are edited again.\n\nMEASURED on the live index, 2026-11-22 (selection_index.sqlite, read-only): 10,369 functions; 492 have a kept older version (they were edited since first seen). Of the 779,114 test pairs of those 492, 34,015 have no record of the stored version; for 29,888 of them the test has a record of an OLDER version of the same function. Those are the pairs a carry-forward would serve (3.8% of the pairs of edited functions, four days after the switch). A local `smart-test --full` gives every test a record and resets the count.\n\nASK. Either carry a left-out test's record forward to the new version (the statement mapping statement_diff already computes says which old statement is which new one; it is sound only for a test the change does not affect, i.e. as sound as the selector), or decide a periodic local full run is the answer and say how often. Measure first how many TESTS per change it would deselect: the pair count above is not that number.\n\nNot measured: tests deselected per change; how the 34,015 grows without a full run.\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/dibin/ (the query is in this session's notes; WI-dibin's note of 2026-11-22 has the same figures)."  # fc23
+    fields: {}  # fc23
