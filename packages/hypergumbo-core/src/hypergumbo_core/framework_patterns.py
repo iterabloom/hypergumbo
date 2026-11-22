@@ -113,6 +113,7 @@ if TYPE_CHECKING:
 from . import kept_work
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
+from .reference_candidates import CandidatePool, NameTiers, two_tier_name_table
 from .yaml_catalogs import CatalogueError, read_catalogue_yaml, reject_unknown_keys
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
@@ -1607,6 +1608,56 @@ def _report_new_concepts(
             report[fw] += 1
 
 
+class _FallbackNames:
+    """Phase 3's name fallback: the symbol a ``view_name`` names when the
+    context's ``symbol_ref`` is unset.
+
+    The candidates are ``reference_candidates``': the symbols of the
+    context's host languages, in source order. Among them a symbol whose
+    ``qualified_name`` equals the reference is that symbol; otherwise the
+    reference's last dotted component is matched against the last component
+    of each ``name``, a function or method before anything else, and the
+    first in source order among equals. (It was one table over every symbol
+    of every language, last callable wins, in ``symbols`` order.)
+    """
+
+    def __init__(self, symbols: list[Symbol]) -> None:
+        self._pool = CandidatePool(symbols)
+        self._tables: dict[
+            frozenset[str] | None, tuple[dict[str, Symbol], dict[str, Symbol]],
+        ] = {}
+
+    def _table(
+        self, languages: frozenset[str] | None,
+    ) -> tuple[dict[str, Symbol], dict[str, Symbol]]:
+        table = self._tables.get(languages)
+        if table is None:
+            by_qualified: dict[str, Symbol] = {}
+            by_simple: dict[str, Symbol] = {}
+            callable_simple: set[str] = set()
+            for s in self._pool.candidates(languages):
+                # ADR-0032: read typed Symbol.qualified_name field
+                if s.qualified_name:
+                    by_qualified.setdefault(s.qualified_name, s)
+                simple = s.name.rsplit(".", 1)[-1]
+                if s.kind in ("function", "method"):
+                    if simple not in callable_simple:
+                        callable_simple.add(simple)
+                        by_simple[simple] = s
+                else:
+                    by_simple.setdefault(simple, s)
+            table = self._tables[languages] = (by_qualified, by_simple)
+        return table
+
+    def lookup(self, view_name: str, path: str) -> Symbol | None:
+        """The symbol ``view_name``, written in the file ``path``, names."""
+        by_qualified, by_simple = self._table(self._pool.host_languages(path))
+        found = by_qualified.get(view_name)
+        if found is None:
+            found = by_simple.get(view_name.rsplit(".", 1)[-1])
+        return found
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -1675,16 +1726,9 @@ def enrich_symbols(
 
     # Build lookups for parent resolution and name-based fallback
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
-    # Build name-based lookup for fallback resolution (INV-002)
-    # Uses simple name as key; for qualified names, use the last component
-    symbol_by_name: dict[str, Symbol] = {}
-    for s in symbols:
-        if s.name:
-            # Use simple name (last component after dots)
-            simple_name = s.name.rsplit(".", 1)[-1]
-            # Prefer callable symbols (functions/methods) over classes/variables
-            if simple_name not in symbol_by_name or s.kind in ("function", "method"):
-                symbol_by_name[simple_name] = s
+    # The name fallback of phase 3 (INV-002), built per candidate language
+    # set on first use.
+    fallback_names = _FallbackNames(symbols)
     class_lookup = _build_class_symbol_lookup(symbols)
 
     # Collect patterns that use prefix_from_parent (for phase 2)
@@ -1819,9 +1863,7 @@ def enrich_symbols(
             if resolved_symbol is None and ctx.metadata:
                 view_name = ctx.metadata.get("view_name")
                 if view_name:
-                    # Try simple name lookup
-                    simple_name = view_name.rsplit(".", 1)[-1]
-                    resolved_symbol = symbol_by_name.get(simple_name)
+                    resolved_symbol = fallback_names.lookup(view_name, ctx.path)
 
             if not resolved_symbol:
                 continue
@@ -1850,10 +1892,14 @@ class DeferredResolutionStats:
     """Statistics from deferred symbol resolution phase.
 
     Tracks how many UsageContexts were resolved and by which strategy,
-    enabling observability into the resolution process. ``resolved_ambiguous``
-    counts a handler chosen among several same-named candidates because it is
-    defined in the usage context's own file (``caller_file``); a tie with no
-    such evidence is left unresolved by the resolver (WI-jomik) and counts in
+    enabling observability into the resolution process. Three counters are
+    picks among several same-named candidates: ``resolved_path_hint`` (the
+    module the reference names selects one), ``resolved_ambiguous`` (exactly
+    one is defined in the usage context's own file, ``caller_file``) and
+    ``resolved_by_position`` (several candidates hold the reference's exact
+    name and nothing the reference says tells them apart: the first in
+    source order is taken). A tie among SUFFIX matches with no evidence is
+    left unresolved by the resolver (WI-jomik) and counts in
     ``still_unresolved``.
     """
 
@@ -1862,6 +1908,7 @@ class DeferredResolutionStats:
     resolved_suffix: int = 0
     resolved_path_hint: int = 0
     resolved_ambiguous: int = 0
+    resolved_by_position: int = 0
     still_unresolved: int = 0
 
     @property
@@ -1872,7 +1919,77 @@ class DeferredResolutionStats:
             + self.resolved_suffix
             + self.resolved_path_hint
             + self.resolved_ambiguous
+            + self.resolved_by_position
         )
+
+
+_MODULE_SEPARATORS = re.compile(r"[./\\:]+")
+
+
+def _module_match_depth(path: str, module_parts: list[str]) -> int:
+    """How strongly the file ``path`` is the module a reference names.
+
+    The file's own module path (its path without the extension) and its
+    package's (its directory) are each compared with ``module_parts`` from
+    the end. They match when one is a whole suffix of the other: the
+    reference is shorter (``views`` or ``app.views`` for
+    ``backend/app/views.py``), or the file's path is, because the analysed
+    root sits below the import root (``pretix.control.views.organizer`` for
+    ``control/views/organizer.py``). The result is the number of components
+    matched, 0 for no match: ``django.contrib.auth.views`` is not
+    ``app/views.py``, whose ``app`` is not ``auth``.
+    """
+    components = [c for c in path.split("/") if c]
+    if not components or not module_parts:
+        return 0
+    package = components[:-1]
+    module = [*package, components[-1].rsplit(".", 1)[0]]
+    best = 0
+    for own in (module, package):
+        shared = min(len(own), len(module_parts))
+        if shared and own[-shared:] == module_parts[-shared:]:
+            best = max(best, shared)
+    return best
+
+
+def _pick_among_tied(
+    holders: tuple[Symbol, ...], module_hint: str | None, caller_path: str,
+) -> tuple[Symbol, str]:
+    """The one of several holders of a reference's exact name, and why.
+
+    ``holders`` are in source order. What the reference itself says is asked
+    first, in this order: a reference in production code does not name test
+    code while a production holder exists; the module it names (``views`` of
+    ``views.list_users``, or the ``module_name`` an analyzer recorded from
+    the reference's import) selects the one holder whose file matches it
+    most deeply (``_module_match_depth``); exactly one holder is declared in
+    the reference's own file. With none of that the first in source order is
+    taken and the pick is reported as ``position``, so it is the same in
+    every run and is counted as a pick rather than as a match.
+
+    A module that matches NO holder is not used as evidence against them:
+    the pick still falls to the reference's file, then to position.
+    """
+    from .paths import is_test_node
+    from .selection.filters import is_test_path
+
+    candidates = list(holders)
+    if not is_test_path(caller_path):
+        production = [c for c in candidates if not is_test_node(c.path, c.meta)]
+        if production:
+            candidates = production
+    if len(candidates) == 1:
+        return candidates[0], "exact"
+    if module_hint:
+        module_parts = [p for p in _MODULE_SEPARATORS.split(module_hint) if p]
+        depths = [_module_match_depth(c.path, module_parts) for c in candidates]
+        deepest = max(depths)
+        if deepest and depths.count(deepest) == 1:
+            return candidates[depths.index(deepest)], "path_hint"
+    own = [c for c in candidates if c.path == caller_path]
+    if len(own) == 1:
+        return own[0], "caller_file"
+    return candidates[0], "position"
 
 
 def resolve_deferred_symbol_refs(
@@ -1897,6 +2014,15 @@ def resolve_deferred_symbol_refs(
     2. Suffix match: view_name "list_users" matches "myapp.views.list_users"
     3. Path hint: When ambiguous, prefer symbols in paths matching module hints
 
+    Which symbols a reference can name, and which of two holders of one key
+    the table keeps, is ``reference_candidates``' rule: the symbols of the
+    context's host languages (a Python ``urls.py`` does not name a JavaScript
+    class), a ``qualified_name`` before a ``name``, source order among equals.
+    Several holders of the reference's exact name are told apart by
+    ``_pick_among_tied``. (It was one table over every symbol of every
+    language, last write wins, in ``symbols`` order, which named a different
+    symbol from run to run: WI-talug.)
+
     Args:
         symbols: All symbols from all analyzers (complete symbol table)
         usage_contexts: All UsageContexts, some with symbol_ref=None
@@ -1913,18 +2039,10 @@ def resolve_deferred_symbol_refs(
 
     # Build lookup indices
     symbol_by_id: dict[str, "Symbol"] = {s.id: s for s in symbols}
-    symbol_by_name: dict[str, "Symbol"] = {}
-
-    for s in symbols:
-        # Index by simple name
-        symbol_by_name[s.name] = s
-        # Also index by qualified name if available (e.g., "Class.method")
-        # ADR-0032: read typed Symbol.qualified_name field
-        if s.qualified_name:
-            symbol_by_name[s.qualified_name] = s
-
-    # Create NameResolver for suffix matching
-    resolver = NameResolver(symbol_by_name)
+    pool = CandidatePool(symbols)
+    # Per candidate language set: the two-tier name table, and a NameResolver
+    # over it for suffix matching.
+    tables: dict[frozenset[str] | None, tuple[NameTiers, NameResolver]] = {}
 
     # Process UsageContexts with unresolved symbol_ref
     for ctx in usage_contexts:
@@ -1945,6 +2063,28 @@ def resolve_deferred_symbol_refs(
 
         # Build path hint from module info if available
         path_hint = resolution_hints.get("module_path")
+
+        languages = pool.host_languages(ctx.path)
+        table = tables.get(languages)
+        if table is None:
+            tiers = two_tier_name_table(pool.candidates(languages))
+            table = tables[languages] = (tiers, NameResolver(tiers.symbol_by_name))
+        tiers, resolver = table
+
+        # Several holders of the exact name: ask the reference which.
+        tied = tiers.tied.get(resolution_hints["name"])
+        if tied is not None:
+            picked, how = _pick_among_tied(tied, path_hint, ctx.path)
+            ctx.symbol_ref = picked.id
+            if how == "exact":
+                stats.resolved_exact += 1
+            elif how == "path_hint":
+                stats.resolved_path_hint += 1
+            elif how == "caller_file":
+                stats.resolved_ambiguous += 1
+            else:
+                stats.resolved_by_position += 1
+            continue
 
         # Attempt resolution
         result = resolver.lookup(

@@ -62,6 +62,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A bare `createServer` is an HTTP server only when imported from `http`.**
 - **`slice --entry auto` picks the Go `main` that builds the module's binary**, and prefers production code to examples.
 - **Duplicate routes keep the production one, the same one every run.**
+- **A handler name binds same-language code, in the module its reference names.**
 - **Sketch deals tied Entry Points lines across files** and keeps a line per kind.
 
 #### Secret-leak claims (`verify-claims`)

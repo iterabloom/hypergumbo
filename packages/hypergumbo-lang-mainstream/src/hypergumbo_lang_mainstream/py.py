@@ -8665,6 +8665,42 @@ def _resolve_dotted_name(
 _ROUTE_HANDLER_KINDS = frozenset({"function", "method", "class"})
 
 
+def _record_handler_module(
+    ctx: UsageContext,
+    parts: Sequence[str],
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+) -> None:
+    """Write the module a still-unresolved handler reference names onto its
+    context, as ``metadata["module_name"]``.
+
+    ``view_name`` keeps only the last segment (``MailSettingsSetup`` for
+    ``organizer.MailSettingsSetup.as_view()``), and the name-based resolver
+    downstream (``framework_patterns.resolve_deferred_symbol_refs``) then has
+    to choose among every class of that name. The reference says which: its
+    qualifier, expanded through the import that binds its root (``from
+    pretix.control.views import organizer`` gives
+    ``pretix.control.views.organizer``). The walk above fails on exactly
+    such a reference when the tree was analysed from below its import root,
+    and the resolver compares module paths from the end, so the expanded
+    name still selects ``control/views/organizer.py``.
+
+    A bare name with no import, or a root the file binds itself, names no
+    module and writes nothing.
+    """
+    root = parts[0]
+    if root in imports:
+        origin_module, original = imports[root]
+        expanded = [origin_module, original, *parts[1:]]
+    elif root in module_imports:
+        expanded = [module_imports[root], *parts[1:]]
+    else:
+        expanded = list(parts)
+    module = ".".join(expanded[:-1])
+    if module:
+        ctx.metadata["module_name"] = module
+
+
 def _resolve_imported_route_handlers(
     analysis: FileAnalysis,
     global_symbols: dict[tuple[str, str], Symbol],
@@ -8691,6 +8727,7 @@ def _resolve_imported_route_handlers(
             analysis.module_imports, resolver, sym_by_path_name,
         )
         if found is None or found.kind not in _ROUTE_HANDLER_KINDS:
+            _record_handler_module(ctx, parts, analysis.imports, analysis.module_imports)
             continue
         ctx.symbol_ref = found.id
         if marker is not None:

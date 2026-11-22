@@ -104,7 +104,11 @@ from typing import TYPE_CHECKING
 
 from ..member_names import MEMBER_NAME_SEPARATORS
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
-from ..taxonomy import JS_TS_LANGUAGES
+from ..reference_candidates import (
+    CandidatePool,
+    candidate_languages,
+    two_tier_name_table,
+)
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
@@ -697,54 +701,26 @@ def _extract_handler_ref(
     return None
 
 
-def _order_key(symbol: Symbol) -> tuple[str, int, int, int, int, str]:
-    """The total order among candidates: path, then span, then id.
-
-    Read off the source, so it is the same in every run whatever order the
-    analyzers' results were collected in. The id closes the order for two
-    symbols at one span.
-    """
-    span = symbol.span
-    return (
-        symbol.path or "",
-        span.start_line if span is not None else 0,
-        span.start_col if span is not None else 0,
-        span.end_line if span is not None else 0,
-        span.end_col if span is not None else 0,
-        symbol.id,
-    )
-
-
 def _candidate_languages(route: Symbol) -> frozenset[str] | None:
     """The languages a route's handler can be written in, or ``None`` for any.
 
     The route's host language (ADR-0031: ``language`` for a marker that
-    carries one, else the ``discovery_language`` of the stand-in). JavaScript
-    and TypeScript are one set: one analyzer emits both, and a TypeScript
-    router imports a JavaScript handler by name. A marker with no host
+    carries one, else the ``discovery_language`` of the stand-in), widened by
+    ``reference_candidates.candidate_languages``. A marker with no host
     language was fabricated from a protocol definition rather than found in a
     host file, and any language may implement it.
     """
-    host = route.host_language
-    if host is None:
-        return None
-    if host in JS_TS_LANGUAGES:
-        return frozenset(JS_TS_LANGUAGES)
-    return frozenset({host})
+    return candidate_languages([route.host_language])
 
 
 @dataclass
 class _NameTable:
     """The names one candidate set answers to, and which of them are ties.
 
-    Built from candidates in ``_order_key`` order, first write wins, in two
-    tiers: every candidate under its ``qualified_name``, then under its
-    ``name`` where no qualified name took the key. So a reference equal to a
-    full name is that declaration, a short name answers only when nothing is
-    fully named so, and among equals the first in source order is the one
-    kept. ``collisions`` holds the keys with two or more candidates at the
-    tier that answers them. A symbol whose ``name`` and ``qualified_name``
-    are the same string is one candidate for that key, not two.
+    ``symbol_by_name`` and ``collisions`` are
+    ``reference_candidates.two_tier_name_table`` over the candidates in
+    source order (the rule is stated there): a full name outranks a short
+    one, and among equals the first in source order is kept.
     """
 
     symbol_by_name: dict[str, Symbol]
@@ -758,34 +734,17 @@ class _NameTable:
 
     @staticmethod
     def build(candidates: list[Symbol]) -> _NameTable:
-        """Index ``candidates``, which must already be in ``_order_key`` order."""
-        qualified_count: dict[str, int] = {}
-        name_count: dict[str, int] = {}
-        symbol_by_name: dict[str, Symbol] = {}
+        """Index ``candidates``, which must already be in source order."""
+        tiers = two_tier_name_table(candidates)
         symbols_by_short_name: dict[str, list[Symbol]] = {}
         for s in candidates:
-            # ADR-0032: read typed Symbol.qualified_name field
-            if s.qualified_name:
-                qualified_count[s.qualified_name] = (
-                    qualified_count.get(s.qualified_name, 0) + 1
-                )
-                symbol_by_name.setdefault(s.qualified_name, s)
-            if s.name != s.qualified_name:
-                name_count[s.name] = name_count.get(s.name, 0) + 1
             if s.kind in ("function", "method"):
                 short = s.name.rsplit(".", 1)[-1] if "." in s.name else s.name
                 symbols_by_short_name.setdefault(short, []).append(s)
-        for s in candidates:
-            symbol_by_name.setdefault(s.name, s)
-        collisions = {k for k, c in qualified_count.items() if c > 1}
-        collisions.update(
-            k for k, c in name_count.items()
-            if c > 1 and k not in qualified_count
-        )
         return _NameTable(
-            symbol_by_name=symbol_by_name,
+            symbol_by_name=tiers.symbol_by_name,
             symbols_by_short_name=symbols_by_short_name,
-            collisions=frozenset(collisions),
+            collisions=tiers.collisions,
         )
 
     def rails_index(self) -> _RailsIndex:
@@ -811,24 +770,20 @@ def link_routes_to_handlers(
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
     # Every symbol that can be a handler. Route markers cannot (ADR-0027: a
     # route marker stands for the route, anchored at the registration).
-    declarations = [
+    declarations = CandidatePool(
         s for s in symbols if (s.meta or {}).get("framework_role") != "route"
-    ]
+    )
     tables: dict[frozenset[str] | None, _NameTable] = {}
 
     def _table_for(route: Symbol) -> _NameTable:
         """The name table of the route's candidate set, built once per set
-        from its members in ``_order_key`` order."""
+        from its members in source order."""
         languages = _candidate_languages(route)
         table = tables.get(languages)
         if table is None:
-            table = tables[languages] = _NameTable.build(sorted(
-                (
-                    s for s in declarations
-                    if languages is None or s.language in languages
-                ),
-                key=_order_key,
-            ))
+            table = tables[languages] = _NameTable.build(
+                declarations.candidates(languages)
+            )
         return table
 
     # Find route symbols
@@ -892,7 +847,7 @@ def link_routes_to_handlers(
             # WI-rusuh / INV-zuhub item 1: when a name the resolved
             # handler is indexed under is in ``name_collisions`` (another
             # candidate of the route shares it at the tier that answers),
-            # the pick among them was made by position (``_order_key``),
+            # the pick among them was made by position (source order),
             # not by anything the route says. Flag the edge and
             # drop confidence per the INV-zuhub contract. Edges whose
             # resolved name is unique stay at confidence=0.9, and so does a

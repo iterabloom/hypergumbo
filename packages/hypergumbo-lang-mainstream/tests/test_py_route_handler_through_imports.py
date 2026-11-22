@@ -220,3 +220,64 @@ def test_an_attribute_of_a_view_function_is_not_that_view(tmp_path: Path) -> Non
     assert _refs(res, "/") == ({ours}, {ours})
     contexts, markers = _refs(res, "/w/")
     assert ours not in contexts and ours not in markers, (contexts, markers)
+
+
+def _module_names(res, route_path: str) -> set[str | None]:
+    """``metadata["module_name"]`` of the route's UsageContexts (``None`` for
+    a context without the key)."""
+    return {
+        (ctx.metadata or {}).get("module_name") for ctx in res.usage_contexts
+        if (ctx.metadata or {}).get("route_path") == route_path
+    }
+
+
+class TestAnUnresolvedReferenceKeepsItsModule:
+    """``view_name`` keeps the reference's last segment only. When the walk
+    through the imports finds no declaration (the module is outside the tree,
+    or the tree was analysed from below its import root), the module the
+    reference names is written to ``metadata["module_name"]`` so the
+    name-based resolver downstream can tell same-named classes apart."""
+
+    @pytest.mark.parametrize(
+        ("imports", "view", "module"),
+        [
+            ("from django.contrib.auth import views as auth_views\n",
+             "auth_views.LoginView.as_view()", "django.contrib.auth.views"),
+            ("from pretix.control.views import organizer\n",
+             "organizer.LoginView.as_view()", "pretix.control.views.organizer"),
+            ("import pretix.control.views.organizer as org\n",
+             "org.LoginView.as_view()", "pretix.control.views.organizer"),
+            ("from pretix.control.views.organizer import LoginView\n",
+             "LoginView.as_view()", "pretix.control.views.organizer"),
+            ("from pretix.control.views.organizer import index\n",
+             "index", "pretix.control.views.organizer"),
+            ("", "somewhere.LoginView.as_view()", "somewhere"),
+        ],
+    )
+    def test_the_module_is_the_qualifier_expanded_through_the_import(
+        self, tmp_path: Path, imports: str, view: str, module: str,
+    ) -> None:
+        res = _analyze(
+            tmp_path, _DJANGO + imports + f"urlpatterns = [path('x/', {view})]\n",
+        )
+
+        assert _refs(res, "/x/")[0] == {None}
+        assert _module_names(res, "/x/") == {module}
+
+    def test_a_resolved_reference_carries_no_module(self, tmp_path: Path) -> None:
+        res = _analyze(
+            tmp_path,
+            _DJANGO + "from app import views\n"
+            "urlpatterns = [path('x/', views.LoginView.as_view())]\n",
+        )
+
+        assert _refs(res, "/x/")[0] == {_sym_id(res, "app/views.py", "LoginView")}
+        assert _module_names(res, "/x/") == {None}
+
+    def test_a_bare_name_nothing_binds_names_no_module(self, tmp_path: Path) -> None:
+        res = _analyze(
+            tmp_path, _DJANGO + "urlpatterns = [path('x/', undefined_view)]\n",
+        )
+
+        assert _module_names(res, "/x/") == {None}
+
