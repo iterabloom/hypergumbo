@@ -19,3 +19,26 @@
     pr_ref:  # 9cee
     description: "WHAT. A governance file states behaviour PR #2334 changed. .agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md, around line 141, lists when by-statement narrowing refuses: \"for a changed path it has no rule for ..., for import-time code, for a function the index has never seen, and when no package source changed\". Since PR #2334 it also refuses for a new method whose bases cannot be followed to source of the repository (UNRESOLVED_BASE) and for a new decorated def (NEW_DECORATED). The same playbook does not mention the explicit run's NOT GATED notice or the --gate-changed flag.\n\nASK (needs the owner: .agent/** is a governance path, and I did not edit it): approve a small edit of that paragraph, plus two lines on the notice and the flag.\n\nFound during PR #2334 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr3/PROBE.md and RESIDUALS_TO_FILE.md."  # 9cee
     fields: {}  # 9cee
+- op: discuss  # a17c
+  at: '2026-11-22T11:35:43Z'  # a17c
+  by: agent  # a17c
+  actor: jgstern_agent  # a17c
+  clock: 2  # a17c
+  nonce: a17c  # a17c
+  message: "Owner approved in session (2026-11-22): edit the smart-test playbook for this item and ship it with auto-pr without --gov. Proceeding: the by-statement paragraph gains the two refusal cases of PR #2334 (a new method whose bases are not all source of this repository; a new decorated def) and what a new method selects; a short section states that an explicit run does not gate coverage, prints NOT GATED, and that --gate-changed enforces 100%."  # a17c
+- op: update  # 81f8
+  at: '2026-11-22T11:41:25Z'  # 81f8
+  by: agent  # 81f8
+  actor: jgstern_agent  # 81f8
+  clock: 3  # 81f8
+  nonce: 81f8  # 81f8
+  set:  # 81f8
+    status: done  # 81f8
+    pr_ref: 'PR #2336'  # 81f8
+- op: discuss  # 939f
+  at: '2026-11-22T11:41:25Z'  # 939f
+  by: agent  # 939f
+  actor: jgstern_agent  # 939f
+  clock: 4  # 939f
+  nonce: 939f  # 939f
+  message: "Done in PR #2336 (dev 1783b996d), with the owner's approval given in session on 2026-11-22 (governance file, merged by auto-pr without --gov as approved).\nWhat changed in .agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md: (1) the by-statement paragraph's refusal list gains a new decorated def and a new method of an existing class whose bases are not all source of this repository, and says what a new method with followable bases selects; (2) a new paragraph states that a run given test paths gates no coverage, prints NOT GATED (explicit run) with the changed source files' percent and missing lines, that --gate-changed enforces 100%, and that a run with no test paths always gates; (3) the usage block lists the two forms.\nEvidence: each statement was read against scripts/smart-test (header lines 49-63, explicit_changed_coverage) and statement_select._new_def / statement_narrow._refusal at 8c2159eab. Docs only, so no behaviour was run for this item; the behaviour itself was measured in PR #2334.\nNot done: the hook summary of this playbook in .agent/hooks/_shared/on_transcript_change.py does not state the changed behaviour and was left as it is."  # 939f

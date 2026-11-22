@@ -1,0 +1,21 @@
+- op: create  # 9dce
+  at: '2026-11-22T14:03:40Z'  # 9dce
+  by: agent  # 9dce
+  actor: jgstern_agent  # 9dce
+  clock: 1  # 9dce
+  nonce: 9dce  # 9dce
+  data:  # 9dce
+    kind: work_item  # 9dce
+    title: "Tests written as calls are not symbols: RSpec, ExUnit, ScalaTest and MUnit, Spock features"  # 9dce
+    status: todo_hard  # 9dce
+    priority: 3  # 9dce
+    parent:  # 9dce
+    tags:  # 9dce
+    - frameworks  # 9dce
+    - analysis_quality  # 9dce
+    isbefore: []  # 9dce
+    duplicate_of: []  # 9dce
+    not_duplicate_of: []  # 9dce
+    pr_ref:  # 9dce
+    description: "WHAT. A test written as a CALL with a block is recorded by no analyzer as a symbol, so no row can mark it and the tests of such a suite are invisible as tests: RSpec it / specify / describe / context (ruby.py), ExUnit test / describe / setup (elixir.py), ScalaTest and MUnit test(\"...\") { } (scala.py), a Spock feature method named by a string (groovy.py), Rails test \"name\" do.\n\nSEEN. chatwoot: spec/ holds 141 symbols, none an example (87 are helper methods). phoenix: test/ holds 441 function symbols, none a test block. Fixtures (rasok_11222026/fixtures/methfx: rb/spec, ex/test, sc/src/test, gr/src/test): no symbol for any of the forms. The six rows written for them in test-frameworks.yaml (Ruby 2, Elixir 3, Groovy 1) are marked NOT A SYMBOL since the WI-rasok PR; they match only a definition that is itself NAMED it or describe. The two Scala name rows were deleted in that PR (tapir: 0 of 111 test*-named methods is a test).\n\nASK. Decide whether a test block becomes a symbol (a callable named by its description, kind function, in the analyzer), and if so for which of the five forms first. Then the marked rows can be re-keyed or deleted.\n\nNOT CHECKED. Whether the same holds for the rows of Lua busted, R testthat, Dart test, Nim unittest, Haskell hspec, F# Expecto and C++ Catch (no file of those languages with tests was in the corpus; the C++ gtest TEST row does match: the C++ analyzer names the macro call TEST).\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # 9dce
+    fields: {}  # 9dce

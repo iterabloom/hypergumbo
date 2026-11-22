@@ -1,0 +1,20 @@
+- op: create  # cdf8
+  at: '2026-11-22T14:03:47Z'  # cdf8
+  by: agent  # cdf8
+  actor: jgstern_agent  # cdf8
+  clock: 1  # cdf8
+  nonce: cdf8  # cdf8
+  data:  # cdf8
+    kind: work_item  # cdf8
+    title: "Test rows that go by a name alone mark production code: Python test_ functions, Erlang test_/tc_, JS test"  # cdf8
+    status: todo_soft  # cdf8
+    priority: 3  # cdf8
+    parent:  # cdf8
+    tags:  # cdf8
+    - frameworks  # cdf8
+    isbefore: []  # cdf8
+    duplicate_of: []  # cdf8
+    not_duplicate_of: []  # cdf8
+    pr_ref:  # cdf8
+    description: "WHAT. Test rows that go by a name alone mark production code as a test. The WI-rasok PR gave the Python, Ruby, Swift and Groovy METHOD rows a file condition; these rows still have none:\n- Python top-level function ^test_\\w*$: a production def test_connection() is a test_function (fixture py/app/backend.py), and outside a test file it is listed as an entry point at 0.80.\n- Erlang ^(test_|tc_): rebar3 has 21 production functions it marks (test_state/1 and test_defined/1 in apps/rebar/src/rebar3.erl, test_dirs/3 in rebar_prv_eunit.erl); four of them are entries 4 to 7 of rebar3's list. Common Test's rule is the list all/0 returns, not a prefix.\n- JavaScript / TypeScript ^test (function): chatwoot's testLimit.\n- The rows of Julia, OCaml, Lua, Clojure (which has a path), Haskell prop_, C cmd_ were not looked at.\n\nASK. Give each the condition that makes the name a test for its runner (for Python the file, as the method row has), or delete the row where the runner has no name rule. Each changes detection: A/B it.\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # cdf8
+    fields: {}  # cdf8
