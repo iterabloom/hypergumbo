@@ -1,0 +1,14 @@
+Original commit body from b735e10fe46a00f05787b13bf1e5c45f752bd9c0:
+
+`parameter_seeds` read a symbol id's path as `split(":")[1]` in two places and its span as `split(":")[2]` in a third. The path is the one slot that may hold a colon (ADR-0036 D1a).
+
+- For a route marker in `routes/v1:beta/index.js`, `_symbol_start_line` read `beta/index.js` as the span and raised `ValueError`.
+- The rule "a marker follows a dispatch only into its own file" compared `routes/v1` with `routes/v1`, so a handler in `routes/v1:old/index.js` counted as the marker's own.
+
+Both now go through `ir.symbol_path_slot`, which `taint.py` already uses for its module parse.
+
+Tests: a marker and two dispatch targets under paths that differ only after a colon; a route whose name holds a colon (`GET /users/:id`). Three mutants (each site put back) fail the first test.
+
+Not checked: how many symbols in a real repository carry a colon in the path slot. The other private path parsers WI-ribuz lists (`profile.py`, `cli.py`, `ranking.py`, `linkers/js_module.py`) are not touched.
+
+This PR changes function bodies in one source file only, so its manifest carries by-statement deselections (`# By statement:` line in `.ci/affected-tests.txt`); CI's test count for it is the measurement WI-kunah is waiting for.
