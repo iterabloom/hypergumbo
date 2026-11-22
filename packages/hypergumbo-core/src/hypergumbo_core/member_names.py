@@ -31,13 +31,23 @@ while its qualified names use a backslash. Folding them would silently
 mis-split every PHP member — the same one-word-two-meanings shape the
 fundamental-concept audit exists to catch.
 
-Ordering is specificity, not position
--------------------------------------
-``#`` and ``::`` are tried before ``.`` because a name can carry both:
-Ruby's namespaced instance method is ``Foo::Bar#baz``, whose member boundary
-is the ``#``. Splitting on ``.`` or ``::`` first yields a mangled owner.
-This ordering is precisely the kind of detail that decays when each caller
-re-derives it, which is why the tuple is exported rather than inlined.
+The boundary is the last separator in the name
+----------------------------------------------
+A name can carry more than one separator: Ruby's namespaced instance method
+is ``Foo::Bar#baz`` and its namespaced class method ``Foo::Bar.baz``. In
+both the member is what follows the LAST separator, whichever it is. The
+rule this module began with tried ``#`` and ``::`` before ``.``; that is
+right for the first name and wrong for the second, which it split into the
+namespace ``Foo`` and a member ``Bar.baz`` that is no method's name. A
+separator with nothing before it or nothing after it is not a boundary
+(Scala's cons method ``List.::`` is owned by ``List``; ``::Top`` and
+``.PHONY`` have no owner). This is the kind of detail that decays when each
+caller re-derives it, which is why the split is one function.
+
+What it still gets wrong: a member whose own name contains a separator. A
+JavaScript private member written ``Foo.#secret`` would split at the ``#``;
+a Kotlin or Groovy method named by a string with a dot in it splits at that
+dot. No analyzer output seen so far carries the first form.
 
 Re-declaration is enforced by ``find_hand_rolled_separator_literals``, which
 fails the build on any literal tuple/list/set in hypergumbo-core's source made
@@ -51,24 +61,28 @@ import ast
 from pathlib import Path
 from typing import Final
 
-# Ordered by specificity — see the module docstring. Do not re-declare this
-# tuple elsewhere; ``find_hand_rolled_separator_literals`` fails the build.
+# The separators, in no order that matters: the split takes whichever stands
+# last in the name (see the module docstring). Do not re-declare this tuple
+# elsewhere; ``find_hand_rolled_separator_literals`` fails the build.
 MEMBER_NAME_SEPARATORS: Final[tuple[str, ...]] = ("#", "::", ".")
 
 
 def split_member_name(name: str) -> tuple[str | None, str]:
     """Split a qualified member name into ``(owner, short_name)``.
 
-    ``rsplit(..., 1)`` keeps the *immediate* owner, so a dotted FQN like
-    ``com.example.UserService.getUsers`` yields the enclosing type rather
-    than the root package. An unqualified name yields ``(None, name)``.
+    The split is at the LAST separator that has text on both sides, so the
+    owner is the *immediate* one: ``com.example.UserService.getUsers`` yields
+    the enclosing type rather than the root package, and ``Foo::Bar.baz``
+    yields ``Foo::Bar``. An unqualified name yields ``(None, name)``.
     """
+    member_starts = 0
+    owner: str | None = None
     for separator in MEMBER_NAME_SEPARATORS:
-        if separator in name:
-            owner, _, short = name.rpartition(separator)
-            if owner:
-                return owner, short
-    return None, name
+        at = name.rfind(separator)
+        after = at + len(separator)
+        if at > 0 and member_starts < after < len(name):
+            member_starts, owner = after, name[:at]
+    return owner, name[member_starts:]
 
 
 def member_owner(name: str) -> str | None:
