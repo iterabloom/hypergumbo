@@ -5723,10 +5723,13 @@ class TestGoWebPatterns:
         assert results[0]["matched_base_class"] == "gorm.Model"
 
     def test_go_restful_route_pattern_via_usage_context(self) -> None:
-        """go-restful ws.GET().To(handler) matches via UsageContext pattern.
+        """go-restful ws.GET().To(handler) does NOT match yet (WI-movur).
 
         go-restful uses a fluent API: ws.Route(ws.GET("/path").To(handler))
-        The handler is specified in the .To() call.
+        The handler is specified in the .To() call. go.py records that call
+        at args[0] with no method and no path (they sit in the chain before
+        ``.To``), so the row is parked on a position no context has rather
+        than stamp a route with neither.
         """
         clear_pattern_cache()
         pattern_def = load_framework_patterns("go-web")
@@ -5749,8 +5752,7 @@ class TestGoWebPatterns:
 
         results = match_usage_patterns(ctx, [pattern_def])
 
-        assert len(results) == 1
-        assert results[0]["concept"] == "route"
+        assert results == []
 
     def test_go_restful_webservice_pattern(self) -> None:
         """go-restful WebService base class matches web_service pattern."""
