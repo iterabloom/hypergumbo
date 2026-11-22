@@ -33,3 +33,18 @@
   clock: 3  # c05a
   nonce: c05a  # c05a
   message: "Merged as PR #2263. The manifest carries the by-statement selector's left-out ids for its own files as '#- <id>' lines (DESELECTED_TESTS section, header '# By statement: ...'); Woodpecker's pytest step hands them to pytest_statement_deselect. Pre-merge e2e (equivalent edit in graph_select.mentions, BASE_BRANCH=HEAD smart-test --manifest): 101 files, 12 ids; the manifest's files run CI-style with the plugin: 2,573 passed, graph_select.py 100%, junit: 7 of test_graph_select.py's 19 tests ran. This PR's own manifest refused (scripts and .woodpecker changed). STILL OWED for the close: a src-only PR whose CI log shows the deselected count beside the file-level count."  # c05a
+- op: update  # fdbc
+  at: '2026-11-22T02:58:26Z'  # fdbc
+  by: agent  # fdbc
+  actor: jgstern_agent  # fdbc
+  clock: 4  # fdbc
+  nonce: fdbc  # fdbc
+  set:  # fdbc
+    status: done  # fdbc
+- op: discuss  # b905
+  at: '2026-11-22T02:58:26Z'  # b905
+  by: agent  # b905
+  actor: jgstern_agent  # b905
+  clock: 5  # b905
+  nonce: b905  # b905
+  message: "Close condition met on PR #2322 (source-only: function bodies of taint.py, a test file, CHANGELOG). Manifest: '# By statement: 2438 test(s) deselected in 148 file(s)', 2,438 '#- <id>' lines, 327 selected files. CI (pytest step of ci/woodpecker/pr on b735e10fe, log saved at ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/kunah/ci_pytest_2322.log): '=== by statement: 2438 test(s) of the selected files deselected ===', '8 workers [7510 items]', '7459 passed, 38 skipped, 13 xfailed in 254.44s'. By file, the same 327 files run whole (local, dev after the merge, smart-test --no-by-statement): 9,895 tests (9875 passed, 4 skipped, 16 xfailed). So CI ran 7,510 of 9,895: 2,385 fewer (24.1%). Coverage gate on that CI run: taint.py 1584 statements, 0 missed, 100%, 'changed files at 100%'; CI's pytest step is one run over the manifest's files, not a per-package split. The difference 2,438 vs 2,385: 53 listed ids match no test (tests renamed or removed since the index recorded them), filed separately. Not measured: CI's own whole-file count (CI did not run the files whole; the 9,895 is Python 3.12 locally, CI is 3.11); time saved (CI's 254 s is 8 workers with coverage, the local whole run 205 s is 4 workers without)."  # b905

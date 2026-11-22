@@ -1,0 +1,20 @@
+- op: create  # 65fe
+  at: '2026-11-22T02:58:34Z'  # 65fe
+  by: agent  # 65fe
+  actor: jgstern_agent  # 65fe
+  clock: 1  # 65fe
+  nonce: 65fe  # 65fe
+  data:  # 65fe
+    kind: work_item  # 65fe
+    title: "Under --first-party-only the analyzers still analyse files whose output the tier filter drops: 4 vendored C files cost 35-49 s of a 340 s self-analysis"  # 65fe
+    status: todo_soft  # 65fe
+    priority: 3  # 65fe
+    parent:  # 65fe
+    tags:  # 65fe
+    - performance  # 65fe
+    isbefore: []  # 65fe
+    duplicate_of: []  # 65fe
+    not_duplicate_of: []  # 65fe
+    pr_ref:  # 65fe
+    description: "Measured 2026-11-22 on 'hypergumbo run packages --first-party-only' of this repository: the c pass analyses 4 vendored tree-sitter files (vendor/tree-sitter-*/src/parser.c, scanner.c), takes 35-49 s (cpu 35-38 s), emits 42 nodes and 257,091 edges, and none of them is in the output. With '-e vendor' the run takes 262 s against 321 s and the output is identical (same node ids and edge triples). Question to settle: whether a --max-tier / --first-party-only run can skip files that will classify as tier 3 or 4 before analysing them, or whether tier classification needs the analysis (then: why a generated parser.c emits 257k edges in 4 files). Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/lutok/RESULTS.md, pass_times.txt."  # 65fe
+    fields: {}  # 65fe

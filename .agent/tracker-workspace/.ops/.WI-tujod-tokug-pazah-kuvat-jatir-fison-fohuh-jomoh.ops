@@ -1,0 +1,20 @@
+- op: create  # bf3f
+  at: '2026-11-22T02:58:27Z'  # bf3f
+  by: agent  # bf3f
+  actor: jgstern_agent  # bf3f
+  clock: 1  # bf3f
+  nonce: bf3f  # bf3f
+  data:  # bf3f
+    kind: work_item  # bf3f
+    title: "The manifest's by-statement count includes ids that match no test: PR #2322 listed 2,438 and 53 named tests that no longer exist"  # bf3f
+    status: todo_soft  # bf3f
+    priority: 4  # bf3f
+    parent:  # bf3f
+    tags:  # bf3f
+    - smart_test  # bf3f
+    isbefore: []  # bf3f
+    duplicate_of: []  # bf3f
+    not_duplicate_of: []  # bf3f
+    pr_ref:  # bf3f
+    description: "The selection index keeps ids of tests that were renamed or removed, statement_narrow names them among the left-out tests, and the manifest header and CI's echo line count them ('By statement: 2438 test(s) deselected'). On PR #2322 the 327 selected files held 9,895 tests and CI ran 7,510: 2,385 left out, not 2,438. The 53 ids (15 in test_nested_assignment_defines.py, 8 in test_verify_claims_unseeded_ingress.py, 7 in test_verify_claims_untyped_receiver_caveat.py, ...) match no testcase of a whole run of those files. Selection is not affected (an id that matches nothing removes nothing); the reported number is wrong by 2.2%. Fix shapes: drop index rows for tests a complete run of the file no longer collects, or count after matching. Repro: the '#- ' lines of .ci/affected-tests.txt at b735e10fe against the junit of 'smart-test --no-by-statement <its 327 files>'. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/kunah/ (ci_pytest_2322.log, file_level_local.log)."  # bf3f
+    fields: {}  # bf3f
