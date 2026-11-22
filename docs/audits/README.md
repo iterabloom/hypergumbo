@@ -89,6 +89,7 @@ write an ADR vs an audit-findings document."
 | [0025](0025-js-module-supersession-precision.md) | May the JS module linker demote the import stub it consumed (ADR-0057 §14.1)? | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED, after three wrong routes were fixed: 6,792 resolutions over 7 repositories |
 | [0026](0026-consumer-agreement.md) | Consumer agreement — facts two consumers derive separately, and where they disagree (WI-borib) | consumer agreement (sibling format, `kind: consumer_agreement`) | Confirmed: 17 facts, 12 derived separately and 5 through one helper (3 with side paths that disagree); 14 items filed, WI-vosop decided |
 | [0027](0027-entry-point-kinds.md) | Entry-point kinds — `main_function` carries three concepts, and the five kind sets that read it (WI-holud) | concept leak pairs (sibling format, `kind: concept_leak_pairs`) | Confirmed: 9 pairs (4 DEPRECATE, 2 DOCUMENT, 2 KEEP WITH A TRIGGER, 1 already filed as WI-duzif); per kind (ADR-0024) 25 CANONICAL, 22 FOLD, 1 DEPRECATE-NO-FOLD, 1 not ruled, plus new `hosted_application`; owner ruled 2026-11-21; filed WI-jilik → WI-giron → WI-fasij (one PR, schema 0.22.0) and WI-rafop |
+| [0028](0028-deleted-route-rows-triage.md) | The 28 deleted `route` rows — which constructs are detected elsewhere (WI-movur, first tranche) | deleted-row triage (sibling format, `kind: deleted_row_triage`) | Measured: 61 forms, 20 DETECTED, 10 PARTLY, 21 NOT DETECTED, 10 NOT A ROUTE; no rows moved |
 
 ## Sibling formats
 
@@ -148,6 +149,14 @@ Siblings:
   per action. Inventory and measurements precede the tables; scripts live in
   the lab notebook. First instance: `0027`, whose per-value rows convert to
   `audit_verdicts` when WI-giron lands an entrypoint-kind registry.
+- **`kind: deleted_row_triage`** — for framework rows that were deleted
+  because they could never fire, whether the construct each row meant is
+  detected by something else: one row per FORM of the construct, a fixture
+  per framework, and one verdict per form (DETECTED / PARTLY / NOT DETECTED /
+  NOT A ROUTE, or the tranche's equivalent for its concept), naming the
+  detector or what a detector would need, with a real-repository check of
+  each DETECTED verdict where one exists locally. Nothing moves in the
+  document. First instance: `0028`.
 
 ## File format
 
