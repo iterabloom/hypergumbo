@@ -261,6 +261,15 @@ Symbols include structured metadata in `meta` dict:
 - **nesting_parent**: the immediately enclosing function's name, on nested defs.
 - **constructed_from**: on a ``variable`` bound from a call, the callee's dotted
   name (``declarative_base``), constructor and factory alike.
+- **decorator_receivers**: on a function or method whose decorator is a
+  method of a module-level name a library made, what made it plus the rest of
+  the decorator, spelled through the imports: ``typer.Typer.command`` for
+  ``@users_app.command()`` after ``users_app = typer.Typer()``,
+  ``click.group.command`` under a ``@click.group()`` function,
+  ``ariadne.ObjectType.field``; space-separated, one per such decorator
+  (``_scan_receiver_makers``). Rows read it with ``meta_match``, so a
+  framework's decorator is matched by what its receiver IS, not by the
+  variable's name.
 - **router_prefix**: on a function or method decorated through a FastAPI
   ``APIRouter(prefix=...)`` variable (``@v2_router.get``), the resolved prefix
   (``_scan_router_prefixes``).
@@ -1939,6 +1948,64 @@ def _scan_router_prefixes(
             prefixes[var_name] = prefix_value
 
     return prefixes
+
+
+def _scan_receiver_makers(tree: ast.Module) -> dict[str, str]:
+    """What made each module-level name a decorator can be a method of.
+
+    ``users_app = typer.Typer()`` -> ``typer.Typer``; a function decorated
+    ``@click.group()`` -> ``click.group``; one decorated ``@cli.group()``
+    under that -> ``click.group.group``; ``user_type = ObjectType("User")``
+    after ``from ariadne import ObjectType`` -> ``ariadne.ObjectType``. The
+    maker is spelled through the import that binds its root (an alias is
+    undone, a from-import is expanded) or through an earlier name of this
+    table, in source order; a maker rooted elsewhere (a class of the file,
+    an unbound name) gives no entry. A def's maker is its first decorator
+    that has one.
+    """
+    imported = dict(_py_import_bindings(tree))
+    makers: dict[str, str] = {}
+
+    def spelled(expr: ast.expr) -> str | None:
+        parts = _dotted_parts(expr.func if isinstance(expr, ast.Call) else expr)
+        if parts is None:
+            return None
+        if parts[0] in makers:
+            return ".".join([makers[parts[0]], *parts[1:]])
+        if parts[0] in imported and not imported[parts[0]].startswith("."):
+            return ".".join([imported[parts[0]], *parts[1:]])
+        return None
+
+    for statement in tree.body:
+        if isinstance(statement, ast.Assign) and isinstance(statement.value, ast.Call):
+            maker = spelled(statement.value)
+            for target in statement.targets:
+                if isinstance(target, ast.Name) and maker is not None:
+                    makers[target.id] = maker
+        elif isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            for decorator in statement.decorator_list:
+                maker = spelled(decorator)
+                if maker is not None:
+                    makers[statement.name] = maker
+                    break
+    return makers
+
+
+def _decorator_receivers(
+    decorators: list[ast.expr], makers: dict[str, str],
+) -> str | None:
+    """``meta["decorator_receivers"]``: for each decorator that is a method
+    of a name :func:`_scan_receiver_makers` knows, the maker and the rest of
+    the decorator (``typer.Typer.command`` for ``@users_app.command()``),
+    space-separated in decorator order; ``None`` when there is none."""
+    spelled: list[str] = []
+    for decorator in decorators:
+        parts = _dotted_parts(
+            decorator.func if isinstance(decorator, ast.Call) else decorator,
+        )
+        if parts is not None and len(parts) > 1 and parts[0] in makers:
+            spelled.append(".".join([makers[parts[0]], *parts[1:]]))
+    return " ".join(spelled) or None
 
 
 def _resolve_imported_string_constant(
@@ -4001,6 +4068,9 @@ def _analyze_parsed_file(
 
     # Scan for APIRouter prefix assignments (for route path composition)
     router_prefixes = _scan_router_prefixes(tree, repo_root, py_file)
+    # What made each module-level name a decorator is a method of
+    # (``meta["decorator_receivers"]``).
+    receiver_makers = _scan_receiver_makers(tree)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
@@ -4201,6 +4271,11 @@ def _analyze_parsed_file(
                             _extract_decorator_info(dec) for dec in item.decorator_list
                         ]
                         method_meta["decorators"] = method_decorators
+                        method_receivers = _decorator_receivers(
+                            item.decorator_list, receiver_makers,
+                        )
+                        if method_receivers is not None:
+                            method_meta["decorator_receivers"] = method_receivers
                         # Check if any decorator references a prefixed APIRouter
                         if router_prefixes:
                             # iterate the typed local, not the object-typed
@@ -4351,6 +4426,11 @@ def _analyze_parsed_file(
                         _extract_decorator_info(dec) for dec in node.decorator_list
                     ]
                     func_meta["decorators"] = func_decorators
+                    func_receivers = _decorator_receivers(
+                        node.decorator_list, receiver_makers,
+                    )
+                    if func_receivers is not None:
+                        func_meta["decorator_receivers"] = func_receivers
                     # Check if any decorator references a prefixed APIRouter
                     if router_prefixes:
                         # iterate the typed local, not the object-typed
