@@ -44,6 +44,15 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    declaring file's imports; the element of a container it returns
    (``Seq[File]`` -> ``File``) feeds a scala-local element registry.
 2. Pass 2: Extract call edges, import edges, and eta-expansion references edges using NameResolver
+   - A name passed as a call argument (``handleWith(createItem)``,
+     ``handleExceptions(handler)``, ``mapping(..)(Data.fromForm)``,
+     ``f(this.handler)``, ``f(x = handler)``) gets a ``references`` edge from
+     the code holding the call to the project function, method or field it
+     names: the enclosing type's member, else the one top-level function of
+     that name. A name a parameter, lambda, pattern or local ``val`` binds is
+     that local value. Evidence ``eta_expansion`` for a function with
+     parameters, ``ast_name_read`` for a field or a ``()`` method (its value).
+     The explicit ``f _`` has its own emitter; both are anchored as calls are.
    - A method call's receiver is typed by :class:`_ScalaReceiverTyper`: the
      nearest lexical binder when its type can be said, else the file-wide
      declared map; an inferred ``val``, a call result, a chained
@@ -2652,6 +2661,8 @@ def _extract_edges_from_file(
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
     decl_index = symbols_at(decl_symbols)
+    #: This file's declarations by name (``Owner.member``, a top-level ``f``).
+    decl_by_name: dict[str, Symbol] = {s.name: s for s in decl_symbols}
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
     file_anchor = file_anchor_symbol("scala", str(file_path), PASS_ID, run_id)
@@ -2701,6 +2712,78 @@ def _extract_edges_from_file(
         return is_std_output_receiver(
             receiver, bare_system_is_java_lang=_bare_system_at(
                 at, is_local="System" in var_types))
+
+    def _anchor(at: "tree_sitter.Node") -> "tuple[Symbol, Optional[str]]":
+        """The symbol code at ``at`` belongs to, and the type it is in.
+
+        INV-bamij: code in no function is anchored on the class / object /
+        trait / enum whose body holds it, else on the file. The type is the
+        owner a bare (implicit-``this``) name is looked up on: for code in a
+        method, the method's owner (``Owner.member``); for code anchored on a
+        type (a ``val`` initialiser, an ``object X extends App`` statement),
+        that type itself, whose name has no member part to drop; ``None`` for
+        a top-level def or the file.
+        """
+        enclosing_function = _get_enclosing_function(at, source, decl_index)
+        type_anchor = (
+            None if enclosing_function is not None
+            else enclosing_declared_symbol(at, decl_index, _TYPE_BODY_NODES)
+        )
+        anchored = enclosing_function or type_anchor or file_anchor
+        if type_anchor is not None:
+            return anchored, type_anchor.name.split(".")[-1]
+        if "." in anchored.name:
+            return anchored, anchored.name.split(".")[-2]
+        return anchored, None
+
+    def _named_value(arg: "tree_sitter.Node", owner: "str | None") -> "Symbol | None":
+        """The project function, method or field an argument NAMES, if any.
+
+        ``f(handler)``, ``f(Obj.handler)``, ``f(this.handler)``, ``f(x = handler)``:
+        a name passed as a value -- a function by automatic eta-expansion, or a
+        field / parameterless method by its value. A bare name is the enclosing
+        type's member, else the one top-level function of that name in the
+        project; a name a parameter, lambda, pattern or local ``val`` binds is
+        that local value and names nothing here. ``Obj.member`` must name
+        exactly one project symbol.
+        """
+        if arg.type == "assignment_expression":
+            named = arg.named_children
+            if len(named) != 2:
+                return None  # pragma: no cover - the grammar gives name = value
+            arg = named[1]
+        target: "Symbol | None" = None
+        if arg.type == "identifier":
+            name = node_text(arg, source)
+            binder = typer._lexical(name, arg)
+            if binder is not None and not (
+                binder.value_def is not None and binder.value_def.parent is not None
+                and binder.value_def.parent.type in _SCALA_TEMPLATE_SCOPES
+            ):
+                return None  # a local value of that name
+            if owner is not None:
+                target = decl_by_name.get(f"{owner}.{name}")
+            if target is None:
+                tops = [
+                    s for s in (symbols_by_name or {}).get(name, ())
+                    if s.kind == "function"
+                ]
+                target = tops[0] if len(tops) == 1 else None
+        elif arg.type == "field_expression":
+            value = arg.child_by_field_name("value")
+            field = arg.child_by_field_name("field")
+            if value is None or field is None or value.type != "identifier":
+                return None
+            qualifier = node_text(value, source)
+            member = node_text(field, source)
+            if qualifier == "this":
+                target = decl_by_name.get(f"{owner}.{member}") if owner else None
+            elif typer._lexical(qualifier, arg) is None and qualifier not in var_types:
+                found = (symbols_by_name or {}).get(f"{qualifier}.{member}", ())
+                target = found[0] if len(found) == 1 else None
+        if target is None or target.kind not in ("function", "method", "field"):
+            return None
+        return target
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -2757,29 +2840,14 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             # INV-bamij: a call in no function is anchored on the template that
             # holds it (an ``object``'s ``val`` initialiser), else the file.
-            enclosing_function = _get_enclosing_function(node, source, decl_index)
-            type_anchor = (
-                None if enclosing_function is not None
-                else enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
-            )
-            current_function: Optional[Symbol] = (
-                enclosing_function or type_anchor or file_anchor
-            )
+            # INV-fahub Site-1: the enclosing class short name for a bare /
+            # implicit-``this`` call, so a deferred bare→method call can be
+            # recovered by the inherited_calls MRO walker when the method is
+            # on the enclosing class's linearization (inherited), and left
+            # external when it is a cross-class magnet (:func:`_anchor`).
+            anchored, enclosing_type = _anchor(node)
+            current_function: Optional[Symbol] = anchored
             if current_function is not None:
-                # INV-fahub Site-1: the enclosing class short name for a bare /
-                # implicit-``this`` call, so a deferred bare→method call can be
-                # recovered by the inherited_calls MRO walker when the method is
-                # on the enclosing class's linearization (inherited), and left
-                # external when it is a cross-class magnet. ``None`` for a
-                # top-level def (no owning class → not an implicit-``this`` call).
-                # A call anchored on the type itself (a ``val`` initialiser or a
-                # statement in a class / object body) is in THAT type: its name
-                # has no member part to drop.
-                enclosing_type = (
-                    type_anchor.name.split(".")[-1] if type_anchor is not None
-                    else current_function.name.split(".")[-2]
-                    if "." in current_function.name else None
-                )
                 callee_node = find_child_by_type(node, "identifier")
                 receiver_name = None
                 # INV-pirot: DOES THIS CALL HAVE A RECEIVER, separately from
@@ -3164,6 +3232,32 @@ def _extract_edges_from_file(
                     module_hint=owner, call_construct="method",
                 ))
 
+        # A name passed as a value (``handleWith(createItem)``,
+        # ``handleExceptions(handler)``, ``mapping(..)(Data.fromForm)``): a
+        # reference from the code holding the call to what it names
+        # (:func:`_named_value`). A function that takes parameters is passed
+        # as a function (eta-expansion); a field or a parameterless method,
+        # as its value.
+        elif node.type == "arguments":
+            holder, owner = _anchor(node)
+            for arg in node.named_children:
+                target = _named_value(arg, owner)
+                if target is None or target.id == holder.id:
+                    continue
+                as_function = (
+                    target.kind != "field"
+                    and not (target.signature or "").startswith("()")
+                )
+                edges.append(Edge.create(
+                    src=holder.id,
+                    dst=target.id,
+                    edge_type="references",
+                    line=arg.start_point[0] + 1,
+                    evidence_type="eta_expansion" if as_function else "ast_name_read",
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                ))
+
         # Scala eta-expansion: ``transform _`` produces a postfix_expression
         # whose second child is identifier("_").  This is a first-class
         # reference to the function, not a call.
@@ -3176,9 +3270,9 @@ def _extract_edges_from_file(
                 and children[0].type == "identifier"
             ):
                 ref_name = node_text(children[0], source)
-                current_function = _get_enclosing_function(
-                    node, source, decl_index,
-                )
+                # Anchored as calls are: a ``val`` initialiser's ``f _`` is the
+                # class's or object's reference.
+                current_function, _owner = _anchor(node)
                 if current_function is not None:
                     target = local_symbols.get(ref_name)
                     if target is None:  # pragma: no cover — cross-file
