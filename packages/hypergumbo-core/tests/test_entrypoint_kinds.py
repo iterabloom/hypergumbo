@@ -899,9 +899,11 @@ _APPLICATION_ROWS: tuple[tuple[str, str, str, str | None], ...] = (
     ("scotty.yaml", "usage", "^scottyT$", None),
     ("scotty.yaml", "usage", "^scottyOpts$", None),
     ("yesod.yaml", "usage", "^(warp|warpEnv|warpDebug|warpTLS|toWaiApp|toWaiAppPlain)$", None),
-    # 2 ParsableCommand types -> cli_command
-    ("swiftui.yaml", "base_class", "^ParsableCommand$", "command"),
-    ("swiftui.yaml", "base_class", "^AsyncParsableCommand$", "command"),
+    # 2 ParsableCommand types -> cli_command. The rows were in swiftui.yaml
+    # when ruled; they are swift-argument-parser's and moved to its own file
+    # (2026-11-22). The ruled destination is unchanged.
+    ("swift-argument-parser.yaml", "base_class", "^ParsableCommand$", "command"),
+    ("swift-argument-parser.yaml", "base_class", "^AsyncParsableCommand$", "command"),
     # 3 Yesod Template Haskell dispatch generators -> not entries
     ("yesod.yaml", "usage", "^mkYesod$", None),
     ("yesod.yaml", "usage", "^mkYesodData$", None),
