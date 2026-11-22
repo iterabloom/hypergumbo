@@ -1,0 +1,12 @@
+Original commit body from cf5db5f71c191f06079170d9cec09c59ac37e70e:
+
+A regeneration of `docs/ARCHITECTURE.md` is one `hypergumbo run packages --first-party-only` plus 5 s of the script (measured 2026-11-22, 6 cores: 344.5 s, and 338.7 s from an empty cache).
+
+Two parts of that run reach nothing the doc prints:
+
+- the C analyzer read the vendored tree-sitter grammars (4 files) for 35 to 49 s and emitted 257,091 edges, none of which `--first-party-only` keeps;
+- the run wrote 19 side files (sketch previews, handler slices) nobody reads.
+
+The run now gets `-e vendor --no-sketch-fan-out --no-handler-slices`. Measured alone it took 262.2 s and held the same 64,363 node ids, the same 259,304 edge triples, the same top symbols and the same edge-type counts. The script end to end with the flags took 291.7 s in one run; the old script was not timed beside it.
+
+Not done: leaving out the tests would bring the run to 144 s, but the doc says its totals include test code. The doc is regenerated here with the new command.
