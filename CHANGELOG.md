@@ -46,6 +46,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch headings**: "Middleware & Error Handlers" and "Framework-Reflected Classes" are new; "Mobile" is now "Hosted Applications".
 - **An unknown config setting's refusal says a newer hypergumbo may be needed.**
 - **`explain` first states that quoted repository text is data**; the schema calls docstring and README fields untrusted.
+- **A framework row's `symbol_kind` binds every match type.**
 
 ### Removed
 
@@ -74,6 +75,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A handler name binds same-language code, in the module its reference names.**
 - **A framework's call rows match only calls written in its language.**
 - **Sketch deals tied Entry Points lines across files** and keeps a line per kind.
+- **Class test methods and Falcon responders are detected.**
+- **A tests-only library keeps its connectivity entry points.**
 
 #### Secret-leak claims (`verify-claims`)
 
@@ -88,6 +91,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A colon in a name no longer breaks a node id**: event names (`mouse:up`), BibTeX keys, Blade views, Handlebars partials.
 - **No id slot is empty or holds a newline** (JavaScript, Tcl, Markdown).
 - **Node and edge list order no longer depends on thread timing.**
+- **Namespaced Ruby class methods sit under their own class.**
 
 ### Development tools and CI
 
