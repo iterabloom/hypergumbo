@@ -1,0 +1,23 @@
+Original commit body from e733491073540e427288d90d5d2af91e9dafbc22:
+
+Entry detection: framework rows keyed on what the analyzers actually record. One commit per change, tested and measured together (owner ruling 2026-11-13). Addresses WI-mulaj, WI-lunal, WI-rilur, WI-dupis; first tranche of WI-movur (stays open).
+
+1. `main` rows (WI-mulaj). A pattern can read `Symbol.qualified_name` (new `qualified_name:` filter). Go's row asks for `main.main`, so a `main` of another package is no program start. Haskell's asks for `Main.main` (haskell.py now records the module); 0.90 -> 0.95. The item's Erlang half was wrong: the analyzer names a function `name/arity`, so the row (`main|start`) matched nothing. It is `main/1` now and Erlang takes the unmeasured value.
+2. Fifteen rows keyed on the wrong field (WI-lunal). Eleven re-keyed: Rust and C# tests (`annotation:`), WGSL shader stages (`meta_match`), Laravel queued jobs and listeners (`base_class:` plus the directory). Four cannot be fixed by the key (PHP `@test`, F#, D, Plug `conn`): marked CANNOT FIRE.
+3. SwiftUI (WI-rilur). swiftui.yaml loads on a production import of SwiftUI, UIKit or AppKit (no app declares them as a dependency). ParsableCommand rows move to swift-argument-parser.yaml; the XCTestCase row to test-frameworks.yaml.
+4. Rows that could not fire for five analyzers (WI-dupis). Scala records dotted parents (`extends IOApp.Simple`). Haskell records an instance's class. Lua emits class and file-scope variable symbols (Lapis class and instance forms). R and F# record calls as usage contexts; their framework rows are limited to what a caller-position context can say (`position: ^caller$`), and rows whose subject is a handler argument are marked CANNOT FIRE. Core: a usage row now matches only calls written in its framework file's language (an R `createServer()` was getting a Node route). NOT fixed: servant.yaml's `base_class: ^Application$` names a type, not a class.
+5. docs/audits/0028 (WI-movur): the 28 deleted `route` rows are 61 forms: 20 detected elsewhere, 10 partly, 21 not, 10 never routes. No detector built.
+
+Measured, dev a5b3cca93 vs this branch, 19 trees, one run per arm. No stable id moved and no declared symbol was lost on any.
+- gvisor-tap-vsock: 2 vendored `main` (packages unconvert, gofmt) are no longer entries.
+- recon +2 and rebar3 +2 Erlang `main/1` entries (escript entries, read in source).
+- bincode +80 Rust test functions; microservices-demo +3 C# tests; koel +9 queued listeners, +1 job, +2 PHPUnit tests (10 http_route entries displaced under the entry cap).
+- swift-composable-architecture/Examples: frameworks [] -> [swiftui], 11 app starts from 0. swift-argument-parser: 240 commands from 0 (one is the protocol AsyncParsableCommand itself: wrong).
+- tapir: 6 `IOApp.Simple` program starts; +24 extends, +5 implements, +30 dispatches_to, +7/-1 calls (the pair is a wrong overload pick by the inherited-calls linker, exposed by the new parents).
+- haskellers: 1 Yesod application, database, auth; every `main` still an entry. kong: 3 Lapis applications; +308 variable nodes. mlflow's R package: +16 file nodes, no concept.
+- cowboy, ghostfolio, flask-restful, alertmanager, apollo-server, chatwoot, pretix src/pretix: no change of any kind.
+Fixture-only (no such repository on this machine): Giraffe, Saturn, Shiny, Plumber, Lapis-only, WGSL.
+
+Analyzer commits were written by Opus subagents in worktrees and reviewed; mutation controls: mine 13 of 13 red, theirs reported per commit.
+
+Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md, RESIDUALS_TO_FILE.md
