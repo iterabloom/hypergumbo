@@ -519,7 +519,7 @@ RUBY_FRAMEWORKS = {
     # GraphQL
     "graphql-ruby": ["graphql", "graphql-ruby"],
     # CLI
-    "cli-ruby": ["thor", "gli", "dry-cli"],
+    "cli-ruby": ["thor", "gli", "dry-cli", "commander"],
     # Testing
     "rspec": ["rspec"],
     "minitest": ["minitest"],
@@ -717,6 +717,8 @@ IMPORT_OVERRIDES: dict[str, str] = {
     "SQLAlchemy": "sqlalchemy",
     # Swift: package name -> module name
     "swift-argument-parser": "ArgumentParser",
+    # Ruby: gem name -> require path
+    "dry-cli": "dry/cli",
 }
 
 

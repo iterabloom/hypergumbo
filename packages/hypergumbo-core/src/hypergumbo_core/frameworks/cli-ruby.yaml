@@ -2,7 +2,8 @@
 # CLI entrypoint patterns - Ruby (ADR-3aaa)
 #
 # Patterns for detecting command-line interface entrypoints:
-# Thor, GLI, OptionParser (DSL calls, which no `decorator:` row detects).
+# Thor, GLI, Commander, dry-cli, OptionParser (DSL calls, which no
+# `decorator:` row detects).
 
 # Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
 # reads decorator / annotation syntax only, so a call never matched them.
@@ -57,6 +58,9 @@ patterns:
     decorator: "^option$"
 
   # ==================== GLI PATTERNS ====================
+  # The GLI app class: `extend GLI::App` (or `include GLI::App`)
+  - concept: command
+    adopts: "^GLI::App$"
 
   # GLI flag
   - concept: option
@@ -75,6 +79,11 @@ patterns:
   # OptionParser on
   - concept: option
     decorator: "^on$"
+
+  # ==================== COMMANDER PATTERNS ====================
+  # A Commander program: `include Commander::Methods`
+  - concept: command
+    adopts: "^Commander::Methods$"
 
   # ==================== DRY-CLI PATTERNS ====================
   # Dry::CLI command
