@@ -16,9 +16,10 @@ the class or object whose body holds it, as calls are anchored). A bare name
 is the enclosing type's member, or a top-level function when exactly one in
 the project has that name. A name a parameter, a lambda, a pattern or a local
 ``val`` binds is that local value and gets no edge. Evidence ``eta_expansion``
-for a method or function that takes parameters (the name stands for the
-function), ``ast_name_read`` for a field or a parameterless method (the name
-stands for its value). The explicit ``f _`` keeps its own emitter, which now
+for a method or function, whatever its parameters (ADR-0058: whether it has
+any is not parsed out of the rendered signature, and the scala analyzer
+records no parameter meta), ``ast_name_read`` for a field (the name stands
+for its value). The explicit ``f _`` keeps its own emitter, which now
 also runs in a class or object body.
 """
 from __future__ import annotations
@@ -129,9 +130,9 @@ class TestNamedValueArguments:
         refs = _refs(*_analyze(tmp_path))
         assert refs[("ApiRoutes", "topLevelHandler")] == "eta_expansion"
 
-    def test_a_parameterless_method_is_a_value_read(self, tmp_path: Path) -> None:
+    def test_a_parameterless_method_is_a_method_reference_too(self, tmp_path: Path) -> None:
         refs = _refs(*_analyze(tmp_path))
-        assert refs[("ApiRoutes", "ApiRoutes.eagerValue")] == "ast_name_read"
+        assert refs[("ApiRoutes", "ApiRoutes.eagerValue")] == "eta_expansion"
 
     def test_a_named_argument(self, tmp_path: Path) -> None:
         refs = _refs(*_analyze(tmp_path))
