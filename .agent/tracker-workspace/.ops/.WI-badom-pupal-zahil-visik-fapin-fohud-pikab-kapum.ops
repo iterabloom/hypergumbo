@@ -1,0 +1,21 @@
+- op: create  # 22d8
+  at: '2026-11-22T06:31:51Z'  # 22d8
+  by: agent  # 22d8
+  actor: jgstern_agent  # 22d8
+  clock: 1  # 22d8
+  nonce: 22d8  # 22d8
+  data:  # 22d8
+    kind: work_item  # 22d8
+    title: "test-coverage was not checked for the no-call-evidence case dead-code-maybe now withholds"  # 22d8
+    status: todo_hard  # 22d8
+    priority: 3  # 22d8
+    parent:  # 22d8
+    tags:  # 22d8
+    - test_coverage  # 22d8
+    - analysis_quality  # 22d8
+    isbefore: []  # 22d8
+    duplicate_of: []  # 22d8
+    not_duplicate_of: []  # 22d8
+    pr_ref:  # 22d8
+    description: "WHAT. PR #2326 made dead-code-maybe report an unreached callable only where the run holds a call edge onto some callable of its language and kind (call_evidence_groups). test-coverage answers a question of the same shape (which production functions no test reaches) over the same production_callables, and was NOT examined: for a language whose analyzer emits no call edges, every function is untested by construction, and its cold spots and its coverage percentage count them. Sketch's coverage line reads the same walk.\n\nASK. Check whether test-coverage (and sketch's coverage line) lists callables of a (language, kind) group with no call evidence as untested; if so, give them the same treatment (left out of the percentage, listed apart with their group).\n\nNOT CHECKED. Everything: this is filed from the shape of the code, not from a run. A fixture exists: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr1/fixture_nocalls (SQL, CMake and SCSS functions, whose analyzers emit no calls edge).\n\nFound during PR #2326 (2026-11-22)."  # 22d8
+    fields: {}  # 22d8

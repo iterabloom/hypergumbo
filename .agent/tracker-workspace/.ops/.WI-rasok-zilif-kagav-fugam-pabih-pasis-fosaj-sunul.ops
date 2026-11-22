@@ -1,0 +1,21 @@
+- op: create  # 19b4
+  at: '2026-11-22T09:31:51Z'  # 19b4
+  by: agent  # 19b4
+  actor: jgstern_agent  # 19b4
+  clock: 1  # 19b4
+  nonce: 19b4  # 19b4
+  data:  # 19b4
+    kind: work_item  # 19b4
+    title: "17 rows anchor a method name at its start and match nothing: Python, Ruby, Swift, Scala, Groovy test methods and Falcon responders"  # 19b4
+    status: todo_hard  # 19b4
+    priority: 2  # 19b4
+    parent:  # 19b4
+    tags:  # 19b4
+    - frameworks  # 19b4
+    - analysis_quality  # 19b4
+    isbefore: []  # 19b4
+    duplicate_of: []  # 19b4
+    not_duplicate_of: []  # 19b4
+    pr_ref:  # 19b4
+    description: "WHAT. 17 framework rows anchor a METHOD name at its start (symbol_name: \"^...\") with a method kind, and the Python, Ruby, Swift, Scala and Groovy analyzers name a method Class.method (Ruby: Class#method), so the rows match nothing.\n\nSEEN, on dev a5b3cca93 with a fixture (one test class per language and a Falcon resource): Python TestMath.test_adds has no test_function concept (the top-level function test_top_level has one); Falcon ThingsResource.on_get / on_post have no route_handler (all 8 falcon.yaml rows); Ruby MathTest#test_adds none; Swift XTests.testAdds and XTests.setUp none; Scala MathSuite.test none (testAdds has one through its @Test decorator); Groovy MathSpec.setup none, and the Spock feature method def \"should add\"() is not a symbol at all. On swift-argument-parser: 556 methods whose last segment starts with test, 0 with test_function.\n\nROWS. falcon.yaml x8 (on_get ... on_websocket). test-frameworks.yaml: python ^test_ (method), ruby ^test_, ^(it|specify)$, ^(describe|context)$, swift ^test, ^(setUp|tearDown)(WithError)?$, scala ^test, ^test$, groovy ^(should|def) and ^(setup|cleanup|setupSpec|cleanupSpec)$. PR #2329 repaired the PHP row only, and had to restrict it to *Test.php files after it stamped 5 production testSetup methods on koel: a name alone is not a test.\n\nASK. A structural fix, not 17 regex edits: method_name: is the field for a member's own name, but it splits on \".\" only (member_names.split_member_name knows #, :: and .) and IGNORES a declared symbol_kind (lit.yaml has 9 rows with method_name + symbol_kind: ^method$ whose kind is never checked). Make method_name split by split_member_name and AND with symbol_kind, move the 17 rows to it, and give each test row the condition that makes the name a test (the class's base, or the file). It changes test and route detection in five languages: its own A/B.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # 19b4
+    fields: {}  # 19b4
