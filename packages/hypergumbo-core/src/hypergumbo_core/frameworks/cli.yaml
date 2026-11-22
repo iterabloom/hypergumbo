@@ -52,6 +52,19 @@ patterns:
   - concept: command
     decorator: "^app\\.callback$"
 
+  # A typer command on an app of any name: @users_app.command() where
+  # users_app = typer.Typer(). The analyzer writes what made the decorator's
+  # receiver (meta["decorator_receivers"], space-separated).
+  - concept: command
+    meta_match:
+      decorator_receivers: "(.* )?typer\\.Typer\\.(command|callback)( |$)"
+
+  # A click subcommand or subgroup: @cli.command() / @cli.group() where cli
+  # is a function decorated @click.group() (or a click.Group()), at any depth.
+  - concept: command
+    meta_match:
+      decorator_receivers: "(.* )?click\\.(group|Group)(\\.group)*\\.(command|group)( |$)"
+
   # Typer registration as a call, app.command()(download): the decorator of
   # the row above applied by hand (transformers registers its CLI this way).
   - concept: command

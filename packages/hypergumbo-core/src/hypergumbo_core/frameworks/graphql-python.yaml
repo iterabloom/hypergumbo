@@ -72,6 +72,12 @@ patterns:
   - concept: graphql_resolver
     decorator: "^(query_type|mutation_type|subscription_type)\\.field$"
 
+  # Ariadne resolver on a bindable of any name: @user_type.field("x") where
+  # user_type = ObjectType("User") (or QueryType(), MutationType(), ...).
+  - concept: graphql_resolver
+    meta_match:
+      decorator_receivers: '(.* )?ariadne\S*\.(Query|Mutation|Subscription|Object|Interface)Type\.(field|source)( |$)'
+
   # Ariadne resolver set by a call: query.set_field("version", resolve_version)
   # on a QueryType / MutationType / ObjectType bindable.
   - concept: graphql_resolver
