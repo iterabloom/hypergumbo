@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Swift Argument Parser (apple/swift-argument-parser) command patterns
+#
+# Loads where a Package.swift declares the swift-argument-parser dependency,
+# or production Swift code imports ArgumentParser (an Xcode project declares
+# its packages in project files; the library's own repository does not
+# depend on itself).
+
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-11-22
+id: swift-argument-parser
+language: swift
+
+patterns:
+  # Commands (`command` -> cli_command): every subcommand conforms too, so a
+  # conformer is a command, not a program start (audit 0027, ruled
+  # 2026-11-21).
+  - concept: command
+    base_class: "^ParsableCommand$"
+  - concept: command
+    base_class: "^AsyncParsableCommand$"

@@ -415,7 +415,13 @@ SWIFT_FRAMEWORKS = {
     "hummingbird": ["hummingbird"],
     "kitura": ["kitura"],
     "perfect": ["perfectlySoft"],
-    "swiftui": ["swiftui"],  # Detected via imports, not SPM
+    # Apple's app frameworks (swiftui.yaml: the SwiftUI App, the UIKit and
+    # AppKit app delegates and view controllers). They ship with the platform
+    # SDK, so no manifest names them: the import is the evidence
+    # (_IMPORT_IS_THE_EVIDENCE_FRAMEWORKS).
+    "swiftui": ["swiftui", "uikit", "appkit"],
+    # A package dependency, imported as `ArgumentParser` (IMPORT_OVERRIDES).
+    "swift-argument-parser": ["swift-argument-parser"],
 }
 
 # Scala (build.sbt) detection patterns.
@@ -477,6 +483,20 @@ _AUTOLOAD_BY_CONVENTION_FRAMEWORKS: frozenset[str] = frozenset({
 # The members are high-confidence dedicated web frameworks. Expand only in
 # bakeoff-validated batches: less certain candidates (aiohttp, falcon, grape,
 # vapor, etc.) must be measured for FP volume first.
+#: Frameworks a one-word import promotes for a different reason than the
+#: route allowlist below: the import is the only evidence a repository can
+#: carry. ``swiftui`` stands for SwiftUI, UIKit and AppKit, which ship with
+#: the platform SDK and are never a declared dependency.
+#: ``swift-argument-parser`` is a declared dependency of a Swift package, but
+#: an Xcode project declares it in project files this module does not read,
+#: and the library's own repository does not depend on itself; its module
+#: name (``ArgumentParser``) is not a word another Swift module goes by.
+#: The promotion still needs an importer in production code, and the
+#: ``allowed_langs`` gate keeps it to Swift imports.
+_IMPORT_IS_THE_EVIDENCE_FRAMEWORKS: frozenset[str] = frozenset({
+    "swiftui", "swift-argument-parser",
+})
+
 _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS: frozenset[str] = frozenset({
     # Python
     "flask", "fastapi", "sanic", "litestar", "quart", "starlette", "bottle",
@@ -695,6 +715,8 @@ IMPORT_OVERRIDES: dict[str, str] = {
     "Flask-AppBuilder": "flask_appbuilder",
     "CherryPy": "cherrypy",
     "SQLAlchemy": "sqlalchemy",
+    # Swift: package name -> module name
+    "swift-argument-parser": "ArgumentParser",
 }
 
 
@@ -3558,7 +3580,8 @@ def refine_frameworks(
     #   prefix arm — i.e., a compound submodule like `django.db` or
     #   `react/jsx-runtime`. Exact bare imports alone (just
     #   `import graphql`) are too weak a signal (WI-rofiz), except for the
-    #   `_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS` allowlist.
+    #   `_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS` allowlist and for
+    #   `_IMPORT_IS_THE_EVIDENCE_FRAMEWORKS` (platform SDK frameworks).
     existing: set[str] = set(profile.frameworks) | set(profile.dev_frameworks)
     promoted: list[str] = []
     for _lang, fw_dict in LANGUAGE_FRAMEWORKS.items():
@@ -3587,7 +3610,10 @@ def refine_frameworks(
                 # Allowlisted route frameworks may promote on a bare EXACT
                 # import; all others keep the compound-submodule prefix
                 # requirement (WI-tosul, WI-pusad).
-                require_prefix_arm=(fw not in _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS),
+                require_prefix_arm=(
+                    fw not in _BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS
+                    and fw not in _IMPORT_IS_THE_EVIDENCE_FRAMEWORKS
+                ),
                 module_languages=module_languages,
                 allowed_langs=fw_langs,
             ):

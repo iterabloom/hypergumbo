@@ -6,7 +6,11 @@
 # - UIKit apps: class conforming to UIApplicationDelegate
 # - AppKit apps: class conforming to NSApplicationDelegate
 # - View controllers: common UI entry points
-# - ParsableCommand: Swift Argument Parser commands (cli_command)
+#
+# These frameworks ship with the platform SDK: no manifest declares them.
+# The file loads where production Swift code imports SwiftUI, UIKit or AppKit
+# (profile.py, _IMPORT_IS_THE_EVIDENCE_FRAMEWORKS). Swift Argument Parser's
+# rows are in swift-argument-parser.yaml, XCTestCase's in test-frameworks.yaml.
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
@@ -50,16 +54,3 @@ patterns:
     base_class: "^NSWindowController$"
 
   # SwiftUI views are not entrypoints (too numerous), but the App struct is.
-
-  # Swift Argument Parser commands (`command` -> cli_command): every
-  # subcommand conforms too, so a conformer is a command, not a program start
-  # (audit 0027, ruled 2026-11-21). These rows load only where SwiftUI is
-  # detected.
-  - concept: command
-    base_class: "^ParsableCommand$"
-  - concept: command
-    base_class: "^AsyncParsableCommand$"
-
-  # XCTestCase — test lifecycle (lower confidence)
-  - concept: test_class
-    base_class: "^XCTestCase$"

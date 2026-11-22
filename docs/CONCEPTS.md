@@ -70,7 +70,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `circuit_breaker` | inert | vertx | _(none)_ |
 | `client` | inert | http4k, http4s, quarkus, restify, vertx | _(none)_ |
 | `code_section` | inert | language-conventions | _(none)_ |
-| `command` | live | adonisjs, cakephp, cli, cli-js, cli-ruby, cli-rust, codeigniter, django, flask, fuelphp, laminas, laravel, lumen, masonite, swiftui, symfony, vapor, yii | `entrypoints.py`, `linkers/subprocess_cli.py` |
+| `command` | live | adonisjs, cakephp, cli, cli-js, cli-ruby, cli-rust, codeigniter, django, flask, fuelphp, laminas, laravel, lumen, masonite, swift-argument-parser, symfony, vapor, yii | `entrypoints.py`, `linkers/subprocess_cli.py` |
 | `command_by_name` | live | naming-conventions | `entrypoints.py` |
 | `component` | inert | cakephp, jakarta-cdi, laravel, lit, nuxt, phoenix, react, spring-boot, yesod, yii | _(none)_ |
 | `composer_dependency` | inert | config-conventions | _(none)_ |
@@ -295,7 +295,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `template_tag` | inert | django | _(none)_ |
 | `template_test` | inert | flask | _(none)_ |
 | `test` | inert | aiohttp, cakephp, laminas, quarkus, tornado, yii | _(none)_ |
-| `test_class` | inert | swiftui | _(none)_ |
+| `test_class` | inert | test-frameworks | _(none)_ |
 | `test_fixture` | inert | test-frameworks | _(none)_ |
 | `test_function` | live | test-frameworks | `entrypoints.py` |
 | `test_lifecycle` | inert | test-frameworks | _(none)_ |

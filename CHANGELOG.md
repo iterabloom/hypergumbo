@@ -29,6 +29,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch lists agent instruction files (`AGENTS.md`, `CLAUDE.md`, …) and never prints their text**; `explain` holds their source back.
 - **Electron preload scripts are `electron_preload` entry points.**
 - **C#, Rust and PHPUnit tests, WGSL shaders and Laravel queued jobs are detected.**
+- **SwiftUI, UIKit and AppKit apps are detected by their import**; Swift Argument Parser commands too.
 - **`analysis_runs[].non_id_edge_endpoints`** counts edge endpoints that are not node ids.
 
 ### Changed
