@@ -33,7 +33,7 @@ Import points:
 from __future__ import annotations
 
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -386,7 +386,7 @@ def _run_costed(func: Any, *args: Any, **kwargs: Any) -> tuple[Any, PassCost]:
 
     This is what the pool submits, so the clock starts and stops inside the
     worker. ``thread_time`` is per-thread: read on the orchestrating thread,
-    which only waits in ``as_completed``, it would report ~0 for every pass.
+    which only waits on the futures, it would report ~0 for every pass.
     An analyzer that raises propagates unchanged; its crash is recorded by the
     caller and there is no run to cost.
     """
@@ -478,8 +478,14 @@ def run_all_analyzers(
             )
             futures[future] = analyzer
 
-        for future in as_completed(futures):
-            analyzer = futures[future]
+        # Collected in SUBMISSION order (the registry's: priority, then
+        # name), never in the order the threads finish. ``all_symbols``,
+        # ``all_edges`` and ``analysis_runs`` are output, and a consumer that
+        # keeps the first or the last holder of a name reads the list order:
+        # collected as-completed, two runs of one tree disagreed (WI-sadod).
+        # ``result()`` blocks until that analyzer is done; the pool is drained
+        # before the ``with`` block exits either way.
+        for future, analyzer in futures.items():
             try:
                 result, cost = future.result()
             except CatalogueError:

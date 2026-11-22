@@ -607,12 +607,19 @@ def get_analyzer(name: str) -> RegisteredAnalyzer | None:
 
 
 def get_all_analyzers() -> Iterator[RegisteredAnalyzer]:
-    """Get all registered analyzers in priority order.
+    """Get all registered analyzers in priority order, then by name.
+
+    The name closes the order: registration order among equal priorities is
+    the order entry points were discovered in, which is the installation's,
+    not the source tree's. ``run_all_analyzers`` collects results in this
+    order, so it decides the order of the symbol and edge lists.
 
     Yields:
-        RegisteredAnalyzer objects, sorted by priority (ascending).
+        RegisteredAnalyzer objects, sorted by (priority, name) ascending.
     """
-    for analyzer in sorted(_ANALYZER_REGISTRY.values(), key=lambda a: a.priority):
+    for analyzer in sorted(
+        _ANALYZER_REGISTRY.values(), key=lambda a: (a.priority, a.name),
+    ):
         yield analyzer
 
 
