@@ -125,8 +125,18 @@ def _run(tmp_path: Path, nodes: list[dict], **overrides) -> dict:
     """
     repo = tmp_path / "repo"
     bm = tmp_path / "hg.json"
+    # One call edge onto the fixture's first function: ``dead-code-maybe``
+    # reports an unreached callable only where the run holds call evidence for
+    # its language and kind (``test_dead_code_call_evidence.py``), and these
+    # tests are about what the demoter does to a REPORTED candidate. The edge
+    # comes from a file with no node, so it seeds and reaches nothing.
+    evidence = [
+        {"type": "calls", "src": "python:evidence.src:1-1:file:file",
+         "dst": n["id"]}
+        for n in nodes[:1]
+    ]
     bm.write_text(json.dumps(
-        {"schema_version": "0.20.13", "nodes": nodes, "edges": []},
+        {"schema_version": "0.20.13", "nodes": nodes, "edges": evidence},
     ))
     args = argparse.Namespace(
         path=str(repo), input=str(bm), format="json",

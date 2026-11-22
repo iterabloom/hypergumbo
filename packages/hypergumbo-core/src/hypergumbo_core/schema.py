@@ -175,7 +175,7 @@ READ_VIEW_SCHEMA_VERSION = "0.1.0"
 # views that did not change, and force an edit at every test that pins the
 # placeholder (history: WI-jozah). Additions bump MINOR; the per-version record
 # is CHANGELOG.md.
-DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.3.0"
+DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.4.0"
 # Format is ``hypergumbo-evidence-vMAJOR.MINOR`` (spec Appendix C): bump MINOR
 # for a refinement (new evidence types, new evidence handling, re-derived
 # scores in the same bands), MAJOR for an incompatible change.

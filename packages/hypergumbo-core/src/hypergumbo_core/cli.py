@@ -154,7 +154,9 @@ on it, ``anchor_execution_edges``), from the ``--seeds`` set (plus ``view_func``
 dispatch handlers), after which three false-positive demoters drop symbols in
 generated files, methods reached by inheritance dispatch, and candidates
 whose name appears in at least ``--cross-lang-threshold`` other-language
-files.
+files. An unreached callable is a candidate only if the run holds a call
+edge onto some callable of its language and kind (``call_evidence_groups``);
+the others are withheld and listed apart, with their groups.
 
 Why This Design
 ---------------
@@ -191,6 +193,7 @@ import resource
 import shutil
 import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
+from collections import Counter
 from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import (
@@ -9309,6 +9312,45 @@ def production_callables(
     return production_symbols, test_symbols, exported_symbols
 
 
+def call_evidence_groups(
+    nodes: list[dict], edges: list[dict], callable_ids: set[str],
+) -> tuple[dict[str, tuple[str, str]], set[tuple[str, str]]]:
+    """Which ``(language, kind)`` groups of callables the run can see callers of.
+
+    Returns ``(group_of, evidenced)``: each id in ``callable_ids`` (the
+    view's own universe: production and test functions and methods, no
+    stand-ins) mapped to its ``(language, kind)``, and the groups for which
+    the run holds at least one call-family edge (``calls`` / ``instantiates``)
+    landing on a member.
+
+    That one edge is the POSITIVE evidence ``dead-code-maybe`` needs before
+    it reads "no edge reaches this callable" as "nothing calls it" (WI-konil).
+    An analyzer that emits no call edges onto a kind of symbol leaves every
+    such symbol unreached: the instrument is absent, and its silence is not a
+    finding. Only a call-family edge counts. A ``dispatches_to`` or ``wraps``
+    edge shows that a linker connected a route or a decorator, not that the
+    analyzer resolves call sites; a call landing on a linker stand-in or on
+    another kind shows nothing about this one.
+
+    What it does not measure: one edge clears its whole group, so an
+    analyzer that resolves one call in a thousand is treated as seeing
+    callers. The rule separates "no instrument" from "an instrument"; it
+    does not grade the instrument.
+    """
+    group_of = {
+        n["id"]: (n.get("language") or "", n.get("kind", ""))
+        for n in nodes if n["id"] in callable_ids
+    }
+    call_family = call_family_edge_types()
+    evidenced = {
+        group_of[dst]
+        for edge in edges
+        if edge.get("type") in call_family
+        and (dst := edge.get("dst", "")) in group_of
+    }
+    return group_of, evidenced
+
+
 def _bfs_reachable(
     seed_ids: set[str], call_graph: dict[str, list[str]],
 ) -> set[str]:
@@ -9621,6 +9663,14 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     attached — the function has tests but no production caller, so its tests are
     load-bearing for nothing and a 100% coverage gate conceals the deadness.
     Carrying it per candidate makes that bucket selectable, not just countable.
+
+    An unreached callable is reported only where the run can see callers of
+    its kind in its language (``call_evidence_groups``, WI-konil). The
+    unreached callables of a ``(language, kind)`` group no call edge lands on
+    are withheld from ``dead_candidates`` and listed in
+    ``no_call_evidence_withheld``, their groups in ``no_call_evidence_groups``
+    (both always present): absence of the instrument is not evidence of no
+    caller.
     """
     repo_root = Path(args.path).resolve()
 
@@ -9778,7 +9828,13 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         test_only_ids = (reachable_with_tests - reachable) & production_keys
         test_only_reachable = len(test_only_ids)
 
-    # Dead candidates = production symbols NOT reachable
+    # Dead candidates = production symbols NOT reachable, in the groups the
+    # run can see callers of (WI-konil). The rest of the unreached are
+    # withheld and listed apart.
+    group_of, evidenced_groups = call_evidence_groups(
+        nodes, edges, production_keys | test_symbols,
+    )
+    withheld_no_evidence: list[dict[str, Any]] = []
     dead_candidates = []
     exclude_annotated = getattr(args, "exclude_annotated", False)
     exclude_exports = getattr(args, "exclude_exports", False)
@@ -9842,6 +9898,9 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 sc = node.get("supply_chain") or {}
                 if sc.get("is_exported"):
                     continue
+            if group_of[sym_id] not in evidenced_groups:
+                withheld_no_evidence.append(node)
+                continue
             dead_candidates.append(node)
 
     # WI-vuton heuristic 1: polymorphic dispatch demotion. A method
@@ -10029,6 +10088,21 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             return None
         return "test_only" if symbol_id in test_only_ids else "unreachable"
 
+    # The groups behind the withheld candidates: how many production
+    # callables each has, and how many of them are withheld. Largest first.
+    withheld_per_group = Counter(group_of[n["id"]] for n in withheld_no_evidence)
+    callables_per_group = Counter(group_of[sym_id] for sym_id in production_symbols)
+    no_evidence_groups = [
+        {
+            "language": language, "kind": kind,
+            "callables": callables_per_group[(language, kind)],
+            "withheld": withheld,
+        }
+        for (language, kind), withheld in sorted(
+            withheld_per_group.items(), key=lambda item: (-item[1], item[0]),
+        )
+    ]
+
     # Summary stats
     total_production = len(production_symbols)
     total_reachable = len(reachable & set(production_symbols.keys()))
@@ -10092,6 +10166,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 # appears in >= cross_lang_threshold other-language files
                 # (cross-language dispatch / missing-edge false positives).
                 "demoted_cross_language": len(cross_lang_demoted_ids),
+                # WI-konil: unreached callables NOT reported because no call
+                # edge lands on any callable of their language and kind in
+                # this run. Not in dead_candidates or dead_percent.
+                "withheld_no_call_evidence": len(withheld_no_evidence),
             },
             "dead_candidates": [
                 {
@@ -10132,6 +10210,22 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 }
                 for n in cross_lang_demoted
             ],
+            # WI-konil. ALWAYS PRESENT, empty when every unreached callable
+            # sits in a group the run can see callers of: "nothing was
+            # withheld" and "this build has no such rule" must read apart.
+            "no_call_evidence_groups": no_evidence_groups,
+            "no_call_evidence_withheld": [
+                {
+                    "name": n.get("name", ""),
+                    "path": n.get("path", ""),
+                    "language": n.get("language", ""),
+                    "kind": n.get("kind", ""),
+                    "line_span": n.get("line_span"),
+                    "span": n.get("span"),
+                    "id": n["id"],
+                }
+                for n in withheld_no_evidence
+            ],
         }
         print(json.dumps(
             add_schema_envelope(
@@ -10159,6 +10253,15 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         print(f"  withheld by cross-language hits: "
               f"{len(cross_lang_demoted)}"
               f"{' (--cross-lang-threshold 0 to see them)' if cross_lang_demoted else ''}")
+        # WI-konil, unconditionally for the same reason: a reader must be
+        # able to tell "nothing was withheld" from "this view does not say".
+        print(f"  withheld, no call evidence:      {len(withheld_no_evidence)}")
+        for group in no_evidence_groups:
+            print(
+                f"    {group['language']} {group['kind']}: {group['withheld']} of "
+                f"{group['callables']} unreached, not reported: no call edge "
+                f"lands on any {group['language']} {group['kind']} in this run"
+            )
         print()
 
         if dead_candidates:
@@ -11571,6 +11674,18 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
         "excluding\n"
         "ADR-0031 synthetic linker stand-ins.  dead = production - reachable."
     )
+    dead_code_epilog = production_fn_doc + (
+        "\n\nAn unreached function is reported only where the run can see "
+        "callers: at\n"
+        "least one call edge must land on some function (or method) of its "
+        "language.\n"
+        "Where none does, the analyzer may emit no call edges for that "
+        "language at\n"
+        "all, and its unreached callables are counted and listed as withheld "
+        "(text:\n"
+        "'withheld, no call evidence'; JSON: no_call_evidence_groups and\n"
+        "no_call_evidence_withheld), not as dead."
+    )
 
     test_coverage_epilog = """\
 Examples:
@@ -11635,7 +11750,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
     p_dead_code = sub.add_parser(
         "dead-code-maybe",
         help="Find potentially dead code unreachable from entrypoints",
-        epilog=production_fn_doc,
+        epilog=dead_code_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_dead_code)
