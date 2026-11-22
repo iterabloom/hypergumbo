@@ -99,6 +99,9 @@ QUALIFIED_NAME_SEPARATORS: Final[dict[str, str]] = {
     "php": "\\",
     # Lua uses dot for module paths.
     "lua": ".",
+    # Haskell qualifies a top-level name by its hierarchical module:
+    # ``Data.Map.insert``, ``Main.main``.
+    "haskell": ".",
     # Perl uses ``::`` for package separators.
     "perl": "::",
     # PowerShell uses backslash for module-qualified cmdlet names.
