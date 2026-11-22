@@ -243,11 +243,19 @@ _GIN = """package main
 import (
 	"sort"
 
+	restful "github.com/emicklei/go-restful/v3"
 	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/robfig/cron/v3"
 )
 
+const pingPath = "/ping"
+
 func requestID(c *gin.Context) {}
+func recoverHandler(c *gin.Context, err any)                         {}
+func validateUser(user, pass string, c echo.Context) (bool, error) { return true, nil }
+func findUser(req *restful.Request, resp *restful.Response)          {}
 func apiOnly(c *gin.Context)   {}
 func reportJob()               {}
 func cleanupJob()              {}
@@ -271,6 +279,12 @@ func setup() {
 	xs := []int{2, 1}
 	sort.Slice(xs, less)
 	r.GET("/ping", requestID)
+	r.GET(pingPath, apiOnly)
+	r.Use(gin.CustomRecovery(recoverHandler))
+	e := echo.New()
+	e.Use(middleware.BasicAuth(validateUser))
+	ws := new(restful.WebService)
+	ws.Route(ws.GET("/users/{id}").To(findUser))
 	c := cron.New()
 	c.AddFunc("@every 1m", reportJob)
 	c.Schedule(cron.Every(5), cron.FuncJob(cleanupJob))
@@ -287,6 +301,23 @@ class TestCallArgument:
         assert ("api.Use", "args[0]", "apiOnly") in found
         assert ("c.AddFunc", "args[1]", "reportJob") in found
         assert ("cron.FuncJob", "args[0]", "cleanupJob") in found
+        assert ("gin.CustomRecovery", "args[0]", "recoverHandler") in found
+        assert ("middleware.BasicAuth", "args[0]", "validateUser") in found
+
+    def test_the_gate_is_asked_at_the_argument_position(
+        self, tmp_path: Path,
+    ) -> None:
+        contexts, by_id = _contexts(_repo(tmp_path, {"main.go": _GIN}))
+        refs = {by_id[c.symbol_ref].name for c in contexts if c.symbol_ref in by_id}
+        assert "requestID" in refs  # reach
+        # A route row names r.GET at args[last] only: a constant path gives
+        # no route context, and the handler at args[1] is no row's position.
+        assert "apiOnly" in refs  # reach: api.Use(apiOnly) is recorded
+        assert not any(
+            c.context_name == "r.GET" and c.position == "args[1]" for c in contexts
+        )
+        # go-web's .To row waits for a method and a path: no position matches.
+        assert "findUser" not in refs
 
     def test_local_callees_and_unnamed_library_calls_are_not_recorded(
         self, tmp_path: Path,
@@ -339,6 +370,9 @@ class TestShippedRows:
         concepts = _enriched(tmp_path, {"main.go": _GIN}, "gin")
         assert "middleware" in concepts["requestID"]
         assert "middleware" in concepts["apiOnly"]
+        assert "middleware" in concepts["validateUser"]
+        assert "error_handler" in concepts["recoverHandler"]
+        assert "route" not in concepts["findUser"]
         assert "middleware" not in concepts["localCallback"]
         assert "middleware" not in concepts["less"]
 

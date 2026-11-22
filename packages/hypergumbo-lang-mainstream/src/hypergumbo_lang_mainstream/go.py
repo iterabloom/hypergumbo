@@ -36,7 +36,8 @@ This analyzer uses tree-sitter to parse Go files and extract:
   library type, or as an argument of a call whose callee does not resolve
   in the repository (``r.Use`` as written, ``cron.FuncJob`` by the package's
   identifier; position ``args[i]``). Recorded only when a framework
-  ``usage:`` row could match the name (``usage_row_names_call``), so the
+  ``usage:`` row could match the name AT that position
+  (``usage_row_names_call``), so the
   rows, not this module, list the names; not for an inline ``func``
   literal (no symbol), and not without a ``go.mod`` (library and
   repository packages are then indistinguishable)
@@ -4476,8 +4477,13 @@ def _extract_edges_from_file(
         site: "tree_sitter.Node", name: str, position: str,
         target: Symbol, value_node: "tree_sitter.Node", metadata: dict[str, Any],
     ) -> None:
-        """A registration usage context, when a usage row could match ``name``."""
-        if usage_contexts is None or not usage_row_names_call(name, "go"):
+        """A registration usage context, when a usage row could match it.
+
+        The gate is asked with the position as well as the name: a row that
+        names a call takes one argument (``c.AddFunc``'s args[1]), and the
+        call's other arguments would be contexts no row can match.
+        """
+        if usage_contexts is None or not usage_row_names_call(name, "go", position):
             return
         usage_contexts.append(UsageContext.create(
             kind="call",
