@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# robfig/cron scheduled jobs - Go (WI-movur)
+#
+# cron runs a job the repository hands it: ``c.AddFunc(spec, sweep)`` takes a
+# function, ``cron.FuncJob(sweep)`` turns one into a Job for ``c.Schedule`` /
+# ``c.AddJob``. go.py records a usage context for a LOCAL function passed to a
+# call that is not repository code (``c.AddFunc`` as written, the receiver as
+# written; a package-qualified callee by its package identifier,
+# ``cron.FuncJob``), and only for a name a usage row here or elsewhere names.
+#
+# Not detected: ``c.AddJob(spec, job{})``, a local TYPE whose ``Run`` method
+# cron calls (a value of a type, not a function), and an inline ``func``
+# literal (no symbol; its calls belong to the enclosing function).
+
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-11-22
+id: go-cron
+language: go
+
+patterns:
+  # c.AddFunc("@daily", sweep): the function is the second argument
+  - concept: scheduled_task
+    usage:
+      kind: "^call$"
+      name: "\\.AddFunc$"
+      position: "^args\\[1\\]$"
+
+  # c.Schedule(spec, cron.FuncJob(sweep)) / c.AddJob(spec, cron.FuncJob(sweep))
+  - concept: scheduled_task
+    usage:
+      kind: "^call$"
+      name: "^cron\\.FuncJob$"
+      position: "^args\\[0\\]$"

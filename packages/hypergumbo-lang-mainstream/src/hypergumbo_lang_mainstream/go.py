@@ -28,7 +28,18 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
   package-attribute reads, and ``references`` edges for build-tag alternatives
-- UsageContext records, including Cobra ``AddCommand`` registration
+- UsageContext records, including Cobra ``AddCommand`` registration, and
+  REGISTRATION contexts (WI-movur): a local function or method handed to
+  library code, as a keyed field of a library type's composite literal
+  (``cobra.Command.RunE``, position the field; an elided element type is
+  read from the enclosing literal), as ``app.Action = f`` on a variable of a
+  library type, or as an argument of a call whose callee does not resolve
+  in the repository (``r.Use`` as written, ``cron.FuncJob`` by the package's
+  identifier; position ``args[i]``). Recorded only when a framework
+  ``usage:`` row could match the name (``usage_row_names_call``), so the
+  rows, not this module, list the names; not for an inline ``func``
+  literal (no symbol), and not without a ``go.mod`` (library and
+  repository packages are then indistinguishable)
 - The module's dependency manifest, parsed from ``go.mod``
 - Web framework routes (Gin, Echo, Fiber, Gorilla mux, Chi, Macaron,
   go-swagger, and Go 1.22+ ``ServeMux`` "POST /path" patterns)
@@ -313,6 +324,7 @@ from hypergumbo_core.library_signatures import (
     load_library_signatures,
 )
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.framework_patterns import usage_row_names_call
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
     make_pass_id,
@@ -3881,7 +3893,7 @@ def _extract_function_reference_edges(
     import_aliases: dict[str, str] | None = None,
     module_path: Optional[str] = None,
     caller_dir: str = "",
-) -> None:
+) -> list[tuple[int, "tree_sitter.Node", Symbol]]:
     """Detect function identifiers passed as arguments and create call edges.
 
     In Go, functions are first-class values.  When a known function is passed
@@ -3902,7 +3914,13 @@ def _extract_function_reference_edges(
     package function. A selector is
     resolved by its operand (``_go_selector_reference_target``, WI-kibah);
     ``scoped_vars`` (``_extract_go_var_types``) types a value operand.
+
+    Returns ``(argument index, argument node, function)`` for each edge it
+    wrote, in order: the registration usage context of the same argument
+    (WI-movur) is recorded from them. The index counts the call's arguments.
     """
+    passed: list[tuple[int, "tree_sitter.Node", Symbol]] = []
+    arguments = [a for a in args_node.named_children if a.type != "comment"]
     for arg in args_node.children:
         if arg.type == "identifier":
             target = _go_bare_reference_target(
@@ -3930,6 +3948,8 @@ def _extract_function_reference_edges(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
             ))
+            passed.append((arguments.index(arg), arg, target[0]))
+    return passed
 
 
 _GO_NO_LOCALS: Final[frozenset[str]] = frozenset()
@@ -4182,6 +4202,99 @@ def _go_selector_parts(
     return find_child_by_field(node, "operand"), find_child_by_field(node, "field")
 
 
+def _go_library_type(
+    type_node: "Optional[tree_sitter.Node]",
+    source: bytes,
+    import_aliases: Mapping[str, str],
+    module_path: Optional[str],
+) -> Optional[str]:
+    """``<package>.<Type>`` for a type of a package OUTSIDE this module, else None.
+
+    ``*cobra.Command`` and ``cobra.Command`` give ``cobra.Command``. The package
+    is named by the identifier its import path gives
+    (:func:`_go_package_identifier`), not by the file's alias, so
+    ``ucli "github.com/urfave/cli/v2"`` still gives ``cli.App``: a row names a
+    package once. An unqualified type is the repository's own; a qualifier
+    that names no import, or an import inside the module, is not a library's.
+    """
+    while type_node is not None and type_node.type == "pointer_type":
+        type_node = type_node.named_children[0] if type_node.named_children else None
+    if type_node is None or type_node.type != "qualified_type":
+        return None
+    package, name = _go_selector_parts(type_node)
+    if package is None or name is None:  # pragma: no cover - grammar guarantees both
+        return None
+    import_path = import_aliases.get(node_text(package, source))
+    if import_path is None or not _go_path_outside_module(import_path, module_path):
+        return None
+    return f"{_go_package_identifier(import_path)}.{node_text(name, source)}"
+
+
+def _go_literal_value_type(
+    literal_value: "tree_sitter.Node",
+) -> "Optional[tree_sitter.Node]":
+    """The type node a composite literal's ``literal_value`` builds.
+
+    Written (``cli.App{...}``: the enclosing ``composite_literal``'s type) or
+    ELIDED (``[]*cli.Command{{...}}``, ``map[string]*cli.Command{"k": {...}}``):
+    the element, or the map's key or value type, of the enclosing literal's
+    type, recursively. None when the literal's type is not known here.
+    """
+    parent = literal_value.parent
+    holder = parent.parent if parent is not None else None
+    if parent is None or holder is None:  # pragma: no cover - always in a literal
+        return None
+    found: "Optional[tree_sitter.Node]" = None
+    if parent.type == "composite_literal":
+        found = find_child_by_field(parent, "type")
+        return found
+    if holder.type == "keyed_element" and holder.parent is not None:
+        value = find_child_by_field(holder, "value")
+        outer = holder.parent
+        part = "value" if value is not None and value.start_byte == parent.start_byte else "key"
+    else:  # an unkeyed element of the enclosing literal_value
+        outer, part = holder, "element"
+    outer_type = _go_literal_value_type(outer)
+    if outer_type is not None and outer_type.type in (
+        "slice_type", "array_type", "implicit_length_array_type",
+    ):
+        found = find_child_by_field(outer_type, "element")
+    elif outer_type is not None and outer_type.type == "map_type":
+        found = find_child_by_field(outer_type, part)
+    return found
+
+
+def _go_registration_callee(
+    call: "tree_sitter.Node",
+    source: bytes,
+    import_aliases: Mapping[str, str],
+    bound: Container[str],
+) -> Optional[tuple[str, Optional[str], str]]:
+    """``(name, receiver, method)`` a registration context names a call by.
+
+    A package-qualified callee is named by its package's identifier
+    (``cron.FuncJob``, whatever the file's alias), as a type is in
+    :func:`_go_library_type`. A method on a value is named AS WRITTEN,
+    receiver included (``r.Use``, ``m.cron.AddFunc``; whitespace collapsed):
+    the receiver's type is known here only for some receivers, so the rows
+    name the method (``\\.Use$``), as the deleted rows named receivers.
+    Any other callee (a bare name, which in Go is the caller's own package or
+    a dot import; an index; a literal) names nothing.
+    """
+    function = find_child_by_field(call, "function")
+    if function is None or function.type != "selector_expression":
+        return None
+    operand, field = _go_selector_parts(function)
+    if operand is None or field is None:  # pragma: no cover - grammar guarantees both
+        return None
+    method = node_text(field, source)
+    receiver = " ".join(node_text(operand, source).split())
+    import_path = import_aliases.get(receiver)
+    if operand.type == "identifier" and import_path is not None and receiver not in bound:
+        return f"{_go_package_identifier(import_path)}.{method}", None, method
+    return f"{receiver}.{method}", receiver, method
+
+
 def _go_instantiated_callee(
     node: "tree_sitter.Node",
     source: bytes,
@@ -4248,6 +4361,7 @@ def _extract_edges_from_file(
     dot_imports: list[str] | None = None,
     file_symbols: list[Symbol] | None = None,
     package_scope: GoPackageScope | None = None,
+    usage_contexts: list[UsageContext] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -4276,6 +4390,16 @@ def _extract_edges_from_file(
     resolves in -- the repo-wide ``resolver`` is never asked about one, save
     through a dot import. A direct caller that passes none gets this file's own
     declarations as the scope: what is known of its package, never another's.
+
+    ``usage_contexts`` (WI-movur), when given, receives the REGISTRATION usage
+    contexts of the file: a local function or method handed to library code,
+    as a keyed field of a library type's composite literal
+    (``<package>.<Type>.<Field>``, position the field), as the right side of
+    ``x.Field = f`` on a variable of a library type (the same name), or as an
+    argument of a call whose callee is not repository code (the callee as
+    written, a package by its identifier; position ``args[i]``). Each is
+    resolved as its ``calls`` edge is, in package scope, and is recorded only
+    when a usage row could match its name (``usage_row_names_call``).
     """
     # Every declaration of this file, by position (INV-midag).
     # WI-surid: what a call on a value may reach (see _go_value_member).
@@ -4348,22 +4472,47 @@ def _extract_edges_from_file(
             scope = _scope_by_decl[key] = _GoLocalScope(decl, source)
         return scope.at(site)
 
+    def _record_registration(
+        site: "tree_sitter.Node", name: str, position: str,
+        target: Symbol, value_node: "tree_sitter.Node", metadata: dict[str, Any],
+    ) -> None:
+        """A registration usage context, when a usage row could match ``name``."""
+        if usage_contexts is None or not usage_row_names_call(name, "go"):
+            return
+        usage_contexts.append(UsageContext.create(
+            kind="call",
+            context_name=name,
+            position=position,
+            path=str(file_path),
+            span=Span(
+                start_line=site.start_point[0] + 1,
+                end_line=site.end_point[0] + 1,
+                start_col=site.start_point[1],
+                end_col=site.end_point[1],
+            ),
+            symbol_ref=target.id,
+            metadata={**metadata, "handler_name": node_text(value_node, source)},
+        ))
+
     def _emit_value_reference(
         site: "tree_sitter.Node", value_node: "tree_sitter.Node", evidence: str,
-    ) -> None:
+    ) -> Optional[tuple[Symbol, Symbol]]:
         """A ``calls`` edge to the function a value-position expression names.
 
         A bare identifier resolves in the caller's own package (WI-bivin), a
         selector by its operand (WI-kibah); anything else (a call, a literal,
         a closure) names nothing here. A name bound locally at ``site`` is
         that local value. At package level the caller is the file.
+
+        Returns ``(caller, target)`` when it named one, for the registration
+        context of the same value.
         """
         current_function = _get_enclosing_function(
             site, source, local_symbols, file_symbol=file_pseudo_symbol,
             decl_index=decl_index,
         )
         if current_function is None:  # pragma: no cover - file symbol always exists
-            return
+            return None
         if value_node.type == "identifier":
             target = _go_bare_reference_target(
                 node_text(value_node, source), local_symbols,
@@ -4380,18 +4529,20 @@ def _extract_edges_from_file(
                 caller_dir=caller_dir,
             )
         else:
-            return
-        if target is not None:
-            edges.append(Edge.create(
-                src=current_function.id,
-                dst=target[0].id,
-                edge_type="calls",
-                line=site.start_point[0] + 1,
-                evidence_type=evidence,
-                resolution_score=target[1],
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-            ))
+            return None
+        if target is None:
+            return None
+        edges.append(Edge.create(
+            src=current_function.id,
+            dst=target[0].id,
+            edge_type="calls",
+            line=site.start_point[0] + 1,
+            evidence_type=evidence,
+            resolution_score=target[1],
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+        return current_function, target[0]
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
@@ -4439,6 +4590,9 @@ def _extract_edges_from_file(
                 decl_index=decl_index,
             )
             if current_function is not None:
+                # WI-movur: the edges this call's own resolution writes start
+                # here; none resolved in-repo means the callee is a library's.
+                call_edges_start = len(edges)
                 # Get var_types scoped to the current enclosing function
                 var_types = scoped_var_types.get(current_function.name, {})
 
@@ -5373,7 +5527,7 @@ def _extract_edges_from_file(
                     else find_child_by_field(node, "arguments")
                 )
                 if args_node and current_function is not None:
-                    _extract_function_reference_edges(
+                    passed = _extract_function_reference_edges(
                         args_node, source, current_function,
                         local_symbols, global_symbols, resolver,
                         node.start_point[0] + 1, edges, run,
@@ -5384,6 +5538,22 @@ def _extract_edges_from_file(
                         module_path=module_path,
                         caller_dir=caller_dir,
                     )
+                    # WI-movur: a local function handed to LIBRARY code
+                    # (``r.Use(auth)``, ``c.AddFunc(spec, sweep)``). A call
+                    # to repository code that takes a callback is ordinary
+                    # code with its ordinary edge.
+                    own_call = edges[call_edges_start:len(edges) - len(passed)]
+                    reg_callee = _go_registration_callee(
+                        node, source, import_aliases, _bound_names(node),
+                    ) if own_call and not any(e.is_resolved for e in own_call) else None
+                    if reg_callee is not None:
+                        callee_name_written, callee_receiver, callee_method = reg_callee
+                        for arg_index, arg_node, arg_target in passed:
+                            _record_registration(
+                                node, callee_name_written, f"args[{arg_index}]",
+                                arg_target, arg_node,
+                                {"receiver": callee_receiver, "method": callee_method},
+                            )
 
         # WI-labik: a package-level function ALIAS, ``var NewWebhook =
         # testutils.NewWebhook`` / ``var run = helper``, continues to what it
@@ -5411,7 +5581,25 @@ def _extract_edges_from_file(
                 value_elem = lit_elems[-1]
                 # Unwrap literal_element to find the actual expression
                 value_node = value_elem.children[0] if value_elem.children else value_elem
-                _emit_value_reference(node, value_node, "struct_field_reference")
+                bound = _emit_value_reference(node, value_node, "struct_field_reference")
+                # WI-movur: a field of a LIBRARY type's literal hands the
+                # library this function (``&cobra.Command{RunE: run}``).
+                key_node = lit_elems[0].named_children[0] if lit_elems[0].named_children else None
+                literal_type = (
+                    _go_library_type(
+                        _go_literal_value_type(node.parent), source,
+                        import_aliases, module_path,
+                    )
+                    if bound is not None and node.parent is not None
+                    and key_node is not None and key_node.type == "identifier"
+                    else None
+                )
+                if bound is not None and key_node is not None and literal_type is not None:
+                    key_field = node_text(key_node, source)
+                    _record_registration(
+                        node, f"{literal_type}.{key_field}", key_field, bound[1], value_node,
+                        {"literal_type": literal_type, "field": key_field},
+                    )
 
         # META-mino: a function VALUE in the two other places Go writes one.
         # An UNKEYED composite-literal element -- ``[]func(){a, b}``, the
@@ -5430,8 +5618,44 @@ def _extract_edges_from_file(
             right = find_child_by_field(
                 node, "value" if node.type == "var_spec" else "right",
             )
-            for value_node in right.named_children if right is not None else ():
-                _emit_value_reference(node, value_node, "function_reference")
+            left = find_child_by_field(node, "left")
+            targets = left.named_children if left is not None else []
+            for index, value_node in enumerate(
+                right.named_children if right is not None else (),
+            ):
+                bound = _emit_value_reference(node, value_node, "function_reference")
+                # WI-movur: ``app.Action = run`` on a variable of a library
+                # type is the field of its literal, spelled as an assignment.
+                target_node = targets[index] if index < len(targets) else None
+                if (
+                    bound is None or target_node is None
+                    or target_node.type != "selector_expression"
+                ):
+                    continue
+                bound_operand, bound_field = _go_selector_parts(target_node)
+                bound_type: Optional[str] = (
+                    scoped_var_types.get(bound[0].name, {}).get(
+                        node_text(bound_operand, source),
+                    )
+                    if bound_operand is not None and bound_operand.type == "identifier"
+                    else None
+                )
+                bound_package = (
+                    _external_package_for_type(
+                        bound_type.lstrip("*"), import_aliases, module_path,
+                    )
+                    if bound_type else None
+                )
+                if bound_type and bound_package is not None and bound_field is not None:
+                    reg_type = (
+                        f"{_go_package_identifier(bound_package)}."
+                        f"{bound_type.rsplit('.', 1)[-1]}"
+                    )
+                    reg_field = node_text(bound_field, source)
+                    _record_registration(
+                        node, f"{reg_type}.{reg_field}", reg_field, bound[1], value_node,
+                        {"literal_type": reg_type, "field": reg_field},
+                    )
 
     # WI-lozug: emit module_attr_ref edges for attribute reads on imported
     # Go packages (e.g. ``os.Stdout``, ``os.Stderr``).  These pair with the
@@ -6875,6 +7099,9 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     all_usage_contexts: list[UsageContext] = []
+    # WI-movur: registration contexts (a local function handed to library
+    # code), kept apart until the route extractor's contexts are known.
+    registration_contexts: list[UsageContext] = []
     all_route_syms: list[Symbol] = []
     # go-swagger handler wiring: field name -> impl name (cross-file)
     handler_wiring: dict[str, str] = {}
@@ -6891,6 +7118,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             dot_imports=analysis.dot_imports,
             file_symbols=analysis.symbols,
             package_scope=package_scopes[_go_package_key(go_file, analysis.package_name)],
+            usage_contexts=registration_contexts,
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes
@@ -6932,6 +7160,16 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             all_usage_contexts.extend(usage_contexts)
         except (OSError, IOError):  # pragma: no cover
             pass  # Skip files that can't be read
+
+    # A route call (``r.GET("/x", h)``) is the route extractor's context; its
+    # registration twin, same call, same name, would only repeat it.
+    route_calls = {
+        (c.path, c.span.start_line, c.context_name) for c in all_usage_contexts
+    }
+    all_usage_contexts.extend(
+        c for c in registration_contexts
+        if (c.path, c.span.start_line, c.context_name) not in route_calls
+    )
 
     # Post-process: resolve go-swagger handler wiring across files.
     # Routes from the handler cache have handler_field metadata (e.g.

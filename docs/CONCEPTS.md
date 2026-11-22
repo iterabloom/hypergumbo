@@ -70,7 +70,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `circuit_breaker` | inert | vertx | _(none)_ |
 | `client` | inert | http4k, http4s, quarkus, restify, vertx | _(none)_ |
 | `code_section` | inert | language-conventions | _(none)_ |
-| `command` | live | adonisjs, cakephp, cli, cli-js, cli-ruby, cli-rust, codeigniter, django, flask, fuelphp, laminas, laravel, lumen, masonite, swift-argument-parser, symfony, vapor, yii | `entrypoints.py`, `linkers/subprocess_cli.py` |
+| `command` | live | adonisjs, cakephp, cli, cli-go, cli-js, cli-ruby, cli-rust, codeigniter, django, flask, fuelphp, laminas, laravel, lumen, masonite, swift-argument-parser, symfony, vapor, yii | `entrypoints.py`, `linkers/subprocess_cli.py` |
 | `command_by_name` | live | naming-conventions | `entrypoints.py` |
 | `component` | inert | cakephp, jakarta-cdi, laravel, lit, nuxt, phoenix, react, spring-boot, yesod, yii | _(none)_ |
 | `composer_dependency` | inert | config-conventions | _(none)_ |
@@ -181,7 +181,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `menu` | inert | electron | _(none)_ |
 | `message_handler` | inert | micronaut | _(none)_ |
 | `metadata_generator` | inert | nextjs, nuxt, remix | _(none)_ |
-| `middleware` | live | adonisjs, aiohttp, aspnet, bottle, cakephp, codeigniter, django, falcon, fastapi, feathers, flask, flask-appbuilder, grape, graphql, hanami, http4k, http4s, hummingbird, jakarta-cdi, javalin, laminas, laravel, litestar, lumen, masonite, micronaut, middleware_chain.py, nextjs, nuxt, openresty, padrino, pedestal, plug, plumber, quart, restify, ring-compojure, rust-web, sanic, scalatra, scotty, servant, slim, sveltekit, tornado, vapor, vertx, yii | `entrypoints.py`, `linkers/middleware_chain.py` |
+| `middleware` | live | adonisjs, aiohttp, aspnet, bottle, cakephp, codeigniter, django, falcon, fastapi, feathers, flask, flask-appbuilder, go-web, grape, graphql, hanami, http4k, http4s, hummingbird, jakarta-cdi, javalin, laminas, laravel, litestar, lumen, masonite, micronaut, middleware_chain.py, nextjs, nuxt, openresty, padrino, pedestal, plug, plumber, quart, restify, ring-compojure, rust-web, sanic, scalatra, scotty, servant, slim, sveltekit, tornado, vapor, vertx, yii | `entrypoints.py`, `linkers/middleware_chain.py` |
 | `migration` | inert | cakephp, codeigniter, fuelphp, vapor, yii | _(none)_ |
 | `model` | live | adonisjs, aspnet, cakephp, codeigniter, django, fastapi, flask, fuelphp, go-web, hanami, jakarta-cdi, laminas, laravel, litestar, lumen, masonite, padrino, phoenix, plug, pyramid, qt, quarkus, quart, rails, rust-web, spring-boot, sveltekit, vapor, yesod, yii | `datamodels.py`, `linkers/orm.py` |
 | `model_binding` | inert | adonisjs | _(none)_ |
@@ -248,7 +248,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `router` | live | cowboy, fastapi, flask, giraffe, http4k, http4s, laminas, nuxt, pedestal, phoenix, plumber, remix, ring-compojure, router_routes.py, sveltekit, vertx, yesod | `linkers/router_routes.py` |
 | `runtime` | inert | tornado | _(none)_ |
 | `scheduled` | inert | micronaut | _(none)_ |
-| `scheduled_task` | live | celery, rails | `entrypoints.py` |
+| `scheduled_task` | live | celery, go-cron, rails | `entrypoints.py` |
 | `schema` | live | cli-rust, fastify | `datamodels.py` |
 | `search` | inert | yii | _(none)_ |
 | `security` | inert | fastapi, flask-appbuilder | _(none)_ |
