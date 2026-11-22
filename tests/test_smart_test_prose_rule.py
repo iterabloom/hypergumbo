@@ -174,7 +174,7 @@ def test_the_local_coverage_gate_skips_prose_only_files() -> None:
     text = _text()
     assert 'LOCAL_CHANGED_FILES="$CHANGED_FILES"' in text
     assert 'build_affected_cov_paths "$LOCAL_CHANGED_FILES"' in text
-    assert 'COVERABLE_CHANGED_FILES=$(echo "$LOCAL_CHANGED_SOURCE_FILES"' in text
+    assert 'scoped_coverage_gate "$LOCAL_CHANGED_SOURCE_FILES"' in text
 
 
 def test_a_failed_helper_leaves_the_selection_to_the_import_graph() -> None:

@@ -45,6 +45,22 @@
 #   ./scripts/smart-test --no-stale-shadow  # Do not also walk an older stored graph for comparison
 #   ./scripts/smart-test --no-run-record    # Do not append this run to the run records
 #   ./scripts/smart-test --background # Kick off full suite in background
+#   ./scripts/smart-test <test paths> # Explicit run: just these tests, no selection
+#   ./scripts/smart-test <test paths> --gate-changed  # ...and 100% on the changed source files
+#
+# EXPLICIT RUNS AND THE 100% GATE (WI-birog). A self-selected run gates the
+# source files changed since the merge base at 100%, as PR CI does. An
+# explicit run (test files, directories or node ids on the command line) runs
+# only what it was given, so by default it does NOT gate, and says so: after
+# a green run it prints "NOT GATED (explicit run)", names the merge base, and
+# lists each changed source file under packages/*/src with its percent in
+# THIS run and its missing lines, or "not measured in this run". That is a
+# notice and exits 0: a few test files miss lines that other tests cover.
+# --gate-changed makes it a gate: below 100% the run exits 1 and names the
+# files and lines. Give it every test that covers the changed files in one
+# call (the manifest's selection); over a part of them it goes red on lines
+# the rest cover. A red run is its own verdict and gets neither. A
+# self-selected run always gates; --gate-changed changes nothing there.
 #
 # TARGET MODE (WI-damom): SMART_TEST_TARGET_ROOT=<dir> runs THIS script and its
 # helpers against ANOTHER repo laid out like this one (packages/<pkg>/src,
@@ -142,7 +158,8 @@ if ! flock -n 9; then
     exit 1
 fi
 echo $$ > "$LOCKFILE.pid"
-_cleanup_lock() { rm -f "$LOCKFILE.pid"; }
+# EXPLICIT_RUN_MARK: the explicit path's run-start marker (a temp file).
+_cleanup_lock() { rm -f "$LOCKFILE.pid" ${EXPLICIT_RUN_MARK:+"$EXPLICIT_RUN_MARK"}; }
 trap _cleanup_lock EXIT
 
 # ── A graph rebuild gives way to a test run ──
@@ -221,6 +238,10 @@ VERBOSE=false
 MANIFEST_ONLY=false
 BACKGROUND=false
 RAW_OUTPUT=false
+# --gate-changed (WI-birog): an explicit run enforces 100% on the source files
+# changed since the merge base, as the self-selected run and PR CI do. Off, an
+# explicit run prints what it did not gate (explicit_changed_coverage).
+GATE_CHANGED=false
 PYTEST_ARGS=()
 HAS_EXPLICIT_TESTS=false
 
@@ -386,6 +407,7 @@ for arg in "$@"; do
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
         --raw) RAW_OUTPUT=true ;;
+        --gate-changed) GATE_CHANGED=true ;;
 
         -*) PYTEST_ARGS+=("$arg") ;;
         *)
@@ -765,6 +787,12 @@ get_baseline() {
     echo "$merge_base"
 }
 
+# THE SOURCE FILES among the paths in $1 (one per line): Python files under a
+# package's src/, the set the 100% gates (here and in PR CI) answer for.
+source_files_of() {
+    echo "$1" | grep -E '^packages/.*/src/.*\.py$' || true
+}
+
 # Which packages hold a changed source file. Prints FULL when no source file
 # changed, else one --cov argument per such package. Only the FULL answer is
 # acted on now: the targeted run measures every package (see "THE GATE IS
@@ -774,7 +802,7 @@ build_affected_cov_paths() {
 
     # Filter to source files only (not tests, not configs)
     local source_files
-    source_files=$(echo "$changed_files" | grep -E '^packages/.*/src/.*\.py$' || echo "")
+    source_files=$(source_files_of "$changed_files")
 
     if [[ -z "$source_files" ]]; then
         log "No source files in changes, using full coverage"
@@ -800,6 +828,278 @@ build_affected_cov_paths() {
 
     log "$file_count changed source file(s) in $pkg_count package(s); every package is measured, the 100% gate reads the changed files"
     echo "${cov_paths[*]}"
+}
+
+# THE FILES A CHANGE TOUCHES, since $1 (a baseline commit), one per line,
+# sorted and unique. ONE definition for the two paths that need it: the
+# self-selected run selects from it, and an explicit run reports (or, with
+# --gate-changed, gates) the source files in it (WI-birog).
+# 1. Committed: changes between the baseline and HEAD
+# 2. Staged: changes in the index (git add'd but not committed)
+# 3. Unstaged: modified files in working directory (not yet git add'd)
+# 4. Untracked, below.
+# This ensures we detect changes regardless of when pytest runs in the workflow
+changed_files_since() {
+    local baseline="$1"
+    local COMMITTED_CHANGES STAGED_CHANGES UNSTAGED_CHANGES UNTRACKED_CHANGES
+    COMMITTED_CHANGES=$(git diff --name-only "$baseline"..HEAD 2>/dev/null || echo "")
+    STAGED_CHANGES=$(git diff --name-only --cached 2>/dev/null || echo "")
+    UNSTAGED_CHANGES=$(git diff --name-only 2>/dev/null || echo "")
+    # INV-kinin: the three git-diff calls above cannot see UNTRACKED files, so a
+    # brand-new test file was invisible to selection until committed — the sole
+    # coverer of a new branch could be dropped while its siblings ran, and the
+    # gate reported the changed source green with the missing lines being
+    # exactly what that file covers. Scoped to the test/source surfaces:
+    # pending tracker .ops files are untracked by design almost continuously
+    # and must not leak in (they would fire the top-level fallback every run).
+    UNTRACKED_CHANGES=$(git ls-files --others --exclude-standard 2>/dev/null | grep -E '^(packages/|tests/|scripts/|\.githooks/|\.agent/hooks/)' || echo "")
+    printf "%s\n%s\n%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" "$UNSTAGED_CHANGES" "$UNTRACKED_CHANGES" | sort -u | grep -v '^$' || true
+}
+
+# THE SCOPED 100% GATE over the source files in $1 (one per line), as PR CI
+# applies it to the files changed against the merge base. ONE definition for
+# the self-selected run (always) and an explicit run given --gate-changed
+# (WI-birog). $2 is an extra `coverage report` argument or "" (the explicit
+# path passes the --rcfile its run measured with; the self-selected path
+# passes "", the configuration it has always read). Any further arguments are
+# lines printed under a failure. Returns 0 on a pass or on no data, 1 below
+# 100%; prints its verdict and appends it to $PYTEST_LOG.
+scoped_coverage_gate() {
+    local files="$1" report_arg="$2"
+    shift 2
+    local report_args=()
+    [[ -n "$report_arg" ]] && report_args=("$report_arg")
+    echo ""
+    echo "Checking 100% coverage for changed source files..."
+
+    # Skip auto-generated files (e.g. scripts/build-scip-proto output under
+    # */scip/_generated/). --include bypasses coverage omit lists, so we
+    # have to filter here too.
+    local coverable _cov_verdict _cov_out
+    coverable=$(echo "$files" | grep -v '/_generated/' || echo "")
+    if [[ -z "$coverable" ]]; then
+        _cov_verdict="✅ No coverable changed source files (all are auto-generated)"
+        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
+        return 0
+    fi
+
+    # Build --include pattern for changed files
+    local include_pattern
+    include_pattern=$(echo "$coverable" | tr '\n' ',' | sed 's/,$//')
+
+    # Run the scoped coverage report and DISTINGUISH three outcomes (WI-kalub
+    # Step 1c) instead of collapsing them all into a false-red:
+    #   rc 0                       -> every included changed file at 100%   (PASS)
+    #   "No data to report" (rc 1) -> the affected-test slice did not exercise
+    #       these files (e.g. subprocess-only coverage). With the branch-own
+    #       baseline (Step 1a/1d) the changed files are normally exercised, but a
+    #       subprocess-only file legitimately has no data. This is NOT a coverage
+    #       regression — do not false-red; whole-codebase 100% is enforced by the
+    #       full-suite teeth + nightly.                                     (WARN)
+    #   real <100% (rc 2)          -> a changed file is genuinely under-covered (FAIL)
+    # The `if coverage …; then … elif … else` form keeps this `set -e`-safe (the
+    # condition consumes coverage's non-zero exit). Verdicts are also appended to
+    # $PYTEST_LOG (Step 1e) so the captured .ci/pytest-output.log carries the
+    # scoped signal, not just smart-test's stdout. --show-missing: the failure
+    # names the lines whichever configuration is read.
+    _cov_out=$(mktemp)
+    if coverage report ${report_args[@]+"${report_args[@]}"} --show-missing --include="$include_pattern" --fail-under=100 > "$_cov_out" 2>&1; then
+        _cov_verdict="✅ All changed source files are at 100% coverage"
+        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
+    elif grep -q "No data to report" "$_cov_out"; then
+        _cov_verdict="⚠️  No coverage data for changed source files under the affected-test slice (not exercised, e.g. subprocess-only) — not gating; full-suite + nightly enforce whole-codebase 100%."
+        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
+    else
+        {
+            echo ""
+            echo "❌ Changed source files are not at 100% coverage:"
+            cat "$_cov_out"
+            local hint
+            for hint in "$@"; do
+                echo "$hint"
+            done
+        } | tee -a "$PYTEST_LOG"
+        rm -f "$_cov_out"
+        return 1
+    fi
+    rm -f "$_cov_out"
+    return 0
+}
+
+# THE PER-FILE COVERAGE OF THIS RUN for the files in $1 (one per line), read
+# from coverage data file $3 with extra `coverage json` argument $2 (or "").
+# Prints one line per file: "<path><TAB><percent><TAB><missing lines>", or
+# "<path><TAB>-" for a file the data does not hold (the run did not measure
+# it: no test imported it and its package was not under --cov, or coverage
+# was off). `coverage json`, not the text table: the columns of the table
+# depend on the configuration, and this answer must not (see the COVERAGE
+# block in summarize_pytest_output for what parsing columns cost).
+per_file_coverage() {
+    local files="$1" report_arg="$2" data_file="$3"
+    local include_pattern json_out
+    include_pattern=$(echo "$files" | tr '\n' ',' | sed 's/,$//')
+    json_out=$(mktemp)
+    local report_args=()
+    [[ -n "$report_arg" ]] && report_args=("$report_arg")
+    # Exit 1 with "No data to report" when the data holds none of the files:
+    # every one is then unmeasured, which the Python below says.
+    COVERAGE_FILE="$data_file" coverage json -q ${report_args[@]+"${report_args[@]}"} \
+        --include="$include_pattern" -o "$json_out" >/dev/null 2>&1 || : > "$json_out"
+    local py='
+import json, sys
+files = [f for f in sys.argv[2].splitlines() if f]
+try:
+    data = json.load(open(sys.argv[1])).get("files", {})
+except ValueError:
+    data = {}
+
+def ranges(lines):
+    out, start, prev = [], None, None
+    for n in sorted(lines):
+        if start is None:
+            start = prev = n
+        elif n == prev + 1:
+            prev = n
+        else:
+            out.append(str(start) if start == prev else f"{start}-{prev}")
+            start = prev = n
+    if start is not None:
+        out.append(str(start) if start == prev else f"{start}-{prev}")
+    return ", ".join(out)
+
+for f in files:
+    rec = data.get(f)
+    if rec is None:
+        print(f + "\t-")
+        continue
+    s = rec.get("summary", {})
+    pct = s.get("percent_covered_display") or str(int(s.get("percent_covered", 0)))
+    missing = ranges(rec.get("missing_lines", []))
+    branches = rec.get("missing_branches") or []
+    if branches:
+        arcs = ", ".join(f"{a}->{b}" for a, b in branches)
+        missing = f"{missing}; branches {arcs}" if missing else f"branches {arcs}"
+    print(f"{f}\t{pct}%\t{missing}")
+'
+    python3 -c "$py" "$json_out" "$files"
+    rm -f "$json_out"
+}
+
+# AN EXPLICIT RUN SAYS WHAT IT DID NOT GATE, AND CAN GATE (WI-birog).
+# `smart-test <test files>` used to run pytest and exit: it never asked which
+# source files the branch changed, so it never applied the 100% gate that the
+# self-selected run and PR CI apply to them (CI: `coverage report
+# --include=<changed source files> --fail-under=100`). The pre-PR recipe's
+# explicit runs returned 0 with a changed file at 95% or 98%, committed or
+# not, and the coverage line above them read as a verdict.
+#
+# Called after a GREEN explicit run (a red one has already exited: its
+# failure is the verdict, and no coverage claim is made over it). It lists
+# each changed source file under packages/*/src since the merge base, with
+# its percent IN THIS RUN, or says it was not measured. It costs a merge-base,
+# four git listings and one `coverage json --include` over this run's data:
+# no analysis of the repository.
+#
+# WITHOUT --gate-changed it is a NOTICE, not a failure, and is worded as one:
+# an explicit run usually runs a few test files, and a line that another test
+# covers reads as missing in it. WITH --gate-changed it enforces 100% on those
+# files (scoped_coverage_gate, as the self-selected run does) and exits
+# non-zero below it -- meaningful only when the run holds every test that
+# covers the changed files (the manifest's selection in ONE call); run over a
+# part of them, it goes red on lines the other tests cover. That is why it is
+# opt-in. $1: a file created just before pytest started; coverage data older
+# than it is a previous run's and is not read.
+explicit_changed_coverage() {
+    local run_mark="$1"
+    local base_branch="${BASE_BRANCH:-origin/dev}"
+    local baseline base_desc changed src coverable generated
+    baseline=$(get_baseline "$base_branch")
+    if [[ "$baseline" == "HEAD~1" ]]; then
+        base_desc="HEAD~1 (no merge-base of HEAD and $base_branch)"
+    else
+        base_desc="merge-base $(git rev-parse --short "$baseline" 2>/dev/null || echo "$baseline") of HEAD and $base_branch"
+    fi
+    changed=$(changed_files_since "$baseline")
+    # A deleted file has nothing to measure; PR CI gates the files that exist.
+    src=$(source_files_of "$changed" | paths_on_disk)
+    generated=$(echo "$src" | grep '/_generated/' || true)
+    coverable=$(echo "$src" | grep -v '/_generated/' | grep . || true)
+
+    local head="NOT GATED (explicit run)"
+    [[ "$GATE_CHANGED" == "true" ]] && head="GATED (--gate-changed)"
+    if [[ -z "$coverable" ]]; then
+        {
+            echo ""
+            echo "$head: no source file under packages/*/src changed since $base_desc -- nothing to gate."
+            if [[ -n "$generated" ]]; then
+                echo "  auto-generated, never gated: $(echo "$generated" | tr '\n' ' ')"
+            fi
+        } | tee -a "$PYTEST_LOG"
+        return 0
+    fi
+
+    # This run's data and the configuration it was measured with.
+    local data_file="${COVERAGE_FILE:-.coverage}" report_arg="" arg
+    for arg in ${COV_PATHS[@]+"${COV_PATHS[@]}"}; do
+        [[ "$arg" == --cov-config=* ]] && report_arg="--rcfile=${arg#--cov-config=}"
+    done
+    local measured=false
+    if [[ -f "$data_file" ]] && [[ "$data_file" -nt "$run_mark" ]]; then
+        measured=true
+    fi
+
+    local listing="" unmeasured=""
+    if [[ "$measured" == "true" ]]; then
+        listing=$(per_file_coverage "$coverable" "$report_arg" "$data_file")
+        unmeasured=$(echo "$listing" | awk -F'\t' '$2 == "-" { print $1 }')
+    else
+        unmeasured="$coverable"
+    fi
+
+    if [[ "$GATE_CHANGED" == "true" ]]; then
+        if [[ "$measured" != "true" ]]; then
+            {
+                echo ""
+                echo "❌ $head: this run wrote no coverage data (coverage off, e.g. --no-cov?), so the source files changed since $base_desc cannot be gated:"
+                echo "$coverable" | sed 's/^/    /'
+            } | tee -a "$PYTEST_LOG"
+            return 1
+        fi
+        {
+            echo ""
+            echo "$head: 100% on the source files changed since $base_desc"
+            if [[ -n "$unmeasured" ]]; then
+                echo "  not measured in this run, so not gated here:"
+                echo "$unmeasured" | sed 's/^/    /'
+            fi
+        } | tee -a "$PYTEST_LOG"
+        scoped_coverage_gate "$coverable" "$report_arg" \
+            "An explicit run counts only the lines ITS tests ran: a line that a test outside this run covers reads as missing. Gate over every test that covers these files in one call (the manifest's selection), or run the self-selected smart-test."
+        return $?
+    fi
+
+    {
+        echo ""
+        echo "$head: PR CI requires 100% on the source files changed since $base_desc; this run did not check it."
+        echo "  Their coverage in THIS run (only the lines this run's tests ran count):"
+        local path pct missing
+        if [[ "$measured" == "true" ]]; then
+            while IFS=$'\t' read -r path pct missing; do
+                [[ -n "$path" ]] || continue
+                if [[ "$pct" == "-" ]]; then
+                    printf '    %s  not measured in this run\n' "$path"
+                elif [[ -n "$missing" ]]; then
+                    printf '    %s  %s  missing: %s\n' "$path" "$pct" "$missing"
+                else
+                    printf '    %s  %s\n' "$path" "$pct"
+                fi
+            done <<< "$listing"
+        else
+            echo "$coverable" | sed 's/$/  not measured in this run (it wrote no coverage data)/; s/^/    /'
+        fi
+        echo "  smart-test --gate-changed enforces 100% on them; pass it with every test that covers them."
+    } | tee -a "$PYTEST_LOG"
+    return 0
 }
 
 # INV-tazur: HOW MANY TESTS ACTUALLY EXECUTED. pytest's exit code alone cannot
@@ -1367,7 +1667,7 @@ run_full_suite() {
     # Extract source files from changed files (if provided)
     local source_files=""
     if [[ -n "$changed_files" ]]; then
-        source_files=$(echo "$changed_files" | grep -E '^packages/.*/src/.*\.py$' || echo "")
+        source_files=$(source_files_of "$changed_files")
     fi
 
     # Write manifest indicating full suite (with section markers for CI compatibility)
@@ -1457,9 +1757,15 @@ if [[ "$HAS_EXPLICIT_TESTS" == "true" ]]; then
     fi
 
     # Run pytest with the caller's args (test paths are already in PYTEST_ARGS)
+    # Coverage data older than this marker is a previous run's (WI-birog).
+    EXPLICIT_RUN_MARK=$(mktemp)
+    # A red run exits at run_pytest (set -e): the failure is the verdict, and
+    # no coverage claim is made. --raw replaces this shell with pytest.
     start_graph_rebuild
     run_pytest "" "${PYTEST_ARGS[@]}"
-    exit $?
+    # A green one says what it did not gate, or gates (--gate-changed).
+    explicit_changed_coverage "$EXPLICIT_RUN_MARK" || exit 1
+    exit 0
 fi
 
 # Check for stable hypergumbo installation
@@ -1496,26 +1802,9 @@ start_graph_rebuild
 BASE_BRANCH="${BASE_BRANCH:-origin/dev}"
 BASELINE=$(get_baseline "$BASE_BRANCH")
 
-# Get changes from all sources:
-# 1. Committed: changes between BASELINE and HEAD
-# 2. Staged: changes in the index (git add'd but not committed)
-# 3. Unstaged: modified files in working directory (not yet git add'd)
-# This ensures we detect changes regardless of when pytest runs in the workflow
-COMMITTED_CHANGES=$(git diff --name-only "$BASELINE"..HEAD 2>/dev/null || echo "")
-STAGED_CHANGES=$(git diff --name-only --cached 2>/dev/null || echo "")
-UNSTAGED_CHANGES=$(git diff --name-only 2>/dev/null || echo "")
-
-# INV-kinin: the three git-diff calls above cannot see UNTRACKED files, so a
-# brand-new test file was invisible to selection until committed — the sole
-# coverer of a new branch could be dropped while its siblings ran, and the
-# gate reported the changed source green with the missing lines being
-# exactly what that file covers. Scoped to the test/source surfaces:
-# pending tracker .ops files are untracked by design almost continuously
-# and must not leak in (they would fire the top-level fallback every run).
-UNTRACKED_CHANGES=$(git ls-files --others --exclude-standard 2>/dev/null | grep -E '^(packages/|tests/|scripts/|\.githooks/|\.agent/hooks/)' || echo "")
-
-# Combine and deduplicate
-CHANGED_FILES=$(printf "%s\n%s\n%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" "$UNSTAGED_CHANGES" "$UNTRACKED_CHANGES" | sort -u | grep -v '^$' || echo "")
+# Committed, staged, unstaged and untracked changes since BASELINE
+# (changed_files_since says which and why).
+CHANGED_FILES=$(changed_files_since "$BASELINE")
 
 # If no changes detected, run full suite
 # (This also writes a full-suite manifest, which CI will reject - that's intentional
@@ -1799,7 +2088,7 @@ fi
 
 # Check if any Python source files changed (drives the version-only and
 # no-affected-tests branches below).
-CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$' || echo "")
+CHANGED_SOURCE_FILES=$(source_files_of "$CHANGED_FILES")
 
 # INV-lizor: the top-level executable surface — scripts/ at any depth,
 # .githooks/, .agent/hooks/ — is exactly where the per-PR gate was
@@ -2807,58 +3096,14 @@ fi
 fold_selection_index
 
 # If tests passed, check coverage for just the changed source files
+# (scoped_coverage_gate: one definition, shared with an explicit run given
+# --gate-changed).
 if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$LOCAL_CHANGED_SOURCE_FILES" ]]; then
-    echo ""
-    echo "Checking 100% coverage for changed source files..."
-
-    # Skip auto-generated files (e.g. scripts/build-scip-proto output under
-    # */scip/_generated/). --include bypasses coverage omit lists, so we
-    # have to filter here too.
-    COVERABLE_CHANGED_FILES=$(echo "$LOCAL_CHANGED_SOURCE_FILES" | grep -v '/_generated/' || echo "")
-    if [[ -z "$COVERABLE_CHANGED_FILES" ]]; then
-        _cov_verdict="✅ No coverable changed source files (all are auto-generated)"
-        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
-        exit 0
+    _gate_hints=("Run the full suite to see overall coverage: pytest --full")
+    if [[ ${#STATEMENT_ARGS[@]} -gt 0 ]]; then
+        _gate_hints+=("By-statement selection left tests out of this run; --no-by-statement runs them")
     fi
-
-    # Build --include pattern for changed files
-    INCLUDE_PATTERN=$(echo "$COVERABLE_CHANGED_FILES" | tr '\n' ',' | sed 's/,$//')
-
-    # Run the scoped coverage report and DISTINGUISH three outcomes (WI-kalub
-    # Step 1c) instead of collapsing them all into a false-red:
-    #   rc 0                       -> every included changed file at 100%   (PASS)
-    #   "No data to report" (rc 1) -> the affected-test slice did not exercise
-    #       these files (e.g. subprocess-only coverage). With the branch-own
-    #       baseline (Step 1a/1d) the changed files are normally exercised, but a
-    #       subprocess-only file legitimately has no data. This is NOT a coverage
-    #       regression — do not false-red; whole-codebase 100% is enforced by the
-    #       full-suite teeth + nightly.                                     (WARN)
-    #   real <100% (rc 2)          -> a changed file is genuinely under-covered (FAIL)
-    # The `if coverage …; then … elif … else` form keeps this `set -e`-safe (the
-    # condition consumes coverage's non-zero exit). Verdicts are also appended to
-    # $PYTEST_LOG (Step 1e) so the captured .ci/pytest-output.log carries the
-    # scoped signal, not just smart-test's stdout.
-    _cov_out=$(mktemp)
-    if coverage report --include="$INCLUDE_PATTERN" --fail-under=100 > "$_cov_out" 2>&1; then
-        _cov_verdict="✅ All changed source files are at 100% coverage"
-        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
-    elif grep -q "No data to report" "$_cov_out"; then
-        _cov_verdict="⚠️  No coverage data for changed source files under the affected-test slice (not exercised, e.g. subprocess-only) — not gating; full-suite + nightly enforce whole-codebase 100%."
-        echo "$_cov_verdict"; echo "$_cov_verdict" >> "$PYTEST_LOG"
-    else
-        {
-            echo ""
-            echo "❌ Changed source files are not at 100% coverage:"
-            cat "$_cov_out"
-            echo "Run the full suite to see overall coverage: pytest --full"
-            if [[ ${#STATEMENT_ARGS[@]} -gt 0 ]]; then
-                echo "By-statement selection left tests out of this run; --no-by-statement runs them"
-            fi
-        } | tee -a "$PYTEST_LOG"
-        rm -f "$_cov_out"
-        exit 1
-    fi
-    rm -f "$_cov_out"
+    scoped_coverage_gate "$LOCAL_CHANGED_SOURCE_FILES" "" "${_gate_hints[@]}" || exit 1
 fi
 
 exit $TEST_EXIT
