@@ -125,6 +125,12 @@ patterns:
   - concept: task
     base_class: "^Sidekiq::Worker$"
 
+  # Sidekiq workers as written: `include Sidekiq::Worker`, `Sidekiq::Job`,
+  # `Sidekiq::IterableJob` (a mixin, not a base class, so the row above does
+  # not match them)
+  - concept: task
+    adopts: "^Sidekiq::(Worker|Job|IterableJob)$"
+
   # BaseJob (app-specific job base class, e.g., postal)
   - concept: task
     base_class: "^BaseJob$"
