@@ -2919,6 +2919,10 @@
           "type": "string",
           "description": "Regex pattern to match against base class names"
         },
+        "adopts": {
+          "type": "string",
+          "description": "Regex pattern (full name) to match against the modules a type adopts without inheriting: Elixir use, Ruby include / extend"
+        },
         "parent_base_class": {
           "type": "string",
           "description": "Regex pattern to match parent class's base classes (for methods)"

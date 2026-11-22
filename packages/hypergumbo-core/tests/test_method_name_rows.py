@@ -133,6 +133,16 @@ class TestKindRoleAndMetaBindEveryMatchType:
         assert matched["matched_symbol_kind"] == "class"
         assert row.matches(_sym("FileSinkLike", "interface", meta=meta)) is None
 
+    def test_adopts_with_a_kind(self) -> None:
+        row = Pattern(concept="task", adopts=r"^GenServer$", symbol_kind=r"^module$")
+        meta = {"adopted_modules": ["GenServer"]}
+
+        matched = row.matches(_sym("MyApp.Counter", "module", meta=meta))
+        assert matched is not None
+        assert matched["matched_adopts"] == "GenServer"
+        assert matched["matched_symbol_kind"] == "module"
+        assert row.matches(_sym("MyApp.Counter.init", "function", meta=meta)) is None
+
     def test_decorator_with_a_kind(self) -> None:
         row = Pattern(concept="task", decorator=r"^task$", symbol_kind=r"^function$")
         meta = {"decorators": [{"name": "task", "args": [], "kwargs": {}}]}
@@ -198,17 +208,17 @@ class TestKindRoleAndMetaBindEveryMatchType:
         }
 
 
-# The fields a row can match BY. A row conjoins: one of the first three alone;
+# The fields a row can match BY. A row conjoins: one of the first four alone;
 # ``parameter_type``, alone or with ``symbol_name``; ``symbol_name`` alone;
 # ``method_name`` and/or ``parent_base_class``; or none of them (kind, role,
 # meta only). Any other pair is tried one after the other, which is an OR
 # that nothing in the YAML says.
 _MATCH_BY = (
-    "decorator", "base_class", "annotation", "parameter_type", "symbol_name",
+    "decorator", "base_class", "adopts", "annotation", "parameter_type", "symbol_name",
     "method_name", "parent_base_class",
 )
 _CONJOINED = {
-    (), ("decorator",), ("base_class",), ("annotation",), ("parameter_type",),
+    (), ("decorator",), ("base_class",), ("adopts",), ("annotation",), ("parameter_type",),
     ("symbol_name",), ("parameter_type", "symbol_name"), ("method_name",),
     ("parent_base_class",), ("method_name", "parent_base_class"),
 }

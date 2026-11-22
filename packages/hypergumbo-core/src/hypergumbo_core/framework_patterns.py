@@ -180,6 +180,22 @@ class UsagePatternSpec:
         return True
 
 
+#: The meta keys ``adopts:`` reads, in order.
+_ADOPTED_META_KEYS = ("adopted_modules", "included_modules")
+
+
+def _adopted_names(symbol: "Symbol") -> list[str]:
+    """The modules ``symbol`` adopts (:data:`_ADOPTED_META_KEYS`), as its
+    analyzer wrote them. A value that is not a list of names gives nothing."""
+    meta = symbol.meta or {}
+    values = [meta.get(key) for key in _ADOPTED_META_KEYS]
+    return [
+        name
+        for value in values if isinstance(value, list)
+        for name in value if isinstance(name, str)
+    ]
+
+
 @dataclass
 class Pattern:
     """A single pattern to match against symbol metadata or usage contexts.
@@ -228,6 +244,15 @@ class Pattern:
         concept: The concept type this pattern identifies (route, model, task, etc.)
         decorator: Regex pattern to match against decorator names
         base_class: Regex pattern to match against base class names
+        adopts: Regex pattern (``match``, on the full name) against the
+            modules the type adopts without inheriting from them:
+            ``meta["adopted_modules"]`` (Elixir: the modules a ``use`` runs
+            and the behaviours they declare) and ``meta["included_modules"]``
+            (Ruby ``include`` / ``extend``). ``use Phoenix.LiveView`` and
+            ``include Sidekiq::Worker`` are how those frameworks are told
+            which module is theirs; ``base_class`` cannot say it, because
+            nothing is inherited and the inheritance linkers read
+            ``base_classes``.
         parent_base_class: Regex pattern to match parent class's base classes (for methods)
         method_name: Regex pattern matched (``re.match``) against the member's own
             name: ``Symbol.name`` after its last owner separator (``.``, ``#``, ``::``)
@@ -271,6 +296,7 @@ class Pattern:
     concept: str
     decorator: str | None = None
     base_class: str | None = None
+    adopts: str | None = None
     parent_base_class: str | None = None
     method_name: str | None = None
     symbol_name: str | None = None
@@ -324,6 +350,10 @@ class Pattern:
         self._base_class_re = (
             NameMatcher(self.base_class) if self.base_class else None
         )
+        # ``adopts`` is a raw regex on the module's full name: a terminal
+        # segment fallback would let ``^Worker$`` match ``Oban.Worker``, and
+        # the analyzers write the adopted names in full.
+        self._adopts_re = re.compile(self.adopts) if self.adopts else None
         self._parent_base_class_re = (
             NameMatcher(self.parent_base_class) if self.parent_base_class else None
         )
@@ -537,6 +567,16 @@ class Pattern:
                         **also_matched,
                     }]
 
+        # Try adopted-module match: what the type takes its behaviour from
+        # without inheriting (Elixir ``use``, Ruby ``include`` / ``extend``).
+        if self._adopts_re:
+            for adopted in _adopted_names(symbol):
+                if self._adopts_re.match(adopted):
+                    return [{
+                        "concept": self.concept, "matched_adopts": adopted,
+                        **also_matched,
+                    }]
+
         # Try annotation match (Java) — collect ALL matching annotations
         if self._annotation_re:
             for ann in annotations:
@@ -601,6 +641,7 @@ class Pattern:
             or self._method_name_re
             or self._decorator_re
             or self._base_class_re
+            or self._adopts_re
             or self._annotation_re
             or self._param_type_re
         ):
@@ -922,7 +963,7 @@ _FILE_KEYS: frozenset[str] = frozenset({
     "id", "language", "patterns", "provenance", "retrieved",
 })
 _PATTERN_KEYS: frozenset[str] = frozenset({
-    "concept", "decorator", "base_class", "parent_base_class", "method_name",
+    "concept", "decorator", "base_class", "adopts", "parent_base_class", "method_name",
     "symbol_name", "language", "annotation", "parameter_type", "symbol_kind",
     "framework_role", "meta_match", "modifiers", "modifiers_exclude",
     "symbol_path", "qualified_name", "is_test_file", "extract_path", "extract_method",
@@ -992,6 +1033,7 @@ class FrameworkPatternDef:
                 concept=p.get("concept", "unknown"),
                 decorator=p.get("decorator"),
                 base_class=p.get("base_class"),
+                adopts=p.get("adopts"),
                 parent_base_class=p.get("parent_base_class"),
                 method_name=p.get("method_name"),
                 symbol_name=p.get("symbol_name"),
