@@ -74,6 +74,7 @@ import builtins
 import glob
 import os
 from dataclasses import dataclass
+from pathlib import PurePath
 from typing import Optional, Union
 
 _BLOCKS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -205,10 +206,10 @@ def _dotted(node: ast.expr, outermost: bool = True) -> Optional[list[str]]:
 
 def _source_roots(path: str) -> list[str]:
     """Every ``packages/*/src`` beside the one ``path`` is in."""
-    parts = path.split(os.sep)
+    parts = PurePath(path).parts
     for index in range(len(parts) - 3, -1, -1):
         if parts[index] == "packages" and parts[index + 2] == "src":
-            packages = os.sep.join(parts[:index + 1]) or os.sep
+            packages = str(PurePath(*parts[:index + 1]))
             return sorted(glob.glob(os.path.join(glob.escape(packages), "*", "src")))
     return []
 
