@@ -111,6 +111,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A directory argument runs that directory and nothing else.**
 - **A new overriding method selects the overridden method's tests**; a base outside the repository stops narrowing.
 - **Run records name unjudged files even when no source changed.**
+- **The selector's bar ignores failures in edited test files.**
 
 #### Scheduled runs
 

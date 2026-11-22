@@ -446,6 +446,9 @@ class StatementBar:
     #: ``(when, run kind, head, the failed tests left out)`` for every row in
     #: which the selector left out a failed test that reached a changed function.
     misses: tuple[tuple[str, str, str, tuple[str, ...]], ...]
+    #: ``(failed tests, rows)`` set aside because the test's own FILE is one
+    #: the change edits (:func:`evaluate_statement_bar` says why).
+    edited: tuple[int, int] = (0, 0)
 
     @property
     def verdict(self) -> str:
@@ -471,6 +474,9 @@ class StatementBar:
         lines.append(f"  RUNS WITH A FAILED TEST LEFT OUT : {len(self.misses)}")
         for at, kind, head, tests in self.misses[:5]:
             lines.append(f"      {at} {kind} {head[:12]}  {', '.join(tests[:3])}")
+        if self.edited[0]:
+            lines.append(f"  failed tests of a changed test file, set aside : "
+                         f"{self.edited[0]} in {self.edited[1]} run(s)")
         lines.append(f"  verdict                   : {self.verdict.upper()}")
         lines.append("  not seen by this count    : a failed test the index does not pair with "
                      "the changed function (shared work: a cache, a shared fixture, a subprocess)")
@@ -494,6 +500,18 @@ def evaluate_statement_bar(records: Iterable[Mapping[str, object]]) -> Statement
     and a miss in any row counts, except a row whose change was to the
     selector's own code (:data:`SELECTOR_FILES`): that row was not written by
     the selector being judged.
+
+    A FAILED TEST WHOSE OWN FILE THE CHANGE EDITS IS SET ASIDE, in both
+    counts. The row's ``failed_not_selected`` is the selector's answer alone.
+    What acts on that answer (:mod:`statement_narrow`) never deselects a test
+    of a changed test file: the caller runs such a file whole, because the
+    index's record of the test is of the test as it was before the edit. So
+    the test could not have been left out of a run, and its failure says
+    nothing about the selector either way (a test edited to assert new
+    behaviour fails until the source follows, whatever statements the old
+    test ran). The one row that ever read ``missed`` on this repository's
+    records (2026-11-19) was that. ``edited`` counts what was set aside, and
+    the summary prints it, so the exclusion is never silent.
     """
     rows = list(records)
     uncounted: dict[str, int] = {}
@@ -501,6 +519,7 @@ def evaluate_statement_bar(records: Iterable[Mapping[str, object]]) -> Statement
     narrowed: dict[str, set[tuple[object, object, object]]] = {}
     misses: list[tuple[str, str, str, tuple[str, ...]]] = []
     recorded = 0
+    edited_tests = edited_rows = 0
 
     def skip(why: str) -> None:
         uncounted[why] = uncounted.get(why, 0) + 1
@@ -522,12 +541,17 @@ def evaluate_statement_bar(records: Iterable[Mapping[str, object]]) -> Statement
             continue
         recorded += 1
         kind = str(row.get("kind"))
-        left_out = facts.get("failed_not_selected")
-        if isinstance(left_out, list) and left_out:
-            misses.append((str(row.get("at")), kind, str(row.get("head")),
-                           tuple(str(test) for test in left_out)))
-        at_risk = facts.get("failed_reaching_a_narrowed_block")
-        if at_risk is None:
+        edited_files = frozenset(changed) if isinstance(changed, list) else frozenset()
+        left_out, aside_left = _not_of(facts.get("failed_not_selected"), edited_files)
+        if left_out:
+            misses.append((str(row.get("at")), kind, str(row.get("head")), tuple(left_out)))
+        named = facts.get("failed_reaching_a_narrowed_block")
+        at_risk, aside_risk = _not_of(named, edited_files)
+        aside = aside_left | aside_risk
+        if aside:
+            edited_tests += len(aside)
+            edited_rows += 1
+        if named is None:
             skip("written before narrowed tests were recorded")
         elif at_risk and not facts.get("unknown_blocks"):
             state = (row.get("base"), row.get("head"), row.get("snapshot"))
@@ -539,4 +563,12 @@ def evaluate_statement_bar(records: Iterable[Mapping[str, object]]) -> Statement
         rows=len(rows), uncounted=uncounted, recorded=recorded,
         informative={kind: len(states) for kind, states in informative.items()},
         left_out={kind: len(states) for kind, states in narrowed.items()},
-        misses=tuple(misses))
+        misses=tuple(misses), edited=(edited_tests, edited_rows))
+
+
+def _not_of(tests: object, files: frozenset[object]) -> tuple[list[str], frozenset[str]]:
+    """``tests`` (a row's list of node ids, or anything else: none) split into
+    those whose file is not one of ``files`` and those whose file is."""
+    ids = [str(test) for test in tests] if isinstance(tests, list) else []
+    aside = frozenset(test for test in ids if test.split("::")[0] in files)
+    return [test for test in ids if test not in aside], aside
