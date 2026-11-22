@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: fastify
 language: javascript
 
@@ -41,3 +41,53 @@ patterns:
   # Fastify schema
   - concept: schema
     decorator: "^(fastify|app|server)\\.addSchema$"
+
+  # ==================== REGISTRATION ROWS (WI-movur) ====================
+  # These match the registration UsageContext the JS/TS analyzer records when
+  # a call hands a LOCAL function to a library call: ``position`` is
+  # ``args[i]`` for the i-th argument, ``args[i].<key>`` for a function in an
+  # option object, ``[j]`` for an array element. A chained receiver is written
+  # with its calls collapsed (``program.command('x').action(f)`` ->
+  # ``program.action``); a bare callee as its import (``koa-mount``).
+
+  # Fastify plugin - fastify.register(plugin, opts), the plugin a local function
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.register$"
+      position: "^args\\[0\\]$"
+
+  # Fastify hook - fastify.addHook('onRequest', fn)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.addHook$"
+      position: "^args\\[1\\]$"
+
+  # Fastify route-level hook - fastify.get(path, { preHandler: [fn] }, handler)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.(get|post|put|delete|patch|options|head|all|route)$"
+      position: "^args\\[\\d+\\]\\.(onRequest|preParsing|preValidation|preHandler|preSerialization|onSend|onResponse|onError|onTimeout|onRequestAbort)(\\[\\d+\\])?$"
+
+  # Fastify error handler - fastify.setErrorHandler(fn)
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.setErrorHandler$"
+      position: "^args\\[0\\]$"
+
+  # Fastify 404 handler - fastify.setNotFoundHandler(fn)
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.setNotFoundHandler$"
+      position: "^args\\[\\d+\\]$"
+
+  # Fastify content type parser - fastify.addContentTypeParser(type, opts, fn)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.addContentTypeParser$"
+      position: "^args\\[\\d+\\]$"

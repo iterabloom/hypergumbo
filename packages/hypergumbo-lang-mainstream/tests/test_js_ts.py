@@ -8802,6 +8802,9 @@ class TestSpaBootstrapUsageContext:
         bootstrap_ctx = [
             c for c in result.usage_contexts
             if c.kind == "call" and c.context_name == "app.on"
+            # the bootstrap / server context; a local handler passed to the
+            # same call is also recorded, at args[i] (registration, WI-movur)
+            and c.position == "caller"
         ]
         assert len(bootstrap_ctx) == 1
 
@@ -8897,6 +8900,9 @@ class TestHttpHandlerUsageContext:
         ucs = [
             c for c in result.usage_contexts
             if c.kind == "call" and c.context_name == "http.createServer"
+            # the bootstrap / server context; a local handler passed to the
+            # same call is also recorded, at args[i] (registration, WI-movur)
+            and c.position == "caller"
         ]
         assert len(ucs) == 1
 
@@ -8916,6 +8922,9 @@ class TestHttpHandlerUsageContext:
         ucs = [
             c for c in result.usage_contexts
             if c.kind == "call" and c.context_name == "https.createServer"
+            # the bootstrap / server context; a local handler passed to the
+            # same call is also recorded, at args[i] (registration, WI-movur)
+            and c.position == "caller"
         ]
         assert len(ucs) == 1
 
@@ -8933,6 +8942,9 @@ class TestHttpHandlerUsageContext:
         ucs = [
             c for c in result.usage_contexts
             if c.kind == "call" and c.context_name == "http2.createServer"
+            # the bootstrap / server context; a local handler passed to the
+            # same call is also recorded, at args[i] (registration, WI-movur)
+            and c.position == "caller"
         ]
         assert len(ucs) == 1
 

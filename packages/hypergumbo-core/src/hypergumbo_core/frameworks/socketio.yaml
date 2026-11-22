@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Socket.IO framework patterns (WI-movur)
+#
+# A Socket.IO server registers its event handlers with ``.on``:
+# ``io.on('connection', onConnection)`` and, inside it,
+# ``socket.on('chat', onChat)``. The handlers have no caller in the
+# repository. These rows were in express.yaml, which loads only when Express
+# is detected; a Socket.IO server is detected by its own dependency.
+
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-11-22
+id: socketio
+language: javascript
+
+patterns:
+  # Socket.IO event handler - io.on('connection', fn), socket.on('event', fn),
+  # io.of('/ns').on('connection', fn) (the chain collapsed: io.on). The
+  # receiver must be ``io`` or a name ending in ``socket`` / ``Socket``:
+  # ``.on`` alone is every EventEmitter's.
+  - concept: websocket_handler
+    usage:
+      kind: "^call$"
+      name: "^([\\w$]+\\.)*(io|[\\w$]*[Ss]ocket)\\.(on|once)$"
+      position: "^args\\[1\\]$"

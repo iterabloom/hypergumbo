@@ -209,6 +209,7 @@ JS_FRAMEWORKS = {
     "sails": ["sails"],
     "hono": ["hono"],
     "elysia": ["elysia"],
+    "socketio": ["socket.io"],
     # GraphQL
     # The bare "graphql" npm package is deliberately absent: it is often
     # installed for type definitions or code generation without a GraphQL
@@ -231,7 +232,7 @@ JS_FRAMEWORKS = {
     "wagmi": ["wagmi"],
     "viem": ["viem"],
     # CLI
-    "cli-js": ["commander", "yargs", "@oclif/core", "cac", "inquirer", "vorpal"],
+    "cli-js": ["commander", "yargs", "@oclif/core", "cac", "inquirer", "vorpal", "gluegun"],
     # MCP (Model Context Protocol)
     "mcp": ["@modelcontextprotocol/sdk"],
     # Audio

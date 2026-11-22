@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: cli-js
 language: javascript
 
@@ -54,3 +54,33 @@ patterns:
   # Gluegun command module
   - concept: command
     base_class: "^GluegunCommand$"
+
+  # ==================== REGISTRATION ROWS (WI-movur) ====================
+  # These match the registration UsageContext the JS/TS analyzer records when
+  # a call hands a LOCAL function to a library call: ``position`` is
+  # ``args[i]`` for the i-th argument, ``args[i].<key>`` for a function in an
+  # option object, ``[j]`` for an array element. A chained receiver is written
+  # with its calls collapsed (``program.command('x').action(f)`` ->
+  # ``program.action``); a bare callee as its import (``koa-mount``).
+
+  # Commander / CAC / Vorpal action - program.command('x').action(fn)
+  # (the chain is collapsed: the context is named program.action)
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.action$"
+      position: "^args\\[0\\]$"
+
+  # yargs command - yargs.command(cmd, desc, builder, handler)
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.command$"
+      position: "^args\\[3\\]$"
+
+  # yargs command object - yargs.command({ command, describe, handler })
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.command$"
+      position: "^args\\[0\\]\\.handler$"

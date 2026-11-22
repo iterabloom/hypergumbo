@@ -198,12 +198,34 @@ How It Works
 3. Three-pass analysis:
    - Pass 1: Parse all JS/TS files plus the <script> blocks of Svelte / Vue
      files, and extract all symbols into the global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
+   - Pass 2: Detect calls and resolve against global symbol registry. A
+     call that hands a LOCAL function to a library call is also recorded
+     as a registration UsageContext (WI-movur; ``_record_registrations``):
+     kind ``call``; ``context_name`` the callee as written, a chained
+     receiver collapsed through its calls (``program.command('x')
+     .action(f)`` -> ``program.action``, ``io.of('/a').on`` -> ``io.on``,
+     ``yargs(argv).command`` -> ``yargs.command``) and a bare callee written
+     as its import (``koa-mount``, ``<module>.<export>``); ``position``
+     ``args[i]``, or ``args[i].<key>`` / ``[j]`` for a function in an
+     option object or array; ``symbol_ref`` the function (a named one
+     resolved like any value reference, or an inline one the analyzer made
+     a ``_cb_<method>`` symbol of); metadata ``receiver``, ``method``,
+     ``handler_arity``, ``first_string_arg`` and, where the file shows what
+     the receiver was bound to, ``receiver_source`` / ``receiver_module``.
+     It is recorded only when a shipped ``usage:`` row names the call
+     (``framework_patterns.usage_row_names_call``; no call name is listed
+     here), when the callee is not resolved to repository code, and never
+     for the positional handler of an Express-style route call (the route
+     extractor's). The rows of express, koa, fastify, hapi, socketio,
+     cli-js and electron turn them into middleware, error handlers,
+     websocket / event / IPC handlers and commands.
    - Pass 3: Build framework UsageContexts straight from each file's AST
      (Express/Hapi routes, Next.js file routes, index-file library
      exports, SPA/Electron bootstrap calls, HTTP-server handler calls, and
      the Electron preload script: a ``contextBridge`` exposure or a literal
-     ``webPreferences.preload`` path)
+     ``webPreferences.preload`` path). An Express-style ``get`` whose
+     options hold ``websocket: true`` (@fastify/websocket) is the method
+     ``WS``, a websocket handler and not an HTTP route.
 4. Post-passes over all files' symbols: ``extends`` / ``implements`` from
    ``meta.base_classes``, ``decorated_by`` from ``meta.decorators``, and
    ``references`` edges with evidence_type ``ast_type_ref`` from TypeScript
@@ -266,6 +288,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, T
 
 from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.framework_patterns import usage_row_names_call
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, Span, Symbol, UsageContext,
     make_pass_id,
@@ -2334,6 +2357,9 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     - receiver is in ROUTER_RECEIVER_NAMES (app, router, express, server, fastify, koa)
     - http_method is get, post, put, patch, delete, head, or options
 
+    A ``get`` whose option object holds ``websocket: true`` (@fastify/websocket)
+    returns the synthetic method ``"WS"``.
+
     This prevents false positives from test mocks like fetchMock.get().
     """
     if node.type != "call_expression":  # pragma: no cover
@@ -2385,8 +2411,33 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     if route_path is None:
         return None, None
 
+    # A GET route whose options say ``websocket: true`` (@fastify/websocket)
+    # upgrades to a WebSocket: the synthetic method "WS" makes it a
+    # websocket handler entry, not an HTTP route (WI-kuvig, WI-movur F19).
+    if method_name == "get" and any(
+        arg.type == "object" and _object_flag_true(arg, "websocket", source)
+        for arg in args_node.children
+    ):
+        return "WS", route_path
+
     # Return uppercase HTTP method for consistency with other analyzers
     return method_name.upper() if method_name else None, route_path
+
+
+def _object_flag_true(obj: "tree_sitter.Node", key: str, source: bytes) -> bool:
+    """Whether an object literal has the property ``key: true``."""
+    for pair in obj.children:
+        if pair.type != "pair":
+            continue
+        pair_key = pair.child_by_field_name("key")
+        value = pair.child_by_field_name("value")
+        if (
+            pair_key is not None and value is not None
+            and _node_text(pair_key, source).strip("'\"") == key
+            and value.type == "true"
+        ):
+            return True
+    return False
 
 
 def _find_route_handler_in_call(
@@ -2502,8 +2553,11 @@ def _extract_express_usage_contexts(
                 receiver_name = _get_receiver_name(child, source)
                 break
 
-        # Build the full call name (e.g., "app.get", "router.post")
-        call_name = f"{receiver_name}.{http_method.lower()}" if receiver_name else http_method.lower()
+        # Build the full call name (e.g., "app.get", "router.post"). A
+        # WebSocket route (method "WS") is still written as the ``get`` call
+        # it is, so the route rows keyed on ``.get`` match it.
+        written = "get" if http_method == "WS" else http_method.lower()
+        call_name = f"{receiver_name}.{written}" if receiver_name else written
 
         span = Span(
             start_line=node.start_point[0] + 1 + line_offset,
@@ -6478,6 +6532,150 @@ def _get_enclosing_function(
     return None  # pragma: no cover
 
 
+# ---------------------------------------------------------------------------
+# Registration usage contexts (WI-movur)
+# ---------------------------------------------------------------------------
+#
+# A call that hands a LOCAL function to a library (``app.use(auth)``,
+# ``ipcMain.handle('ch', h)``, ``program.command('x').action(run)``) gives the
+# function a caller the repository does not contain. The analyzer records the
+# FACT as a ``kind="call"`` UsageContext; which calls are a middleware, a
+# command or an IPC handler is said by the ``usage:`` rows of the framework
+# files, and ``framework_patterns.usage_row_names_call`` is the emission gate,
+# so no call name is listed here.
+
+
+def _registration_receiver(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """The receiver of a registration call, as written, with calls collapsed.
+
+    An identifier or ``this`` is itself; a member is its object's receiver
+    plus ``.<property>``. A CALL in the chain is collapsed: ``f(...)`` reads
+    ``f`` and ``x.m(...)`` reads ``x`` (the method dropped), so
+    ``program.command('x').description('d')`` reads ``program``,
+    ``io.of('/ns')`` reads ``io`` and ``yargs(argv)`` reads ``yargs``. Any
+    other expression (a subscript, ``new X()``, a parenthesis) reads ``None``.
+    """
+    if node.type in ("identifier", "this"):
+        return _node_text(node, source)
+    if node.type == "member_expression":
+        obj = node.child_by_field_name("object")
+        prop = node.child_by_field_name("property")
+        if obj is None or prop is None or prop.type != "property_identifier":
+            return None
+        base = _registration_receiver(obj, source)
+        return f"{base}.{_node_text(prop, source)}" if base else None
+    if node.type == "call_expression":
+        fn = node.child_by_field_name("function")
+        if fn is not None and fn.type == "identifier":
+            return _node_text(fn, source)
+        if fn is not None and fn.type == "member_expression":
+            inner = fn.child_by_field_name("object")
+            return _registration_receiver(inner, source) if inner is not None else None
+    return None
+
+
+def _registration_call_name(
+    call: "tree_sitter.Node",
+    source: bytes,
+    namespace_imports: dict[str, str],
+    named_imports: dict[str, str],
+    named_import_originals: dict[str, str],
+) -> str | None:
+    """The ``context_name`` of a registration call, or ``None``.
+
+    A member call is ``<receiver>.<method>`` (:func:`_registration_receiver`).
+    A bare callee is written as its IMPORT, so a row can anchor on the
+    library and not on a local name: a default / namespace / ``require``
+    binding as the module specifier (``const mount = require('koa-mount');
+    mount(p, f)`` -> ``koa-mount``), a named import as
+    ``<module>.<exported name>``. A bare callee bound by no import is ``None``.
+    """
+    fn = call.child_by_field_name("function")
+    if fn is None:  # pragma: no cover - defensive: a call always has a callee
+        return None
+    if fn.type == "identifier":
+        name = _node_text(fn, source)
+        if name in namespace_imports:
+            return namespace_imports[name]
+        if name in named_imports:
+            return f"{named_imports[name]}.{named_import_originals.get(name, name)}"
+        return None
+    if fn.type != "member_expression":
+        return None
+    obj = fn.child_by_field_name("object")
+    prop = fn.child_by_field_name("property")
+    if obj is None or prop is None or prop.type != "property_identifier":
+        return None
+    receiver = _registration_receiver(obj, source)
+    return f"{receiver}.{_node_text(prop, source)}" if receiver else None
+
+
+def _signature_arity(signature: str | None) -> int | None:
+    """The parameter count of a ``(a, b = f(x), ...c)`` signature, or ``None``."""
+    if not signature or not signature.startswith("("):
+        return None
+    depth = 0
+    for index, char in enumerate(signature):
+        depth += char in "([{"
+        depth -= char in ")]}"
+        if depth == 0:
+            inner = signature[1:index].strip()
+            return len(_ts_split_parameters(inner)) if inner else 0
+    return None
+
+
+def _receiver_bindings(
+    tree_root: "tree_sitter.Node",
+    source: bytes,
+    namespace_imports: dict[str, str],
+    named_imports: dict[str, str],
+) -> dict[str, dict[str, str]]:
+    """What each name of a file was bound to, for a registration's metadata.
+
+    ``const app = express()`` -> ``{"receiver_source": "express()",
+    "receiver_module": "express"}`` when ``express`` is an import; ``new
+    Router()`` -> ``"new Router()"``; an imported name -> ``"import"``. A name
+    declared twice with different values is left out. No row reads this
+    today (a ``usage:`` row matches only kind, name and position): it is for
+    the reader of the map and for a matcher that may read metadata later.
+    """
+    imports = {**named_imports, **namespace_imports}
+    bound: dict[str, dict[str, str]] = {
+        name: {"receiver_source": "import", "receiver_module": module}
+        for name, module in imports.items()
+    }
+    conflicting: set[str] = set()
+    for node in iter_tree(tree_root):
+        if node.type != "variable_declarator":
+            continue
+        name_node = node.child_by_field_name("name")
+        value = node.child_by_field_name("value")
+        if name_node is None or name_node.type != "identifier" or value is None:
+            continue
+        name = _node_text(name_node, source)
+        if name in imports:
+            continue
+        if value.type == "call_expression":
+            callee = value.child_by_field_name("function")
+            fact = {"receiver_source": f"{_node_text(callee, source)}()"} if callee is not None else {}
+        elif value.type == "new_expression":
+            callee = value.child_by_field_name("constructor")
+            fact = {"receiver_source": f"new {_node_text(callee, source)}()"} if callee is not None else {}
+        else:
+            continue
+        if callee is not None:
+            root = _registration_receiver(callee, source)
+            module = imports.get((root or "").split(".")[0])
+            if module is not None:
+                fact["receiver_module"] = module
+        if name in bound and bound[name] != fact:
+            conflicting.add(name)
+        bound[name] = fact
+    for name in conflicting:
+        del bound[name]
+    return bound
+
+
 def _emit_anon_callback_reference_edges(
     call_node: "tree_sitter.Node",
     args_node: Optional["tree_sitter.Node"],
@@ -6554,8 +6752,13 @@ def _extract_edges(
     default_export_of: "Callable[[str, Path], Symbol | None] | None" = None,
     module_objects: frozenset[str] = frozenset(),
     package_index: "_JsPackageIndex | None" = None,
+    registration_contexts: list[UsageContext] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
+
+    When ``registration_contexts`` is given, every call that hands a local
+    function to a library call a ``usage:`` row names is also recorded there
+    as a registration UsageContext (``_record_registrations``, WI-movur).
 
     Uses global symbol registries to resolve cross-file references.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
@@ -6659,6 +6862,123 @@ def _extract_edges(
             if lookup_result.found and lookup_result.symbol is not None:
                 target = lookup_result.symbol
         return target
+
+    _bindings_memo: list[dict[str, dict[str, str]]] = []
+
+    def _registration_handlers(
+        arg: "tree_sitter.Node", position: str, depth: int = 0,
+    ) -> Iterator[tuple[str, Symbol]]:
+        """The local functions an argument hands over, with their positions.
+
+        A bare identifier naming a repository function or method (resolved
+        as every value reference is, ``_resolve_value_ref``); an inline
+        function the analyzer already made a symbol of (``_cb_<method>``,
+        found by position); and, one level into an option object or an
+        array, the same under ``<position>.<key>`` / ``<position>[<i>]``
+        (``server.ext({method: h})`` -> ``args[0].method``,
+        ``{preHandler: [a]}`` -> ``args[1].preHandler[0]``). An inline
+        function with no symbol (an object-property arrow) is not recorded.
+        """
+        if arg.type == "identifier":
+            target = _resolve_value_ref(arg, _node_text(arg, source))
+            if (
+                target is not None
+                and target.kind in ("function", "method")
+                and not _is_cross_package(file_path, target.path)
+            ):
+                yield position, target
+        elif arg.type in ("arrow_function", "function_expression", "function", "generator_function"):
+            sym = (symbol_by_position or {}).get((
+                str(file_path), arg.start_point[0] + 1 + line_offset, arg.start_point[1],
+            ))
+            if sym is not None and sym.kind == "function":
+                yield position, sym
+        elif depth < 2 and arg.type == "array":
+            elements = [c for c in arg.children if c.is_named and c.type != "comment"]
+            for index, element in enumerate(elements):
+                yield from _registration_handlers(element, f"{position}[{index}]", depth + 1)
+        elif depth < 2 and arg.type == "object":
+            for pair in arg.children:
+                key = pair.child_by_field_name("key") if pair.type == "pair" else None
+                value = pair.child_by_field_name("value") if pair.type == "pair" else None
+                if key is None or value is None or key.type not in ("property_identifier", "string"):
+                    continue
+                key_text = _node_text(key, source).strip("'\"")
+                yield from _registration_handlers(value, f"{position}.{key_text}", depth + 1)
+
+    def _record_registrations(
+        call: "tree_sitter.Node", args_node: "tree_sitter.Node", edges_from: int,
+    ) -> None:
+        """Record a registration UsageContext per local function ``call`` hands
+        to a LIBRARY call that a ``usage:`` row names (WI-movur).
+
+        The gate is ``usage_row_names_call``: no call name is listed in the
+        analyzer, so a new row is enough to make a call recorded. The callee
+        must not be repository code: a call this pass resolved to a local
+        symbol (a ``calls`` edge from this call that is not unresolved) is an
+        ordinary call with an ordinary edge. A resolution by the method NAME
+        alone (``ast_method_inferred``: an untyped ``lib.use`` bound to the
+        only local ``use`` method) is a guess and does not count. The positional handler of an
+        Express-style route call is the route extractor's
+        (``_extract_express_usage_contexts``) and is not recorded twice; its
+        option objects are (``{preHandler: [...]}``).
+        """
+        if registration_contexts is None:  # pragma: no cover - the caller checks
+            return
+        name = _registration_call_name(
+            call, source, namespace_imports or {}, named_imports or {},
+            named_import_originals or {},
+        )
+        if name is None or not usage_row_names_call(name, "javascript"):
+            return
+        call_line = call.start_point[0] + 1 + line_offset
+        if any(
+            e.edge_type == "calls" and e.line == call_line
+            and not e.dst.endswith(":unresolved") and ":0-0:" not in e.dst
+            and e.evidence_type != "ast_method_inferred"
+            for e in edges[edges_from:]
+        ):
+            return
+        route_call = _detect_route_call(call, source)[0] is not None
+        args = [a for a in args_node.children if a.is_named and a.type != "comment"]
+        first_string = next(
+            (_node_text(a, source).strip("'\"`") for a in args if a.type == "string"), None,
+        )
+        callee = call.child_by_field_name("function")
+        if callee is not None and callee.type == "identifier":
+            receiver, method = "", _node_text(callee, source)
+        else:
+            receiver, _, method = name.rpartition(".")
+        if not _bindings_memo:
+            _bindings_memo.append(_receiver_bindings(
+                tree.root_node, source, namespace_imports or {}, named_imports or {},
+            ))
+        binding = _bindings_memo[0].get(receiver.split(".")[0], {}) if receiver else {}
+        for index, arg in enumerate(args):
+            if route_call and arg.type != "object":
+                continue
+            for position, handler in _registration_handlers(arg, f"args[{index}]"):
+                metadata: dict[str, Any] = {
+                    "receiver": receiver or None,
+                    "method": method,
+                    "handler_arity": _signature_arity(handler.signature),
+                    "first_string_arg": first_string,
+                    **binding,
+                }
+                registration_contexts.append(UsageContext.create(
+                    kind="call",
+                    context_name=name,
+                    position=position,
+                    path=str(file_path),
+                    span=Span(
+                        start_line=call_line,
+                        end_line=call.end_point[0] + 1 + line_offset,
+                        start_col=call.start_point[1],
+                        end_col=call.end_point[1],
+                    ),
+                    symbol_ref=handler.id,
+                    metadata=metadata,
+                ))
 
     def _emit_value_reference(
         site: "tree_sitter.Node", value_node: "tree_sitter.Node", evidence: str,
@@ -7619,6 +7939,8 @@ def _extract_edges(
                         node, args_node, current_function, symbol_by_position,
                         file_path, line_offset, run, edges,
                     )
+                if registration_contexts is not None:
+                    _record_registrations(node, args_node, _edges_before_call)
 
             # Middleware chain edges: for Express-style route registrations
             # with multiple middleware/handler arguments, create edges between
@@ -8334,6 +8656,9 @@ def _analyze_javascript_impl(
     default_export_of = _InTreeDefaultExports(parsed_files, symbols_by_name)
     package_index = _JsPackageIndex([pf.path for pf in parsed_files])
     all_edges: list[Edge] = []
+    # Registration usage contexts, recorded while the edges are resolved
+    # (the handler is found the way its references edge is; WI-movur).
+    registration_contexts: list[UsageContext] = []
     for pf in parsed_files:
         # Look up the file pseudo-node by its canonical name (the
         # repo-relative path the Pass 1 emitter stamped; INV-kokaj). Fall
@@ -8357,6 +8682,7 @@ def _analyze_javascript_impl(
             default_export_of=default_export_of,
             module_objects=pf.module_objects,
             package_index=package_index,
+            registration_contexts=registration_contexts,
         )
         # Emit module_attr_ref edges for attribute reads on imported modules
         # and well-known JS/Node globals (``process``, ``window``,
@@ -8476,6 +8802,9 @@ def _analyze_javascript_impl(
                 pf.tree, pf.source, pf.path, pf_name, file_mod_sym,
                 global_symbols, pf.line_offset,
             ))
+    # The registration contexts recorded in Pass 2 go after the framework
+    # extractors' own (route, bootstrap, preload) contexts of the same calls.
+    all_usage_contexts.extend(registration_contexts)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
     # Build multi-value class lookup for disambiguation (INV-015)
