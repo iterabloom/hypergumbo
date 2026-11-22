@@ -16,15 +16,15 @@ for focused LLM context.
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
 - **394** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 137 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **64485** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14622, of which 8307 are functions, methods or classes
-- **259792** edges, test code included, by type:
-  - calls: 145724
-  - contains: 60031
-  - imports: 22932
-  - instantiates: 13566
-  - references: 12955
+- **64710** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14657, of which 8330 are functions, methods or classes
+- **260639** edges, test code included, by type:
+  - calls: 146205
+  - contains: 60244
+  - imports: 23038
+  - instantiates: 13597
+  - references: 12970
   - module_attr_ref: 2604
-  - other: 1980
+  - other: 1981
 
 ## Package Architecture
 
@@ -50,7 +50,7 @@ separate install:
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 63 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 110 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 63 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 111 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 38 analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -76,7 +76,7 @@ Source files
   │            deferred symbol references resolved; records two producers
   │            emitted for one declaration merged (ADR-0057)
   4. ENRICH    YAML patterns add meta.concepts (ADR-3aaa):
-  │            11 files always loaded, 99 more when their framework
+  │            11 files always loaded, 100 more when their framework
   │            is detected; route symbols materialized
   5. LINK      63 linkers (P11 / B11 / F32 / I9) recover cross-file and
   │            cross-language edges; synthetic identities reconciled;
@@ -276,28 +276,28 @@ The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 2205.5 | hypergumbo_core/ir.py |
-| `node_text` | function | 1442.6 | hypergumbo_core/analyze/base.py |
-| `Span` | class | 1262.6 | hypergumbo_core/ir.py |
+| `Symbol` | class | 2215.1 | hypergumbo_core/ir.py |
+| `node_text` | function | 1462.9 | hypergumbo_core/analyze/base.py |
+| `Span` | class | 1274.9 | hypergumbo_core/ir.py |
 | `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
 | `Edge.create` | method | 973.3 | hypergumbo_core/ir.py |
 | `Edge` | class | 862.1 | hypergumbo_core/ir.py |
 | `AnalysisRun` | class | 833.4 | hypergumbo_core/ir.py |
-| `iter_tree` | function | 823.3 | hypergumbo_core/analyze/base.py |
-| `make_symbol_id` | function | 692.5 | hypergumbo_core/analyze/base.py |
+| `iter_tree` | function | 828.0 | hypergumbo_core/analyze/base.py |
+| `make_symbol_id` | function | 694.6 | hypergumbo_core/analyze/base.py |
 | `register_analyzer` | function | 570.3 | hypergumbo_core/analyze/registry.py |
 | `AnalysisResult` | class | 568.0 | hypergumbo_core/analyze/base.py |
 | `find_files` | function | 558.1 | hypergumbo_core/discovery.py |
 | `FileAnalysis` | class | 530.1 | hypergumbo_core/analyze/base.py |
 | `compute_cyclomatic_complexity` | function | 485.9 | hypergumbo_core/analyze/cyclomatic.py |
-| `find_child_by_type` | function | 457.0 | hypergumbo_core/analyze/base.py |
+| `find_child_by_type` | function | 461.0 | hypergumbo_core/analyze/base.py |
 
 ## Pattern System
 
 ### Key Components
 
 - **`framework_patterns.py`**: Loads and applies YAML pattern files
-- **`frameworks/*.yaml`**: 110 pattern files (11 always loaded, 99 loaded when their framework is detected)
+- **`frameworks/*.yaml`**: 111 pattern files (11 always loaded, 100 loaded when their framework is detected)
 - **`meta.concepts`**: List of matched concepts (single source of truth)
 - **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching
 
@@ -359,11 +359,11 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 187 YAML catalog files across 12 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 188 YAML catalog files across 12 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | User channel | ADR | Loader | Purpose |
 |---|---:|---|---|---|---|
-| `frameworks/` | 110 | `frameworks.d` | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
+| `frameworks/` | 111 | `frameworks.d` | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
 | `dataflow_patterns/` | 21 | `dataflow_patterns.d` (`library_patterns` only) | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
 | `io_primitives/` | 15 | `io_primitives.d` | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
 | `io_primitives_overlays/` | 9 | internal | ADR-0047 | `hypergumbo_core.io_boundary` | Community I/O primitive overlays that ship in the wheel and load by default, disclosed as unvouched (ADR-0047). |
@@ -1026,8 +1026,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 75f676072159
-  commit_count: 9656
+  commit: ac53a30ae094
+  commit_count: 9678
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
