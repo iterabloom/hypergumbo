@@ -28,6 +28,7 @@ from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.go_cobra import (
     _COBRA_COMMAND_ANCHOR,
     _FIELD_ASSIGN_PATTERN,
+    _cobra_literal_lines,
     _file_imports_cobra,
     _find_handler_assignments,
     go_cobra_linker,
@@ -675,3 +676,90 @@ class TestHandlerLookupIsLanguageScoped:
         assert [e.dst for e in edges] == [go_run.id]
         assert edges[0].confidence == 0.85
         assert "disambiguation_fallback" not in (edges[0].meta or {})
+
+
+class TestEdgeSourceAndLiteralScope:
+    """Where the edge starts, and which ``Run:`` fields are cobra's (WI-movur).
+
+    The pipeline gives every Go file a ``file`` node spanning the file, and
+    ``find_enclosing_symbol`` returns it for a package-level line, so the
+    variable fallback never ran: the edge of ``var rootCmd =
+    &cobra.Command{RunE: rootRun}`` started at the file. And the field scan
+    read every ``Run: f`` of a cobra-importing file, inside a
+    ``cobra.Command{...}`` literal or not.
+    """
+
+    # The literal holds a brace in a string, a rune, a raw string and two
+    # comments, and a nested func literal: the scope ends at line 13.
+    _SRC = (
+        'package cmd\n'                                                       # 1
+        '\n'                                                                  # 2
+        'import "github.com/spf13/cobra"\n'                                   # 3
+        '\n'                                                                  # 4
+        'var rootCmd = &cobra.Command{\n'                                     # 5
+        '    Use:  "ro}\\"ot",\n'                                             # 6
+        '    Long: `}`, // a } in a comment\n'                                 # 7
+        "    Short: string('}'), /* } */\n"                                   # 8
+        '    Args: func(c *cobra.Command, a []string) error { return nil },\n'  # 9
+        '\n'                                                                  # 10
+        '\n'                                                                  # 11
+        '    RunE: rootRun,\n'                                                # 12
+        '}\n'                                                                 # 13
+        '\n'                                                                  # 14
+        'type job struct {\n'                                                 # 15
+        '    Name string\n'                                                   # 16
+        '    Run  func()\n'                                                   # 17
+        '}\n'                                                                 # 18
+        'var jobs = []job{{Name: "x", Run: notACommand}}\n'                   # 19
+        'func rootRun(c *cobra.Command, a []string) error { return nil }\n'   # 20
+        'func notACommand() {}\n'                                             # 21
+    )
+
+    def _ctx(self, tmp_path: Path) -> tuple[LinkerContext, dict[str, Symbol]]:
+        p = tmp_path / "cmd" / "root.go"
+        p.parent.mkdir(parents=True)
+        p.write_text(self._SRC)
+
+        def sym(name: str, kind: str, start: int, end: int) -> Symbol:
+            return Symbol(
+                id=f"go:{p}:{start}-{end}:{name}:{kind}", name=name, kind=kind,
+                language="go", path=str(p),
+                span=Span(start_line=start, end_line=end, start_col=0, end_col=0),
+            )
+
+        syms = {
+            "file": sym("root.go", "file", 1, 21),
+            "rootCmd": sym("rootCmd", "variable", 5, 13),
+            "jobs": sym("jobs", "variable", 19, 19),
+            "rootRun": sym("rootRun", "function", 20, 20),
+            "notACommand": sym("notACommand", "function", 21, 21),
+        }
+        ctx = LinkerContext(
+            repo_root=tmp_path, symbols=list(syms.values()),
+            detected_languages={"go"},
+        )
+        return ctx, syms
+
+    def test_a_package_level_literal_edge_starts_at_its_variable(
+        self, tmp_path: Path,
+    ) -> None:
+        ctx, syms = self._ctx(tmp_path)
+        edges = go_cobra_linker(ctx).edges
+        to_root = [e for e in edges if e.dst == syms["rootRun"].id]
+        assert len(to_root) == 1
+        assert to_root[0].src == syms["rootCmd"].id
+
+    def test_a_run_field_outside_every_cobra_literal_is_not_linked(
+        self, tmp_path: Path,
+    ) -> None:
+        ctx, syms = self._ctx(tmp_path)
+        edges = go_cobra_linker(ctx).edges
+        assert any(e.dst == syms["rootRun"].id for e in edges)  # reach
+        assert not any(e.dst == syms["notACommand"].id for e in edges)
+
+    def test_literal_lines(self) -> None:
+        assert _cobra_literal_lines(self._SRC.encode()) == [(5, 13)]
+        # one line, and an unclosed literal running to the end of the file
+        assert _cobra_literal_lines(b'c := cobra.Command{Run: f}\n') == [(1, 1)]
+        assert _cobra_literal_lines(b'c := cobra.Command{\n Run: f, // x') == [(1, 2)]
+        assert _cobra_literal_lines(b'c := cobra.Command{\n Run: f, /* x') == [(1, 2)]

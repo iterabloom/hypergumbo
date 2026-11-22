@@ -23,21 +23,25 @@ Matching strategy
    cobra-based CLI. Only files that also import
    ``github.com/spf13/cobra`` are considered.
 2. In each such file, capture occurrences of the form
-   ``FieldName: identifier`` anywhere in the file (the match does not
-   check that it sits inside the ``cobra.Command{...}`` braces), where
-   ``FieldName`` is one of the handler fields above and ``identifier``
-   is a Go identifier (optionally
-   package-qualified like ``pkg.runCmd``). Lines whose value starts
-   with ``func`` are ignored — those are inline function literals,
-   already reachable via containment.
+   ``FieldName: identifier`` on a line inside a ``cobra.Command{...}``
+   literal (the literal's braces are matched, skipping braces in
+   strings, runes, raw strings and comments; ``_cobra_literal_lines``),
+   where ``FieldName`` is one of the handler fields above and
+   ``identifier`` is a Go identifier (optionally
+   package-qualified like ``pkg.runCmd``). A ``Run: f`` of another
+   struct in the same file is not cobra's (WI-movur). Lines whose value
+   starts with ``func`` are ignored — those are inline function
+   literals, already reachable via containment.
 3. For each captured ``(field, identifier)`` pair, resolve
    ``identifier`` to a GO Symbol via ``ctx.find_symbols_by_name`` (the
    field holds a Go func value, so a same-named Python / JS symbol is a
    name coincidence, WI-gopok) and emit
    a ``dispatches_to`` edge from the enclosing function to the handler.
    When the cobra.Command literal is at package level (inside a
-   ``var … = &cobra.Command{…}`` declaration), the linker falls back
-   to the enclosing variable symbol as the edge source.
+   ``var … = &cobra.Command{…}`` declaration), the edge source is the
+   enclosing variable symbol, and the file only when no variable
+   encloses the line (WI-movur: the file node, which spans every line,
+   used to be found first).
 4. A resolved handler gets confidence 0.85. When the name resolves to
    more than one symbol (a cross-package short-name collision, INV-zuhub),
    every candidate gets an edge at confidence 0.5 with
@@ -159,6 +163,52 @@ def _find_handler_assignments(
     return results
 
 
+def _cobra_literal_lines(source: bytes) -> list[tuple[int, int]]:
+    """1-based first and last line of each ``cobra.Command{...}`` literal.
+
+    The closing brace is found by counting braces from the anchor's ``{``,
+    skipping what is between the quotes of a string, rune or raw string and
+    what a ``//`` or ``/* */`` comment holds. An unclosed literal runs to the
+    end of the file.
+    """
+    spans: list[tuple[int, int]] = []
+    for match in _COBRA_COMMAND_ANCHOR.finditer(source):
+        close = _closing_brace(source, match.end() - 1)
+        spans.append((
+            source.count(b"\n", 0, match.start()) + 1,
+            source.count(b"\n", 0, close) + 1,
+        ))
+    return spans
+
+
+def _closing_brace(source: bytes, opening: int) -> int:
+    """Offset of the ``}`` that closes the ``{`` at ``opening`` (or the end)."""
+    depth = 0
+    i = opening
+    while i < len(source):
+        if source.startswith(b"//", i):
+            newline = source.find(b"\n", i)
+            i = len(source) if newline < 0 else newline
+            continue
+        if source.startswith(b"/*", i):
+            end = source.find(b"*/", i + 2)
+            i = len(source) if end < 0 else end + 2
+            continue
+        char = source[i:i + 1]
+        if char in (b'"', b"'", b"`"):
+            i += 1
+            while i < len(source) and source[i:i + 1] != char:
+                i += 2 if char != b"`" and source[i:i + 1] == b"\\" else 1
+        elif char == b"{":
+            depth += 1
+        elif char == b"}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return len(source)
+
+
 def _find_go_files(repo_root: Path):
     """Yield all ``.go`` files under the repo, respecting default excludes."""
     yield from find_non_test_files(
@@ -217,7 +267,11 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
             files_analyzed += 1
             continue
 
-        assignments = _find_handler_assignments(source)
+        literal_lines = _cobra_literal_lines(source)
+        assignments = [
+            found for found in _find_handler_assignments(source)
+            if any(first <= found[2] <= last for first, last in literal_lines)
+        ]
         found_assignments.extend(assignments)
         if not assignments:
             files_analyzed += 1
@@ -242,10 +296,18 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
             # is outside any function (e.g., a package-level var init),
             # fall back to the enclosing variable symbol — the most
             # common Go cobra pattern is ``var rootCmd = &cobra.Command{…}``.
-            enclosing = ctx.find_enclosing_symbol(str(file_path), line)
+            # The FILE node spans every line, so it is asked for last: a
+            # package-level literal's edge starts at its variable (WI-movur).
+            enclosing = ctx.find_enclosing_symbol(
+                str(file_path), line, kinds=("function", "method", "class", "module"),
+            )
             if enclosing is None:
                 enclosing = ctx.find_enclosing_symbol(
                     str(file_path), line, kinds=("variable",),
+                )
+            if enclosing is None:
+                enclosing = ctx.find_enclosing_symbol(
+                    str(file_path), line, kinds=("file",),
                 )
             if enclosing is None:
                 continue
