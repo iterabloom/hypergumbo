@@ -1,0 +1,9 @@
+Original commit body from 40a1e68f6fe8735c467752367764de257e12101d:
+
+The by-statement selector's bar (`coverage-select statement-bar`) has read MISSED since 2026-11-19 because of one run record. The failed test in that record had been edited in the same change (its assertion went from exit code 1 to 141 before the source followed), and a run reads a changed test file whole, so the selector could not have left it out.
+
+The count now sets aside a failed test whose own file is among the row's changed files, in the miss list and in the at-risk list, and prints how many it set aside. On the live records: runs with a failed test left out 1 -> 0, runs where the selector left tests out 101 -> 79 (bar: 30), 159 failed tests in 27 runs set aside, verdict MET.
+
+Mutation controls: 11 on this change, 42 re-run on the selector's older rules, 12 new ones for rules whose code was rewritten since; all red.
+
+Addresses WI-dibin-mobuh-hiruj-zanav-vitop-vizag-gohug-fahor
