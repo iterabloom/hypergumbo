@@ -28,7 +28,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `api_route` | inert | nextjs | _(none)_ |
 | `api_view` | inert | flask-appbuilder | _(none)_ |
 | `app_bootstrap` | live | react, solid | `entrypoints.py` |
-| `application` | live | aiohttp, fastapi, flask, giraffe, hummingbird, openresty, padrino, plumber, roda, servant, shiny, tornado, yesod | `entrypoints.py` |
+| `application` | live | aiohttp, fastapi, flask, giraffe, hummingbird, ktor, openresty, padrino, plumber, roda, servant, shiny, tornado, yesod | `entrypoints.py` |
 | `argument` | inert | cli, cli-js, cli-ruby, cli-rust | _(none)_ |
 | `asset` | inert | yii | _(none)_ |
 | `async` | inert | jax-rs, quarkus, remix, spring-boot, tornado | _(none)_ |

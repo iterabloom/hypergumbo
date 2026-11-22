@@ -142,7 +142,13 @@ Extension functions (WI-fuhav / WI-lodij). ``fun Receiver.name()`` records
 ``meta.extension_receiver``. A call ``recv.name()`` on a receiver of that
 type is emitted UNRESOLVED with ``receiver_type_hint``; the shared
 ``receiver_type_dispatch`` linker emits the resolved ``ast_call_extension``
-edge.
+edge. A reference ``Receiver::name`` that names no member of a type
+``Receiver`` resolves to the extension function ``name`` declared on
+``Receiver`` when exactly one is (a ``references`` edge, evidence
+``callable_reference``): Ktor's ``module = Application::module`` is how a
+server is told which module to run. The index of extensions by receiver is
+built from every file's symbols, since the one-per-name ``global_symbols``
+would let a same-named plain function hide an extension.
 
 Grammar repair (WI-tusad; WI-rufub). tree-sitter-kotlin 1.1.0 turns a body
 whose last member shares the line of its closing brace into one ERROR node
@@ -2858,6 +2864,21 @@ def _extract_edges_from_file(
                         receiver_name = node_text(receiver_node, source)
                         target = f"{receiver_name}.{method_name}"
                         lookup_result = resolver.lookup(target, caller_path=_caller_path)
+                        if not lookup_result.found:
+                            # ``Application::module`` names an EXTENSION
+                            # function, registered under its own name, not
+                            # ``Application.module``: the one declared on that
+                            # receiver, when exactly one is (Ktor's
+                            # ``embeddedServer(..., module = Application::module)``).
+                            extensions = [
+                                sym for sym in (extension_index or {}).get(receiver_name, ())
+                                if sym.name == method_name
+                            ]
+                            if len(extensions) == 1:
+                                lookup_result = LookupResult(
+                                    symbol=extensions[0],
+                                    confidence=NameResolver.CONFIDENCE_EXACT,
+                                )
 
                     if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
@@ -3262,12 +3283,15 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
         # linker; WI-visaz, WI-lodij). Generic receivers
         # (``List<Int>``, ``Set<T>``) collapse to their base name so
         # ``nums: List<Int>`` matches ``fun List<Int>.sumSafe()``.
-        # The dict-by-id comprehension dedupes — global_symbols stores
-        # each sym under both its short and full name, so ``.values()``
-        # yields duplicates for any symbol whose name contains a dot.
+        # Read from every file's symbols, not from ``global_symbols``, which
+        # keeps ONE symbol per name: a top-level ``fun module()`` there
+        # replaced ``fun Application.module()``, so neither ``app.module()``
+        # nor ``Application::module`` could find the extension. The dict by
+        # id keeps each symbol once.
         ext_syms_by_id: dict[str, Symbol] = {
             sym.id: sym
-            for sym in global_symbols.values()
+            for analysis in file_analyses.values()
+            for sym in analysis.symbols
             if (sym.meta or {}).get("extension_receiver")
         }
         extension_index: dict[str, list[Symbol]] = {}

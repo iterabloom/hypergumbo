@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: ktor
 language: kotlin
 
@@ -27,6 +27,21 @@ patterns:
       method: "metadata.http_method"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+
+  # A Ktor module: an extension function on Application, `fun Application.module()`,
+  # which the server runs when it starts (named in `embeddedServer(...,
+  # module = Application::module)` or in application.conf's
+  # `ktor.application.modules`). It installs the plugins and calls the route
+  # functions. `application` is the hosted-application kind (ADR-0063): what a
+  # server hosts, not the program start. The kotlin analyzer records the receiver
+  # as written in meta.extension_receiver (Ktor 2 `io.ktor.server.application`,
+  # Ktor 1 `io.ktor.application`). Route-receiver functions get no row: the
+  # module's `routing { }` calls them, and one nothing calls is unused.
+  - concept: application
+    symbol_kind: "^function$"
+    language: "^kotlin$"
+    meta_match:
+      extension_receiver: "^(io\\.ktor\\.(server\\.)?application\\.)?Application$"
 
   # Ktor authentication
   - concept: auth
