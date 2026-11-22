@@ -1,0 +1,21 @@
+- op: create  # fee3
+  at: '2026-11-22T06:30:55Z'  # fee3
+  by: agent  # fee3
+  actor: jgstern_agent  # fee3
+  clock: 1  # fee3
+  nonce: fee3  # fee3
+  data:  # fee3
+    kind: work_item  # fee3
+    title: "A handler reference whose named module matches no in-tree holder is still bound to an in-tree namesake"  # fee3
+    status: todo_soft  # fee3
+    priority: 3  # fee3
+    parent:  # fee3
+    tags:  # fee3
+    - framework_patterns  # fee3
+    - analysis_quality  # fee3
+    isbefore: []  # fee3
+    duplicate_of: []  # fee3
+    not_duplicate_of: []  # fee3
+    pr_ref:  # fee3
+    description: "WHAT. framework_patterns._pick_among_tied uses the module a handler reference names only as evidence FOR a holder. When the module matches no holder (path('login/', auth_views.LoginView.as_view()) after from django.contrib.auth import views as auth_views, in a project with its own LoginView classes), the pick still falls to the reference's own file and then to the first holder in source order: an in-tree class is bound to a reference that names a third-party one. The enrichment name fallback (enrich_symbols phase 3) does the same by short name. Before PR #2326 the flat table bound one too (the last written).\n\nASK. Decide whether a named module that matches no holder leaves the reference unresolved. It is the recall-loss direction when the module was recorded wrongly (a re-export through a package the analyzer did not follow), so it needs a count on a corpus first: how many references name a module no holder is in, and how many of those are third-party.\n\nNOT CHECKED. Any count. The case is pinned by a unit test as today's behaviour (test_a_module_no_holder_is_in_decides_nothing).\n\nFound during PR #2326 (2026-11-22)."  # fee3
+    fields: {}  # fee3

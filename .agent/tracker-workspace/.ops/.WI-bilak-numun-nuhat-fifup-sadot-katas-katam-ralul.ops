@@ -1,0 +1,21 @@
+- op: create  # fd24
+  at: '2026-11-22T06:30:49Z'  # fd24
+  by: agent  # fd24
+  actor: jgstern_agent  # fd24
+  clock: 1  # fd24
+  nonce: fd24  # fd24
+  data:  # fd24
+    kind: work_item  # fd24
+    title: "JAX-RS subresource locator pass keys classes by short name across files and merges namesakes' methods"  # fd24
+    status: todo_soft  # fd24
+    priority: 3  # fd24
+    parent:  # fd24
+    tags:  # fd24
+    - framework_patterns  # fd24
+    - analysis_quality  # fd24
+    isbefore: []  # fd24
+    duplicate_of: []  # fd24
+    not_duplicate_of: []  # fd24
+    pr_ref:  # fd24
+    description: "WHAT. framework_patterns._apply_subresource_locator_paths keys classes by short name across every file and language: class_by_name is last write wins, methods_by_class merges the methods of every class that shares a name, and propagated_prefixes is keyed by the return type's short name. Two resource classes named alike in two packages are one class to it.\n\nWHY IT WAS LEFT. PR #2326 gave the other two name tables of this file the reference_candidates rule (host language, qualified name before name, source order). This table needs a different candidate set: a Kotlin locator can return a Java resource class, so the JVM languages are one set, and the return type should be resolved through the locator file's imports, not by short name. Since PR #2326 the symbol list order is fixed, so the table's answer is the same in every run; it is still not chosen by anything the source says.\n\nASK. Resolve a locator's return type to one class (imports, then package), key the propagation by class id, and stop merging namesakes' methods.\n\nNOT CHECKED. Whether any corpus repository has two JAX-RS resource classes of one short name.\n\nFound during PR #2326 (2026-11-22)."  # fd24
+    fields: {}  # fd24

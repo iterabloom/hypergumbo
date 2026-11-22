@@ -1,0 +1,22 @@
+- op: create  # 3762
+  at: '2026-11-22T06:30:42Z'  # 3762
+  by: agent  # 3762
+  actor: jgstern_agent  # 3762
+  clock: 1  # 3762
+  nonce: '3762'  # 3762
+  data:  # 3762
+    kind: work_item  # 3762
+    title: "HTTP linker binds a client call to the first same-method same-path route in list order, and React page routes are candidates"  # 3762
+    status: todo_hard  # 3762
+    priority: 3  # 3762
+    parent:  # 3762
+    tags:  # 3762
+    - protocol_linkers  # 3762
+    - determinism  # 3762
+    - analysis_quality  # 3762
+    isbefore: []  # 3762
+    duplicate_of: []  # 3762
+    not_duplicate_of: []  # 3762
+    pr_ref:  # 3762
+    description: "WHAT. linkers/http.py binds a client call to the FIRST route marker in the symbol list whose method and path match (the loop over routes_by_method, about line 1507 at dev d20e63ff0): any language, any file, first match wins. Which route is first is the list order, not anything the call says.\n\nSEEN. alertmanager: the Elm client calls GET /alerts and GET /silences (ui/app/src/Alerts/Api.elm:36, ui/app/src/Silences/Api.elm:19) were bound to route markers minted from React page routes of the same path (ui/mantine-ui/src/App.tsx:38, :39) on dev 976cc8805, and to the Go API routes (api/v1_deprecation_router.go:39, :42) after PR #2326 fixed the list order. Five markers hold GET or POST /alerts in that map. The new answer is a server route, but the linker did not choose it: the registry order did. Two things in one: (1) a pick among several routes of one method and path is made by position and is not flagged; (2) a frontend page route (React Router) is minted as an HTTP route marker and is a candidate for an HTTP client call.\n\nASK. A rule for which of several same-method same-path routes a client call binds (a server route before a client-side page route; a total order among the rest; the edge flagged when it was a pick), as the route-handler linker has for handler names (reference_candidates.py). The prefix-match fallback below it has the same first-match loop.\n\nNOT CHECKED. How many client calls on a corpus have more than one candidate route; whether the React Router marker should be an HTTP route at all.\n\nFound while measuring PR #2326 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr1/RESULTS.md section 1."  # 3762
+    fields: {}  # 3762
