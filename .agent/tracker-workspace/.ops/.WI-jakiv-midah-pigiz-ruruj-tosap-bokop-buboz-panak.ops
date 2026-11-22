@@ -19,3 +19,19 @@
     pr_ref:  # 6b07
     description: "PROBLEM. framework_patterns.Pattern.matches_all: the `parent_base_class` + `method_name` arm (the last arm, ~line 562) checks only those two fields. A `symbol_kind:` written beside them is never consulted -- the arm does not call `_kind_and_role` the way the `parameter_type` arm (WI-jonin) and the `symbol_name` arm do -- so the key is decorative there: a free FUNCTION named like the method matches a rule that says `symbol_kind: ^method$`. (`language`, `symbol_path` and `modifiers` are fine: `_check_filters` runs before every arm. `is_test_file` is fine: applied by strip_test_file_only_concepts.)\n\nEVIDENCE (2026-11-03, found writing WI-losij's rules): 9 shipped rules combine `method_name` with `symbol_kind` and none has a `parent_base_class`, all in lit.yaml (lifecycle_hook: connectedCallback / disconnectedCallback / firstUpdated / updated / willUpdate; render_method: render; update_control: shouldUpdate / requestUpdate / performUpdate). Under the arm as written, a top-level JS function `render()` or `updated()` in a lit-detected repo carries `render_method` / `lifecycle_hook`. Not measured on a corpus repo (no lit repo checked). WI-losij's python-http-server.yaml and servlet.yaml rules deliberately omit `symbol_kind` for this reason (their producers stamp parent_base_classes on methods only), and their tests carry no \"function\" lookalike case.\n\nFIX. In the parent-base arm, require `_kind_and_role(symbol)` to pass when `symbol_kind` / `framework_role` is declared (the same AND the other arms apply); pin with a test: a `method_name` + `symbol_kind ^method$` rule does not match a function of that name. Measure lit.yaml's concept diff on one lit repo (find one; none checked), expected direction: fewer render_method / lifecycle_hook on functions, no method loses one. Also audit `_PATTERN_KEYS` docs (framework_patterns.py ~180-210) to say which keys each arm honours, so a YAML author can tell a filter from a decoration.\n\nNOT ASSERTED: that any corpus symbol is currently mislabelled; the arm's blindness is read from the code and the nine rules, the instance is not measured."  # 6b07
     fields: {}  # 6b07
+- op: update  # b6db
+  at: '2026-11-22T14:07:43Z'  # b6db
+  by: agent  # b6db
+  actor: jgstern_agent  # b6db
+  clock: 2  # b6db
+  nonce: b6db  # b6db
+  set:  # b6db
+    status: done  # b6db
+    pr_ref: 'PR #2337'  # b6db
+- op: discuss  # b573
+  at: '2026-11-22T14:07:43Z'  # b573
+  by: agent  # b573
+  actor: jgstern_agent  # b573
+  clock: 3  # b573
+  nonce: b573  # b573
+  message: "Done in PR #2337 (dev a037577a4), found while working WI-rasok and fixed more generally than the FIX asked: symbol_kind, framework_role and meta_match are now checked once, before any match type (Pattern._also_required), so they bind the parent_base_class / method_name arm AND the decorator, base_class and annotation arms (kafka-connect.yaml's four base_class + symbol_kind rows had the same hole).\n\nTHE FILED CASE, RE-RUN (fixture ~/hypergumbo_lab_notebook/rasok_11222026/fixtures/litfx: package.json with lit, a LitElement subclass with render() and updated(), and top-level functions render() and updated(); hypergumbo run, lit detected in both arms): at 8c2159eab the FUNCTIONS render and updated carry render_method / lifecycle_hook [lit]; at dev a89850612 they carry neither, and the methods MyElement.render and MyElement.updated keep theirs.\n\nTests: packages/hypergumbo-core/tests/test_method_name_rows.py (TestKindRoleAndMetaBindEveryMatchType, and a scan of every shipped row for a pair of match-by fields the matcher does not conjoin). Mutation controls: dropping the kind check reds 7 tests, dropping the conjunct 9.\n\nNot measured: a real Lit repository (none on this machine; Tone.js/examples has two Lit files and shows no change)."  # b573
