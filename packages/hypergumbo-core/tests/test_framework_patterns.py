@@ -292,7 +292,12 @@ class TestPattern:
           (``method_name``, ``symbol_name``, ``language``, ``symbol_kind``,
           ``modifiers``, ``modifiers_exclude``, ``symbol_path``,
           ``qualified_name``) whose
-          target values are not import-scoped.
+          target values are not import-scoped. ``adopts`` is here too,
+          though it asserts an is-a: the names it reads are module names
+          the analyzers write in full (Elixir ``Phoenix.LiveView``, Ruby
+          ``Sidekiq::Worker``), where a dot separates namespaces, not import
+          spellings. The terminal-segment fallback would let ``^Worker$``
+          take ``Oban.Worker`` and ``^GenServer$`` take ``MyApp.GenServer``.
 
         When adding a new matcher field, update ``EXPECTED`` and document
         the choice in the WI-pisab tracker item. This lint catches
@@ -308,6 +313,7 @@ class TestPattern:
         expected = {
             "_decorator_re": "re.compile",
             "_base_class_re": "NameMatcher",
+            "_adopts_re": "re.compile",
             "_parent_base_class_re": "NameMatcher",
             "_method_name_re": "re.compile",
             "_symbol_name_re": "re.compile",
