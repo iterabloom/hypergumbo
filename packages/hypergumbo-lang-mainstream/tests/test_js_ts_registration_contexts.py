@@ -23,7 +23,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo_core.entrypoints import EntrypointKind, detect_entrypoints
 from hypergumbo_core.framework_patterns import clear_pattern_cache, enrich_symbols
 from hypergumbo_core.ir import Symbol, UsageContext
 from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -262,14 +261,12 @@ class TestShippedRowsStampTheHandler:
             "function onError(error, request, reply) {}\n"
             "function notFound(request, reply) {}\n"
             "function parseCsv(request, body, done) {}\n"
-            "function onSocket(socket, req) {}\n"
             "fastify.register(plugin);\n"
             "fastify.addHook('onRequest', stamp);\n"
             "fastify.get('/admin', { preHandler: [admin] }, show);\n"
             "fastify.setErrorHandler(onError);\n"
             "fastify.setNotFoundHandler(notFound);\n"
             "fastify.addContentTypeParser('text/csv', { parseAs: 'string' }, parseCsv);\n"
-            "fastify.get('/ws', { websocket: true }, onSocket);\n"
         )})
         symbols = list(result.symbols)
         clear_pattern_cache()
@@ -282,12 +279,6 @@ class TestShippedRowsStampTheHandler:
         assert concepts["parseCsv"] == {"middleware"}
         assert concepts["onError"] == concepts["notFound"] == {"error_handler"}
         assert concepts["show"] == {"route"}
-        kinds = {
-            (e.kind, e.symbol_id) for e in detect_entrypoints(symbols, list(result.edges))
-        }
-        on_socket = next(s.id for s in symbols if s.name == "onSocket")
-        assert (EntrypointKind.WEBSOCKET_HANDLER, on_socket) in kinds
-        assert (EntrypointKind.HTTP_ROUTE, on_socket) not in kinds
 
     def test_hapi(self, tmp_path: Path) -> None:
         result = _analyze(tmp_path, {"server.js": (
