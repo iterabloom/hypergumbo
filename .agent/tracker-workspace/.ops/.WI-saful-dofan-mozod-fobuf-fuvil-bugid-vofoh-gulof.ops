@@ -1,0 +1,21 @@
+- op: create  # 6a4a
+  at: '2026-11-22T11:14:25Z'  # 6a4a
+  by: agent  # 6a4a
+  actor: jgstern_agent  # 6a4a
+  clock: 1  # 6a4a
+  nonce: 6a4a  # 6a4a
+  data:  # 6a4a
+    kind: work_item  # 6a4a
+    title: "By-statement selector: a subclass that lists a changed mixin before another base is not covered; the bed cannot score the selector"  # 6a4a
+    status: todo_soft  # 6a4a
+    priority: 3  # 6a4a
+    parent:  # 6a4a
+    tags:  # 6a4a
+    - smart_test  # 6a4a
+    - fast_smart_test_plan  # 6a4a
+    isbefore: []  # 6a4a
+    duplicate_of: []  # 6a4a
+    not_duplicate_of: []  # 6a4a
+    pr_ref:  # 6a4a
+    description: "WHAT. The by-statement selector's rule for a NEW def (PR #2334: a new method also selects the tests of the method it overrides; an unresolvable base or a new decorated def stops narrowing) does not cover:\n- a class that gains a method which a SUBCLASS lists before another base defining the same name (class D(Mixin, Base); Mixin gains m; Base.m existed): calls on a D now reach Mixin.m, and the tests' records are of Base.m. Finding it needs every subclass in the repository, which the selector does not look for.\n- a name reached only through getattr / hasattr; a class decorator that replaces the class.\n- name bindings made by match, walrus or except* when a base name is looked up (they are not counted as bindings).\n- block_hash's own block-level selection still has the shadowing false negative (a second def of a name, f#2) that statement_select now answers.\n- The smart-test bed cannot score this selector at all: in target mode smart-test sets SELECT_BY_STATEMENT=false (scripts/smart-test, about line 419). INV-bifih's DONE WHEN asks for a bed scenario override-new-method; it cannot be written until the bed can run the selector.\n\nASK. Decide whether the subclass case is worth a repository-wide subclass index (the stored graph has inheritance edges), and let the bed run the by-statement selector so INV-bifih's scenario can exist.\n\nFound during PR #2334 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr3/PROBE.md and RESIDUALS_TO_FILE.md."  # 6a4a
+    fields: {}  # 6a4a

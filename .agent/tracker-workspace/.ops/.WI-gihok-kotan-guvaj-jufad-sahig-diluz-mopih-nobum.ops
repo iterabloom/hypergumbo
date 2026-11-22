@@ -1,0 +1,21 @@
+- op: create  # 2199
+  at: '2026-11-22T11:14:32Z'  # 2199
+  by: agent  # 2199
+  actor: jgstern_agent  # 2199
+  clock: 1  # 2199
+  nonce: '2199'  # 2199
+  data:  # 2199
+    kind: work_item  # 2199
+    title: "smart-test leftovers: the self-selected gate's coverage config, --raw and --full runs, the static option table"  # 2199
+    status: todo_soft  # 2199
+    priority: 3  # 2199
+    parent:  # 2199
+    tags:  # 2199
+    - smart_test  # 2199
+    - developer_experience  # 2199
+    isbefore: []  # 2199
+    duplicate_of: []  # 2199
+    not_duplicate_of: []  # 2199
+    pr_ref:  # 2199
+    description: "WHAT. Left open in scripts/smart-test after PR #2334 (the explicit-run notice, --gate-changed, directory arguments):\n- NEEDS A DECISION: the self-selected run's 100% gate reads the default coverage config (pyproject) even when the run measured with .coveragerc.no-embeddings; PR CI always uses that rcfile. It bites only where sentence-transformers / onnxruntime does not import. Changing it changes what the self-selected path gates.\n- --raw explicit runs print no NOT GATED notice (exec replaces the shell); --full gates no changed files.\n- Under --gate-changed an explicit run also runs the tests PR CI deselects by statement, so it can be green where CI is red. Not checked further.\n- pytest_option_takes_value is a static list (the 70 value-taking options of pytest 9.0.3 with the plugins installed here, plus --fail-grace): an option of another plugin given as two arguments would have its value read as a test target.\n- The pre-PR recipe's per-package explicit runs print the notice and cannot take --gate-changed as they are (a file covered from several test directories would go red). Its self-selected run is what gates. One extra call over the whole manifest selection with the CI-stub environment and --gate-changed would gate as CI does; it costs a second run of the selection.\n- The selection index spells file paths per checkout, so a run from another worktree answers \"never seen\" for every block and is never narrowed (safe; it means worktree runs are always full selections).\n\nFound during PR #2334 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr3/PROBE.md and RESIDUALS_TO_FILE.md."  # 2199
+    fields: {}  # 2199
