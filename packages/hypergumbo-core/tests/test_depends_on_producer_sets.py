@@ -650,9 +650,9 @@ class TestHttpDeclaresItsRouteProducers:
 
     def test_the_clause_is_exactly_this(self) -> None:
         assert _declared("http-linker") == [[
-            "clojure", "csharp", "elixir", "go", "groovy", "java", "javascript",
-            "kotlin", "php", "play-routes", "python", "r", "ruby", "rust", "scala",
-            "swift",
+            "clojure", "csharp", "elixir", "fsharp", "go", "groovy", "java",
+            "javascript", "kotlin", "php", "play-routes", "python", "r", "ruby",
+            "rust", "scala", "swift",
         ]]
 
     def test_elm_is_no_longer_declared(self) -> None:
