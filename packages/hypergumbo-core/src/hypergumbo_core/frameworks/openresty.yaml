@@ -49,9 +49,21 @@ patterns:
       kind: "^call$"
       name: "^ngx\\.socket\\.(tcp|udp)$"
 
-  # Lapis app class
+  # Lapis app class: `local App = lapis.Application:extend("App", {...})`.
+  # lua.py records the `:extend` / `:subclass` receiver as the base, with a
+  # require alias read through (`local l = require "lapis"` -> `lapis.*`).
   - concept: application
     base_class: "^lapis\\.Application$"
+
+  # Lapis app instance: `local app = lapis.Application()`, the form Lapis's
+  # docs and Kong use. lua.py records the callee on the file-scope variable
+  # as `constructed_from`, alias read through as above; a local table named
+  # `lapis` that is not the required module records no name, so the anchor
+  # is exact.
+  - concept: application
+    symbol_kind: "^variable$"
+    meta_match:
+      constructed_from: "^lapis\\.Application$"
 
   # Lapis routes
   - concept: route

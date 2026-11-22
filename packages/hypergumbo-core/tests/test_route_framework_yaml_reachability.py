@@ -62,6 +62,9 @@ _INV_FOSAM_ALIAS_MISMATCHES = {
     "next": "nextjs",
     "vert.x": "vertx",
     "zio-http": "zio",
+    # Lapis's rows (its app class and instance, its routes) live in
+    # openresty.yaml; a Lapis project is detected as ``lapis``.
+    "lapis": "openresty",
 }
 
 

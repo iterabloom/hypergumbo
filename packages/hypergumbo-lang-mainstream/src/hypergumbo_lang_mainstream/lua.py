@@ -13,6 +13,23 @@ This analyzer uses tree-sitter to parse Lua files and extract:
   a function nested in another hashes the enclosing functions, INV-fabih,
   ``shape_id``) and metrics (cyclomatic complexity, line span)
 - ADR-0015 dataflow annotation on the emitted edges
+- File-scope bindings a framework row keys on (``_file_scope_bindings``):
+  ``T = R:extend(...)`` / ``T = R:subclass(...)`` makes a ``class`` ``T``
+  with ``meta["base_classes"] = [R]`` (Lapis ``lapis.Application:extend``,
+  rxi/classic and 30log ``Object:extend``, middleclass ``Base:subclass``);
+  any other ``x = C(...)`` except ``require`` makes a ``variable`` ``x`` with
+  ``meta["constructed_from"] = C`` (``local app = lapis.Application()``).
+  A name's head is read through the file's requires, so
+  ``local l = require "lapis"; l.Application`` records ``lapis.Application``
+  and a local table that is not the module records no dotted name at all.
+  These symbols are not entered in the call resolver: before them Lua had
+  no symbol for a class or an application object, so no ``base_class:`` or
+  ``constructed_from`` row (openresty.yaml's Lapis ``application`` rows)
+  could fire. Not read: ``class("X", Base)`` (the base's argument position
+  differs between middleclass, penlight and 30log), ``setmetatable(T,
+  {__index = Base})`` (a class and an instance are the same statement),
+  ``return R:extend()`` (no name), bindings inside functions, and MoonScript
+  ``class extends`` (``.moon`` files are not parsed).
 
 If tree-sitter with Lua support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -394,6 +411,250 @@ def _extract_require_aliases(
                 break  # Only check first expression
 
     return aliases
+
+
+# Methods whose result is a NEW table inheriting from the receiver: the
+# subclassing convention of Lapis (``lapis.Application:extend("App")``),
+# rxi/classic and 30log (``Object:extend()``) and middleclass
+# (``Base:subclass("X")``). The receiver is the base; it is the only argument
+# position these libraries agree on, which is why ``class("X", Base)`` (base
+# second in middleclass, first in penlight, absent in 30log) is not read.
+_SUBCLASS_METHODS = frozenset({"extend", "subclass"})
+
+
+def _static_path(node: "tree_sitter.Node", source: bytes) -> list[str] | None:
+    """``a`` -> ``["a"]``, ``a.b.c`` -> ``["a", "b", "c"]``; else None.
+
+    A computed index (``a[k]``), a call or a parenthesised expression has no
+    static name, and a framework row matching a partial one would match a
+    fiction, so it yields None.
+    """
+    if node.type == "identifier":
+        return [node_text(node, source)]
+    if node.type == "dot_index_expression":
+        table = node.child_by_field_name("table")
+        field = node.child_by_field_name("field")
+        if table is None or field is None:  # pragma: no cover - grammar invariant
+            return None
+        head = _static_path(table, source)
+        return head + [node_text(field, source)] if head else None
+    return None
+
+
+def _is_require_call(node: "tree_sitter.Node", source: bytes) -> bool:
+    """A call of ``require``, with a literal module name or a computed one."""
+    if node.type != "function_call":
+        return False
+    callee = node.child_by_field_name("name")
+    return (
+        callee is not None and callee.type == "identifier"
+        and node_text(callee, source) == "require"
+    )
+
+
+def _require_module(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """``require("m")`` / ``require "m"`` -> ``"m"``; anything else -> None."""
+    if not _is_require_call(node, source):
+        return None
+    args = node.child_by_field_name("arguments")
+    for arg in args.children if args is not None else ():
+        if arg.type == "string":
+            content = arg.child_by_field_name("content")
+            return node_text(content, source) if content is not None else None
+    return None
+
+
+def _qualify(path: list[str], env: dict[str, str | None]) -> str | None:
+    """Render a static path with its head read through the file's bindings.
+
+    ``env`` maps each name bound at file scope SO FAR to what it denotes: a
+    module path (``"lapis"`` for ``local l = require "lapis"``, ``"lapis.
+    Application"`` for ``local A = require("lapis").Application``) or None
+    for any other value (a table literal, a call's result). Then:
+
+    * head bound to a module -> the module path replaces it
+      (``l.Application`` -> ``lapis.Application``), so an aliased require is
+      the same name as the plain one;
+    * head unbound -> a global, rendered as written (``Object``, ``ngx``);
+    * head bound to another value -> the bare name alone is kept (``Base``,
+      a class this file made), but a dotted path through it yields None: it
+      is a field of a file-local table, and rendering it as written would
+      let ``local lapis = {}`` pass for the ``lapis`` module.
+    """
+    head, rest = path[0], path[1:]
+    if head not in env:
+        return ".".join(path)
+    module = env[head]
+    if module is None:
+        return None if rest else head
+    return ".".join([module, *rest])
+
+
+def _denotation(
+    node: "tree_sitter.Node", source: bytes, env: dict[str, str | None],
+) -> str | None:
+    """What a binding's value denotes for :func:`_qualify`: a module path, a
+    global's name (``local ngx = ngx``), or None for any other value."""
+    module = _require_module(node, source)
+    if module is not None:
+        return module
+    if node.type == "dot_index_expression":
+        table = node.child_by_field_name("table")
+        field = node.child_by_field_name("field")
+        if table is None or field is None:  # pragma: no cover - grammar invariant
+            return None
+        base = _denotation(table, source, env)
+        return f"{base}.{node_text(field, source)}" if base else None
+    if node.type == "identifier":
+        name = node_text(node, source)
+        return env.get(name) if name in env else name
+    return None
+
+
+@dataclass
+class _Binding:
+    """One file-scope binding the analyzer records as a symbol."""
+
+    stmt: "tree_sitter.Node"
+    name: str
+    kind: str  # "class" or "variable"
+    meta: dict[str, object] | None
+
+
+def _file_scope_bindings(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> list[_Binding]:
+    """The file-scope bindings that make a subclass or construct a value.
+
+    Statements are read in order, each against the bindings made BEFORE it
+    (``local x = x`` reads the outer ``x``), so a later ``local lapis = {}``
+    shadows an earlier require and the reverse. Per target ``T`` paired with
+    value ``V`` (``local a, b = f(), g()`` pairs by position):
+
+    * ``V = R:extend(...)`` / ``R:subclass(...)`` -> a ``class`` ``T`` with
+      ``base_classes = [R]`` (``T`` may be dotted: ``M.App``). The base is
+      left out when ``R`` has no name (:func:`_qualify`);
+    * any other call ``V = C(...)`` / ``R:m(...)`` except ``require`` -> a
+      ``variable`` ``T`` (an identifier other than the discard ``_``; a
+      table field is not a binding) with
+      ``constructed_from = C`` / ``"R:m"``, left out when ``C`` has no name.
+
+    Only file scope is read: a table made inside a function is a value of one
+    call, not a module-level entity a framework or a reader addresses.
+    """
+    out: list[_Binding] = []
+    env: dict[str, str | None] = {}
+    for stmt in tree.root_node.children:
+        if stmt.type == "function_declaration":
+            name_node = stmt.child_by_field_name("name")
+            if name_node is not None and name_node.type == "identifier":
+                env[node_text(name_node, source)] = None
+            continue
+        is_local = stmt.type == "variable_declaration"
+        assign = find_child_by_type(stmt, "assignment_statement") if is_local else (
+            stmt if stmt.type == "assignment_statement" else None
+        )
+        if assign is None:
+            if is_local:  # ``local x, y`` -- bound, to no module
+                var_list = find_child_by_type(stmt, "variable_list")
+                for target in var_list.children_by_field_name("name") if var_list else ():
+                    env[node_text(target, source)] = None
+            continue
+        var_list = find_child_by_type(assign, "variable_list")
+        expr_list = find_child_by_type(assign, "expression_list")
+        if var_list is None or expr_list is None:  # pragma: no cover - grammar invariant
+            continue
+        targets = var_list.children_by_field_name("name")
+        values = expr_list.children_by_field_name("value")
+        updates: dict[str, str | None] = {}
+        for target, value in zip(targets, values, strict=False):
+            target_path = _static_path(target, source)
+            if target_path is None:
+                continue
+            target_name = ".".join(target_path)
+            if len(target_path) == 1:
+                updates[target_name] = _denotation(value, source, env)
+            binding = _classify_binding(stmt, target_name, len(target_path) == 1, value, source, env)
+            if binding is not None:
+                out.append(binding)
+        for target in targets[len(values):]:  # ``local a, b = f()``: b bound too
+            if target.type == "identifier":
+                updates[node_text(target, source)] = None
+        env.update(updates)
+    return out
+
+
+def _classify_binding(
+    stmt: "tree_sitter.Node",
+    target_name: str,
+    target_is_name: bool,
+    value: "tree_sitter.Node",
+    source: bytes,
+    env: dict[str, str | None],
+) -> _Binding | None:
+    """The symbol one target/value pair makes, if any (see the caller)."""
+    if value.type != "function_call" or _is_require_call(value, source):
+        return None
+    callee = value.child_by_field_name("name")
+    if callee is None:  # pragma: no cover - grammar invariant
+        return None
+    receiver_name: str | None = None
+    if callee.type == "method_index_expression":
+        receiver = callee.child_by_field_name("table")
+        method = callee.child_by_field_name("method")
+        if receiver is None or method is None:  # pragma: no cover - grammar invariant
+            return None
+        receiver_path = _static_path(receiver, source)
+        receiver_name = _qualify(receiver_path, env) if receiver_path else None
+        method_name = node_text(method, source)
+        if method_name in _SUBCLASS_METHODS:
+            return _Binding(
+                stmt, target_name, "class",
+                {"base_classes": [receiver_name]} if receiver_name else None,
+            )
+        constructed = f"{receiver_name}:{method_name}" if receiver_name else None
+    else:
+        callee_path = _static_path(callee, source)
+        constructed = _qualify(callee_path, env) if callee_path else None
+    if not target_is_name or target_name == "_":  # ``_``: the discard idiom
+        return None
+    return _Binding(
+        stmt, target_name, "variable",
+        {"constructed_from": constructed} if constructed else None,
+    )
+
+
+def _binding_symbols(
+    tree: "tree_sitter.Tree", source: bytes, file_path: str, run_id: str,
+) -> list[Symbol]:
+    """Symbols for :func:`_file_scope_bindings`, identified like functions."""
+    file_stable_id = _analyzer._file_anchor(file_path)
+    symbols: list[Symbol] = []
+    for b in _file_scope_bindings(tree, source):
+        start_line = b.stmt.start_point[0] + 1
+        end_line = b.stmt.end_point[0] + 1
+        symbols.append(Symbol(
+            id=make_symbol_id("lua", file_path, start_line, end_line, b.name, b.kind),
+            name=b.name,
+            kind=b.kind,
+            language="lua",
+            path=file_path,
+            span=Span(
+                start_line=start_line,
+                end_line=end_line,
+                start_col=b.stmt.start_point[1],
+                end_col=b.stmt.end_point[1],
+            ),
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            stable_id=_analyzer.compute_stable_id(
+                b.stmt, kind=b.kind, name=b.name, file_stable_id=file_stable_id,
+            ),
+            shape_id=_analyzer.compute_shape_id(b.stmt),
+            line_span=end_line - start_line + 1,
+            meta=b.meta,
+        ))
+    return symbols
 
 
 def _build_module_path(file_path: str) -> list[str]:
@@ -895,6 +1156,11 @@ class LuaAnalyzer(TreeSitterAnalyzer):
             # Extract symbols
             file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
             all_symbols.extend(file_symbols)
+            # File-scope subclass tables and constructed values. Kept OUT of
+            # ``file_symbols`` and the resolver: they carry what framework
+            # rows key on (``base_classes`` / ``constructed_from``) and are
+            # not call targets, so call resolution is unchanged by them.
+            all_symbols.extend(_binding_symbols(tree, source, rel_path, run_id))
 
             # Register symbols globally (for cross-file resolution)
             for sym in file_symbols:
