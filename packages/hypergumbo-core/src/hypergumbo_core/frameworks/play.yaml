@@ -14,7 +14,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: play
 language: scala
 
@@ -33,6 +33,16 @@ patterns:
   # Play controllers extend BaseController or AbstractController
   - concept: controller
     base_class: "^(BaseController|AbstractController|InjectedController)$"
+
+  # A CSRF error handler: an implementation of CSRF.ErrorHandler (Scala API)
+  # or CSRFErrorHandler (Java interface) handed to CSRFCheck(action, handler)
+  # or the CSRF filter; Play calls its `handle` when a request fails the token
+  # check. Anchored on the qualified spelling: another library's bare
+  # `ErrorHandler` is not Play's.
+  - concept: error_handler
+    base_class: "^((.*\\.)?CSRF\\.ErrorHandler|CSRFErrorHandler)$"
+    symbol_kind: "^(class|object)$"
+    language: "^scala$"
 
   # Play EventSource handlers
   - concept: event_source
