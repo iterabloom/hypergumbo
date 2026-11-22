@@ -389,7 +389,81 @@ SMART_TEST_MODE="full"
 TARGETED_TEST_COUNT=0
 TARGETED_SOURCE_COUNT=0
 
+# WHICH ARGUMENTS ARE TEST TARGETS (WI-birog). pytest reads every argument
+# that is neither an option nor an option's value as a path to collect, so
+# any such argument makes this an EXPLICIT run: a file, a directory, a
+# `path::node`, or a path that does not exist (pytest then says "not found"
+# at once). It used to be explicit only when an argument matched `*.py*` or
+# `*tests/*`, so `smart-test tests` or `smart-test packages/x/tests` (no
+# trailing slash) selected for itself -- a whole-repository slice when no
+# stored graph answered, and a rewrite of the committed manifest -- and then
+# ran the selection AND the directory, since the argument still went to
+# pytest. The same test read option values as targets: `--deselect
+# tests/x.py::t` alone was an explicit run.
+#
+# AN OPTION'S VALUE IS NOT A TARGET, even when it names an existing directory
+# (`-k tests`, `--basetemp DIR`, `--rootdir DIR`). pytest_option_takes_value
+# says which options take a value as the NEXT argument; `--opt=value` and an
+# attached short value (`-ktests`, `-n2`) are one argument and need nothing.
+# The list is the value-taking options of pytest 9.0.3 with the plugins this
+# repository installs (cov, xdist, asyncio, anyio, hypothesis, syrupy), read
+# from pytest's own parser, plus --fail-grace from scripts/pytest_plugins.
+# Three of them take an OPTIONAL value (--cov, --debug, --cache-show): argparse
+# then takes the next argument as the value unless it starts with "-", and so
+# does this. Not covered: an option of a plugin not listed here, and
+# abbreviated long options (pytest refuses them).
+pytest_option_takes_value() {
+    local arg="$1" rest ch i
+    case "$arg" in
+        --*=*) return 1 ;;
+        --anyio-mode|--assert|--asyncio-mode|--basetemp|--cache-show|--capture|\
+        --code-highlight|--color|--confcutdir|--config-file|--cov|--cov-config|\
+        --cov-context|--cov-fail-under|--cov-precision|--cov-report|--debug|\
+        --deselect|--dist|--doctest-glob|--doctest-report|--durations|\
+        --durations-min|--fail-grace|--hypothesis-profile|--hypothesis-seed|\
+        --hypothesis-verbosity|--ignore|--ignore-glob|--import-mode|\
+        --junit-prefix|--junit-xml|--junitprefix|--junitxml|\
+        --last-failed-no-failures|--lfnf|--log-auto-indent|--log-cli-date-format|\
+        --log-cli-format|--log-cli-level|--log-date-format|--log-disable|\
+        --log-file|--log-file-date-format|--log-file-format|--log-file-level|\
+        --log-file-mode|--log-format|--log-level|--max-worker-restart|--maxfail|\
+        --maxprocesses|--maxschedchunk|--numprocesses|--override-ini|--pastebin|\
+        --pdbcls|--px|--pythonwarnings|--rootdir|--rsyncdir|--rsyncignore|\
+        --show-capture|--snapshot-default-extension|--snapshot-diff-mode|\
+        --snapshot-report|--tb|--testrunuid|--tx|--verbosity)
+            return 0 ;;
+        --*) return 1 ;;
+    esac
+    # A short-option cluster (`-k`, `-xk`, `-xkfoo`): the first value-taking
+    # letter takes the rest of the cluster as its value, or the next argument
+    # when it is the last letter.
+    rest="${arg#-}"
+    for (( i = 0; i < ${#rest}; i++ )); do
+        ch="${rest:i:1}"
+        case "$ch" in
+            W|c|k|m|n|o|p|r) [[ $i -eq $(( ${#rest} - 1 )) ]]; return ;;
+        esac
+    done
+    return 1
+}
+
+# The value an option takes is next; after `--`, every argument is a target.
+EXPECT_OPTION_VALUE=false
+AFTER_DOUBLE_DASH=false
 for arg in "$@"; do
+    if [[ "$EXPECT_OPTION_VALUE" == "true" ]]; then
+        EXPECT_OPTION_VALUE=false
+        # An optional value is not taken when the next argument is an option.
+        if [[ "$arg" != -* ]]; then
+            PYTEST_ARGS+=("$arg")
+            continue
+        fi
+    fi
+    if [[ "$AFTER_DOUBLE_DASH" == "true" ]]; then
+        PYTEST_ARGS+=("$arg")
+        HAS_EXPLICIT_TESTS=true
+        continue
+    fi
     case $arg in
         --full) FULL_RUN=true ;;
         --no-select-shadow) SELECT_SHADOW=false ;;
@@ -409,13 +483,20 @@ for arg in "$@"; do
         --raw) RAW_OUTPUT=true ;;
         --gate-changed) GATE_CHANGED=true ;;
 
-        -*) PYTEST_ARGS+=("$arg") ;;
-        *)
+        --)
             PYTEST_ARGS+=("$arg")
-            # Detect explicit test targets (paths containing .py or tests/)
-            if [[ "$arg" == *.py* ]] || [[ "$arg" == *tests/* ]]; then
-                HAS_EXPLICIT_TESTS=true
+            AFTER_DOUBLE_DASH=true
+            ;;
+        -*)
+            PYTEST_ARGS+=("$arg")
+            if pytest_option_takes_value "$arg"; then
+                EXPECT_OPTION_VALUE=true
             fi
+            ;;
+        *)
+            # A test target: pytest collects it (see above).
+            PYTEST_ARGS+=("$arg")
+            HAS_EXPLICIT_TESTS=true
             ;;
     esac
 done
