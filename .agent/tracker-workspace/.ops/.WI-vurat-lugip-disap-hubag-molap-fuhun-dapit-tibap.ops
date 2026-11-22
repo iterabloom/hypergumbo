@@ -1,0 +1,21 @@
+- op: create  # 5356
+  at: '2026-11-22T23:42:18Z'  # 5356
+  by: agent  # 5356
+  actor: jgstern_agent  # 5356
+  clock: 1  # 5356
+  nonce: '5356'  # 5356
+  data:  # 5356
+    kind: work_item  # 5356
+    title: "Go registrations left open: a local type handed over by value, kong struct tags, inline literals, hook fields, no go.mod"  # 5356
+    status: todo_soft  # 5356
+    priority: 3  # 5356
+    parent:  # 5356
+    tags:  # 5356
+    - frameworks  # 5356
+    - go  # 5356
+    isbefore: []  # 5356
+    duplicate_of: []  # 5356
+    not_duplicate_of: []  # 5356
+    pr_ref:  # 5356
+    description: "Left open in Go by the WI-movur PR (audit 0029, group go):\n1. A local TYPE handed to a framework that calls its method (K2-K4, W20; also audit 0028 G5): cron `AddJob(T{})` -> T.Run, `mux.Handle(path, T{})` -> T.ServeHTTP, kong command structs (needs struct tags recorded: `cmd:\"\"`). Never key on the method name Run alone.\n2. Registration forms not recorded: an inline func literal (C6, C10, U6, W3, W18: no symbol), a factory call `r.Use(auth())` (W2), `AddCommand` (C3, C4: it registers a variable).\n3. Hook fields (PersistentPreRun, PreRun, PostRun, Before, After: C9, U7) get no row: no concept with an entry kind fits a CLI hook (the deleted rows said middleware, which labels them HTTP middleware).\n4. Nothing is recorded without a go.mod above the analysed directory (library and repository packages cannot be told apart): analysing beads/cmd/bd alone records 0.\n5. A registration in a `_test.go` file marks the production function it names (forgejo: 8 contexts, each a real command). Whether test evidence should stamp production code is not decided.\n6. go-web.yaml's go-restful `\\.To$` route row is parked on a position no context has: fed by the new contexts it stamped `route` with no method and no path. It waits for an extractor that reads the builder chain.\n7. In-repository wrappers hide registrations: forgejo's routers call forgejo's own `web.Route.Use`, so its middleware stays undetected.\n8. Seen, not this work's: exported symbols in `package main` are library_export entries (10 on beads/cmd/bd); a goroutine start is a plain calls edge with no async marker; robfig/cron was not a detected framework (added: go-cron).\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/movur/triage_go.md, out/build_go/."  # 5356
+    fields: {}  # 5356
