@@ -96,6 +96,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Development tools and CI
 
+- **Pre-commit now runs the entry-kind allow-list and watcher checks.**
 - **The id-construction check now reads edge endpoints.**
 - **mypy now rejects a hand-built node id.**
 - **CI steps installing pytest alone pin its version.**

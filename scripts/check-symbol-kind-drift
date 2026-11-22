@@ -17,8 +17,16 @@ script for ``Symbol.kind``; the entrypoint-kind axis rides the same step, as
 the io-primitive-kind axis rides ``check-io-boundary-drift`` (ADR-0059):
 ``entrypoint_kinds.find_kind_set_drift`` reports any hand-written group of
 ``EntrypointKind`` members (or of kind-value strings) outside the registry,
-where a reader must ask for a role instead. It is the watcher for audit
-0027's two keep-with-a-trigger verdicts.
+where a reader must ask for a role instead. Two more checks of that axis run
+here, each of which only a test ran until the scheduled
+test-only-reachability gate named them (2026-11-22):
+
+* ``unused_not_a_role_question_keys``: the allow-list for the check above
+  only shrinks, so a key that matches no site any more fails;
+* ``find_watched_kind_reads`` against ``KNOWN_WATCHED_READS``: the watcher
+  for audit 0027's two keep-with-a-trigger verdicts. A branch on one kept
+  kind alone that the list does not explain is the trigger firing, and a
+  listed branch that is gone is a reason nobody reads.
 
 Exit codes:
     0 — no drift detected.
@@ -42,7 +50,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 
 try:
-    from hypergumbo_core.entrypoint_kinds import find_kind_set_drift
+    from hypergumbo_core.entrypoint_kinds import (
+        KNOWN_WATCHED_READS,
+        find_kind_set_drift,
+        find_watched_kind_reads,
+        unused_not_a_role_question_keys,
+    )
     from hypergumbo_core.symbol_kinds import find_axis_drift
 except ImportError as exc:  # pragma: no cover — defensive
     print(
@@ -52,19 +65,52 @@ except ImportError as exc:  # pragma: no cover — defensive
     sys.exit(2)
 
 
+def _entry_kind_problems() -> tuple[list[str], list[str]]:
+    """The entrypoint-kind axis's offenders and what to do about each kind of
+    offender found (ADR-0063)."""
+    offenders: list[str] = []
+    advice: list[str] = []
+    drift = find_kind_set_drift(REPO_ROOT)
+    if drift:
+        offenders.extend(drift)
+        advice.append(
+            "Derive the set from a role: entrypoint_kinds.kinds_with_role(...).\n"
+            "If the collection is not a group of entries treated alike, add it\n"
+            "to entrypoint_kinds.NOT_A_ROLE_QUESTION with the reason.")
+    stale = unused_not_a_role_question_keys(REPO_ROOT)
+    if stale:
+        offenders.extend(
+            f"{rel} ({where}): allow-list key {members} matches no site"
+            for rel, where, members in stale)
+        advice.append(
+            "entrypoint_kinds.NOT_A_ROLE_QUESTION only shrinks: remove each key\n"
+            "whose hand-written set is gone.")
+    reads = set(find_watched_kind_reads(REPO_ROOT))
+    known = set(KNOWN_WATCHED_READS)
+    if reads != known:
+        offenders.extend(
+            f"{rel} ({where}): branches on EntrypointKind.{member} alone, a kind "
+            "kept under a trigger" for rel, where, member in sorted(reads - known))
+        offenders.extend(
+            f"{rel} ({where}): the listed branch on EntrypointKind.{member} is "
+            "no longer there" for rel, where, member in sorted(known - reads))
+        advice.append(
+            "entrypoint_kinds.KNOWN_WATCHED_READS lists every branch on one kept\n"
+            "kind alone, with why it is the kind's own behaviour (audit 0027's\n"
+            "keep triggers). List a new branch with its reason, or decide that\n"
+            "the kind no longer deserves to be kept beside its sibling; remove\n"
+            "a key whose branch is gone.")
+    return offenders, advice
+
+
 def main() -> int:
     offenders = find_axis_drift(REPO_ROOT)
-    entry_offenders = find_kind_set_drift(REPO_ROOT)
+    entry_offenders, entry_advice = _entry_kind_problems()
     if entry_offenders:
         print("entrypoint-kind axis check failed (ADR-0063):")
         for line in entry_offenders:
             print(f"  {line}")
-        print(
-            "Derive the set from a role: entrypoint_kinds.kinds_with_role(...).\n"
-            "If the collection is not a group of entries treated alike, add it\n"
-            "to entrypoint_kinds.NOT_A_ROLE_QUESTION with the reason.",
-            file=sys.stderr,
-        )
+        print("\n".join(entry_advice), file=sys.stderr)
     if not offenders:
         return 1 if entry_offenders else 0
 

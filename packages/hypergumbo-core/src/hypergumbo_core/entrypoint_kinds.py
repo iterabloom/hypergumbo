@@ -481,11 +481,6 @@ def role_of(kind: EntrypointKind) -> str:
     return _SPEC_BY_KIND[kind].role
 
 
-def kind_heading(kind: EntrypointKind) -> Optional[str]:
-    """The sketch's Entry Points heading for *kind* (``None``: not shown there)."""
-    return _SPEC_BY_KIND[kind].heading
-
-
 def role_headings(role: str) -> tuple[str, ...]:
     """The headings the kinds of *role* show under, in the section's order."""
     used = {s.heading for s in entrypoint_kinds_on_axis(role)}
@@ -673,6 +668,7 @@ def unused_not_a_role_question_keys(repo_root: Path) -> list[tuple[str, str, str
 #: (repo-relative path, enclosing function, kind member name), each with why
 #: it is the kind's own behaviour and not the leak the trigger watches for.
 #: A branch on one of these kinds that is not listed fails
+#: ``scripts/check-symbol-kind-drift`` (the pre-commit step) and
 #: ``tests/test_entrypoint_kinds.py``, which is the trigger firing: decide
 #: then whether the kind still deserves to be kept beside its sibling.
 KNOWN_WATCHED_READS: Final[dict[tuple[str, str, str], str]] = {
