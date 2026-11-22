@@ -1,0 +1,29 @@
+Original commit body from 04588644ef0d68a4656b66a0fdb807b97fcc71c7:
+
+Rows that anchored a method's name at its start matched nothing in five languages, because the analyzers name a method with its owner. This repairs the matcher, the rows that can be repaired, and two defects the measurement found on the way.
+
+What changes for a user
+- A test method of a class is a test function in Python, Ruby and Swift; Swift setUp / tearDown and Spock fixture methods are test lifecycle. Each row also asks for a test file, because a name alone is not a test.
+- A function nested in a Python test function is no longer a test function.
+- The on_get-style responder methods of a Python resource class are route handlers again (eight rows of one web framework file; the commit names it), also with a suffix.
+- A row's symbol_kind, framework_role and meta_match now bind whichever field the row matches by (13 shipped rows declared a kind that was ignored).
+- Ruby class methods of a namespaced class are contained by their class, not by the namespace.
+- A repository whose only detected entries are tests keeps its fallback entry points.
+
+Commits
+1. member_names: the member boundary is the last separator in the name.
+2. framework_patterns: method_name reads the member's own name; a declared kind always binds.
+3. frameworks: the rows, with tests that run each analyzer on source.
+4. entrypoints: the connectivity fallback fires when the rank floor would leave no entry.
+5. changelog.
+
+Measured: one run per arm on 26 trees, whole branch against dev. Declared symbols gone 0 and stable ids moved 0 on every tree; node counts equal. test_function gained 2,187 (Python 1,001, Ruby 156, Swift 1,030); test_lifecycle 86; lost 157 (156 nested Python helpers, one Scala example helper). chatwoot: 159 contains edges re-parented, +8 calls, +10 dispatches_to. Entry lists: unchanged on every tree but one Scala test entry removed. 15 trees show no change at all. 29 one-line mutation controls, all red.
+
+Decisions in this PR that are the owner's to overturn
+- The two Scala name rows are deleted: of 111 test-named methods in tapir none is a test.
+- The two EUnit rows are left matching nothing, marked: repaired, cowboy's 25 inline tests became its first 25 entry points, and the rank formula is frozen.
+- Test rows ask for the file only, and only for paths the ranking's own test-file rule accepts.
+
+Not done, filed after the merge: tests written as calls (RSpec, ExUnit, ScalaTest, Spock features) are not symbols; name-only test rows that still mark production code; parent_base_class is written by three analyzers only (the Kotlin Android rows cannot match); the Groovy analyzer loses a class in one arrangement; gaps of the ranking's test-file rule.
+
+Addresses WI-rasok-zilif-kagav-fugam-pabih-pasis-fosaj-sunul
