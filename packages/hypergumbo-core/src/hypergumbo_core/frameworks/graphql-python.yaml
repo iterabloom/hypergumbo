@@ -9,7 +9,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: graphql-python
 language: python
 
@@ -71,6 +71,14 @@ patterns:
   # Ariadne type resolver
   - concept: graphql_resolver
     decorator: "^(query_type|mutation_type|subscription_type)\\.field$"
+
+  # Ariadne resolver set by a call: query.set_field("version", resolve_version)
+  # on a QueryType / MutationType / ObjectType bindable.
+  - concept: graphql_resolver
+    usage:
+      kind: "^call$"
+      name: "^([A-Za-z_]\\w*\\.)*set_field$"
+      position: "^args\\[1\\]$"
 
   # ==================== GRAPHENE PATTERNS ====================
   # Graphene resolver: a `resolve_<field>` method on an ObjectType. Reads the

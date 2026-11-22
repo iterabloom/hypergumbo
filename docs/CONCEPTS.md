@@ -110,7 +110,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `event` | inert | adonisjs, fuelphp, laravel, masonite | _(none)_ |
 | `event_config` | inert | lit | _(none)_ |
 | `event_consumer` | inert | vertx | _(none)_ |
-| `event_handler` | live | celery, django, electron, guice, hapi, jakarta-cdi, laravel, micronaut, nestjs, openresty, pyramid, qt, quarkus, rails, sanic, spring-boot, symfony, yii | `entrypoints.py` |
+| `event_handler` | live | aiohttp, celery, django, electron, guice, hapi, jakarta-cdi, laravel, micronaut, nestjs, openresty, pyramid, qt, quarkus, rails, sanic, spring-boot, symfony, yii | `entrypoints.py` |
 | `event_listener` | inert | cakephp, fuelphp, laminas, lumen | _(none)_ |
 | `event_publisher` | inert | quarkus, rails, vertx | _(none)_ |
 | `event_source` | inert | play | _(none)_ |
@@ -158,7 +158,7 @@ Total concepts: **322** (live: 47, inert: 274, ghost: 1).
 | `lens` | inert | http4k | _(none)_ |
 | `library` | inert | codeigniter | _(none)_ |
 | `library_export` | live | library-exports | `entrypoints.py` |
-| `lifecycle` | inert | aiohttp, electron, fastapi, hapi, restify, ring-compojure, solid | _(none)_ |
+| `lifecycle` | inert | electron, fastapi, hapi, restify, ring-compojure, solid | _(none)_ |
 | `lifecycle_hook` | live | android, cocoa, lit, nex, quart, sanic | `entrypoints.py` |
 | `listener` | inert | adonisjs | _(none)_ |
 | `liveview` | ghost | _(none)_ | `entrypoints.py` |

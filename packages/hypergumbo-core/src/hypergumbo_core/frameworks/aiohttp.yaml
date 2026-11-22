@@ -10,21 +10,48 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: aiohttp
 language: python
 
 patterns:
   # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
-  # aiohttp router - app.router.add_get("/path", handler)
+  # aiohttp router - app.router.add_get("/path", handler). The handler is
+  # args[1]; the path is the first argument, the method the verb of the name
+  # (add_route's method is args[0] and its handler args[2]: not matched).
   - concept: route
     usage:
       kind: "^call$"
-      name: "^(app\\.router|router)\\.(add_get|add_post|add_put|add_delete|add_patch|add_route)$"
+      name: "^(app\\.router|router)\\.(add_get|add_post|add_put|add_delete|add_patch)$"
       position: "^args\\[1\\]$"
     extract:
-      path: "metadata.route_path"
-      method: "metadata.http_method"
+      path: "metadata.args[0]"
+      method: "context_name | split:_ | last | uppercase"
+
+  # Signals: app.on_startup.append(open_pool), and on_shutdown, on_cleanup.
+  # aiohttp calls each appended coroutine function with the app.
+  - concept: event_handler
+    usage:
+      kind: "^call$"
+      name: "^([A-Za-z_]\\w*\\.)*(on_startup|on_shutdown|on_cleanup)\\.append$"
+      position: "^args\\[0\\]$"
+
+  # Cleanup context: app.cleanup_ctx.append(db_ctx), an async generator run
+  # to its yield at startup and past it at cleanup: a lifecycle hook, not a
+  # middleware (the deleted decorator row said middleware).
+  - concept: event_handler
+    usage:
+      kind: "^call$"
+      name: "^([A-Za-z_]\\w*\\.)*cleanup_ctx\\.append$"
+      position: "^args\\[0\\]$"
+
+  # aiohttp_jinja2.setup(app, context_processors=[proc]): each processor is
+  # called on every request by the context_processors_middleware it installs.
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^aiohttp_jinja2\\.setup$"
+      position: "^kwargs\\[context_processors\\]\\[\\d+\\]$"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # aiohttp RouteTableDef decorators - @routes.get("/path")
@@ -41,17 +68,13 @@ patterns:
   - concept: application
     base_class: "^Application$"
 
-  # aiohttp middleware
+  # aiohttp middleware: @web.middleware, or @middleware imported from aiohttp.web
   - concept: middleware
-    decorator: "^middleware$"
+    decorator: "^(web\\.)?middleware$"
 
   # aiohttp WebSocket handler
   - concept: websocket_handler
     base_class: "^WebSocketResponse$"
-
-  # aiohttp on_startup/on_shutdown/on_cleanup
-  - concept: lifecycle
-    decorator: "^(on_startup|on_shutdown|on_cleanup)$"
 
   # aiohttp Client Session (HTTP client)
   - concept: http_client

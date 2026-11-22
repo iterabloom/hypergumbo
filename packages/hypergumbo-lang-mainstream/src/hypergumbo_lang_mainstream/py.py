@@ -207,6 +207,27 @@ are created from the UsageContext metadata at the callsite. This avoids duplicat
 the AST-walking logic while preserving both outputs. Go and JS/TS analyzers follow
 the same dual-output pattern.
 
+Registration Usage Contexts
+---------------------------
+A call that hands a library a callable of the repository is recorded too:
+``app.on_startup.append(open_pool)``, ``fire.Fire(Calculator)``,
+``app.install(AuthPlugin())``, ``app.register_error_handler(404, on_404)``,
+``app.command()(download)``. The library calls the callable later and
+nothing in the tree does, so without a record it has only a ``references``
+edge. ``_extract_registration_usage_contexts`` writes one UsageContext per
+argument (positional, keyword, or an element of a list / dict literal given
+as one) that names, or constructs, a function, method or class of the tree:
+kind ``call``, the callee as written, position ``args[i]`` /
+``kwargs[name]`` (with ``[i]`` / ``[key]`` for an element), ``symbol_ref``
+the callable, metadata ``receiver``, ``method``, the leading string-literal
+arguments (``args``) and ``instance``. It records a call only when a shipped
+``usage:`` row could match the callee's name
+(``framework_patterns.usage_row_names_call``): the framework files are the
+only list of call names. A callee of the tree is an ordinary call and is not
+recorded; a call a route extractor above already recorded is left to it; a
+handler or callee bound by an import is settled between the passes
+(``_settle_registrations``).
+
 ID Schemes
 ----------
 - **stable_id**: sha256 over the v6 tuple, anchored on the file-anchored
@@ -2404,6 +2425,160 @@ def _extract_starlette_usage_contexts(
     return contexts
 
 
+#: Registrations still open after the file's own pass: the context, the
+#: handler's dotted parts when this file does not declare it (else ``None``),
+#: and the callee's dotted parts when an import binds its root (else
+#: ``None``). ``_settle_registrations`` decides both once every file's
+#: symbols are known.
+_DeferredRegistrations = list[
+    tuple[UsageContext, "tuple[str, ...] | None", "tuple[str, ...] | None"]
+]
+
+
+def _registration_callee_name(func: ast.expr) -> tuple[str | None, list[str] | None]:
+    """The callee as written, and its dotted parts, for a registration.
+
+    ``app.on_startup.append`` for ``app.on_startup.append(f)``; for a curried
+    call ``app.command()(f)`` the inner callee with ``()`` appended,
+    ``app.command()``. A computed callee has no name.
+    """
+    curried = isinstance(func, ast.Call)
+    parts = _dotted_parts(func.func if isinstance(func, ast.Call) else func)
+    if parts is None:
+        return None, None
+    return ".".join(parts) + ("()" if curried else ""), parts
+
+
+def _registration_values(
+    value: ast.expr, position: str,
+) -> Iterator[tuple[str, ast.expr]]:
+    """``(position, expression)`` for an argument, or for each element of a
+    list, tuple or set literal (``[i]``) or each value of a dict literal
+    (``[key]``, ``[*]`` for a key that is not a string) given as one."""
+    if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+        for index, element in enumerate(value.elts):
+            yield f"{position}[{index}]", element
+    elif isinstance(value, ast.Dict):
+        for key, element in zip(value.keys, value.values, strict=True):
+            label = (
+                key.value
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                else "*"
+            )
+            yield f"{position}[{label}]", element
+    else:
+        yield position, value
+
+
+def _extract_registration_usage_contexts(
+    tree: ast.AST,
+    file_path: str,
+    symbol_by_name: dict[str, Symbol],
+    scopes_at: _ScopesAt,
+    import_roots: frozenset[str],
+    recorded_at: set[tuple[int, int]],
+    deferred: _DeferredRegistrations,
+) -> list[UsageContext]:
+    """UsageContext records for calls that hand a library a local callable.
+
+    ``app.on_startup.append(open_pool)``, ``fire.Fire(Calculator)``,
+    ``app.install(AuthPlugin())``, ``aiohttp_jinja2.setup(app,
+    context_processors=[proc])``: an argument (positional or keyword, or an
+    element of a list / dict literal given as one) names a function, method
+    or class of the repository, or constructs a class of it, and the thing
+    called is a library's. The library calls the callable later; nothing in
+    the repository does. One context per such argument: kind ``call``, the
+    callee as written (:func:`_registration_callee_name`), position
+    ``args[i]`` / ``kwargs[name]`` (plus ``[i]`` / ``[key]`` for an element),
+    ``symbol_ref`` the callable, metadata ``receiver`` / ``method`` and the
+    string-literal positional arguments (``args``, for a row that reads a
+    path).
+
+    THE GATE IS THE ROWS. A call is recorded only when a shipped ``usage:``
+    row could match its name (``usage_row_names_call``), so this function
+    holds no list of framework calls, and a row added to a framework file is
+    enough for its calls to be recorded.
+
+    NOT RECORDED: a callee that is code of the repository (a local function
+    taking a callback is an ordinary call with an ordinary edge; one imported
+    from another file of the tree is dropped by ``_settle_registrations``),
+    a call the route extractors already recorded (``recorded_at``, their
+    spans), an argument that is a variable, a parameter, a lambda or a
+    library object, and ``self.x`` (a bound method is not resolved here).
+    A handler imported from another file is resolved there too.
+    """
+    from hypergumbo_core.framework_patterns import usage_row_names_call
+
+    contexts: list[UsageContext] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name, callee_parts = _registration_callee_name(node.func)
+        if name is None or callee_parts is None:
+            continue
+        if (node.lineno, node.col_offset) in recorded_at:
+            continue
+        if not usage_row_names_call(name, "python"):
+            continue
+        callee_expr = node.func.func if isinstance(node.func, ast.Call) else node.func
+        local_callee = _resolve_local_ref(callee_expr, node, symbol_by_name, scopes_at)
+        if local_callee is not None and local_callee.kind in _ROUTE_HANDLER_KINDS:
+            continue
+        callee_deferred = (
+            tuple(callee_parts) if callee_parts[0] in import_roots else None
+        )
+        arguments = [(f"args[{i}]", a) for i, a in enumerate(node.args)] + [
+            (f"kwargs[{kw.arg}]", kw.value) for kw in node.keywords if kw.arg
+        ]
+        # The string-literal positional arguments up to the first other
+        # one, so ``args[i]`` of the metadata is ``args[i]`` of the call.
+        literal_args: list[str] = []
+        for argument in node.args:
+            if not (isinstance(argument, ast.Constant) and isinstance(argument.value, str)):
+                break
+            literal_args.append(argument.value)
+        for top_position, top_value in arguments:
+            for position, value in _registration_values(top_value, top_position):
+                expr = value.func if isinstance(value, ast.Call) else value
+                handler = _resolve_local_ref(expr, node, symbol_by_name, scopes_at)
+                handler_parts: tuple[str, ...] | None = None
+                if handler is not None:
+                    if handler.kind not in _ROUTE_HANDLER_KINDS:
+                        continue
+                    if isinstance(value, ast.Call) and handler.kind != "class":
+                        continue
+                else:
+                    parts = _dotted_parts(expr)
+                    if parts is None or parts[0] not in import_roots:
+                        continue
+                    handler_parts = tuple(parts)
+                ctx = UsageContext.create(
+                    kind="call",
+                    context_name=name,
+                    position=position,
+                    path=file_path,
+                    span=Span(
+                        start_line=node.lineno,
+                        end_line=getattr(node, "end_lineno", node.lineno),
+                        start_col=node.col_offset,
+                        end_col=getattr(node, "end_col_offset", 0),
+                    ),
+                    symbol_ref=handler.id if handler is not None else None,
+                    metadata={
+                        "receiver": ".".join(callee_parts[:-1]),
+                        "method": callee_parts[-1],
+                        "args": literal_args,
+                        # The argument constructs the class: only a class
+                        # may settle it (``_settle_registrations``).
+                        "instance": isinstance(value, ast.Call),
+                    },
+                )
+                contexts.append(ctx)
+                if handler_parts is not None or callee_deferred is not None:
+                    deferred.append((ctx, handler_parts, callee_deferred))
+    return contexts
+
+
 def _extract_py_decorator_names(
     node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
 ) -> str:
@@ -2775,6 +2950,10 @@ class FileAnalysis:
     deferred_route_refs: list[
         tuple[UsageContext, tuple[str, ...], "Symbol | None"]
     ] = field(default_factory=list)
+    # Registrations (``_extract_registration_usage_contexts``) whose handler
+    # or callee goes through an import; ``_settle_registrations`` resolves
+    # the handler and drops a context whose callee is the repository's.
+    deferred_registrations: _DeferredRegistrations = field(default_factory=list)
 
 
 _PYTHON_PROJECT_MANIFESTS = frozenset({"pyproject.toml", "setup.py", "setup.cfg"})
@@ -4312,6 +4491,15 @@ def _analyze_parsed_file(
         deferred=deferred_refs,
     )
     usage_contexts.extend(starlette_contexts)
+    # Calls that hand a library a local callable, where a usage row names the
+    # call; a call a route extractor above already recorded is left to it.
+    deferred_registrations: _DeferredRegistrations = []
+    usage_contexts.extend(_extract_registration_usage_contexts(
+        tree, str(py_file), symbol_by_name, _scopes_at,
+        frozenset(local for local, _ in _py_import_bindings(tree)),
+        {(c.span.start_line, c.span.start_col) for c in usage_contexts},
+        deferred_registrations,
+    ))
 
     # Create route symbols from Django usage contexts.
     #
@@ -4501,6 +4689,7 @@ def _analyze_parsed_file(
             (ctx, parts, marker_by_ctx_id.get(id(ctx)))
             for ctx, parts in deferred_refs
         ],
+        deferred_registrations=deferred_registrations,
     )
 
 
@@ -8734,6 +8923,51 @@ def _resolve_imported_route_handlers(
             marker.meta = {**(marker.meta or {}), "handler_ref": found.id}
 
 
+def _settle_registrations(
+    analysis: FileAnalysis,
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None,
+) -> None:
+    """Finish the registrations of ``analysis`` that went through an import.
+
+    A callee an import binds is walked through it: one that reaches a
+    function, method or class of the tree is the repository's own code, so
+    the call is an ordinary one and its context is dropped. A handler an
+    import binds is walked the same way: a function, method or class of the
+    tree becomes ``symbol_ref`` (a class only, where the argument constructs
+    it); anything else (a library's object) drops the context.
+    """
+    dropped: set[int] = set()
+    for ctx, handler_parts, callee_parts in analysis.deferred_registrations:
+        if callee_parts is not None:
+            callee = _resolve_dotted_name(
+                callee_parts, analysis.symbol_by_name, analysis.imports,
+                global_symbols, analysis.module_imports, resolver, sym_by_path_name,
+            )
+            if callee is not None and callee.kind in _ROUTE_HANDLER_KINDS:
+                dropped.add(id(ctx))
+                continue
+        if handler_parts is None:
+            continue
+        found = _resolve_dotted_name(
+            handler_parts, analysis.symbol_by_name, analysis.imports,
+            global_symbols, analysis.module_imports, resolver, sym_by_path_name,
+        )
+        if (
+            found is None
+            or found.kind not in _ROUTE_HANDLER_KINDS
+            or (ctx.metadata.get("instance") and found.kind != "class")
+        ):
+            dropped.add(id(ctx))
+            continue
+        ctx.symbol_ref = found.id
+    if dropped:
+        analysis.usage_contexts = [
+            u for u in analysis.usage_contexts if id(u) not in dropped
+        ]
+
+
 def _returned_class(
     callee: Symbol | None,
     local_symbols: dict[str, Symbol],
@@ -11506,6 +11740,9 @@ def analyze_python(
     # registering file's imports.
     for _rr_analysis in file_analyses.values():
         _resolve_imported_route_handlers(
+            _rr_analysis, global_symbols, resolver, _sym_by_path_name,
+        )
+        _settle_registrations(
             _rr_analysis, global_symbols, resolver, _sym_by_path_name,
         )
 

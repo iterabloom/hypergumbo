@@ -10,13 +10,21 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-07-31
+retrieved: 2026-11-22
 id: flask
 language: python
 
 patterns:
   # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
   # These match against UsageContext records for call-based routing
+
+  # Error handler registered as a call: app.register_error_handler(404, f),
+  # bp.register_error_handler(Exc, f). Flask calls f when a view raises.
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^([A-Za-z_]\\w*\\.)*register_error_handler$"
+      position: "^args\\[1\\]$"
 
   # Flask add_url_rule - app.add_url_rule('/path', view_func=handler)
   - concept: route
