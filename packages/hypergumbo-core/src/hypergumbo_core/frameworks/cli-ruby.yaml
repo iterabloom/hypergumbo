@@ -20,6 +20,14 @@ patterns:
   - concept: command
     base_class: "^Thor$"
 
+  # Thor: a public instance method of a Thor subclass is a command Thor runs;
+  # a Thor::Group runs all of them, in order. The analyzer writes
+  # parent_base_classes on public instance methods only (not after private /
+  # protected, not inside no_commands do ... end).
+  - concept: command
+    parent_base_class: "^Thor(::Group)?$"
+    symbol_kind: "^method$"
+
   # Thor: subcommand "name", SubcommandClass -- the Thor class that runs
   # the subcommand, also when it inherits an app base class, not Thor
   - concept: command
@@ -72,3 +80,8 @@ patterns:
   # Dry::CLI command
   - concept: command
     base_class: "^Dry::CLI::Command$"
+
+  # dry-cli: the command's #call is what dry-cli runs
+  - concept: command
+    parent_base_class: "^Dry::CLI::Command$"
+    method_name: "^call$"

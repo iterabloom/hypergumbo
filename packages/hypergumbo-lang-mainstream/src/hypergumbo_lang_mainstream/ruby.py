@@ -31,6 +31,11 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
   of DSL names here: the rows are the list.
 - ``instantiates`` edges for ``.new`` (INV-kahig)
 - ``event_publishes`` edges for ActiveJob / Sidekiq enqueue calls
+- ``meta["parent_base_classes"]`` on a class's PUBLIC instance methods
+  (``_public_member_bases``): the class's written superclass, for
+  ``parent_base_class:`` rows (Thor commands, dry-cli ``#call``). Ruby's
+  ``private`` / ``protected`` decide; not written on a ``def self.x`` or on a
+  ``def`` inside a block of the class body
 - ``extends`` inheritance edges, and mixin declarations recorded as
   ``meta["included_modules"]`` for the linker to resolve (WI-hatip)
 - ``field`` / ``variable`` data anchors (``_emit_ruby_data_symbols``,
@@ -133,8 +138,9 @@ Why This Design
 
 Population of ``is_exported`` follows Ruby's default-public rule: top-level
 methods, classes, and modules are exported; methods defined inside another
-method (locally scoped) are not. Refined visibility scope (``private`` /
-``protected`` directives within a class) is not yet tracked here.
+method (locally scoped) are not. ``private`` / ``protected`` directives
+within a class are read for ``parent_base_classes`` only; they do not reach
+``modifiers``, ``is_exported`` or the computed visibility yet.
 """
 from __future__ import annotations
 
@@ -619,6 +625,60 @@ _RUBY_PARAM_PARENTS = frozenset({
 _RUBY_LHS_PARENTS = frozenset({
     "left_assignment_list", "destructured_left_assignment", "rest_assignment",
 })
+
+
+#: A class body's visibility calls: a bare one sets the visibility of the
+#: ``def``s after it, with symbol arguments it sets the methods named.
+_RUBY_VISIBILITY_CALLS = frozenset({"private", "protected", "public"})
+
+
+def _public_member_bases(method: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The written bases of the class whose body declares ``method`` as a
+    PUBLIC instance method; ``[]`` for any other ``def`` (WI-movur).
+
+    Written as ``meta["parent_base_classes"]`` (the key Python, Java and
+    Objective-C write) so a ``parent_base_class:`` row can name the members a
+    framework dispatches by name: Thor runs a ``Thor`` subclass's public
+    instance methods as commands, dry-cli a command's ``#call``. Ruby's own
+    visibility decides: a bare ``private`` / ``protected`` covers the ``def``s
+    after it until ``public``, and ``private :name`` or ``private def name``
+    covers one. A ``def`` in a block of the class body (Thor's ``no_commands
+    do``, a concern's ``included do``) is not a member the class declares
+    there, and a ``def self.x`` is not an instance method. The base is the
+    superclass as written (as on the class symbol), not its ancestors.
+    """
+    body = method.parent
+    klass = body.parent if body is not None else None
+    if body is None or klass is None or body.type != "body_statement" or klass.type != "class":
+        return []
+    superclass = _find_child_by_field(klass, "superclass")
+    bases = [
+        node_text(child, source)
+        for child in (superclass.children if superclass is not None else ())
+        if child.is_named
+    ][:1]
+    name_node = _find_child_by_field(method, "name")
+    name = node_text(name_node, source) if name_node is not None else ""
+    visibility = "public"
+    for statement in body.named_children:
+        if statement.start_byte >= method.start_byte:
+            break
+        text = node_text(statement, source)
+        if statement.type == "identifier" and text in _RUBY_VISIBILITY_CALLS:
+            visibility = text
+    for statement in body.named_children:
+        callee = statement.child_by_field_name("method") if statement.type == "call" else None
+        args = statement.child_by_field_name("arguments") if callee is not None else None
+        if (
+            callee is not None and args is not None
+            and node_text(callee, source) in ("private", "protected")
+            and any(
+                node_text(arg, source).lstrip(":") == name
+                for arg in args.named_children if arg.type == "simple_symbol"
+            )
+        ):
+            visibility = node_text(callee, source)
+    return bases if visibility == "public" else []
 
 
 def _ruby_binds(ident: "tree_sitter.Node") -> bool:
@@ -2568,6 +2628,7 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 ruby_chain = _get_ruby_class_or_module_chain(node, source)
+                member_bases = _public_member_bases(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("ruby", str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -2582,6 +2643,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    meta={"parent_base_classes": member_bases} if member_bases else None,
                     signature=_extract_ruby_signature(node, source),
                     docstring=extract_preceding_doc_comment(node, source, "ruby"),
                     stable_id=_analyzer.compute_stable_id(
