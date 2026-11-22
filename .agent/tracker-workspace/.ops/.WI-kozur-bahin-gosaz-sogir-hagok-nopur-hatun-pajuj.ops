@@ -1,0 +1,20 @@
+- op: create  # 919a
+  at: '2026-11-21T20:54:46Z'  # 919a
+  by: agent  # 919a
+  actor: jgstern_agent  # 919a
+  clock: 1  # 919a
+  nonce: 919a  # 919a
+  data:  # 919a
+    kind: work_item  # 919a
+    title: "Entry roles command, hosted application and scheduled have no reader that tells them apart"  # 919a
+    status: todo_soft  # 919a
+    priority: 4  # 919a
+    parent:  # 919a
+    tags:  # 919a
+    - entrypoints  # 919a
+    isbefore: []  # 919a
+    duplicate_of: []  # 919a
+    not_duplicate_of: []  # 919a
+    pr_ref:  # 919a
+    description: "After the role registry, every reader treats the three roles alike (all are in APPLICATION_ROLES for the library-export demotion; none is program start or request ingress); the same holds for reflective vs fallback apart from the sketch heading. A distinction no reader acts on is either waiting for its reader (name it) or is one role. Repro: entrypoint_kinds.py, grep each role name in the readers.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/giron/RESULTS.md. Found while building the entry-kind PR (2026-11-21)."  # 919a
+    fields: {}  # 919a

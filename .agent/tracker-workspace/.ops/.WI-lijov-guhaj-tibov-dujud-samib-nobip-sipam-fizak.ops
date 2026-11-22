@@ -1,0 +1,20 @@
+- op: create  # 09a5
+  at: '2026-11-21T20:55:09Z'  # 09a5
+  by: agent  # 09a5
+  actor: jgstern_agent  # 09a5
+  clock: 1  # 09a5
+  nonce: 09a5  # 09a5
+  data:  # 09a5
+    kind: work_item  # 09a5
+    title: "The field-axis linter does not scan entrypoints.py, so Entrypoint.kind's axis declaration is unchecked"  # 09a5
+    status: todo_soft  # 09a5
+    priority: 3  # 09a5
+    parent:  # 09a5
+    tags:  # 09a5
+    - entrypoints  # 09a5
+    isbefore: []  # 09a5
+    duplicate_of: []  # 09a5
+    not_duplicate_of: []  # 09a5
+    pr_ref:  # 09a5
+    description: "ADR-0063 declares entrypoint-kind a full axis and Entrypoint.kind carries '# axis: entrypoint-kind', but scripts/check-multi-value-field-axis-declaration scans only ir.py, datamodels.py and io_boundary.py (DEFAULT_CORE_FILES), so the declaration is unchecked. Widening it means: add entrypoints.py to DEFAULT_CORE_FILES, give every str field of its dataclasses an axis comment, widen the staged-file regex in .githooks/pre-commit (a test pins the two together), and update the rule's sentence in AGENTS.md. The last two are governance files.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/giron/RESULTS.md (choice 12). Found while building the entry-kind PR (2026-11-21)."  # 09a5
+    fields: {}  # 09a5
