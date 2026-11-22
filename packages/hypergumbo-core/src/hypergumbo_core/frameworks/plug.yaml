@@ -29,6 +29,9 @@ patterns:
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
 
   # Plug.Conn manipulation
+  # CANNOT FIRE: nothing writes a decorator named `conn`. A module plug is a
+  # module that defines init/1 and call/2, a function plug a function of
+  # (conn, opts); neither is detected.
   - concept: middleware
     decorator: "^conn$"
 

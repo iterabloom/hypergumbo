@@ -133,35 +133,36 @@ patterns:
     language: "^ruby$"
 
   # ====== Rust ======
-  # Rust #[test] attribute
+  # Rust #[test] attribute, also under a runtime's path (#[tokio::test]).
+  # rust.py records an attribute in meta.annotations, by its path as written.
   - concept: test_function
-    decorator: "^test$"
+    annotation: "^(\\w+::)*test$"
     language: "^rust$"
 
   # Rust #[bench] attribute
   - concept: benchmark_function
-    decorator: "^bench$"
+    annotation: "^(\\w+::)*bench$"
     language: "^rust$"
 
   # ====== C# ======
-  # NUnit: [Test] attribute
+  # NUnit: [Test] attribute (csharp.py records attributes in meta.annotations)
   - concept: test_function
-    decorator: "^Test$"
+    annotation: "^Test$"
     language: "^csharp$"
 
-  # xUnit: [Fact] attribute
+  # xUnit: [Fact] attribute (csharp.py records attributes in meta.annotations)
   - concept: test_function
-    decorator: "^Fact$"
+    annotation: "^Fact$"
     language: "^csharp$"
 
-  # xUnit: [Theory] attribute
+  # xUnit: [Theory] attribute (csharp.py records attributes in meta.annotations)
   - concept: test_function
-    decorator: "^Theory$"
+    annotation: "^Theory$"
     language: "^csharp$"
 
-  # MSTest: [TestMethod] attribute
+  # MSTest: [TestMethod] attribute (csharp.py records attributes in meta.annotations)
   - concept: test_function
-    decorator: "^TestMethod$"
+    annotation: "^TestMethod$"
     language: "^csharp$"
 
   # ====== Swift ======
@@ -178,13 +179,14 @@ patterns:
     language: "^swift$"
 
   # ====== PHP ======
-  # PHPUnit: test* methods or @test annotation
+  # PHPUnit: test* methods. php.py names a method `Class.method`.
   - concept: test_function
-    symbol_name: "^test"
+    symbol_name: "(^|\\.)test\\w*$"
     symbol_kind: "^method$"
     language: "^php$"
 
-  # PHPUnit: @test annotation
+  # PHPUnit: @test docblock annotation / #[Test] attribute.
+  # CANNOT FIRE: php.py records neither a docblock tag nor an attribute.
   - concept: test_function
     decorator: "^test$"
     language: "^php$"
@@ -343,6 +345,7 @@ patterns:
     language: "^fsharp$"
 
   # NUnit/xUnit: [<Test>], [<Fact>], [<Theory>] attributes
+  # CANNOT FIRE: fsharp.py records no attribute of a function or member.
   - concept: test_function
     decorator: "^(Test|Fact|Theory)$"
     language: "^fsharp$"
@@ -461,6 +464,7 @@ patterns:
     language: "^d$"
 
   # D: @("test") UDA pattern
+  # CANNOT FIRE: d_lang.py records no user-defined attribute.
   - concept: test_function
     decorator: "^test$"
     language: "^d$"

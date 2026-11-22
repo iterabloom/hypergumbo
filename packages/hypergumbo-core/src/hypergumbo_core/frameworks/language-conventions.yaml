@@ -54,19 +54,24 @@ patterns:
       cuda_execution_space: "^host$"
 
   # ====== WGSL (WebGPU Shaders) ======
+  # wgsl.py records a function's stage attribute (@vertex, @fragment,
+  # @compute) in meta.entry_point.
   # Vertex shaders are GPU entry points
   - concept: shader_entrypoint
-    decorator: "^vertex$"
+    meta_match:
+      entry_point: "^vertex$"
     language: "^wgsl$"
 
   # Fragment shaders are GPU entry points
   - concept: shader_entrypoint
-    decorator: "^fragment$"
+    meta_match:
+      entry_point: "^fragment$"
     language: "^wgsl$"
 
   # Compute shaders are GPU entry points
   - concept: shader_entrypoint
-    decorator: "^compute$"
+    meta_match:
+      entry_point: "^compute$"
     language: "^wgsl$"
 
   # ====== COBOL (Legacy Systems) ======

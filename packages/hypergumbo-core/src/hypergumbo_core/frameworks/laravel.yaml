@@ -84,8 +84,12 @@ patterns:
   - concept: task
     base_class: "^Job$"
 
+  # A queued job: a class under Jobs/ that implements ShouldQueue (php.py
+  # lists an `implements` name in meta.base_classes). Queued listeners,
+  # mailables and notifications implement it too, so the directory decides.
   - concept: task
-    decorator: "^implements ShouldQueue$"
+    base_class: "(^|\\\\)ShouldQueue$"
+    symbol_path: "(^|/)Jobs/"
 
   # Events
   - concept: event
@@ -95,8 +99,10 @@ patterns:
   - concept: event_handler
     base_class: "^Listener$"
 
+  # A queued listener: a class under Listeners/ that implements ShouldQueue.
   - concept: event_handler
-    decorator: "^implements ShouldQueue$"
+    base_class: "(^|\\\\)ShouldQueue$"
+    symbol_path: "(^|/)Listeners/"
 
   # Mail (Mailables)
   - concept: mailer
