@@ -98,6 +98,7 @@ Usage
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from dataclasses import dataclass, field
@@ -1195,6 +1196,65 @@ def _usage_languages(pattern_def: FrameworkPatternDef) -> frozenset[str] | None:
     raw: Any = pattern_def.language
     names = [raw] if isinstance(raw, str) else list(raw or [])
     return candidate_languages(n for n in names if n not in _NO_LANGUAGE)
+
+
+@functools.lru_cache(maxsize=None)
+def _call_usage_rows(
+    frameworks_dir: str,
+) -> tuple[tuple[frozenset[str] | None, re.Pattern[str]], ...]:
+    """Every ``usage:`` row that names a CALL: its file's languages (``None``:
+    any) and its compiled name pattern. Shipped files and the user's own."""
+    from .catalogue_home import user_channel_files
+
+    stems = {path.stem for path in Path(frameworks_dir).glob("*.yaml")}
+    stems |= {path.stem for path in user_channel_files("frameworks")}
+    loaded = [d for d in map(load_framework_patterns, sorted(stems)) if d is not None]
+    return tuple(
+        (_usage_languages(pattern_def), spec._name_re)
+        for pattern_def in loaded
+        for spec in (pattern.usage for pattern in pattern_def.patterns)
+        if spec is not None and spec._name_re is not None
+        and (spec._kind_re is None or spec._kind_re.search("call"))
+    )
+
+
+@functools.lru_cache(maxsize=None)
+def _names_call(frameworks_dir: str, name: str, language: str) -> bool:
+    return any(
+        (languages is None or language in languages) and name_re.search(name)
+        for languages, name_re in _call_usage_rows(frameworks_dir)
+    )
+
+
+def usage_row_names_call(name: str, language: str) -> bool:
+    """Whether a ``usage:`` row could match a call named ``name`` in ``language``.
+
+    WHAT IT IS FOR. A usage row can only fire on a ``UsageContext`` the
+    analyzer recorded, and an analyzer cannot record one for every call that
+    passes a callable: that is every ``xs.map(f)`` of a repository. Before
+    this function each analyzer kept its own table of the call names worth
+    recording, and a row written for a name outside the table matched nothing
+    while its unit test, fed a context built by hand, passed (INV-rolul; the
+    164 rows of WI-movur). An analyzer that has found a call handing over a
+    LOCAL callable asks here whether any row is written against that name,
+    and records the context when one is. The rows are then the only list:
+    a new row needs no analyzer change.
+
+    WHAT IT READS. Every framework file, shipped and the user's own, whether
+    or not its framework was detected in the repository being analysed (an
+    analyzer does not know which were): rows of ``kind`` call (or no kind)
+    that give a ``name``. A row without a name names no call. ``language``
+    is the analyzer's language; a file whose ``language:`` names other
+    languages is not asked, a ``multi`` file or one without a language is
+    (:func:`_usage_languages`, as :func:`match_usage_patterns` reads it).
+
+    The answer is the union over files, so it only says a context is worth
+    recording. Whether a row then fires is still decided by the detected
+    frameworks, the position and the context's language.
+
+    Memoised per name; :func:`clear_pattern_cache` forgets it.
+    """
+    return _names_call(str(get_frameworks_dir()), name, language)
 
 
 def match_usage_patterns(
@@ -2541,3 +2601,5 @@ def expand_class_based_view_routes(
 def clear_pattern_cache() -> None:
     """Clear the pattern cache. For testing only."""
     _PATTERN_CACHE.clear()
+    _call_usage_rows.cache_clear()
+    _names_call.cache_clear()
