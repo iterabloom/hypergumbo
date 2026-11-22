@@ -97,6 +97,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Development tools and CI
 
+- **Regenerating `docs/ARCHITECTURE.md` skips vendored grammars and side files.**
 - **Pre-commit now runs the entry-kind allow-list and watcher checks.**
 - **The id-construction check now reads edge endpoints.**
 - **mypy now rejects a hand-built node id.**

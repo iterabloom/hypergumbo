@@ -234,11 +234,23 @@ def run_hypergumbo_analysis() -> dict:
     if output_file.exists():
         output_file.unlink()
 
-    # Analyze all package src directories
+    # Analyze all package src and test directories.
+    #
+    # The run is all of a regeneration but five seconds (WI-lutok, measured
+    # 2026-11-22 on 6 cores: 339 to 345 s as it was). Two parts of it reach
+    # nothing this script prints, and are left out:
+    #   -e vendor: the C analyzer read the vendored tree-sitter grammars
+    #     (parser.c, scanner.c) for 35 to 49 s and emitted 257,091 edges, every
+    #     one dropped by --first-party-only;
+    #   --no-sketch-fan-out --no-handler-slices: 19 side files nobody reads.
+    # Without them the run is 262 s and holds the same node ids and the same
+    # (src, dst, type) edges. Leaving out the tests would bring it to 144 s
+    # and change what the doc counts ("test code included"), so they stay.
     packages_dir = REPO_ROOT / "packages"
     run_command(
         [sys.executable, "-m", "hypergumbo_core", "run", str(packages_dir),
-         "--out", str(output_file), "--first-party-only"],
+         "--out", str(output_file), "--first-party-only",
+         "-e", "vendor", "--no-sketch-fan-out", "--no-handler-slices"],
         "hypergumbo run",
     )
 
