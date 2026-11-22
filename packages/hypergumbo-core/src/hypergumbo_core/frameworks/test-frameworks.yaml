@@ -185,11 +185,15 @@ patterns:
     language: "^swift$"
 
   # ====== PHP ======
-  # PHPUnit: test* methods. php.py names a method `Class.method`.
+  # PHPUnit: test* methods of a test case file. php.py names a method
+  # `Class.method`; PHPUnit collects `*Test.php`. The file is asked for
+  # because the name alone is not a test: koel's storage classes have a
+  # production `testSetup()` each.
   - concept: test_function
     symbol_name: "(^|\\.)test\\w*$"
     symbol_kind: "^method$"
     language: "^php$"
+    symbol_path: "Test\\.php$"
 
   # PHPUnit: @test docblock annotation / #[Test] attribute.
   # CANNOT FIRE: php.py records neither a docblock tag nor an attribute.
