@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.paths import is_test_file
 from hypergumbo_core.discovery import (
     DEFAULT_EXCLUDES,
     classify_dot_d_file,
@@ -1220,6 +1221,27 @@ class TestFindNonTestFiles:
         assert "service.py" in names
         assert "test_service.py" not in names
         assert "helpers.py" not in names
+
+    @pytest.mark.parametrize("above", ["fixtures", "test", "tests", "mocks", "testdata", "fakes"])
+    def test_a_directory_above_the_root_does_not_classify_the_repository(
+        self, tmp_path: Path, above: str,
+    ) -> None:
+        """A checkout under a directory NAMED like test support is not test
+        code. Classified by its absolute path, every file of it was, and the
+        linkers that scan content read none."""
+        root = tmp_path / above / "app"
+        # Reach: by its absolute path this file IS test support.
+        assert is_test_file(str(root / "service.py"))
+        (root / "tests").mkdir(parents=True)
+        (root / "src" / "fixtures").mkdir(parents=True)
+        (root / "service.py").write_text("x = 1\n")
+        (root / "tests" / "helpers.py").write_text("x = 1\n")
+        (root / "src" / "fixtures" / "seed.py").write_text("x = 1\n")
+
+        names = {p.name for p in find_non_test_files(root, ["**/*.py"])}
+
+        # Inside the repository the rules still hold.
+        assert names == {"service.py"}
 
     def test_forwards_find_files_kwargs(self, tmp_path: Path) -> None:
         # The wrapper forwards every find_files argument verbatim; exercise the

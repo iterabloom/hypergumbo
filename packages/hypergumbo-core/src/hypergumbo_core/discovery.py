@@ -3097,7 +3097,15 @@ def find_non_test_files(
 
     The signature mirrors :func:`find_files` exactly and forwards every
     argument; only test-classified paths are additionally withheld.
+
+    A path is classified by where it lies INSIDE the repository, never by the
+    directories above the root. The rules read directory names (``fixtures/``,
+    ``test/``, ``testdata/``, ``mocks/`` ...), and given the absolute path they
+    called every file of a checkout under ``~/fixtures/app`` or
+    ``/srv/test/app`` a test file: 19 linkers then read no file of it and
+    reported ``no_candidate_files``, with nothing to say why.
     """
+    root = Path(repo_root)
     for path in find_files(
         repo_root,
         patterns,
@@ -3106,6 +3114,9 @@ def find_non_test_files(
         max_file_bytes=max_file_bytes,
         on_file_skipped=on_file_skipped,
     ):
-        if is_test_file(str(path)):
+        # A path the walk spells outside ``root`` (an index rooted at another
+        # spelling of the same directory) is classified as it is spelled.
+        inside = path.relative_to(root) if path.is_relative_to(root) else path
+        if is_test_file(inside.as_posix()):
             continue
         yield path
