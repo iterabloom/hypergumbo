@@ -54,11 +54,41 @@ patterns:
     symbol_kind: "^function$"
     language: "^kotlin$"
 
+  # Kotlin: `@JvmStatic fun main(args: Array<String>)` in an object or a
+  # companion object, which the JVM starts as a static main. The analyzer
+  # records it as a method with the decorator `JvmStatic`; the row above asks
+  # for a function. A `main` method without `@JvmStatic` is not static and
+  # starts nothing.
+  - concept: main_function
+    decorator: "^(kotlin\\.jvm\\.)?JvmStatic$"
+    qualified_name: "(^|\\.)main$"
+    symbol_kind: "^method$"
+    language: "^kotlin$"
+
   # Scala: def main(args: Array[String]) — in Scala objects.
   # Scala analyzer produces qualified names like "Kafka.main".
   - concept: main_function
     symbol_name: "(^|\\.)main$"
     symbol_kind: "^method$"
+    language: "^scala$"
+
+  # Scala 3: a `@main def` (scala.annotation.main), top-level or in an object,
+  # is a program start whatever it is called. The analyzer records the
+  # annotation as the decorator `main`.
+  - concept: main_function
+    decorator: "^(scala\\.annotation\\.)?main$"
+    symbol_kind: "^(function|method)$"
+    language: "^scala$"
+
+  # Scala: `object X extends App` -- scala.App runs the object's body as the
+  # program. The pattern is a plain dotted name, so it matches the base
+  # written `App` or `scala.App` and not one written `foo.App`. A base written
+  # `App` that names the project's own type of that name cannot be told apart
+  # here (base_classes holds the name as written); none was found in the
+  # local Scala corpus outside the Scala compiler's own repository.
+  - concept: main_function
+    base_class: "scala.App"
+    symbol_kind: "^object$"
     language: "^scala$"
 
   # Python: main() function (often called from if __name__ == "__main__")
