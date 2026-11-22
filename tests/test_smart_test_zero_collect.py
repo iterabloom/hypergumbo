@@ -93,12 +93,18 @@ def _smart_test(repo: Path, tmp_path: Path, *args: str) -> subprocess.CompletedP
     """Run the fixture's smart-test with a stub stable hypergumbo on HOME.
 
     The baseline falls back to ``HEAD~1`` (no ``origin/dev`` in the fixture),
-    so the diff under test is exactly the last commit.
+    so the diff under test is exactly the last commit. The stub appends each
+    invocation's arguments to ``<tmp_path>/home/hg-calls.log``, so a test can
+    tell whether the run asked for a slice (``_hg_calls``).
     """
     home = tmp_path / "home"
     hg = home / ".local" / "bin" / "hypergumbo"
     hg.parent.mkdir(parents=True, exist_ok=True)
-    hg.write_text("#!/usr/bin/env bash\nexit 0\n")
+    hg.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$*\" >> '{home / 'hg-calls.log'}'\n"
+        "exit 0\n"
+    )
     hg.chmod(0o755)
     env = {
         k: v for k, v in os.environ.items()
@@ -114,6 +120,12 @@ def _smart_test(repo: Path, tmp_path: Path, *args: str) -> subprocess.CompletedP
          "-n0", "-p", "no:cacheprovider", *args],
         cwd=repo, env=env, capture_output=True, text=True, timeout=300,
     )
+
+
+def _hg_calls(tmp_path: Path) -> list[str]:
+    """The argument lines of every call the run made to the stub hypergumbo."""
+    log = tmp_path / "home" / "hg-calls.log"
+    return log.read_text().splitlines() if log.exists() else []
 
 
 def _manifest_selection(repo: Path) -> list[str]:
