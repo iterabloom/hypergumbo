@@ -210,7 +210,7 @@ How It Works
      option object or array; ``symbol_ref`` the function (a named one
      resolved like any value reference, or an inline one the analyzer made
      a ``_cb_<method>`` symbol of); metadata ``receiver``, ``method``,
-     ``handler_arity``, ``first_string_arg`` and, where the file shows what
+     ``first_string_arg`` and, where the file shows what
      the receiver was bound to, ``receiver_source`` / ``receiver_module``.
      It is recorded only when a shipped ``usage:`` row names the call at
      that argument's position (``framework_patterns.usage_row_names_call``;
@@ -6577,20 +6577,6 @@ def _registration_call_name(
     return f"{receiver}.{_node_text(prop, source)}" if receiver else None
 
 
-def _signature_arity(signature: str | None) -> int | None:
-    """The parameter count of a ``(a, b = f(x), ...c)`` signature, or ``None``."""
-    if not signature or not signature.startswith("("):
-        return None
-    depth = 0
-    for index, char in enumerate(signature):
-        depth += char in "([{"
-        depth -= char in ")]}"
-        if depth == 0:
-            inner = signature[1:index].strip()
-            return len(_ts_split_parameters(inner)) if inner else 0
-    return None
-
-
 def _receiver_bindings(
     tree_root: "tree_sitter.Node",
     source: bytes,
@@ -6935,7 +6921,6 @@ def _extract_edges(
                 metadata: dict[str, Any] = {
                     "receiver": receiver or None,
                     "method": method,
-                    "handler_arity": _signature_arity(handler.signature),
                     "first_string_arg": first_string,
                     **binding,
                 }

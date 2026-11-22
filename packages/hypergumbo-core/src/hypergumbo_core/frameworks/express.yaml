@@ -92,7 +92,7 @@ patterns:
 
   # Express middleware - app.use(fn), router.use(fn), app.use('/api', fn).
   # A 4-parameter function here is an error-handling middleware; a row cannot
-  # read the arity (metadata.handler_arity), so it is labelled middleware.
+  # tell it by its parameters, so it is labelled middleware.
   # Axios's ``<x>.interceptors.request.use(fn)`` is not an app's middleware.
   - concept: middleware
     usage:

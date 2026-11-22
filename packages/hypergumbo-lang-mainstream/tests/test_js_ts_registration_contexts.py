@@ -37,8 +37,9 @@ def _analyze(tmp_path: Path, files: dict[str, str]):
 
 
 def _registrations(result) -> list[UsageContext]:
-    """The registration contexts: the ones that carry a handler's arity."""
-    return [c for c in result.usage_contexts if "handler_arity" in (c.metadata or {})]
+    """The registration contexts: the ones that carry the first string argument
+    (the route, bootstrap and preload contexts carry no such key)."""
+    return [c for c in result.usage_contexts if "first_string_arg" in (c.metadata or {})]
 
 
 def _by_id(result) -> dict[str, Symbol]:
@@ -82,11 +83,11 @@ class TestWhatIsRecorded:
         assert first.kind == "call"
         assert first.span.start_line == 5
         assert first.metadata == {
-            "receiver": "app", "method": "use", "handler_arity": 3,
+            "receiver": "app", "method": "use",
             "first_string_arg": "/api",
             "receiver_source": "express()", "receiver_module": "express",
         }
-        assert second.metadata["handler_arity"] == 4
+        assert second.metadata["method"] == "use"
 
     def test_an_inline_handler_is_its_callback_symbol(self, tmp_path: Path) -> None:
         result = _analyze(tmp_path, {"app.js": (
@@ -419,11 +420,3 @@ class TestEdgeShapes:
         call = parser.parse(source).root_node.children[0].children[0]
         assert _registration_call_name(call, source, {}, {"m": "koa-mount"}, {"m": "mount"}) == (
             "koa-mount.mount")
-
-    def test_signature_arity(self) -> None:
-        from hypergumbo_lang_mainstream.js_ts import _signature_arity
-        assert _signature_arity("(a, b = f(x, y), ...c)") == 3
-        assert _signature_arity("()") == 0
-        assert _signature_arity(None) is None
-        assert _signature_arity("x") is None
-        assert _signature_arity("(a, b") is None
