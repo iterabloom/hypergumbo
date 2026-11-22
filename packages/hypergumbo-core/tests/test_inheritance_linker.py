@@ -1711,6 +1711,24 @@ class TestQualifiedBaseMustMatchItsQualifier:
         out = self._run([bare, e])
         assert [(x.src, x.dst, x.is_resolved) for x in out] == [("cs:E", "cs:Exc", True)]
 
+    def test_the_deepest_fit_binds_within_the_language(self) -> None:
+        """``Outer.Inner`` fits a nested ``Outer.Inner`` and a package-less
+        top-level ``Inner`` (the written name ends with it); the nested one,
+        matching both segments, is the type written. A deeper fit in ANOTHER
+        language does not displace it (the binding is same-language)."""
+        nested = self._sym("s:N", "Inner", "scala", kind="trait", qualified="Outer.Inner")
+        top = self._sym("s:T", "Inner", "scala", kind="trait", qualified="Inner")
+        java = self._sym("j:I", "Inner", "java", kind="interface", qualified="a.Outer.Inner")
+        impl = self._sym("s:I", "Impl", "scala", qualified="Impl", bases=["Outer.Inner"])
+        solo = self._sym("s:S", "Solo", "scala", qualified="Solo", bases=["x.Inner"])
+        out = {e.src: e for e in self._run([top, nested, java, impl, solo])}
+        assert (out["s:I"].dst, out["s:I"].confidence) == ("s:N", 0.95)
+        assert out["s:S"].dst == "s:T", "a single fitting candidate still binds"
+        # Without the nested scala type, the java ``a.Outer.Inner`` fits
+        # deeper than the scala ``Inner``, and the scala one still binds.
+        out = {e.src: e for e in self._run([top, java, impl])}
+        assert out["s:I"].dst == "s:T"
+
 
 def test_cpp_std_exception_is_not_the_in_repo_namesake(tmp_path: Path) -> None:
     """End to end: the cpp analyzer records a class's namespace-qualified name

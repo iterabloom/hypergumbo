@@ -37,7 +37,10 @@ How It Works
    A QUALIFIED base (``System.Exception``, ``std::exception``, ``io.Writer``,
    ``java.util.ArrayList<T>``) binds its last segment only to an in-tree
    candidate whose ``qualified_name`` equals the written base or either ends
-   with the other on a segment boundary (``_qualifier_fit``, WI-pivap); when
+   with the other on a segment boundary (``_qualifier_fit``, WI-pivap); of
+   several that fit, those sharing the most trailing segments with the written
+   base win within a language (``_closest_fits``: Scala ``Outer.Inner`` binds a
+   nested ``Outer.Inner``, not a package-less top-level ``Inner``); when
    none fits, candidates with no qualified name keep the name binding. When
    every candidate records one and none fits, the base is
    external, with the written qualifier as its module
@@ -459,6 +462,30 @@ def _qualifier_fits(candidate: Symbol, qualified_base: str) -> bool | None:
     )
 
 
+def _closest_fits(
+    fits: list[tuple[str, Symbol]], qualified_base: str,
+) -> list[tuple[str, Symbol]]:
+    """Of the candidates whose qualified name fits ``qualified_base``, those
+    sharing the most trailing segments with it, per language.
+
+    ``Outer.Inner`` fits both a nested ``Outer.Inner`` and a top-level
+    ``Inner`` with no package (the written name ends with it), which name
+    different types: the nested one, matching two segments, is the one
+    written. Ranked within each language because the inheritance binding is
+    same-language (``resolve_target_symbol``): a deeper fit in another
+    language must not displace this one.
+    """
+    written = _dotted(qualified_base).split(".")
+
+    def depth(c: Symbol) -> int:
+        return min(len(_dotted(c.qualified_name or "").split(".")), len(written))
+
+    best: dict[str | None, int] = {}
+    for _, c in fits:
+        best[c.language] = max(best.get(c.language, 0), depth(c))
+    return [(k, c) for k, c in fits if depth(c) == best[c.language]]
+
+
 def _qualifier_fit(
     base_name: str,
     last: str,
@@ -482,7 +509,9 @@ def _qualifier_fit(
     if not found:
         return [], []
     verdicts = [(kind, c, _qualifier_fits(c, base_name)) for kind, c in found]
-    keep = [(k, c) for k, c, v in verdicts if v is True]
+    keep = _closest_fits(
+        [(k, c) for k, c, v in verdicts if v is True], base_name,
+    )
     if not keep:
         keep = [(k, c) for k, c, v in verdicts if v is None]
     if not keep:

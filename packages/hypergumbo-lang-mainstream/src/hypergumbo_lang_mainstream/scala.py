@@ -16,7 +16,15 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Function call relationships
 - Import statements
 - Annotations/decorators (into symbol meta["decorators"], for functions, methods, classes, and val/var fields)
-- Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes, traits and objects)
+- Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes,
+  traits, objects and enums), one entry per parent in every form the grammar parses, by the
+  name written with type and constructor arguments dropped: ``A``, a stable path
+  (``IOApp.Simple``, ``a.b.C``; before, dropped), ``a.B[T]`` -> ``a.B``, ``a.B(x)`` -> ``a.B``, a
+  projection ``Outer#Inner`` -> ``Outer.Inner``, Scala 3 ``extends A, B``, an annotated or
+  parenthesised ``with`` compound (``_parent_type_names``). ``derives`` and self-types are not
+  parents. A framework row keyed on the dotted name (http4s ``^IOApp\\.Simple$``) matches it
+  as written; the inheritance linker binds a dotted parent only to an in-repo type whose
+  qualified name fits the path (so ``EndpointTransput.Atom`` is not any other ``Atom``)
 
 Modifiers (access/abstract/final/sealed/override/implicit/lazy/case) are
 captured on Symbol.modifiers, and parameter/variable types -- declared, or
@@ -228,36 +236,47 @@ def find_scala_files(repo_root: Path) -> Iterator[Path]:
     yield from _analyzer._find_source_files(repo_root)
 
 
-def _extract_extends_clause(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """Extract base class/trait names from extends clause.
+def _parent_type_names(type_node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The type names one parent-type node of an ``extends`` clause denotes.
 
-    Handles:
-    - extends BaseClass
-    - extends BaseClass with Trait1 with Trait2
-    - extends GenericClass[T]
-
-    Args:
-        node: class_definition or trait_definition node
-        source: Source code bytes
-
-    Returns:
-        List of base class/trait names (without generic type params)
+    The name is the one written, type arguments dropped: ``A``, the stable
+    path ``IOApp.Simple`` / ``a.b.C`` (a ``stable_type_identifier``), ``A``
+    of ``A[T]`` and ``a.B`` of ``a.B[T]`` (a ``generic_type`` over either), a
+    projection ``Outer#Inner`` written with the path separator, ``Outer.Inner``
+    (the form the inheritance linker and a class's ``qualified_name`` use), the
+    type under an annotation or one pair of parentheses, and each part of a
+    ``with`` compound. Any other type node (a function, tuple or singleton
+    type) names no parent class and yields nothing.
     """
-    base_classes: list[str] = []
+    kind = type_node.type
+    if kind in ("type_identifier", "stable_type_identifier", "projected_type"):
+        return ["".join(node_text(type_node, source).split()).replace("#", ".")]
+    if kind == "compound_type":
+        return [n for c in type_node.named_children for n in _parent_type_names(c, source)]
+    if kind in ("generic_type", "annotated_type") or (
+        kind == "tuple_type" and type_node.named_child_count == 1
+    ):
+        return _parent_type_names(type_node.named_children[0], source)
+    return []
 
+
+def _extract_extends_clause(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Base class / trait names of a class, object, trait or enum's ``extends``.
+
+    One entry per parent, in source order, by :func:`_parent_type_names`:
+    ``extends A with b.C`` and Scala 3's ``extends A, b.C`` give
+    ``["A", "b.C"]``. A parent's constructor arguments (``A(x)``) are an
+    ``arguments`` sibling and are skipped. ``derives`` (type-class derivation)
+    and a self-type (``self: T =>``) are not parents and are not read.
+    """
     extends_clause = find_child_by_type(node, "extends_clause")
     if extends_clause is None:
-        return base_classes
-
-    for child in extends_clause.children:
-        if child.type == "type_identifier":
-            base_classes.append(node_text(child, source))
-        elif child.type == "generic_type":
-            type_id = find_child_by_type(child, "type_identifier")
-            if type_id:
-                base_classes.append(node_text(type_id, source))
-
-    return base_classes
+        return []
+    return [
+        name
+        for child in extends_clause.named_children
+        for name in _parent_type_names(child, source)
+    ]
 
 
 def _extract_import_hints(
@@ -1327,12 +1346,16 @@ def _extract_parsed_symbols(
     def _type_qualified_name(node: "tree_sitter.Node", name: str) -> str:
         return ".".join(p for p in (file_package, _scala_scope_chain(node, source, name)) if p)
 
-    def _base_imports(base_classes: list[str]) -> dict[str, str]:
-        """The import each BARE base came through (WI-pivap)."""
-        return {
-            b: import_hints[b] for b in base_classes
-            if "." not in b and b in import_hints
-        }
+    def _inheritance_meta(node: "tree_sitter.Node") -> dict[str, object]:
+        """``base_classes`` of a class / object / trait / enum, and the import
+        each BARE base came through (``base_class_imports``, WI-pivap); empty
+        when it names no parent. A dotted base carries its own qualifier."""
+        bases = _extract_extends_clause(node, source)
+        meta: dict[str, object] = {"base_classes": bases} if bases else {}
+        imports = {b: import_hints[b] for b in bases if "." not in b and b in import_hints}
+        if imports:
+            meta["base_class_imports"] = imports
+        return meta
 
     def _qualified(name: str) -> str:
         return name if "." in name else import_hints.get(name, name)
@@ -1505,18 +1528,13 @@ def _extract_parsed_symbols(
                 type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                base_classes = _extract_extends_clause(node, source)
                 annotations = _extract_annotations_scala(node, source)
                 # Not named `meta`: that is a different construct's meta dict
                 # earlier in this method (mypy [no-redef]). Typed
                 # non-Optional and built up as a dict, then coerced to None only at
                 # the Symbol via `or None`, so indexed assignment type-checks
                 # instead of tripping [index] on the `| None` arm (WI-hokag).
-                class_meta: dict[str, object] = {}
-                if base_classes:
-                    class_meta["base_classes"] = base_classes
-                    if _base_imports(base_classes):
-                        class_meta["base_class_imports"] = _base_imports(base_classes)
+                class_meta = _inheritance_meta(node)
                 if annotations:
                     class_meta["decorators"] = annotations
 
@@ -1559,19 +1577,12 @@ def _extract_parsed_symbols(
                 # traits record theirs: without an inheritance edge for
                 # ``object Factory extends Base``, a call on the object to an
                 # inherited member could never be walked to ``Base`` (WI-kipol).
-                object_bases = _extract_extends_clause(node, source)
-                object_meta: dict[str, object] | None = None
-                if object_bases:
-                    object_meta = {"base_classes": object_bases}
-                    if _base_imports(object_bases):
-                        object_meta["base_class_imports"] = _base_imports(object_bases)
-
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "object"),
                     name=type_name,
                     kind="object",
                     language="scala",
-                    meta=object_meta,
+                    meta=_inheritance_meta(node) or None,
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,
@@ -1599,13 +1610,6 @@ def _extract_parsed_symbols(
                 type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                base_classes = _extract_extends_clause(node, source)
-                trait_meta: dict[str, object] | None = (
-                    {"base_classes": base_classes} if base_classes else None
-                )
-                if trait_meta is not None and _base_imports(base_classes):
-                    trait_meta["base_class_imports"] = _base_imports(base_classes)
-
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "trait"),
                     name=type_name,
@@ -1625,7 +1629,7 @@ def _extract_parsed_symbols(
                         kind="trait", lang="scala", path=file_path, name=type_name,
                         scope=_scala_scope(node, source),
                     ),
-                    meta=trait_meta,
+                    meta=_inheritance_meta(node) or None,
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
@@ -1667,6 +1671,8 @@ def _extract_parsed_symbols(
                         kind="enum", lang="scala", path=file_path, name=type_name,
                         scope=_scala_scope(node, source),
                     ),
+                    # A Scala 3 enum extends traits / classes as a class does.
+                    meta=_inheritance_meta(node) or None,
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
