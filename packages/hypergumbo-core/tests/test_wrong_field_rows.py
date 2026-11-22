@@ -132,6 +132,15 @@ class TestPhpUnitMethodNames:
         method = _sym("php", "MathTest.testMultiplies", "method", path="tests/MathTest.php")
         assert "test_function" in _concepts(method)
 
+    def test_a_production_method_named_test_something_is_not(self) -> None:
+        """koel: ``DropboxStorage.testSetup`` checks a connection. PHPUnit
+        collects ``*Test.php`` files, and the row asks for one."""
+        method = _sym(
+            "php", "DropboxStorage.testSetup", "method",
+            path="app/Services/SongStorages/DropboxStorage.php",
+        )
+        assert "test_function" not in _concepts(method)
+
     @pytest.mark.parametrize("name", ["MathTest.helper", "TestCase.setUp", "testing.run", "MathTest.attest"])
     def test_other_methods_are_not(self, name: str) -> None:
         method = _sym("php", name, "method", path="tests/MathTest.php")
