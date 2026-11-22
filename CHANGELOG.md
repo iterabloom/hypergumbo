@@ -62,6 +62,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A `main` no longer hides application objects in its file.**
 - **A `main` entry follows its language's rule in Go and Erlang.**
+- **A Haskell `main` is an entry only in module `Main`.**
 - **Test, example and vendored entry points no longer demote library exports**; a JS/TS package declaring `exports` keeps its own.
 - **A bare `createServer` is an HTTP server only when imported from `http`.**
 - **`slice --entry auto` picks the Go `main` that builds the module's binary**, and prefers production code to examples.
