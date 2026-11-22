@@ -11,7 +11,7 @@ See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the ful
 - Django, Flask, FastAPI, Tornado, Aiohttp, Celery, Pyramid, Bottle, Flask-Appbuilder, Flask-RESTful, Sanic, Quart, Falcon, Litestar, Masonite
 
 ### JavaScript/Node.js
-- Express, Fastify, Koa, Hapi, NestJS, Next.js, Nuxt, Remix, SvelteKit, AdonisJS, Feathers, Restify, Electron, Nex
+- Express, Fastify, Koa, Hapi, NestJS, Next.js, Nuxt, Remix, SvelteKit, AdonisJS, Feathers, Restify, Electron, Nex, Socket.IO
 
 ### Ruby
 - Rails, Sinatra, Grape, Hanami, Roda, Padrino
@@ -23,13 +23,13 @@ See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the ful
 - Laravel, Slim, Symfony, CodeIgniter, Yii, CakePHP, Laminas, FuelPHP, Lumen
 
 ### Go
-- go-web (covers Gin, Echo, Fiber, Chi, Gorilla Mux, etc.)
+- go-web (covers Gin, Echo, Fiber, Chi, Gorilla Mux, etc.), go-cron (robfig/cron scheduled jobs)
 
 ### Rust
 - rust-web (covers Actix-web, Axum, Rocket, etc.)
 
 ### Elixir/Erlang
-- Phoenix, Plug, Cowboy
+- Phoenix, Plug, Cowboy, OTP process modules (GenServer, Agent, Task; always loaded), Oban, Broadway, Absinthe
 
 ### Swift
 - Vapor
