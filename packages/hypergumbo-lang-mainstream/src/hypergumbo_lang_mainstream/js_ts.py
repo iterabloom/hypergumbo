@@ -223,9 +223,7 @@ How It Works
      (Express/Hapi routes, Next.js file routes, index-file library
      exports, SPA/Electron bootstrap calls, HTTP-server handler calls, and
      the Electron preload script: a ``contextBridge`` exposure or a literal
-     ``webPreferences.preload`` path). An Express-style ``get`` whose
-     options hold ``websocket: true`` (@fastify/websocket) is the method
-     ``WS``, a websocket handler and not an HTTP route.
+     ``webPreferences.preload`` path)
 4. Post-passes over all files' symbols: ``extends`` / ``implements`` from
    ``meta.base_classes``, ``decorated_by`` from ``meta.decorators``, and
    ``references`` edges with evidence_type ``ast_type_ref`` from TypeScript
@@ -2357,9 +2355,6 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     - receiver is in ROUTER_RECEIVER_NAMES (app, router, express, server, fastify, koa)
     - http_method is get, post, put, patch, delete, head, or options
 
-    A ``get`` whose option object holds ``websocket: true`` (@fastify/websocket)
-    returns the synthetic method ``"WS"``.
-
     This prevents false positives from test mocks like fetchMock.get().
     """
     if node.type != "call_expression":  # pragma: no cover
@@ -2411,33 +2406,8 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     if route_path is None:
         return None, None
 
-    # A GET route whose options say ``websocket: true`` (@fastify/websocket)
-    # upgrades to a WebSocket: the synthetic method "WS" makes it a
-    # websocket handler entry, not an HTTP route (WI-kuvig, WI-movur F19).
-    if method_name == "get" and any(
-        arg.type == "object" and _object_flag_true(arg, "websocket", source)
-        for arg in args_node.children
-    ):
-        return "WS", route_path
-
     # Return uppercase HTTP method for consistency with other analyzers
     return method_name.upper() if method_name else None, route_path
-
-
-def _object_flag_true(obj: "tree_sitter.Node", key: str, source: bytes) -> bool:
-    """Whether an object literal has the property ``key: true``."""
-    for pair in obj.children:
-        if pair.type != "pair":
-            continue
-        pair_key = pair.child_by_field_name("key")
-        value = pair.child_by_field_name("value")
-        if (
-            pair_key is not None and value is not None
-            and _node_text(pair_key, source).strip("'\"") == key
-            and value.type == "true"
-        ):
-            return True
-    return False
 
 
 def _find_route_handler_in_call(
@@ -2553,11 +2523,8 @@ def _extract_express_usage_contexts(
                 receiver_name = _get_receiver_name(child, source)
                 break
 
-        # Build the full call name (e.g., "app.get", "router.post"). A
-        # WebSocket route (method "WS") is still written as the ``get`` call
-        # it is, so the route rows keyed on ``.get`` match it.
-        written = "get" if http_method == "WS" else http_method.lower()
-        call_name = f"{receiver_name}.{written}" if receiver_name else written
+        # Build the full call name (e.g., "app.get", "router.post")
+        call_name = f"{receiver_name}.{http_method.lower()}" if receiver_name else http_method.lower()
 
         span = Span(
             start_line=node.start_point[0] + 1 + line_offset,

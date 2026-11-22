@@ -115,7 +115,6 @@ from . import kept_work
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
 from .member_names import member_short_name
-from .routes import protocol_method_token
 from .reference_candidates import (
     CandidatePool,
     NameTiers,
@@ -2417,10 +2416,7 @@ def materialize_route_symbols(
         if (existing.meta or {}).get("framework_role") != "route":
             continue
         em = existing.meta or {}
-        # A transport marker (WebSocket) keeps its sentinel in route_protocol.
-        ex_method = str(
-            em.get("http_method") or protocol_method_token(em.get("route_protocol")) or ""
-        ).upper()
+        ex_method = str(em.get("http_method") or "").upper()
         ex_path = em.get("route_path") or ""
         if ex_method and ex_method != "ANY":
             seen_routes.add(f"{ex_method}:{ex_path}")
