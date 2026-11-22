@@ -1,0 +1,21 @@
+- op: create  # 4ebf
+  at: '2026-11-22T06:31:57Z'  # 4ebf
+  by: agent  # 4ebf
+  actor: jgstern_agent  # 4ebf
+  clock: 1  # 4ebf
+  nonce: 4ebf  # 4ebf
+  data:  # 4ebf
+    kind: work_item  # 4ebf
+    title: "dead-code-maybe call evidence: one edge clears a whole (language, kind) group; nine no-calls analyzers unconfirmed"  # 4ebf
+    status: todo_soft  # 4ebf
+    priority: 4  # 4ebf
+    parent:  # 4ebf
+    tags:  # 4ebf
+    - dead_code  # 4ebf
+    - analysis_quality  # 4ebf
+    isbefore: []  # 4ebf
+    duplicate_of: []  # 4ebf
+    not_duplicate_of: []  # 4ebf
+    pr_ref:  # 4ebf
+    description: "WHAT. dead-code-maybe's call-evidence rule (PR #2326, cli.call_evidence_groups) asks one thing of a (language, kind) group: does at least one call edge land on a member. One edge clears the whole group, so an analyzer that resolves one call in a thousand is treated as seeing callers, and every other unreached callable of the group is reported dead. Seen on the measured maps only from the other side: mastodon's 7 JavaScript methods have no incoming call edge and 5 are withheld; a repository with 7,000 methods and one resolved method call would have none withheld.\n\nALSO OPEN. By grep, 12 of 120 analyzer modules mention a function or method kind and never the string calls (proto, qml, rst, scss, thrift, capnp, gnuplot, twig, cmake, make, play_routes, sql); only sql, cmake and scss were confirmed by a run. The other nine are unconfirmed.\n\nASK. Measure, per language and kind on a corpus, the share of callables with an incoming call edge, and decide whether the rule needs a second tier (a group whose share is far below the fleet's is labelled, not cleared). Confirm the nine by a run.\n\nFound during PR #2326 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr1/RESULTS.md section 3."  # 4ebf
+    fields: {}  # 4ebf

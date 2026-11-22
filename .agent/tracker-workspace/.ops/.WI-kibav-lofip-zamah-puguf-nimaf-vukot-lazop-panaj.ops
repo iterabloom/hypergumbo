@@ -1,0 +1,20 @@
+- op: create  # 311b
+  at: '2026-11-22T09:31:57Z'  # 311b
+  by: agent  # 311b
+  actor: jgstern_agent  # 311b
+  clock: 1  # 311b
+  nonce: 311b  # 311b
+  data:  # 311b
+    kind: work_item  # 311b
+    title: "Framework rows name a type through base_class (Servant's Application, Yesod's Handler ...): they cannot fire by that field"  # 311b
+    status: todo_soft  # 311b
+    priority: 3  # 311b
+    parent:  # 311b
+    tags:  # 311b
+    - frameworks  # 311b
+    isbefore: []  # 311b
+    duplicate_of: []  # 311b
+    not_duplicate_of: []  # 311b
+    pr_ref:  # 311b
+    description: "WHAT. Framework rows name a TYPE through base_class:, which reads the classes a symbol is an instance or subclass of, so they cannot fire and should not by that field. yesod.yaml: Handler, Widget, YForm/MForm/AForm, HandlerFor/HandlerT/HandlerM. servant.yaml: Handler, ServerT, ServerError, Application, Middleware, Request, Response. The Servant application row (base_class ^Application$, the ninth row of WI-dupis) is one of them: WAI's Application is a type synonym, and a Servant app is a binding declared \":: Application\" (app = serve api server). Also: yesod.yaml names YesodSubsite, which occurs nowhere in the yesod repository (YesodSubDispatch is the class).\n\nASK. haskell.py records no declared type a row could read (only Symbol.signature, which patterns must not read: ADR-0058). Proposal from the Haskell work, not built: write meta.return_type (the result type after the signature's last top-level arrow, forall and context stripped) and key the Servant row on meta_match return_type ^(IO )?Application$. return_type feeds signature_axis, so its consumers need auditing first, and whether a factory returning IO Application counts as an application is a decision. The other type-named rows: rekey or delete, row by row.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # 311b
+    fields: {}  # 311b
