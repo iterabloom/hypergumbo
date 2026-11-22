@@ -925,6 +925,10 @@ _APPLICATION_ROWS_ADDED: tuple[tuple[str, str, str, str | None], ...] = (
     ("plumber.yaml", "usage", "^plumb_api$", "application"),
     ("plumber.yaml", "usage", "^pr$", "application"),
     ("shiny.yaml", "usage", "^(shinyAppDir|shinyAppFile)$", "application"),
+    # A Ktor module, ``fun Application.module()``: what the server runs to
+    # build the application it hosts (kotlin.py's ``extension_receiver``).
+    ("ktor.yaml", "meta_match",
+     "^(io\\.ktor\\.(server\\.)?application\\.)?Application$", "application"),
 )
 
 
@@ -934,7 +938,8 @@ def _row_matcher(pat: dict) -> tuple[str, str] | None:
     if "usage" in pat:
         return "usage", pat["usage"].get("name", "")
     if "meta_match" in pat:
-        return "meta_match", pat["meta_match"].get("constructed_from", "")
+        # The row's one meta condition, whichever key it is on.
+        return "meta_match", next(iter(pat["meta_match"].values()), "")
     return None
 
 
