@@ -18,3 +18,17 @@
     pr_ref:  # 5316
     description: "Make entrypoint-kind a full axis: one registry declares each kind's role, and the five kind sets derive from it.\n\nEntrypoint kind is a lightweight catalog-derived axis today (WI-pupiz), but five readers branch on hand-written sets that disagree: the tie order (PROGRAM_START_KINDS), slice --entry auto's 2x boost, sketch groups (9 kinds fall to Other; electron_main is a program start only there), request-ingress kinds, and the main/guard dedup. ADR-0024: readers branching on groups of values need the registry, by-axis view (docs/concept-axes.md), drift check and property test. Roles: program start, hosted application, request ingress, scheduled, reflective, library API, test, fallback. OWNER RULING 2026-11-21: program start = manifest bin, convention main (main_function), main_guard, electron_main, and nothing else; shell_script and script_module stay fallback; android_application and the Verilog top module are hosted application. A manifest bin gets the program-start treatment in slice --entry auto too. The drift test replaces the audit's grep-based keep triggers (main_function x main_guard; mechanism-named kinds). Repro: audit/kind_sets.py prints the five sets and their disagreements. Source: concept audit docs/audits/0027-entry-point-kinds.md (2026-11-20/21) and its review against ADR-0024/0027/0028/0039/0056; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/RESULTS.md. OWNER RULING 2026-11-21 approves this change; it ships in one PR with the other two entry-kind items and one schema bump to 0.22.0."  # 5316
     fields: {}  # 5316
+- op: discuss  # 7afd
+  at: '2026-11-21T20:55:15Z'  # 7afd
+  by: agent  # 7afd
+  actor: jgstern_agent  # 7afd
+  clock: 2  # 7afd
+  nonce: 7afd  # 7afd
+  message: "OWNER RULINGS 2026-11-21 (asked with the role table and a before/after of the sketch): (a) Sketch headings: 'Keep today's headings' — HTTP Routes, Controllers, GraphQL and WebSocket Handlers stay; middleware and error handlers get a heading of their own; the registry stores a heading per kind. The merged 'Request Handlers' heading built first is not shipped. (b) Roles of spa_bootstrap, electron_preload, android_activity: 'Accept as proposed' = hosted application; the measured effect (mitmproxy: 22 web-UI exports leave the capped list, 22 Python exports enter; vite: 5 .d.ts exports swapped for 5 node API exports) is accepted. Not asked, reported to the owner: the ninth role 'command' for cli_command, the kind name package_executable for manifest executables, ADR-0063, main_guard counting again for the library-export demotion."  # 7afd
+- op: discuss  # 64b3
+  at: '2026-11-22T00:36:42Z'  # 64b3
+  by: agent  # 64b3
+  actor: jgstern_agent  # 64b3
+  clock: 3  # 64b3
+  nonce: 64b3  # 64b3
+  message: "Merged as PR #2318, dev SHA 9d1ebb229e9e."  # 64b3

@@ -18,3 +18,10 @@
     pr_ref:  # 3012
     description: "Framework YAML concept names that no detector arm reads produce nothing and no error.\n\nCOBOL's program_entrypoint and micronaut's scheduled are concept names no entry detector reads, so the rows produce no entry and no warning: the concept vocabulary has no registry. Repro: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/yaml_inventory.py lists concept names per YAML against the detector arms. Fix direction: a concept-name registry with a load-time check (unknown concept = error), then decide each orphan (wire or delete). Found by the entry-point-kinds concept audit (docs/audits/0027), 2026-11-20."  # 3012
     fields: {}  # 3012
+- op: discuss  # b2fb
+  at: '2026-11-21T20:55:15Z'  # b2fb
+  by: agent  # b2fb
+  actor: jgstern_agent  # b2fb
+  clock: 2  # b2fb
+  nonce: b2fb  # b2fb
+  message: "2026-11-21, from the entry-kind PR build: the liveview concept is read by the entry detector (it feeds kind controller) and nothing emits it since the phoenix 'use Phoenix.LiveView' rows, which never fired, were removed; docs/CONCEPTS.md lists it as a ghost. The arm is dead code until a producer exists. Evidence: pr7/giron/RESULTS.md, section Producers."  # b2fb

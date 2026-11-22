@@ -1,0 +1,20 @@
+- op: create  # a24d
+  at: '2026-11-21T20:54:40Z'  # a24d
+  by: agent  # a24d
+  actor: jgstern_agent  # a24d
+  clock: 1  # a24d
+  nonce: a24d  # a24d
+  data:  # a24d
+    kind: work_item  # a24d
+    title: "Audit 0027 (entry-point kinds) stays in the concept_leak_pairs format: three things block its conversion to audit_verdicts"  # a24d
+    status: todo_soft  # a24d
+    priority: 3  # a24d
+    parent:  # a24d
+    tags:  # a24d
+    - docs  # a24d
+    isbefore: []  # a24d
+    duplicate_of: []  # a24d
+    not_duplicate_of: []  # a24d
+    pr_ref:  # a24d
+    description: "docs/audits/README.md says the file converts when the entrypoint-kind registry lands. It did not: (1) the audit-format checker's _REGISTRIES needs canonical and endpoint_shape sections, and a role registry has neither; (2) a DEPRECATE-NO-FOLD row needs an entry-kind emitter scan that producer_coherence does not have; (3) all 49 rows need diagnostic_test and status, and the per-pair leak verdicts have no place in the audit_verdicts format. Either extend the format for a role registry or state in the README that concept_leak_pairs is a permanent sibling format.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/giron/RESULTS.md. Found while building the entry-kind PR (2026-11-21)."  # a24d
+    fields: {}  # a24d
