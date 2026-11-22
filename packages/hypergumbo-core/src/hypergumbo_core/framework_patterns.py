@@ -113,6 +113,7 @@ if TYPE_CHECKING:
 from . import kept_work
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
+from .member_names import member_short_name
 from .reference_candidates import (
     CandidatePool,
     NameTiers,
@@ -190,13 +191,27 @@ class Pattern:
 
     Definition-based patterns (v1.1.x):
     - parent_base_class: Match methods whose parent class extends a specific base
-    - method_name: Match methods by name (the last part of qualified name)
+    - method_name: Match a member by its OWN name, without its owner
 
     Language convention patterns (v1.2.x):
-    - symbol_name: Match symbol name directly (for main() detection, etc.)
+    - symbol_name: Match the whole ``Symbol.name`` (for main() detection, etc.)
     - language: Filter by symbol's language (AND'd with other conditions)
-    When symbol_name + symbol_kind are both specified, they're AND'd together;
-    so are symbol_name + parameter_type (WI-jonin).
+    symbol_name + parameter_type are AND'd together (WI-jonin), and so are
+    method_name + parent_base_class.
+
+    Conditions on the symbol itself, which hold whichever field a row
+    matches by: symbol_kind, framework_role, meta_match (and the filters
+    language, symbol_path, qualified_name, modifiers).
+
+    ``symbol_name`` or ``method_name``? Analyzers name a member with its
+    owner (``MathTest.test_adds``, Ruby ``MathTest#test_adds``, Rust
+    ``Suite::run``; a Python function nested in another is
+    ``outer.inner``). ``symbol_name`` is searched in that whole name, so
+    ``^test_`` there means "the OUTERMOST name starts with test_": it
+    misses every method and hits every helper nested in a test function.
+    ``method_name`` is matched from the start of the member's own name
+    (``member_names.split_member_name``), and an unqualified name is its
+    own. A row about what a member is called wants ``method_name``.
 
     Usage-based patterns (v1.1.x):
     - usage: UsagePatternSpec to match against UsageContext records
@@ -213,13 +228,15 @@ class Pattern:
         decorator: Regex pattern to match against decorator names
         base_class: Regex pattern to match against base class names
         parent_base_class: Regex pattern to match parent class's base classes (for methods)
-        method_name: Regex pattern to match method name (last part of qualified name)
-        symbol_name: Regex pattern to match symbol name directly
+        method_name: Regex pattern matched (``re.match``) against the member's own
+            name: ``Symbol.name`` after its last owner separator (``.``, ``#``, ``::``)
+        symbol_name: Regex pattern searched (``re.search``) in the whole ``Symbol.name``
         language: Regex pattern to filter by symbol's language
         annotation: Regex pattern to match against Java annotations
         parameter_type: Regex pattern to match against parameter types, read
             from ``Symbol.meta["parameters"]`` (ADR-0058: never the signature)
-        symbol_kind: Regex pattern to match against symbol kind field
+        symbol_kind: Regex pattern to match against symbol kind field. Declared
+            beside any other field it is a condition, not an alternative
         framework_role: Regex pattern to match against ``Symbol.meta["framework_role"]``
             (ADR-0027 Phase 3 fold residue — see audit-findings 0013). Use this
             field for framework-participation patterns (route, event_publisher,
@@ -393,6 +410,30 @@ class Pattern:
             matched["matched_framework_role"] = framework_role
         return matched
 
+    def _also_required(self, symbol: Symbol) -> dict[str, Any] | None:
+        """The row's conditions on the symbol itself, whatever it matches by.
+
+        ``symbol_kind``, ``framework_role`` and ``meta_match`` say what the
+        symbol IS, so they bind every match type: a row with ``method_name``
+        and ``symbol_kind: ^method$`` does not match a function, and a row
+        with ``base_class`` and ``symbol_kind: ^class$`` does not match an
+        interface. (Two match types checked them and the others ignored
+        them: a Lit ``render`` row declared for methods matched every
+        function named ``render``.) Returns the ``matched_*`` keys to record
+        on a result, empty when the row declares none of the three, or None
+        when one of them does not hold.
+        """
+        kind_role = self._kind_and_role(symbol)
+        if kind_role is None:
+            return None
+        meta_ok, matched_meta = self._meta_match_ok(symbol)
+        if not meta_ok:
+            return None
+        matched: dict[str, Any] = dict(kind_role)
+        if self._meta_match_re:
+            matched["matched_meta"] = matched_meta
+        return matched
+
     def _check_filters(self, symbol: Symbol) -> bool:
         """Check language, path, qualified-name and modifier filters.
 
@@ -450,6 +491,13 @@ class Pattern:
         """
         if not self._check_filters(symbol):
             return []
+        # symbol_kind, framework_role and meta_match are conditions on the
+        # symbol itself: they hold, or the row matches by none of its other
+        # fields (:meth:`_also_required`). What they matched is recorded on
+        # every result.
+        also_matched = self._also_required(symbol)
+        if also_matched is None:
+            return []
 
         # Get symbol metadata for matching
         decorators = symbol.meta.get("decorators", []) if symbol.meta else []
@@ -467,6 +515,7 @@ class Pattern:
                 if match:
                     result: dict[str, Any] = {"concept": self.concept}
                     result["matched_decorator"] = dec_name
+                    result.update(also_matched)
                     if self.extract_path and isinstance(dec, dict):
                         path = self._extract_value(dec, self.extract_path)
                         result["path"] = path if path else ""
@@ -482,7 +531,10 @@ class Pattern:
         if self._base_class_re:
             for base in base_classes:
                 if self._base_class_re.matches(base):
-                    return [{"concept": self.concept, "matched_base_class": base}]
+                    return [{
+                        "concept": self.concept, "matched_base_class": base,
+                        **also_matched,
+                    }]
 
         # Try annotation match (Java) — collect ALL matching annotations
         if self._annotation_re:
@@ -490,7 +542,10 @@ class Pattern:
                 ann_name = ann.get("name", "") if isinstance(ann, dict) else str(ann)
                 match = self._annotation_re.match(ann_name)
                 if match:
-                    result = {"concept": self.concept, "matched_annotation": ann_name}
+                    result = {
+                        "concept": self.concept, "matched_annotation": ann_name,
+                        **also_matched,
+                    }
                     if self.extract_path and isinstance(ann, dict):
                         path = self._extract_value(ann, self.extract_path)
                         result["path"] = path if path else ""
@@ -503,8 +558,8 @@ class Pattern:
                 return results
 
         # Single-result match types below: parameter_type, symbol_name,
-        # symbol_kind, parent_base_class, method_name. These produce at most
-        # one match per symbol, so wrap in a list.
+        # kind / role / meta alone, parent_base_class, method_name. These
+        # produce at most one match per symbol, so wrap in a list.
         result = {"concept": self.concept}
 
         # Try parameter type match. Declared beside symbol_name it is an AND
@@ -520,67 +575,36 @@ class Pattern:
             if self._symbol_name_re:
                 if matched_type is None or not self._symbol_name_re.search(symbol.name):
                     return []
-                kind_role = self._kind_and_role(symbol)
-                if kind_role is None:
-                    return []
                 result["matched_symbol_name"] = symbol.name
-                result.update(kind_role)
             if matched_type is not None:
+                result.update(also_matched)
                 result["matched_parameter_type"] = matched_type
                 return [result]
 
-        # Try symbol_name + symbol_kind combined match (for language conventions like main())
-        # When both are specified, both must match (AND semantics)
-        # When only symbol_name is specified, only it must match
+        # Try symbol_name (for language conventions like main()).
         # Note: We use search() instead of match() to support end-of-string patterns
         # like "\.mount$" for Elixir qualified names (e.g., "MyApp.Pages.Index.mount")
-        if self._symbol_name_re:
-            # Check symbol_name (required)
-            if not self._symbol_name_re.search(symbol.name):
-                # symbol_name specified but doesn't match - don't match this pattern
-                pass  # Fall through to other pattern types
-            else:
-                # symbol_name matches
-                result["matched_symbol_name"] = symbol.name
+        if self._symbol_name_re and self._symbol_name_re.search(symbol.name):
+            result["matched_symbol_name"] = symbol.name
+            result.update(also_matched)
+            return [result]
 
-                # Check symbol_kind / framework_role if specified (AND
-                # condition, :meth:`_kind_and_role`). When they do not match,
-                # fall through so other pattern types can still try.
-                kind_role = self._kind_and_role(symbol)
-                if kind_role is not None:
-                    result.update(kind_role)
-                    return [result]
-
-        # Try symbol_kind / framework_role / meta_match match (alone,
-        # without any other specific match field). If decorator / base_class
-        # / annotation / param_type were specified but didn't match above,
-        # we must NOT fall through to symbol_kind-only matching — those
-        # fields are AND conditions, not independent alternatives.
-        # symbol_kind / framework_role / meta_match can be specified
-        # together (AND). meta_match alone is also a valid match shape:
-        # yaml rules of the form "all symbols with meta key X whose value
-        # matches /regex/" don't need a symbol_kind clause (WI-limas).
-        if (
-            (
-                self._symbol_kind_re
-                or self._framework_role_re
-                or self._meta_match_re
-            )
-            and not self._symbol_name_re
-            and not self._parent_base_class_re
-            and not self._method_name_re
-            and not self._decorator_re
-            and not self._base_class_re
-            and not self._annotation_re
-            and not self._param_type_re
+        # A row that declares none of the fields above and below matches by
+        # its kind / role / meta conditions alone, which held (WI-limas:
+        # "every symbol whose meta key X matches /regex/" needs no kind).
+        # A row that declares one of them and did not match by it does not
+        # fall back to this.
+        if also_matched and not (
+            self._symbol_name_re
+            or self._parent_base_class_re
+            or self._method_name_re
+            or self._decorator_re
+            or self._base_class_re
+            or self._annotation_re
+            or self._param_type_re
         ):
-            kind_role = self._kind_and_role(symbol)
-            meta_ok, matched_meta = self._meta_match_ok(symbol)
-            if kind_role is not None and meta_ok:
-                result.update(kind_role)
-                if self._meta_match_re:
-                    result["matched_meta"] = matched_meta
-                return [result]
+            result.update(also_matched)
+            return [result]
 
         # Try parent_base_class + method_name combined match (for lifecycle hooks)
         # Both conditions must match when both are specified
@@ -606,9 +630,10 @@ class Pattern:
             method_match = False
             matched_method = None
             if self._method_name_re:
-                # Extract method name from qualified name (e.g., "MainActivity.onCreate" -> "onCreate")
-                name_parts = symbol.name.rsplit(".", 1)
-                method_name = name_parts[-1] if name_parts else symbol.name
+                # The member's OWN name, whatever joins it to its owner
+                # ("MainActivity.onCreate", "MathTest#test_adds",
+                # "Suite::run"); an unqualified name is its own.
+                method_name = member_short_name(symbol.name)
                 if self._method_name_re.match(method_name):
                     method_match = True
                     matched_method = method_name
@@ -622,6 +647,7 @@ class Pattern:
                     result["matched_parent_base_class"] = matched_parent_base
                 if matched_method:
                     result["matched_method_name"] = matched_method
+                result.update(also_matched)
                 return [result]
 
         return []
