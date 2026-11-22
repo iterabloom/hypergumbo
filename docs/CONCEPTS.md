@@ -83,7 +83,7 @@ Total concepts: **322** (live: 48, inert: 274, ghost: 0).
 | `contract` | inert | http4k | _(none)_ |
 | `contract_route` | inert | http4k | _(none)_ |
 | `control_flow` | inert | scotty | _(none)_ |
-| `controller` | live | adonisjs, aiohttp, aspnet, cakephp, codeigniter, controller_routes.py, django, falcon, fuelphp, giraffe, grape, hanami, kafka-connect, laminas, laravel, litestar, lumen, masonite, micronaut, nestjs, padrino, phoenix, play, plug, pyramid, rails, slim, spring-boot, stapler, swiftui, symfony, tornado, vapor, yii | `entrypoints.py`, `linkers/controller_routes.py` |
+| `controller` | live | adonisjs, aiohttp, aspnet, cakephp, codeigniter, controller_routes.py, django, falcon, fuelphp, giraffe, grape, hanami, kafka-connect, laminas, laravel, litestar, lumen, masonite, micronaut, nestjs, padrino, phoenix, play, pyramid, rails, slim, spring-boot, stapler, swiftui, symfony, tornado, vapor, yii | `entrypoints.py`, `linkers/controller_routes.py` |
 | `controller_by_name` | live | naming-conventions | `entrypoints.py` |
 | `cors` | inert | aspnet, scalatra | _(none)_ |
 | `crud_handler` | inert | javalin | _(none)_ |
@@ -183,7 +183,7 @@ Total concepts: **322** (live: 48, inert: 274, ghost: 0).
 | `metadata_generator` | inert | nextjs, nuxt, remix | _(none)_ |
 | `middleware` | live | adonisjs, aiohttp, aspnet, bottle, cakephp, codeigniter, django, express, falcon, fastapi, fastify, feathers, flask, flask-appbuilder, go-web, grape, graphql, hanami, hapi, http4k, http4s, hummingbird, jakarta-cdi, javalin, koa, laminas, laravel, litestar, lumen, masonite, micronaut, middleware_chain.py, nextjs, nuxt, openresty, padrino, pedestal, phoenix, plug, plumber, quart, restify, ring-compojure, rust-web, sanic, scalatra, scotty, servant, slim, sveltekit, tornado, vapor, vertx, yii | `entrypoints.py`, `linkers/middleware_chain.py` |
 | `migration` | inert | cakephp, codeigniter, fuelphp, vapor, yii | _(none)_ |
-| `model` | live | adonisjs, aspnet, cakephp, codeigniter, django, fastapi, flask, fuelphp, go-web, hanami, jakarta-cdi, laminas, laravel, litestar, lumen, masonite, padrino, phoenix, plug, pyramid, qt, quarkus, quart, rails, rust-web, spring-boot, sveltekit, vapor, yesod, yii | `datamodels.py`, `linkers/orm.py` |
+| `model` | live | adonisjs, aspnet, cakephp, codeigniter, django, fastapi, flask, fuelphp, go-web, hanami, jakarta-cdi, laminas, laravel, litestar, lumen, masonite, padrino, phoenix, pyramid, qt, quarkus, quart, rails, rust-web, spring-boot, sveltekit, vapor, yesod, yii | `datamodels.py`, `linkers/orm.py` |
 | `model_binding` | inert | adonisjs | _(none)_ |
 | `module` | inert | fuelphp, laminas, nestjs, shiny, yii | _(none)_ |
 | `mutation` | inert | remix, sveltekit | _(none)_ |

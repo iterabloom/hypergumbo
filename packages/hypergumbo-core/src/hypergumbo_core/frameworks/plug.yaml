@@ -56,13 +56,16 @@ patterns:
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
 
-  # Plug.Router module - `use Plug.Router`
-  - concept: controller
-    adopts: "^Plug\\.Router$"
+  # No controller row for `use Plug.Router` (deleted row plug.yaml:35): its
+  # routes are entries already (route markers by the Elixir analyzer), and
+  # a controller entry per module pushed routes out of the capped entry list
+  # (plausible: 33 of 49 http_route entries, with the phoenix.yaml
+  # controller row). The module is a plug, marked by the row below.
 
-  # Plug.Builder module - `use Plug.Builder`: a plug pipeline of its own
+  # Plug.Builder / Plug.Router module - `use Plug.Builder` / `use
+  # Plug.Router`: a plug of its own, its call/2 run in a plug pipeline
   - concept: middleware
-    adopts: "^Plug\\.Builder$"
+    adopts: "^Plug\\.(Builder|Router)$"
 
   # Plug.ErrorHandler - `use Plug.ErrorHandler`: Plug calls its
   # handle_errors/2 when the wrapped call/2 raises
@@ -70,16 +73,12 @@ patterns:
     adopts: "^Plug\\.ErrorHandler$"
 
   # Plug.Conn manipulation
-  # CANNOT FIRE: nothing writes a decorator named `conn`. A module plug is a
-  # module that defines init/1 and call/2, a function plug a function of
-  # (conn, opts); neither is detected.
+  # CANNOT FIRE: nothing writes a decorator named `conn`. Function plugs and
+  # module plugs are detected by the `plug` usage row above instead.
   - concept: middleware
     decorator: "^conn$"
 
-  # Ecto schemas (commonly used with Plug)
-  - concept: model
-    adopts: "^Ecto\\.Schema$"
-
-  # Ecto changesets
-  - concept: model
-    decorator: "^use Ecto\\.Changeset$"
+  # No Ecto rows: Ecto is not Plug, and phoenix.yaml's `adopts: Ecto.Schema`
+  # row gave every schema a second `model` concept. The `use Ecto.Changeset`
+  # row (decorator key, never fired) named no construct: Ecto.Changeset has no
+  # `__using__`, it is imported.

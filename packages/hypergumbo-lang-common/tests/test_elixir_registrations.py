@@ -114,6 +114,8 @@ defmodule MyAppWeb.LiveSocketEndpoint do
   socket "/live",
     # the LiveView socket
     MyAppWeb.UserSocket
+  plug MyAppWeb.Plugs.Auth, handler: MyAppWeb.Fallback
+  channel MyAppWeb.RoomChannel
 end
 """
 
@@ -170,6 +172,14 @@ class TestRegistrationsAreRecorded:
         assert got[(30, "plug", "args[0]")] == "MyAppWeb.Router"
         assert got[(34, "channel", "args[1]")] == "MyAppWeb.RoomChannel"
         assert got[(43, "import_types", "args[0]")] == "MyApp.Types"
+
+    def test_only_an_argument_at_a_position_a_row_names(self, tmp_path):
+        got = _contexts(tmp_path)
+        # The ``plug`` row names args[0]: the module is recorded, the module
+        # in its options is not; the ``channel`` row names args[1], not [0].
+        assert got[(60, "plug", "args[0]")] == "MyAppWeb.Plugs.Auth"
+        assert (60, "plug", "kwargs[handler]") not in got
+        assert not [k for k in got if k[0] == 61]
 
     def test_a_comment_among_the_arguments_is_not_one(self, tmp_path):
         got = _contexts(tmp_path)

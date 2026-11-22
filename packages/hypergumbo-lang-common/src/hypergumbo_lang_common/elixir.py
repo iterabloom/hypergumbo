@@ -1908,7 +1908,9 @@ def _extract_registrations(
     2. a shipped ``usage:`` row names the call
        (``framework_patterns.usage_row_names_call``): the macro names live in
        the framework YAML files, not here, so a new row needs no change in
-       this module;
+       this module. Asked twice: by name, to skip a call no row names, and
+       per argument with its position, so only an argument at a position a
+       row names (``plug`` at ``args[0]``, not its options) is recorded;
     3. it is not a route macro of a router module (``get "/", PageController,
        :index``): those are ``_extract_phoenix_routes``' routes;
     4. an argument names code of the repository (``_registered_code``).
@@ -1949,7 +1951,8 @@ def _extract_registrations(
             continue
         aliases: Optional[dict[str, str]] = None
         for position, arg in _registration_arguments(args, source):
-            if arg.type not in ("alias", "atom", "quoted_atom"):
+            if (arg.type not in ("alias", "atom", "quoted_atom")
+                    or not usage_row_names_call(name, "elixir", position)):
                 continue
             if aliases is None:
                 aliases = _scope_aliases(node, source)

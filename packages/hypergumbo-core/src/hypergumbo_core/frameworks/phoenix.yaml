@@ -102,11 +102,15 @@ patterns:
   - concept: route
     framework_role: "^route$"
 
-  # Controllers - `use Phoenix.Controller` / `use MyAppWeb, :controller`.
-  # Phoenix calls an action through a route; a controller no route names is
-  # still marked (the deleted row's concept, restored as it was).
-  - concept: controller
-    adopts: "^Phoenix\\.Controller$"
+  # No row for `use Phoenix.Controller` / `use MyAppWeb, :controller`
+  # (deleted row phoenix.yaml:59/:62, concept controller). Phoenix calls an
+  # action only through a route, and the route marker already reaches it
+  # (`dispatches_to` from the route-handler linker). Measured on plausible:
+  # 0 of its 32 controller modules is named by no route, and a controller
+  # entry per module pushed 33 of its 49 http_route entries out of the capped
+  # entry list. A controller no route names then looks unreached, which is
+  # what it is. (`action_fallback M` below still marks a fallback controller:
+  # no route names it.)
 
   # LiveView - `use Phoenix.LiveView` / `use MyAppWeb, :live_view`: Phoenix
   # calls mount / render / handle_event on it, from a `live` route or a
