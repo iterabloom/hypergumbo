@@ -682,10 +682,6 @@ KNOWN_WATCHED_READS: Final[dict[tuple[str, str, str], str]] = {
         "one program start, so the guard is dropped beside it. It reads "
         "main_guard WITH main_function (the pair; audit 0027 B), which is "
         "the dedup the keep trigger exempts, re-keyed by WI-fasij"),
-    ("packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py",
-     "detect_entrypoint_candidates", "CONNECTIVITY_BASED"): (
-        "the connectivity boost skips an entry chosen FOR its connectivity, "
-        "which would count the same out-degree twice"),
 }
 
 

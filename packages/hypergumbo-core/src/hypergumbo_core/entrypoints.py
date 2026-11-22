@@ -1690,9 +1690,10 @@ def _connectivity_fallback(
 ) -> List[Entrypoint]:
     """Select entrypoints based on outgoing edge count when no patterns match.
 
-    This is a last-resort fallback for repos where no YAML patterns produce
-    entrypoints (e.g., Rust libraries without visibility tracking, or repos
-    in languages without any framework/convention patterns).
+    This is a last-resort fallback for repos where no YAML pattern produces
+    an entry that stays above the rank floor (e.g., Rust libraries without
+    visibility tracking, repos in languages without any framework or
+    convention patterns, a library whose only detected entries are tests).
 
     Only callable symbols (functions, methods, constructors) are considered.
     Confidence is set to 0.50, lower than any concept-based entrypoint, so
@@ -2044,13 +2045,6 @@ def detect_entrypoint_candidates(
             reverse=True,
         )
 
-    # Connectivity-based fallback: when no concept-based entrypoints found,
-    # select the most-connected callable symbols as pseudo-entrypoints.
-    # This ensures --entry auto never hard-fails, even for repos with no
-    # matching YAML patterns (e.g., Rust libraries without pub tracking).
-    if not unique_entrypoints:
-        unique_entrypoints = _connectivity_fallback(nodes, edges)
-
     # Apply penalties for test files and vendor code (ADR-0039 ruling 3: these
     # are RANKING adjustments — they deprioritize an entrypoint without making
     # it less certainly an entrypoint — so they mutate ``rank_score``, leaving
@@ -2196,12 +2190,9 @@ def detect_entrypoint_candidates(
     # dominant language get the full boost, while minority languages get
     # a reduced boost (minimum 50%). This prevents a Python script with
     # many outgoing edges from outranking a C main() in a 95% C codebase.
+    # (The connectivity fallback's picks are not here yet: they are chosen
+    # by out-degree and added after this loop, so they are never boosted.)
     for ep in unique_entrypoints:
-        # Skip connectivity boost for CONNECTIVITY_BASED entrypoints:
-        # their selection already incorporates out-degree ranking, so
-        # boosting again would double-count connectivity.
-        if ep.kind == EntrypointKind.CONNECTIVITY_BASED:
-            continue
         # Skip connectivity boost for TEST_FUNCTION entrypoints and any
         # entrypoint in a test file.  Without this, a test function with
         # 0.80 * 0.1 (test penalty) = 0.08 gets boosted to 0.33 by
@@ -2247,6 +2238,22 @@ def detect_entrypoint_candidates(
             lang_scale = 0.5 + 0.5 * _language_weight(ep.symbol_id)
             connectivity_boost = raw_boost * lang_scale
             ep.rank_score = min(1.0, ep.rank_score + connectivity_boost)
+
+    # Connectivity-based fallback: when no detected entry would stay above
+    # the rank floor, select the most-connected callable symbols as
+    # pseudo-entrypoints, so that --entry auto has something to start from
+    # in a repo no YAML pattern speaks for (e.g., Rust libraries without pub
+    # tracking). Asked of the final scores, not of whether anything was
+    # detected: a library whose only detected entries are its tests has
+    # candidates (0.80 x 0.1 = 0.08 each) and, after the floor, no entry.
+    # The picks take the path penalties like any entry and no connectivity
+    # boost (out-degree is how they were chosen).
+    if not any(ep.rank_score >= MIN_ENTRYPOINT_CONFIDENCE for ep in unique_entrypoints):
+        fallback = _connectivity_fallback(nodes, edges)
+        for ep in fallback:
+            for factor in path_rank_penalties(symbol_lookup[ep.symbol_id]):
+                ep.rank_score *= factor
+        unique_entrypoints.extend(fallback)
 
     # Route-label deduplication: multiple symbols (route symbol, handler
     # method, different registration sites) can produce HTTP_ROUTE entrypoints
