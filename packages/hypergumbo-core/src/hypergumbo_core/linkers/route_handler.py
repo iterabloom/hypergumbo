@@ -39,11 +39,13 @@ How It Works
 Which symbols can be a route's handler
 --------------------------------------
 The choice must be a function of the source, not of the order ``symbols``
-arrives in: the analyzers' results are collected in thread completion order,
-so a table filled "first write wins" over that list answered a Django route
-with the Python view in one run and with a same-named JavaScript class of a
-vendored library in the next. Three rules, applied in this order
-(``_NameTable``):
+arrives in. That order is the registry's (analyzer priority, then name: it
+was thread completion order until WI-sadod, and a table filled "first write
+wins" over the list answered a Django route with the Python view in one run
+and with a same-named JavaScript class of a vendored library in the next).
+A fixed list order makes such a table repeatable, not right: which analyzer
+is registered first says nothing about which declaration a route names.
+Three rules, applied in this order (``_NameTable``):
 
 * **Host language.** A route registered in a file of language L is handled
   by code of language L: its candidates are the symbols whose ``language``

@@ -76,6 +76,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **An unresolved name gets its own stand-in node in thirteen languages**; all of Racket's shared one.
 - **A colon in a name no longer breaks a node id**: event names (`mouse:up`), BibTeX keys, Blade views, Handlebars partials.
 - **No id slot is empty or holds a newline** (JavaScript, Tcl, Markdown).
+- **Node and edge list order no longer depends on thread timing.**
 
 ### Development tools and CI
 

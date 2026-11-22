@@ -145,7 +145,7 @@ In cli.py:
 from __future__ import annotations
 
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from itertools import groupby
 from pathlib import Path
@@ -755,12 +755,19 @@ def get_linker(name: str) -> RegisteredLinker | None:
 
 
 def get_all_linkers() -> Iterator[RegisteredLinker]:
-    """Get all registered linkers in priority order.
+    """Get all registered linkers in priority order, then by name.
+
+    The name closes the order: registration order among equal priorities is
+    module import order. ``run_all_linkers`` collects one priority group's
+    results in this order, so it decides the order later groups (and the
+    output) see symbols and edges in.
 
     Yields:
-        RegisteredLinker objects, sorted by priority (ascending).
+        RegisteredLinker objects, sorted by (priority, name) ascending.
     """
-    for linker in sorted(_LINKER_REGISTRY.values(), key=lambda lnk: lnk.priority):
+    for linker in sorted(
+        _LINKER_REGISTRY.values(), key=lambda lnk: (lnk.priority, lnk.name),
+    ):
         yield linker
 
 
@@ -798,9 +805,9 @@ def _run_linker_with_cache(
         reset_active_parse_cache(token)
     # Every linker invocation flows through this wrapper (serial dispatch,
     # parallel-pool submit, and run_linker by-name), so it is the one locus
-    # that can time EACH linker individually — the parallel pool's
-    # out-of-order as_completed makes per-linker wall-clock impossible at the
-    # post-dispatch sites. Stamp the per-pass productivity counters here too
+    # that can time EACH linker individually — the parallel pool's linkers
+    # overlap, so per-linker wall-clock cannot be read at the post-dispatch
+    # sites. Stamp the per-pass productivity counters here too
     # (result.symbols/result.edges are this pass's direct output, before any
     # accumulation); the counters are derived facts, always set.
     # (INV-gizik / INV-pitab)
@@ -1107,8 +1114,10 @@ def run_all_linkers(
                     future_to_linker[
                         pool.submit(_run_linker_with_cache, linker.func, lctx)
                     ] = linker
-                for future in as_completed(future_to_linker):
-                    linker = future_to_linker[future]
+                # Collected in SUBMISSION order (the registry's), never in
+                # the order the threads finish: the accumulated lists are
+                # what later priority groups and the output read (WI-sadod).
+                for future, linker in future_to_linker.items():
                     try:
                         result = future.result()
                     except Exception as exc:

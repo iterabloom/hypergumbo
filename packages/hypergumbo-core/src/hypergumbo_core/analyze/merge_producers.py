@@ -73,10 +73,10 @@ EDGES (§11, §13). ``src``, ``dst`` and ``edge_type`` are identity. Every
 edge endpoint (and ``derived_from``) that named a folded record is rewired
 to the merged id and its ``edge_key`` reset. Then the participants' edges
 that now agree on all three are FOLDED here (not left for
-``deduplicate_edges``, whose survivor is encounter order — and
-``run_all_analyzers`` collects results in thread-pool completion order
-(``as_completed``), so which producer's edge comes first is not
-deterministic, while the fold must be incumbent-first): the
+``deduplicate_edges``, whose survivor is encounter order —
+``run_all_analyzers`` collects results in registry order (priority, then
+name), which is the same every run but is not the policy's precedence,
+while the fold must be incumbent-first): the
 survivor is the incumbent's edge, the others' call sites are absorbed
 (``_absorb_call_site``), ``origin`` is the union, and ``confidence`` is
 COMBINED, not arbitrated by precedence: two DISTINCT inference pathways

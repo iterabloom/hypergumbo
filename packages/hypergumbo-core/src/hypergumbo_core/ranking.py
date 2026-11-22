@@ -1768,7 +1768,7 @@ def _compute_centrality_with_python(
     Each file is read once and matched with :class:`_NameMatcher`, whose cost
     is linear in the file's bytes rather than names x bytes (WI-rukaz).
     """
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor
 
     matcher = _NameMatcher(name_to_in_degree.keys())
 
@@ -1806,8 +1806,12 @@ def _compute_centrality_with_python(
 
     max_workers = min(8, len(files)) if files else 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_compute_one, f): f for f in files}
-        for i, future in enumerate(as_completed(futures)):
+        # Read in submission order: the dicts' key order is ``files``' order
+        # whichever scan finishes first. ``normalized_scores`` is written into
+        # the behavior map (``additional_file_centrality_scores``), so its key
+        # order is output (WI-sadod).
+        futures = [executor.submit(_compute_one, f) for f in files]
+        for i, future in enumerate(futures):
             path, score, matched = future.result()
             normalized_scores[path] = score
             symbols_per_file[path] = matched
