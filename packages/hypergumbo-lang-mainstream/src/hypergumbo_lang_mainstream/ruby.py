@@ -24,7 +24,7 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Registration usage contexts (``_extract_registration_contexts``,
   WI-movur): a call outside every method that hands a framework LOCAL code
   by a symbol or a constant (``rescue_from E, with: :handler``,
-  ``field :name``, ``subcommand "x", Klass``, ``before_action :check``)
+  ``field :name``, ``subcommand "x", Klass``)
   gets a ``kind="call"`` context per such argument, ``symbol_ref`` the
   method or class, when a shipped ``usage:`` row names the call at that
   position (``framework_patterns.usage_row_names_call``). There is no list
@@ -2011,7 +2011,7 @@ def _extract_registration_contexts(
     """Usage contexts for calls that hand a framework LOCAL code (WI-movur).
 
     ``rescue_from NotFound, with: :handle_not_found``, ``field :full_name``,
-    ``before_action :authenticate``, ``subcommand "remote", Remote``,
+    ``subcommand "remote", Remote``,
     ``register "version", Version``: a call outside every method whose
     argument names, by a symbol or a constant, a method or class of the
     repository. The framework calls that code later; nothing in the

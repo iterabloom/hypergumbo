@@ -8,7 +8,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: padrino
 language: ruby
 
@@ -22,6 +22,11 @@ patterns:
     usage:
       kind: "^call$"
       name: "^controller$"
+      # The handler is the call's block. No Ruby analyzer records a context
+      # for a block (it has no symbol; WI-tavum), and the arguments are not
+      # the handler, so this position is one no context has: the row matches
+      # nothing until a block becomes a symbol.
+      position: "^block$"
 
   # GET route
   - concept: route
@@ -78,42 +83,71 @@ patterns:
     usage:
       kind: "^call$"
       name: "^before$"
+      # The handler is the call's block. No Ruby analyzer records a context
+      # for a block (it has no symbol; WI-tavum), and the arguments are not
+      # the handler, so this position is one no context has: the row matches
+      # nothing until a block becomes a symbol.
+      position: "^block$"
 
   # After filter
   - concept: middleware
     usage:
       kind: "^call$"
       name: "^after$"
+      # The handler is the call's block. No Ruby analyzer records a context
+      # for a block (it has no symbol; WI-tavum), and the arguments are not
+      # the handler, so this position is one no context has: the row matches
+      # nothing until a block becomes a symbol.
+      position: "^block$"
 
   # Helper module
   - concept: helper
     usage:
       kind: "^call$"
       name: "^helpers$"
+      # The handler is a module the call is given by name (args[i]).
+      position: "^args\\[\\d+\\]$"
 
   # Register helper
   - concept: helper
     usage:
       kind: "^call$"
       name: "^register$"
+      # The handler is a module the call is given by name (args[i]).
+      position: "^args\\[\\d+\\]$"
 
   # Mailer
   - concept: mailer
     usage:
       kind: "^call$"
       name: "^mailer$"
+      # The handler is the call's block. No Ruby analyzer records a context
+      # for a block (it has no symbol; WI-tavum), and the arguments are not
+      # the handler, so this position is one no context has: the row matches
+      # nothing until a block becomes a symbol.
+      position: "^block$"
 
   # Email delivery
   - concept: mailer
     usage:
       kind: "^call$"
       name: "^email$"
+      # The handler is the call's block. No Ruby analyzer records a context
+      # for a block (it has no symbol; WI-tavum), and the arguments are not
+      # the handler, so this position is one no context has: the row matches
+      # nothing until a block becomes a symbol.
+      position: "^block$"
 
   # Deliver mail
   - concept: mailer
     usage:
       kind: "^call$"
       name: "^deliver$"
+      # The arguments name no code of the repository (a template, a status,
+      # a URL, a library plugin); a context naming a local method or class
+      # here would be a false match. No context has this position, so the
+      # row matches nothing.
+      position: "^none$"
 
   # Model (ActiveRecord)
   - concept: model
@@ -136,30 +170,55 @@ patterns:
     usage:
       kind: "^call$"
       name: "^render$"
+      # The arguments name no code of the repository (a template, a status,
+      # a URL, a library plugin); a context naming a local method or class
+      # here would be a false match. No context has this position, so the
+      # row matches nothing.
+      position: "^none$"
 
   # Halt request
   - concept: halt
     usage:
       kind: "^call$"
       name: "^halt$"
+      # The arguments name no code of the repository (a template, a status,
+      # a URL, a library plugin); a context naming a local method or class
+      # here would be a false match. No context has this position, so the
+      # row matches nothing.
+      position: "^none$"
 
   # Redirect
   - concept: redirect
     usage:
       kind: "^call$"
       name: "^redirect$"
+      # The arguments name no code of the repository (a template, a status,
+      # a URL, a library plugin); a context naming a local method or class
+      # here would be a false match. No context has this position, so the
+      # row matches nothing.
+      position: "^none$"
 
   # Error handler
   - concept: error_handler
     usage:
       kind: "^call$"
       name: "^error$"
+      # The handler is the call's block. No Ruby analyzer records a context
+      # for a block (it has no symbol; WI-tavum), and the arguments are not
+      # the handler, so this position is one no context has: the row matches
+      # nothing until a block becomes a symbol.
+      position: "^block$"
 
   # Not found handler
   - concept: error_handler
     usage:
       kind: "^call$"
       name: "^not_found$"
+      # The handler is the call's block. No Ruby analyzer records a context
+      # for a block (it has no symbol; WI-tavum), and the arguments are not
+      # the handler, so this position is one no context has: the row matches
+      # nothing until a block becomes a symbol.
+      position: "^block$"
 
   # Admin app
   - concept: admin
@@ -170,3 +229,8 @@ patterns:
     usage:
       kind: "^call$"
       name: "^access_control$"
+      # The arguments name no code of the repository (a template, a status,
+      # a URL, a library plugin); a context naming a local method or class
+      # here would be a false match. No context has this position, so the
+      # row matches nothing.
+      position: "^none$"

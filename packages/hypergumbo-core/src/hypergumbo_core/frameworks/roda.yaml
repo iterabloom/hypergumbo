@@ -8,7 +8,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: roda
 language: ruby
 
@@ -22,6 +22,11 @@ patterns:
     usage:
       kind: "^call$"
       name: "^route$"
+      # The handler is the call's block. No Ruby analyzer records a context
+      # for a block (it has no symbol; WI-tavum), and the arguments are not
+      # the handler, so this position is one no context has: the row matches
+      # nothing until a block becomes a symbol.
+      position: "^block$"
 
   # Root route handler
   - concept: route
@@ -116,7 +121,11 @@ patterns:
     usage:
       kind: "^call$"
       name: "^plugin$"
-      position: "^args\\[0\\]$"
+      # The arguments name no code of the repository (a template, a status,
+      # a URL, a library plugin); a context naming a local method or class
+      # here would be a false match. No context has this position, so the
+      # row matches nothing.
+      position: "^none$"
 
   # Halt processing - r.halt
   - concept: halt
@@ -147,4 +156,8 @@ patterns:
     usage:
       kind: "^call$"
       name: "^view$"
-      position: "^args\\[0\\]$"
+      # The arguments name no code of the repository (a template, a status,
+      # a URL, a library plugin); a context naming a local method or class
+      # here would be a false match. No context has this position, so the
+      # row matches nothing.
+      position: "^none$"

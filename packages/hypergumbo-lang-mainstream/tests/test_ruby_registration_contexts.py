@@ -135,7 +135,8 @@ end
         source = """\
 class ApplicationController < ActionController::Base
   rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
-  # control: only: names the actions the callback applies to
+  # control: a callback is not an entry in this change (no row names it);
+  # its target keeps the dispatches_to edge _extract_rails_callbacks writes
   before_action :authenticate_user, only: :show
 
   def show; end
@@ -158,12 +159,14 @@ end
         assert ("error_handler", "rails") in _concepts(
             by_name["ApplicationController#render_not_found"]
         )
-        # rails.yaml's callback row had no producer before this context.
-        assert ("event_handler", "rails") in _concepts(
-            by_name["ApplicationController#authenticate_user"]
-        )
+        callback = by_name["ApplicationController#authenticate_user"]
+        assert not _concepts(callback)
         assert not _concepts(by_name["ApplicationController#show"])
-        assert [c.position for c in _contexts(contexts, "before_action")] == ["args[0]"]
+        assert _contexts(contexts, "before_action") == []
+        edges = analyze_ruby(tmp_path).edges
+        assert any(
+            e.edge_type == "dispatches_to" and e.dst == callback.id for e in edges
+        )
         by_name, contexts, symbols = _analyse(tmp_path / "g", {"app/api/shop.rb": GRAPE})
         _enrich(symbols, contexts, "grape")
         assert ("error_handler", "grape") in _concepts(by_name["API#handle_not_found"])
@@ -295,3 +298,105 @@ class TestCommandRegistration:
             ("args[1]", by_name["Version"].id, None),
             ("args[1]", by_name["Config"].id, "prefix"),
         ]
+
+
+PADRINO = """\
+module MyExtension
+  def self.registered(app); end
+end
+
+module MyHelpers
+  def greet; end
+end
+
+class AppError < StandardError; end
+
+class App < Padrino::Application
+  register MyExtension
+  helpers MyHelpers
+
+  # control: the exception class is not the handler (the block is)
+  error AppError do
+    'boom'
+  end
+
+  error 404 do
+    'missing'
+  end
+
+  # control: a template name that happens to name a local method
+  render :greet_page
+
+  def greet_page; end
+end
+"""
+
+RODA = """\
+module LocalPlugin
+end
+
+class App < Roda
+  # controls: a library plugin's name and a template's name that happen to
+  # name local methods
+  plugin :render
+  plugin LocalPlugin
+
+  route do |r|
+    view :index
+  end
+
+  def render; end
+  def index; end
+end
+"""
+
+
+class TestEveryRowTheGateFeeds:
+    def test_padrino_marks_registered_modules_not_exception_classes(
+        self, tmp_path: Path,
+    ) -> None:
+        by_name, contexts, symbols = _analyse(tmp_path, {"app/app.rb": PADRINO})
+        assert "AppError" in by_name and "App#greet_page" in by_name  # reach
+        _enrich(symbols, contexts, "padrino")
+        assert "helper" in {c for c, _ in _concepts(by_name["MyExtension"])}
+        assert "helper" in {c for c, _ in _concepts(by_name["MyHelpers"])}
+        assert not _concepts(by_name["AppError"])
+        assert not _concepts(by_name["App#greet_page"])
+        assert _contexts(contexts, "error") == []
+        assert _contexts(contexts, "render") == []
+
+    def test_roda_plugin_and_view_names_are_not_handlers(self, tmp_path: Path) -> None:
+        by_name, contexts, symbols = _analyse(tmp_path, {"app.rb": RODA})
+        assert "App#render" in by_name and "App#index" in by_name  # reach
+        _enrich(symbols, contexts, "roda")
+        assert not _concepts(by_name["App#render"])
+        assert not _concepts(by_name["App#index"])
+        assert not _concepts(by_name["LocalPlugin"])
+        assert [c.context_name for c in contexts if c.symbol_ref] == []
+
+    def test_every_ruby_row_a_bare_call_can_reach_names_a_position(self) -> None:
+        """The extractor records a bare (or builder-collapsed) method name,
+        so a Ruby usage row whose name pattern has no receiver (no ``.``) can
+        receive its contexts. Each such row must say which argument is the
+        handler; one whose handler is a block, or whose arguments name no
+        code, says so with a position no context has."""
+        import yaml
+
+        from hypergumbo_core.framework_patterns import get_frameworks_dir
+
+        unpositioned, checked = [], 0
+        for path in sorted(get_frameworks_dir().glob("*.yaml")):
+            data = yaml.safe_load(path.read_text())
+            language = data.get("language")
+            languages = [language] if isinstance(language, str) else list(language or [])
+            if languages and not {"ruby", "multi"} & set(languages):
+                continue
+            for row in data.get("patterns") or []:
+                usage = row.get("usage") or {}
+                name = usage.get("name")
+                if name and "\\." not in name:
+                    checked += 1
+                    if not usage.get("position"):
+                        unpositioned.append(f"{path.name}: {name}")
+        assert checked > 20  # reach: grape, padrino, rails, roda, ... were read
+        assert unpositioned == []
