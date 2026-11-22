@@ -84,6 +84,11 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      resolves when the method is inherited (INV-fahub).
    - A call in no function is anchored on the class/object/trait/enum whose
      body holds it (``_TYPE_BODY_NODES``), else on the file (INV-bamij).
+     That type is then the enclosing class of its bare calls, so a ``val``
+     initialiser or an ``object X extends App`` statement reaches the type's
+     own methods (an akka ``val routes = ... complete(search(q))``); before,
+     the owner was read off the anchor's name as if it were a method's, and
+     every such call stayed external.
    - A parameterless call written without parentheses
      (``Runtime.getRuntime.availableProcessors``) parses as a member access;
      it becomes an unresolved ``method`` call edge on its library owner only
@@ -2752,10 +2757,13 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             # INV-bamij: a call in no function is anchored on the template that
             # holds it (an ``object``'s ``val`` initialiser), else the file.
+            enclosing_function = _get_enclosing_function(node, source, decl_index)
+            type_anchor = (
+                None if enclosing_function is not None
+                else enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+            )
             current_function: Optional[Symbol] = (
-                _get_enclosing_function(node, source, decl_index)
-                or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
-                or file_anchor
+                enclosing_function or type_anchor or file_anchor
             )
             if current_function is not None:
                 # INV-fahub Site-1: the enclosing class short name for a bare /
@@ -2764,8 +2772,12 @@ def _extract_edges_from_file(
                 # on the enclosing class's linearization (inherited), and left
                 # external when it is a cross-class magnet. ``None`` for a
                 # top-level def (no owning class → not an implicit-``this`` call).
+                # A call anchored on the type itself (a ``val`` initialiser or a
+                # statement in a class / object body) is in THAT type: its name
+                # has no member part to drop.
                 enclosing_type = (
-                    current_function.name.split(".")[-2]
+                    type_anchor.name.split(".")[-1] if type_anchor is not None
+                    else current_function.name.split(".")[-2]
                     if "." in current_function.name else None
                 )
                 callee_node = find_child_by_type(node, "identifier")
