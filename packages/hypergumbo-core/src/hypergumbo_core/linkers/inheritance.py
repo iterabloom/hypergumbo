@@ -819,7 +819,8 @@ def _create_inheritance_edges(
     depends_on=[
         [
             "apex", "cpp", "csharp", "go", "groovy", "haskell", "java",
-            "javascript", "kotlin", "objc", "php", "python", "ruby", "scala",
+            "javascript", "kotlin", "lua", "objc", "php", "python", "ruby",
+            "scala",
             "swift",
         ],
     ],

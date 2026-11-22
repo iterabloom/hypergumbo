@@ -57,6 +57,7 @@ CASES: dict[str, tuple[str, str, str, str]] = {
     "ruby": ("m.rb", "APP = C.new\n", "APP", "C.new"),
     "php": ("m.php", "<?php\n$app = new C();\n", "app", "C"),
     "elixir": ("m.ex", "defmodule M do\n  @app C.new()\nend\n", "app", "C.new"),
+    "lua": ("m.lua", "local app = C()\n", "app", "C"),
 }
 
 # Measured 2026-07-31. Each entry names WHICH of the two shapes it is.

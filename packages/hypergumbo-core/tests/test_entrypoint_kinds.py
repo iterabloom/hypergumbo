@@ -909,6 +909,16 @@ _APPLICATION_ROWS: tuple[tuple[str, str, str, str | None], ...] = (
 )
 
 
+# Hosted-application rows added AFTER the ruling, each filed under
+# ``application`` by the ruling's own rule (an application object a server
+# hosts). Kept apart from the 33 so the ruling's split stays as ruled.
+_APPLICATION_ROWS_ADDED: tuple[tuple[str, str, str, str | None], ...] = (
+    # A Lapis app instance, ``local app = lapis.Application()`` (lua.py's
+    # ``constructed_from``): the instance sibling of the class row above.
+    ("openresty.yaml", "meta_match", "^lapis\\.Application$", "application"),
+)
+
+
 def _row_matcher(pat: dict) -> tuple[str, str] | None:
     if "base_class" in pat:
         return "base_class", pat["base_class"]
@@ -930,7 +940,9 @@ def test_ruling_the_33_application_rows_split_15_7_6_2_3() -> None:
     assert len(dest) == 33 and counts == (15, 7, 6, 2, 3), RULING_HOSTED
 
 
-@pytest.mark.parametrize(("file", "key", "value", "concept"), _APPLICATION_ROWS)
+@pytest.mark.parametrize(
+    ("file", "key", "value", "concept"), _APPLICATION_ROWS + _APPLICATION_ROWS_ADDED,
+)
 def test_ruling_each_application_row_has_its_destination(
     file: str, key: str, value: str, concept: str | None,
 ) -> None:
@@ -941,7 +953,8 @@ def test_ruling_each_application_row_has_its_destination(
 def test_ruling_the_application_concept_is_the_15_hosted_rows_and_nothing_else() -> None:
     """A row that newly emits ``application`` files its symbol under
     hosted_application; this fails until it is added to the table above."""
-    hosted = {(f, k, v) for f, k, v, c in _APPLICATION_ROWS if c == "application"}
+    hosted = {(f, k, v) for f, k, v, c in _APPLICATION_ROWS + _APPLICATION_ROWS_ADDED
+              if c == "application"}
     live = {(p.name, *m) for p in get_frameworks_dir().glob("*.yaml")
             for pat in read_catalogue_yaml(p).get("patterns") or []
             if pat.get("concept") == "application" and (m := _row_matcher(pat))}

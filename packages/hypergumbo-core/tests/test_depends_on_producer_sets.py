@@ -326,7 +326,8 @@ class TestInheritanceDeclaresItsMetadataProducers:
     def test_the_clause_is_exactly_this(self) -> None:
         assert _clause_containing("inheritance-linker", "java") == [
             "apex", "cpp", "csharp", "go", "groovy", "haskell", "java",
-            "javascript", "kotlin", "objc", "php", "python", "ruby", "scala",
+            "javascript", "kotlin", "lua", "objc", "php", "python", "ruby",
+            "scala",
             "swift",
         ]
 

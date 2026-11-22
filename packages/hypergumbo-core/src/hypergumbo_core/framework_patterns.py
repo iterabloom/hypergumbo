@@ -1038,6 +1038,12 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "next": "nextjs",
     "vert.x": "vertx",
     "zio-http": "zio",
+    # Lapis runs on OpenResty and its rows (app class and instance, routes,
+    # filters) are in openresty.yaml; a Lapis project is detected as
+    # ``lapis`` (its rockspec / ``require "lapis"``), and openresty itself
+    # is demoted to a dev framework when no production import names it, so
+    # without this a Lapis app loaded no YAML at all.
+    "lapis": "openresty",
 }
 
 
