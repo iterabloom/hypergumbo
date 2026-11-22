@@ -21,6 +21,14 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
   (``_is_test_directory``); outside ``routes.rb`` and ``routes/``
   (``_is_route_definition_file``) it keeps only block-style (Sinatra)
   routes, those with ``has_block``
+- Registration usage contexts (``_extract_registration_contexts``,
+  WI-movur): a call outside every method that hands a framework LOCAL code
+  by a symbol or a constant (``rescue_from E, with: :handler``,
+  ``field :name``, ``subcommand "x", Klass``, ``before_action :check``)
+  gets a ``kind="call"`` context per such argument, ``symbol_ref`` the
+  method or class, when a shipped ``usage:`` row names the call at that
+  position (``framework_patterns.usage_row_names_call``). There is no list
+  of DSL names here: the rows are the list.
 - ``instantiates`` edges for ``.new`` (INV-kahig)
 - ``event_publishes`` edges for ActiveJob / Sidekiq enqueue calls
 - ``extends`` inheritance edges, and mixin declarations recorded as
@@ -137,6 +145,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.framework_patterns import usage_row_names_call
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
     make_pass_id,
@@ -1877,6 +1886,168 @@ def _extract_rails_callbacks(
             )
 
     return edges
+
+
+#: Calls ``_extract_rails_routes`` records itself (with the route's method and
+#: path); a registration context for them would be a second record of one call.
+_ROUTE_EXTRACTOR_CALLS = HTTP_METHODS | {"resource", "resources"}
+
+
+def _is_block_builder(receiver: "tree_sitter.Node", source: bytes) -> bool:
+    """Whether ``receiver`` is a parameter of a block enclosing it, in the same
+    class or method body: the builder a DSL yields (``register "g" do
+    |prefix| prefix.register ... end``)."""
+    if receiver.type != "identifier":
+        return False
+    name = node_text(receiver, source)
+    current = receiver.parent
+    while current is not None and current.type not in _RUBY_SCOPE_ROOTS:
+        if current.type in ("block", "do_block"):
+            params = find_child_by_type(current, "block_parameters")
+            if params is not None and any(
+                node_text(p, source) == name for p in params.named_children
+            ):
+                return True
+        current = current.parent
+    return False
+
+
+def _registered_target(
+    arg: "tree_sitter.Node",
+    source: bytes,
+    nesting: list[str],
+    scopes: list[str],
+    global_symbols: dict[str, Symbol],
+    constant_ancestors: dict[str, list[str]],
+) -> Optional[Symbol]:
+    """The repository method or class an argument names, or ``None``.
+
+    A symbol (``:handler``) names an instance method of the enclosing class or
+    of one of its project ancestors, ``A::B#handler``. A constant names a
+    class or module, looked up as Ruby looks it up (:func:`_resolve_constant`).
+    Anything else (a string, a lambda, a library constant) names no local code.
+    """
+    if arg.type == "simple_symbol":
+        method = node_text(arg, source).lstrip(":")
+        for scope in scopes:
+            found = global_symbols.get(f"{scope}#{method}")
+            if found is not None:
+                return found
+        return None
+    if arg.type in ("constant", "scope_resolution"):
+        return _resolve_constant(
+            node_text(arg, source), nesting, global_symbols, constant_ancestors,
+        )
+    return None
+
+
+def _extract_registration_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    rel_path: str,
+    global_symbols: dict[str, Symbol],
+    constant_ancestors: dict[str, list[str]],
+) -> list[UsageContext]:
+    """Usage contexts for calls that hand a framework LOCAL code (WI-movur).
+
+    ``rescue_from NotFound, with: :handle_not_found``, ``field :full_name``,
+    ``before_action :authenticate``, ``subcommand "remote", Remote``,
+    ``register "version", Version``: a call outside every method whose
+    argument names, by a symbol or a constant, a method or class of the
+    repository. The framework calls that code later; nothing in the
+    repository does. Each such argument gives one context: kind ``call``,
+    ``context_name`` the method name, ``position`` ``args[i]`` (counting
+    positional arguments) or ``kwargs[key]``, ``symbol_ref`` the local symbol.
+    The frameworks' ``usage:`` rows say which calls register what.
+
+    Recorded only when:
+
+    - a shipped ``usage:`` row names the call AT that argument's position
+      (:func:`usage_row_names_call`): the rows are the list of names and
+      positions, there is none here. ``field :name, Types::UserType`` gives a
+      context for ``:name`` (a row reads ``args[0]``), none for the type;
+    - the call has no receiver, or ``self``, or the builder a block yields
+      (``prefix.register``): one spelling, the method name, whichever it is
+      (``metadata["receiver"]`` keeps the builder's name);
+    - it is in no method (a class or module body, a block there, or the top
+      level);
+    - the class it is in, or a project ancestor, does not define the called
+      name as a class method: a DSL the repository writes itself is ordinary
+      code with its own call edge;
+    - the name is not a route call ``_extract_rails_routes`` records.
+
+    ``metadata`` carries what would make a row precise without a matcher
+    change: the enclosing class or module (``scope``) and its written
+    ``base_classes`` / ``included_modules`` (``scope_bases`` /
+    ``scope_modules``).
+    """
+    contexts: list[UsageContext] = []
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+        method_node = node.child_by_field_name("method")
+        args_node = node.child_by_field_name("arguments")
+        if method_node is None or args_node is None or method_node.type != "identifier":
+            continue
+        name = node_text(method_node, source)
+        if name in _ROUTE_EXTRACTOR_CALLS or not usage_row_names_call(name, "ruby"):
+            continue
+        receiver = node.child_by_field_name("receiver")
+        if receiver is not None and not (
+            receiver.type == "self" or _is_block_builder(receiver, source)
+        ):
+            continue
+        if _is_nested_in_method(node):
+            continue
+        nesting = _lexical_nesting(node, source)
+        scopes = [*nesting[:1], *constant_ancestors.get(nesting[0], ())] if nesting else []
+        if any(f"{scope}.{name}" in global_symbols for scope in scopes):
+            continue
+        scope_sym = global_symbols.get(nesting[0]) if nesting else None
+        scope_meta = (scope_sym.meta or {}) if scope_sym is not None else {}
+        positional = 0
+        for arg in args_node.named_children:
+            if arg.type == "pair":
+                key_node = arg.child_by_field_name("key")
+                value = arg.child_by_field_name("value")
+                if key_node is None or value is None:  # pragma: no cover - grammar gives both
+                    continue
+                position = f"kwargs[{node_text(key_node, source).strip(':')}]"
+                target_node = value
+            elif arg.type in ("block_argument", "splat_argument", "hash_splat_argument"):
+                continue
+            else:
+                position = f"args[{positional}]"
+                positional += 1
+                target_node = arg
+            if not usage_row_names_call(name, "ruby", position):
+                continue
+            target = _registered_target(
+                target_node, source, nesting, scopes, global_symbols, constant_ancestors,
+            )
+            if target is None:
+                continue
+            contexts.append(UsageContext.create(
+                kind="call",
+                context_name=name,
+                position=position,
+                path=rel_path,
+                span=Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                ),
+                symbol_ref=target.id,
+                metadata={
+                    "receiver": node_text(receiver, source) if receiver is not None else None,
+                    "argument": node_text(target_node, source),
+                    "scope": nesting[0] if nesting else None,
+                    "scope_bases": list(scope_meta.get("base_classes", ())),
+                    "scope_modules": list(scope_meta.get("included_modules", ())),
+                },
+            ))
+    return contexts
 
 
 def _association_name_to_class(name: str) -> str:
@@ -3820,6 +3991,11 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 resolver, run.execution_id,
             )
             all_edges.extend(callback_edges)
+            # Calls that hand a framework a local method or class (WI-movur).
+            all_usage_contexts.extend(_extract_registration_contexts(
+                tree, source, str(rb_file.relative_to(repo_root)),
+                global_symbols, constant_ancestors,
+            ))
 
         # Pass 2c: Extract ActiveRecord association edges (has_many, belongs_to, etc.)
         # These create association edges from model class -> target model class.

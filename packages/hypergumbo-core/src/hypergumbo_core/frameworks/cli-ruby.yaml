@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: cli-ruby
 language: ruby
 
@@ -19,6 +19,22 @@ patterns:
   # Thor base class
   - concept: command
     base_class: "^Thor$"
+
+  # Thor: subcommand "name", SubcommandClass -- the Thor class that runs
+  # the subcommand, also when it inherits an app base class, not Thor
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^subcommand$"
+      position: "^args\\[1\\]$"
+
+  # Thor: register(CommandClass, "name", "usage", "description") and
+  # dry-cli: register "name", CommandClass (also prefix.register in a block)
+  - concept: command
+    usage:
+      kind: "^call$"
+      name: "^register$"
+      position: "^args\\[[01]\\]$"
 
   # Thor method_option
   - concept: option

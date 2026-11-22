@@ -9,11 +9,37 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: graphql-ruby
 language: ruby
 
 patterns:
+  # ==================== USAGE-BASED PATTERNS ====================
+  # The analyzer records a class-body call whose argument names a local
+  # method or class (a symbol or a constant).
+
+  # field :full_name -- resolved by the type's method of the same name, when
+  # the type defines one (graphql-ruby calls it instead of the object's).
+  - concept: graphql_resolver
+    usage:
+      kind: "^call$"
+      name: "^field$"
+      position: "^args\\[0\\]$"
+
+  # field :x, resolver_method: :method_name / field :x, resolver: ResolverClass
+  - concept: graphql_resolver
+    usage:
+      kind: "^call$"
+      name: "^field$"
+      position: "^kwargs\\[(resolver_method|resolver)\\]$"
+
+  # argument :x, prepare: :method_name -- called on each argument value
+  - concept: graphql_resolver
+    usage:
+      kind: "^call$"
+      name: "^argument$"
+      position: "^kwargs\\[prepare\\]$"
+
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # graphql-ruby type class
   - concept: graphql_schema
