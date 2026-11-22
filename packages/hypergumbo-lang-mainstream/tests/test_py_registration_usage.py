@@ -97,8 +97,12 @@ def make_app(callback):
     app.on_shutdown.append(callback)
     items = []
     items.append(index)
-    app.router.add_get("/users", index)
+    app.router.add_get("/users", index, expect_handler=check_expect)
     return app
+
+
+async def check_expect(request):
+    return None
 '''
 
 
@@ -114,11 +118,16 @@ class TestRecorded:
         [cleanup] = _registrations(result, "app.cleanup_ctx.append")
         assert cleanup.symbol_ref == _symbol(result, "db_ctx").id
 
-    def test_a_list_element_of_a_keyword_has_its_index(self, tmp_path: Path) -> None:
-        result = _analyze(tmp_path, {"app.py": AIOHTTP_APP})
-        [ctx] = _registrations(result, "aiohttp_jinja2.setup")
-        assert ctx.position == "kwargs[context_processors][0]"
-        assert ctx.symbol_ref == _symbol(result, "user_processor").id
+    def test_a_list_element_has_its_index(self, tmp_path: Path) -> None:
+        source = (
+            "import fire\n\n"
+            "def add(x, y):\n    return x + y\n\n"
+            "def run():\n    fire.Fire([add])\n"
+        )
+        result = _analyze(tmp_path, {"cli.py": source})
+        [ctx] = _registrations(result, "fire.Fire")
+        assert ctx.position == "args[0][0]"
+        assert ctx.symbol_ref == _symbol(result, "add").id
 
     def test_string_arguments_are_kept_for_a_row_to_read(self, tmp_path: Path) -> None:
         result = _analyze(tmp_path, {"app.py": AIOHTTP_APP})
@@ -243,16 +252,30 @@ class TestNotRecorded:
         # reach: the bottle-imported install of the same name IS recorded
         assert [u.symbol_ref for u in recorded] == [_symbol(result, "timer").id]
 
-    def test_a_route_another_extractor_records_is_not_recorded_twice(
-        self, tmp_path: Path,
-    ) -> None:
+    def test_only_a_position_a_row_names_is_recorded(self, tmp_path: Path) -> None:
+        result = _analyze(tmp_path, {"app.py": AIOHTTP_APP})
+        # reach: the same call's handler, at the position the row names
+        assert [u.position for u in _registrations(result, "app.router.add_get")] == [
+            "args[1]",
+        ]
+        assert _symbol(result, "check_expect").id not in {
+            u.symbol_ref for u in result.usage_contexts
+        }
+        # a call whose row was removed: aiohttp_jinja2 context processors
+        assert _registrations(result, "aiohttp_jinja2.setup") == []
+
+    def test_a_call_a_route_extractor_owns_is_left_to_it(self, tmp_path: Path) -> None:
         source = (
             "from django.urls import path\n\n"
             "def index(request):\n    return None\n\n"
-            "urlpatterns = [path('home/', index)]\n"
+            "urlpatterns = [path('home/', index)]\n\n"
+            "def build(prefix):\n    return path(prefix, index)\n"
         )
         result = _analyze(tmp_path, {"urls.py": source})
-        assert len(_registrations(result, "path")) == 1
+        # the Django extractor's context only: the second call has no path
+        # it can read, and nothing else records it
+        [ctx] = _registrations(result, "path")
+        assert ctx.metadata["route_path"] == "/home/"
 
 
 class TestShippedRows:
@@ -265,7 +288,7 @@ class TestShippedRows:
         assert ("event_handler", "aiohttp") in _concepts(by_name["open_pool"])
         assert ("event_handler", "aiohttp") in _concepts(by_name["close_pool"])
         assert ("event_handler", "aiohttp") in _concepts(by_name["db_ctx"])
-        assert ("middleware", "aiohttp") in _concepts(by_name["user_processor"])
+        assert _concepts(by_name["user_processor"]) == []
         assert ("middleware", "aiohttp") in _concepts(by_name["timing"])
         [route] = [
             c for c in (by_name["index"].meta or {}).get("concepts", [])
@@ -313,6 +336,39 @@ class TestShippedRows:
         _, by_name = _enriched(tmp_path, {"app.py": source}, "flask")
         assert ("error_handler", "flask") in _concepts(by_name["on_not_found"])
         assert _concepts(by_name["helper"]) == []
+
+    def test_django_path_outside_urlpatterns_gets_no_pathless_route(
+        self, tmp_path: Path,
+    ) -> None:
+        source = (
+            "from django.urls import path\n\n"
+            "def index(request):\n    return None\n\n"
+            "def build(prefix):\n    return path(prefix, index)\n"
+        )
+        result, by_name = _enriched(tmp_path, {"urls.py": source}, "django")
+        # reach: the call is there; no context, so no route without a path
+        assert _registrations(result, "path") == []
+        assert _concepts(by_name["index"]) == []
+
+    def test_tornado_rows_read_the_path_from_the_first_argument(
+        self, tmp_path: Path,
+    ) -> None:
+        source = (
+            "from tornado.web import Application, RequestHandler, URLSpec, url\n\n"
+            "class MainHandler(RequestHandler):\n    def get(self):\n        pass\n\n"
+            "class ItemHandler(RequestHandler):\n    def get(self):\n        pass\n\n"
+            "app = Application([url(r'/x', MainHandler), URLSpec(r'/y', ItemHandler)])\n"
+        )
+        _, by_name = _enriched(tmp_path, {"app.py": source}, "tornado")
+
+        def paths(name: str) -> list[str]:
+            return [
+                c.get("path") for c in (by_name[name].meta or {}).get("concepts", [])
+                if c["concept"] == "route"
+            ]
+
+        assert paths("MainHandler") == ["/x"]
+        assert paths("ItemHandler") == ["/y"]
 
     def test_graphql_python_row(self, tmp_path: Path) -> None:
         source = (

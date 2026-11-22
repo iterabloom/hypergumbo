@@ -220,13 +220,13 @@ as one) that names, or constructs, a function, method or class of the tree:
 kind ``call``, the callee as written, position ``args[i]`` /
 ``kwargs[name]`` (with ``[i]`` / ``[key]`` for an element), ``symbol_ref``
 the callable, metadata ``receiver``, ``method``, the leading string-literal
-arguments (``args``) and ``instance``. It records a call only when a shipped
-``usage:`` row could match the callee's name
+arguments (``args``) and ``instance``. It records an argument only when a
+shipped ``usage:`` row could match the callee's name at that position
 (``framework_patterns.usage_row_names_call``): the framework files are the
 only list of call names. A callee of the tree is an ordinary call and is not
-recorded; a call a route extractor above already recorded is left to it; a
-handler or callee bound by an import is settled between the passes
-(``_settle_registrations``).
+recorded; a call a route extractor above owns (``DJANGO_URL_FUNCTIONS``,
+``FLASK_URL_FUNCTIONS``) is left to it; a handler or callee bound by an
+import is settled between the passes (``_settle_registrations``).
 
 ID Schemes
 ----------
@@ -2492,6 +2492,11 @@ def _extract_starlette_usage_contexts(
     return contexts
 
 
+#: The calls the Django and Flask route extractors own, recorded or not:
+#: their rows read the ``route_path`` those extractors write.
+_ROUTE_EXTRACTOR_CALLS = frozenset(DJANGO_URL_FUNCTIONS | FLASK_URL_FUNCTIONS)
+
+
 #: Registrations still open after the file's own pass: the context, the
 #: handler's dotted parts when this file does not declare it (else ``None``),
 #: and the callee's dotted parts when an import binds its root (else
@@ -2543,7 +2548,6 @@ def _extract_registration_usage_contexts(
     symbol_by_name: dict[str, Symbol],
     scopes_at: _ScopesAt,
     import_roots: frozenset[str],
-    recorded_at: set[tuple[int, int]],
     deferred: _DeferredRegistrations,
 ) -> list[UsageContext]:
     """UsageContext records for calls that hand a library a local callable.
@@ -2561,16 +2565,20 @@ def _extract_registration_usage_contexts(
     string-literal positional arguments (``args``, for a row that reads a
     path).
 
-    THE GATE IS THE ROWS. A call is recorded only when a shipped ``usage:``
-    row could match its name (``usage_row_names_call``), so this function
-    holds no list of framework calls, and a row added to a framework file is
-    enough for its calls to be recorded.
+    THE GATE IS THE ROWS. An argument is recorded only when a shipped
+    ``usage:`` row could match the call's name AT that argument's position
+    (``usage_row_names_call(name, "python", position)``; a row without a
+    position takes any), so this function holds no list of framework calls,
+    and a row added to a framework file is enough for its calls to be
+    recorded.
 
     NOT RECORDED: a callee that is code of the repository (a local function
     taking a callback is an ordinary call with an ordinary edge; one imported
     from another file of the tree is dropped by ``_settle_registrations``),
-    a call the route extractors already recorded (``recorded_at``, their
-    spans), an argument that is a variable, a parameter, a lambda or a
+    a call the route extractors above own (``DJANGO_URL_FUNCTIONS``,
+    ``FLASK_URL_FUNCTIONS``: their rows read a ``route_path`` only those
+    extractors write, so a context from here would make a route with no
+    path), an argument that is a variable, a parameter, a lambda or a
     library object, and ``self.x`` (a bound method is not resolved here).
     A handler imported from another file is resolved there too.
     """
@@ -2583,7 +2591,7 @@ def _extract_registration_usage_contexts(
         name, callee_parts = _registration_callee_name(node.func)
         if name is None or callee_parts is None:
             continue
-        if (node.lineno, node.col_offset) in recorded_at:
+        if callee_parts[-1] in _ROUTE_EXTRACTOR_CALLS:
             continue
         if not usage_row_names_call(name, "python"):
             continue
@@ -2606,6 +2614,8 @@ def _extract_registration_usage_contexts(
             literal_args.append(argument.value)
         for top_position, top_value in arguments:
             for position, value in _registration_values(top_value, top_position):
+                if not usage_row_names_call(name, "python", position):
+                    continue
                 expr = value.func if isinstance(value, ast.Call) else value
                 handler = _resolve_local_ref(expr, node, symbol_by_name, scopes_at)
                 handler_parts: tuple[str, ...] | None = None
@@ -4572,12 +4582,11 @@ def _analyze_parsed_file(
     )
     usage_contexts.extend(starlette_contexts)
     # Calls that hand a library a local callable, where a usage row names the
-    # call; a call a route extractor above already recorded is left to it.
+    # call at that argument; a call a route extractor above owns is left to it.
     deferred_registrations: _DeferredRegistrations = []
     usage_contexts.extend(_extract_registration_usage_contexts(
         tree, str(py_file), symbol_by_name, _scopes_at,
         frozenset(local for local, _ in _py_import_bindings(tree)),
-        {(c.span.start_line, c.span.start_col) for c in usage_contexts},
         deferred_registrations,
     ))
 
