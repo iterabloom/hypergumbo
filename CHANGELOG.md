@@ -28,6 +28,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`test_input_dirs` in `.hypergumbo.toml`** declares directories only tests read; every command treats them as test code, and `supply_chain_summary.declared_test_inputs` records them.
 - **Sketch lists agent instruction files (`AGENTS.md`, `CLAUDE.md`, …) and never prints their text**; `explain` holds their source back.
 - **Electron preload scripts are `electron_preload` entry points.**
+- **C#, Rust and PHPUnit tests, WGSL shaders and Laravel queued jobs are detected.**
 - **`analysis_runs[].non_id_edge_endpoints`** counts edge endpoints that are not node ids.
 
 ### Changed
