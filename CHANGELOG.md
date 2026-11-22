@@ -102,6 +102,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`coverage-select statement-bar` and `budget-report`** report the selector's record and a test cut's cost.
 - **Test ids are stored under one name** (xdist groups, the timing store).
 - **Tests no longer leak environment variables to later tests**, nor put the clock in a test id.
+- **The coverage summary claims 100% only over a report it read.**
+- **An explicit run names its ungated changed files; `--gate-changed` gates them.**
+- **A directory argument runs that directory and nothing else.**
+- **A new overriding method selects the overridden method's tests**; a base outside the repository stops narrowing.
+- **Run records name unjudged files even when no source changed.**
 
 #### Scheduled runs
 
