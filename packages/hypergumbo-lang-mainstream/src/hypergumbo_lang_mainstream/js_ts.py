@@ -212,9 +212,9 @@ How It Works
      a ``_cb_<method>`` symbol of); metadata ``receiver``, ``method``,
      ``handler_arity``, ``first_string_arg`` and, where the file shows what
      the receiver was bound to, ``receiver_source`` / ``receiver_module``.
-     It is recorded only when a shipped ``usage:`` row names the call
-     (``framework_patterns.usage_row_names_call``; no call name is listed
-     here), when the callee is not resolved to repository code, and never
+     It is recorded only when a shipped ``usage:`` row names the call at
+     that argument's position (``framework_patterns.usage_row_names_call``;
+     no call name is listed here), when the callee is not resolved to repository code, and never
      for the positional handler of an Express-style route call (the route
      extractor's). The rows of express, koa, fastify, hapi, socketio,
      cli-js and electron turn them into middleware, error handlers,
@@ -6879,8 +6879,10 @@ def _extract_edges(
         """Record a registration UsageContext per local function ``call`` hands
         to a LIBRARY call that a ``usage:`` row names (WI-movur).
 
-        The gate is ``usage_row_names_call``: no call name is listed in the
-        analyzer, so a new row is enough to make a call recorded. The callee
+        The gate is ``usage_row_names_call``, asked for the call name and then
+        for each argument's position: no call name is listed in the analyzer,
+        so a new row is enough to make a call recorded, and only the
+        argument a row is about is. The callee
         must not be repository code: a call this pass resolved to a local
         symbol (a ``calls`` edge from this call that is not unresolved) is an
         ordinary call with an ordinary edge. A resolution by the method NAME
@@ -6925,6 +6927,11 @@ def _extract_edges(
             if route_call and arg.type != "object":
                 continue
             for position, handler in _registration_handlers(arg, f"args[{index}]"):
+                # A row names the call AT this argument (a row with no
+                # position takes any): ``yargs.command``'s builder at
+                # args[2] is not recorded when the rows are about args[3].
+                if not usage_row_names_call(name, "javascript", position):
+                    continue
                 metadata: dict[str, Any] = {
                     "receiver": receiver or None,
                     "method": method,
