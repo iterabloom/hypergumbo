@@ -22,3 +22,10 @@
     fields:  # 9282
       statement: "Narrowing drops a test file only when the change cannot alter what that test executes; a new function, method or class in a changed file counts as import-time code of that file unless it is shown inert."  # 9282
       root_cause: "block_hash removes nested defs from the parent digest, so a new def changes no existing block; narrowing_blockers does not refuse on new blocks on the reasoning that new code is covered by a changed test file, which does not hold for a def existing callers reach without naming it (an override of an inherited method, a decorator-registered function, a shadowing def)."  # 9282
+- op: discuss  # f5ae
+  at: '2026-11-22T11:15:42Z'  # f5ae
+  by: agent  # f5ae
+  actor: jgstern_agent  # f5ae
+  clock: 2  # f5ae
+  nonce: f5ae  # f5ae
+  message: "PR #2334 (2026-11-22) changes the BY-STATEMENT selector for this shape, not the file-level narrowing this item was filed against. In statement_select a new method of an existing class now also selects every test that ran the method it overrides (bases followed through the file's imports, new_def_reach.py); a base that is not repository source answers UNRESOLVED_BASE and a new decorated def answers NEW_DECORATED, and in both cases nothing is narrowed. Reproduced first as a failing test at the selector's level (class B(A) gains m; the test paired only with A.m was not selected, narrowing did not refuse), then fixed; mutations red.\nNOT DONE, SO THE STATUS IS NOT CHANGED: this item's own repro, the file-level narrowing (narrowing_blockers), was not re-run. Its DONE WHEN asks for a smart-test-bed scenario override-new-method: the bed runs smart-test in target mode, which sets SELECT_BY_STATEMENT=false, so the bed cannot score the by-statement selector; the scenario is not added (filed in WI-saful)."  # f5ae
