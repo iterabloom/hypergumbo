@@ -1,0 +1,21 @@
+- op: create  # 6247
+  at: '2026-11-22T23:43:40Z'  # 6247
+  by: agent  # 6247
+  actor: jgstern_agent  # 6247
+  clock: 1  # 6247
+  nonce: '6247'  # 6247
+  data:  # 6247
+    kind: work_item  # 6247
+    title: "Every public module and function of an Elixir application is a library_export entry"  # 6247
+    status: todo_soft  # 6247
+    priority: 3  # 6247
+    parent:  # 6247
+    tags:  # 6247
+    - entrypoints  # 6247
+    - elixir  # 6247
+    isbefore: []  # 6247
+    duplicate_of: []  # 6247
+    not_duplicate_of: []  # 6247
+    pr_ref:  # 6247
+    description: "WHAT. library-exports.yaml (lines 164-173 at c8b4180d0) gives every public Elixir module and function the library_export concept, also in an APPLICATION. On plausible that is 3,898 concepts; on the small Phoenix fixture 44 of 50 entries were library_export. It is what filled Elixir entry lists before the WI-movur PR, and it hides unreached code: a public function nothing calls is an \"export\".\n\nSEEN. WI-movur triage, group elixir (finding F1): fixture phoenix 44 library_export + 6 http_route entries; plausible 3,898 concepts. After the PR the capped lists of plausible and livebook hold no library_export any more (workers, LiveViews and plugs outrank them), but the concepts are still stamped.\n\nASK. Decide when an Elixir project is a library (a mix.exs with a `package:` entry and no `mod:` application callback?) and stamp library_export only then, as the JS/TS rule does for packages that declare `exports`. Measure dead-code-maybe before and after on plausible."  # 6247
+    fields: {}  # 6247

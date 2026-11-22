@@ -1,0 +1,21 @@
+- op: create  # 492f
+  at: '2026-11-22T23:43:31Z'  # 492f
+  by: agent  # 492f
+  actor: jgstern_agent  # 492f
+  clock: 1  # 492f
+  nonce: 492f  # 492f
+  data:  # 492f
+    kind: work_item  # 492f
+    title: "Elixir registrations left open: supervisor child specs, Broadway callbacks, live_render in templates, module plugs' init and call"  # 492f
+    status: todo_soft  # 492f
+    priority: 3  # 492f
+    parent:  # 492f
+    tags:  # 492f
+    - frameworks  # 492f
+    - elixir  # 492f
+    isbefore: []  # 492f
+    duplicate_of: []  # 492f
+    not_duplicate_of: []  # 492f
+    pr_ref:  # 492f
+    description: "Left open in Elixir by the WI-movur PR (audit 0029, group elixir):\n1. Supervisor child specs (X20): `{M, arg}` / `M` in the list given to Supervisor.start_link / init or DynamicSupervisor.start_child, and Plug.Cowboy / Bandit `plug: M`, do not reach M.start_link. start_link now has an edge from its own module instead (25 of 33 GenServer start_link on livebook had no caller).\n2. Broadway callbacks (handle_message, handle_batch ...) are not in the callback table: no local copy of Broadway's source was read. The module is an entry.\n3. A module plug without `@behaviour Plug`, and a fallback controller: the registration marks the module; its init / call get no edge.\n4. `live_render` in .heex templates is not read; a LiveView rendered only there has its entry through the adopts row, not through a caller.\n5. `live \"/x\", Mod` with no action reaches only Mod.mount (elixir.py ~1702).\n6. The use_directive edge of `use MyAppWeb, :x` ends on an external symbol, not the in-repository MyAppWeb.\n7. A Plug.Router route inside a Phoenix project is labelled route_framework phoenix; `forward \"/admin\", to: M` drops the prefix (the inner route is GET /).\n8. phoenix_ipc: the channel receive marker has edges FROM handle_in, none into it; a handler nothing in the repository sends to gets no marker.\n9. The `model` concept (Ecto schemas, 62 on plausible, all right in a sample of 10) has no reader for an Elixir module: datamodels keeps kind class only, the orm linker admits Python only.\n10. Surviving rows that cannot fire: phoenix.yaml component x3 and view x3 (`decorator:` on a use line; no entry reads those concepts), `import Ecto.Changeset`; nex.yaml `use Nex`.\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/movur/triage_elixir.md."  # 492f
+    fields: {}  # 492f
