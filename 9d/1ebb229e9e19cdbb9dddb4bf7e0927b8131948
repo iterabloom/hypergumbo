@@ -1,0 +1,34 @@
+Original commit body from d1764cf5ec476457bd1aa1d1affb160a6edfd001:
+
+Builds the owner-approved entry-point-kinds audit (docs/audits/0027-entry-point-kinds.md): WI-jilik, WI-giron, WI-fasij. Schema 0.21.3 -> 0.22.0. No stable id moves.
+
+## What changes for a reader of the output
+
+- **Removed kinds (23):** `cli_main`, the 21 framework-named kinds and `electron_renderer`. Nothing produced them.
+- **New kind `package_executable`:** a manifest's executable (npm bin, Cargo bin, pyproject script). It was `cli_command` with `evidence_type=manifest_declared`.
+- **New kind `hosted_application`:** Flask / FastAPI / Tornado application objects and the Verilog top module. They were `main_function`.
+- **`electron_preload` has a producer:** a file that calls `contextBridge`, or that a `webPreferences.preload` literal names.
+- **Sketch:** dev's headings stay. Middleware and error handlers move from "Other" to "Middleware & Error Handlers"; forms and serializers to "Framework-Reflected Classes"; "Mobile" is renamed "Hosted Applications".
+
+## What changes inside
+
+- One registry (`entrypoint_kinds.py`, ADR-0063) gives each kind one role and one sketch heading. The tie order, the `slice --entry auto` boost, request ingress, the sketch groups, the main/guard dedup and the library-export demotion read it; a drift check fails on a hand-written kind set.
+- 164 `decorator:` rows in 27 framework files named calls or macros and could never match; they are deleted (0 concepts came from them on 23 repositories).
+- The main/guard dedup drops a `main_guard` only beside a `main_function` on a function in the same file. It no longer drops a Flask `app` or a Tornado `Application`.
+
+## Measured (26 trees; evidence in the lab notebook under pr7/)
+
+- `rank_score` and `confidence`: unchanged on every entry.
+- Request ingress and taint seed kinds: identical on 26/26.
+- Ship condition for `hosted_application`: every service with no `main` (12 A/B trees) auto-slices from one of its own routes, same pick and node count in both arms.
+- Entry list changed on 3 trees: kamaraflow (Electron `main.js` duplicates 4 -> 0), mitmproxy (22 web-UI TS exports out, 22 Python exports in), vite (5 `.d.ts` out, 5 node API in).
+- `slice --entry auto` pick changed on kamaraflow and httpx.
+- mitmproxy: its Tornado application moves from position 3 to 49 and `compact` swaps 35 of 102 ids.
+- Sketch headings against dev: 37 entries on 10 trees changed heading (33 left "Other", 4 application objects left "CLI & Scripts"); kinds with a line on dev and none now: 0 on 26/26. A heading with several kinds now shows each kind at least once: 7 of 94 shown groups gain a line (podman and forgejo "HTTP Routes" gain their Go handler).
+
+## Not checked
+
+- The Verilog top module on a real repository; Android entries on real code; real IOApp / ZIOApp / SwiftUI repositories.
+- Readers outside this repository of the removed kind names, the new kind names or the sketch headings.
+
+Touches one governance file (the concept-audit playbook's Examples entry and `.agent/.last_concept_audit.json`), under the owner's standing approval.
