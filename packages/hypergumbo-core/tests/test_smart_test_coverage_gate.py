@@ -442,3 +442,152 @@ def test_run_pytest_trusts_the_exit_code_when_nothing_can_be_counted(
     rc, out = _drive_run_pytest(tmp_path, log_body="(quiet)", stub_rc=0)
     assert rc == 0, out
     assert "ZERO TESTS EXECUTED" not in out, out
+
+
+# ---------------------------------------------------------------------------
+# WI-birog: the COVERAGE block may not claim "(all files at 100%)" about files
+# it did not see.
+#
+# Two log shapes made it do exactly that. (1) A run under
+# `.coveragerc.no-embeddings` (no `show_missing` there until this fix) printed
+# a report with no Missing column, and the gap pattern required one, so
+# `member_names.py 40 1 98%` matched nothing and the block said 100%. (2) A run
+# with no per-file report at all (`--cov-report=`, which the self-selected
+# path passes, or `--no-cov`) left nothing to match, and the block said 100%.
+# The rule: list every row whose percent is below 100 whatever the columns,
+# say so when there is no per-file report, and print the 100% line only over
+# a report that was read and had no gap.
+# ---------------------------------------------------------------------------
+
+_HEADER_NO_MISSING = (
+    "---------- coverage: platform linux, python 3.12.3-final-0 ----------\n"
+    "Name                                                          Stmts   Miss  Cover\n"
+    "---------------------------------------------------------------------------------\n"
+)
+_HEADER_MISSING = (
+    "---------- coverage: platform linux, python 3.12.3-final-0 ----------\n"
+    "Name                                                          Stmts   Miss  Cover   Missing\n"
+    "-------------------------------------------------------------------------------------------\n"
+)
+_GREEN_LINE = "=========== 3 passed in 1.20s ==========="
+
+
+def _summary(out: str) -> str:
+    """The COVERAGE block of a driven run's output."""
+    assert "COVERAGE:" in out, out
+    return out.split("COVERAGE:", 1)[1].split("Full output:", 1)[0]
+
+
+def test_a_gap_is_listed_when_the_report_has_no_missing_column(
+    tmp_path: Path,
+) -> None:
+    """THE filed shape: `.coveragerc.no-embeddings` reports without Missing."""
+    rc, out = _drive_run_pytest(
+        tmp_path,
+        log_body=(
+            _HEADER_NO_MISSING
+            + "packages/hypergumbo-core/src/hypergumbo_core/member_names.py     40      1    98%\n"
+            + "packages/hypergumbo-core/src/hypergumbo_core/ir.py              900      0   100%\n"
+            + "---------------------------------------------------------------------------------\n"
+            + "TOTAL                                                           940      1    99%\n"
+            + _GREEN_LINE
+        ),
+        stub_rc=0,
+        junit_body=_JUNIT_ONE_PASSED,
+    )
+    block = _summary(out)
+    assert "(all files at 100%)" not in block, (
+        "the block claimed 100% over a report holding a file at 98%\n" + out
+    )
+    assert "member_names.py" in block and "98%" in block, out
+    assert "ir.py" not in block, (
+        "a file at 100% was listed as a gap\n" + out
+    )
+    assert rc == 0, out
+
+
+def test_a_gap_is_listed_when_the_report_has_a_missing_column(
+    tmp_path: Path,
+) -> None:
+    """The shape that always worked (pyproject's `show_missing = true`)."""
+    _, out = _drive_run_pytest(
+        tmp_path,
+        log_body=(
+            _HEADER_MISSING
+            + "packages/hypergumbo-core/src/hypergumbo_core/member_names.py     40      1    98%   82\n"
+            + "packages/hypergumbo-core/src/hypergumbo_core/ir.py              900      0   100%\n"
+            + "-------------------------------------------------------------------------------------------\n"
+            + "TOTAL                                                           940      1    99%\n"
+            + _GREEN_LINE
+        ),
+        stub_rc=0,
+        junit_body=_JUNIT_ONE_PASSED,
+    )
+    block = _summary(out)
+    assert "member_names.py" in block and "82" in block, out
+    assert "ir.py" not in block, out
+    assert "(all files at 100%)" not in block, out
+
+
+def test_a_gap_is_listed_when_the_report_has_branch_columns(
+    tmp_path: Path,
+) -> None:
+    """Branch coverage puts two columns between Miss and Cover; a file can miss
+    a branch with no missing line. Its percent is the gap, not the Miss cell."""
+    _, out = _drive_run_pytest(
+        tmp_path,
+        log_body=(
+            "Name                                              Stmts   Miss Branch BrPart  Cover   Missing\n"
+            "---------------------------------------------------------------------------------------------\n"
+            "packages/hypergumbo-core/src/hypergumbo_core/a.py    10      0      4      1    93%   3->5\n"
+            "packages/hypergumbo-core/src/hypergumbo_core/b.py    10      0      2      0   100%\n"
+            "TOTAL                                                20      0      6      1    96%\n"
+            + _GREEN_LINE
+        ),
+        stub_rc=0,
+        junit_body=_JUNIT_ONE_PASSED,
+    )
+    block = _summary(out)
+    assert "a.py" in block and "93%" in block, out
+    assert "b.py" not in block, out
+    assert "(all files at 100%)" not in block, out
+
+
+def test_no_per_file_report_is_said_and_not_called_100_percent(
+    tmp_path: Path,
+) -> None:
+    """`--cov-report=` (the self-selected path) or `--no-cov`: no report at all."""
+    rc, out = _drive_run_pytest(
+        tmp_path,
+        log_body=_GREEN_LINE,
+        stub_rc=0,
+        junit_body=_JUNIT_ONE_PASSED,
+    )
+    block = _summary(out)
+    assert "(all files at 100%)" not in block, (
+        "the block claimed 100% for a run that printed no coverage report\n" + out
+    )
+    assert "no per-file coverage report" in block, out
+    assert rc == 0, out
+
+
+def test_a_report_with_no_gap_still_says_all_files_at_100(
+    tmp_path: Path,
+) -> None:
+    """Positive control: a report read, no row below 100%, says so."""
+    _, out = _drive_run_pytest(
+        tmp_path,
+        log_body=(
+            _HEADER_NO_MISSING
+            + "packages/hypergumbo-core/src/hypergumbo_core/ir.py              900      0   100%\n"
+            + "packages/hypergumbo-core/src/hypergumbo_core/empty.py              0      0   100%\n"
+            + "---------------------------------------------------------------------------------\n"
+            + "TOTAL                                                           900      0   100%\n"
+            + _GREEN_LINE
+        ),
+        stub_rc=0,
+        junit_body=_JUNIT_ONE_PASSED,
+    )
+    block = _summary(out)
+    assert "(all files at 100%)" in block, out
+    assert "no per-file coverage report" not in block, out

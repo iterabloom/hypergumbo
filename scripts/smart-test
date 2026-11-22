@@ -914,17 +914,31 @@ summarize_pytest_output() {
         return 0
     fi
 
-    # Show coverage gaps (files with missing lines)
+    # Show coverage gaps (files below 100%).
+    #
+    # WI-birog: THIS LINE MAY ONLY SPEAK ABOUT A REPORT IT READ. It used to
+    # match a gap row only when the row had a Missing column after the
+    # percent, and printed "(all files at 100%)" whenever nothing matched. Two
+    # shapes matched nothing and were called 100%: a report under
+    # .coveragerc.no-embeddings (no show_missing, so `member_names.py 40 1 98%`
+    # ends at the percent), and a run with no per-file report at all (the
+    # self-selected path passes --cov-report=, and --no-cov prints none).
+    # Now: a coverage row is `packages/<file>.py` followed by two or four
+    # counts and a percent (statements and misses; branch columns add two),
+    # and it is a gap when its percent is below 100 -- whatever the columns,
+    # and whether the miss is a line or a branch. coverage never prints 100%
+    # for a file with anything missing. No header row, no report: said so.
     echo ""
     echo "COVERAGE:"
-    # Match lines like: packages/.../file.py    191      1    99%   78
-    # Where there's a non-zero miss count (column 2 after filename)
-    local coverage_gaps
-    coverage_gaps=$(grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%\s+[0-9]" "$logfile" || true)
+    local coverage_rows coverage_gaps
+    coverage_rows=$(grep -E '^packages/[^ ]+\.py +[0-9]+ +[0-9]+( +[0-9]+ +[0-9]+)? +[0-9]+(\.[0-9]+)?%( |$)' "$logfile" || true)
+    coverage_gaps=$(echo "$coverage_rows" | grep -vE ' 100(\.0+)?%( |$)' | grep . || true)
     if [[ -n "$coverage_gaps" ]]; then
         echo "$coverage_gaps"
-    else
+    elif grep -qE '^Name +Stmts +Miss' "$logfile"; then
         echo "  (all files at 100%)"
+    else
+        echo "  (no per-file coverage report in this run: no claim about any file's coverage is made here)"
     fi
 
     # Show TOTAL line
