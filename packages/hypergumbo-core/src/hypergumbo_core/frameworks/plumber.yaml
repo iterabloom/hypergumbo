@@ -8,61 +8,108 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: plumber
 language: r
 
 patterns:
+  # Position vocabulary (the R analyzer, r_lang.py): every named call gets one
+  # UsageContext with position "caller", naming the function whose body holds
+  # the call, else the file. A row whose subject IS that holder says so with
+  # `position: "^caller$"`. A row whose subject is a function passed as an
+  # argument (a route handler, a filter) carries the handler position other
+  # analyzers use, `args[last]` (js_ts.py, go.py; express.yaml, go-web.yaml),
+  # so no caller context can match it.
+
   # plumb - create plumber API from file
   - concept: application
     usage:
       kind: "^call$"
       name: "^plumb$"
+      position: "^caller$"
 
   # Plumber$new - create plumber instance
   - concept: application
     usage:
       kind: "^call$"
       name: "^Plumber\\$new$"
+      position: "^caller$"
 
-  # pr_run - run the API
+  # plumb_api(package, name) - plumber 1.0: load an API a package ships
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^plumb_api$"
+      position: "^caller$"
+
+  # pr() - plumber 1.0's router constructor (pr() %>% pr_get(...) %>% pr_run()).
+  # A two-letter name: this file loads only where plumber is a detected
+  # dependency (profile.py R_FRAMEWORKS: DESCRIPTION / library(plumber)), so
+  # an R function named pr in a repository without plumber is not matched.
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^pr$"
+      position: "^caller$"
+
+  # Run the API: pr_run(pr), a bare run(), or the R6 method pr$run(), whose
+  # context is named `<receiver>$run`
   - concept: server
     usage:
       kind: "^call$"
-      name: "^(pr_run|run)$"
+      name: "^(pr_run|run|.+\\$run)$"
+      position: "^caller$"
 
-  # pr_get, pr_post, etc. - programmatic route registration
+  # CANNOT FIRE: r_lang.py emits no context for a function passed as an
+  # argument. The subject of a route is its handler, the last argument of
+  # pr_get(pr, path, handler); the function that calls pr_get only registers
+  # it, and stamping it gave a path-less http_route entry on the registrar.
   - concept: route
     usage:
       kind: "^call$"
       name: "^pr_(get|post|put|delete|head|options|patch)$"
+      position: "^args\\[last\\]$"
 
-  # pr_filter - middleware/filter
+  # CANNOT FIRE: r_lang.py emits no context for a function passed as an
+  # argument. The middleware is the filter function, the last argument of
+  # pr_filter(pr, name, expr), not the function that registers it.
   - concept: middleware
     usage:
       kind: "^call$"
       name: "^pr_filter$"
+      position: "^args\\[last\\]$"
 
-  # pr_hook - lifecycle hooks
+  # CANNOT FIRE: r_lang.py emits no context for a function passed as an
+  # argument. The hook is the handler, the last argument of
+  # pr_hook(pr, stage, handler), not the function that registers it.
   - concept: middleware
     usage:
       kind: "^call$"
       name: "^pr_hook$"
+      position: "^args\\[last\\]$"
 
-  # pr_mount - mount sub-routers
+  # pr_mount - the calling function or file mounts a sub-router
   - concept: router
     usage:
       kind: "^call$"
       name: "^pr_mount$"
+      position: "^caller$"
 
-  # pr_static - serve static files
+  # pr_static - the calling function or file serves static files
   - concept: static_handler
     usage:
       kind: "^call$"
       name: "^pr_static$"
+      position: "^caller$"
 
-  # Serializers
+  # CANNOT FIRE: r_lang.py emits no context for a function passed as an
+  # argument. A user-written serializer is the function passed to
+  # register_serializer("name", fn), its second argument. The row named the
+  # built-in factories (serializer_json, serializer_csv, serializer_html,
+  # serializer_xml): calling one is not writing a serializer, so it stamped
+  # a serializer entry on whatever function called it.
   - concept: serializer
     usage:
       kind: "^call$"
-      name: "^(serializer_json|serializer_csv|serializer_html|serializer_xml)$"
+      name: "^register_serializer$"
+      position: "^args\\[1\\]$"

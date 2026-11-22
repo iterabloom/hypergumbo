@@ -181,7 +181,9 @@ def test_shiny_and_plumber_apps_get_a_hosted_application_entry(
 
     file_id = make_file_id("r", "app.R")
     assert concepts(file_id) == {("application", "shiny"), ("ui_component", "shiny")}
-    assert concepts(_fn_id(result, "run_api")) == {("application", "plumber")}
+    # pr$run() is the R6 form of running the API (plumber.yaml's server row).
+    assert concepts(_fn_id(result, "run_api")) == {
+        ("application", "plumber"), ("server", "plumber")}
     assert concepts(_fn_id(result, "helper")) == {("application", "plumber")}
     assert concepts(_fn_id(result, "server")) == set()
     entries = {(ep.symbol_id, ep.kind, ep.label)

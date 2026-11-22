@@ -8,61 +8,83 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: shiny
 language: r
 
 patterns:
+  # Every row's subject is the CALLER: the R analyzer (r_lang.py) gives each
+  # named call one UsageContext with position "caller", naming the function
+  # whose body holds the call, else the file, and these rows say what that
+  # holder does (builds the app, the UI, the server logic, a module).
+
   # shinyApp - main application entry point
   - concept: application
     usage:
       kind: "^call$"
       name: "^shinyApp$"
+      position: "^caller$"
+
+  # shinyAppDir(dir) / shinyAppFile(file) - an application from a directory
+  # holding app.R (or ui.R + server.R) or from one app file
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^(shinyAppDir|shinyAppFile)$"
+      position: "^caller$"
 
   # runApp - run the application
   - concept: server
     usage:
       kind: "^call$"
       name: "^runApp$"
+      position: "^caller$"
 
   # UI functions - fluidPage, navbarPage, etc.
   - concept: ui_component
     usage:
       kind: "^call$"
       name: "^(fluidPage|navbarPage|dashboardPage|fixedPage|fillPage|bootstrapPage)$"
+      position: "^caller$"
 
   # Input widgets
   - concept: input
     usage:
       kind: "^call$"
       name: "^(textInput|numericInput|selectInput|sliderInput|checkboxInput|radioButtons|dateInput|fileInput|actionButton)$"
+      position: "^caller$"
 
   # Output renderers
   - concept: output
     usage:
       kind: "^call$"
       name: "^(renderPlot|renderTable|renderText|renderPrint|renderUI|renderDataTable|renderImage)$"
+      position: "^caller$"
 
   # Output placeholders
   - concept: output
     usage:
       kind: "^call$"
       name: "^(plotOutput|tableOutput|textOutput|verbatimTextOutput|uiOutput|dataTableOutput|imageOutput)$"
+      position: "^caller$"
 
   # Reactive expressions
   - concept: reactive
     usage:
       kind: "^call$"
       name: "^(reactive|reactiveVal|reactiveValues|observe|observeEvent|eventReactive)$"
+      position: "^caller$"
 
   # Modules (Shiny modules pattern)
   - concept: module
     usage:
       kind: "^call$"
       name: "^(moduleServer|NS|callModule)$"
+      position: "^caller$"
 
   # Bookmarking
   - concept: bookmark
     usage:
       kind: "^call$"
       name: "^(enableBookmarking|bookmarkButton|onBookmark|onRestore)$"
+      position: "^caller$"
