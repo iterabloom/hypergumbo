@@ -18,3 +18,19 @@
     pr_ref:  # 0487
     description: "Repro on dev: a C# method with [Fact] or [Test], or a Rust fn with #[test]: the node carries meta.annotations, gets no test_function concept, and the file's only entry is a library_export. Only py, js_ts, java, kotlin, scala and groovy write meta.decorators. Rows (sweep/wrong_field_rows.txt): test-frameworks.yaml x9 (test, bench, Test, Fact, Theory, TestMethod), language-conventions.yaml shader_entrypoint x3 (vertex, fragment, compute), laravel.yaml 'implements ShouldQueue' x2, plug.yaml 'conn'. The fix is the matcher key; it changes detection, so it needs an A/B on repos in those languages.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # 0487
     fields: {}  # 0487
+- op: update  # 8828
+  at: '2026-11-22T09:35:29Z'  # 8828
+  by: agent  # 8828
+  actor: jgstern_agent  # 8828
+  clock: 2  # 8828
+  nonce: '8828'  # 8828
+  set:  # 8828
+    status: done  # 8828
+    pr_ref: 'PR #2329'  # 8828
+- op: discuss  # eba6
+  at: '2026-11-22T09:35:30Z'  # eba6
+  by: agent  # eba6
+  actor: jgstern_agent  # eba6
+  clock: 3  # eba6
+  nonce: eba6  # eba6
+  message: "DONE in PR #2329 for 11 of the 15 rows; the other 4 cannot be fixed by the key and are filed as their own item. What each analyzer emits was read off a run of a fixture (one file per language), not off the item.\nRE-KEYED: Rust x2 and C# x4 to annotation: (rust.py and csharp.py write meta.annotations; the Rust rows also take a runtime's path, tokio::test). WGSL x3 to meta_match on meta.entry_point. Laravel x2 to base_class ShouldQueue plus the directory (Jobs/ for task, Listeners/ for event_handler): keyed on the interface alone both rows would have stamped both concepts on every queued class.\nCANNOT BE FIXED BY THE KEY (each marked CANNOT FIRE in its YAML, pinned by a test as not matching): PHP @test docblock and #[Test] attribute (php.py records neither), F# attributes, D @(\"test\"), Plug's conn.\nBEHAVIOURAL EVIDENCE (dev a5b3cca93 vs the branch, 2026-11-22): the item's own repro, a C# [Fact] method and a Rust #[test] fn, on a fixture: both carry test_function now, none did on dev. Real code: bincode +80 test_function; microservices-demo +3 (C# [Fact]); koel +9 event_handler (queued listeners) and +1 task (queued job). No stable id moved on any of 19 trees. The row tests were red before the rows changed.\nFOUND BESIDE IT, SAME CAUSE (a row keyed on a shape the analyzer does not emit): 18 rows anchor a method name at its start, and the Python, Ruby, Swift, Scala, Groovy and PHP analyzers name a method Class.method, so a Python test method in a class is not a test_function and Falcon responders are not route handlers. Only PHP's row was repaired here (it reads the last segment), and then restricted to *Test.php files after it stamped 5 production testSetup methods on koel. The other 17 are filed as their own item: they change test and route detection in five languages.\nEvidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md.\n\nFILED FROM THIS: WI-rasok (the 17 method-name rows), WI-somog (the four rows the key cannot fix)."  # eba6

@@ -18,3 +18,19 @@
     pr_ref:  # 26c1
     description: "SwiftUI is a system framework: apps import it and declare no package dependency, and 'import SwiftUI' does not trigger the YAML. So the App, app-delegate and ParsableCommand rows (swiftui.yaml:20, :24, :28, :52, :54 at 89e5af4c1) fire only on a fixture that names the dependency. The audit measured 0 of 4,756 nodes on swift-argument-parser. Repro: fixtures/rows/swift (no entry) vs fixtures/rows/swiftui (entries). Also: ParsableCommand belongs to swift-argument-parser, not SwiftUI; its rows sit in the wrong file.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/fasij/RESULTS.md. Found while building the entry-kind PR (2026-11-21)."  # 26c1
     fields: {}  # 26c1
+- op: update  # c215
+  at: '2026-11-22T09:35:30Z'  # c215
+  by: agent  # c215
+  actor: jgstern_agent  # c215
+  clock: 2  # c215
+  nonce: c215  # c215
+  set:  # c215
+    status: done  # c215
+    pr_ref: 'PR #2329'  # c215
+- op: discuss  # cccb
+  at: '2026-11-22T09:35:30Z'  # cccb
+  by: agent  # cccb
+  actor: jgstern_agent  # cccb
+  clock: 3  # cccb
+  nonce: cccb  # cccb
+  message: "DONE in PR #2329. swiftui.yaml now loads where production Swift code imports SwiftUI, UIKit or AppKit (profile.py, a separate set _IMPORT_IS_THE_EVIDENCE_FRAMEWORKS: frameworks whose import is the only evidence a repository can carry; the promotion keeps its production-importer and Swift-import gates). The ParsableCommand rows moved to swift-argument-parser.yaml (detected from the Package.swift dependency or a production import of ArgumentParser). The XCTestCase row moved to test-frameworks.yaml: XCTest is only imported by tests, so no framework file keyed on it would load.\nBEHAVIOURAL EVIDENCE (dev a5b3cca93 vs the branch): swift-composable-architecture/Examples (100 files import SwiftUI): frameworks [] to [swiftui]; 11 entrypoint concepts (8 App conformers, 3 app delegates) and 11 main_function entries, from 0. swift-argument-parser, the repo the audit measured at 0 of 4,756 nodes: frameworks [] to [swift-argument-parser]; 240 command concepts and 20 cli_command entries, from 0. No node, edge or id change on either. 5 of 5 mutations red.\nWRONG IN THE RESULT: 1 of the 240 is the protocol AsyncParsableCommand itself (it refines ParsableCommand). Filed.\nNOT DONE: Swift's test* method rows match nothing (part of the 18-row item filed from WI-lunal). An Xcode project's own package declarations are still not read.\nEvidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md.\n\nFILED FROM THIS: WI-jilid (the protocol stamped a command); the Swift test rows are in WI-rasok."  # cccb
