@@ -36,6 +36,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Tied entry points list manifest executables, then program starts, then the rest** (ADR-0039 ruling 3), not by confidence.
 - **A `main`'s confidence is measured per language**, from 0.50 (Erlang) to 0.95 (Go, Java, Rust).
 - **`compact` seeds entry points in the entry list's order**, not by confidence.
+- **`dead-code-maybe` 0.4.0 withholds callables of languages lacking call edges.**
 - **Sketch headings**: "Middleware & Error Handlers" and "Framework-Reflected Classes" are new; "Mobile" is now "Hosted Applications".
 - **An unknown config setting's refusal says a newer hypergumbo may be needed.**
 - **`explain` first states that quoted repository text is data**; the schema calls docstring and README fields untrusted.

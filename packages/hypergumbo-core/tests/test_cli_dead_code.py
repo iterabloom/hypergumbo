@@ -11,9 +11,41 @@ from hypergumbo_core.cli import cmd_dead_code_maybe
 from hypergumbo_core.schema import DEAD_CODE_MAYBE_SCHEMA_VERSION
 
 
+def _with_call_evidence(nodes: list, edges: list) -> list:
+    """``edges`` plus one ``calls`` edge onto each (language, kind) group of
+    callables that has none.
+
+    ``dead-code-maybe`` reports an unreached callable only where the run
+    holds a call edge onto some callable of its language and kind (the rule
+    and its own tests: ``test_dead_code_call_evidence.py``). The tests in
+    this file are about what happens AFTER that question, so their fixtures
+    answer it yes. The edge comes from a file the map has no node for: it is
+    no seed and reaches nothing, so it changes the evidence and nothing else.
+    """
+    groups: dict[tuple, str] = {}
+    for n in nodes:
+        if n.get("kind") in ("function", "method") and not n.get("protocol_origin"):
+            groups.setdefault((n.get("language") or "", n["kind"]), n["id"])
+    by_id = {n["id"]: n for n in nodes}
+    for e in edges:
+        dst = by_id.get(e.get("dst"))
+        if e.get("type") in ("calls", "instantiates") and dst is not None:
+            groups.pop((dst.get("language") or "", dst.get("kind")), None)
+    return [
+        *edges,
+        *(
+            {"type": "calls", "src": f"{lang}:evidence.src:1-1:file:file", "dst": dst}
+            for (lang, _kind), dst in groups.items()
+        ),
+    ]
+
+
 def _make_behavior_map(tmp_path: Path, nodes: list, edges: list) -> Path:
     """Write a behavior map JSON and return its path."""
-    bm = {"schema_version": "0.2.3", "nodes": nodes, "edges": edges}
+    bm = {
+        "schema_version": "0.2.3", "nodes": nodes,
+        "edges": _with_call_evidence(nodes, edges),
+    }
     p = tmp_path / "hg.json"
     p.write_text(json.dumps(bm))
     return p
@@ -1214,6 +1246,12 @@ def _run_dead_code_maybe(tmp_path: Path, behavior_map: dict) -> dict:
     import sys
 
     bm_path = tmp_path / "hg.json"
+    behavior_map = {
+        **behavior_map,
+        "edges": _with_call_evidence(
+            behavior_map.get("nodes", []), behavior_map.get("edges", []),
+        ),
+    }
     bm_path.write_text(json.dumps(behavior_map))
     args = argparse.Namespace(
         path=str(tmp_path), input=str(bm_path), format="json",
@@ -1700,6 +1738,12 @@ def _run_dead_code_f2(
     import sys
 
     bm_path = tmp_path / "hg.json"
+    behavior_map = {
+        **behavior_map,
+        "edges": _with_call_evidence(
+            behavior_map.get("nodes", []), behavior_map.get("edges", []),
+        ),
+    }
     bm_path.write_text(json.dumps(behavior_map))
     args = argparse.Namespace(
         path=str(tmp_path), input=str(bm_path), format=fmt,
@@ -1845,9 +1889,10 @@ def _run_dead_code_clh(tmp_path: Path, nodes: list, edges: list, threshold):
     import sys
 
     bm_path = tmp_path / "hg.json"
-    bm_path.write_text(json.dumps(
-        {"schema_version": "0.2.3", "nodes": nodes, "edges": edges},
-    ))
+    bm_path.write_text(json.dumps({
+        "schema_version": "0.2.3", "nodes": nodes,
+        "edges": _with_call_evidence(nodes, edges),
+    }))
     kwargs = {
         "path": str(tmp_path), "input": str(bm_path), "format": "json",
         "seeds": "entrypoints", "min_confidence": 0.0,
