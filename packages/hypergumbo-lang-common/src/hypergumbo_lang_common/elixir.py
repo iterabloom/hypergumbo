@@ -124,6 +124,19 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
   emits nothing here (the INV-sinah rule), and so does a ``@callback`` there;
   this holds for the callback table too, so the web module is never rooted
   as a LiveView by its own ``def live_view`` quote.
+- Registrations (WI-movur, ``_extract_registrations``). ``plug :auth``,
+  ``plug MyApp.Auth``, ``action_fallback M``, ``socket "/s", M``, ``channel
+  "t", M``, ``live_render(conn, M)``, ``import_types M``, ``forward "/x", to:
+  M`` hand the framework code of the repository that nothing in the
+  repository calls. A bare call whose name is no function of its module and
+  which a shipped ``usage:`` row names (``usage_row_names_call``: the names
+  live in the YAML files, not here), with an argument that is an alias of a
+  module of the repository or an atom naming a function of the enclosing
+  module, gives a ``references`` edge (evidence
+  ``callback_argument_reference``) from the calling scope to that code and a
+  ``UsageContext`` (``args[i]`` / ``kwargs[key]``, ``symbol_ref`` the code)
+  for the row to stamp its concept on. Route macros of a router module stay
+  the route extractor's; a template inside ``quote`` records nothing.
 - Protocols (WI-forof). A protocol IS a behaviour -- ``defprotocol`` generates
   a ``@callback`` per function head and ``defimpl`` sets ``@behaviour P`` on
   its module -- so it is modelled with the behaviour machinery above:
@@ -211,6 +224,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Iterator, NamedTuple, Optional
 
 from hypergumbo_core import kept_work
 from hypergumbo_core.axis_meta_keys import write_meta_key
+from hypergumbo_core.framework_patterns import usage_row_names_call
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
@@ -1803,6 +1817,177 @@ def _extract_phoenix_routes(
             ))
 
     return contexts, route_symbols
+
+
+def _registration_arguments(
+    args: "tree_sitter.Node", source: bytes,
+) -> Iterator[tuple[str, "tree_sitter.Node"]]:
+    """``(position, node)`` for each argument a registration can name code in.
+
+    Positional arguments are ``args[i]``, counted over the written arguments
+    (parentheses, commas and comments are not arguments); each pair of a
+    trailing keyword list is ``kwargs[<key>]``. A guard on the argument
+    (``plug :load when action in [:index]``) is read through to what it
+    guards.
+    """
+    index = 0
+    for child in args.named_children:
+        if child.type == "comment":
+            continue
+        if child.type == "keywords":
+            for pair in child.named_children:
+                key_node = pair.named_children[0] if pair.named_children else None
+                key = _keyword_key(key_node, source) if key_node is not None else None
+                if key is not None and len(pair.named_children) > 1:
+                    yield f"kwargs[{key}]", pair.named_children[-1]
+            continue
+        target = child
+        if (child.type == "binary_operator" and child.named_children
+                and find_child_by_type(child, "when") is not None):
+            target = child.named_children[0]
+        yield f"args[{index}]", target
+        index += 1
+
+
+def _registered_code(
+    arg: "tree_sitter.Node",
+    source: bytes,
+    module: str,
+    aliases: dict[str, str],
+    global_symbols: dict[str, Any],
+    global_symbols_multi: dict[str, list[Symbol]],
+) -> Optional[Symbol]:
+    """The code of the repository ``arg`` names, else None.
+
+    An alias names a MODULE of the repository (expanded against the aliases
+    visible at the call); an atom names a FUNCTION of the enclosing module
+    (``plug :authenticate`` -> ``<module>.authenticate``, the first in source
+    order when several arities exist). Anything else -- a library module, an
+    atom no function of the module bears (``plug :match``, imported or
+    injected), a string, a call -- names nothing.
+    """
+    if arg.type == "alias":
+        name = _expand_alias(node_text(arg, source), aliases)
+        found = global_symbols.get(name)
+        return found if isinstance(found, Symbol) and found.kind == "module" else None
+    atom = _atom_field_name(arg, source)
+    if atom is None:  # pragma: no cover - the caller passes an alias or an atom
+        return None
+    functions = [
+        sym for sym in global_symbols_multi.get(f"{module}.{atom}", [])
+        if sym.kind == "function"
+    ]
+    if not functions:
+        return None
+    return min(
+        functions,
+        key=lambda sym: (sym.path, sym.span.start_line if sym.span else 0),
+    )
+
+
+def _extract_registrations(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    file_symbols: list[Symbol],
+    global_symbols: dict[str, Any],
+    run_id: str,
+    alias_hints: dict[str, str],
+) -> tuple[list[Edge], list[UsageContext]]:
+    """Calls that hand the framework code of the repository (WI-movur).
+
+    ``plug :authenticate``, ``plug MyApp.Auth``, ``action_fallback M``,
+    ``socket "/s", M``, ``channel "t", M``, ``live_render(conn, M)``,
+    ``import_types M``, ``forward "/x", to: M``: the framework calls what
+    the argument names, and nothing in the repository does, so that code had
+    no caller and no entry. Recorded when ALL hold:
+
+    1. the call is bare (no receiver) and its name is not a function of the
+       enclosing module (``plug(conn, :x)`` calling the module's own ``plug``
+       is ordinary code), outside any ``quote`` (a template, INV-sinah);
+    2. a shipped ``usage:`` row names the call
+       (``framework_patterns.usage_row_names_call``): the macro names live in
+       the framework YAML files, not here, so a new row needs no change in
+       this module;
+    3. it is not a route macro of a router module (``get "/", PageController,
+       :index``): those are ``_extract_phoenix_routes``' routes;
+    4. an argument names code of the repository (``_registered_code``).
+
+    Each such argument gives a ``references`` edge (evidence
+    ``callback_argument_reference``, as the JavaScript analyzer marks a
+    callback handed to a library) from the enclosing function, else the
+    enclosing module, to the code, and a ``UsageContext`` (kind ``call``, the
+    name as written, ``args[i]`` / ``kwargs[key]``, ``symbol_ref`` the code)
+    that the row then matches to stamp its concept on the code.
+    """
+    edges: list[Edge] = []
+    contexts: list[UsageContext] = []
+    global_symbols_multi: dict[str, list[Symbol]] = global_symbols.get("__multi__", {})
+    route_calls = {
+        (call.start_byte, call.end_byte)
+        for call, _scope, router in _iter_router_calls(tree.root_node, source, alias_hints)
+        if node_text(find_child_by_type(call, "identifier") or call, source)
+        in _ROUTER_MACROS[router]
+    }
+    symbols_at: Optional[SymbolsAt] = None
+    file_anchor = file_anchor_symbol("elixir", file_path, PASS_ID, run_id)
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+        target = find_child_by_type(node, "identifier")
+        args = find_child_by_type(node, "arguments")
+        if target is None or args is None:
+            continue
+        name = node_text(target, source)
+        if (name in _DEF_KEYWORDS or name in _MODULE_DEFINERS
+                or not usage_row_names_call(name, "elixir")
+                or (node.start_byte, node.end_byte) in route_calls
+                or _has_quote_ancestor(node, source)):
+            continue
+        module = _enclosing_module(node, source)
+        if not module or global_symbols_multi.get(f"{module}.{name}"):
+            continue
+        aliases: Optional[dict[str, str]] = None
+        for position, arg in _registration_arguments(args, source):
+            if arg.type not in ("alias", "atom", "quoted_atom"):
+                continue
+            if aliases is None:
+                aliases = _scope_aliases(node, source)
+            code = _registered_code(
+                arg, source, module, aliases, global_symbols, global_symbols_multi,
+            )
+            if code is None:
+                continue
+            if symbols_at is None:
+                symbols_at = {
+                    **_clause_positions(tree, source, file_symbols),
+                    **index_symbols_at(file_symbols, file_path),
+                }
+            caller = _get_enclosing_function(
+                node, source, symbols_at,
+            ) or _caller_outside_def(node, source, symbols_at, file_anchor)
+            if caller is None or caller.id == code.id:  # pragma: no cover - a module body always anchors
+                continue
+            line = node.start_point[0] + 1
+            edges.append(Edge.create(
+                src=caller.id,
+                dst=code.id,
+                edge_type="references",
+                line=line,
+                evidence_type="callback_argument_reference",
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            ))
+            contexts.append(UsageContext.create(
+                kind="call",
+                context_name=name,
+                position=position,
+                path=file_path,
+                span=_span_of(node),
+                symbol_ref=code.id,
+                metadata={"registered": code.name},
+            ))
+    return edges, contexts
 
 
 def _first_alias_argument(call: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
@@ -3515,6 +3700,14 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
             tree, source, self.file_symbols(local_symbols), global_symbols,
             global_multi or {}, run.execution_id,
         ))
+        # Registrations: calls that hand the framework code of the repository
+        # (WI-movur). Their usage contexts join the result in post_process.
+        registration_edges, registration_contexts = _extract_registrations(
+            tree, source, rel_path, self.file_symbols(local_symbols),
+            global_symbols, run.execution_id, import_aliases,
+        )
+        edges.extend(registration_edges)
+        self._pending_registration_contexts.extend(registration_contexts)
 
         return edges
 
@@ -3546,8 +3739,9 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         usage_contexts: list[UsageContext],
         run: "AnalysisRun",
     ) -> tuple[list[Symbol], list[Edge], list[UsageContext]]:
-        """Add stashed route symbols to the final result."""
+        """Add stashed route symbols and registration contexts to the result."""
         symbols.extend(self._pending_route_symbols)
+        usage_contexts.extend(self._pending_registration_contexts)
         return symbols, edges, usage_contexts
 
     def analyze(
@@ -3557,6 +3751,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
     ) -> AnalysisResult:
         """Override to initialize pending route symbols before analysis."""
         self._pending_route_symbols: list[Symbol] = []
+        self._pending_registration_contexts: list[UsageContext] = []
         self._using_index = {}
         self._protocols = set()
         self._current_run_id = ""

@@ -61,6 +61,41 @@ patterns:
       path: "metadata.route_path"
       method: "literal:LIVE"
 
+  # Registrations (WI-movur): a call that hands the framework code of the
+  # repository. The Elixir analyzer records one only when the argument is an
+  # alias naming a module of the repository or an atom naming a function of
+  # the enclosing module, and only for call names a row here names.
+
+  # `action_fallback MyAppWeb.FallbackController`: Phoenix calls its call/2
+  # with what an action returned
+  - concept: controller
+    usage:
+      kind: "^call$"
+      name: "^action_fallback$"
+      position: "^args\\[0\\]$"
+
+  # `socket "/socket", MyAppWeb.UserSocket` in the endpoint
+  - concept: websocket_handler
+    usage:
+      kind: "^call$"
+      name: "^socket$"
+      position: "^args\\[1\\]$"
+
+  # `channel "room:*", MyAppWeb.RoomChannel` in a socket module
+  - concept: websocket_handler
+    usage:
+      kind: "^call$"
+      name: "^channel$"
+      position: "^args\\[1\\]$"
+
+  # `live_render(conn, MyAppWeb.ClockLive, ...)`: a LiveView no `live` route
+  # names, rendered from a controller or another LiveView
+  - concept: liveview
+    usage:
+      kind: "^call$"
+      name: "^live_render$"
+      position: "^args\\[1\\]$"
+
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Match route symbols emitted by the Elixir analyzer.
   # ADR-0027 Phase 3 fold (audit-findings 0013): kind="function" + meta.framework_role="route".

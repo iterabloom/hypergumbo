@@ -32,6 +32,28 @@ patterns:
       path: "metadata.route_path"
       method: "metadata.http_method"
 
+  # Registrations (WI-movur): a call that hands the framework code of the
+  # repository. The Elixir analyzer records one only when the argument is an
+  # alias naming a module of the repository or an atom naming a function of
+  # the enclosing module, and only for call names a row here names.
+
+  # Function plug `plug :authenticate` (a function of the module) or module
+  # plug `plug MyApp.Auth` (a module of the repository); `plug Plug.Logger`
+  # and `plug :match` name no code of the repository and are not recorded.
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^plug$"
+      position: "^args\\[0\\]$"
+
+  # A plug mounted under a path: `forward "/admin", to: MyApp.AdminRouter`
+  # (Plug.Router) / `forward "/admin", MyApp.AdminPlug` (Phoenix.Router)
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^forward$"
+      position: "^(args\\[1\\]|kwargs\\[to\\])$"
+
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
 
   # Plug.Router module - `use Plug.Router`
