@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Absinthe GraphQL schemas (WI-movur)
+#
+# ``use Absinthe.Schema`` makes the module a GraphQL schema that Absinthe.Plug
+# executes; ``use Absinthe.Schema.Notation`` makes it a module of types the
+# schema imports. Their resolvers (``resolve &Resolvers.list/3``) are calls
+# from the module, so the module being an entry reaches them. The rows read
+# ``meta["adopted_modules"]`` (``adopts:``), written by the Elixir analyzer.
+# (The rows used to live in phoenix.yaml, keyed on a ``decorator:`` nothing
+# writes.)
+
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-11-22
+id: absinthe
+language: elixir
+
+patterns:
+  # Absinthe schema - the module Absinthe.Plug executes queries against
+  - concept: graphql_schema
+    adopts: "^Absinthe\\.Schema$"
+
+  # Absinthe type module - types and resolvers the schema imports
+  - concept: graphql_resolver
+    adopts: "^Absinthe\\.Schema\\.Notation$"

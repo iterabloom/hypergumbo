@@ -14,7 +14,7 @@ How It Works
 
 Also provides:
 
-- Eleven language-convention pattern files (``_CONVENTION_PATTERN_IDS``:
+- Twelve language-convention pattern files (``_CONVENTION_PATTERN_IDS``:
   main-functions, test-frameworks, library-exports, naming-conventions, ...)
   that ``enrich_symbols`` applies on every repo regardless of framework
   detection.
@@ -1651,6 +1651,7 @@ _CONVENTION_PATTERN_IDS: tuple[str, ...] = (
     "go-net-http",
     "node-http",
     "python-http-server",
+    "otp",
 )
 
 

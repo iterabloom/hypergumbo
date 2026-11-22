@@ -1128,6 +1128,16 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Base-class names on class / interface Symbols; the "
                 "class of a Haskell ``instance`` Symbol. framework_patterns "
                 "reads it (Django Model, SQLAlchemy Base, Yesod, etc.)."),
+    MetaKeySpec("adopted_modules", AXIS_SYMBOL_META,
+                "elixir module Symbols: the modules the module's ``use`` "
+                "directives run (through ``__using__`` quotes and the Phoenix "
+                "web-module dispatcher) and the behaviours they or its "
+                "``@behaviour`` directives declare. framework_patterns' "
+                "``adopts:`` key reads it (WI-movur).",
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note="Written once per module by the elixir "
+                "analyzer's behaviour pass, after every directive of the "
+                "module's file is read."),
     MetaKeySpec("base_class_imports", AXIS_SYMBOL_META,
                 "Class Symbols (php, groovy, scala, csharp alias usings): for "
                 "each BARE base in ``base_classes`` bound by a single-type "

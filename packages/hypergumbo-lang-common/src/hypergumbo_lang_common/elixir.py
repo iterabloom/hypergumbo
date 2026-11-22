@@ -109,6 +109,17 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
     for languages with methods. That linker cannot build it here: it indexes
     ``kind == "method"`` only, and an Elixir function is not a method.
 
+  * the same resolution is RECORDED on the module as
+    ``meta["adopted_modules"]`` (WI-movur): every module its ``use``
+    directives run and every behaviour they or its ``@behaviour`` directives
+    declare, in source order, once each (``use MyAppWeb, :live_view`` ->
+    ``["MyAppWeb", "Phoenix.LiveView"]``). It is what a framework row's
+    ``adopts:`` key reads: ``use Oban.Worker`` makes a module a task, ``use
+    Phoenix.Channel`` a websocket handler. The edges alone left the module
+    with no fact a row could match, so the module the framework starts had
+    no entry and its callbacks hung off it unreached. A module adopting
+    nothing has no key.
+
   A directive inside ``quote`` belongs to the module that runs ``use`` and
   emits nothing here (the INV-sinah rule), and so does a ``@callback`` there;
   this holds for the callback table too, so the web module is never rooted
@@ -199,6 +210,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, NamedTuple, Optional
 
 from hypergumbo_core import kept_work
+from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
@@ -240,11 +252,17 @@ PHOENIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "option
 BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
     "GenServer": [
         "init", "handle_call", "handle_cast", "handle_info",
-        "terminate", "code_change", "handle_continue",
+        "terminate", "code_change", "handle_continue", "start_link",
     ],
-    "Supervisor": ["init"],
-    "Agent": ["init"],
-    "Task": ["run"],
+    # ``start_link/1``: what the ``child_spec/1`` each of these ``use``s
+    # injects calls when a supervisor starts the module. Agent has no other
+    # callback (its ``__using__`` defines ``child_spec`` only). Task's ``run``
+    # is not a callback either: it is the function the Task docs pass as
+    # ``Task.start_link(__MODULE__, :run, [arg])``, an MFA nothing resolves
+    # yet, so it is kept by that documented name.
+    "Supervisor": ["init", "start_link"],
+    "Agent": ["start_link"],
+    "Task": ["start_link", "run"],
     "Phoenix.LiveView": [
         "mount", "handle_event", "render", "handle_params",
         "handle_async", "handle_info", "terminate",
@@ -255,6 +273,18 @@ BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
     "Plug.Builder": ["init", "call"],
     "Plug.Router": ["init", "call"],
     "WebSock": ["init", "handle_in", "handle_control", "terminate"],
+    # Read from the library sources (deps of a local Phoenix app):
+    # phoenix lib/phoenix/channel.ex (@callback join ... terminate),
+    # lib/phoenix/socket.ex (connect, id), oban lib/oban/worker.ex (perform,
+    # backoff, timeout), plug lib/plug/error_handler.ex (handle_errors).
+    # Broadway is absent: no copy of its source was read.
+    "Phoenix.Channel": [
+        "join", "handle_in", "handle_out", "handle_info", "handle_call",
+        "handle_cast", "terminate", "code_change",
+    ],
+    "Phoenix.Socket": ["connect", "id"],
+    "Oban.Worker": ["perform", "backoff", "timeout"],
+    "Plug.ErrorHandler": ["handle_errors"],
     "WebSockex": [
         "handle_connect", "handle_frame", "handle_cast",
         "handle_info", "handle_ping", "handle_pong",
@@ -277,6 +307,14 @@ USE_IMPLIED_BEHAVIOURS: dict[str, str] = {
     "Plug.Builder": "Plug",
     "Plug.Router": "Plug",
     "WebSockex": "WebSockex",
+    # Each ``__using__`` quote sets ``@behaviour`` on the using module:
+    # phoenix channel.ex (``@behaviour unquote(__MODULE__)``), socket.ex
+    # (``@behaviour Phoenix.Socket``), oban worker.ex (``@behaviour Worker``),
+    # plug error_handler.ex (``@behaviour Plug.ErrorHandler``).
+    "Phoenix.Channel": "Phoenix.Channel",
+    "Phoenix.Socket": "Phoenix.Socket",
+    "Oban.Worker": "Oban.Worker",
+    "Plug.ErrorHandler": "Plug.ErrorHandler",
     # ``use Ecto.Repo`` / ``use HTTPoison.Base``: each ``__using__`` quote opens
     # with ``@behaviour <itself>`` (ecto lib/ecto/repo.ex, httpoison
     # lib/httpoison/base.ex) and injects the library's functions into the using
@@ -285,6 +323,13 @@ USE_IMPLIED_BEHAVIOURS: dict[str, str] = {
     "Ecto.Repo": "Ecto.Repo",
     "HTTPoison.Base": "HTTPoison.Base",
 }
+
+#: ``Symbol.meta`` key, on a module, of what it adopts without inheriting:
+#: every module its ``use`` directives run (``_adopted``: through in-repo
+#: ``__using__`` quotes and the web-module dispatcher) and every behaviour they
+#: or its ``@behaviour`` directives declare, in source order, once each. The
+#: framework rows' ``adopts:`` key reads it (``use Oban.Worker`` -> a task).
+ADOPTED_MODULES_KEY = "adopted_modules"
 
 #: Module attributes that declare a behaviour's required member, and the
 #: symbol kind of the member each one requires (``def`` vs ``defmacro``).
@@ -2108,6 +2153,7 @@ def _extract_behaviour_callbacks(
     edges: list[Edge] = []
     seen_behaviours: set[tuple[str, str]] = set()
     seen_callbacks: set[tuple[str, str]] = set()
+    adopted_by_module: dict[str, tuple[Symbol, list[str]]] = {}
     for directive in _behaviour_directives(tree, source):
         node = directive.node
         if (directive.module == _UNQUOTED_MODULE
@@ -2124,6 +2170,11 @@ def _extract_behaviour_callbacks(
         if module_sym is None:  # pragma: no cover - a resolvable module always has a symbol
             continue
         line = node.start_point[0] + 1
+        adopted = adopted_by_module.setdefault(module_sym.id, (module_sym, []))[1]
+        adopted.extend(
+            name for name in modules + behaviours
+            if name != module_name and name not in adopted
+        )
         for framework in dict.fromkeys(modules + behaviours):
             # An Erlang behaviour (``@behaviour :gen_statem``) roots OTP's
             # callbacks from the Erlang analyzer's table; the two tables cannot
@@ -2146,6 +2197,12 @@ def _extract_behaviour_callbacks(
                 global_symbols, callbacks_by_behaviour, global_symbols_multi,
                 run_id,
             ))
+    for module_sym, adopted in adopted_by_module.values():
+        if not adopted:  # only ``@behaviour __MODULE__``-style self-adoption
+            continue
+        if module_sym.meta is None:
+            module_sym.meta = {}
+        write_meta_key(module_sym.meta, ADOPTED_MODULES_KEY, adopted)
     return edges
 
 

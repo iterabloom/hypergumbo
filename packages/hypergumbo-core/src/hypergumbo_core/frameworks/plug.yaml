@@ -6,11 +6,17 @@
 
 # Rows that keyed a call on `decorator:` were deleted (audit 0027): the matcher
 # reads decorator / annotation syntax only, so a call never matched them.
+#
+# `adopts:` rows (WI-movur) read `meta["adopted_modules"]`, which the Elixir
+# analyzer writes on each module: the modules its `use` directives run and the
+# behaviours they declare. `use Plug.SSL` (a deleted row) names no construct:
+# Plug.SSL has no `__using__`; `plug Plug.SSL`, `plug Plug.Session` and
+# `plug Plug.CSRFProtection` register library plugs, no code of the repository.
 
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: plug
 language: elixir
 
@@ -28,6 +34,19 @@ patterns:
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
 
+  # Plug.Router module - `use Plug.Router`
+  - concept: controller
+    adopts: "^Plug\\.Router$"
+
+  # Plug.Builder module - `use Plug.Builder`: a plug pipeline of its own
+  - concept: middleware
+    adopts: "^Plug\\.Builder$"
+
+  # Plug.ErrorHandler - `use Plug.ErrorHandler`: Plug calls its
+  # handle_errors/2 when the wrapped call/2 raises
+  - concept: error_handler
+    adopts: "^Plug\\.ErrorHandler$"
+
   # Plug.Conn manipulation
   # CANNOT FIRE: nothing writes a decorator named `conn`. A module plug is a
   # module that defines init/1 and call/2, a function plug a function of
@@ -37,7 +56,7 @@ patterns:
 
   # Ecto schemas (commonly used with Plug)
   - concept: model
-    decorator: "^use Ecto\\.Schema$"
+    adopts: "^Ecto\\.Schema$"
 
   # Ecto changesets
   - concept: model

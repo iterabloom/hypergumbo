@@ -1082,6 +1082,9 @@
             "abstract": {
               "description": "True on abstract class / method Symbols. Distinguishes interface-like classes from concrete classes in languages with explicit ``abstract`` keywords."
             },
+            "adopted_modules": {
+              "description": "elixir module Symbols: the modules the module's ``use`` directives run (through ``__using__`` quotes and the Phoenix web-module dispatcher) and the behaviours they or its ``@behaviour`` directives declare. framework_patterns' ``adopts:`` key reads it (WI-movur)."
+            },
             "annotations": {
               "description": "Java / Kotlin / Python decorator-equivalent annotations on a Symbol. Distinct from ``decorators`` (Python-style) where the syntax carries different semantics."
             },
