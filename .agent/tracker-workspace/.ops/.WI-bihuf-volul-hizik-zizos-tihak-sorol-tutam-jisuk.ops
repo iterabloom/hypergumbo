@@ -1,0 +1,21 @@
+- op: create  # 421c
+  at: '2026-11-22T23:41:50Z'  # 421c
+  by: agent  # 421c
+  actor: jgstern_agent  # 421c
+  clock: 1  # 421c
+  nonce: 421c  # 421c
+  data:  # 421c
+    kind: work_item  # 421c
+    title: "Rows withheld because they would crowd the entry list: Rails callbacks and Phoenix controller modules"  # 421c
+    status: needs_human_review  # 421c
+    priority: 3  # 421c
+    parent:  # 421c
+    tags:  # 421c
+    - frameworks  # 421c
+    - entrypoints  # 421c
+    isbefore: []  # 421c
+    duplicate_of: []  # 421c
+    not_duplicate_of: []  # 421c
+    pr_ref:  # 421c
+    description: "WHAT. Two sets of framework rows were NOT given a producer in the PR that built WI-movur's detectors, because each would have filled the capped entry list with entries that add nothing a caller edge or a route does not already give. Both are decisions the owner may overturn.\n\n1. Rails callbacks. rails.yaml had two usage rows (model lifecycle callbacks; before_action / after_action / around_action / skip_before_action / prepend_before_action -> event_handler) that no analyzer fed. With the Ruby registration contexts they fired: 527 event_handler concepts on gitlab app/controllers, taking 34 of 87 capped entry places from controllers. The targets already have a caller (ruby.py _extract_rails_callbacks writes dispatches_to from the class). The rows were deleted with a comment in their place.\n2. Phoenix controller modules. The deleted row `use Phoenix.Controller` -> controller, restored on the adopts: key, made every controller module an entry: on plausible 33 of 49 http_route entries left the capped list, and 0 of its 32 controllers is unrouted. The row was not restored (phoenix.yaml and plug.yaml carry a comment). Consequence: a controller no route names has no entry, which is what it is.\n\nQUESTION. Should a callback target or a controller module be an entry at all? If yes, at what rank relative to routes (that is a ranking change, ADR-0039)?\n\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/movur/BUILD_RESULTS.md (ruby follow-up, elixir), docs/audits/0029 \"What it does not build\"."  # 421c
+    fields: {}  # 421c

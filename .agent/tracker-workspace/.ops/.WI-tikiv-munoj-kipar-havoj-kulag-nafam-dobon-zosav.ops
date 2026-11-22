@@ -1,0 +1,20 @@
+- op: create  # c521
+  at: '2026-11-22T23:41:59Z'  # c521
+  by: agent  # c521
+  actor: jgstern_agent  # c521
+  clock: 1  # c521
+  nonce: c521  # c521
+  data:  # c521
+    kind: work_item  # c521
+    title: "An entry on a class does not make its methods reached in dead-code-maybe"  # c521
+    status: needs_human_review  # c521
+    priority: 3  # c521
+    parent:  # c521
+    tags:  # c521
+    - dead_code  # c521
+    isbefore: []  # c521
+    duplicate_of: []  # c521
+    not_duplicate_of: []  # c521
+    pr_ref:  # c521
+    description: "WHAT. An entry on a class or struct does not make its methods reached in dead-code-maybe. A framework that is handed a class (a Slim middleware class, a Vapor controller, a bottle plugin, a Thor command class, a dry-cli command) calls its methods by convention or reflection, so the methods have no caller in the repository.\n\nSEEN (WI-movur triage, group misc, `dead-code-maybe --seeds entrypoints`; out/misc_deadcode.txt): Slim fixture: 2 middleware class entries, 0 of their methods reachable. Vapor fixture: FeedController is a controller entry; its boot and feed are listed dead. Not run with the default `production` seeds. Not measured on a real repository.\n\nWHERE. The walk in cli.py (~9783-9802 at c8b4180d0): seeds are entry symbol ids; a class id has no outgoing edge to its methods that the walk follows.\n\nQUESTION FOR THE OWNER (it loosens a withholding gate: fewer symbols reported). Should an entry on a type seed its methods? All of them, the public ones, or only those the framework is known to call (a row could name them)? `contains` edges exist; following them from every class entry would also clear methods of hosted-application classes.\n\nRelated: the WI-movur PR marks many classes (Sidekiq workers, GLI / Commander apps, graphql types, Slim ErrorHandler subclasses), so the number of class entries rises with it."  # c521
+    fields: {}  # c521

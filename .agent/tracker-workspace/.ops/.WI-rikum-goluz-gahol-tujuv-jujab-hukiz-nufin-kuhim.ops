@@ -1,0 +1,21 @@
+- op: create  # 6f48
+  at: '2026-11-22T23:42:08Z'  # 6f48
+  by: agent  # 6f48
+  actor: jgstern_agent  # 6f48
+  clock: 1  # 6f48
+  nonce: 6f48  # 6f48
+  data:  # 6f48
+    kind: work_item  # 6f48
+    title: "JavaScript registrations left open: fastify websocket route kind, command modules by convention, fastify.decorate, aliased receivers, error-handler arity"  # 6f48
+    status: todo_soft  # 6f48
+    priority: 3  # 6f48
+    parent:  # 6f48
+    tags:  # 6f48
+    - frameworks  # 6f48
+    - javascript  # 6f48
+    isbefore: []  # 6f48
+    duplicate_of: []  # 6f48
+    not_duplicate_of: []  # 6f48
+    pr_ref:  # 6f48
+    description: "Left open in JavaScript / TypeScript by the WI-movur PR (audit 0029, group js; ids are that audit's form ids):\n1. A fastify route with `websocket: true` is an http_route \"GET\" entry (F19). Recording method WS was built and taken out: it renames the route marker (`GET /ws` -> `WS /ws`) and moves its stable id, which needs an owner decision.\n2. Command modules by convention are not detected (C11, C12, C21, C22, F2): yargs `commandDir` and `exports.handler`, gluegun `module.exports = { name, run }` (gluegun is now detected as cli-js, its command modules are not), `fastify.register(require('./routes'))`. Needs symbols for object-property and `exports.handler` functions (WI-piror's question).\n3. `fastify.decorate(name, fn)` is not bound to its uses (F6, F7).\n4. An import-aliased receiver (`ipcMain as ipc`) is not canonicalised (L8; session-desktop has 29 such sites in one file).\n5. Express error-handling middleware (4 parameters) is labelled middleware, not error_handler (E7, E8): UsagePatternSpec has no condition on the handler's arity; the handler.s parameter count would have to be recorded without parsing its signature (ADR-0058; JavaScript symbols carry no parameter list).\n6. Route-level middleware (E24) and `client.on` (E29) are not covered; an inline object-property handler (hapi `{method: (r, h) => ...}`) has no symbol.\n7. Option callbacks handed to a library (cors origin, morgan format, multer fileFilter, `.custom`, inquirer validate: E14, E17, E19, E21, E23, O16, O19, O21, C17) have no entry kind that fits; they need a liveness rule, not a label.\n8. restify.yaml: `server.on` (error_handler) has position args[0] but the handler is args[1]; `server.close` / `server.listen` have no position, so a context is recorded for them wherever those calls pass a local function (2 seen, no concept stamped: restify not detected).\n9. The `.use` / `.action` / `.register` / `.command` rows match by method name within a detected framework. Not measured: markdown-it `md.use(plugin)`, `i18next.use`, Telegraf `bot.command` in a repository that also uses express / commander. One false positive was found and excluded (axios `interceptors.request.use`).\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/movur/triage_js.md, out/build_js/."  # 6f48
+    fields: {}  # 6f48
