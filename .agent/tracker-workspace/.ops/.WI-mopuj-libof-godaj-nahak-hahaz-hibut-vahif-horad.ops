@@ -1,0 +1,21 @@
+- op: create  # 078f
+  at: '2026-11-22T09:34:12Z'  # 078f
+  by: agent  # 078f
+  actor: jgstern_agent  # 078f
+  clock: 1  # 078f
+  nonce: 078f  # 078f
+  data:  # 078f
+    kind: work_item  # 078f
+    title: "Routes recorded wrongly: fastify route({url}) as GET /, gorilla .Methods as ANY, Solid client routes as HTTP GET"  # 078f
+    status: todo_hard  # 078f
+    priority: 3  # 078f
+    parent:  # 078f
+    tags:  # 078f
+    - frameworks  # 078f
+    - analysis_quality  # 078f
+    isbefore: []  # 078f
+    duplicate_of: []  # 078f
+    not_duplicate_of: []  # 078f
+    pr_ref:  # 078f
+    description: "WHAT. docs/audits/0028 (PR #2329) measured the 28 deleted route rows as 61 forms. Three are detected WRONGLY, not just missed:\n- fastify .route({method, url, handler}): only the path key is read, so the route is recorded as GET / (js_ts _extract_hapi_usage_contexts).\n- Go gorilla HandleFunc(...).Methods(\"GET\"): the chained .Methods is not read; the method is recorded ANY. microservices-demo frontend: 14 routes, 12 with .Methods, all 14 recorded ANY. PathPrefix(p).Subrouter(): the prefix is dropped.\n- Solid <Route path component>: a client-side route, labelled \"HTTP GET\".\n\nASK. Read url as well as path; read the chained .Methods and subrouter prefixes; give a client-side router's routes their own label or kind.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # 078f
+    fields: {}  # 078f

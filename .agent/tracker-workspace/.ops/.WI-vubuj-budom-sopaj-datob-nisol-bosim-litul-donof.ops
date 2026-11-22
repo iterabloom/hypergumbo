@@ -1,0 +1,21 @@
+- op: create  # f02e
+  at: '2026-11-22T09:34:00Z'  # f02e
+  by: agent  # f02e
+  actor: jgstern_agent  # f02e
+  clock: 1  # f02e
+  nonce: f02e  # f02e
+  data:  # f02e
+    kind: work_item  # f02e
+    title: "Lua class forms lua.py does not read; an :extend method bound to a name becomes a class"  # f02e
+    status: todo_soft  # f02e
+    priority: 3  # f02e
+    parent:  # f02e
+    tags:  # f02e
+    - frameworks  # f02e
+    - analysis_quality  # f02e
+    isbefore: []  # f02e
+    duplicate_of: []  # f02e
+    not_duplicate_of: []  # f02e
+    pr_ref:  # f02e
+    description: "WHAT. Lua forms lua.py does not read (it reads X = R:extend(...) / R:subclass(...) as a class and X = C(...) at file scope as a variable with constructed_from, since PR #2329): class(\"X\", Base) (middleclass, penlight and 30log differ in the argument), hump Class{__includes = Base}, setmetatable(T, {__index = Base}), return lapis.Application:extend(...) and return lapis.Application() (no bound name), require(\"lapis.application\").Application, MoonScript sources. A non-class method named extend bound to a name becomes a class symbol (penlight List:extend): not measured. openresty.yaml's 10 usage rows cannot fire: lua.py emits no usage context. Kong gained 308 variable nodes (file-scope call bindings).\n\nASK. Measure the :extend false positive on a corpus; decide which class-library forms are worth reading; a Lapis-only real repository for the application rows (none on this machine).\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # f02e
+    fields: {}  # f02e

@@ -1,0 +1,20 @@
+- op: create  # ab6b
+  at: '2026-11-22T09:33:53Z'  # ab6b
+  by: agent  # ab6b
+  actor: jgstern_agent  # ab6b
+  clock: 1  # ab6b
+  nonce: ab6b  # ab6b
+  data:  # ab6b
+    kind: work_item  # ab6b
+    title: "Definition rows are not gated by their framework file's language (usage rows are)"  # ab6b
+    status: todo_soft  # ab6b
+    priority: 4  # ab6b
+    parent:  # ab6b
+    tags:  # ab6b
+    - frameworks  # ab6b
+    isbefore: []  # ab6b
+    duplicate_of: []  # ab6b
+    not_duplicate_of: []  # ab6b
+    pr_ref:  # ab6b
+    description: "WHAT. Definition rows (base_class:, annotation:, decorator:, meta_match:) of a framework file are not gated by the file's language:, only by a row's own language: filter. Usage rows are gated since PR #2329. So a detected framework of one language can stamp a same-named base class of another in a mixed repository (yesod's ^Yesod$ on a Python class named Yesod). Related: NameMatcher falls back to the terminal dotted segment, so an anchored one-name row (^Server$, ^Logger$) also matches a dotted parent ending in that name, and Scala now records dotted parents: 0 such hits on tapir, docspell and zio; not checked elsewhere.\n\nASK. Count cross-language definition-row matches on a mixed-language corpus; if any are wrong, gate definition rows by the file's language as usage rows are (JavaScript and TypeScript one set; the JVM files that list [java, kotlin]).\n\nNOT CHECKED. Any corpus: this is filed from the code.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # ab6b
+    fields: {}  # ab6b
