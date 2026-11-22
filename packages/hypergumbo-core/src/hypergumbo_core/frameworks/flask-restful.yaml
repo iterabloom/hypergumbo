@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: flask-restful
 language: python
 
@@ -47,3 +47,9 @@ patterns:
   # Flask-RESTful reqparse for request parsing
   - concept: request_parser
     base_class: "^reqparse\\.RequestParser$"
+
+  # The Api's error hook overridden in a subclass: class JsonErrorApi(Api):
+  # def handle_error(self, e). The Api calls it when a resource raises.
+  - concept: error_handler
+    method_name: "^handle_error$"
+    parent_base_class: "^(flask_restful\\.)?Api$"
