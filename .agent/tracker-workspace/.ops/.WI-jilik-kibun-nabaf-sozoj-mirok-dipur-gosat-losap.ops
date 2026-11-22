@@ -25,3 +25,19 @@
   clock: 2  # 8ca6
   nonce: 8ca6  # 8ca6
   message: "CORRECTION 2026-11-21 (audit revision agent, probe at ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/probe4_electron/RESULT.txt): this description's claim that electron.yaml 'already detects contextBridge.exposeInMainWorld as api_bridge' is false. The row exists but is decorator-keyed on a call, and js_ts writes meta.decorators only from @decorator syntax, so it never fires (same defect as the six dead entrypoint rows); nothing reads api_bridge. On the probe, preload.js and renderer.js are script_module entries, and linkers/ipc.py emits a calls edge with meta.bridge_kind=context_bridge from renderer.js to preload.js. The electron_preload producer must therefore come from a usage-keyed row (the shape of electron.yaml's working app.whenReady / app.on rows) or from the IPC linker's context-bridge detection, and the BrowserWindow webPreferences.preload path where it is a literal. The other call-keyed decorator rows in electron.yaml (ipc_handler, ipc_sender, window, lifecycle) have the same shape and were not each probed: sweep them in this item."  # 8ca6
+- op: update  # 42a5
+  at: '2026-11-22T00:46:27Z'  # 42a5
+  by: agent  # 42a5
+  actor: jgstern_agent  # 42a5
+  clock: 3  # 42a5
+  nonce: 42a5  # 42a5
+  set:  # 42a5
+    status: done  # 42a5
+    pr_ref: '2318'  # 42a5
+- op: discuss  # 2d91
+  at: '2026-11-22T00:46:27Z'  # 2d91
+  by: agent  # 2d91
+  actor: jgstern_agent  # 2d91
+  clock: 4  # 2d91
+  nonce: 2d91  # 2d91
+  message: "Done in PR #2318. Live on dev: EntrypointKind has 28 values, SCHEMA_VERSION 0.22.0; cli_main, electron_renderer, flask_route, django_view, express_route, fastapi_route are not in it. 'hypergumbo run' on audit/probe4_electron (copy in /tmp) rc=0 lists 'electron_preload | Electron preload script (repo/preload.js) | conf 0.9' beside electron_main. The six dead entrypoint rows grew to 164 call-keyed decorator rows in 27 framework files, all deleted (0 concepts from them on 23 repos); the list of constructs with no detector is WI-movur. Leftovers filed: WI-lunal, WI-sisom, WI-pahom, WI-bokip, WI-jovif, WI-tomur. Not checked: readers of the removed names outside this repository. Evidence file: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/live_repro/dev_after_merge.txt (dev 9d1ebb229, 2026-11-22)."  # 2d91

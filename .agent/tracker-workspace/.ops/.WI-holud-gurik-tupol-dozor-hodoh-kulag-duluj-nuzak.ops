@@ -39,3 +39,19 @@
   clock: 4  # d859
   nonce: d859  # d859
   message: "Merged as PR #2312, dev SHA c54c3f52a5df."  # d859
+- op: update  # 2355
+  at: '2026-11-22T00:46:28Z'  # 2355
+  by: agent  # 2355
+  actor: jgstern_agent  # 2355
+  clock: 5  # 2355
+  nonce: '2355'  # 2355
+  set:  # 2355
+    status: done  # 2355
+    pr_ref: '2318'  # 2355
+- op: discuss  # e96a
+  at: '2026-11-22T00:46:28Z'  # e96a
+  by: agent  # e96a
+  actor: jgstern_agent  # e96a
+  clock: 6  # e96a
+  nonce: e96a  # e96a
+  message: "Both questions answered by the owner (2026-11-21) and built in PR #2318. (1) Ranking: program start is manifest executable, convention main, main guard and electron_main only. (2) Concept: confirmed as a leak by audit 0027; application objects are kind hosted_application. The item's repro re-run on dev: mitmproxy's top 10 entries are 3 package_executable then main_guard; the Tornado application is at position 50, after the controllers. Evidence file: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/live_repro/dev_after_merge.txt (dev 9d1ebb229, 2026-11-22)."  # e96a

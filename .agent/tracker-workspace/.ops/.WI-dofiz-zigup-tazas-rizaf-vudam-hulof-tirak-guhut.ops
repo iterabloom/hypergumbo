@@ -26,3 +26,19 @@
   clock: 2  # 525a
   nonce: 525a  # 525a
   message: "2026-10-27: closure test, PR #1905: packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestEntrypointKindIsTheWhat::test_a_flask_application_is_not_a_main_function (strict xfail). Mutation check: disabling the application branch XPASSes it. The fix needs a registered kind (or a decision), so it also touches all_known_entrypoint_kinds and the schema."  # 525a
+- op: update  # 3777
+  at: '2026-11-22T00:46:28Z'  # 3777
+  by: agent  # 3777
+  actor: jgstern_agent  # 3777
+  clock: 3  # 3777
+  nonce: '3777'  # 3777
+  set:  # 3777
+    status: done  # 3777
+    pr_ref: '2318'  # 3777
+- op: discuss  # 5e54
+  at: '2026-11-22T00:46:28Z'  # 5e54
+  by: agent  # 5e54
+  actor: jgstern_agent  # 5e54
+  clock: 4  # 5e54
+  nonce: '5e54'  # 5e54
+  message: "Fixed in PR #2318. The item's repro re-run on dev: a file with 'from flask import Flask; app = Flask(__name__)' now emits kind=hosted_application, label 'Flask application', target python:app/__init__.py:6-6:app:variable; no main_function entry on a variable. The strict xfail test_a_flask_application_is_not_a_main_function is a plain passing test. The 'application' concept now maps to hosted_application; the 7 program starts by construction (IOApp, ZIOApp, SwiftUI App, app delegates) moved to concept 'entrypoint' and stay main_function on a class target, which is WI-rifad. Evidence file: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/live_repro/dev_after_merge.txt (dev 9d1ebb229, 2026-11-22)."  # 5e54
