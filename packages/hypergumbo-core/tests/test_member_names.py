@@ -46,22 +46,40 @@ def test_rsplit_keeps_the_immediate_owner_not_the_root() -> None:
     assert split_member_name("Outer.Inner.do_thing") == ("Outer.Inner", "do_thing")
 
 
-def test_separator_order_is_specificity_not_position() -> None:
-    """``#`` and ``::`` win over ``.`` when a name carries both.
+def test_the_member_boundary_is_the_last_separator_in_the_name() -> None:
+    """Whichever separator stands last is the one before the member.
 
-    Ruby emits ``Foo::Bar#baz`` for a namespaced method: the member boundary
-    is the ``#``, and splitting on ``::`` or ``.`` first would hand back
-    ``Foo`` or a mangled owner. This ordering is the reason the tuple is a
-    shared constant rather than something each caller re-derives.
+    Ruby emits ``Foo::Bar#baz`` for a namespaced instance method and
+    ``Foo::Bar.baz`` for a namespaced class method. The first rule this
+    module had tried ``#`` and ``::`` before ``.``, which is right for the
+    first name and wrong for the second: it answered ``("Foo",
+    "Bar.baz")``, an owner that is the namespace and a member that is no
+    method's name (499 of chatwoot's Ruby methods, 2026-11-22; 159 of them
+    were contained by the wrong module or class because of it).
     """
     assert split_member_name("Foo::Bar#baz") == ("Foo::Bar", "baz")
+    assert split_member_name("Foo::Bar.baz") == ("Foo::Bar", "baz")
     assert split_member_name("a.b::c") == ("a.b", "c")
+    assert split_member_name("::Top::Service.using") == ("::Top::Service", "using")
     assert MEMBER_NAME_SEPARATORS == ("#", "::", ".")
+
+
+def test_a_separator_with_nothing_on_one_side_is_not_a_boundary() -> None:
+    """A member is named something, and so is its owner.
+
+    Scala's cons method is ``List.::``: the ``::`` ends the name, so it is
+    the member, and the boundary is the dot. A leading separator has no owner
+    before it (Ruby's ``::Top``, a Makefile's ``.PHONY``).
+    """
+    assert split_member_name("List.::") == ("List", "::")
+    assert split_member_name("::Top") == (None, "::Top")
+    assert split_member_name(".PHONY") == (None, ".PHONY")
+    assert split_member_name("Foo#") == (None, "Foo#")
 
 
 def test_owner_and_short_name_are_consistent_with_split() -> None:
     for name in ("User.save", "User#save", "MyTrait::method", "save",
-                 "com.example.S.get", "Foo::Bar#baz"):
+                 "com.example.S.get", "Foo::Bar#baz", "Foo::Bar.baz", "List.::"):
         owner, short = split_member_name(name)
         assert member_owner(name) == owner
         assert member_short_name(name) == short
