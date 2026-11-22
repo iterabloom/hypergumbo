@@ -36,7 +36,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Every reader of entry kinds agrees on program starts** (ADR-0063): Electron's main script ranks like a `main`, and a guard-only Python script demotes exports like one.
 - **Tied entry points list manifest executables, then program starts, then the rest** (ADR-0039 ruling 3), not by confidence.
-- **A `main`'s confidence is measured per language**, from 0.50 (Erlang) to 0.95 (Go, Java, Rust).
+- **A `main`'s confidence is measured per language**, 0.90 (Python) or 0.95 (Go, Java, Rust, …).
 - **`compact` seeds entry points in the entry list's order**, not by confidence.
 - **`dead-code-maybe` 0.4.0 withholds callables of languages lacking call edges.**
 - **Sketch headings**: "Middleware & Error Handlers" and "Framework-Reflected Classes" are new; "Mobile" is now "Hosted Applications".
@@ -61,6 +61,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Entry points
 
 - **A `main` no longer hides application objects in its file.**
+- **A `main` entry follows its language's rule in Go and Erlang.**
 - **Test, example and vendored entry points no longer demote library exports**; a JS/TS package declaring `exports` keeps its own.
 - **A bare `createServer` is an HTTP server only when imported from `http`.**
 - **`slice --entry auto` picks the Go `main` that builds the module's binary**, and prefers production code to examples.

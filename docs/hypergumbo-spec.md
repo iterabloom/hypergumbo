@@ -1032,21 +1032,20 @@ Confidence scores reflect detection reliability, enabling meaningful ordering in
 | 🟩 **Naming** | 0.70 | Heuristic patterns | Class named `*Controller`, `*Handler`, `*Service` without annotations |
 | 🟩 **Connectivity fallback** | 0.50 | Top-N most-connected callables | Last resort when no concept-based entrypoint is found |
 
-**A convention `main()` takes its language's measured value** (`entrypoints.MAIN_FUNCTION_CONFIDENCE`; owner ruling 2026-11-19). `main-functions.yaml` matches a symbol by name, kind and language only, so the confidence says how often such a match is really where a program starts. It was measured on the local corpora (358 repositories) by reading the source of every matched definition; the share of matches shown to be right, counting every other match as wrong, is mapped down to the tier grid and capped at 0.95 (0.99 is for a declaration):
+**A convention `main()` takes its language's measured value** (`entrypoints.MAIN_FUNCTION_CONFIDENCE`; owner ruling 2026-11-19). `main-functions.yaml` matches a symbol by name, kind and language (for Go also by the qualified name: `package main`), so the confidence says how often such a match is really where a program starts. It was measured on the local corpora (358 repositories) by reading the source of every matched definition; the share of matches shown to be right, counting every other match as wrong, is mapped down to the tier grid and capped at 0.95 (0.99 is for a declaration):
 
 | Language | Right / matched | Confidence | Wrong when |
 |---|---|---|---|
 | C, C++ | 4580 / 4608, 3175 / 3255 | 0.95 | no case found: the 10 flagged rows sampled were text in strings or comments, or a `main` indented under `#if` |
 | C# | 61 / 61 | 0.95 | `Main` not `static` |
-| Go | 1105 / 1146 | 0.95 | the file is not `package main` (the pattern does not check it): cobra `func main(cmd, args)` callbacks, renamed vendored tools |
+| Go | 1105 / 1146 | 0.95 | the file is not `package main`: cobra `func main(cmd, args)` callbacks, renamed vendored tools. The pattern checks the package since 2026-11-22 (`qualified_name: ^main\.main$`), so these 41 no longer match; the value was at the cap already |
 | Java | 1932 / 1961 | 0.95 | a builder or CLI-framework method named `main` |
 | Kotlin | 102 / 102 | 0.95 | a member `main` without `@JvmStatic` |
 | Scala | 2683 / 2733 | 0.95 | `main` without `Array[String]` |
 | Rust | 1333 / 1380 | 0.95 | `fn main` in a library module |
 | Python | 1918 / 2075 | 0.90 | a helper or a route handler named `main` (Python does not make the name special) |
 | Haskell | 418 / 459 | 0.90 | `main` in a module other than `Main` |
-| Erlang | 9 / 360 | 0.50 | the pattern also takes every `start` function: 344 OTP start functions |
-| any other | not measured | 0.80 | Swift: no top-level `func main` in 2,898 files; Dart, Zig: too few files |
+| any other | not measured | 0.80 | Swift: no top-level `func main` in 2,898 files; Dart, Zig: too few files. Erlang: the pattern is `main/1`, the escript entry (the analyzer names a function `name/arity`; until 2026-11-22 the pattern named `main` and `start` without an arity and matched nothing, and the 0.50 this table gave it came from a text census of that pattern); the census repositories hold seven `main/1` definitions in files the analyzer reads, too few to set a value |
 
 Until 2026-11-19 every `main()` carried 0.80, chosen as "lower than framework patterns", a ranking reason; the order among entries of equal `rank_score` now puts a program start before a route by its kind ([§9](#9-behavior-map-json), Sorting), not by this value.
 

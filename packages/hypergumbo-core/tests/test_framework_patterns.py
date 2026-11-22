@@ -290,7 +290,8 @@ class TestPattern:
           triplets — see ``test_decorator_bare_pattern_does_not_match_qualified_source``
           for rationale) and for structural-attribute matchers
           (``method_name``, ``symbol_name``, ``language``, ``symbol_kind``,
-          ``modifiers``, ``modifiers_exclude``, ``symbol_path``) whose
+          ``modifiers``, ``modifiers_exclude``, ``symbol_path``,
+          ``qualified_name``) whose
           target values are not import-scoped.
 
         When adding a new matcher field, update ``EXPECTED`` and document
@@ -318,6 +319,7 @@ class TestPattern:
             "_modifiers_re": "re.compile",
             "_modifiers_exclude_re": "re.compile",
             "_symbol_path_re": "re.compile",
+            "_qualified_name_re": "re.compile",
         }
 
         source = textwrap.dedent(inspect.getsource(Pattern.__post_init__))
@@ -8849,6 +8851,9 @@ class TestMainFunctionPatterns:
         symbol = Symbol(
             id="go:main.go:1-10:main:function",
             name="main",
+            # As go.py records it: `<package>.<name>`. The row asks for
+            # package main (test_main_function_rows.py).
+            qualified_name="main.main",
             kind="function",
             language="go",
             path="main.go",
@@ -9042,6 +9047,8 @@ class TestMainFunctionPatterns:
         symbol = Symbol(
             id="haskell:app/Main.hs:5-8:main:function",
             name="main",
+            # As haskell.py records it: `<Module>.<name>`.
+            qualified_name="Main.main",
             kind="function",
             language="haskell",
             path="app/Main.hs",
@@ -9059,10 +9066,11 @@ class TestMainFunctionPatterns:
         assert concepts[0]["framework"] == "main-functions"
 
     def test_enrich_symbols_with_erlang_main_function(self) -> None:
-        """enrich_symbols enriches Erlang main/start function with main_function concept."""
+        """enrich_symbols enriches Erlang's escript entry, main/1, with
+        main_function. erlang.py names a function ``name/arity``."""
         symbol = Symbol(
-            id="erlang:src/my_app.erl:10-15:main:function",
-            name="main",
+            id="erlang:src/my_app.erl:10-15:main/1:function",
+            name="main/1",
             kind="function",
             language="erlang",
             path="src/my_app.erl",
@@ -9079,10 +9087,10 @@ class TestMainFunctionPatterns:
         assert concepts[0]["concept"] == "main_function"
 
     def test_enrich_symbols_with_erlang_start_function(self) -> None:
-        """enrich_symbols enriches Erlang start function with main_function concept."""
+        """An OTP ``start/2`` is an application callback, not a program start."""
         symbol = Symbol(
-            id="erlang:src/my_app.erl:1-5:start:function",
-            name="start",
+            id="erlang:src/my_app.erl:1-5:start/2:function",
+            name="start/2",
             kind="function",
             language="erlang",
             path="src/my_app.erl",
@@ -9093,10 +9101,10 @@ class TestMainFunctionPatterns:
         enriched = enrich_symbols([symbol], set())
 
         assert len(enriched) == 1
-        assert "concepts" in enriched[0].meta
-        concepts = enriched[0].meta["concepts"]
-        assert len(concepts) == 1
-        assert concepts[0]["concept"] == "main_function"
+        assert not any(
+            c.get("concept") == "main_function"
+            for c in (enriched[0].meta or {}).get("concepts", [])
+        )
 
     def test_symbol_name_only_pattern(self) -> None:
         """Pattern with only symbol_name (no symbol_kind or language) matches."""
@@ -19953,7 +19961,8 @@ class TestSwiftUIPatterns:
 
     def test_parsable_command_pattern(self) -> None:
         """ParsableCommand conformance is a command (audit 0027: every
-        subcommand conforms, so it is not a program start)."""
+        subcommand conforms, so it is not a program start). The rows are
+        swift-argument-parser's own file, not swiftui.yaml."""
         symbol = Symbol(
             id="swift:Sources/CLI/MyCLI.swift:1-15:MyCLI:struct",
             name="MyCLI",
@@ -19963,10 +19972,13 @@ class TestSwiftUIPatterns:
             span=Span(1, 15, 0, 200),
             meta={"base_classes": ["ParsableCommand"]},
         )
-        pattern_def = load_framework_patterns("swiftui")
+        pattern_def = load_framework_patterns("swift-argument-parser")
         assert pattern_def is not None
         results = match_patterns(symbol, [pattern_def])
         assert [r["concept"] for r in results] == ["command"]
+        swiftui = load_framework_patterns("swiftui")
+        assert swiftui is not None
+        assert match_patterns(symbol, [swiftui]) == []
 
 
 class TestHummingbirdPatterns:
