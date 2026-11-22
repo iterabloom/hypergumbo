@@ -130,6 +130,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The spec's stated schema versions match the code**; Appendix A states the 0.x version rule.
 - **`docs/VERIFY-CLAIMS-SCOPE.md`** lists alias and closure forms followed and not.
 - **Docs state the full suite's schedule**: 01:00, 09:00 and 21:00 UTC.
+- **The smart-test playbook states explicit-run gating and new-def refusals.**
 
 ## [10.0.0] - 2026-11-16
 
