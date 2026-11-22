@@ -1243,16 +1243,17 @@ def _usage_languages(pattern_def: FrameworkPatternDef) -> frozenset[str] | None:
 @functools.lru_cache(maxsize=None)
 def _call_usage_rows(
     frameworks_dir: str,
-) -> tuple[tuple[frozenset[str] | None, re.Pattern[str]], ...]:
+) -> tuple[tuple[frozenset[str] | None, re.Pattern[str], re.Pattern[str] | None], ...]:
     """Every ``usage:`` row that names a CALL: its file's languages (``None``:
-    any) and its compiled name pattern. Shipped files and the user's own."""
+    any), its compiled name pattern and its position pattern (``None``: any).
+    Shipped files and the user's own."""
     from .catalogue_home import user_channel_files
 
     stems = {path.stem for path in Path(frameworks_dir).glob("*.yaml")}
     stems |= {path.stem for path in user_channel_files("frameworks")}
     loaded = [d for d in map(load_framework_patterns, sorted(stems)) if d is not None]
     return tuple(
-        (_usage_languages(pattern_def), spec._name_re)
+        (_usage_languages(pattern_def), spec._name_re, spec._position_re)
         for pattern_def in loaded
         for spec in (pattern.usage for pattern in pattern_def.patterns)
         if spec is not None and spec._name_re is not None
@@ -1261,14 +1262,17 @@ def _call_usage_rows(
 
 
 @functools.lru_cache(maxsize=None)
-def _names_call(frameworks_dir: str, name: str, language: str) -> bool:
+def _names_call(
+    frameworks_dir: str, name: str, language: str, position: str | None = None,
+) -> bool:
     return any(
         (languages is None or language in languages) and name_re.search(name)
-        for languages, name_re in _call_usage_rows(frameworks_dir)
+        and (position is None or position_re is None or bool(position_re.search(position)))
+        for languages, name_re, position_re in _call_usage_rows(frameworks_dir)
     )
 
 
-def usage_row_names_call(name: str, language: str) -> bool:
+def usage_row_names_call(name: str, language: str, position: str | None = None) -> bool:
     """Whether a ``usage:`` row could match a call named ``name`` in ``language``.
 
     WHAT IT IS FOR. A usage row can only fire on a ``UsageContext`` the
@@ -1294,9 +1298,13 @@ def usage_row_names_call(name: str, language: str) -> bool:
     recording. Whether a row then fires is still decided by the detected
     frameworks, the position and the context's language.
 
+    ``position`` (``args[1]``, ``kwargs[with]``), when given, must also
+    satisfy the row's ``position`` pattern (a row without one takes any): an
+    analyzer that records one context per argument asks per argument.
+
     Memoised per name; :func:`clear_pattern_cache` forgets it.
     """
-    return _names_call(str(get_frameworks_dir()), name, language)
+    return _names_call(str(get_frameworks_dir()), name, language, position)
 
 
 def match_usage_patterns(
