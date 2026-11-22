@@ -1,0 +1,11 @@
+Original commit body from 98aa50f1d01a68407dc863b66673e767aa29619c:
+
+Fixes the red scheduled full suite at c53ea871d (pipeline 6753, step `self-tree-validation`).
+
+**What was red.** The test-only-reachability gate reported three functions PR #2318 added to `entrypoint_kinds.py` as reachable only from their own tests: `find_watched_kind_reads`, `unused_not_a_role_question_keys`, `kind_heading`.
+
+**What was wrong.** The first two are checks of the live tree (the keep-trigger watcher of audit 0027 and the allow-list's shrink-only rule) that only a test ran; `scripts/check-symbol-kind-drift`, the pre-commit step of the axis, ran `find_kind_set_drift` alone. `kind_heading` had no reader.
+
+**What changed.** The script runs all three checks and prints what to do per kind of offender. `kind_heading` is removed. ADR-0063's enforcement paragraph says where the checks run.
+
+**Verified.** The gate run locally (`scripts/check-test-only-reachability --map` on a fresh `hypergumbo run .`): on dev c53ea871d exit 1 with the same three keys; on this branch exit 0, "no new test-only-reachable callables". The local map has no scip-python typing, so methods were not judged locally; the scheduled run, which judges them, reported only these three functions.
