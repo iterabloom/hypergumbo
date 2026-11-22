@@ -1,0 +1,21 @@
+- op: create  # 0ca4
+  at: '2026-11-22T14:04:58Z'  # 0ca4
+  by: agent  # 0ca4
+  actor: jgstern_agent  # 0ca4
+  clock: 1  # 0ca4
+  nonce: 0ca4  # 0ca4
+  data:  # 0ca4
+    kind: work_item  # 0ca4
+    title: "EUnit rows match nothing (name/arity); repaired, inline tests lead the entry list: needs a ranking ruling"  # 0ca4
+    status: needs_human_review  # 0ca4
+    priority: 3  # 0ca4
+    parent:  # 0ca4
+    tags:  # 0ca4
+    - frameworks  # 0ca4
+    - entrypoints  # 0ca4
+    isbefore: []  # 0ca4
+    duplicate_of: []  # 0ca4
+    not_duplicate_of: []  # 0ca4
+    pr_ref:  # 0ca4
+    description: "WHAT. The two EUnit rows of test-frameworks.yaml (_test$ and _test_$) match nothing: erlang.py names a function name/arity. The repair is known (_test/0$ and _test_/0$: EUnit's rule is the name and no argument) and was NOT made in the WI-rasok PR, because of what it does to the entry list.\n\nSEEN. With the repaired rows (run of 2026-11-22, kept as ~/.cache/hg_rasok/maps_tip2): cowboy gains 25 test_function concepts and its entry list goes from 4 entries to 29, the 25 EUnit functions first (rank 0.80, ahead of the four html_entry at 0.425); rebar3 gains 14 concepts and 9 entries. EUnit tests live in src/, beside the code they test. The entry ranking demotes a test only by where it lives (paths.is_test_node: a test path, or a test annotation), so a test_function entry in src/ keeps 0.80.\n\nNEEDS THE OWNER. ADR-0039 ruling 3 froze the score formula. Should an entry of kind test_function take the test penalty wherever its file is (a test is a test)? That also drops the wrong test entries rebar3 has today (test_state/1 ...) and any Haskell prop_ in src/. If yes: change the ranking and the two rows together, and re-measure cowboy and rebar3. If no: say what the entry list of a library with inline tests should show.\n\nFound during the WI-rasok work (PR #2337, 2026-11-22). Evidence: ~/hypergumbo_lab_notebook/rasok_11222026/RESULTS.md."  # 0ca4
+    fields: {}  # 0ca4
