@@ -16,6 +16,12 @@ Socket.io (JavaScript):
 - socket.on('event', handler) -> receive-site
 - socket.on(eventVar, handler) -> receive-site (variable event)
 - io.on('connection', handler) -> endpoint
+- io.of('/ns').on('connection', handler) -> endpoint (WI-movur)
+- an endpoint dispatches to the function its call hands over
+  (``dispatches_to ws:connection -> handler``, meta ``channel_kind=
+  "websocket"``), read from the analyzer's callback reference at the
+  endpoint's line (``_registration_sites``); the handler's entry comes from
+  socketio.yaml
 
 Native WebSocket API (JavaScript):
 - new WebSocket(url) -> endpoint
@@ -114,6 +120,7 @@ from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pas
 from ..pass_silence import silence_reason_for_candidates
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
+from ._registration_sites import site_dispatch_edges
 from ._text_filters import js_ts_language_from_path, language_from_path, read_masked_source
 from ._name_args import (
     KIND_LITERAL,
@@ -199,6 +206,13 @@ SOCKETIO_EMIT_PATTERN = re.compile(
 # Socket.io on patterns (receive-site) - matches both literals and variables
 SOCKETIO_ON_PATTERN = re.compile(
     rf"(?:socket|io)\s*\.\s*on\s*\(\s*{_EVENT_ARG}",
+    re.MULTILINE,
+)
+
+# Socket.io namespace: io.of('/ns').on('connection', h) (WI-movur). The
+# namespace's own ``on`` is preceded by a call, not by ``io``.
+SOCKETIO_NAMESPACE_ON_PATTERN = re.compile(
+    rf"\bio\s*\.\s*of\s*\([^()]*\)\s*\.\s*on\s*\(\s*{_EVENT_ARG}",
     re.MULTILINE,
 )
 
@@ -440,7 +454,10 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
             match, resolver, type="send", file_path=file_path,
             line=get_line_number(match.start()), pattern_type="socketio",
         ))
-    for match in SOCKETIO_ON_PATTERN.finditer(content):
+    for match in [
+        *SOCKETIO_ON_PATTERN.finditer(content),
+        *SOCKETIO_NAMESPACE_ON_PATTERN.finditer(content),
+    ]:
         patterns.append(_named_site(
             match, resolver, type="receive", file_path=file_path,
             line=get_line_number(match.start()), pattern_type="socketio",
@@ -1018,9 +1035,21 @@ def websocket_linker(ctx: LinkerContext) -> LinkerResult:
     """
     existing_ids: set[str] = {s.id for s in ctx.symbols}
     result = link_websocket(ctx.repo_root, existing_symbol_ids=existing_ids)
+    # WI-movur: a connection endpoint dispatches to the function its call
+    # hands over (``io.on('connection', h)`` -> ``h``), read from the
+    # analyzer's callback reference at the endpoint's line.
+    endpoints = [
+        s for s in result.symbols
+        if (s.meta or {}).get("framework_role") == "websocket_endpoint"
+    ]
+    run_id = result.run.execution_id if result.run is not None else ""
+    dispatch = site_dispatch_edges(
+        endpoints, ctx.symbols, ctx.edges, "websocket_handler", ctx.repo_root,
+        "websocket", PASS_ID, run_id,
+    )
 
     return LinkerResult(
         symbols=result.symbols,
-        edges=result.edges,
+        edges=result.edges + dispatch,
         run=result.run,
     )
