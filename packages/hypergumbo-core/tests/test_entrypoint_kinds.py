@@ -918,6 +918,11 @@ _APPLICATION_ROWS_ADDED: tuple[tuple[str, str, str, str | None], ...] = (
     # A Lapis app instance, ``local app = lapis.Application()`` (lua.py's
     # ``constructed_from``): the instance sibling of the class row above.
     ("openresty.yaml", "meta_match", "^lapis\\.Application$", "application"),
+    # What the R analyzer's caller contexts name: plumber 1.0's ``plumb_api``
+    # and router constructor ``pr``, shiny's ``shinyAppDir`` / ``shinyAppFile``.
+    ("plumber.yaml", "usage", "^plumb_api$", "application"),
+    ("plumber.yaml", "usage", "^pr$", "application"),
+    ("shiny.yaml", "usage", "^(shinyAppDir|shinyAppFile)$", "application"),
 )
 
 
@@ -954,7 +959,7 @@ def test_ruling_each_application_row_has_its_destination(
 
 def test_ruling_the_application_concept_is_the_15_hosted_rows_and_nothing_else() -> None:
     """A row that newly emits ``application`` files its symbol under
-    hosted_application; this fails until it is added to the table above."""
+    hosted_application; this fails until it is added to a table above."""
     hosted = {(f, k, v) for f, k, v, c in _APPLICATION_ROWS + _APPLICATION_ROWS_ADDED
               if c == "application"}
     live = {(p.name, *m) for p in get_frameworks_dir().glob("*.yaml")
