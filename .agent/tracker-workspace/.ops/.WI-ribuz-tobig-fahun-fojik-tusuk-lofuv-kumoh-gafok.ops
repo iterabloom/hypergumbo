@@ -48,3 +48,17 @@
   clock: 5  # 51a3
   nonce: 51a3  # 51a3
   message: "Folds in WI-nukas (owner-approved 2026-11-01, root-cause sweep 2026-11-01 (dev b27eb0e0d0; lab ~/hypergumbo_lab_notebook/tracker_hygiene_sweep_2026-11-01T223538Z/); WI-nukas closed wont_do with duplicate_of here). WI-nukas is this item's profile.py bullet verbatim: the module_importers fallback parses a symbol-id path slot with a bare split(':')[1] instead of ir.symbol_path_slot. Found when the P2 grouping was merged into the P3/P4 sweep. Read WI-nukas's thread for its repro and evidence."  # 51a3
+- op: discuss  # 8026
+  at: '2026-11-22T02:52:34Z'  # 8026
+  by: agent  # 8026
+  actor: jgstern_agent  # 8026
+  clock: 6  # 8026
+  nonce: '8026'  # 8026
+  message: "Merged as PR #2322, dev SHA 736b8c2a2f54."  # 8026
+- op: discuss  # fbb3
+  at: '2026-11-22T02:58:27Z'  # fbb3
+  by: agent  # fbb3
+  actor: jgstern_agent  # fbb3
+  clock: 7  # fbb3
+  nonce: fbb3  # fbb3
+  message: "Partly done, PR #2322 (2026-11-22): taint.parameter_seeds held THREE naive parses this item did not list: the own-file rule's two split(':')[1] and _symbol_start_line's split(':')[2]. For a route marker under a path with a colon the third raised ValueError and the first two compared truncated paths. All three now go through ir.symbol_path_slot; tests pin a colon in the path and a colon in the route name; three mutants killed. After it, core has one split(':')[1] left: profile.py (the module_importers fallback; the same loop also reads imported_module = parts[1] of an import edge's dst). Still open: profile.py, the private regexes in cli.py, ranking.py, linkers/js_module.py, the two docstrings with the retired slot order, the recurrence linter, and the count of real symbols with a colon in the path."  # fbb3

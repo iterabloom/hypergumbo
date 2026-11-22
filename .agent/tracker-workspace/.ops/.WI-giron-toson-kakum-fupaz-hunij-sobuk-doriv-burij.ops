@@ -50,3 +50,17 @@
   clock: 5  # 77e3
   nonce: '77e3'  # 77e3
   message: "Done in PR #2318 (ADR-0063, entrypoint_kinds.py). Live on dev: kinds_with_role('program_start') = electron_main, main_function, main_guard, package_executable; hosted_application role = android_activity, android_application, electron_preload, hosted_application, spa_bootstrap; scripts/check-symbol-kind-drift rc=0 (it fails on a hand-written kind set; mutation-checked on the branch). The item's own repro (audit/kind_sets.py) read the five hand-written sets, which no longer exist: the readers call the registry. 'hypergumbo run' on the fixture lists package_executable for the npm bin and the pyproject script. Sketch: dev's headings kept per owner ruling, heading declared per kind; 'hypergumbo sketch' on the Flask fixture shows HTTP Routes, Middleware & Error Handlers, Hosted Applications, Framework-Reflected Classes. Ninth role 'command' (cli_command) added. Tagged awaits_bakeoff_validation because the PR states corpus deltas: entry list changed on kamaraflow (Electron main.js duplicates 4 to 0), mitmproxy (22 web-UI TS exports out, 22 Python exports in), vite (5 .d.ts out, 5 node API in); slice auto pick changed on kamaraflow and httpx; mitmproxy compact swaps 35 of 102 ids; 7 of 94 sketch groups gain a line for a starved kind. Leftovers filed: WI-rifad, WI-ratav, WI-janot, WI-kamot, WI-kozur, WI-lijov; go_handler's role is WI-hamiz. Evidence file: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/live_repro/dev_after_merge.txt (dev 9d1ebb229, 2026-11-22)."  # 77e3
+- op: discuss  # 71cb
+  at: '2026-11-22T02:28:42Z'  # 71cb
+  by: agent  # 71cb
+  actor: jgstern_agent  # 71cb
+  clock: 6  # 71cb
+  nonce: 71cb  # 71cb
+  message: "Merged as PR #2321, dev SHA 935fbace1dfb."  # 71cb
+- op: discuss  # 079d
+  at: '2026-11-22T02:58:27Z'  # 079d
+  by: agent  # 079d
+  actor: jgstern_agent  # 079d
+  clock: 7  # 079d
+  nonce: 079d  # 079d
+  message: "PR #2318 turned the scheduled full suite red at c53ea871d (pipeline 6753, step self-tree-validation): its test-only-reachability gate reported find_watched_kind_reads, unused_not_a_role_question_keys and kind_heading as reachable only from their own tests. Fixed forward in PR #2321: scripts/check-symbol-kind-drift now runs the allow-list's shrink-only check and the keep-trigger watcher beside find_kind_set_drift (only a test ran them before), and kind_heading, which had no reader, is removed. Verified with the gate run locally on a fresh 'hypergumbo run .': dev c53ea871d exit 1 with the same three keys, the fix branch exit 0 (~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/redfix/verify.txt). Methods were not judged locally (no scip-python typing in the local map). The next scheduled full suite is the first on the fix."  # 079d
