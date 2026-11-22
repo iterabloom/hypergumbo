@@ -17,6 +17,25 @@ id: absinthe
 language: elixir
 
 patterns:
+  # Registrations (WI-movur): a call that hands the framework code of the
+  # repository. The Elixir analyzer records one only when the argument is an
+  # alias naming a module of the repository or an atom naming a function of
+  # the enclosing module, and only for call names a row here names.
+
+  # `import_types MyApp.Types` in a schema
+  - concept: graphql_resolver
+    usage:
+      kind: "^call$"
+      name: "^import_types$"
+      position: "^args\\[0\\]$"
+
+  # The mount `forward "/api", Absinthe.Plug, schema: MyApp.Schema`
+  - concept: graphql_schema
+    usage:
+      kind: "^call$"
+      name: "^forward$"
+      position: "^kwargs\\[schema\\]$"
+
   # Absinthe schema - the module Absinthe.Plug executes queries against
   - concept: graphql_schema
     adopts: "^Absinthe\\.Schema$"
