@@ -1,0 +1,20 @@
+- op: create  # e66b
+  at: '2026-11-22T02:59:33Z'  # e66b
+  by: agent  # e66b
+  actor: jgstern_agent  # e66b
+  clock: 1  # e66b
+  nonce: e66b  # e66b
+  data:  # e66b
+    kind: work_item  # e66b
+    title: "A PR can merge with a new function only its tests call: the test-only-reachability gate runs in the scheduled suite alone (PR #2318 turned it red)"  # e66b
+    status: todo_soft  # e66b
+    priority: 3  # e66b
+    parent:  # e66b
+    tags:  # e66b
+    - ci  # e66b
+    isbefore: []  # e66b
+    duplicate_of: []  # e66b
+    not_duplicate_of: []  # e66b
+    pr_ref:  # e66b
+    description: "PR #2318 added three functions to entrypoint_kinds.py that only tests called; per-PR CI and the pre-PR script passed, and the scheduled full suite at c53ea871d went red on self-tree-validation an hour after the merge (fixed by PR #2321). The gate needs a behaviour map of the repository (5-6 min locally with one output file), which is why it is not per-PR. Options to weigh: run 'scripts/check-test-only-reachability --map' in the pre-PR script when a commit of the branch adds a def under packages/*/src (the map costs one self-analysis; the ARCHITECTURE.md regeneration already pays for one of packages/ when it runs); or a cheap AST-only pre-check for a new function with no production reference by name. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/redfix/verify.txt (the gate run locally on dev and on the fix)."  # e66b
+    fields: {}  # e66b

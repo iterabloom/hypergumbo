@@ -33,3 +33,26 @@
   clock: 3  # a5e4
   nonce: a5e4  # a5e4
   message: "Measured 2026-11-22 on dev 9d1ebb229, 6 cores (~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/lutok/RESULTS.md). One regeneration = one 'hypergumbo run packages --first-party-only' (344.5 s; 338.7 s from an empty cache: the cache does not shorten it) + 5.2 s of the script's own work (JSON load 1.6, top symbols and edge types 0.6, module and script scans 3.0). Inside the analysis: python pass 151 s wall over 1,858 files (1,431 of them tests); the C pass 35-49 s on 4 vendored tree-sitter parser.c/scanner.c files whose 257,091 edges are all dropped by --first-party-only; 74% of nodes and edges are test code. Cuts measured: --no-sketch-fan-out --no-handler-slices 320 s (the doc reads none of the 19 side files); plus -e vendor 262.2 s with IDENTICAL output (same 64,363 node ids, 259,304 edge triples, top symbols, edge types); -e tests 144.3 s but 16,059 nodes / 66,654 edges, and the doc says 'test code included', so that is the owner's choice. Reading smart-test's stored graph: not possible as built: graph_rows keeps node->file and (src, dst) only (no names, kinds, edge types), the rebuild deletes its survey after storing rows, and its scope is the repository root at the baseline commit. Next: ship the 262 s variant in scripts/generate-architecture, then close."  # a5e4
+- op: discuss  # 13e1
+  at: '2026-11-22T03:22:40Z'  # 13e1
+  by: agent  # 13e1
+  actor: jgstern_agent  # 13e1
+  clock: 4  # 13e1
+  nonce: '13e1'  # 13e1
+  message: "Merged as PR #2324, dev SHA b18b1d7abc14."  # 13e1
+- op: update  # 741a
+  at: '2026-11-22T03:22:57Z'  # 741a
+  by: agent  # 741a
+  actor: jgstern_agent  # 741a
+  clock: 5  # 741a
+  nonce: 741a  # 741a
+  set:  # 741a
+    status: done  # 741a
+    pr_ref: '2324'  # 741a
+- op: discuss  # 56de
+  at: '2026-11-22T03:22:57Z'  # 56de
+  by: agent  # 56de
+  actor: jgstern_agent  # 56de
+  clock: 6  # 56de
+  nonce: 56de  # 56de
+  message: "Closed by PR #2324. Measured time and parts are in the previous entry (lab notebook fast_smart_test_build_11172026/lutok/RESULTS.md). The cut: the generator's self-analysis now runs with '-e vendor --no-sketch-fan-out --no-handler-slices'. The analysis alone: 344.5 s / 338.7 s before, 262.2 s after, same node ids and edge triples. scripts/generate-architecture end to end with the flags: 291.7 s, rc 0, and 'generate-architecture --check' says 'generated 0 commit(s) ago'; the old script was not timed end to end under the same conditions, so the saving in script time is roughly 50 to 80 s and not known more closely (a paired rerun was started and stopped at the owner's request to move on). Why it cannot read smart-test's stored graph: graph_rows keeps node->file and (src, dst) pairs only, the rebuild deletes its survey, and its scope is the repository root at the baseline commit. Left for the owner: excluding tests gives 144 s but changes the doc's totals ('test code included'). Side finding filed: WI-navod (analyzers run on files the tier filter drops)."  # 56de

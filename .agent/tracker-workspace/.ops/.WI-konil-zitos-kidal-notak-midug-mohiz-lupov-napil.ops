@@ -19,3 +19,19 @@
     pr_ref:  # 3f46
     description: "WHAT. dead-code-maybe lists every production function/method no seed reaches. For a language (or a kind) whose analyzer emits NO incoming-call evidence anywhere in the run, 'no edge reaches it' is absence of the instrument, not evidence of no caller, and every callable is reported.\n\nSEEN. Adding Verilog function symbols took an 8-file fixture from 'No production functions found' to 13 of 13 dead; adding F# members took a fixture from 7 to 48 candidates. Both packages were sent back to add call edges before merging. Verilog task enables do not parse in tree-sitter-verilog 1.0.3, so tasks can never get an incoming edge (the view does not count kind task today).\n\nASK. Decide and implement what the view says for a language/kind with no call evidence in the run: withhold, or label the candidates as unverifiable. A rule, not a list of languages.\n\nNOT DONE. No design; no count of which of the 117 languages emit callables and no calls edges. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 3f46
     fields: {}  # 3f46
+- op: update  # 32fa
+  at: '2026-11-22T06:28:49Z'  # 32fa
+  by: agent  # 32fa
+  actor: jgstern_agent  # 32fa
+  clock: 2  # 32fa
+  nonce: 32fa  # 32fa
+  set:  # 32fa
+    status: done  # 32fa
+    pr_ref: 'PR #2326'  # 32fa
+- op: discuss  # f8fb
+  at: '2026-11-22T06:28:49Z'  # f8fb
+  by: agent  # f8fb
+  actor: jgstern_agent  # f8fb
+  clock: 3  # f8fb
+  nonce: f8fb  # f8fb
+  message: "DONE in PR #2326 (dev 92cd212a6). DECISION (the item left it open, withhold or label): both. An unreached callable is reported only where the run holds a call-family edge (calls or instantiates) onto some in-repo callable of its language and kind. The unreached callables of a (language, kind) group with no such edge are withheld from dead_candidates and dead_percent, counted in summary.withheld_no_call_evidence, and listed in no_call_evidence_withheld with their groups in no_call_evidence_groups; both lists are always present, and the text view prints the count always. DEAD_CODE_MAYBE_SCHEMA_VERSION 0.3.0 to 0.4.0, additive. It is a rule, not a list of languages. This is the treatment the view already gives its cross-language demoter. If the owner wants only one of the two, it is a small change.\nBEHAVIOURAL EVIDENCE (2026-11-22, hypergumbo dead-code-maybe over one map, dev code vs fixed code): a fixture with SQL, CMake and SCSS functions (three analyzers that emit function nodes and no calls edge, confirmed in the map) and three Python functions: 7 of 10 reported dead on dev, 0 after, 7 withheld in three groups; under --seeds entrypoints the Python orphan is still reported. mastodon sub-tree 84 to 82 (5 JavaScript methods withheld: no call edge lands on any JavaScript method in that run). pretix src/pretix 7,660 to 7,657 (6 SCSS functions withheld). 10 of 10 mutations red.\nTHE FILED SIGHTINGS (Verilog 13 of 13, F# 7 to 48) were not re-run: both analyzers were given call edges before they merged, so those fixtures no longer show the defect.\nTHE COUNT THE ITEM SAID WAS NOT DONE: by grep, 12 of 120 analyzer modules mention a function or method kind and never the string calls: proto, qml, rst, scss, thrift, capnp, gnuplot, twig, cmake, make, play_routes, sql. Confirmed by a run for sql, cmake, scss only.\nLIMITS: one edge clears its whole group, so a weak instrument is not graded (filed). Withheld candidates no longer reach the cross-language demoter (its count fell by 3 on each of the two repos). test-coverage reads no-test-reaches-it the same way and was not examined (filed).\nEvidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr1/RESULTS.md."  # f8fb
