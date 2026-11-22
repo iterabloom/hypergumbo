@@ -1,0 +1,21 @@
+- op: create  # 8cc5
+  at: '2026-11-22T06:31:01Z'  # 8cc5
+  by: agent  # 8cc5
+  actor: jgstern_agent  # 8cc5
+  clock: 1  # 8cc5
+  nonce: 8cc5  # 8cc5
+  data:  # 8cc5
+    kind: work_item  # 8cc5
+    title: "Eight analyzers record no module for a handler reference, so same-named handlers are told apart by position"  # 8cc5
+    status: todo_soft  # 8cc5
+    priority: 3  # 8cc5
+    parent:  # 8cc5
+    tags:  # 8cc5
+    - framework_patterns  # 8cc5
+    - analysis_quality  # 8cc5
+    isbefore: []  # 8cc5
+    duplicate_of: []  # 8cc5
+    not_duplicate_of: []  # 8cc5
+    pr_ref:  # 8cc5
+    description: "WHAT. resolve_deferred_symbol_refs tells same-named handlers apart by the module the reference names (metadata.module_name, or the qualifier of a dotted name). Since PR #2326 the Python analyzer writes module_name for a route handler its import walk could not find. The other eight analyzers that emit usage contexts (js_ts, go, ruby, php, elixir, rust, clojure, swift) write no module_name, so for them a tie among same-named handlers falls to the reference's own file and then to position, unless the handler name itself is dotted.\n\nASK. Per analyzer: record the module (or file) the handler reference's import names, where the language has one. JS/TS first: an Express router file imports its handlers by relative path, which names the file exactly.\n\nNOT CHECKED. How many usage contexts per language name a key that several symbols hold (on pretix src/pretix it was 76 of 586, all Python).\n\nFound during PR #2326 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr1/RESULTS.md section 2."  # 8cc5
+    fields: {}  # 8cc5
