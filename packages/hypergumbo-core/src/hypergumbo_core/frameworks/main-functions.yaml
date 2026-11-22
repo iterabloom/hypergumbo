@@ -17,20 +17,26 @@
 #
 # The detection confidence of a match is set per language in entrypoints.py
 # (MAIN_FUNCTION_CONFIDENCE), from a census of how often a match is really a
-# program start; it is not a ranking value. These patterns check name, kind
-# and language only: Go's does not check `package main`, and Erlang's also
-# takes every `start` function, most of them OTP start functions.
+# program start; it is not a ranking value. Most of these patterns check name,
+# kind and language only. Go's also checks where the language says a program
+# starts (`package main`), through the qualified name the analyzer records.
+# Haskell's does not check the module, nor Rust's that the file is a crate
+# root.
 
 provenance: builtin
 id: main-functions
 language: multi
 
 patterns:
-  # Go: func main() - must be in package main (detected by presence)
+  # Go: func main() of package main. The Go analyzer's qualified name is
+  # `<package>.<name>`: a `main` in any other package (a cobra callback
+  # `func main(cmd, args)`, a vendored tool renamed into a library package)
+  # is an ordinary function.
   - concept: main_function
     symbol_name: "^main$"
     symbol_kind: "^function$"
     language: "^go$"
+    qualified_name: "^main\\.main$"
 
   # Java: main method — use (^|\.)main$ to match both bare "main" and
   # qualified "ClassName.main" (Java analyzer produces qualified names).
@@ -147,11 +153,11 @@ patterns:
     symbol_kind: "^function$"
     language: "^haskell$"
 
-  # Erlang: main/0 or start/0 — common CLI entry points
-  # OTP applications use -behaviour(application) start/2 which is framework-level,
-  # but standalone scripts use main() or start().
+  # Erlang: main/1, the entry point `escript` calls. The Erlang analyzer names
+  # a function `name/arity`. An OTP `start/2` is an application callback, not
+  # a program start, and is not matched here.
   - concept: main_function
-    symbol_name: "^(main|start)$"
+    symbol_name: "^main/1$"
     symbol_kind: "^function$"
     language: "^erlang$"
 

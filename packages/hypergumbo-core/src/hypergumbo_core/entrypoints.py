@@ -544,10 +544,10 @@ def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
 #:   hosted program's start (the 10 flagged rows sampled were code inside
 #:   string literals or comments, or a ``main`` indented under ``#if``).
 #: - csharp 61 of 61: ``static Main``.
-#: - go 1105 of 1146: right when the file is ``package main``, which the
-#:   pattern does not check; wrong for ``func main(cmd, args)`` cobra
-#:   callbacks in library packages and vendored tools whose package was
-#:   renamed.
+#: - go 1105 of 1146: right when the file is ``package main``. The pattern
+#:   checks that since 2026-11-22 (the 41 others, ``func main(cmd, args)``
+#:   cobra callbacks in library packages and vendored tools whose package
+#:   was renamed, no longer match), and the value is at the cap already.
 #: - java 1932 of 1961: ``static main(String[])`` (and JEP 512 instance
 #:   mains); wrong for builder or CLI-framework methods named ``main``.
 #: - kotlin 102 of 102 (a top-level ``fun main``; matches inside the string
@@ -561,12 +561,16 @@ def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
 #:   ``__main__`` guard or a manifest names it; wrong for helpers and
 #:   FastAPI route handlers named ``main``. Haskell: wrong for ``main`` in a
 #:   module other than ``Main``.
-#: - erlang 9 of 360: 0.50. The pattern also takes every ``start`` function,
-#:   and 344 of the matches are OTP start functions, not program starts.
 #:
 #: A language not listed was not measured and keeps
 #: :data:`MAIN_FUNCTION_UNMEASURED_CONFIDENCE` (swift: no top-level ``func
-#: main`` in 2,898 files; dart and zig: too few files).
+#: main`` in 2,898 files; dart and zig: too few files). Erlang is one of
+#: them. It was listed at 0.50 from a text census of ``main`` and ``start``
+#: definitions (9 of 360 right), but the analyzer names a function
+#: ``name/arity``, so the pattern those numbers described matched nothing.
+#: The pattern is ``main/1`` now, and the census repositories hold seven
+#: such definitions in files the analyzer reads (six of them escript
+#: entries): too few to set a value.
 MAIN_FUNCTION_CONFIDENCE: Mapping[str, float] = {
     "c": 0.95,
     "cpp": 0.95,
@@ -578,7 +582,6 @@ MAIN_FUNCTION_CONFIDENCE: Mapping[str, float] = {
     "rust": 0.95,
     "python": 0.90,
     "haskell": 0.90,
-    "erlang": 0.50,
 }
 
 #: A ``main_function`` match in a language the census did not measure. The

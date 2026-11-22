@@ -38,7 +38,6 @@ def _main(language: str, *, path: str = "app/main.x",
     ("go", 0.95), ("java", 0.95), ("c", 0.95), ("cpp", 0.95), ("csharp", 0.95),
     ("kotlin", 0.95), ("scala", 0.95), ("rust", 0.95),
     ("python", 0.90), ("haskell", 0.90),
-    ("erlang", 0.50),
 ])
 def test_detected_main_carries_its_languages_measured_confidence(
     language: str, expected: float,
