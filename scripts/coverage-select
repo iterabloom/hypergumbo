@@ -1297,12 +1297,20 @@ def _by_statement_facts(root: Path, index: Path, base: str, changed: list[str],
     test that reached a changed function, FAILED, and would have been left
     out. A failed test that reached no changed function is no business of a
     selector that only narrows "reached a changed function".
+
+    A change with no package source (a YAML catalogue, a script, nothing at
+    all) gets the same facts, for no changed block: the row names every file
+    the selector has no rule for (``files_not_judged``) instead of holding
+    nothing, and a reader counts it as an answer that left no test out. With
+    no index at all the selector was not asked, and the row says ``None``.
     """
-    sources = [name for name in changed if _SLICED_SOURCE_PATH.match(name)]
-    if not sources or not index.exists():
+    if not index.exists():
         return None
+    sources = [name for name in changed if _SLICED_SOURCE_PATH.match(name)]
     base_sources = {str(root / name): _base_source(root, base, name) for name in sources}
     with contextlib.closing(open_index(index)) as conn:
+        # With no source the selector answers no block, and still names the
+        # tests coverage cannot speak for.
         chosen = select_by_statement(conn, base_sources, root)
     tests = rebase_to_repo(chosen.tests, root)
     by_block = rebase_to_repo(chosen.by_block, root)

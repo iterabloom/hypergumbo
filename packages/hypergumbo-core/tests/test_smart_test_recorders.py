@@ -629,6 +629,56 @@ def test_a_run_record_says_what_selecting_by_statement_would_have_cost(repo: Pat
     assert "verdict                   : MISSED" in bar.stdout
 
 
+def test_a_change_with_no_package_source_still_names_the_files_it_does_not_judge(
+        repo: Path) -> None:
+    """A YAML catalogue and a script change, and no package source does. The
+    selector has a rule for neither: the row must say so, not hold ``null``
+    as it did (864 such rows by 2026-11-22). The rest of the row is the
+    answer for a change with no changed block, in the shape every reader of
+    the row already reads: nothing selected, so no failed test was left out
+    and none was at risk, and the bar counts the run as uninformative."""
+    from hypergumbo_core import selection_index as si
+
+    (repo / "packages/p/src/p/catalog.yaml").write_text("k: 1\n")
+    (repo / "scripts").mkdir()
+    (repo / "scripts/tool").write_text("echo 1\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "data")
+    _git(repo, "branch", "-f", "base", "HEAD")
+    si.open_index(repo.parent / "logs" / "index.sqlite").close()
+    (repo / "packages/p/src/p/catalog.yaml").write_text("k: 2\n")
+    (repo / "scripts/tool").write_text("echo 2\n")
+    (repo / "junit.xml").write_text(_JUNIT)
+    done = _helper(repo, "--junit", str(repo / "junit.xml"), "run-record",
+                   "--kind", "explicit", "--exit", "1", "--base-branch", "base")
+    assert done.returncode == 0, done.stderr
+    facts = _rows(repo, "runs.jsonl")[0]["by_statement"]
+    assert facts == {
+        "changed_blocks": 0, "answers": {}, "import_time_blocks": 0, "unknown_blocks": 0,
+        "tests": 0, "by_block": 0,
+        "failed_reaching_a_changed_block": [], "failed_reaching_a_narrowed_block": [],
+        "failed_not_selected": [], "failed_coverage_cannot_speak_for": [],
+        "files_not_judged": ["packages/p/src/p/catalog.yaml", "scripts/tool"],
+    }
+    bar = _helper(repo, "statement-bar")
+    assert "hold the selector's answer : 1" in bar.stdout, bar.stdout
+    assert "not counted" not in bar.stdout, "no reader may file it under a wrong reason"
+    assert "a failed test was at risk : 0" in bar.stdout
+    assert "RUNS WITH A FAILED TEST LEFT OUT : 0" in bar.stdout
+
+    # A run with no change at all: the same row, naming no file.
+    (repo / "packages/p/src/p/catalog.yaml").write_text("k: 1\n")
+    (repo / "scripts/tool").write_text("echo 1\n")
+    done = _helper(repo, "run-record", "--kind", "selected", "--exit", "0",
+                   "--base-branch", "base")
+    assert done.returncode == 0, done.stderr
+    row = _rows(repo, "runs.jsonl")[1]
+    assert row["changed_files"] == []
+    assert row["by_statement"]["files_not_judged"] == []
+    assert (row["by_statement"]["changed_blocks"], row["by_statement"]["tests"]) == (0, 0)
+    assert row["by_statement"]["failed_not_selected"] is None, "no junit report: did not look"
+
+
 def test_a_failed_test_that_starts_python_is_not_left_out_and_the_record_says_why(
         repo: Path) -> None:
     """The same run, with test_early recorded starting ``python``. Coverage
