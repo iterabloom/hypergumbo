@@ -20,8 +20,13 @@
 # route table inside the quasi-quote is out of reach, and the handlers are
 # found by name below), and `warp` / `toWaiApp` (a start call made inside a
 # main). None fired: haskell.py emits no usage contexts. The `Yesod` /
-# `YesodSubsite` instance rows stand for a hosted application object; they do
-# not fire either, since haskell.py writes no `base_classes`.
+# `YesodSubsite` instance rows stand for a hosted application object. A
+# `base_class:` row here reads the class of a typeclass INSTANCE: haskell.py
+# records it as `base_classes` on the instance symbol (`instance Yesod App`
+# -> symbol `Yesod App`, base_classes ["Yesod"]), so the concept lands on the
+# instance. Rows naming a TYPE rather than a class (`Handler`, `Widget`,
+# `YForm`/`MForm`/`AForm`, `HandlerFor`/`HandlerT`/`HandlerM`) cannot match
+# it: nobody writes `instance Handler X`.
 #
 # UAT-2026-04-13 BUG-16 flagged the gap on haskellers. WI-vabiv.
 

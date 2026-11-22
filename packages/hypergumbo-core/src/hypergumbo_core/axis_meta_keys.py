@@ -1125,9 +1125,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # Symbol.meta — declaration-shape annotations.
     # ------------------------------------------------------------------
     MetaKeySpec("base_classes", AXIS_SYMBOL_META,
-                "List of base-class names on class / interface "
-                "Symbols. Used by framework_patterns to identify "
-                "Django Model, SQLAlchemy Base, etc."),
+                "Base-class names on class / interface Symbols; the "
+                "class of a Haskell ``instance`` Symbol. framework_patterns "
+                "reads it (Django Model, SQLAlchemy Base, Yesod, etc.)."),
     MetaKeySpec("base_class_imports", AXIS_SYMBOL_META,
                 "Class Symbols (php, groovy, scala, csharp alias usings): for "
                 "each BARE base in ``base_classes`` bound by a single-type "
