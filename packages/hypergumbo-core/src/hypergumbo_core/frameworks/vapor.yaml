@@ -10,7 +10,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: vapor
 language: swift
 
@@ -25,6 +25,16 @@ patterns:
     extract:
       path: "metadata.route_path"
       method: "metadata.http_method"
+
+  # WebSocket route with a named handler: app.webSocket("chat", onUpgrade:
+  # chatHandler), routes.webSocket("feed", onUpgrade: self.feed). Vapor calls
+  # the handler on each upgraded connection. (An inline closure has no symbol
+  # and is not recorded.)
+  - concept: websocket_handler
+    usage:
+      kind: "^call$"
+      name: "^[A-Za-z_]\\w*\\.webSocket$"
+      position: "^kwargs\\[onUpgrade\\]$"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
 

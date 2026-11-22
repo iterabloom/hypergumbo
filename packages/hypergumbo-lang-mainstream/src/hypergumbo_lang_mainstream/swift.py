@@ -70,7 +70,7 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   receiver -- as a call it would land on a field, on a parameter, or on a
   same-named free function (WI-dimad)
 - Import statements
-- Usage contexts for Vapor/Hummingbird route registrations
+- Usage contexts for Vapor/Hummingbird route and webSocket registrations
 
 If tree-sitter with Swift support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -3885,6 +3885,65 @@ def _swift_on_verb_and_segments(
     return verb, segments
 
 
+def _swift_labeled_argument(
+    call_suffix: Optional["tree_sitter.Node"], label: str, source: bytes,
+) -> Optional["tree_sitter.Node"]:
+    """The expression a call passes under ``label`` (``use:``, ``onUpgrade:``)."""
+    value_args = (
+        find_child_by_type(call_suffix, "value_arguments")
+        if call_suffix is not None else None
+    )
+    for arg in (value_args.children if value_args is not None else []):
+        if arg.type != "value_argument":
+            continue
+        label_node = find_child_by_type(arg, "value_argument_label")
+        if label_node is None or node_text(label_node, source) != label:
+            continue
+        return next(
+            (c for c in arg.children
+             if c.type not in ("value_argument_label", ":", "comment")),
+            None,
+        )
+    return None
+
+
+def _swift_handler_reference(
+    expr: Optional["tree_sitter.Node"], source: bytes,
+    symbol_by_name: dict[str, Symbol],
+) -> tuple[Optional[Symbol], Optional[str]]:
+    """The function or method a handler argument names, and its name.
+
+    ``hello`` / ``self.feed``. Swift's rule: inside a type a bare name is the
+    type's member first (implicit ``self``), then a top-level function;
+    ``self.f`` is the member. Returns ``(symbol, name)`` when this file
+    declares it, ``(None, name)`` for a name to resolve once every file is
+    known, ``(None, None)`` for any other expression (a closure, a member of
+    another value): nothing is guessed.
+    """
+    if expr is None:
+        return None, None
+    owner = _get_enclosing_type(expr, source)
+    if expr.type == "simple_identifier":
+        name = node_text(expr, source)
+        candidates = ([f"{owner}.{name}"] if owner else []) + [name]
+    elif expr.type == "navigation_expression":
+        receiver, member = _swift_nav_receiver_method(expr, source)
+        if (
+            owner is None or member is None or receiver is None
+            or receiver.type != "self_expression"
+        ):
+            return None, None
+        name = f"{owner}.{member}"
+        candidates = [name]
+    else:
+        return None, None
+    for key in candidates:
+        found = symbol_by_name.get(key)
+        if found is not None and found.kind in ("function", "method"):
+            return found, name
+    return None, name
+
+
 def _swift_lambda_param_name(
     call_suffix: Optional["tree_sitter.Node"], source: bytes,
 ) -> Optional[str]:
@@ -3966,6 +4025,16 @@ def _extract_vapor_usage_contexts(
     - explicit method: ``app.on(.GET, "stream", use: h)``
     - the ``Application.routes`` property and a differently-named
       ``RoutesBuilder`` parameter as builder roots.
+    - WebSocket routes: ``app.webSocket("chat", onUpgrade: handler)`` on any
+      builder above, recorded (position ``kwargs[onUpgrade]``) only when the
+      handler is a name: an inline closure has no symbol.
+
+    A route's ``use:`` handler and a WebSocket route's ``onUpgrade:`` handler
+    are resolved by :func:`_swift_handler_reference` (implicit ``self`` first
+    inside a type, then a top-level function; ``self.f``). The route's goes on
+    its marker (``handler_ref``, for the route-handler linker's
+    ``dispatches_to``), the WebSocket handler on the context; one this file
+    does not declare is left to the name resolver (``metadata["handler"]``).
 
     The receiver chain is resolved recursively to an accumulated group-path
     prefix (``resolve_builder``); the root anchor is a reserved receiver name
@@ -4049,7 +4118,7 @@ def _extract_vapor_usage_contexts(
     def emit_route(
         segments: list[str], http_method: str,
         receiver: Optional["tree_sitter.Node"], method_name: str,
-        node: "tree_sitter.Node",
+        node: "tree_sitter.Node", handler_suffix: Optional["tree_sitter.Node"],
     ) -> None:
         route_path = "/".join(segments)
         span = Span(
@@ -4057,6 +4126,15 @@ def _extract_vapor_usage_contexts(
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
+        )
+        # The ``use:`` handler this file declares goes on the MARKER
+        # (``handler_ref``), from which the route-handler linker draws its
+        # dispatches_to edge. Not on the context: the vapor.yaml route row
+        # would then stamp ``route`` on the handler and the materializer mint
+        # a second marker for the same route.
+        handler, _ = _swift_handler_reference(
+            _swift_labeled_argument(handler_suffix, "use", source), source,
+            symbol_by_name,
         )
         contexts.append(UsageContext.create(
             kind="call",
@@ -4078,6 +4156,36 @@ def _extract_vapor_usage_contexts(
             origin=PASS_ID,
             origin_run_id=run_id,
             is_exported=True,
+            handler_ref=handler.id if handler is not None else None,
+        ))
+
+    def emit_websocket(
+        segments: list[str], receiver: Optional["tree_sitter.Node"],
+        node: "tree_sitter.Node", handler_suffix: Optional["tree_sitter.Node"],
+    ) -> None:
+        """A ``webSocket(path, onUpgrade: handler)`` registration, recorded
+        only for a handler this analyzer can name: an inline closure has no
+        symbol, and its body's calls already belong to the enclosing
+        function."""
+        handler, handler_name = _swift_handler_reference(
+            _swift_labeled_argument(handler_suffix, "onUpgrade", source), source,
+            symbol_by_name,
+        )
+        if handler_name is None:
+            return
+        contexts.append(UsageContext.create(
+            kind="call",
+            context_name=f"{receiver_display(receiver)}.webSocket",
+            position="kwargs[onUpgrade]",
+            path=str(file_path),
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                start_col=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_col=node.end_point[1],
+            ),
+            symbol_ref=handler.id if handler is not None else None,
+            metadata={"route_path": "/".join(segments), "handler": handler_name},
         ))
 
     def handle_call(call: "tree_sitter.Node", bindings: dict[str, Optional[list[str]]]) -> None:
@@ -4109,14 +4217,23 @@ def _extract_vapor_usage_contexts(
                 if prefix is not None:
                     emit_route(
                         prefix + _swift_string_segments(path_suffix, source),
-                        method.upper(), receiver, method, call,
+                        method.upper(), receiver, method, call, path_suffix,
                     )
             elif method == "on":
                 prefix = resolve_builder(receiver, bindings)
                 if prefix is not None:
                     verb, on_segs = _swift_on_verb_and_segments(path_suffix, source)
                     if verb in _VAPOR_ON_HTTP_METHODS:
-                        emit_route(prefix + on_segs, verb, receiver, method, call)
+                        emit_route(
+                            prefix + on_segs, verb, receiver, method, call, path_suffix,
+                        )
+            elif method == "webSocket":
+                prefix = resolve_builder(receiver, bindings)
+                if prefix is not None:
+                    emit_websocket(
+                        prefix + _swift_string_segments(path_suffix, source),
+                        receiver, call, path_suffix,
+                    )
             elif method in _VAPOR_GROUP_METHODS:
                 prefix = resolve_builder(receiver, bindings)
                 if prefix is not None:
