@@ -1,0 +1,21 @@
+- op: create  # c637
+  at: '2026-11-22T23:45:00Z'  # c637
+  by: agent  # c637
+  actor: jgstern_agent  # c637
+  clock: 1  # c637
+  nonce: c637  # c637
+  data:  # c637
+    kind: work_item  # c637
+    title: "middleware-chain linker chains call-registered middleware in definition order and joins two routers of one file"  # c637
+    status: todo_soft  # c637
+    priority: 3  # c637
+    parent:  # c637
+    tags:  # c637
+    - linkers  # c637
+    - analysis_quality  # c637
+    isbefore: []  # c637
+    duplicate_of: []  # c637
+    not_duplicate_of: []  # c637
+    pr_ref:  # c637
+    description: "WHAT. linkers/middleware_chain.py links the `middleware` symbols of one file with `references` edges in SOURCE-LINE order of their definitions. For middleware registered by a call, definition order is not registration order, and two routers defined in one file are joined into one chain.\n\nSEEN (after the WI-movur PR made call-registered middleware detectable in JavaScript, Go and Python):\n- polis server: 5 new edges follow the order the functions are written in src/server-middleware.ts (log_request_body -> http_json_logger -> log_middleware_errors -> responseTime_start -> globalErrorHandler) and src/utils/domain.ts (writeDefaultHead -> redirectIfNotHttps). app.ts registers them as http_json_logger (241), responseTime_start (301), redirectIfNotHttps (303), writeDefaultHead (306), log_request_body (309), log_middleware_errors (310), globalErrorHandler (2201).\n- Go fixture: echoTiming -> chiLogger joins an echo router and a chi router that share a file. milvus proxy: 1 edge (plausible). bottle fixture: 3 edges in source order.\n\nASK. For middleware whose concept came from a registration usage context, order (and group) by the registration site: the context's path and line, per receiver. The usage contexts are in the map; the linker reads only symbols today. Keep the definition order for decorator-declared middleware (Flask before_request), where it is the registration order."  # c637
+    fields: {}  # c637
