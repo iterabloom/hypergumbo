@@ -1,0 +1,21 @@
+- op: create  # 26ae
+  at: '2026-11-22T09:32:58Z'  # 26ae
+  by: agent  # 26ae
+  actor: jgstern_agent  # 26ae
+  clock: 1  # 26ae
+  nonce: 26ae  # 26ae
+  data:  # 26ae
+    kind: work_item  # 26ae
+    title: "inherited-calls binds the first same-named method on the MRO and ignores overloads (tapir: curried map)"  # 26ae
+    status: todo_soft  # 26ae
+    priority: 3  # 26ae
+    parent:  # 26ae
+    tags:  # 26ae
+    - framework_dispatch_linkers  # 26ae
+    - analysis_quality  # 26ae
+    isbefore: []  # 26ae
+    duplicate_of: []  # 26ae
+    not_duplicate_of: []  # 26ae
+    pr_ref:  # 26ae
+    description: "WHAT. The inherited-calls linker binds a call to the first same-named method it meets on the receiver type's MRO and ignores overloads. tapir: Tapir.fileBody calls rawBinaryBody(..).map(_.file)(d => ..), the curried two-list map. On dev it bound EndpointTransput.map (line 51, right); once Scala dotted parents are recorded (PR #2329) EndpointTransput.Atom becomes reachable and the call binds EndpointTransput.Atom.map (line 100, the one-parameter override): wrong. One call of 7 gained on tapir.\n\nASK. Choose among same-named candidates by arity / parameter-list shape where the call site shows it, as overload_arity does elsewhere; leave a tie unresolved or flagged rather than taking the first.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # 26ae
+    fields: {}  # 26ae

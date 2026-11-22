@@ -1,0 +1,20 @@
+- op: create  # ecc7
+  at: '2026-11-22T09:32:46Z'  # ecc7
+  by: agent  # ecc7
+  actor: jgstern_agent  # ecc7
+  clock: 1  # ecc7
+  nonce: ecc7  # ecc7
+  data:  # ecc7
+    kind: work_item  # ecc7
+    title: "Four rows the matcher key cannot fix: PHP @test and #[Test], F# attributes, D @(\"test\"), Plug conn"  # ecc7
+    status: todo_soft  # ecc7
+    priority: 3  # ecc7
+    parent:  # ecc7
+    tags:  # ecc7
+    - frameworks  # ecc7
+    isbefore: []  # ecc7
+    duplicate_of: []  # ecc7
+    not_duplicate_of: []  # ecc7
+    pr_ref:  # ecc7
+    description: "WHAT. Four rows of the fifteen in WI-lunal cannot be fixed by the matcher key, because the analyzer records nothing a row could read. Each is marked CANNOT FIRE in its YAML and pinned by a test as not matching (test_wrong_field_rows.py).\n- PHP: @test docblock tags and #[Test] attributes (php.py records neither). koel alone has 742 #[Test] tests, none detected.\n- F#: [<Fact>], [<Test>], [<Theory>] on a function or member, and [<EntryPoint>] (fsharp.py records no attribute, so an F# program's main is not an entry either).\n- D: @(\"test\") user-defined attributes; a unittest block is not a symbol.\n- Plug: the row keyed on a decorator named conn. A module plug is a module defining init/1 and call/2, a function plug a function of (conn, opts); neither is detected.\n\nASK. Per analyzer: record attributes in meta.annotations (PHP attributes and docblock tags, F#, D), then re-key the rows; design a Plug detector or delete the row.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # ecc7
+    fields: {}  # ecc7

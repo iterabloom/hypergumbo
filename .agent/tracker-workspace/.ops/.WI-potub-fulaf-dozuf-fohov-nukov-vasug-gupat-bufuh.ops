@@ -1,0 +1,21 @@
+- op: create  # 044f
+  at: '2026-11-22T09:32:52Z'  # 044f
+  by: agent  # 044f
+  actor: jgstern_agent  # 044f
+  clock: 1  # 044f
+  nonce: 044f  # 044f
+  data:  # 044f
+    kind: work_item  # 044f
+    title: "R and F# record no handler-argument usage context: Plumber and Giraffe route rows are marked CANNOT FIRE"  # 044f
+    status: todo_hard  # 044f
+    priority: 3  # 044f
+    parent:  # 044f
+    tags:  # 044f
+    - frameworks  # 044f
+    - analysis_quality  # 044f
+    isbefore: []  # 044f
+    duplicate_of: []  # 044f
+    not_duplicate_of: []  # 044f
+    pr_ref:  # 044f
+    description: "WHAT. The R and F# analyzers (since PR #2329) record one caller-position usage context per call and none for a function passed as an argument or composed as a value. So the rows whose subject is a HANDLER are marked CANNOT FIRE: plumber.yaml route rows (pr_get ...), middleware rows (pr_filter, pr_hook) and the serializer row (rekeyed to register_serializer); giraffe.yaml route rows (route \"/x\" >=> handler composes a value; GET >=> ... is a value, not a call). A Plumber or Giraffe service gets its application entry and no route.\n\nALSO NOT READ. Plumber's main route form, #* annotation comments above a function; old-style shinyServer / shinyUI apps; do.call and string-named calls; R6 methods are not symbols. F#: the function passed to UseGiraffeErrorHandler; paket.references (SAFE-stack projects are not detected); suave is detected and has no YAML.\n\nCOST SEEN. mlflow's R package (63 files): 1,557 usage contexts, the map 43% larger, 16 new file nodes for files that hold only calls. One F# file of 684 lines: 421 contexts, +68%.\n\nASK. Handler-argument contexts for R (symbol_ref = the handler, position args[...], path and method in metadata) and a per-route context for Giraffe; then un-mark the rows. Decide whether every call needs a context or only calls no in-repo function answers. No Shiny, Plumber, Giraffe or Saturn repository is on this machine: measure on one.\n\nFound during PR #2329 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr2/RESULTS.md and RESIDUALS_TO_FILE.md."  # 044f
+    fields: {}  # 044f
