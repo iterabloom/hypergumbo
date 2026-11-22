@@ -17,6 +17,15 @@ omit =
     */scip/_generated/scip_pb2.py
 
 [report]
+# The Missing column, as pyproject.toml's [tool.coverage.report] has it: this
+# file replaces that section too, and without it a report under this config
+# said which files miss lines but not which lines. Every reader of the report
+# already handles the column (it is there whenever pyproject's config is the
+# one in force): CI's `grep "No data to report"`, full-suite's
+# `awk '{print $NF}'` on the TOTAL row (which has no Missing cell), and
+# smart-test's COVERAGE block.
+show_missing = True
+
 # Exclude lines containing these patterns (embedding-related conditionals)
 exclude_also =
     # Functions that require sentence-transformers
