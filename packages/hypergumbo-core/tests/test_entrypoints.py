@@ -10,6 +10,7 @@ from hypergumbo_core.entrypoints import (
     _is_frontend_file,
     all_known_entrypoint_kinds,
     compute_entrypoint_cap,
+    detect_entrypoint_candidates,
     detect_entrypoints,
     Entrypoint,
     EntrypointKind,
@@ -3409,6 +3410,81 @@ class TestConnectivityFallback:
         kinds = {ep.kind for ep in entrypoints}
         assert EntrypointKind.MAIN_FUNCTION in kinds
         assert EntrypointKind.CONNECTIVITY_BASED not in kinds
+
+    def test_fallback_activates_when_the_floor_would_leave_no_entry(self) -> None:
+        """A list the rank floor empties is the same failure as an empty one.
+
+        A library whose only detected entries are its test methods: each is a
+        ``test_function`` candidate at 0.80 x 0.1 (test file) = 0.08, under
+        the 0.10 floor. The fallback asked only whether ANY candidate had been
+        detected, so it stayed off and the list came out empty (the Ruby
+        bindings of whisper.cpp went from five entries to none once class
+        test methods were detected). It now asks whether any would be kept.
+        """
+        work = make_symbol("transcribe", kind="function", path="ext/whisper.c",
+                           language="c", start_line=1, end_line=10)
+        helper = make_symbol("decode", kind="function", path="ext/whisper.c",
+                             language="c", start_line=20, end_line=30)
+        test = make_symbol(
+            "TestWhisper#test_transcribe", kind="method", path="test/test_whisper.rb",
+            language="ruby", start_line=5, end_line=9,
+            meta={"concepts": [{"concept": "test_function", "framework": "test-frameworks"}]},
+        )
+        edges = [
+            Edge.create(src=work.id, dst=helper.id, edge_type="calls", line=2,
+                        origin="test", origin_run_id="test"),
+        ]
+
+        entrypoints = detect_entrypoints([work, helper, test], edges)
+
+        assert [(ep.symbol_id, ep.kind) for ep in entrypoints] == [
+            (work.id, EntrypointKind.CONNECTIVITY_BASED),
+        ]
+        # Chosen by out-degree, so not boosted for it as well.
+        assert entrypoints[0].rank_score == pytest.approx(0.50)
+
+    def test_fallback_stays_off_when_a_test_entry_is_kept(self) -> None:
+        """A test function outside test paths (EUnit tests live in ``src/``)
+        ranks 0.80 and is kept: nothing to fall back from."""
+        work = make_symbol("add/2", kind="function", path="src/calc.erl",
+                           language="erlang", start_line=1, end_line=2)
+        test = make_symbol(
+            "add_test/0", kind="function", path="src/calc.erl", language="erlang",
+            start_line=4, end_line=5,
+            meta={"concepts": [{"concept": "test_function", "framework": "test-frameworks"}]},
+        )
+        edges = [
+            Edge.create(src=test.id, dst=work.id, edge_type="calls", line=4,
+                        origin="test", origin_run_id="test"),
+        ]
+
+        entrypoints = detect_entrypoints([work, test], edges)
+
+        assert [(ep.symbol_id, ep.kind) for ep in entrypoints] == [
+            (test.id, EntrypointKind.TEST_FUNCTION),
+        ]
+
+    def test_fallback_entries_in_test_code_are_penalised_like_any_other(self) -> None:
+        """The fallback's own picks take the path penalties: a test method that
+        is the most connected callable still falls under the floor."""
+        test = make_symbol(
+            "TestWhisper#test_transcribe", kind="method", path="test/test_whisper.rb",
+            language="ruby", start_line=5, end_line=9,
+        )
+        helper = make_symbol("TestWhisper#audio", kind="method", path="test/test_whisper.rb",
+                             language="ruby", start_line=11, end_line=13)
+        edges = [
+            Edge.create(src=test.id, dst=helper.id, edge_type="calls", line=6,
+                        origin="test", origin_run_id="test"),
+        ]
+
+        candidates = detect_entrypoint_candidates([test, helper], edges)
+
+        assert [(c.symbol_id, c.kind) for c in candidates] == [
+            (test.id, EntrypointKind.CONNECTIVITY_BASED),
+        ]
+        assert candidates[0].rank_score == pytest.approx(0.05)
+        assert detect_entrypoints([test, helper], edges) == []
 
     def test_fallback_confidence_lower_than_concepts(self) -> None:
         """Connectivity-based entrypoints have lower confidence than concept-based.
