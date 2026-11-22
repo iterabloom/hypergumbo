@@ -113,7 +113,12 @@ if TYPE_CHECKING:
 from . import kept_work
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
-from .reference_candidates import CandidatePool, NameTiers, two_tier_name_table
+from .reference_candidates import (
+    CandidatePool,
+    NameTiers,
+    candidate_languages,
+    two_tier_name_table,
+)
 from .yaml_catalogs import CatalogueError, read_catalogue_yaml, reject_unknown_keys
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
@@ -1145,21 +1150,52 @@ def match_patterns(
     return results
 
 
+#: ``language:`` values of a framework file that name no language.
+_NO_LANGUAGE: frozenset[str] = frozenset({"multi", "unknown"})
+
+
+def _usage_languages(pattern_def: FrameworkPatternDef) -> frozenset[str] | None:
+    """The languages a framework file's usage rows are about, or ``None`` for any.
+
+    The file's ``language:`` (one name or a list), widened as a reference's
+    candidate languages are (JavaScript and TypeScript are one set). ``multi``
+    and a missing value name no language.
+    """
+    raw: Any = pattern_def.language
+    names = [raw] if isinstance(raw, str) else list(raw or [])
+    return candidate_languages(n for n in names if n not in _NO_LANGUAGE)
+
+
 def match_usage_patterns(
     ctx: UsageContext,
     pattern_defs: list[FrameworkPatternDef],
+    host_languages: frozenset[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Match a usage context against framework patterns (v1.1.x).
+
+    A usage row matches by the name called, and a name means something only
+    in its language: R's ``createServer()`` is not Node's. So a file whose
+    ``language:`` names languages is skipped for a context written in none
+    of them. Neither side is restricted when it says nothing: a ``multi``
+    file, or a context whose file's language is not known.
 
     Args:
         ctx: UsageContext to match
         pattern_defs: List of framework pattern definitions to try
+        host_languages: The languages of the file the context is written in
+            (``CandidatePool.host_languages``), or ``None`` when not known
+            (or not asked: a direct caller that does not pass it gets no
+            language check).
 
     Returns:
         List of match results (concept dicts). Empty if no matches.
     """
     results = []
     for pattern_def in pattern_defs:
+        if host_languages is not None:
+            row_languages = _usage_languages(pattern_def)
+            if row_languages is not None and not row_languages & host_languages:
+                continue
         for pattern in pattern_def.patterns:
             match = pattern.matches_usage(ctx)
             if match:
@@ -1673,6 +1709,10 @@ class _FallbackNames:
             table = self._tables[languages] = (by_qualified, by_simple)
         return table
 
+    def host_languages(self, path: str) -> frozenset[str] | None:
+        """The languages of the file ``path`` (``CandidatePool.host_languages``)."""
+        return self._pool.host_languages(path)
+
     def lookup(self, view_name: str, path: str) -> Symbol | None:
         """The symbol ``view_name``, written in the file ``path``, names."""
         by_qualified, by_simple = self._table(self._pool.host_languages(path))
@@ -1892,8 +1932,10 @@ def enrich_symbols(
             if not resolved_symbol:
                 continue
 
-            # Match against usage patterns
-            matches = match_usage_patterns(ctx, pattern_defs)
+            # Match against usage patterns, of the context's own language.
+            matches = match_usage_patterns(
+                ctx, pattern_defs, fallback_names.host_languages(ctx.path),
+            )
             if matches:
                 if resolved_symbol.meta is None:
                     resolved_symbol.meta = {}

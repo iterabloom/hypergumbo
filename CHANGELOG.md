@@ -67,6 +67,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`slice --entry auto` picks the Go `main` that builds the module's binary**, and prefers production code to examples.
 - **Duplicate routes keep the production one, the same one every run.**
 - **A handler name binds same-language code, in the module its reference names.**
+- **A framework's call rows match only calls written in its language.**
 - **Sketch deals tied Entry Points lines across files** and keeps a line per kind.
 
 #### Secret-leak claims (`verify-claims`)
