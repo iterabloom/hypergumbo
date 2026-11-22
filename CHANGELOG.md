@@ -50,6 +50,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Framework rows that keyed a call on `decorator:` are deleted.**
 - **A same-file `main` no longer drops application objects.**
+- **Request-parameter seeding survives a colon in a file path.**
 - **`slice --entry auto` picks the Go main that builds the module's binary.**
 - **An imported and a qualified spelling of one type hash alike.**
 - **Rust cfg and Swift #if alternatives no longer share one id.**
