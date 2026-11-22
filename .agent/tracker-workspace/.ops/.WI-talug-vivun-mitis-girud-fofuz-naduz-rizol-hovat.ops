@@ -20,3 +20,19 @@
     pr_ref:  # c0f9
     description: "WHAT. framework_patterns.resolve_deferred_symbol_refs and the enrichment table beside it key every symbol of every language by name, last write wins, in symbols order (which varies between runs: see the completion-order item).\n\nSEEN. pretix: the UsageContext for route ^locale/set$ carried symbol_ref = the Python view in one base run and javascript:static/pdfjs/pdf.worker.js:...:LocaleSet:class in another. PR #2198 fixed the same defect in linkers/route_handler.py (candidates restricted to the route's host language, total order, qualified name before name) and left this one.\n\nASK. The same rule here. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # c0f9
     fields: {}  # c0f9
+- op: update  # d795
+  at: '2026-11-22T06:28:49Z'  # d795
+  by: agent  # d795
+  actor: jgstern_agent  # d795
+  clock: 2  # d795
+  nonce: d795  # d795
+  set:  # d795
+    status: done  # d795
+    pr_ref: 'PR #2326'  # d795
+- op: discuss  # cdba
+  at: '2026-11-22T06:28:49Z'  # cdba
+  by: agent  # cdba
+  actor: jgstern_agent  # cdba
+  clock: 3  # cdba
+  nonce: cdba  # cdba
+  message: "DONE in PR #2326 (dev cd6197a41). resolve_deferred_symbol_refs and the name fallback of enrich_symbols take their candidates by the route-handler linker's rule, now in one module both read (reference_candidates.py): the symbols of the reference's host languages, a qualified name before a name, source order among equals.\nTHE FILED REPRO DID NOT REPRODUCE: in two runs of dev 976cc8805 on pretix src/pretix the context of route ^locale/set$ carried the Python view both times. The premise is in the map: LocaleSet has three holders, two of them classes in static/pdfjs/pdf.worker.js, and the table that chose among them was flat and last-write-wins (read in the code). So the closing evidence is not a corpus flip. It is: (a) unit tests that hand the pass the same symbols in EVERY order and assert one answer, with a Python reference and a JavaScript namesake among the cases; 20 of 20 mutations red; (b) pretix src/pretix, 465 references written with a module in the source, judged by whether the bound symbol's file is that module: 449 right on dev, 464 right after (the one mismatch left is the checker's error).\nWHAT (b) NEEDED BEYOND THE ASK: the rule alone was a wash on pretix (447 right; 37 bindings changed among same-named classes, position instead of last write). Several holders of one exact name are now told apart by what the reference says: production before test code, the module it names, its own file; else the first in source order, counted in the new DeferredResolutionStats.resolved_by_position. The resolver read metadata.module_name and no analyzer wrote it: py.py now writes it for a route handler its own import walk could not find.\nNOT ASSERTED: that a binding is right wherever no module is written at the reference (121 of 586 pretix contexts, not judged); anything from the repository root (the measurement is a sub-tree analysis, where the Python analyzer's import walk fails on the pretix. prefix); any language other than Python on a corpus.\nRESIDUALS FILED SEPARATELY: the JAX-RS subresource table in the same file; a module that matches no holder; the eight other analyzers that write no module_name.\nEvidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr1/RESULTS.md."  # cdba
