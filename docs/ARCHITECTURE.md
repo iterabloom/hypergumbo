@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **393** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 136 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **64365** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14601, of which 8291 are functions, methods or classes
-- **259312** edges, test code included, by type:
-  - calls: 145488
-  - contains: 59920
-  - imports: 22873
-  - instantiates: 13537
-  - references: 12925
-  - module_attr_ref: 2603
-  - other: 1966
+- **394** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 137 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **64485** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14622, of which 8307 are functions, methods or classes
+- **259792** edges, test code included, by type:
+  - calls: 145724
+  - contains: 60031
+  - imports: 22932
+  - instantiates: 13566
+  - references: 12955
+  - module_attr_ref: 2604
+  - other: 1980
 
 ## Package Architecture
 
@@ -276,7 +276,7 @@ The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 2200.7 | hypergumbo_core/ir.py |
+| `Symbol` | class | 2205.5 | hypergumbo_core/ir.py |
 | `node_text` | function | 1442.6 | hypergumbo_core/analyze/base.py |
 | `Span` | class | 1262.6 | hypergumbo_core/ir.py |
 | `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
@@ -705,6 +705,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
 - **`hypergumbo_core.readme_prose`**: Which README text can be a project's description, stated once.
 - **`hypergumbo_core.receiver_blind_magnets`**: INV-fahub receiver-blind method-magnet detector (language-agnostic).
+- **`hypergumbo_core.reference_candidates`**: Which declarations a name written in a file can refer to.
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.repo_tier_offer`**: ADR-0047 ruling 9 — the developer-audience offer, and the decision ...
 - **`hypergumbo_core.routes`**: Canonical route accessor: decides route-ness and extracts path, met...
@@ -1025,8 +1026,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 2900e6e4754f
-  commit_count: 9649
+  commit: 75f676072159
+  commit_count: 9656
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
