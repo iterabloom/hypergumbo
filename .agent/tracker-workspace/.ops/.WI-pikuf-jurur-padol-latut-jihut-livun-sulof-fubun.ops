@@ -1,0 +1,21 @@
+- op: create  # 9cee
+  at: '2026-11-22T11:14:19Z'  # 9cee
+  by: agent  # 9cee
+  actor: jgstern_agent  # 9cee
+  clock: 1  # 9cee
+  nonce: 9cee  # 9cee
+  data:  # 9cee
+    kind: work_item  # 9cee
+    title: "smart-test playbook states when narrowing refuses; PR #2334 added two cases and a flag (governance file, needs approval)"  # 9cee
+    status: needs_human_review  # 9cee
+    priority: 3  # 9cee
+    parent:  # 9cee
+    tags:  # 9cee
+    - smart_test  # 9cee
+    - developer_experience  # 9cee
+    isbefore: []  # 9cee
+    duplicate_of: []  # 9cee
+    not_duplicate_of: []  # 9cee
+    pr_ref:  # 9cee
+    description: "WHAT. A governance file states behaviour PR #2334 changed. .agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md, around line 141, lists when by-statement narrowing refuses: \"for a changed path it has no rule for ..., for import-time code, for a function the index has never seen, and when no package source changed\". Since PR #2334 it also refuses for a new method whose bases cannot be followed to source of the repository (UNRESOLVED_BASE) and for a new decorated def (NEW_DECORATED). The same playbook does not mention the explicit run's NOT GATED notice or the --gate-changed flag.\n\nASK (needs the owner: .agent/** is a governance path, and I did not edit it): approve a small edit of that paragraph, plus two lines on the notice and the flag.\n\nFound during PR #2334 (2026-11-22). Evidence: ~/hypergumbo_lab_notebook/three_pr_plan_11222026/pr3/PROBE.md and RESIDUALS_TO_FILE.md."  # 9cee
+    fields: {}  # 9cee
