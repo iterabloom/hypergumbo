@@ -1,0 +1,21 @@
+- op: create  # 8551
+  at: '2026-11-22T23:45:10Z'  # 8551
+  by: agent  # 8551
+  actor: jgstern_agent  # 8551
+  clock: 1  # 8551
+  nonce: '8551'  # 8551
+  data:  # 8551
+    kind: work_item  # 8551
+    title: "A near-full local test run with six workers loses a pytest worker to a 4 GB memory burst near its end"  # 8551
+    status: todo_soft  # 8551
+    priority: 3  # 8551
+    parent:  # 8551
+    tags:  # 8551
+    - smart_test  # 8551
+    - developer_experience  # 8551
+    isbefore: []  # 8551
+    duplicate_of: []  # 8551
+    not_duplicate_of: []  # 8551
+    pr_ref:  # 8551
+    description: "WHAT. A near-full local test run (smart-test selecting for itself, 1,596 test files, 43,400 tests) loses a pytest worker near its end when it runs with six workers on this machine (22 GB, no swap): \"[gwN] node down: Not properly terminated\", then 40 to 60 errors in tests/test_smart_test_* (the dead worker's coverage data file is unreadable: \"no such table: context\") and the run is red. The tests are not at fault: the same five files pass alone (55 passed).\n\nSEEN, 2026-11-22, branch jgstern-agent/feat/registration-detectors, pre-PR runs 2 and 3 (movur_dibin_11222026/movur/prepr2, prepr3): a different test was running in the dead worker each time (test_smart_test_explicit_gate.py::test_a_change_with_no_package_source_says_nothing_to_gate; test_smart_test_directory_arg.py::test_a_root_test_directory_is_an_explicit_run). Free memory sampled every 10 s (prepr3_mem.log): 7.4 GB at 22:10, 6.1 GB at 22:14:02, 2.4 GB at 22:14:12, back to 7.1 GB at 22:14:32, i.e. about 4 GB taken and released within 20 s, at the moment the worker died. Run 4 with `-n 4` passed (43,723 passed); the same burst is in its log (8+ GB falling to 4.25 GB at 22:37:14).\n\nNOT KNOWN: what takes the 4 GB. Candidates: a smart-test started by one of the self-tests running a real analysis or a graph rebuild (smart-test documents a rebuild as \"4 GB and one core for five minutes\"), or several analysis-heavy tests ending together. Not known either: what killed the worker (no OOM line was readable; systemd-oomd and earlyoom are inactive).\n\nWHY IT MATTERS. smart-test picks its worker count from the memory free at START ((available - 2 GB) / 2 GB, capped at the core count): 14 GB free gave six workers, and the run then needed more than was free. A change that moves a line citation in signature_axis.py or module_key_axis.py selects the whole suite (import-closure union), so this is the run every such PR gets.\n\nASK. Find the 4 GB process (sample `ps` by RSS during the last two minutes of a full run). If it is a self-test's child, give those tests a stub or a fixture that cannot start a real analysis; otherwise make the worker cap account for it. Until then: `PREPR_SMART_FLAGS=\"-n 4\"` for a near-full pre-PR run."  # 8551
+    fields: {}  # 8551

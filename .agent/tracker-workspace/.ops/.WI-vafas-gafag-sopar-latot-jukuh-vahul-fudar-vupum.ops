@@ -1,0 +1,23 @@
+- op: create  # 49c5
+  at: '2026-11-22T23:44:51Z'  # 49c5
+  by: agent  # 49c5
+  actor: jgstern_agent  # 49c5
+  clock: 1  # 49c5
+  nonce: 49c5  # 49c5
+  data:  # 49c5
+    kind: work_item  # 49c5
+    title: "Python, PHP, Swift and Rust left open: PHP file-scope calls and Slim registrations, dead cli-rust derive rows, argparse-only detection"  # 49c5
+    status: todo_soft  # 49c5
+    priority: 3  # 49c5
+    parent:  # 49c5
+    tags:  # 49c5
+    - frameworks  # 49c5
+    - python  # 49c5
+    - php  # 49c5
+    - rust  # 49c5
+    isbefore: []  # 49c5
+    duplicate_of: []  # 49c5
+    not_duplicate_of: []  # 49c5
+    pr_ref:  # 49c5
+    description: "Left open in Python, PHP, Swift and Rust by the WI-movur PR (audit 0029, group misc):\nPHP\n1. php.py emits no edge for a file-scope `->`, `::` or `new` call, and no usage context for a `$app->` call: Slim `add`, `addMiddleware`, `setErrorHandler`, `setDefaultErrorHandler`, `addBodyParsingMiddleware` with `X::class`, `'fn'` or `new X()` arguments are undetected (S1, S3, S4, S9, S10, S13). Same extractor shape as the Slim routes of WI-dopuh. (A Slim `ErrorHandler` subclass is now an error_handler entry.)\nRust\n2. All seven cli-rust.yaml annotation rows are dead: rust.py records `#[derive(Parser)]` as name `derive` with args [\"Parser\"] (sherpa-onnx: 13 derive(Parser) structs, 0 concepts). rust-web.yaml has rows of the same shape (not measured). Whether a clap derive struct should be an entry is an owner question.\n3. `value_parser(fn)` / `#[arg(value_parser = fn)]` give the function no edge. A struct's `#[command(...)]` attribute resolves to its own field named command (a false decorated_by edge).\nPython\n4. An argparse-only project detects no framework (argparse is the standard library), so no cli row loads. The dispatch linker's `set_defaults(func=...)` handlers have dispatches_to and no cli_command entry (v8 mb.py: 9 of 9).\n5. A file with module-level code and no `__main__` guard gets no entry.\n6. `fire.Fire()` with no argument names no callable; `self.method` or an instance variable as an argument is not resolved; a decorator receiver bound inside a function, or made by a wrapper of the repository, is not named.\n7. No fitting entry kind, rows not shipped: an `argparse.Action.__call__` parse callback; an aiohttp_jinja2 context processor. The `lifecycle` concept has no entry mapping (aiohttp signals are event_handler now).\n8. masonite.yaml rows without a position (`Route.group`, `\\.middleware`, `^Auth\\.`) are fed by the new contexts for any local-callable argument; no masonite code was measured.\n9. Seen, not this work's: graphql-resolver-linker markers have no edge to the Python function and take the type name from the variable name; the flask-restful `add_resource` marker says ANY while its usage row says GET.\nSwift\n10. Not recorded: an inline WebSocket closure (V1, V3), a handler that is another value's member (`todoController.index`).\nEvidence: ~/hypergumbo_lab_notebook/movur_dibin_11222026/movur/triage_misc.md, out/build_misc/."  # 49c5
+    fields: {}  # 49c5

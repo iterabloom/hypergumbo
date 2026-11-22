@@ -18,3 +18,10 @@
     pr_ref:  # e682
     description: "Slices from a Go program's main stop at cobra command dispatch.\n\nREPRO: hypergumbo slice --entry auto on caddy (PR 6 branch, picks cmd/caddy/main.go) reaches 3 nodes; podman's main reaches 58. The call graph does not follow cobra's Command{RunE: ...} / AddCommand registration, so subcommand handlers are not reached from main. Found by PR 6 agent 2 (2026-11-20) while building WI-dufuz: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr6/dufuz/RESULTS.md."  # e682
     fields: {}  # e682
+- op: discuss  # b454
+  at: '2026-11-22T23:45:58Z'  # b454
+  by: agent  # b454
+  actor: jgstern_agent  # b454
+  clock: 2  # b454
+  nonce: b454  # b454
+  message: "WI-movur's Go triage and build (audit 0029, group go) measured this item's mechanism and did not fix it. On beads/cmd/bd `main` reaches 1 of 1,595 non-test functions: `rootCmd.Execute()` resolves to an external Execute and writes no edge to the package-level variable rootCmd; `AddCommand(serveCmd)` and `[]cli.Command{execCommand}` name VARIABLES and write no edge; Go `init()` is neither an entry nor called (120 of them in beads/cmd/bd, 0 reachable). 0 of 223 `*Cmd` variables and 0 of 56 linked handlers are reachable from main; on runc 0 of 17 package-level cli.Command variables. After the WI-movur PR the 56 cobra handlers are cli_command ENTRIES and the cobra linker's dispatches_to starts at the command variable (it started at the file node), but they are islands: a slice from main still stops. WI-ravav interacts: if struct-field `calls` are demoted to `references` before slices follow references, the in-function urfave forms lose their only path. Cross-link only."  # b454

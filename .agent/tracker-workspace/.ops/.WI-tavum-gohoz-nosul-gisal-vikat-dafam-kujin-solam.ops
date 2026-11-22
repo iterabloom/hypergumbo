@@ -26,3 +26,10 @@
   clock: 2  # 9f72
   nonce: 9f72  # 9f72
   message: "Related, found after filing: INV-zopiz (ruby, kotlin, go and csharp drop a file with no symbols before the edge pass, so a top-level-only file such as an RSpec spec has no file node). A spec file whose examples became symbols would no longer be symbol-less. WI-somog holds the other rows no key can fix (PHP @test / #[Test], F#, D, Plug conn)."  # 9f72
+- op: discuss  # 4de8
+  at: '2026-11-22T23:45:52Z'  # 4de8
+  by: agent  # 4de8
+  actor: jgstern_agent  # 4de8
+  clock: 3  # 4de8
+  nonce: 4de8  # 4de8
+  message: "WI-movur's second tranche (audit 0029, PR to follow) measured the same gap outside tests: a framework handler written as an INLINE block, closure or lambda has no symbol in Ruby, Go, Elixir, Scala, Kotlin, PHP and Swift (JavaScript has one for some callbacks). Its calls are attributed to the enclosing code, so nothing in it is unreachable, but no row can label it. Forms left NOT DETECTED for this reason, by the audit's ids: ruby G4, G5, C3, R1, R2, R4, R5, R9, X2, S1-S4, Q5, Q9 and Q7's lambda form (gitlab: 45 `prepare:` lambdas); go C6, C10, U6, W3, W18; js E5 and object-property handlers; misc A3, V1, V3 and the Slim closures; every inline akka-http, Play and Ktor form. In Ruby the usage rows whose handler is a block (padrino controller / before / after / mailer / email / error / not_found, roda route) are parked on position `^block$`, which no context has: a decision here to give blocks a symbol is what would let them fire. Cross-link only; nothing folded."  # 4de8
