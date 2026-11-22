@@ -89,6 +89,19 @@ ADR-0035 producer stable_id through ``overload_arity.declared_arity_stable_id``
 (data types and instances with no arity; an instance's name, ``Shape Int``,
 already carries the type that tells it from another instance of the class).
 Classes keep their table-formula ids. (history: WI-tusad)
+
+``Symbol.qualified_name`` is ``<Module>.<name>`` for every named top-level
+declaration (function, data, class, instance), the module as the file's
+``module X.Y where`` header writes it, ``Main`` for a file with no header
+(Haskell 2010 report §5.1), ``None`` when a damaged header leaves it unknown.
+It is what tells ``Main.main``, the program start, from a ``main`` defined in
+any other module. The stable-id formula's ``qualified_name`` input stays the
+bare name, so no id moved when the field was filled. Instances and classes
+carry one too, although nothing refers to an instance by name: the
+containment linker reads a qualified name's prefix (here the MODULE) as an
+owner in the same file whose own qualified name is that prefix or absent, and
+a class or class-named instance spelled like its module would otherwise be
+taken for it. (history: WI-mulaj)
 """
 from __future__ import annotations
 
@@ -112,6 +125,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import (
     ARITY_KEY, declared_arity, declared_arity_stable_id,
 )
+from hypergumbo_core.qualified_name_axis import separator_for_language
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -196,6 +210,34 @@ def _extract_haskell_signature(
     if type_parts:
         return " ".join(type_parts)
     return None  # pragma: no cover - defensive, called only when signature exists
+
+
+#: The module a file with no ``module`` header is (Haskell 2010 report §5.1:
+#: the header is then ``module Main (main) where``). Not ``_HS_IMPLICIT_MODULE``,
+#: which is the module every file IMPORTS implicitly (Prelude).
+_HS_HEADERLESS_MODULE = "Main"
+
+
+def _file_module_name(tree: "tree_sitter.Tree", source: bytes) -> Optional[str]:
+    """The module this file is, as its header writes it, or ``None``.
+
+    The header is a top-level node; pragmas, comments and a ``#!`` line
+    (``runghc`` / ``stack`` scripts) before it are sibling nodes, and an export
+    list split over lines is a child of it, so none of them is in the way.
+    A file with no header is ``Main``. FAIL CLOSED when there is no header but
+    the parser could not read what precedes the first import or declaration
+    (a damaged ``module ... where``): the module is then unknown, and calling
+    it ``Main`` would make its ``main`` a program start.
+    """
+    for child in tree.root_node.children:
+        if child.type == "header":
+            module_node = child.child_by_field_name("module")
+            return node_text(module_node, source) if module_node else None
+        if child.type in ("imports", "declarations"):
+            break
+        if child.type == "ERROR":
+            return None
+    return _HS_HEADERLESS_MODULE
 
 
 def _extract_module_exports(tree: "tree_sitter.Tree", source: bytes) -> Optional[set[str]]:
@@ -293,6 +335,13 @@ def _extract_symbols_from_file(
     # is_exported correctly; the `exports` and `tests` seed sets for
     # `dead-code-maybe` depend on it. (history: WI-buvun)
     exported_names = _extract_module_exports(tree, source)
+    # Every named top-level declaration is ``<Module>.<name>`` (WI-mulaj): the
+    # module is what tells ``Main.main``, a program start, from a ``main`` of
+    # any other module. ``None`` when the module is unknown.
+    module_name = _file_module_name(tree, source)
+    qualifier = (
+        f"{module_name}{separator_for_language('haskell')}" if module_name else None
+    )
 
     # First pass: collect type signatures
     type_signatures: dict[str, str] = {}
@@ -396,6 +445,9 @@ def _extract_symbols_from_file(
             origin_run_id=run_id,
             signature=signature,
             is_exported=is_exported,
+            # The Symbol field only: the stable id above keeps the bare name
+            # as its ``qualified_name`` input, so no id moves.
+            qualified_name=f"{qualifier}{name}" if qualifier else None,
             # INV-loguk: CC gated to the callable kind so data/class/instance
             # subtrees don't aggregate; LOC likewise only for callables.
             cyclomatic_complexity=(
