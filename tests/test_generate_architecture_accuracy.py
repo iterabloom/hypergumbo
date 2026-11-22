@@ -187,3 +187,29 @@ def test_missing_package_root_fails_loudly(mod, monkeypatch, tmp_path):
 
     with pytest.raises(FileNotFoundError):
         mod.categorize_modules()
+
+
+def test_the_self_analysis_skips_what_the_doc_never_reads(mod, monkeypatch, tmp_path):
+    """The regeneration is one ``hypergumbo run`` and five seconds of this
+    script (WI-lutok, measured 2026-11-22: 339 to 345 s). Two parts of that
+    run reach nothing the doc prints: the vendored tree-sitter grammars, which
+    the C analyzer reads for 35 to 49 s and ``--first-party-only`` then drops
+    whole, and the 19 side files (sketch previews, handler slices). Without
+    them the run is 262 s and its nodes and edges are the same."""
+    seen: list[list[str]] = []
+
+    def fake_run(args: list[str], description: str) -> None:
+        seen.append(args)
+        Path(args[args.index("--out") + 1]).write_text('{"nodes": [], "edges": []}')
+
+    (tmp_path / "packages").mkdir()
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(mod, "run_command", fake_run)
+    assert mod.run_hypergumbo_analysis() == {"nodes": [], "edges": []}
+    (args,) = seen
+    assert args[args.index("run") + 1] == str(tmp_path / "packages")
+    assert "--first-party-only" in args  # the doc's stated scope
+    assert "--no-sketch-fan-out" in args and "--no-handler-slices" in args
+    assert args[args.index("-e") + 1] == "vendor"
+    assert "tests" not in args  # the doc says "test code included"
+
