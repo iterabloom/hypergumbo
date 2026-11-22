@@ -184,7 +184,10 @@ def test_the_preload_file_is_one_electron_preload_entry(tmp_path: Path) -> None:
     assert by_path["other_preload.js"] == [EntrypointKind.ELECTRON_PRELOAD]
     # A bridge file no window names in a literal: the contextBridge row alone.
     assert by_path["bridge_only.js"] == [EntrypointKind.ELECTRON_PRELOAD]
-    assert by_path["main.js"] == [EntrypointKind.ELECTRON_MAIN]
+    # main.js is the electron_main; its ``ipcMain.handle('ping', () => ...)``
+    # callback is an IPC handler entry of its own (electron.yaml, WI-movur).
+    assert sorted(by_path["main.js"], key=str) == sorted(
+        [EntrypointKind.ELECTRON_MAIN, EntrypointKind.EVENT_HANDLER], key=str)
     assert by_path["renderer.js"] == [EntrypointKind.SCRIPT_MODULE]
     preload = next(ep for ep in entries if paths[ep.symbol_id].endswith("/preload.js"))
     assert preload.label == f"Electron preload script ({paths[preload.symbol_id]})"

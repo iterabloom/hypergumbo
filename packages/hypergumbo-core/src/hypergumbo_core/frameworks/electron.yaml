@@ -16,7 +16,7 @@
 # ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
 # rows were last edited, the latest date they can have been checked upstream.
 provenance: community
-retrieved: 2026-06-18
+retrieved: 2026-11-22
 id: electron
 language: javascript
 
@@ -123,3 +123,34 @@ patterns:
   # Electron nativeTheme
   - concept: theme
     decorator: "^nativeTheme\\.(on|shouldUseDarkColors)$"
+
+  # ==================== REGISTRATION ROWS (WI-movur) ====================
+  # These match the registration UsageContext the JS/TS analyzer records when
+  # a call hands a LOCAL function to a library call: ``position`` is
+  # ``args[i]`` for the i-th argument, ``args[i].<key>`` for a function in an
+  # option object, ``[j]`` for an array element. A chained receiver is written
+  # with its calls collapsed (``program.command('x').action(f)`` ->
+  # ``program.action``); a bare callee as its import (``koa-mount``).
+
+  # Electron main-process IPC handler - ipcMain.handle('ch', fn), ipcMain.on('ch', fn)
+  - concept: ipc_handler
+    usage:
+      kind: "^call$"
+      name: "^([\\w$]+\\.)*ipcMain\\.(on|once|handle|handleOnce)$"
+      position: "^args\\[1\\]$"
+
+  # Electron renderer IPC listener - ipcRenderer.on('ch', fn), the receive
+  # side of webContents.send
+  - concept: ipc_handler
+    usage:
+      kind: "^call$"
+      name: "^([\\w$]+\\.)*ipcRenderer\\.(on|once)$"
+      position: "^args\\[1\\]$"
+
+  # Electron webContents event - win.webContents.on('did-finish-load', fn).
+  # These are lifecycle events of a page, not IPC.
+  - concept: event_handler
+    usage:
+      kind: "^call$"
+      name: "^[\\w$.]+\\.webContents\\.(on|once)$"
+      position: "^args\\[1\\]$"
