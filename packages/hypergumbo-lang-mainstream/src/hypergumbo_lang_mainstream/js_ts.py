@@ -32,8 +32,10 @@ extract:
 - The typed stable_id reads its texts from the syntax tree
   (``_jsts_hashed_text``), where ``layout_free`` (language-blind) cannot tell
   layout from code: the ``&`` that opens an intersection written one member
-  per line is left out (``x:\\n  & A\\n  & B`` hashes as ``A & B``). The
-  displayed signature keeps it
+  per line is left out (``x:\\n  & A\\n  & B`` hashes as ``A & B``), and a
+  regex default value writes the whitespace of its pattern as escapes
+  (``/a b/`` hashes as ``/a\\x20b/``, so ``/a  b/`` stays apart). The
+  displayed signature keeps both
 - A static class member hashes ``static`` in the typed stable_id's
   ``decorators`` slot (``_jsts_member_decorators``; methods, accessors and
   fields, TypeScript and JavaScript), and a static method labels the scope
@@ -1589,6 +1591,30 @@ ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
 _find_child_by_field = find_child_by_field
 
 
+def _regex_pattern_hashed(pattern: str) -> str:
+    """A regex pattern with each whitespace character written as the escape
+    that matches it (``a b`` -> ``a\\x20b``; ``\\ `` is the same character), so
+    ``layout_free`` cannot respace it (see :func:`_jsts_hashed_text`)."""
+    out: list[str] = []
+    index = 0
+    while index < len(pattern):
+        ch = pattern[index]
+        if ch == "\\" and index + 1 < len(pattern):
+            index += 1
+            if not pattern[index].isspace():
+                out.append(ch + pattern[index])
+                index += 1
+                continue
+            ch = pattern[index]  # an identity escape of the whitespace after it
+        if ch.isspace():
+            code = ord(ch)
+            out.append(f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}")
+        else:
+            out.append(ch)
+        index += 1
+    return "".join(out)
+
+
 def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
     """``node``'s text as the typed stable id hashes it: the displayed text
     but for what ``layout_free`` (core, language-blind) cannot tell from
@@ -1599,14 +1625,24 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       ``&``) is left out: it is the type ``A & B``. ``layout_free`` drops a
       leading union ``|`` but cannot drop a ``&``: Rust's ``(\\n &self`` is a
       reference.
+    - Whitespace inside a regex literal (a default value) is meaning, and
+      ``layout_free`` reads ``/`` as punctuation, so each whitespace character
+      of the pattern is written as its escape (:func:`_regex_pattern_hashed`):
+      ``/a b/`` and ``/a  b/`` stay apart, in any layout of the signature. A
+      pattern that spells the escape itself (``/a\\x20b/``) is the same regex
+      and hashes alike.
 
-    It does not occur in a text that had no leading ``&``, so every other
-    hashed text is the displayed one, byte for byte.
+    Neither occurs in a text that had no leading ``&`` and no whitespace in a
+    regex, so every other hashed text is the displayed one, byte for byte.
     """
     edits: list[tuple[int, int, str]] = []
     pending = [node]
     while pending:
         current = pending.pop()
+        if current.type == "regex_pattern":
+            edits.append((current.start_byte, current.end_byte,
+                          _regex_pattern_hashed(_node_text(current, source))))
+            continue
         if current.type == "intersection_type" and current.children[0].type == "&":
             amp = current.children[0]
             edits.append((amp.start_byte, amp.end_byte, ""))

@@ -10,6 +10,10 @@ in the analyzer, from the tree (``_jsts_hashed_text``):
   (``x:\\n  & A\\n  & B``): the same type as ``A & B``. ``layout_free`` cannot
   drop a leading ``&`` (in Rust, ``(\\n &self`` is a reference), but the tree
   marks it: an ``intersection_type`` whose first child is the ``&``.
+- A regex literal in a hashed default value keeps its whitespace: it is
+  meaning (``/a b/`` is not ``/a  b/``), and ``layout_free`` reads a ``/`` as
+  punctuation, so the analyzer writes each whitespace character of the
+  pattern as an escape (``\\x20``) that matches the same character.
 
 Every other hashed text is the displayed one, so no other id moves.
 """
@@ -130,6 +134,46 @@ def test_an_intersection_member_or_operator_is_not_layout(
     ids_right = _ids(tmp_path, head + f"export function f(x: {right}): void {{}}\n")
     assert ids_left["f"][0] is not None
     assert ids_left["f"][0] != ids_right["f"][0]
+
+
+@pytest.mark.parametrize(("left", "right"), [
+    ("/a b/", "/a  b/"),
+    ("/a b/", "/ab/"),
+    ("/a\tb/", "/a b/"),
+    ("/[ ]x/g", "/[  ]x/g"),
+    ("/a\\ b/", "/a\\  b/"),
+    ("/a\u3000b/", "/a\u2003b/"),
+])
+def test_whitespace_inside_a_regex_default_is_meaning(
+    tmp_path: Path, left: str, right: str,
+) -> None:
+    ids_left = _ids(tmp_path, f"export function f(r = {left}): void {{}}\n")
+    ids_right = _ids(tmp_path, f"export function f(r = {right}): void {{}}\n")
+    assert ids_left["f"][1] == f"(r = {left}): void"  # reach: the default is displayed
+    assert ids_left["f"][0] != ids_right["f"][0]
+
+
+@pytest.mark.parametrize(("escaped", "plain"), [
+    ("/a\\ b/", "/a b/"),          # an identity escape
+    ("/a\\x20b/", "/a b/"),
+    ("/a\\u3000b/", "/a\u3000b/"),
+])
+def test_a_whitespace_escape_is_the_character_it_matches(
+    tmp_path: Path, escaped: str, plain: str,
+) -> None:
+    """The hashed pattern writes whitespace as the escape that matches it, so
+    a pattern that spells the escape itself is the same regex, one id."""
+    ids_escaped = _ids(tmp_path, f"export function f(r = {escaped}): void {{}}\n")
+    ids_plain = _ids(tmp_path, f"export function f(r = {plain}): void {{}}\n")
+    assert ids_escaped["f"][1] == f"(r = {escaped}): void"
+    assert ids_escaped["f"][0] == ids_plain["f"][0]
+
+
+def test_a_regex_default_keeps_its_id_when_its_surroundings_reflow(tmp_path: Path) -> None:
+    one_line = _ids(tmp_path, "export function f(r = /a b/, s: RegExp = /x y/g): void {}\n")
+    reflowed = _ids(tmp_path, "export function f(\n  r = /a b/,\n  s: RegExp = /x y/g,\n): void {}\n")
+    assert one_line["f"][0] is not None
+    assert one_line["f"][0] == reflowed["f"][0]
 
 
 _UNCHANGED = """\
