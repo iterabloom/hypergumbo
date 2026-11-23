@@ -34,14 +34,20 @@ After building a map of {js_export_name -> C/C++ symbol}, the linker iterates
 every existing edge whose destination is ``:unresolved`` (no language filter is
 applied) and resolves it against the export map by its trailing name.
 
-The export map is keyed by JS name only, so when two registrations (in the
-same file or different files) use the same JS name, the last one scanned
-wins and the earlier one is never linked.
+The export map is keyed by JS name and keeps EVERY C/C++ function the name is
+registered to, in scan order (C/C++ files sorted by path, then registration
+order within a file). A JS call to a name registered to one function gets one
+edge; a name registered to several functions (two addons each exporting
+``hello``) gets an edge to each, every one downgraded as below, because which
+addon the JS side loaded is not known from the call. It used to keep the last
+registration scanned, over files taken from a ``set``, so the function the
+call reached followed the per-process hash salt (WI-rumuv).
 
 Name collisions (INV-zuhub): when the registered C/C++ name matches exactly
 one ``function``/``method`` symbol, the edge gets confidence 0.85. When it
 matches several, the lowest-id candidate is chosen and the edge gets
-confidence 0.5 and ``meta.disambiguation_fallback=True``.
+confidence 0.5 and ``meta.disambiguation_fallback=True``; an edge to one of
+several functions a JS name is registered to gets the same 0.5 and flag.
 
 Why This Design
 ---------------
@@ -241,9 +247,10 @@ def link_napi(
         if sym.kind in ("function", "method"):
             c_cpp_lookup.setdefault(sym.name, []).append(sym)
 
-    # Scan C/C++ files for N-API export registrations
-    # Build map: js_export_name -> (c_cpp_symbol, evidence_type, is_fallback)
-    export_map: dict[str, tuple[Symbol, str, bool]] = {}
+    # Scan C/C++ files for N-API export registrations. Map: js_export_name ->
+    # {target id: (c_cpp_symbol, evidence_type, is_fallback)}, every distinct
+    # function the name is registered to, first registration of each kept.
+    export_map: dict[str, dict[str, tuple[Symbol, str, bool]]] = {}
 
     c_cpp_files: set[str] = set()
     for sym in c_cpp_symbols:
@@ -252,7 +259,9 @@ def link_napi(
     # WI-lisan: every N-API export the scan finds, before resolution.
     found_exports: list[tuple[str, str, str]] = []
 
-    for c_path_str in c_cpp_files:
+    # Sorted: the scan order is the order of a JS name's targets and edges, and
+    # a set's order follows the per-process hash salt (WI-rumuv).
+    for c_path_str in sorted(c_cpp_files):
         c_path = Path(c_path_str)
         if not c_path.is_absolute():
             c_path = repo_root / c_path
@@ -275,7 +284,9 @@ def link_napi(
                 candidates[0] if len(candidates) == 1
                 else min(candidates, key=lambda s: s.id)
             )
-            export_map[js_name] = (target_sym, evidence_type, is_fallback)
+            export_map.setdefault(js_name, {}).setdefault(
+                target_sym.id, (target_sym, evidence_type, is_fallback),
+            )
 
     # Match unresolved JS/TS edges against the export map
     for edge in edges:
@@ -292,34 +303,38 @@ def link_napi(
         if call_name not in export_map:
             continue
 
-        target_sym, evidence_type, is_fallback = export_map[call_name]
-
         dedup_key = (edge.src, call_name)
         if dedup_key in seen_edges:
             continue
         seen_edges.add(dedup_key)
 
-        # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
-        # + meta['bridge_kind']='napi'. INV-zuhub: downgrade when the
-        # C/C++ function name had cross-file collisions in the in-tree
-        # symbol table.
-        confidence = 0.5 if is_fallback else 0.85
-        edge_meta: dict[str, object] = {"bridge_kind": "napi"}
-        if is_fallback:
-            edge_meta["disambiguation_fallback"] = True
-        result_edges.append(Edge.create(
-            src=edge.src,
-            dst=target_sym.id,
-            edge_type="calls",
-            line=edge.line,
-            confidence=confidence,
-            origin=PASS_ID,
-            origin_run_id=run.execution_id,
-            evidence_type=evidence_type,
-            data_direction="src_to_dst",
-            meta=edge_meta,
-            derived_from=[edge.src, target_sym.id, edge.id],
-        ))
+        targets = export_map[call_name]
+        # A name registered to several functions: the JS call reaches one of
+        # them, and which is not known here, so each gets an edge, downgraded.
+        name_is_ambiguous = len(targets) > 1
+        for target_sym, evidence_type, is_fallback in targets.values():
+            # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical 'calls'
+            # + meta['bridge_kind']='napi'. INV-zuhub: downgrade when the
+            # C/C++ function name had cross-file collisions in the in-tree
+            # symbol table, or the JS name is registered to several functions.
+            downgraded = is_fallback or name_is_ambiguous
+            confidence = 0.5 if downgraded else 0.85
+            edge_meta: dict[str, object] = {"bridge_kind": "napi"}
+            if downgraded:
+                edge_meta["disambiguation_fallback"] = True
+            result_edges.append(Edge.create(
+                src=edge.src,
+                dst=target_sym.id,
+                edge_type="calls",
+                line=edge.line,
+                confidence=confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type=evidence_type,
+                data_direction="src_to_dst",
+                meta=edge_meta,
+                derived_from=[edge.src, target_sym.id, edge.id],
+            ))
 
     run.silence_reason = silence_reason_for_candidates(found_exports)
     run.duration_ms = int((time.time() - start_time) * 1000)
