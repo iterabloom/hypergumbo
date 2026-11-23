@@ -29,3 +29,20 @@ def test_a_babashka_script_is_not_a_bitbake_file(tmp_path: Path) -> None:
     paths = {s.path for s in result.symbols}
     assert any(p.endswith("foo_1.0.bb") for p in paths)  # reach
     assert not any(p.endswith("mage.bb") for p in paths)
+
+
+def test_a_c_or_php_inc_is_not_a_bitbake_file(tmp_path: Path) -> None:
+    """``.inc`` is also C's, PHP's and the assemblers' include extension
+    (``discovery.classify_dot_inc_file``). qemu's ``trans_rvi.c.inc`` gave
+    BitBake ``task`` symbols named ``default`` and ``defined``."""
+    (tmp_path / "trans_rvi.c.inc").write_text(
+        "/* RISC-V */\nstatic bool trans_x(void)\n{\n    switch (x) {\n    default:\n"
+        "        return false;\n    }\n}\n"
+    )
+    (tmp_path / "config.inc").write_text("<?php\n$db = 'x';\n")
+    # Control: a BitBake include stays.
+    (tmp_path / "common.inc").write_text('LICENSE = "MIT"\ninherit autotools\n')
+    found = {p.relative_to(tmp_path).as_posix() for p in find_bitbake_files(tmp_path)}
+    assert found == {"common.inc"}
+    result = analyze_bitbake(tmp_path)
+    assert {s.path for s in result.symbols} == {"common.inc"}
