@@ -249,13 +249,12 @@ Title
         result = analyze_rst(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        # INV-dulah: node.id and stable_id are minted together by
-        # make_doc_symbol_ids. node.id is the canonical ADR-0036
-        # "{lang}:{path}:{start}-{end}:{name}:{kind}"; the span slot is what
-        # keeps same-name sections from colliding on id (rst was line-less
-        # before that segment was added). It was previously kind-third/name-last,
-        # which put the kind word where the span belongs.
-        assert re.match(r"^rst:test\.rst:\d+-\d+:section_\d+:section$", section.id), section.id
+        # node.id is the canonical ADR-0036
+        # "{lang}:{path}:{start}-{end}:{name}:{kind}" with the title in the
+        # name slot (Ruling 1; it was the ordinal ``section_<n>``); the span
+        # slot keeps same-name sections from colliding on id. It was once
+        # kind-third/name-last, which put the kind word where the span belongs.
+        assert re.match(r"^rst:test\.rst:\d+-\d+:Title:section$", section.id), section.id
         assert section.stable_id != section.id
         assert re.compile(r"^" + STABLE_ID_PREFIX + r"[0-9a-f]{16}$").match(section.stable_id)
 
@@ -571,3 +570,44 @@ class TestEdgeEndpoints:
             # Two targets share the label: not guessed between.
             (here, "rst:ref:0-0:twice:unresolved", False),
         ])
+
+
+class TestIdsNameTheirOwnName:
+    """ADR-0036 Ruling 1: a node id's name slot is the sanitized
+    ``Symbol.name``. A section's slot held ``section_<ordinal>`` and a
+    directive's ``directive_<ordinal>`` while their names are the title and
+    the directive (or an API directive's argument). Their stable ids hash the
+    title / directive and the enclosing sections, never the id."""
+
+    TEXT = (
+        "Guide\n=====\n\n"
+        "Details\n-------\n\n"
+        ".. note:: careful\n\n"
+        ".. function:: compute(x)\n\n"
+        "Details\n-------\n\n"
+        ".. note:: again\n"
+    )
+
+    def _symbols(self, tmp_path: Path):
+        make_rst_file(tmp_path, "docs/index.rst", self.TEXT)
+        return [s for s in analyze_rst(tmp_path).symbols
+                if s.kind in ("section", "directive")]
+
+    def test_the_fixture_emits_sections_and_directives(self, tmp_path: Path) -> None:
+        assert sorted((s.kind, s.name) for s in self._symbols(tmp_path)) == [
+            ("directive", "compute(x)"), ("directive", "note"), ("directive", "note"),
+            ("section", "Details"), ("section", "Details"), ("section", "Guide"),
+        ]
+
+    def test_every_name_slot_is_the_sanitized_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import sanitize_id_name_segment
+
+        symbols = self._symbols(tmp_path)
+        assert symbols
+        assert [(s.id, s.name) for s in symbols
+                if s.id.rsplit(":", 2)[1] != sanitize_id_name_segment(s.name)] == []
+
+    def test_same_named_symbols_keep_distinct_ids(self, tmp_path: Path) -> None:
+        """Control: the span tells two ``Details`` and two ``note`` apart."""
+        symbols = self._symbols(tmp_path)
+        assert len({s.id for s in symbols}) == len(symbols) == 6
