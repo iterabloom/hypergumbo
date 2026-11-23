@@ -103,6 +103,22 @@ _NOT_LITERALS = [
     ("primed-word-ending-in-a-prefix-letter", "(Lb'  ->  Rb')", "(Lb' -> Rb')"),
 ]
 
+# (case, text, its layout-free form): a comment is not code, so it is not
+# hashed: ``/* ... */`` and a ``// ...`` that a line break ends read as
+# whitespace (WI-sidus). A ``//`` with no line break after it is code (Python's
+# floor division in an ``ast``-rendered annotation), and a comment-looking
+# sequence inside a literal is the literal's text.
+_COMMENTS = [
+    ("block-comment", "(int /* count */ a, List</* item */ String>)", "(int a,List<String>)"),
+    ("line-comment", "Map<String, // key\n  Integer>", "Map<String, Integer>"),
+    ("doc-comment-in-a-union", "/** sidebar */\n| 'a'\n// inline\n| 'b'", "| 'a' | 'b'"),
+    ("comment-between-words", "unsigned/* x */int", "unsigned int"),
+    ("unterminated-block", "(int a /* b", "(int a"),
+    ("floor-division-without-line-break", "Annotated[int, a // 2]", "Annotated[int, a//2]"),
+    ("comment-in-a-string", '(x = "a /* b */ c // d")', '(x = "a /* b */ c // d")'),
+    ("comment-in-a-char", "(c = '/')", "(c = '/')"),
+]
+
 # (case, text, its layout-free form with ``separators``): what a formatter
 # writes when it splits a list over lines is layout in a signature.
 _SEPARATORS = [
@@ -178,8 +194,8 @@ _DISTINCT = [
 ]
 
 
-@pytest.mark.parametrize(("case", "text", "expected"), _RULE + _LITERALS + _NOT_LITERALS,
-                         ids=[c[0] for c in _RULE + _LITERALS + _NOT_LITERALS])
+@pytest.mark.parametrize(("case", "text", "expected"), _RULE + _LITERALS + _NOT_LITERALS + _COMMENTS,
+                         ids=[c[0] for c in _RULE + _LITERALS + _NOT_LITERALS + _COMMENTS])
 def test_layout_free_rule(case: str, text: str, expected: str) -> None:
     assert layout_free(text) == expected
     # Idempotent: the hashed form of a hashed form is itself.

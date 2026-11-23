@@ -1630,6 +1630,45 @@ _OPENERS, _CLOSERS = "([{<", ")]}>"
 _HashToken = tuple[str, str, bool]
 
 
+def without_comments(text: str) -> str:
+    """``text`` with each comment written as one space: a ``/* ... */`` (to
+    the end when it is not closed) and a ``// ...`` that a line break ends.
+
+    A comment is not code, so it is not a stable-id input (WI-sidus): editing
+    ``f(x: /* the id */ string)`` or a doc comment between a union's members
+    must move no id. Every typed language whose texts are read from source
+    writes comments so; a ``//`` that no line break follows is code (Python's
+    floor division in an ``ast``-rendered annotation, which holds no line
+    break), and a comment-looking sequence inside a string or character
+    literal is the literal's text (:func:`_literal_end`). Called by
+    :func:`layout_free` and at the entry of the shared signature normalizers,
+    before they split a text at its commas and colons.
+    """
+    if "/" not in text:
+        return text
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        end = _literal_end(text, i) if ch in "\"'`" else -1
+        if end >= 0:
+            out.append(text[i:end + 1])
+            i = end + 1
+            continue
+        if text.startswith("/*", i):
+            close = text.find("*/", i + 2)
+            out.append(" ")
+            i = len(text) if close < 0 else close + 2
+            continue
+        if text.startswith("//", i) and "\n" in text[i + 2:]:
+            out.append(" ")
+            i = text.index("\n", i + 2)
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _hash_tokens(text: str) -> list[_HashToken]:
     """``text`` as tokens: a literal whole, a run of word characters, an
     operator of :data:`_HASH_OPERATORS`, else one character."""
@@ -1756,7 +1795,9 @@ def layout_free(text: str, *, separators: bool = False) -> str:
     before a non-word character (so a Rust lifetime or an OCaml type variable
     opens none) and does not follow a word other than a literal prefix (so
     the primes of F#'s ``a' -> b'`` pair none, and ``L' '`` / ``b' '`` open
-    one). So two texts that differ in more than layout stay apart.
+    one). So two texts that differ in more than layout stay apart. A comment
+    is not code either: :func:`without_comments` writes it as whitespace
+    first.
 
     With ``separators`` (a signature: types and default values, never a
     name), the punctuation a formatter adds when it splits a list over lines
@@ -1767,7 +1808,7 @@ def layout_free(text: str, *, separators: bool = False) -> str:
     but one: Rust's one-tuple ``(T,)``, which then hashes as ``(T)``; Rust has
     no overloading, so the two cannot share a scope and no ids tie.
     """
-    tokens = _hash_tokens(text)
+    tokens = _hash_tokens(without_comments(text))
     if separators:
         tokens = _drop_formatter_separators(tokens)
     out: list[str] = []
@@ -3535,6 +3576,7 @@ def normalize_signature_types_first(
     """
     if not signature:
         return None
+    signature = without_comments(signature)  # a comment holds no , or : to split at
 
     # Split into params part and return type
     paren_close = find_matching_paren(signature, 0, quotes=quotes)
@@ -3633,6 +3675,7 @@ def normalize_signature_names_first(
     """
     if not signature:
         return None
+    signature = without_comments(signature)  # a comment holds no , or : to split at
 
     # Split into params part and return type
     paren_close = find_matching_paren(signature, 0, quotes=quotes)
@@ -3689,6 +3732,7 @@ def normalize_signature_php(
     """
     if not signature:
         return None
+    signature = without_comments(signature)  # a comment holds no , or : to split at
 
     paren_close = find_matching_paren(signature, 0)
     if paren_close < 0:
@@ -3775,6 +3819,7 @@ def normalize_signature_go(
     """
     if not signature:
         return None
+    signature = without_comments(signature)  # a comment holds no , or : to split at
 
     paren_close = find_matching_paren(signature, 0)
     if paren_close < 0:
