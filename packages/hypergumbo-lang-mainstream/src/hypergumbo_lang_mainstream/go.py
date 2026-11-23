@@ -7185,12 +7185,14 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     # Routes from the handler cache have handler_field metadata (e.g.
     # "AlertGetAlertsHandler").  The wiring mapping connects those field
     # names to actual implementation methods (e.g. "api.getAlertsHandler").
+    # The marker keeps its own name (``METHOD path``, what its id was minted
+    # from): the handler belongs in ``meta``, which the route_handler linker
+    # reads, and a renamed marker's id no longer names it (ADR-0036 Ruling 1).
     if handler_wiring:
         for route in all_route_syms:
             field = (route.meta or {}).get("handler_field")
             if field and field in handler_wiring:
                 route.meta["handler_name"] = handler_wiring[field]
-                route.name = handler_wiring[field]
 
     all_symbols.extend(all_route_syms)
 
