@@ -11,6 +11,14 @@ cross-family consolidation.) Both ends are synthetic nodes minted per site
 carry confidence 0.70, and a write and a read in the same file are never
 paired.
 
+A stand-in's id carries its role as a name-segment suffix
+(``javascript:s.js:2-2:ping-message_sender:function``), as in the
+crypto_flow, yjs_crdt, ipc and annotation linkers; ``Symbol.name`` stays the
+channel. With the channel bare in the name slot, a one-line function the
+analyzer declared under the channel's name on that line
+(``function ping() { ws.send({ type: 'ping' }) }``) had the same id, and a
+line that both handles and sends one channel minted one node for both.
+
 Two API surfaces are covered:
 
 **JavaScript/TypeScript (string-discriminated messages):**
@@ -276,16 +284,17 @@ def link_message_dispatch(
             sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "js_dispatch" else "rust"
             # WI-lusoh: canonical ids whose kind slot is the node's kind. The
             # role (sender / handler) is meta.framework_role; it was the kind
-            # slot, which id-format:F3's round-trip flags. A sender and a
-            # handler share an id only if one line is both a send and a handle
-            # site for the same channel.
+            # slot, which id-format:F3's round-trip flags. It rides as a
+            # name-segment suffix instead (WI-supar), so a one-line function
+            # the analyzer declared under the channel's name, or a send and a
+            # handle of one channel on one line, keep distinct ids.
             pub_id = make_symbol_id(
                 pub_lang, write.file_path, write.line, write.line,
-                write.channel, "function",
+                f"{write.channel}-message_sender", "function",
             )
             sub_id = make_symbol_id(
                 sub_lang, read.file_path, read.line, read.line,
-                read.channel, "function",
+                f"{read.channel}-message_handler", "function",
             )
 
             if pub_id not in seen_sym_ids:
