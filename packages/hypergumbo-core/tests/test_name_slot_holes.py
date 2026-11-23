@@ -13,6 +13,8 @@ over all of them checks, with no real repository:
 * each fixture still mismatches (a producer fixed since: remove its entry);
 * with the table emptied, the run reports exactly the declared pairs, and
   with the table in place it reports none;
+* the producers fixed since (``_FIXED``: Vue, Svelte and Astro members, Tcl,
+  the gRPC and Yjs linkers) are in the same run, reached, and do not mismatch;
 * the table is no longer than ``_CEILING``, which may only go down.
 
 Adding a hole therefore takes three visible edits (the entry, its fixture,
@@ -33,10 +35,11 @@ from hypergumbo_core.spec_validator import (
     KNOWN_NAME_SLOT_HOLES,
     _check_name_slot_roundtrip,
     _name_slot_mismatch,
+    _name_slot_producer,
 )
 
 #: Shrink-only: lower it when an entry is removed, never raise it.
-_CEILING = 11
+_CEILING = 1
 
 #: One fixture per declared hole: files written under one tree, each pair's
 #: producer run on them by a full pipeline run.
@@ -44,6 +47,13 @@ _FIXTURES: dict[tuple[str, str], dict[str, str]] = {
     ("javascript", "function"): {
         "js/app.js": "[1, 2].forEach(function () { return 1; });\n",
     },
+}
+
+#: Producers that were declared holes and are fixed: each fixture is in the
+#: same run, so the two table tests below fail if one mismatches again, and
+#: ``test_every_fixed_producer_is_reached`` fails if its fixture stops
+#: producing the node (a fixture that mints nothing proves nothing).
+_FIXED: dict[tuple[str, str], dict[str, str]] = {
     ("vue", "directive"): {
         "vue/src/App.vue": (
             '<template>\n  <div>\n    <p v-if="first">a</p>\n  </div>\n</template>\n'
@@ -89,7 +99,7 @@ _FIXTURES: dict[tuple[str, str], dict[str, str]] = {
 def run_nodes(tmp_path_factory: pytest.TempPathFactory) -> list[SimpleNamespace]:
     """The nodes of one pipeline run over every fixture."""
     root = tmp_path_factory.mktemp("holes") / "repo"
-    for files in _FIXTURES.values():
+    for files in [*_FIXTURES.values(), *_FIXED.values()]:
         for rel, text in files.items():
             target = root / rel
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -100,6 +110,12 @@ def run_nodes(tmp_path_factory: pytest.TempPathFactory) -> list[SimpleNamespace]
         SimpleNamespace(**{k: n.get(k) for k in ("id", "name", "kind", "origin", "language")})
         for n in json.loads(out.read_text())["nodes"]
     ]
+
+
+def test_every_fixed_producer_is_reached(run_nodes) -> None:
+    produced = {(_name_slot_producer(n), n.kind) for n in run_nodes}
+    assert sorted(set(_FIXED) - produced) == []
+    assert not set(_FIXED) & set(KNOWN_NAME_SLOT_HOLES)
 
 
 def test_every_hole_names_its_reason_and_item() -> None:

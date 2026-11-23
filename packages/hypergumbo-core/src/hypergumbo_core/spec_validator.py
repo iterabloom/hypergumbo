@@ -2395,30 +2395,6 @@ KNOWN_NAME_SLOT_HOLES: dict[tuple[str, str], tuple[str, str]] = {
         "anonymous callback: slot `_cb_<callee>@<col>`, name `_cb_<callee>`",
         "WI-bafaz",
     ),
-    ("vue", "directive"): (
-        "slot `<tag>.<directive>`, name the directive; the sfc work package "
-        "removes this entry",
-        "WI-funip",
-    ),
-    # Scope in the slot, short name: the qualification is nowhere else
-    # (qualified_name is empty), so the fix carries it to qualified_name.
-    ("tcl", "function"): ("slot `a..inner..go`, name `go`", "WI-funip"),
-    ("tcl", "namespace"): ("slot `a..inner`, name `inner`", "WI-funip"),
-    # One make_doc_symbol_ids argument mints the slot and the stable id, as
-    # for the Vue directive.
-    ("svelte", "event"): ("slot `button.click`, name `click`", "WI-funip"),
-    ("svelte", "block"): ("slot `if.count`, name `#if`", "WI-funip"),
-    ("astro", "directive"): ("slot `Card.client.load`, name `client:load`", "WI-funip"),
-    # Linker stand-ins carry their role as a slot suffix so a write and a
-    # read of one name on one line stay apart (the kind-slot fix put it
-    # there); naming the role moves the stand-in's stable id.
-    ("grpc-linker", "interface"): ("slot `A-grpc_service`, name `A`", "WI-funip"),
-    ("grpc-linker", "function"): ("slot `Greeter-grpc_stub`, name `Greeter`", "WI-funip"),
-    ("grpc-linker", "class"): ("slot `Greeter-grpc_servicer`, name `Greeter`", "WI-funip"),
-    ("yjs-crdt-linker", "function"): (
-        "slot `<channel>-crdt_publisher` / `-crdt_subscriber`, name the channel",
-        "WI-funip",
-    ),
 }
 
 
