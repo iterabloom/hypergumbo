@@ -27,7 +27,9 @@ How It Works
 3. Extract event names from send/receive patterns
 4. Mint a synthetic symbol for each send site, and for each receive site
    whose event is sent somewhere, then emit ``event_publishes``
-   (channel_kind=ipc) from each sender to every receiver of the same event
+   (channel_kind=ipc) from each sender to every receiver of the same event.
+   A symbol is an ADR-0031 Class B stand-in whose ``discovery_language``,
+   and id language slot (ADR-0034), is ``elixir``
 
 Why This Design
 ---------------
@@ -47,7 +49,8 @@ from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
-from ._text_filters import language_from_path, read_source_bytes
+from ..taxonomy import get_language
+from ._text_filters import read_source_bytes
 from .ipc import IPC_FRAMEWORK_ROLES
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
@@ -217,6 +220,20 @@ def _find_elixir_files(repo_root: Path) -> Iterator[Path]:
     yield from find_non_test_files(repo_root, ["*.ex", "*.exs"])
 
 
+def _host_language(pattern: PhoenixPattern) -> str:
+    """The language of the file a site was found in: its stand-in's
+    ``discovery_language`` and id language slot (ADR-0031, ADR-0034).
+
+    The taxonomy's, not the tree-sitter grammar table's, which has no ``.ex``
+    entry: every stand-in had ``discovery_language=None`` (the cross_field
+    Class B canary) and an id slot reading ``phoenix``. The files are the
+    ``*.ex`` / ``*.exs`` :func:`_find_elixir_files` finds, all ``elixir``.
+    """
+    language = get_language(Path(pattern.file_path))
+    assert language is not None  # *.ex / *.exs only
+    return language
+
+
 def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     """Link Phoenix Channel patterns across files in a repository.
 
@@ -288,8 +305,10 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
         # its kind slot held an event name, and an event with a colon
         # (``user:joined``) shifted every slot. As in linkers/ipc.py, the
         # role rides as a name-segment suffix; the factory sanitizes the name.
+        # ADR-0034: the language slot is the stand-in's discovery language
+        # (``elixir``); it read ``phoenix``, which is no language.
         return make_symbol_id(
-            "phoenix", pattern.file_path, pattern.line, pattern.line,
+            _host_language(pattern), pattern.file_path, pattern.line, pattern.line,
             f"{event}-{pattern.type}", "function",
         )
 
@@ -314,7 +333,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
                 name=f"phoenix:{pattern.type}:{event}",
                 kind="function",
                 language=None,
-                discovery_language=language_from_path(Path(pattern.file_path)),
+                discovery_language=_host_language(pattern),
                 protocol_origin="phoenix_ipc",
                 path=pattern.file_path,
                 span=Span(

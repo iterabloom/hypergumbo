@@ -191,7 +191,7 @@ defmodule MyApp.RoomChannel do
 end
 """)
         result = link_phoenix_ipc(tmp_path)
-        phoenix_syms = [s for s in result.symbols if s.id.startswith("phoenix:")]
+        phoenix_syms = [s for s in result.symbols if s.protocol_origin == "phoenix_ipc"]
         assert len(phoenix_syms) >= 1
         for sym in phoenix_syms:
             assert sym.kind == "function", (
@@ -214,7 +214,7 @@ defmodule MyApp.RoomChannel do
 end
 """)
         result = link_phoenix_ipc(tmp_path)
-        phoenix_syms = [s for s in result.symbols if s.id.startswith("phoenix:")]
+        phoenix_syms = [s for s in result.symbols if s.protocol_origin == "phoenix_ipc"]
         assert len(phoenix_syms) >= 1
         roles = {(s.meta or {}).get("framework_role") for s in phoenix_syms}
         assert roles <= {"ipc_send", "ipc_receive"}
@@ -570,3 +570,32 @@ end
         ids = {s.id for s in result.symbols}
         assert len(result.edges) == 2
         assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []
+
+
+class TestPhoenixStandInsCarryElixir:
+    """WI-supar: the channel files are Elixir, but ``discovery_language`` came
+    from the tree-sitter grammar table, which has no ``.ex`` entry, so every
+    Phoenix stand-in had none (a cross_field violation), and the id's
+    language slot read ``phoenix``, no language (ADR-0034)."""
+
+    def test_ex_and_exs_sites_are_elixir(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.phoenix_ipc import link_phoenix_ipc
+
+        channel = (
+            "defmodule MyApp.RoomChannel do\n"
+            "  def handle_in(\"ping\", _payload, socket) do\n"
+            "    broadcast!(socket, \"ping\", %{})\n"
+            "    {:noreply, socket}\n"
+            "  end\n"
+            "end\n"
+        )
+        (tmp_path / "room.ex").write_text(channel)
+        (tmp_path / "lobby.exs").write_text(channel.replace("RoomChannel", "LobbyChannel"))
+
+        result = link_phoenix_ipc(tmp_path)
+
+        assert {Path(s.path).name for s in result.symbols} == {"room.ex", "lobby.exs"}
+        for sym in result.symbols:
+            assert sym.language is None
+            assert sym.discovery_language == "elixir"
+            assert sym.id.split(":", 1)[0] == "elixir"

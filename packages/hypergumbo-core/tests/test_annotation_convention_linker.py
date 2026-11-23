@@ -639,3 +639,45 @@ class TestStandInIdsNameTheirOwnKind:
                for role in ("annotated_publisher", "annotated_subscriber", "annotated_dispatcher")}
         assert len(ids) == 3
         assert {i.rsplit(":", 1)[1] for i in ids} == {"function"}
+
+
+class TestStandInsInAFileTheTaxonomyDoesNotClassify:
+    """WI-supar (ADR-0034): a stand-in's id language slot and
+    ``discovery_language`` are its host file's language. For a file whose
+    extension the taxonomy does not classify (an extensionless shebang
+    script the bash analyzer reads) the slot read ``unknown``, no language,
+    and ``discovery_language`` was None; the analyzer that read the file
+    names its language."""
+
+    def test_extensionless_script_takes_its_analyzers_language(self, tmp_path: Path) -> None:
+        (tmp_path / "bin").mkdir()
+        (tmp_path / "bin" / "run").write_text("#!/bin/bash\n# @hg:publishes jobs\n")
+        (tmp_path / "worker.py").write_text("# @hg:subscribes jobs\n")
+        syms = [_make_sym("bin/run", language="bash"), _make_sym("worker.py", language="python")]
+
+        result = link_annotations(tmp_path, syms)
+
+        by_path = {s.path: s for s in result.symbols}
+        # Reach: one stand-in per directive, joined by one edge.
+        assert sorted(by_path) == ["bin/run", "worker.py"]
+        assert len(result.edges) == 1
+        pub, sub = by_path["bin/run"], by_path["worker.py"]
+        assert (pub.discovery_language, pub.id.split(":", 1)[0]) == ("bash", "bash")
+        # Control: a classified extension keeps the taxonomy's answer.
+        assert (sub.discovery_language, sub.id.split(":", 1)[0]) == ("python", "python")
+        assert (result.edges[0].src, result.edges[0].dst) == (pub.id, sub.id)
+
+    def test_a_dispatcher_in_an_extensionless_script(self, tmp_path: Path) -> None:
+        (tmp_path / "run").write_text("#!/bin/bash\n# @hg:dispatches handle\n")
+        target = Symbol(
+            id="python:h.py:1-2:handle:function", name="handle", kind="function",
+            language="python", path="h.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin="test", origin_run_id="uuid:test",
+        )
+
+        result = link_annotations(tmp_path, [_make_sym("run", language="bash"), target])
+
+        (disp,) = [s for s in result.symbols if s.path == "run"]
+        assert (disp.discovery_language, disp.id.split(":", 1)[0]) == ("bash", "bash")
+        assert [e.dst for e in result.edges] == [target.id]

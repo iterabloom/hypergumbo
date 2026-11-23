@@ -40,8 +40,14 @@ profile / discovery layer uses (ADR-0031: "derived from the file extension") --
 never the tree-sitter GRAMMAR name: ``.tsx``
 is ``typescript`` (a grammar-keyed lookup said ``tsx``, a language no analyzer
 emits) and ``.mts`` / ``.cts`` are ``typescript`` (it said nothing, so the slot
-read ``unknown``) -- WI-pokij. A file the taxonomy does not classify still
-reads ``unknown`` / ``None``. Where a taxonomy name differs from an analyzer's
+read ``unknown``) -- WI-pokij. A file the taxonomy does not classify (an
+extensionless shebang script the bash analyzer reads) takes the language of
+the analyzer that read it, the first non-None ``Symbol.language`` among the
+file's symbols; it read ``unknown``, no language, with ``discovery_language``
+None (WI-supar). ``unknown`` remains only for a file no symbol names a
+language for. A ``@hg:route`` marker keeps ``unknown`` / None there: the route
+widening folds ``discovery_language`` into its stable id, so changing it would
+move the id. Where a taxonomy name differs from an analyzer's
 tag (``yaml`` vs the ansible analyzer's ``yaml_ansible``) the taxonomy name is
 what the slot carries; no JS/TS extension is such a case.
 
@@ -138,6 +144,18 @@ def scan_file_for_annotations(file_path: Path, rel_path: str) -> list[Annotation
     return sites
 
 
+def _host_language(path: str, analyzer_language: dict[str, str]) -> str:
+    """The language of the file a directive sits in: the taxonomy's, else the
+    analyzer's that read the file (an extensionless shebang script), else
+    ``unknown`` (no symbol names one). It is a stand-in's id language slot."""
+    return get_language(Path(path)) or analyzer_language.get(path) or "unknown"
+
+
+def _known_or_none(language: str) -> str | None:
+    """``discovery_language`` for a host language: None for ``unknown``."""
+    return None if language == "unknown" else language
+
+
 def _stand_in_id(lang: str, site: AnnotationSite, name: str, role: str) -> NodeId:
     """The node id of the stand-in this linker mints for one directive.
 
@@ -177,10 +195,14 @@ def link_annotations(
     result_edges: list[Edge] = []
     result_symbols: list[Symbol] = []
 
-    # Collect unique file paths from symbols
+    # Collect unique file paths from symbols, and the language the analyzer
+    # that read each file gave it (the first non-None one).
     seen_paths: set[str] = set()
     file_paths: list[tuple[Path, str]] = []  # (absolute, relative)
+    analyzer_language: dict[str, str] = {}
     for sym in symbols:
+        if sym.language is not None:
+            analyzer_language.setdefault(sym.path, sym.language)
         if sym.path in seen_paths:
             continue
         seen_paths.add(sym.path)
@@ -220,7 +242,7 @@ def link_annotations(
             continue
 
         for pub in pub_sites:
-            pub_lang = get_language(Path(pub.file_path)) or "unknown"
+            pub_lang = _host_language(pub.file_path, analyzer_language)
             pub_id = _stand_in_id(pub_lang, pub, channel, "annotated_publisher")
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
@@ -240,7 +262,7 @@ def link_annotations(
                     # declaration. discovery_language records the host file's
                     # language; protocol_origin names the family ("annotation").
                     language=None,
-                    discovery_language=get_language(Path(pub.file_path)),
+                    discovery_language=_known_or_none(pub_lang),
                     protocol_origin="annotation",
                     span=Span(
                         start_line=pub.line, end_line=pub.line,
@@ -257,7 +279,7 @@ def link_annotations(
                 ))
 
             for sub in sub_sites:
-                sub_lang = get_language(Path(sub.file_path)) or "unknown"
+                sub_lang = _host_language(sub.file_path, analyzer_language)
                 sub_id = _stand_in_id(sub_lang, sub, channel, "annotated_subscriber")
                 if sub_id not in seen_sym_ids:
                     seen_sym_ids.add(sub_id)
@@ -275,7 +297,7 @@ def link_annotations(
                         # ADR-0031 Class B: synthetic stand-in for an annotated
                         # subscriber.
                         language=None,
-                        discovery_language=get_language(Path(sub.file_path)),
+                        discovery_language=_known_or_none(sub_lang),
                         protocol_origin="annotation",
                         span=Span(
                             start_line=sub.line, end_line=sub.line,
@@ -369,7 +391,7 @@ def link_annotations(
         # ``confidence <= 0.5`` with the ``disambiguation_fallback`` flag.
         is_fallback = len(target_syms) > 1
 
-        disp_lang = get_language(Path(disp.file_path)) or "unknown"
+        disp_lang = _host_language(disp.file_path, analyzer_language)
         disp_id = _stand_in_id(disp_lang, disp, target_name, "annotated_dispatcher")
         if disp_id not in seen_sym_ids:
             seen_sym_ids.add(disp_id)
@@ -386,7 +408,7 @@ def link_annotations(
                 # ADR-0031 Class B: synthetic stand-in for an annotated
                 # dispatcher.
                 language=None,
-                discovery_language=get_language(Path(disp.file_path)),
+                discovery_language=_known_or_none(disp_lang),
                 protocol_origin="annotation",
                 span=Span(
                     start_line=disp.line, end_line=disp.line,

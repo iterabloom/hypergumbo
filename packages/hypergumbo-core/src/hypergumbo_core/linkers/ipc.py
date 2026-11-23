@@ -911,10 +911,12 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
         # its kind slot held a channel name, and a channel with a colon
         # (``user:login``) shifted every slot. The role rides as a
         # name-segment suffix, as in the websocket and grpc linkers; the
-        # factory sanitizes the name.
+        # factory sanitizes the name. ADR-0034: the language slot is the
+        # stand-in's discovery language, the file's; it read ``ipc``, which
+        # is no language.
         return make_symbol_id(
-            "ipc", pattern.file_path, pattern.line, pattern.line,
-            f"{channel}-{pattern.type}", "function",
+            _get_language(Path(pattern.file_path)), pattern.file_path,
+            pattern.line, pattern.line, f"{channel}-{pattern.type}", "function",
         )
 
     def _ensure_symbol(pattern: IpcPattern, channel: str) -> NodeId:
@@ -1084,7 +1086,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
                 # Create synthetic bridge caller symbol
                 caller_id = make_symbol_id(
-                    "ipc", rel_path, call_line, call_line,
+                    _get_language(Path(file_str)), rel_path, call_line, call_line,
                     f"{namespace}.{method_name}-bridge_caller", "function",
                 )
                 if caller_id not in created_symbol_ids:
@@ -1171,7 +1173,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     pass
 
                 caller_id = make_symbol_id(
-                    "ipc", rel_path, call_line, call_line,
+                    _get_language(Path(file_str)), rel_path, call_line, call_line,
                     f"{func_name}-bridge_caller", "function",
                 )
                 if caller_id not in created_symbol_ids:

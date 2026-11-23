@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.cli import run_behavior_map
 
 
@@ -2929,6 +2931,37 @@ def test_no_protobuf_without_proto_files(tmp_path: Path) -> None:
 
     detected = _detect_protobuf(tmp_path)
     assert detected == []
+
+
+@pytest.mark.parametrize("name, text", [
+    ("openapi.yaml", "openapi: 3.0.0\ninfo: {title: T, version: '1'}\npaths: {}\n"),
+    ("openapi.json", '{"openapi": "3.1.0", "paths": {}}'),
+    ("swagger.yaml", "swagger: '2.0'\ninfo: {title: T, version: '1'}\npaths: {}\n"),
+    ("docs/swagger.json", '{"swagger": "2.0", "paths": {}}'),
+])
+def test_detects_openapi_framework_from_an_openapi_document(
+    tmp_path: Path, name: str, text: str,
+) -> None:
+    """WI-supar: an OpenAPI 3 or Swagger 2 document, YAML or JSON, at any
+    depth, is the ``openapi`` framework, as a ``.proto`` file is protobuf: no
+    manifest names it, so the openapi linker never activated on it."""
+    from hypergumbo_core.profile import _detect_openapi
+
+    (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / name).write_text(text)
+
+    assert _detect_openapi(tmp_path) == ["openapi"]
+
+
+def test_no_openapi_for_an_api_json_that_is_no_openapi_document(tmp_path: Path) -> None:
+    """Control: a file the linker's name globs catch but whose content is no
+    OpenAPI document does not claim the framework."""
+    from hypergumbo_core.profile import _detect_openapi
+
+    (tmp_path / "api.json").write_text('{"endpoints": ["/a"]}')
+    (tmp_path / "app.py").write_text("print('hello')\n")
+
+    assert _detect_openapi(tmp_path) == []
 
 
 def test_detects_grpc_go_framework(tmp_path: Path) -> None:

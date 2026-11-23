@@ -764,3 +764,109 @@ class TestOperationIdsNameTheirOwnKind:
         result, _ = self._result(tmp_path)
         ids = {s.id for s in result.symbols}
         assert [e.src for e in result.edges if e.src not in ids] == []
+
+
+class TestAnOpenApiDocumentAloneActivatesTheLinker:
+    """WI-supar: the linker activates on the ``openapi`` / ``swagger``
+    framework, and the only detector was the Java ``io.swagger`` dependency,
+    so a repository holding an OpenAPI document produced no operation node."""
+
+    @pytest.mark.parametrize("name, text, language", [
+        ("openapi.yaml",
+         "openapi: 3.0.0\ninfo: {title: T, version: '1'}\n"
+         "paths:\n  /pets:\n    get:\n      operationId: listPets\n",
+         "yaml"),
+        ("swagger.json",
+         '{"swagger": "2.0", "paths": {"/pets": {"get": {"operationId": "listPets"}}}}',
+         "json"),
+    ])
+    def test_the_behavior_map_has_the_operation_nodes(
+        self, tmp_path: Path, name: str, text: str, language: str,
+    ) -> None:
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / name).write_text(text)
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        assert "openapi" in data["profile"]["frameworks"]
+        ops = [n for n in data["nodes"] if n.get("protocol_origin") == "openapi"]
+        assert [(n["name"], n["path"]) for n in ops] == [("listPets", name)]
+        (op,) = ops
+        # ADR-0031 Class B / ADR-0034: the spec file's language is the
+        # discovery language and the id's language slot.
+        assert op["language"] is None
+        assert op["discovery_language"] == language
+        assert op["id"].split(":", 1)[0] == language
+        violations = data["validation_report"]["violations"]
+        assert [v for v in violations if v["field_name"] == "Symbol.discovery_language"] == []
+
+    def test_a_tree_without_an_openapi_document_has_no_operation_node(
+        self, tmp_path: Path,
+    ) -> None:
+        """Control: an ``api.json`` that is no OpenAPI document activates nothing."""
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        (tmp_path / "api.json").write_text('{"endpoints": ["/a"]}')
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        assert "openapi" not in data["profile"]["frameworks"]
+        assert [n for n in data["nodes"] if n.get("protocol_origin") == "openapi"] == []
+
+
+class TestOperationStandInsCarryTheSpecFilesLanguage:
+    """WI-supar: ``discovery_language`` came from the tree-sitter grammar
+    table, which has no YAML or JSON entry, so every operation stand-in had
+    none (a cross_field violation); the id's language slot read ``openapi``,
+    which is no language (ADR-0034: a stand-in's slot is its discovery
+    language)."""
+
+    @pytest.mark.parametrize("name, language", [
+        ("openapi.yaml", "yaml"), ("openapi.yml", "yaml"), ("openapi.json", "json"),
+    ])
+    def test_language_of_the_spec_file(self, tmp_path: Path, name: str, language: str) -> None:
+        from hypergumbo_core.catalog import all_known_languages
+
+        if name.endswith("json"):
+            text = '{"openapi": "3.0.0", "paths": {"/a": {"get": {}}}}'
+        else:
+            text = "openapi: 3.0.0\npaths:\n  /a:\n    get: {}\n"
+        (tmp_path / name).write_text(text)
+
+        result = link_openapi(tmp_path, [])
+
+        (op,) = result.symbols
+        assert op.language is None
+        assert op.discovery_language == language
+        assert op.id.split(":", 1)[0] == language
+        assert language in all_known_languages()
+
+
+class TestUnquotedVersions:
+    """With the linker activated on any OpenAPI document (WI-supar), an
+    unquoted ``swagger: 2.0`` / ``openapi: 3.1`` (YAML loads a number, which
+    has no ``startswith``) raised AttributeError and crashed the pass."""
+
+    def test_numeric_versions_are_specs(self) -> None:
+        assert _is_openapi_spec({"swagger": 2.0})
+        assert _is_openapi_spec({"openapi": 3.1})
+
+    def test_a_yaml_list_or_other_versions_are_not(self) -> None:
+        """Control: neither a list document nor a version outside 2.x / 3.x."""
+        assert not _is_openapi_spec(["openapi", "3.0"])
+        assert not _is_openapi_spec({"swagger": 1.2})
+
+    def test_unquoted_swagger_document_yields_its_operations(self, tmp_path: Path) -> None:
+        (tmp_path / "swagger.yaml").write_text(
+            "swagger: 2.0\ninfo: {title: T, version: 1}\n"
+            "paths:\n  /orders:\n    put:\n      operationId: putOrder\n"
+        )
+        result = link_openapi(tmp_path, [])
+        assert [s.name for s in result.symbols] == ["putOrder"]
