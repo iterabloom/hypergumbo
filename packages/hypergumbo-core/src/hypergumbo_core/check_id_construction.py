@@ -70,23 +70,33 @@ own module and through an import in another, and what each call passes is
 read there (a default when the call omits it); a value returned by a HELPER
 OF ANOTHER MODULE is read at that helper's ``return``, its own parameters
 bound to what the call passed. Locals, module constants, conditional
-branches, tuple parts and same-module helpers are read along the way. The
+branches, tuple parts and same-module helpers are read along the way, and so
+are the REGISTRIES analyzers keep: a read ``reg[k]`` / ``reg.get(k, d)`` is
+read at every value the module writes into a container of that name
+(``reg[k] = v``, ``setdefault``, ``append``, a dict or list literal or
+comprehension; one passed to a helper is the one the call passed), an
+attribute ``x.attr`` at every value assigned to an attribute of that name or
+passed for it to a class, and a ``for`` variable at an element of what it
+iterates. Matching is by name in the module, so a second container of the
+same name can only add values to read, never hide one. The
 depth is one call level for a parameter and one module for a helper: a call
 site that passes on its own parameter, or a helper reached through another
 module's helper, is not followed further. A minting factory
 (:data:`_ENDPOINT_FACTORIES`) and a symbol's ``.id`` end the walk.
 
-WHAT IT CANNOT FOLLOW IS COUNTED, NOT PASSED. Every endpoint the walk does
-not reach a written value for is listed by :func:`find_id_construction_drift`
-with one of :data:`UNJUDGED_REASONS` (the depth limits above, a parameter
-nothing calls, an argument in ``*args``, a callable the tree does not define,
-and a value COMPUTED at run time: a registry lookup, an attribute, a loop
-variable, text sliced from the source). On the tree when this landed: 59
-endpoint sites, 51 of them computed, and none a violation.
-``scripts/check-id-construction`` prints their count and lists them with
-``--unjudged``. Their guard is the runtime count
-``AnalysisRun.non_id_edge_endpoints`` (ADR-0034 §"Enforcement"), which sees
-one only on a run whose tree holds the construct.
+WHAT IT CANNOT FOLLOW IS JUDGED BY HAND, AND DECLARED. Every endpoint the
+walk does not reach a written value for is listed by
+:func:`find_id_construction_drift` with one of :data:`UNJUDGED_REASONS` (the
+depth limits above, a parameter nothing calls, an argument in ``*args``, a
+callable the tree does not define, a value computed some other way). Each was
+read by hand and is declared in :data:`KNOWN_UNJUDGED_ENDPOINTS` with what it
+holds; :func:`undeclared_unjudged_endpoints` fails the check on one that is
+not, and on a declaration nothing matches, so the table only shrinks. When
+it was made: 59 sites unjudged, 39 then followed by the walk, 1 fixed at its
+source (hcl's raw module path), 19 declared, none a violation.
+``scripts/check-id-construction`` lists them with ``--unjudged``. At run time
+``AnalysisRun.non_id_edge_endpoints`` (ADR-0034 §"Enforcement") counts what
+a pass emits outside the grammar, whichever way it was built.
 
 THE KIND SLOT AGAINST THE SYMBOL'S KIND. A grammatical id can still name the
 wrong kind: ADR-0036 Ruling 2 says the kind slot IS ``Symbol.kind``. Four
@@ -561,7 +571,7 @@ def _problem_of(
 def find_id_construction_drift(
     repo_root: Path,
     known_kind_slot_holes: dict[tuple[str, str, str], str] | None = None,
-    unjudged: list[str] | None = None,
+    unjudged: "list[UnjudgedEndpoint] | None" = None,
 ) -> list[str]:
     """Return one ``path:line — problem`` string per violation, sorted.
 
@@ -569,12 +579,12 @@ def find_id_construction_drift(
     declared mismatch is not reported; a declaration whose file is in the tree
     and holds no such mismatch is.
 
-    ``unjudged``, when given, receives one string per edge endpoint the check
-    could not follow to a written value, sorted: ``path:line —
-    edge_endpoint (side) not judged: <reason> (<where>)``, the reasons being
-    :data:`UNJUDGED_REASONS`. Those are not violations:
-    ``AnalysisRun.non_id_edge_endpoints`` is their guard, at run time
-    (ADR-0034 §"Enforcement").
+    ``unjudged``, when given, receives one :class:`UnjudgedEndpoint` per edge
+    endpoint the check could not follow to a written value, sorted; the
+    reasons are :data:`UNJUDGED_REASONS`. They are not violations here:
+    :func:`undeclared_unjudged_endpoints` turns each one nobody has judged by
+    hand into one, and ``AnalysisRun.non_id_edge_endpoints`` guards them at
+    run time (ADR-0034 §"Enforcement").
     """
     holes = KNOWN_KIND_SLOT_HOLES if known_kind_slot_holes is None else known_kind_slot_holes
     matched: set[tuple[str, str, str]] = set()
@@ -610,7 +620,7 @@ def find_id_construction_drift(
             f"KNOWN_KIND_SLOT_HOLES and no longer exists; remove the declaration"
         )
     if unjudged is not None:
-        unjudged.extend(sorted(walk.unjudged, key=_finding_order))
+        unjudged.extend(sorted(walk.unjudged, key=lambda u: (u.rel, u.line, str(u))))
     return sorted(offenders, key=_finding_order)
 
 
@@ -667,6 +677,131 @@ UNJUDGED_REASONS: dict[str, str] = {
 }
 
 
+@dataclass(frozen=True)
+class UnjudgedEndpoint:
+    """An edge endpoint the walk could not follow to a written value."""
+
+    rel: str
+    line: int
+    #: The function holding the Edge construction (``<module>`` at top level).
+    function: str
+    side: str
+    reason: str
+    where: str
+
+    @property
+    def key(self) -> tuple[str, str, str, str]:
+        """What :data:`KNOWN_UNJUDGED_ENDPOINTS` declares: no line number, so
+        a declaration survives edits above the site."""
+        return (self.rel, self.function, self.side, self.reason)
+
+    def __str__(self) -> str:
+        return (
+            f"{self.rel}:{self.line} — edge_endpoint ({self.side}) not judged: "
+            f"{self.reason} ({self.where})"
+        )
+
+
+#: Edge endpoints the walk cannot follow, each read BY HAND and found to hold
+#: a node id: ``(file, function, side, reason) -> what it holds``. Shrink-only:
+#: a site the walk learns to follow, or that goes away, makes its entry
+#: stale, and :func:`undeclared_unjudged_endpoints` reports the stale entry;
+#: a site the walk cannot follow and nobody has declared fails the check.
+#: Every site the walk reported unjudged before it read registries (59) was
+#: judged by hand: 39 the walk follows now, 1 was raw text and was fixed at
+#: its source, and these 19 sites (18 keys) hold node ids.
+KNOWN_UNJUDGED_ENDPOINTS: dict[tuple[str, str, str, str], str] = {
+    ("packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
+     "make_unresolved_edge", "src", "parameter_beyond_one_call"):
+        "src_id: every caller passes a symbol's .id; perl._package_unresolved_edge "
+        "passes on caller_id, which its callers set from caller.id",
+    ("packages/hypergumbo-core/src/hypergumbo_core/linkers/ipc.py",
+     "link_ipc", "dst", "computed"):
+        "preload_send_id: part 1 of a bridge_maps value, built by "
+        "_bridge_send_id (a make_symbol_id helper) in a nested comprehension",
+    ("packages/hypergumbo-core/src/hypergumbo_core/linkers/method_call_recovery.py",
+     "link_method_call_recovery", "src", "computed"):
+        "caller_id: a key of class_hints, written as e.src of an analyzer edge",
+    ("packages/hypergumbo-core/src/hypergumbo_core/linkers/react_component.py",
+     "link_react_components", "src", "computed"):
+        "min(enclosing)[1]: part 1 of (span length, s.id) tuples, else a file "
+        "symbol's id or make_file_id",
+    ("packages/hypergumbo-core/src/hypergumbo_core/linkers/receiver_type_dispatch.py",
+     "link_receiver_type_dispatch", "dst", "computed"):
+        "candidates[0][0]: an index entry (sym.id, evidence) built from symbols",
+    ("packages/hypergumbo-core/src/hypergumbo_core/scip/calls.py",
+     "scip_index_to_call_edges", "dst", "helper_not_located"):
+        "resolve_external_dst: a callable parameter; its one production value "
+        "(scip-python translate._external_dst) returns format_legacy_dst(ref)",
+    ("packages/hypergumbo-core/src/hypergumbo_core/scip/calls.py",
+     "scip_index_to_call_edges", "src", "helper_not_located"):
+        "resolve_symbol: a callable parameter returning an emitted symbol's id",
+    ("packages/hypergumbo-core/src/hypergumbo_core/scip/edges.py",
+     "scip_index_to_edges", "dst", "helper_not_located"):
+        "resolve_external_dst, as in scip/calls.py",
+    ("packages/hypergumbo-core/src/hypergumbo_core/scip/edges.py",
+     "scip_index_to_edges", "src", "helper_not_located"):
+        "resolve_symbol, as in scip/calls.py",
+    ("packages/hypergumbo-lang-common/src/hypergumbo_lang_common/rst.py",
+     "_resolve_refs", "dst", "computed"):
+        "found[0]: labels.setdefault(...).append(sym.id), a target symbol's id",
+    ("packages/hypergumbo-lang-common/src/hypergumbo_lang_common/rst.py",
+     "_extract_reference", "dst", "computed"):
+        "dst: _file_dst (in_tree_file_id or make_module_import_dst) or "
+        "external_target, bound by a nested tuple target",
+    ("packages/hypergumbo-lang-common/src/hypergumbo_lang_common/starlark.py",
+     "_resolve_dependency_edges", "src", "computed"):
+        "src_id: part 0 of pending_deps entries, appended as (sym.id, ...)",
+    ("packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/ada.py",
+     "extract_edges_from_file", "dst", "computed"):
+        "self._package_ids(...).get(...): a dict comprehension of package "
+        "sym.id, else make_module_import_dst",
+    ("packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/apex.py",
+     "_add_call_edge", "src", "parameter_beyond_one_call"):
+        "src_id: passed by _extract_method_call / _extract_constructor_call from "
+        "_extract_edges_recursive, set by _caller_id "
+        "(a make_symbol_id / file id helper)",
+    ("packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/smithy.py",
+     "_make_reference_edge", "src", "parameter_beyond_one_call"):
+        "src_id: passed down from _extract_member_types, called with structure.id",
+    ("packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/css.py",
+     "_process_css_tree", "dst", "helper_not_located"):
+        "local_import_id: a callable parameter; its production value "
+        "(_local_import_resolver) returns make_file_id or None",
+    ("packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/yaml_ansible.py",
+     "process_mapping_pairs", "dst", "computed"):
+        "RAW TEXT by design: the include's written target, rewritten in "
+        "AnsibleAnalyzer.analyze before the pass returns (a file node id, a "
+        "fan-out file id, or a module stand-in)",
+    ("packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/yaml_ansible.py",
+     "analyze", "dst", "computed"):
+        "extra_dst: a further _jinja_fanout_candidates entry, file_node_ids values",
+}
+
+
+def undeclared_unjudged_endpoints(
+    unjudged: "list[UnjudgedEndpoint]", repo_root: Path,
+    declared: dict[tuple[str, str, str, str], str] | None = None,
+) -> list[str]:
+    """One violation per unjudged endpoint nobody declared, and per stale
+    declaration (its file is in the tree and holds no such site)."""
+    table = KNOWN_UNJUDGED_ENDPOINTS if declared is None else declared
+    found = {u.key for u in unjudged}
+    problems = [
+        f"{u.rel}:{u.line} — undeclared_unjudged_endpoint ({u.side}, {u.reason}: "
+        f"{u.where}) — make the endpoint readable (a factory, a symbol's .id) "
+        f"or read it by hand and declare it in KNOWN_UNJUDGED_ENDPOINTS"
+        for u in unjudged if u.key not in table
+    ]
+    problems.extend(
+        f"{rel} — stale_unjudged_declaration ({function}, {side}, {reason}) — "
+        f"the walk follows it now or it is gone; remove the declaration"
+        for rel, function, side, reason in sorted(set(table) - found)
+        if (repo_root / rel).is_file()
+    )
+    return problems
+
+
 @dataclass(eq=False)
 class _Module:
     """One parsed source file, indexed for the endpoint walk."""
@@ -684,6 +819,12 @@ class _Module:
     def_chains: dict[int, tuple[_FuncDef, ...]]
     calls: list[ast.Call]
     module_assigns: dict[str, list[ast.expr]]
+    #: container name -> each value written into it, with the functions
+    #: enclosing the write (:func:`_container_writes_of`).
+    container_writes: dict[str, list[tuple[ast.expr, tuple[_FuncDef, ...]]]]
+    #: attribute name -> each value assigned to it (``self.x = v``) or passed
+    #: for it to a class (``Emission(action_id=v)``), with its functions.
+    attribute_writes: dict[str, list[tuple[ast.expr, tuple[_FuncDef, ...]]]]
 
 
 def _index_module(tree: ast.Module, path: Path, rel: str, src_root: Path) -> _Module:
@@ -700,6 +841,12 @@ def _index_module(tree: ast.Module, path: Path, rel: str, src_root: Path) -> _Mo
     chains: dict[int, tuple[_FuncDef, ...]] = {}
     def_chains: dict[int, tuple[_FuncDef, ...]] = {}
     calls: list[ast.Call] = []
+    container_writes: dict[str, list[tuple[ast.expr, tuple[_FuncDef, ...]]]] = (
+        defaultdict(list)
+    )
+    attribute_writes: dict[str, list[tuple[ast.expr, tuple[_FuncDef, ...]]]] = (
+        defaultdict(list)
+    )
     stack: list[tuple[ast.AST, tuple[_FuncDef, ...]]] = [(tree, ())]
     while stack:
         node, chain = stack.pop()
@@ -709,6 +856,10 @@ def _index_module(tree: ast.Module, path: Path, rel: str, src_root: Path) -> _Mo
                 def_chains[id(child)] = (child, *chain)
                 stack.append((child, (child, *chain)))
                 continue
+            for value in _container_writes_of(child):
+                container_writes[value[0]].append((value[1], chain))
+            for value in _attribute_writes_of(child):
+                attribute_writes[value[0]].append((value[1], chain))
             if isinstance(child, ast.Call):
                 chains[id(child)] = chain
                 calls.append(child)
@@ -742,8 +893,82 @@ def _index_module(tree: ast.Module, path: Path, rel: str, src_root: Path) -> _Mo
             module_assigns[statement.target.id].append(statement.value)
     return _Module(
         rel=rel, dotted=dotted, functions=functions, imports=imports, chains=chains, def_chains=def_chains, calls=calls,
-        module_assigns=module_assigns,
+        module_assigns=module_assigns, container_writes=container_writes,
+        attribute_writes=attribute_writes,
     )
+
+
+def _container_name(expr: ast.expr) -> str | None:
+    """The name a container is read or written by: ``reg`` for ``reg`` and
+    ``self.reg``, the first such operand of ``(reg or {})``."""
+    if isinstance(expr, ast.Name):
+        return expr.id
+    if isinstance(expr, ast.Attribute):
+        return expr.attr
+    if isinstance(expr, ast.BoolOp):
+        for value in expr.values:
+            name = _container_name(value)
+            if name is not None:
+                return name
+    return None
+
+
+def _container_writes_of(node: ast.AST) -> list[tuple[str, ast.expr]]:
+    """``(container name, value)`` for each value *node* puts in a mapping.
+
+    ``reg[k] = v``, ``reg.setdefault(k, v)``, and ``reg = {k: v, ...}`` /
+    ``reg = {k: v for ...}`` (an annotated assignment too). A registry an
+    analyzer fills with ``sym.id`` and reads back as an endpoint is judged
+    through these: a container is matched by NAME in its module, which is how
+    the registries are written (one name per role, passed as a parameter).
+    """
+    found: list[tuple[str, ast.expr]] = []
+    if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            if isinstance(target, ast.Subscript):
+                name = _container_name(target.value)
+                if name is not None:
+                    found.append((name, node.value))
+                continue
+            name = _container_name(target)
+            if name is None:
+                continue
+            for value in _alternatives(node.value):
+                if isinstance(value, ast.Dict):
+                    found.extend((name, v) for v in value.values)
+                elif isinstance(value, ast.DictComp):
+                    found.append((name, value.value))
+                elif isinstance(value, (ast.List, ast.Tuple)):
+                    found.extend((name, v) for v in value.elts)
+                elif isinstance(value, ast.ListComp):
+                    found.append((name, value.elt))
+    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        name = _container_name(node.func.value)
+        if name is None:
+            return found
+        if node.func.attr == "setdefault" and len(node.args) == 2:
+            found.append((name, node.args[1]))
+        elif node.func.attr == "append" and len(node.args) == 1:
+            found.append((name, node.args[0]))
+    return found
+
+
+def _attribute_writes_of(node: ast.AST) -> list[tuple[str, ast.expr]]:
+    """``(attribute name, value)`` for ``obj.attr = v`` and for a keyword a
+    class is constructed with (a callee spelled with a capital):
+    ``Emission(action_symbol_id=v)``. Matched by name in the module."""
+    found: list[tuple[str, ast.expr]] = []
+    if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        found.extend(
+            (t.attr, node.value) for t in targets if isinstance(t, ast.Attribute)
+        )
+    elif isinstance(node, ast.Call) and (_callee_name(node) or "")[:1].isupper():
+        found.extend(
+            (k.arg, k.value) for k in node.keywords if k.arg is not None
+        )
+    return found
 
 
 def _own_nodes(fn: _FuncDef) -> list[ast.AST]:
@@ -801,13 +1026,57 @@ def _bindings(fn: _FuncDef) -> tuple[_Assigned, set[str]]:
             target(node.target, node.value, None)
         elif isinstance(node, ast.AugAssign):
             target(node.target, None, None)
-        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            _bind_loop_target(node, target)
+        elif isinstance(node, ast.comprehension):
             target(node.target, None, None)
         elif isinstance(node, ast.withitem) and node.optional_vars is not None:
             target(node.optional_vars, None, None)
         elif isinstance(node, ast.ExceptHandler) and node.name:
             other.add(node.name)
     return assigned, other
+
+
+def _bind_loop_target(
+    loop: "ast.For | ast.AsyncFor",
+    target: "Callable[[ast.expr, ast.expr | None, int | None], None]",
+) -> None:
+    """Bind a ``for`` target to an ELEMENT of what it iterates.
+
+    The element is written as a subscript of the iterable, so the walk reads
+    it as a container read (:meth:`_EndpointWalk._read_container`):
+    ``for src, label in pending`` binds ``src`` to part 0 of an element of
+    ``pending``, and ``for k, v in reg.items()`` binds ``v`` to a value of
+    ``reg``. Any other iterable leaves the element computed.
+    """
+    iterable = loop.iter
+    method = (
+        iterable.func.attr
+        if isinstance(iterable, ast.Call) and isinstance(iterable.func, ast.Attribute)
+        and not iterable.args else None
+    )
+    container = iterable
+    if method in ("items", "values"):
+        assert isinstance(iterable, ast.Call) and isinstance(iterable.func, ast.Attribute)
+        container = iterable.func.value
+    element = ast.copy_location(
+        ast.Subscript(value=container, slice=ast.Constant(0), ctx=ast.Load()), loop,
+    )
+    node = loop.target
+    if method == "items":
+        if isinstance(node, ast.Tuple) and len(node.elts) == 2:
+            target(node.elts[0], None, None)
+            target(node.elts[1], element, None)
+            return
+        target(node, None, None)
+        return
+    if isinstance(node, ast.Name):
+        target(node, element, None)
+    elif isinstance(node, ast.Tuple) and all(isinstance(e, ast.Name) for e in node.elts):
+        for i, part in enumerate(node.elts):
+            target(part, element, i)
+    else:
+        target(node, None, None)
 
 
 def _parameters(fn: _FuncDef) -> list[str]:
@@ -894,7 +1163,7 @@ class _EndpointWalk:
         self.modules = modules
         self.by_dotted = {m.dotted: m for m in modules}
         self.violations: dict[tuple[str, int], str] = {}
-        self.unjudged: list[str] = []
+        self.unjudged: list[UnjudgedEndpoint] = []
         self._calls_by_name: dict[str, list[tuple[_Module, ast.Call]]] = defaultdict(list)
         for module in modules:
             for call in module.calls:
@@ -915,11 +1184,12 @@ class _EndpointWalk:
                         endpoint, _Ctx(module, module.chains[id(call)], {}),
                         _Budget(), set(), missed, None,
                     )
+                    chain = module.chains[id(call)]
+                    function = chain[0].name if chain else "<module>"
                     for reason, where in sorted(missed.items()):
-                        self.unjudged.append(
-                            f"{module.rel}:{call.lineno} — edge_endpoint ({side}) "
-                            f"not judged: {reason} ({where})"
-                        )
+                        self.unjudged.append(UnjudgedEndpoint(
+                            module.rel, call.lineno, function, side, reason, where,
+                        ))
 
     def _judge(self, expr: ast.expr, ctx: _Ctx) -> None:
         problem = _endpoint_problem(expr)
@@ -964,6 +1234,22 @@ class _EndpointWalk:
         if isinstance(expr, ast.Call):
             self._visit_call(expr, ctx, budget, seen, missed, index)
             return
+        if isinstance(expr, ast.Subscript):
+            inner = _unwrap(expr.value)
+            if isinstance(inner, ast.Call) and _callee_name(inner) in _ENDPOINT_FACTORIES:
+                return
+            if self._read_container(inner, ctx, budget, seen, missed, index):
+                return
+            missed.setdefault("computed", f"{where} {ast.unparse(expr)[:60]}")
+            return
+        if isinstance(expr, ast.Attribute) and expr.attr not in _NODE_ID_ATTRIBUTES:
+            writes = ctx.module.attribute_writes.get(expr.attr)
+            if writes:
+                for value, chain in writes:
+                    self._visit(
+                        value, _Ctx(ctx.module, chain, {}), budget, seen, missed, index,
+                    )
+                return
         if index is not None:
             missed.setdefault("computed", where)
             return
@@ -978,11 +1264,28 @@ class _EndpointWalk:
             return
         if isinstance(expr, ast.Attribute) and expr.attr in _NODE_ID_ATTRIBUTES:
             return
-        if isinstance(expr, ast.Subscript):
-            inner = _unwrap(expr.value)
-            if isinstance(inner, ast.Call) and _callee_name(inner) in _ENDPOINT_FACTORIES:
-                return
         missed.setdefault("computed", f"{where} {ast.unparse(expr)[:60]}")
+
+    def _read_container(
+        self, container: ast.expr, ctx: _Ctx, budget: _Budget,
+        seen: set[tuple[int, int, int, int | None]], missed: dict[str, str],
+        index: int | None,
+    ) -> bool:
+        """Visit every value the module writes into *container*; False when
+        it writes none (the read stays computed). A container that is a
+        parameter of a helper reached by a direct call is the container the
+        call passed (``local_id_registry`` for ``symbol_registry``)."""
+        if isinstance(container, ast.Name) and ctx.bound.get(container.id) is not None:
+            passed = ctx.bound[container.id]
+            assert passed is not None
+            container, ctx = passed
+        name = _container_name(container)
+        writes = ctx.module.container_writes.get(name or "")
+        if not writes:
+            return False
+        for value, chain in writes:
+            self._visit(value, _Ctx(ctx.module, chain, {}), budget, seen, missed, index)
+        return True
 
     def _visit_name(
         self, expr: ast.Name, ctx: _Ctx, budget: _Budget,
@@ -1065,7 +1368,14 @@ class _EndpointWalk:
         sites: list[tuple[_Module, ast.Call]] = []
         for caller, call in self._calls_by_name.get(fn.name, ()):
             if caller is module:
-                sites.append((caller, call))
+                # ``f(...)`` or ``self.f(...)`` / ``cls.f(...)``; never
+                # ``seen.add(x)`` for a function named ``add``.
+                func = call.func
+                if isinstance(func, ast.Name) or (
+                    isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                    and func.value.id in ("self", "cls")
+                ):
+                    sites.append((caller, call))
                 continue
             target = self._callee(caller, call)
             if target is not None and any(f is fn for f in target[1]):
@@ -1079,6 +1389,15 @@ class _EndpointWalk:
     ) -> None:
         where = f"{ctx.module.rel}:{expr.lineno} {ast.unparse(expr.func)[:60]}(...)"
         if _callee_name(expr) in _ENDPOINT_FACTORIES:
+            return
+        if (
+            isinstance(expr.func, ast.Attribute) and expr.func.attr == "get"
+            and expr.args and len(expr.args) <= 2
+            and self._read_container(expr.func.value, ctx, budget, seen, missed, index)
+        ):
+            # ``reg.get(k, default)``: the registry's values, and the default.
+            for default in expr.args[1:]:
+                self._visit(default, ctx, budget, seen, missed, index)
             return
         target = self._callee(ctx.module, expr)
         if target is None:

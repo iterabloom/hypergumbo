@@ -16,10 +16,13 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.check_id_construction import (
+    KNOWN_UNJUDGED_ENDPOINTS,
     UNJUDGED_REASONS,
+    UnjudgedEndpoint,
     edge_template_problem,
     find_id_construction_drift,
     id_template_problem,
+    undeclared_unjudged_endpoints,
 )
 
 
@@ -696,9 +699,9 @@ def _write_modules(tmp_path: Path, modules: dict[str, str]) -> Path:
 
 def survey_id_construction(root: Path) -> tuple[list[str], list[str]]:
     """``(violations, unjudged)`` of :func:`find_id_construction_drift`."""
-    unjudged: list[str] = []
+    unjudged: list[UnjudgedEndpoint] = []
     violations = find_id_construction_drift(root, unjudged=unjudged)
-    return violations, unjudged
+    return violations, [str(u) for u in unjudged]
 
 
 def _reasons(unjudged: list[str]) -> list[str]:
@@ -1072,6 +1075,203 @@ class TestAnEndpointBuiltByAHelper:
         assert survey_id_construction(root) == ([], [])
 
 
+class TestAnEndpointReadFromARegistry:
+    """A registry an analyzer fills with ``sym.id`` and reads back as an
+    endpoint is read at its writes, matched by name in the module."""
+
+    @pytest.mark.parametrize("fill", [
+        "REG[name] = {value}",
+        "REG.setdefault(name, {value})",
+        "REG.append({value})",
+    ])
+    def test_a_write_is_judged(self, tmp_path: Path, fill: str) -> None:
+        root = _write(tmp_path, f'''
+            REG = {{}}
+
+            def fill(name, sym, path):
+                {fill.format(value='f"{path}:file"')}
+
+            def f(sym, name):
+                return Edge.create(src=sym.id, dst=REG.get(name), line=1)
+
+            def g(sym, name):
+                return Edge.create(src=sym.id, dst=REG[name], line=1)
+        ''')
+        violations, unjudged = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/mod.py:5"]
+        assert unjudged == []
+
+    def test_a_registry_of_ids_passes(self, tmp_path: Path) -> None:
+        """Control: the registry holds symbols' ids (a comprehension, a
+        literal, an assignment), and ``.get``'s default is read too."""
+        root = _write(tmp_path, '''
+            def f(symbols, sym, name, other):
+                by_name = {s.name: s.id for s in symbols}
+                pairs = {"x": other.id}
+                pairs["y"] = sym.id
+                Edge.create(src=sym.id, dst=pairs[name], line=1)
+                return Edge.create(
+                    src=sym.id, dst=by_name.get(name, make_file_id("c", name)), line=1,
+                )
+        ''')
+        assert survey_id_construction(root) == ([], [])
+
+    def test_a_get_default_is_judged(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(symbols, sym, name):
+                by_name = {s.name: s.id for s in symbols}
+                return Edge.create(src=sym.id, dst=by_name.get(name, f"x:{name}"), line=1)
+        ''')
+        violations, _ = survey_id_construction(root)
+        assert len(violations) == 1
+
+    def test_a_registry_passed_to_a_helper_is_the_one_read(
+        self, tmp_path: Path,
+    ) -> None:
+        """``helper(local_ids)`` reads ``registry[...]`` from what was passed,
+        not from another registry of the module that shares the name."""
+        root = _write(tmp_path, '''
+            def build(symbols, registry):
+                for s in symbols:
+                    registry[s.name] = s
+
+            def enclosing(name, registry):
+                return registry[name]
+
+            def f(symbols, sym, name):
+                local_ids = {s.name: s.id for s in symbols}
+                return Edge.create(src=enclosing(name, local_ids), dst=sym.id, line=1)
+        ''')
+        assert survey_id_construction(root) == ([], [])
+
+    def test_a_tuple_part_of_a_registry_value(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(sym, items, path):
+                table = {}
+                for name in items:
+                    table[name] = ("channel", f"{path}:file")
+                channel, dst = table[items[0]]
+                return Edge.create(src=sym.id, dst=dst, line=1)
+        ''')
+        violations, _ = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/mod.py:5"]
+
+    def test_a_loop_over_a_registry(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(sym, path, names):
+                pending = []
+                for n in names:
+                    pending.append((sym.id, f"{path}:{n}"))
+                by = {n: f"y:{n}" for n in names}
+                for src_id, dst in pending:
+                    Edge.create(src=src_id, dst=dst, line=1)
+                for _n, value in by.items():
+                    Edge.create(src=sym.id, dst=value, line=1)
+        ''')
+        violations, unjudged = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == [
+            "packages/p/src/m/mod.py:5", "packages/p/src/m/mod.py:6",
+        ]
+        assert unjudged == []
+
+    def test_a_loop_over_anything_else_stays_computed(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(sym, nodes, by):
+                for key, value in by.items():
+                    Edge.create(src=sym.id, dst=key, line=1)
+                for a, (b, c) in nodes:
+                    Edge.create(src=sym.id, dst=a, line=1)
+                for pair in by.items():
+                    Edge.create(src=sym.id, dst=pair, line=1)
+                dst, _ref = sym.pair
+                Edge.create(src=sym.id, dst=dst, line=1)
+
+            def g(sym):
+                return f(sym, [], {})
+        ''')
+        assert _reasons(survey_id_construction(root)[1]) == ["computed"] * 4
+
+
+class TestAnEndpointReadFromAnAttribute:
+    @pytest.mark.parametrize("write", [
+        "self.current = f\"{path}:file\"",
+        "return Emission(current=f\"{path}:file\")",
+    ])
+    def test_its_writes_are_judged(self, tmp_path: Path, write: str) -> None:
+        root = _write(tmp_path, f'''
+            class A:
+                def enter(self, path):
+                    {write}
+
+                def edge(self, sym):
+                    return Edge.create(src=self.current, dst=sym.id, line=1)
+        ''')
+        violations, _ = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/mod.py:4"]
+
+    def test_a_method_call_of_another_object_is_no_call_site(
+        self, tmp_path: Path,
+    ) -> None:
+        """``seen.add(path)`` does not call the module's function ``add``."""
+        root = _write(tmp_path, '''
+            def outer(sym, seen, path):
+                def add(dst):
+                    return Edge.create(src=sym.id, dst=dst, line=1)
+                seen.add(path)
+                return add(make_file_id("c", path))
+        ''')
+        assert survey_id_construction(root) == ([], [])
+
+
+class TestTheDeclaredUnjudgedEndpoints:
+    """An endpoint the walk cannot follow fails the check until a reader
+    declares what it holds; a declaration nothing matches is stale."""
+
+    BODY = '''
+        def f(sym, registry, name):
+            return Edge.create(src=sym.id, dst=registry.lookup(name), line=1)
+
+        def g(sym):
+            return f(sym, None, "x")
+    '''
+    KEY = ("packages/p/src/m/mod.py", "f", "dst", "computed")
+
+    def test_an_undeclared_one_fails(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, self.BODY)
+        unjudged: list[UnjudgedEndpoint] = []
+        find_id_construction_drift(root, unjudged=unjudged)
+        problems = undeclared_unjudged_endpoints(unjudged, root, {})
+        assert len(problems) == 1
+        assert "undeclared_unjudged_endpoint" in problems[0]
+
+    def test_a_declared_one_passes(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, self.BODY)
+        unjudged: list[UnjudgedEndpoint] = []
+        find_id_construction_drift(root, unjudged=unjudged)
+        assert [u.key for u in unjudged] == [self.KEY]
+        assert undeclared_unjudged_endpoints(unjudged, root, {self.KEY: "ids"}) == []
+
+    def test_a_stale_declaration_is_reported(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(sym):
+                return Edge.create(src=sym.id, dst=make_file_id("c", "x"), line=1)
+        ''')
+        problems = undeclared_unjudged_endpoints([], root, {self.KEY: "ids"})
+        assert len(problems) == 1
+        assert "stale_unjudged_declaration" in problems[0]
+
+    def test_a_declaration_of_another_tree_is_not_stale(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, "X = 1\n")
+        absent = ("packages/q/src/n.py", "f", "dst", "computed")
+        assert undeclared_unjudged_endpoints([], root, {absent: "ids"}) == []
+
+    def test_the_default_table_is_this_trees(self, tmp_path: Path) -> None:
+        """Without a table argument the module's table is read; none of its
+        files is in a scratch tree, so none is stale there."""
+        root = _write(tmp_path, "X = 1\n")
+        assert undeclared_unjudged_endpoints([], root) == []
+
+
 class TestTheLiveTree:
     def test_live_tree_passes(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
@@ -1081,10 +1281,20 @@ class TestTheLiveTree:
             + "\n  ".join(drift)
         )
 
-    def test_every_unjudged_endpoint_names_a_declared_reason(self) -> None:
-        """What the check cannot follow is listed with a reason, never dropped:
-        the runtime count ``AnalysisRun.non_id_edge_endpoints`` guards it."""
+    def test_every_unjudged_endpoint_is_judged_by_hand(self) -> None:
+        """What the walk cannot follow is declared, site by site, with what a
+        reader found it holds; nothing undeclared, nothing stale (WI-jozih)."""
         repo_root = Path(__file__).resolve().parents[3]
-        _violations, unjudged = survey_id_construction(repo_root)
-        assert unjudged, "the tree has endpoints the check cannot follow"
-        assert set(_reasons(unjudged)) <= set(UNJUDGED_REASONS)
+        unjudged: list[UnjudgedEndpoint] = []
+        find_id_construction_drift(repo_root, unjudged=unjudged)
+        assert unjudged, "the tree has endpoints the walk cannot follow"
+        assert {u.reason for u in unjudged} <= set(UNJUDGED_REASONS)
+        assert undeclared_unjudged_endpoints(unjudged, repo_root) == []
+
+    def test_every_declaration_names_a_file_of_the_tree(self) -> None:
+        """A stale entry is reported only when its file is in the tree, so a
+        renamed file must not hide one."""
+        repo_root = Path(__file__).resolve().parents[3]
+        for rel, _function, _side, reason in KNOWN_UNJUDGED_ENDPOINTS:
+            assert (repo_root / rel).is_file(), rel
+            assert reason in UNJUDGED_REASONS
