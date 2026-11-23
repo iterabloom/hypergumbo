@@ -67,9 +67,11 @@ from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Sy
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
     make_doc_symbol_ids,
     make_file_id,
     make_module_import_dst,
+    make_symbol_id,
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.edge_target import external_target, in_tree_file_id
@@ -389,18 +391,24 @@ class _RobotExtractor:
             end_col=node.end_point[1],
         )
 
-        # node.id and canonical stable_id are minted together from one arg set
-        # (make_doc_symbol_ids) so they can never drift (INV-dulah). node.id
-        # carries the start_line, disambiguating same-name siblings.
-        symbol_id, stable_id = make_doc_symbol_ids(
-            "robot", rel_path, "variable", var_name,
-            span.start_line, span.end_line,
+        # ADR-0036 Ruling 1: the id's name slot is the Symbol's name,
+        # ``${NAME}`` (it held the bare ``NAME``). The stable id still hashes
+        # the bare name: make_doc_stable_id with the arguments
+        # make_doc_symbol_ids passed it, so the two cannot drift and no
+        # identity moves. node.id carries the start_line, disambiguating
+        # same-name siblings.
+        name = f"${{{var_name}}}"  # Include ${} for clarity
+        symbol_id = make_symbol_id(
+            "robot", str(rel_path), span.start_line, span.end_line, name, "variable",
+        )
+        stable_id = make_doc_stable_id(
+            "robot", str(rel_path), "variable", var_name, span.start_line, span.end_line,
         )
 
         symbol = Symbol(
             id=symbol_id,
             stable_id=stable_id,
-            name=f"${{{var_name}}}",  # Include ${} for clarity
+            name=name,
             kind="variable",
             language="robot",
             path=str(rel_path),
