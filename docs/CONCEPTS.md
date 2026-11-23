@@ -169,7 +169,7 @@ Total concepts: **322** (live: 48, inert: 274, ghost: 0).
 | `mailable` | inert | adonisjs, masonite | _(none)_ |
 | `mailer` | inert | cakephp, fuelphp, hanami, laminas, laravel, padrino, rails | _(none)_ |
 | `main_function` | live | main-functions | `entrypoints.py` |
-| `main_guard` | live | py.py | `entrypoints.py` |
+| `main_guard` | live | clojure.py, py.py | `entrypoints.py` |
 | `main_window` | inert | qt | _(none)_ |
 | `marshalling` | inert | http4k | _(none)_ |
 | `maven_dependency` | inert | config-conventions | _(none)_ |

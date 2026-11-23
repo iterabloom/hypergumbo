@@ -665,7 +665,7 @@ The operating system or a language runtime starts a process here. Ruled closed (
 
 - **`electron_main`** — Electron's main-process script (electron.yaml `app.whenReady` / `app.on`).
 - **`main_function`** — A language's convention `main` (main-functions.yaml), and a framework type the runtime starts as the program (`IOApp`, `ZIOApp`, SwiftUI `App`, an app delegate: the `entrypoint` concept).
-- **`main_guard`** — A Python module run as a script (`if __name__ == '__main__':`, no main()).
+- **`main_guard`** — A module run as a script through its main guard, no main() (Python `if __name__ == '__main__':`, Babashka `(when (= *file* (System/getProperty "babashka.file")) ...)`).
 - **`package_executable`** — An executable the package's manifest declares (package.json `bin`, Cargo `[[bin]]`, pyproject `[project.scripts]`); the entry is the manifest record.
 
 ### `command` — sketch group "CLI & Scripts"

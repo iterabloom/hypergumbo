@@ -616,6 +616,16 @@ def _ws_route_label(path: str, framework: str = "") -> str:
     return "WebSocket handler"
 
 
+#: The label of a ``main_guard`` entry by the guard's language (the concept's
+#: ``framework``): Python's ``if __name__ == "__main__":`` and Babashka's
+#: ``(when (= *file* (System/getProperty "babashka.file")) ...)`` are one
+#: construct, a module that runs its code only when run as the program.
+_MAIN_GUARD_LABELS: Mapping[str, str] = {
+    "python": "Python script (if __name__ == '__main__')",
+    "babashka": "Babashka script (when (= *file* (System/getProperty \"babashka.file\")))",
+}
+
+
 def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect entrypoints from semantic concept metadata.
 
@@ -1194,7 +1204,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     symbol_id=sym.id,
                     kind=EntrypointKind.MAIN_GUARD,
                     confidence=0.85,  # Structural pattern (higher than naming heuristic)
-                    label="Python script (if __name__ == '__main__')",
+                    label=_MAIN_GUARD_LABELS.get(
+                        concept.get("framework", ""), _MAIN_GUARD_LABELS["python"],
+                    ),
                     source="concept_detector",
                     evidence_type="structural",
                 ))

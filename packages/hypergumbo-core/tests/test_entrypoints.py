@@ -1610,6 +1610,17 @@ class TestSemanticEntryDetection:
         # It is NOT the function-target MAIN_FUNCTION kind.
         assert not [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
 
+    def test_a_babashka_main_guard_is_labelled_as_babashka(self) -> None:
+        """The same kind for Babashka's ``(when (= *file* ...))`` guard, with
+        the guard's own language in the label (the concept's framework)."""
+        sym = Symbol(
+            id="clojure:bin/run.bb:1-1:file:file", name="bin/run.bb", kind="file",
+            path="bin/run.bb", language="clojure", span=Span(1, 9, 0, 0),
+            meta={"concepts": [{"concept": "main_guard", "framework": "babashka"}]},
+        )
+        (ep,) = [e for e in detect_entrypoints([sym], []) if e.kind == EntrypointKind.MAIN_GUARD]
+        assert ep.label.startswith("Babashka script") and "babashka.file" in ep.label
+
     def test_main_guard_superseded_by_function_main_cross_symbol(self) -> None:
         """WI-tuvun/INV-hosuh: a def main() supersedes the same-file MAIN_GUARD.
 

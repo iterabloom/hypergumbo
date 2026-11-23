@@ -361,7 +361,9 @@ ENTRYPOINT_KINDS: Final[tuple[EntrypointKindSpec, ...]] = (
           "runtime starts as the program (`IOApp`, `ZIOApp`, SwiftUI `App`, an app "
           "delegate: the `entrypoint` concept)."),
     _spec(_K.MAIN_GUARD, ROLE_PROGRAM_START, H_CLI, RULED, VERDICT_KEPT_UNDER_TRIGGER,
-          "A Python module run as a script (`if __name__ == '__main__':`, no main()).",
+          "A module run as a script through its main guard, no main() (Python "
+          "`if __name__ == '__main__':`, Babashka "
+          "`(when (= *file* (System/getProperty \"babashka.file\")) ...)`).",
           "the guard is how the start is recognised; kept beside main_function while "
           "no reader branches on one without the other (audit 0027 keep trigger)"),
     _spec(_K.ELECTRON_MAIN, ROLE_PROGRAM_START, H_CLI, RULED, VERDICT_CANONICAL,
