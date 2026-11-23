@@ -14,14 +14,17 @@ How It Works
 5. Populates docstrings onto the symbols just extracted
    (``populate_docstrings_from_tree``)
 
-Every symbol's ``id`` is minted through ``make_doc_symbol_ids`` (the
-INV-dulah contract for documentation families). Targets also take the
-``stable_id`` that call issues; sections and directives discard it and take
-their ``stable_id`` from a separate ``make_doc_stable_id`` call that hashes
-the section title (or the directive name plus its arguments) instead of the
-ordinal their ``id`` carries (WI-tusad). The ``id`` carries the span so two
-same-named sections stay distinct, while the ``stable_id`` survives the
-section moving down the file. The ``stable_id`` hashes the titles of the sections a symbol
+Every symbol's ``id`` is the canonical ``make_symbol_id`` shape whose name
+slot is the symbol's name (ADR-0036 Ruling 1): a section's title, a
+directive's name (an API directive's argument). Targets mint id and
+``stable_id`` together through ``make_doc_symbol_ids`` (the INV-dulah
+contract for documentation families); sections and directives take their
+``stable_id`` from ``make_doc_stable_id``, which hashes the section title
+(or the directive name plus its arguments), not an ordinal (WI-tusad); their
+ids carried the ordinals ``section_<n>`` / ``directive_<n>`` until the name
+slot was made the name. The ``id`` carries the span so two same-named
+sections stay distinct, while the ``stable_id`` survives the section moving
+down the file. The ``stable_id`` hashes the titles of the sections a symbol
 sits in (INV-punig; ADR-0035 §1, scheme v9). tree-sitter-rst emits every
 section as a sibling, so the hierarchy comes from the adornment styles, in
 the order the document first uses them, as reStructuredText defines it
@@ -85,6 +88,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, make_doc_stable_id, make_doc_symbol_ids,
+    make_symbol_id,
     make_file_id, make_module_import_dst, populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.edge_target import external_target, in_tree_file_id
@@ -169,8 +173,6 @@ class _RSTExtractor:
         self._edges: list[Edge] = []
         self._execution_id = new_execution_id()
         self._files_analyzed = 0
-        self._section_counter = 0
-        self._directive_counter = 0
         # Per file: adornment styles in the order the document first uses
         # them (a style's index is its section level), and the open sections
         # as (level, title), outermost first.
@@ -238,8 +240,6 @@ class _RSTExtractor:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
-                self._section_counter = 0
-                self._directive_counter = 0
                 self._styles = []
                 self._open_sections = []
                 before = len(self._symbols)
@@ -332,7 +332,6 @@ class _RSTExtractor:
         while self._open_sections and self._open_sections[-1][0] >= level:
             self._open_sections.pop()
 
-        self._section_counter += 1
         rel_path = path.relative_to(self.repo_root)
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -341,12 +340,11 @@ class _RSTExtractor:
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: node.id and canonical stable_id minted together from one arg
-        # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
-        # start_line here (was line-less), disambiguating same-name siblings.
-        symbol_id, _ordinal_stable_id = make_doc_symbol_ids(
-            "rst", rel_path, "section",
-            f"section_{self._section_counter}", span.start_line, span.end_line,
+        # ADR-0036 Ruling 1: the id's name slot is the title, the Symbol's
+        # name (it was the ordinal ``section_<n>``); the span keeps two
+        # same-titled sections apart.
+        symbol_id = make_symbol_id(
+            "rst", str(rel_path), span.start_line, span.end_line, title_text, "section",
         )
         # WI-tusad: the stable_id hashes the title, not the ordinal the node id
         # carries: an ordinal renumbers every later section when an earlier one
@@ -396,7 +394,6 @@ class _RSTExtractor:
         if not directive_type:
             return  # pragma: no cover
 
-        self._directive_counter += 1
         rel_path = path.relative_to(self.repo_root)
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -405,11 +402,13 @@ class _RSTExtractor:
             end_col=node.end_point[1],
         )
 
-        # INV-dulah: node.id + canonical stable_id minted together (gains
-        # start_line, was line-less).
-        symbol_id, _ordinal_stable_id = make_doc_symbol_ids(
-            "rst", rel_path, "directive",
-            f"directive_{self._directive_counter}", span.start_line, span.end_line,
+        # Use arguments as name if it's an API directive, otherwise use type
+        is_api = directive_type in API_DIRECTIVES
+        name = arguments if (arguments and is_api) else directive_type
+        # ADR-0036 Ruling 1: the id's name slot is that name (it was the
+        # ordinal ``directive_<n>``).
+        symbol_id = make_symbol_id(
+            "rst", str(rel_path), span.start_line, span.end_line, name, "directive",
         )
         # WI-tusad: hash the directive and its arguments, not the ordinal;
         # INV-punig: under the sections it sits in.
@@ -420,7 +419,6 @@ class _RSTExtractor:
         )
 
         # Determine directive category
-        is_api = directive_type in API_DIRECTIVES
         is_admonition = directive_type in ADMONITION_DIRECTIVES
 
         # Build signature
@@ -428,9 +426,6 @@ class _RSTExtractor:
             sig = f".. {directive_type}:: {arguments[:50]}{'...' if len(arguments) > 50 else ''}"
         else:
             sig = f".. {directive_type}::"
-
-        # Use arguments as name if it's an API directive, otherwise use type
-        name = arguments if (arguments and is_api) else directive_type
 
         symbol = Symbol(
             id=symbol_id,
