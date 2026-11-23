@@ -53,6 +53,7 @@ Why This Design
 """
 
 import hashlib
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
@@ -64,6 +65,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_file_id,
     make_symbol_id,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -90,20 +92,22 @@ def _local_import_resolver(
     """``@import`` path -> the file node id of the repository file it names.
 
     Resolved against the importing file's directory, as a browser does for a
-    relative URL; ``None`` for a URL with a scheme, a protocol-relative URL, a
-    path outside the repository or a file that is not there.
+    relative URL, and looked up with ``edge_target.in_tree_file_id``: ``None``
+    for a URL with a scheme, a protocol-relative URL, a path outside the
+    repository, a file that is not there, and a file discovery leaves out of
+    the run (git ignores it, or a default exclude covers it). The last used
+    to get a ``css:`` file node for a file no analyzer read. The id's
+    language is the taxonomy's (``css`` for ``.css``, ``.scss``, ``.less``).
     """
+    rel_importer = css_file.relative_to(repo_root).as_posix()
+    here = posixpath.dirname(rel_importer)
+
     def resolve(import_path: str) -> Optional[str]:
         if "://" in import_path or import_path.startswith("//"):
             return None
-        target = (css_file.parent / import_path).resolve()
-        try:
-            rel = target.relative_to(repo_root.resolve())
-        except ValueError:
-            return None
-        if not target.is_file():
-            return None
-        return make_file_id("css", str(rel))
+        return in_tree_file_id(
+            css_file, rel_importer, [posixpath.join(here, import_path)],
+        )
     return resolve
 
 
