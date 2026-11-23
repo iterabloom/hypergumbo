@@ -6987,17 +6987,19 @@ def _extract_edges(
                     # WI-fiham: the call path's spelling, scheme dropped.
                     module_name = _strip_import_scheme(
                         _node_text(child, source).strip("'\""))
-                    dst_id = f"{lang}:{module_name}:0-0:module:module"
-                    edge = Edge.create(
-                        src=file_id,
-                        dst=dst_id,
-                        edge_type="imports",
-                        line=node.start_point[0] + 1 + line_offset,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="import_static",
-                    )
-                    edges.append(edge)
+                    # An empty specifier (``''``, a bare ``node:``) names no
+                    # module: no edge, rather than a dst with an empty path
+                    # slot (WI-sagur).
+                    if module_name:
+                        edges.append(Edge.create(
+                            src=file_id,
+                            dst=f"{lang}:{module_name}:0-0:module:module",
+                            edge_type="imports",
+                            line=node.start_point[0] + 1 + line_offset,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="import_static",
+                        ))
                     break
 
         # Function/method declarations - extract parameter types for type inference
@@ -7074,17 +7076,16 @@ def _extract_edges(
                             # WI-fiham: the call path's spelling, scheme dropped.
                             module_name = _strip_import_scheme(
                                 _node_text(arg, source).strip("'\""))
-                            dst_id = f"{lang}:{module_name}:0-0:module:module"
-                            edge = Edge.create(
-                                src=file_id,
-                                dst=dst_id,
-                                edge_type="imports",
-                                line=node.start_point[0] + 1 + line_offset,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="require_static",
-                            )
-                            edges.append(edge)
+                            if module_name:  # ``require('')``: no module (WI-sagur)
+                                edges.append(Edge.create(
+                                    src=file_id,
+                                    dst=f"{lang}:{module_name}:0-0:module:module",
+                                    edge_type="imports",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="require_static",
+                                ))
                             break
                         elif arg.type == "identifier":
                             var_name = _node_text(arg, source)

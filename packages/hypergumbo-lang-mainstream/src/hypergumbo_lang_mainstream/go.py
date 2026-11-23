@@ -4559,30 +4559,34 @@ def _extract_edges_from_file(
                     path_node = find_child_by_field(child, "path")
                     if path_node:
                         import_path = node_text(path_node, source).strip('"')
-                        edges.append(Edge.create(
-                            src=file_id,
-                            dst=f"go:{import_path}:0-0:package:package",
-                            edge_type="imports",
-                            line=child.start_point[0] + 1,
-                            evidence_type="import_declaration",
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+                        # ``import ""`` names no package: no edge, rather than a
+                        # dst with an empty path slot (WI-sagur).
+                        if import_path:
+                            edges.append(Edge.create(
+                                src=file_id,
+                                dst=f"go:{import_path}:0-0:package:package",
+                                edge_type="imports",
+                                line=child.start_point[0] + 1,
+                                evidence_type="import_declaration",
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
                 elif child.type == "import_spec_list":
                     for spec in child.children:
                         if spec.type == "import_spec":
                             path_node = find_child_by_field(spec, "path")
                             if path_node:
                                 import_path = node_text(path_node, source).strip('"')
-                                edges.append(Edge.create(
-                                    src=file_id,
-                                    dst=f"go:{import_path}:0-0:package:package",
-                                    edge_type="imports",
-                                    line=spec.start_point[0] + 1,
-                                    evidence_type="import_declaration",
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                ))
+                                if import_path:
+                                    edges.append(Edge.create(
+                                        src=file_id,
+                                        dst=f"go:{import_path}:0-0:package:package",
+                                        edge_type="imports",
+                                        line=spec.start_point[0] + 1,
+                                        evidence_type="import_declaration",
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
 
         # Detect function calls
         # WI-nulig: ``Map[int](x)`` parses as a generic TYPE conversion; it is

@@ -940,6 +940,11 @@ def link_js_modules(
             # not a third-party package: no package node, and the import stays
             # the analyzer's external stand-in (WI-tufob).
             pkg_name = _get_npm_package_name(import_path)
+            if not pkg_name:
+                # ``'/'`` or an absolute ``'/x'`` names no npm package: no
+                # package node named '' (WI-sagur); the analyzer's stand-in
+                # stays the dst.
+                continue
 
             if pkg_name not in npm_package_cache:
                 pkg_id = _make_npm_package_id(pkg_name, lang)

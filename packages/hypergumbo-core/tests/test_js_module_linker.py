@@ -291,6 +291,27 @@ class TestLinkJsModules:
             is_exported=is_exported,
         )
 
+    @pytest.mark.parametrize("module_path", ["/", "/opt/vendor/x.js"])
+    def test_a_specifier_with_no_package_name_mints_no_package(
+        self, repo_root: Path, module_path: str,
+    ) -> None:
+        """``'/'`` and an absolute path name no npm package; a package node
+        named '' (id ``javascript:npm:0-0::package``, an empty name slot) was
+        minted for them (WI-sagur). Control: ``lodash/get`` is package
+        ``lodash``."""
+        file_sym = self._make_file_symbol(str(repo_root / "src" / "app.js"))
+        result = link_js_modules(
+            repo_root=repo_root,
+            symbols=[file_sym],
+            edges=[
+                self._make_import_edge(file_sym.id, module_path),
+                self._make_import_edge(file_sym.id, "lodash/get"),
+            ],
+        )
+        packages = [s for s in result.symbols if s.kind == "package"]
+        assert [p.name for p in packages] == ["lodash"]
+        assert all(":0-0::" not in e.dst for e in result.edges)
+
     def test_cjs_import_marks_module_system_commonjs(self, repo_root: Path) -> None:
         """A .cjs extension resolves module_system='commonjs'."""
         # Add a .cjs file alongside the standard fixture's utils.js
