@@ -17,7 +17,11 @@ How It Works
 1. Check if tree-sitter with Proto grammar is available
 2. If not available, return skipped result (not an error)
 3. Parse all .proto files and extract symbols
-4. Detect import statements and create import edges
+4. Detect import statements and create import edges: an import ends on the
+   imported file's node when the tree holds it, looked up along the
+   directories above the importing file (``search_path_candidates``: protoc's
+   ``-I`` roots are not known, but the importing file is under one of them),
+   else on the ``make_module_import_dst`` stand-in for the name as written
 5. Create contains edges from services to their RPC methods
 6. Populate doc comments onto extracted symbols by position lookup
 
@@ -64,10 +68,12 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     node_text,
     populate_docstrings_from_tree,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id, search_path_candidates
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -229,8 +235,13 @@ def _extract_symbols_and_edges(
     source: bytes,
     file_path: str,
     run_id: str,
+    abs_path: Path,
 ) -> tuple[list[Symbol], list[Edge]]:
-    """Extract all symbols and edges from a parsed Proto file."""
+    """Extract all symbols and edges from a parsed Proto file.
+
+    ``file_path`` is the repository-relative path, ``abs_path`` the file on
+    disk (the import lookup derives the repository root from the two).
+    """
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
@@ -314,13 +325,19 @@ def _extract_symbols_and_edges(
             import_string = find_child_by_type(node, "string")
             if import_string:
                 import_path = node_text(import_string, source).strip().strip('"')
-                # Create import edge from this file to the imported file
+                # protoc reads the name along its -I roots, each a directory
+                # above this file: the imported file's node when the tree
+                # holds it, else the stand-in for the name as written.
+                found = in_tree_file_id(
+                    abs_path, file_path, search_path_candidates(file_path, import_path),
+                )
                 edges.append(Edge.create(
                     src=make_file_id("proto", file_path),
-                    dst=f"proto:{import_path}:1-1:file:file",
+                    dst=found or make_module_import_dst("proto", import_path),
                     edge_type="imports",
                     evidence_type="ast_import",
                     line=node.start_point[0] + 1,
+                    is_resolved=found is not None,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -369,7 +386,9 @@ class ProtoAnalyzer(TreeSitterAnalyzer):
                 tree = parser.parse(source)
 
                 rel_path = str(file_path.relative_to(repo_root))
-                symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
+                symbols, edges = _extract_symbols_and_edges(
+                    tree, source, rel_path, run_id, file_path,
+                )
 
                 all_symbols.extend(symbols)
                 all_edges.extend(edges)

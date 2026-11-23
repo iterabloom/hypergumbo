@@ -19,6 +19,7 @@ from hypergumbo_core.analyze.edge_target import (
     external_target,
     in_tree_file_id,
     non_id_edge_endpoints,
+    search_path_candidates,
 )
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, format_legacy_dst
 
@@ -106,6 +107,40 @@ def test_in_tree_file_id_own_lang_does_not_override_the_taxonomy(tmp_path: Path)
         importer, "a.robot", ["env.sh"], own_lang="robot", own_suffixes=(".sh",),
     )
     assert found == make_file_id("bash", "env.sh")
+
+
+def test_search_path_candidates_walk_up_from_the_importing_files_directory() -> None:
+    """Each directory from the importer's own up to the root, nearest first."""
+    assert search_path_candidates("proto/api/v1/a.proto", "api/v1/b.proto") == [
+        "proto/api/v1/api/v1/b.proto",
+        "proto/api/api/v1/b.proto",
+        "proto/api/v1/b.proto",
+        "api/v1/b.proto",
+    ]
+    # A file at the root has one candidate: the name as written.
+    assert search_path_candidates("a.thrift", "b.thrift") == ["b.thrift"]
+
+
+def test_search_path_candidates_reach_the_file_the_import_names(tmp_path: Path) -> None:
+    """With the lookup, a root below the repository's is found, and a
+    relative name resolves from the importer's directory; a name in no root
+    is a miss (control)."""
+    importer = _importer(tmp_path, "proto/api/v1/a.proto")
+    _importer(tmp_path, "proto/api/v1/b.proto")
+    _importer(tmp_path, "thrift/shared.thrift")
+    _importer(tmp_path, "thrift/sub/t.thrift")
+    assert in_tree_file_id(
+        importer, "proto/api/v1/a.proto",
+        search_path_candidates("proto/api/v1/a.proto", "api/v1/b.proto"),
+    ) == make_file_id("proto", "proto/api/v1/b.proto")
+    assert in_tree_file_id(
+        tmp_path / "thrift/sub/t.thrift", "thrift/sub/t.thrift",
+        search_path_candidates("thrift/sub/t.thrift", "../shared.thrift"),
+    ) == make_file_id("thrift", "thrift/shared.thrift")
+    assert in_tree_file_id(
+        importer, "proto/api/v1/a.proto",
+        search_path_candidates("proto/api/v1/a.proto", "google/protobuf/empty.proto"),
+    ) is None
 
 
 def test_external_target_with_a_module_matches_format_legacy_dst() -> None:

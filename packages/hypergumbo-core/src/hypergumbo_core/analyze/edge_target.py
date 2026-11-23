@@ -33,6 +33,15 @@ What this module provides
   so a fish script that sources ``x.sh`` reaches the bash file node rather than
   a fish-language twin of it. A file the taxonomy gives no language has no node
   and is a miss.
+- :func:`search_path_candidates` -- the candidate paths for an import a
+  language looks up along a search path of root directories (Protocol
+  Buffers, Thrift, Cap'n Proto, a Makefile ``include``): the importing file's
+  directory and each one above it. The proto, thrift, capnp and make
+  analyzers built the dst as
+  ``f"<lang>:<import string>:1-1:file:file"`` instead, so every import, in
+  the tree or not, got a file node at the path AS WRITTEN: a second node for
+  a file of the tree spelled from another root, and a phantom file node for
+  one outside it (``google/protobuf/empty.proto``).
 - :func:`external_target` -- the stand-in dst and its ``ExternalRef``, for the
   edge types ``make_unresolved_edge`` (calls only) does not build. The name slot
   goes through ``make_symbol_id``, so a colon in the name cannot shift the
@@ -129,6 +138,29 @@ def in_tree_file_id(
         if lang is not None and target.is_file() and not is_excluded(target, repo_root):
             return make_file_id(lang, norm)
     return None
+
+
+def search_path_candidates(rel_path: str, written: str) -> list[str]:
+    """Where an import ``written`` in the file at ``rel_path`` may be: the
+    candidates :func:`in_tree_file_id` takes, for a language that looks the
+    name up along a SEARCH PATH (``protoc -I``, ``thrift -I``, ``capnp -I``,
+    and GNU make's ``include``, read from the directory make runs in).
+
+    The search path is the build's configuration, which is not read here.
+    What is known is that the importing file sits under one of its roots,
+    so each root that can matter is a directory above the file: the name is
+    joined onto the importing file's own directory and then onto each
+    directory above it, up to the repository root, nearest first (Thrift
+    and a relative Cap'n Proto import look in the importing file's directory
+    first). A candidate that climbs out of the repository (``../x`` at the
+    root) is the lookup's to skip.
+    """
+    here = posixpath.dirname(rel_path)
+    candidates = [posixpath.join(here, written)]
+    while here:
+        here = posixpath.dirname(here)
+        candidates.append(posixpath.join(here, written))
+    return candidates
 
 
 def external_target(

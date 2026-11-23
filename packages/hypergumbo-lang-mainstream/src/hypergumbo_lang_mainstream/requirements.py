@@ -32,7 +32,10 @@ ends at the requirement symbol the same line declares, as package.json's
 project depends on its dependency symbols; an ``includes`` / ``constrains``
 ends at the named file's id, its path resolved against the including file's
 directory as pip resolves it (``meta.include_file`` keeps the path as
-written). Both endpoints must be real ids: a hand-built string
+written), when the tree holds that file (``edge_target.in_tree_file_id``);
+a file that is not there (generated, or a typo) is the
+``make_module_import_dst`` stand-in for the path as written, not a phantom
+file node. Both endpoints must be real ids: a hand-built string
 (``requirements:<path>``, ``pypi:package:<name>``) is not one, and finalize
 mints such a dst as an ``<unknown>``-path external stand-in, even when it
 names an in-tree manifest (history: WI-tikon).
@@ -60,8 +63,10 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_doc_symbol_ids,
     make_file_id,
+    make_module_import_dst,
     node_text,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -147,7 +152,7 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 )
             elif node.type == "global_opt":
                 self._extract_global_option(
-                    node, source, rel_path, run, analysis,
+                    node, source, rel_path, run, analysis, file_path,
                 )
 
         return analysis
@@ -336,8 +341,14 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         rel_path: str,
         run: AnalysisRun,
         analysis: FileAnalysis,
+        file_path: Path,
     ) -> None:
-        """Extract global options like -r, -c, -e."""
+        """Extract global options like -r, -c, -e.
+
+        ``file_path`` is the file on disk, ``rel_path`` its repository-relative
+        path (the ``-r`` / ``-c`` lookup derives the repository root from the
+        two).
+        """
         option = ""
         option_path = ""
 
@@ -354,15 +365,21 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
         if option in ("-r", "--requirement", "-c", "--constraint") and option_path:
             edge_type = "includes" if option in ("-r", "--requirement") else "constrains"
             # pip reads the path relative to the file naming it.
-            target = posixpath.normpath(
-                posixpath.join(posixpath.dirname(str(rel_path)), option_path)
+            # A file of the tree is a requirements file whatever its name
+            # (``requirements/base.txt``, pip-tools ``.in``): the taxonomy
+            # names no language for these, so the analyzer's own applies.
+            found = in_tree_file_id(
+                file_path, str(rel_path),
+                [posixpath.join(posixpath.dirname(str(rel_path)), option_path)],
+                own_lang="requirements", own_suffixes=(".txt", ".in"),
             )
             edge = Edge.create(
                 src=make_file_id("requirements", str(rel_path)),
-                dst=make_file_id("requirements", target),
+                dst=found or make_module_import_dst("requirements", option_path),
                 edge_type=edge_type,
                 meta={"include_file": option_path},
                 line=node.start_point[0] + 1,
+                is_resolved=found is not None,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",

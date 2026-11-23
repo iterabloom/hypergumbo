@@ -6,7 +6,12 @@ This analyzer uses tree-sitter to parse Makefiles and extract:
 - Target rules (explicit and pattern rules)
 - Prerequisites (dependencies)
 - Include directives (companion ``includes`` Edge per ADR-0027 Cluster E
-  sub-case (b) / audit-findings 0010 / WI-kunag — no per-include Symbol)
+  sub-case (b) / audit-findings 0010 / WI-kunag — no per-include Symbol).
+  The edge ends on the included file's node when the tree holds it, looked
+  up from the Makefile's directory and each one above it (make reads a
+  relative name from the directory it runs in, the Makefile's own or, for a
+  fragment, the including Makefile's; ``search_path_candidates``), else on
+  the ``make_module_import_dst`` stand-in for the name as written
 - Define blocks (functions/macros)
 
 If tree-sitter-make is not installed, the analyzer
@@ -62,11 +67,13 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     iter_tree,
     make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     node_text,
     sanitize_id_name_segment,
     TreeSitterAnalyzer,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id, search_path_candidates
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -165,6 +172,7 @@ def _process_make_tree(
     target_registry: dict[str, str],
     *,
     run_id: str,
+    abs_path: Path,
 ) -> None:
     """Process Makefile AST tree to extract symbols and edges.
 
@@ -172,6 +180,8 @@ def _process_make_tree(
         root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
+        abs_path: The file on disk (with ``rel_path``, the repository root
+            the include lookup needs)
         symbols: List to append symbols to
         edges: List to append edges to
         target_registry: Registry mapping target names to symbol IDs
@@ -343,15 +353,20 @@ def _process_make_tree(
             # ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010,
             # WI-kunag): drop the per-include Symbol and emit a companion
             # `includes` Edge so the file-inclusion relationship keeps
-            # representation. ``src`` is the makefile file id; ``dst`` is a
-            # 5-part dangling id naming the included file (the local scan
-            # does not enumerate the include search path).
+            # representation. ``src`` is the makefile file id; ``dst`` is
+            # the included file's node when the tree holds it, else the
+            # stand-in for the name as written (a generated or system file).
             for include_file in include_files:
+                found = in_tree_file_id(
+                    abs_path, rel_path, search_path_candidates(rel_path, include_file),
+                    own_lang="makefile", own_suffixes=("GNUmakefile",),
+                )
                 edges.append(Edge.create(
                     src=make_file_id("makefile", rel_path),
-                    dst=f"makefile:{include_file}:1-1:file:file",
+                    dst=found or make_module_import_dst("makefile", include_file),
                     edge_type="includes",
                     line=start_line,
+                    is_resolved=found is not None,
                     origin=PASS_ID,
                     evidence_type="include",
                     meta={"include_file": include_file},
@@ -444,6 +459,7 @@ class MakeAnalyzer(TreeSitterAnalyzer):
                     target_registry,
 
                     run_id=run.execution_id,
+                    abs_path=make_path,
                 )
 
             except Exception as e:  # pragma: no cover
