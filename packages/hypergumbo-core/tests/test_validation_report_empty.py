@@ -161,6 +161,11 @@ _REACH: dict[str, Any] = {
     "edge_id_format": lambda bm: sum(1 for e in bm["edges"] if e.get("id")),
     "stable_id_format": lambda bm: sum(1 for n in bm["nodes"] if n.get("stable_id")),
     "id_roundtrip": lambda bm: sum(1 for n in bm["nodes"] if n.get("id")),
+    # every node id but the file pseudo-symbols, which the round-trip exempts
+    "name_slot_roundtrip": lambda bm: sum(
+        1 for n in bm["nodes"]
+        if n.get("id") and not str(n.get("id")).endswith(":1-1:file:file")
+    ) if bm.get("analysis_runs") else 0,
     "origin_run_id_fk": lambda bm: sum(
         1 for r in bm["nodes"] + bm["edges"] if r.get("origin_run_id")
     ) if bm.get("analysis_runs") else 0,

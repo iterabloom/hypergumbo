@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0036: node.id Grammar v2 — Anchored Parsing, Colon Policy, Kind-Slot Purity
 
-- Status: Accepted. Enforced as §Enforcement lists: Ruling 2 and Ruling 3 (as Ruling 3's amendment reads it) are validator checks; the Ruling-1 name-slot round-trip is measured on every run (`validation_report.name_slot_stats`, a count by producer, file pseudo-symbols exempt) and raises no violation
+- Status: Accepted. Enforced as §Enforcement lists: Ruling 2 and Ruling 3 (as Ruling 3's amendment reads it) are validator checks; the Ruling-1 name-slot round-trip is measured on every run (`validation_report.name_slot_stats`, a count by producer, file pseudo-symbols exempt) and a mismatch is an error unless its (producer, kind) is a declared hole (`KNOWN_NAME_SLOT_HOLES`)
 - Date: 2026-06-10
 
 - Supersedes: ADR-0034 (partial — reviewer-checklist item 5's claim that a kind-slot round-trip check already existed; the shipped `id_format` gate is shape-only, and Ruling 2's round-trip validator here is the actual instrument). This ADR tightens the grammar whose factory discipline ADR-0034 established; ADR-0034's core factory discipline remains in force.
@@ -210,7 +210,7 @@ Three layers, extending ADR-0034's:
    | The name slot is non-empty | `_check_id_roundtrip` | error |
    | Ruling 3, as its amendment reads it: the file triple's span is `1-1`; span `start <= end` | `_check_id_roundtrip` | error |
    | Ruling 3: no path slot is `<unknown>` | `_check_id_roundtrip` | warning |
-   | Ruling 1: the name slot equals `sanitize_id_name_segment(Symbol.name)` | `compute_name_slot_stats`, reported as `validation_report.name_slot_stats` | measured; no violation |
+   | Ruling 1: the name slot equals `sanitize_id_name_segment(Symbol.name)` | `_check_name_slot_roundtrip`, outside the declared holes; every mismatch also counted in `validation_report.name_slot_stats` (`compute_name_slot_stats`) | error |
 
    The membership half of Ruling 2 is checked on the id's kind slot rather
    than on `node.kind`, because `axis_conformance` already checks `node.kind`
@@ -232,18 +232,23 @@ Three layers, extending ADR-0034's:
    producer (the node's originating pass id, or its language when `origin` is
    empty), its mismatches, its checked ids, and its smallest mismatching id
    with that node's name. Producers are ordered by mismatches, then name, and
-   capped at 20. `producers_cut` counts the producers left out. A mismatch
-   adds no `ValidationViolation` and the round-trip is not in `_WIRED_CHECKS`.
+   capped at 20. `producers_cut` counts the producers left out. The count
+   includes the declared holes.
 
-   **What promotes it.** The name-slot round-trip becomes an `error` sub-check
-   of `_check_id_roundtrip`, one violation per node, when `mismatched` is 0 on
-   the schema-coverage corpus in every substrate of
-   `packages/hypergumbo-core/tests/test_validation_report_empty.py` and on the
-   repositories surveyed for the promotion. Until then a violation per node would add thousands of
-   entries to a JavaScript repository's report: on knex, 6,356 of its 6,361
-   mismatches are anonymous-callback ids (`_cb_forEach@33` in the slot,
-   `_cb_forEach` in `Symbol.name`). Each producer family reaches 0 by making
-   its id's name slot and its `Symbol.name` the same string. The `<unknown>`
+   **The check and its declared holes.** `_check_name_slot_roundtrip` (in
+   `_WIRED_CHECKS`; run only when the artifact has analysis runs, like the
+   FK checks) reports each mismatching node as an `id_format` error, the
+   severity of Ruling 2's checks, unless the node's (producer, kind) is
+   declared in `spec_validator.KNOWN_NAME_SLOT_HOLES`. Each declaration names
+   why it stands and its tracker item (JavaScript anonymous callbacks,
+   `_cb_forEach@33` in the slot and `_cb_forEach` in `Symbol.name`: 6,356 of
+   knex's 6,361 mismatches). The table is shrink-only, the way
+   `KNOWN_KIND_SLOT_HOLES` is: `tests/test_name_slot_holes.py` runs each
+   declared producer on a fixture that mints its mismatch and fails on an
+   entry without a fixture, on an entry whose fixture no longer mismatches,
+   and on a table longer than its ceiling. A producer nobody declared that
+   breaks the grammar is reported on its first run; the run does not fail
+   (ADR-0033's warn-not-fail default). The `<unknown>`
    path-slot warning becomes an error when its producers stop emitting an edge
    `dst` that is not an id.
 3. **Static linter** (`check_id_construction.py`, run as
