@@ -1581,11 +1581,13 @@ def _literal_end(text: str, start: int) -> int:
 #: they are hashed :func:`layout_free` (``assemble_stable_id``'s
 #: ``names_layout_free``; WI-kumoh). C++: ``operator void *`` and ``operator
 #: void*`` (a ``clang-format`` PointerAlignment switch), a qualified declarator
-#: split over lines. Not every language: in some a name's whitespace is meaning
-#: (a CSS selector's descendant combinator, ``.a .b`` is not ``.a.b``; a
-#: quoted TOML key; a Robot test name), and the untyped formula does not know
-#: its language.
-LAYOUT_FREE_NAME_LANGUAGES: frozenset[str] = frozenset({"cpp"})
+#: split over lines. D: a module name is its declaration's text, so ``module
+#: a.b;`` and ``module a .\n b;`` were two names (WI-sidus; 0 of 21,706 D
+#: untyped ids changed on dub and dmd). Not every language: in some a name's
+#: whitespace is meaning (a CSS selector's descendant combinator, ``.a .b`` is
+#: not ``.a.b``; a quoted TOML key; a Robot test name), and the untyped formula
+#: does not know its language.
+LAYOUT_FREE_NAME_LANGUAGES: frozenset[str] = frozenset({"cpp", "d"})
 
 #: What a formatter writes before a closing bracket when it splits a list over
 #: lines (``dart format``, ``rustfmt``, prettier, ``gofmt``): a trailing
