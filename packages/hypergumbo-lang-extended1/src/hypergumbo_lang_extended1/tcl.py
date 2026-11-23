@@ -17,6 +17,17 @@ Implementation approach:
   Tcl's own name), where they kept the innermost only (WI-tusad scheme bump).
   The hashed name stays ``inner::go`` beside the chain, so stable_ids did
   not move.
+- A call resolves the way Tcl resolves a command name
+  (:func:`_resolve_callee`): ``::a::b`` from the global namespace, any other
+  name first in the namespace the calling proc runs in (a command
+  ``namespace import`` brought there included) and then in the global one.
+  Each proc is registered under its absolute name for this
+  (``TclAnalyzer.register_symbol``). The lookup used to be the call word in
+  a registry keyed by each proc's word as declared, so ``util::helper``
+  missed the ``proc helper`` of ``namespace eval util`` and ended on a
+  stand-in, and a bare word reached whichever proc of that word was
+  registered last. A name these rules do not find in the tree still falls
+  back to that registry.
 
 Key constructs extracted:
 - procedure: proc name {args} {body}
@@ -152,6 +163,99 @@ def _callee_word(word: Optional[str]) -> Optional[str]:
     return word
 
 
+def _qualified(scope: str, word: str) -> str:
+    """The absolute name, without the leading ``::``, of ``word`` read in the
+    namespace ``scope`` (itself absolute, ``""`` for the global namespace).
+
+    A word that opens with ``::`` is absolute already; any other is a child
+    of ``scope``. ``scope`` may be a chain of ``namespace eval`` words joined
+    by ``::`` in which a word was itself absolute (``a::::x`` for
+    ``namespace eval ::x`` inside ``namespace eval a``): what follows the
+    last such word is the name.
+    """
+    name = word if word.startswith("::") or not scope else f"{scope}::{word}"
+    name = name.rsplit("::::", 1)[-1]
+    return name[2:] if name.startswith("::") else name
+
+
+#: The registry key of a proc's absolute name (``::util::helper``). The
+#: ``::`` keeps these keys apart from the base class's keys, which are each
+#: proc's own word as declared (``helper``, ``util::other``).
+_ABSOLUTE = "::"
+
+
+def _namespace_imports(
+    root: "tree_sitter.Node",
+) -> tuple[dict[tuple[str, str], str], dict[str, list[str]]]:
+    """What ``namespace import`` brings into each namespace of one file.
+
+    ``({(namespace, command): absolute name}, {namespace: [namespaces whose
+    every exported command it imports]})`` -- the first for ``namespace
+    import ::util::helper``, the second for ``::util::*``. A pattern is read
+    in the namespace the import runs in; an option (``-force``) is skipped.
+    Only this file's imports are read: an import in another file that a
+    script sources is not seen.
+    """
+    named: dict[tuple[str, str], str] = {}
+    wildcard: dict[str, list[str]] = {}
+    for node in _iter_nodes(root):
+        if node.type != "namespace":
+            continue
+        words = [
+            _get_node_text(w) for c in node.children if c.type == "word_list"
+            for w in c.children if w.type == "simple_word"
+        ]
+        if not words or words[0] != "import":
+            continue
+        scope = _qualified("", "::".join(_namespace_path(node)))
+        for pattern in words[1:]:
+            if pattern.startswith("-"):
+                continue
+            target = _qualified(scope, pattern)
+            if target.endswith("::*"):
+                wildcard.setdefault(scope, []).append(target[:-3])
+            else:
+                named[(scope, target.rpartition("::")[2])] = target
+    return named, wildcard
+
+
+def _iter_nodes(root: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
+    """Every node under ``root``, root first."""
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(reversed(node.children))
+
+
+def _resolve_callee(
+    word: str, scope: str, global_symbols: dict[str, Symbol],
+    imports: tuple[dict[tuple[str, str], str], dict[str, list[str]]],
+) -> Optional[Symbol]:
+    """The proc a call of ``word`` from a proc in namespace ``scope`` runs.
+
+    Tcl's order: a name first in the caller's namespace (where an imported
+    command also sits), then in the global one. :func:`_qualified` reads an
+    absolute name (``::util::helper``) the same in both, so it needs no case
+    of its own. A name none of these finds in the tree falls back to the
+    registry key of the word as written (without a leading ``::``), the
+    analyzer's lookup before namespaces were read, which an import in
+    another file, ``namespace path`` or ``interp alias`` can make right.
+    """
+    named, wildcard = imports
+    candidates = [_qualified(scope, word)]
+    if "::" not in word:
+        if (scope, word) in named:
+            candidates.append(named[(scope, word)])
+        candidates.extend(f"{ns}::{word}" for ns in wildcard.get(scope, ()))
+    candidates.append(_qualified("", word))
+    for name in candidates:
+        found = global_symbols.get(_ABSOLUTE + name)
+        if found is not None:
+            return found
+    return global_symbols.get(_qualified("", word))
+
+
 # Tcl built-in commands that should not generate call edges
 _BUILTINS = frozenset({
     "puts", "set", "expr", "return", "if", "else", "while",
@@ -170,8 +274,13 @@ _BUILTINS = frozenset({
 
 def _find_enclosing_proc(
     node: "tree_sitter.Node", path: Path, repo_root: Path,
-) -> Optional[NodeId]:
-    """Find the enclosing procedure for a node."""
+) -> Optional[tuple[NodeId, str]]:
+    """The enclosing procedure's id and the namespace its body runs in.
+
+    The namespace is the absolute name (:func:`_qualified`) of the
+    proc's own minus its last word: ``proc util::other`` declared at the top
+    level runs in ``util``.
+    """
     current = node.parent
     proc_name = None
     proc_node = None
@@ -184,9 +293,11 @@ def _find_enclosing_proc(
         current = current.parent
 
     if proc_name and proc_node is not None:
-        qualified_name = "::".join((*_namespace_path(proc_node), proc_name))
+        ns_path = _namespace_path(proc_node)
+        qualified_name = "::".join((*ns_path, proc_name))
         rel_path = str(path.relative_to(repo_root))
-        return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, qualified_name, "function")
+        scope = _qualified(_qualified("", "::".join(ns_path)), proc_name).rpartition("::")[0]
+        return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, qualified_name, "function"), scope
     return None  # pragma: no cover
 
 
@@ -196,6 +307,20 @@ class TclAnalyzer(TreeSitterAnalyzer):
     lang = "tcl"
     file_patterns: ClassVar[list[str]] = ["*.tcl", "*.tk"]
     language_pack_name = "tcl"
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
+        """Register a proc under its word and under its absolute name.
+
+        The base class keys a symbol by its name, the proc's word as
+        declared: ``helper`` for ``proc helper`` in ``namespace eval util``.
+        A call names it ``util::helper`` or ``::util::helper``, so each proc
+        is also keyed ``::util::helper`` (:data:`_ABSOLUTE`), what
+        :func:`_resolve_callee` looks up.
+        """
+        super().register_symbol(symbol, global_symbols)
+        if symbol.kind == "function":
+            scope = (symbol.meta or {}).get("namespace", "")
+            global_symbols[_ABSOLUTE + _qualified(scope, symbol.name)] = symbol
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -340,21 +465,28 @@ class TclAnalyzer(TreeSitterAnalyzer):
 
         self._extract_edges_recursive(
             tree.root_node, file_path, repo_root, global_symbols, run, edges,
+            _namespace_imports(tree.root_node),
         )
         return edges
 
     def _extract_edges_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         global_symbols: dict[str, Symbol], run: "AnalysisRun", edges: list[Edge],
+        imports: tuple[dict[tuple[str, str], str], dict[str, list[str]]],
     ) -> None:
-        """Extract edges from a syntax tree node recursively."""
-        if node.type in ("command_substitution", "command"):
-            caller_id = _find_enclosing_proc(node, path, repo_root)
-            if caller_id:
-                callee_name = _callee_word(_get_command_name(node))
+        """Extract edges from a syntax tree node recursively.
 
-                if callee_name and callee_name not in _BUILTINS:
-                    callee_sym = global_symbols.get(callee_name)
+        ``imports`` is the file's :func:`_namespace_imports`.
+        """
+        if node.type in ("command_substitution", "command"):
+            caller = _find_enclosing_proc(node, path, repo_root)
+            if caller:
+                caller_id, scope = caller
+                word = _get_command_name(node)
+                callee_name = _callee_word(word)
+
+                if word and callee_name and callee_name not in _BUILTINS:
+                    callee_sym = _resolve_callee(word, scope, global_symbols, imports)
                     if callee_sym is not None:
                         edge = Edge.create(
                             src=caller_id,
@@ -394,7 +526,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
         # Recursively process children
         for child in node.children:
             self._extract_edges_recursive(
-                child, path, repo_root, global_symbols, run, edges,
+                child, path, repo_root, global_symbols, run, edges, imports,
             )
 
 
