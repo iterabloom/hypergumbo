@@ -340,6 +340,56 @@ module "vpc" {
         # Should have edge for local module source
         assert len(import_edges) >= 1
 
+    def test_a_local_module_source_ends_on_its_file(self, tmp_path: Path) -> None:
+        """A local ``source`` (``./x`` or ``../x``, a directory) was the raw
+        string as the dst, no node id: finalize folded it into
+        ``./modules/vpc:<unknown>:...``. It now ends on the module's entry
+        file when the tree holds the directory (``main.tf``, else its first
+        ``.tf`` file), and on a module stand-in when it does not."""
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+        from hypergumbo_lang_common.hcl import analyze_hcl
+
+        (tmp_path / "modules" / "vpc").mkdir(parents=True)
+        (tmp_path / "modules" / "vpc" / "main.tf").write_text('variable "a" {}\n')
+        # Sorts before main.tf; main.tf is still the entry.
+        (tmp_path / "modules" / "vpc" / "locals.tf").write_text('locals { x = 1 }\n')
+        (tmp_path / "modules" / "net").mkdir()
+        (tmp_path / "modules" / "net" / "variables.tf").write_text('variable "b" {}\n')
+        (tmp_path / "modules" / "net" / "outputs.tf").write_text('output "c" { value = 1 }\n')
+        (tmp_path / "env").mkdir()
+        (tmp_path / "main.tf").write_text('''
+module "vpc" {
+  source = "./modules/vpc"
+}
+module "net" {
+  source = "./modules/net"
+}
+module "gone" {
+  source = "./modules/gone"
+}
+module "registry" {
+  source = "hashicorp/consul/aws"
+}
+''')
+        (tmp_path / "env" / "prod.tf").write_text('''
+module "vpc" {
+  source = "../modules/vpc"
+}
+''')
+        result = analyze_hcl(tmp_path)
+        imports = sorted(
+            (e.src, e.dst) for e in result.edges if e.edge_type == "imports"
+        )
+        assert imports == [
+            ("hcl:env/prod.tf:1-1:file:file", "hcl:modules/vpc/main.tf:1-1:file:file"),
+            ("hcl:main.tf:1-1:file:file", "hcl:modules/gone:0-0:module:module"),
+            ("hcl:main.tf:1-1:file:file", "hcl:modules/net/outputs.tf:1-1:file:file"),
+            ("hcl:main.tf:1-1:file:file", "hcl:modules/vpc/main.tf:1-1:file:file"),
+        ]
+        assert non_id_edge_endpoints(
+            result.symbols, result.edges, grammar_only=True,
+        ) == []
+
 class TestHCLSymbolProperties:
     """Tests for symbol property correctness."""
 
