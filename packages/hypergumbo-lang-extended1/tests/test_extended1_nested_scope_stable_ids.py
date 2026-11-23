@@ -244,18 +244,21 @@ def test_wolfram_scope_skips_binary_expressions_that_define_nothing(tmp_path: Pa
 
 
 def test_tcl_names_carry_every_enclosing_namespace_eval(tmp_path: Path) -> None:
-    """A proc's id name slot and ``meta.namespace`` carry every enclosing
-    ``namespace eval`` (``a::inner::go``, Tcl's own name for it), not the
-    innermost only (``inner::go``); a nested namespace's id slot is
-    ``a::inner``. The stable_ids are the values they had: they already hashed
-    the full path."""
+    """A proc's ``qualified_name`` and ``meta.namespace`` carry every
+    enclosing ``namespace eval`` (``a::inner::go``, Tcl's own name for it), not
+    the innermost only (``inner::go``); a nested namespace's is ``a::inner``.
+    The id's name slot is the symbol's name (ADR-0036 Ruling 1), the last
+    word. The stable_ids are the values they had: they already hashed the
+    full path."""
     syms = {s.name: s for s in _symbols(
         analyze_tcl, tmp_path, "src/n.tcl",
         "namespace eval a {\n  namespace eval inner {\n    proc go {} { return 1 }\n"
         "  }\n}\nproc top {} { go }\n")}
-    assert syms["go"].id == "tcl:src/n.tcl:3-3:a..inner..go:function"  # ids spell : as .
+    assert syms["go"].id == "tcl:src/n.tcl:3-3:go:function"
+    assert syms["go"].qualified_name == "a::inner::go"
     assert syms["go"].meta == {"namespace": "a::inner"}
-    assert syms["inner"].id == "tcl:src/n.tcl:2-4:a..inner:namespace"
+    assert syms["inner"].id == "tcl:src/n.tcl:2-4:inner:namespace"
+    assert syms["inner"].qualified_name == "a::inner"
     assert syms["a"].id == "tcl:src/n.tcl:1-5:a:namespace"
     assert syms["top"].meta is None
     assert {n: s.stable_id for n, s in syms.items()} == {

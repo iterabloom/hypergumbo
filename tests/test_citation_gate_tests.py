@@ -169,10 +169,13 @@ class TestItIsAnEdgeAndNotAWordMatch:
         is what gets an over-selecting gate narrowed later by someone who does
         not know why it was wide.
         """
+        # A file that writes the whole path (a ``# covers:`` header) cites
+        # it; the noise is a file that writes the basename and not the path.
         noisy = {
             p.name
             for p in REPO_ROOT.glob("packages/*/tests/test_*.py")
-            if "bash.py" in p.read_text(encoding="utf-8", errors="ignore")
+            if "bash.py" in (text := p.read_text(encoding="utf-8", errors="ignore"))
+            and CITED not in text
         }
         assert len(noisy) >= 2, noisy
         selected = {Path(p).name for p in run_helper([CITED])}
