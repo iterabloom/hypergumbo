@@ -36,7 +36,7 @@ from hypergumbo_core.spec_validator import (
 )
 
 #: Shrink-only: lower it when an entry is removed, never raise it.
-_CEILING = 13
+_CEILING = 12
 
 #: One fixture per declared hole: files written under one tree, each pair's
 #: producer run on them by a full pipeline run.
@@ -49,9 +49,6 @@ _FIXTURES: dict[tuple[str, str], dict[str, str]] = {
             '<template>\n  <div>\n    <p v-if="first">a</p>\n  </div>\n</template>\n'
             "<script>\nexport default { props: ['first'] }\n</script>\n"
         ),
-    },
-    ("julia", "function"): {
-        "julia/src/m.jl": "module B\nfunction run()\n    1\nend\nend\n",
     },
     ("tcl", "function"): {
         "tcl/src/n.tcl": "namespace eval a {\n  namespace eval inner {\n    proc go {} { return 1 }\n  }\n}\n",
