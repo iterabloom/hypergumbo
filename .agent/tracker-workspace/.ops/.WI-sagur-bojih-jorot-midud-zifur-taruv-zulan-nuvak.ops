@@ -18,3 +18,18 @@
     pr_ref:  # f117
     description: "_canonical_external_id has no guard against an empty path or name slot: a producer that passes one gets an id the id_format validator rejects, caught only after the fact. The fleet sweep for other analyzers emitting empty slots was not run.\n\nCLOSE WHEN the factory refuses or repairs an empty slot (with a test), and a fleet survey counts 0 empty-slot ids.\n\nFound by the PR 3 (stable-id v16) WI-rozod/WI-zolat build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/rozod/RESULTS.md (Residuals)."  # f117
     fields: {}  # f117
+- op: update  # e014
+  at: '2026-11-23T22:17:09Z'  # e014
+  by: agent  # e014
+  actor: jgstern_agent  # e014
+  clock: 2  # e014
+  nonce: e014  # e014
+  set:  # e014
+    status: done  # e014
+- op: discuss  # 362e
+  at: '2026-11-23T22:17:10Z'  # 362e
+  by: agent  # 362e
+  actor: jgstern_agent  # 362e
+  clock: 3  # 362e
+  nonce: 362e  # 362e
+  message: "Fixed in PR #2347. Close condition, part 1 (the factory refuses or repairs, with a test): on dev 49bc5c6e4 ir._canonical_external_id('python', '', 'x') returns python:<external>:0-0:x:external_symbol (ADR-0036 Ruling 3's sentinel) and ir._canonical_external_id('python', 'm', '') raises ValueError ('boundary id for python:'m' has an empty name slot'); test packages/hypergumbo-core/tests/test_boundary_id_empty_slots.py. The producers that passed an empty slot (js_ts, go, js_module empty import specifiers) are fixed at their source (packages/hypergumbo-lang-mainstream/tests/test_empty_import_specifier.py). Part 2 (survey counts 0): a fixture of empty specifiers in 12 languages gives 28 nodes, 16 edges, 0 ids with an empty slot, id_format 0 on dev 49bc5c6e4 (the build measured 4 id_format violations on it before the fix); eight repositories run on dev 49bc5c6e4 (openzeppelin, koel, workadventure front, hocuspocus, metabase bin, spring-petclinic, alertmanager, knex) have 0 empty-slot ids among node ids and edge endpoints and id_format 0; the branch run over 42 repositories had id_format 0. NOT asserted: make_symbol_id and make_file_id still accept an empty path or name for an emitted symbol; that needs a ruling and is filed as WI-hodin-kizis-nugir-simuv-ritat-vihuz-vatof-jiris (point 2). Outputs: ~/hypergumbo_lab_notebook/idfive_11232026/closure/ (fixtures*.txt, trees_summary.txt, pair_check_dev.txt)."  # 362e

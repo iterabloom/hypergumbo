@@ -18,3 +18,18 @@
     pr_ref:  # 0b35
     description: "scripts/check-id-construction (extended in PR 3 to judge Edge src=/dst=) cannot see an endpoint passed in through a parameter (e.g. make_unresolved_edge's src_id) or built by another module's helper. The runtime count analysis_runs[].non_id_edge_endpoints is the only guard for those.\n\nCLOSE WHEN the check follows a parameter to its call sites (or a helper's return), or the limit is stated in the check's docstring and ADR-0034 with the runtime count named as the guard.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 0b35
     fields: {}  # 0b35
+- op: update  # 113b
+  at: '2026-11-23T22:17:10Z'  # 113b
+  by: agent  # 113b
+  actor: jgstern_agent  # 113b
+  clock: 2  # 113b
+  nonce: 113b  # 113b
+  set:  # 113b
+    status: done  # 113b
+- op: discuss  # c89e
+  at: '2026-11-23T22:17:10Z'  # c89e
+  by: agent  # c89e
+  actor: jgstern_agent  # c89e
+  clock: 3  # c89e
+  nonce: c89e  # c89e
+  message: "Fixed in PR #2347. Close condition (the check follows a parameter to its call sites or a helper's return, or the limit is stated): both. On dev 49bc5c6e4, a fixture with helper.link(src_id, dst_id) building Edge(src=src_id) in one module and a caller in another module passing f'{path}:{name}' is reported: 'caller.py:5 -- edge_endpoint (src): wrong_field_count (expected at least 5, got 2) ... (it reaches the edge at helper.py:5)'; the control (the caller passes make_symbol_id results) gives 0 findings. scripts/check-id-construction on dev 49bc5c6e4 exits 0 and prints that 19 endpoints the walk cannot follow are each declared in KNOWN_UNJUDGED_ENDPOINTS, guarded at run time by AnalysisRun.non_id_edge_endpoints; an undeclared one fails the check. The limit is written in the check's docstring and in ADR-0034 (Edge endpoints section). Run-time count on eight repositories on dev 49bc5c6e4: 0 non-id edge endpoints (67 over 42 repositories before the PR, 0 after). Outputs: ~/hypergumbo_lab_notebook/idfive_11232026/closure/ (fixtures*.txt, trees_summary.txt, pair_check_dev.txt)."  # c89e
