@@ -168,3 +168,64 @@ def test_emitted_map_counts_a_javascript_anonymous_callback(tmp_path: Path) -> N
     assert stats["exempt_file_nodes"] >= 1
     by = {p["producer"]: p for p in stats["by_producer"]}
     assert by["javascript"]["mismatched"] >= len(callbacks)
+
+
+# ----------------------------------------------------------------------
+# The check: an undeclared mismatch is an id_format error
+# ----------------------------------------------------------------------
+
+_RUNS = [SimpleNamespace(execution_id="run-1")]
+
+
+def test_the_check_reports_an_undeclared_mismatch_as_an_id_format_error() -> None:
+    from hypergumbo_core.spec_validator import _check_name_slot_roundtrip
+
+    violations = _check_name_slot_roundtrip(_shapes(), _RUNS, holes={})
+    # the four mismatching shapes; round-trips, the file node and the short id
+    # raise nothing
+    assert sorted(v.record_id for v in violations) == sorted([
+        "javascript:app.js:2-4:_cb_forEach@16:function",
+        "javascript:app.js:9-9:results:focus:function",
+        "json:package.json:3-3:main.js:file",
+        "vue:x.vue:10-13:viz-node.v-bind.boxHeight:directive",
+    ])
+    assert {(v.severity, v.validator_class, v.field_name) for v in violations} == {
+        ("error", "id_format", "Symbol.id"),
+    }
+    (cb,) = [v for v in violations if v.record_id.endswith("@16:function")]
+    assert (cb.observed, cb.expected) == ("_cb_forEach@16", "_cb_forEach")
+
+
+def test_a_declared_hole_silences_its_own_pair_only() -> None:
+    from hypergumbo_core.spec_validator import _check_name_slot_roundtrip
+
+    holes = {("javascript", "function"): ("callbacks", "WI-bafaz")}
+    violations = _check_name_slot_roundtrip(_shapes(), _RUNS, holes=holes)
+    assert sorted(v.record_id.split(":", 1)[0] for v in violations) == [
+        "javascript", "json", "vue",
+    ]
+    # the event-sourcing node is javascript-language but another producer
+    assert any("results:focus" in v.record_id for v in violations)
+
+
+def test_the_check_is_gated_on_a_run_set() -> None:
+    """Unit fixtures call validate_ir with no runs and hand-written ids."""
+    from hypergumbo_core.spec_validator import _check_name_slot_roundtrip
+
+    assert _check_name_slot_roundtrip(_shapes(), [], holes={}) == []
+
+
+def test_validate_ir_runs_the_check_with_the_declared_holes() -> None:
+    from hypergumbo_core.spec_validator import (
+        KNOWN_NAME_SLOT_HOLES,
+        _check_name_slot_roundtrip,
+        validate_ir,
+    )
+
+    assert ("javascript", "function") in KNOWN_NAME_SLOT_HOLES
+    found = sorted(v.record_id for v in validate_ir(_shapes(), [], _RUNS)
+                   if "Ruling 1" in v.message)
+    # the callback is a declared hole; the event-sourcing node is not
+    assert "javascript:app.js:9-9:results:focus:function" in found
+    assert not any("_cb_forEach" in r for r in found)
+    assert found == sorted(v.record_id for v in _check_name_slot_roundtrip(_shapes(), _RUNS))

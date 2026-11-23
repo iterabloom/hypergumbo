@@ -86,11 +86,13 @@ named checks found nothing", not "no defects"), ``stable_id_stats``
 collision rate, None cohort and backstop floor cohort) and
 ``name_slot_stats`` (``compute_name_slot_stats``: how many node ids have a
 name slot that is not the sanitized ``Symbol.name``, ADR-0036 Ruling 1, by
-producer). The last two are measurements, not checks: they emit no
-``ValidationViolation`` and are not in ``_WIRED_CHECKS``. The name-slot
-round-trip is measured rather than checked because its mismatches number in
-the thousands on a JavaScript repository; the count by producer is what each
-family is driven to zero against before it becomes a check.
+producer). The last two are measurements: they emit no
+``ValidationViolation``. The name-slot round-trip is ALSO a check,
+``_check_name_slot_roundtrip``: a mismatch is an ``id_format`` error unless
+its (producer, kind) is a declared hole in ``KNOWN_NAME_SLOT_HOLES`` (the
+families still counted in the thousands on a JavaScript repository, each with
+its reason and tracker item; the table only shrinks). The statistic keeps
+counting the holes.
 
 One output shape
 ----------------
@@ -222,6 +224,11 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
     {"check": "id_roundtrip", "validator_class": "id_format",
      "description": "Symbol.id kind-slot matches Symbol.kind and is a "
                     "registered kind; span/name well-formed."},
+    {"check": "name_slot_roundtrip", "validator_class": "id_format",
+     "description": "Symbol.id name slot is the sanitized Symbol.name "
+                    "(ADR-0036 Ruling 1) unless the node's (producer, kind) "
+                    "is a declared hole in KNOWN_NAME_SLOT_HOLES (content-gated "
+                    "on a non-empty run set)."},
     {"check": "origin_run_id_fk", "validator_class": "cross_field",
      "description": "Symbol/Edge.origin_run_id is non-empty and references an "
                     "existing AnalysisRun.execution_id (content-gated on a "
@@ -322,6 +329,7 @@ def validate_ir(
     violations.extend(_check_edge_id_format(edges))
     violations.extend(_check_stable_id_format(symbols))
     violations.extend(_check_id_roundtrip(symbols))
+    violations.extend(_check_name_slot_roundtrip(symbols, analysis_runs))
     violations.extend(_check_origin_run_id_fk(symbols, edges, analysis_runs))
     violations.extend(_check_dangling_endpoint(symbols, edges, analysis_runs))
     violations.extend(_check_fingerprint_format(symbols, edges, analysis_runs))
@@ -2287,16 +2295,28 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 
 
 # ----------------------------------------------------------------------
-# Name-slot round-trip measurement (ADR-0036 Ruling 1)
+# Name-slot round-trip (ADR-0036 Ruling 1): a statistic and a check
 # ----------------------------------------------------------------------
 #
 # Ruling 1: the id's name slot is ``sanitize_id_name_segment(Symbol.name)``.
-# Producers that mint ids outside ``make_symbol_id`` still break it by the
-# thousand (a JavaScript anonymous callback's slot carries an ``@<col>``
-# suffix its name does not), so a violation per node would bury the report.
-# The round-trip is therefore a per-run STATISTIC in
-# ``validation_report.name_slot_stats`` -- no ValidationViolation, no entry in
-# ``_WIRED_CHECKS`` -- until its count reaches zero and it can become a check.
+# Two readings of one comparison (``_name_slot_mismatch``):
+#
+# * ``validation_report.name_slot_stats`` counts every mismatch, by producer,
+#   on every run (a statistic: the families below still number in the
+#   thousands on a JavaScript repository).
+# * ``_check_name_slot_roundtrip`` reports a mismatch as an ``id_format``
+#   ERROR, the severity of Ruling 2's kind-slot checks, unless its
+#   (producer, kind) is a DECLARED HOLE in ``KNOWN_NAME_SLOT_HOLES``. A
+#   producer nobody has measured that breaks the ruled grammar is reported
+#   the first time it runs; it does not fail the run (the validator never
+#   does, see "Default failure behavior").
+#
+# The holes table follows ``check_id_construction.KNOWN_KIND_SLOT_HOLES``:
+# each entry names why it stands and the tracker item that removes it, and
+# it is SHRINK-ONLY. ``tests/test_name_slot_holes.py`` runs each declared
+# producer on a fixture that mints the mismatch: an entry with no fixture, an
+# entry whose fixture no longer mismatches (the producer was fixed: remove
+# it), and a table longer than the test's ceiling all fail.
 
 #: How many producers ``name_slot_stats.by_producer`` lists; the rest are
 #: counted in ``producers_cut``, never dropped silently.
@@ -2312,6 +2332,113 @@ def _name_slot_producer(sym: Any) -> str:
         return origin
     language = getattr(sym, "language", None)
     return language if isinstance(language, str) and language else "<none>"
+
+
+#: ``(producer, Symbol.kind) -> (why it stands, tracker item)``. A name-slot
+#: mismatch from a listed pair is a declared hole, counted in
+#: ``name_slot_stats`` and not reported as a violation. The producer is
+#: ``_name_slot_producer``'s: the originating pass id. Shrink-only (see above).
+KNOWN_NAME_SLOT_HOLES: dict[tuple[str, str], tuple[str, str]] = {
+    # The slot carries ``@<column>`` so two same-callee callbacks on one line
+    # stay apart; renaming the node moves its stable id (owner decision).
+    ("javascript", "function"): (
+        "anonymous callback: slot `_cb_<callee>@<col>`, name `_cb_<callee>`",
+        "WI-bafaz",
+    ),
+    ("vue", "directive"): (
+        "slot `<tag>.<directive>`, name the directive; the sfc work package "
+        "removes this entry",
+        "WI-funip",
+    ),
+    # ``::`` in a name: the analyzer folds it to one ``.``, Ruling 1's
+    # sanitizer to ``..``. Which one is the rule is the owner's call; either
+    # fix moves node ids only.
+    ("rust", "method"): ("slot `A.run`, name `A::run` (`::` folded to `.`)", "WI-funip"),
+    ("rust", "field"): ("slot `A.command`, name `A::command`", "WI-funip"),
+    ("perl", "function"): ("slot `run`, name `Demo::run`", "WI-funip"),
+    # Scope in the slot, short name: the qualification is nowhere else
+    # (qualified_name is empty), so the fix carries it to qualified_name.
+    ("julia", "function"): ("slot `B.run`, name `run`", "WI-funip"),
+    ("tcl", "function"): ("slot `a..inner..go`, name `go`", "WI-funip"),
+    ("tcl", "namespace"): ("slot `a..inner`, name `inner`", "WI-funip"),
+    # One make_doc_symbol_ids argument mints the slot and the stable id, as
+    # for the Vue directive.
+    ("svelte", "event"): ("slot `button.click`, name `click`", "WI-funip"),
+    ("svelte", "block"): ("slot `if.count`, name `#if`", "WI-funip"),
+    ("astro", "directive"): ("slot `Card.client.load`, name `client:load`", "WI-funip"),
+    ("robot", "variable"): ("slot `NAME`, name `${NAME}`", "WI-funip"),
+    # Linker stand-ins carry their role as a slot suffix so a write and a
+    # read of one name on one line stay apart (the kind-slot fix put it
+    # there); naming the role moves the stand-in's stable id.
+    ("grpc-linker", "interface"): ("slot `A-grpc_service`, name `A`", "WI-funip"),
+    ("grpc-linker", "function"): ("slot `Greeter-grpc_stub`, name `Greeter`", "WI-funip"),
+    ("grpc-linker", "class"): ("slot `Greeter-grpc_servicer`, name `Greeter`", "WI-funip"),
+    ("yjs-crdt-linker", "function"): (
+        "slot `<channel>-crdt_publisher` / `-crdt_subscriber`, name the channel",
+        "WI-funip",
+    ),
+}
+
+
+def _name_slot_mismatch(sym: Any) -> Optional[tuple[str, str]]:
+    """The node's ``(producer, kind)`` when its id's name slot is not its
+    sanitized name, else ``None``.
+
+    ``None`` too for what the round-trip does not judge: a non-string id, an
+    id with fewer than five slots (``_check_id_format`` reports it) and the
+    file pseudo-symbol (exempt, see ``compute_name_slot_stats``). The slot is
+    read from the right, as Ruling 1 prescribes.
+    """
+    from .analyze.file_records import is_file_pseudo_symbol
+
+    sym_id = getattr(sym, "id", None)
+    if not isinstance(sym_id, str) or sym_id.count(":") < 4 or is_file_pseudo_symbol(sym):
+        return None
+    name = getattr(sym, "name", None)
+    name = name if isinstance(name, str) else ""
+    if sym_id.rsplit(":", 2)[1] == sanitize_id_name_segment(name):
+        return None
+    return _name_slot_producer(sym), str(getattr(sym, "kind", None))
+
+
+def _check_name_slot_roundtrip(
+    symbols: Iterable[Any],
+    analysis_runs: Iterable[Any],
+    holes: Optional[dict[tuple[str, str], tuple[str, str]]] = None,
+) -> list[ValidationViolation]:
+    """ADR-0036 Ruling 1 as a check: an undeclared name-slot mismatch is an
+    ``id_format`` error.
+
+    ``holes`` defaults to :data:`KNOWN_NAME_SLOT_HOLES`. CONTENT-GATED on a
+    non-empty run set, like the FK and endpoint predicates: isolated unit
+    fixtures call ``validate_ir`` with ``analysis_runs=[]`` and hand-write ids
+    whose name slot is not their name.
+    """
+    if not list(analysis_runs):
+        return []
+    declared = KNOWN_NAME_SLOT_HOLES if holes is None else holes
+    violations: list[ValidationViolation] = []
+    for sym in symbols:
+        pair = _name_slot_mismatch(sym)
+        if pair is None or pair in declared:
+            continue
+        sym_id = sym.id
+        expected = sanitize_id_name_segment(sym.name if isinstance(sym.name, str) else "")
+        violations.append(ValidationViolation(
+            severity=_ID_ROUNDTRIP_SEVERITY,
+            validator_class="id_format",
+            field_name="Symbol.id",
+            record_id=sym_id,
+            observed=sym_id.rsplit(":", 2)[1],
+            expected=expected,
+            message=(
+                f"Symbol.id name slot {sym_id.rsplit(':', 2)[1]!r} is not the "
+                f"sanitized Symbol.name {expected!r} (ADR-0036 Ruling 1; "
+                f"producer {pair[0]!r}, kind {pair[1]!r}). Mint the id with "
+                "make_symbol_id(..., name, ...) from the Symbol's own name."
+            ),
+        ))
+    return violations
 
 
 def compute_name_slot_stats(symbols: Iterable[Any]) -> dict[str, Any]:
@@ -2356,10 +2483,10 @@ def compute_name_slot_stats(symbols: Iterable[Any]) -> dict[str, Any]:
         checked += 1
         producer = _name_slot_producer(sym)
         checked_by[producer] = checked_by.get(producer, 0) + 1
+        if _name_slot_mismatch(sym) is None:
+            continue
         name = getattr(sym, "name", None)
         name = name if isinstance(name, str) else ""
-        if sym_id.rsplit(":", 2)[1] == sanitize_id_name_segment(name):
-            continue
         mismatched_by[producer] = mismatched_by.get(producer, 0) + 1
         example = example_by.get(producer)
         if example is None or (sym_id, name) < example:
