@@ -3,13 +3,14 @@
 """A bash edge endpoint is a node id even when a name holds a colon.
 
 The program-launch edge spelled its dst by hand,
-``bash:{cmd}:0-0:{cmd}:unresolved``. A colon in the NAME slot (an Erlang
-call ``file:close`` written as a command in a script) shifts the
-right-anchored slots: the endpoint is no id (ADR-0036 Ruling 1), and
-``AnalysisRun.non_id_edge_endpoints`` counted it (ejabberd: 10). It is now
-minted by ``make_symbol_id``, which folds the name slot's ``:`` to ``.``; the
-path slot keeps its colon, as the grammar allows, and ``dst_ref`` keeps the
-name as written.
+``bash:{cmd}:0-0:{cmd}:unresolved``, and the ``source`` edge
+``bash:{path}:0-0:{basename}:file``. A colon in the NAME slot (an Erlang
+call ``file:close`` written as a command in a script, a sourced file
+``a:b.sh``) shifts the right-anchored slots: the endpoint is no id
+(ADR-0036 Ruling 1), and ``AnalysisRun.non_id_edge_endpoints`` counted it
+(ejabberd: 10). Both are now minted by ``make_symbol_id``, which folds the
+name slot's ``:`` to ``.``; the path slot keeps its colon, as the grammar
+allows.
 """
 from __future__ import annotations
 
@@ -46,7 +47,15 @@ def test_a_command_with_a_colon_is_a_node_id(tmp_path: Path) -> None:
     assert launch.dst_ref is not None and launch.dst_ref.name == "file:close"
 
 
+def test_a_sourced_file_with_a_colon_is_a_node_id(tmp_path: Path) -> None:
+    result = _analyze(tmp_path)
+    sources = sorted(e.dst for e in result.edges if e.edge_type == "sources")
+    assert sources == [
+        "bash:./lib/a:b.sh:0-0:a.b.sh:file",
+        "bash:./lib/plain.sh:0-0:plain.sh:file",
+    ]
+
+
 def test_no_endpoint_is_outside_the_grammar(tmp_path: Path) -> None:
     result = _analyze(tmp_path)
-    calls = [e for e in result.edges if e.edge_type == "calls"]
-    assert non_id_edge_endpoints(result.symbols, calls, grammar_only=True) == []
+    assert non_id_edge_endpoints(result.symbols, result.edges, grammar_only=True) == []
