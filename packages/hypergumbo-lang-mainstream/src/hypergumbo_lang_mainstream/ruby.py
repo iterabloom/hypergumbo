@@ -6,7 +6,9 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Class declarations (class)
 - Module declarations (module)
 - Method call relationships
-- Require/require_relative statements
+- Require/require_relative statements: a ``require_relative`` of a file the
+  tree holds ends on that file's node (``_require_relative_target``); any
+  other require ends on the ``ruby:<name>:0-0:file:file`` stand-in
 - Rails callback edges. The recognised set is ``RAILS_CALLBACK_METHODS``:
   the controller action callbacks and their ``_filter`` spellings, the
   model lifecycle callbacks, the transaction callbacks (``after_commit``,
@@ -146,6 +148,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
@@ -177,6 +180,7 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
@@ -3209,6 +3213,20 @@ def _extract_ruby_var_types(
     return var_types
 
 
+def _require_relative_target(abs_path: Path, rel_path: str, written: str) -> Optional[str]:
+    """The file node a ``require_relative`` names, when the tree holds it.
+
+    Ruby reads the name next to the requiring file and adds ``.rb`` when it
+    has no extension (``edge_target.in_tree_file_id``, which also skips a
+    file outside the repository or one discovery leaves out). ``None``: the
+    caller keeps the stand-in for the name as written. ``require`` is read
+    along ``$LOAD_PATH``, the build's configuration, and is not looked up.
+    """
+    joined = posixpath.join(posixpath.dirname(rel_path), written)
+    candidates = [joined] if joined.endswith(".rb") else [joined + ".rb", joined]
+    return in_tree_file_id(abs_path, rel_path, candidates)
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -3223,8 +3241,13 @@ def _extract_edges_from_file(
     method_resolver: ListNameResolver | None = None,
     file_symbols: list[Symbol] | None = None,
     constant_ancestors: Optional[dict[str, list[str]]] = None,
+    abs_path: Optional[Path] = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
+
+    ``abs_path`` is the file on disk; with ``file_path`` it gives the
+    repository root a ``require_relative`` lookup needs
+    (:func:`_require_relative_target`). Without it the lookup is skipped.
 
     Args:
         tree: Parsed tree-sitter tree
@@ -3295,12 +3318,18 @@ def _extract_edges_from_file(
                                 content_node = find_child_by_type(arg, "string_content")
                                 if content_node:
                                     import_path = node_text(content_node, source)
+                                    found = (
+                                        _require_relative_target(abs_path, file_path, import_path)
+                                        if callee_name == "require_relative" and abs_path is not None
+                                        else None
+                                    )
                                     edges.append(Edge.create(
                                         src=file_id,
-                                        dst=f"ruby:{import_path}:0-0:file:file",
+                                        dst=found or f"ruby:{import_path}:0-0:file:file",
                                         edge_type="imports",
                                         line=node.start_point[0] + 1,
                                         evidence_type="require_statement",
+                                        is_resolved=found is not None,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                     ))
@@ -4033,6 +4062,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 file_symbols=analysis.symbols,
                 superclass_by_qualified=superclass_by_qualified,
                 constant_ancestors=constant_ancestors,
+                abs_path=rb_file,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             _ruby_df = _get_dataflow_config("ruby")
