@@ -85,14 +85,10 @@ proc callp {} {
 
 
 def _calls(tmp_path: Path) -> tuple[dict[str, str], dict[int, str]]:
-    """``({qualified proc name: id}, {call line: dst})``."""
+    """``({proc qualified_name: id}, {call line: dst})``."""
     (tmp_path / "main.tcl").write_text(_SOURCE)
     result = analyze_tcl(tmp_path)
-    procs = {}
-    for s in result.symbols:
-        if s.kind == "function":
-            ns = (s.meta or {}).get("namespace")
-            procs[f"{ns}::{s.name}" if ns else s.name] = s.id
+    procs = {s.qualified_name: s.id for s in result.symbols if s.kind == "function"}
     dst_by_line = {e.line: e.dst for e in result.edges if e.edge_type == "calls"}
     return procs, dst_by_line
 
@@ -120,9 +116,9 @@ def test_a_bare_call_is_read_in_the_callers_namespace_then_the_global_one(
     # A relative qualified name is read from the caller's namespace first.
     assert dst[39] == procs["app::sub::go"]
     # ``namespace eval ::glob`` is the global namespace's child ``glob``.
-    assert dst[46] == procs["::glob::g"]
+    assert dst[46] == procs["glob::g"]
     # An absolute ``namespace eval`` inside another is not its child.
-    assert dst[60] == procs["outer::::abs::p"]
+    assert dst[60] == procs["abs::p"]
 
 
 def test_namespace_import_brings_the_proc_into_the_importing_namespace(
