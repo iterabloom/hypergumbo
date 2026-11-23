@@ -1218,3 +1218,86 @@ class TestInvZuhubNapiFallback:
         assert edge.meta is not None
         assert edge.meta.get("disambiguation_fallback") is True
         assert edge.meta.get("bridge_kind") == "napi"
+
+
+class TestNapiNameRegisteredTwice:
+    """WI-rumuv: a JS name registered in several C files keeps every binding.
+
+    The export map was keyed by JS name, last writer wins, over C files taken
+    from a ``set``: which C function the JS call reached followed the hash
+    salt, and the other registrations were never linked.
+    """
+
+    @staticmethod
+    def _registration(stem: str, js_name: str = "hello") -> str:
+        return (
+            f"static napi_value impl_{stem}(napi_env env, napi_callback_info i) {{\n"
+            "    return NULL;\n"
+            "}\n"
+            "napi_value Init(napi_env env, napi_value exports) {\n"
+            "    napi_value fn;\n"
+            f'    napi_create_function(env, "{js_name}", NAPI_AUTO_LENGTH, impl_{stem}, NULL, &fn);\n'
+            "    return exports;\n"
+            "}\n"
+        )
+
+    @staticmethod
+    def _call(name: str = "hello") -> Edge:
+        return Edge.create(
+            src="javascript:index.js:1-3:main:function",
+            dst=f"javascript:index.js:0-0:{name}:unresolved",
+            edge_type="calls", line=2, evidence_type="function_call",
+            confidence=0.50, origin="js", origin_run_id="test",
+        )
+
+    def test_two_files_two_functions_two_downgraded_edges(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.napi import link_napi
+
+        c_syms = []
+        for stem in ("b", "a"):
+            (tmp_path / f"{stem}.c").write_text(self._registration(stem))
+            c_syms.append(_make_c_symbol(f"impl_{stem}", path=f"{stem}.c", start_line=1, end_line=3))
+
+        result = link_napi(tmp_path, [], c_syms, [self._call()])
+
+        # Reach: both registered functions are linked, in file order.
+        assert [e.dst for e in result.edges] == [
+            "c:a.c:1-3:impl_a:function", "c:b.c:1-3:impl_b:function",
+        ]
+        for edge in result.edges:
+            assert edge.src == "javascript:index.js:1-3:main:function"
+            assert edge.confidence == 0.5
+            assert edge.meta["disambiguation_fallback"] is True
+
+    def test_one_function_registered_twice_is_one_edge_at_full_confidence(
+        self, tmp_path: Path,
+    ) -> None:
+        """Control: two registrations of ONE function decide nothing."""
+        from hypergumbo_core.linkers.napi import link_napi
+
+        (tmp_path / "a.c").write_text(self._registration("a") + self._registration("a"))
+        c_syms = [_make_c_symbol("impl_a", path="a.c", start_line=1, end_line=3)]
+
+        result = link_napi(tmp_path, [], c_syms, [self._call()])
+
+        assert [e.dst for e in result.edges] == ["c:a.c:1-3:impl_a:function"]
+        assert result.edges[0].confidence == 0.85
+        assert "disambiguation_fallback" not in result.edges[0].meta
+
+    def test_other_names_are_not_downgraded(self, tmp_path: Path) -> None:
+        """Control: ``hello`` registered twice leaves ``bye`` at full confidence."""
+        from hypergumbo_core.linkers.napi import link_napi
+
+        (tmp_path / "a.c").write_text(self._registration("a"))
+        (tmp_path / "b.c").write_text(self._registration("b"))
+        (tmp_path / "c.c").write_text(self._registration("c", js_name="bye"))
+        c_syms = [
+            _make_c_symbol(f"impl_{s}", path=f"{s}.c", start_line=1, end_line=3)
+            for s in ("a", "b", "c")
+        ]
+
+        result = link_napi(tmp_path, [], c_syms, [self._call("bye")])
+
+        assert [(e.dst, e.confidence) for e in result.edges] == [
+            ("c:c.c:1-3:impl_c:function", 0.85),
+        ]
