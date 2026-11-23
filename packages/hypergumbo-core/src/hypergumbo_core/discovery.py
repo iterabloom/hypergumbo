@@ -63,6 +63,10 @@ respecting exclude patterns. Also provides:
   - ``.php`` files: shared by PHP and Hack. ``classify_dot_php_file`` reads
     the header: a file whose first line (after an optional shebang) opens with
     ``<?hh`` is Hack, so the Hack analyzer reads it and PHP skips it.
+  - ``.bb`` files: shared by BitBake recipes and Babashka (Clojure) scripts.
+    ``classify_dot_bb_file`` reads the first statement: a ``bb`` shebang, a
+    ``;`` comment or a form is Clojure, so the Clojure analyzer reads it and
+    BitBake skips it (metabase's ``bin/*.bb`` were parsed as recipes).
 
 - **Content-conditioned virtualenv exclusion:** ``venv`` / ``.venv`` / ``env``
   are deliberately NOT in ``DEFAULT_EXCLUDES``. A directory is a virtualenv
@@ -593,6 +597,44 @@ def classify_dot_php_file(path: Path) -> str:
     if head.startswith(b"#!"):
         head = head.partition(b"\n")[2]
     return "hack" if head.startswith(b"<?hh") else "php"
+
+
+#: A ``.bb`` shebang naming the Babashka interpreter (``#!/usr/bin/env bb``).
+_BABASHKA_SHEBANG = re.compile(r"\b(?:bb|babashka)\b")
+
+
+def classify_dot_bb_file(path: Path) -> str:
+    """Classify a .bb file as 'bitbake' (a recipe) or 'clojure' (a Babashka script).
+
+    A shebang naming ``bb`` or ``babashka`` decides alone. Otherwise the first
+    line that is neither blank nor a ``#`` comment does: BitBake has no
+    statement that opens with ``(`` or ``;`` (an assignment, ``inherit``,
+    ``require``, ``include``, a task or ``python`` / ``def`` function), and a
+    Clojure file's first one is a form or a ``;`` comment. ``#`` lines are
+    BitBake comments, and in Clojure a reader macro (``#_``) that the next
+    line settles. An empty or unreadable file is BitBake, which used to read
+    every ``.bb``. Reads the first 8 KB.
+
+    Args:
+        path: Path to a .bb file.
+
+    Returns:
+        One of 'bitbake' or 'clojure'.
+    """
+    try:
+        content = path.read_bytes()[:_CLASSIFY_READ_LIMIT].decode("utf-8", errors="replace")
+    except OSError:
+        return "bitbake"
+    lines = content.splitlines()
+    if lines and lines[0].startswith("#!"):
+        if _BABASHKA_SHEBANG.search(lines[0]):
+            return "clojure"
+        lines = lines[1:]
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return "clojure" if stripped[0] in "(;" else "bitbake"
+    return "bitbake"
 
 
 # Default exclude patterns (gitignore-style)
