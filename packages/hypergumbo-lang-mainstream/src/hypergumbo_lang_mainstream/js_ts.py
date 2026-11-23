@@ -29,6 +29,11 @@ extract:
   an optional ``?``, a ``this:`` parameter stays; a default value is hashed
   as written). Through scheme v16 a function type was hashed as written, so
   renaming a callback's inner parameter moved the id
+- The typed stable_id reads its texts from the syntax tree
+  (``_jsts_hashed_text``), where ``layout_free`` (language-blind) cannot tell
+  layout from code: the ``&`` that opens an intersection written one member
+  per line is left out (``x:\\n  & A\\n  & B`` hashes as ``A & B``). The
+  displayed signature keeps it
 - A static class member hashes ``static`` in the typed stable_id's
   ``decorators`` slot (``_jsts_member_decorators``; methods, accessors and
   fields, TypeScript and JavaScript), and a static method labels the scope
@@ -1584,8 +1589,41 @@ ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
 _find_child_by_field = find_child_by_field
 
 
+def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
+    """``node``'s text as the typed stable id hashes it: the displayed text
+    but for what ``layout_free`` (core, language-blind) cannot tell from
+    layout and the syntax tree can.
+
+    - The ``&`` that opens an intersection written one member per line
+      (``x:\\n  & A\\n  & B``, an ``intersection_type`` whose first child is the
+      ``&``) is left out: it is the type ``A & B``. ``layout_free`` drops a
+      leading union ``|`` but cannot drop a ``&``: Rust's ``(\\n &self`` is a
+      reference.
+
+    It does not occur in a text that had no leading ``&``, so every other
+    hashed text is the displayed one, byte for byte.
+    """
+    edits: list[tuple[int, int, str]] = []
+    pending = [node]
+    while pending:
+        current = pending.pop()
+        if current.type == "intersection_type" and current.children[0].type == "&":
+            amp = current.children[0]
+            edits.append((amp.start_byte, amp.end_byte, ""))
+        pending.extend(current.children)
+    if not edits:
+        return _node_text(node, source)
+    parts: list[str] = []
+    pos = node.start_byte
+    for start, end, replacement in sorted(edits):
+        parts += [source[pos:start].decode("utf-8", errors="replace"), replacement]
+        pos = end
+    parts.append(source[pos:node.end_byte].decode("utf-8", errors="replace"))
+    return "".join(parts)
+
+
 def _extract_jsts_signature(
-    node: "tree_sitter.Node", source: bytes
+    node: "tree_sitter.Node", source: bytes, *, hashed: bool = False,
 ) -> Optional[str]:
     """Extract function signature from a JS/TS function node.
 
@@ -1595,7 +1633,10 @@ def _extract_jsts_signature(
     Args:
         node: A tree-sitter function_declaration, arrow_function, or method node.
         source: Source bytes of the file.
+        hashed: The text the typed stable id hashes (:func:`_jsts_hashed_text`)
+            instead of the displayed one.
     """
+    text = _jsts_hashed_text if hashed else _node_text
     # Find parameters - node type depends on function type
     params_node = None
     return_type_node = None
@@ -1634,7 +1675,7 @@ def _extract_jsts_signature(
     for child in params_node.children:
         if child.type in ("required_parameter", "optional_parameter"):
             # TypeScript: name: type or name?: type
-            param_text = _node_text(child, source)
+            param_text = text(child, source)
             param_strs.append(param_text)
         elif child.type == "identifier":
             # JavaScript: just the name
@@ -1650,7 +1691,7 @@ def _extract_jsts_signature(
                 param_strs.append(pattern_text)  # pragma: no cover
         elif child.type == "rest_pattern":
             # Rest parameter: ...args
-            param_strs.append(_node_text(child, source))
+            param_strs.append(text(child, source))
 
     # Handle single parameter arrow functions (x => x without parens)
     if node.type == "arrow_function" and not param_strs and params_node.type == "identifier":  # pragma: no cover
@@ -1661,7 +1702,7 @@ def _extract_jsts_signature(
     # Add return type for TypeScript
     if return_type_node:
         # Return type includes the ": Type" or just "Type"
-        ret_text = _node_text(return_type_node, source)
+        ret_text = text(return_type_node, source)
         if not ret_text.startswith(":"):
             ret_text = f": {ret_text}"
         sig += ret_text
@@ -4569,20 +4610,24 @@ def _new_expression_module(
     return _constructed_module(class_name, ns_path)
 
 
-def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+def _extract_field_type(
+    node: "tree_sitter.Node", source: bytes, *, hashed: bool = False,
+) -> Optional[str]:
     """Return the type-annotation text (without the leading ``: ``, e.g.
     ``"string[]"``) of a class field (``public_field_definition``) or a variable
     declarator (``const x: T``), or None when untyped (every JS binding and
     untyped TS bindings). The annotation is a direct ``type_annotation`` child in
-    both shapes."""
+    both shapes. ``hashed``: the text the typed stable id hashes
+    (:func:`_jsts_hashed_text`)."""
+    text = _jsts_hashed_text if hashed else _node_text
     for child in node.children:
         if child.type == "type_annotation":
-            return _node_text(child, source).lstrip(": ").strip() or None
+            return text(child, source).lstrip(": ").strip() or None
     return None
 
 
 def _method_signature_text(
-    node: "tree_sitter.Node", source: bytes
+    node: "tree_sitter.Node", source: bytes, *, hashed: bool = False,
 ) -> Optional[str]:
     """TS-idiomatic signature of an interface ``method_signature``: ``"(): string"``.
 
@@ -4590,25 +4635,28 @@ def _method_signature_text(
     ``type_annotation``, the same two slots the class ``method_definition`` path
     reads. Returns None when there are no parameters to read, which is the
     signal the caller uses to leave ``Symbol.signature`` unset rather than
-    storing an empty string.
+    storing an empty string. ``hashed``: the text the typed stable id hashes
+    (:func:`_jsts_hashed_text`).
     """
     params = next(
         (c for c in node.children if c.type == "formal_parameters"), None
     )
     if params is None:  # pragma: no cover - a method_signature always has them
         return None
-    text = _node_text(params, source)
+    read = _jsts_hashed_text if hashed else _node_text
+    text = read(params, source)
     ret = next((c for c in node.children if c.type == "type_annotation"), None)
     if ret is not None:
-        text += ": " + _node_text(ret, source).lstrip(": ").strip()
+        text += ": " + read(ret, source).lstrip(": ").strip()
     return text
 
 
 def _container_member_specs(
     body: "tree_sitter.Node", source: bytes
-) -> list[tuple["tree_sitter.Node", str, str, Optional[str]]]:
-    """``(node, member_name, kind, signature)`` per NAMED member of a TS
-    ``enum_body`` / ``interface_body`` (WI-duguk).
+) -> list[tuple["tree_sitter.Node", str, str, Optional[str], Optional[str]]]:
+    """``(node, member_name, kind, signature, hashed signature)`` per NAMED
+    member of a TS ``enum_body`` / ``interface_body`` (WI-duguk); the hashed
+    signature is what the typed stable id reads (:func:`_jsts_hashed_text`).
 
     Kinds mirror the class-member branches so a consumer sees one vocabulary:
     a callable member is a ``method``, a value member is a ``field``. Enum
@@ -4621,28 +4669,30 @@ def _container_member_specs(
     inventing one would be a wrong-name phantom — strictly worse than the
     fails-safe recall miss of omitting them.
     """
-    specs: list[tuple["tree_sitter.Node", str, str, Optional[str]]] = []
+    specs: list[tuple["tree_sitter.Node", str, str, Optional[str], Optional[str]]] = []
     for child in body.children:
         if child.type == "enum_assignment":
             # ``Red = 'red'`` — the name is the assignment's own identifier.
             name = _find_field_name(child, source)
             if name:
-                specs.append((child, name, "field", None))
+                specs.append((child, name, "field", None, None))
         elif child.type == "property_identifier":
             # A bare ``Green`` member sits directly under the enum body.
-            specs.append((child, _node_text(child, source), "field", None))
+            specs.append((child, _node_text(child, source), "field", None, None))
         elif child.type == "method_signature":
             name = _find_field_name(child, source)
             if name:
-                specs.append(
-                    (child, name, "method", _method_signature_text(child, source))
-                )
+                specs.append((
+                    child, name, "method", _method_signature_text(child, source),
+                    _method_signature_text(child, source, hashed=True),
+                ))
         elif child.type == "property_signature":
             name = _find_field_name(child, source)
             if name:
-                specs.append(
-                    (child, name, "field", _extract_field_type(child, source))
-                )
+                specs.append((
+                    child, name, "field", _extract_field_type(child, source),
+                    _extract_field_type(child, source, hashed=True),
+                ))
     return specs
 
 
@@ -4670,7 +4720,7 @@ def _make_container_member_symbols(
     # INV-fabih: the member hashes the container's full scope chain.
     owner_scope = [*_jsts_scope(container, source), container_name]
     out: list["Symbol"] = []
-    for member, member_name, kind, signature in _container_member_specs(
+    for member, member_name, kind, signature, hashed_signature in _container_member_specs(
         body, source
     ):
         span = Span(
@@ -4702,7 +4752,7 @@ def _make_container_member_symbols(
             stable_id=make_typed_stable_id(
                 kind,
                 canonical_type_names(_jsts_without_function_type_names(
-                    signature or "", declaration=kind == "method")),
+                    hashed_signature or "", declaration=kind == "method")),
                 name=member_name,
                 qualified_name=_make_jsts_qualified_name(owner_scope, member_name, lang),
                 file_stable_id=file_stable_id,
@@ -5258,7 +5308,8 @@ def _extract_tree_symbols(
                 signature = _extract_jsts_signature(node, source)
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_jsts_signature(signature)
+                norm_sig = normalize_jsts_signature(
+                    _extract_jsts_signature(node, source, hashed=True))
                 stable_id = make_typed_stable_id(
                     "function", norm_sig,
                     name=name,
@@ -5331,7 +5382,8 @@ def _extract_tree_symbols(
                         signature = _extract_jsts_signature(value_node, source)
 
                         # Typed stable_id (spec §6 typed tier)
-                        norm_sig = normalize_jsts_signature(signature)
+                        norm_sig = normalize_jsts_signature(
+                            _extract_jsts_signature(value_node, source, hashed=True))
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
                             name=name,
@@ -5609,7 +5661,8 @@ def _extract_tree_symbols(
 
                 # Typed stable_id for non-route methods (spec §6 typed tier)
                 if stable_id is None:
-                    norm_sig = normalize_jsts_signature(signature)
+                    norm_sig = normalize_jsts_signature(
+                        _extract_jsts_signature(node, source, hashed=True))
                     if norm_sig:
                         stable_id = make_typed_stable_id(
                             kind, norm_sig,
@@ -5674,7 +5727,8 @@ def _extract_tree_symbols(
                 # file fold make same-named fields in different classes/files
                 # distinct even when both are untyped (empty signature slot).
                 stable_id = make_typed_stable_id(
-                    "field", canonical_type_names(_jsts_without_function_type_names(field_type or "")),
+                    "field", canonical_type_names(_jsts_without_function_type_names(
+                        _extract_field_type(node, source, hashed=True) or "")),
                     decorators=_jsts_member_decorators(node),
                     name=name,
                     qualified_name=_jsts_chain(node, source, name, lang),
@@ -5716,7 +5770,8 @@ def _extract_tree_symbols(
                         signature = _extract_jsts_signature(child, source)
 
                         # Typed stable_id (spec §6 typed tier)
-                        norm_sig = normalize_jsts_signature(signature)
+                        norm_sig = normalize_jsts_signature(
+                            _extract_jsts_signature(child, source, hashed=True))
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
                             name=name,
@@ -5768,7 +5823,8 @@ def _extract_tree_symbols(
                     end_col=node.end_point[1],
                 )
                 signature = _extract_jsts_signature(node, source)
-                norm_sig = normalize_jsts_signature(signature)
+                norm_sig = normalize_jsts_signature(
+                    _extract_jsts_signature(node, source, hashed=True))
                 qualified_name = _make_jsts_qualified_name(
                     _jsts_qualified_ancestors(node, source), anon_name, lang,
                 )
