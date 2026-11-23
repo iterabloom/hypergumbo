@@ -16,7 +16,8 @@ the constructor reaches almost none of them. This one resolves three hops —
 the argument, one in-function local assignment, one same-module function's
 returns. A fourth hop needs genuine dataflow and would trade a sharp rule for
 a fuzzy one; the tests pin the boundary rather than leaving it to be
-rediscovered.
+rediscovered. (That is the ``id=`` rule. Edge endpoints are walked further,
+below.)
 
 WHAT IS FORBIDDEN IS NOT THE F-STRING, IT IS THE UNGRAMMATICAL ID. A synthetic
 linker stand-in has no source span and legitimately writes ``0-0`` by hand.
@@ -46,9 +47,9 @@ both constructors, an id built by a ``+`` chain is reported as
 either grammar.
 
 EDGE ENDPOINTS ARE NODE IDS. An edge's ``src`` and ``dst`` name nodes, so an
-endpoint written by hand answers to the NODE grammar, read through the same
-three hops: the ``src=`` / ``dst=`` keywords of ``Edge(...)`` and
-``Edge.create(...)``, and ``Edge.create``'s first two positional arguments
+endpoint written by hand answers to the NODE grammar: the ``src=`` /
+``dst=`` keywords of ``Edge(...)`` and ``Edge.create(...)``, and
+``Edge.create``'s first two positional arguments
 (:func:`_edge_endpoints`), each branch of a conditional or ``or`` chain
 judged on its own (:func:`_alternatives`: ``found or f"robot:{path}"``).
 About 40 endpoints in 23 producers were spelled
@@ -58,10 +59,34 @@ one ``<unknown>`` node, a defect the runtime count
 (``AnalysisRun.non_id_edge_endpoints``) sees only on a run whose tree holds
 the construct. A bare string literal is judged too (``dst="amsmath"``), but
 not the EMPTY string: ``ref = ""`` is the sentinel a producer assigns before
-the loop that sets it, and the hop reads every assignment to the local. An
-endpoint passed through a parameter, a helper of another module or a
-computed expression is not seen (the three-hop boundary); a
-``make_unresolved_edge`` / helper-built endpoint is minted by a factory.
+the loop that sets it, and the hop reads every assignment to the local.
+
+AN ENDPOINT IS FOLLOWED PAST ITS FUNCTION, ONE LEVEL EACH WAY (WI-jozih).
+Endpoints are judged by a walk over the whole tree (:class:`_EndpointWalk`),
+not one file: ``make_unresolved_edge(lang, src_id, ...)`` writes
+``src=src_id``, and the value is written by its 91 callers. So an endpoint
+that is a PARAMETER is followed to every call of its function, by name in its
+own module and through an import in another, and what each call passes is
+read there (a default when the call omits it); a value returned by a HELPER
+OF ANOTHER MODULE is read at that helper's ``return``, its own parameters
+bound to what the call passed. Locals, module constants, conditional
+branches, tuple parts and same-module helpers are read along the way. The
+depth is one call level for a parameter and one module for a helper: a call
+site that passes on its own parameter, or a helper reached through another
+module's helper, is not followed further. A minting factory
+(:data:`_ENDPOINT_FACTORIES`) and a symbol's ``.id`` end the walk.
+
+WHAT IT CANNOT FOLLOW IS COUNTED, NOT PASSED. Every endpoint the walk does
+not reach a written value for is listed by :func:`find_id_construction_drift`
+with one of :data:`UNJUDGED_REASONS` (the depth limits above, a parameter
+nothing calls, an argument in ``*args``, a callable the tree does not define,
+and a value COMPUTED at run time: a registry lookup, an attribute, a loop
+variable, text sliced from the source). On the tree when this landed: 59
+endpoint sites, 51 of them computed, and none a violation.
+``scripts/check-id-construction`` prints their count and lists them with
+``--unjudged``. Their guard is the runtime count
+``AnalysisRun.non_id_edge_endpoints`` (ADR-0034 §"Enforcement"), which sees
+one only on a run whose tree holds the construct.
 
 THE KIND SLOT AGAINST THE SYMBOL'S KIND. A grammatical id can still name the
 wrong kind: ADR-0036 Ruling 2 says the kind slot IS ``Symbol.kind``. Four
@@ -99,6 +124,7 @@ import ast
 import re
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 #: The placeholder marker used inside a skeleton. A real f-string literal part
@@ -460,11 +486,7 @@ def _feeding_this_use(
 _Finding = tuple[int, str, "tuple[str, str] | None"]
 
 
-def _problems_in_file(path: Path) -> list[_Finding]:
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (SyntaxError, UnicodeDecodeError):  # pragma: no cover - defensive
-        return []
+def _problems_in_tree(tree: ast.Module) -> list[_Finding]:
     module_functions: dict[str, _FuncDef] = {
         node.name: node
         for node in ast.walk(tree)
@@ -477,23 +499,6 @@ def _problems_in_file(path: Path) -> list[_Finding]:
         for node in ast.walk(fn):
             if not isinstance(node, ast.Call):
                 continue
-            for side, endpoint in _edge_endpoints(node):
-                reached = [
-                    alt
-                    for value in _alternatives(endpoint)
-                    for held in _resolve(value, assigns, module_functions)
-                    for alt in _alternatives(held)
-                ]
-                for expr in reached:
-                    problem = _endpoint_problem(expr)
-                    if problem is not None:
-                        found.setdefault(expr.lineno, (
-                            f"edge_endpoint ({side}): {problem} — an endpoint "
-                            "is a node id: mint it (make_file_id, "
-                            "make_module_import_dst, edge_target."
-                            "external_target) or take a symbol's id",
-                            None,
-                        ))
             callee = _callee_name(node)
             # The public classifiers, so the rule the tests pin is the rule
             # the lint runs, not a private twin that can drift (WI-mifup).
@@ -556,24 +561,44 @@ def _problem_of(
 def find_id_construction_drift(
     repo_root: Path,
     known_kind_slot_holes: dict[tuple[str, str, str], str] | None = None,
+    unjudged: list[str] | None = None,
 ) -> list[str]:
     """Return one ``path:line — problem`` string per violation, sorted.
 
     ``known_kind_slot_holes`` defaults to :data:`KNOWN_KIND_SLOT_HOLES`. A
     declared mismatch is not reported; a declaration whose file is in the tree
     and holds no such mismatch is.
+
+    ``unjudged``, when given, receives one string per edge endpoint the check
+    could not follow to a written value, sorted: ``path:line —
+    edge_endpoint (side) not judged: <reason> (<where>)``, the reasons being
+    :data:`UNJUDGED_REASONS`. Those are not violations:
+    ``AnalysisRun.non_id_edge_endpoints`` is their guard, at run time
+    (ADR-0034 §"Enforcement").
     """
     holes = KNOWN_KIND_SLOT_HOLES if known_kind_slot_holes is None else known_kind_slot_holes
     matched: set[tuple[str, str, str]] = set()
     offenders: list[str] = []
+    modules: list[_Module] = []
     for src_root in sorted(repo_root.glob("packages/*/src")):
         for path in sorted(src_root.rglob("*.py")):
             rel = path.relative_to(repo_root).as_posix()
-            for lineno, problem, words in _problems_in_file(path):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except (SyntaxError, UnicodeDecodeError):  # pragma: no cover - defensive
+                continue
+            modules.append(_index_module(tree, path, rel, src_root))
+            for lineno, problem, words in _problems_in_tree(tree):
                 if words is not None and (rel, *words) in holes:
                     matched.add((rel, *words))
                     continue
                 offenders.append(f"{rel}:{lineno} — {problem}")
+    walk = _EndpointWalk(modules)
+    walk.run()
+    seen_lines = {line.split(" — ", 1)[0] for line in offenders}
+    for (rel, lineno), problem in walk.violations.items():
+        if f"{rel}:{lineno}" not in seen_lines:
+            offenders.append(f"{rel}:{lineno} — {problem}")
     for rel, id_kind, symbol_kind in sorted(set(holes) - matched):
         if not (repo_root / rel).is_file():
             # Not this tree's declaration (a scratch tree in a test). That
@@ -584,4 +609,557 @@ def find_id_construction_drift(
             f"{id_kind!r} against Symbol kind {symbol_kind!r} is declared in "
             f"KNOWN_KIND_SLOT_HOLES and no longer exists; remove the declaration"
         )
-    return offenders
+    if unjudged is not None:
+        unjudged.extend(sorted(walk.unjudged, key=_finding_order))
+    return sorted(offenders, key=_finding_order)
+
+
+def _finding_order(finding: str) -> tuple[str, int, str]:
+    """File, then line as a number, then text."""
+    where = finding.split(" — ", 1)[0]
+    rel, _, line = where.rpartition(":")
+    if not line.isdigit():
+        return (where, 0, finding)
+    return (rel, int(line), finding)
+
+
+# ---------------------------------------------------------------------------
+# Edge endpoints, followed across a parameter and a helper of another module
+# ---------------------------------------------------------------------------
+
+#: Calls that mint a node id whole. Their result is an id by construction; the
+#: grammar lives inside them (``analyze/base.py``, ``analyze/edge_target.py``).
+_ENDPOINT_FACTORIES = frozenset({
+    *_CANONICAL_FACTORIES, "make_module_import_dst", "make_manifest_target_dst",
+    "in_tree_file_id", "external_target",
+})
+
+#: Attribute reads that hold a node's own id: ``sym.id`` (judged where that
+#: Symbol is constructed) and another edge's ``src`` / ``dst``.
+_NODE_ID_ATTRIBUTES = frozenset({"id", "src", "dst"})
+
+#: Why an endpoint was not judged. Each is counted and listed; none is a pass.
+UNJUDGED_REASONS: dict[str, str] = {
+    "parameter_beyond_one_call": (
+        "a parameter whose call site passes another parameter: the check "
+        "follows one call level"
+    ),
+    "parameter_without_call_site": (
+        "a parameter of a function no call in the tree names (a callback, an "
+        "entry point, a dynamic call)"
+    ),
+    "argument_not_bound": (
+        "a call site that passes the argument through *args / **kwargs, or "
+        "omits it with no default"
+    ),
+    "helper_not_located": (
+        "a function the tree does not define (a builtin, a third-party or "
+        "dynamically chosen callable)"
+    ),
+    "helper_beyond_one_level": (
+        "a helper of another module reached through another one: the check "
+        "follows one"
+    ),
+    "computed": (
+        "a value read from a container, an attribute, a method call or a "
+        "loop variable"
+    ),
+}
+
+
+@dataclass(eq=False)
+class _Module:
+    """One parsed source file, indexed for the endpoint walk."""
+
+    rel: str
+    dotted: str
+    #: Every definition of each function name: a call by name (``self.f``
+    #: among them) can mean any of them, so each is read.
+    functions: dict[str, list[_FuncDef]]
+    #: local name -> (module, name imported from it); name None for ``import m``.
+    imports: dict[str, tuple[str, str | None]]
+    #: ``id(call)`` -> the functions enclosing it, innermost first.
+    chains: dict[int, tuple[_FuncDef, ...]]
+    #: ``id(function)`` -> the function and those enclosing it.
+    def_chains: dict[int, tuple[_FuncDef, ...]]
+    calls: list[ast.Call]
+    module_assigns: dict[str, list[ast.expr]]
+
+
+def _index_module(tree: ast.Module, path: Path, rel: str, src_root: Path) -> _Module:
+    """One pass over *tree*: its imports, functions and calls, and the
+    functions enclosing each call and each function."""
+    parts = list(path.relative_to(src_root).with_suffix("").parts)
+    is_package = parts[-1] == "__init__"
+    if is_package:
+        parts.pop()
+    dotted = ".".join(parts)
+    package = parts if is_package else parts[:-1]
+    imports: dict[str, tuple[str, str | None]] = {}
+    functions: dict[str, list[_FuncDef]] = defaultdict(list)
+    chains: dict[int, tuple[_FuncDef, ...]] = {}
+    def_chains: dict[int, tuple[_FuncDef, ...]] = {}
+    calls: list[ast.Call] = []
+    stack: list[tuple[ast.AST, tuple[_FuncDef, ...]]] = [(tree, ())]
+    while stack:
+        node, chain = stack.pop()
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                functions[child.name].append(child)
+                def_chains[id(child)] = (child, *chain)
+                stack.append((child, (child, *chain)))
+                continue
+            if isinstance(child, ast.Call):
+                chains[id(child)] = chain
+                calls.append(child)
+            elif isinstance(child, ast.Import):
+                for alias in child.names:
+                    if alias.asname:
+                        imports[alias.asname] = (alias.name, None)
+                    else:
+                        head = alias.name.split(".")[0]
+                        imports[head] = (head, None)
+            elif isinstance(child, ast.ImportFrom):
+                base = child.module or ""
+                if child.level:
+                    anchor = package[: len(package) - (child.level - 1)]
+                    base = ".".join([*anchor, *([child.module] if child.module else [])])
+                for alias in child.names:
+                    if alias.name != "*":
+                        imports[alias.asname or alias.name] = (base, alias.name)
+            stack.append((child, chain))
+    module_assigns: dict[str, list[ast.expr]] = defaultdict(list)
+    for statement in tree.body:
+        if isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                if isinstance(target, ast.Name):
+                    module_assigns[target.id].append(statement.value)
+        elif (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.value is not None
+        ):
+            module_assigns[statement.target.id].append(statement.value)
+    return _Module(
+        rel=rel, dotted=dotted, functions=functions, imports=imports, chains=chains, def_chains=def_chains, calls=calls,
+        module_assigns=module_assigns,
+    )
+
+
+def _own_nodes(fn: _FuncDef) -> list[ast.AST]:
+    """The nodes of *fn*'s body, not those of a function or lambda inside it."""
+    found: list[ast.AST] = []
+    stack: list[ast.AST] = list(fn.body)
+    while stack:
+        node = stack.pop()
+        found.append(node)
+        stack.extend(
+            child for child in ast.iter_child_nodes(node)
+            if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+        )
+    return found
+
+
+#: A local's bindings: each assigned value, with its position when the
+#: assignment unpacks a tuple (``dst, ref = external_target(...)``).
+_Assigned = dict[str, list[tuple[ast.expr, "int | None"]]]
+
+
+def _bindings(fn: _FuncDef) -> tuple[_Assigned, set[str]]:
+    """``(assigned, otherwise_bound)`` for the locals of *fn* itself.
+
+    ``assigned`` holds what an ``=`` / annotated ``=`` / ``:=`` writes.
+    ``otherwise_bound`` names those a loop, a comprehension, a ``with``, an
+    ``except`` or an augmented assignment binds: their value is computed, and
+    a local bound both ways is reported as computed as well as followed.
+    """
+    assigned: _Assigned = defaultdict(list)
+    other: set[str] = set()
+
+    def target(node: ast.expr, value: ast.expr | None, index: int | None) -> None:
+        if isinstance(node, ast.Name):
+            if value is None:
+                other.add(node.id)
+            else:
+                assigned[node.id].append((value, index))
+        elif isinstance(node, (ast.Tuple, ast.List)):
+            plain = index is None and value is not None and not any(
+                isinstance(e, ast.Starred) for e in node.elts
+            )
+            for i, element in enumerate(node.elts):
+                target(element, value if plain else None, i if plain else None)
+        elif isinstance(node, ast.Starred):
+            target(node.value, None, None)
+
+    for node in _own_nodes(fn):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                target(t, node.value, None)
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            target(node.target, node.value, None)
+        elif isinstance(node, ast.NamedExpr):
+            target(node.target, node.value, None)
+        elif isinstance(node, ast.AugAssign):
+            target(node.target, None, None)
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+            target(node.target, None, None)
+        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
+            target(node.optional_vars, None, None)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            other.add(node.name)
+    return assigned, other
+
+
+def _parameters(fn: _FuncDef) -> list[str]:
+    a = fn.args
+    names = [p.arg for p in (*a.posonlyargs, *a.args, *a.kwonlyargs)]
+    names.extend(p.arg for p in (a.vararg, a.kwarg) if p is not None)
+    return names
+
+
+def _default_of(fn: _FuncDef, parameter: str) -> ast.expr | None:
+    a = fn.args
+    positional = [*a.posonlyargs, *a.args]
+    first_default = len(positional) - len(a.defaults)
+    for i, p in enumerate(positional):
+        if p.arg == parameter and i >= first_default:
+            return a.defaults[i - first_default]
+    for p, default in zip(a.kwonlyargs, a.kw_defaults, strict=True):
+        if p.arg == parameter:
+            return default
+    return None
+
+
+def _bound_argument(
+    fn: _FuncDef, call: ast.Call, parameter: str,
+) -> tuple[ast.expr, bool] | None:
+    """What *call* passes for *parameter*, and whether it is *fn*'s default.
+
+    ``None`` when the call does not say: the argument rides ``*args`` or
+    ``**kwargs``, or is omitted with no default.
+    """
+    for keyword in call.keywords:
+        if keyword.arg == parameter:
+            return keyword.value, False
+    positional = [p.arg for p in (*fn.args.posonlyargs, *fn.args.args)]
+    if parameter in positional:
+        # ``self.f(x)`` binds ``x`` to f's second parameter.
+        bound_self = (
+            isinstance(call.func, ast.Attribute)
+            and positional[0] in ("self", "cls")
+        )
+        index = positional.index(parameter) - (1 if bound_self else 0)
+        if index < 0 or any(
+            isinstance(a, ast.Starred) for a in call.args[: index + 1]
+        ):
+            return None
+        if index < len(call.args):
+            return call.args[index], False
+    if any(keyword.arg is None for keyword in call.keywords):
+        return None
+    default = _default_of(fn, parameter)
+    return (default, True) if default is not None else None
+
+
+@dataclass(eq=False)
+class _Ctx:
+    """Where an expression is read: its module, the functions enclosing it
+    (innermost first), and, inside a helper reached by a direct call, what that
+    call passed for each of the helper's parameters (``None``: not bound)."""
+
+    module: _Module
+    chain: tuple[_FuncDef, ...]
+    bound: dict[str, "tuple[ast.expr, _Ctx] | None"]
+
+
+@dataclass(frozen=True)
+class _Budget:
+    """How many call levels a parameter, and a helper of another module, may
+    still be followed through."""
+
+    parameters: int = 1
+    helpers: int = 1
+
+
+class _EndpointWalk:
+    """Follows every edge endpoint of the tree to the values it can hold.
+
+    A value written by hand (an f-string, a ``+`` chain, a non-empty literal)
+    is judged against the node grammar; a minting factory's result, a
+    symbol's ``.id`` and the empty initializer pass; everything else is
+    recorded with an :data:`UNJUDGED_REASONS` reason.
+    """
+
+    def __init__(self, modules: list[_Module]) -> None:
+        self.modules = modules
+        self.by_dotted = {m.dotted: m for m in modules}
+        self.violations: dict[tuple[str, int], str] = {}
+        self.unjudged: list[str] = []
+        self._calls_by_name: dict[str, list[tuple[_Module, ast.Call]]] = defaultdict(list)
+        for module in modules:
+            for call in module.calls:
+                name = _callee_name(call)
+                if name is not None:
+                    self._calls_by_name[name].append((module, call))
+        self._bindings: dict[int, tuple[_Assigned, set[str]]] = {}
+        self._active: set[int] = set()
+        self._site = ("", 0, "")
+
+    def run(self) -> None:
+        for module in self.modules:
+            for call in module.calls:
+                for side, endpoint in _edge_endpoints(call):
+                    self._site = (module.rel, call.lineno, side)
+                    missed: dict[str, str] = {}
+                    self._visit(
+                        endpoint, _Ctx(module, module.chains[id(call)], {}),
+                        _Budget(), set(), missed, None,
+                    )
+                    for reason, where in sorted(missed.items()):
+                        self.unjudged.append(
+                            f"{module.rel}:{call.lineno} — edge_endpoint ({side}) "
+                            f"not judged: {reason} ({where})"
+                        )
+
+    def _judge(self, expr: ast.expr, ctx: _Ctx) -> None:
+        problem = _endpoint_problem(expr)
+        if problem is None:
+            return
+        rel, line, side = self._site
+        via = "" if (ctx.module.rel, expr.lineno) == (rel, line) else (
+            f" (it reaches the edge at {rel}:{line})"
+        )
+        self.violations.setdefault((ctx.module.rel, expr.lineno), (
+            f"edge_endpoint ({side}): {problem} — an endpoint is a node id: "
+            "mint it (make_file_id, make_module_import_dst, edge_target."
+            f"external_target) or take a symbol's id{via}"
+        ))
+
+    def _visit(
+        self, expr: ast.expr, ctx: _Ctx, budget: _Budget,
+        seen: set[tuple[int, int, int, int | None]], missed: dict[str, str],
+        index: int | None,
+    ) -> None:
+        expr = _unwrap(expr)
+        key = (id(expr), id(ctx.chain[0]) if ctx.chain else 0, id(ctx.bound), index)
+        if key in seen:
+            return
+        seen.add(key)
+        where = f"{ctx.module.rel}:{getattr(expr, 'lineno', 0)}"
+        if isinstance(expr, (ast.IfExp, ast.BoolOp)):
+            for alternative in _alternatives(expr):
+                self._visit(alternative, ctx, budget, seen, missed, index)
+            return
+        if index is not None and isinstance(expr, ast.Tuple):
+            if index < len(expr.elts) and not any(
+                isinstance(e, ast.Starred) for e in expr.elts
+            ):
+                self._visit(expr.elts[index], ctx, budget, seen, missed, None)
+                return
+            missed.setdefault("computed", where)
+            return
+        if isinstance(expr, ast.Name):
+            self._visit_name(expr, ctx, budget, seen, missed, index)
+            return
+        if isinstance(expr, ast.Call):
+            self._visit_call(expr, ctx, budget, seen, missed, index)
+            return
+        if index is not None:
+            missed.setdefault("computed", where)
+            return
+        if isinstance(expr, ast.Constant):
+            if isinstance(expr.value, str) and expr.value:
+                self._judge(expr, ctx)
+            return
+        if isinstance(expr, ast.JoinedStr) or (
+            isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add)
+        ):
+            self._judge(expr, ctx)
+            return
+        if isinstance(expr, ast.Attribute) and expr.attr in _NODE_ID_ATTRIBUTES:
+            return
+        if isinstance(expr, ast.Subscript):
+            inner = _unwrap(expr.value)
+            if isinstance(inner, ast.Call) and _callee_name(inner) in _ENDPOINT_FACTORIES:
+                return
+        missed.setdefault("computed", f"{where} {ast.unparse(expr)[:60]}")
+
+    def _visit_name(
+        self, expr: ast.Name, ctx: _Ctx, budget: _Budget,
+        seen: set[tuple[int, int, int, int | None]], missed: dict[str, str],
+        index: int | None,
+    ) -> None:
+        name = expr.id
+        if name in ctx.bound:
+            bound = ctx.bound[name]
+            if bound is None:
+                missed.setdefault(
+                    "argument_not_bound", f"{ctx.module.rel}:{expr.lineno} {name}",
+                )
+                return
+            self._visit(bound[0], bound[1], budget, seen, missed, index)
+            return
+        for depth, fn in enumerate(ctx.chain):
+            assigned, other = self._bindings_of(fn)
+            outer = _Ctx(ctx.module, ctx.chain[depth:], ctx.bound if depth == 0 else {})
+            hit = False
+            for value, position in assigned.get(name, ()):
+                hit = True
+                if position is not None and index is not None:
+                    missed.setdefault("computed", f"{ctx.module.rel}:{value.lineno} {name}")
+                    continue
+                self._visit(
+                    value, outer, budget, seen, missed,
+                    position if position is not None else index,
+                )
+            if name in other:
+                hit = True
+                missed.setdefault("computed", f"{ctx.module.rel}:{expr.lineno} {name}")
+            if name in _parameters(fn):
+                hit = True
+                self._follow_parameter(ctx.module, fn, name, budget, seen, missed, index)
+            if hit:
+                return
+        values = ctx.module.module_assigns.get(name)
+        if values:
+            for value in values:
+                self._visit(value, _Ctx(ctx.module, (), {}), budget, seen, missed, index)
+            return
+        missed.setdefault("computed", f"{ctx.module.rel}:{expr.lineno} {name}")
+
+    def _bindings_of(self, fn: _FuncDef) -> tuple[_Assigned, set[str]]:
+        found = self._bindings.get(id(fn))
+        if found is None:
+            found = self._bindings[id(fn)] = _bindings(fn)
+        return found
+
+    def _follow_parameter(
+        self, module: _Module, fn: _FuncDef, parameter: str, budget: _Budget,
+        seen: set[tuple[int, int, int, int | None]], missed: dict[str, str],
+        index: int | None,
+    ) -> None:
+        where = f"{module.rel}:{fn.lineno} {fn.name}({parameter})"
+        if budget.parameters == 0:
+            missed.setdefault("parameter_beyond_one_call", where)
+            return
+        sites = self._call_sites(module, fn)
+        if not sites:
+            missed.setdefault("parameter_without_call_site", where)
+            return
+        deeper = _Budget(budget.parameters - 1, budget.helpers)
+        for caller, call in sites:
+            argument = _bound_argument(fn, call, parameter)
+            if argument is None:
+                missed.setdefault("argument_not_bound", f"{caller.rel}:{call.lineno} {where}")
+                continue
+            value, is_default = argument
+            ctx = (
+                _Ctx(module, (), {}) if is_default
+                else _Ctx(caller, caller.chains[id(call)], {})
+            )
+            self._visit(value, ctx, deeper, seen, missed, index)
+
+    def _call_sites(self, module: _Module, fn: _FuncDef) -> list[tuple[_Module, ast.Call]]:
+        """The calls of *fn*: by name in its own module (as the helper hop
+        reads a same-module helper), through an import in another."""
+        sites: list[tuple[_Module, ast.Call]] = []
+        for caller, call in self._calls_by_name.get(fn.name, ()):
+            if caller is module:
+                sites.append((caller, call))
+                continue
+            target = self._callee(caller, call)
+            if target is not None and any(f is fn for f in target[1]):
+                sites.append((caller, call))
+        return sites
+
+    def _visit_call(
+        self, expr: ast.Call, ctx: _Ctx, budget: _Budget,
+        seen: set[tuple[int, int, int, int | None]], missed: dict[str, str],
+        index: int | None,
+    ) -> None:
+        where = f"{ctx.module.rel}:{expr.lineno} {ast.unparse(expr.func)[:60]}(...)"
+        if _callee_name(expr) in _ENDPOINT_FACTORIES:
+            return
+        target = self._callee(ctx.module, expr)
+        if target is None:
+            reason = "helper_not_located" if isinstance(expr.func, ast.Name) else "computed"
+            missed.setdefault(reason, where)
+            return
+        owner, definitions = target
+        if owner is not ctx.module:
+            if budget.helpers == 0:
+                missed.setdefault("helper_beyond_one_level", where)
+                return
+            budget = _Budget(budget.parameters, budget.helpers - 1)
+        for fn in definitions:
+            self._read_returns(expr, ctx, owner, fn, budget, seen, missed, index, where)
+
+    def _read_returns(
+        self, expr: ast.Call, ctx: _Ctx, owner: _Module, fn: _FuncDef,
+        budget: _Budget, seen: set[tuple[int, int, int, int | None]],
+        missed: dict[str, str], index: int | None, where: str,
+    ) -> None:
+        """Visit each value *fn* returns, its parameters bound to what the
+        call *expr* passes."""
+        bound: dict[str, tuple[ast.expr, _Ctx] | None] = {}
+        for parameter in _parameters(fn):
+            argument = _bound_argument(fn, expr, parameter)
+            if argument is None:
+                bound[parameter] = None
+            else:
+                value, is_default = argument
+                bound[parameter] = (value, _Ctx(owner, (), {}) if is_default else ctx)
+        if id(fn) in self._active:
+            return  # a helper that calls itself: its other returns are being read
+        inner = _Ctx(owner, owner.def_chains[id(fn)], bound)
+        returns = [
+            node.value for node in _own_nodes(fn)
+            if isinstance(node, ast.Return) and node.value is not None
+        ]
+        if not returns:
+            missed.setdefault("computed", f"{where}: returns no value")
+        self._active.add(id(fn))
+        try:
+            for value in returns:
+                self._visit(value, inner, budget, seen, missed, index)
+        finally:
+            self._active.discard(id(fn))
+
+    def _callee(
+        self, module: _Module, call: ast.Call,
+    ) -> tuple[_Module, list[_FuncDef]] | None:
+        """The module and the definitions *call* can call, when the tree
+        defines them."""
+        func = call.func
+        if isinstance(func, ast.Name):
+            if func.id in module.functions:
+                return module, module.functions[func.id]
+            imported = module.imports.get(func.id)
+            return None if imported is None else self._imported_function(*imported)
+        if isinstance(func, ast.Attribute):
+            if isinstance(func.value, ast.Name) and func.value.id in module.imports:
+                owner = self._imported_module(*module.imports[func.value.id])
+                if owner is not None and func.attr in owner.functions:
+                    return owner, owner.functions[func.attr]
+            if func.attr in module.functions:
+                return module, module.functions[func.attr]
+        return None
+
+    def _imported_function(
+        self, dotted: str, name: str | None,
+    ) -> tuple[_Module, list[_FuncDef]] | None:
+        owner = self.by_dotted.get(dotted)
+        if owner is None or name is None:
+            return None
+        if name in owner.functions:
+            return owner, owner.functions[name]
+        # One re-export: ``from .base import make_symbol_id`` in a package.
+        again = owner.imports.get(name)
+        if again is not None and again[1] is not None:
+            source = self.by_dotted.get(again[0])
+            if source is not None and again[1] in source.functions:
+                return source, source.functions[again[1]]
+        return None
+
+    def _imported_module(self, dotted: str, name: str | None) -> _Module | None:
+        return self.by_dotted.get(dotted if name is None else f"{dotted}.{name}")
