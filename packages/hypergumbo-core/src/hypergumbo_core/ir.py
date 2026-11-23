@@ -1087,8 +1087,16 @@ def format_legacy_dst(ref: ExternalRef) -> str:
     composes its external-target legacy dst from this helper so the
     format is uniform across languages — no per-language segment count or
     class-embedded-in-module variants (WI-mafik).
+
+    The name slot is colon-free (ADR-0036 Ruling 1): a ``:`` in the name
+    folds to ``.``, as :func:`sanitize_id_name_segment` does in every id
+    factory; the ref keeps the name as written. A Bazel label ``//x:a:b``
+    reached here with name ``a:b`` and made a dst that is no id.
     """
-    return f"{ref.lang}:{ref.module_path}:0-0:{ref.name}:unresolved"
+    return (
+        f"{ref.lang}:{ref.module_path}:0-0:"
+        f"{sanitize_id_name_segment(ref.name)}:unresolved"
+    )
 
 
 @functools.lru_cache(maxsize=1)
