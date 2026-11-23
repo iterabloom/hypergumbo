@@ -9,7 +9,9 @@ in the analyzer, from the tree (``_jsts_hashed_text``):
 - A multi-line intersection written one member per line opens with a ``&``
   (``x:\\n  & A\\n  & B``): the same type as ``A & B``. ``layout_free`` cannot
   drop a leading ``&`` (in Rust, ``(\\n &self`` is a reference), but the tree
-  marks it: an ``intersection_type`` whose first child is the ``&``.
+  marks it: an ``intersection_type`` whose first child is the ``&``. A
+  leading union ``|`` likewise (``layout_free`` drops one only after
+  ``( < [ { , : =``, not after a function type's ``=>``).
 - A regex literal in a hashed default value keeps its whitespace: it is
   meaning (``/a b/`` is not ``/a  b/``), and ``layout_free`` reads a ``/`` as
   punctuation, so the analyzer writes each whitespace character of the
@@ -210,3 +212,51 @@ def test_the_hashed_text_is_the_displayed_text_elsewhere() -> None:
         seen += 1
         assert pair[0] and pair[0] == pair[1]
     assert seen == 5
+
+
+_UNION_ONE_LINE = """\
+type A = {}; type B = {};
+export function cb(get: () => A | B): void {}
+export function cond<T>(x: T extends A ? A | B : B): void {}
+export class K { f: () => A | B; }
+export interface I { ip: (x: A) => A | B; }
+"""
+
+_UNION_LEADING = """\
+type A = {}; type B = {};
+export function cb(get: () =>
+  | A
+  | B): void {}
+export function cond<T>(x: T extends A ?
+  | A
+  | B : B): void {}
+export class K {
+  f: () =>
+    | A
+    | B;
+}
+export interface I {
+  ip: (x: A) =>
+    | A
+    | B;
+}
+"""
+
+
+def test_a_leading_union_bar_is_layout_after_any_token(tmp_path: Path) -> None:
+    """``layout_free`` drops a leading ``|`` only after ``( < [ { , : =``;
+    prettier also writes one after a function type's ``=>`` and a
+    conditional type's ``?``. The tree marks every one: a ``union_type``
+    whose first child is the ``|``."""
+    one_line = _ids(tmp_path, _UNION_ONE_LINE)
+    leading = _ids(tmp_path, _UNION_LEADING)
+    for name in ("cb", "cond", "K.f", "I.ip"):
+        assert one_line[name][0] is not None, name
+        assert "\n" in (leading[name][1] or ""), name  # reach: the display keeps the layout
+        assert one_line[name][0] == leading[name][0], name
+
+
+def test_a_union_member_is_not_layout(tmp_path: Path) -> None:
+    ids_ab = _ids(tmp_path, "type A = {}; type B = {};\nexport function cb(get: () => A | B): void {}\n")
+    ids_b = _ids(tmp_path, "type A = {}; type B = {};\nexport function cb(get: () => B): void {}\n")
+    assert ids_ab["cb"][0] != ids_b["cb"][0]
