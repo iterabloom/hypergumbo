@@ -18,3 +18,18 @@
     pr_ref:  # e7a3
     description: "WHAT. ADR-0036 Ruling 1: the id's name slot is the sanitized Symbol.name. PR #2198 records the mismatch count per producer on every run (validation_report.name_slot_stats). Besides JavaScript callbacks (own item) and event-sourcing raw colons (WI-dodom), these producers mismatch:\n- linkers/solidity_abi.py: slot func.<hash>, name abi_call:func (1,250 on openzeppelin). The hash is computed from path, line and function name, which the id already carries: an id-only fix.\n- vue.py directives: slot tag.directive, name the directive alone (255 on pretix). make_doc_symbol_ids mints the id and the stable id from one argument, so changing the id moves the stable id; setting name = tag:directive moves neither (not checked: whether a later pass recomputes ids from the name).\n- Maven xml dependency/module: slot groupId.artifactId, name artifactId. Changing the slot moves nothing; changing the name moves the stable id.\n- websocket linker: slot connection-endpoint, name ws:connection. Stable-id inputs not checked.\n- json tsconfig entry: slot is the path, name the basename.\n- js-module-linker json file node: name is the basename without extension (a file-node naming inconsistency).\n\nASK. Fix each where no stable id moves; list the rest for the v15 bump. Promote the statistic to an error at 0. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # e7a3
     fields: {}  # e7a3
+- op: update  # 16ab
+  at: '2026-11-23T22:18:06Z'  # 16ab
+  by: agent  # 16ab
+  actor: jgstern_agent  # 16ab
+  clock: 2  # 16ab
+  nonce: 16ab  # 16ab
+  set:  # 16ab
+    status: done  # 16ab
+- op: discuss  # d031
+  at: '2026-11-23T22:18:06Z'  # d031
+  by: agent  # d031
+  actor: jgstern_agent  # d031
+  clock: 3  # d031
+  nonce: d031  # d031
+  message: "Fixed in PR #2347. Per producer on dev 49bc5c6e4 (name vs id name slot): solidity-abi stand-ins on openzeppelin: 1,250 nodes, name 'abi_call:length', slot 'abi_call.length'; Vue directives on koel: 2,315 nodes, name 'AiPromptBox:v-on:submit', slot 'AiPromptBox.v-on.submit' (pretix, the repository the item names, is not on this machine and was not re-run); Maven nodes on spring-petclinic: 24 nodes, 0 mismatches; websocket stand-ins (fixture): name 'ws:connection', slot 'ws.connection'; tsconfig file nodes: name and slot 'tsconfig.json'. On the eight repositories run on dev 49bc5c6e4, validation_report.name_slot_stats lists ONE mismatching producer, javascript (the _cb_<callee>@<column> callbacks, WI-bafaz): 16,885 mismatches in all, 6,356 of them on knex. Over 42 repositories the count went 49,820 -> 37,227, the rest all JavaScript callbacks. 'Promote the statistic to an error': done as far as an owner decision allows: a mismatch is now an id_format error (_check_name_slot_roundtrip) for every (producer, kind) except the one declared in KNOWN_NAME_SLOT_HOLES, (javascript, function), which waits on WI-bafaz; the table may only shrink (packages/hypergumbo-core/tests/test_name_slot_holes.py). The total is therefore NOT 0. id_format is 0 on all eight repositories. Fixes that moved an id went into stable-id scheme v18. Same-line twins that the fixes exposed are filed as WI-hugir-kubuk-ripig-fotuv-viviv-komir-kusis-hovil. Outputs: ~/hypergumbo_lab_notebook/idfive_11232026/closure/ (fixtures*.txt, trees_summary.txt, pair_check_dev.txt)."  # d031
