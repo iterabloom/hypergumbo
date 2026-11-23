@@ -1839,6 +1839,35 @@ def layout_free(text: str, *, separators: bool = False) -> str:
     return "".join(out)
 
 
+def without_layout(text: str) -> str:
+    """``text`` without the whitespace that is layout, and nothing else changed.
+
+    Read as :func:`layout_free` reads a text (:func:`_hash_tokens`: literals
+    whole, words, operators), then written with no whitespace between two
+    tokens except where whitespace is meaning: one space between two words
+    (``unsigned int``), between ``+ +`` / ``- -``, between two punctuation
+    tokens that would read as another token joined (``- >``), and between a
+    literal and a word (``'x' y``: ``y'x'`` would read a prime). Unlike :func:`layout_free` it adds no space, so a text with no
+    whitespace is returned as it is (``operator==``, ``doThing:with:``) and
+    only a text that holds whitespace can change (WI-sidus): ``group( 'ci' )``
+    -> ``group('ci')``, ``V ::\n  run`` -> ``V::run``.
+    """
+    if not any(ch.isspace() for ch in text):
+        return text
+    tokens = _hash_tokens(text)
+    out: list[str] = []
+    for index, cur in enumerate(tokens):
+        if index and cur[2]:
+            prev = tokens[index - 1]
+            if ((prev[1] == cur[1] == "W") or (prev[0] == cur[0] and cur[0] in ("+", "-"))
+                    or {prev[1], cur[1]} == {"L", "W"}
+                    or (prev[1] == cur[1] == "P"
+                        and [t[0] for t in _hash_tokens(prev[0] + cur[0])] != [prev[0], cur[0]])):
+                out.append(" ")
+        out.append(cur[0])
+    return "".join(out)
+
+
 def assemble_stable_id(
     kind: str,
     param_count: int,
@@ -1890,6 +1919,9 @@ def assemble_stable_id(
     """
     if names_layout_free:
         name, qualified_name = layout_free(name), layout_free(qualified_name)
+    # The modifiers and attributes a producer read from source (a just
+    # recipe's ``[group( 'ci' )]``) are hashed without their layout (WI-sidus).
+    decorators = without_layout(decorators)
     sig = (
         f"{kind}:{param_count}:{arity_flags}:{decorators}"
         f":{stable_id_hash_input(containing_stable_id)}:{name}:{qualified_name}:{occurrence_index}"

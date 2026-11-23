@@ -251,3 +251,21 @@ def test_swift_unbalanced_directives_do_not_fail() -> None:
             fns.append(n)
         stack.extend(n.children)
     assert [_swift_scope(n, src) for n in fns] == [["S"]]
+
+
+def test_a_rust_cfg_split_over_lines_keeps_the_id(tmp_path: Path) -> None:
+    """rustfmt splits a long ``#[cfg(...)]`` over lines with a trailing comma;
+    the guard's label is hashed with ``layout_free(separators=True)``, so the
+    comma is layout like the line breaks (WI-sidus)."""
+    def ids(text: str) -> dict[str, str | None]:
+        for old in tmp_path.iterdir():
+            old.unlink()
+        (tmp_path / "lib.rs").write_text(text)
+        return {s.name: s.stable_id for s in analyze_rust(tmp_path).symbols if s.kind == "function"}
+
+    one = ids('#[cfg(all(feature = "x", unix))]\npub fn g() {}\n')
+    split = ids('#[cfg(all(\n    feature = "x",\n    unix,\n))]\npub fn g() {}\n')
+    other = ids('#[cfg(any(feature = "x", unix))]\npub fn g() {}\n')
+    assert one["g"] is not None  # reach
+    assert one == split
+    assert one["g"] != other["g"]

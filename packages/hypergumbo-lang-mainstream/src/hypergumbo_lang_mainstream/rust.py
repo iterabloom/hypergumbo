@@ -1007,8 +1007,10 @@ _RUST_CFG_ATTRIBUTE = re.compile(r"#\s*\[\s*cfg\s*\(")
 
 def _rust_cfg_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """The ``#[cfg(...)]`` attributes written on ``node``, each as written in
-    canonical spacing (``layout_free``), sorted and joined by one space;
-    ``None`` when it has none (WI-kosug).
+    canonical spacing (``layout_free``, with ``separators``: the trailing
+    comma rustfmt writes when it splits a predicate over lines is layout,
+    WI-sidus), sorted and joined by one space; ``None`` when it has none
+    (WI-kosug).
 
     The predicate is hashed as written, not evaluated or reordered:
     ``#[cfg(any(a, b))]`` and ``#[cfg(any(b, a))]`` hash apart, and editing
@@ -1017,7 +1019,7 @@ def _rust_cfg_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     an inner ``#![cfg]``.
     """
     guards = sorted(
-        layout_free(text) for text in _preceding_attribute_texts(node, source)
+        layout_free(text, separators=True) for text in _preceding_attribute_texts(node, source)
         if _RUST_CFG_ATTRIBUTE.match(text)
     )
     return " ".join(guards) if guards else None
