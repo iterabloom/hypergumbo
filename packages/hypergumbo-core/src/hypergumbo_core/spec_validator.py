@@ -86,14 +86,14 @@ named checks found nothing", not "no defects"), ``stable_id_stats``
 (``compute_stable_id_stats``: the ALL-Symbols stable_id population,
 collision rate, None cohort and backstop floor cohort) and
 ``name_slot_stats`` (``compute_name_slot_stats``: how many node ids have a
-name slot that is not the sanitized ``Symbol.name``, ADR-0036 Ruling 1, by
-producer). The last two are measurements: they emit no
+name slot that is neither the sanitized ``Symbol.name`` nor that name with
+``@<the node's start column>``, ADR-0036 Ruling 1 as amended, by producer;
+and how many carry the suffix). The last two are measurements: they emit no
 ``ValidationViolation``. The name-slot round-trip is ALSO a check,
 ``_check_name_slot_roundtrip``: a mismatch is an ``id_format`` error unless
-its (producer, kind) is a declared hole in ``KNOWN_NAME_SLOT_HOLES`` (the
-families still counted in the thousands on a JavaScript repository, each with
-its reason and tracker item; the table only shrinks). The statistic keeps
-counting the holes.
+its (producer, kind) is a declared hole in ``KNOWN_NAME_SLOT_HOLES``. That
+table is empty and only shrinks: the JavaScript anonymous callback's
+``@<column>`` was its last entry until the suffix was ruled legal.
 
 One output shape
 ----------------
@@ -168,7 +168,7 @@ from .identity_schemes import (
     SYMBOL_FINGERPRINT_PREFIX,
 )
 
-VALIDATION_REPORT_SCHEMA_VERSION = "0.5"  # 0.5: name_slot_stats (ADR-0036 Ruling 1 round-trip, additive); 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
+VALIDATION_REPORT_SCHEMA_VERSION = "0.6"  # 0.6: name_slot_stats.column_suffixed (the @<column> form of ADR-0036 Ruling 1, additive); 0.5: name_slot_stats (ADR-0036 Ruling 1 round-trip, additive); 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
 # Stable enum-like sets. Mirrored in the ADR-0033 §"Output format" table
 # and in `ValidationViolation.severity` / `validator_class` axis annotations.
@@ -226,7 +226,8 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
      "description": "Symbol.id kind-slot matches Symbol.kind and is a "
                     "registered kind; span/name well-formed."},
     {"check": "name_slot_roundtrip", "validator_class": "id_format",
-     "description": "Symbol.id name slot is the sanitized Symbol.name "
+     "description": "Symbol.id name slot is the sanitized Symbol.name, or "
+                    "that name with @<the node's start column> "
                     "(ADR-0036 Ruling 1) unless the node's (producer, kind) "
                     "is a declared hole in KNOWN_NAME_SLOT_HOLES (content-gated "
                     "on a non-empty run set)."},
@@ -2348,12 +2349,17 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 # Name-slot round-trip (ADR-0036 Ruling 1): a statistic and a check
 # ----------------------------------------------------------------------
 #
-# Ruling 1: the id's name slot is ``sanitize_id_name_segment(Symbol.name)``.
+# Ruling 1: the id's name slot is ``sanitize_id_name_segment(Symbol.name)``,
+# or (amended 2026-11-23, owner) that name followed by ``@<column>``, the
+# node's start column: what tells two nodes of one file with one name, one
+# kind and one line apart. JavaScript anonymous callbacks always carry it
+# (``_cb_forEach@33``); a same-line twin of a declared name gets it from
+# ``analyze.base.distinguish_same_line_id``. The suffix is legal only when it
+# IS ``Symbol.span.start_col``; any other suffix is a mismatch.
 # Two readings of one comparison (``_name_slot_mismatch``):
 #
 # * ``validation_report.name_slot_stats`` counts every mismatch, by producer,
-#   on every run (a statistic: the families below still number in the
-#   thousands on a JavaScript repository).
+#   on every run, and the ids in the suffixed form (``column_suffixed``).
 # * ``_check_name_slot_roundtrip`` reports a mismatch as an ``id_format``
 #   ERROR, the severity of Ruling 2's kind-slot checks, unless its
 #   (producer, kind) is a DECLARED HOLE in ``KNOWN_NAME_SLOT_HOLES``. A
@@ -2388,35 +2394,59 @@ def _name_slot_producer(sym: Any) -> str:
 #: mismatch from a listed pair is a declared hole, counted in
 #: ``name_slot_stats`` and not reported as a violation. The producer is
 #: ``_name_slot_producer``'s: the originating pass id. Shrink-only (see above).
-KNOWN_NAME_SLOT_HOLES: dict[tuple[str, str], tuple[str, str]] = {
-    # The slot carries ``@<column>`` so two same-callee callbacks on one line
-    # stay apart; renaming the node moves its stable id (owner decision).
-    ("javascript", "function"): (
-        "anonymous callback: slot `_cb_<callee>@<col>`, name `_cb_<callee>`",
-        "WI-bafaz",
-    ),
-}
+#: EMPTY since 2026-11-23: its last entry, the JavaScript anonymous callback's
+#: ``_cb_<callee>@<col>``, is the ruled grammar now (``_column_suffix_is_legal``).
+KNOWN_NAME_SLOT_HOLES: dict[tuple[str, str], tuple[str, str]] = {}
 
 
-def _name_slot_mismatch(sym: Any) -> Optional[tuple[str, str]]:
-    """The node's ``(producer, kind)`` when its id's name slot is not its
-    sanitized name, else ``None``.
+def _expected_name_slots(sym: Any) -> tuple[str, Optional[str]]:
+    """The two legal name slots of ``sym``: its sanitized name, and that name
+    with ``@<start column>`` (``None`` when the node has no span).
 
-    ``None`` too for what the round-trip does not judge: a non-string id, an
-    id with fewer than five slots (``_check_id_format`` reports it) and the
-    file pseudo-symbol (exempt, see ``compute_name_slot_stats``). The slot is
-    read from the right, as Ruling 1 prescribes.
+    ADR-0036 Ruling 1 as amended 2026-11-23: the suffix tells two nodes of one
+    file with one name, one kind and one line apart, and it must BE the
+    node's start column, so a slot cannot carry an arbitrary number.
     """
+    name = getattr(sym, "name", None)
+    plain = sanitize_id_name_segment(name if isinstance(name, str) else "")
+    column = getattr(getattr(sym, "span", None), "start_col", None)
+    if isinstance(column, int) and not isinstance(column, bool) and column >= 0:
+        return plain, f"{plain}@{column}"
+    return plain, None
+
+
+def _judged_name_slot(sym: Any) -> Optional[str]:
+    """The id's name slot, read from the right as Ruling 1 prescribes, or
+    ``None`` for what the round-trip does not judge: a non-string id, an id
+    with fewer than five slots (``_check_id_format`` reports it) and the file
+    pseudo-symbol (exempt, see ``compute_name_slot_stats``)."""
     from .analyze.file_records import is_file_pseudo_symbol
 
     sym_id = getattr(sym, "id", None)
     if not isinstance(sym_id, str) or sym_id.count(":") < 4 or is_file_pseudo_symbol(sym):
         return None
-    name = getattr(sym, "name", None)
-    name = name if isinstance(name, str) else ""
-    if sym_id.rsplit(":", 2)[1] == sanitize_id_name_segment(name):
+    return sym_id.rsplit(":", 2)[1]
+
+
+def _name_slot_mismatch(sym: Any) -> Optional[tuple[str, str]]:
+    """The node's ``(producer, kind)`` when its id's name slot is neither its
+    sanitized name nor that name with ``@<its start column>``, else ``None``.
+
+    ``None`` too for what the round-trip does not judge
+    (:func:`_judged_name_slot`).
+    """
+    slot = _judged_name_slot(sym)
+    if slot is None or slot in _expected_name_slots(sym):
         return None
     return _name_slot_producer(sym), str(getattr(sym, "kind", None))
+
+
+def _has_column_suffix(sym: Any) -> bool:
+    """True when the id's name slot is the name with ``@<start column>`` and
+    not the name itself (a name that ends in ``@7`` round-trips as itself)."""
+    slot = _judged_name_slot(sym)
+    plain, suffixed = _expected_name_slots(sym)
+    return slot is not None and slot != plain and slot == suffixed
 
 
 def _check_name_slot_roundtrip(
@@ -2441,7 +2471,8 @@ def _check_name_slot_roundtrip(
         if pair is None or pair in declared:
             continue
         sym_id = sym.id
-        expected = sanitize_id_name_segment(sym.name if isinstance(sym.name, str) else "")
+        plain, suffixed = _expected_name_slots(sym)
+        expected = plain if suffixed is None else f"{plain} or {suffixed}"
         violations.append(ValidationViolation(
             severity=_ID_ROUNDTRIP_SEVERITY,
             validator_class="id_format",
@@ -2451,7 +2482,8 @@ def _check_name_slot_roundtrip(
             expected=expected,
             message=(
                 f"Symbol.id name slot {sym_id.rsplit(':', 2)[1]!r} is not the "
-                f"sanitized Symbol.name {expected!r} (ADR-0036 Ruling 1; "
+                f"sanitized Symbol.name {plain!r}, nor that name with "
+                "@<the node's start column> (ADR-0036 Ruling 1; "
                 f"producer {pair[0]!r}, kind {pair[1]!r}). Mint the id with "
                 "make_symbol_id(..., name, ...) from the Symbol's own name."
             ),
@@ -2473,6 +2505,10 @@ def compute_name_slot_stats(symbols: Iterable[Any]) -> dict[str, Any]:
     the name slot to the literal ``file`` (Ruling 3's ``1-1:file:file``) while
     ``Symbol.name`` holds the path. No other sentinel defines a name slot.
 
+    ``column_suffixed`` counts the checked ids whose slot is the name with
+    ``@<start column>`` (the amended Ruling 1's second legal form): they are
+    not mismatches, and the count says how many ids lean on the suffix.
+
     ``by_producer`` groups the mismatches by the node's originating pass id
     (its language when ``origin`` is empty): mismatches, ids checked for that
     producer, and the lexicographically smallest mismatching id with its name.
@@ -2485,6 +2521,7 @@ def compute_name_slot_stats(symbols: Iterable[Any]) -> dict[str, Any]:
     checked = 0
     exempt = 0
     not_parsed = 0
+    column_suffixed = 0
     checked_by: dict[str, int] = {}
     mismatched_by: dict[str, int] = {}
     example_by: dict[str, tuple[str, str]] = {}
@@ -2502,6 +2539,8 @@ def compute_name_slot_stats(symbols: Iterable[Any]) -> dict[str, Any]:
         producer = _name_slot_producer(sym)
         checked_by[producer] = checked_by.get(producer, 0) + 1
         if _name_slot_mismatch(sym) is None:
+            if _has_column_suffix(sym):
+                column_suffixed += 1
             continue
         name = getattr(sym, "name", None)
         name = name if isinstance(name, str) else ""
@@ -2515,6 +2554,7 @@ def compute_name_slot_stats(symbols: Iterable[Any]) -> dict[str, Any]:
         "exempt_file_nodes": exempt,
         "not_parsed": not_parsed,
         "mismatched": sum(mismatched_by.values()),
+        "column_suffixed": column_suffixed,
         "by_producer": [
             {
                 "producer": p,

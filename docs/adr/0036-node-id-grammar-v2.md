@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0036: node.id Grammar v2 — Anchored Parsing, Colon Policy, Kind-Slot Purity
 
-- Status: Accepted. Enforced as §Enforcement lists: Ruling 2 and Ruling 3 (as Ruling 3's amendment reads it) are validator checks; the Ruling-1 name-slot round-trip is measured on every run (`validation_report.name_slot_stats`, a count by producer, file pseudo-symbols exempt) and a mismatch is an error unless its (producer, kind) is a declared hole (`KNOWN_NAME_SLOT_HOLES`)
+- Status: Accepted. Enforced as §Enforcement lists: Ruling 2 and Ruling 3 (as Ruling 3's amendment reads it) are validator checks; the Ruling-1 name-slot round-trip is measured on every run (`validation_report.name_slot_stats`, a count by producer, file pseudo-symbols exempt) and a mismatch is an error unless its (producer, kind) is a declared hole (`KNOWN_NAME_SLOT_HOLES`, empty since 2026-11-23). Ruling 1 was amended that day: the name slot may carry `@<column>`, the node's start column
 - Date: 2026-06-10
 
 - Supersedes: ADR-0034 (partial — reviewer-checklist item 5's claim that a kind-slot round-trip check already existed; the shipped `id_format` gate is shape-only, and Ruling 2's round-trip validator here is the actual instrument). This ADR tightens the grammar whose factory discipline ADR-0034 established; ADR-0034's core factory discipline remains in force.
@@ -73,7 +73,7 @@ grammar with per-slot colon rules:
 | `lang` | MUST be colon-free | lowercase identifier, member of the language catalog |
 | `path` | **colon-tolerant** | any non-empty string; Rust `::` module paths, Windows drive prefixes etc. keep their native form |
 | `span` | MUST be colon-free | `\d+-\d+` |
-| `name` | MUST be colon-free | sanitized per the rule below; may be empty |
+| `name` | MUST be colon-free | sanitized per the rule below, optionally followed by `@<column>` (amendment below); may be empty |
 | `kind` | MUST be colon-free | lowercase identifier, member of the symbol-kind registry (Ruling 2) |
 
 **Name sanitization.** Names containing `:` are sanitized `:` → `.` in the ID name slot
@@ -83,6 +83,44 @@ ADR-0032). The single `.` replacement supersedes the three divergent per-site ch
 from 6.0.0 (`.`, `_`, ` `); existing sites migrate to the canonical rule as the
 factories absorb it. Consumers that need the exact name MUST read `Symbol.name`, never
 re-derive it from the ID.
+
+**Amendment — the `@<column>` suffix (owner, 2026-11-23).** The five slots cannot tell
+apart two nodes of one file that have one name and one kind on one line: two Swift
+initialisers (`init() {}; init() where K == BasicCodingKey {}`), a Nix binding and the
+attribute inside its value (`tutorial = mkDevShell { tutorial = true; };`), two
+`<span v-if>` on one template line, two anonymous JavaScript callbacks of one callee
+(`p.then(a => a, e => e)`). The owner's ruling: the name slot may carry `@<column>`
+after the sanitized name, where `<column>` is the node's start column
+(`Symbol.span.start_col`, in decimal). No sixth slot is added, and names are not
+qualified to make them differ. So the name slot is one of two strings:
+
+- `sanitize_id_name_segment(Symbol.name)`, or
+- that string followed by `@` and the node's start column.
+
+Who writes the suffix:
+
+- a producer whose names are synthetic writes it on every such node: JavaScript and
+  TypeScript anonymous callbacks (`_cb_forEach@33`, name `_cb_forEach`), as they did
+  before the ruling;
+- for declared names, only a twin gets it. The first node to claim an id keeps the
+  plain id; a later node of the same file with that id at ANOTHER start column gets
+  its own column (`analyze.base.distinguish_same_line_id`, which
+  `FileAnalysis.add_symbol` applies). "First" is the producer's walk order, which is
+  source order for a tree walk. A node id is a location key and already moves with
+  any edit of its line; a twin inserted ahead of another renames it the same way;
+- a later node with that id at the SAME start column is one node emitted twice, not
+  a twin. It is not suffixed, and the node-id uniqueness check reports it.
+
+The suffix is legal only when it IS the node's start column: a slot ending in another
+number, or `@<column>` on a node without a span, is a name-slot mismatch. A name that
+itself ends in `@7` round-trips as itself. A consumer holding only an id cannot tell
+`user@7` the name from `user` at column 7, the way it cannot tell a literal `.` from a
+sanitized `:`; it reads `Symbol.name`. The suffix is in the node id only: no stable id
+hashes it.
+
+Producers routed through the twin rule on the day of the ruling: Swift, Nix and Vue
+(the three measured over 42 trees). Any other producer's same-line twins still share
+an id and are reported by the uniqueness check (`node_id_uniqueness`, an error).
 
 **Anchored parsing.** Because exactly one slot is colon-tolerant, parsing is anchored
 from both ends and is deterministic without escaping:
@@ -210,7 +248,7 @@ Three layers, extending ADR-0034's:
    | The name slot is non-empty | `_check_id_roundtrip` | error |
    | Ruling 3, as its amendment reads it: the file triple's span is `1-1`; span `start <= end` | `_check_id_roundtrip` | error |
    | Ruling 3: no path slot is `<unknown>` | `_check_id_roundtrip` | warning |
-   | Ruling 1: the name slot equals `sanitize_id_name_segment(Symbol.name)` | `_check_name_slot_roundtrip`, outside the declared holes; every mismatch also counted in `validation_report.name_slot_stats` (`compute_name_slot_stats`) | error |
+   | Ruling 1: the name slot equals `sanitize_id_name_segment(Symbol.name)`, or that name followed by `@` and the node's start column | `_check_name_slot_roundtrip`, outside the declared holes; every mismatch also counted in `validation_report.name_slot_stats` (`compute_name_slot_stats`), with the count of suffixed ids | error |
 
    The membership half of Ruling 2 is checked on the id's kind slot rather
    than on `node.kind`, because `axis_conformance` already checks `node.kind`
@@ -228,7 +266,8 @@ Three layers, extending ADR-0034's:
    slot: every `external_symbol`, the `0-0` module and include-target stand-ins
    among them, builds its name slot from its own name, and is checked like
    every other node. The block reports `ids_checked`,
-   `exempt_file_nodes`, `not_parsed`, `mismatched`, and `by_producer`: for each
+   `exempt_file_nodes`, `not_parsed`, `mismatched`, `column_suffixed` (checked
+   ids in the `@<column>` form: legal, not mismatches) and `by_producer`: for each
    producer (the node's originating pass id, or its language when `origin` is
    empty), its mismatches, its checked ids, and its smallest mismatching id
    with that node's name. Producers are ordered by mismatches, then name, and
@@ -240,13 +279,15 @@ Three layers, extending ADR-0034's:
    FK checks) reports each mismatching node as an `id_format` error, the
    severity of Ruling 2's checks, unless the node's (producer, kind) is
    declared in `spec_validator.KNOWN_NAME_SLOT_HOLES`. Each declaration names
-   why it stands and its tracker item (JavaScript anonymous callbacks,
-   `_cb_forEach@33` in the slot and `_cb_forEach` in `Symbol.name`: 6,356 of
-   knex's 6,361 mismatches). The table is shrink-only, the way
+   why it stands and its tracker item. The table is EMPTY since 2026-11-23:
+   its last entry was the JavaScript anonymous callback (`_cb_forEach@33` in
+   the slot and `_cb_forEach` in `Symbol.name`: 6,356 of knex's 6,361
+   mismatches), which the amendment to Ruling 1 made the grammar. The table
+   is shrink-only, the way
    `KNOWN_KIND_SLOT_HOLES` is: `tests/test_name_slot_holes.py` runs each
    declared producer on a fixture that mints its mismatch and fails on an
    entry without a fixture, on an entry whose fixture no longer mismatches,
-   and on a table longer than its ceiling. A producer nobody declared that
+   and on a table longer than its ceiling (0). A producer nobody declared that
    breaks the grammar is reported on its first run; the run does not fail
    (ADR-0033's warn-not-fail default). The `<unknown>`
    path-slot warning becomes an error when its producers stop emitting an edge
@@ -313,6 +354,9 @@ slot is `file` (audit-findings 0005).
 - **Name sanitization is lossy by design.** A consumer holding only an ID cannot
   distinguish a literal `.` from a sanitized `:` in the name slot. Accepted: fidelity
   lives in `Symbol.name`; the ID is an address.
+- **The `@<column>` suffix is ambiguous to a consumer holding only an ID** (Ruling 1's
+  amendment): `user@7` is the name `user@7` or the name `user` at column 7. Accepted
+  for the same reason: read `Symbol.name`.
 - **Naive `split(":")` consumers must move to anchored parsing.** Internal consumers
   already mostly use the last-3-tokens shape; external consumers get the grammar
   spelled out here.
@@ -345,6 +389,11 @@ slot is `file` (audit-findings 0005).
   kind-slot split-out (22 nodes). Same purity violation, different producer and
   different meta key (`framework_role` per ADR-0027); resolved under its own item in
   conformance with Ruling 2.
+
+- `WI-bafaz-motaf-jadim-zasam-vanot-tidip-bofav-luhaj` and
+  `WI-hugir-kubuk-ripig-fotuv-viviv-komir-kusis-hovil` — the JavaScript callback's
+  `@<column>` and the same-line twins of Swift, Nix and Vue. **Ruled by Ruling 1's
+  amendment** (owner, 2026-11-23).
 
 ## References
 

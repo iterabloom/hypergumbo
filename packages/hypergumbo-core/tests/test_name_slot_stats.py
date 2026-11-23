@@ -2,17 +2,19 @@
 """``validation_report.name_slot_stats``: the ADR-0036 Ruling-1 name-slot measurement.
 
 Ruling 1 makes a node id's NAME slot ``sanitize_id_name_segment(Symbol.name)``
-(``:`` becomes ``.``, nothing else). The validator reports, per run, how many
-ids do not round-trip and which producers mint them, as a statistic rather than
-one violation per node: thousands of JavaScript anonymous callbacks
-(``_cb_forEach@16`` in the slot, ``_cb_forEach`` in the name) would otherwise
-bury every other entry of the report.
+(``:`` becomes ``.``, nothing else), optionally followed by ``@<column>``, the
+node's start column (amended 2026-11-23: JavaScript anonymous callbacks,
+``_cb_forEach@16`` in the slot and ``_cb_forEach`` in the name, and same-line
+twins). The validator reports, per run, how many ids do not round-trip and
+which producers mint them, and how many carry the suffix.
 
 The fixtures below are one node per shape the measurement must see: a
 round-tripping node, a colon name that round-trips through the sanitizer, the
 file pseudo-symbol (exempt: the grammar fixes its name slot to ``file``), a
-manifest entry of kind ``file`` (not exempt), a suffixed slot, a raw colon in
-the slot, a prefixed slot, an external stand-in, and an id too short to parse.
+manifest entry of kind ``file`` (not exempt), a slot suffixed with the node's
+start column (legal), a slot suffixed with another number (a mismatch), a raw
+colon in the slot, a prefixed slot, an external stand-in, and an id too short
+to parse.
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.ir import Span
 from hypergumbo_core.spec_validator import (
     _NAME_SLOT_PRODUCER_CAP,
     build_validation_report,
@@ -30,10 +33,14 @@ from hypergumbo_core.spec_validator import (
 
 
 def _sym(sym_id: str, name: Any, kind: str, origin: Any = None,
-         language: Any = None) -> SimpleNamespace:
-    return SimpleNamespace(
+         language: Any = None, col: Any = None) -> SimpleNamespace:
+    """A node; ``col`` gives it a span that starts at that column."""
+    sym = SimpleNamespace(
         id=sym_id, name=name, kind=kind, origin=origin, language=language,
     )
+    if col is not None:
+        sym.span = Span(start_line=2, end_line=4, start_col=col, end_col=col + 1)
+    return sym
 
 
 def _shapes() -> list[SimpleNamespace]:
@@ -51,9 +58,12 @@ def _shapes() -> list[SimpleNamespace]:
         _sym("python:a.py:1-1:file:file", "a.py", "file", ["python"], "python"),
         # a manifest entry of kind ``file``: NOT the pseudo-symbol, so checked
         _sym("json:package.json:3-3:main.js:file", "main", "file", ["json"], "json"),
-        # suffixed slot
+        # slot suffixed with the node's start column: the legal second form
         _sym("javascript:app.js:2-4:_cb_forEach@16:function", "_cb_forEach",
-             "function", ["javascript"], "javascript"),
+             "function", ["javascript"], "javascript", col=16),
+        # slot suffixed with a number that is not the start column
+        _sym("javascript:app.js:5-9:_cb_then@3:function", "_cb_then",
+             "function", ["javascript"], "javascript", col=9),
         # raw colon in the slot (the right-anchored parse reads ``focus``)
         _sym("javascript:app.js:9-9:results:focus:function", "results:focus",
              "function", ["event-sourcing-linker"], "javascript"),
@@ -67,16 +77,17 @@ def _shapes() -> list[SimpleNamespace]:
 
 def test_counts_each_shape() -> None:
     stats = compute_name_slot_stats(_shapes())
-    assert stats["ids_checked"] == 7
+    assert stats["ids_checked"] == 8
     assert stats["exempt_file_nodes"] == 1
     assert stats["not_parsed"] == 1
     assert stats["mismatched"] == 4
+    assert stats["column_suffixed"] == 1
     by = {p["producer"]: p for p in stats["by_producer"]}
     assert set(by) == {"javascript", "event-sourcing-linker", "vue", "json"}
     assert by["javascript"]["mismatched"] == 1
-    assert by["javascript"]["checked"] == 1
-    assert by["javascript"]["example_id"].endswith(":_cb_forEach@16:function")
-    assert by["javascript"]["example_name"] == "_cb_forEach"
+    assert by["javascript"]["checked"] == 2
+    assert by["javascript"]["example_id"].endswith(":_cb_then@3:function")
+    assert by["javascript"]["example_name"] == "_cb_then"
     assert by["event-sourcing-linker"]["example_name"] == "results:focus"
     assert by["vue"]["example_name"] == "v-bind:boxHeight"
     assert by["json"]["example_id"] == "json:package.json:3-3:main.js:file"
@@ -117,6 +128,7 @@ def test_producer_list_is_capped_and_the_cut_is_reported() -> None:
 
 
 def test_order_and_examples_do_not_depend_on_input_order() -> None:
+    # two more suffixed slots on nodes with no span: no column to confirm
     syms = _shapes() + [
         _sym("javascript:b.js:5-9:_cb_then@3:function", "_cb_then", "function",
              ["javascript"], "javascript"),
@@ -141,7 +153,7 @@ def test_report_carries_the_block() -> None:
     assert build_validation_report([])["name_slot_stats"] is None
 
 
-def test_emitted_map_counts_a_javascript_anonymous_callback(tmp_path: Path) -> None:
+def test_emitted_map_counts_a_javascript_anonymous_callback_as_suffixed(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.js").write_text(
@@ -166,8 +178,11 @@ def test_emitted_map_counts_a_javascript_anonymous_callback(tmp_path: Path) -> N
         == len(bm["nodes"])
     )
     assert stats["exempt_file_nodes"] >= 1
-    by = {p["producer"]: p for p in stats["by_producer"]}
-    assert by["javascript"]["mismatched"] >= len(callbacks)
+    assert all("@" in n["id"].rsplit(":", 2)[1] for n in callbacks)
+    assert stats["column_suffixed"] == len(callbacks)
+    assert stats["mismatched"] == 0
+    assert stats["by_producer"] == []
+    assert bm["validation_report"]["violations_by_class"]["id_format"] == 0
 
 
 # ----------------------------------------------------------------------
@@ -184,7 +199,7 @@ def test_the_check_reports_an_undeclared_mismatch_as_an_id_format_error() -> Non
     # the four mismatching shapes; round-trips, the file node and the short id
     # raise nothing
     assert sorted(v.record_id for v in violations) == sorted([
-        "javascript:app.js:2-4:_cb_forEach@16:function",
+        "javascript:app.js:5-9:_cb_then@3:function",
         "javascript:app.js:9-9:results:focus:function",
         "json:package.json:3-3:main.js:file",
         "vue:x.vue:10-13:viz-node.v-bind.boxHeight:directive",
@@ -192,8 +207,8 @@ def test_the_check_reports_an_undeclared_mismatch_as_an_id_format_error() -> Non
     assert {(v.severity, v.validator_class, v.field_name) for v in violations} == {
         ("error", "id_format", "Symbol.id"),
     }
-    (cb,) = [v for v in violations if v.record_id.endswith("@16:function")]
-    assert (cb.observed, cb.expected) == ("_cb_forEach@16", "_cb_forEach")
+    (cb,) = [v for v in violations if v.record_id.endswith("@3:function")]
+    assert (cb.observed, cb.expected) == ("_cb_then@3", "_cb_then or _cb_then@9")
 
 
 def test_a_declared_hole_silences_its_own_pair_only() -> None:
@@ -222,10 +237,12 @@ def test_validate_ir_runs_the_check_with_the_declared_holes() -> None:
         validate_ir,
     )
 
-    assert ("javascript", "function") in KNOWN_NAME_SLOT_HOLES
+    assert KNOWN_NAME_SLOT_HOLES == {}
     found = sorted(v.record_id for v in validate_ir(_shapes(), [], _RUNS)
                    if "Ruling 1" in v.message)
-    # the callback is a declared hole; the event-sourcing node is not
+    # the callback suffixed with its own column is legal; the one suffixed
+    # with another number and the event-sourcing node are not
     assert "javascript:app.js:9-9:results:focus:function" in found
+    assert "javascript:app.js:5-9:_cb_then@3:function" in found
     assert not any("_cb_forEach" in r for r in found)
     assert found == sorted(v.record_id for v in _check_name_slot_roundtrip(_shapes(), _RUNS))

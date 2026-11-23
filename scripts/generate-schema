@@ -952,6 +952,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                     "exempt_file_nodes": {"type": "integer"},
                                     "not_parsed": {"type": "integer"},
                                     "mismatched": {"type": "integer"},
+                                    "column_suffixed": {"type": "integer"},
                                     "by_producer": {
                                         "type": "array",
                                         "items": {
@@ -982,7 +983,11 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             "ADR-0036 Ruling 1 name-slot round-trip, measured "
                             "per run: of the node ids parsed from the right "
                             "(ids_checked), how many have a name slot that is "
-                            "not sanitize_id_name_segment(name) (mismatched), "
+                            "neither sanitize_id_name_segment(name) nor that "
+                            "name followed by @ and the node's start column "
+                            "(mismatched), how many are in that @<column> form "
+                            "(column_suffixed; legal since the 2026-11-23 "
+                            "amendment), "
                             "by producer (the originating pass id, else the "
                             "language), most mismatches first, each with its "
                             "smallest mismatching id and that node's name; at "
