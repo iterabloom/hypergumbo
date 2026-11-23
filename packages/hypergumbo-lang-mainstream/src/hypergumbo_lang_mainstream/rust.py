@@ -1853,14 +1853,13 @@ def _extract_parsed_symbols(
                 ) if norm_sig else None
 
                 mod_path = _get_rust_mod_path(node, source)
-                # Canonical IDs forbid ``:`` in the name segment (ADR-0034
-                # id_format). Rust impl-method names
-                # use ``::`` (e.g., ``MyStruct::method``); the ID segment
-                # collapses to ``.`` while Symbol.name and Symbol.qualified_name
-                # keep the native ``::`` form.
-                id_name_segment = full_name.replace("::", ".")
+                # ADR-0036 Ruling 1: the name slot is the sanitized name.
+                # Rust impl-method names use ``::`` (``MyStruct::method``);
+                # make_symbol_id folds each ``:`` to ``.`` (``MyStruct..method``)
+                # as it does for every producer, while Symbol.name and
+                # Symbol.qualified_name keep the native ``::`` form.
                 symbol = Symbol(
-                    id=make_symbol_id("rust", str(file_path), start_line, end_line, id_name_segment, kind),
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
                     kind=kind,
                     language="rust",
@@ -1963,14 +1962,14 @@ def _extract_parsed_symbols(
                     ftype = node_text(ftype_node, source) if ftype_node is not None else None
                     f_modifiers = _extract_modifiers_rust(fdecl, source)
                     # Rust member names use ``::`` (like impl methods,
-                    # ``MyStruct::method``); the id name-segment collapses
-                    # ``::``->``.`` (canonical ids forbid ``:`` in the name slot).
+                    # ``MyStruct::method``); make_symbol_id sanitizes the name
+                    # slot (ADR-0036 Ruling 1: each ``:`` becomes ``.``).
                     f_full = f"{struct_name}::{fname}"
                     f_start = fdecl.start_point[0] + 1
                     f_end = fdecl.end_point[0] + 1
                     f_qualified = _make_rust_qualified_name(mod_path, struct_name, fname)
                     f_sym = Symbol(
-                        id=make_symbol_id("rust", str(file_path), f_start, f_end, f_full.replace("::", "."), "field"),
+                        id=make_symbol_id("rust", str(file_path), f_start, f_end, f_full, "field"),
                         name=f_full,
                         kind="field",
                         language="rust",
@@ -2175,16 +2174,15 @@ def _extract_parsed_symbols(
                     vname = node_text(vname_node, source)
                     v_modifiers = _extract_modifiers_rust(variant, source)
                     # ``::`` matches the impl-method convention and is one of
-                    # the containment linker's separators; the id name-segment
-                    # collapses ``::``->``.`` (canonical ids forbid ``:``
-                    # in the name slot).
+                    # the containment linker's separators; make_symbol_id
+                    # sanitizes the name slot (each ``:`` becomes ``.``).
                     v_full = f"{enum_name}::{vname}"
                     v_start = variant.start_point[0] + 1
                     v_end = variant.end_point[0] + 1
                     v_sym = Symbol(
                         id=make_symbol_id(
                             "rust", str(file_path), v_start, v_end,
-                            v_full.replace("::", "."), "field",
+                            v_full, "field",
                         ),
                         name=v_full,
                         kind="field",
@@ -2322,7 +2320,7 @@ def _extract_parsed_symbols(
                 sig_sym = Symbol(
                     id=make_symbol_id(
                         "rust", str(file_path), s_start, s_end,
-                        sig_full.replace("::", "."), "method",
+                        sig_full, "method",
                     ),
                     name=sig_full,
                     kind="method",

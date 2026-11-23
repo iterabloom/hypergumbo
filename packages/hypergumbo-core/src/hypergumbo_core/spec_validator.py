@@ -2400,11 +2400,6 @@ KNOWN_NAME_SLOT_HOLES: dict[tuple[str, str], tuple[str, str]] = {
         "removes this entry",
         "WI-funip",
     ),
-    # ``::`` in a name: the analyzer folds it to one ``.``, Ruling 1's
-    # sanitizer to ``..``. Which one is the rule is the owner's call; either
-    # fix moves node ids only.
-    ("rust", "method"): ("slot `A.run`, name `A::run` (`::` folded to `.`)", "WI-funip"),
-    ("rust", "field"): ("slot `A.command`, name `A::command`", "WI-funip"),
     ("perl", "function"): ("slot `run`, name `Demo::run`", "WI-funip"),
     # Scope in the slot, short name: the qualification is nowhere else
     # (qualified_name is empty), so the fix carries it to qualified_name.
