@@ -1644,3 +1644,33 @@ class TestStandInIdsNameTheirOwnKind:
     def test_no_two_symbols_share_an_id(self, tmp_path: Path) -> None:
         ids = [s.id for s in self._result(tmp_path).symbols]
         assert len(ids) == len(set(ids)), sorted(ids)
+
+
+class TestStandInIdsCarryTheHostFilesLanguage:
+    """WI-supar / ADR-0034: a Class B stand-in's id language slot is its
+    discovery language. The IPC stand-ins wrote the literal ``ipc``, no
+    language; ``discovery_language`` already named the file's."""
+
+    def test_send_and_receive_ids_start_with_their_files_language(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "renderer.ts").write_text(
+            "function sendLogin() {\n    ipcRenderer.send('user-login', {});\n}\n"
+        )
+        (tmp_path / "main.js").write_text(
+            "ipcMain.on('user-login', (event, data) => {\n    handleLogin(data);\n});\n"
+        )
+
+        result = link_ipc(tmp_path)
+
+        # Reach: one stand-in per site, one edge between them.
+        by_file = {Path(s.path).name: s for s in result.symbols}
+        assert sorted(by_file) == ["main.js", "renderer.ts"]
+        assert len(result.edges) == 1
+        for name, language in (("renderer.ts", "typescript"), ("main.js", "javascript")):
+            sym = by_file[name]
+            assert sym.discovery_language == language
+            assert sym.id.split(":", 1)[0] == language
+        assert (result.edges[0].src, result.edges[0].dst) == (
+            by_file["renderer.ts"].id, by_file["main.js"].id,
+        )

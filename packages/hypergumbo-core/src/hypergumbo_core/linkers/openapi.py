@@ -32,16 +32,29 @@ How It Works
 ------------
 1. Find non-test files named openapi, swagger or api with a .yaml/.yml/.json
    extension (any depth); keep those with an ``openapi: 3.x`` or
-   ``swagger: 2.x`` key or a ``paths`` mapping
+   ``swagger: 2.x`` key (a string or a YAML number) or a ``paths`` mapping
 2. Parse spec and extract path operations
 3. Create a ``kind="function"`` symbol per operation, tagged
    ``meta["framework_role"]="openapi_operation"`` (``language=None``,
-   ``protocol_origin="openapi"``)
+   ``protocol_origin="openapi"``, ``discovery_language`` the spec file's
+   language, ``yaml`` or ``json``, which is also the id's language slot:
+   ADR-0034's rule for a Class B stand-in; the slot read ``openapi``, no
+   language, and ``discovery_language`` was unset)
 4. Match to route symbols by path pattern and HTTP method
 5. Create ``references`` edges (spec operation → handler, tagged
    ``meta.ref_construct="openapi_operation"``; audit-findings 0016). The
    spec→handler direction is deliberate: it powers the forward slice from
    a spec, which an impl→contract ``implements`` edge would reverse.
+
+Activation
+----------
+The linker runs when the ``openapi`` or ``swagger`` framework is detected.
+No manifest names an OpenAPI document, so ``profile._detect_openapi`` detects
+``openapi`` from the documents themselves, with :func:`has_openapi_document`
+(the files this linker reads, as ``.proto`` files are the ``protobuf``
+framework for the gRPC linker); before it, only the Java ``io.swagger``
+dependency activated the linker and a repository with an ``openapi.yaml`` got
+no operation node.
 
 Why This Design
 ---------------
@@ -64,7 +77,7 @@ from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..routes import is_route, method_matches, method_token, route_of
-from ._text_filters import language_from_path
+from ..taxonomy import get_language
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -146,13 +159,19 @@ def _load_json(content: str) -> dict[str, Any] | None:
         return None
 
 
-def _is_openapi_spec(data: dict[str, Any]) -> bool:
-    """Check if the data looks like an OpenAPI/Swagger spec."""
+def _is_openapi_spec(data: object) -> bool:
+    """Check if the data looks like an OpenAPI/Swagger spec.
+
+    The version is read as text: unquoted, YAML loads ``swagger: 2.0`` and
+    ``openapi: 3.1`` as numbers, which have no ``startswith``.
+    """
+    if not isinstance(data, dict):
+        return False
     # OpenAPI 3.x
-    if "openapi" in data and data.get("openapi", "").startswith("3."):
+    if str(data.get("openapi", "")).startswith("3."):
         return True
     # Swagger 2.x
-    if "swagger" in data and data.get("swagger", "").startswith("2."):
+    if str(data.get("swagger", "")).startswith("2."):
         return True
     # Check for paths key (common to both)
     if "paths" in data and isinstance(data["paths"], dict):
@@ -169,16 +188,13 @@ def _find_openapi_files(root: Path) -> Iterator[Path]:
                 yield file_path
 
 
-def _parse_openapi_spec(file_path: Path) -> list[OpenApiOperation]:
-    """Parse an OpenAPI spec file and extract operations."""
-    operations: list[OpenApiOperation] = []
-
+def _load_openapi_document(file_path: Path) -> dict[str, Any] | None:
+    """The parsed document when ``file_path`` is an OpenAPI/Swagger spec, else None."""
     try:
         content = read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, IOError):  # pragma: no cover
-        return operations
+        return None
 
-    # Parse the file
     data: dict[str, Any] | None = None
     if file_path.suffix.lower() in (".yaml", ".yml"):
         data = _load_yaml(content)
@@ -186,6 +202,27 @@ def _parse_openapi_spec(file_path: Path) -> list[OpenApiOperation]:
         data = _load_json(content)
 
     if not data or not _is_openapi_spec(data):
+        return None
+    return data
+
+
+def has_openapi_document(root: Path) -> bool:
+    """Whether ``root`` holds a file this linker reads as an OpenAPI spec.
+
+    ``profile._detect_openapi`` asks it, so the ``openapi`` framework is
+    claimed exactly where this linker finds a document: a name the globs
+    catch whose content is no spec (an ``api.json`` of something else)
+    claims nothing.
+    """
+    return any(_load_openapi_document(p) is not None for p in _find_openapi_files(root))
+
+
+def _parse_openapi_spec(file_path: Path) -> list[OpenApiOperation]:
+    """Parse an OpenAPI spec file and extract operations."""
+    operations: list[OpenApiOperation] = []
+
+    data = _load_openapi_document(file_path)
+    if data is None:
         return operations
 
     # Extract paths
@@ -321,11 +358,17 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
 
     # Create symbols for each operation
     for op in all_operations:
+        # ADR-0031 / ADR-0034: the spec file's language (``yaml`` or
+        # ``json``; the globs admit no other suffix) is the stand-in's
+        # discovery language and its id's language slot. The slot read
+        # ``openapi``, which is no language.
+        spec_language = get_language(Path(op.file_path))
+        assert spec_language is not None  # .yaml / .yml / .json only
         # ADR-0036 Ruling 2: the kind slot is the Symbol's kind, not the
         # role word ``operation`` (which names a GraphQL construct in the
         # registry). The factory sanitizes the name slot.
         symbol_id = make_symbol_id(
-            "openapi", op.file_path, op.line, op.line,
+            spec_language, op.file_path, op.line, op.line,
             f"{op.method} {op.path}", "function",
         )
 
@@ -333,14 +376,14 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
         # audit-findings 0013).
         # ADR-0031 Class B: synthetic stand-in for an OpenAPI operation.
         # "openapi" is not a real language, so language=None;
-        # discovery_language records the spec-file language
-        # (yaml/json/openapi-document), protocol_origin="openapi".
+        # discovery_language records the spec-file language (yaml/json),
+        # protocol_origin="openapi".
         symbol = Symbol(
             id=symbol_id,
             name=op.operation_id or f"{op.method} {op.path}",
             kind="function",
             language=None,
-            discovery_language=language_from_path(Path(op.file_path)),
+            discovery_language=spec_language,
             protocol_origin="openapi",
             path=op.file_path,
             span=Span(start_line=op.line, end_line=op.line, start_col=0, end_col=0),

@@ -26,8 +26,9 @@ Framework detection examines dependency manifests:
   build-script DSL markers such as ``android {`` / ``qt +=``, and for
   nginx.conf. pip ``-r`` / ``-c`` includes are followed transitively, within the repo.
 - Some frameworks come from file presence instead: ``.proto`` files
-  (protobuf), Solidity config files (Foundry, Hardhat) and
-  ``AndroidManifest.xml`` (android).
+  (protobuf), an OpenAPI 3 / Swagger 2 document (openapi; the openapi
+  linker's own test, ``has_openapi_document``), Solidity config files
+  (Foundry, Hardhat) and ``AndroidManifest.xml`` (android).
 
 Recursive Manifest Scanning
 ---------------------------
@@ -3167,6 +3168,23 @@ def _detect_protobuf(repo_root: Path) -> list[str]:
     return []
 
 
+def _detect_openapi(repo_root: Path) -> list[str]:
+    """Detect an OpenAPI/Swagger document, which activates the openapi linker.
+
+    Language-agnostic, as ``.proto`` files are for protobuf: no manifest names
+    an OpenAPI document, so before this only the Java ``io.swagger``
+    dependency (the ``swagger`` framework) activated the linker, and a
+    repository with an ``openapi.yaml`` got no operation node (WI-supar). The
+    test is the linker's own (:func:`~.linkers.openapi.has_openapi_document`:
+    a non-test file named openapi / swagger / api with a ``.yaml`` / ``.yml``
+    / ``.json`` suffix whose content is an OpenAPI 3 or Swagger 2 spec), so
+    the framework is claimed exactly where the linker finds a document.
+    """
+    from .linkers.openapi import has_openapi_document
+
+    return ["openapi"] if has_openapi_document(repo_root) else []
+
+
 def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
     """Detect Solidity frameworks from config files.
 
@@ -3232,6 +3250,7 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_d_frameworks(repo_root))
     frameworks.extend(_detect_groovy_frameworks(repo_root))
     frameworks.extend(_detect_protobuf(repo_root))
+    frameworks.extend(_detect_openapi(repo_root))
     return frameworks
 
 
