@@ -151,7 +151,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence
 
 from .analyze.base import (
-    LAYOUT_FREE_NAME_LANGUAGES, ArityFlags, assemble_stable_id, is_table_kind,
+    CONTENT_NAME_LANGUAGES, ArityFlags, assemble_stable_id, is_table_kind,
     make_declaration_stable_id, make_file_stable_id, make_typed_stable_id,
 )
 from .paths import normalize_path
@@ -426,7 +426,7 @@ def declared_arity_stable_id(
         arity = DeclaredArity(0, ArityFlags(0, False, False, False).as_flags_str())
     return assemble_stable_id(
         kind, arity.param_count, arity.flags, decorators, containing,
-        name, qualified_name, names_layout_free=lang in LAYOUT_FREE_NAME_LANGUAGES,
+        name, qualified_name, names_are_content=lang in CONTENT_NAME_LANGUAGES,
     )
 
 

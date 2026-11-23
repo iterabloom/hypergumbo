@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # covers: packages/hypergumbo-lang-common/src/hypergumbo_lang_common/cuda.py
-"""A CUDA name's layout is not a stable-id input (``LAYOUT_FREE_NAME_LANGUAGES``).
+"""A CUDA name's layout is not a stable-id input.
 
 CUDA is C++ with kernels, and its analyzer names a function by its
 declarator as written: a qualified declarator split over lines
 (``void V ::\\nrun()``) or an operator written with a space (``operator -``)
 was another name. A function with typed parameters takes the typed tier,
 which hashes every name layout-free; one with none takes the untyped tier,
-which hashes its names as written unless the language is in core's
-``LAYOUT_FREE_NAME_LANGUAGES``, as C++ is (WI-sidus).
+which hashed its names as written unless the language was in core's opt-in
+set, as C++ was; it now hashes every language's names ``without_layout``
+but the content ones (WI-sidus).
 """
 from __future__ import annotations
 
