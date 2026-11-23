@@ -1791,6 +1791,12 @@ def sanitize_id_name_segment(name: str) -> str:
     return name.replace(":", ".")
 
 
+#: ADR-0036 Ruling 3's path sentinel: an external pseudo-symbol with no file
+#: anchor. A boundary node's ``Symbol.path``, and its id's path slot when the
+#: reference stated no module.
+NO_ANCHOR_PATH = "<external>"
+
+
 def _canonical_external_id(language: str, path: str, name: str) -> NodeId:
     """Canonical id for a deduplicated boundary Symbol (WI-fozoh; ADR-0036 Ruling 2).
 
@@ -1817,9 +1823,27 @@ def _canonical_external_id(language: str, path: str, name: str) -> NodeId:
     ``id_format`` validator correctly rejects (``double_colon_separator``,
     INV-sadiv). Full fidelity lives on ``Symbol.name``, which is
     exactly the split Ruling 1 prescribes — lossy key, lossless field.
+
+    NO SLOT IS EMPTY (WI-sagur). An empty PATH is a legitimate input: a
+    reference that states no module (an ``ExternalRef`` whose module path is
+    empty abstains, :func:`stated_module_of`). ADR-0036 Ruling 3 rules the
+    sentinel for exactly that, anchored at this factory: ``<external>``, an
+    external pseudo-symbol with no file anchor. So the slot is repaired, not
+    refused: a refusal here, in finalize, would abort the user's whole run for
+    one reference. An empty NAME names nothing and Ruling 3 rules no sentinel
+    for the name slot, so it is refused (``ValueError``); the one production
+    caller, :func:`create_boundary_nodes`, never passes one (it falls back to
+    the endpoint as written). Only the id is repaired: the stable id hashes
+    the dedupe key as it was read (:func:`_canonical_external_stable_id`), so
+    no stable id moves.
     """
+    if not name:
+        raise ValueError(
+            f"boundary id for {language}:{path!r} has an empty name slot; "
+            "ADR-0036 rules no name sentinel, so the caller supplies a name"
+        )
     return NodeId(
-        f"{language}:{path}:0-0:"
+        f"{language}:{path or NO_ANCHOR_PATH}:0-0:"
         f"{sanitize_id_name_segment(name)}:external_symbol"
     )
 
@@ -2149,6 +2173,16 @@ def _dedupe_key(
     return (language, path, name)
 
 
+def _spells_its_id(key: tuple[str, str, str]) -> bool:
+    """Whether the boundary id of *key* writes its path and name unchanged.
+
+    False when :func:`_canonical_external_id` repairs or folds a slot of it:
+    an empty path (``<external>``), an empty name, or a ``:`` in the name.
+    """
+    _language, path, name = key
+    return bool(path) and bool(name) and sanitize_id_name_segment(name) == name
+
+
 def create_boundary_nodes(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -2243,6 +2277,9 @@ def create_boundary_nodes(
             if isinstance(callee, str) and callee:
                 dangling_callee_names.setdefault(edge.dst, callee)
 
+    # An empty endpoint names nothing: no node is minted for it (WI-sagur; it
+    # used to mint ``:<unknown>:0-0::external_symbol``, empty language and name).
+    dangling_ids.discard("")
     if not dangling_ids:
         return [], {}
 
@@ -2250,6 +2287,13 @@ def create_boundary_nodes(
     # file-id pseudo-ids included, keeps its path-slot identity.
     groups: Dict[tuple[str, str, str], List[str]] = {}
     group_ref_kinds: Dict[tuple[str, str, str], set[str]] = {}
+    # The name the id and ``Symbol.name`` carry when the key's name is empty
+    # (WI-sagur): the factory refuses an empty name slot, and ADR-0036 rules no
+    # name sentinel, so it is the next name the endpoint holds -- the written
+    # name slot under an ExternalRef without a name, else the endpoint as the
+    # producer wrote it. The KEY keeps the empty name, so the stable id does
+    # not move. Equal to the key's name whenever that is not empty.
+    group_names: Dict[tuple[str, str, str], set[str]] = {}
     for dangling_id in dangling_ids:
         ref = dangling_refs.get(dangling_id)
         if ref is not None:
@@ -2269,6 +2313,12 @@ def create_boundary_nodes(
                 name = lossless
         key = _dedupe_key(language, path, name, kind)
         groups.setdefault(key, []).append(dangling_id)
+        group_names.setdefault(key, set()).add(
+            name
+            or dangling_callee_names.get(dangling_id)
+            or _parse_dangling_id(dangling_id)[2]
+            or dangling_id
+        )
         # ADR-0036 Ruling 2: retain the use-site reference syntax so it can be
         # stamped on ``meta.reference_syntax``; the id kind-slot is uniform.
         group_ref_kinds.setdefault(key, set()).add(kind)
@@ -2292,8 +2342,29 @@ def create_boundary_nodes(
 
     known_languages = all_known_languages()
 
+    # One id, one node. Two keys can mint one id: the factory spells an empty
+    # path slot ``<external>`` (WI-sagur), and it folds ``:`` in a name to
+    # ``.``. The node goes to the key that spells its id as written -- so an id
+    # the run already had keeps its stable id -- and the other keys' endpoints
+    # are remapped onto it.
+    canonical_ids = {
+        key: _canonical_external_id(key[0], key[1], min(group_names[key]))
+        for key in groups
+    }
+    owners: Dict[NodeId, tuple[str, str, str]] = {}
+    for key in sorted(groups, key=lambda k: (not _spells_its_id(k), k)):
+        owners.setdefault(canonical_ids[key], key)
+
     # Iterate groups in sorted order so the output is deterministic.
     for (language, key_path, name), members in sorted(groups.items()):
+        canonical_id = canonical_ids[(language, key_path, name)]
+        if owners[canonical_id] != (language, key_path, name):
+            id_remap.update(
+                (member_id, canonical_id) for member_id in members
+                if member_id != canonical_id
+            )
+            continue
+        label = min(group_names[(language, key_path, name)])
         # ADR-0036 Ruling 2: the id kind-slot is the node's own kind
         # (external_symbol); the use-site reference syntax moves to
         # meta.reference_syntax. ``min()`` picks one deterministically; when an
@@ -2301,7 +2372,6 @@ def create_boundary_nodes(
         # one is recorded (pinned by
         # test_boundary_ids_are_unique_even_across_reference_syntaxes).
         reference_syntax = min(group_ref_kinds[(language, key_path, name)])
-        canonical_id = _canonical_external_id(language, key_path, name)
 
         # ADR-0041 §1/§2: tier names supply-chain distance only, so
         # every boundary node is tier 3 (external), and a manifest-declared
@@ -2346,14 +2416,14 @@ def create_boundary_nodes(
         sym = Symbol(
             id=canonical_id,
             stable_id=_canonical_external_stable_id(language, key_path, name),
-            display_label=f"{language}:{key_path}:{name}:{reference_syntax}",
-            name=name,
+            display_label=f"{language}:{key_path}:{label}:{reference_syntax}",
+            name=label,
             kind="external_symbol",
             # Registered language or None (never a path / build-tool label;
             # WI-muzuf). Raw ``language`` still feeds the id/stable_id/display_label
             # above (a separate id-slot concern).
             language=language if language in known_languages else None,
-            path="<external>",
+            path=NO_ANCHOR_PATH,
             span=zero_span,
             meta=boundary_meta,
             supply_chain_tier=3,
