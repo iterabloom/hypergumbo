@@ -981,7 +981,7 @@ const user = new UserServiceClient('localhost:50051');
 
         # Should only detect UserServiceClient, not the false positives
         client_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") in ("grpc_client", "grpc_stub")]
-        client_names = [s.name for s in client_symbols]
+        client_names = [s.meta["service_name"] for s in client_symbols]
         assert "UserService" in client_names
         assert "Http" not in client_names
         assert "Grpc" not in client_names
@@ -2722,12 +2722,12 @@ class TestLinkerMintedSymbolsCarryAStableId:
         )
         result = link_grpc(tmp_path)
         minted = [s for s in result.symbols if s.language is not None]
-        assert {(s.kind, s.name) for s in minted} >= {
+        assert {(s.kind, s.meta["service_name"]) for s in minted} >= {
             ("interface", "S"), ("interface", "T"), ("class", "S"), ("function", "S"),
         }
         ids = [s.stable_id for s in minted]
         assert None not in ids and len(set(ids)) == len(ids)
-        service_t = next(s for s in minted if s.kind == "interface" and s.name == "T")
+        service_t = next(s for s in minted if s.kind == "interface" and s.name == "grpc_service:T")
         assert service_t.stable_id == pass_minted_stable_id(
             owner=PASS_ID, kind="interface", lang="proto", path="api/svc.proto",
             name="T", scope=("grpc_service", "demo"),
@@ -2789,3 +2789,33 @@ class TestIdSlotsMatchTheNode:
         grpc_calls = [e for e in result.edges if (e.meta or {}).get("protocol") == "grpc"]
         assert grpc_calls
         assert all(e.src in ids and e.dst in ids for e in grpc_calls)
+
+
+def test_grpc_name_slot_is_the_role_qualified_name(tmp_path: Path) -> None:
+    """WI-supar / ADR-0036 Ruling 1: a node this linker mints is named
+    ``<role>:<service>`` and its id's name slot is that name sanitized (it held
+    ``<service>-<role>`` with the bare service as the name); the joins read
+    ``meta["service_name"]``, so the stub still reaches the servicer."""
+    from hypergumbo_core.linkers.grpc import link_grpc
+    from hypergumbo_core.spec_validator import compute_name_slot_stats
+
+    (tmp_path / "api").mkdir()
+    (tmp_path / "api" / "svc.proto").write_text(
+        'syntax = "proto3";\npackage demo;\nservice S {\n  rpc Get(Req) returns (Req);\n}\n'
+    )
+    (tmp_path / "svc.py").write_text(
+        "import demo_pb2_grpc\n\n"
+        "class SServicer(demo_pb2_grpc.SServicer):\n    pass\n\n"
+        "stub = demo_pb2_grpc.SStub(channel)\n"
+    )
+
+    result = link_grpc(tmp_path)
+
+    roles = {s.meta["framework_role"]: s for s in result.symbols if s.meta.get("service_name")}
+    assert {"grpc_service", "grpc_servicer", "grpc_stub"} <= set(roles)
+    for role, sym in roles.items():
+        assert sym.name == f"{role}:{sym.meta['service_name']}"
+    assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
+    # Control: the join on the service name still links the stub.
+    stub = roles["grpc_stub"]
+    assert any(e.src == stub.id for e in result.edges)

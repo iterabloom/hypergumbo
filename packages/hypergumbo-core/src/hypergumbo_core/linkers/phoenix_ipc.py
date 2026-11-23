@@ -304,12 +304,13 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
         # to end in the EVENT (``phoenix:<file>:<l>-<l>:send:<event>``), so
         # its kind slot held an event name, and an event with a colon
         # (``user:joined``) shifted every slot. As in linkers/ipc.py, the
-        # role rides as a name-segment suffix; the factory sanitizes the name.
+        # name slot is the Symbol's name, ``phoenix:<type>:<event>``, which
+        # carries the role; the factory sanitizes it (ADR-0036 Ruling 1).
         # ADR-0034: the language slot is the stand-in's discovery language
         # (``elixir``); it read ``phoenix``, which is no language.
         return make_symbol_id(
             _host_language(pattern), pattern.file_path, pattern.line, pattern.line,
-            f"{event}-{pattern.type}", "function",
+            f"phoenix:{pattern.type}:{event}", "function",
         )
 
     def _ensure_symbol(pattern: PhoenixPattern, event: str) -> NodeId:

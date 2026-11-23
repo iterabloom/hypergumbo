@@ -788,7 +788,7 @@ class TestVariableEventPatterns:
         assert len(result.edges) == 1
         edge = result.edges[0]
         # The id's name slot folds ':' to '.'; the edge names the event.
-        assert edge.dst.endswith("sub.js:1-1:user.created:function")
+        assert edge.dst.endswith("sub.js:1-1:event_subscriber.user.created:function")
         assert edge.meta["event_name"] == "user:created"
         assert edge.meta["publisher_event_type"] == "constant"
         assert edge.confidence == 0.85
@@ -806,7 +806,7 @@ class TestVariableEventPatterns:
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.dst.endswith("signals.py:2-2:post_save:function")
+        assert edge.dst.endswith("signals.py:2-2:event_subscriber.post_save:function")
         assert edge.meta["event_name"] == "post_save"
         assert edge.meta["channel"] == "post_save"
         assert edge.confidence == 0.65
@@ -819,7 +819,10 @@ class TestVariableEventPatterns:
         result = link_events(tmp_path)
 
         pairs = sorted((e.src.split(":")[-2], e.dst.split(":")[-2]) for e in result.edges)
-        assert pairs == [("x", "x"), ("y", "y")]
+        assert pairs == [
+            ("event_publisher.x", "event_subscriber.x"),
+            ("event_publisher.y", "event_subscriber.y"),
+        ]
 
 
 class TestEventSymbolFormat:
@@ -892,9 +895,13 @@ class TestEventSymbolFormat:
         result = link_events(tmp_path)
 
         by_name = {s.name: s for s in result.symbols}
-        assert set(by_name) == {"mouse:up", "user:created"}
+        assert set(by_name) == {
+            "event_subscriber:mouse:up", "event_publisher:user:created",
+        }
         assert _check_id_format(result.symbols) == []
-        for name, line in (("mouse:up", 1), ("user:created", 2)):
+        for name, line in (
+            ("event_subscriber:mouse:up", 1), ("event_publisher:user:created", 2),
+        ):
             sym = by_name[name]
             assert sym.id == make_symbol_id(
                 "javascript", "canvas.js", line, line, name, "function",
@@ -1398,3 +1405,43 @@ class TestGoEventPipeline:
         assert len(result.edges) >= 1
         pub_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(pub_edges) >= 1
+
+
+class TestStandInNameSlotIsTheName:
+    """WI-supar / ADR-0036 Ruling 1: the stand-in's name carries its role,
+    ``event_publisher:<event>``, and the id's name slot is that name
+    sanitized. With the bare event in the slot, a one-line function the
+    analyzer declared under the event's name on that line had the stand-in's
+    id."""
+
+    def test_a_one_line_function_named_like_the_event_keeps_its_own_id(self, tmp_path: Path):
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+
+        (tmp_path / "pub.js").write_text(
+            "const bus = makeBus();\nfunction save() { bus.emit('save', 1); }\n"
+        )
+        (tmp_path / "sub.js").write_text("bus.on('save', (x) => x);\n")
+        declared = make_symbol_id("javascript", "pub.js", 2, 2, "save", "function")
+
+        result = link_events(tmp_path)
+
+        # Reach: the publisher stand-in sits on the declared function's line.
+        (pub,) = [s for s in result.symbols if s.meta["framework_role"] == "event_publisher"]
+        assert (pub.path.endswith("pub.js"), pub.span.start_line) == (True, 2)
+        assert pub.name == "event_publisher:save"
+        assert pub.meta["event_name"] == "save"
+        assert pub.id != declared and pub.id.endswith(":2-2:event_publisher.save:function")
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
+        assert [e.src for e in result.edges] == [pub.id]
+
+    def test_an_emit_and_a_listen_of_one_event_on_one_line_are_two_ids(self, tmp_path: Path):
+        """Control on the other collision the role resolves."""
+        (tmp_path / "relay.js").write_text("bus.on('ping', () => bus.emit('ping', 1));\n")
+        (tmp_path / "a.js").write_text("bus.emit('ping', 2);\n")
+        (tmp_path / "b.js").write_text("bus.on('ping', f);\n")
+
+        result = link_events(tmp_path)
+
+        relay = [s for s in result.symbols if s.path.endswith("relay.js")]
+        assert sorted(s.name for s in relay) == ["event_publisher:ping", "event_subscriber:ping"]
+        assert len({s.id for s in result.symbols}) == len(result.symbols)

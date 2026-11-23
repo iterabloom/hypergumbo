@@ -366,10 +366,12 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
         assert spec_language is not None  # .yaml / .yml / .json only
         # ADR-0036 Ruling 2: the kind slot is the Symbol's kind, not the
         # role word ``operation`` (which names a GraphQL construct in the
-        # registry). The factory sanitizes the name slot.
+        # registry). Ruling 1: the name slot is the Symbol's name, the
+        # operationId (else ``METHOD path``); it held ``METHOD path`` for
+        # every operation. The factory sanitizes it.
+        op_name = op.operation_id or f"{op.method} {op.path}"
         symbol_id = make_symbol_id(
-            spec_language, op.file_path, op.line, op.line,
-            f"{op.method} {op.path}", "function",
+            spec_language, op.file_path, op.line, op.line, op_name, "function",
         )
 
         # Canonical kind="function" + meta["framework_role"] (ADR-0027;
@@ -380,7 +382,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
         # protocol_origin="openapi".
         symbol = Symbol(
             id=symbol_id,
-            name=op.operation_id or f"{op.method} {op.path}",
+            name=op_name,
             kind="function",
             language=None,
             discovery_language=spec_language,

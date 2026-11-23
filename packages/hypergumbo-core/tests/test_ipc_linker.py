@@ -709,7 +709,7 @@ ipcMain.on('OPEN_CHANNEL', handler);
 
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.dst.endswith("main.js:3-3:OPEN_CHANNEL-receive:function")
+        assert edge.dst.endswith("main.js:3-3:ipc.receive.OPEN_CHANNEL:function")
         assert edge.evidence_type == "variable_match"
         assert edge.confidence == 0.65
         assert edge.meta["channel_type"] == "unresolved"
@@ -1494,11 +1494,15 @@ class TestContextBridgeChainConnectivity:
 
         # No symbol the linker emits sits at line 0.
         assert all(s.span.start_line > 0 for s in result.symbols)
+        # ADR-0036 Ruling 1 (WI-supar): every stand-in's name slot is its
+        # sanitized name -- the bridge caller's ``window.<...>`` included.
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
 
         assert self._reaches(
             result.edges,
-            lambda n: n.endswith("-bridge_caller:function") and renderer_name in n,
-            lambda n: "main.js" in n and n.endswith("-receive:function"),
+            lambda n: ":window." in n and renderer_name in n,
+            lambda n: "main.js" in n and ":ipc.receive." in n,
         ), "renderer -> preload -> main path is disconnected"
 
     def test_object_bridge_send_connects_to_main(self, tmp_path: Path) -> None:
@@ -1674,3 +1678,5 @@ class TestStandInIdsCarryTheHostFilesLanguage:
         assert (result.edges[0].src, result.edges[0].dst) == (
             by_file["renderer.ts"].id, by_file["main.js"].id,
         )
+        # ADR-0036 Ruling 1: the name slot is the name, ``ipc:<type>:<channel>``.
+        assert by_file["main.js"].id.endswith(":1-1:ipc.receive.user-login:function")

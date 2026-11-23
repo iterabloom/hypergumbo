@@ -670,12 +670,11 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     has canonical kind="function" and carries the role in
     meta["framework_role"] (ADR-0027, audit-findings 0013). The kind-slot of
     the id format `<lang>:<path>:<span>:<name>:<kind>` is the node's own kind
-    ("function"), not the role (ADR-0036 Ruling 2). The role is not needed to
-    disambiguate the id -- (path, line, event_name) is unique per pattern on
-    all measured corpora (a line publishes XOR subscribes a given event), and
-    cross-run identity lives in ``stable_id`` (``make_protocol_stable_id``),
-    independent of the id-slot; a per-file id-uniqueness validator backstops
-    the rare pub+sub-same-line case.
+    ("function"), not the role (ADR-0036 Ruling 2). The role is in the NAME,
+    ``event_publisher:<event>``, and so in the name slot (Ruling 1): a bare
+    event there gave a one-line function the analyzer declared under the
+    event's name the stand-in's id. Cross-run identity lives in ``stable_id``
+    (``make_protocol_stable_id``), hashed from the pattern, not the name.
     """
     try:
         rel_path = Path(pattern.file_path).relative_to(root)
@@ -685,6 +684,15 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     framework_role = (
         "event_publisher" if pattern.pattern_type == "publish" else "event_subscriber"
     )
+    # The name carries the role, ``event_publisher:<event>``, and the id's
+    # name slot is that name sanitized (ADR-0036 Ruling 1). With the bare
+    # event in the slot, a one-line function the analyzer declared under the
+    # event's name on that line (``function save() { bus.emit('save') }``)
+    # had the same id, and a line that both emits and listens to one event
+    # minted one id for two nodes (WI-supar). The event itself stays in
+    # ``meta["event_name"]`` / ``meta["event_identifier"]``; the stable id is
+    # hashed from the pattern, not the name, so it does not move.
+    name = f"{framework_role}:{pattern.event_name}"
 
     return Symbol(
         # ADR-0036 Ruling 2: kind slot == Symbol.kind ("function"); the role
@@ -695,9 +703,9 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
         # its five slots (ADR-0036 Ruling 1). Symbol.name keeps the literal.
         id=make_symbol_id(
             pattern.language, str(rel_path), pattern.line, pattern.line,
-            pattern.event_name, "function",
+            name, "function",
         ),
-        name=f"{pattern.event_name}",
+        name=name,
         kind="function",
         path=pattern.file_path,
         span=Span(
