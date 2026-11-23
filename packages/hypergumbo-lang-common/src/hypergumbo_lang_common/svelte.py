@@ -16,8 +16,11 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 Symbols Extracted
 -----------------
 - **Slots**: Named and default slot definitions
-- **Blocks**: Control flow blocks (if, each, await)
-- **Events**: Event handlers on elements
+- **Blocks**: Control flow blocks (if, each, await), named by block type and
+  the first 20 characters of the expression (``if:count > 0``); the
+  ``{#if ...}`` form is the signature
+- **Events**: Event handlers on elements, named by element and event
+  (``button:click``); ``on:click`` is the signature
 
 Edges Extracted
 ---------------
@@ -32,8 +35,9 @@ Edges Extracted
 
 Identity
 --------
-Every symbol mints ``make_doc_symbol_ids`` with the chain of elements and
-control-flow blocks around it (``div/if:x``; the element by its tag name, the
+Every symbol mints ``make_doc_symbol_ids`` from its own name, so the
+id's name slot is the sanitized name (ADR-0036 Ruling 1), and with the chain
+of elements and control-flow blocks around it (``div/if:x``; the element by its tag name, the
 block by the name its own symbol hashes), so ``{#if x}`` in a ``<div>`` and
 the same block in a ``<section>`` are two identities and deleting the first
 moves nothing (they tied, and the per-file split pass numbered them, before
@@ -367,15 +371,19 @@ def _process_tag(
             # node.id and stable_id are now minted together from one arg set by
             # make_doc_symbol_ids so they can never drift (INV-dulah). node.id is
             # byte-identical to the old composite (zero-change migration).
+            # The name is the string both ids are minted from, the element
+            # and the event (``button:click``), so the id's name slot is the
+            # sanitized name (ADR-0036 Ruling 1; WI-funip).
+            event_symbol_name = f"{tag_name}:{event}"
             symbol_id, stable_id = make_doc_symbol_ids(
-                "svelte", str(rel_path), "event", f"{tag_name}:{event}",
+                "svelte", str(rel_path), "event", event_symbol_name,
                 span.start_line, span.end_line, scope=_enclosing_scopes(node.parent),
             )
 
             symbol = Symbol(
                 id=symbol_id,
                 stable_id=stable_id,
-                name=event,
+                name=event_symbol_name,
                 kind="event",
                 language="svelte",
                 path=str(rel_path),
@@ -409,8 +417,13 @@ def _extract_control_block(
     # node.id and stable_id are now minted together from one arg set by
     # make_doc_symbol_ids so they can never drift (INV-dulah). node.id is
     # byte-identical to the old composite (zero-change migration).
+    # The name is the string both ids are minted from: the block type and
+    # the first 20 characters of its expression (``if:count > 0``), so the
+    # id's name slot is the sanitized name (ADR-0036 Ruling 1; WI-funip). The
+    # ``{#if ...}`` form is the signature.
+    block_symbol_name = f"{block_type}:{expression[:20]}"
     symbol_id, stable_id = make_doc_symbol_ids(
-        "svelte", str(rel_path), "block", f"{block_type}:{expression[:20]}",
+        "svelte", str(rel_path), "block", block_symbol_name,
         span.start_line, span.end_line, scope=_enclosing_scopes(node),
     )
 
@@ -423,7 +436,7 @@ def _extract_control_block(
     symbol = Symbol(
         id=symbol_id,
         stable_id=stable_id,
-        name=f"#{block_type}",
+        name=block_symbol_name,
         kind="block",
         language="svelte",
         path=str(rel_path),

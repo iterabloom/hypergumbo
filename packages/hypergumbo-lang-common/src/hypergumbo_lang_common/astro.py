@@ -29,7 +29,8 @@ Symbols Extracted
 - **Variables** (``variable``): const/let/var declarations in frontmatter
 - **Slots** (``slot``): Slot elements in template
 - **Client directives** (``directive``): Hydration directives
-  (client:load, etc.) on component tags
+  (client:load, etc.) on component tags, named by component and directive
+  (``Card:client:load``); the directive alone is the signature
 
 Edges Extracted
 ---------------
@@ -49,7 +50,8 @@ Edges Extracted
 
 Identity
 --------
-Every symbol mints ``make_doc_symbol_ids``. A frontmatter variable is
+Every symbol mints ``make_doc_symbol_ids`` from its own name, so the
+id's name slot is the sanitized name (ADR-0036 Ruling 1). A frontmatter variable is
 file-level; a slot and a client directive hash the tag names of the elements
 around their own element (``div``, ``main/section`` ...), so ``<slot name="h">``
 in a ``<div>`` and in a ``<section>`` are two identities and deleting the first
@@ -415,16 +417,20 @@ class _AstroFileExtractor:
                 # INV-dulah: node.id (byte-identical, zero-change) and the
                 # canonical stable_id are now minted together from one arg set
                 # by make_doc_symbol_ids, so they can never drift.
+                # The name is the string both ids are minted from, the
+                # component and its directive (``Card:client:load``), so the
+                # id's name slot is the sanitized name (ADR-0036 Ruling 1;
+                # WI-funip). The directive alone is the signature.
+                directive_name = f"{tag_name}:{client_directive}"
                 directive_id, directive_stable_id = make_doc_symbol_ids(
-                    "astro", str(rel_path), "directive",
-                    f"{tag_name}:{client_directive}",
+                    "astro", str(rel_path), "directive", directive_name,
                     directive_span.start_line, directive_span.end_line, scope=enclosing,
                 )
 
                 directive_symbol = Symbol(
                     id=directive_id,
                     stable_id=directive_stable_id,
-                    name=client_directive,
+                    name=directive_name,
                     kind="directive",
                     language="astro",
                     path=str(rel_path),

@@ -16,7 +16,9 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 
 Symbols Extracted
 -----------------
-- **Directives**: Vue directives (v-if, v-for, v-model, @click, :prop)
+- **Directives**: Vue directives (v-if, v-for, v-model, @click, :prop),
+  named by element and directive (``button:v-on:click``); the directive
+  alone is the signature, the element ``meta['element']``
 - **Slots**: Named and default slot definitions
 - **Props**: Options-API ``props`` definitions (array or object syntax)
 - **Style blocks**: one ``style_block`` per ``<style>``, recording
@@ -42,8 +44,9 @@ Edges Extracted
 
 Identity
 --------
-Every symbol mints ``make_doc_symbol_ids``. A directive and a slot hash the
-chain of elements around their element (``template/div``), and a directive
+Every symbol mints ``make_doc_symbol_ids`` from its own name, so the
+id's name slot is the sanitized name (ADR-0036 Ruling 1). A directive and a
+slot hash the chain of elements around their element (``template/div``), and a directive
 also the expression it binds, so ``<p v-if="loading">`` and ``<p
 v-if="error">`` under one ``div`` are two identities and deleting the first
 moves nothing (they tied, and the per-file split pass numbered them, before the
@@ -660,9 +663,14 @@ class VueAnalyzer(TreeSitterAnalyzer):
             # make_doc_symbol_ids helper (INV-dulah).
             # The bound expression tells two same directives on sibling
             # elements apart (``<p v-if="loading">`` / ``<p v-if="error">``).
+            # The name is the string both ids are minted from: the element
+            # and the directive (``button:v-on:click``). The id's name slot
+            # is then the sanitized name (ADR-0036 Ruling 1), and neither id
+            # moved when the name gained its element (WI-funip).
             bound = directive_values[i]
+            directive_symbol_name = f"{tag_name}:{directive}"
             symbol_id, stable_id = make_doc_symbol_ids(
-                "vue", rel_path, "directive", f"{tag_name}:{directive}",
+                "vue", rel_path, "directive", directive_symbol_name,
                 span.start_line, span.end_line,
                 scope=[*enclosing, f"={bound}"] if bound else enclosing,
             )
@@ -678,7 +686,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
             symbol = Symbol(
                 id=symbol_id,
                 stable_id=stable_id,
-                name=directive,
+                name=directive_symbol_name,
                 kind="directive",
                 language="vue",
                 path=str(rel_path),

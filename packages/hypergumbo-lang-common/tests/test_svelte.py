@@ -130,7 +130,7 @@ class TestAnalyzeSvelte:
         result = analyze_svelte(tmp_path)
         event = next((s for s in result.symbols if s.kind == "event"), None)
         assert event is not None
-        assert event.name == "click"
+        assert event.name == "button:click"
         assert event.signature == "on:click"
         assert event.meta.get("element") == "button"
 
@@ -141,7 +141,7 @@ class TestAnalyzeSvelte:
         events = [s for s in result.symbols if s.kind == "event"]
         assert len(events) == 3
         event_names = {e.name for e in events}
-        assert event_names == {"input", "focus", "blur"}
+        assert event_names == {"input:input", "input:focus", "input:blur"}
 
     def test_extracts_if_block(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "Conditional.svelte", """{#if visible}
@@ -151,7 +151,7 @@ class TestAnalyzeSvelte:
         result = analyze_svelte(tmp_path)
         block = next((s for s in result.symbols if s.kind == "block"), None)
         assert block is not None
-        assert block.name == "#if"
+        assert block.name == "if:visible"
         assert block.meta.get("block_type") == "if"
         assert "visible" in block.meta.get("expression", "")
 
@@ -163,7 +163,7 @@ class TestAnalyzeSvelte:
         result = analyze_svelte(tmp_path)
         block = next((s for s in result.symbols if s.kind == "block"), None)
         assert block is not None
-        assert block.name == "#each"
+        assert block.name == "each:items"
         assert block.meta.get("block_type") == "each"
         assert "items" in block.meta.get("expression", "")
 
@@ -177,7 +177,7 @@ class TestAnalyzeSvelte:
         result = analyze_svelte(tmp_path)
         block = next((s for s in result.symbols if s.kind == "block"), None)
         assert block is not None
-        assert block.name == "#await"
+        assert block.name == "await:promise"
         assert block.meta.get("block_type") == "await"
 
     def test_ignores_html_elements(self, tmp_path: Path) -> None:
@@ -388,7 +388,7 @@ class TestAnalyzeSvelte:
         # Events
         events = [s for s in result.symbols if s.kind == "event"]
         assert len(events) == 1
-        assert events[0].name == "click"
+        assert events[0].name == "li:click"
 
         # Import edges
         edges = [e for e in result.edges if e.edge_type == "imports"]
@@ -480,11 +480,11 @@ class TestAnalyzeSvelte:
         # Should have events from both form and input
         assert len(events) == 5
         event_names = {e.name for e in events}
-        assert "submit" in event_names
-        assert "reset" in event_names
-        assert "input" in event_names
-        assert "change" in event_names
-        assert "focus" in event_names
+        assert "form:submit" in event_names
+        assert "form:reset" in event_names
+        assert "input:input" in event_names
+        assert "input:change" in event_names
+        assert "input:focus" in event_names
 
 
 class TestComponentImportResolution:
