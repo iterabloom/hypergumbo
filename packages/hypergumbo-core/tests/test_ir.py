@@ -2823,6 +2823,13 @@ def test_format_legacy_dst_uniform_5seg_shape() -> None:
     assert format_legacy_dst(rust_ref) == "rust:std::fs:0-0:read_to_string:unresolved"
 
 
+def test_format_legacy_dst_folds_a_colon_in_the_name_slot() -> None:
+    """The name slot is colon-free (ADR-0036 Ruling 1): a ``:`` folds to
+    ``.``; the path slot keeps its colons (R4 of WI-jozih's runtime guard)."""
+    ref = ExternalRef(lang="starlark", module_path="//x", name="a:b")
+    assert format_legacy_dst(ref) == "starlark://x:0-0:a.b:unresolved"
+
+
 def test_external_ref_to_dict_round_trip() -> None:
     """to_dict / from_dict preserve all three fields."""
     ref = ExternalRef(lang="rust", module_path="std::fs", name="read_to_string")

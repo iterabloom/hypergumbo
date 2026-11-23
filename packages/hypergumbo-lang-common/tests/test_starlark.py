@@ -174,6 +174,33 @@ DEFAULT_VISIBILITY = ["//visibility:public"]
         assert "COMMON_COPTS" in var_names
         assert "DEFAULT_VISIBILITY" in var_names
 
+    def test_a_label_name_with_a_colon_is_a_node_id(self, temp_repo: Path) -> None:
+        """``//x:a:b`` names target ``a:b``; its stand-in dst is minted by
+        ``ir.format_legacy_dst``, which spelled the name slot raw, so the
+        endpoint was no id (ADR-0036 Ruling 1). The ref keeps the name as
+        written. Control: ``@ext//p:q`` is spelled as before."""
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (temp_repo / "BUILD").write_text('''
+cc_library(
+    name = "lib",
+    srcs = ["lib.cc"],
+    deps = ["//x:a:b", "@ext//p:q"],
+)
+''')
+        result = analyze_starlark(temp_repo)
+        deps = sorted(
+            (e.dst, e.dst_ref.name if e.dst_ref else None)
+            for e in result.edges if e.edge_type == "depends_on"
+        )
+        assert deps == [
+            ("starlark://x:0-0:a.b:unresolved", "a:b"),
+            ("starlark:@ext//p:0-0:q:unresolved", "q"),
+        ]
+        assert non_id_edge_endpoints(
+            result.symbols, result.edges, grammar_only=True,
+        ) == []
+
     def test_analyzes_target_deps_edges(self, temp_repo: Path) -> None:
         """Creates dependency edges between targets."""
         (temp_repo / "BUILD").write_text('''
