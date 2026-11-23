@@ -37,7 +37,14 @@ How It Works
      the one matching implementation among several) → 0.75
    - Otherwise, single implementation → 0.70
 4. **Create ``dispatches_to`` edges** (``meta.mechanism="di"``) from interface
-   methods to implementation methods (method-level, not class-level).
+   methods to implementation methods (method-level, not class-level). One
+   edge per method pair: when several bindings name the same interface and
+   implementation (a CDI annotation in a ``.java`` file and a Koin
+   ``single<>`` in a ``.kt`` file), the edge carries the binding with the
+   highest confidence, a tie going to the smallest ``source`` string, then
+   the smallest ``evidence_ids`` (:func:`_binding_rank`). It used to carry
+   the first binding in scan order, so the 0.85 ``.java`` annotation won
+   over the 0.90 ``.kt`` binding because ``.java`` sorts first.
 5. **Create ``references`` edges** (``meta.mechanism="di_registration"``,
    ``meta.framework_dispatch="nestjs_module"``) for NestJS ``@Module`` provider/
    controller registrations — a declaration-time binding, distinct from the
@@ -222,9 +229,9 @@ _REVERSED_PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
 }
 
 # Extensions to scan (union of both pattern dicts). Sorted: this is the order
-# files are scanned in, and ``_create_di_edges`` keeps the FIRST binding of an
-# (interface method, implementation method) pair, so a set's hash-salt order
-# would decide that edge's confidence and ``framework_dispatch``.
+# files are scanned in, so the order of the bindings and of the edges; a set's
+# order would follow the per-process hash salt. Which binding of a method pair
+# the edge carries does not depend on it (``_binding_rank``).
 _SOURCE_EXTENSIONS = sorted(
     set(_PATTERNS_BY_EXT.keys()) | set(_REVERSED_PATTERNS_BY_EXT.keys()),
 )
@@ -565,6 +572,17 @@ def _get_method_short_name(method_name: str) -> str:
     return method_name
 
 
+def _binding_rank(binding: DIBinding) -> tuple[float, str, tuple[str, ...]]:
+    """Sort key putting the binding a method pair's edge carries first.
+
+    Highest ``confidence`` first; a tie goes to the smallest ``source``
+    (``regex:.kt`` before ``regex:.scala``), then the smallest
+    ``evidence_ids``. Bindings of one pair share the interface and
+    implementation names, so nothing else tells them apart.
+    """
+    return (-binding.confidence, binding.source, binding.evidence_ids)
+
+
 def _create_di_edges(
     bindings: list[DIBinding],
     symbols: list[Symbol],
@@ -596,7 +614,9 @@ def _create_di_edges(
     edges: list[Edge] = []
     seen: set[tuple[str, str]] = set()
 
-    for binding in bindings:
+    # Best binding first, so the first-wins ``seen`` dedup below keeps it for
+    # each method pair (``sorted`` is stable: equal keys keep scan order).
+    for binding in sorted(bindings, key=_binding_rank):
         iface_methods = methods_by_class.get(binding.interface_name, [])
         impl_methods = methods_by_class.get(binding.impl_name, [])
 
@@ -621,7 +641,7 @@ def _create_di_edges(
             for impl_m in candidates:
                 pair = (iface_m.id, impl_m.id)
                 if pair in seen:
-                    continue  # pragma: no cover - defensive dedup
+                    continue  # a lower-ranked binding of a pair already linked
                 seen.add(pair)
 
                 # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):

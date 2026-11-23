@@ -12,7 +12,8 @@ so the survivor followed the per-process str-hash salt:
   the order files are scanned in; ``_create_di_edges`` keeps the first binding
   of an (interface method, implementation method) pair, so an interface bound
   in a ``.java`` and a ``.kt`` file got ``confidence`` 0.85 or 0.90 and one
-  ``framework_dispatch`` or the other.
+  ``framework_dispatch`` or the other. (The edge now carries the
+  highest-confidence binding, whatever the scan order.)
 
 - ``napi``: the C/C++ files holding N-API registrations were a ``set`` and the
   export map was keyed by JS name, last writer wins, so the C function a JS
@@ -172,7 +173,8 @@ def test_di_edge_keeps_one_binding_under_four_hash_seeds(tmp_path: Path) -> None
     assert all(out == outputs[0] for out in outputs[1:]), outputs
     assert outputs[0]["bindings"] == ["annotation:.java", "regex:.kt", "regex:.scala"]
     ((dispatch, confidence, _edge_id),) = outputs[0]["edges"]
-    assert (dispatch, confidence) == ("annotation:.java", 0.85)
+    # The highest confidence (0.90, .kt and .scala), the tie to the smaller source.
+    assert (dispatch, confidence) == ("regex:.kt", 0.90)
 
 
 def test_di_source_extensions_are_scanned_in_sorted_order() -> None:
