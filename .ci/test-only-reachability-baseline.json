@@ -82,7 +82,6 @@
   "packages/hypergumbo-core/src/hypergumbo_core/url_folding/__init__.py::get_scoped_languages",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py::find_astro_files",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py::is_astro_tree_sitter_available",
-  "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/clojure.py::find_clojure_files",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/clojure.py::is_clojure_tree_sitter_available",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/commonlisp.py::find_commonlisp_files",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/commonlisp.py::is_commonlisp_tree_sitter_available",
