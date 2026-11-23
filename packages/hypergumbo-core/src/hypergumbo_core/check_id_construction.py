@@ -98,8 +98,8 @@ kind word is read through the same three hops, WHERE IT IS WRITTEN: the
 or the last slot of a template. A same-module helper is read at its
 ``return``: a literal written there is the word, and one of the helper's own
 parameters written there is the word the caller passed for it. A helper is
-never read by its parameter NAMES: the websocket linker's helper takes a
-``kind`` it appends to the name slot, and writes ``"function"`` in the kind
+never read by its parameter NAMES: the websocket linker's helper took a
+``kind`` it appended to the name slot, and wrote ``"function"`` in the kind
 slot itself. Two string literals that differ are a ``kind_slot_mismatch``.
 Anything else is not judged: a name on either side, a computed slot, a helper
 this module does not define. That is the same refusal to invent a verdict as

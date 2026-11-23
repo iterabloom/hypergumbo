@@ -347,46 +347,30 @@ def find_python_files(repo_root: Path) -> Iterator[Path]:
     yield from find_non_test_files(repo_root, ["*.py"])
 
 
-def _make_symbol_id(
-    path: str, line: int, event: str, kind: str, language: str = "python"
-) -> NodeId:
-    """Generate ID for a WebSocket-related symbol.
+def _endpoint_name(event: str) -> str:
+    """The name of the endpoint stand-in for ``event``: ``ws:<event>``."""
+    return f"ws:{event}"
 
-    Emits canonical ``make_symbol_id`` output. An ad-hoc
-    ``websocket:{path}:{line}:{event}:{kind}`` shape fails the ADR-0034
+
+def _endpoint_id(path: str, line: int, event: str, language: str) -> NodeId:
+    """The id of the endpoint stand-in for ``event`` at ``path``:``line``.
+
+    Canonical ``make_symbol_id`` output. An ad-hoc
+    ``websocket:{path}:{line}:{event}:{kind}`` shape failed the ADR-0034
     ``id_format`` validator twice: ``malformed_span_segment`` (a single line
     ``818`` instead of the span ``818-818``) and
     ``non_canonical_language_prefix`` (``websocket`` is a protocol_origin, not
     a value in ``catalog.all_known_languages``). (history: INV-dulah)
 
-    The route path (``event``) lives in the **name** segment of the
-    canonical ID; we route it through ``_sanitize_event_for_id_segment``
-    to strip any ``:`` characters (which would push the colon count past
-    5 and re-trigger the validator). The kind segment is the actual
-    Symbol.kind (``function``), matching the kind axis catalog. The
-    ``kind`` parameter of this function is preserved as a name-segment
-    suffix so that an ``endpoint`` symbol and a (future) ``handler``
-    symbol at the same (file, line) get distinct IDs.
-
-    The ``language`` argument lets the caller pass the host file's
-    language (resolved via ``_language_for_file``) so the ID's language
-    slot matches the actual source. Every call site in this module passes
-    it; the ``"python"`` default applies only to a caller that omits it.
+    The name slot is the endpoint's own name, ``ws:<event>`` with each ``:``
+    made ``.`` by ``make_symbol_id`` (ADR-0036 Ruling 1). It held
+    ``<event>-endpoint``, a role suffix kept for a handler symbol that was
+    never minted: every symbol this linker mints at a line is an endpoint, so
+    the suffix kept nothing apart. The kind slot is the Symbol's kind,
+    ``function``. ``language`` is the host file's language (resolved via
+    ``_language_for_file``), so the id's language slot matches the source.
     """
-    safe_name = _sanitize_event_for_id_segment(event)
-    return make_symbol_id(
-        language, path, line, line, f"{safe_name}-{kind}", "function"
-    )
-
-
-def _sanitize_event_for_id_segment(event: str) -> str:
-    """Strip ``:`` from ``event`` so the canonical ID stays 5-segment.
-
-    Route paths normally don't contain ``:`` but defensive sanitisation
-    is cheaper than re-debugging the validator if a future framework
-    surfaces method-prefixed routes like ``POST:/api/items``.
-    """
-    return event.replace(":", "_")
+    return make_symbol_id(language, path, line, line, _endpoint_name(event), "function")
 
 
 def _make_file_id(language: str, path: str) -> NodeId:
@@ -775,8 +759,8 @@ def link_websocket(
         # ADR-0031 Class B: synthetic stand-in for a WebSocket endpoint.
         ep_language = _language_for_file(ep.file_path, ep.pattern_type)
         symbols.append(Symbol(
-            id=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint", ep_language),
-            name=f"ws:{ep.event}",
+            id=_endpoint_id(ep.file_path, ep.line, ep.event, ep_language),
+            name=_endpoint_name(ep.event),
             kind="function",
             language=None,
             discovery_language=ep_language,
@@ -909,7 +893,7 @@ def link_websocket(
     # meta["framework_dispatch"] (ADR-0028; audit-findings 0014).
     for ep in endpoints:
         ep_language = _language_for_file(ep.file_path, ep.pattern_type)
-        ep_id = _make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint", ep_language)
+        ep_id = _endpoint_id(ep.file_path, ep.line, ep.event, ep_language)
         edges.append(Edge.create(
             src=_make_file_id(ep_language, ep.file_path),
             dst=ep_id,
@@ -960,12 +944,8 @@ def link_websocket(
             client_lang = _language_for_file(client_ep.file_path, client_ep.pattern_type)
             for server_ep in servers:
                 server_lang = _language_for_file(server_ep.file_path, server_ep.pattern_type)
-                server_ep_id = _make_symbol_id(
-                    server_ep.file_path,
-                    server_ep.line,
-                    server_ep.event,
-                    "endpoint",
-                    server_lang,
+                server_ep_id = _endpoint_id(
+                    server_ep.file_path, server_ep.line, server_ep.event, server_lang,
                 )
                 edges.append(Edge.create(
                     src=_make_file_id(client_lang, client_ep.file_path),

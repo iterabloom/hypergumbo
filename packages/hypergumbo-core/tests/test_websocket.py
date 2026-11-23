@@ -16,7 +16,7 @@ from hypergumbo_core.linkers.websocket import (
     find_python_files,
     _detect_patterns,
     _detect_python_patterns,
-    _make_symbol_id,
+    _endpoint_id,
     _make_file_id,
     link_websocket,
     PASS_ID,
@@ -314,30 +314,24 @@ socket.on('event-line-5', handler);
 class TestHelperFunctions:
     """Tests for helper functions."""
 
-    def test_make_symbol_id_canonical_shape_with_explicit_language(self) -> None:
-        """``_make_symbol_id`` emits canonical IDs (INV-dulah).
+    def test_endpoint_id_canonical_shape(self) -> None:
+        """``_endpoint_id`` emits canonical IDs (INV-dulah).
 
-        The shape is ``{language}:{path}:{line}-{line}:{event}-{kind}:function``
-        — the language slot is the host file's language (not the literal
-        ``websocket`` protocol name); the span is the canonical
-        ``start-end`` form; the route + role get packed into the name
-        segment (no ``:``) and the kind slot is the canonical
-        ``function`` (matching the actual ``Symbol.kind``).
+        The shape is ``{language}:{path}:{line}-{line}:ws.{event}:function``:
+        the language slot is the host file's language (not the literal
+        ``websocket`` protocol name), the span is the canonical ``start-end``
+        form, the name slot is the endpoint's name ``ws:<event>`` sanitized
+        (ADR-0036 Ruling 1) and the kind slot is the Symbol's ``function``.
         """
-        id = _make_symbol_id("src/app.js", 10, "connection", "endpoint", "javascript")
-        assert id == "javascript:src/app.js:10-10:connection-endpoint:function"
+        id = _endpoint_id("src/app.js", 10, "connection", "javascript")
+        assert id == "javascript:src/app.js:10-10:ws.connection:function"
 
-    def test_make_symbol_id_default_language_is_python(self) -> None:
-        """The ``language`` arg defaults to ``"python"`` for legacy callers."""
-        id = _make_symbol_id("src/app.py", 10, "connection", "endpoint")
-        assert id == "python:src/app.py:10-10:connection-endpoint:function"
-
-    def test_make_symbol_id_sanitizes_colons_in_event(self) -> None:
-        """Route paths containing ``:`` get sanitized so the canonical 5-segment
-        ID shape is preserved (defensive; route paths rarely contain ``:``)."""
-        id = _make_symbol_id("src/app.py", 10, "POST:/api/items", "endpoint")
-        assert ":" not in id.split(":")[3]  # name segment has no colon
-        assert id == "python:src/app.py:10-10:POST_/api/items-endpoint:function"
+    def test_endpoint_id_sanitizes_colons_in_event(self) -> None:
+        """Route paths containing ``:`` are sanitized so the canonical
+        5-segment ID shape is preserved (defensive; route paths rarely contain
+        ``:``)."""
+        id = _endpoint_id("src/app.py", 10, "POST:/api/items", "python")
+        assert id == "python:src/app.py:10-10:ws.POST./api/items:function"
 
     def test_language_for_file_extension_unknown_falls_back_to_pattern_type(self) -> None:
         """Vue/Svelte files (and other unknown extensions) fall back to pattern_type.
@@ -1629,7 +1623,7 @@ class TestWiZolotCrossLanguageBridge:
 
     def test_ts_client_to_python_server_bridge_edge_emitted(self, tmp_path: Path) -> None:
         """TS client at /ws + Python server at /ws → cross-language ``calls`` edge."""
-        from hypergumbo_core.linkers.websocket import _make_symbol_id, _make_file_id
+        from hypergumbo_core.linkers.websocket import _make_file_id
 
         ts_file = tmp_path / "ws-client.ts"
         ts_file.write_text(
@@ -1897,3 +1891,57 @@ class TestWebSocketFrameworkDependencyGating:
             if (e.meta or {}).get("framework_dispatch")
         }
         assert frameworks == {"fastapi"}
+
+
+class TestEndpointIdsNameTheirOwnName:
+    """ADR-0036 Ruling 1: a node id's name slot is the sanitized
+    ``Symbol.name``. An endpoint is named ``ws:<event>`` and its slot held
+    ``<event>-endpoint``. Every edge the linker ends on an endpoint (the file's
+    ``references``, the client-to-server ``calls`` bridge) is rebuilt from the
+    same id, so none may dangle."""
+
+    def _result(self, tmp_path: Path):
+        (tmp_path / "io.js").write_text(
+            "io.on('connection', handler);\n"
+            "io.of('/admin').on('connection', handler);\n"
+        )
+        (tmp_path / "ws-client.ts").write_text("const ws = new WebSocket(`${host}/ws`);\n")
+        (tmp_path / "serve.py").write_text(
+            "from starlette.routing import WebSocketRoute\n"
+            "routes = [WebSocketRoute('/ws', _ws_handler)]\n"
+        )
+        return link_websocket(tmp_path)
+
+    def _endpoints(self, result):
+        return [s for s in result.symbols
+                if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
+
+    def test_the_fixture_emits_four_endpoints(self, tmp_path: Path) -> None:
+        eps = self._endpoints(self._result(tmp_path))
+        assert sorted((s.path, s.name) for s in eps) == [
+            ("io.js", "ws:connection"), ("io.js", "ws:connection"),
+            ("serve.py", "ws:/ws"), ("ws-client.ts", "ws:/ws"),
+        ]
+
+    def test_every_name_slot_is_the_sanitized_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import sanitize_id_name_segment
+
+        eps = self._endpoints(self._result(tmp_path))
+        assert eps
+        assert [(s.id, s.name) for s in eps
+                if s.id.rsplit(":", 2)[1] != sanitize_id_name_segment(s.name)] == []
+
+    def test_endpoint_ids_are_distinct(self, tmp_path: Path) -> None:
+        eps = self._endpoints(self._result(tmp_path))
+        assert len({s.id for s in eps}) == len(eps) == 4
+
+    def test_every_edge_into_an_endpoint_ends_on_one(self, tmp_path: Path) -> None:
+        """Control: the references and the bridge edge land on minted ids."""
+        result = self._result(tmp_path)
+        ids = {s.id for s in self._endpoints(result)}
+        into = [e for e in result.edges
+                if e.edge_type in ("references", "calls")
+                and ((e.meta or {}).get("ref_construct") == "websocket_endpoint"
+                     or (e.meta or {}).get("protocol") == "ws")]
+        assert len(into) == 5
+        assert {e.dst for e in into} == ids
