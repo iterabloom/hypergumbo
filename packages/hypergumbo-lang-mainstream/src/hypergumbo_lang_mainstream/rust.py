@@ -4724,7 +4724,11 @@ def _extract_attribute_edges(
                 edges.append(edge)
             else:
                 # Unresolved attribute - create unresolved edge
-                dst_id = f"rust:unresolved:0-0:{attr_name}:unresolved"
+                # Minted: a qualified attribute (``rustfmt::skip``) folds its
+                # ``::`` to ``..`` in the name slot (ADR-0036 Ruling 1).
+                dst_id = make_symbol_id(
+                    "rust", "unresolved", 0, 0, attr_name, "unresolved",
+                )
                 edge = Edge.create(
                     src=sym.id,
                     dst=dst_id,
