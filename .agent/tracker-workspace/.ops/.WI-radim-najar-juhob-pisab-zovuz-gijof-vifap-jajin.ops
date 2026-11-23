@@ -1,0 +1,20 @@
+- op: create  # 61a4
+  at: '2026-11-23T22:15:20Z'  # 61a4
+  by: agent  # 61a4
+  actor: jgstern_agent  # 61a4
+  clock: 1  # 61a4
+  nonce: 61a4  # 61a4
+  data:  # 61a4
+    kind: work_item  # 61a4
+    title: "Table-formula and doc-formula names are still hashed with their layout (Elixir module, Vue directive text)"  # 61a4
+    status: todo_soft  # 61a4
+    priority: 4  # 61a4
+    parent:  # 61a4
+    tags:  # 61a4
+    - stable_id  # 61a4
+    isbefore: []  # 61a4
+    duplicate_of: []  # 61a4
+    not_duplicate_of: []  # 61a4
+    pr_ref:  # 61a4
+    description: "Stable-id scheme v18 hashes untyped names, scope labels and attribute text without layout. Two formulas were left as written, each needs a replay over a corpus before a rule is chosen, and each fix moves ids (next bump):\n- The table formula (kind:lang:path:name): an Elixir module written \"defmodule Foo . Bar\" hashes \"Foo . Bar\" (its functions are fixed). Swift #if scope labels sit in table names, so a universal rule needs its own replay.\n- The doc formula (make_doc_stable_id): a Vue directive hashes its expression text as written: v-if=\"tab === 'a'\" and v-if=\"tab  ===  'a'\" are two ids; koel has 13 directive names holding a newline. Open question for the owner: is a doc symbol's name meant to be layout-free at all (a Markdown heading is content)?\nAlso not checked: a \"//\" comment that ends a hashed text with no line break after it stays hashed (no case found); PHP \"#\" comments were checked in two positions only; \"|\" before \"{\" is unspaced in the canonical spelling (ties no ids).\nRepros: ~/hypergumbo_lab_notebook/idfive_11232026/layout/ (fx3/elixir, fx/vue).\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 61a4
+    fields: {}  # 61a4

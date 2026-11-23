@@ -1,0 +1,22 @@
+- op: create  # 0e3d
+  at: '2026-11-23T22:15:27Z'  # 0e3d
+  by: agent  # 0e3d
+  actor: jgstern_agent  # 0e3d
+  clock: 1  # 0e3d
+  nonce: 0e3d  # 0e3d
+  data:  # 0e3d
+    kind: work_item  # 0e3d
+    title: "di_resolution indexes methods by meta[\"class\"], which no analyzer writes: it emits no method edge on real repositories"  # 0e3d
+    status: todo_hard  # 0e3d
+    priority: 3  # 0e3d
+    parent:  # 0e3d
+    tags:  # 0e3d
+    - linkers  # 0e3d
+    - framework_dispatch_linkers  # 0e3d
+    - analysis_quality  # 0e3d
+    isbefore: []  # 0e3d
+    duplicate_of: []  # 0e3d
+    not_duplicate_of: []  # 0e3d
+    pr_ref:  # 0e3d
+    description: "linkers/di_resolution.py builds its method index from Symbol.meta[\"class\"]. By grep, the Java, Kotlin, C#, TypeScript and Python analyzers never set that key. Measured: killbill (60 Guice modules) gets 0 di edges on dev and after the id fixes; the pass reports candidates_unresolved. The fix that made the linker keep the highest-confidence binding of a pair therefore has no measured effect on a real repository (its unit tests run the linker on binding source text).\nASK. Index methods by what analyzers record (the parent class through the qualified name or the containment edge), then measure on killbill and one NestJS and one Spring tree. Related: WI-vuzon (linker name lookups admit a same-named symbol in any language).\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 0e3d
+    fields: {}  # 0e3d
