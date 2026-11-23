@@ -11,10 +11,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.linkers.di_resolution import (
     PASS_ID,
     DIBinding,
+    _create_di_edges,
     _iter_interface_impls,
     extract_bindings_from_source,
     link_di_resolution,
@@ -1491,3 +1492,65 @@ class TestInvZuhubDiEdgesFallback:
         for edge in di_edges:
             # explicit Guice binding emits 0.90 -> capped to 0.5.
             assert edge.confidence == 0.5
+
+
+class TestCompetingBindingsOfOnePair:
+    """WI-supar: of several bindings of one (interface, implementation) pair,
+    the edge carries the highest-confidence one, ties broken by ``source``.
+
+    ``_create_di_edges`` kept the FIRST binding in scan order, so an
+    ``@ApplicationScoped`` annotation in a ``.java`` file (0.85, scanned
+    first: ``.java`` sorts before ``.kt``) won over a Koin ``single<>`` in a
+    ``.kt`` file (0.90).
+    """
+
+    @staticmethod
+    def _pair() -> list[Symbol]:
+        return [
+            _make_method_symbol("run", "java", path="src/Svc.java", line=2, class_name="Svc"),
+            _make_method_symbol("run", "java", path="src/SvcImpl.java", line=5, class_name="SvcImpl"),
+        ]
+
+    @staticmethod
+    def _di_edges(tmp_path: Path, symbols: list[Symbol]) -> list[Edge]:
+        ctx = LinkerContext(repo_root=tmp_path, symbols=symbols, edges=[])
+        return [e for e in link_di_resolution(ctx).edges if e.edge_type == "dispatches_to"]
+
+    def test_higher_confidence_kt_binding_beats_earlier_java_annotation(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / "SvcImpl.java").write_text(
+            "@ApplicationScoped\npublic class SvcImpl implements Svc {\n  public void run() {}\n}\n"
+        )
+        (tmp_path / "Wiring.kt").write_text("val m = module { single<Svc> { SvcImpl() } }\n")
+        # Reach: both bindings are found, the .java one first.
+        assert [b.source for b in extract_bindings_from_source(tmp_path)] == [
+            "annotation:.java", "regex:.kt",
+        ]
+
+        edges = self._di_edges(tmp_path, self._pair())
+
+        assert [(e.meta["framework_dispatch"], e.confidence) for e in edges] == [
+            ("regex:.kt", 0.90),
+        ]
+
+    def test_lone_annotation_binding_keeps_its_own_confidence(self, tmp_path: Path) -> None:
+        """Control: with no competing binding the annotation's 0.85 stands."""
+        (tmp_path / "SvcImpl.java").write_text(
+            "@ApplicationScoped\npublic class SvcImpl implements Svc {\n  public void run() {}\n}\n"
+        )
+
+        edges = self._di_edges(tmp_path, self._pair())
+
+        assert [(e.meta["framework_dispatch"], e.confidence) for e in edges] == [
+            ("annotation:.java", 0.85),
+        ]
+
+    def test_equal_confidence_tie_goes_to_the_smaller_source_in_either_order(self) -> None:
+        run = AnalysisRun.create(pass_id=PASS_ID, version="1")
+        scala = DIBinding("Svc", "SvcImpl", 0.90, "regex:.scala")
+        kotlin = DIBinding("Svc", "SvcImpl", 0.90, "regex:.kt")
+
+        for bindings in ([scala, kotlin], [kotlin, scala]):
+            edges = _create_di_edges(bindings, self._pair(), run)
+            assert [e.meta["framework_dispatch"] for e in edges] == ["regex:.kt"]
