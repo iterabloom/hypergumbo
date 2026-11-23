@@ -46,7 +46,8 @@ CI ratchet holds those counts shrink-only):
    ADR-0037 ``is_resolved ↔ dst`` FK, ``origin_run_id`` FK integrity,
    dangling-endpoint detection, edge ``confidence`` range, route-marker
    single-home, one file pseudo-symbol per path
-   (``_check_one_file_node_per_path``), the receiver-blind-magnet gate, the
+   (``_check_one_file_node_per_path``), one node per node id
+   (``_check_node_id_uniqueness``), the receiver-blind-magnet gate, the
    ADR-0035 §5 per-file
    ``stable_id`` uniqueness error (``_check_stable_id_per_file_uniqueness``),
    and the Class-B identity-stamp canary (a synthetic stand-in missing
@@ -266,6 +267,11 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "path, each in its own language slot, split the file's "
                     "edges between them. Manifest entries of kind 'file' "
                     "(meta.entry_role) are not file pseudo-symbols."},
+    {"check": "node_id_uniqueness", "validator_class": "cross_field",
+     "description": "No node id is held by two nodes (WI-supar): an edge "
+                    "names its endpoints by id, so two nodes under one id are "
+                    "two records no edge can tell apart. File pseudo-symbols "
+                    "are one_file_node_per_path's."},
     {"check": "no_harmful_receiver_blind_magnets", "validator_class": "cross_field",
      "description": "No un-demoted CLEANLY-harmful receiver-blind method magnet "
                     "survives finalization (INV-fahub): a high-confidence calls "
@@ -336,6 +342,7 @@ def validate_ir(
     violations.extend(_check_confidence_range(edges))
     violations.extend(_check_route_marker_single_home(symbols))
     violations.extend(_check_one_file_node_per_path(symbols))
+    violations.extend(_check_node_id_uniqueness(symbols))
     violations.extend(_check_no_harmful_receiver_blind_magnets(symbols, edges))
     return violations
 
@@ -437,6 +444,49 @@ def _check_one_file_node_per_path(
         for path, ids in ids_by_path.items()
         if len(ids) > 1
     ]
+
+
+def _check_node_id_uniqueness(symbols: Iterable[Any]) -> list[ValidationViolation]:
+    """WI-supar: no node id is held by two nodes. One violation per shared id.
+
+    A node id is the location key edges name their endpoints by (ADR-0036),
+    so two records under one id are indistinguishable to every edge: either
+    one thing emitted twice (Vue's nested ``<template>`` walk) or two things a
+    producer could not tell apart (two ``<span v-if>`` on one line). Like the
+    other uniqueness checks of this class
+    (``_check_stable_id_per_file_uniqueness``,
+    ``_check_one_file_node_per_path``) it is an ``error``, not a measured
+    statistic: the measured fleet is at zero, which is the bar the name-slot
+    statistic must reach before it becomes a check. The file
+    pseudo-symbol is skipped, because ``_check_one_file_node_per_path``
+    already counts two records of one file id. Ordered by id.
+    """
+    from .analyze.file_records import is_file_pseudo_symbol
+
+    held: dict[str, list[Any]] = {}
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        if not isinstance(sym_id, str) or not sym_id:
+            continue
+        held.setdefault(sym_id, []).append(sym)
+    violations: list[ValidationViolation] = []
+    for sym_id, group in sorted(held.items()):
+        if len(group) < 2 or is_file_pseudo_symbol(group[0]):
+            continue
+        producers = sorted({_name_slot_producer(s) for s in group})
+        violations.append(ValidationViolation(
+            severity="error",
+            validator_class="cross_field",
+            field_name="Symbol.id",
+            record_id=sym_id,
+            observed=f"{len(group)} nodes; producers: {', '.join(producers)}",
+            expected="one node per node id",
+            message=(
+                f"node id {sym_id!r} is held by {len(group)} nodes; an edge "
+                "cannot tell them apart (WI-supar)"
+            ),
+        ))
+    return violations
 
 
 def _check_no_harmful_receiver_blind_magnets(

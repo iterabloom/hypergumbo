@@ -182,6 +182,7 @@ _REACH: dict[str, Any] = {
         1 for n in bm["nodes"]
         if n.get("kind") == "file" and str(n.get("id")).endswith(":1-1:file:file")
     ),
+    "node_id_uniqueness": lambda bm: sum(1 for n in bm["nodes"] if n.get("id")),
     "no_harmful_receiver_blind_magnets": _method_call_pool,
 }
 
