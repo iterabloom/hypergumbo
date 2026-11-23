@@ -1,0 +1,31 @@
+Original commit body from b5c0793c16d09196857a0d08edf599d1432cf3a7:
+
+Five tracker items about node ids and stable ids, built as six work packages and integrated here: WI-funip (name-slot round-trip), WI-supar (linker and analyzer id defects), WI-sagur (empty id slots), WI-jozih (the static id check), WI-sidus (layout in stable-id inputs). 61 commits, one per fix, the scheme bump last of them; two housekeeping commits follow it (the regenerated architecture document and the test manifest).
+
+## What changes
+
+- **A node id's name slot is its node's sanitized name (ADR-0036 Ruling 1)** in every producer but JavaScript anonymous callbacks (their own open item). Fixed: the Solidity ABI, websocket, gRPC, IPC, Phoenix, OpenAPI, message-dispatch, event-sourcing, Yjs, crypto-flow, annotation, Tauri, Swift/ObjC and wasm-bindgen linkers; Maven, tsconfig, reStructuredText, Rust, Perl, Julia, Robot, Tcl, Vue, Svelte, Astro, and the Go go-swagger route marker. An undeclared mismatch is now an `id_format` validation error; the declared-holes table has one entry and a test that keeps the fixed producers fixed.
+- **No two nodes share an id.** New validator check `node_id_uniqueness`. Fixed producers: Vue nested templates, repeated Svelte events, a Make target repeated in a rule header, message-dispatch and event-sourcing stand-ins colliding with a declared function.
+- **Boundary ids never have an empty slot; edge endpoints are ids.** `_canonical_external_id` repairs an empty path to `<external>` and refuses an empty name; Bash, Bazel labels, Terraform module sources, Ansible includes and Rust attributes mint their endpoints through the factories. `check-id-construction` now follows an endpoint through parameters, helpers and registries, and fails on a site it cannot follow unless it is declared (19 declared).
+- **Imports reach the imported file** in proto, Thrift, Cap'n Proto, Make, requirements, Terraform, Ruby `require_relative`; CSS skips ignored files.
+- **Linkers:** an OpenAPI document alone activates the openapi linker (with `basePath`/`servers` applied and real spans); N-API and C-extension registrations bind the right function deterministically; DI edges take the highest-confidence binding; FFI edge order no longer depends on the hash seed; the component linker runs on Svelte-only and Astro-only trees; template members are contained by their file.
+- **Analyzers:** Tcl calls resolve through namespaces; Babashka `.bb` scripts are Clojure and their guarded code reaches what it calls (`main_guard`); BitBake reads only BitBake `.inc`; every run id has the `uuid:` prefix.
+- **Layout is out of the hash in more places** and the scheme goes v17 -> v18 (owner ruling 2026-11-23): comments inside a declaration, a TypeScript type's leading `&` / `|`, primed names, attribute text, and untyped names and scope labels in every language whose names are not content.
+
+## Measured (42 repositories, dev 1350a1d51 against this branch, one at a time)
+
+- Declared symbols whose stable id moved: 257 of about 280,000 (Makefile 153, TypeScript 76, CMake 10, CUDA 10, Handlebars 4, Go 3, Clojure 1). Linker stand-ins moved: 1,111. Every other declared symbol keeps its digest.
+- Name-slot mismatches 49,820 -> 37,227 (all JavaScript callbacks). Node ids held by more than one node 617 -> 3. Edge endpoints that are not ids 67 -> 0. `id_format` violations 0 -> 0.
+- Edges: none lost except 4 Clojure calls that had bound another file's same-named var; new edges are `contains` (template members), Tcl and Clojure calls, and imports that now reach files.
+- This branch's own tree: validation matrix empty, no new test-only-reachable callable.
+
+## Costs and things a reader should know
+
+- The agents' per-fix measurements did not show the Makefile, CMake and Handlebars moves; the 42-tree run of the integrated branch did (the untyped-name rule reaches scope labels such as `ifeq ($(X), 1)`).
+- `node_id_uniqueness` is an error and still fires on three trees for pre-existing causes not fixed here: a C misparse in zstd (three function nodes at one span), two Swift initializers on one line (vapor), a Nix binding and an inner attribute on one line (servant).
+- koel lists 187 entry points where it listed 195: the cap is computed from the node count, and 841 duplicate Vue nodes are gone.
+- The DI-binding fix has no measured effect on a real repository: the linker indexes methods by `meta["class"]`, which no analyzer writes (filed).
+- Fixture-only (no local repository exercises them): crypto-flow, annotation-convention, Tauri, Swift/ObjC, wasm-bindgen stand-ins, Cap'n Proto and Thrift imports, Julia, Luau, F# primed types, Astro client directives.
+- Many node ids are respelled without moving their stable id (Rust members are now `A..run`; diesel 4,807).
+
+Addresses WI-funip, WI-supar-kikub, WI-sagur, WI-jozih, WI-sidus, WI-rumuv.
