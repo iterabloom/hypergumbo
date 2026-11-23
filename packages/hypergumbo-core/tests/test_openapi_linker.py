@@ -887,3 +887,137 @@ def test_the_name_slot_is_the_operation_id(tmp_path: Path) -> None:
 
     assert sorted(s.name for s in result.symbols) == ["POST /a", "getA"]
     assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
+
+
+class TestOperationSpansAreTheirLines:
+    """WI-supar: an operation's line was a count of PATHS (every operation of
+    the third path sat on line 3, of any file); it is now the method key's
+    line, and the span ends on the operation mapping's last line."""
+
+    def test_yaml_operations_span_their_lines(self, tmp_path: Path) -> None:
+        (tmp_path / "openapi.yaml").write_text(
+            "openapi: 3.0.0\n"            # 1
+            "info: {title: T, version: '1'}\n"
+            "paths:\n"                     # 3
+            "  /a:\n"                      # 4
+            "    get:\n"                   # 5
+            "      operationId: getA\n"    # 6
+            "      summary: A\n"           # 7
+            "    post:\n"                  # 8
+            "      operationId: postA\n"   # 9
+            "  /b:\n"                      # 10
+            "    delete:\n"                # 11
+            "      operationId: delB\n"    # 12
+        )
+        result = link_openapi(tmp_path, [])
+
+        spans = {s.name: (s.span.start_line, s.span.end_line) for s in result.symbols}
+        assert spans == {"getA": (5, 7), "postA": (8, 9), "delB": (11, 12)}
+        for sym in result.symbols:
+            assert sym.id.split(":")[-3] == f"{sym.span.start_line}-{sym.span.end_line}"
+
+    def test_blank_lines_after_an_operation_are_not_its_lines(self, tmp_path: Path) -> None:
+        (tmp_path / "openapi.yaml").write_text(
+            "openapi: 3.0.0\n"
+            "paths:\n"
+            "  /a:\n"
+            "    get:\n"                  # 4
+            "      operationId: getA\n"   # 5
+            "\n"
+            "\n"
+            "    post:\n"                 # 8
+            "      operationId: postA\n"  # 9
+        )
+        result = link_openapi(tmp_path, [])
+
+        spans = {s.name: (s.span.start_line, s.span.end_line) for s in result.symbols}
+        assert spans == {"getA": (4, 5), "postA": (8, 9)}
+
+    def test_json_operations_span_their_lines(self, tmp_path: Path) -> None:
+        (tmp_path / "swagger.json").write_text(
+            '{"swagger": "2.0",\n'
+            ' "paths": {\n'
+            '  "/a": {\n'
+            '   "get": {"operationId": "getA"},\n'      # 4
+            '   "put": {\n'                              # 5
+            '     "operationId": "putA"\n'
+            '   }\n'                                     # 7
+            '  }\n'
+            ' }\n'
+            '}\n'
+        )
+        result = link_openapi(tmp_path, [])
+
+        spans = {s.name: (s.span.start_line, s.span.end_line) for s in result.symbols}
+        assert spans == {"getA": (4, 4), "putA": (5, 7)}
+
+    def test_a_document_yaml_cannot_compose_gets_the_no_span_sentinel(
+        self, tmp_path: Path,
+    ) -> None:
+        """Control: a tab-indented JSON spec parses as JSON but not as YAML;
+        its operations are kept with the 0-0 span, not a guessed line."""
+        (tmp_path / "openapi.json").write_text(
+            '{\n\t"openapi": "3.0.0",\n\t"paths": {"/a": {"get": {"operationId": "getA"}}}\n}\n'
+        )
+        result = link_openapi(tmp_path, [])
+
+        (op,) = result.symbols
+        assert (op.name, op.span.start_line, op.span.end_line) == ("getA", 0, 0)
+        assert ":0-0:getA:function" in op.id
+
+
+def _route(path: str, route_path: str, method: str = "GET") -> Symbol:
+    return Symbol(
+        id=f"go:{path}:1-1:{method} {route_path}:function", name=f"{method} {route_path}",
+        kind="function", language=None, discovery_language="go", protocol_origin="http",
+        path=path, span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        origin="test", origin_run_id="uuid:test",
+        meta={"framework_role": "route", "route_path": route_path, "http_method": method},
+    )
+
+
+class TestTheDocumentsPathPrefix:
+    """WI-supar: ``basePath`` (Swagger 2) and ``servers[].url`` (OpenAPI 3)
+    were ignored, so every route at the bare operation path was linked: on
+    alertmanager, React client-side routes and the v1 router's routes."""
+
+    def _spec(self, tmp_path: Path, header: str) -> None:
+        (tmp_path / "api" / "v2").mkdir(parents=True)
+        (tmp_path / "api" / "v2" / "openapi.yaml").write_text(
+            header + "paths:\n  /status:\n    get:\n      operationId: getStatus\n"
+        )
+
+    def test_swagger_base_path(self, tmp_path: Path) -> None:
+        self._spec(tmp_path, "swagger: '2.0'\nbasePath: /api/v2/\n")
+        full = _route("web/server.go", "/api/v2/status")
+        generated = _route("api/v2/restapi/api.go", "/status")
+        client = _route("ui/src/App.tsx", "/status")
+        other_version = _route("api/v1_router.go", "/status")
+
+        result = link_openapi(tmp_path, [full, generated, client, other_version])
+
+        assert sorted(e.dst for e in result.edges) == sorted([full.id, generated.id])
+
+    def test_openapi3_server_url_with_a_variable(self, tmp_path: Path) -> None:
+        self._spec(
+            tmp_path,
+            "openapi: 3.0.0\nservers:\n  - url: 'https://example.com/svc/{ver}'\n"
+            "    variables:\n      ver: {default: v2}\n",
+        )
+        full = _route("cmd/main.go", "/svc/v2/status")
+        client = _route("ui/src/App.tsx", "/status")
+        # Control: the variable is its default, not any segment.
+        older = _route("cmd/v1.go", "/svc/v1/status")
+
+        result = link_openapi(tmp_path, [full, client, older])
+
+        assert [e.dst for e in result.edges] == [full.id]
+
+    def test_without_a_prefix_the_bare_path_is_the_full_path(self, tmp_path: Path) -> None:
+        """Control: no basePath, no servers (or ``/``): every route at the path."""
+        self._spec(tmp_path, "openapi: 3.0.0\nservers:\n  - url: /\n  - {}\n")
+        anywhere = _route("ui/src/App.tsx", "/status")
+
+        result = link_openapi(tmp_path, [anywhere])
+
+        assert [e.dst for e in result.edges] == [anywhere.id]
