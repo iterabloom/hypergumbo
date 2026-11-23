@@ -65,10 +65,14 @@ Foo->helper();
 
 def _calls(tmp_path: Path) -> dict[str, list]:
     (tmp_path / "a.pl").write_text(_SRC)
+    result = analyze_perl(tmp_path)
+    # The caller is keyed by its sub's short name, read from the Symbol (the
+    # id's name slot is ``Pkg..sub``); the file node keeps its slot ``file``.
+    short = {s.id: s.name.rsplit("::", 1)[-1] for s in result.symbols if s.kind != "file"}
     by_caller: dict[str, list] = {}
-    for e in analyze_perl(tmp_path).edges:
+    for e in result.edges:
         if e.edge_type == "calls":
-            caller = e.src.split(":")[-2]
+            caller = short.get(e.src, e.src.split(":")[-2])
             by_caller.setdefault(caller, []).append(e)
     return by_caller
 
@@ -79,7 +83,8 @@ def calls(tmp_path: Path) -> dict[str, list]:
 
 
 def _sub_id(name: str, line: int) -> str:
-    return f"perl:a.pl:{line}-{line}:{name}:function"
+    """A sub's id: its name slot is its sanitized (package-qualified) name."""
+    return f"perl:a.pl:{line}-{line}:{name.replace(':', '.')}:function"
 
 
 def _dsts(calls: dict[str, list], caller: str) -> set[str]:
@@ -112,13 +117,13 @@ def test_the_invocant_picks_the_package_that_declares_the_method(
     """Both packages declare ``catfile``: each call must reach ITS package's
     sub (a name-keyed registry keeps one per short name, so both sides are
     called)."""
-    assert _dsts(calls, caller) == {_sub_id("catfile", line)}, _dsts(calls, caller)
+    assert _dsts(calls, caller) == {_sub_id(("Foo" if line == 2 else "Bar") + "::catfile", line)}, _dsts(calls, caller)
     (edge,) = calls[caller]
     assert edge.meta["call_construct"] == "function"
 
 
 def test_dunder_package_is_the_enclosing_package(calls: dict[str, list]) -> None:
-    assert _dsts(calls, "run") == {_sub_id("helper", 7)}, _dsts(calls, "run")
+    assert _dsts(calls, "run") == {_sub_id("Bar::helper", 7)}, _dsts(calls, "run")
 
 
 def test_a_declared_package_without_the_method_is_not_bound_elsewhere(
@@ -143,7 +148,7 @@ def test_a_top_level_class_method_call_is_attributed_to_the_file(
     """WI-jadaf gave the function arm a file-level caller; the class-method
     arm had none, so a script's top-level ``IO::Socket::INET->new`` was lost."""
     assert _dsts(calls, "file") >= {
-        "perl:IO::Socket::INET:0-0:new:unresolved", _sub_id("helper", 3),
+        "perl:IO::Socket::INET:0-0:new:unresolved", _sub_id("Foo::helper", 3),
     }, _dsts(calls, "file")
 
 

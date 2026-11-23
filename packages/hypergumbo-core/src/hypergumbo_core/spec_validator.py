@@ -2400,7 +2400,6 @@ KNOWN_NAME_SLOT_HOLES: dict[tuple[str, str], tuple[str, str]] = {
         "removes this entry",
         "WI-funip",
     ),
-    ("perl", "function"): ("slot `run`, name `Demo::run`", "WI-funip"),
     # Scope in the slot, short name: the qualification is nowhere else
     # (qualified_name is empty), so the fix carries it to qualified_name.
     ("julia", "function"): ("slot `B.run`, name `run`", "WI-funip"),
