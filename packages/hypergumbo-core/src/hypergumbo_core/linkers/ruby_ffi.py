@@ -210,7 +210,10 @@ def link_ruby_ffi(
     # scans find.
     found: list[object] = []
 
-    for rb_path_str in ruby_files:
+    # Sorted: the order of the files is the order of the edges, which the
+    # behavior map keeps; a set's order follows the per-process hash salt
+    # (three seeds gave three edge orders, WI-supar).
+    for rb_path_str in sorted(ruby_files):
         rb_path = Path(rb_path_str)
         if not rb_path.is_absolute():
             rb_path = repo_root / rb_path

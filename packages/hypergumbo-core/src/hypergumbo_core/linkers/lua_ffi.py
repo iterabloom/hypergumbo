@@ -189,7 +189,10 @@ def link_lua_ffi(
         if sym.language == "lua":
             lua_files.add(sym.path)
 
-    for lua_path_str in lua_files:
+    # Sorted: the order of the files is the order of the edges, which the
+    # behavior map keeps; a set's order follows the per-process hash salt
+    # (three seeds gave three edge orders, WI-supar).
+    for lua_path_str in sorted(lua_files):
         lua_path = Path(lua_path_str)
         if not lua_path.is_absolute():
             lua_path = repo_root / lua_path
