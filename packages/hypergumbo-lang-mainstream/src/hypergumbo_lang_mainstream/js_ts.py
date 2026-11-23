@@ -31,8 +31,9 @@ extract:
   renaming a callback's inner parameter moved the id
 - The typed stable_id reads its texts from the syntax tree
   (``_jsts_hashed_text``), where ``layout_free`` (language-blind) cannot tell
-  layout from code: the ``&`` that opens an intersection written one member
-  per line is left out (``x:\\n  & A\\n  & B`` hashes as ``A & B``), and a
+  layout from code: the ``&`` or ``|`` that opens an intersection or union
+  written one member per line is left out (``x:\\n  & A\\n  & B`` hashes as
+  ``A & B``, ``() =>\\n  | A\\n  | B`` as ``() => A | B``), and a
   regex default value writes the whitespace of its pattern as escapes
   (``/a b/`` hashes as ``/a\\x20b/``, so ``/a  b/`` stays apart). The
   displayed signature keeps both
@@ -1615,6 +1616,11 @@ def _regex_pattern_hashed(pattern: str) -> str:
     return "".join(out)
 
 
+#: A type node whose first child is this operator opens with it, the one a
+#: formatter writes when it puts one member per line (see :func:`_jsts_hashed_text`).
+_LEADING_OPERATOR_TYPES = {"intersection_type": "&", "union_type": "|"}
+
+
 def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
     """``node``'s text as the typed stable id hashes it: the displayed text
     but for what ``layout_free`` (core, language-blind) cannot tell from
@@ -1624,7 +1630,9 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       (``x:\\n  & A\\n  & B``, an ``intersection_type`` whose first child is the
       ``&``) is left out: it is the type ``A & B``. ``layout_free`` drops a
       leading union ``|`` but cannot drop a ``&``: Rust's ``(\\n &self`` is a
-      reference.
+      reference. Likewise the ``|`` that opens a union (``union_type``):
+      ``layout_free`` drops it only after ``( < [ { , : =``, and prettier also
+      writes one after a function type's ``=>`` and a conditional type's ``?``.
     - Whitespace inside a regex literal (a default value) is meaning, and
       ``layout_free`` reads ``/`` as punctuation, so each whitespace character
       of the pattern is written as its escape (:func:`_regex_pattern_hashed`):
@@ -1632,8 +1640,9 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       pattern that spells the escape itself (``/a\\x20b/``) is the same regex
       and hashes alike.
 
-    Neither occurs in a text that had no leading ``&`` and no whitespace in a
-    regex, so every other hashed text is the displayed one, byte for byte.
+    None occurs in a text that had no leading ``&`` or ``|`` and no whitespace
+    in a regex, so every other hashed text is the displayed one, byte for
+    byte.
     """
     edits: list[tuple[int, int, str]] = []
     pending = [node]
@@ -1643,9 +1652,9 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
             edits.append((current.start_byte, current.end_byte,
                           _regex_pattern_hashed(_node_text(current, source))))
             continue
-        if current.type == "intersection_type" and current.children[0].type == "&":
-            amp = current.children[0]
-            edits.append((amp.start_byte, amp.end_byte, ""))
+        if current.type in _LEADING_OPERATOR_TYPES and current.children[0].type == _LEADING_OPERATOR_TYPES[current.type]:
+            lead = current.children[0]
+            edits.append((lead.start_byte, lead.end_byte, ""))
         pending.extend(current.children)
     if not edits:
         return _node_text(node, source)
