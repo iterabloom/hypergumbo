@@ -468,3 +468,47 @@ def test_a_manifest_component_id_names_the_component_kind(tmp_path):
     ]
     assert all(s.id.endswith(f":{s.name}:component") for s in comps)
     assert _check_id_roundtrip(comps) == []
+
+
+def test_maven_ids_name_their_symbols_name(tmp_path):
+    """ADR-0036 Ruling 1: the id's name slot is the sanitized ``Symbol.name``.
+    A Maven project and dependency are named by their artifactId; the slot held
+    ``groupId.artifactId``. The groupId stays on ``qualified_name`` and meta,
+    and two dependencies sharing an artifactId stay two ids (their spans
+    differ) with two stable ids (the groupId scopes the hash)."""
+    from hypergumbo_core.ir import sanitize_id_name_segment
+
+    (tmp_path / "pom.xml").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <groupId>com.example</groupId>
+    <artifactId>my-app</artifactId>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.other</groupId>
+            <artifactId>starter</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+""")
+    result = analyze_xml_files(tmp_path)
+    maven = [s for s in result.symbols if s.kind in ("module", "dependency")]
+    assert sorted((s.kind, s.name) for s in maven) == [
+        ("dependency", "starter"), ("dependency", "starter"), ("module", "my-app"),
+    ]
+    assert [(s.id, s.name) for s in maven
+            if s.id.rsplit(":", 2)[1] != sanitize_id_name_segment(s.name)] == []
+    deps = [s for s in maven if s.kind == "dependency"]
+    assert sorted(s.qualified_name for s in deps) == [
+        "org.other:starter", "org.springframework.boot:starter",
+    ]
+    assert len({s.id for s in deps}) == 2
+    assert len({s.stable_id for s in deps}) == 2
+    # Control: the depends_on edges end on the dependency nodes.
+    (module,) = [s for s in maven if s.kind == "module"]
+    assert {(e.src, e.dst) for e in result.edges if e.edge_type == "depends_on"} == {
+        (module.id, d.id) for d in deps
+    }
