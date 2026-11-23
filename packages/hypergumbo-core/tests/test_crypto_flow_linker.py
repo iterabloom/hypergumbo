@@ -508,4 +508,7 @@ class TestStandInIdsNameTheirOwnKind:
         ``encrypt`` function declared on that line would have."""
         result = self._result(tmp_path)
         names = sorted(s.id.rsplit(":", 2)[1] for s in result.symbols)
-        assert names == ["decrypt-crypto_consumer", "encrypt-crypto_producer"], names
+        # WI-supar: the role is in the name, and the slot is the name sanitized.
+        assert names == ["crypto_consumer.decrypt", "crypto_producer.encrypt"], names
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0

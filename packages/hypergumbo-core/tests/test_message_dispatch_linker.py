@@ -382,7 +382,7 @@ def test_the_synthetic_ids_name_the_function_kind(tmp_path: Path) -> None:
     )
     synth = [s for s in result.symbols if (s.meta or {}).get("framework_role")]
     assert {s.meta["framework_role"] for s in synth} == {"message_sender", "message_handler"}
-    assert all(s.id.endswith(f":offer-{s.meta['framework_role']}:function") for s in synth)
+    assert all(s.id.endswith(f":{s.meta['framework_role']}.offer:function") for s in synth)
     assert len({s.id for s in synth}) == len(synth)
     assert _check_id_roundtrip(synth) == []
 
@@ -391,8 +391,8 @@ class TestStandInIdsAreNotADeclaredFunctionsId:
     """WI-supar: the stand-in id carried the channel bare in the name slot, so
     a one-line function the analyzer declared under the channel's name, on the
     send or handle line, had the SAME id (``javascript:s.js:2-2:ping:function``
-    held by two nodes). The role rides as a name-segment suffix, as in the
-    crypto_flow, yjs_crdt, ipc and annotation linkers."""
+    held by two nodes). The role is in the NAME, ``message_sender:ping``, and
+    the name slot is that name sanitized (ADR-0036 Ruling 1)."""
 
     def test_a_one_line_function_named_like_the_channel_keeps_its_own_id(
         self, tmp_path: Path,
@@ -420,12 +420,17 @@ class TestStandInIdsAreNotADeclaredFunctionsId:
 
         # Reach: the sender stand-in sits on the declared function's line.
         (sender,) = [s for s in result.symbols if s.meta["framework_role"] == "message_sender"]
-        assert (sender.path, sender.span.start_line, sender.name) == ("s.js", 2, "ping")
+        assert (sender.path, sender.span.start_line, sender.name) == (
+            "s.js", 2, "message_sender:ping",
+        )
+        assert sender.meta["channel"] == "ping"
         assert sender.id != declared
         assert sender.id == make_symbol_id(
-            "javascript", "s.js", 2, 2, "ping-message_sender", "function",
+            "javascript", "s.js", 2, 2, "message_sender:ping", "function",
         )
         assert [e.src for e in result.edges] == [sender.id]
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
 
     def test_a_send_and_a_handle_of_one_channel_on_one_line_are_two_nodes(
         self, tmp_path: Path,

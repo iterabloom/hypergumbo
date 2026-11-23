@@ -333,17 +333,20 @@ def link_crypto_flow(
             pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "webcrypto" else "rust"
             sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "webcrypto" else "rust"
             # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The role
-            # used to sit there; it rides as a name-segment suffix (as in the
-            # websocket and grpc linkers), so a producer and a consumer on one
-            # line, or a stand-in and a one-line ``encrypt`` function the
-            # analyzer declared, keep distinct ids.
+            # used to sit there; it is in the NAME, ``crypto_producer:<op>``,
+            # and the name is the name slot (Ruling 1; the operation itself is
+            # ``meta["channel"]``), so a producer and a consumer on one line,
+            # or a stand-in and a one-line ``encrypt`` function the analyzer
+            # declared, keep distinct ids.
+            pub_name = f"crypto_producer:{write.channel}"
+            sub_name = f"crypto_consumer:{read.channel}"
             pub_id = make_symbol_id(
                 pub_lang, write.file_path, write.line, write.line,
-                f"{write.channel}-crypto_producer", "function",
+                pub_name, "function",
             )
             sub_id = make_symbol_id(
                 sub_lang, read.file_path, read.line, read.line,
-                f"{read.channel}-crypto_consumer", "function",
+                sub_name, "function",
             )
 
             if pub_id not in seen_sym_ids:
@@ -362,7 +365,7 @@ def link_crypto_flow(
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
                     kind="function",
-                    name=write.channel,
+                    name=pub_name,
                     path=write.file_path,
                     language=None,
                     discovery_language=pub_lang,
@@ -395,7 +398,7 @@ def link_crypto_flow(
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
                     kind="function",
-                    name=read.channel,
+                    name=sub_name,
                     path=read.file_path,
                     language=None,
                     discovery_language=sub_lang,

@@ -850,7 +850,8 @@ class TestTauriIPCSyntheticSymbols:
 
         assert len(result.symbols) == 1
         sym = result.symbols[0]
-        assert sym.name == "greet"
+        assert sym.name == "ipc_publisher:greet"
+        assert sym.meta["tauri_command"] == "greet"
         assert sym.kind == "function"
         assert (sym.meta or {}).get("framework_role") == "ipc_publisher"
         # ADR-0031: Class B synthetic stand-ins carry language=None;
@@ -2491,5 +2492,8 @@ class TestStandInIdsNameTheirOwnKind:
         ids = [s.id for s in result.symbols]
         assert len(ids) == len(set(ids)), sorted(ids)
         sync = sorted(s.id.rsplit(":", 2)[1] for s in result.symbols
-                      if s.name == "sync" and s.path.endswith("editor.ts"))
-        assert sync == ["sync-event_listener", "sync-ipc_publisher"], sync
+                      if s.name.endswith(":sync") and s.path.endswith("editor.ts"))
+        # WI-supar: the role is in the name, and the slot is the name sanitized.
+        assert sync == ["event_listener.sync", "ipc_publisher.sync"], sync
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0

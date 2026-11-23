@@ -310,3 +310,23 @@ def test_every_minted_symbol_id_round_trips_to_its_node(tmp_path: Path) -> None:
         assert sym.kind in set(all_symbol_kind_names()), sym.id
         assert sym.id.split(":")[0] == (sym.discovery_language or sym.language), sym.id
     assert len({s.id for s in symbols}) == len(symbols)
+
+
+def test_the_role_is_in_the_name_and_the_name_is_the_slot(tmp_path) -> None:
+    """WI-supar / ADR-0036 Ruling 1: a bridge marker and a selector on one
+    line keep distinct ids through the role in their NAME, and the slot is
+    that name sanitized (it held ``<name>-<role>``)."""
+    from hypergumbo_core.linkers.swift_objc import link_swift_objc
+    from hypergumbo_core.spec_validator import compute_name_slot_stats
+
+    (tmp_path / "A.swift").write_text(
+        "@objc class Greeter: NSObject {\n"
+        "    @objc func greet() { let s = #selector(greet) }\n"
+        "}\n"
+    )
+    result = link_swift_objc(tmp_path)
+
+    names = sorted(s.name for s in result.symbols)
+    assert names == ["objc_bridge:Greeter", "objc_bridge:greet", "selector_ref:greet"]
+    assert len({s.id for s in result.symbols}) == 3
+    assert compute_name_slot_stats(result.symbols)["mismatched"] == 0

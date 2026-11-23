@@ -568,17 +568,25 @@ def _scan_ts_js_file_for_listen(file_path: Path) -> list[str]:
     return events
 
 
+def _stand_in_name(name: str, role: str) -> str:
+    """A stand-in's ``Symbol.name``: ``<role>:<name>`` (``ipc_publisher:greet``);
+    the bare command or event is ``meta["tauri_command"]`` /
+    ``meta["tauri_event"]``."""
+    return f"{role}:{name}"
+
+
 def _stand_in_id(lang: str, path: str, name: str, role: str) -> NodeId:
     """The node id of a stand-in this linker mints for a file.
 
     ADR-0036 Ruling 2: the kind slot is the Symbol's kind, ``function``. The
     role (``ipc_publisher`` / ``ipc_caller`` / ``event_emitter`` /
-    ``event_listener``) used to sit there, a word no symbol kind has. It rides
-    as a name-segment suffix, as in the websocket and grpc linkers: these ids
-    are keyed by file with a ``0-0`` span, so without it a file that invokes
-    command ``sync`` and listens for event ``sync`` would mint one id twice.
+    ``event_listener``) used to sit there, a word no symbol kind has. It is in
+    the NAME (:func:`_stand_in_name`), and the name is the name slot (Ruling
+    1): these ids are keyed by file with a ``0-0`` span, so without it a file
+    that invokes command ``sync`` and listens for event ``sync`` would mint one
+    id twice.
     """
-    return make_symbol_id(lang, path, 0, 0, f"{name}-{role}", "function")
+    return make_symbol_id(lang, path, 0, 0, _stand_in_name(name, role), "function")
 
 
 def link_tauri_ipc(
@@ -680,7 +688,7 @@ def link_tauri_ipc(
                     # Canonical kind="function"; the role is carried in
                     # meta["framework_role"] (ADR-0027, audit-findings 0013).
                     kind="function",
-                    name=cmd_name,
+                    name=_stand_in_name(cmd_name, "ipc_publisher"),
                     path=rel_path,
                     language=None,
                     discovery_language=host_language,
@@ -805,7 +813,7 @@ def link_tauri_ipc(
                         # Canonical kind="function"; the role is carried in
                         # meta["framework_role"] (ADR-0027, audit-findings 0013).
                         kind="function",
-                        name=func_name,
+                        name=_stand_in_name(func_name, "ipc_caller"),
                         path=rel_path,
                         language=None,
                         discovery_language=caller_language,
@@ -913,7 +921,7 @@ def link_tauri_ipc(
                             # Role in meta["framework_role"], not the kind
                             # (ADR-0027, audit-findings 0013).
                             kind="function",
-                            name=event_name,
+                            name=_stand_in_name(event_name, "event_emitter"),
                             path=rust_path,
                             language=None,
                             discovery_language="rust",
@@ -942,7 +950,7 @@ def link_tauri_ipc(
                             # Role in meta["framework_role"], not the kind
                             # (ADR-0027, audit-findings 0013).
                             kind="function",
-                            name=event_name,
+                            name=_stand_in_name(event_name, "event_listener"),
                             path=ts_path,
                             language=None,
                             discovery_language=listener_language,

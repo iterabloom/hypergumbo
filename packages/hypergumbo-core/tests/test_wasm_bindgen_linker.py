@@ -564,7 +564,8 @@ class TestWasmBindgenSyntheticSymbols:
 
         assert len(result.symbols) == 1
         sym = result.symbols[0]
-        assert sym.name == "greet"
+        assert sym.name == "wasm_import:greet"
+        assert sym.meta["wasm_export"] == "greet"
         assert sym.kind == "import"
         assert sym.meta.get("compilation_target") == "wasm"
         # ADR-0031: Class B synthetic stand-ins carry language=None;
@@ -988,6 +989,10 @@ class TestIdsMeetTheGraph:
         )
         assert {s.kind for s in result.symbols} == {"import", "module"}
         assert _check_id_roundtrip(result.symbols) == []
+        # WI-supar / ADR-0036 Ruling 1: every name slot is the sanitized name
+        # (the import is ``wasm_import:greet``).
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
 
 
 def test_the_module_stand_in_names_its_slot(tmp_path: Path) -> None:

@@ -46,16 +46,25 @@ class SwiftObjCLinkerResult:
 _ROLE_FOLDS: dict[str, str] = {"objc_bridge": "function", "selector_ref": "reference"}
 
 
+def _symbol_name(name: str, role: str) -> str:
+    """A stand-in's ``Symbol.name``: ``<role>:<name>`` (``objc_bridge:Greeter``,
+    ``selector_ref:greet``)."""
+    return f"{role}:{name}"
+
+
 def _make_symbol_id(path: str, line: int, name: str, role: str) -> NodeId:
     """The node id of a symbol this linker mints from a Swift file.
 
     ADR-0036 Ruling 2: the kind slot is ``node.kind`` and the language slot
     ``discovery_language or language`` -- ``swift`` for these Class B
     stand-ins. The pass name and the framework role used to sit in those two
-    slots. The role is kept as a name-segment suffix, as the websocket linker
-    does (INV-dulah), so a bridge and a selector at one line stay distinct.
+    slots. The role is in the NAME (:func:`_symbol_name`), and the name is the
+    name slot (Ruling 1), so a bridge and a selector at one line, or a
+    stand-in and the analyzer's own node for the declaration, stay distinct.
     """
-    return make_symbol_id("swift", path, line, line, f"{name}-{role}", _ROLE_FOLDS[role])
+    return make_symbol_id(
+        "swift", path, line, line, _symbol_name(name, role), _ROLE_FOLDS[role],
+    )
 
 
 def _find_swift_files(root: Path) -> list[Path]:
@@ -135,7 +144,7 @@ def _extract_swift_objc_patterns(
         # identity; the host language is Swift (the discovery file extension).
         symbols.append(Symbol(
             id=symbol_id,
-            name=name,
+            name=_symbol_name(name, "objc_bridge"),
             kind="function",
             language=None,
             discovery_language="swift",
@@ -156,13 +165,13 @@ def _extract_swift_objc_patterns(
         # Avoid duplicates (if already has @objc).
         # Post-fold: filter on meta["framework_role"] since kind is now "function".
         if not any(
-            s.name == name
+            s.name == _symbol_name(name, "objc_bridge")
             and (s.meta or {}).get("framework_role") == "objc_bridge"
             for s in symbols
         ):
             symbols.append(Symbol(
                 id=symbol_id,
-                name=name,
+                name=_symbol_name(name, "objc_bridge"),
                 kind="function",
                 language=None,
                 discovery_language="swift",
@@ -187,7 +196,7 @@ def _extract_swift_objc_patterns(
         # ADR-0031 Class B: same protocol-origin family as the bridge above.
         symbols.append(Symbol(
             id=symbol_id,
-            name=name,
+            name=_symbol_name(name, "selector_ref"),
             kind="reference",
             language=None,
             discovery_language="swift",

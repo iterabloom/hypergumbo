@@ -272,11 +272,13 @@ def link_wasm_bindgen(
             # WI-dovog: the importing file's language, not a literal.
             host_language = js_ts_language_from_path(Path(rel_path))
             # The kind slot is the node's kind, ``import`` (ADR-0036 Ruling 2,
-            # WI-vojur); the ``-wasm_import`` role suffix on the name segment
-            # (the websocket linker's INV-dulah shape) keeps the stand-in from
-            # colliding with an analyzer ``import`` node of the same name.
+            # WI-vojur); the NAME carries the role, ``wasm_import:<name>``, and
+            # is the name slot (Ruling 1), which keeps the stand-in from
+            # colliding with an analyzer ``import`` node of the same name. The
+            # bare export is ``meta["wasm_export"]``.
+            stand_in_name = f"wasm_import:{import_name}"
             src_id = make_symbol_id(
-                host_language, rel_path, 0, 0, f"{import_name}-wasm_import", "import",
+                host_language, rel_path, 0, 0, stand_in_name, "import",
             )
 
             # Create synthetic Symbol node for the wasm import so the
@@ -295,7 +297,7 @@ def link_wasm_bindgen(
                     display_label=f"import {{ {import_name} }}",  # ADR-0032
                     # ADR-0032: no producer-side fingerprint; the central post-pass stamps Format 2.
                     kind="import",
-                    name=import_name,
+                    name=stand_in_name,
                     path=rel_path,
                     language=None,
                     discovery_language=host_language,
