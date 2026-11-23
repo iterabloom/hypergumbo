@@ -40,7 +40,9 @@ How It Works
    language, ``yaml`` or ``json``, which is also the id's language slot:
    ADR-0034's rule for a Class B stand-in; the slot read ``openapi``, no
    language, and ``discovery_language`` was unset)
-4. Match to route symbols by path pattern and HTTP method
+4. Match to route symbols by path pattern and HTTP method, the path under
+   the document's prefixes (``basePath`` / ``servers``; see
+   :func:`_route_serves` for a route registered relative to the prefix)
 5. Create ``references`` edges (spec operation → handler, tagged
    ``meta.ref_construct="openapi_operation"``; audit-findings 0016). The
    spec→handler direction is deliberate: it powers the forward slice from
@@ -72,6 +74,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
+from urllib.parse import urlsplit
 
 from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
@@ -99,8 +102,12 @@ class OpenApiOperation:
     operation_id: str | None  # e.g., getUserById
     summary: str | None  # Short description
     tags: list[str]  # Grouping tags
-    line: int  # Line number in spec file
+    line: int  # First line of the operation (its method key) in the spec file
     file_path: str  # Spec file path
+    end_line: int = 0  # Last line of the operation's mapping (0: not known)
+    # The document's path prefixes: Swagger 2 ``basePath``, the path part of
+    # each OpenAPI 3 ``servers[].url``; ``("",)`` when it declares none.
+    prefixes: tuple[str, ...] = ("",)
 
 
 @dataclass
@@ -188,12 +195,78 @@ def _find_openapi_files(root: Path) -> Iterator[Path]:
                 yield file_path
 
 
-def _load_openapi_document(file_path: Path) -> dict[str, Any] | None:
-    """The parsed document when ``file_path`` is an OpenAPI/Swagger spec, else None."""
+def _operation_spans(content: str) -> dict[tuple[str, str], tuple[int, int]]:
+    """``{(path, method): (first line, last line)}`` of every operation, 1-based.
+
+    Read from the YAML node tree (``yaml.compose``), which keeps each node's
+    position; JSON is YAML here, so a ``.json`` spec is read the same way.
+    The first line is the method key's, the last the operation mapping's. A
+    document the YAML composer rejects (a tab-indented JSON file) gives no
+    spans, and its operations get the ``0-0`` span (ADR-0036's "no source
+    span" sentinel) rather than a guessed line.
+    """
     try:
-        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
+        import yaml
+    except ImportError:  # pragma: no cover - pyyaml is a dependency
+        return {}
+    try:
+        root = yaml.compose(content)
+    except yaml.YAMLError:
+        return {}
+    spans: dict[tuple[str, str], tuple[int, int]] = {}
+    paths_node = None
+    if isinstance(root, yaml.MappingNode):
+        for key_node, value_node in root.value:
+            if key_node.value == "paths":
+                paths_node = value_node
+    if not isinstance(paths_node, yaml.MappingNode):
+        return spans
+    lines = content.splitlines()
+    for path_key, path_item in paths_node.value:
+        if not isinstance(path_item, yaml.MappingNode):
+            continue
+        for method_key, op_node in path_item.value:
+            start = method_key.start_mark.line + 1
+            spans[(str(path_key.value), str(method_key.value))] = (
+                start, _last_line(lines, op_node.end_mark, start),
+            )
+    return spans
+
+
+def _last_line(lines: list[str], end_mark: Any, start: int) -> int:
+    """The 1-based last line of a node whose ``end_mark`` is given.
+
+    A block node's end mark sits at the NEXT token (the following key, after
+    its indentation), so the node ends on the last non-blank line before the
+    mark; a flow node's (``{...}``) mark is right after its closing brace, on
+    its own last line.
+    """
+    line = int(end_mark.line)  # 0-based
+    if line < len(lines) and lines[line][: int(end_mark.column)].strip():
+        return line + 1
+    while line > start and not lines[line - 1].strip():
+        line -= 1
+    return max(start, line)
+
+
+def _read_spec(file_path: Path) -> str | None:
+    """The spec file's text (masked), or None when it cannot be read."""
+    try:
+        return read_masked_source(file_path, encoding="utf-8", errors="replace")
     except (OSError, IOError):  # pragma: no cover
         return None
+
+
+def _load_openapi_document(file_path: Path) -> dict[str, Any] | None:
+    """The parsed document when ``file_path`` is an OpenAPI/Swagger spec, else None."""
+    content = _read_spec(file_path)
+    if content is None:  # pragma: no cover
+        return None
+    return _parse_document(file_path, content)
+
+
+def _parse_document(file_path: Path, content: str) -> dict[str, Any] | None:
+    """``content`` parsed as the spec ``file_path`` is, when it is one, else None."""
 
     data: dict[str, Any] | None = None
     if file_path.suffix.lower() in (".yaml", ".yml"):
@@ -217,21 +290,51 @@ def has_openapi_document(root: Path) -> bool:
     return any(_load_openapi_document(p) is not None for p in _find_openapi_files(root))
 
 
+def _base_paths(data: dict[str, Any]) -> tuple[str, ...]:
+    """The path prefixes a spec's operations are served under.
+
+    Swagger 2 ``basePath``; OpenAPI 3 the path part of every
+    ``servers[].url`` (absolute or relative; ``{var}`` placeholders take the
+    server variable's ``default``). ``/`` and an absent prefix are ``""``.
+    """
+    raw: list[str] = []
+    base = data.get("basePath")
+    if isinstance(base, str):
+        raw.append(base)
+    servers = data.get("servers")
+    if isinstance(servers, list):
+        for server in servers:
+            if not isinstance(server, dict) or not isinstance(server.get("url"), str):
+                continue
+            url = server["url"]
+            variables = server.get("variables")
+            if isinstance(variables, dict):
+                for name, var in variables.items():
+                    if isinstance(var, dict) and isinstance(var.get("default"), str):
+                        url = url.replace("{" + str(name) + "}", var["default"])
+            raw.append(urlsplit(url).path)
+    prefixes = sorted({p.rstrip("/") for p in raw})
+    return tuple(prefixes) or ("",)
+
+
 def _parse_openapi_spec(file_path: Path) -> list[OpenApiOperation]:
     """Parse an OpenAPI spec file and extract operations."""
     operations: list[OpenApiOperation] = []
 
-    data = _load_openapi_document(file_path)
+    content = _read_spec(file_path)
+    if content is None:  # pragma: no cover
+        return operations
+    data = _parse_document(file_path, content)
     if data is None:
         return operations
+    spans = _operation_spans(content)
+    prefixes = _base_paths(data)
 
     # Extract paths
     paths = data.get("paths", {})
     if not isinstance(paths, dict):
         return operations
 
-    # Track line numbers approximately
-    line_num = 1
     for path_key, path_item in paths.items():
         if not isinstance(path_item, dict):
             continue
@@ -251,6 +354,9 @@ def _parse_openapi_spec(file_path: Path) -> list[OpenApiOperation]:
             if not isinstance(tags, list):
                 tags = []
 
+            # The operation's real lines (it was a count of PATHS, so every
+            # operation of the third path sat on line 3).
+            start, end = spans.get((str(path_key), method), (0, 0))
             operations.append(
                 OpenApiOperation(
                     path=path_key,
@@ -258,12 +364,12 @@ def _parse_openapi_spec(file_path: Path) -> list[OpenApiOperation]:
                     operation_id=operation_id,
                     summary=summary,
                     tags=tags,
-                    line=line_num,
+                    line=start,
                     file_path=str(file_path),
+                    end_line=end,
+                    prefixes=prefixes,
                 )
             )
-
-        line_num += 1  # Approximate line tracking
 
     return operations
 
@@ -299,6 +405,31 @@ def _paths_match(openapi_path: str, route_path: str) -> bool:
     return bool(re.match(pattern, norm_route))
 
 
+def _route_serves(
+    op: OpenApiOperation, route_path: str, route_file: str, spec_dir: str,
+) -> bool:
+    """Whether a route whose path is ``route_path`` serves ``op``'s path.
+
+    An operation is served at ``<prefix><path>`` for each of the document's
+    prefixes (``basePath``, ``servers``). A route registered at the full path
+    serves it wherever it is. A route at the bare ``<path>`` serves it only
+    when the route's file sits under the spec's own directory: server code
+    generated from a spec (go-swagger's ``restapi``, openapi-generator stubs)
+    is mounted at the prefix and registers paths relative to it, while a
+    same-named path elsewhere is another router's (a React client-side route,
+    another API version's router). Before, every route at the bare path was
+    linked and the prefix was ignored (alertmanager: 4 of 21 edges ended on
+    React routes, 8 on the v1 router). With no prefix the bare path is the
+    full path.
+    """
+    for prefix in op.prefixes:
+        if _paths_match(prefix + op.path, route_path):
+            return True
+    if op.prefixes == ("",) or not _paths_match(op.path, route_path):
+        return False
+    return spec_dir in ("", ".") or route_file.startswith(spec_dir + "/")
+
+
 def _get_route_info_from_concept(symbol: Symbol) -> tuple[str | None, str | None]:
     """Extract ``(route_path, http_method)`` for OpenAPI operation matching.
 
@@ -322,6 +453,17 @@ def _get_route_symbols(ctx: LinkerContext) -> list[Symbol]:
     (WI-tosul).
     """
     return [s for s in ctx.symbols if is_route(s)]
+
+
+def _relative_dir(file_path: str, root: Path) -> str:
+    """The spec file's directory, repo-relative and ``/``-separated, the way
+    the analyzers spell a route symbol's ``path``."""
+    path = Path(file_path)
+    try:
+        path = path.relative_to(root)
+    except ValueError:  # pragma: no cover - the spec globs yield paths under root
+        pass
+    return path.parent.as_posix()
 
 
 def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
@@ -371,7 +513,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
         # every operation. The factory sanitizes it.
         op_name = op.operation_id or f"{op.method} {op.path}"
         symbol_id = make_symbol_id(
-            spec_language, op.file_path, op.line, op.line, op_name, "function",
+            spec_language, op.file_path, op.line, op.end_line, op_name, "function",
         )
 
         # Canonical kind="function" + meta["framework_role"] (ADR-0027;
@@ -388,7 +530,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
             discovery_language=spec_language,
             protocol_origin="openapi",
             path=op.file_path,
-            span=Span(start_line=op.line, end_line=op.line, start_col=0, end_col=0),
+            span=Span(start_line=op.line, end_line=op.end_line, start_col=0, end_col=0),
             signature=f"{op.method} {op.path}",
             origin=PASS_ID,
             origin_run_id=run.execution_id,
@@ -405,6 +547,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
 
         # Try to match to route handlers
         matched = False
+        spec_dir = _relative_dir(op.file_path, root)
         for route in route_symbols:
             # Extract route info via the canonical routes.route_of accessor
             route_path, route_method = _get_route_info_from_concept(route)
@@ -412,8 +555,8 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
             if not route_path:
                 continue
 
-            # Match by path and method
-            if _paths_match(op.path, route_path):
+            # Match by path (under the document's prefixes) and method
+            if _route_serves(op, route_path, route.path, spec_dir):
                 # Method must match, allowing for the wildcard spellings and
                 # the comma-joined multi-method form. Delegated to the routes
                 # chokepoint, which covers a node-http `ALL` catch-all and a
