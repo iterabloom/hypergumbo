@@ -252,9 +252,16 @@ Three layers, extending ADR-0034's:
    path-slot warning becomes an error when its producers stop emitting an edge
    `dst` that is not an id.
 3. **Static linter** (`check_id_construction.py`, run as
-   `scripts/check-id-construction`) checks every expression that reaches
-   `Symbol(id=...)`, `Edge(id=...)` or an edge endpoint (`src=` / `dst=` of
-   `Edge(...)` / `Edge.create(...)`) against the id grammar, in the source.
+   `scripts/check-id-construction`) checks, in the source, against the id
+   grammar: what reaches `Symbol(id=...)` and `Edge(id=...)` within three
+   hops (the argument, one local, one same-module helper), and what reaches
+   an edge endpoint (`src=` / `dst=` of `Edge(...)` / `Edge.create(...)`)
+   through a walk of the tree that follows a parameter one call level, a
+   helper of another module one level, and the registries, attributes and
+   loop variables a producer reads ids from. An endpoint the walk cannot
+   follow is declared, with what it holds, in `KNOWN_UNJUDGED_ENDPOINTS`;
+   an undeclared one fails the check (ADR-0034 §"Enforcement"). A slot
+   filled by an interpolation is not judged.
 
 **Kind registrations this grammar depends on.** GraphQL `mutation` and
 `subscription` are registered `language_construct` kinds beside `query` and
