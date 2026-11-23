@@ -3,9 +3,9 @@
   "workflow": "full-suite",
   "leg": null,
   "commit": "1350a1d518ae1a91f291002d1c0874ee2280913f",
-  "pipeline": 6832,
-  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6832",
-  "finished_at": "2026-11-23T09:24:11Z",
+  "pipeline": 6833,
+  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6833",
+  "finished_at": "2026-11-23T21:24:28Z",
   "status": "passed",
   "steps": [
     {
