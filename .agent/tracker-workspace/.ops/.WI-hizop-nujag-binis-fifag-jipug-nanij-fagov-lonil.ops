@@ -1,0 +1,21 @@
+- op: create  # 522b
+  at: '2026-11-23T22:41:00Z'  # 522b
+  by: agent  # 522b
+  actor: jgstern_agent  # 522b
+  clock: 1  # 522b
+  nonce: 522b  # 522b
+  data:  # 522b
+    kind: work_item  # 522b
+    title: "JavaScript/TypeScript signature: a destructured parameter is dropped and a destructured default is cut at its first '=', so different parameter lists share one signature and one stable id"  # 522b
+    status: todo_soft  # 522b
+    priority: 3  # 522b
+    parent:  # 522b
+    tags:  # 522b
+    - stable_id  # 522b
+    - javascript  # 522b
+    isbefore: []  # 522b
+    duplicate_of: []  # 522b
+    not_duplicate_of: []  # 522b
+    pr_ref:  # 522b
+    description: "WHAT. _extract_jsts_signature (packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py, the assignment_pattern branch near line 1739) builds the signature a JavaScript or TypeScript function shows and hashes. Two defects, both measured on dev 49bc5c6e4 (scheme v18), one file a.js per variant:\n1. A destructured parameter with a default is cut at its first \"=\": the branch splits the whole pattern text with split(\"=\", 1) instead of reading the pattern's left side.\n   - export function f({retries = 3} = {})                 signature ({retries = ...)   stable id hgstableid18:44f73e7226972199\n   - export function f({retries = 3, timeout = 5} = {})    signature ({retries = ...)   the SAME stable id\n   - export function f({retries} = {})                     signature ({retries} = ...)  hgstableid18:eb572034bb65a6e2\n2. A bare object_pattern or array_pattern parameter has no branch and is dropped:\n   - export function m({ a, b }, [c, d] = [])      signature ([c, d] = ...)   hgstableid18:d3c8d40e7e87e52a\n   - export function m({ a, b, e }, [c, d] = [])   signature ([c, d] = ...)   the SAME stable id\nCONSEQUENCE. The signature a reader sees is truncated or missing a parameter, and adding or removing a destructured parameter does not move the stable id.\nASK. Read the pattern's left field for a default, and write a destructured parameter into the signature. The fix changes what the stable id hashes, so it belongs to the next scheme bump (every bump is owner-ruled). Related: WI-dozos (TypeScript default values in the stable id). The second defect was first listed as one bullet of WI-saliz; this item carries both.\nFound 2026-11-23 by the layout work on WI-sidus (PR #2347); the first defect was missed when the follow-ups were filed and found by an audit of the build reports (~/hypergumbo_lab_notebook/idfive_11232026/closure/followup_audit.md)."  # 522b
+    fields: {}  # 522b

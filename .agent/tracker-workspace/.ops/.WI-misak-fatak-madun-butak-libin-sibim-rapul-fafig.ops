@@ -1,0 +1,20 @@
+- op: create  # a9e9
+  at: '2026-11-23T22:41:06Z'  # a9e9
+  by: agent  # a9e9
+  actor: jgstern_agent  # a9e9
+  clock: 1  # a9e9
+  nonce: a9e9  # a9e9
+  data:  # a9e9
+    kind: work_item  # a9e9
+    title: "test_sketch embedding-mode tests fail instead of skipping when sentence-transformers is installed but the model is not cached"  # a9e9
+    status: todo_soft  # a9e9
+    priority: 4  # a9e9
+    parent:  # a9e9
+    tags:  # a9e9
+    - ci_infrastructure  # a9e9
+    isbefore: []  # a9e9
+    duplicate_of: []  # a9e9
+    not_duplicate_of: []  # a9e9
+    pr_ref:  # a9e9
+    description: "WHAT. Two tests in packages/hypergumbo-core/tests/test_sketch.py, TestConfigExtraction::test_embedding_mode_provides_context and ::test_embedding_mode_multi_file_overflow, are guarded by skipif(not _has_sentence_transformers()), which asks only whether the library imports. They need the embedding model in the cache as well. With the library installed and no model under XDG_CACHE_HOME they FAIL instead of skipping.\nREPRO on dev 49bc5c6e4 (after PR #2347):\n  HF_HUB_OFFLINE=1 XDG_CACHE_HOME=/tmp/empty scripts/smart-test packages/hypergumbo-core/tests/test_sketch.py -k \"test_embedding_mode_provides_context or test_embedding_mode_multi_file_overflow\"\n  -> 2 failed (\"Expected at least 2 file headers, got 0\").\n  The same command with the default cache -> 2 passed.\nTwo build agents met it when they ran the suite under a private XDG_CACHE_HOME (the recipe LIVE.md prescribes for a same-tree A/B). Not checked: whether CI's environment (no sentence-transformers) ever runs them; the other eight tests behind the same guard.\nASK. Make the tests independent of the machine's cache: guard on the model's presence, or give them a stub model. AGENTS.md discourages skipif as an escape hatch, so the owner may prefer the stub, or may rule this an environment matter and close it.\nFound 2026-11-23 during the build of PR #2347; logged then as \"environment\" and not filed until an audit of the build reports (~/hypergumbo_lab_notebook/idfive_11232026/closure/followup_audit.md)."  # a9e9
+    fields: {}  # a9e9

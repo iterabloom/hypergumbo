@@ -47,3 +47,10 @@
   clock: 5  # 22a6
   nonce: 22a6  # 22a6
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A2/). VERDICT: PARTLY-STALE. Fixture a.ts `import {html} from 'lit'` -> node typescript:npm:0-0:lit:package, kind=package (not npm_package), path='', language=null, discovery_language=typescript, span 0-0, origin js-module-linker; the same artifact carries typescript:lit:0-0:html:external_symbol with path '<external>'. id_format violations: 0. language=null and span 0-0 are by design (ADR-0031 Class B, ADR-0036 R3). Source: linkers/js_module.py:965-973 (unchanged since 1c2ce91f7b). What remains: '' is an undeclared second no-anchor spelling of node.path beside the documented '<external>' (ir.py:737; ADR-0036 R3 table, whose full enumeration is not landed). Title re-scoped. ROOT-CAUSE GROUP: hand-rolled ids/placeholders bypass the ADR-0036 chokepoint (with INV-dulah, WI-ribuz, META-sigap). Status unchanged."  # 22a6
+- op: discuss  # ca3e
+  at: '2026-11-23T22:19:04Z'  # ca3e
+  by: agent  # ca3e
+  actor: jgstern_agent  # ca3e
+  clock: 6  # ca3e
+  nonce: ca3e  # ca3e
+  message: "2026-11-23: unchanged after PR #2347. On dev 49bc5c6e4, a.ts importing from 'lit' still gives typescript:npm:0-0:lit:package with path ''. That PR made the boundary-node factory write <external> for an empty path (the same file's other two stand-ins, typescript:lit:0-0:html:external_symbol and typescript:lit:0-0:module:external_symbol, have path '<external>'), but the npm package node is not minted by that factory. Adopting <external> for it moves every npm stand-in's stable id, so it is listed for a ruling in WI-hodin-kizis-nugir-simuv-ritat-vihuz-vatof-jiris (point 7)."  # ca3e

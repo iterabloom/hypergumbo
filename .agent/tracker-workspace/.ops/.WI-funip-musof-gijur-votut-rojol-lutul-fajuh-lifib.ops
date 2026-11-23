@@ -33,3 +33,12 @@
   clock: 3  # d031
   nonce: d031  # d031
   message: "Fixed in PR #2347. Per producer on dev 49bc5c6e4 (name vs id name slot): solidity-abi stand-ins on openzeppelin: 1,250 nodes, name 'abi_call:length', slot 'abi_call.length'; Vue directives on koel: 2,315 nodes, name 'AiPromptBox:v-on:submit', slot 'AiPromptBox.v-on.submit' (pretix, the repository the item names, is not on this machine and was not re-run); Maven nodes on spring-petclinic: 24 nodes, 0 mismatches; websocket stand-ins (fixture): name 'ws:connection', slot 'ws.connection'; tsconfig file nodes: name and slot 'tsconfig.json'. On the eight repositories run on dev 49bc5c6e4, validation_report.name_slot_stats lists ONE mismatching producer, javascript (the _cb_<callee>@<column> callbacks, WI-bafaz): 16,885 mismatches in all, 6,356 of them on knex. Over 42 repositories the count went 49,820 -> 37,227, the rest all JavaScript callbacks. 'Promote the statistic to an error': done as far as an owner decision allows: a mismatch is now an id_format error (_check_name_slot_roundtrip) for every (producer, kind) except the one declared in KNOWN_NAME_SLOT_HOLES, (javascript, function), which waits on WI-bafaz; the table may only shrink (packages/hypergumbo-core/tests/test_name_slot_holes.py). The total is therefore NOT 0. id_format is 0 on all eight repositories. Fixes that moved an id went into stable-id scheme v18. Same-line twins that the fixes exposed are filed as WI-hugir-kubuk-ripig-fotuv-viviv-komir-kusis-hovil. Outputs: ~/hypergumbo_lab_notebook/idfive_11232026/closure/ (fixtures*.txt, trees_summary.txt, pair_check_dev.txt)."  # d031
+- op: update  # afac
+  at: '2026-11-23T22:19:05Z'  # afac
+  by: agent  # afac
+  actor: jgstern_agent  # afac
+  clock: 4  # afac
+  nonce: afac  # afac
+  set: {}  # afac
+  add:  # afac
+    tags: [awaits_bakeoff_validation]  # afac
