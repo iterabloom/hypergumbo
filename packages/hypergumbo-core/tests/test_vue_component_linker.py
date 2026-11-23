@@ -427,17 +427,22 @@ class TestVueComponentLinker:
         resolved = [e for e in result.edges if e.edge_type == "imports"]
         assert len(resolved) == 0
 
-    def test_activation_requires_vue(self) -> None:
-        """Linker activation requires vue framework or language."""
+    def test_activation_is_gated_by_its_data(self) -> None:
+        """The linker runs on every tree; with no component edge it emits
+        nothing (WI-supar: a Svelte-only or Astro-only tree detects no Vue)."""
         from hypergumbo_core.linkers.registry import get_linker
 
         linker = get_linker("vue-component-linker")
         assert linker is not None
-        # Should run when vue is detected
         assert linker.activation.should_run({"vue"}, {"vue"})
-        assert linker.activation.should_run(set(), {"vue"})
-        # Should not run without vue
-        assert not linker.activation.should_run(set(), {"python"})
+        assert linker.activation.should_run(set(), {"python"})
+        python_only = LinkerContext(
+            repo_root=Path("/repo"),
+            symbols=[_sym("python:a.py:1-1:file:file", "a.py", "file", "a.py", language="python")],
+            edges=[],
+        )
+        result = link_vue_components(python_only)
+        assert (result.symbols, result.edges) == ([], [])
 
 
 class TestInvBahovCanonicalFileIdReuse:
