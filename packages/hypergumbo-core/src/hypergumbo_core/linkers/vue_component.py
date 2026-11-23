@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Infrastructure linker: Vue component for resolving cross-file component imports.
 
+Despite its name it serves the Svelte and Astro analyzers too: each emits the
+same edge shape, and the linker runs on every tree (its input is those edges;
+with none it returns at once).
+
 The Vue analyzer emits one `imports` edge per component reference, with
 the source file's id (`make_file_id`) as src and a synthetic component
 id as dst: `vue:{import_path}:0-0:{name}:component` when a companion
@@ -132,12 +136,16 @@ def _resolve_import_path(
     "vue-component-linker",
     priority=25,
     description="Vue component import resolution",
-    activation=LinkerActivation(
-        frameworks=["vue", "nuxt"],
-        language_pairs=[("vue", "vue")],
-    ),
-    # CNF: Vue SFCs are parsed by the javascript analyzer.
-    depends_on=[["javascript"]],
+    # Always on, and gated by its data: it reads only the ``imports`` edges
+    # carrying ``meta['import_path']``, which the Vue, Svelte and Astro
+    # analyzers alone write, and returns at once when there is none. Its gate
+    # was Vue or Nuxt detected, so a Svelte-only or Astro-only tree (Astro is
+    # no taxonomy language, and a tree without a manifest detects no
+    # framework) kept every aliased component import on its placeholder
+    # (WI-supar). Loosening is the recall-gain direction ADR-0055 leaves open.
+    activation=LinkerActivation(always=True),
+    # CNF: the component edges it resolves come from these three analyzers.
+    depends_on=[["vue", "svelte", "astro"]],
 )
 def link_vue_components(ctx: LinkerContext) -> LinkerResult:
     """Resolve Vue component imports to symbol-to-symbol edges.
