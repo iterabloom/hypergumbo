@@ -388,7 +388,8 @@ module "vpc" {
         result = analyze_hcl(tmp_path)
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) == 1
-        assert import_edges[0].dst == "./modules/vpc"
+        # No such directory in the tree: a module stand-in, a node id (WI-jozih).
+        assert import_edges[0].dst == "hcl:modules/vpc:0-0:module:module"
 
 class TestUnknownBlockTypes:
     """Branch coverage for unknown block type handling."""

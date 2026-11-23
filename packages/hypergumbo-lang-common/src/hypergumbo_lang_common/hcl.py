@@ -44,6 +44,7 @@ backstop's table formulas.
 
 from __future__ import annotations
 
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -54,10 +55,12 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.analyze.edge_target import in_tree_file_id
+from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 
@@ -370,6 +373,24 @@ def _extract_module_source(node: "tree_sitter.Node", source: bytes) -> str | Non
     return None  # pragma: no cover - no source attribute
 
 
+def _local_module_target(file_path: Path, rel_path: str, source: str) -> NodeId:
+    """The node a local module ``source`` (``./x``, ``../x``) imports.
+
+    A Terraform module is a DIRECTORY. When the tree holds it, the edge ends
+    on its entry file: ``main.tf`` by convention, else its first ``.tf``
+    file by name. Otherwise it ends on a module stand-in named by the
+    directory's repository path, so two files that reach one module by
+    different relative spellings name one node. Before, the dst was the raw
+    ``source`` string, which is no node id (WI-jozih).
+    """
+    target = posixpath.normpath(posixpath.join(posixpath.dirname(rel_path), source))
+    on_disk = file_path.parent / source
+    names = sorted(p.name for p in on_disk.glob("*.tf")) if on_disk.is_dir() else []
+    candidates = [posixpath.join(target, n) for n in ["main.tf", *names]]
+    found = in_tree_file_id(file_path, rel_path, candidates)
+    return found if found is not None else make_module_import_dst("hcl", target)
+
+
 def _find_enclosing_block_symbol(
     node: "tree_sitter.Node",
     source: bytes,
@@ -400,6 +421,7 @@ def _find_enclosing_block_symbol(
 def _extract_edges_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
+    file_path: Path,
     rel_path: str,
     local_symbols: dict[str, Symbol],
     resolver: "NameResolver",
@@ -410,6 +432,7 @@ def _extract_edges_from_tree(
     Args:
         tree: Parsed tree-sitter tree
         source: Source file bytes
+        file_path: Absolute path to file (a module source is looked up on disk)
         rel_path: Relative path to file
         local_symbols: Symbol-by-name dict for this file
         resolver: NameResolver for cross-file symbol lookup
@@ -428,11 +451,11 @@ def _extract_edges_from_tree(
             # Handle module source
             if block_type == "module" and len(labels) >= 1:
                 mod_source = _extract_module_source(node, source)
-                if mod_source and mod_source.startswith("./"):
+                if mod_source and mod_source.startswith(("./", "../")):
                     line = node.start_point[0] + 1
                     edges.append(Edge.create(
                         src=file_id,
-                        dst=mod_source,
+                        dst=_local_module_target(file_path, rel_path, mod_source),
                         edge_type="imports",
                         line=line,
                         evidence_type="module_source",
@@ -507,7 +530,7 @@ class HclAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract dependency and import edges from an HCL file."""
         return _extract_edges_from_tree(
-            tree, source, rel_path,
+            tree, source, file_path, rel_path,
             local_symbols, resolver, run.execution_id,
         )
 
