@@ -1395,8 +1395,10 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                     sourced_path.rsplit("/", 1)[-1]
                                     or sourced_path
                                 )
-                                dst_id = (
-                                    f"bash:{sourced_path}:0-0:{dst_basename}:file"
+                                # Minted, so a ``:`` in the basename folds to
+                                # ``.`` in the name slot (ADR-0036 Ruling 1).
+                                dst_id = make_symbol_id(
+                                    "bash", sourced_path, 0, 0, dst_basename, "file",
                                 )
                                 edges.append(Edge.create(
                                     src=file_id,
