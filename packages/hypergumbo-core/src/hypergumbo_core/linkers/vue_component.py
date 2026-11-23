@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..analyze.base import make_file_id, make_file_stable_id
+from ..discovery import is_excluded
 from ..analyze.file_records import is_file_pseudo_symbol
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from ..taxonomy import get_language
@@ -70,6 +71,16 @@ PASS_ID = make_pass_id("vue-component-linker")
 
 # Common @ alias targets in Vue/Nuxt projects
 _AT_ALIAS_CANDIDATES = ("src", "app", ".")
+
+
+def _in_tree(candidate: Path, repo_root: Path) -> bool:
+    """True when ``candidate`` is on disk and discovery does not leave it out.
+
+    The disk is not the analysed tree (ADR-0004): a file git ignores and does
+    not track, or one a default exclude covers, was read by no analyzer, and
+    an import resolved to it would have this linker mint a file node for it.
+    """
+    return candidate.exists() and not is_excluded(candidate, repo_root)
 
 
 def _resolve_import_path(
@@ -97,12 +108,12 @@ def _resolve_import_path(
         suffix = import_path[2:]  # Strip '@/'
         for candidate_dir in _AT_ALIAS_CANDIDATES:
             candidate = repo_root / candidate_dir / suffix
-            if candidate.exists():
+            if _in_tree(candidate, repo_root):
                 return candidate
             # Try adding .vue extension
             if not suffix.endswith(".vue"):
                 candidate_vue = candidate.with_suffix(".vue")
-                if candidate_vue.exists():
+                if _in_tree(candidate_vue, repo_root):
                     return candidate_vue
         return None
 
@@ -111,23 +122,23 @@ def _resolve_import_path(
         # Resolve relative to the directory containing the source file
         source_dir = (repo_root / source_file).parent
         candidate = (source_dir / import_path).resolve()
-        if candidate.exists():
+        if _in_tree(candidate, repo_root):
             return candidate
         # Try adding .vue extension
         if not import_path.endswith(".vue"):
             candidate_vue = candidate.with_suffix(".vue")
-            if candidate_vue.exists():
+            if _in_tree(candidate_vue, repo_root):
                 return candidate_vue
         return None
 
     # Bare path (no ./ prefix) — treat as relative to source dir
     source_dir = (repo_root / source_file).parent
     candidate = (source_dir / import_path).resolve()
-    if candidate.exists():
+    if _in_tree(candidate, repo_root):
         return candidate
     if not import_path.endswith(".vue"):
         candidate_vue = candidate.with_suffix(".vue")
-        if candidate_vue.exists():
+        if _in_tree(candidate_vue, repo_root):
             return candidate_vue
     return None
 
