@@ -362,6 +362,29 @@ class FileAnalysis:
     - Functions without receivers: ``FuncName`` (e.g. ``NewEngine``)
     """
 
+    id_holders: dict[str, int] = field(default_factory=dict, repr=False)
+    """Node id → start column of the symbol that holds it, for
+    :meth:`add_symbol` (:func:`distinguish_same_line_id`'s table)."""
+
+    def add_symbol(
+        self, symbol: Symbol, node: Optional["tree_sitter.Node"] = None,
+    ) -> Symbol:
+        """Append ``symbol`` and, when given, register its tree-sitter node.
+
+        The way to add a symbol whose id another symbol of the file may
+        already hold: a second declaration with one name and one kind on one
+        line gets ``@<column>`` in its id's name slot
+        (:func:`distinguish_same_line_id`) BEFORE ``node_for_symbol`` is keyed
+        by that id. Appending to ``symbols`` and writing
+        ``node_for_symbol[symbol.id]`` by hand lets the twin's node replace
+        the first holder's, so the first loses its shape id and docstring.
+        """
+        distinguish_same_line_id(symbol, self.id_holders)
+        self.symbols.append(symbol)
+        if node is not None:
+            self.node_for_symbol[symbol.id] = node
+        return symbol
+
 
 @dataclass(frozen=True)
 class ArityFlags:
@@ -614,11 +637,13 @@ def constructed_from_callee(
 
 
 def make_symbol_id(
-    lang: str, path: str, start_line: int, end_line: int, name: str, kind: str
+    lang: str, path: str, start_line: int, end_line: int, name: str, kind: str,
+    *, column: Optional[int] = None,
 ) -> NodeId:
     """Generate a location-based symbol ID.
 
-    Format: {lang}:{path}:{start}-{end}:{name}:{kind}
+    Format: {lang}:{path}:{start}-{end}:{name}:{kind}, or with ``column``
+    {lang}:{path}:{start}-{end}:{name}@{column}:{kind}
 
     Args:
         lang: Language identifier (e.g., "go", "rust", "python")
@@ -627,9 +652,17 @@ def make_symbol_id(
         end_line: Ending line number
         name: Symbol name
         kind: Symbol kind (function, class, etc.)
+        column: The node's start column (``Symbol.span.start_col``), written
+            after the name as ``@<column>`` (ADR-0036 Ruling 1, amended
+            2026-11-23). Pass it only where the five slots would not tell two
+            nodes of one file apart: a producer whose names are synthetic
+            passes it always (JavaScript anonymous callbacks, ``_cb_map@16``);
+            same-line twins of a declared name get it from
+            :func:`distinguish_same_line_id`. The validator accepts the suffix
+            only when it equals the node's start column.
 
     Returns:
-        A unique, location-based symbol ID.
+        A location-based symbol ID.
 
     The ``name`` slot is sanitized ``':' -> '.'`` here — the always-on ADR-0036
     Ruling-1 chokepoint (WI-sikar). Why the name slot specifically: the
@@ -650,10 +683,70 @@ def make_symbol_id(
     id. Those explicit calls are needed regardless: they pin the right *value* into
     the slot, whereas this only guarantees the slot is colon-free.
     """
-    return NodeId(
-        f"{lang}:{path}:{start_line}-{end_line}"
-        f":{sanitize_id_name_segment(name)}:{kind}"
-    )
+    name_slot = sanitize_id_name_segment(name)
+    if column is not None:
+        name_slot = f"{name_slot}@{column}"
+    return NodeId(f"{lang}:{path}:{start_line}-{end_line}:{name_slot}:{kind}")
+
+
+def id_with_column(node_id: str, column: int) -> NodeId:
+    """``node_id`` with ``@<column>`` written after its name slot.
+
+    The slots are read from the right (the path slot may hold colons), so
+    ``rust:std::cmp:3-3:max:function`` becomes ``...:max@7:function``. The
+    same string :func:`make_symbol_id` builds with ``column=``.
+    """
+    head, name_slot, kind = node_id.rsplit(":", 2)
+    return NodeId(f"{head}:{name_slot}@{column}:{kind}")
+
+
+def distinguish_same_line_id(symbol: Symbol, holders: dict[str, int]) -> None:
+    """Give ``symbol`` an id no symbol at ANOTHER column holds.
+
+    ``holders`` maps each id claimed so far (in one file, or one analyzer run:
+    the path is in the id) to the start column of the symbol holding it. Call
+    this on every symbol as it is created, before anything reads its id:
+
+    * the first symbol to claim an id keeps it;
+    * a later symbol with that id at another start column is a different
+      declaration on the same line (two Swift ``init``s, a Nix binding and
+      the attribute inside it, two ``<span v-if>``): its id becomes
+      :func:`id_with_column` of its own start column;
+    * a later symbol at the SAME start column is the same node emitted
+      twice. Its id is left alone, so ``spec_validator``'s node-id
+      uniqueness check still reports it; a suffix would present one thing
+      as two.
+
+    Which twin keeps the plain id is the producer's walk order: source order
+    for a tree walk. A node id is a location key and moves with any edit of
+    its line, so a twin inserted ahead of another renames it like a line
+    insertion would.
+
+    The file pseudo-symbol is never suffixed (its id is the fixed triple
+    ``1-1:file:file``; ``_check_one_file_node_per_path`` owns its
+    duplicates), and neither is a symbol without a span: it has no column.
+    """
+    from .file_records import is_file_pseudo_symbol
+
+    if symbol.span is None or is_file_pseudo_symbol(symbol):
+        return
+    column = symbol.span.start_col
+    if holders.setdefault(symbol.id, column) == column:
+        return
+    symbol.id = id_with_column(symbol.id, column)
+    holders.setdefault(symbol.id, column)
+
+
+def distinguish_same_line_ids(symbols: Iterable[Symbol]) -> None:
+    """:func:`distinguish_same_line_id` over symbols already collected.
+
+    For a producer that builds its edges AFTER its symbol list is complete
+    and reads each endpoint from the ``Symbol`` object. An id copied out
+    before this runs (a dict key, an edge endpoint) is not updated.
+    """
+    holders: dict[str, int] = {}
+    for symbol in symbols:
+        distinguish_same_line_id(symbol, holders)
 
 
 def make_file_id(lang: str, path: str) -> NodeId:

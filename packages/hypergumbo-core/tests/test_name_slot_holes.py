@@ -15,6 +15,8 @@ over all of them checks, with no real repository:
   with the table in place it reports none;
 * the producers fixed since (``_FIXED``: Vue, Svelte and Astro members, Tcl,
   the gRPC and Yjs linkers) are in the same run, reached, and do not mismatch;
+  so is the JavaScript anonymous callback, the table's last entry, whose
+  ``@<column>`` suffix is the ruled grammar since 2026-11-23;
 * the table is no longer than ``_CEILING``, which may only go down.
 
 Adding a hole therefore takes three visible edits (the entry, its fixture,
@@ -39,21 +41,21 @@ from hypergumbo_core.spec_validator import (
 )
 
 #: Shrink-only: lower it when an entry is removed, never raise it.
-_CEILING = 1
+_CEILING = 0
 
 #: One fixture per declared hole: files written under one tree, each pair's
 #: producer run on them by a full pipeline run.
-_FIXTURES: dict[tuple[str, str], dict[str, str]] = {
-    ("javascript", "function"): {
-        "js/app.js": "[1, 2].forEach(function () { return 1; });\n",
-    },
-}
+_FIXTURES: dict[tuple[str, str], dict[str, str]] = {}
 
 #: Producers that were declared holes and are fixed: each fixture is in the
 #: same run, so the two table tests below fail if one mismatches again, and
 #: ``test_every_fixed_producer_is_reached`` fails if its fixture stops
 #: producing the node (a fixture that mints nothing proves nothing).
 _FIXED: dict[tuple[str, str], dict[str, str]] = {
+    # was the last declared hole: the slot is ``_cb_forEach@<column>``
+    ("javascript", "function"): {
+        "js/app.js": "[1, 2].forEach(function () { return 1; });\n",
+    },
     ("vue", "directive"): {
         "vue/src/App.vue": (
             '<template>\n  <div>\n    <p v-if="first">a</p>\n  </div>\n</template>\n'
@@ -107,8 +109,21 @@ def run_nodes(tmp_path_factory: pytest.TempPathFactory) -> list[SimpleNamespace]
     out = root.parent / "map.json"
     run_behavior_map(root, out_path=out, progress=False, include_docs=True)
     return [
-        SimpleNamespace(**{k: n.get(k) for k in ("id", "name", "kind", "origin", "language")})
+        SimpleNamespace(
+            **{k: n.get(k) for k in ("id", "name", "kind", "origin", "language")},
+            span=SimpleNamespace(**n["span"]) if n.get("span") else None,
+        )
         for n in json.loads(out.read_text())["nodes"]
+    ]
+
+
+def test_the_javascript_callback_carries_its_column(run_nodes) -> None:
+    """Reach for the fixture of the former hole: the callback is emitted with
+    the suffix, and the suffix is its start column."""
+    callbacks = [n for n in run_nodes if (n.name or "").startswith("_cb_")]
+    assert callbacks
+    assert [n.id.rsplit(":", 2)[1] for n in callbacks] == [
+        f"{n.name}@{n.span.start_col}" for n in callbacks
     ]
 
 

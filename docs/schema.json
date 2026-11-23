@@ -696,6 +696,9 @@
                 "mismatched": {
                   "type": "integer"
                 },
+                "column_suffixed": {
+                  "type": "integer"
+                },
                 "by_producer": {
                   "type": "array",
                   "items": {
@@ -730,7 +733,7 @@
               "type": "null"
             }
           ],
-          "description": "ADR-0036 Ruling 1 name-slot round-trip, measured per run: of the node ids parsed from the right (ids_checked), how many have a name slot that is not sanitize_id_name_segment(name) (mismatched), by producer (the originating pass id, else the language), most mismatches first, each with its smallest mismatching id and that node's name; at most 20 producers, the rest counted in producers_cut. File pseudo-symbols (exempt_file_nodes) are exempt because the id grammar fixes their name slot to 'file'; ids with fewer than five slots are not_parsed. A statistic, not violations. Null on bare build_validation_report calls (unit tests)."
+          "description": "ADR-0036 Ruling 1 name-slot round-trip, measured per run: of the node ids parsed from the right (ids_checked), how many have a name slot that is neither sanitize_id_name_segment(name) nor that name followed by @ and the node's start column (mismatched), how many are in that @<column> form (column_suffixed; legal since the 2026-11-23 amendment), by producer (the originating pass id, else the language), most mismatches first, each with its smallest mismatching id and that node's name; at most 20 producers, the rest counted in producers_cut. File pseudo-symbols (exempt_file_nodes) are exempt because the id grammar fixes their name slot to 'file'; ids with fewer than five slots are not_parsed. A statistic, not violations. Null on bare build_validation_report calls (unit tests)."
         }
       }
     },

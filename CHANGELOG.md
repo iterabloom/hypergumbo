@@ -123,7 +123,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Scala methods and fields passed as arguments are referenced.**
 - **IPC and WebSocket channels reach their handlers.**
 - **A cobra handler's edge starts at its command.**
-- **A node id's name slot is its sanitized name** in every producer but JavaScript callbacks; a new mismatch is a validation error.
+- **A node id's name slot is its sanitized name**, optionally plus `@<column>` (JavaScript callbacks, same-line twins); a mismatch is a validation error.
 - **No two nodes share an id**: Vue nested templates, repeated Svelte events and Make targets, event and message stand-ins. The validator reports any.
 - **Boundary ids never carry an empty path or name.**
 - **Edge endpoints are valid ids** for Bash commands, Bazel labels, Terraform module sources, Ansible includes, qualified Rust attributes.
@@ -205,7 +205,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`verify-claims` exit codes: bad input is 2, inconclusive is 4 (was 2).** Some malformed claims, maps and taint catalogues that loaded before are refused.
 - **`verify-claims --json` 2.6 → 3.1**: walk verdicts `confirmed` / `unconfirmed` become `reached` / `refuted`; command-line arguments are `untrusted_input`, counted only when a claim sets `include_command_line: true`.
 - **`io-boundaries --json` 2.4 → 2.5**: Unix-domain sockets are IPC, not network (ADR-0050 §1): a server is `ipc_listen`, its reads and writes `ipc_recv` / `ipc_send`.
-- **`validation_report` 0.4 → 0.5** adds `name_slot_stats`.
+- **`validation_report` 0.4 → 0.6** adds `name_slot_stats`.
 - **Files git ignores and does not track are not analysed** (ADR-0004 point 9), ignored generated source included; committed files and `--trace-deps` dependencies are unaffected. The run names what it left out, also in `supply_chain_summary.vcs_ignored_skipped`. There is no opt-out.
 - **Sketch never downloads an embedding model**: run `hypergumbo install-embeddings` to use one.
 - **A catalogue file with a key nothing reads is refused**, naming the key.
@@ -228,7 +228,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`scip_stable_id_scheme`**: rust-analyzer stable ids have their own scheme and `hgscipid1:` label.
 - **`metrics.framework_patterns`** counts, per framework pattern file, the symbols it tagged.
 - **`hypergumbo catalog` names each pass's grammar package.**
-- **`validation_report.name_slot_stats` counts, per producer, node ids not matching their name.**
+- **`validation_report.name_slot_stats` counts, per producer, node ids not matching their name**, and ids carrying `@<column>`.
 - **Go functions and methods record `meta.parameters`.**
 - **External dependency declarations carry `directness: direct` and an `ecosystem`**, so `supply_chain_summary` no longer counts them `unknown`.
 - **Missing scip-python or rust-analyzer prints copy-paste install steps.**
