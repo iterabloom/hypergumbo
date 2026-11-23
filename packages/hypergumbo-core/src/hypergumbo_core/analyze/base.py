@@ -1564,6 +1564,12 @@ def _is_word_char(ch: str) -> bool:
     return ch.isalnum() or ch in "_$"
 
 
+#: The words a ``'`` may follow and still open a literal: a C/C++ character
+#: literal's encoding prefix (``L'a'``, ``u8'a'``), a Rust byte (``b'a'``), a
+#: Python string prefix (``b'..'``, ``rb'..'``, ``f'..'``). See :func:`_literal_end`.
+_QUOTE_PREFIX = _re.compile(r"[LuUbBrRfF]|u8|[bBrRfF][bBrRfF]")
+
+
 def _literal_end(text: str, start: int) -> int:
     """The index of the quote closing the literal opened at ``text[start]``, or
     ``-1`` when that character opens none (see :func:`layout_free`)."""
@@ -1573,6 +1579,13 @@ def _literal_end(text: str, start: int) -> int:
     # A ``'`` is a literal only when it closes, and not before a word character:
     # Rust's ``(&'a str, &'b str)`` pairs no lifetimes into a string.
     if end == start or text[end] != "'" or (end + 1 < len(text) and _is_word_char(text[end + 1])):
+        return -1
+    # Nor right after a word, unless the word is a literal's prefix: that ``'``
+    # is a prime (F# and ML ``a' -> b'``), and two primes pair no literal.
+    word = start
+    while word and _is_word_char(text[word - 1]):
+        word -= 1
+    if word < start and not _QUOTE_PREFIX.fullmatch(text[word:start]):
         return -1
     return end
 
@@ -1741,7 +1754,9 @@ def layout_free(text: str, *, separators: bool = False) -> str:
     character literal is kept whole, whitespace included (``"a  b"`` is not
     ``"a b"``): one opens at ``"`` or a backtick, and at a ``'`` that closes
     before a non-word character (so a Rust lifetime or an OCaml type variable
-    opens none). So two texts that differ in more than layout stay apart.
+    opens none) and does not follow a word other than a literal prefix (so
+    the primes of F#'s ``a' -> b'`` pair none, and ``L' '`` / ``b' '`` open
+    one). So two texts that differ in more than layout stay apart.
 
     With ``separators`` (a signature: types and default values, never a
     name), the punctuation a formatter adds when it splits a list over lines
