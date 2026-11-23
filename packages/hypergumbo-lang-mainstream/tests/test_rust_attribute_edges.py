@@ -575,3 +575,28 @@ class TestRustAttributeEdgesDefensiveBranches:
         edges = _extract_attribute_edges([symbol], {}, run)
 
         assert edges == [], "Should not create edges for symbol with empty annotations"
+
+
+class TestAQualifiedAttributeIsANodeId:
+    """``#[rustfmt::skip]`` made the dst ``rust:unresolved:0-0:rustfmt::skip:
+    unresolved`` by hand: the ``::`` in the name slot shifts the
+    right-anchored slots, so the endpoint is no id (ADR-0036 Ruling 1) and
+    ``non_id_edge_endpoints`` counted it (just: 2). The dst is minted now,
+    the name slot's ``:`` folded to ``.``."""
+
+    def test_an_unresolved_qualified_attribute(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
+        (tmp_path / "lib.rs").write_text(
+            "#[rustfmt::skip]\nfn a() {}\n\n#[custom]\nfn b() {}\n"
+        )
+        result = analyze_rust(tmp_path)
+        dsts = sorted(e.dst for e in result.edges if e.edge_type == "decorated_by")
+        # Reach, and the control: an unqualified attribute is spelled as before.
+        assert dsts == [
+            "rust:unresolved:0-0:custom:unresolved",
+            "rust:unresolved:0-0:rustfmt..skip:unresolved",
+        ]
+        assert non_id_edge_endpoints(
+            result.symbols, result.edges, grammar_only=True,
+        ) == []
