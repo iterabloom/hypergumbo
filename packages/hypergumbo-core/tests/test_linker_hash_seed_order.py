@@ -7,7 +7,8 @@ so the survivor followed the per-process str-hash salt:
 - ``ruby_ffi``: the C files holding ``rb_define_method`` registrations were a
   ``set``; the ``("rb_define", name)`` dedup kept the first file's
   registration, so the edge's ``line`` (and with it the edge id) differed
-  between runs when two C files register a function of one name.
+  between runs when two C files register a function of one name. (Each
+  registration now keeps its own edge, to its own file's function.)
 - ``di_resolution``: ``_SOURCE_EXTENSIONS`` was ``list(set | set)``, which is
   the order files are scanned in; ``_create_di_edges`` keeps the first binding
   of an (interface method, implementation method) pair, so an interface bound
@@ -137,18 +138,20 @@ def _under_each_seed(driver: str, *args: str) -> list[Any]:
     return outputs
 
 
-def test_ruby_rb_define_edge_is_the_first_files_under_four_hash_seeds(
+def test_ruby_rb_define_edges_are_the_same_under_four_hash_seeds(
     tmp_path: Path,
 ) -> None:
-    """Six C files register ``obj_run``; the kept registration is alpha.c's."""
+    """Six C files each register their own ``obj_run``: six edges, every run."""
     stems = "alpha,bravo,charlie,delta,echo,foxtrot"
 
     outputs = _under_each_seed(_RUBY_DRIVER, str(tmp_path), stems)
 
     assert all(out == outputs[0] for out in outputs[1:]), outputs
-    ((src, dst, line, _edge_id),) = outputs[0]
-    assert src == dst == "c:alpha.c:3-3:obj_run:function"
-    assert line == 2  # alpha.c: one leading blank line, then the registration
+    assert [(src, line) for src, _dst, line, _id in outputs[0]] == [
+        (f"c:{stem}.c:{i + 2}-{i + 2}:obj_run:function", i + 1)
+        for i, stem in enumerate(stems.split(","), start=1)
+    ]
+    assert all(src == dst for src, dst, _line, _id in outputs[0])
 
 
 def test_napi_name_registered_in_five_files_links_all_five_under_four_hash_seeds(

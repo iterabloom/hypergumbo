@@ -31,6 +31,16 @@ is not known from a line. Site paths are made repo-relative the way the
 orchestrator normalizes them (prefix strip, forward slashes), because the
 linkers mint their nodes from absolute file paths while the analyzers'
 symbols are already relative when linkers run.
+
+:func:`registered_function` answers the same question for a registration
+that names the function rather than passing it, in C or C++
+(``rb_define_method(c, "run", run, 0)``, ``napi_create_function(env, "f",
+NAPI_AUTO_LENGTH, impl, ...)``), by name: of the functions so named, the one
+the REGISTERING file defines is the one the name reaches there (C scoping: a
+``static`` function is visible only in its own file, and a second external
+definition of the name would not link). Ruby C extensions define ``static
+VALUE run`` or ``initialize`` in many files, so resolving the name tree-wide
+sent every registration to one file's function (WI-supar).
 """
 from __future__ import annotations
 
@@ -116,3 +126,27 @@ def site_dispatch_edges(
             sites, symbols, edges, concept, repo_root,
         )
     ]
+
+
+def registered_function(
+    candidates: list[Symbol], site_path: str,
+) -> tuple[Symbol, bool]:
+    """The function a C/C++ registration in ``site_path`` names, and whether
+    it is a guess.
+
+    ``candidates`` are the in-tree functions carrying the registered name;
+    ``site_path`` is the registering file, spelled as the symbols spell their
+    ``path``. One candidate is the answer. Of several, the one ``site_path``
+    defines is the answer: the name resolves inside its own translation unit.
+    Otherwise the target is not known from the registration -- several other
+    files define the name, none of them this one -- and the lowest id is
+    returned with ``True``, for the caller to downgrade under INV-zuhub (the
+    same pick the callers made before; two definitions in the registering
+    file, overloads in C++, are also that case).
+    """
+    if len(candidates) == 1:
+        return candidates[0], False
+    own = [c for c in candidates if c.path == site_path]
+    if len(own) == 1:
+        return own[0], False
+    return min(own or candidates, key=lambda s: s.id), True

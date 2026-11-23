@@ -45,9 +45,12 @@ call reached followed the per-process hash salt (WI-rumuv).
 
 Name collisions (INV-zuhub): when the registered C/C++ name matches exactly
 one ``function``/``method`` symbol, the edge gets confidence 0.85. When it
-matches several, the lowest-id candidate is chosen and the edge gets
-confidence 0.5 and ``meta.disambiguation_fallback=True``; an edge to one of
-several functions a JS name is registered to gets the same 0.5 and flag.
+matches several, the one the registering file defines is the target, at
+0.85 (``_registration_sites.registered_function``: the name resolves inside
+its own translation unit); only when several other files define it is the
+lowest-id candidate chosen, with confidence 0.5 and
+``meta.disambiguation_fallback=True``. An edge to one of several functions a
+JS name is registered to gets the same 0.5 and flag.
 
 Why This Design
 ---------------
@@ -74,6 +77,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._registration_sites import registered_function
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("napi-linker")
@@ -273,17 +277,13 @@ def link_napi(
         found_exports.extend(napi_exports)
 
         for js_name, c_cpp_name, evidence_type in napi_exports:
-            # Look up the C/C++ symbol by function name. When more than
-            # one matches (cross-file collision), pick deterministic-by-id
-            # and flag the export as a fallback.
+            # Look up the C/C++ symbol by function name: the registering
+            # file's own function of that name, else (several other files
+            # define it) the lowest id, flagged as a fallback.
             candidates = c_cpp_lookup.get(c_cpp_name)
             if not candidates:
                 continue
-            is_fallback = len(candidates) > 1
-            target_sym = (
-                candidates[0] if len(candidates) == 1
-                else min(candidates, key=lambda s: s.id)
-            )
+            target_sym, is_fallback = registered_function(candidates, c_path_str)
             export_map.setdefault(js_name, {}).setdefault(
                 target_sym.id, (target_sym, evidence_type, is_fallback),
             )

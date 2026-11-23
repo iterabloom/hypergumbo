@@ -926,8 +926,9 @@ class TestInvZuhubRubyFfiFallback:
 
     def test_rb_define_multi_candidate_fallback(self, tmp_path: Path) -> None:
         """Phase 2 (C-extension path): ``rb_define_method(rb_cFoo, "bar", impl, …)``
-        where ``impl`` resolves to multiple in-tree C functions emits a
-        single edge with ``confidence <= 0.5`` + fallback flag.
+        where ``impl`` resolves to multiple in-tree C functions, none of them
+        in the registering file, emits a single edge with ``confidence <= 0.5``
+        + fallback flag: which one the linker resolves is not known here.
         """
         from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
 
@@ -935,22 +936,25 @@ class TestInvZuhubRubyFfiFallback:
         c_file.parent.mkdir(parents=True, exist_ok=True)
         c_file.write_text(
             '#include <ruby.h>\n'
-            'static VALUE shared_impl(VALUE self) { return Qnil; }\n'
+            'VALUE shared_impl(VALUE self);\n'
             'void Init_native(void) {\n'
             '    rb_define_method(rb_cObject, "do_thing", shared_impl, 0);\n'
             '}\n'
         )
-        # Two C functions both named ``shared_impl`` across separate files.
+        # Two C functions both named ``shared_impl`` in two OTHER files.
         c_func_a = _make_c_symbol(
-            "shared_impl", path=str(c_file), start_line=2, end_line=2,
+            "shared_impl", path="ext/a.c", start_line=2, end_line=2,
         )
         c_func_b = _make_c_symbol(
             "shared_impl", path="ext/other.c", start_line=1, end_line=1,
         )
+        c_init = _make_c_symbol(
+            "Init_native", path=str(c_file), start_line=3, end_line=5,
+        )
         result = link_ruby_ffi(
             repo_root=tmp_path,
             ruby_symbols=[],
-            c_symbols=[c_func_a, c_func_b],
+            c_symbols=[c_func_a, c_func_b, c_init],
             edges=[],
         )
         rb_define_edges = [
@@ -959,7 +963,69 @@ class TestInvZuhubRubyFfiFallback:
         ]
         assert len(rb_define_edges) == 1
         edge = rb_define_edges[0]
+        assert edge.dst == c_func_a.id  # the lowest id of the two
         assert edge.confidence <= 0.5
         assert edge.meta is not None
         assert edge.meta.get("disambiguation_fallback") is True
         assert edge.meta.get("bridge_kind") == "ffi"
+
+
+class TestRbDefineSameNamedFunctionsInTwoFiles:
+    """WI-supar: each ``rb_define_method`` keeps its own edge, to the function
+    of that name its own file defines.
+
+    Ruby C extensions commonly define ``static VALUE initialize(...)`` (or
+    ``run``) in every source file. The registration was resolved to the
+    lowest-id function of that name tree-wide and deduplicated by NAME, so
+    the second file's registration was dropped and the first pointed at a
+    function the registering file may not even see.
+    """
+
+    @staticmethod
+    def _write(tmp_path: Path, stem: str, register: str = "run") -> tuple[str, Symbol]:
+        rel = f"ext/{stem}.c"
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "#include <ruby.h>\n"
+            "static VALUE run(VALUE self) { return self; }\n"
+            f"void Init_{stem}(void) {{\n"
+            f'    rb_define_method(c{stem}, "{register}", run, 0);\n'
+            "}\n"
+        )
+        return rel, _make_c_symbol("run", path=rel, start_line=2, end_line=2)
+
+    @staticmethod
+    def _rb_define_edges(result) -> list[Edge]:
+        return [
+            e for e in result.edges
+            if (e.meta or {}).get("framework_dispatch") == "ruby_c_extension"
+        ]
+
+    def test_two_files_each_registering_their_own_run(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+
+        _, run_b = self._write(tmp_path, "bravo")
+        _, run_a = self._write(tmp_path, "alpha")
+
+        result = link_ruby_ffi(tmp_path, [], [run_b, run_a], [])
+
+        edges = self._rb_define_edges(result)
+        assert [(e.dst, e.line) for e in edges] == [(run_a.id, 4), (run_b.id, 4)]
+        for edge in edges:
+            assert edge.confidence == 0.85
+            assert "disambiguation_fallback" not in edge.meta
+
+    def test_one_function_registered_under_two_names_is_one_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """Control: two registrations of ONE function give one (identical) edge."""
+        from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+
+        rel, run_a = self._write(tmp_path, "alpha")
+        path = tmp_path / rel
+        path.write_text(path.read_text() + 'void Init_more(void) { rb_define_method(c, "call", run, 0); }\n')
+
+        result = link_ruby_ffi(tmp_path, [], [run_a], [])
+
+        assert [(e.dst, e.line) for e in self._rb_define_edges(result)] == [(run_a.id, 4)]
