@@ -1,0 +1,21 @@
+- op: create  # 5493
+  at: '2026-11-23T22:14:13Z'  # 5493
+  by: agent  # 5493
+  actor: jgstern_agent  # 5493
+  clock: 1  # 5493
+  nonce: '5493'  # 5493
+  data:  # 5493
+    kind: work_item  # 5493
+    title: "Two declarations on one line share a node id (Swift, Nix, Vue): the id grammar has no column"  # 5493
+    status: needs_human_review  # 5493
+    priority: 3  # 5493
+    parent:  # 5493
+    tags:  # 5493
+    - id_format  # 5493
+    - identity  # 5493
+    isbefore: []  # 5493
+    duplicate_of: []  # 5493
+    not_duplicate_of: []  # 5493
+    pr_ref:  # 5493
+    description: "WHAT. A node id is language:path:lines:name:kind. Two real, different nodes with one name and one kind on one line get one id, and an edge cannot tell them apart. The validator check node_id_uniqueness (new, an error) reports each. Measured over 42 trees after the id fixes: 3 ids are still held by more than one node.\n- Swift: vapor Sources/Vapor/Content/PlaintextEncoder.swift:91, \"init() {}; init() where K == BasicCodingKey {}\": two initializers, id swift:...:91-91:FailureEncoder.init:constructor.\n- Nix: servant flake.nix:80, \"tutorial = mkDevShell { tutorial = true; };\": the outer binding and the inner attribute, id nix:flake.nix:80-80:tutorial:binding (their stable ids differ through the attribute chain).\n- Vue: \"<span v-if=\\\"a\\\"></span><span v-if=\\\"b\\\"></span>\" on one line (fixture in packages/hypergumbo-core/tests/test_node_id_uniqueness_check.py; 0 on koel, pretix and workadventure).\n- C: zstd lib/compress/zstd_opt.c:878-895: three macro invocations before a #define are read as three function nodes at one span with one name (ZSTD_BT_GET_ALL_MATCHES_FN). This one is a misparse, not a column question: the C analyzer should emit one node or none.\nOWNER QUESTION. JavaScript anonymous callbacks solve the same problem by writing @<column> into the id's name slot, which breaks ADR-0036 Ruling 1 (WI-bafaz, the one declared name-slot hole). Either the grammar gets a place for a column or an ordinal (then WI-bafaz and these three share one fix), or same-line twins are qualified in their NAME (Nix: the attribute chain; that renames every Nix binding). Related: WI-jigov (an edge locates to a line, not a column).\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 5493
+    fields: {}  # 5493
