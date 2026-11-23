@@ -432,11 +432,13 @@ def _create_wasm_load_edges(
             seen_wasm_refs.add(dedup_key)
 
             # Create synthetic WASM module symbol
-            # Kind slot = node.kind (ADR-0036 Ruling 2, WI-vojur). The ``wasm``
-            # language slot stays: the module has no host discovery language,
-            # and the slot of a host-less synthetic is ADR-0036's deferred
-            # chokepoint question (make_synthetic_symbol_identity, 5b).
-            wasm_module_id = make_symbol_id("wasm", wasm_ref, 0, 0, "module", "module")
+            # Kind slot = node.kind (ADR-0036 Ruling 2, WI-vojur); name slot =
+            # the Symbol's name, the module reference (Ruling 1; it held the
+            # word ``module``). The ``wasm`` language slot stays: the module
+            # has no host discovery language, and the slot of a host-less
+            # synthetic is ADR-0036's deferred chokepoint question
+            # (make_synthetic_symbol_identity, 5b).
+            wasm_module_id = make_symbol_id("wasm", wasm_ref, 0, 0, wasm_ref, "module")
 
             if wasm_module_id not in {s.id for s in symbols}:
                 # ADR-0031 Class B: WASM module synthetic — has no host

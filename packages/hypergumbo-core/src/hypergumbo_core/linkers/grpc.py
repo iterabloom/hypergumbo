@@ -481,17 +481,29 @@ def _make_symbol_id(pattern: "GrpcPattern") -> NodeId:
 
     ADR-0036 Ruling 2 puts ``node.kind`` in the kind slot and the node's own
     language in the language slot, never the framework role or the literal
-    ``grpc`` (history: WI-fotad). The role rides as a name-segment suffix, as
-    in the websocket linker (INV-dulah), so a
+    ``grpc`` (history: WI-fotad). The name slot is the Symbol's name,
+    ``<role>:<service>`` (:func:`_symbol_name`; ADR-0036 Ruling 1), so a
     servicer and a registration of one service at one line, or a node this
     linker mints and the analyzer's own node for the same declaration, keep
-    distinct ids.
+    distinct ids. It held ``<service>-<role>`` while the name was the bare
+    service.
     """
-    role, kind = _PATTERN_FOLDS[pattern.type]
+    _role, kind = _PATTERN_FOLDS[pattern.type]
     return make_symbol_id(
         pattern.language, pattern.file_path, pattern.line, pattern.line,
-        f"{pattern.service_name}-{role}", kind,
+        _symbol_name(pattern), kind,
     )
+
+
+def _symbol_name(pattern: "GrpcPattern") -> str:
+    """``Symbol.name`` of the node minted for *pattern*: ``<role>:<service>``
+    (``grpc_service:UserService``), and so, sanitized, its id's name slot
+    (ADR-0036 Ruling 1). The role keeps the node apart from the analyzer's own
+    node for the same declaration and from another role's node on the line;
+    the bare service name is ``meta["service_name"]``, which this linker's
+    joins read."""
+    role, _kind = _PATTERN_FOLDS[pattern.type]
+    return f"{role}:{pattern.service_name}"
 
 
 # Regex to find "type <Name> struct {" declarations.
@@ -712,6 +724,11 @@ def _link_go_methods_to_rpc_routes(
     return edges
 
 
+def _service_of(sym: Symbol) -> str:
+    """The service a node this linker minted stands for (``meta["service_name"]``)."""
+    return str((sym.meta or {})["service_name"])
+
+
 def _normalize_service_name(name: str) -> str:
     """Normalize service name for matching (remove common suffixes)."""
     # Remove common suffixes for matching
@@ -783,7 +800,10 @@ def link_grpc(
             stubs.append(pattern)
 
         symbol_id = _make_symbol_id(pattern)
-        sym_meta: dict[str, object] = {"framework_role": framework_role}
+        sym_meta: dict[str, object] = {
+            "framework_role": framework_role,
+            "service_name": pattern.service_name,
+        }
         # WI-patiz: grpc_service symbols carry proto_package so the
         # route->service lookup can disambiguate cross-package short-name
         # collisions at precision when each RPC's package picks out a
@@ -805,7 +825,7 @@ def link_grpc(
                 path=to_relative_path(pattern.file_path, root),
                 name=pattern.service_name, scope=scope,
             ),
-            name=pattern.service_name,
+            name=_symbol_name(pattern),
             kind=canonical_kind,
             language=pattern.language,
             path=pattern.file_path,
@@ -838,7 +858,7 @@ def link_grpc(
     for sym in symbols:
         if (sym.meta or {}).get("framework_role") == "grpc_service":
             proto_service_by_name.setdefault(
-                _normalize_service_name(sym.name), []
+                _normalize_service_name(_service_of(sym)), []
             ).append(sym)
 
     # Match stubs to servicers
@@ -932,7 +952,7 @@ def link_grpc(
     service_sym_by_name: dict[str, list[Symbol]] = {}
     for sym in symbols:
         if (sym.meta or {}).get("framework_role") == "grpc_service":
-            service_sym_by_name.setdefault(sym.name, []).append(sym)
+            service_sym_by_name.setdefault(_service_of(sym), []).append(sym)
 
     # Bridge servicer/server symbols to their proto service definition.
     # The client-side 'calls' edges (with meta['protocol']='grpc')
@@ -947,12 +967,12 @@ def link_grpc(
     for svc_list in service_sym_by_name.values():
         for svc in svc_list:
             service_by_normalized.setdefault(
-                _normalize_service_name(svc.name), [],
+                _normalize_service_name(_service_of(svc)), [],
             ).append(svc)
 
     for sym in symbols:
         if (sym.meta or {}).get("framework_role") in ("grpc_server", "grpc_servicer"):
-            normalized = _normalize_service_name(sym.name)
+            normalized = _normalize_service_name(_service_of(sym))
             candidates = [
                 c for c in service_by_normalized.get(normalized, [])
                 if c.id != sym.id

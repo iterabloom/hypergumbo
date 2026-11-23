@@ -988,3 +988,41 @@ class TestIdsMeetTheGraph:
         )
         assert {s.kind for s in result.symbols} == {"import", "module"}
         assert _check_id_roundtrip(result.symbols) == []
+
+
+def test_the_module_stand_in_names_its_slot(tmp_path: Path) -> None:
+    """WI-supar / ADR-0036 Ruling 1: the WASM module node's name slot held the
+    word ``module`` while its name is the module reference."""
+    from hypergumbo_core.analyze.base import sanitize_id_name_segment
+    from hypergumbo_core.ir import AnalysisRun, PASS_VERSION
+    from hypergumbo_core.linkers.wasm_bindgen import _create_wasm_load_edges
+
+    js_file = tmp_path / "worker.ts"
+    js_file.write_text(
+        "import a from 'url:codecs/rotate/rotate.wasm';\n"
+        "import b from 'url:codecs/resize/resize.wasm';\n"
+    )
+    run = AnalysisRun.create(pass_id="test", version=PASS_VERSION)
+    _edges, symbols = _create_wasm_load_edges(tmp_path, [_make_js_sym("w", str(js_file))], run)
+
+    assert sorted(s.name for s in symbols) == [
+        "codecs/resize/resize.wasm", "codecs/rotate/rotate.wasm",
+    ]
+    for sym in symbols:
+        assert sym.id.rsplit(":", 2)[1] == sanitize_id_name_segment(sym.name)
+
+
+def test_the_requirement_counter_skips_rust_functions_without_annotations() -> None:
+    """Control for the requirement count: a Rust function with no meta, or
+    with a non-list ``annotations``, is no ``#[wasm_bindgen]`` export."""
+    from hypergumbo_core.linkers.registry import LinkerContext
+    from hypergumbo_core.linkers.wasm_bindgen import _count_wasm_bindgen_functions
+
+    bare = _make_rust_sym("a")
+    bare.meta = None
+    odd = _make_rust_sym("b")
+    odd.meta = {"annotations": "wasm_bindgen"}
+    exported = _make_rust_sym("c", annotations=[{"name": "wasm_bindgen"}])
+    ctx = LinkerContext(repo_root=Path("."), symbols=[bare, odd, exported])
+
+    assert _count_wasm_bindgen_functions(ctx) == 1

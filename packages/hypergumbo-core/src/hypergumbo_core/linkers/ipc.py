@@ -804,6 +804,12 @@ def _find_js_files(repo_root: Path) -> Iterator[Path]:
     yield from find_non_test_files(repo_root, extension_globs(*JS_TS_LANGUAGES))  # WI-hizon
 
 
+def _site_name(pattern: IpcPattern, channel: str) -> str:
+    """A send / receive stand-in's ``Symbol.name``, ``ipc:<type>:<channel>``,
+    and so (sanitized) its id's name slot (ADR-0036 Ruling 1)."""
+    return f"ipc:{pattern.type}:{channel}"
+
+
 def _get_language(file_path: Path) -> str:
     """Get language from file extension (INV-tofun: analyzer-parity JS/TS tag).
 
@@ -909,14 +915,15 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
         # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The id used
         # to end in the CHANNEL (``ipc:<file>:<l>-<l>:send:<channel>``), so
         # its kind slot held a channel name, and a channel with a colon
-        # (``user:login``) shifted every slot. The role rides as a
-        # name-segment suffix, as in the websocket and grpc linkers; the
-        # factory sanitizes the name. ADR-0034: the language slot is the
-        # stand-in's discovery language, the file's; it read ``ipc``, which
-        # is no language.
+        # (``user:login``) shifted every slot. Ruling 1: the name slot is the
+        # Symbol's name, ``ipc:<type>:<channel>``, sanitized by the factory
+        # (``ipc.send.user.login``); it carries the role, so a send and a
+        # receive of one channel on one line keep distinct ids. ADR-0034:
+        # the language slot is the stand-in's discovery language, the
+        # file's; it read ``ipc``, which is no language.
         return make_symbol_id(
             _get_language(Path(pattern.file_path)), pattern.file_path,
-            pattern.line, pattern.line, f"{channel}-{pattern.type}", "function",
+            pattern.line, pattern.line, _site_name(pattern, channel), "function",
         )
 
     def _ensure_symbol(pattern: IpcPattern, channel: str) -> NodeId:
@@ -931,7 +938,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
             # site; its host language derives from the file extension.
             symbols.append(Symbol(
                 id=sym_id,
-                name=f"ipc:{pattern.type}:{channel}",
+                name=_site_name(pattern, channel),
                 kind="function",
                 language=None,
                 discovery_language=_get_language(Path(pattern.file_path)),
@@ -1085,9 +1092,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     pass
 
                 # Create synthetic bridge caller symbol
+                # Ruling 1: the name slot is the Symbol's name.
                 caller_id = make_symbol_id(
                     _get_language(Path(file_str)), rel_path, call_line, call_line,
-                    f"{namespace}.{method_name}-bridge_caller", "function",
+                    f"window.{namespace}.{method_name}", "function",
                 )
                 if caller_id not in created_symbol_ids:
                     # The bridge-caller role is carried in
@@ -1172,9 +1180,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 except ValueError:  # pragma: no cover
                     pass
 
+                # Ruling 1: the name slot is the Symbol's name.
                 caller_id = make_symbol_id(
                     _get_language(Path(file_str)), rel_path, call_line, call_line,
-                    f"{func_name}-bridge_caller", "function",
+                    f"window.{func_name}", "function",
                 )
                 if caller_id not in created_symbol_ids:
                     # The bridge-caller role is carried in

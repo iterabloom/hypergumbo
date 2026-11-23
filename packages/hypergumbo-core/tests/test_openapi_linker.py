@@ -845,6 +845,9 @@ class TestOperationStandInsCarryTheSpecFilesLanguage:
         (op,) = result.symbols
         assert op.language is None
         assert op.discovery_language == language
+        # ADR-0036 Ruling 1 (WI-supar): no operationId, so the name is
+        # ``METHOD path`` and the slot is that name sanitized.
+        assert op.id.split(":")[-2] == "GET /a"
         assert op.id.split(":", 1)[0] == language
         assert language in all_known_languages()
 
@@ -870,3 +873,17 @@ class TestUnquotedVersions:
         )
         result = link_openapi(tmp_path, [])
         assert [s.name for s in result.symbols] == ["putOrder"]
+
+
+def test_the_name_slot_is_the_operation_id(tmp_path: Path) -> None:
+    """WI-supar / ADR-0036 Ruling 1: the slot held ``METHOD path`` while the
+    name was the operationId."""
+    from hypergumbo_core.spec_validator import compute_name_slot_stats
+
+    (tmp_path / "openapi.yaml").write_text(
+        "openapi: 3.0.0\npaths:\n  /a:\n    get:\n      operationId: getA\n    post: {}\n"
+    )
+    result = link_openapi(tmp_path, [])
+
+    assert sorted(s.name for s in result.symbols) == ["POST /a", "getA"]
+    assert compute_name_slot_stats(result.symbols)["mismatched"] == 0

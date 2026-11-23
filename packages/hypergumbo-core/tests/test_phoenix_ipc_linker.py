@@ -599,3 +599,7 @@ class TestPhoenixStandInsCarryElixir:
             assert sym.language is None
             assert sym.discovery_language == "elixir"
             assert sym.id.split(":", 1)[0] == "elixir"
+        # ADR-0036 Ruling 1 (WI-supar): the name slot is the sanitized name,
+        # ``phoenix:<type>:<event>``; it held ``<event>-<type>``.
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
