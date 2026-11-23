@@ -19,7 +19,6 @@ from hypergumbo_lang_common.julia import (
     _extract_import_aliases,
     _extract_julia_signature,
     _get_enclosing_function_julia,
-    _get_enclosing_module,
     analyze_julia,
 )
 
@@ -54,16 +53,6 @@ class TestJuliaHelperFunctions:
 class TestGetEnclosingModule:
     """Branch coverage for enclosing module resolution."""
 
-    def test_no_enclosing_module(self) -> None:
-        """Test when function has no enclosing module."""
-        mock_node = MagicMock()
-        mock_node.type = "function_definition"
-        mock_node.parent = None  # Top-level
-
-        result = _get_enclosing_module(mock_node, b"")
-        # Should return None since no module above
-        assert result is None
-
     def test_nested_in_module(self, tmp_path: Path) -> None:
         """Test function nested in module gets qualified name."""
         make_julia_file(tmp_path, "test.jl", """
@@ -77,8 +66,9 @@ end
 """)
         result = analyze_julia(tmp_path)
         funcs = [s for s in result.symbols if s.kind == "function"]
-        # Function should be found with module prefix in ID
-        assert any(s.name == "inner_func" for s in funcs)
+        # The module is the qualified name, not part of the id's name slot
+        assert any(s.name == "inner_func" and s.qualified_name == "MyModule.inner_func"
+                   and s.id.endswith(":inner_func:function") for s in funcs)
 
 class TestExtractFunctionName:
     """Branch coverage for function name extraction."""

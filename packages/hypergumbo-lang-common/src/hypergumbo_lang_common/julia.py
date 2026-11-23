@@ -112,18 +112,6 @@ def find_julia_files(repo_root: Path) -> Iterator[Path]:
     yield from _analyzer._find_source_files(repo_root)
 
 
-def _get_enclosing_module(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up the tree to find the enclosing module name."""
-    current = node.parent
-    while current is not None:
-        if current.type == "module_definition":
-            id_node = find_child_by_type(current, "identifier")
-            if id_node:
-                return node_text(id_node, source)
-        current = current.parent
-    return None  # pragma: no cover - defensive
-
-
 def _julia_module_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """The names of every module enclosing ``node``, outermost first."""
     chain: list[str] = []
@@ -602,15 +590,16 @@ def _extract_symbols_from_tree(
                 # ``function f end``: a generic function with no method yet.
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                current_module = _get_enclosing_module(node, source)
-                full_name = f"{current_module}.{generic_name}" if current_module else generic_name
+                chain = _julia_scope_chain(node, source)
+                # ADR-0036 Ruling 1: the slot is the name; the scope is the
+                # qualified name, the chain the stable id hashes.
                 symbol = Symbol(
-                    id=make_symbol_id("julia", file_path, start_line, end_line, full_name, "function"),
+                    id=make_symbol_id("julia", file_path, start_line, end_line, generic_name, "function"),
                     stable_id=_julia_stable_id(
-                        "function", file_path, generic_name,
-                        _julia_scope_chain(node, source), None, "generic",
+                        "function", file_path, generic_name, chain, None, "generic",
                     ),
                     name=generic_name,
+                    qualified_name=".".join([*chain, generic_name]),
                     kind="function",
                     language="julia",
                     path=file_path,
@@ -630,22 +619,22 @@ def _extract_symbols_from_tree(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
-                current_module = _get_enclosing_module(node, source)
-                full_name = f"{current_module}.{func_name}" if current_module else func_name
+                chain = _julia_scope_chain(node, source)
 
                 # Extract signature
                 signature = _extract_julia_signature(node, source, is_short_form=False)
                 call_node = _julia_signature_call(node)
                 fn_meta = {PARAMETERS_KEY: _julia_parameters(call_node, source)} if call_node else None
 
+                # ADR-0036 Ruling 1: the slot is the name (it held
+                # ``Module.name``); the scope is the qualified name, the
+                # chain the stable id already hashes.
                 symbol = Symbol(
-                    id=make_symbol_id("julia", file_path, start_line, end_line, full_name, "function"),
-                    stable_id=_julia_stable_id(
-                        "function", file_path, func_name,
-                        _julia_scope_chain(node, source), fn_meta,
-                    ),
+                    id=make_symbol_id("julia", file_path, start_line, end_line, func_name, "function"),
+                    stable_id=_julia_stable_id("function", file_path, func_name, chain, fn_meta),
                     meta=fn_meta,
                     name=func_name,
+                    qualified_name=".".join([*chain, func_name]),
                     kind="function",
                     language="julia",
                     path=file_path,
@@ -894,24 +883,19 @@ def _extract_symbols_from_tree(
                 # (`const K::Int = 3`) LHS forms that the old single-`identifier`
                 # lookup dropped entirely — those consts emitted ZERO symbols.
                 lhs = assign_node.children[0]
-                current_module = _get_enclosing_module(node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
                 for const_name in _julia_assignment_target_names(lhs, source):
-                    # Qualify the id with the enclosing module (mirrors the
-                    # function branch) so two module-nested consts sharing a bare
-                    # name get distinct ids; the display name stays bare.
-                    full_name = (
-                        f"{current_module}.{const_name}" if current_module else const_name
-                    )
+                    # ADR-0036 Ruling 1: the slot is the name (it held
+                    # ``Module.name``); the span keeps two modules' consts
+                    # apart and the module chain is the qualified name.
+                    chain = _julia_module_chain(node, source)
                     symbol = Symbol(
-                        id=make_symbol_id("julia", file_path, start_line, end_line, full_name, "const"),
-                        stable_id=_julia_stable_id(
-                            "const", file_path, const_name,
-                            _julia_module_chain(node, source), None,
-                        ),
+                        id=make_symbol_id("julia", file_path, start_line, end_line, const_name, "const"),
+                        stable_id=_julia_stable_id("const", file_path, const_name, chain, None),
                         name=const_name,
+                        qualified_name=".".join([*chain, const_name]),
                         kind="const",
                         language="julia",
                         path=file_path,

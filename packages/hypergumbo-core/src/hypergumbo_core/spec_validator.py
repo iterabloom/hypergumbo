@@ -2402,7 +2402,6 @@ KNOWN_NAME_SLOT_HOLES: dict[tuple[str, str], tuple[str, str]] = {
     ),
     # Scope in the slot, short name: the qualification is nowhere else
     # (qualified_name is empty), so the fix carries it to qualified_name.
-    ("julia", "function"): ("slot `B.run`, name `run`", "WI-funip"),
     ("tcl", "function"): ("slot `a..inner..go`, name `go`", "WI-funip"),
     ("tcl", "namespace"): ("slot `a..inner`, name `inner`", "WI-funip"),
     # One make_doc_symbol_ids argument mints the slot and the stable id, as
