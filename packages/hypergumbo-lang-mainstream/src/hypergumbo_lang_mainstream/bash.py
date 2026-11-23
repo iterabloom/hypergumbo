@@ -1461,7 +1461,14 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             seen_launches.add(key)
                                             edges.append(Edge.create(
                                                 src=current_function.id,
-                                                dst=f"bash:{cmd_name}:0-0:{cmd_name}:unresolved",
+                                                # Minted: a command written
+                                                # ``file:close`` keeps its
+                                                # name in dst_ref, and the
+                                                # id's name slot folds ``:``.
+                                                dst=make_symbol_id(
+                                                    "bash", cmd_name, 0, 0,
+                                                    cmd_name, "unresolved",
+                                                ),
                                                 dst_ref=ExternalRef(
                                                     lang="bash",
                                                     module_path=cmd_name,
