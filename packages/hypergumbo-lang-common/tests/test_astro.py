@@ -199,7 +199,7 @@ import Counter from './Counter.astro';
         result = analyze_astro(tmp_path)
         directive = next((s for s in result.symbols if s.kind == "directive"), None)
         assert directive is not None
-        assert directive.name == "client:load"
+        assert directive.name == "Counter:client:load"
         assert directive.meta.get("element") == "Counter"
         assert directive.meta.get("directive_type") == "client"
 
@@ -213,7 +213,7 @@ import Heavy from './Heavy.astro';
         result = analyze_astro(tmp_path)
         directive = next((s for s in result.symbols if s.kind == "directive"), None)
         assert directive is not None
-        assert directive.name == "client:idle"
+        assert directive.name == "Heavy:client:idle"
 
     def test_extracts_client_directive_visible(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---
@@ -225,7 +225,7 @@ import Image from './Image.astro';
         result = analyze_astro(tmp_path)
         directive = next((s for s in result.symbols if s.kind == "directive"), None)
         assert directive is not None
-        assert directive.name == "client:visible"
+        assert directive.name == "Image:client:visible"
 
     def test_creates_import_edge(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---
@@ -476,7 +476,7 @@ const description = 'A test page';
         # Check directives
         directives = [s for s in result.symbols if s.kind == "directive"]
         assert len(directives) == 1
-        assert directives[0].name == "client:load"
+        assert directives[0].signature == "client:load"
 
         # Check edges: 3 frontmatter imports + 3 component-ref imports = 6 total.
         edges = [e for e in result.edges if e.edge_type == "imports"]

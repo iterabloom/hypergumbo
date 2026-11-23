@@ -123,7 +123,7 @@ class TestAnalyzeVue:
         result = analyze_vue(tmp_path)
         directive = next((s for s in result.symbols if s.kind == "directive"), None)
         assert directive is not None
-        assert directive.name == "v-if"
+        assert directive.signature == "v-if"
         assert directive.meta.get("element") == "div"
 
     def test_extracts_directive_v_for(self, tmp_path: Path) -> None:
@@ -133,7 +133,7 @@ class TestAnalyzeVue:
 """)
         result = analyze_vue(tmp_path)
         directives = [s for s in result.symbols if s.kind == "directive"]
-        directive_names = {d.name for d in directives}
+        directive_names = {d.signature for d in directives}
         assert "v-for" in directive_names
         assert "v-bind:key" in directive_names
 
@@ -145,7 +145,7 @@ class TestAnalyzeVue:
         result = analyze_vue(tmp_path)
         directive = next((s for s in result.symbols if s.kind == "directive"), None)
         assert directive is not None
-        assert directive.name == "v-on:click"
+        assert directive.signature == "v-on:click"
         assert directive.meta.get("directive_type") == "v-on"
 
     def test_extracts_directive_colon_bind(self, tmp_path: Path) -> None:
@@ -156,7 +156,7 @@ class TestAnalyzeVue:
         result = analyze_vue(tmp_path)
         directive = next((s for s in result.symbols if s.kind == "directive"), None)
         assert directive is not None
-        assert directive.name == "v-bind:src"
+        assert directive.signature == "v-bind:src"
         assert directive.meta.get("directive_type") == "v-bind"
 
     def test_extracts_slot_default(self, tmp_path: Path) -> None:
@@ -549,7 +549,7 @@ export default {
 
         # Check directives
         directives = [s for s in result.symbols if s.kind == "directive"]
-        directive_names = {d.name for d in directives}
+        directive_names = {d.signature for d in directives}
         assert "v-if" in directive_names
         assert "v-for" in directive_names
         assert "v-bind:key" in directive_names
@@ -738,7 +738,7 @@ export default {
         result = analyze_vue(tmp_path)
         directive = next((s for s in result.symbols if s.kind == "directive"), None)
         assert directive is not None
-        assert directive.name == "v-on:click"
+        assert directive.signature == "v-on:click"
         assert directive.meta.get("handler_expression") == "toggleMenu"
 
     def test_directive_without_value_no_handler(self, tmp_path: Path) -> None:

@@ -169,7 +169,7 @@ class TestEventExtraction:
         result = analyze_svelte(tmp_path)
         events = [s for s in result.symbols if s.kind == "event"]
         assert len(events) >= 1
-        assert any(e.name == "click" for e in events)
+        assert any(e.name == "button:click" for e in events)
 
     def test_multiple_events(self, tmp_path: Path) -> None:
         """Test multiple events on same element."""
@@ -179,9 +179,9 @@ class TestEventExtraction:
         result = analyze_svelte(tmp_path)
         events = [s for s in result.symbols if s.kind == "event"]
         names = [e.name for e in events]
-        assert "input" in names
-        assert "focus" in names
-        assert "blur" in names
+        assert "input:input" in names
+        assert "input:focus" in names
+        assert "input:blur" in names
 
 
 class TestFindSvelteFiles:

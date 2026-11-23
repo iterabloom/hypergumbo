@@ -258,7 +258,7 @@ _VUE = (
 
 
 def test_vue_same_directive_on_sibling_elements_gets_distinct_ids(tmp_path: Path) -> None:
-    ifs = [s for s in _symbols(analyze_vue, tmp_path, "src/A.vue", _VUE) if s.name == "v-if"]
+    ifs = [s for s in _symbols(analyze_vue, tmp_path, "src/A.vue", _VUE) if s.name == "p:v-if"]
     assert len(ifs) == 3 and len({s.stable_id for s in ifs}) == 3
 
 
