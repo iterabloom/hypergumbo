@@ -49,7 +49,11 @@ that no earlier phase and no edge already in the graph placed, checks if
 any container symbol in the same file has a span that fully encloses it,
 and prefers the tightest (smallest span) enclosing container. Because
 ``file`` is a container kind, this is also what roots a file's top-level
-functions, variables and classes at its ``kind="file"`` anchor. In no
+functions, variables and classes at its ``kind="file"`` anchor. A file node
+encloses every line of its path whatever span its producer recorded (the
+JavaScript analyzer's node of a Vue or Svelte component spans the
+``<script>`` block), as the loosest candidate: any container whose span
+encloses the member is tighter. In no
 phase is a file a child: its name is a dotted path, and a module spanning
 the whole file encloses it. A dotted name whose prefix is no symbol (a Lean ``A.S`` in ``namespace A``, an F#
 ``A.run`` in ``module A``, a dotted Clojure or Agda module, a C++
@@ -78,6 +82,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from ..analyze.file_records import is_file_pseudo_symbol
 from ..member_names import member_owner
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ..symbol_kinds import container_kind_names
@@ -152,9 +157,24 @@ CONTAINABLE_KINDS = frozenset(
     # roots at its file or module the same way. Rust's consts were
     # ``variable`` until stable-id v15, so leaving ``const`` out would have
     # orphaned every one of them.
+    #
+    # The members a component or template file declares outside any code
+    # scope: ``directive``, ``slot``, ``prop``, ``event``, ``block`` and
+    # ``style_block`` (Vue directives, slots, props and style blocks; Svelte
+    # events, control-flow blocks and slots; Astro client directives and
+    # slots). Without them every such member was an orphan, though its file
+    # node encloses it; Phase 2 roots it there. The same kinds of other
+    # producers are members too and are rooted the same way: a Solidity
+    # ``event`` at its contract (Phase 1: ``Token.Transfer``), a GraphQL
+    # ``directive`` definition, a reStructuredText ``directive``, a Prisma
+    # ``datasource`` / ``generator`` ``block`` and a Twig ``block`` at their
+    # file. None of these kinds is callable, so dead-code-maybe counts none
+    # of them; a ``contains`` edge only lets a walk that reaches one of them
+    # reach its container (the reachability note above). (WI-supar)
     {
         "method", "getter", "setter", "message", "function", "variable", "const",
         "field", "subscript", "constructor",
+        "directive", "slot", "prop", "event", "block", "style_block",
     }
 )
 
@@ -473,10 +493,20 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
                 container.span.start_line <= sym.span.start_line
                 and sym.span.end_line <= container.span.end_line
             ):
-                span_size = container.span.end_line - container.span.start_line
-                if span_size < best_span_size:
-                    best = container
-                    best_span_size = span_size
+                span_size: float = container.span.end_line - container.span.start_line
+            elif is_file_pseudo_symbol(container):
+                # A file node encloses every line of its file, whatever span
+                # its producer recorded: the JavaScript analyzer's node for a
+                # component spans its <script> block, so a template member
+                # outside it was enclosed by nothing (WI-supar). It is then
+                # the loosest candidate, so any container whose span encloses
+                # the member is tighter and wins, as before.
+                span_size = float("inf")
+            else:
+                continue
+            if best is None or span_size < best_span_size:
+                best = container
+                best_span_size = span_size
 
         if best is None:
             continue
