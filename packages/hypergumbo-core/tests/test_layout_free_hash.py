@@ -31,6 +31,7 @@ from hypergumbo_core.analyze.base import (
     assemble_stable_id,
     layout_free,
     make_typed_stable_id,
+    without_layout,
 )
 from hypergumbo_core.overload_arity import DeclaredArity, declared_arity_stable_id
 
@@ -298,3 +299,26 @@ def test_a_cpp_name_is_hashed_layout_free_in_the_untyped_tier() -> None:
             arity=DeclaredArity(0, ""),
         )
     assert cpp("operator void *") == cpp("operator void*")
+
+
+# (case, text, its layout-free form under ``without_layout``): only the
+# whitespace that is layout goes; a text with none is returned as it is.
+_WITHOUT_LAYOUT = [
+    ("call-spaced", "group( 'ci' )", "group('ci')"),
+    ("qualified-split", "V ::\n  run", "V::run"),
+    ("dotted-spaced", "app . users", "app.users"),
+    ("two-words-kept", "unsigned   int", "unsigned int"),
+    ("plus-plus-kept", "a + ++b", "a+ ++b"),
+    ("arrow-not-fused", "- >", "- >"),
+    ("literal-kept", "f( 'a  b' )", "f('a  b')"),
+    ("literal-then-word", "'x' y", "'x' y"),
+    ("no-whitespace-unchanged", "operator==", "operator=="),
+    ("selector-colon-unchanged", "doThing:with:", "doThing:with:"),
+]
+
+
+@pytest.mark.parametrize(("case", "text", "expected"), _WITHOUT_LAYOUT,
+                         ids=[c[0] for c in _WITHOUT_LAYOUT])
+def test_without_layout(case: str, text: str, expected: str) -> None:
+    assert without_layout(text) == expected
+    assert without_layout(expected) == expected
