@@ -16,6 +16,7 @@ The unavailability path is tested with a mock.
 from __future__ import annotations
 
 import warnings
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -264,6 +265,20 @@ class TestCircomSkipped:
         # Result is still a skipped result (linker context unchanged).
         assert result.skipped is True
         assert len(result.symbols) == 0
+
+    def test_skip_run_id_is_a_fresh_prefixed_uuid(self, tmp_path: Path) -> None:
+        """The skipped run's id is minted like every run id
+        (``ir.new_execution_id``); it was the constant ``skip-circom``."""
+        _make_circom_file(tmp_path, "test.circom", "template T() {}")
+        ids = []
+        for _ in range(2):
+            with patch.object(
+                circom_module, "is_circom_tree_sitter_available", return_value=False
+            ):
+                with pytest.warns(UserWarning, match="Circom analysis skipped"):
+                    ids.append(circom_module.analyze_circom(tmp_path).run.execution_id)
+        assert all(re.fullmatch(r"uuid:[0-9a-f-]{36}", i) for i in ids)
+        assert ids[0] != ids[1]
 
     def test_skip_toolchain_is_dict_not_str(self, tmp_path: Path) -> None:
         """WI-luliv: skip-path toolchain must be a ``Dict[str, str]``, not a str.

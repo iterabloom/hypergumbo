@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, make_module_import_dst,
@@ -423,10 +424,8 @@ class MesonAnalyzer(TreeSitterAnalyzer):
                 skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
-        import uuid as uuid_module
-
         start_time = time.time()
-        run_id = f"uuid:{uuid_module.uuid4()}"
+        run_id = new_execution_id()
 
         parser = self._create_parser()
         meson_files = list(find_meson_files(repo_root))

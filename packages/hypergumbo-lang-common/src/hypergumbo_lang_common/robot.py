@@ -58,11 +58,11 @@ from __future__ import annotations
 
 import posixpath
 import time
-import uuid
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -637,7 +637,7 @@ class RobotAnalyzer(TreeSitterAnalyzer):
             )
 
         parser = self._create_parser()
-        execution_id = f"uuid:{uuid.uuid4()}"
+        execution_id = new_execution_id()
         extractor = _RobotExtractor(repo_root, execution_id)
 
         # Pass 1: Extract symbols

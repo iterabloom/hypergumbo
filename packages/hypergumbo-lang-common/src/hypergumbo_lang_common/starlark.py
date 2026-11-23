@@ -52,7 +52,6 @@ Why This Design
 from __future__ import annotations
 
 import posixpath
-import uuid
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -69,6 +68,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, Span, Symbol, format_legacy_dst,
     make_pass_id,
@@ -591,7 +591,7 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
         symbols: list[Symbol] = []
         edges: list[Edge] = []
         files_analyzed = 0
-        run_id = str(uuid.uuid4())
+        run_id = new_execution_id()
 
         # Track targets by name for dependency resolution
         target_ids: dict[str, str] = {}

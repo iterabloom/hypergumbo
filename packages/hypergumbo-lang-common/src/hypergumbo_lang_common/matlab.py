@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
+from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, make_symbol_id,
@@ -330,10 +331,8 @@ class MatlabAnalyzer(TreeSitterAnalyzer):
                 skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
-        import uuid as uuid_module
-
         start_time = time.time()
-        run_id = f"uuid:{uuid_module.uuid4()}"
+        run_id = new_execution_id()
 
         parser = self._create_parser()
         matlab_files = list(find_matlab_files(repo_root))

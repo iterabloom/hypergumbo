@@ -57,12 +57,12 @@ table formula.
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.edge_target import in_tree_file_id, search_path_candidates
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -350,7 +350,7 @@ class ThriftAnalyzer(TreeSitterAnalyzer):
             )
 
         parser = self._create_parser()
-        run_id = f"uuid:{uuid.uuid4()}"
+        run_id = new_execution_id()
         files_analyzed = 0
 
         all_symbols: list[Symbol] = []

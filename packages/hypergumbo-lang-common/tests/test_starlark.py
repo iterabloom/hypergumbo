@@ -7,6 +7,7 @@ Tests verify that the Starlark analyzer correctly extracts:
 - Load statements
 - Variable assignments
 """
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -226,6 +227,20 @@ py_binary(name = "app", srcs = ["app.py"])
         assert result.run is not None
         assert result.run.pass_id == "starlark"
         assert result.run.files_analyzed >= 1
+
+    def test_run_id_is_minted_with_the_uuid_prefix(self, temp_repo: Path) -> None:
+        """The run id is ``uuid:<UUID v4>`` like every other producer's
+        (``ir.new_execution_id``); it was a bare UUID. Each symbol and edge
+        names that run."""
+        (temp_repo / "BUILD").write_text(
+            'load("//:defs.bzl", "x")\npy_binary(name = "app", srcs = ["app.py"])\n'
+        )
+        result = analyze_starlark(temp_repo)
+        run_id = result.run.execution_id
+        assert re.fullmatch(r"uuid:[0-9a-f-]{36}", run_id)
+        assert result.symbols and result.edges  # reach
+        assert {s.origin_run_id for s in result.symbols} == {run_id}
+        assert {e.origin_run_id for e in result.edges} == {run_id}
 
     def test_analysis_run_has_config_fingerprint(self, temp_repo: Path) -> None:
         """INV-kotiz: starlark run must have non-empty config_fingerprint."""
