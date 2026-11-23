@@ -437,6 +437,43 @@ class TestAnsibleFileNodes:
         for edge in import_edges:
             assert edge.confidence < 0.95
 
+    def test_an_unresolved_include_ends_on_a_stand_in(self, tmp_path: Path) -> None:
+        """An include the tree does not hold kept the raw string as its dst
+        (``missing.yml``), no node id: finalize folded it into
+        ``missing.yml:<unknown>:...`` and ``non_id_edge_endpoints`` counted it.
+        It now ends on a module stand-in named by what was written, quotes
+        dropped. Control: an included file of the tree is its file node."""
+        from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
+
+        (tmp_path / "roles" / "web" / "tasks").mkdir(parents=True)
+        (tmp_path / "roles" / "web" / "tasks" / "main.yml").write_text(
+            "- name: Install\n  apt: name=nginx\n"
+        )
+        (tmp_path / "site.yml").write_text("""
+- name: Site
+  hosts: all
+  tasks:
+    - include_tasks: missing.yml
+    - include_tasks: "{{ os_family }}.yml"
+    - include_role: name=absent
+    - import_tasks: roles/web/tasks/main.yml
+""")
+        result = analyze_ansible(tmp_path)
+        dsts = sorted(
+            e.dst.replace(f"{tmp_path}/", "")
+            for e in result.edges if e.edge_type == "imports"
+        )
+        assert dsts == [
+            "ansible:missing.yml:0-0:module:module",
+            "ansible:name=absent:0-0:module:module",
+            "ansible:roles/web/tasks/main.yml:1-1:file:file",
+            "ansible:{{ os_family }}.yml:0-0:module:module",
+        ]
+        assert non_id_edge_endpoints(
+            result.symbols, result.edges, grammar_only=True,
+        ) == []
+
     def test_include_role_resolves_to_role_main(self, tmp_path: Path) -> None:
         """include_role with name= resolves to roles/<name>/tasks/main.yml."""
         from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible

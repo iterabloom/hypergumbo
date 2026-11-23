@@ -70,6 +70,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     node_text,
 )
@@ -766,7 +767,14 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
                     ))
             else:
                 # Unresolvable (Jinja2 template with no matching siblings,
-                # missing file, etc.)
+                # missing file, a role the tree does not hold): a module
+                # stand-in named by what was written. The raw string was
+                # kept as the dst before, which is no node id (WI-jozih).
+                # A file of the tree is already found by the strategies
+                # above, which read the same discovery set.
+                edge.dst = make_module_import_dst(
+                    "ansible", raw_dst.strip("'\"") or raw_dst,
+                )
                 edge.confidence = 0.50
         all_edges.extend(extra_edges)
 
