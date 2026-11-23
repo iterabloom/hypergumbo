@@ -41,7 +41,6 @@ Why This Design
 """
 from __future__ import annotations
 
-import hashlib
 import re
 import time
 from collections import defaultdict
@@ -221,20 +220,22 @@ def link_solidity_abi(
         # openzeppelin-contracts was withheld as "typescript has no I/O
         # catalog" (WI-mital's family).
         host_language = js_ts_language_from_path(Path(rel_path))
-        syn_id_input = f"abi_call:{rel_path}:{line_num}:{func_name}"
-        syn_hash = hashlib.sha256(syn_id_input.encode()).hexdigest()[:12]
-        # ADR-0036 Ruling 2: the kind slot is the Symbol's kind, not the
+        syn_name = f"abi_call:{func_name}"
+        # ADR-0036 Ruling 1: the name slot is the sanitized name
+        # (``abi_call.transfer``). It carried ``<function>.<12 hex>``, a hash of
+        # path, line and function, which the id already holds; the scan keeps
+        # one call site per (file, function), so two on one line name two
+        # functions. Ruling 2: the kind slot is the Symbol's kind, not the
         # folded word ``abi_call`` (which lives on in meta["call_kind"]).
         syn_id = make_symbol_id(
-            host_language, rel_path, line_num, line_num,
-            f"{func_name}.{syn_hash}", "call_site",
+            host_language, rel_path, line_num, line_num, syn_name, "call_site",
         )
 
         # ADR-0031 Class B: synthetic stand-in for a Solidity ABI call
         # site discovered in a JS/TS file.
         syn_sym = Symbol(
             id=syn_id,
-            name=f"abi_call:{func_name}",
+            name=syn_name,
             kind="call_site",
             language=None,
             discovery_language=host_language,
