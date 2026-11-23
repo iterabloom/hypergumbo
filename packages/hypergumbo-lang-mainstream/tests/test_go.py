@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 
 from hypergumbo_lang_mainstream import go as go_module
 from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
+from hypergumbo_core.ir import sanitize_id_name_segment
 
 
 class TestFindGoFiles:
@@ -2328,6 +2329,11 @@ func (api *API) postAlertsHandler(params alert_ops.PostAlertsParams) middleware.
         # handler_name should be updated to actual implementation
         assert get_alerts.meta["handler_name"] == "api.getAlertsHandler"
         assert post_alerts.meta["handler_name"] == "api.postAlertsHandler"
+        # The marker keeps the route's name, the one its id was minted from
+        # (ADR-0036 Ruling 1): the handler is in meta, never the record name.
+        for route in (get_alerts, post_alerts):
+            assert route.name == f"{route.meta['http_method']} {route.meta['route_path']}"
+            assert route.id.rsplit(":", 2)[1] == sanitize_id_name_segment(route.name)
 
     def test_handler_wiring_no_match_keeps_original(self, tmp_path: Path) -> None:
         """Routes without matching wiring keep their original handler_name."""
