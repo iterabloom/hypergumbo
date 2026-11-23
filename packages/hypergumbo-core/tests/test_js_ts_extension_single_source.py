@@ -291,7 +291,7 @@ _ALLOWED_PRIVATE_LISTS = {
 #: three still use it as a LABEL for non-JS/TS files and are filed residuals --
 #: this set may only shrink.
 _ALLOWED_GRAMMAR_LOOKUP_CALLERS = {
-    "_text_filters.py", "websocket.py", "phoenix_ipc.py", "openapi.py", "subprocess_cli.py",
+    "_text_filters.py", "websocket.py", "subprocess_cli.py",
 }
 
 
