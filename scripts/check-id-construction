@@ -21,6 +21,12 @@ An f-string is NOT the offence; an ungrammatical id is. A synthetic linker
 stand-in legitimately writes ``0-0`` by hand, and 14 of the tree's 40 hand-built
 templates are conformant and stay.
 
+An edge endpoint is also followed to the call sites of a parameter and into a
+helper of another module, one level each (WI-jozih). The endpoints it still
+cannot follow are not violations: their number is printed to stderr on every
+run, ``--unjudged`` lists them, and ``AnalysisRun.non_id_edge_endpoints`` is
+their guard at run time (ADR-0034 §"Enforcement").
+
 Exit codes:
     0 — clean.
     1 — violations printed to stdout, fix instructions to stderr.
@@ -46,8 +52,18 @@ except ImportError as exc:  # pragma: no cover — defensive
     sys.exit(2)
 
 
-def main() -> int:
-    offenders = find_id_construction_drift(REPO_ROOT)
+def main(argv: list[str]) -> int:
+    unjudged: list[str] = []
+    offenders = find_id_construction_drift(REPO_ROOT, unjudged=unjudged)
+    if "--unjudged" in argv:
+        for line in unjudged:
+            print(f"  {line}")
+    print(
+        f"check-id-construction: {len(unjudged)} edge endpoint(s) not judged "
+        "statically (list: --unjudged); AnalysisRun.non_id_edge_endpoints "
+        "guards them at run time.",
+        file=sys.stderr,
+    )
     if not offenders:
         return 0
     print("ID-construction check failed:")
@@ -68,4 +84,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover — script entrypoint
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

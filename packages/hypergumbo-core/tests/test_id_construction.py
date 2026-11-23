@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.check_id_construction import (
+    UNJUDGED_REASONS,
     edge_template_problem,
     find_id_construction_drift,
     id_template_problem,
@@ -683,6 +684,394 @@ class TestTheEdgeEndpoints:
         assert find_id_construction_drift(root) == []
 
 
+def _write_modules(tmp_path: Path, modules: dict[str, str]) -> Path:
+    """Several modules of one package ``m``, by file name."""
+    pkg = tmp_path / "packages" / "p" / "src" / "m"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    for name, body in modules.items():  # an "__init__.py" entry replaces the empty one
+        (pkg / name).write_text(textwrap.dedent(body), encoding="utf-8")
+    return tmp_path
+
+
+def survey_id_construction(root: Path) -> tuple[list[str], list[str]]:
+    """``(violations, unjudged)`` of :func:`find_id_construction_drift`."""
+    unjudged: list[str] = []
+    violations = find_id_construction_drift(root, unjudged=unjudged)
+    return violations, unjudged
+
+
+def _reasons(unjudged: list[str]) -> list[str]:
+    return [u.split("not judged: ", 1)[1].split(" ", 1)[0] for u in unjudged]
+
+
+class TestAnEndpointThroughAParameter:
+    """An endpoint that arrives through a parameter is followed to the call
+    sites of its function, one call level, in its module and through an
+    import in another (WI-jozih). Before, the hop stopped at the parameter's
+    name: ``make_unresolved_edge``'s ``src_id`` was never read."""
+
+    def test_a_hand_built_argument_in_the_same_module_is_judged(
+        self, tmp_path: Path,
+    ) -> None:
+        root = _write(tmp_path, '''
+            def edge_to(src_id, name):
+                return Edge.create(src=src_id, dst=make_file_id("c", name), line=1)
+
+            def caller(path, name):
+                return edge_to(f"{path}:file", name)
+        ''')
+        violations, unjudged = survey_id_construction(root)
+        assert len(violations) == 1
+        assert "mod.py:6 — edge_endpoint (src)" in violations[0]
+        assert "reaches the edge at" in violations[0]
+        assert unjudged == []
+
+    def test_a_hand_built_argument_in_another_module_is_judged(
+        self, tmp_path: Path,
+    ) -> None:
+        root = _write_modules(tmp_path, {
+            "edges.py": '''
+                def edge_to(src_id, name, *, line=1):
+                    return Edge.create(src=src_id, dst=make_file_id("c", name), line=line)
+            ''',
+            "a.py": '''
+                from .edges import edge_to
+
+                def caller(path, name):
+                    return edge_to(f"meson:subdir:{path}", name)
+            ''',
+            "b.py": '''
+                from m import edges
+
+                def caller(sym, name):
+                    return edges.edge_to(sym.id, name)
+            ''',
+        })
+        violations, unjudged = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/a.py:5"]
+        assert unjudged == []
+
+    def test_a_minted_argument_passes(self, tmp_path: Path) -> None:
+        """Control: the same function called with a symbol's id and a factory."""
+        root = _write(tmp_path, '''
+            def edge_to(src_id, name):
+                return Edge.create(src=src_id, dst=make_file_id("c", name), line=1)
+
+            def caller(sym, path, name):
+                edge_to(sym.id, name)
+                return edge_to(make_file_id("c", path), name)
+        ''')
+        assert survey_id_construction(root) == ([], [])
+
+    def test_a_method_binds_past_self(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            class A:
+                def edge_to(self, src_id):
+                    return Edge.create(src=src_id, dst=make_file_id("c", "x"), line=1)
+
+                def caller(self, path):
+                    return self.edge_to(f"{path}:file")
+        ''')
+        violations, _ = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/mod.py:7"]
+
+    def test_a_default_is_read_when_the_call_omits_it(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def edge_to(name, src_id="file:x"):
+                return Edge.create(src=src_id, dst=make_file_id("c", name), line=1)
+
+            def caller(name):
+                return edge_to(name)
+        ''')
+        violations, _ = survey_id_construction(root)
+        assert len(violations) == 1
+        assert "mod.py:2" in violations[0]
+
+    def test_a_parameter_passed_on_is_reported_unjudged(self, tmp_path: Path) -> None:
+        """One call level: a call site that passes its own parameter is not
+        followed further, and is REPORTED, never passed silently."""
+        root = _write(tmp_path, '''
+            def edge_to(src_id):
+                return Edge.create(src=src_id, dst=make_file_id("c", "x"), line=1)
+
+            def middle(given):
+                return edge_to(given)
+        ''')
+        violations, unjudged = survey_id_construction(root)
+        assert violations == []
+        assert _reasons(unjudged) == ["parameter_beyond_one_call"]
+        assert unjudged[0].startswith("packages/p/src/m/mod.py:3 — edge_endpoint (src)")
+
+    def test_a_parameter_nothing_calls_is_reported_unjudged(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def edge_to(src_id):
+                return Edge.create(src=src_id, dst=make_file_id("c", "x"), line=1)
+        ''')
+        assert _reasons(survey_id_construction(root)[1]) == ["parameter_without_call_site"]
+
+    def test_an_argument_in_star_args_is_reported_unjudged(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def edge_to(src_id):
+                return Edge.create(src=src_id, dst=make_file_id("c", "x"), line=1)
+
+            def caller(parts, options):
+                edge_to(*parts)
+                return edge_to(**options)
+        ''')
+        assert _reasons(survey_id_construction(root)[1]) == ["argument_not_bound"]
+
+
+class TestAnEndpointBuiltByAHelper:
+    """An endpoint returned by a helper of another module is read at that
+    helper's ``return``, one module away (WI-jozih)."""
+
+    def test_a_helper_of_another_module_is_read(self, tmp_path: Path) -> None:
+        root = _write_modules(tmp_path, {
+            "ids.py": '''
+                def stand_in(name):
+                    dst = f"verilog:external:{name}:module"
+                    return dst
+            ''',
+            "a.py": '''
+                from .ids import stand_in
+
+                def f(sym, name):
+                    return Edge.create(src=sym.id, dst=stand_in(name), line=1)
+            ''',
+        })
+        violations, unjudged = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/ids.py:3"]
+        assert unjudged == []
+
+    def test_a_helper_argument_comes_back_from_the_caller(self, tmp_path: Path) -> None:
+        """A helper returning its own parameter returns what its caller passed."""
+        root = _write_modules(tmp_path, {
+            "ids.py": '''
+                def same(value):
+                    return value
+            ''',
+            "a.py": '''
+                from .ids import same
+
+                def f(sym, path):
+                    return Edge.create(src=sym.id, dst=same(f"{path}:file"), line=1)
+            ''',
+        })
+        violations, _ = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/a.py:5"]
+
+    def test_a_tuple_part_is_followed(self, tmp_path: Path) -> None:
+        root = _write_modules(tmp_path, {
+            "ids.py": '''
+                def pair(name):
+                    return f"x:{name}", None
+            ''',
+            "a.py": '''
+                from .ids import pair
+
+                def f(sym, name):
+                    dst, _ref = pair(name)
+                    return Edge.create(src=sym.id, dst=dst, line=1)
+            ''',
+        })
+        violations, _ = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/ids.py:3"]
+
+    def test_a_helper_two_modules_away_is_reported_unjudged(self, tmp_path: Path) -> None:
+        root = _write_modules(tmp_path, {
+            "ids.py": '''
+                def inner(name):
+                    return f"x:{name}"
+            ''',
+            "mid.py": '''
+                from .ids import inner
+
+                def outer(name):
+                    return inner(name)
+            ''',
+            "a.py": '''
+                from .mid import outer
+
+                def f(sym, name):
+                    return Edge.create(src=sym.id, dst=outer(name), line=1)
+            ''',
+        })
+        violations, unjudged = survey_id_construction(root)
+        assert violations == []
+        assert _reasons(unjudged) == ["helper_beyond_one_level"]
+
+    @pytest.mark.parametrize(("endpoint", "reason"), [
+        ("lookup(name)", "helper_not_located"),
+        ("registry.get(name)", "computed"),
+        ("registry[name]", "computed"),
+        ("emission.action_id", "computed"),
+    ])
+    def test_a_value_it_cannot_read_is_reported_unjudged(
+        self, tmp_path: Path, endpoint: str, reason: str,
+    ) -> None:
+        root = _write(tmp_path, f'''
+            REGISTRY = {{}}
+
+            def f(sym, name, emission):
+                registry = REGISTRY
+                return Edge.create(src=sym.id, dst={endpoint}, line=1)
+
+            def g(sym, name, emission):
+                return f(sym.id, name, emission)
+        ''')
+        violations, unjudged = survey_id_construction(root)
+        assert violations == []
+        assert reason in _reasons(unjudged)
+
+    def test_a_loop_variable_is_reported_unjudged(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def f(sym, ids):
+                for dst in ids:
+                    yield Edge.create(src=sym.id, dst=dst, line=1)
+
+            def g(sym):
+                return f(sym, [])
+        ''')
+        assert _reasons(survey_id_construction(root)[1]) == ["computed"]
+
+    def test_a_module_constant_is_judged(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            ROOT = "root:file"
+
+            def f(sym):
+                return Edge.create(src=sym.id, dst=ROOT, line=1)
+        ''')
+        violations, _ = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/mod.py:2"]
+
+    def test_a_re_exported_helper_is_read(self, tmp_path: Path) -> None:
+        root = _write_modules(tmp_path, {
+            "ids.py": '''
+                def stand_in(name):
+                    return f"x:{name}"
+            ''',
+            "__init__.py": "from .ids import stand_in\n",
+            "a.py": '''
+                from m import stand_in
+
+                def f(sym, name):
+                    return Edge.create(src=sym.id, dst=stand_in(name), line=1)
+            ''',
+        })
+        violations, _ = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/ids.py:3"]
+
+    def test_a_re_export_of_no_function_is_not_located(self, tmp_path: Path) -> None:
+        root = _write_modules(tmp_path, {
+            "ids.py": "STAND_IN = None\n",
+            "__init__.py": "from .ids import STAND_IN\n",
+            "a.py": '''
+                from m import STAND_IN
+
+                def f(sym, name):
+                    return Edge.create(src=sym.id, dst=STAND_IN(name), line=1)
+            ''',
+        })
+        assert _reasons(survey_id_construction(root)[1]) == ["helper_not_located"]
+
+    @pytest.mark.parametrize(("body", "reason"), [
+        # A helper imported from outside the tree.
+        ('''
+            from os.path import join
+
+            def f(sym, name):
+                return Edge.create(src=sym.id, dst=join(name), line=1)
+        ''', "helper_not_located"),
+        # A helper that returns no value.
+        ('''
+            def nothing(name):
+                print(name)
+
+            def f(sym, name):
+                return Edge.create(src=sym.id, dst=nothing(name), line=1)
+        ''', "computed"),
+        # A helper returning a parameter its call does not pass.
+        ('''
+            def pick(value, other, *rest):
+                return other
+
+            def f(sym, name, parts):
+                return Edge.create(src=sym.id, dst=pick(*parts), line=1)
+        ''', "argument_not_bound"),
+        # A tuple part the return does not spell element by element.
+        ('''
+            def pair(parts):
+                return (*parts, None)
+
+            def f(sym, parts):
+                dst, _ref = pair(parts)
+                return Edge.create(src=sym.id, dst=dst, line=1)
+        ''', "computed"),
+        # A tuple part of a tuple part.
+        ('''
+            def nested():
+                return (("a:b", None), None)
+
+            def f(sym):
+                pair, _ = nested()
+                dst, _ref = pair
+                return Edge.create(src=sym.id, dst=dst, line=1)
+        ''', "computed"),
+        # A name nothing in the module binds.
+        ('''
+            def f(sym):
+                return Edge.create(src=sym.id, dst=UNDEFINED, line=1)
+        ''', "computed"),
+        # A ``with`` target.
+        ('''
+            def f(sym, opener):
+                with opener() as dst:
+                    return Edge.create(src=sym.id, dst=dst, line=1)
+
+            def g(sym):
+                return f(sym, None)
+        ''', "computed"),
+        # A keyword-only parameter with no default, omitted by its call.
+        ('''
+            def edge_to(*, src_id):
+                return Edge.create(src=src_id, dst=make_file_id("c", "x"), line=1)
+
+            def caller():
+                return edge_to()
+        ''', "argument_not_bound"),
+    ])
+    def test_what_it_cannot_follow_is_reported(
+        self, tmp_path: Path, body: str, reason: str,
+    ) -> None:
+        violations, unjudged = survey_id_construction(_write(tmp_path, body))
+        assert violations == []
+        assert reason in _reasons(unjudged)
+
+    def test_a_keyword_only_default_is_read(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def edge_to(name, *, src_id="file:x"):
+                return Edge.create(src=src_id, dst=make_file_id("c", name), line=1)
+
+            def caller(name):
+                return edge_to(name)
+        ''')
+        violations, _ = survey_id_construction(root)
+        assert [v.split(" — ")[0] for v in violations] == ["packages/p/src/m/mod.py:2"]
+
+    def test_a_recursive_helper_is_read_once(self, tmp_path: Path) -> None:
+        root = _write(tmp_path, '''
+            def dst_of(name, depth):
+                if depth:
+                    return dst_of(name, depth - 1)
+                return make_file_id("c", name)
+
+            def f(sym, name):
+                return Edge.create(src=sym.id, dst=dst_of(name, 3), line=1)
+        ''')
+        assert survey_id_construction(root) == ([], [])
+
+
 class TestTheLiveTree:
     def test_live_tree_passes(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
@@ -691,3 +1080,11 @@ class TestTheLiveTree:
             f"{len(drift)} id-construction violation(s):\n  "
             + "\n  ".join(drift)
         )
+
+    def test_every_unjudged_endpoint_names_a_declared_reason(self) -> None:
+        """What the check cannot follow is listed with a reason, never dropped:
+        the runtime count ``AnalysisRun.non_id_edge_endpoints`` guards it."""
+        repo_root = Path(__file__).resolve().parents[3]
+        _violations, unjudged = survey_id_construction(repo_root)
+        assert unjudged, "the tree has endpoints the check cannot follow"
+        assert set(_reasons(unjudged)) <= set(UNJUDGED_REASONS)
