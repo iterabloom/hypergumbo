@@ -77,7 +77,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
+from hypergumbo_core.discovery import classify_dot_bb_file, find_files
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -712,10 +712,22 @@ class ClojureAnalyzer(TreeSitterAnalyzer):
     create_file_symbols = True
 
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
-        """Yield Clojure source files, skipping .edn data files."""
-        for path in find_files(repo_root, self.file_patterns):
-            if path.suffix != ".edn":
-                yield path
+        """Yield Clojure source files, skipping .edn data files.
+
+        A ``.bb`` file is a Babashka script when ``classify_dot_bb_file``
+        says so (the extension is also BitBake's, whose analyzer reads the
+        rest). The analyzer is registered with this finder
+        (``find_files=``, INV-hokig) so the profile counts what the pass
+        reads: the taxonomy cannot glob ``.bb`` for Clojure, and a tree
+        whose only Clojure is Babashka scripts would otherwise count zero
+        clojure files and the pass would be skipped.
+        """
+        for path in find_files(repo_root, [*self.file_patterns, "*.bb"]):
+            if path.suffix == ".edn":
+                continue
+            if path.suffix == ".bb" and classify_dot_bb_file(path) != "clojure":
+                continue
+            yield path
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -768,7 +780,7 @@ def is_clojure_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("clojure")
+@register_analyzer("clojure", find_files=find_clojure_files)
 def analyze_clojure(repo_root: Path) -> AnalysisResult:
     """Analyze Clojure files in a repository.
 
