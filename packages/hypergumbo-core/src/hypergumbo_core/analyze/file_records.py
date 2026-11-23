@@ -243,6 +243,29 @@ def unify_file_pseudo_symbols(
     return remap
 
 
+def name_file_pseudo_symbols_by_path(symbols: Sequence[Symbol]) -> int:
+    """Name every file pseudo-symbol by its path; return how many were renamed.
+
+    The file pseudo-symbol's ``name`` is its repo-relative path, the name the
+    orchestrator's anchors and the Python, JavaScript, PHP and Bash analyzers
+    give it (ADR-0036 Ruling 3 fixes the id's name slot to ``file``, so the
+    name is the one place a reader finds which file the node is). The html,
+    yaml and ansible analyzers and the websocket linker named it by the
+    basename, and the js-module and vue-component linkers by the stem
+    (``logo`` for ``app/logo.png``), so two files sharing a basename shared a
+    name. The rule is applied here, after the linkers, for every producer at
+    once, as the one-node-per-path rule is. The name is not a stable-id input
+    of a file node (``make_file_stable_id`` hashes language and path), so no
+    identity moves. Paths must already be repo-relative.
+    """
+    renamed = 0
+    for symbol in symbols:
+        if is_file_pseudo_symbol(symbol) and symbol.path and symbol.name != symbol.path:
+            symbol.name = symbol.path
+            renamed += 1
+    return renamed
+
+
 def repoint_file_references(
     symbols: Sequence[Symbol],
     edges: List[Edge],

@@ -13550,8 +13550,13 @@ def run_survey(
     # one in the file's own language, every edge rewired. After the linkers,
     # which can mint a file node too, and before deduplicate_edges below,
     # which folds the edges the rewiring made identical.
-    from .analyze.file_records import unify_file_pseudo_symbols
+    from .analyze.file_records import (
+        name_file_pseudo_symbols_by_path,
+        unify_file_pseudo_symbols,
+    )
     unify_file_pseudo_symbols(all_symbols, all_edges, all_usage_contexts)
+    # Each file node is named by its path, whichever producer kept it.
+    name_file_pseudo_symbols_by_path(all_symbols)
 
     # synthetic:F2 (5a): backstop stable_id / display_label / fingerprint on
     # Class-B synthetic protocol-synth Symbols the linkers left null (post-pass,

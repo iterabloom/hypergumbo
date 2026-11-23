@@ -15,6 +15,7 @@ from hypergumbo_core.analyze.base import make_file_id
 from hypergumbo_core.analyze.file_records import (
     file_reference_dst,
     is_file_pseudo_symbol,
+    name_file_pseudo_symbols_by_path,
     repoint_file_references,
     rewire_endpoints,
     unify_file_pseudo_symbols,
@@ -329,3 +330,65 @@ class TestFileReferenceDst:
             "./",                     # a directory
         ):
             assert self._dst(root, "vue", "src/App.vue", import_path) is None
+
+
+class TestAFileNodeIsNamedByItsPath:
+    """The file pseudo-symbol's ``name`` is its repo-relative path (spec, "A
+    node id's name slot is its sanitized name"; py.py and the orchestrator's
+    anchors name it so). Six producers named it by the basename (html, yaml,
+    ansible, the websocket linker) or the stem (the js-module and
+    vue-component linkers): ``logo`` for ``app/logo.png``. The name is not a
+    stable-id input for this kind (``make_file_stable_id`` hashes language and
+    path), so renaming moves no identity."""
+
+    def test_basename_and_stem_names_become_the_path(self) -> None:
+        stem = _file("javascript", "app/logo.png", origin="js-module-linker")
+        stem.name = "logo"
+        base = _file("html", "docs/a.html", origin="html")
+        base.name = "a.html"
+        symbols = [stem, base]
+        assert name_file_pseudo_symbols_by_path(symbols) == 2
+        assert [(s.name, s.path) for s in symbols] == [
+            ("app/logo.png", "app/logo.png"), ("docs/a.html", "docs/a.html"),
+        ]
+        assert name_file_pseudo_symbols_by_path(symbols) == 0
+
+    def test_what_is_not_a_file_pseudo_symbol_keeps_its_name(self) -> None:
+        """Control: a manifest entry of kind ``file``, a member, a pathless one."""
+        manifest = Symbol(
+            id="toml:pyproject.toml:5-5:tool:file", name="tool", kind="file",
+            language="toml", path="pyproject.toml",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            origin="toml", origin_run_id="run", meta={"entry_role": "script"},
+        )
+        member = _member("typescript", "src/a.ts", "go")
+        nopath = _file("typescript", "")
+        nopath.name = "x"
+        assert name_file_pseudo_symbols_by_path([manifest, member, nopath]) == 0
+        assert (manifest.name, member.name, nopath.name) == ("tool", "go", "x")
+
+
+def test_a_run_names_every_file_node_by_its_path(tmp_path: Path) -> None:
+    """The pass is wired into the run, after the linkers (the js-module linker
+    mints the asset's file node; the html and yaml analyzers name theirs by
+    the basename)."""
+    import json
+
+    from hypergumbo_core import cli
+
+    repo = tmp_path / "repo"
+    (repo / "app").mkdir(parents=True)
+    (repo / "docs").mkdir()
+    (repo / "app" / "index.js").write_text(
+        "import logo from './logo.png';\nexport function main() { return logo; }\n"
+    )
+    (repo / "app" / "logo.png").write_bytes(b"\x89PNG\r\n")
+    (repo / "docs" / "page.html").write_text("<html><body>x</body></html>\n")
+    (repo / "docs" / "conf.yaml").write_text("a: 1\n")
+    out = tmp_path / "map.json"
+    cli.run_behavior_map(repo_root=repo, out_path=out)
+    files = {n["path"]: n for n in json.loads(out.read_text())["nodes"]
+             if n["kind"] == "file" and n["id"].endswith(":1-1:file:file")}
+    assert {"app/logo.png", "docs/page.html", "docs/conf.yaml"} <= set(files)
+    assert files["app/logo.png"]["origin"][0] == "js-module-linker"
+    assert [(p, n["name"]) for p, n in files.items() if n["name"] != p] == []
