@@ -245,7 +245,9 @@ def _process_make_tree(
                 is_pattern = any("%" in t for t in target_names)
                 kind = "pattern_rule" if is_pattern else "target"
 
-                for target_name in target_names:
+                # A target named twice in one header is one target (``a a: b``);
+                # one symbol per word gave two nodes under one id (WI-supar).
+                for target_name in dict.fromkeys(target_names):
                     # Mark special targets like .PHONY (emitted, not skipped)
                     if target_name.startswith("."):
                         kind = "special_target"
