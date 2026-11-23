@@ -196,12 +196,13 @@ def _process_maven_dependency(
         start_line = dep_node.start_point[0] + 1
         end_line = dep_node.end_point[0] + 1
         dep_name = f"{group_id}:{artifact_id}"
-        # INV-dulah: a Maven coordinate carries a colon, which would shift the
-        # right-anchored id slots and break the ADR-0036 grammar. Full fidelity
-        # stays on Symbol.name (and in meta groupId/artifactId below).
+        # ADR-0036 Ruling 1: the name slot is the sanitized Symbol.name, the
+        # artifactId. The coordinate ``groupId:artifactId`` stays on
+        # qualified_name and in meta (it sat in the slot; INV-dulah had folded
+        # its colon). Two dependencies sharing an artifactId differ in span.
         symbol_id = make_symbol_id(
             "xml", rel_path, start_line, end_line,
-            sanitize_id_name_segment(dep_name), "dependency",
+            sanitize_id_name_segment(artifact_id), "dependency",
         )
 
         meta = {"groupId": group_id, "artifactId": artifact_id}
@@ -343,10 +344,10 @@ def _process_maven_pom(
         start_line = project_node.start_point[0] + 1
         end_line = project_node.end_point[0] + 1
         project_name = f"{group_id}:{artifact_id}" if group_id else artifact_id
-        # INV-dulah: same coordinate-colon break as the dependency site above.
+        # ADR-0036 Ruling 1, as at the dependency site: the slot is the name.
         project_id = make_symbol_id(
             "xml", rel_path, start_line, end_line,
-            sanitize_id_name_segment(project_name), "module",
+            sanitize_id_name_segment(artifact_id), "module",
         )
 
         meta = {"artifactId": artifact_id}

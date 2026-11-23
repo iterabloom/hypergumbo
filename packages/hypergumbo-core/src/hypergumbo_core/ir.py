@@ -1773,9 +1773,9 @@ def sanitize_id_name_segment(name: str) -> str:
     sanitized ``':' -> '.'`` (the round-trip is documented-lossy — full fidelity
     lives in ``Symbol.name``), e.g. the synthetic linker stand-ins whose name
     folds a protocol address — message-queue ``kafka:publish:topic`` →
-    ``kafka.publish.topic`` (WI-vuzaf Pattern A) — and the Maven manifest
-    producers whose name folds an ecosystem coordinate,
-    ``org.springframework.boot:spring-boot-starter-web`` (INV-dulah).
+    ``kafka.publish.topic`` (WI-vuzaf Pattern A). (A Maven dependency is
+    named by its artifactId; its ``groupId:artifactId`` coordinate is its
+    ``qualified_name`` and is not in the slot.)
 
     :func:`analyze.base.make_symbol_id` applies this to every name slot
     (WI-sikar), so calling it explicitly is not required for correctness.
