@@ -79,6 +79,12 @@ _LITERALS = [
     ("unterminated", 'x = "a  b', 'x = "a  b'),
     ("literal-union", "'x' | 'y z'", "'x' | 'y z'"),
     ("raw-go-tag", 'struct{ a int `json:"a b"` }', 'struct{ a int`json:"a b"` }'),
+    # A ``'`` right after a literal prefix still opens one: C/C++'s ``L'`` /
+    # ``u8'``, Rust's ``b'``, a Python bytes or raw string (WI-sidus).
+    ("cpp-wide-char", "(c = L' ')", "(c = L' ')"),
+    ("cpp-utf8-char", "(c = u8'  ')", "(c = u8'  ')"),
+    ("rust-byte", "(c = b' ')", "(c = b' ')"),
+    ("python-raw-bytes", "(x = rb'a  b')", "(x = rb'a  b')"),
 ]
 
 # (case, text, its layout-free form): a ``'`` that does not close before a
@@ -88,6 +94,13 @@ _NOT_LITERALS = [
     ("rust-lifetimes", "(&'a  str, &'b  str) -> &'a str", "(&'a str,&'b str) -> &'a str"),
     ("rust-anonymous-lifetimes", "&'_ T, &'_  U", "&'_ T,&'_ U"),
     ("single-lifetime", "&'static  str", "&'static str"),
+    # A ``'`` right after a word is a prime (F#/ML ``a'``), not a quote: two
+    # primes do not pair into a literal (WI-sidus).
+    ("paired-primes", "(a'  ->  b')", "(a' -> b')"),
+    ("paired-primes-tight", "(a'->b')", "(a' -> b')"),
+    ("primed-type-arguments", "Map<T',\n  U'>", "Map<T', U'>"),
+    # The whole word decides: ``Lb'`` ends in a prefix letter and is a name.
+    ("primed-word-ending-in-a-prefix-letter", "(Lb'  ->  Rb')", "(Lb' -> Rb')"),
 ]
 
 # (case, text, its layout-free form with ``separators``): what a formatter
@@ -161,6 +174,7 @@ _DISTINCT = [
     ("arrow-or-two-tokens", "a -> b", "a - > b"),
     ("array-rank", "int[,]", "int[]"),
     ("backtick-name", "`a b`", "`ab`"),
+    ("prefixed-char-content", "(c = L' ')", "(c = L'  ')"),
 ]
 
 
