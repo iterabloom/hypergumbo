@@ -122,3 +122,61 @@ class TestNameSlotRoundTrip:
         assert {s.name for s in _by_kind(symbols, "variable")} == {"title"}
         assert [s.name for s in _by_kind(symbols, "slot")] == ["side"]
         _assert_round_trip([s for s in symbols if s.kind != "file"])
+
+
+_VUE_NESTED = """<template>
+  <div>
+    <template v-if="a">
+      <template v-for="x in xs">
+        <p :title="x">t</p>
+        <Child v-if="x" />
+      </template>
+    </template>
+    <p :title="y">u</p>
+  </div>
+</template>
+"""
+
+
+class TestOneNodePerMember:
+    """Distinct members get distinct node ids; one member is emitted once."""
+
+    def test_vue_nested_template_content_is_emitted_once(self, tmp_path: Path) -> None:
+        # A <template> nested in the root <template> was walked again from
+        # every enclosing <template>: the <p> two levels down came out three
+        # times, with one node id.
+        _write(tmp_path, "src/N.vue", _VUE_NESTED)
+        result = analyze_vue(tmp_path)
+        directives = _by_kind(result.symbols, "directive")
+        ids = [d.id for d in directives]
+        assert len(ids) == len(set(ids))
+        # Reach: the nested <p>, the nested component and the control <p>
+        # outside every nested template are each there once.
+        assert sorted((d.name, d.span.start_line) for d in directives) == [
+            ("Child:v-if", 6), ("p:v-bind:title", 5), ("p:v-bind:title", 9),
+        ]
+        component_edges = [
+            e for e in result.edges if (e.meta or {}).get("component_name") == "Child"
+        ]
+        assert len(component_edges) == 1
+
+    def test_svelte_repeated_event_on_one_element_is_one_symbol(self, tmp_path: Path) -> None:
+        # Two handlers of one event on one element (valid Svelte) are one
+        # subscription of the element to the event; the analyzer records no
+        # handler, so two nodes carried the same facts under one id.
+        _write(tmp_path, "src/B.svelte", (
+            "<button\n"
+            "  on:click={a}\n"
+            "  on:click={b}\n"
+            "  on:click|once={c}\n"
+            ">x</button>\n"
+            "<button on:click={d}>y</button>\n"
+        ))
+        events = _by_kind(analyze_svelte(tmp_path).symbols, "event")
+        ids = [e.id for e in events]
+        assert len(ids) == len(set(ids))
+        # Control: a modifier makes another event; another element another
+        # symbol.
+        assert sorted((e.name, e.span.start_line) for e in events) == [
+            ("button:click", 1), ("button:click", 6), ("button:click|once", 1),
+        ]
