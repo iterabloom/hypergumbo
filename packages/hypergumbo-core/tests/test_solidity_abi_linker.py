@@ -447,3 +447,51 @@ class TestCallSiteIdsNameTheirOwnKind:
         assert len(result.edges) == 2
         assert [(e.src, e.dst) for e in result.edges
                 if e.src not in ids or e.dst not in targets] == []
+
+
+class TestCallSiteIdsNameTheirOwnName:
+    """ADR-0036 Ruling 1: a node id's name slot is the sanitized
+    ``Symbol.name``. The stand-in's slot was ``<function>.<12 hex>``, a hash of
+    ``(path, line, function)`` (all already in the id), while its name is
+    ``abi_call:<function>``. The hash bought no distinctness: the scan keeps one
+    call site per (file, function), so two calls on one line name two different
+    functions and differ in the name slot anyway."""
+
+    def _result(self, tmp_path: Path):
+        from hypergumbo_core.linkers.solidity_abi import link_solidity_abi
+
+        (tmp_path / "client.js").write_text(
+            "await token.transfer(a, 1); const b = await token.balanceOf(a);\n"
+            "await token.transfer(c, 2);\n"
+        )
+        sols = [_make_sol_sym("transfer"), _make_sol_sym("balanceOf", start_line=5)]
+        return link_solidity_abi(tmp_path, [], sols)
+
+    def test_the_fixture_emits_two_call_sites_on_one_line(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        assert sorted((s.name, s.span.start_line) for s in result.symbols) == [
+            ("abi_call:balanceOf", 1), ("abi_call:transfer", 1),
+        ]
+
+    def test_every_name_slot_is_the_sanitized_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import sanitize_id_name_segment
+
+        result = self._result(tmp_path)
+        assert result.symbols
+        wrong = [
+            (s.id, s.name) for s in result.symbols
+            if s.id.rsplit(":", 2)[1] != sanitize_id_name_segment(s.name)
+        ]
+        assert wrong == []
+
+    def test_same_line_call_sites_keep_distinct_ids(self, tmp_path: Path) -> None:
+        result = self._result(tmp_path)
+        ids = [s.id for s in result.symbols]
+        assert len(ids) == 2 and len(set(ids)) == 2
+
+    def test_the_edges_start_on_the_stand_ins(self, tmp_path: Path) -> None:
+        """Control: the edges are re-keyed with the ids, none dangles."""
+        result = self._result(tmp_path)
+        ids = {s.id for s in result.symbols}
+        assert len(result.edges) == 2
+        assert {e.src for e in result.edges} == ids
