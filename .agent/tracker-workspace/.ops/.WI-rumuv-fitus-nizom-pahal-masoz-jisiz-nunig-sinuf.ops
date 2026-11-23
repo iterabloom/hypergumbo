@@ -19,3 +19,18 @@
     pr_ref:  # 6408
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. c_cpp_files is a set (napi.py:248-255), export_map last-write-wins (278). Five .c files registering \"hello\": seeds 1-6 gave impl_e, impl_b, impl_b, impl_a, impl_c, impl_a. v10."  # 6408
     fields: {}  # 6408
+- op: update  # 779c
+  at: '2026-11-23T22:17:09Z'  # 779c
+  by: agent  # 779c
+  actor: jgstern_agent  # 779c
+  clock: 2  # 779c
+  nonce: 779c  # 779c
+  set:  # 779c
+    status: done  # 779c
+- op: discuss  # 74eb
+  at: '2026-11-23T22:17:09Z'  # 74eb
+  by: agent  # 74eb
+  actor: jgstern_agent  # 74eb
+  clock: 3  # 74eb
+  nonce: 74eb  # 74eb
+  message: "Fixed in PR #2347 (60d178eaf 'napi keeps every function a JS name is registered to'). Root cause: the C/C++ files were iterated as a set and the export map was keyed by JS name, last writer wins. Fix: every registration of a name keeps its own edge, to the function in its own file. Re-ran the filed repro on dev 49bc5c6e4: five .c files registering 'hello', PYTHONHASHSEED 1 to 6: each seed gives the same 5 edges, one to each of impl_a..impl_e (filed: one edge, to impl_e, impl_b, impl_b, impl_a, impl_c, impl_a). Production-path test: packages/hypergumbo-core/tests/test_linker_hash_seed_order.py (four processes under distinct seeds). Corpus impact was not measured when filed and is not measured now. Outputs: ~/hypergumbo_lab_notebook/idfive_11232026/closure/ (fixtures*.txt, trees_summary.txt, pair_check_dev.txt)."  # 74eb

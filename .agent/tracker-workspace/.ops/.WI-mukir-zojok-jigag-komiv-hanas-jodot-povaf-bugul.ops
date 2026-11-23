@@ -1,0 +1,21 @@
+- op: create  # 0fc8
+  at: '2026-11-23T22:16:41Z'  # 0fc8
+  by: agent  # 0fc8
+  actor: jgstern_agent  # 0fc8
+  clock: 1  # 0fc8
+  nonce: 0fc8  # 0fc8
+  data:  # 0fc8
+    kind: work_item  # 0fc8
+    title: "Script reachability leftovers: a Clojure function passed as a value, an aliased Clojure call, Ruby scripts with no seed"  # 0fc8
+    status: todo_soft  # 0fc8
+    priority: 3  # 0fc8
+    parent:  # 0fc8
+    tags:  # 0fc8
+    - dead_code  # 0fc8
+    - analysis_quality  # 0fc8
+    isbefore: []  # 0fc8
+    duplicate_of: []  # 0fc8
+    not_duplicate_of: []  # 0fc8
+    pr_ref:  # 0fc8
+    description: "- Clojure: a function passed as a value makes no edge: (filter validate-country) in metabase bin/generate-country-code-docs.bb leaves validate-country a dead-code candidate (the one of 27 Babashka script functions still reported).\n- Clojure: an aliased qualified call binds an in-tree var of another namespace: shell/sh with shell aliased to clojure.java.shell resolves to metabuild_common/shell.clj sh (the resolver takes the alias's namespace only as a hint).\n- Ruby: top-level calls of a script are anchored on the file node, and nothing seeds a script file (Python has main_guard, Bash shell_script, Babashka now main_guard).\n- Julia: a bare inner() call in module A resolves to module B's inner (fixture; present before the id fixes).\nRepro for the first two: dead-code-maybe on ~/whole_bunch_of_repos/metabase/bin.\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 0fc8
+    fields: {}  # 0fc8
