@@ -17,6 +17,13 @@ Implementation approach:
   Tcl's own name), where they kept the innermost only (WI-tusad scheme bump).
   The hashed name stays ``inner::go`` beside the chain, so stable_ids did
   not move.
+- Names (ADR-0036 Ruling 1, ADR-0032): ``Symbol.name`` is a proc's or
+  namespace's last word, ``qualified_name`` its absolute name without the
+  leading ``::`` (:func:`_declared_names`), and the id's name slot is the
+  name. The slot used to carry the enclosing namespaces (``util..helper``)
+  and, for ``proc ::top`` or ``namespace eval ::glob``, the ``::`` itself
+  (``..top``), while the name held the word as declared. The stable_id's
+  inputs (the word, the innermost namespace, the chain) are unchanged.
 - A call resolves the way Tcl resolves a command name
   (:func:`_resolve_callee`): ``::a::b`` from the global namespace, any other
   name first in the namespace the calling proc runs in (a command
@@ -178,6 +185,22 @@ def _qualified(scope: str, word: str) -> str:
     return name[2:] if name.startswith("::") else name
 
 
+def _declared_names(ns_path: tuple[str, ...], word: str) -> tuple[str, str]:
+    """``(name, qualified_name)`` of a proc or namespace declared as ``word``
+    inside the ``namespace eval`` words ``ns_path`` (outermost first).
+
+    ``qualified_name`` is the absolute name without the leading ``::``
+    (:func:`_qualified`: ``proc ::top`` is ``top``, ``proc helper`` in
+    ``namespace eval ::glob`` is ``glob::helper``, ``proc util::other`` at
+    the top level is ``util::other``); ``name`` is its last word. The id's
+    name slot is ``name`` (ADR-0036 Ruling 1), so the slot holds no ``::``
+    to sanitize; the scope lives in ``qualified_name`` (ADR-0032, Tcl's
+    separator ``::``).
+    """
+    qualified = _qualified(_qualified("", "::".join(ns_path)), word)
+    return qualified.rpartition("::")[2], qualified
+
+
 #: The registry key of a proc's absolute name (``::util::helper``). The
 #: ``::`` keeps these keys apart from the base class's keys, which are each
 #: proc's own word as declared (``helper``, ``util::other``).
@@ -293,11 +316,10 @@ def _find_enclosing_proc(
         current = current.parent
 
     if proc_name and proc_node is not None:
-        ns_path = _namespace_path(proc_node)
-        qualified_name = "::".join((*ns_path, proc_name))
+        name, qualified_name = _declared_names(_namespace_path(proc_node), proc_name)
         rel_path = str(path.relative_to(repo_root))
-        scope = _qualified(_qualified("", "::".join(ns_path)), proc_name).rpartition("::")[0]
-        return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, qualified_name, "function"), scope
+        scope = qualified_name.rpartition("::")[0]
+        return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, name, "function"), scope
     return None  # pragma: no cover
 
 
@@ -309,18 +331,17 @@ class TclAnalyzer(TreeSitterAnalyzer):
     language_pack_name = "tcl"
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
-        """Register a proc under its word and under its absolute name.
+        """Register a proc under its name and under its absolute name.
 
-        The base class keys a symbol by its name, the proc's word as
-        declared: ``helper`` for ``proc helper`` in ``namespace eval util``.
-        A call names it ``util::helper`` or ``::util::helper``, so each proc
-        is also keyed ``::util::helper`` (:data:`_ABSOLUTE`), what
-        :func:`_resolve_callee` looks up.
+        The base class keys a symbol by its name, the proc's last word
+        (``helper`` for ``proc helper`` in ``namespace eval util``). A call
+        names it ``util::helper`` or ``::util::helper``, so each proc is also
+        keyed by its ``qualified_name`` (``::util::helper``, :data:`_ABSOLUTE`),
+        what :func:`_resolve_callee` looks up.
         """
         super().register_symbol(symbol, global_symbols)
-        if symbol.kind == "function":
-            scope = (symbol.meta or {}).get("namespace", "")
-            global_symbols[_ABSOLUTE + _qualified(scope, symbol.name)] = symbol
+        if symbol.kind == "function" and symbol.qualified_name is not None:
+            global_symbols[_ABSOLUTE + symbol.qualified_name] = symbol
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -366,16 +387,17 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 signature = f"proc {name} {{{', '.join(params)}}}"
 
                 hashed_name = f"{namespace}::{name}" if namespace else name
-                full_name = "::".join((*ns_path, name))
+                short_name, qualified_name = _declared_names(ns_path, name)
 
                 sym = Symbol(
-                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, full_name, "function"),
+                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, short_name, "function"),
                     stable_id=self.compute_stable_id(
                         node, kind="proc", name=hashed_name,
                         qualified_name=nested_member_qualified_name(ns_path, hashed_name, "::"),
                         file_stable_id=file_anchor,
                     ),
-                    name=name,
+                    name=short_name,
+                    qualified_name=qualified_name,
                     kind="function",
                     language="tcl",
                     path=rel_path,
@@ -394,24 +416,26 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 )
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = node
-                analysis.symbol_by_name[name] = sym
+                analysis.symbol_by_name[short_name] = sym
 
         elif node.type == "namespace":
             name = _get_namespace_name(node)
             if name:
                 proc_count = _count_namespace_procs(node)
+                short_name, qualified_name = _declared_names(ns_path, name)
 
                 sym = Symbol(
                     id=make_symbol_id(
                         "tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1,
-                        "::".join((*ns_path, name)), "namespace",
+                        short_name, "namespace",
                     ),
                     stable_id=self.compute_stable_id(
                         node, kind="namespace", name=name,
                         qualified_name=nested_member_qualified_name(ns_path, name, "::"),
                         file_stable_id=file_anchor,
                     ),
-                    name=name,
+                    name=short_name,
+                    qualified_name=qualified_name,
                     kind="namespace",
                     language="tcl",
                     path=rel_path,
