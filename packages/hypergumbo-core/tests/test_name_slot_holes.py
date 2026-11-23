@@ -36,7 +36,7 @@ from hypergumbo_core.spec_validator import (
 )
 
 #: Shrink-only: lower it when an entry is removed, never raise it.
-_CEILING = 16
+_CEILING = 14
 
 #: One fixture per declared hole: files written under one tree, each pair's
 #: producer run on them by a full pipeline run.
@@ -50,13 +50,6 @@ _FIXTURES: dict[tuple[str, str], dict[str, str]] = {
             "<script>\nexport default { props: ['first'] }\n</script>\n"
         ),
     },
-    ("rust", "method"): {
-        "rust/src/lib.rs": (
-            "struct A { command: u8 }\n"
-            "impl A {\n    fn run(&self) -> i32 { 1 }\n}\n"
-        ),
-    },
-    ("rust", "field"): {},  # the struct field of the rust/src/lib.rs fixture
     ("perl", "function"): {
         "perl/lib/Demo.pm": "package Demo;\nsub run { return 1; }\n1;\n",
     },

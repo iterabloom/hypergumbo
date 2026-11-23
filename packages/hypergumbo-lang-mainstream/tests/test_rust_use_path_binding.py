@@ -38,8 +38,10 @@ def _write(root: Path, files: dict[str, str]) -> None:
 
 def _calls(root: Path) -> list[tuple[str, int, str]]:
     result = analyze_rust(root)
+    # The caller's name is read from its Symbol, never parsed from the id.
+    name_of = {s.id: s.name for s in result.symbols}
     return [
-        (e.src.split(":")[-2], e.line, e.dst)
+        (name_of.get(e.src, e.src), e.line, e.dst)
         for e in result.edges if e.edge_type == "calls"
     ]
 
@@ -113,8 +115,8 @@ def test_a_field_of_an_external_type_does_not_bind_a_first_party_method(tmp_path
     bind."""
     _write(tmp_path, _FIELDS)
     calls = _calls(tmp_path)
-    assert ("Node.insert", 19) in {(src, line) for src, line, _dst in calls}  # reach: the file was walked
-    for src, line in (("List.push", 7), ("Named.push", 13)):
+    assert ("Node::insert", 19) in {(src, line) for src, line, _dst in calls}  # reach: the file was walked
+    for src, line in (("List::push", 7), ("Named::push", 13)):
         bound = [dst for s, ln, dst in calls if (s, ln) == (src, line) and ":src/lib.rs:" in dst]
         assert not bound, (src, line, bound)
 
@@ -123,7 +125,7 @@ def test_a_field_of_the_enclosing_type_still_reaches_its_method(tmp_path: Path) 
     """Control: ``self.left.insert(x)`` with ``left: Box<Node>`` is recursion."""
     _write(tmp_path, _FIELDS)
     calls = {(src, line): dst for src, line, dst in _calls(tmp_path)}
-    assert calls.get(("Node.insert", 19), "").endswith(":Node.insert:method"), calls
+    assert calls.get(("Node::insert", 19), "").endswith(":Node..insert:method"), calls
 
 
 def test_a_field_typed_by_a_type_parameter_keeps_its_fallback(tmp_path: Path) -> None:
@@ -141,7 +143,7 @@ def test_a_field_typed_by_a_type_parameter_keeps_its_fallback(tmp_path: Path) ->
         ),
     })
     calls = {(src, line): dst for src, line, dst in _calls(tmp_path)}
-    assert ":src/lib.rs:" in calls.get(("Vsock.fd", 9), ""), calls
+    assert ":src/lib.rs:" in calls.get(("Vsock::fd", 9), ""), calls
 
 
 def test_a_call_written_from_crate_binds_the_path_without_a_use(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,5 +163,5 @@ def test_a_field_typed_by_an_external_path_does_not_bind_a_first_party_method(tm
             "impl Queue {\n    pub fn front(&self) -> Option<&u8> {\n        self.items.front()\n    }\n}\n"
         ),
     })
-    bound = [dst for src, line, dst in _calls(tmp_path) if (src, line) == ("Queue.front", 5) and ":src/lib.rs:" in dst]
+    bound = [dst for src, line, dst in _calls(tmp_path) if (src, line) == ("Queue::front", 5) and ":src/lib.rs:" in dst]
     assert not bound, bound
