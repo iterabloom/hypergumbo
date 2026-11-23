@@ -22,6 +22,12 @@ so the survivor followed the per-process str-hash salt:
   five files registering ``hello``: seeds 0, 1, 2 gave ``impl_d``, ``impl_e``,
   ``impl_e``). Every registration of the name now keeps its own edge.
 
+- ``ruby_ffi`` (attach_function), ``pyffi`` and ``lua_ffi``: the source files
+  were a ``set``. Which edges are kept does not depend on it (the dedup key
+  holds a per-file symbol), but the order of the edges does, and the behavior
+  map does not re-sort them: three seeds gave three edge orders on a
+  six-file fixture of each (WI-supar). The files are now scanned sorted.
+
 One process has one hash salt, so the behavioural tests run each linker in
 four processes under fixed, distinct ``PYTHONHASHSEED`` values and require one
 answer. Before the fix the four disagreed (ruby_ffi: lines 2, 4, 2, 3;
@@ -186,4 +192,72 @@ def test_di_source_extensions_are_scanned_in_sorted_order() -> None:
     assert len(di_resolution._SOURCE_EXTENSIONS) == 9
     assert di_resolution._SOURCE_GLOBS == [
         f"*{ext}" for ext in di_resolution._SOURCE_EXTENSIONS
+    ]
+
+
+_FFI_DRIVER = """
+import json, sys
+from pathlib import Path
+from hypergumbo_core.ir import Span, Symbol
+
+kind, root = sys.argv[1], Path(sys.argv[2])
+stems = "a,b,c,d,e,f".split(",")
+c_syms = [Symbol(id=f"c:native.c:{i}-{i}:fn_{s}:function", name=f"fn_{s}", kind="function",
+                 path="native.c", language="c", span=Span(i, i, 0, 0))
+          for i, s in enumerate(stems, start=1)]
+src = []
+for s in stems:
+    if kind == "ruby":
+        name, lang = f"lib_{s}.rb", "ruby"
+        text = f"module L{s}\\n  attach_function :fn_{s}, [:int], :int\\nend\\n"
+    elif kind == "python":
+        name, lang = f"mod_{s}.py", "python"
+        text = f"import ctypes\\nlib = ctypes.CDLL('x.so')\\ndef f():\\n    return lib.fn_{s}(1)\\n"
+    else:
+        name, lang = f"mod_{s}.lua", "lua"
+        text = f"local ffi = require('ffi')\\nfunction f()\\n  return ffi.C.fn_{s}(1)\\nend\\n"
+    (root / name).write_text(text)
+    src.append(Symbol(id=f"{lang}:{name}:1-4:f:function", name="f", kind="function",
+                      path=name, language=lang, span=Span(1, 4, 0, 0)))
+if kind == "ruby":
+    from hypergumbo_core.linkers.ruby_ffi import link_ruby_ffi
+    result = link_ruby_ffi(root, src, c_syms, [])
+elif kind == "python":
+    from hypergumbo_core.linkers.pyffi import link_pyffi
+    result = link_pyffi(root, src, c_syms, [], [])
+else:
+    from hypergumbo_core.linkers.lua_ffi import link_lua_ffi
+    result = link_lua_ffi(root, src, c_syms, [])
+print(json.dumps([[e.src, e.dst] for e in result.edges]))
+"""
+
+
+def _ffi_edges_under_each_seed(kind: str, tmp_path: Path) -> list[Any]:
+    return _under_each_seed(_FFI_DRIVER, kind, str(tmp_path))
+
+
+def test_ruby_attach_function_edges_keep_one_order_under_four_hash_seeds(
+    tmp_path: Path,
+) -> None:
+    outputs = _ffi_edges_under_each_seed("ruby", tmp_path)
+    assert all(out == outputs[0] for out in outputs[1:]), outputs
+    # Reach: one edge per file, in file order.
+    assert [src for src, _dst in outputs[0]] == [
+        f"ruby:lib_{s}.rb:1-4:f:function" for s in "abcdef"
+    ]
+
+
+def test_pyffi_edges_keep_one_order_under_four_hash_seeds(tmp_path: Path) -> None:
+    outputs = _ffi_edges_under_each_seed("python", tmp_path)
+    assert all(out == outputs[0] for out in outputs[1:]), outputs
+    assert [src for src, _dst in outputs[0]] == [
+        f"python:mod_{s}.py:1-4:f:function" for s in "abcdef"
+    ]
+
+
+def test_lua_ffi_edges_keep_one_order_under_four_hash_seeds(tmp_path: Path) -> None:
+    outputs = _ffi_edges_under_each_seed("lua", tmp_path)
+    assert all(out == outputs[0] for out in outputs[1:]), outputs
+    assert [src for src, _dst in outputs[0]] == [
+        f"lua:mod_{s}.lua:1-4:f:function" for s in "abcdef"
     ]

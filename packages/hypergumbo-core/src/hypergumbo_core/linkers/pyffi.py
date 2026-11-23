@@ -331,7 +331,10 @@ def link_pyffi(
     # only PAIRING edges, so a call whose C symbol is missing leaves it
     # silent while the construct is plainly present.
     all_ffi_calls: list[tuple[str, str, int]] = []
-    for py_path_str in python_files:
+    # Sorted: the order of the files is the order of the edges, which the
+    # behavior map keeps; a set's order follows the per-process hash salt
+    # (three seeds gave three edge orders, WI-supar).
+    for py_path_str in sorted(python_files):
         py_path = Path(py_path_str)
         if not py_path.is_absolute():
             py_path = repo_root / py_path
