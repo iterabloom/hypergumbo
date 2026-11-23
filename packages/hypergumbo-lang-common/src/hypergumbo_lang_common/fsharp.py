@@ -516,8 +516,21 @@ def _fsharp_parts(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
 
 
 def _fsharp_type_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """A type as written, on one line."""
-    return " ".join(node_text(node, source).split())
+    """A type as written, on one line, without its comments: ``int (* x *)
+    -> string`` is ``int -> string``, so editing a comment moves no stable id
+    (WI-sidus; core's ``without_comments`` reads C-style comments only, and a
+    language-blind ``(* ... *)`` rule would eat C's ``(*)(int)``)."""
+    cuts = [(c.start_byte, c.end_byte) for c in iter_tree(node)
+            if c is not node and "comment" in c.type]
+    if not cuts:
+        return " ".join(node_text(node, source).split())
+    parts, pos = [], node.start_byte
+    for start, end in sorted(cuts):
+        if start >= pos:
+            parts.append(source[pos:start].decode("utf-8", errors="replace"))
+            pos = end
+    parts.append(source[pos:node.end_byte].decode("utf-8", errors="replace"))
+    return " ".join(" ".join(parts).split())
 
 
 def _fsharp_last_type(node: "tree_sitter.Node", source: bytes) -> str:

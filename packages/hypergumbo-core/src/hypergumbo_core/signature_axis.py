@@ -362,7 +362,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=7462,
+        line=7468,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",

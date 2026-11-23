@@ -35,8 +35,8 @@ extract:
   written one member per line is left out (``x:\\n  & A\\n  & B`` hashes as
   ``A & B``, ``() =>\\n  | A\\n  | B`` as ``() => A | B``), and a
   regex default value writes the whitespace of its pattern as escapes
-  (``/a b/`` hashes as ``/a\\x20b/``, so ``/a  b/`` stays apart). The
-  displayed signature keeps both
+  (``/a b/`` hashes as ``/a\\x20b/``, so ``/a  b/`` stays apart), and a
+  comment is left out. The displayed signature keeps all three
 - A static class member hashes ``static`` in the typed stable_id's
   ``decorators`` slot (``_jsts_member_decorators``; methods, accessors and
   fields, TypeScript and JavaScript), and a static method labels the scope
@@ -1593,21 +1593,22 @@ _find_child_by_field = find_child_by_field
 
 
 def _regex_pattern_hashed(pattern: str) -> str:
-    """A regex pattern with each whitespace character written as the escape
-    that matches it (``a b`` -> ``a\\x20b``; ``\\ `` is the same character), so
-    ``layout_free`` cannot respace it (see :func:`_jsts_hashed_text`)."""
+    """A regex pattern with each whitespace character, and each ``/``, written
+    as the escape that matches it (``a b`` -> ``a\\x20b``; ``\\ `` and ``\\/`` are
+    the same characters), so ``layout_free`` cannot respace it, nor read a
+    ``/*`` or ``//`` in it as a comment (see :func:`_jsts_hashed_text`)."""
     out: list[str] = []
     index = 0
     while index < len(pattern):
         ch = pattern[index]
         if ch == "\\" and index + 1 < len(pattern):
             index += 1
-            if not pattern[index].isspace():
+            if not pattern[index].isspace() and pattern[index] != "/":
                 out.append(ch + pattern[index])
                 index += 1
                 continue
-            ch = pattern[index]  # an identity escape of the whitespace after it
-        if ch.isspace():
+            ch = pattern[index]  # an identity escape of the character after it
+        if ch.isspace() or ch == "/":
             code = ord(ch)
             out.append(f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}")
         else:
@@ -1638,16 +1639,21 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       of the pattern is written as its escape (:func:`_regex_pattern_hashed`):
       ``/a b/`` and ``/a  b/`` stay apart, in any layout of the signature. A
       pattern that spells the escape itself (``/a\\x20b/``) is the same regex
-      and hashes alike.
+      and hashes alike. A ``/`` in the pattern is written ``\\x2f`` too, so no
+      ``/*`` or ``//`` in a regex reads as a comment.
+    - A comment is not code: each ``comment`` node is written as one space.
 
-    None occurs in a text that had no leading ``&`` or ``|`` and no whitespace
-    in a regex, so every other hashed text is the displayed one, byte for
-    byte.
+    None occurs in a text that had no leading ``&`` or ``|``, no comment and
+    no whitespace or ``/`` in a regex, so every other hashed text is the
+    displayed one, byte for byte.
     """
     edits: list[tuple[int, int, str]] = []
     pending = [node]
     while pending:
         current = pending.pop()
+        if current.type == "comment":
+            edits.append((current.start_byte, current.end_byte, " "))
+            continue
         if current.type == "regex_pattern":
             edits.append((current.start_byte, current.end_byte,
                           _regex_pattern_hashed(_node_text(current, source))))
@@ -1727,7 +1733,7 @@ def _extract_jsts_signature(
             param_strs.append(_node_text(child, source))
         elif child.type == "assignment_pattern":
             # Default parameter: x = 5
-            pattern_text = _node_text(child, source)
+            pattern_text = text(child, source)
             # Simplify to show ... for default value
             if "=" in pattern_text:
                 parts = pattern_text.split("=", 1)
