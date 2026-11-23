@@ -1590,18 +1590,20 @@ def _literal_end(text: str, start: int) -> int:
     return end
 
 
-#: The languages whose untyped-tier names are code a formatter respaces, so
-#: they are hashed :func:`layout_free` (``assemble_stable_id``'s
-#: ``names_layout_free``; WI-kumoh). C++: ``operator void *`` and ``operator
-#: void*`` (a ``clang-format`` PointerAlignment switch), a qualified declarator
-#: split over lines. CUDA, the same names (``void V ::\nrun()``, ``operator
-#: -``). D: a module name is its declaration's text, so ``module a.b;`` and
-#: ``module a .\n b;`` were two names (WI-sidus; 0 of 21,706 D untyped ids
-#: changed on dub and dmd). Not every language: in some a name's
-#: whitespace is meaning (a CSS selector's descendant combinator, ``.a .b`` is
-#: not ``.a.b``; a quoted TOML key; a Robot test name), and the untyped formula
-#: does not know its language.
-LAYOUT_FREE_NAME_LANGUAGES: frozenset[str] = frozenset({"cpp", "cuda", "d"})
+#: The languages whose untyped-formula names are content, not code: their
+#: whitespace can be meaning, so ``assemble_stable_id`` hashes them as written
+#: (``names_are_content``). Every other language's names are hashed
+#: :func:`without_layout` (WI-sidus): a name read from a declarator, a dotted
+#: path or an object reference (C++ ``operator void *``, a qualified
+#: declarator split over lines, Elixir ``Foo . Bar``, Luau ``a . b``, SQL
+#: ``app . users``, D ``module a .\n b;``) loses only the whitespace that is
+#: layout, and a name with no whitespace hashes as written. The content ones:
+#: a CSS selector (``.a .b`` is not ``.a.b``), LaTeX titles and Ansible
+#: play/task names (prose), TOML and JSON keys, Meson string arguments, HCL
+#: block labels, Blade section names and XML text (string contents).
+CONTENT_NAME_LANGUAGES: frozenset[str] = frozenset({
+    "css", "latex", "ansible", "toml", "json", "meson", "hcl", "blade", "xml",
+})
 
 #: What a formatter writes before a closing bracket when it splits a list over
 #: lines (``dart format``, ``rustfmt``, prettier, ``gofmt``): a trailing
@@ -1879,7 +1881,7 @@ def assemble_stable_id(
     occurrence_index: int = 0,
     *,
     is_async: bool = False,
-    names_layout_free: bool = False,
+    names_are_content: bool = False,
 ) -> StableId:
     """The single untyped-tier stable_id hash formula (ADR-0035 §1).
 
@@ -1905,20 +1907,19 @@ def assemble_stable_id(
     here would churn the class id on every member add/remove (violating §1 "survives body
     edits").
 
-    The untyped tier hashes its names as written, since in some languages a
-    name's whitespace is meaning (a CSS selector's descendant combinator).
-    ``names_layout_free`` (passed for the languages of
-    :data:`LAYOUT_FREE_NAME_LANGUAGES`) hashes ``name`` and
-    ``qualified_name`` :func:`layout_free` instead, for a language whose
-    names are code a formatter respaces (C++ ``operator void *``; WI-kumoh).
+    ``name`` and ``qualified_name`` are hashed :func:`without_layout`, so a
+    name read from source text keeps its id when the source is reformatted
+    (WI-sidus), unless ``names_are_content`` (passed for the languages of
+    :data:`CONTENT_NAME_LANGUAGES`, whose names' whitespace can be meaning:
+    a CSS selector's descendant combinator): then they are hashed as written.
 
     ``occurrence_index`` is the §1 within-scope ordinal — a tiebreaker for two definitions that
     are otherwise hash-identical in one scope (e.g. conditional redefinition). It defaults to
     ``0``; the slot is present so populating it never requires a scheme bump (§6 "one atomic
     bump").
     """
-    if names_layout_free:
-        name, qualified_name = layout_free(name), layout_free(qualified_name)
+    if not names_are_content:
+        name, qualified_name = without_layout(name), without_layout(qualified_name)
     # The modifiers and attributes a producer read from source (a just
     # recipe's ``[group( 'ci' )]``) are hashed without their layout (WI-sidus).
     decorators = without_layout(decorators)
@@ -5862,7 +5863,7 @@ class TreeSitterAnalyzer:
             qualified_name,
             occurrence_index,
             is_async=declares_async(node),
-            names_layout_free=self.lang in LAYOUT_FREE_NAME_LANGUAGES,
+            names_are_content=self.lang in CONTENT_NAME_LANGUAGES,
         )
 
     def _find_params_node(

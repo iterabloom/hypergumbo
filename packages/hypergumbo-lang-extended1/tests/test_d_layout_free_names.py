@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/d_lang.py
-"""A D name's layout is not a stable-id input (``LAYOUT_FREE_NAME_LANGUAGES``).
+"""A D name's layout is not a stable-id input.
 
 The D analyzer mints untyped-tier ids, whose formula hashes the name as
-written unless the language is in core's ``LAYOUT_FREE_NAME_LANGUAGES``. A D
+written unless the language was in core's opt-in set (now: in every language
+but the content ones, ``without_layout``). A D
 module's name is its declaration's text, so ``module pkg.sub.m;`` and the
 same declaration written over lines were two names and two ids (WI-sidus).
 Every other D name the analyzer emits is an identifier, which

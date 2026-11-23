@@ -27,7 +27,7 @@ from __future__ import annotations
 import pytest
 
 from hypergumbo_core.analyze.base import (
-    LAYOUT_FREE_NAME_LANGUAGES,
+    CONTENT_NAME_LANGUAGES,
     assemble_stable_id,
     layout_free,
     make_typed_stable_id,
@@ -274,31 +274,44 @@ def test_whitespace_inside_a_literal_still_separates_typed_ids() -> None:
     assert _typed('(x: string = "a  b")') != _typed('(x: string = "a b")')
 
 
-def test_the_untyped_tier_hashes_its_names_as_written() -> None:
-    # A CSS selector's space is its descendant combinator.
+def test_a_content_language_hashes_its_names_as_written() -> None:
+    """A name that is content keeps its whitespace: a CSS selector's space is
+    its descendant combinator (``CONTENT_NAME_LANGUAGES``)."""
+    assert "css" in CONTENT_NAME_LANGUAGES
+
     def untyped(qualified_name: str) -> str:
-        return assemble_stable_id("class_selector", 0, "", "", "anchor", "s", qualified_name)
+        return assemble_stable_id("class_selector", 0, "", "", "anchor", "s", qualified_name,
+                                  names_are_content=True)
     assert untyped(".a .b") != untyped(".a.b")
     css = [declared_arity_stable_id(kind="class_selector", lang="css", path="a.css", name=n,
                                     qualified_name=n, arity=None) for n in (".a .b", ".a.b")]
     assert css[0] != css[1]
 
 
-def test_a_cpp_name_is_hashed_layout_free_in_the_untyped_tier() -> None:
-    assert "cpp" in LAYOUT_FREE_NAME_LANGUAGES
-
+def test_every_other_untyped_name_is_hashed_without_its_layout() -> None:
+    """The untyped formula hashes a name ``without_layout`` in every language
+    but the content ones (WI-sidus): ``operator void *`` / ``operator void*``,
+    a qualified name split over lines, ``app . users``. A name with no
+    whitespace hashes as written, so ``operator==`` and ``operator ==`` are
+    one name, and ``doThing:with:`` is unchanged."""
     def untyped(name: str, **kw: bool) -> str:
         return assemble_stable_id("method", 0, "", "", "anchor", name, f"W::{name}", **kw)
-    assert untyped("operator void *", names_layout_free=True) == untyped(
-        "operator void*", names_layout_free=True)
-    assert untyped("operator void *") != untyped("operator void*")
+    assert untyped("operator void *") == untyped("operator void*")
+    assert untyped("operator void *", names_are_content=True) != untyped(
+        "operator void*", names_are_content=True)
+    # A name without whitespace hashes as written: nothing is respaced.
+    for name in ("doThing:with:", "operator==", "a->b", "W<int,char>"):
+        assert untyped(name) == untyped(name, names_are_content=True), name
 
-    def cpp(name: str) -> str:
+    def producer(lang: str, name: str) -> str:
         return declared_arity_stable_id(
-            kind="method", lang="cpp", path="w.cpp", name=name, qualified_name=f"W::{name}",
+            kind="method", lang=lang, path="w.x", name=name, qualified_name=f"W::{name}",
             arity=DeclaredArity(0, ""),
         )
-    assert cpp("operator void *") == cpp("operator void*")
+    for lang in ("cpp", "sql", "elixir", "luau", "makefile"):
+        assert producer(lang, "operator void *") == producer(lang, "operator void*"), lang
+        assert producer(lang, "app .\n  users") == producer(lang, "app.users"), lang
+        assert producer(lang, "app.users") != producer(lang, "app.user"), lang
 
 
 # (case, text, its layout-free form under ``without_layout``): only the
