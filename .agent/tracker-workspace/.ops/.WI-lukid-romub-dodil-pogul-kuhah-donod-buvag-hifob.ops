@@ -1,0 +1,20 @@
+- op: create  # 58c6
+  at: '2026-11-23T22:15:39Z'  # 58c6
+  by: agent  # 58c6
+  actor: jgstern_agent  # 58c6
+  clock: 1  # 58c6
+  nonce: 58c6  # 58c6
+  data:  # 58c6
+    kind: work_item  # 58c6
+    title: "Import and include targets that still miss the file: make $(VAR) includes, Perl require, Ruby require, component aliases"  # 58c6
+    status: todo_soft  # 58c6
+    priority: 3  # 58c6
+    parent:  # 58c6
+    tags:  # 58c6
+    - analysis_quality  # 58c6
+    isbefore: []  # 58c6
+    duplicate_of: []  # 58c6
+    not_duplicate_of: []  # 58c6
+    pr_ref:  # 58c6
+    description: "After the import-target fixes (proto, Thrift, Cap'n Proto, Make, requirements, Terraform, Ruby require_relative), these forms still do not reach the file node that is in the tree:\n- make: \"include $(VAR)/x.mk\" emits no edge.\n- perl: require \"lib.pl\"; emits no edge.\n- ruby: a plain require is not looked up along the load path (lib/ of the gem).\n- tcl: a \"namespace import\" written in another file is not read by the call resolver.\n- Vue/Svelte/Astro component imports: aliases other than @/ ($lib/, ~/, @components/) are not resolved; js-module-linker does not run on a tree that has only .svelte/.vue files (its gate needs javascript/typescript), so <script> imports there stay unresolved.\n- firejail profile .inc files open with \"include x.local\" and are still classified BitBake (0 nodes; the pass reads them).\n- tsconfig references (WI-husim, open): the edge ends on a stand-in at the raw reference path (json:./pkg/tsconfig.json:0-0:tsconfig.json:external_symbol) although pkg/tsconfig.json is a file node in the tree; a directory reference (./pkg) is not looked up either. Same on dev before and after the id fixes.\nRepros: ~/hypergumbo_lab_notebook/idfive_11232026/analyzers/RESULTS.md, sfc/RESULTS.md.\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 58c6
+    fields: {}  # 58c6

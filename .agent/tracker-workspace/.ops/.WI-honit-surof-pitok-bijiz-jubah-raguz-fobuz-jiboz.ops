@@ -1,0 +1,21 @@
+- op: create  # c3ee
+  at: '2026-11-23T22:15:33Z'  # c3ee
+  by: agent  # c3ee
+  actor: jgstern_agent  # c3ee
+  clock: 1  # c3ee
+  nonce: c3ee  # c3ee
+  data:  # c3ee
+    kind: work_item  # c3ee
+    title: "Linker leftovers from the id items: openapi routes generated elsewhere, a gRPC false positive in JS, FFI residue"  # c3ee
+    status: todo_soft  # c3ee
+    priority: 3  # c3ee
+    parent:  # c3ee
+    tags:  # c3ee
+    - linkers  # c3ee
+    - analysis_quality  # c3ee
+    isbefore: []  # c3ee
+    duplicate_of: []  # c3ee
+    not_duplicate_of: []  # c3ee
+    pr_ref:  # c3ee
+    description: "- openapi: an operation with a basePath / servers prefix matches a route at the bare path only when the route's file is under the spec's own directory. A server generated from the spec into another directory keeps only full-path matches. (alertmanager: 9 of 9 operations reach v2 server routes.)\n- grpc: a \"Collab\" grpc_client stand-in is minted in livebook assets/js/hooks/cell_editor/live_editor.js, which has no gRPC.\n- lua_ffi: the per-line lib_vars set is iterated unsorted (can only reorder two calls on one line; untested).\n- The C analyzer's function_pointer_arg resolves to another file's same-named static function (the mechanism fixed in ruby_ffi and napi, in an analyzer).\n- ruby_ffi C-extension edges are self-loops the map drops (WI-judov, open): the own-file fix changes the linker's output (whisper.cpp bindings 66 -> 78 edges emitted) and nothing in the map.\n- subprocess_cli still takes its id language slot and discovery_language from the grammar map language_from_path (its scan is *.py only, so the value is python and correct today); phoenix_ipc and openapi were moved to taxonomy.get_language and the gate's allowed set is now {_text_filters, websocket, subprocess_cli} (third row of WI-zahom).\n- hand-built unresolved templates remain in java, kotlin, apex, jsonnet, smithy and py (\"...:unresolved:0-0:{name}:unresolved\"); a fixture with Kotlin @file:/@get:, C++ [[gnu::...]] and a qualified Java annotation gave 0 non-id endpoints; no real Kotlin or C++ tree was run for them. scss.py:432 has a hand-built mixin default with span 1-1.\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # c3ee
+    fields: {}  # c3ee
