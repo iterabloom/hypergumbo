@@ -25,3 +25,18 @@
   clock: 2  # 118a
   nonce: 118a  # 118a
   message: "OWNER RULING 2026-11-23 (asked while tackling WI-funip, WI-sidus, WI-supar-kikub, WI-jozih, WI-sagur): the pull request for these five items includes their fixes that change what the stable id hashes and makes the one v17 -> v18 scheme bump, with the history row written from measured churn. The question put: \"Some fixes in WI-sidus (layout normalizer gaps) and possibly WI-funip/WI-supar change what the stable id hashes, so they need a scheme bump from v17 to v18 ... What should happen to those commits?\" Answer chosen: \"Bump to v18\". Scope of the ruling: the id-moving fixes of these five items only; other open stable-id items were not asked about."  # 118a
+- op: update  # 8e80
+  at: '2026-11-23T22:18:06Z'  # 8e80
+  by: agent  # 8e80
+  actor: jgstern_agent  # 8e80
+  clock: 3  # 8e80
+  nonce: '8e80'  # 8e80
+  set:  # 8e80
+    status: done  # 8e80
+- op: discuss  # c59a
+  at: '2026-11-23T22:18:06Z'  # c59a
+  by: agent  # c59a
+  actor: jgstern_agent  # c59a
+  clock: 4  # c59a
+  nonce: c59a  # c59a
+  message: "Fixed in PR #2347 (stable-id scheme v18, owner ruling of 2026-11-23 above). Two-layout fixture pairs re-run on dev 49bc5c6e4, stable ids differing between the layouts: point 1: cuda 0 of 10, d 0 of 16 and 0 of 3, zig 0 of 11, haxe 0 of 9, odin 0 of 7, objc 0 of 12. Point 2: typescript 0 of 11; the fix is in the JavaScript/TypeScript hashed text, and the filed function-level repro layout_free('(x:\\n  & A\\n  & B)', separators=True) still returns '(x: &A & B)' because that function stays language-blind (a Rust &self after a line break). Point 3: haskell 0 of 7, ocaml 0 of 5, fsharp 0 of 10, 0 of 10, 0 of 8, agda 0 of 7. Point 4: whitespace inside a regex default value is kept as meaning (packages/hypergumbo-lang-mainstream/tests/test_jsts_hashed_text_layout.py). Point 5 (one language-blind spacing choice per token): DECIDED, leave it. A per-language table was measured offline and would move koel 111 of 3,201 PHP typed ids for no id that is wrong today; the owner can overturn this. Point 6: groovy 0 of 9, julia 0 of 7, solidity 0 of 16, javascript 0 of 11 on dev 49bc5c6e4; rust_scip with rust-analyzer was measured by the build (0 of 14) and not re-run by me on dev. Beyond the six points, untyped names, scope labels and attribute text are now hashed without layout in every language except the content-name languages; that moved 257 declared stable ids over 42 repositories (Makefile 153, TypeScript 76, CMake 10, CUDA 10, Handlebars 4, Go 3, Clojure 1). NOT fixed and filed as WI-radim-najar-juhob-pisab-zovuz-gijof-vifap-jajin: table-formula and doc-formula names (the Vue pair still differs, 2 of 10, on dev 49bc5c6e4). Outputs: ~/hypergumbo_lab_notebook/idfive_11232026/closure/ (fixtures*.txt, trees_summary.txt, pair_check_dev.txt)."  # c59a

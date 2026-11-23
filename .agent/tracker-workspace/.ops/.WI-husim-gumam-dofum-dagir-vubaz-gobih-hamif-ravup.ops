@@ -19,3 +19,10 @@
     pr_ref:  # 6c88
     description: "Found by the 2026-11-07 docstring staleness audit (dev 4f2feb451b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11072026/review, verify and blind). Corpus impact not measured. ref_dst = f\"json:{ref_path}:1-1:{Path(ref_path).name}:tsconfig\" (json_config.py:834). Root tsconfig referencing ./pkg/tsconfig.json and ./pkg: the symbol is json:pkg/tsconfig.json:1-3:pkg/tsconfig.json:file, the edge dst json:./pkg/tsconfig.json:1-1:tsconfig.json:tsconfig. r15, v05."  # 6c88
     fields: {}  # 6c88
+- op: discuss  # 4bef
+  at: '2026-11-23T22:18:07Z'  # 4bef
+  by: agent  # 4bef
+  actor: jgstern_agent  # 4bef
+  clock: 2  # 4bef
+  nonce: 4bef  # 4bef
+  message: "2026-11-23: re-ran the filed fixture (root tsconfig referencing ./pkg/tsconfig.json and ./pkg) on dev 1350a1d51 and on dev 49bc5c6e4 (after PR #2347): same result on both. The legacy ':tsconfig' kind, the fake 1-1 span and the dangling dst do NOT reproduce: the edge ends on json:./pkg/tsconfig.json:0-0:tsconfig.json:external_symbol, which is a node. The unresolved-path part DOES reproduce: pkg/tsconfig.json is a file node in the tree (json:pkg/tsconfig.json:1-3:tsconfig.json:file) and the edge does not end on it; ./pkg ends on json:./pkg:0-0:pkg:external_symbol. Which earlier PR removed the legacy kind was not determined. Status left unchanged; also listed in WI-lukid-romub-dodil-pogul-kuhah-donod-buvag-hifob."  # 4bef

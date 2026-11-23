@@ -25,3 +25,10 @@
   clock: 2  # 5b5c
   nonce: 5b5c  # 5b5c
   message: "2026-10-31 docstring audit: note for the fix -- Phase 1's enclosing-symbol search is itself wrong (it starts from the file's first symbol whether or not it contains the line; ruby_ffi.py:214-225), filed separately, so sharing it would inherit that defect."  # 5b5c
+- op: discuss  # e0ea
+  at: '2026-11-23T22:18:07Z'  # e0ea
+  by: agent  # e0ea
+  actor: jgstern_agent  # e0ea
+  clock: 3  # e0ea
+  nonce: e0ea  # e0ea
+  message: "2026-11-23: still open after PR #2347. That PR made each rb_define_method registration resolve to the function in its own C file (whisper.cpp ruby bindings: 66 -> 78 edges emitted by the linker), but the edge is still src = dst = the C function, a self-loop the map drops, so nothing changed in the map."  # e0ea

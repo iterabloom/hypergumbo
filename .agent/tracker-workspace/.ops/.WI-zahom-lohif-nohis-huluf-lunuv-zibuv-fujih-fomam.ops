@@ -26,3 +26,18 @@
   clock: 2  # 3e33
   nonce: '3e33'  # 3e33
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: language_from_path gives None for .ex/.exs/.yaml/.json. Call sites are now phoenix_ipc.py:314, openapi.py:344, subprocess_cli.py:477/488 and the gate set is unchanged. Newly reproduced through a survey: a Phoenix channel fixture yields phoenix:...room_channel.ex nodes with discovery_language=None (protocol_origin=phoenix_ipc). MECHANISM: tree-sitter grammar-name map used as a language label; map has no elixir or yaml/json rows."  # 3e33
+- op: update  # f321
+  at: '2026-11-23T22:18:07Z'  # f321
+  by: agent  # f321
+  actor: jgstern_agent  # f321
+  clock: 3  # f321
+  nonce: f321  # f321
+  set:  # f321
+    status: done  # f321
+- op: discuss  # 9718
+  at: '2026-11-23T22:18:07Z'  # 9718
+  by: agent  # 9718
+  actor: jgstern_agent  # 9718
+  clock: 4  # 9718
+  nonce: '9718'  # 9718
+  message: "Fixed in PR #2347 (e0a8f4c52). On dev 49bc5c6e4: a Phoenix channel fixture (lib/app_web/channels/room_channel.ex) yields elixir:lib/app_web/channels/room_channel.ex:7-7:phoenix.send.new_msg:function with discovery_language elixir (None when reviewed on 2026-11-01); an openapi.yaml yields operation nodes with discovery_language yaml; 0 violations on both. The gate's allowed set of language_from_path callers shrank to {_text_filters, websocket, subprocess_cli}. Decision taken on the item's open question: spec-file nodes take the taxonomy's yaml / json; the owner can overturn it. NOT changed: the item's third row, subprocess_cli, still labels through the grammar map (the value is python and correct today); it is listed in WI-honit-surof-pitok-bijiz-jubah-raguz-fobuz-jiboz. Outputs: ~/hypergumbo_lab_notebook/idfive_11232026/closure/ (fixtures*.txt, trees_summary.txt, pair_check_dev.txt)."  # 9718

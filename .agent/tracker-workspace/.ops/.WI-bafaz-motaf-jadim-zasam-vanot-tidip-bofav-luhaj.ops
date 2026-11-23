@@ -19,3 +19,10 @@
     pr_ref:  # 603e
     description: "WHAT. js_ts.py gives an anonymous callback the name _cb_forEach and the id name slot _cb_forEach@33, so two same-callee callbacks on one line get distinct ids. ADR-0036 Ruling 1 says the name slot is the sanitized name.\n\nMEASURED (validation_report.name_slot_stats, added in PR #2198): knex 6,356 of 10,649 javascript nodes; 6,604 across six maps.\n\nDECISION NEEDED (owner). Either Ruling 1 allows a disambiguating suffix, or the collision is solved another way. Changing the NAME to match moves stable ids (the name feeds make_typed_stable_id); dropping the suffix makes same-line ids collide. A comment at that site says the validator 'only requires non-empty + colon-free', which is out of date. Found during PR 1 of the stable-id plan, 2026-11-15 (PR #2198). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr1/STATUS.md."  # 603e
     fields: {}  # 603e
+- op: discuss  # 7ce5
+  at: '2026-11-23T22:18:07Z'  # 7ce5
+  by: agent  # 7ce5
+  actor: jgstern_agent  # 7ce5
+  clock: 2  # 7ce5
+  nonce: 7ce5  # 7ce5
+  message: "2026-11-23, after PR #2347: this is now the ONLY declared name-slot hole. A name-slot mismatch is an id_format error for every other producer; KNOWN_NAME_SLOT_HOLES holds (javascript, function) alone and its test lets the table only shrink. Measured on dev 49bc5c6e4: knex 6,356 mismatches of 10,649 javascript nodes checked (as filed); 37,227 over 42 repositories, all of them these callbacks. The same question (two nodes with one name on one line) now has three more instances that have no @column: WI-hugir-kubuk-ripig-fotuv-viviv-komir-kusis-hovil. A ruling here decides both."  # 7ce5
