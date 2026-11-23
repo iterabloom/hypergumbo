@@ -815,14 +815,16 @@ def analyze_circom(repo_root: Path) -> AnalysisResult:
                 UserWarning,
                 stacklevel=2,
             )
-        from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, _get_python_toolchain
+        from hypergumbo_core.ir import (
+            PASS_VERSION, AnalysisRun, _get_python_toolchain, new_execution_id,
+        )
 
         run = AnalysisRun(
             pass_id=PASS_ID,
             # WI-luliv: toolchain is Dict[str, str], not a bare str — a string
             # value crashes finalize's run_signature recompute (.get on a str).
             toolchain=_get_python_toolchain(),
-            execution_id=f"skip-{PASS_ID}",
+            execution_id=new_execution_id(),
             version=PASS_VERSION,
         )
         return AnalysisResult(

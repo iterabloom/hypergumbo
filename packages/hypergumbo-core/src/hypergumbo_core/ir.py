@@ -456,6 +456,20 @@ def compute_config_fingerprint(config: Dict[str, Any]) -> str:
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]}"
 
 
+def new_execution_id() -> str:
+    """A fresh ``AnalysisRun.execution_id``: ``uuid:`` and a UUID v4.
+
+    The one place a run id is minted (the spec's form for it: ``uuid:`` for a
+    UUID v4, ``sha256:`` for a deterministic hash). ``AnalysisRun.create``
+    calls it, and so does every producer that builds its run by hand; each
+    used to spell the f-string again, and two spelled it differently (the
+    starlark analyzer's bare UUID, circom's constant ``skip-circom`` for its
+    grammar-unavailable run). ``test_execution_id_minting`` fails on a
+    ``uuid4()`` or a literal ``execution_id=`` anywhere else.
+    """
+    return f"uuid:{uuid.uuid4()}"
+
+
 @dataclass
 class AnalysisRun:
     """Provenance tracking for an analysis pass execution.
@@ -596,7 +610,7 @@ class AnalysisRun:
         run_sig = _compute_run_signature(pass_id, version, cfg_fp, tc)
 
         return cls(
-            execution_id=f"uuid:{uuid.uuid4()}",
+            execution_id=new_execution_id(),
             pass_id=pass_id,
             version=version,
             run_signature=run_sig,

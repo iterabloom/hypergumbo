@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any, Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, StableId, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.edge_target import external_target
@@ -218,11 +219,10 @@ class _RacketExtractor:
                 skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
-        import uuid as uuid_module
         from tree_sitter_language_pack import get_parser
 
         start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
+        self._run_id = new_execution_id()
 
         parser = get_parser("racket")
         racket_files = list(find_racket_files(self.repo_root))

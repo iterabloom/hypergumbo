@@ -74,11 +74,11 @@ from __future__ import annotations
 
 import posixpath
 import time
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, NodeId, PASS_VERSION, Span, Symbol,
     _get_python_toolchain, make_pass_id,
@@ -167,7 +167,7 @@ class _RSTExtractor:
         self.repo_root = repo_root
         self._symbols: list[Symbol] = []
         self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
+        self._execution_id = new_execution_id()
         self._files_analyzed = 0
         self._section_counter = 0
         self._directive_counter = 0
