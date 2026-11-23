@@ -18,3 +18,10 @@
     pr_ref:  # 14cc
     description: "Robot Framework: FOR-loop syntax (.FOR) and list/dict variables (@, &) are parsed as keyword invocations. Since PR 3 gave each undeclared name its own stand-in, they show as their own stand-ins on harbor tests (before, hidden in one shared 'unresolved' node). Separately, call resolution (_symbol_registry.get(keyword)) is one global name table, last write wins, so two files defining one keyword name resolve every call to whichever was registered last.\n\nCLOSE WHEN FOR syntax and variables make no call edge, and keyword resolution prefers the calling file's own and imported resources.\n\nFound by the PR 3 (stable-id v16) WI-tatop build, 2026-11-19; evidence ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr3/tatop/RESULTS.md (Residuals)."  # 14cc
     fields: {}  # 14cc
+- op: discuss  # 4fc8
+  at: '2026-11-23T22:19:04Z'  # 4fc8
+  by: agent  # 4fc8
+  actor: jgstern_agent  # 4fc8
+  clock: 2  # 4fc8
+  nonce: 4fc8  # 4fc8
+  message: "2026-11-23: still open after PR #2347, which changed only how a Robot variable's id is named. Fixture on dev 49bc5c6e4: '&{d}=    Create Dictionary    a=1' still makes a call edge to robot:external:0-0:&:external_symbol; a test in a.robot calling 'Shared Keyword', declared in both a.robot and b.robot, resolves to b.robot's keyword (last write wins). The FOR line made no call edge in this fixture; harbor was not re-run. Related: @{LIST} and &{DICT} in *** Variables *** emit no symbol (WI-saliz-mokik-ramap-gutit-mamij-dofuv-zovud-julin)."  # 4fc8

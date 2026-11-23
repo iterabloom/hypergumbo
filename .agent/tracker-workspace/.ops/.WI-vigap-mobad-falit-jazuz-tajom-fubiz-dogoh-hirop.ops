@@ -20,3 +20,10 @@
     pr_ref:  # ba3b
     description: "From WI-borib (docs/audits/0026; agent D, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/D_scripts/framework_vocab.py). A reader keyed to a value nothing produces (LIVE rule 7).\n\nview_template_spring's activation names frameworks spring / spring-mvc; framework auto-detection never emits either (it emits spring-boot), so the linker never runs automatically. framework_vocab.py finds four activation names detection never emits: openapi, protobuf, spring, spring-mvc. Adjacent to WI-tilav (hand-written subsets of a registered vocabulary).\n\nACCEPTANCE: every LinkerActivation framework name is one detection can emit (a test over the registry), and the four are corrected or their producers added."  # ba3b
     fields: {}  # ba3b
+- op: discuss  # 4d7a
+  at: '2026-11-23T22:19:03Z'  # 4d7a
+  by: agent  # 4d7a
+  actor: jgstern_agent  # 4d7a
+  clock: 2  # 4d7a
+  nonce: 4d7a  # 4d7a
+  message: "2026-11-23: one of the four names changed in PR #2347: detection now emits openapi when the tree holds an OpenAPI document (profile._detect_openapi; on dev 49bc5c6e4 a fixture with only an openapi.yaml gets 3 operation nodes). The activation lines for spring / spring-mvc (view_template_spring.py:335) and protobuf (grpc.py:1259) are unchanged; whether detection emits them was not re-checked. The acceptance test over the registry is not written."  # 4d7a
