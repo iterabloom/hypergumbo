@@ -46,22 +46,28 @@ for _src in sorted((REPO_ROOT / "packages").glob("*/src"), reverse=True):
     sys.path.insert(0, str(_src))
 
 try:
-    from hypergumbo_core.check_id_construction import find_id_construction_drift
+    from hypergumbo_core.check_id_construction import (
+        UnjudgedEndpoint,
+        find_id_construction_drift,
+        undeclared_unjudged_endpoints,
+    )
 except ImportError as exc:  # pragma: no cover — defensive
     print(f"check-id-construction: cannot import linter: {exc}", file=sys.stderr)
     sys.exit(2)
 
 
 def main(argv: list[str]) -> int:
-    unjudged: list[str] = []
+    unjudged: list[UnjudgedEndpoint] = []
     offenders = find_id_construction_drift(REPO_ROOT, unjudged=unjudged)
+    offenders += undeclared_unjudged_endpoints(unjudged, REPO_ROOT)
     if "--unjudged" in argv:
-        for line in unjudged:
-            print(f"  {line}")
+        for entry in unjudged:
+            print(f"  {entry}")
     print(
-        f"check-id-construction: {len(unjudged)} edge endpoint(s) not judged "
-        "statically (list: --unjudged); AnalysisRun.non_id_edge_endpoints "
-        "guards them at run time.",
+        f"check-id-construction: {len(unjudged)} edge endpoint(s) the walk "
+        "cannot follow, each judged by hand in KNOWN_UNJUDGED_ENDPOINTS "
+        "(list: --unjudged); AnalysisRun.non_id_edge_endpoints guards them "
+        "at run time.",
         file=sys.stderr,
     )
     if not offenders:
