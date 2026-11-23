@@ -67,6 +67,10 @@ respecting exclude patterns. Also provides:
     ``classify_dot_bb_file`` reads the first statement: a ``bb`` shebang, a
     ``;`` comment or a form is Clojure, so the Clojure analyzer reads it and
     BitBake skips it (metabase's ``bin/*.bb`` were parsed as recipes).
+  - ``.inc`` files: shared by BitBake includes and C, PHP, assembler and
+    documentation includes. ``classify_dot_inc_file`` reads the first
+    statement; only a BitBake one keeps the file BitBake's (no other
+    analyzer reads ``.inc``).
 
 - **Content-conditioned virtualenv exclusion:** ``venv`` / ``.venv`` / ``env``
   are deliberately NOT in ``DEFAULT_EXCLUDES``. A directory is a virtualenv
@@ -635,6 +639,56 @@ def classify_dot_bb_file(path: Path) -> str:
         if stripped and not stripped.startswith("#"):
             return "clojure" if stripped[0] in "(;" else "bitbake"
     return "bitbake"
+
+
+#: A BitBake statement that can open a ``.inc`` file: an assignment (with
+#: overrides, flags and the BitBake operators), a directive, a shell or
+#: python task, a python ``def``.
+_BITBAKE_STATEMENT = re.compile(
+    r"^(?:"
+    r"[A-Za-z_${][\w${}:\-./+\[\]]*\s*(?:\?\?=|\?=|:=|\+=|=\+|\.=|=\.|=)"
+    r"|(?:inherit|inherit_defer|require|include|addtask|deltask|addhandler"
+    r"|export|unset|EXPORT_FUNCTIONS)\b"
+    r"|(?:python\s+|fakeroot\s+)?[\w${}:\-]+\s*\(\)\s*\{"
+    r"|def\s+\w+\s*\("
+    r")"
+)
+#: C preprocessor directives: a ``#`` line that is not a BitBake comment.
+_C_DIRECTIVE = re.compile(r"^#\s*(?:include|define|undef|if|ifdef|ifndef|elif|else|endif|pragma|error)\b")
+
+
+def classify_dot_inc_file(path: Path) -> str:
+    """Classify a .inc file as 'bitbake' (a BitBake include) or 'other'.
+
+    ``.inc`` is BitBake's include extension and also C's (qemu's
+    ``trans_*.c.inc``), PHP's, the assemblers' and documentation's (an
+    rst fragment). The BitBake analyzer read every ``.inc``, and on qemu's
+    C includes it emitted ``task`` symbols named ``default`` and
+    ``defined``. A file is BitBake when its first line that is neither
+    blank nor a ``#`` comment is a BitBake statement
+    (:data:`_BITBAKE_STATEMENT`); a C preprocessor line (``#include``,
+    ``#define``, ...) is not a comment and says C. Anything else, an empty
+    or an unreadable file, is 'other': no other analyzer reads ``.inc``, so
+    such a file is simply not analysed. Reads the first 8 KB.
+
+    Args:
+        path: Path to a .inc file.
+
+    Returns:
+        One of 'bitbake' or 'other'.
+    """
+    try:
+        content = path.read_bytes()[:_CLASSIFY_READ_LIMIT].decode("utf-8", errors="replace")
+    except OSError:
+        return "other"
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#") and not _C_DIRECTIVE.match(stripped):
+            continue
+        return "bitbake" if _BITBAKE_STATEMENT.match(stripped) else "other"
+    return "other"
 
 
 # Default exclude patterns (gitignore-style)

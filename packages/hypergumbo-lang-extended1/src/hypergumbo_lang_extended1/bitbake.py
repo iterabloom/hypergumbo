@@ -51,7 +51,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import classify_dot_bb_file
+from hypergumbo_core.discovery import classify_dot_bb_file, classify_dot_inc_file
 from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.analyze.base import (
@@ -133,14 +133,20 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
     language_pack_name = "bitbake"
 
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
-        """The BitBake files, without a ``.bb`` Babashka script.
+        """The BitBake files, without a ``.bb`` Babashka script or a ``.inc``
+        that is not BitBake.
 
         ``.bb`` is also Babashka's (Clojure) extension;
         ``classify_dot_bb_file`` gives such a script to the Clojure analyzer.
+        ``.inc`` is also C's, PHP's and the assemblers';
+        ``classify_dot_inc_file`` keeps only a BitBake include.
         """
         for path in super()._find_source_files(repo_root):
-            if path.suffix != ".bb" or classify_dot_bb_file(path) == "bitbake":
-                yield path
+            if path.suffix == ".bb" and classify_dot_bb_file(path) != "bitbake":
+                continue
+            if path.suffix == ".inc" and classify_dot_inc_file(path) != "bitbake":
+                continue
+            yield path
 
     def analyze(
         self, repo_root: Path, max_files: Optional[int] = None,
