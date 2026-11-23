@@ -63,6 +63,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     node_text,
 )
@@ -608,7 +609,7 @@ def _extract_edges_from_file(
                 targets: list[str] = [
                     make_file_id("circom", path)
                     for path in scope.resolve_include(file_path, raw)
-                ] or [f"circom:{raw}:0-0:file:file"]
+                ] or [make_module_import_dst("circom", raw)]
                 for target_id in targets:
                     edges.append(Edge.create(
                         src=file_symbol.id,

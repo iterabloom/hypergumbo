@@ -22,6 +22,8 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.edge_target import non_id_edge_endpoints
+
 from hypergumbo_lang_extended1 import circom as circom_module
 from hypergumbo_lang_extended1.circom import analyze_circom
 
@@ -745,8 +747,13 @@ class TestCircomIncludeTargets:
             if e.edge_type == "imports" and e.src == files["test/t.circom"]
         }
         assert files["circuits/bitify.circom"] in dsts
-        # An include the repository cannot satisfy keeps its unresolved target.
-        assert "circom:missing.circom:0-0:file:file" in dsts
+        # An include the repository cannot satisfy ends on the stand-in for
+        # the path as written, in the shape every analyzer's import stand-in
+        # has (make_module_import_dst); it was ``...:0-0:file:file``.
+        assert "circom:missing.circom:0-0:module:module" in dsts
+        assert non_id_edge_endpoints(result.symbols, [
+            e for e in result.edges if e.edge_type == "imports"
+        ]) == []
 
     def test_library_include_resolves_by_path_suffix(self, tmp_path: Path) -> None:
         """``include "circomlib/circuits/x.circom"`` (a ``-l`` library path)

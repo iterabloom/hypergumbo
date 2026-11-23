@@ -343,3 +343,20 @@ class TestLocalImportResolver:
         assert resolve("../../outside.css") is None
         assert resolve("https://cdn.example/x.css") is None
         assert resolve("//cdn.example/x.css") is None
+
+    def test_a_file_discovery_leaves_out_is_not_a_node(self, tmp_path: Path) -> None:
+        """An ``@import`` of a file the run does not read (a default exclude
+        such as ``.cache/``, or a git-ignored build output) names no node:
+        the importer keeps its placeholder, and no file node is minted for a
+        file no analyzer read. Control: a ``.scss`` file of the tree gets the
+        taxonomy's ``css`` id."""
+        from hypergumbo_lang_mainstream.css import _local_import_resolver
+
+        repo = tmp_path / "repo"
+        (repo / "css").mkdir(parents=True)
+        (repo / ".cache").mkdir()
+        (repo / ".cache" / "gen.css").write_text(".g {}\n")
+        (repo / "css" / "base.scss").write_text(".b {}\n")
+        resolve = _local_import_resolver(repo, repo / "css" / "site.css")
+        assert resolve("../.cache/gen.css") is None
+        assert resolve("base.scss") == "css:css/base.scss:1-1:file:file"
