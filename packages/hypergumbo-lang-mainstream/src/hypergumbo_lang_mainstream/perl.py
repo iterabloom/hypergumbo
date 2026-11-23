@@ -439,9 +439,11 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                         start_col=node.start_point[1],
                         end_col=node.end_point[1],
                     )
+                    # ADR-0036 Ruling 1: the slot is the sanitized name,
+                    # ``Pkg::sub`` -> ``Pkg..sub`` (it held the bare sub).
                     sym_id = make_symbol_id(
                         "perl", rel_path, start_line, end_line,
-                        sub_name, "function",
+                        qualified_name, "function",
                     )
                     symbol = Symbol(
                         id=sym_id,
