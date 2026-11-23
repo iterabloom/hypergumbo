@@ -17,7 +17,10 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: parse all .capnp files and extract symbols
 2. Pass 2: create import edges and interface-to-method ``contains`` edges,
-   both built by one shared helper
+   both built by one shared helper. An import ends on the imported file's
+   node when the tree holds it (:func:`_import_candidates`: a name opening
+   with ``/`` is read along the import path, any other next to the
+   importing file), else on the ``make_module_import_dst`` stand-in
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Cap'n Proto-specific
@@ -54,6 +57,7 @@ interfaces and enums keep the table formula, over the same chain
 """
 from __future__ import annotations
 
+import posixpath
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -66,8 +70,10 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_symbol_id,
     make_file_id,
+    make_module_import_dst,
     node_text,
 )
+from hypergumbo_core.analyze.edge_target import in_tree_file_id, search_path_candidates
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
 
@@ -165,13 +171,32 @@ def _get_interface_name_for_method(node: "tree_sitter.Node", source: bytes) -> O
     return None  # pragma: no cover - defensive
 
 
+def _import_candidates(rel_path: str, written: str) -> list[str]:
+    """Where ``import "<written>"`` in the file at ``rel_path`` may be.
+
+    Cap'n Proto reads a name that opens with ``/`` along its import path
+    (``-I``), whose roots are not known here but one of which holds the
+    importing file, so each directory above it is tried
+    (``search_path_candidates``); any other name is relative to the
+    importing file's directory, and only there.
+    """
+    if written.startswith("/"):
+        return search_path_candidates(rel_path, written.lstrip("/"))
+    return [posixpath.join(posixpath.dirname(rel_path), written)]
+
+
 def _extract_symbols_and_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
     run_id: str,
+    abs_path: Path,
 ) -> tuple[list[Symbol], list[Edge]]:
-    """Extract all symbols and edges from a parsed Cap'n Proto file."""
+    """Extract all symbols and edges from a parsed Cap'n Proto file.
+
+    ``file_path`` is the repository-relative path, ``abs_path`` the file on
+    disk (the import lookup derives the repository root from the two).
+    """
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
@@ -295,12 +320,17 @@ def _extract_symbols_and_edges(
                             for path_child in import_child.children:
                                 if path_child.type == "string_fragment":
                                     import_path = node_text(path_child, source).strip()
+                                    found = in_tree_file_id(
+                                        abs_path, file_path,
+                                        _import_candidates(file_path, import_path),
+                                    )
                                     edges.append(Edge.create(
                                         src=make_file_id("capnp", file_path),
-                                        dst=f"capnp:{import_path}:1-1:file:file",
+                                        dst=found or make_module_import_dst("capnp", import_path),
                                         edge_type="imports",
                                         evidence_type="ast_import",
                                         line=node.start_point[0] + 1,
+                                        is_resolved=found is not None,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                     ))
@@ -321,7 +351,9 @@ class CapnpAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract Cap'n Proto symbols (structs, interfaces, methods, etc.)."""
         analysis = FileAnalysis()
-        symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run.execution_id)
+        symbols, edges = _extract_symbols_and_edges(
+            tree, source, rel_path, run.execution_id, file_path,
+        )
         analysis.symbols.extend(symbols)
         # Store edge data for Pass 2 retrieval via import_aliases
         for i, edge in enumerate(edges):
@@ -342,7 +374,9 @@ class CapnpAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Re-extract edges from Cap'n Proto file during Pass 2."""
-        _, edges = _extract_symbols_and_edges(tree, source, rel_path, run.execution_id)
+        _, edges = _extract_symbols_and_edges(
+            tree, source, rel_path, run.execution_id, file_path,
+        )
         return edges
 
 

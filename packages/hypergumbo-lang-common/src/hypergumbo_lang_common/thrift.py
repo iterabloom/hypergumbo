@@ -21,7 +21,11 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Parse all .thrift files and extract symbols
-2. Detect include statements and create import edges
+2. Detect include statements and create import edges: an include ends on
+   the included file's node when the tree holds it, looked up next to the
+   including file and then in each directory above it
+   (``search_path_candidates``, standing in for the compiler's ``-I``
+   directories), else on the ``make_module_import_dst`` stand-in
 3. Create contains edges from services to their functions
 
 Why This Design
@@ -57,6 +61,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.analyze.edge_target import in_tree_file_id, search_path_candidates
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
@@ -65,6 +70,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_module_import_dst,
     make_symbol_id,
     node_text,
     populate_docstrings_from_tree,
@@ -139,8 +145,13 @@ def _extract_symbols_and_edges(
     source: bytes,
     file_path: str,
     run_id: str,
+    abs_path: Path,
 ) -> tuple[list[Symbol], list[Edge]]:
-    """Extract all symbols and edges from a parsed Thrift file."""
+    """Extract all symbols and edges from a parsed Thrift file.
+
+    ``file_path`` is the repository-relative path, ``abs_path`` the file on
+    disk (the include lookup derives the repository root from the two).
+    """
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
@@ -277,12 +288,20 @@ def _extract_symbols_and_edges(
             for subchild in node.children:
                 if subchild.type == "string":
                     include_path = node_text(subchild, source).strip().strip('"')
+                    # The thrift compiler reads the name next to this file,
+                    # then along its -I directories: the included file's
+                    # node when the tree holds it, else the stand-in.
+                    found = in_tree_file_id(
+                        abs_path, file_path,
+                        search_path_candidates(file_path, include_path),
+                    )
                     edges.append(Edge.create(
                         src=make_file_id("thrift", file_path),
-                        dst=f"thrift:{include_path}:1-1:file:file",
+                        dst=found or make_module_import_dst("thrift", include_path),
                         edge_type="imports",
                         evidence_type="include",
                         line=node.start_point[0] + 1,
+                        is_resolved=found is not None,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))
@@ -343,7 +362,9 @@ class ThriftAnalyzer(TreeSitterAnalyzer):
                 tree = parser.parse(source)
 
                 rel_path = str(file_path.relative_to(repo_root))
-                symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
+                symbols, edges = _extract_symbols_and_edges(
+                    tree, source, rel_path, run_id, file_path,
+                )
 
                 all_symbols.extend(symbols)
                 all_edges.extend(edges)

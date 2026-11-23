@@ -177,6 +177,9 @@ git+https://github.com/user/repo.git@main
         make_requirements_file(tmp_path, "requirements.txt", """
 -r base-requirements.txt
 """)
+        # The included file is in the tree (an absent one is a stand-in:
+        # test_requirements_include_targets.py).
+        make_requirements_file(tmp_path, "base-requirements.txt", "flask\n")
         result = analyze_requirements(tmp_path)
         include_edges = [e for e in result.edges if e.edge_type == "includes"]
         assert len(include_edges) == 1
@@ -187,6 +190,7 @@ git+https://github.com/user/repo.git@main
         make_requirements_file(tmp_path, "requirements.txt", """
 -c constraints.txt
 """)
+        make_requirements_file(tmp_path, "constraints.txt", "flask<3\n")
         result = analyze_requirements(tmp_path)
         constraint_edges = [e for e in result.edges if e.edge_type == "constrains"]
         assert len(constraint_edges) == 1
@@ -367,6 +371,8 @@ class TestEdgeEndpointsAreIds:
 
     def test_an_include_resolves_against_the_including_file(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path / "reqs", "dev.txt", "-r ../requirements.txt\n-c ./pins.txt\n")
+        make_requirements_file(tmp_path, "requirements.txt", "flask\n")
+        make_requirements_file(tmp_path / "reqs", "pins.txt", "flask<3\n")
         result = analyze_requirements(tmp_path)
         (inc,) = [e for e in result.edges if e.edge_type == "includes"]
         (con,) = [e for e in result.edges if e.edge_type == "constrains"]
