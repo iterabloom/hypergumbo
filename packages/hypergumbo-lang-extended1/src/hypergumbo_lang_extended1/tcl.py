@@ -296,31 +296,41 @@ _BUILTINS = frozenset({
 
 
 def _find_enclosing_proc(
-    node: "tree_sitter.Node", path: Path, repo_root: Path,
-) -> Optional[tuple[NodeId, str]]:
-    """The enclosing procedure's id and the namespace its body runs in.
-
-    The namespace is the absolute name (:func:`_qualified`) of the
-    proc's own minus its last word: ``proc util::other`` declared at the top
-    level runs in ``util``.
-    """
+    node: "tree_sitter.Node",
+) -> Optional[tuple["tree_sitter.Node", str]]:
+    """The innermost enclosing procedure that has a name: its node and the
+    word it is declared by."""
     current = node.parent
-    proc_name = None
-    proc_node = None
-
     while current is not None:
         if current.type == "procedure":
-            if proc_name is None:
-                proc_name = _get_proc_name(current)
-                proc_node = current
+            proc_name = _get_proc_name(current)
+            if proc_name:
+                return current, proc_name
         current = current.parent
+    return None
 
-    if proc_name and proc_node is not None:
-        name, qualified_name = _declared_names(_namespace_path(proc_node), proc_name)
-        rel_path = str(path.relative_to(repo_root))
-        scope = qualified_name.rpartition("::")[0]
-        return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, name, "function"), scope
-    return None  # pragma: no cover
+
+def _proc_id(
+    proc_node: "tree_sitter.Node", proc_name: str, path: Path, repo_root: Path,
+) -> NodeId:
+    """The id :meth:`TclAnalyzer.extract_symbols` gives this procedure.
+
+    One function returning the factory's value, so the static id check can
+    read an edge source built from it.
+    """
+    name, _qualified = _declared_names(_namespace_path(proc_node), proc_name)
+    return make_symbol_id(
+        "tcl", str(path.relative_to(repo_root)),
+        proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, name, "function",
+    )
+
+
+def _proc_scope(proc_node: "tree_sitter.Node", proc_name: str) -> str:
+    """The namespace a procedure's body runs in: its absolute name
+    (:func:`_qualified`) minus its last word. ``proc util::other`` declared
+    at the top level runs in ``util``."""
+    _name, qualified_name = _declared_names(_namespace_path(proc_node), proc_name)
+    return qualified_name.rpartition("::")[0]
 
 
 class TclAnalyzer(TreeSitterAnalyzer):
@@ -503,9 +513,11 @@ class TclAnalyzer(TreeSitterAnalyzer):
         ``imports`` is the file's :func:`_namespace_imports`.
         """
         if node.type in ("command_substitution", "command"):
-            caller = _find_enclosing_proc(node, path, repo_root)
+            caller = _find_enclosing_proc(node)
             if caller:
-                caller_id, scope = caller
+                proc_node, proc_name = caller
+                caller_id = _proc_id(proc_node, proc_name, path, repo_root)
+                scope = _proc_scope(proc_node, proc_name)
                 word = _get_command_name(node)
                 callee_name = _callee_word(word)
 
