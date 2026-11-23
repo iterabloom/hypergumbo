@@ -2409,7 +2409,6 @@ KNOWN_NAME_SLOT_HOLES: dict[tuple[str, str], tuple[str, str]] = {
     ("svelte", "event"): ("slot `button.click`, name `click`", "WI-funip"),
     ("svelte", "block"): ("slot `if.count`, name `#if`", "WI-funip"),
     ("astro", "directive"): ("slot `Card.client.load`, name `client:load`", "WI-funip"),
-    ("robot", "variable"): ("slot `NAME`, name `${NAME}`", "WI-funip"),
     # Linker stand-ins carry their role as a slot suffix so a write and a
     # read of one name on one line stay apart (the kind-slot fix put it
     # there); naming the role moves the stand-in's stable id.

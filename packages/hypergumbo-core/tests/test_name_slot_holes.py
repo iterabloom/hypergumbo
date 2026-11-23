@@ -36,7 +36,7 @@ from hypergumbo_core.spec_validator import (
 )
 
 #: Shrink-only: lower it when an entry is removed, never raise it.
-_CEILING = 12
+_CEILING = 11
 
 #: One fixture per declared hole: files written under one tree, each pair's
 #: producer run on them by a full pipeline run.
@@ -63,11 +63,6 @@ _FIXTURES: dict[tuple[str, str], dict[str, str]] = {
     ("svelte", "block"): {},  # the {#if} block of the svelte fixture
     ("astro", "directive"): {
         "astro/src/pages/p.astro": "---\nconst x = 1;\n---\n<div>\n  <Card client:load />\n</div>\n",
-    },
-    ("robot", "variable"): {
-        "robot/suites/suite.robot": (
-            "*** Variables ***\n${NAME}    demo\n\n*** Test Cases ***\nFirst Test\n    Log    one\n"
-        ),
     },
     ("grpc-linker", "interface"): {
         "proto/api/demo.proto": (

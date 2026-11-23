@@ -353,8 +353,11 @@ Open Login Page
         for symbol in result.symbols:
             _head, _span, id_name, id_kind = symbol.id.rsplit(":", 3)
             assert id_kind == symbol.kind, symbol.id
+            # A variable's id names it ``${NAME}`` (ADR-0036 Ruling 1) while its
+            # stable id keeps hashing the bare ``NAME`` it always hashed.
+            hashed = id_name[2:-1] if symbol.kind == "variable" else id_name
             assert symbol.stable_id == make_doc_stable_id(
-                "robot", symbol.path, symbol.kind, id_name, 0, 0,
+                "robot", symbol.path, symbol.kind, hashed, 0, 0,
             ), (symbol.kind, symbol.name)
 
     def test_span_info(self, tmp_path: Path) -> None:
