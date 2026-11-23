@@ -382,6 +382,70 @@ def test_the_synthetic_ids_name_the_function_kind(tmp_path: Path) -> None:
     )
     synth = [s for s in result.symbols if (s.meta or {}).get("framework_role")]
     assert {s.meta["framework_role"] for s in synth} == {"message_sender", "message_handler"}
-    assert all(s.id.endswith(":offer:function") for s in synth)
+    assert all(s.id.endswith(f":offer-{s.meta['framework_role']}:function") for s in synth)
     assert len({s.id for s in synth}) == len(synth)
     assert _check_id_roundtrip(synth) == []
+
+
+class TestStandInIdsAreNotADeclaredFunctionsId:
+    """WI-supar: the stand-in id carried the channel bare in the name slot, so
+    a one-line function the analyzer declared under the channel's name, on the
+    send or handle line, had the SAME id (``javascript:s.js:2-2:ping:function``
+    held by two nodes). The role rides as a name-segment suffix, as in the
+    crypto_flow, yjs_crdt, ipc and annotation linkers."""
+
+    def test_a_one_line_function_named_like_the_channel_keeps_its_own_id(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_core.analyze.base import make_symbol_id
+
+        (tmp_path / "s.js").write_text(
+            "const ws = connect();\n"
+            "function ping() { ws.send(JSON.stringify({ type: 'ping' })); }\n"
+        )
+        (tmp_path / "h.js").write_text("switch (m.type) {\n  case 'ping': return 1;\n}\n")
+        declared = make_symbol_id("javascript", "s.js", 2, 2, "ping", "function")
+        # A Python file holding the same text is no dispatch-language file.
+        (tmp_path / "p.py").write_text((tmp_path / "s.js").read_text())
+        py_sym = Symbol(
+            id="python:p.py:1-2:test:function", name="test", kind="function",
+            language="python", path="p.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin="py", origin_run_id="uuid:test",
+        )
+
+        result = link_message_dispatch(
+            tmp_path, [_make_ts_sym("s.js"), _make_ts_sym("h.js"), py_sym],
+        )
+
+        # Reach: the sender stand-in sits on the declared function's line.
+        (sender,) = [s for s in result.symbols if s.meta["framework_role"] == "message_sender"]
+        assert (sender.path, sender.span.start_line, sender.name) == ("s.js", 2, "ping")
+        assert sender.id != declared
+        assert sender.id == make_symbol_id(
+            "javascript", "s.js", 2, 2, "ping-message_sender", "function",
+        )
+        assert [e.src for e in result.edges] == [sender.id]
+
+    def test_a_send_and_a_handle_of_one_channel_on_one_line_are_two_nodes(
+        self, tmp_path: Path,
+    ) -> None:
+        """Control on the other collision the role resolves: one line both
+        handles and sends ``ping`` (a pong reply), each paired across files."""
+        (tmp_path / "relay.js").write_text(
+            "switch (m.type) { case 'ping': ws.send({ type: 'ping' }); }\n"
+        )
+        (tmp_path / "s.js").write_text("ws.send({ type: 'ping' });\n")
+        (tmp_path / "h.js").write_text("switch (m.type) {\n  case 'ping': return 1;\n}\n")
+
+        result = link_message_dispatch(
+            tmp_path,
+            [_make_ts_sym("relay.js"), _make_ts_sym("s.js"), _make_ts_sym("h.js")],
+        )
+
+        relay = [s for s in result.symbols if s.path == "relay.js"]
+        assert sorted(s.meta["framework_role"] for s in relay) == [
+            "message_handler", "message_sender",
+        ]
+        assert len({s.id for s in relay}) == 2
+        assert len({s.id for s in result.symbols}) == len(result.symbols)
