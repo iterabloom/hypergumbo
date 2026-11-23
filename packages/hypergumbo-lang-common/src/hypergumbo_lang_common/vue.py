@@ -318,10 +318,18 @@ class VueAnalyzer(TreeSitterAnalyzer):
         current_imports: dict[str, str],
         execution_id: str,
     ) -> None:
-        """Second pass: extract template and style content."""
+        """Second pass: extract template and style content.
+
+        A ``template_element`` is extracted whole, and its subtree is not
+        walked again here: a ``<template v-if>`` nested in it is a
+        ``template_element`` too, and walking into it emitted everything
+        inside it once more per enclosing ``<template>`` (WI-supar: 1,445
+        directive nodes on koel held 604 ids).
+        """
         if node.type == "template_element":
             self._extract_template_content(node, path, repo_root, symbols, edges, current_imports, execution_id)
-        elif node.type == "style_element":
+            return
+        if node.type == "style_element":
             self._extract_style_info(node, path, repo_root, symbols)
 
         for child in node.children:

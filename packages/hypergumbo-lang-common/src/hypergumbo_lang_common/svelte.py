@@ -359,9 +359,12 @@ def _process_tag(
         )
         symbols.append(symbol)
 
-    # Record event handlers
+    # Record event handlers: one symbol per event of the element. Two
+    # handlers of one event on one element (``on:click={a} on:click={b}``,
+    # valid Svelte) are one subscription; the symbol records no handler, so
+    # a second one carried the same facts under the same id (WI-supar).
     if events:
-        for event in events:
+        for event in dict.fromkeys(events):
             span = Span(
                 start_line=line,
                 start_col=node.start_point[1],
