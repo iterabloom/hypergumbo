@@ -623,3 +623,23 @@ def test_every_json_node_id_names_its_symbols_own_kind(tmp_path):
     result = _every_json_producer(tmp_path)
     wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
     assert wrong == []
+
+
+def test_a_tsconfig_id_names_its_symbols_name(tmp_path):
+    """ADR-0036 Ruling 1: the id's name slot is the sanitized ``Symbol.name``.
+    A tsconfig entry is named by its basename and its slot held the
+    repo-relative path. Two tsconfigs in two directories stay two ids (the
+    path slot differs) and two stable ids (the file formula hashes the path)."""
+    from hypergumbo_core.ir import sanitize_id_name_segment
+
+    (tmp_path / "tsconfig.json").write_text('{"references": [{"path": "./web"}]}\n')
+    (tmp_path / "web").mkdir()
+    (tmp_path / "web" / "tsconfig.json").write_text('{"compilerOptions": {}}\n')
+    configs = [s for s in analyze_json_files(tmp_path).symbols
+               if (s.meta or {}).get("config_format") == "tsconfig"]
+    assert sorted((s.path, s.name) for s in configs) == [
+        ("tsconfig.json", "tsconfig.json"), ("web/tsconfig.json", "tsconfig.json"),
+    ]
+    assert [(s.id, s.name) for s in configs
+            if s.id.rsplit(":", 2)[1] != sanitize_id_name_segment(s.name)] == []
+    assert len({s.id for s in configs}) == 2

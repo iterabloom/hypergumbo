@@ -787,8 +787,11 @@ def _process_tsconfig(
     # Create tsconfig symbol. There is no kind="tsconfig": consumers query
     # is_config_file=True + meta["config_format"]="tsconfig" (audit-findings
     # 0005). The id kind-slot is the Symbol's own kind ("file"); "tsconfig"
-    # appears only in meta["config_format"] (ADR-0036 Ruling 2).
-    config_id = _make_symbol_id(rel_path, start_line, end_line, rel_path, "file")
+    # appears only in meta["config_format"] (ADR-0036 Ruling 2). The name
+    # slot is the name, the basename (Ruling 1); it held the path, which the
+    # path slot already carries.
+    config_name = Path(rel_path).name
+    config_id = _make_symbol_id(rel_path, start_line, end_line, config_name, "file")
 
     sym = Symbol(
         id=config_id,
@@ -798,7 +801,7 @@ def _process_tsconfig(
         # The central post-pass stamps the fingerprint (ADR-0032).
         kind="file",
         is_config_file=True,
-        name=Path(rel_path).name,
+        name=config_name,
         path=rel_path,
         language="json",
         span=Span(
