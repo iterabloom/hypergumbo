@@ -1146,6 +1146,37 @@ class TestInvZuhubNapiFallback:
         assert edge.confidence == 0.85
         assert (edge.meta or {}).get("disambiguation_fallback") is not True
 
+    def test_registering_files_own_function_wins_a_name_collision(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-supar (the ruby_ffi mechanism): a registration names the function
+        its own file defines; another file's same-named function is not it."""
+        from hypergumbo_core.linkers.napi import link_napi
+
+        (tmp_path / "addon.c").write_text(
+            "static napi_value Add(napi_env env, napi_callback_info info) {\n"
+            "    return NULL;\n"
+            "}\n"
+            "napi_value Init(napi_env env, napi_value exports) {\n"
+            "    napi_value fn;\n"
+            '    napi_create_function(env, "add", NAPI_AUTO_LENGTH, Add, NULL, &fn);\n'
+            "    return exports;\n"
+            "}\n"
+        )
+        own = _make_c_symbol("Add", path="addon.c", start_line=1, end_line=3)
+        other = _make_c_symbol("Add", path="aaa_other.c", start_line=1, end_line=3)
+        call_edge = Edge.create(
+            src="javascript:index.js:1-3:main:function",
+            dst="javascript:index.js:0-0:add:unresolved",
+            edge_type="calls", line=2, evidence_type="function_call",
+            confidence=0.50, origin="js", origin_run_id="test",
+        )
+
+        result = link_napi(tmp_path, [], [other, own], [call_edge])
+
+        assert [(e.dst, e.confidence) for e in result.edges] == [(own.id, 0.85)]
+        assert "disambiguation_fallback" not in result.edges[0].meta
+
     def test_export_with_no_matching_c_symbol_skipped(self, tmp_path: Path) -> None:
         """When a napi_export macro references a C function name that has no
         in-tree symbol, the export is silently skipped (no edge emitted).
@@ -1189,13 +1220,15 @@ class TestInvZuhubNapiFallback:
             '    return exports;\n'
             '}\n'
         )
-        # Two C functions both named ``Add`` across separate files.
+        # Two C functions both named ``Add`` in two OTHER files: the
+        # registering file defines none, so which one it reaches is unknown.
         c_func_a = _make_c_symbol(
-            "Add", path=str(c_file), start_line=2, end_line=4,
+            "Add", path="add_a.c", start_line=2, end_line=4,
         )
         c_func_b = _make_c_symbol(
             "Add", path="other.c", start_line=10, end_line=15,
         )
+        c_init = _make_c_symbol("Init", path=str(c_file), start_line=5, end_line=10)
         js_sym = _make_js_symbol("app", kind="module", path="index.js")
         call_edge = Edge.create(
             src=js_sym.id,
@@ -1208,12 +1241,12 @@ class TestInvZuhubNapiFallback:
         result = link_napi(
             repo_root=tmp_path,
             js_symbols=[js_sym],
-            c_cpp_symbols=[c_func_a, c_func_b],
+            c_cpp_symbols=[c_func_a, c_func_b, c_init],
             edges=[call_edge],
         )
         assert len(result.edges) == 1
         edge = result.edges[0]
-        assert edge.dst in {c_func_a.id, c_func_b.id}
+        assert edge.dst == c_func_a.id  # the lowest id of the two
         assert edge.confidence <= 0.5
         assert edge.meta is not None
         assert edge.meta.get("disambiguation_fallback") is True

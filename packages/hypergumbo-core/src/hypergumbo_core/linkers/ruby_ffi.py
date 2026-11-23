@@ -31,7 +31,14 @@ Phase 1 (Ruby FFI gem):
 Phase 2 (C extensions):
   Scans ``.c`` and ``.cpp`` files for ``rb_define_method(klass, "name", c_func, argc)``
   and variants. When the C function argument matches a C/C++ function symbol,
-  creates a ``calls`` edge.
+  creates a ``calls`` edge (0.85). Of several functions of that name, the one
+  the registering file defines is the target
+  (``_registration_sites.registered_function``): extensions commonly define
+  ``static VALUE run`` in many files, and each file's registration keeps its
+  own edge to its own function. Only when several OTHER files define the name
+  is the target not known; then the lowest-id one gets the edge at 0.5 with
+  ``meta.disambiguation_fallback``. Two registrations of one function (an
+  alias) give one edge.
 
 Why This Design
 ---------------
@@ -56,6 +63,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ._registration_sites import registered_function
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("ruby-ffi-linker")
@@ -129,14 +137,16 @@ def _scan_ruby_file_for_ffi(
 def _scan_c_file_for_rb_define(
     file_path: Path,
     c_lookup: dict[str, list[Symbol]],
+    site_path: str,
 ) -> list[tuple[Symbol, int, bool]]:
     """Scan a C file for rb_define_method/module_function/singleton_method calls.
 
     Returns a list of ``(c_symbol, line_number, is_fallback)`` tuples for
-    matched functions. ``is_fallback`` is ``True`` when the C function
-    short name had cross-file collisions in ``c_lookup`` and the
-    deterministic-by-id candidate was picked under the INV-zuhub
-    disambiguation contract.
+    matched functions. ``site_path`` is ``file_path`` as the symbols spell
+    their ``path``; a function of the registered name that file defines is
+    the target. ``is_fallback`` is ``True`` when several other files define
+    the name and the deterministic-by-id candidate was picked under the
+    INV-zuhub disambiguation contract (``registered_function``).
     """
     try:
         content = read_masked_source(file_path, encoding="utf-8", errors="replace")
@@ -152,11 +162,7 @@ def _scan_c_file_for_rb_define(
             candidates = c_lookup.get(c_func_name)
             if not candidates:
                 continue
-            is_fallback = len(candidates) > 1
-            c_sym = (
-                candidates[0] if len(candidates) == 1
-                else min(candidates, key=lambda s: s.id)
-            )
+            c_sym, is_fallback = registered_function(candidates, site_path)
             results.append((c_sym, line_num, is_fallback))
 
     return results
@@ -300,8 +306,9 @@ def link_ruby_ffi(
         ):
             c_files.add(sym.path)
 
-    # Sorted: the ``("rb_define", name)`` dedup below keeps the first file's
-    # registration, and a set's order follows the per-process hash salt.
+    # Sorted: the order of the files is the order of the edges (and the
+    # ``("rb_define", id)`` dedup below keeps an alias's first registration),
+    # and a set's order follows the per-process hash salt.
     for c_path_str in sorted(c_files):
         c_path = Path(c_path_str)
         if not c_path.is_absolute():
@@ -310,13 +317,16 @@ def link_ruby_ffi(
         if not c_path.exists():
             continue
 
-        rb_defines = _scan_c_file_for_rb_define(c_path, c_lookup)
+        rb_defines = _scan_c_file_for_rb_define(c_path, c_lookup, c_path_str)
         found.extend(rb_defines)
 
         for c_sym, line_num, is_fallback in rb_defines:
-            dedup_key = ("rb_define", c_sym.name)
+            # Keyed by the FUNCTION, not its name: each file's ``run`` keeps
+            # its own edge, and only a second registration of one function
+            # (an alias) is a duplicate.
+            dedup_key = ("rb_define", c_sym.id)
             if dedup_key in seen_edges:
-                continue  # pragma: no cover - rare dedup
+                continue
             seen_edges.add(dedup_key)
 
             # For C extension patterns, the "src" is a synthetic registration
