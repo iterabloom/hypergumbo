@@ -18,3 +18,19 @@
     pr_ref:  # eaaa
     description: "Repro: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/probe4_electron has ipcMain.handle('ping', ...); no event_handler entry is produced, on dev or on the entry-kind branch. The electron.yaml ipc_handler rows that claimed it were call-keyed decorator rows and never fired; the entry-kind PR removes them. No usage shape for ipcMain.handle exists in js_ts. The IPC linker does see these calls (it links channels); an entry would come from there or from a usage row.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr7/jilik/ (RESULTS.md, sweep/). Found while building WI-jilik (entry-kind PR, 2026-11-21)."  # eaaa
     fields: {}  # eaaa
+- op: update  # 67cf
+  at: '2026-11-22T23:46:56Z'  # 67cf
+  by: agent  # 67cf
+  actor: jgstern_agent  # 67cf
+  clock: 2  # 67cf
+  nonce: 67cf  # 67cf
+  set:  # 67cf
+    status: done  # 67cf
+    pr_ref: 'PR #2342'  # 67cf
+- op: discuss  # 2e8c
+  at: '2026-11-22T23:46:59Z'  # 2e8c
+  by: agent  # 2e8c
+  actor: jgstern_agent  # 2e8c
+  clock: 3  # 2e8c
+  nonce: 2e8c  # 2e8c
+  message: "Closed by PR #2342 (dev 2bc49faef). REPRO RE-RUN on dev, 2026-11-22 ~23:35Z: the item's own fixture (fast_smart_test_build_11172026/audit/probe4_electron, copied to /tmp/pahom_fx; `hypergumbo run /tmp/pahom_fx --no-sketch-fan-out --no-handler-slices`, exit 0): the line `ipcMain.handle('ping', () => 'pong');` (repo/main.js:7) now gives the entry `event_handler` \"Electron IPC handler\" on the handler symbol `_cb_handle`, which carries the concept ipc_handler from electron.yaml; before, the entry list of that fixture held electron_main, electron_preload and script_module only. HOW: the JavaScript analyzer records a usage context for a call that hands a local function to a library when a usage row names the call at that argument (framework_patterns.usage_row_names_call); electron.yaml's new rows name ipcMain on / once / handle / handleOnce and ipcRenderer on / once. The IPC linker also writes dispatches_to from each ipc:receive:<channel> node to its handler now. Measured on real code by the work package (workadventure desktop/electron): 13 IPC handler entries, 13 channel -> handler edges. NOT COVERED, filed in WI-rikum: an import-aliased receiver (`ipcMain as ipc`; session-desktop has 29 such sites), a handler that is an object property with no symbol. The IPC linker still reads comments (WI-pisur, reproduced during the triage)."  # 2e8c

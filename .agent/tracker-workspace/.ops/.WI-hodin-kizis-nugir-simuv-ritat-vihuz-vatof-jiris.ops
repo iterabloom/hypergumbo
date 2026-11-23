@@ -1,0 +1,21 @@
+- op: create  # 1beb
+  at: '2026-11-23T22:14:19Z'  # 1beb
+  by: agent  # 1beb
+  actor: jgstern_agent  # 1beb
+  clock: 1  # 1beb
+  nonce: 1beb  # 1beb
+  data:  # 1beb
+    kind: work_item  # 1beb
+    title: "ADR-0036 and ADR-0034 points the id work could not decide: empty name slot, slots with no ruled language"  # 1beb
+    status: needs_human_review  # 1beb
+    priority: 3  # 1beb
+    parent:  # 1beb
+    tags:  # 1beb
+    - id_format  # 1beb
+    - identity  # 1beb
+    isbefore: []  # 1beb
+    duplicate_of: []  # 1beb
+    not_duplicate_of: []  # 1beb
+    pr_ref:  # 1beb
+    description: "Each needs a ruling, not code first.\n1. ADR-0036 contradicts itself on an empty name slot: the Ruling 1 table says the name slot \"may be empty\", while its Enforcement table and spec_validator treat an empty name slot as an id_format error.\n2. make_symbol_id and make_file_id accept an empty path or name for an EMITTED symbol (the boundary factory is now guarded: empty path becomes <external>, empty name raises). 0 such ids on a 33-repository survey. A guard there needs a ruling: no name sentinel exists, and a raise aborts a user's analysis.\n3. The wasm-bindgen linker's module node has language slot \"wasm\": it has no host file, so ADR-0034's rule (a Class B stand-in's slot is its discovery language) gives no value.\n4. The view_template linkers label templates heex (their tables also hold eex, leex, jinja, ftl, vm, jsp), and manifest_targets mints \"manifest\" slots: none is on the language axis; the stand-in's stable id hashes the language, so any change moves ids.\n5. An annotation \"@hg:route\" in a file no analyzer classifies keeps language slot \"unknown\": route widening hashes discovery_language, so fixing it moves its id.\n6. message_dispatch labels stand-ins found in a .svelte file \"javascript\", as the JavaScript analyzer labels the functions and the file node of a .svelte script. Changing only the stand-in to \"svelte\" would break that parity.\n7. WI-hulup (the npm package stand-in's Symbol.path is '' where Ruling 3's no-anchor sentinel is <external>) is untouched: adopting <external> moves every npm stand-in's stable id.\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 1beb
+    fields: {}  # 1beb
