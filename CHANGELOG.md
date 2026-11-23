@@ -14,7 +14,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **`stable_id_scheme` v15 → v17** (`hgstableid17:`): many digests change, most in Swift, Rust and Scala (spec: "`stable_id_scheme` version history").
+- **`stable_id_scheme` v15 → v18** (`hgstableid18:`): many digests change, most in Swift, Rust and Scala (spec: "`stable_id_scheme` version history").
+- **Many node ids are respelled; their stable ids are not**: Rust and Perl members (`A..run`), Tcl, Julia, Robot, Maven, reStructuredText, linker stand-ins.
+- **Linker stand-ins are named `<role>:<name>`** (`message_sender:ping`); the bare name is in `meta`.
+- **Every file node's `name` is its repo-relative path.**
+- **Vue, Svelte and Astro member names include their element** (`button:v-on:click`).
 - **`SCHEMA_VERSION` 0.21.0 → 0.22.0**: entry `kind` loses 23 values nothing produced (`cli_main`, `electron_renderer`, 21 framework-named kinds).
 - **Manifest executables are kind `package_executable`**: npm `bin`, Cargo `[[bin]]`, `[project.scripts]`.
 - **Server app objects (Flask, FastAPI, Tornado) and Verilog top modules are kind `hosted_application`**, ranked with routes; Swift `ParsableCommand` types are `cli_command`.
@@ -81,6 +85,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Renaming what callers never write keeps the id**: a callback type's inner parameter, a Dart positional parameter, a JS/TS destructuring pattern.
 - **Declarations that differ no longer share a hash**: bounded generic overloads, Swift argument labels, static and instance members (Swift, JS/TS), constrained Swift extensions, Rust `impl` blocks, `#[cfg]` and `#if` alternatives, Java anonymous classes, Dart named parameters.
 - **Swift names containing `$` are read whole.**
+- **A comment inside a declaration no longer moves its id.**
+- **Layout is not hashed in more places**: a TypeScript type's leading `&` or `|`, attribute text, F# primed types, untyped names in every language.
+- **Whitespace inside a TypeScript regex default stays meaningful.**
 
 #### Entry points
 
@@ -116,6 +123,20 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Scala methods and fields passed as arguments are referenced.**
 - **IPC and WebSocket channels reach their handlers.**
 - **A cobra handler's edge starts at its command.**
+- **A node id's name slot is its sanitized name** in every producer but JavaScript callbacks; a new mismatch is a validation error.
+- **No two nodes share an id**: Vue nested templates, repeated Svelte events and Make targets, event and message stand-ins. The validator reports any.
+- **Boundary ids never carry an empty path or name.**
+- **Edge endpoints are valid ids** for Bash commands, Bazel labels, Terraform module sources, Ansible includes, qualified Rust attributes.
+- **Imports reach the imported file**: proto, Thrift, Cap'n Proto, Make, requirements, Terraform, Ruby `require_relative`. Phantom file nodes are gone.
+- **Tcl calls resolve through namespaces and `namespace import`.**
+- **Babashka `.bb` scripts are analysed as Clojure**, and their guarded code reaches what it calls.
+- **BitBake no longer parses C, PHP or assembler `.inc` files**; CSS imports skip ignored files.
+- **Every analysis run id has the `uuid:` prefix.**
+- **Template members are contained by their file**: Vue, Svelte, Astro, Solidity events, reStructuredText directives.
+- **Component imports resolve on Svelte-only and Astro-only projects.**
+- **An OpenAPI document alone yields operation nodes**, with `basePath` applied and real line spans.
+- **N-API names registered in several addons link every target**; a C-extension registration binds its own file's function.
+- **DI edges carry the highest-confidence binding**; FFI edges keep one order across runs.
 
 ### Development tools and CI
 
@@ -148,6 +169,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Checks, hooks and release
 
 - **mypy rejects a hand-built node id**, and `check-id-construction` reads edge endpoints.
+- **`check-id-construction` follows endpoints through parameters, helpers and registries**; a site it cannot follow must be declared.
 - **Pre-commit checks line citations and entry-kind drift.**
 - **`release-check` runs the release workflow's gates before tagging.**
 - **Session hooks no longer time out on large transcripts**; checkouts no longer reopen transcripts to the group.
