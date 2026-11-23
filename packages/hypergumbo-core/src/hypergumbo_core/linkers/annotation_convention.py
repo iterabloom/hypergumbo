@@ -156,18 +156,26 @@ def _known_or_none(language: str) -> str | None:
     return None if language == "unknown" else language
 
 
+def _stand_in_name(name: str, role: str) -> str:
+    """A stand-in's ``Symbol.name``: ``<role>:<name>`` (``annotated_publisher:
+    jobs``); the bare channel or target is ``meta["channel"]``."""
+    return f"{role}:{name}"
+
+
 def _stand_in_id(lang: str, site: AnnotationSite, name: str, role: str) -> NodeId:
     """The node id of the stand-in this linker mints for one directive.
 
     ADR-0036 Ruling 2: the kind slot is the Symbol's kind, ``function``. The
     role (``annotated_publisher`` / ``annotated_subscriber`` /
     ``annotated_dispatcher``) used to sit there, a word no symbol kind has. It
-    rides as a name-segment suffix, as in the websocket and grpc linkers, so
-    two directives of different roles on one line, or a stand-in and a one-line
-    function the analyzer declared under the same name, keep distinct ids.
+    is in the NAME (:func:`_stand_in_name`), and the name is the name slot
+    (Ruling 1), so two directives of different roles on one line, or a
+    stand-in and a one-line function the analyzer declared under the same
+    name, keep distinct ids.
     """
     return make_symbol_id(
-        lang, site.file_path, site.line, site.line, f"{name}-{role}", "function",
+        lang, site.file_path, site.line, site.line, _stand_in_name(name, role),
+        "function",
     )
 
 
@@ -255,7 +263,7 @@ def link_annotations(
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
                     kind="function",
-                    name=channel,
+                    name=_stand_in_name(channel, "annotated_publisher"),
                     path=pub.file_path,
                     # ADR-0031 Class B: synthetic stand-in for an annotated
                     # publisher; the language=None signals no source-language
@@ -292,7 +300,7 @@ def link_annotations(
                         # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                         # leak.
                         kind="function",
-                        name=channel,
+                        name=_stand_in_name(channel, "annotated_subscriber"),
                         path=sub.file_path,
                         # ADR-0031 Class B: synthetic stand-in for an annotated
                         # subscriber.
@@ -403,7 +411,7 @@ def link_annotations(
                 fingerprint=mint_stand_in_fingerprint(disp_id),
                 # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
                 kind="function",
-                name=target_name,
+                name=_stand_in_name(target_name, "annotated_dispatcher"),
                 path=disp.file_path,
                 # ADR-0031 Class B: synthetic stand-in for an annotated
                 # dispatcher.

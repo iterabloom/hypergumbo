@@ -190,8 +190,8 @@ class TestLinkAnnotations:
         assert len(result.symbols) == 2
         pub_sym = next(s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_publisher")
         sub_sym = next(s for s in result.symbols if (s.meta or {}).get("framework_role") == "event_subscriber")
-        assert pub_sym.name == "events.created"
-        assert sub_sym.name == "events.created"
+        assert pub_sym.name == "annotated_publisher:events.created"
+        assert sub_sym.name == "annotated_subscriber:events.created"
         assert pub_sym.meta["hg_annotation"] == "publishes"
         assert sub_sym.meta["hg_annotation"] == "subscribes"
 
@@ -666,6 +666,10 @@ class TestStandInsInAFileTheTaxonomyDoesNotClassify:
         # Control: a classified extension keeps the taxonomy's answer.
         assert (sub.discovery_language, sub.id.split(":", 1)[0]) == ("python", "python")
         assert (result.edges[0].src, result.edges[0].dst) == (pub.id, sub.id)
+        # WI-supar: the role is in the name; the slot is the name sanitized.
+        assert pub.name == "annotated_publisher:jobs"
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
 
     def test_a_dispatcher_in_an_extensionless_script(self, tmp_path: Path) -> None:
         (tmp_path / "run").write_text("#!/bin/bash\n# @hg:dispatches handle\n")
@@ -680,4 +684,7 @@ class TestStandInsInAFileTheTaxonomyDoesNotClassify:
 
         (disp,) = [s for s in result.symbols if s.path == "run"]
         assert (disp.discovery_language, disp.id.split(":", 1)[0]) == ("bash", "bash")
+        assert disp.name == "annotated_dispatcher:handle"
+        from hypergumbo_core.spec_validator import compute_name_slot_stats
+        assert compute_name_slot_stats(result.symbols)["mismatched"] == 0
         assert [e.dst for e in result.edges] == [target.id]

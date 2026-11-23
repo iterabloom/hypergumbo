@@ -614,3 +614,21 @@ class TestStandInIdsNameTheirOwnKind:
         ids = {s.id for s in result.symbols}
         assert len(result.edges) == 2
         assert [(e.src, e.dst) for e in result.edges if e.src not in ids or e.dst not in ids] == []
+
+
+def test_the_role_is_in_the_name_and_the_name_is_the_slot(tmp_path: Path) -> None:
+    """WI-supar / ADR-0036 Ruling 1: the slot held ``<name>-crdt_publisher``
+    while the name was the bare channel; the name now carries the role and
+    the slot is that name sanitized. The channel stays in ``meta``."""
+    from hypergumbo_core.spec_validator import compute_name_slot_stats
+
+    (tmp_path / "w.ts").write_text("yMap.set('cursor', pos);\n")
+    (tmp_path / "r.ts").write_text("yMap.observe(handler);\n")
+    result = link_yjs_crdt(
+        tmp_path, [_make_ts_sym("w.ts"), _make_ts_sym("r.ts"), _make_yjs_dep_sym()],
+    )
+
+    names = sorted(s.name for s in result.symbols)
+    assert names and all(n.startswith(("crdt_publisher:", "crdt_subscriber:")) for n in names)
+    assert {s.meta["channel"] for s in result.symbols}
+    assert compute_name_slot_stats(result.symbols)["mismatched"] == 0

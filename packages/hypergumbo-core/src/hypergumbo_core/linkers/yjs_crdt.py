@@ -560,16 +560,19 @@ def link_yjs_crdt(
                 pub_label = f"yjs.write({write.channel})"
                 sub_label = f"yjs.observe({read.channel})"
             # ADR-0036 Ruling 2: the kind slot is the Symbol's kind. The role
-            # used to sit there; it rides as a name-segment suffix (as in the
-            # websocket and grpc linkers), so a write and an observe of one
-            # name on one line keep distinct ids.
+            # used to sit there; it is in the NAME, ``crdt_publisher:<name>``,
+            # and the name is the name slot (Ruling 1; the channel itself is
+            # ``meta["channel"]``), so a write and an observe of one name on
+            # one line keep distinct ids.
+            pub_name = f"crdt_publisher:{pub_name}"
+            sub_name = f"crdt_subscriber:{sub_name}"
             pub_id = make_symbol_id(
                 pub_lang, write.file_path, write.line, write.line,
-                f"{pub_name}-crdt_publisher", "function",
+                pub_name, "function",
             )
             sub_id = make_symbol_id(
                 sub_lang, read.file_path, read.line, read.line,
-                f"{sub_name}-crdt_subscriber", "function",
+                sub_name, "function",
             )
 
             if pub_id not in seen_sym_ids:
