@@ -104,6 +104,10 @@ written, layout dropped; struct fields and enum variants through
 ``rust_guarded_name``; module-level ``const`` / ``static`` / ``type``
 through ``rust_hashed_qualified_name``), so ``#[cfg(unix)] fn open()`` and
 ``#[cfg(windows)] fn open()`` do not tie (they did until scheme v17).
+Since scheme v19 (WI-sifar) an inner ``#![cfg(...)]`` at the head of such a
+block's body is that block's guard, hashed in the outer spelling, and a
+``#[cfg_attr(P, cfg(Q))]`` is a guard (``_rust_guard``); a file's own
+``#![cfg]`` is not read.
 
 Parity with the SCIP backend
 ----------------------------
@@ -1002,27 +1006,101 @@ _RUST_GUARDED_ITEMS = frozenset({
     "mod_item", "function_item", "impl_item", "trait_item", "foreign_mod_item",
 })
 
-_RUST_CFG_ATTRIBUTE = re.compile(r"#\s*\[\s*cfg\s*\(")
-
-
 def _rust_cfg_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """The ``#[cfg(...)]`` attributes written on ``node``, each as written in
-    canonical spacing (``layout_free``, with ``separators``: the trailing
-    comma rustfmt writes when it splits a predicate over lines is layout,
-    WI-sidus), sorted and joined by one space; ``None`` when it has none
-    (WI-kosug).
+    """The ``cfg`` guards written on ``node`` (:func:`_rust_guard`), sorted and
+    joined by one space; ``None`` when it has none (WI-kosug).
 
-    The predicate is hashed as written, not evaluated or reordered:
-    ``#[cfg(any(a, b))]`` and ``#[cfg(any(b, a))]`` hash apart, and editing
-    a guard moves the id of what it guards. ``cfg_attr`` decides whether an
-    attribute applies, not whether the item exists, so it is not read; nor is
-    an inner ``#![cfg]``.
+    Read from its outer attributes (``#[cfg(...)]`` before it) and, for an
+    item with a body (a ``mod``, ``fn``, ``impl``, ``trait`` or ``extern``
+    block), the inner ones at the head of the body (``mod m { #![cfg(unix)]
+    ... }``), which guard the item as the outer form does and are hashed in
+    its spelling, so moving a guard from one form to the other moves no id
+    (WI-sifar). A file's own ``#![cfg]`` (the crate root's, or a module
+    file's) is not read: the file anchor identifies the file, every symbol
+    of it would move with no tie resolved, and the ``#[cfg] mod x;`` that
+    guards a module file from its parent is not read either.
+
+    The predicate is hashed as written, not evaluated: editing a guard moves
+    the id of what it guards.
     """
-    guards = sorted(
-        layout_free(text, separators=True) for text in _preceding_attribute_texts(node, source)
-        if _RUST_CFG_ATTRIBUTE.match(text)
-    )
+    items = [*_preceding_attribute_items(node), *_rust_inner_attribute_items(node)]
+    guards = sorted(guard for item in items if (guard := _rust_guard(item, source)) is not None)
     return " ".join(guards) if guards else None
+
+
+def _rust_inner_attribute_items(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """The inner attributes (``#![...]``) at the head of ``node``'s body, when
+    ``node`` is an item whose body may hold them (:data:`_RUST_GUARDED_ITEMS`)."""
+    body = node.child_by_field_name("body") if node.type in _RUST_GUARDED_ITEMS else None
+    return [c for c in body.children if c.type == "inner_attribute_item"] if body is not None else []
+
+
+def _rust_guard(item: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The guard an attribute item writes, in canonical spacing (``layout_free``,
+    with ``separators``: the trailing comma rustfmt writes when it splits a
+    predicate over lines is layout, WI-sidus), always in the outer spelling
+    ``#[...]``; ``None`` for an attribute that guards nothing.
+
+    ``#[cfg(P)]`` is a guard. So is ``#[cfg_attr(P, ..., cfg(Q), ...)]``
+    (WI-sifar): when ``P`` holds it applies ``cfg(Q)``, so the item exists
+    unless ``P`` holds and ``Q`` does not. It is hashed as
+    ``#[cfg_attr(P, cfg(Q))]``, the attributes it lists that decide nothing
+    about existence (``derive(Debug)``, ``doc(cfg(...))``) left out, a
+    nested ``cfg_attr`` read the same way; one with no ``cfg`` in it
+    (``cfg_attr(feature = "serde", derive(Serialize))``) gates an attribute,
+    not the item, and is not a guard.
+    """
+    attribute = next((c for c in item.named_children if c.type == "attribute"), None)
+    if attribute is None or attribute.named_child_count < 2:
+        return None
+    name, arguments = attribute.named_children[0], attribute.child_by_field_name("arguments")
+    if name.type != "identifier" or arguments is None or arguments.type != "token_tree":
+        return None
+    text = _rust_cfg_text(node_text(name, source), arguments, source)
+    return layout_free(f"#[{text}]", separators=True) if text is not None else None
+
+
+def _rust_cfg_text(word: str, arguments: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """``cfg(<predicate>)``, or ``cfg_attr(<predicate>, <the cfg / cfg_attr
+    guards it lists>)`` when it lists one (:func:`_rust_guard`); ``None``
+    otherwise."""
+    segments = _rust_token_segments(arguments)
+    if word == "cfg":
+        return f"cfg({', '.join(_rust_predicate(s, source) for s in segments)})"
+    if word != "cfg_attr" or not segments:
+        return None
+    kept = [
+        text for s in segments[1:]
+        if len(s) == 2 and s[0].type == "identifier" and s[1].type == "token_tree"
+        and (text := _rust_cfg_text(node_text(s[0], source), s[1], source)) is not None
+    ]
+    if not kept:
+        return None
+    return f"cfg_attr({_rust_predicate(segments[0], source)}, {', '.join(kept)})"
+
+
+def _rust_token_segments(tree: "tree_sitter.Node") -> list[list["tree_sitter.Node"]]:
+    """The comma-separated parts of a ``token_tree`` (``(a, b = "x", c(d))``),
+    its brackets, its commas and its comments left out; an empty part (after a
+    trailing comma) is dropped."""
+    segments: list[list["tree_sitter.Node"]] = [[]]
+    for child in tree.children[1:-1]:
+        if child.type == ",":
+            segments.append([])
+        elif child.type not in ("line_comment", "block_comment"):
+            segments[-1].append(child)
+    return [s for s in segments if s]
+
+
+def _rust_predicate(segment: list["tree_sitter.Node"], source: bytes) -> str:
+    """A ``cfg`` predicate (one part of a token tree) as text: a call-shaped
+    predicate (``any(...)``, ``all(...)``, ``not(...)``) rebuilt from its
+    arguments, each read the same way; any other (``unix``, ``feature =
+    "x"``) as written."""
+    if len(segment) == 2 and segment[0].type == "identifier" and segment[1].type == "token_tree":
+        arguments = [_rust_predicate(s, source) for s in _rust_token_segments(segment[1])]
+        return f"{node_text(segment[0], source)}({', '.join(arguments)})"
+    return source[segment[0].start_byte:segment[-1].end_byte].decode("utf-8", "replace")
 
 
 def rust_guarded_name(node: "tree_sitter.Node", source: bytes, scope: list[str], name: str) -> str:
@@ -1329,14 +1407,22 @@ def _foreign_import_binding(
 def _preceding_attribute_texts(
     node: "tree_sitter.Node", source: bytes
 ) -> list[str]:
-    """The raw ``#[...]`` texts of the attributes written on ``node``, in order.
+    """The raw ``#[...]`` texts of the attributes written on ``node``, in order
+    (:func:`_preceding_attribute_items`). Shared by
+    :func:`_extract_rust_annotations` (which parses each) and
+    :func:`_foreign_import_binding` (which needs the raw text, since
+    ``#[link_name = "x"]`` and ``js_namespace = ["a", "b"]`` are shapes the
+    simple parser does not model).
+    """
+    return [node_text(item, source) for item in _preceding_attribute_items(node)]
+
+
+def _preceding_attribute_items(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """The ``attribute_item`` nodes written on ``node``, in order.
 
     Rust attributes appear as ``attribute_item`` siblings immediately before
     the declaration they apply to; a comment does not break the chain, any
-    other node does. Shared by :func:`_extract_rust_annotations` (which parses
-    each) and :func:`_foreign_import_binding` (which needs the raw text, since
-    ``#[link_name = "x"]`` and ``js_namespace = ["a", "b"]`` are shapes the
-    simple parser does not model).
+    other node does.
     """
     if node.parent is None:  # pragma: no cover - defensive
         return []
@@ -1352,13 +1438,13 @@ def _preceding_attribute_texts(
     if node_index < 0:
         return []  # pragma: no cover
 
-    texts: list[str] = []
+    items: list["tree_sitter.Node"] = []
     # Walk backwards from this node collecting attribute_items
     # Stop when we hit a non-attribute (another declaration, etc.)
     for i in range(node_index - 1, -1, -1):
         sibling = parent.children[i]
         if sibling.type == "attribute_item":
-            texts.append(node_text(sibling, source))
+            items.append(sibling)
         elif sibling.type == "line_comment":
             # Skip comments, they don't break the attribute chain
             continue  # pragma: no cover - rare edge case
@@ -1367,8 +1453,8 @@ def _preceding_attribute_texts(
             break
 
     # Reverse to maintain source order (we walked backwards)
-    texts.reverse()
-    return texts
+    items.reverse()
+    return items
 
 
 def _extract_rust_annotations(
