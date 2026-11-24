@@ -1,0 +1,23 @@
+- op: create  # 4b8a
+  at: '2026-11-24T10:17:08Z'  # 4b8a
+  by: agent  # 4b8a
+  actor: jgstern_agent  # 4b8a
+  clock: 1  # 4b8a
+  nonce: 4b8a  # 4b8a
+  data:  # 4b8a
+    kind: work_item  # 4b8a
+    title: "verify-claims --json: a violated boundary claim has evidence_count 3 and an empty evidence list"  # 4b8a
+    status: todo_soft  # 4b8a
+    priority: 3  # 4b8a
+    parent:  # 4b8a
+    tags:  # 4b8a
+    - verify_claims  # 4b8a
+    - cli  # 4b8a
+    - outside_review_10_0_0  # 4b8a
+    - reported_not_rerun  # 4b8a
+    isbefore: []  # 4b8a
+    duplicate_of: []  # 4b8a
+    not_duplicate_of: []  # 4b8a
+    pr_ref:  # 4b8a
+    description: "WHAT (as reported)\nverify-claims --json: a violated boundary claim (flaskr, \"never writes to the filesystem\") carried evidence_count 3 and an empty evidence list, so a script cannot see what broke the claim. The human-readable output named the evidence.\n\nNOT CHECKED\nThe 3.2 JSON on dev (the unreleased changelog adds withheld_flows; whether it changes this is not known).\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 4b8a
+    fields: {}  # 4b8a

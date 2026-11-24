@@ -1,0 +1,25 @@
+- op: create  # 9129
+  at: '2026-11-24T10:17:24Z'  # 9129
+  by: agent  # 9129
+  actor: jgstern_agent  # 9129
+  clock: 1  # 9129
+  nonce: '9129'  # 9129
+  data:  # 9129
+    kind: work_item  # 9129
+    title: "pyo3: a Python import of a #[pyfunction] name is not linked to the Rust function; nor is the function passed as a value"  # 9129
+    status: todo_soft  # 9129
+    priority: 3  # 9129
+    parent:  # 9129
+    tags:  # 9129
+    - cross_language_linkers  # 9129
+    - linker  # 9129
+    - python  # 9129
+    - rust  # 9129
+    - outside_review_10_0_0  # 9129
+    - reported_not_rerun  # 9129
+    isbefore: []  # 9129
+    duplicate_of: []  # 9129
+    not_duplicate_of: []  # 9129
+    pr_ref:  # 9129
+    description: "WHAT (as reported)\nPyO3 (maturin's pyo3-mixed): 2 of 4 Python-to-Rust crossings were found (the console script print_cli_args, and pgo_check.py's pyo3_mixed.print_cli_args() through importlib). Missed:\n1. from .pyo3_mixed import get_21 is not linked to the Rust #[pyfunction] get_21: the import resolves to a generic external stand-in and explain get_21 shows no callers.\n2. get_42() calls double(get_21): get_21 is passed as a value and never called by name, so no edge reaches Rust.\nAlso: explain says the Rust get_21 \"Decorates: pyfunction\" where \"decorated by\" is meant.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 9129
+    fields: {}  # 9129
