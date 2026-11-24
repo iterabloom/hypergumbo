@@ -10,6 +10,7 @@ pseudo-symbols are left to ``one_file_node_per_path``, which already counts
 two records of one file id.
 """
 
+import dataclasses
 from pathlib import Path
 
 from hypergumbo_core.ir import Span, Symbol
@@ -38,15 +39,30 @@ def _sym(sym_id: str, kind: str = "function", path: str = "a.py", **extra: objec
     )
 
 
-def test_real_analyzer_output_with_a_shared_id_is_flagged(tmp_path: Path) -> None:
+def test_real_analyzer_same_line_twins_are_told_apart_and_pass(tmp_path: Path) -> None:
+    """Two ``<span v-if>`` on one line shared an id until ADR-0036 Ruling 1
+    was amended (2026-11-23): the second carries ``@<column>`` and nothing
+    is flagged."""
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "A.vue").write_text(_SAME_LINE)
     symbols = analyze_vue(tmp_path).symbols
-    shared = "vue:src/A.vue:3-3:span.v-if:directive"
-    # Reach: the analyzer emits two nodes under the shared id, and the <p>
-    # on its own line under its own.
-    assert [s.id for s in symbols].count(shared) == 2
-    assert [s.id for s in symbols].count("vue:src/A.vue:4-4:p.v-if:directive") == 1
+    ids = [s.id for s in symbols]
+    # Reach: both spans and the <p> on its own line are emitted.
+    assert ids.count("vue:src/A.vue:3-3:span.v-if:directive") == 1
+    assert ids.count("vue:src/A.vue:3-3:span.v-if@27:directive") == 1
+    assert ids.count("vue:src/A.vue:4-4:p.v-if:directive") == 1
+    assert _check_node_id_uniqueness(symbols) == []
+
+
+def test_real_analyzer_output_with_a_shared_id_is_flagged(tmp_path: Path) -> None:
+    """One node emitted twice (the nested-template double walk, WI-supar):
+    real analyzer output with one of its nodes repeated at the same place."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "A.vue").write_text(_SAME_LINE)
+    symbols = analyze_vue(tmp_path).symbols
+    shared = "vue:src/A.vue:4-4:p.v-if:directive"
+    (again,) = [s for s in symbols if s.id == shared]
+    symbols = [*symbols, dataclasses.replace(again)]
 
     violations = _check_node_id_uniqueness(symbols)
     assert len(violations) == 1
