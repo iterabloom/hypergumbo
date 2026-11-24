@@ -1061,7 +1061,9 @@ def _scala_callable_label(node: "tree_sitter.Node", source: bytes) -> Optional[s
     return name if text in ("", "()") else name + text
 
 
-def _scala_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+def _scala_scope(
+    node: "tree_sitter.Node", source: bytes, *, names_only: bool = False,
+) -> list[str]:
     """The labels of every scope enclosing ``node``, outermost first: each
     block ``package a { ... }``, class, object, trait, enum, given and
     function, and each ``val`` / ``var`` binding one name (WI-tusad,
@@ -1080,11 +1082,18 @@ def _scala_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     the locals of two secondary constructors, of two overloads, or of the
     blocks bound to ``val p`` and ``val q`` tied (WI-finam). A ``val`` that
     binds a pattern adds nothing.
+
+    ``names_only`` gives the chain a reader sees instead of the one an id
+    hashes: a ``def`` is its bare name and a ``val`` / ``var`` is no part of
+    it. ``Symbol.qualified_name`` of a type is built from that chain
+    (``pkg.Obj.Deferred``): the labels above are hash inputs, and a name
+    such as ``pkg.Obj.val cache.Deferred`` or ``pkg.Obj.f[$0]()T.Local`` is
+    not one a reader or a name lookup can use.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
-        if n.type in ("function_definition", "function_declaration"):
+        if not names_only and n.type in ("function_definition", "function_declaration"):
             return _scala_callable_label(n, source)
-        if n.type in ("val_definition", "var_definition"):
+        if not names_only and n.type in ("val_definition", "var_definition"):
             name_node = find_child_by_type(n, "identifier")
             keyword = "val" if n.type == "val_definition" else "var"
             return f"{keyword} {node_text(name_node, source)}" if name_node is not None else None
@@ -1408,7 +1417,10 @@ def _extract_parsed_symbols(
     file_package = _scala_file_package(tree.root_node, source) or ""
 
     def _type_qualified_name(node: "tree_sitter.Node", name: str) -> str:
-        return ".".join(p for p in (file_package, _scala_scope_chain(node, source, name)) if p)
+        """``Symbol.qualified_name`` of a type: the file's package and the
+        NAMES of its enclosing scopes, not the labels its id hashes."""
+        chain = ".".join((*_scala_scope(node, source, names_only=True), name))
+        return ".".join(p for p in (file_package, chain) if p)
 
     def _inheritance_meta(node: "tree_sitter.Node") -> dict[str, object]:
         """``base_classes`` of a class / object / trait / enum, and the import

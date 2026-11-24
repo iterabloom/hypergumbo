@@ -153,3 +153,35 @@ def test_a_pattern_val_adds_no_label(tmp_path: Path) -> None:
         tmp_path / "a", "class T {\n  val (a, b) = { def h() = 1; (h(), 2) }\n}\n", "h")
     bare = _local_ids(tmp_path / "b", "class T {\n  locally { def h() = 1; h() }\n}\n", "h")
     assert with_pair == bare
+
+
+_QUALIFIED = (
+    "package cats.instances\n"
+    "object EqInstances {\n"
+    "  private val cacheA: Defer[Eq] = new Defer[Eq] {\n"
+    "    case class Deferred[A](fa: () => Eq[A]) extends Eq[A]\n"
+    "  }\n"
+    "  private val cacheB: Defer[Eq] = new Defer[Eq] {\n"
+    "    case class Deferred[A](fa: () => Eq[A]) extends Eq[A]\n"
+    "  }\n"
+    "  def build[T](x: Int): Unit = {\n"
+    "    class Local\n"
+    "  }\n"
+    "}\n"
+)
+
+
+def test_a_types_qualified_name_carries_names_not_hash_labels(tmp_path: Path) -> None:
+    """``Symbol.qualified_name`` is the name a reader and a name lookup use.
+    The scope labels of WI-finam (``val cacheA``, ``build[$0](Int)Unit``) are
+    hash inputs: they tell the two ``Deferred`` apart in the stable id and
+    stay out of the qualified name, which reads as it did before v19."""
+    symbols = _symbols(tmp_path, _QUALIFIED)
+    deferred = [s for s in symbols if s.name == "Deferred"]
+    assert [s.qualified_name for s in deferred] == ["cats.instances.EqInstances.Deferred"] * 2
+    (local,) = [s for s in symbols if s.name == "Local"]
+    assert local.qualified_name == "cats.instances.EqInstances.build.Local"
+    # The labels still do their work where they belong: two ids.
+    assert len({s.stable_id for s in deferred}) == 2
+    for s in symbols:
+        assert " " not in (s.qualified_name or "") and "(" not in (s.qualified_name or ""), s.qualified_name
